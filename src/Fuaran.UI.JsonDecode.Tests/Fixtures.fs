@@ -42,6 +42,60 @@ open Fuaran.UI.Types
 open Fuaran.UI
 open Fuaran.UI.Ops.Types
 
+// ─── The fixture registry (Phase 2066) ──────────────────────────────────────
+//
+// A fixture registers WHERE IT IS DECLARED: `[<NodeFixture "<description>">]` /
+// `[<OpFixture "<id>">]` sits on the `let`, and `allNodes` / `allOps` at the
+// foot of this file are derived from those attributes. Until Phase 2066 they
+// were hand-kept list literals some 8,000 lines below the declarations, edited
+// in step with them by hand — a fixture declared and not listed reached no
+// corpus file and no test, and nothing said so.
+//
+// Order: declaration order (metadata order of the module's properties). The
+// order carries no meaning downstream — the corpus manifest is written sorted by
+// (kind, id) — but it is deterministic for one build, so two emits agree.
+
+/// Registers the `Node<obj>` value it decorates as a node round-trip fixture.
+/// `Label` is the corpus manifest's `description`.
+[<AttributeUsage(AttributeTargets.Property ||| AttributeTargets.Field ||| AttributeTargets.Method)>]
+type NodeFixtureAttribute(label: string) =
+    inherit Attribute()
+    member _.Label = label
+
+/// Registers the `TreeOp<obj>` value it decorates as an op round-trip fixture.
+/// `Label` is the fixture id and therefore the corpus filename.
+[<AttributeUsage(AttributeTargets.Property ||| AttributeTargets.Field ||| AttributeTargets.Method)>]
+type OpFixtureAttribute(label: string) =
+    inherit Attribute()
+    member _.Label = label
+
+/// Every public value of this module carrying attribute `'A`, as `(label, value)`,
+/// in declaration order. A decorated value of the wrong type is a defect in this
+/// file, refused by name rather than skipped.
+let private declared<'A, 'V when 'A :> Attribute> (label: 'A -> string) : (string * 'V) list =
+    let moduleType =
+        match typeof<NodeFixtureAttribute>.DeclaringType with
+        | null -> failwith "Fixtures: the registry attribute has no declaring module"
+        | t -> t
+
+    moduleType.GetProperties(Reflection.BindingFlags.Public ||| Reflection.BindingFlags.Static)
+    |> Array.sortBy _.MetadataToken
+    |> Array.choose (fun p ->
+        match Attribute.GetCustomAttribute(p, typeof<'A>) with
+        | :? 'A as a ->
+            match p.GetValue null with
+            | :? 'V as v -> Some(label a, v)
+            | null -> failwithf "Fixtures.%s carries %s but read back null" p.Name typeof<'A>.Name
+            | other ->
+                failwithf
+                    "Fixtures.%s carries %s but is a %O, not a %s"
+                    p.Name
+                    typeof<'A>.Name
+                    (other.GetType())
+                    typeof<'V>.Name
+        | _ -> None)
+    |> List.ofArray
+
 // ─── Shared default fragments ────────────────────────────────────────────
 
 let private defaultStyle: SemanticStyle = Defaults.style
@@ -80,6 +134,7 @@ let private metricSpec: MetricSpec =
         Icon = Some "trending-up"
         Subtext = Some(TextSource.Literal "vs last month") }
 
+[<NodeFixture "Display/Metric">]
 let metric: Node<obj> = node "metric-1" (NodeKind.Metric(metricSpec)) None
 
 // ─── Numeric divergence-zone fixtures (Phase 117) ────────────────────────
@@ -106,12 +161,17 @@ let private metricFloat (id: string) (value: float) : Node<obj> =
         ))
         None
 
+[<NodeFixture "Display/Metric (float divergence-zone — 1e21 scientific)">]
 let metricFloatExpPos: Node<obj> = metricFloat "metric-float-exp-pos" 1e21
+
+[<NodeFixture "Display/Metric (float divergence-zone — 1e-7 scientific)">]
 let metricFloatExpNeg: Node<obj> = metricFloat "metric-float-exp-neg" 1e-7
 
+[<NodeFixture "Display/Metric (float divergence-zone — 17 significant digits)">]
 let metricFloat17Sig: Node<obj> =
     metricFloat "metric-float-17sig" 0.30000000000000004
 
+[<NodeFixture "Display/Metric (float divergence-zone — integer > 2^53)">]
 let metricFloatBigInt: Node<obj> =
     metricFloat "metric-float-bigint" 123456789012345680.0
 
@@ -125,8 +185,10 @@ let metricFloatBigInt: Node<obj> =
 /// digits, so it never distinguished the two layouts from a rounding difference.
 /// This one has a single-digit mantissa, which is also the layout case rule 5
 /// spells out separately (no decimal point when the mantissa is one digit).
+[<NodeFixture "Display/Metric (§2 rule 5 — 1e17, one past the fixed-point window)">]
 let metricFloat1e17: Node<obj> = metricFloat "metric-float-1e17" 1e17
 
+[<NodeFixture "Display/Heading">]
 let heading: Node<obj> =
     node
         "heading-1"
@@ -141,6 +203,7 @@ let heading: Node<obj> =
 /// vocabulary (non-default), exercising the optional-emit wire path: the
 /// `role` / `voice` keys appear on the `style` object only because they
 /// differ from `StyleRole.None` / `FontVoice.Default`.
+[<NodeFixture "Display/Markdown (Phase 147 Role=Data + Voice=Display)">]
 let styleRoleVoice: Node<obj> =
     { node "style-role-voice-1" (NodeKind.Markdown({ Text = TextSource.Literal "Q3 revenue" })) None with
         Style =
@@ -149,6 +212,7 @@ let styleRoleVoice: Node<obj> =
                     Role = StyleRole.Data
                     Voice = FontVoice.Display } }
 
+[<NodeFixture "Display/Markdown">]
 let markdown: Node<obj> =
     node "markdown-1" (NodeKind.Markdown({ Text = TextSource.Literal "Updated hourly." })) None
 
@@ -157,6 +221,7 @@ let markdown: Node<obj> =
 /// point: a fixture whose style also set a tone or a weight could decode with
 /// `direction` silently dropped and still round-trip, and the vector would
 /// prove nothing about the slot it was written for.
+[<NodeFixture "Display/Markdown (Phase 1472 Direction=Ltr, the only style member)">]
 let styleDirectionLtrRun: Node<obj> =
     { node "style-direction-ltr-1" (NodeKind.Markdown({ Text = TextSource.Literal "RR123456789IL" })) None with
         Style =
@@ -164,6 +229,7 @@ let styleDirectionLtrRun: Node<obj> =
                 { defaultStyle with
                     Direction = TextDirection.Ltr } }
 
+[<NodeFixture "Display/Badge">]
 let badge: Node<obj> =
     node
         "badge-1"
@@ -173,6 +239,7 @@ let badge: Node<obj> =
         ))
         None
 
+[<NodeFixture "Display/Link">]
 let link: Node<obj> =
     node
         "link-1"
@@ -185,6 +252,7 @@ let link: Node<obj> =
         ))
         None
 
+[<NodeFixture "Display/Link (protected email — Phase 812 protection field)">]
 let linkProtected: Node<obj> =
     // Phase 812 — the optional `protection` field ("email" on the wire),
     // omitted when absent so every pre-812 tree stays byte-identical.
@@ -198,6 +266,7 @@ let linkProtected: Node<obj> =
         ))
         None
 
+[<NodeFixture "Display/Image (Avatar variant)">]
 let image: Node<obj> =
     // Phase 287 — Avatar variant exercises the variant DU; Src round-trips a
     // Binding<string> (sanitised at render, not at wire).
@@ -221,6 +290,7 @@ let image: Node<obj> =
         ))
         None
 
+[<NodeFixture "Display/Image (Phase 1077 — fit / aspectRatio / loading all off-default)">]
 let imagePresentation: Node<obj> =
     // Phase 1077 — all three presentation slots at NON-default values, so the
     // fixture pins the emitted spellings (`fit` / `aspectRatio` / `loading`)
@@ -240,6 +310,7 @@ let imagePresentation: Node<obj> =
         ))
         None
 
+[<NodeFixture "Display/Image (Phase 1078 — literal caption)">]
 let imageCaption: Node<obj> =
     // Phase 1078 — the caption at its simplest: a `Literal`. Everything else on
     // the record is left where `image-1` has it, so the diff between the two
@@ -257,6 +328,7 @@ let imageCaption: Node<obj> =
         ))
         None
 
+[<NodeFixture "Display/Image (Phase 1078 — i18n caption with args)">]
 let imageCaptionI18n: Node<obj> =
     // Phase 1078 — the caption as an `I18n` TextSource. This is the fixture
     // that makes "i18n-capable" a corpus fact rather than a design intention:
@@ -292,6 +364,7 @@ let imageCaptionI18n: Node<obj> =
 /// `State` rather than `Query`, deliberately: a `Query` argument carries a
 /// closure the wire cannot hold, so the fixture would be pinning a `"<closure>"`
 /// sentinel rather than a reachable value.
+[<NodeFixture "Display/Markdown (Phase 1661 — an i18n argument that is a binding)">]
 let textI18nBoundArg: Node<obj> =
     node
         "text-i18n-bound-arg-1"
@@ -307,6 +380,7 @@ let textI18nBoundArg: Node<obj> =
 /// of each ARGUMENT fails. Such a host reads a bag as "all literal" or "all
 /// bound" from whichever entry it inspected first, and both single-arm fixtures
 /// above pass under either mistake.
+[<NodeFixture "Display/Markdown (Phase 1661 — one i18n bag carrying both argument arms)">]
 let textI18nMixedArgs: Node<obj> =
     node
         "text-i18n-mixed-args-1"
@@ -322,6 +396,7 @@ let textI18nMixedArgs: Node<obj> =
         ))
         None
 
+[<NodeFixture "Display/Image (Phase 1080 — three-candidate srcSet, authored descending)">]
 let imageSrcset: Node<obj> =
     // Phase 1080 — a three-candidate `srcSet`, authored DESCENDING by width.
     //
@@ -351,6 +426,7 @@ let imageSrcset: Node<obj> =
         ))
         None
 
+[<NodeFixture "Display/Image (Phase 1079 — expandable, the declaration alone)">]
 let imageExpandable: Node<obj> =
     // Phase 1079 — `expandable` alone, everything else where `image-caption-1`
     // has it, so the byte difference from that fixture is exactly one key. The
@@ -373,6 +449,7 @@ let imageExpandable: Node<obj> =
         ))
         None
 
+[<NodeFixture "Display/Image (Phase 1079 — expandable + caption + srcSet, the gallery thumbnail)">]
 let imageExpandableFigure: Node<obj> =
     // Phase 1079 — the COMPOSITION fixture: `expandable` + `caption` + `srcSet`
     // on one node, which is the gallery thumbnail the whole ImageSpec cluster
@@ -423,6 +500,7 @@ let imageExpandableFigure: Node<obj> =
 /// payload is the bare `{"$type":"Video"}` because `autoplay` omits at false
 /// and `poster` is absent. A host that inverted either polarity produces
 /// different bytes for this one fixture and for no other.
+[<NodeFixture "Display/Media (Phase 1076 — video at its minimum, both bool defaults omitted)">]
 let mediaVideo: Node<obj> =
     node
         "media-video-1"
@@ -438,6 +516,7 @@ let mediaVideo: Node<obj> =
 /// key, and that key is INSIDE the case object rather than beside it: a host
 /// that hoisted the payload's members onto the spec would round-trip its own
 /// emission perfectly and fail here.
+[<NodeFixture "Display/Media (Phase 1076 — video with a poster frame in the case payload)">]
 let mediaVideoPoster: Node<obj> =
     node
         "media-video-poster-1"
@@ -453,6 +532,7 @@ let mediaVideoPoster: Node<obj> =
 /// host that built its encoder as a chain of `if`s gets the key ORDER wrong.
 /// It also pins the two polarities against each other: `controls` emits
 /// because it is FALSE, `loop` and `autoplay` because they are TRUE.
+[<NodeFixture "Display/Media (Phase 1076 — autoplay declared, both shared bools off-default)">]
 let mediaVideoAutoplay: Node<obj> =
     node
         "media-video-autoplay-1"
@@ -469,6 +549,7 @@ let mediaVideoAutoplay: Node<obj> =
 /// The Audio variant. Its payload is the discriminator and nothing else, which
 /// is the point of the variant shape rather than a poverty of it: there is no
 /// autoplay key to omit here because the slot does not exist on this case.
+[<NodeFixture "Display/Media (Phase 1076 — the Audio variant, whose payload is the discriminator alone)">]
 let mediaAudio: Node<obj> =
     node
         "media-audio-1"
@@ -492,6 +573,7 @@ let mediaAudio: Node<obj> =
 /// One captions track, elected as the default. `default` is off its `false`
 /// identity so the key appears, and every other slot of the entry is required,
 /// so this one fixture pins the whole `TrackEntry` key order in a single line.
+[<NodeFixture "Display/Media (Phase 1110 — one captions track, elected default)">]
 let mediaVideoCaptions: Node<obj> =
     node
         "media-video-captions-1"
@@ -519,6 +601,7 @@ let mediaVideoCaptions: Node<obj> =
 /// because a lenient host would render it anyway, and the render obligation
 /// resolves it first-wins. A reject fixture here would have made the wire
 /// stricter than every host that reads it.
+[<NodeFixture "Display/Media (Phase 1110 — three tracks, authored order, two default elections)">]
 let mediaVideoTracks2: Node<obj> =
     node
         "media-video-tracks-2"
@@ -549,6 +632,7 @@ let mediaVideoTracks2: Node<obj> =
 /// captions on, so a transcript IS its accessibility affordance — which is why
 /// the slot sits on the spec rather than on the `Video` case. Every other media
 /// fixture pins its omission at the same time.
+[<NodeFixture "Display/Media (Phase 1110 — the audio transcript floor)">]
 let mediaAudioTranscript: Node<obj> =
     node
         "media-audio-transcript-1"
@@ -579,6 +663,7 @@ let mediaAudioTranscript: Node<obj> =
 /// the empty permission list is TOTAL DENIAL, which makes the wire-cheapest
 /// embed also the most locked-down one. A host that emitted `"permissions":[]`
 /// produces different bytes for this fixture and for no other.
+[<NodeFixture "Display/Embed (Phase 1111 — the minimum: no ratio, no permissions, total denial)">]
 let embedMinimal: Node<obj> =
     node
         "embed-1"
@@ -594,6 +679,7 @@ let embedMinimal: Node<obj> =
 /// pins: a host that minted a parallel `EmbedAspect` with the same case names
 /// round-trips its own emission perfectly and diverges from the schema, where
 /// the slot `$ref`s `ImageAspect`.
+[<NodeFixture "Display/Embed (Phase 1111 — a declared aspect ratio, sharing Image's enum)">]
 let embedAspect: Node<obj> =
     node
         "embed-aspect-1"
@@ -611,6 +697,7 @@ let embedAspect: Node<obj> =
 /// fixture and fails its render obligation on this one. It is also the single
 /// permission that raises no pre-emit warning, so the fixture is a document an
 /// author can ship unaltered.
+[<NodeFixture "Display/Embed (Phase 1111 — one permission, the one that rides `allow` not `sandbox`)">]
 let embedPermissions: Node<obj> =
     node
         "embed-permissions-1"
@@ -639,6 +726,7 @@ let embedPermissions: Node<obj> =
 /// design turns on. `Cocoa` and `Yarn` carry no `children` key, because the
 /// slot omits at the empty list — a host that emitted `"children":[]` on a leaf
 /// produces different bytes for most of a real file listing.
+[<NodeFixture "Display/Tree (Phase 1120 — two levels, no State key: static and fully expanded)">]
 let treeStatic: Node<obj> =
     node
         "tree-1"
@@ -669,6 +757,7 @@ let treeStatic: Node<obj> =
 /// Three levels, so the recursion is exercised past the depth a single nesting
 /// would prove, and one row carries an `icon` so the third optional slot is not
 /// left unpinned by the family.
+[<NodeFixture "Display/Tree (Phase 1120 — three levels, the expansion key named; the key IS the affordance)">]
 let treeExpandedKeyed: Node<obj> =
     node
         "tree-expanded-1"
@@ -697,6 +786,7 @@ let treeExpandedKeyed: Node<obj> =
 /// so this fixture also pins that a decoded tree keeps a working selection
 /// through the key alone — the behaviour a `Partial` survivability verdict
 /// promises.
+[<NodeFixture "Display/Tree (Phase 1120 — the selection key AND the handler, both declared)">]
 let treeSelectionKeyed: Node<obj> =
     node
         "tree-selection-1"
@@ -714,6 +804,7 @@ let treeSelectionKeyed: Node<obj> =
         ))
         None
 
+[<NodeFixture "Display/List (ordered)">]
 let listDisplay: Node<obj> =
     // Phase 287 — ordered list with two items.
     node
@@ -724,6 +815,7 @@ let listDisplay: Node<obj> =
         ))
         None
 
+[<NodeFixture "Display/Toast (Success tone, open)">]
 let toast: Node<obj> =
     // Phase 289 — Success tone, open + dismissable. Open round-trips a
     // Binding<bool>.
@@ -737,6 +829,7 @@ let toast: Node<obj> =
         ))
         None
 
+[<NodeFixture "Display/CodeBlock (fsharp, line numbers + highlights)">]
 let codeBlock: Node<obj> =
     // Phase 290 — line numbers on, two highlight lines, copyable. Exercises the
     // int-array `highlightLines` field.
@@ -751,6 +844,7 @@ let codeBlock: Node<obj> =
         ))
         None
 
+[<NodeFixture "Display/Math (block LaTeX)">]
 let math: Node<obj> =
     // Phase 293 — block display LaTeX.
     node
@@ -761,6 +855,7 @@ let math: Node<obj> =
         ))
         None
 
+[<NodeFixture "Display/Sparkline">]
 let sparkline: Node<obj> =
     node "spark-1" (NodeKind.Sparkline({ Source = Binding.Static(Some [ 1.0; 2.0; 3.0; 2.0; 4.0 ]) })) None
 
@@ -783,6 +878,7 @@ let private labelTextStyle: DrawStyle =
         Emphasis = Some Emphasis.Loud
         FontFamily = Some "system-ui, sans-serif" }
 
+[<NodeFixture "Display/Drawing (all shapes + curve commands + styled bindings)">]
 let drawing: Node<obj> =
     // Phase 524 — exercises Group nesting + every Shape case + all CurveCommand
     // variants + typed DrawStyle Bindings (Static colours/widths) + Title/Desc.
@@ -828,6 +924,7 @@ let drawing: Node<obj> =
         ))
         None
 
+[<NodeFixture "Display/Drawing (degenerate — empty)">]
 let drawingMinimal: Node<obj> =
     // The degenerate drawing — empty shape list, all-default root style, no
     // title/description (the byte-minimal Drawing wire shape).
@@ -839,6 +936,7 @@ let drawingMinimal: Node<obj> =
         ))
         None
 
+[<NodeFixture "Display/Drawing (Phase 877 — rotated Labels, incl. explicit 0 and 2-dp fraction)">]
 let drawingRotatedLabels: Node<obj> =
     // Phase 877 — `Label` rotation. Pins the optional `rotation` field
     // cross-host over the three demands that motivated it, each with a
@@ -892,6 +990,7 @@ let drawingRotatedLabels: Node<obj> =
         ))
         None
 
+[<NodeFixture "Display/Drawing (Phase 883 — tipped shapes, incl. hostile text, Bound tip and explicit empty)">]
 let drawingTippedShapes: Node<obj> =
     // Phase 883 — `DrawStyle.Tip`, the per-mark hover readout an emitter turns
     // into an SVG `<title>` CHILD of the shape's own element. This fixture pins
@@ -1017,6 +1116,7 @@ let drawingTippedShapes: Node<obj> =
 /// nested shape coordinate (`Circle.cx`). A host whose float guard sits at the
 /// spec-record level but not inside `shapes` passes the first and fails the
 /// second, which is why both are in one fixture.
+[<NodeFixture "Display/Drawing (Phase 1063 — §5/§7 non-finite sentinels at typed float scalars and a nested shape coordinate)">]
 let drawingNonfiniteSentinels: Node<obj> =
     node
         "drawing-nonfinite-sentinels"
@@ -1036,6 +1136,7 @@ let drawingNonfiniteSentinels: Node<obj> =
 /// A float SEQUENCE element. All three sentinels sit among finite neighbours,
 /// so a host that special-cases a wholly-non-finite array — or that decides the
 /// element type from the first element — is caught rather than flattered.
+[<NodeFixture "Display/Sparkline (Phase 1063 — §5/§7 non-finite sentinels as float SEQUENCE elements)">]
 let sparklineNonfiniteSentinel: Node<obj> =
     node
         "spark-nonfinite-sentinel"
@@ -1057,6 +1158,7 @@ let sparklineNonfiniteSentinel: Node<obj> =
 /// (`value` and `trend`). The envelope path is the one class that was already
 /// conformant on all five hosts when the hole was measured — pinned so that
 /// stays a fact rather than an assumption.
+[<NodeFixture "Display/Metric (Phase 1063 — §5/§7 non-finite sentinels behind a Binding.Static envelope)">]
 let metricNonfiniteSentinel: Node<obj> =
     node
         "metric-nonfinite-sentinel"
@@ -1067,8 +1169,10 @@ let metricNonfiniteSentinel: Node<obj> =
         ))
         None
 
+[<NodeFixture "Display/Skeleton">]
 let skeleton: Node<obj> = node "skel-1" (NodeKind.Skeleton({ Rows = 3 })) None
 
+[<NodeFixture "Display/Callout">]
 let callout: Node<obj> =
     node
         "callout-1"
@@ -1082,6 +1186,7 @@ let callout: Node<obj> =
         ))
         None
 
+[<NodeFixture "Display/Progress">]
 let progress: Node<obj> =
     node
         "progress-1"
@@ -1093,6 +1198,7 @@ let progress: Node<obj> =
         ))
         None
 
+[<NodeFixture "Display/LabelValueRow">]
 let labelValueRow: Node<obj> =
     node
         "lvr-1"
@@ -1106,6 +1212,7 @@ let labelValueRow: Node<obj> =
         ))
         None
 
+[<NodeFixture "Display/Fact">]
 let fact: Node<obj> =
     // Exercises the full optional surface (tone / emphasis / help / icon) —
     // the minimal {label,value} form is pinned by the lenient fixture family.
@@ -1125,6 +1232,7 @@ let fact: Node<obj> =
 /// Phase 819 — a duration Metric: the raw value counts MINUTES (80 → "1h
 /// 20m" under Compact), and the trend slot carries the cell-vocabulary
 /// RelativeTime parity case (a signed count of the unit).
+[<NodeFixture "Display/Metric (Phase 819 — CellFormat.Duration value + cell RelativeTime trend)">]
 let metricDuration: Node<obj> =
     node
         "metric-duration-1"
@@ -1154,6 +1262,7 @@ let metricDuration: Node<obj> =
 /// declaration, deliberately: the pair is the whole demand — the same falling
 /// number, read as an improvement under the declaration and as a regression
 /// without it, with the numeric text identical in both.
+[<NodeFixture "Display/Metric (Phase 867 — inverted trendPolarity: a falling wait time is an improvement)">]
 let metricInvertedPolarity: Node<obj> =
     node
         "metric-inverted-polarity"
@@ -1176,6 +1285,7 @@ let metricInvertedPolarity: Node<obj> =
 /// Phase 821 — the standalone icon-only display kind, decorative form: no
 /// label (renderers emit `aria-hidden="true"`), non-default `size` so the
 /// optional key appears on the wire, default tone omitted.
+[<NodeFixture "Display/Icon (Phase 821 — decorative, no label, Large)">]
 let iconDecorative: Node<obj> =
     node
         "icon-1"
@@ -1189,6 +1299,7 @@ let iconDecorative: Node<obj> =
 
 // ─── Layout fixtures ─────────────────────────────────────────────────────
 
+[<NodeFixture "Layout/Dashboard (empty)">]
 let dashboardEmpty: Node<obj> =
     node
         "dash-empty"
@@ -1214,6 +1325,7 @@ let dashboardEmpty: Node<obj> =
 /// an opaque identifier rather than more prose.
 ///
 /// Every `style` here carries exactly one member, for the reason above.
+[<NodeFixture "Layout/Box (Phase 1472 an Ltr value isolated inside Rtl prose)">]
 let styleDirectionIsolatedValue: Node<obj> =
     { node
           "style-direction-isolated-1"
@@ -1255,6 +1367,7 @@ let styleDirectionIsolatedValue: Node<obj> =
 /// fact declared here is not available to the host any other way: a formatter
 /// laying out pages sees three boxes, and nothing in the rendering says these
 /// three lines are one thing.
+[<NodeFixture "Layout/Box (Phase 1473 keepTogether, the only new member)">]
 let boxKeepTogether: Node<obj> =
     node
         "box-keep-together-1"
@@ -1277,6 +1390,7 @@ let boxKeepTogether: Node<obj> =
 /// Phase 1473 — `breakBefore`, alone, on its own vector for the same
 /// one-member reason. A section that starts on a fresh page; nothing here names
 /// the page, only the boundary before this subtree.
+[<NodeFixture "Layout/Box (Phase 1473 breakBefore, the only new member)">]
 let boxBreakBefore: Node<obj> =
     node
         "box-break-before-1"
@@ -1291,6 +1405,7 @@ let boxBreakBefore: Node<obj> =
         ))
         None
 
+[<NodeFixture "Layout/Stack">]
 let stack: Node<obj> =
     node
         "stack-1"
@@ -1304,6 +1419,7 @@ let stack: Node<obj> =
         ))
         None
 
+[<NodeFixture "Layout/Grid">]
 let gridLayout: Node<obj> =
     node
         "glayout-1"
@@ -1322,6 +1438,7 @@ let gridLayout: Node<obj> =
 // the canonical CSS-grammar shapes the migration doc names: simple ratio
 // `1fr 2fr`, fixed-plus-flex `100px repeat(3, minmax(30px, 1fr))`, and
 // auto-fit `repeat(auto-fit, minmax(150px, 1fr))`.
+[<NodeFixture "Layout/Grid (TemplateColumns 1fr 2fr ratio)">]
 let gridLayoutTemplatedRatio: Node<obj> =
     node
         "glayout-tpl-ratio"
@@ -1335,6 +1452,7 @@ let gridLayoutTemplatedRatio: Node<obj> =
         ))
         None
 
+[<NodeFixture "Layout/Grid (TemplateColumns 100px + repeat fixed-plus-flex)">]
 let gridLayoutTemplatedFixedPlusFlex: Node<obj> =
     node
         "glayout-tpl-fixed"
@@ -1348,6 +1466,7 @@ let gridLayoutTemplatedFixedPlusFlex: Node<obj> =
         ))
         None
 
+[<NodeFixture "Layout/Grid (TemplateColumns auto-fit minmax)">]
 let gridLayoutTemplatedAutoFit: Node<obj> =
     node
         "glayout-tpl-autofit"
@@ -1368,6 +1487,7 @@ let gridLayoutTemplatedAutoFit: Node<obj> =
 // field surface — the second exists because `gap` is omitted-when-None and
 // would otherwise never appear on the wire, which is exactly the gap the IDL's
 // own comment records against the `Flex` and `Grid` cases.
+[<NodeFixture "Layout/Masonry (Phase 1082 — column-fill, three columns)">]
 let masonryLayout: Node<obj> =
     node
         "masonry-1"
@@ -1381,6 +1501,7 @@ let masonryLayout: Node<obj> =
         ))
         None
 
+[<NodeFixture "Layout/Masonry (Phase 1082 — explicit gap)">]
 let masonryLayoutGap: Node<obj> =
     node
         "masonry-gap"
@@ -1394,6 +1515,7 @@ let masonryLayoutGap: Node<obj> =
         ))
         None
 
+[<NodeFixture "Layout/SplitPanel">]
 let splitPanel: Node<obj> =
     node
         "split-1"
@@ -1403,6 +1525,7 @@ let splitPanel: Node<obj> =
         ))
         None
 
+[<NodeFixture "Layout/Tabs">]
 let tabs: Node<obj> =
     node
         "tabs-1"
@@ -1420,6 +1543,7 @@ let tabs: Node<obj> =
 // surface. Exercises the additive optional fields end-to-end. The two
 // children are simple Markdown leaves; the headers carry mixed icon /
 // disabled state to exercise the full TabHeader record.
+[<NodeFixture "Layout/Tabs (explicit headers + tags + activeTag)">]
 let tabsExplicitHeaders: Node<obj> =
     node
         "tabs-explicit-1"
@@ -1459,6 +1583,7 @@ let tabsExplicitHeaders: Node<obj> =
 /// shape a prompt naming a default asks for and which no existing wrapper fixture
 /// shows. Every optional handler slot is omitted: this is the self-wiring emission
 /// shape, not the closure-authored one.
+[<NodeFixture "Layout/Tabs (composite — containers inside a wrapper, grid panel, pre-filled controls)">]
 let compositeTabsPanels: Node<obj> =
     let nameField: FormField<obj> =
         { Defaults.formField with
@@ -1538,6 +1663,7 @@ let compositeTabsPanels: Node<obj> =
         ))
         None
 
+[<NodeFixture "Layout/Card">]
 let card: Node<obj> =
     node
         "card-1"
@@ -1551,6 +1677,7 @@ let card: Node<obj> =
         ))
         None
 
+[<NodeFixture "Layout/Stepper">]
 let stepper: Node<obj> =
     node
         "step-1"
@@ -1563,6 +1690,7 @@ let stepper: Node<obj> =
         ))
         None
 
+[<NodeFixture "Layout/SummaryList">]
 let summaryList: Node<obj> =
     node
         "summary-1"
@@ -1572,6 +1700,7 @@ let summaryList: Node<obj> =
         ))
         None
 
+[<NodeFixture "Layout/Disclosure">]
 let disclosure: Node<obj> =
     // Typed accordion. Round-trips heading + Open binding +
     // DefaultOpen + Children — every encoder-side wire field. `OnToggle = None`
@@ -1588,6 +1717,7 @@ let disclosure: Node<obj> =
         ))
         None
 
+[<NodeFixture "Layout/Modal (heading + child + onDismiss)">]
 let modal: Node<obj> =
     // Phase 289 — overlay dialog. Heading (Some) + child + OnDismiss action +
     // Open binding all round-trip; OnDismiss is a wire-survivable Action
@@ -1610,6 +1740,7 @@ let modal: Node<obj> =
 /// The heading and the dismiss affordance are kept deliberately: a popover is a
 /// dialog, not a tooltip, and a vector without them would leave the whole
 /// `fuaran-popover-heading` / `-dismiss` half of the class family unexercised.
+[<NodeFixture "Layout/Modal (Phase 1119 — Popover modality, anchored, state-bound open)">]
 let popoverAnchored: Node<obj> =
     node
         "popover-anchored-1"
@@ -1629,6 +1760,7 @@ let popoverAnchored: Node<obj> =
 /// flow at the position the node occupies, with no scrim and no `aria-modal` —
 /// and it is why the `open` binding differs from the vector above rather than
 /// being a second copy of it.
+[<NodeFixture "Layout/Modal (Phase 1119 — Popover, statically open: the SSR floor)">]
 let popoverOpen: Node<obj> =
     node
         "popover-open-1"
@@ -1641,6 +1773,7 @@ let popoverOpen: Node<obj> =
         ))
         None
 
+[<NodeFixture "Layout/ScrollArea (vertical, maxHeight)">]
 let scrollArea: Node<obj> =
     // Phase 289 — vertical scroll container with a maxHeight bound present and
     // maxWidth absent (exercises the omit-when-None path).
@@ -1657,6 +1790,7 @@ let scrollArea: Node<obj> =
 
 let private placeholderChain: Action<obj> = Action.Chain []
 
+[<NodeFixture "Input/Form (all fields)">]
 let formAllFields: Node<obj> =
     let textField: FormField<obj> =
         { Defaults.formField with
@@ -1732,6 +1866,7 @@ let formAllFields: Node<obj> =
 /// present/absent Min, Max, Step so the canonical-JSON encoder's
 /// omit-when-None discipline and the decoder's optional-field branch
 /// stay in lockstep.
+[<NodeFixture "Input/Form (RangedNumber — all/min-only/no bounds)">]
 let formRangedNumber: Node<obj> =
     let allBoundsField: FormField<obj> =
         { Defaults.formField with
@@ -1783,6 +1918,7 @@ let formRangedNumber: Node<obj> =
         ))
         None
 
+[<NodeFixture "Input/Filters (text + choice)">]
 let filtersBoth: Node<obj> =
     // `Some` closures — the F#-authored shape, byte-identical to pre-Phase-423 (`"onChange":"<closure>"`).
     let textFilter: FilterSpec<obj> =
@@ -1809,6 +1945,7 @@ let filtersBoth: Node<obj> =
 /// Declarative chips (Phase 423): every `FilterKind` case with `onChange = None` — the AI-authored
 /// shape whose `onChange` field is omitted on the wire, `value` self-reads its own `$filters.<name>`,
 /// and `RangeFilter` carries typed `{min,max}` bounds. Proves the omitted-onChange + typed-range wire.
+[<NodeFixture "Input/Filters (declarative — omitted onChange + typed range bounds)">]
 let filtersDeclarative: Node<obj> =
     let textFilter: FilterSpec<obj> =
         { Name = "q"
@@ -1844,6 +1981,7 @@ let filtersDeclarative: Node<obj> =
 /// Exercises both orientations so the canonical-JSON encoder's
 /// orientation field and the decoder's required-field branch stay in
 /// lockstep.
+[<NodeFixture "Input/Form (SegmentedChoice horizontal + vertical)">]
 let formSegmentedChoice: Node<obj> =
     let opts: SelectOption list =
         [ { Value = "effective"
@@ -1893,6 +2031,7 @@ let formSegmentedChoice: Node<obj> =
 /// the shortest combobox document is the CONSTRAINED one, so an emitter that
 /// says nothing gets the searchable-select shape and has to ask for anything
 /// looser.
+[<NodeFixture "Input/Form (Phase 1113 — Combobox: static options, allowFreeText omitted)">]
 let formComboboxStatic: Node<obj> =
     let opts: SelectOption list =
         [ { Value = "gbr"
@@ -1928,6 +2067,7 @@ let formComboboxStatic: Node<obj> =
 /// `Binding.Query` in the ordinary options slot. Declarative (no `onChange`) and
 /// with the value slot OMITTED, so the field auto-binds `State("city", None)`
 /// exactly as a `Choice` would.
+[<NodeFixture "Input/Form (Phase 1113 — Combobox: Query-bound option source, declarative, auto-bound value)">]
 let formComboboxQuery: Node<obj> =
     let field: FormField<obj> =
         { Defaults.formField with
@@ -1954,6 +2094,7 @@ let formComboboxQuery: Node<obj> =
 /// Phase 1113 — `allowFreeText = true`: the option list is a SUGGESTION and a
 /// value outside it is admitted. Carries the value as free text that matches no
 /// option, which is the state a constrained combobox can never be in.
+[<NodeFixture "Input/Form (Phase 1113 — Combobox: allowFreeText, value outside the option set)">]
 let formComboboxFreeText: Node<obj> =
     let field: FormField<obj> =
         { Defaults.formField with
@@ -1986,6 +2127,7 @@ let formComboboxFreeText: Node<obj> =
 /// `max` carrying the conventional five. The omission is the point of the
 /// vector — the shortest rating document is the whole-star one, and halves are
 /// what an emitter has to ask for.
+[<NodeFixture "Input/Form (Phase 1130 — Rating: whole stars, allowHalf omitted, static value)">]
 let formRating: Node<obj> =
     let field: FormField<obj> =
         { Defaults.formField with
@@ -2015,6 +2157,7 @@ let formRating: Node<obj> =
 /// lands between positions and is DISPLAYED as it is. Declarative (no
 /// `onChange`) on the second field, whose value slot is omitted entirely — the
 /// auto-bind, exactly as on every other control.
+[<NodeFixture "Input/Form (Phase 1130 — Rating: allowHalf entry + a bound average on a ten-scale, value auto-bound)">]
 let formRatingHalves: Node<obj> =
     let entered: FormField<obj> =
         { Defaults.formField with
@@ -2042,6 +2185,7 @@ let formRatingHalves: Node<obj> =
 /// is the vector's whole point: `#FFAA00` is a hex colour, the codec preserves
 /// the author's bytes, and a host that normalised case would fail the byte
 /// round-trip this corpus exists to pin.
+[<NodeFixture "Input/Form (Phase 1130 — Color: upper-case hex, preserved not normalised)">]
 let formColor: Node<obj> =
     let field: FormField<obj> =
         { Defaults.formField with
@@ -2067,6 +2211,7 @@ let formColor: Node<obj> =
 /// their own filter keys. The 0.2.0 unification means a chip carries the same
 /// control as a field, and a corpus that covered only the field route would
 /// leave half the vocabulary unpinned.
+[<NodeFixture "Input/Filters (Phase 1130 — Rating + Color chips, declarative and auto-bound)">]
 let filtersRatingColour: Node<obj> =
     node
         "filters-rating-colour"
@@ -2087,6 +2232,7 @@ let filtersRatingColour: Node<obj> =
 /// auto-binds. The omission is the whole point of the vector — `{"$type":
 /// "Tokens"}` plus the field envelope is a complete, useful document, and a host
 /// that read absence as `false` would refuse it as a control that admits nothing.
+[<NodeFixture "Input/Form (Phase 1121 — Tokens: the shortest spelling, allowFreeText omitted (true), value auto-bound)">]
 let formTokensFreeText: Node<obj> =
     let field: FormField<obj> =
         { Defaults.formField with
@@ -2109,6 +2255,7 @@ let formTokensFreeText: Node<obj> =
 /// source, carrying a static token list in reader order. The order is the
 /// vector's second job — `"deu"` before `"fra"` is not alphabetical, so a host
 /// that sorted the list would fail the byte round-trip.
+[<NodeFixture "Input/Form (Phase 1121 — Tokens: allowFreeText false over a static suggestion source, tokens in reader order)">]
 let formTokensSuggested: Node<obj> =
     let field: FormField<obj> =
         { Defaults.formField with
@@ -2146,6 +2293,7 @@ let formTokensSuggested: Node<obj> =
 /// with `dependsOn` giving the feed its dependency edge; `allowFreeText` stays
 /// omitted, so the field is open while its suggestions load — which is the state
 /// a bound source spends its first frame in.
+[<NodeFixture "Input/Form (Phase 1121 — Tokens: Query-bound suggestion source, declarative, value auto-bound)">]
 let formTokensQuery: Node<obj> =
     let field: FormField<obj> =
         { Defaults.formField with
@@ -2173,6 +2321,7 @@ let formTokensQuery: Node<obj> =
 /// own filter key. A chip carries the same control as a field since the 0.2.0
 /// unification, and a corpus covering only the field route would leave half the
 /// vocabulary unpinned.
+[<NodeFixture "Input/Filters (Phase 1121 — Tokens chip, constrained and auto-bound)">]
 let filtersTokens: Node<obj> =
     node
         "filters-tokens"
@@ -2197,6 +2346,7 @@ let filtersTokens: Node<obj> =
 
 /// Round-trip cover for `FilterKind.SegmentedFilter`. Parallel
 /// to `filtersBoth`'s ChoiceFilter; uses Horizontal orientation.
+[<NodeFixture "Input/Filters (SegmentedFilter horizontal)">]
 let filtersSegmented: Node<obj> =
     let segmentedFilter: FilterSpec<obj> =
         { Name = "view"
@@ -2216,6 +2366,7 @@ let filtersSegmented: Node<obj> =
 /// present/absent combination of the optional Min / Max / Step constraints so
 /// the encoder's omit-when-None discipline and the decoder's optional-field
 /// branch stay in lockstep. Values are ISO-8601 strings.
+[<NodeFixture "Input/Form (Date — date/time/datetime variants + bounds)">]
 let formDate: Node<obj> =
     let dateField: FormField<obj> =
         { Defaults.formField with
@@ -2276,6 +2427,7 @@ let formDate: Node<obj> =
 /// shape, so the encoder's omit-when-None discipline and the decoder's
 /// optional-field branch stay in lockstep. The Static pair rides as the bare
 /// `{from, to}` object (the `Range` posture, no `Static` envelope).
+[<NodeFixture "Input/Form (Phase 725 — DateRange: single-control date range, bare {from,to} pair + bounds)">]
 let formDateRange: Node<obj> =
     let stayField: FormField<obj> =
         { Defaults.formField with
@@ -2352,6 +2504,7 @@ let formDateRange: Node<obj> =
 /// `value` is the exact auto-binding (`Filter(name)`), so it is OMITTED on the
 /// wire per the FilterSpec auto-bind rule — and the pair binds ONE filter
 /// param, not two, which is the case's reason to exist.
+[<NodeFixture "Input/Filters (Phase 725 — DateRange chip: one filter param carries the pair, value auto-bound)">]
 let filtersDateRange: Node<obj> =
     let stayChip: FilterSpec<obj> =
         { Name = "stay"
@@ -2368,6 +2521,7 @@ let filtersDateRange: Node<obj> =
 
     node "filters-date-range" (NodeKind.Filters { Items = [ stayChip ] }) None
 
+[<NodeFixture "Input/Button">]
 let button: Node<obj> =
     node
         "btn-1"
@@ -2389,6 +2543,7 @@ let button: Node<obj> =
 // listens to. Confirms the encoder/decoder forward-coupling holds for
 // the new DU case AND that Chain composes cleanly across renderer-
 // native (WriteToClipboard) and renderer-substrate (Dispatch) cases.
+[<NodeFixture "Input/Button (Action.WriteToClipboard chained with Dispatch)">]
 let buttonClipboard: Node<obj> =
     node
         "btn-copy-link"
@@ -2411,6 +2566,7 @@ let buttonClipboard: Node<obj> =
 // source-breaking and wire-neutral. What a host has to learn is THIS — a `text`
 // carrying a `$type`-tagged object, resolved at dispatch time rather than at
 // decode time, so the reader copies the value they are looking at.
+[<NodeFixture "Phase 1126 — Input/Button whose Action.WriteToClipboard carries a BOUND payload (a TextSource, not a bare string), resolved at dispatch time">]
 let buttonClipboardBound: Node<obj> =
     node
         "btn-copy-bound"
@@ -2434,6 +2590,7 @@ let buttonClipboardBound: Node<obj> =
 // The composition is named rather than stretched: `OnRowClick` stays a host
 // closure, and a button carrying this action is how a tree says the same thing
 // declaratively.
+[<NodeFixture "Phase 1536 — Input/Button whose Action.Navigate carries a BOUND route (a TextSource over the grid's selection), resolved at dispatch time and gated on the resolved value">]
 let actionNavigateBound: Node<obj> =
     node
         "action-navigate-bound"
@@ -2456,6 +2613,7 @@ let actionNavigateBound: Node<obj> =
 // The route is a literal here on purpose — the two new members are independent,
 // and a fixture exercising both at once would not distinguish a host that
 // implemented one from a host that implemented the other.
+[<NodeFixture "Phase 1536 — Input/Button whose Action.Navigate names a Blank target (opened with noopener,noreferrer); `Self` is omitted, so this is the only shape that puts `target` on the wire">]
 let actionNavigateTarget: Node<obj> =
     node
         "action-navigate-target"
@@ -2476,6 +2634,7 @@ let actionNavigateTarget: Node<obj> =
 // language spells "nothing happens", and pairing that shape with the
 // cancel-bearing fixture beside it pins both halves of the omit-when-absent
 // rule, exactly as the `Navigate` target pair does.
+[<NodeFixture "Phase 1537 — Input/Button whose Action.Confirm asks a BOUND question (naming the selected row) before a Call; no onCancel, which is how the language spells 'nothing happens'">]
 let actionConfirm: Node<obj> =
     node
         "action-confirm"
@@ -2504,6 +2663,7 @@ let actionConfirm: Node<obj> =
 // continuations are `Action`s, so the encoder recurses. `Chain` is the only
 // other arm that does, and it recurses into a LIST — a host that special-cased
 // `ops` and nothing else passes every `Chain` fixture and fails this one.
+[<NodeFixture "Phase 1537 — Input/Button whose Action.Confirm carries a LITERAL prompt and both branches; the only fixture in which the recursive encoder descends into a named continuation rather than a Chain list">]
 let actionConfirmCancel: Node<obj> =
     node
         "action-confirm-cancel"
@@ -2531,6 +2691,7 @@ let actionConfirmCancel: Node<obj> =
 //
 // What the fixture cannot say, and what the specification says instead: nothing
 // about scrolling, and nothing about selection. The wire carries a node id.
+[<NodeFixture "Phase 1537 — Input/Button whose Action.Focus moves the caret to an addressed node, chained after the write that emptied it">]
 let actionFocus: Node<obj> =
     node
         "action-focus"
@@ -2554,6 +2715,7 @@ let actionFocus: Node<obj> =
 // array (neither is absence), a whole-valued float and one needing scientific
 // layout (rule 5), and strings carrying the two characters JSON must escape plus
 // a control character and an astral-plane codepoint (rule 6).
+[<NodeFixture "Input/Button (Notify / SetState / AiTool — JSON payloads)">]
 let buttonJsonPayloads: Node<obj> =
     let awkward =
         JObj
@@ -2589,6 +2751,7 @@ let buttonJsonPayloads: Node<obj> =
 // holds for the new DU case: only `fileRef` (the opaque id) + `encoding`
 // cross the wire; the blob handle is absent and `onRead` is the closure
 // sentinel.
+[<NodeFixture "Input/Button (Action.ReadFileBody base64)">]
 let buttonReadFile: Node<obj> =
     node
         "btn-read-workbook"
@@ -2611,6 +2774,7 @@ let buttonReadFile: Node<obj> =
 /// corpus-pinned), a declarative `Call … into State` with a `$state` reader,
 /// and a declarative `Call … into Query` with a `Binding.Query` reader — the
 /// AI-authorable fetch loop end-to-end on the wire.
+[<NodeFixture "Layout/Stack (Phase 428 — Action.Call result targets: closure / into State / into Query)">]
 let callInto: Node<obj> =
     let closureButton =
         node
@@ -2681,6 +2845,7 @@ let callInto: Node<obj> =
 // OnClick is an `Action.Invoke` (the effectful sibling). Both carry a capabilityId + scalar
 // `(addr, value)` args; the body is never on the wire. Exercises the round-trip of the new
 // Binding/Action cases under the canonical `$type` discipline.
+[<NodeFixture "Display/Metric (Phase 283 — Binding.Invoke capability source)">]
 let metricInvoke: Node<obj> =
     node
         "metric-invoke"
@@ -2696,6 +2861,7 @@ let metricInvoke: Node<obj> =
         ))
         None
 
+[<NodeFixture "Input/Button (Phase 283 — Action.Invoke capability effect)">]
 let buttonInvoke: Node<obj> =
     node
         "btn-invoke"
@@ -2708,6 +2874,7 @@ let buttonInvoke: Node<obj> =
         ))
         None
 
+[<NodeFixture "Input/FileUpload">]
 let fileUpload: Node<obj> =
     node
         "upload-1"
@@ -2728,6 +2895,7 @@ let fileUpload: Node<obj> =
 /// the document permits. `accept` is populated deliberately — the same filter the
 /// picker applies has to apply to a drop, and a vector with no filter would say
 /// nothing about that.
+[<NodeFixture "Input/FileUpload (Phase 1115 — drop target; acceptPaste OMITTED)">]
 let fileUploadDrop: Node<obj> =
     node
         "upload-drop-1"
@@ -2745,6 +2913,7 @@ let fileUploadDrop: Node<obj> =
 /// present, `dropTarget` omitted. Single-file and image-filtered, because
 /// pasting a screenshot into an avatar field is the shape this route exists for
 /// and it is the one that exercises the wildcard-MIME arm of the accept filter.
+[<NodeFixture "Input/FileUpload (Phase 1115 — paste ingestion, image/* filtered; dropTarget OMITTED)">]
 let fileUploadPaste: Node<obj> =
     node
         "upload-paste-1"
@@ -2764,6 +2933,7 @@ let fileUploadPaste: Node<obj> =
 /// makes it work. `multiple` is left at its default, because a platform camera
 /// hands back one capture at a time and a vector claiming otherwise would model a
 /// control no host produces.
+[<NodeFixture "Input/FileUpload (Phase 1116 — camera capture, image/* filtered)">]
 let fileUploadCaptureCamera: Node<obj> =
     node
         "upload-capture-camera-1"
@@ -2782,6 +2952,7 @@ let fileUploadCaptureCamera: Node<obj> =
 /// both of these correctly and be wrong about what either document says. The
 /// drop and paste routes are OMITTED here, so this vector also holds the polarity
 /// of the two Phase 1115 flags alongside a declared capture.
+[<NodeFixture "Input/FileUpload (Phase 1116 — microphone capture, audio/* filtered)">]
 let fileUploadCaptureMicrophone: Node<obj> =
     node
         "upload-capture-microphone-1"
@@ -2807,6 +2978,7 @@ let fileUploadCaptureMicrophone: Node<obj> =
 /// above that carry `capture` without a destination. The two members are
 /// independent and a corpus that only ever paired them would leave a host free
 /// to read either as implying the other.
+[<NodeFixture "Input/FileUpload (Phase 1117 — streamed to a registered destination)">]
 let fileUploadDestination: Node<obj> =
     node
         "upload-destination-1"
@@ -2830,6 +3002,7 @@ let fileUploadDestination: Node<obj> =
 /// unambiguous. The value is a real ceiling (5 MiB) rather than a token one —
 /// a vector carrying `1` would pin the bytes while saying nothing about a
 /// number a host has to hold.
+[<NodeFixture "Input/FileUpload (Phase 1548 — a declared per-file byte ceiling; maxFiles OMITTED)">]
 let fileUploadMaxBytes: Node<obj> =
     node
         "upload-max-bytes-1"
@@ -2847,6 +3020,7 @@ let fileUploadMaxBytes: Node<obj> =
 /// which a count ceiling says anything — a single-file upload admits one file by
 /// construction — so a vector declaring it beside `multiple:false` would model a
 /// control whose declaration is inert.
+[<NodeFixture "Input/FileUpload (Phase 1548 — a declared selection-count ceiling on a multiple upload; maxBytes OMITTED)">]
 let fileUploadMaxFiles: Node<obj> =
     node
         "upload-max-files-1"
@@ -2860,6 +3034,7 @@ let fileUploadMaxFiles: Node<obj> =
         ))
         None
 
+[<NodeFixture "Input/Select">]
 let select: Node<obj> =
     node
         "select-1"
@@ -2886,6 +3061,7 @@ let select: Node<obj> =
 /// pre-426 encoder never emitted the multi handler, so the handler-free shape
 /// keeps this fixture byte-identical (a `Some` closure would now add the
 /// `"onChangeMulti":"<closure>"` sentinel — covered by `multiSelectClosure`).
+[<NodeFixture "Input/Select (multi-select — list value)">]
 let multiSelect: Node<obj> =
     node
         "multiselect-1"
@@ -2905,6 +3081,7 @@ let multiSelect: Node<obj> =
 /// typed change back to the field's own `$state.<key>` slot with zero host
 /// code. Proves the omitted-handler wire across Text / Number / Checkbox /
 /// Choice.
+[<NodeFixture "Input/Form (Phase 426 — handler-free write-back fields, State-bound)">]
 let formDeclarative: Node<obj> =
     let textField: FormField<obj> =
         { Defaults.formField with
@@ -2967,6 +3144,7 @@ let formDeclarative: Node<obj> =
 // existing kinds, roles and variants can express"). This composition is that
 // combination. A `Callout` is the right kind for a *banner* — a message with no
 // action; it is the wrong kind for an actionable empty state.
+[<NodeFixture "Layout/Box (Phase 767 — the canonical empty state with a CTA: one Card region, no nested Callout)">]
 let emptyStateCard: Node<obj> =
     node
         "empty-state-card"
@@ -3007,6 +3185,7 @@ let emptyStateCard: Node<obj> =
 // substituting a `Select` or a `Checkbox` because no switch existed — the
 // `contains`/Core#90 fingerprint. `NodeKind.Switch` is the state-bound
 // CONDITIONAL and always was; the widget had no spelling until now.
+[<NodeFixture "Input/Form (Phase 766 — the Toggle switch affordance beside a Checkbox)">]
 let formToggle: Node<obj> =
     let toggleField: FormField<obj> =
         { Defaults.formField with
@@ -3060,6 +3239,7 @@ let formToggle: Node<obj> =
 /// purpose: `rule` is `Optional` rather than omit-default, so a field without
 /// one must encode with no `rule` key at all — which is what makes every
 /// pre-864 form fixture byte-unchanged.
+[<NodeFixture "Input/Form (Phase 864 — declared field rules: format / pattern / length pair / cross-field compare)">]
 let formFieldRules: Node<obj> =
     let emailField: FormField<obj> =
         { Defaults.formField with
@@ -3205,6 +3385,7 @@ let formFieldRules: Node<obj> =
 /// lives, so nothing here trips FUARAN099 (a compare whose key no field owns) —
 /// a fixture that raised a pre-emit defect would be teaching the shape it exists
 /// to pin against.
+[<NodeFixture "Input/Form (Phase 1692, carrying 1691 — the five mapped enum tokens with no round-trip vector anywhere in the corpus: TextFormat url / tel, CompareOp neq / lt / lte)">]
 let formRuleTokens: Node<obj> =
     let plain (id: string) (label: string) : FormField<obj> =
         { Defaults.formField with
@@ -3262,6 +3443,7 @@ let formRuleTokens: Node<obj> =
 /// canonical bytes carry NO `value` key on any field (mirror of the
 /// filters-declarative minimal chip). Pins the round-trip: decode
 /// synthesises the same bindings back, encode omits them again.
+[<NodeFixture "Input/Form (Phase 596 — symmetric auto-bind, omitted-value fields)">]
 let formDeclarativeMinimal: Node<obj> =
     let textField: FormField<obj> =
         { Defaults.formField with
@@ -3342,6 +3524,7 @@ let formDeclarativeMinimal: Node<obj> =
 /// `onDismiss` omitted (dismiss writes `false`), a disclosure whose `Open` is
 /// State-bound with `onToggle` omitted, and a single-select whose `Value` is
 /// State-bound with `onChange` omitted — the full declarative-floor wire.
+[<NodeFixture "Layout/Stack (Phase 426 — declarative tabs + modal + disclosure + select, handlers omitted)">]
 let controlsDeclarative: Node<obj> =
     let tabsNode =
         node
@@ -3404,6 +3587,7 @@ let controlsDeclarative: Node<obj> =
 /// disclosure with an `onToggle` closure, and a multi-select with an
 /// `onChangeMulti` closure — each now rides the wire as its own `"<closure>"`
 /// sentinel and decodes to the inert `Some` placeholder.
+[<NodeFixture "Layout/Stack (Phase 426 — closure-authored onSelectTag / onToggle / onChangeMulti sentinels)">]
 let multiSelectClosure: Node<obj> =
     let tabsNode =
         node
@@ -3457,6 +3641,7 @@ let multiSelectClosure: Node<obj> =
 
 // ─── Visualisation fixtures ──────────────────────────────────────────────
 
+[<NodeFixture "Visualisation/Grid">]
 let gridVis: Node<obj> =
     let col: ColumnErased<obj> =
         { Label = "Channel"
@@ -3510,6 +3695,7 @@ let gridVis: Node<obj> =
 /// This is the half no wrapper reaches: a box around the grid keeps the whole
 /// grid together, but nothing outside the grid knows where a row ends, so a
 /// wrapped cell torn across the boundary can only be prevented from here.
+[<NodeFixture "Visualisation/Grid (Phase 1473 keepRowsTogether, the only new member)">]
 let gridKeepRowsTogether: Node<obj> =
     let col: ColumnErased<obj> =
         { Label = "Note"
@@ -3554,6 +3740,7 @@ let gridKeepRowsTogether: Node<obj> =
 /// nothing outside the grid can name it. The projection is
 /// `display: table-header-group`, which makes the repetition the paged
 /// formatter's job — so it holds with no script at all.
+[<NodeFixture "Visualisation/Grid (Phase 1473 repeatHeader, the only new member)">]
 let gridRepeatHeader: Node<obj> =
     let col: ColumnErased<obj> =
         { Label = "Line"
@@ -3603,6 +3790,7 @@ let gridRepeatHeader: Node<obj> =
 /// way: a host can offer *save this table* in its own chrome over data IT
 /// served, and only the document knows that THIS grid's rows are the ones the
 /// reader may take.
+[<NodeFixture "Visualisation/Grid (Phase 1125 exportable, the only new member)">]
 let gridExportable: Node<obj> =
     let reference: ColumnErased<obj> =
         { Label = "Reference"
@@ -3662,6 +3850,7 @@ let gridExportable: Node<obj> =
 /// declares `Subdued` for a value the map does not mention (emitted), the carrier
 /// column leaves it at `ToneVariant.Default` (omitted-when-default, so the key is
 /// absent). One fixture, both branches of the omit rule.
+[<NodeFixture "Visualisation/Grid (Phase 750 — TonedPill: value-conditional cell tone declared as a value→tone map)">]
 let gridTonedPill: Node<obj> =
     let source =
         Fuaran.Core.Embedded
@@ -3748,6 +3937,7 @@ let gridTonedPill: Node<obj> =
         ))
         None
 
+[<NodeFixture "Visualisation/Chart">]
 let chart: Node<obj> =
     node
         "chart-1"
@@ -3782,6 +3972,7 @@ let chart: Node<obj> =
 /// Phase 876 — `valueFormat`: the value axis's declared number format, reusing
 /// the existing `Format` vocabulary (no parallel formatting DU was minted). The
 /// PRESENT half of the pair (`chart-1` pins the absent half).
+[<NodeFixture "Visualisation/Chart (Phase 876 — valueFormat: the value axis's declared number format)">]
 let chartValueFormat: Node<obj> =
     node
         "chart-value-format"
@@ -3809,6 +4000,7 @@ let chartValueFormat: Node<obj> =
 /// The subtitle states the unit, which is also the shape that exercises the
 /// dedupe rule: an explicit subtitle suppresses the lowering's own
 /// display-unit slot.
+[<NodeFixture "Visualisation/Chart (Phase 878 — xTitle/yTitle/subtitle: the axis names + the muted subtitle)">]
 let chartAxisTitles: Node<obj> =
     node
         "chart-axis-titles"
@@ -3839,6 +4031,7 @@ let chartAxisTitles: Node<obj> =
 /// legend to place, and `Bottom` is chosen deliberately over the default
 /// `Right`: a fixture that names the value the style would have picked anyway
 /// cannot show that the wire field was read at all.
+[<NodeFixture "Visualisation/Chart (Phase 880 — legendPosition: the legend's declared edge)">]
 let chartLegendPosition: Node<obj> =
     node
         "chart-legend-position"
@@ -3865,6 +4058,7 @@ let chartLegendPosition: Node<obj> =
 /// half, which means `Off` — and `Off` is also the default, so an absent field
 /// lowers to the pre-881 picture byte-for-byte. `Ends` is the only other value
 /// there is: the vocabulary carries no all-points case, by design.
+[<NodeFixture "Visualisation/Chart (Phase 881 — dataLabels: values written onto the picture)">]
 let chartDataLabels: Node<obj> =
     node
         "chart-data-labels"
@@ -3892,6 +4086,7 @@ let chartDataLabels: Node<obj> =
 /// picture byte-for-byte. The x cells are canonical ISO-8601 dates, which is
 /// what makes the declaration groundable: a `Temporal` axis over a non-date
 /// column is a FUARAN097 refusal, not a silent coercion.
+[<NodeFixture "Visualisation/Chart (Phase 882 — xScale: a temporal x-axis over ISO-8601 date cells)">]
 let chartTemporalX: Node<obj> =
     node
         "chart-temporal-x"
@@ -3928,6 +4123,7 @@ let chartTemporalX: Node<obj> =
 ///
 /// Every other chart fixture pins the ABSENT half, which omits the key entirely,
 /// so every pre-1490 fixture is byte-unchanged.
+[<NodeFixture "Visualisation/Chart (Phase 1490 — annotations: two data-addressed reference lines, one labelled)">]
 let chartAnnotations: Node<obj> =
     node
         "chart-annotations"
@@ -3967,6 +4163,7 @@ let chartAnnotations: Node<obj> =
 /// the validator refuses, so a single fixture holding both would be a document
 /// the language does not admit. Two charts under one `Box` is the shape that
 /// carries both codec arms without asserting an invalid tree.
+[<NodeFixture "Visualisation/Chart (Phase 1491 — annotations: event markers in both x-address forms, category and date)">]
 let chartAnnotationEvents: Node<obj> =
     node
         "chart-annotation-events"
@@ -4050,6 +4247,7 @@ let chartAnnotationEvents: Node<obj> =
 ///
 /// The bare arm rides the value band: a band with no label still draws, so the
 /// codec has to carry the absence as an absence.
+[<NodeFixture "Visualisation/Chart (Phase 1492 — annotations: range bands in all three addressing forms, value / category / date)">]
 let chartAnnotationBands: Node<obj> =
     node
         "chart-annotation-bands"
@@ -4160,6 +4358,7 @@ let private planRows: Row list =
     [ Map.ofList [ "month", box "Jan"; "revenue", box 980 ]
       Map.ofList [ "month", box "Feb"; "revenue", box 1105 ] ]
 
+[<NodeFixture "Visualisation/Grid (Phase 663/665 — editable State-sourced grid, typed rows on the wire)">]
 let gridEditableState: Node<obj> =
     let col (label: string) (field: string) (kind: CellKindErased<obj>) : ColumnErased<obj> =
         { Label = label
@@ -4199,6 +4398,7 @@ let gridEditableState: Node<obj> =
         ))
         None
 
+[<NodeFixture "Visualisation/Chart (Phase 663/665 — chart on the editable grid's state key)">]
 let chartStateRows: Node<obj> =
     node
         "chart-state-rows"
@@ -4216,6 +4416,7 @@ let chartStateRows: Node<obj> =
 // over an embedded columnar `DataSource`. Exercises the round-trip of the compute sub-tree through
 // the shared `Canon` `$type` discipline (the codecs bridge to `Fuaran.Core.ColumnCodec` /
 // `DataFrameCodec`).
+[<NodeFixture "Visualisation/Grid (Phase 282 — Binding.Transform compute source)">]
 let gridTransform: Node<obj> =
     let source =
         Fuaran.Core.Embedded
@@ -4276,6 +4477,7 @@ let gridTransform: Node<obj> =
 /// Phase 424 — a parameterised `Binding.Transform`: the pipeline's `filter` step compares a `col`
 /// against a `param` sourced from a `Binding.Filter` chip, so the grid is scoped by a live filter
 /// with zero host code. Proves the `params` wire (omitted-when-empty elsewhere).
+[<NodeFixture "Visualisation/Grid (Phase 424 — parameterised Binding.Transform, filter param from a chip)">]
 let gridTransformParam: Node<obj> =
     let source =
         Fuaran.Core.Embedded
@@ -4349,6 +4551,7 @@ let gridTransformParam: Node<obj> =
 /// wire — the divergence is in what a host DOES with it, which is why no decode
 /// fixture could ever have caught it and why WIRE_FORMAT.md §3.3 now states
 /// the reading normatively beside it.
+[<NodeFixture "Visualisation/Grid (Phase 1674 — a filter step naming a param NO params entry declares)">]
 let transformUndeclaredParam: Node<obj> =
     let source =
         Fuaran.Core.Embedded
@@ -4398,6 +4601,7 @@ let transformUndeclaredParam: Node<obj> =
 /// unbound, so deselecting everything shows the unfiltered table. Proves the list-valued `param`
 /// wire (`{"$type":"in","expr":…,"param":…}`) at node level, where the literal `items` form and the
 /// scalar `param` form were both already pinned.
+[<NodeFixture "Layout/Box (Phase 610 — multi-select chip + DataGrid scoped by a list-valued in/param)">]
 let multiselectChipListParam: Node<obj> =
     let source =
         Fuaran.Core.Embedded
@@ -4485,6 +4689,7 @@ let multiselectChipListParam: Node<obj> =
 /// Phase 425 — a fully field-named `DataGrid`: columns carry `Field` (no closure), the spec carries
 /// `RowKeyField`, and the source is a `Transform`. A decoded grid renders data + stable identity with
 /// zero host code. Proves the `field` / `rowKeyField` wire (omitted-when-None elsewhere).
+[<NodeFixture "Visualisation/Grid (Phase 425 — field-named columns + RowKeyField, closure-free)">]
 let gridFieldNamed: Node<obj> =
     let source =
         Fuaran.Core.Embedded
@@ -4538,6 +4743,7 @@ let gridFieldNamed: Node<obj> =
 // idiom. Row-click wiring is host-side (`OnRowClick` is a closure); the
 // declaratively-emittable half — the default + the detail binding — is what
 // this fixture teaches.
+[<NodeFixture "Layout/Box (master-detail — grid + detail card State-bound with a pre-selected defaultValue)">]
 let masterDetailPreselected: Node<obj> =
     let source =
         Fuaran.Core.Embedded
@@ -4698,6 +4904,7 @@ let masterDetailPreselected: Node<obj> =
 // the models learned `defaultValue` (Phase 629) and never learned `field`. This
 // fixture teaches the projection by showing three sibling Facts off ONE grid,
 // each naming a different column.
+[<NodeFixture "Layout/Box (master-detail — ONE selection feeding N slots, each projecting a DIFFERENT field)">]
 let masterDetailMultiField: Node<obj> =
     let source =
         Fuaran.Core.Embedded
@@ -4859,6 +5066,7 @@ let masterDetailMultiField: Node<obj> =
 //                       limit 1` shape a first-row default hides, terminating
 //                       in a scalar Callout body. This is the leg that reports
 //                       a wrong VALUE rather than a wrong count.
+[<NodeFixture "Layout/Box (master-detail — Selection defaultValue naming a NON-FIRST row: prune-vs-seed is observable)">]
 let masterDetailPreselectedSecondRow: Node<obj> =
     let source =
         Fuaran.Core.Embedded
@@ -5049,6 +5257,7 @@ let masterDetailPreselectedSecondRow: Node<obj> =
 // resolves it once per render into `BindingSources.Now`, which is what keeps a
 // replayed op-stream reproducing its ORIGINAL render instead of drifting to
 // replay-time "now".
+[<NodeFixture "Binding/Now (Phase 765 — the host-furnished instant: a text slot + a Transform param feeding dateDiffDays)">]
 let nowEnvironmentBinding: Node<obj> =
     let source =
         Fuaran.Core.Embedded
@@ -5150,6 +5359,7 @@ let nowEnvironmentBinding: Node<obj> =
 // `now-environment-binding`'s. A fixture for it would assert nothing that
 // fixture does not already assert, and would invite a host to emit
 // `"grain":"Second"` to make it pass.
+[<NodeFixture "Binding/Now (Phase 1533 — the declared grain: minute/hour/day text slots + a Day-grain Transform param)">]
 let nowGrain: Node<obj> =
     let source =
         Fuaran.Core.Embedded
@@ -5248,6 +5458,7 @@ let nowGrain: Node<obj> =
 // not a default: DECLARED fixes the unit, and ABSENT is the auto-selection
 // request resolved from the fixed threshold ladder. Nothing about the SOURCE
 // distinguishes them, so only a fixture can.
+[<NodeFixture "Binding.Format (Phase 1533 — Since: the instant-reading twin of RelativeTime, declared unit and auto)">]
 let formatSince: Node<obj> =
     let md (id: string) (b: Binding<string>) : Node<obj> =
         node id (NodeKind.Markdown({ Text = TextSource.Bound b })) None
@@ -5285,6 +5496,7 @@ let formatSince: Node<obj> =
 // differs is which portion of it the reader is shown. Neither style present is
 // not pinned as an accept vector because it is not one: it decodes
 // structurally and FUARAN155 refuses it.
+[<NodeFixture "Binding.Format (Phase 1810 — Date with a time of day: dateStyle + timeStyle, and timeStyle alone)">]
 let formatDateTime: Node<obj> =
     let md (id: string) (b: Binding<string>) : Node<obj> =
         node id (NodeKind.Markdown({ Text = TextSource.Bound b })) None
@@ -5338,6 +5550,7 @@ let formatDateTime: Node<obj> =
 // It carries NO params, deliberately: this is the constant-fold form, and
 // keeping it apart from the params fixture below means a host that decodes the
 // expression but never resolves a param fails exactly one of the two.
+[<NodeFixture "Binding/Expr (Phase 1534 — scalar logic with no params: concat, arithmetic, AND/NOT, a null test)">]
 let exprScalar: Node<obj> =
     let lit (s: string) =
         Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Str s)
@@ -5413,6 +5626,7 @@ let exprScalar: Node<obj> =
 // `InParam` is included because it is the one param kind that resolves by
 // SUBSTITUTION rather than through the scalar environment, so a host that wires
 // only the scalar path passes every other vector here and fails that one.
+[<NodeFixture "Binding/Expr (Phase 1534 — params from State / Selection / Query / Filter / Now, including an InParam membership test)">]
 let exprParamsStateSelection: Node<obj> =
     let lit (s: string) =
         Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Str s)
@@ -5501,6 +5715,7 @@ let exprParamsStateSelection: Node<obj> =
         ))
         None
 
+[<NodeFixture "Layout/Box (Phase 632 — Transform in scalar slots: selected-row Callout body + Badge count)">]
 let scalarTransformComposition: Node<obj> =
     let source =
         Fuaran.Core.Embedded
@@ -5646,6 +5861,7 @@ let scalarTransformComposition: Node<obj> =
 // wiring is `params` pulling the live filter values by name + pipeline steps
 // applying them — declaring filters without it leaves consumers inert. This
 // fixture is the canonical worked example the pack teaches the composition from.
+[<NodeFixture "Layout/Box (filterable-static dashboard — Filters params wired through Transform to chart + grid)">]
 let filterableStaticDashboard: Node<obj> =
     let source =
         Fuaran.Core.Embedded
@@ -5910,6 +6126,7 @@ let private filterEdgeDoc (id: string) (declaredChips: FilterSpec<obj> list) : N
 /// Phase 1784 — the CONTROL. Both declared edges name a chip the `Filters` node
 /// declares, so the document is fully wired and the reference host's pre-emit
 /// validator raises nothing.
+[<NodeFixture "Layout/Box (Phase 1784 — the CONTROL of the negative wiring pair: a Filters node declaring both chips a Transform param source reads)">]
 let filtersParamSourceDeclared: Node<obj> =
     filterEdgeDoc
         "filters-param-source-declared"
@@ -5921,6 +6138,7 @@ let filtersParamSourceDeclared: Node<obj> =
 /// (which resolves) and `genre` (which no chip declares). The undeclared name
 /// must surface as the rule's finding and must NOT quietly resolve to an unset
 /// chip's "no constraint".
+[<NodeFixture "Layout/Box (Phase 1784 — a Transform param source naming a chip the PRESENT Filters node does not declare; the control is `filters-param-source-declared`)">]
 let filtersParamSourceUndeclared: Node<obj> =
     filterEdgeDoc
         "filters-param-source-undeclared"
@@ -5974,6 +6192,7 @@ let private filterEdgeDependsOnDoc (id: string) (declaredChips: FilterSpec<obj> 
 /// Phase 1800 — the CONTROL of the `dependsOn` pair. Both names the metric's
 /// `Query` depends on are declared by the `Filters` node, so the document is
 /// fully wired and the reference host's pre-emit validator raises nothing.
+[<NodeFixture "Layout/Box (Phase 1800 — the CONTROL of the dependsOn pair: a Filters node declaring both chips a Query's dependsOn names)">]
 let filtersDependsOnDeclared: Node<obj> =
     filterEdgeDependsOnDoc
         "filters-dependson-declared"
@@ -5983,6 +6202,7 @@ let filtersDependsOnDeclared: Node<obj> =
 /// Phase 1800 — the NEGATIVE. The control minus the `genre` chip: the `Filters`
 /// node is present and declares `region`, and the metric's `Query` declares a
 /// dependency on `genre` that no chip grounds. One document, one finding.
+[<NodeFixture "Layout/Box (Phase 1800 — a Query dependsOn naming a chip the PRESENT Filters node does not declare; the control is `filters-dependson-declared`)">]
 let filtersDependsOnUndeclared: Node<obj> =
     filterEdgeDependsOnDoc
         "filters-dependson-undeclared"
@@ -5991,6 +6211,7 @@ let filtersDependsOnUndeclared: Node<obj> =
 /// Phase 421 — a `Metric` whose `Source` is a host-computed `Query` that declares its filter
 /// dependency edge (`dependsOn`). Proves the `dependsOn` wire (omitted-when-empty elsewhere) — the
 /// tree owns the edge, the host closure owns the predicate.
+[<NodeFixture "Display/Metric (Phase 421 — Binding.Query with a declared dependsOn filter edge)">]
 let queryDependsOn: Node<obj> =
     node
         "query-dependson"
@@ -6002,6 +6223,7 @@ let queryDependsOn: Node<obj> =
         ))
         None
 
+[<NodeFixture "Visualisation/Grid (static-table mode — staticRows; absorbed the retired Table kind)">]
 let table: Node<obj> =
     node
         "table-1"
@@ -6045,6 +6267,7 @@ let table: Node<obj> =
 /// optional slots survive canonical encode/decode in every host; sitting beside
 /// `table-1` it also proves the two forms are distinguishable on the wire, which is
 /// the whole point of modelling absence as absence.
+[<NodeFixture "Visualisation/Grid (Phase 801 — static-table mode declaring sort intent: sortable + defaultSort)">]
 let tableSortable: Node<obj> =
     node
         "table-sortable-1"
@@ -6081,6 +6304,7 @@ let tableSortable: Node<obj> =
               Exportable = false })
         None
 
+[<NodeFixture "Visualisation/Map">]
 let mapVis: Node<obj> =
     node
         "map-1"
@@ -6117,6 +6341,7 @@ let mapVis: Node<obj> =
 /// A rule-12 payload position, because that is where a non-BMP key actually
 /// arrives: spec-minted keys are ASCII by construction, so a corpus of them could
 /// never have caught this.
+[<NodeFixture "Custom (§2 rule 2 — astral vs BMP payload keys, the UTF-16-order discriminator)">]
 let customNonAsciiKeys: Node<obj> =
     node
         "custom-nonascii-keys"
@@ -6133,6 +6358,7 @@ let customNonAsciiKeys: Node<obj> =
         ))
         None
 
+[<NodeFixture "Custom">]
 let custom: Node<obj> =
     node
         "custom-1"
@@ -6149,6 +6375,7 @@ let custom: Node<obj> =
 // Custom with the bounded-escape additive
 // fields populated. Exercises the wire-shape lock: contentHash + exposed-
 // NodeIds round-trip through canonical JSON without precision loss.
+[<NodeFixture "Custom (bounded escape, StrictReplay hash + exposed-ids)">]
 let customBounded: Node<obj> =
     node
         "custom-bounded-1"
@@ -6165,6 +6392,7 @@ let customBounded: Node<obj> =
         ))
         None
 
+[<NodeFixture "Custom (bounded escape, AdvisoryWarning hash + no exposed-ids)">]
 let customBoundedAdvisory: Node<obj> =
     node
         "custom-bounded-advisory"
@@ -6186,6 +6414,7 @@ let customBoundedAdvisory: Node<obj> =
 // round-trip. The canonical-JSON encoder emits `{ "$type": "ErrorBoundary",
 // "child": <node>, "fallback": <node> }`; the decoder reverses it back
 // to `NodeKind.ErrorBoundary { Child = ...; Fallback = ... }`.
+[<NodeFixture "ErrorBoundary (Markdown child + Callout fallback)">]
 let errorBoundary: Node<obj> =
     node
         "boundary-1"
@@ -6220,6 +6449,7 @@ let errorBoundary: Node<obj> =
 //
 // The State form keeps its compact `stateKey` spelling on the wire — this
 // fixture is the `on` spelling's coverage; `switch-1` pins the compact form.
+[<NodeFixture "Meta/Switch (Phase 768 — the selector widened: `on` takes a Selection, the branch follows the clicked row)">]
 let switchOnSelection: Node<obj> =
     let source =
         Fuaran.Core.Embedded
@@ -6331,6 +6561,7 @@ let switchOnSelection: Node<obj> =
 /// ruling rather than an oversight: no gesture, no threshold, no pause policy,
 /// no transition name, and no `motion` (which is host-only, §9, and could not
 /// ride here even if the document declared one).
+[<NodeFixture "Meta/Switch (Phase 1122 — an auto-advancing carousel: `autoAdvanceMs` over an index key)">]
 let switchAutoAdvance: Node<obj> =
     node
         "switch-carousel-1"
@@ -6381,6 +6612,7 @@ let switchAutoAdvance: Node<obj> =
 /// label, then a `project` to that one column. Nothing here is new vocabulary —
 /// what the fixture pins is that an EXISTING document renders what its author
 /// meant.
+[<NodeFixture "Meta/Switch (Phase 1535 — a computed selector: a Transform yielding one cell, read through the scalar path)">]
 let switchOnTransformScalar: Node<obj> =
     let source =
         Fuaran.Core.Embedded
@@ -6458,6 +6690,7 @@ let switchOnTransformScalar: Node<obj> =
 /// over a State param (Phase 1534). Both spellings ride the same slot, which is
 /// the point of routing `when` through the ordinary binding decoder rather than
 /// giving it a vocabulary of its own.
+[<NodeFixture "Meta/Switch (Phase 1535 — predicate cases: a State bool and an Expr, MIXED with a match case in one ordered list)">]
 let switchPredicate: Node<obj> =
     node
         "switch-predicate"
@@ -6514,6 +6747,7 @@ let switchPredicate: Node<obj> =
 /// `"stateKey":""` because the F# selector is a total `Binding` and the empty
 /// State key is its canonical "no selector" spelling — which is exactly what
 /// FUARAN083 reports on a MATCH switch and deliberately does not report here.
+[<NodeFixture "Meta/Switch (Phase 1535 — selected entirely by predicate: no selector, nothing to write)">]
 let switchPredicateOnly: Node<obj> =
     node
         "switch-predicate-only"
@@ -6550,6 +6784,7 @@ let switchPredicateOnly: Node<obj> =
 /// UNRESOLVED case, and the rule it pins is that it RENDERS. A missing source
 /// silently hiding content is the one failure a reader cannot see, cannot report
 /// and cannot work around.
+[<NodeFixture "Node envelope (Phase 1535 — visible: removal from flow, three predicate spellings, beside an aria-hidden sibling)">]
 let nodeVisible: Node<obj> =
     let visibleNode (id: string) (text: string) (predicate: Binding<bool>) : Node<obj> =
         { node id (NodeKind.Markdown({ Text = TextSource.Literal text })) None with
@@ -6608,6 +6843,7 @@ let nodeVisible: Node<obj> =
         ))
         None
 
+[<NodeFixture "Switch (view state → details/summary cases + info default)">]
 let switchBasic: Node<obj> =
     node
         "switch-1"
@@ -6638,6 +6874,7 @@ let switchBasic: Node<obj> =
 // (Markdown so the round-trip exercises a leaf inside the body too);
 // `fragmentRef` carries only the target name (the body lives at the
 // decl site, not duplicated on the wire).
+[<NodeFixture "FragmentDecl (named template with Markdown body)">]
 let fragmentDecl: Node<obj> =
     node
         "frag-decl-1"
@@ -6650,6 +6887,7 @@ let fragmentDecl: Node<obj> =
                 Body = node "frag-body" (NodeKind.Markdown({ Text = TextSource.Literal "Template body" })) None })
         None
 
+[<NodeFixture "FragmentRef (name-only wire shape)">]
 let fragmentRef: Node<obj> =
     node
         "frag-ref-1"
@@ -6664,6 +6902,7 @@ let fragmentRef: Node<obj> =
 // constraint, a bounded Repeat) plus a non-pure effect class; the ref binds a
 // value scalar + a slot subtree. These are additive — the two fixed-body
 // fixtures above stay byte-identical (zero holes / zero args ⇒ fields omitted).
+[<NodeFixture "FragmentDecl (parameterised — value/slot/repeat holes + effect class)">]
 let fragmentDeclParam: Node<obj> =
     node
         "frag-decl-param"
@@ -6681,6 +6920,7 @@ let fragmentDeclParam: Node<obj> =
                       Determinism = DeterminismSource.Clock } })
         None
 
+[<NodeFixture "FragmentRef (parameterised — value + slot args)">]
 let fragmentRefArgs: Node<obj> =
     node
         "frag-ref-args"
@@ -6705,6 +6945,7 @@ let fragmentRefArgs: Node<obj> =
 // (reusing the FragmentArg encoding). `onBubble` is a closure → the
 // `"<closure>"` sentinel on the wire; the guest interior is a scope reference,
 // never an inlined tree.
+[<NodeFixture "Mount (§4o — out-only, default-deny, zero-input degenerate)">]
 let mountMinimal: Node<obj> =
     node
         "mount-1"
@@ -6720,6 +6961,7 @@ let mountMinimal: Node<obj> =
               Capabilities = [] })
         None
 
+[<NodeFixture "Mount (§4o — capabilities + TwoWay message shape + value/slot inputs)">]
 let mountFull: Node<obj> =
     node
         "mount-2"
@@ -6744,6 +6986,7 @@ let mountFull: Node<obj> =
               Capabilities = [ "notify"; "call:reports.*" ] })
         None
 
+[<NodeFixture "Composite (Dashboard ⊃ Card ⊃ Metric + Stack)">]
 let composite: Node<obj> =
     node
         "composite-root"
@@ -6771,15 +7014,19 @@ let composite: Node<obj> =
 
 // ─── TreeOp fixtures (10 cases) ─────────────────────────────────────────
 
+[<OpFixture "EditNode">]
 let opEditNode: TreeOp<obj> =
     TreeOp.EditNode(NodeId "metric-1", NodeKind.Markdown({ Text = TextSource.Literal "Edited" }))
 
+[<OpFixture "UpdateProp">]
 let opUpdateProp: TreeOp<obj> =
     TreeOp.UpdateProp(NodeId "metric-1", "Label", PropValue.Wire(JStr "Updated revenue"))
 
+[<OpFixture "ReplaceBinding">]
 let opReplaceBinding: TreeOp<obj> =
     TreeOp.ReplaceBinding(NodeId "metric-1", "Value", Binding.Static(Some(box 99.5)))
 
+[<OpFixture "UpdateStyle">]
 let opUpdateStyle: TreeOp<obj> =
     TreeOp.UpdateStyle(
         NodeId "metric-1",
@@ -6793,6 +7040,7 @@ let opUpdateStyle: TreeOp<obj> =
 /// reaches `SemanticStyle` through a path of its own in every host, so the
 /// node-envelope vectors say nothing about it; the accept side is pinned here
 /// beside the two op-arm rejects.
+[<OpFixture "UpdateStyle (Phase 1472 Direction=Ltr, the only style member)">]
 let opUpdateStyleDirection: TreeOp<obj> =
     TreeOp.UpdateStyle(
         NodeId "metric-1",
@@ -6802,6 +7050,7 @@ let opUpdateStyleDirection: TreeOp<obj> =
 
 /// Phase 147 — an `UpdateStyle` op whose `SemanticStyle` carries a non-default
 /// `Role` / `Voice`, exercising the optional-emit wire path at the op level.
+[<OpFixture "UpdateStyle (Phase 147 Role=Eyebrow + Voice=Structural)">]
 let opUpdateStyleRoleVoice: TreeOp<obj> =
     TreeOp.UpdateStyle(
         NodeId "metric-1",
@@ -6810,6 +7059,7 @@ let opUpdateStyleRoleVoice: TreeOp<obj> =
             Voice = FontVoice.Structural }
     )
 
+[<OpFixture "UpdateState">]
 let opUpdateState: TreeOp<obj> =
     TreeOp.UpdateState(
         NodeId "metric-1",
@@ -6818,15 +7068,20 @@ let opUpdateState: TreeOp<obj> =
           OnError = None }
     )
 
+[<OpFixture "InsertChild">]
 let opInsertChild: TreeOp<obj> = TreeOp.InsertChild(NodeId "dash-empty", metric)
 
+[<OpFixture "RemoveNode">]
 let opRemoveNode: TreeOp<obj> = TreeOp.RemoveNode(NodeId "metric-1")
 
+[<OpFixture "MoveNode">]
 let opMoveNode: TreeOp<obj> = TreeOp.MoveNode(NodeId "metric-1", NodeId "card-1")
 
+[<OpFixture "ReorderChildren">]
 let opReorderChildren: TreeOp<obj> =
     TreeOp.ReorderChildren(NodeId "stack-1", [ NodeId "markdown-1"; NodeId "metric-1" ])
 
+[<OpFixture "Batch">]
 let opBatch: TreeOp<obj> = TreeOp.Batch [ opUpdateStyle; opRemoveNode ]
 
 // ─── Nested-path UpdateProp fixtures (Phase 364 — WIRE_FORMAT.md §3.4) ────
@@ -6841,21 +7096,27 @@ let opBatch: TreeOp<obj> = TreeOp.Batch [ opUpdateStyle; opRemoveNode ]
 // cross-pipeline by the Phase 192 golden — the three reject fixtures land
 // there as ERR:PositionOutOfRange / ERR:FieldNotFound / ERR:PathInvalid.
 
+[<OpFixture "UpdateProp-nested-column0-label">]
 let opUpdatePropNestedColumn0Label: TreeOp<obj> =
     TreeOp.UpdateProp(NodeId "grid-1", "Columns[0].Label", PropValue.Wire(JStr "Channel name"))
 
+[<OpFixture "UpdateProp-nested-column1-label">]
 let opUpdatePropNestedColumn1Label: TreeOp<obj> =
     TreeOp.UpdateProp(NodeId "grid-1", "Columns[1].Label", PropValue.Wire(JStr "Spend (GBP)"))
 
+[<OpFixture "UpdateProp-nested-yfield0">]
 let opUpdatePropNestedYField0: TreeOp<obj> =
     TreeOp.UpdateProp(NodeId "chart-1", "YFields[0]", PropValue.Wire(JStr "sales"))
 
+[<OpFixture "UpdateProp-nested-yfield1">]
 let opUpdatePropNestedYField1: TreeOp<obj> =
     TreeOp.UpdateProp(NodeId "chart-1", "YFields[1]", PropValue.Wire(JStr "profit"))
 
+[<OpFixture "UpdateProp-nested-field0-required">]
 let opUpdatePropNestedField0Required: TreeOp<obj> =
     TreeOp.UpdateProp(NodeId "form-1", "Fields[0].Required", PropValue.Wire(JBool true))
 
+[<OpFixture "UpdateProp-nested-field1-required">]
 let opUpdatePropNestedField1Required: TreeOp<obj> =
     TreeOp.UpdateProp(NodeId "form-1", "Fields[1].Required", PropValue.Wire(JBool false))
 
@@ -6863,6 +7124,7 @@ let opUpdatePropNestedField1Required: TreeOp<obj> =
 /// as the value — the class the pre-`PropValue` encoder collapsed to
 /// `"<opaque>"` on re-encode. Byte-stable round-trip AND a clean apply
 /// (grid-1's `Columns[0].Format` takes a `CellFormat`) are the pinned claims.
+[<OpFixture "UpdateProp-nested-object-value">]
 let opUpdatePropNestedObjectValue: TreeOp<obj> =
     TreeOp.UpdateProp(
         NodeId "grid-1",
@@ -6870,12 +7132,15 @@ let opUpdatePropNestedObjectValue: TreeOp<obj> =
         PropValue.Wire(JObj [ "$type", JStr "Currency"; "code", JStr "GBP" ])
     )
 
+[<OpFixture "UpdateProp-nested-badindex">]
 let opUpdatePropNestedBadIndex: TreeOp<obj> =
     TreeOp.UpdateProp(NodeId "grid-1", "Columns[9].Label", PropValue.Wire(JStr "Out of range"))
 
+[<OpFixture "UpdateProp-nested-badfield">]
 let opUpdatePropNestedBadField: TreeOp<obj> =
     TreeOp.UpdateProp(NodeId "grid-1", "Columns[0].Nope", PropValue.Wire(JStr "No such sub-field"))
 
+[<OpFixture "UpdateProp-nested-malformed">]
 let opUpdatePropNestedMalformed: TreeOp<obj> =
     TreeOp.UpdateProp(NodeId "grid-1", "Columns[x].Label", PropValue.Wire(JStr "Bad index literal"))
 
@@ -6894,6 +7159,7 @@ let opUpdatePropNestedMalformed: TreeOp<obj> =
 // the decoded shape produces the same <closure> sentinel string in each
 // slot.
 
+[<NodeFixture "Input/Form (Local-bound text, OnBlur)">]
 let formLocalText: Node<obj> =
     let localFloat: Binding<string> =
         Binding.Local(
@@ -6928,6 +7194,7 @@ let formLocalText: Node<obj> =
 
 // Form whose single Text field uses `Binding.Local` with FlushOn =
 // OnDebounce 250 — exercises the payload-carrying flush trigger.
+[<NodeFixture "Input/Form (Local-bound text, OnDebounce 250)">]
 let formLocalDebounce: Node<obj> =
     let localDebounce: Binding<string> =
         Binding.Local(
@@ -6967,6 +7234,7 @@ let formLocalDebounce: Node<obj> =
 // (the two are mutually exclusive on the wire). Compare with the two fixtures
 // above, whose three `"<closure>"` sentinels are the hole this closes: this one
 // decodes on every host to a buffer that round-trips a value and commits it.
+[<NodeFixture "Input/Form (Fuaran-UI Phase 1538 — a DECLARED Local: codec + commitTo, no closure)">]
 let formLocalDeclared: Node<obj> =
     let localDeclared: Binding<float> =
         Binding.Local(
@@ -7014,6 +7282,7 @@ let formLocalDeclared: Node<obj> =
 // `allOps` moved styles, props, bindings, state or tree shape, and none carried
 // an Action, so the op codec's Action arm was pinned by node fixtures only and
 // never across an op boundary on any host.
+[<OpFixture "EditNode-action-commitlocal">]
 let opEditNodeCommitLocal: TreeOp<obj> =
     TreeOp.EditNode(
         NodeId "btn-apply",
@@ -7030,6 +7299,7 @@ let opEditNodeCommitLocal: TreeOp<obj> =
 // (Number / Currency / Percent / Date / RelativeTime) and both LocaleSource
 // variants (Explicit + Ambient) across locales. The numeric source is a
 // `Binding.Static` so the round-trip is fully faithful.
+[<NodeFixture "Binding.Format (number/currency/percent/date/relativeTime across locales)">]
 let formatBindings: Node<obj> =
     let md (id: string) (b: Binding<string>) : Node<obj> =
         node id (NodeKind.Markdown({ Text = TextSource.Bound b })) None
@@ -7083,6 +7353,7 @@ let formatBindings: Node<obj> =
 /// The Tier-D count badge, live: a Badge whose label derives from a
 /// State-carried request log (initial rows in the binding's defaultValue), so
 /// a `SetState("request-log", …)` re-derives the count.
+[<NodeFixture "Display/Badge (Phase 818 — LIVE State-sourced Transform: the Tier-D count badge, preserved source + initial snapshot)">]
 let badgeTransformLive: Node<obj> =
     let defaultRows =
         JArr
@@ -7141,6 +7412,7 @@ let badgeTransformLive: Node<obj> =
 /// F# host has read this way since 0.23.1 and this corpus never carried: the
 /// TypeScript host refused it until Phase 1075, so ONE document decoded on one
 /// reference host and not the other.
+[<NodeFixture "Visualisation/Grid + Display/Badge (Phase 1075 — the seeded shared source: one declared table, two readers)">]
 let sharedSourceSeededPair: Node<obj> =
     let rows: Fuaran.Core.Row seq =
         Seq.ofList
@@ -7221,6 +7493,7 @@ let sharedSourceSeededPair: Node<obj> =
 /// a declared initial order, reusing the `defaultSort` record and field name the
 /// `staticRows` path already carries (Phase 801). The middle column opts OUT —
 /// the declaration "implied by omission" could not previously express.
+[<NodeFixture "Visualisation/Grid (Phase 861 — bound-path sort: per-column sortable narrowing + a declared initial order)">]
 let gridBoundSort: Node<obj> =
     let col (label: string) (field: string) (sortable: bool option) : ColumnErased<obj> =
         { Label = label
@@ -7274,6 +7547,7 @@ let gridBoundSort: Node<obj> =
 /// Deliberately the same grid as `grid-bound-sort` with the direction flipped and
 /// nothing else moved: a fixture pair that differs in one token is what makes the
 /// token the subject.
+[<NodeFixture "Visualisation/Grid (Phase 1692, carrying 1691 — the sixth mapped enum token with no round-trip vector: SortDirection asc in defaultSort.direction)">]
 let gridSortAscending: Node<obj> =
     let col (label: string) (field: string) : ColumnErased<obj> =
         { Label = label
@@ -7319,6 +7593,7 @@ let gridSortAscending: Node<obj> =
 /// grid-level `editable: true`. Both are declarations that previously had no
 /// spelling — the destination was a closure erasing to `"<closure>"`, and
 /// read-only-ness was implied by omission.
+[<NodeFixture "Visualisation/Grid (Phase 863 — declared edit destination + per-column read-only narrowing)">]
 let gridDeclaredEdit: Node<obj> =
     let col (label: string) (field: string) (editable: bool option) : ColumnErased<obj> =
         { Label = label
@@ -7365,6 +7640,7 @@ let gridDeclaredEdit: Node<obj> =
 /// destination an edit uses — `editStateKey` here, the Phase-663 State-source
 /// floor otherwise. One collection, one destination; a reorder IS an edit of
 /// the row order.
+[<NodeFixture "Visualisation/Grid (Phase 934 — declarative row reorder: omit-when-false flag; edits and reorders share one destination)">]
 let gridReorderable: Node<obj> =
     let col (label: string) (field: string) (kind: CellKindErased<obj>) : ColumnErased<obj> =
         { Label = label
@@ -7426,6 +7702,7 @@ let gridReorderable: Node<obj> =
 /// The transfer record itself is NOT in this fixture and cannot be: it is a STATE
 /// value a reader's gesture writes, not a member of any node. `WIRE_FORMAT.md`
 /// §3.6.11 fixes its shape normatively, exactly as it fixes the sort descriptor's.
+[<NodeFixture "Layout/Box (Phase 1123 — cross-container transfer: two two-way columns and a one-way archive on one shared key)">]
 let gridTransferBoard: Node<obj> =
     let col (label: string) (field: string) : ColumnErased<obj> =
         { Label = label
@@ -7487,6 +7764,7 @@ let gridTransferBoard: Node<obj> =
 /// The pager that writes the key is renderer-owned, so the tree names the
 /// behaviour and never a control — which is why there is no pager node here to
 /// pair the grid with.
+[<NodeFixture "Visualisation/Grid (Phase 862 — pageStateKey + pageSize: declarative pagination, renderer-owned pager)">]
 let gridPaged: Node<obj> =
     let col (label: string) (field: string) (kind: CellKindErased<obj>) : ColumnErased<obj> =
         { Label = label
@@ -7530,6 +7808,7 @@ let gridPaged: Node<obj> =
 /// state keys, one rule. Present as a fixture because the pair is the shape the
 /// charter's "one rule, three instances" claim is actually cashed in, and a
 /// host that special-cased either would round-trip this one wrongly.
+[<NodeFixture "Visualisation/Grid (Phase 862 — paging and sorting composed: two behaviours, two state keys, one rule)">]
 let gridPagedSorted: Node<obj> =
     let col (label: string) (field: string) (kind: CellKindErased<obj>) : ColumnErased<obj> =
         { Label = label
@@ -7573,6 +7852,7 @@ let gridPagedSorted: Node<obj> =
 /// the `windowStateKey` returns the window itself, so the grid slices nothing,
 /// and the total the host alone knows is DECLARED through `rowTotal` — here a
 /// `Query` the host populates beside the rows. The canonical corner.
+[<NodeFixture "Visualisation/Grid (Phase 1892 — windowStateKey + rowTotal: a host-windowed Query and the total it declares)">]
 let gridWindowed: Node<obj> =
     let col (label: string) (field: string) (kind: CellKindErased<obj>) : ColumnErased<obj> =
         { Label = label
@@ -7615,6 +7895,7 @@ let gridWindowed: Node<obj> =
 /// Phase 1892 — the row window, client-sliced under a sort: the grid holds its
 /// whole set, sorts it, and presents the window of the SORTED rows the renderer
 /// wrote to `ledger-window`. No `rowTotal` — a grid holding its set counts it.
+[<NodeFixture "Visualisation/Grid (Phase 1892 — the client-sliced window under a sort: the window indexes the sorted rows)">]
 let gridWindowedSorted: Node<obj> =
     let col (label: string) (field: string) (kind: CellKindErased<obj>) : ColumnErased<obj> =
         { Label = label
@@ -7660,6 +7941,7 @@ let gridWindowedSorted: Node<obj> =
 /// A derived state write: clicking the button writes the SELECTED row's `id`
 /// field to the `chosen-id` state slot — `valueFrom` evaluated at dispatch
 /// time, no closure, no literal.
+[<NodeFixture "Input/Button (Phase 818 — SetState.valueFrom: a derived state write from the selected row's field)">]
 let buttonSetStateValueFrom: Node<obj> =
     let selectedId: Binding<JVal> =
         Binding.Selection("orders-grid", Binding.projectSelectionField<JVal> "id", None, Some "id")
@@ -7690,6 +7972,7 @@ let buttonSetStateValueFrom: Node<obj> =
 /// medium is host chrome under the ratified `PrintLayout` charter row, and every
 /// remaining parameter belongs to the dialogue the reader operates — which is
 /// why the sibling reject vector refuses a member here rather than dropping one.
+[<NodeFixture "Input/Button (Phase 1124 — Action.Print: the payload-free action, inside a Chain)">]
 let buttonPrint: Node<obj> =
     node
         "button-print"
@@ -7703,6 +7986,7 @@ let buttonPrint: Node<obj> =
 /// The data-bound grid-sort affordance: `sortStateKey` names the State slot
 /// carrying `{column, direction}`; the runtime renders sortable headers
 /// (field-named columns only) and sorts resolved rows by the descriptor.
+[<NodeFixture "Visualisation/Grid (Phase 818 — sortStateKey: the data-bound grid-sort header affordance)">]
 let gridSortStateKey: Node<obj> =
     let col (label: string) (field: string) (kind: CellKindErased<obj>) : ColumnErased<obj> =
         { Label = label
@@ -7790,6 +8074,7 @@ let gridSortStateKey: Node<obj> =
 /// `speak` beside a Static name: the name is what `aria-label` carries, the
 /// speech line is what a voice surface reads, and the two are different text
 /// on purpose so a host that projected the wrong one is caught by bytes.
+[<NodeFixture "Accessibility (Phase 1812 — `speak`: the spoken rendering beside a Static name; inert to ARIA)">]
 let a11ySpeak: Node<obj> =
     node
         "a11y-speak"
@@ -7812,6 +8097,7 @@ let a11ySpeak: Node<obj> =
 /// envelope, so the two fields ride one vector. The fallback's `Bound` text
 /// reads a State key, which is what the walk-conformance census pins as read by
 /// analysis and NOT subscribed by a current reader.
+[<NodeFixture "Node envelope (Phase 1812 — an author-declared `fallback` subtree, preserved by a current reader and never rendered by it; `speak` on the fallback's envelope)">]
 let envelopeFallback: Node<obj> =
     let chart =
         { Defaults.chart<obj> with
@@ -7853,6 +8139,7 @@ let envelopeFallback: Node<obj> =
 /// ordinary wrapper. `hidden` is an explicit `Static false` — distinct on the
 /// wire from an omitted `hidden`, and a host that collapses the two loses the
 /// author's explicit "this is NOT hidden".
+[<NodeFixture "Accessibility (Phase 955 — all six trait slots at once on a wrapper; Static label, named role, polite)">]
 let a11yWrapperAllSlots: Node<obj> =
     node
         "a11y-wrapper-all-slots"
@@ -7877,6 +8164,7 @@ let a11yWrapperAllSlots: Node<obj> =
 /// literals, plus the mixed-case custom role and the `off` live-region token.
 /// A collapsed footer whose accessible name and hidden-ness both follow host
 /// state is the ordinary reason these slots are bindings at all.
+[<NodeFixture "Accessibility (Phase 955 — State-bound label + hidden, mixed-case custom role doc-pageFooter, off)">]
 let a11yWrapperStateBound: Node<obj> =
     node
         "a11y-wrapper-state-bound"
@@ -7902,6 +8190,7 @@ let a11yWrapperStateBound: Node<obj> =
 
 /// The announcement shape: a named role plus the `assertive` token, the
 /// combination a host must project as `role="alert"` + `aria-live="assertive"`.
+[<NodeFixture "Accessibility (Phase 955 — the announcement pair: role alert + liveRegion assertive)">]
 let a11yAlertAssertive: Node<obj> =
     node
         "a11y-alert-assertive"
@@ -7926,6 +8215,7 @@ let a11yAlertAssertive: Node<obj> =
 /// The canonical "Read more" link: the trait's `label` is what a screen reader
 /// announces, and a host that renders the visible label into `aria-label` (or
 /// drops the slot) is indistinguishable from a conformant one without this.
+[<NodeFixture "Accessibility (Phase 955 — Link: the accessible name overriding the visible 'Read more' text)">]
 let a11yLinkLabelled: Node<obj> =
     node
         "a11y-link-labelled"
@@ -7947,6 +8237,7 @@ let a11yLinkLabelled: Node<obj> =
 /// a native one. Redundant by intent: the trait's `role` must win over whatever
 /// element the host chose, and only a case where the two DISAGREE about which
 /// wins would be observable, so pinning agreement is the honest first step.
+[<NodeFixture "Accessibility (Phase 955 — Button: an explicit named role on a kind that already has a native one)">]
 let a11yButtonNamed: Node<obj> =
     node
         "a11y-button-named"
@@ -7969,6 +8260,7 @@ let a11yButtonNamed: Node<obj> =
 /// `hidden: Static true`, the `aria-hidden` projection slot that was missing
 /// from two hosts entirely. `Static true` is the second of the two `hidden`
 /// binding forms this family pins (the State form is on the bound wrapper).
+[<NodeFixture "Accessibility (Phase 955 — Image: the decorative shape, empty alt + hidden Static true)">]
 let a11yImageDecorative: Node<obj> =
     node
         "a11y-image-decorative"
@@ -8005,6 +8297,7 @@ let a11yImageDecorative: Node<obj> =
 /// EMBEDDED and the count is fixed, so the resolved name is the same on every
 /// host with no seeded state anywhere — which is what lets one contract vector
 /// state it for all five.
+[<NodeFixture "Accessibility (Phase 1665 — a Transform-bound accessible name, read through the SCALAR path)">]
 let a11yWrapperTransformLabel: Node<obj> =
     let source =
         Fuaran.Core.Embedded
@@ -8099,6 +8392,7 @@ let stdlibFragments: (string * Node<obj>) list =
 /// A hint on an interactive kind whose a11y projection forwards: the
 /// description rides the `<button>` itself, because that is the element the
 /// keyboard lands on. `Literal`, the ordinary authored case.
+[<NodeFixture "Tooltip (Phase 1112 — the trait on a forwarding interactive kind; the description rides the button)">]
 let tooltipButton: Node<obj> =
     { node
           "tooltip-button-1"
@@ -8118,6 +8412,7 @@ let tooltipButton: Node<obj> =
 /// `I18n` deliberately: a hint is CONTENT, so it is translated like any other
 /// content, and a host that modelled the slot as a bare string round-trips the
 /// literal arm perfectly and drops this one.
+[<NodeFixture "Tooltip (Phase 1112 — the trait on a display kind, I18n hint; description and focus stop on the wrapper)">]
 let tooltipMetric: Node<obj> =
     { node
           "tooltip-metric-1"
@@ -8142,6 +8437,7 @@ let tooltipMetric: Node<obj> =
 /// It also pins the `aria-describedby` MERGE: `describedBy` names a real
 /// sibling in the same tree, so the emitted attribute has to carry both ids in
 /// a list rather than whichever the renderer applied last.
+[<NodeFixture "Tooltip (Phase 1112 — the icon-only button: accessibility.label NAMES, tooltip DESCRIBES, describedBy merges)">]
 let tooltipIconButton: Node<obj> =
     node
         "tooltip-icon-button-1"
@@ -8199,6 +8495,7 @@ let tooltipIconButton: Node<obj> =
 /// Deliberately one tree rather than five: the assertion is a POSTURE, and a
 /// host that gets four slots right and one wrong should fail on the posture
 /// rather than on a fixture whose slot happened to be the one nobody covered.
+[<NodeFixture "Binding (Phase 1656 — an ABSENT State.defaultValue at Float / Int / rows / options / floatSeq: absence OMITS)">]
 let stateAbsentDefault: Node<obj> =
     let col (label: string) (field: string) (kind: CellKindErased<obj>) : ColumnErased<obj> =
         { Label = label
@@ -8399,6 +8696,7 @@ let private bindingCheckBox (id: string) (children: Node<obj> list) : Node<obj> 
 
 /// Phase 1889 — the CONTROL: a chart and a grid reading only what the pipeline
 /// produces. Both readers grade CHECKED and nothing is found.
+[<NodeFixture "Visualisation/Chart+Grid (Phase 1889 - the CONTROL: a chart and a grid reading only what their groupBy pipeline produces; both grade checked)">]
 let bindingCheckControl: Node<obj> =
     bindingCheckBox
         "binding-check-control"
@@ -8409,16 +8707,19 @@ let bindingCheckControl: Node<obj> =
 
 /// Phase 1889 — FUARAN086: the chart plots `amount`, which the `groupBy` renamed
 /// to `total`. The one finding is at `$.kind.yFields[0]`.
+[<NodeFixture "Visualisation/Chart (Phase 1889 - FUARAN086: a yFields entry naming a column the groupBy renamed away)">]
 let bindingCheckChartUngrounded: Node<obj> =
     bindingCheckChart "binding-check-chart-ungrounded" bindingCheckFeed "dept" [ "amount" ] false
 
 /// Phase 1889 — FUARAN087: the chart plots `dept`, a string column, as a value
 /// series. The one finding is at `$.kind.yFields[0]`.
+[<NodeFixture "Visualisation/Chart (Phase 1889 - FUARAN087: a yFields entry naming a string column)">]
 let bindingCheckChartNotNumeric: Node<obj> =
     bindingCheckChart "binding-check-chart-not-numeric" bindingCheckFeed "dept" [ "dept" ] false
 
 /// Phase 1889 — FUARAN097: a temporal x-axis over `dept`, which is not a date.
 /// The one finding is at `$.kind.xField`.
+[<NodeFixture "Visualisation/Chart (Phase 1889 - FUARAN097: a temporal x-axis over a column that is not a date)">]
 let bindingCheckChartTemporalNotDate: Node<obj> =
     bindingCheckChart "binding-check-chart-temporal-not-date" bindingCheckFeed "dept" [ "total" ] true
 
@@ -8426,6 +8727,7 @@ let bindingCheckChartTemporalNotDate: Node<obj> =
 /// naming `amount`, which the pipeline no longer produces. Nested one level so
 /// the JSONPath passes through a container: the findings are at
 /// `$.kind.children[0].kind.columns[1].field` and `…kind.rowKeyField`.
+[<NodeFixture "Layout/Box (Phase 1889 - FUARAN114: a grid column field and rowKeyField naming a column the pipeline does not produce)">]
 let bindingCheckGridUngrounded: Node<obj> =
     bindingCheckBox
         "binding-check-grid-ungrounded"
@@ -8436,6 +8738,7 @@ let bindingCheckGridUngrounded: Node<obj> =
 /// Transform over a `Ref` (an open schema: this validator has no host to resolve
 /// it); the grid reads a `Query` (no static schema at all). Both grade
 /// UNCHECKED, and the grade says why.
+[<NodeFixture "Layout/Box (Phase 1889 - UNCHECKED: a chart over a Transform of an undeclared Ref and a grid over a Query; nothing refused)">]
 let bindingCheckUnchecked: Node<obj> =
     let refFeed: Binding<Row seq> =
         Binding.Transform(
@@ -8520,6 +8823,7 @@ let private columnKindPill (field: string) : CellKindErased<obj> =
 /// Numeric column, a TonedPill whose own field the pipeline produces, and a
 /// Button and a ButtonGroup column that declare NO field. Clean outright — no
 /// FUARAN077 on the field-less action columns — and graded checked.
+[<NodeFixture "Visualisation/DataGrid (Phase 1909 - the CONTROL: field-less Button and ButtonGroup action columns and a grounded TonedPill; clean, graded checked)">]
 let gridActionColumnClean: Node<obj> =
     columnKindGrid
         "grid-action-column-clean"
@@ -8533,6 +8837,7 @@ let gridActionColumnClean: Node<obj> =
 /// column carrying an invented `field: "action"`, which the pipeline does not
 /// produce. The ONE finding is the "drop it" warning; FUARAN114 does not fire,
 /// because nothing reads an action column's field.
+[<NodeFixture "Visualisation/DataGrid (Phase 1909 - FUARAN163: a Button action column declaring a field; the only finding, no FUARAN114)">]
 let gridActionColumnField: Node<obj> =
     columnKindGrid
         "grid-action-column-field"
@@ -8542,6 +8847,7 @@ let gridActionColumnField: Node<obj> =
 /// Phase 1909 — FUARAN114's TonedPill sub-case: the pill's OWN field names
 /// `status`, which the closed walk proves the pipeline does not produce. The one
 /// finding is at `$.kind.columns[1].kind.field`.
+[<NodeFixture "Visualisation/DataGrid (Phase 1909 - FUARAN114 TonedPill sub-case: the pill's own field names a column the pipeline does not produce)">]
 let gridTonedPillUngrounded: Node<obj> =
     columnKindGrid
         "grid-toned-pill-ungrounded"
@@ -8549,338 +8855,20 @@ let gridTonedPillUngrounded: Node<obj> =
           columnKindColumn "Status" (Some "dept") (columnKindPill "status") ]
 
 
+/// Every node fixture, read off the `[<NodeFixture>]` attributes on the declarations above
+/// (Phase 2066): a fixture registers where it is declared, so adding one is one edit and this
+/// registry cannot lag the declarations. `stdlibFragments` is its own list literal.
 let allNodes: (string * Node<obj>) list =
-    [ "Display/Heading", heading
-      "Display/Markdown (Phase 147 Role=Data + Voice=Display)", styleRoleVoice
-      "Display/Markdown (Phase 1472 Direction=Ltr, the only style member)", styleDirectionLtrRun
-      "Layout/Box (Phase 1472 an Ltr value isolated inside Rtl prose)", styleDirectionIsolatedValue
-      "Display/Markdown", markdown
-      "Display/Metric", metric
-      "Display/Metric (float divergence-zone — 1e21 scientific)", metricFloatExpPos
-      "Display/Metric (float divergence-zone — 1e-7 scientific)", metricFloatExpNeg
-      "Display/Metric (float divergence-zone — 17 significant digits)", metricFloat17Sig
-      "Display/Metric (float divergence-zone — integer > 2^53)", metricFloatBigInt
-      "Display/Metric (§2 rule 5 — 1e17, one past the fixed-point window)", metricFloat1e17
-      "Display/Badge", badge
-      "Display/Link", link
-      "Display/Link (protected email — Phase 812 protection field)", linkProtected
-      "Display/Image (Avatar variant)", image
-      "Display/Image (Phase 1077 — fit / aspectRatio / loading all off-default)", imagePresentation
-      "Display/Image (Phase 1078 — literal caption)", imageCaption
-      "Display/Image (Phase 1078 — i18n caption with args)", imageCaptionI18n
-      "Display/Markdown (Phase 1661 — an i18n argument that is a binding)", textI18nBoundArg
-      "Display/Markdown (Phase 1661 — one i18n bag carrying both argument arms)", textI18nMixedArgs
-      "Display/Image (Phase 1080 — three-candidate srcSet, authored descending)", imageSrcset
-      "Display/Image (Phase 1079 — expandable, the declaration alone)", imageExpandable
-      "Display/Image (Phase 1079 — expandable + caption + srcSet, the gallery thumbnail)", imageExpandableFigure
-      "Display/Media (Phase 1076 — video at its minimum, both bool defaults omitted)", mediaVideo
-      "Display/Media (Phase 1076 — video with a poster frame in the case payload)", mediaVideoPoster
-      "Display/Media (Phase 1076 — autoplay declared, both shared bools off-default)", mediaVideoAutoplay
-      "Display/Media (Phase 1076 — the Audio variant, whose payload is the discriminator alone)", mediaAudio
-      "Display/Media (Phase 1110 — one captions track, elected default)", mediaVideoCaptions
-      "Display/Media (Phase 1110 — three tracks, authored order, two default elections)", mediaVideoTracks2
-      "Display/Media (Phase 1110 — the audio transcript floor)", mediaAudioTranscript
-      "Display/Embed (Phase 1111 — the minimum: no ratio, no permissions, total denial)", embedMinimal
-      "Display/Embed (Phase 1111 — a declared aspect ratio, sharing Image's enum)", embedAspect
-      "Display/Embed (Phase 1111 — one permission, the one that rides `allow` not `sandbox`)", embedPermissions
-      "Display/Tree (Phase 1120 — two levels, no State key: static and fully expanded)", treeStatic
-      "Display/Tree (Phase 1120 — three levels, the expansion key named; the key IS the affordance)", treeExpandedKeyed
-      "Display/Tree (Phase 1120 — the selection key AND the handler, both declared)", treeSelectionKeyed
-      "Display/List (ordered)", listDisplay
-      "Display/Toast (Success tone, open)", toast
-      "Display/CodeBlock (fsharp, line numbers + highlights)", codeBlock
-      "Display/Math (block LaTeX)", math
-      "Display/Drawing (all shapes + curve commands + styled bindings)", drawing
-      "Display/Drawing (degenerate — empty)", drawingMinimal
-      "Display/Drawing (Phase 877 — rotated Labels, incl. explicit 0 and 2-dp fraction)", drawingRotatedLabels
-      "Display/Drawing (Phase 883 — tipped shapes, incl. hostile text, Bound tip and explicit empty)",
-      drawingTippedShapes
-      "Display/Sparkline", sparkline
-      "Display/Drawing (Phase 1063 — §5/§7 non-finite sentinels at typed float scalars and a nested shape coordinate)",
-      drawingNonfiniteSentinels
-      "Display/Sparkline (Phase 1063 — §5/§7 non-finite sentinels as float SEQUENCE elements)",
-      sparklineNonfiniteSentinel
-      "Display/Metric (Phase 1063 — §5/§7 non-finite sentinels behind a Binding.Static envelope)",
-      metricNonfiniteSentinel
-      "Display/Skeleton", skeleton
-      "Display/Callout", callout
-      "Display/Progress", progress
-      "Display/LabelValueRow", labelValueRow
-      "Display/Fact", fact
-      "Display/Metric (Phase 819 — CellFormat.Duration value + cell RelativeTime trend)", metricDuration
-      "Display/Metric (Phase 867 — inverted trendPolarity: a falling wait time is an improvement)",
-      metricInvertedPolarity
-      "Display/Icon (Phase 821 — decorative, no label, Large)", iconDecorative
-      "Layout/Dashboard (empty)", dashboardEmpty
-      "Layout/Stack", stack
-      "Layout/Grid", gridLayout
-      "Layout/Grid (TemplateColumns 1fr 2fr ratio)", gridLayoutTemplatedRatio
-      "Layout/Grid (TemplateColumns 100px + repeat fixed-plus-flex)", gridLayoutTemplatedFixedPlusFlex
-      "Layout/Grid (TemplateColumns auto-fit minmax)", gridLayoutTemplatedAutoFit
-      "Layout/Masonry (Phase 1082 — column-fill, three columns)", masonryLayout
-      "Layout/Masonry (Phase 1082 — explicit gap)", masonryLayoutGap
-      "Layout/SplitPanel", splitPanel
-      "Layout/Tabs", tabs
-      "Layout/Tabs (explicit headers + tags + activeTag)", tabsExplicitHeaders
-      "Layout/Tabs (composite — containers inside a wrapper, grid panel, pre-filled controls)", compositeTabsPanels
-      "Layout/Card", card
-      "Layout/Stepper", stepper
-      "Layout/SummaryList", summaryList
-      "Layout/Disclosure", disclosure
-      "Layout/Modal (heading + child + onDismiss)", modal
-      "Layout/Modal (Phase 1119 — Popover modality, anchored, state-bound open)", popoverAnchored
-      "Layout/Modal (Phase 1119 — Popover, statically open: the SSR floor)", popoverOpen
-      "Layout/ScrollArea (vertical, maxHeight)", scrollArea
-      "Input/Form (all fields)", formAllFields
-      "Input/Form (Phase 766 — the Toggle switch affordance beside a Checkbox)", formToggle
-      "Input/Form (RangedNumber — all/min-only/no bounds)", formRangedNumber
-      "Input/Form (Local-bound text, OnBlur)", formLocalText
-      "Input/Form (Local-bound text, OnDebounce 250)", formLocalDebounce
-      "Input/Form (Fuaran-UI Phase 1538 — a DECLARED Local: codec + commitTo, no closure)", formLocalDeclared
-      "Input/Filters (text + choice)", filtersBoth
-      "Input/Filters (declarative — omitted onChange + typed range bounds)", filtersDeclarative
-      "Input/Form (SegmentedChoice horizontal + vertical)", formSegmentedChoice
-      "Input/Form (Phase 1113 — Combobox: static options, allowFreeText omitted)", formComboboxStatic
-      "Input/Form (Phase 1113 — Combobox: Query-bound option source, declarative, auto-bound value)", formComboboxQuery
-      "Input/Form (Phase 1113 — Combobox: allowFreeText, value outside the option set)", formComboboxFreeText
-      "Input/Form (Phase 1130 — Rating: whole stars, allowHalf omitted, static value)", formRating
-      "Input/Form (Phase 1130 — Rating: allowHalf entry + a bound average on a ten-scale, value auto-bound)",
-      formRatingHalves
-      "Input/Form (Phase 1130 — Color: upper-case hex, preserved not normalised)", formColor
-      "Input/Filters (Phase 1130 — Rating + Color chips, declarative and auto-bound)", filtersRatingColour
-      "Input/Form (Phase 1121 — Tokens: the shortest spelling, allowFreeText omitted (true), value auto-bound)",
-      formTokensFreeText
-      "Input/Form (Phase 1121 — Tokens: allowFreeText false over a static suggestion source, tokens in reader order)",
-      formTokensSuggested
-      "Input/Form (Phase 1121 — Tokens: Query-bound suggestion source, declarative, value auto-bound)", formTokensQuery
-      "Input/Filters (Phase 1121 — Tokens chip, constrained and auto-bound)", filtersTokens
-      "Input/Form (Date — date/time/datetime variants + bounds)", formDate
-      "Input/Form (Phase 725 — DateRange: single-control date range, bare {from,to} pair + bounds)", formDateRange
-      "Input/Filters (Phase 725 — DateRange chip: one filter param carries the pair, value auto-bound)",
-      filtersDateRange
-      "Input/Filters (SegmentedFilter horizontal)", filtersSegmented
-      "Input/Button", button
-      "Input/Button (Action.WriteToClipboard chained with Dispatch)", buttonClipboard
-      "Phase 1126 — Input/Button whose Action.WriteToClipboard carries a BOUND payload (a TextSource, not a bare string), resolved at dispatch time",
-      buttonClipboardBound
-      "Phase 1536 — Input/Button whose Action.Navigate carries a BOUND route (a TextSource over the grid's selection), resolved at dispatch time and gated on the resolved value",
-      actionNavigateBound
-      "Phase 1536 — Input/Button whose Action.Navigate names a Blank target (opened with noopener,noreferrer); `Self` is omitted, so this is the only shape that puts `target` on the wire",
-      actionNavigateTarget
-      "Phase 1537 — Input/Button whose Action.Confirm asks a BOUND question (naming the selected row) before a Call; no onCancel, which is how the language spells 'nothing happens'",
-      actionConfirm
-      "Phase 1537 — Input/Button whose Action.Confirm carries a LITERAL prompt and both branches; the only fixture in which the recursive encoder descends into a named continuation rather than a Chain list",
-      actionConfirmCancel
-      "Phase 1537 — Input/Button whose Action.Focus moves the caret to an addressed node, chained after the write that emptied it",
-      actionFocus
-      "Input/Button (Action.ReadFileBody base64)", buttonReadFile
-      "Input/Button (Notify / SetState / AiTool — JSON payloads)", buttonJsonPayloads
-      "Input/FileUpload", fileUpload
-      "Input/FileUpload (Phase 1115 — drop target; acceptPaste OMITTED)", fileUploadDrop
-      "Input/FileUpload (Phase 1115 — paste ingestion, image/* filtered; dropTarget OMITTED)", fileUploadPaste
-      "Input/FileUpload (Phase 1116 — camera capture, image/* filtered)", fileUploadCaptureCamera
-      "Input/FileUpload (Phase 1116 — microphone capture, audio/* filtered)", fileUploadCaptureMicrophone
-      "Input/FileUpload (Phase 1117 — streamed to a registered destination)", fileUploadDestination
-      "Input/FileUpload (Phase 1548 — a declared per-file byte ceiling; maxFiles OMITTED)", fileUploadMaxBytes
-      "Input/FileUpload (Phase 1548 — a declared selection-count ceiling on a multiple upload; maxBytes OMITTED)",
-      fileUploadMaxFiles
-      "Input/Select", select
-      "Input/Select (multi-select — list value)", multiSelect
-      "Input/Form (Phase 426 — handler-free write-back fields, State-bound)", formDeclarative
-      "Input/Form (Phase 596 — symmetric auto-bind, omitted-value fields)", formDeclarativeMinimal
-      "Input/Form (Phase 864 — declared field rules: format / pattern / length pair / cross-field compare)",
-      formFieldRules
-      "Input/Form (Phase 1692, carrying 1691 — the five mapped enum tokens with no round-trip vector anywhere in the corpus: TextFormat url / tel, CompareOp neq / lt / lte)",
-      formRuleTokens
-      "Layout/Stack (Phase 426 — declarative tabs + modal + disclosure + select, handlers omitted)", controlsDeclarative
-      "Layout/Stack (Phase 426 — closure-authored onSelectTag / onToggle / onChangeMulti sentinels)", multiSelectClosure
-      "Layout/Stack (Phase 428 — Action.Call result targets: closure / into State / into Query)", callInto
-      "Layout/Box (Phase 1473 keepTogether, the only new member)", boxKeepTogether
-      "Layout/Box (Phase 1473 breakBefore, the only new member)", boxBreakBefore
-      "Visualisation/Grid (Phase 1473 keepRowsTogether, the only new member)", gridKeepRowsTogether
-      "Visualisation/Grid (Phase 1473 repeatHeader, the only new member)", gridRepeatHeader
-      "Visualisation/Grid (Phase 1125 exportable, the only new member)", gridExportable
-      "Visualisation/Grid", gridVis
-      "Visualisation/Grid (Phase 282 — Binding.Transform compute source)", gridTransform
-      "Visualisation/Grid (Phase 424 — parameterised Binding.Transform, filter param from a chip)", gridTransformParam
-      "Visualisation/Grid (Phase 1674 — a filter step naming a param NO params entry declares)",
-      transformUndeclaredParam
-      "Layout/Box (Phase 610 — multi-select chip + DataGrid scoped by a list-valued in/param)", multiselectChipListParam
-      "Display/Metric (Phase 421 — Binding.Query with a declared dependsOn filter edge)", queryDependsOn
-      "Visualisation/Grid (Phase 425 — field-named columns + RowKeyField, closure-free)", gridFieldNamed
-      "Visualisation/Grid (Phase 750 — TonedPill: value-conditional cell tone declared as a value→tone map)",
-      gridTonedPill
-      "Layout/Box (filterable-static dashboard — Filters params wired through Transform to chart + grid)",
-      filterableStaticDashboard
-      "Layout/Box (Phase 1784 — the CONTROL of the negative wiring pair: a Filters node declaring both chips a Transform param source reads)",
-      filtersParamSourceDeclared
-      "Layout/Box (Phase 1784 — a Transform param source naming a chip the PRESENT Filters node does not declare; the control is `filters-param-source-declared`)",
-      filtersParamSourceUndeclared
-      "Layout/Box (Phase 1800 — the CONTROL of the dependsOn pair: a Filters node declaring both chips a Query's dependsOn names)",
-      filtersDependsOnDeclared
-      "Layout/Box (Phase 1800 — a Query dependsOn naming a chip the PRESENT Filters node does not declare; the control is `filters-dependson-declared`)",
-      filtersDependsOnUndeclared
-      "Visualisation/Chart+Grid (Phase 1889 - the CONTROL: a chart and a grid reading only what their groupBy pipeline produces; both grade checked)",
-      bindingCheckControl
-      "Visualisation/Chart (Phase 1889 - FUARAN086: a yFields entry naming a column the groupBy renamed away)",
-      bindingCheckChartUngrounded
-      "Visualisation/Chart (Phase 1889 - FUARAN087: a yFields entry naming a string column)",
-      bindingCheckChartNotNumeric
-      "Visualisation/Chart (Phase 1889 - FUARAN097: a temporal x-axis over a column that is not a date)",
-      bindingCheckChartTemporalNotDate
-      "Layout/Box (Phase 1889 - FUARAN114: a grid column field and rowKeyField naming a column the pipeline does not produce)",
-      bindingCheckGridUngrounded
-      "Layout/Box (Phase 1889 - UNCHECKED: a chart over a Transform of an undeclared Ref and a grid over a Query; nothing refused)",
-      bindingCheckUnchecked
-      "Visualisation/DataGrid (Phase 1909 - the CONTROL: field-less Button and ButtonGroup action columns and a grounded TonedPill; clean, graded checked)",
-      gridActionColumnClean
-      "Visualisation/DataGrid (Phase 1909 - FUARAN163: a Button action column declaring a field; the only finding, no FUARAN114)",
-      gridActionColumnField
-      "Visualisation/DataGrid (Phase 1909 - FUARAN114 TonedPill sub-case: the pill's own field names a column the pipeline does not produce)",
-      gridTonedPillUngrounded
-      "Layout/Box (master-detail — grid + detail card State-bound with a pre-selected defaultValue)",
-      masterDetailPreselected
-      "Layout/Box (master-detail — Selection defaultValue naming a NON-FIRST row: prune-vs-seed is observable)",
-      masterDetailPreselectedSecondRow
-      "Layout/Box (Phase 767 — the canonical empty state with a CTA: one Card region, no nested Callout)",
-      emptyStateCard
-      "Layout/Box (master-detail — ONE selection feeding N slots, each projecting a DIFFERENT field)",
-      masterDetailMultiField
-      "Layout/Box (Phase 632 — Transform in scalar slots: selected-row Callout body + Badge count)",
-      scalarTransformComposition
-      "Binding/Now (Phase 765 — the host-furnished instant: a text slot + a Transform param feeding dateDiffDays)",
-      nowEnvironmentBinding
-      "Binding/Now (Phase 1533 — the declared grain: minute/hour/day text slots + a Day-grain Transform param)",
-      nowGrain
-      "Binding.Format (Phase 1533 — Since: the instant-reading twin of RelativeTime, declared unit and auto)",
-      formatSince
-      "Binding.Format (Phase 1810 — Date with a time of day: dateStyle + timeStyle, and timeStyle alone)",
-      formatDateTime
-      "Binding/Expr (Phase 1534 — scalar logic with no params: concat, arithmetic, AND/NOT, a null test)", exprScalar
-      "Binding/Expr (Phase 1534 — params from State / Selection / Query / Filter / Now, including an InParam membership test)",
-      exprParamsStateSelection
-      "Display/Metric (Phase 283 — Binding.Invoke capability source)", metricInvoke
-      "Input/Button (Phase 283 — Action.Invoke capability effect)", buttonInvoke
-      "Visualisation/Chart", chart
-      "Visualisation/Grid (Phase 663/665 — editable State-sourced grid, typed rows on the wire)", gridEditableState
-      "Visualisation/Chart (Phase 663/665 — chart on the editable grid's state key)", chartStateRows
-      "Visualisation/Chart (Phase 876 — valueFormat: the value axis's declared number format)", chartValueFormat
-      "Visualisation/Chart (Phase 878 — xTitle/yTitle/subtitle: the axis names + the muted subtitle)", chartAxisTitles
-      "Visualisation/Chart (Phase 880 — legendPosition: the legend's declared edge)", chartLegendPosition
-      "Visualisation/Chart (Phase 881 — dataLabels: values written onto the picture)", chartDataLabels
-      "Visualisation/Chart (Phase 882 — xScale: a temporal x-axis over ISO-8601 date cells)", chartTemporalX
-      "Visualisation/Chart (Phase 1490 — annotations: two data-addressed reference lines, one labelled)",
-      chartAnnotations
-      "Visualisation/Chart (Phase 1491 — annotations: event markers in both x-address forms, category and date)",
-      chartAnnotationEvents
-      "Visualisation/Chart (Phase 1492 — annotations: range bands in all three addressing forms, value / category / date)",
-      chartAnnotationBands
-      "Visualisation/Grid (static-table mode — staticRows; absorbed the retired Table kind)", table
-      "Visualisation/Grid (Phase 801 — static-table mode declaring sort intent: sortable + defaultSort)", tableSortable
-      "Visualisation/Grid (Phase 818 — sortStateKey: the data-bound grid-sort header affordance)", gridSortStateKey
-      "Visualisation/Grid (Phase 861 — bound-path sort: per-column sortable narrowing + a declared initial order)",
-      gridBoundSort
-      "Visualisation/Grid (Phase 1692, carrying 1691 — the sixth mapped enum token with no round-trip vector: SortDirection asc in defaultSort.direction)",
-      gridSortAscending
-      "Visualisation/Grid (Phase 863 — declared edit destination + per-column read-only narrowing)", gridDeclaredEdit
-      "Visualisation/Grid (Phase 934 — declarative row reorder: omit-when-false flag; edits and reorders share one destination)",
-      gridReorderable
-      "Layout/Box (Phase 1123 — cross-container transfer: two two-way columns and a one-way archive on one shared key)",
-      gridTransferBoard
-      "Visualisation/Grid (Phase 862 — pageStateKey + pageSize: declarative pagination, renderer-owned pager)",
-      gridPaged
-      "Visualisation/Grid (Phase 862 — paging and sorting composed: two behaviours, two state keys, one rule)",
-      gridPagedSorted
-      "Visualisation/Grid (Phase 1892 — windowStateKey + rowTotal: a host-windowed Query and the total it declares)",
-      gridWindowed
-      "Visualisation/Grid (Phase 1892 — the client-sliced window under a sort: the window indexes the sorted rows)",
-      gridWindowedSorted
-      "Display/Badge (Phase 818 — LIVE State-sourced Transform: the Tier-D count badge, preserved source + initial snapshot)",
-      badgeTransformLive
-      "Visualisation/Grid + Display/Badge (Phase 1075 — the seeded shared source: one declared table, two readers)",
-      sharedSourceSeededPair
-      "Input/Button (Phase 818 — SetState.valueFrom: a derived state write from the selected row's field)",
-      buttonSetStateValueFrom
-      "Input/Button (Phase 1124 — Action.Print: the payload-free action, inside a Chain)", buttonPrint
-      "Visualisation/Map", mapVis
-      "Custom", custom
-      "Custom (§2 rule 2 — astral vs BMP payload keys, the UTF-16-order discriminator)", customNonAsciiKeys
-      "Custom (bounded escape, StrictReplay hash + exposed-ids)", customBounded
-      "Custom (bounded escape, AdvisoryWarning hash + no exposed-ids)", customBoundedAdvisory
-      "ErrorBoundary (Markdown child + Callout fallback)", errorBoundary
-      "Switch (view state → details/summary cases + info default)", switchBasic
-      "Meta/Switch (Phase 1122 — an auto-advancing carousel: `autoAdvanceMs` over an index key)", switchAutoAdvance
-      "Meta/Switch (Phase 768 — the selector widened: `on` takes a Selection, the branch follows the clicked row)",
-      switchOnSelection
-      "Meta/Switch (Phase 1535 — a computed selector: a Transform yielding one cell, read through the scalar path)",
-      switchOnTransformScalar
-      "Meta/Switch (Phase 1535 — predicate cases: a State bool and an Expr, MIXED with a match case in one ordered list)",
-      switchPredicate
-      "Meta/Switch (Phase 1535 — selected entirely by predicate: no selector, nothing to write)", switchPredicateOnly
-      "Node envelope (Phase 1535 — visible: removal from flow, three predicate spellings, beside an aria-hidden sibling)",
-      nodeVisible
-      "FragmentDecl (named template with Markdown body)", fragmentDecl
-      "FragmentRef (name-only wire shape)", fragmentRef
-      "FragmentDecl (parameterised — value/slot/repeat holes + effect class)", fragmentDeclParam
-      "FragmentRef (parameterised — value + slot args)", fragmentRefArgs
-      "Mount (§4o — out-only, default-deny, zero-input degenerate)", mountMinimal
-      "Mount (§4o — capabilities + TwoWay message shape + value/slot inputs)", mountFull
-      "Composite (Dashboard ⊃ Card ⊃ Metric + Stack)", composite
-      "Binding.Format (number/currency/percent/date/relativeTime across locales)", formatBindings
-      "Accessibility (Phase 955 — all six trait slots at once on a wrapper; Static label, named role, polite)",
-      a11yWrapperAllSlots
-      "Accessibility (Phase 1812 — `speak`: the spoken rendering beside a Static name; inert to ARIA)", a11ySpeak
-      "Node envelope (Phase 1812 — an author-declared `fallback` subtree, preserved by a current reader and never rendered by it; `speak` on the fallback's envelope)",
-      envelopeFallback
-      "Accessibility (Phase 955 — State-bound label + hidden, mixed-case custom role doc-pageFooter, off)",
-      a11yWrapperStateBound
-      "Accessibility (Phase 955 — the announcement pair: role alert + liveRegion assertive)", a11yAlertAssertive
-      "Accessibility (Phase 955 — Link: the accessible name overriding the visible 'Read more' text)", a11yLinkLabelled
-      "Accessibility (Phase 955 — Button: an explicit named role on a kind that already has a native one)",
-      a11yButtonNamed
-      "Accessibility (Phase 955 — Image: the decorative shape, empty alt + hidden Static true)", a11yImageDecorative
-      "Accessibility (Phase 1665 — a Transform-bound accessible name, read through the SCALAR path)",
-      a11yWrapperTransformLabel
-      "Tooltip (Phase 1112 — the trait on a forwarding interactive kind; the description rides the button)",
-      tooltipButton
-      "Tooltip (Phase 1112 — the trait on a display kind, I18n hint; description and focus stop on the wrapper)",
-      tooltipMetric
-      "Tooltip (Phase 1112 — the icon-only button: accessibility.label NAMES, tooltip DESCRIBES, describedBy merges)",
-      tooltipIconButton
-      "Binding (Phase 1656 — an ABSENT State.defaultValue at Float / Int / rows / options / floatSeq: absence OMITS)",
-      stateAbsentDefault ]
-    @ stdlibFragments
+    declared<NodeFixtureAttribute, Node<obj>> _.Label @ stdlibFragments
 
+[<OpFixture "ReplaceRoot">]
 let opReplaceRoot: TreeOp<obj> = TreeOp.ReplaceRoot composite
 
+/// Every op fixture, read off the `[<OpFixture>]` attributes (Phase 2066). The label is the
+/// fixture id and therefore the FILENAME: id-safe tokens only, on the
+/// `UpdateProp-nested-badindex` pattern, never prose.
 let allOps: (string * TreeOp<obj>) list =
-    [ "EditNode", opEditNode
-      "UpdateProp", opUpdateProp
-      "ReplaceBinding", opReplaceBinding
-      "UpdateStyle", opUpdateStyle
-      "UpdateStyle (Phase 147 Role=Eyebrow + Voice=Structural)", opUpdateStyleRoleVoice
-      "UpdateStyle (Phase 1472 Direction=Ltr, the only style member)", opUpdateStyleDirection
-      "UpdateState", opUpdateState
-      "InsertChild", opInsertChild
-      "RemoveNode", opRemoveNode
-      "MoveNode", opMoveNode
-      "ReorderChildren", opReorderChildren
-      "ReplaceRoot", opReplaceRoot
-      "Batch", opBatch
-      "UpdateProp-nested-column0-label", opUpdatePropNestedColumn0Label
-      "UpdateProp-nested-column1-label", opUpdatePropNestedColumn1Label
-      "UpdateProp-nested-yfield0", opUpdatePropNestedYField0
-      "UpdateProp-nested-yfield1", opUpdatePropNestedYField1
-      "UpdateProp-nested-field0-required", opUpdatePropNestedField0Required
-      "UpdateProp-nested-field1-required", opUpdatePropNestedField1Required
-      "UpdateProp-nested-object-value", opUpdatePropNestedObjectValue
-      "UpdateProp-nested-badindex", opUpdatePropNestedBadIndex
-      "UpdateProp-nested-badfield", opUpdatePropNestedBadField
-      "UpdateProp-nested-malformed", opUpdatePropNestedMalformed
-      // Phase 1647 — the first registered op carrying an `Action`. The label is
-      // the fixture ID and therefore the FILENAME: id-safe tokens only, on the
-      // `UpdateProp-nested-badindex` pattern above, never prose.
-      "EditNode-action-commitlocal", opEditNodeCommitLocal ]
+    declared<OpFixtureAttribute, TreeOp<obj>> _.Label
 
 // ─── §21 shape-limit payloads (wire STRINGS, not `Node` values) ──────────────
 //
