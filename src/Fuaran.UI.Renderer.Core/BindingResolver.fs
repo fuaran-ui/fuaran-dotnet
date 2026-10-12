@@ -1589,50 +1589,102 @@ let projectRowFieldValue (row: Row) (field: string) : CellValue =
 let projectRowFieldString (row: Row) (field: string) : string =
     Fuaran.UI.HostPrelude.RowProjection.string_ row field
 
-// ─── Data-bound grid sort (Phase 818 — `sortStateKey`) ───────────────────────
+// ─── Grid and tree: the State reads, and the names that moved (Phase 2070) ───
 //
-// A data-bound grid whose spec names a `sortStateKey` sorts its RESOLVED rows
-// by the state-carried descriptor `{"column": <header index>, "direction":
-// "asc" | "desc"}` before rendering — runtime-side sort, the author wires no
-// Transform. One implementation serves the client renderer and any SSR host
-// that seeds the key, so two surfaces cannot disagree about ordering rules
-// (the `tonedPillOf` single-definition rationale). The rules mirror the
-// Phase-801 reference table enhancement where they overlap: empty cells sort
-// LAST in both directions (unmeasured is not zero), ties keep their authored
-// relative order (`List.sortWith` is stable).
+// The grid and tree MODELS — sort order, pages, the row window and its
+// viewport writer, the toned pill, the write destinations, the row move, tree
+// expansion and focus — are `GridModel` and `TreeModel`: none of it is binding
+// resolution, so none of it lives here. What stays is the part that IS: the
+// reads of a `State` key (and of a declared `rowTotal` binding) that feed those
+// models, each validating what it read through the model's own decoder.
+//
+// RE-EXPORTS, FOR ONE RELEASE. Every name that moved is re-exported below under
+// its old `BindingResolver.*` spelling, so a consumer compiles unchanged across
+// 0.93.1. They are plain aliases rather than `[<Obsolete>]` ones because an
+// obsolete alias is a build error under `TreatWarningsAsErrors`, which is a
+// source break by this repository's own Semver. New code calls `GridModel` /
+// `TreeModel`; the aliases are removed in a later release (STABILITY.md).
 
-// `SortDirection` is spelled `Fuaran.UI.Types.SortDirection` throughout this section: this file opens
-// `Fuaran.Core` AFTER `Fuaran.UI.Types`, and from Core 0.36.0 `Fuaran.Core.Query` declares a
-// `SortDirection` of its own (Phase 398), which a Fable program compiling this source beside that
-// package would otherwise resolve here.
+type RowWindow = GridModel.RowWindow
+type PresentedWindow<'row> = GridModel.PresentedWindow<'row>
+type ViewportMeasure = GridModel.ViewportMeasure
 
-/// Read the sort descriptor carried at `key` in the State store. Every part is
-/// validated rather than trusted — a malformed descriptor reads as "no sort"
-/// so the authored order stands (never an arbitrary one).
+let inline sortRowsByDescriptor columns descriptor rows =
+    GridModel.sortRowsByDescriptor columns descriptor rows
+
+let inline sourceHostPagesOn source pageKey =
+    GridModel.sourceHostPagesOn source pageKey
+
+let inline pageCountOf pageSize rowCount = GridModel.pageCountOf pageSize rowCount
+
+let inline clampPage pageSize page rowCount =
+    GridModel.clampPage pageSize page rowCount
+
+let inline sliceRowsToPage pageSize page rows =
+    GridModel.sliceRowsToPage pageSize page rows
+
+let inline windowOfJVal jv = GridModel.windowOfJVal jv
+
+let inline sourceHostWindowsOn source windowKey =
+    GridModel.sourceHostWindowsOn source windowKey
+
+let inline presentWindow hostWindows declaredTotal window range =
+    GridModel.presentWindow hostWindows declaredTotal window range
+
+let inline declaredPageCount pageSize declaredTotal =
+    GridModel.declaredPageCount pageSize declaredTotal
+
+let inline gridHostWindows spec = GridModel.gridHostWindows spec
+let inline windowRowCount window = GridModel.windowRowCount window
+
+let inline windowRowIndex window rowIndex =
+    GridModel.windowRowIndex window rowIndex
+
+let defaultWindowRowHeightPx: float = GridModel.defaultWindowRowHeightPx
+let windowViewportMaxHeightPx: float = GridModel.windowViewportMaxHeightPx
+let inline measureWindow m = GridModel.measureWindow m
+let inline windowDescriptorJVal w = GridModel.windowDescriptorJVal w
+
+let inline stepWindowWriter windowKey current lastWritten measure =
+    GridModel.stepWindowWriter windowKey current lastWritten measure
+
+let inline tonedPillOf row field toneMap defaultTone =
+    GridModel.tonedPillOf row field toneMap defaultTone
+
+let inline gridWriteDestination editStateKey source =
+    GridModel.gridWriteDestination editStateKey source
+
+let inline reorderDestination reorderable editStateKey source =
+    GridModel.reorderDestination reorderable editStateKey source
+
+let inline transferDestination declared editStateKey source =
+    GridModel.transferDestination declared editStateKey source
+
+let inline editDestination editable editStateKey source =
+    GridModel.editDestination editable editStateKey source
+
+let inline moveRow fromIndex toIndex rows =
+    GridModel.moveRow fromIndex toIndex rows
+
+let inline treeItemExpanded expandedKeyNamed expanded item =
+    TreeModel.treeItemExpanded expandedKeyNamed expanded item
+
+let inline visibleTreeItems expandedKeyNamed expanded items =
+    TreeModel.visibleTreeItems expandedKeyNamed expanded items
+
+let inline focusableTreeItem expandedKeyNamed expanded selected items =
+    TreeModel.focusableTreeItem expandedKeyNamed expanded selected items
+
+/// The `JVal` a `State` key holds, or `None` when the key is unset or its value
+/// is not a JSON value.
+let private stateJVal (sources: BindingSources) (key: string) : JVal option =
+    Map.tryFind key sources.State |> Option.bind jvalOfResolved
+
+/// Phase 818 — read the sort descriptor carried at `key` in the State store,
+/// validated by `GridModel.sortDescriptorOfJVal`: a malformed descriptor reads
+/// as "no sort", so the authored order stands (never an arbitrary one).
 let readSortDescriptor (sources: BindingSources) (key: string) : (int * Fuaran.UI.Types.SortDirection) option =
-    Map.tryFind key sources.State
-    |> Option.bind jvalOfResolved
-    |> Option.bind (fun jv ->
-        match jv with
-        | JObj fields ->
-            let col =
-                fields
-                |> List.tryPick (function
-                    | ("column", JInt i) -> Some i
-                    | ("column", JFloat f) when floor f = f -> Some(int f)
-                    | _ -> None)
-
-            let dir =
-                fields
-                |> List.tryPick (function
-                    | ("direction", JStr "asc") -> Some Fuaran.UI.Types.SortDirection.Asc
-                    | ("direction", JStr "desc") -> Some Fuaran.UI.Types.SortDirection.Desc
-                    | _ -> None)
-
-            (match col, dir with
-             | Some c, Some d when c >= 0 -> Some(c, d)
-             | _ -> None)
-        | _ -> None)
+    stateJVal sources key |> Option.bind GridModel.sortDescriptorOfJVal
 
 /// Phase 861 — what the sort state key is SAYING, as three cases rather than
 /// two. `readSortDescriptor` above collapses "nothing written" and "written but
@@ -1690,302 +1742,37 @@ let effectiveSortDescriptor
         | Cleared -> None
 
 /// Phase 1120 — the rows a `Tree` currently has OPEN, read off the named State
-/// key. The shape the specification fixes for that slot is a JSON ARRAY OF ROW
-/// IDS, and this is the one reader for it, shared by both render legs so a
-/// server rendering and a client rendering can never disagree about which rows
-/// are open.
-///
-/// An array and not a per-row map, because the question the host asks is set
-/// membership over a hierarchy it walks, and a set has one spelling where a map
-/// of booleans has two for "closed" (absent, and present-and-false) that a
-/// reader would then have to be told apart.
-///
-/// Every non-conforming shape reads as the EMPTY SET rather than as an error:
-/// a key holding a number, an object, or an array with non-string members is a
-/// host's state slot, not a wire document, so there is nothing here to refuse
-/// and refusing it would blank a tree over a value the reader never authored.
-/// Non-string members are dropped individually for the same reason — a slot
-/// holding `["a", 3, "b"]` still says two true things.
+/// key and decoded by `TreeModel.expandedOfJVal` (every non-conforming shape is
+/// the EMPTY SET). No key named, or an unset key, is the empty set too.
 let readExpandedItems (sources: BindingSources) (key: string option) : Set<string> =
-    match key with
-    | None -> Set.empty
-    | Some k ->
-        Map.tryFind k sources.State
-        |> Option.bind jvalOfResolved
-        |> Option.map (fun jv ->
-            match jv with
-            | JArr items ->
-                items
-                |> List.choose (function
-                    | JStr s -> Some s
-                    | _ -> None)
-                |> Set.ofList
-            | _ -> Set.empty)
-        |> Option.defaultValue Set.empty
+    key
+    |> Option.bind (stateJVal sources)
+    |> Option.map TreeModel.expandedOfJVal
+    |> Option.defaultValue Set.empty
 
 /// Phase 1120 — the row a `Tree` currently has SELECTED, read off the named
-/// State key. The fixed shape is a bare row-id STRING, so `None` covers both an
-/// unset key and a key holding anything else, on `readExpandedItems`' reasoning.
-///
-/// Single-selection only in this cut. A multi-selection tree would hold an
-/// array here and be indistinguishable on the wire from the expansion slot,
-/// which is exactly the ambiguity a fixed shape exists to prevent; admitting it
-/// is a separate decision with its own key.
+/// State key and decoded by `TreeModel.selectedOfJVal` (a bare, non-empty row-id
+/// string; anything else is `None`).
 let readSelectedItem (sources: BindingSources) (key: string option) : string option =
-    match key with
-    | None -> None
-    | Some k ->
-        Map.tryFind k sources.State
-        |> Option.bind jvalOfResolved
-        |> Option.bind (function
-            | JStr s when s <> "" -> Some s
-            | _ -> None)
+    key |> Option.bind (stateJVal sources) |> Option.bind TreeModel.selectedOfJVal
 
-/// Phase 1120 — is this row's SUBTREE shown? The two callers are the two render
-/// legs, and they must answer identically or a hydrating client would replace
-/// the server's rows.
-///
-/// A tree naming NO expansion key renders FULLY EXPANDED, and that is the
-/// grid-behaviour rule read straight across rather than a special case: a grid
-/// with no sort state key still honours its declared order, because an initial
-/// presentation without interactive re-ordering is a legitimate shape. The same
-/// sentence with "expansion" in it gives a static, fully-visible hierarchy —
-/// which is what a document that never asked for a toggle means, and is the
-/// only reading under which such a tree shows its content at all.
-let treeItemExpanded (expandedKeyNamed: bool) (expanded: Set<string>) (item: TreeItem) : bool =
-    not (List.isEmpty item.Children)
-    && (not expandedKeyNamed || Set.contains item.Id expanded)
-
-/// Phase 1120 — every row a reader can currently see, in document order: the
-/// roots, and the descendants of every open row. Shared so the roving tabindex
-/// below and each leg's DOM walk agree on what "the next row" means.
-let rec visibleTreeItems (expandedKeyNamed: bool) (expanded: Set<string>) (items: TreeItem list) : TreeItem list =
-    items
-    |> List.collect (fun item ->
-        item
-        :: (if treeItemExpanded expandedKeyNamed expanded item then
-                visibleTreeItems expandedKeyNamed expanded item.Children
-            else
-                []))
-
-/// Phase 1120 — which row carries `tabindex="0"`.
-///
-/// The WAI-ARIA tree pattern is ONE tab stop, not one per row, so exactly one
-/// visible row is in the sequential focus order and the arrow keys move within
-/// the widget. That is the property no `List` + `Disclosure` composition has,
-/// and it is computed HERE, off state alone, so the server's rendering and the
-/// client's first frame put it on the same row.
-///
-/// The selected row wins when it is visible; otherwise the first visible row
-/// does. A selection scrolled out of view by its parent being closed is not a
-/// focus target — tabbing into the widget must land somewhere the reader can
-/// see, and the first row is where the pattern starts.
-let focusableTreeItem
-    (expandedKeyNamed: bool)
-    (expanded: Set<string>)
-    (selected: string option)
-    (items: TreeItem list)
-    : string option =
-    let visible = visibleTreeItems expandedKeyNamed expanded items
-
-    match selected with
-    | Some s when visible |> List.exists (fun i -> i.Id = s) -> Some s
-    | _ -> visible |> List.tryHead |> Option.map _.Id
-
-let private cellSortRank (v: CellValue) : int =
-    match v with
-    | CellValue.Numeric _ -> 0
-    | CellValue.Bool _ -> 1
-    | CellValue.Date _ -> 2
-    | CellValue.Text _ -> 3
-    | CellValue.Empty -> 4
-
-let private compareCells (a: CellValue) (b: CellValue) : int =
-    match a, b with
-    | CellValue.Numeric x, CellValue.Numeric y -> compare x y
-    | CellValue.Bool x, CellValue.Bool y -> compare x y
-    | CellValue.Date x, CellValue.Date y -> compare x y
-    | CellValue.Text x, CellValue.Text y -> System.String.CompareOrdinal(x.ToLowerInvariant(), y.ToLowerInvariant())
-    | _ -> compare (cellSortRank a) (cellSortRank b)
-
-/// Sort resolved grid rows by a sort descriptor over the column set. Sorting
-/// keys off the addressed column's declared `field` (the row property it
-/// displays); a column index outside the set or a field-less closure column
-/// leaves the authored order standing — a declaration that cannot be honoured
-/// is ignored, not guessed at. Empty cells sort last in BOTH directions; the
-/// sort is stable.
-let sortRowsByDescriptor
-    (columns: ColumnErased<'Msg> list)
-    (descriptor: (int * Fuaran.UI.Types.SortDirection) option)
-    (rows: Row list)
-    : Row list =
-    match descriptor with
-    | None -> rows
-    | Some(colIndex, direction) ->
-        // Phase 1909 — `GridColumn.dataField`: an action column (Button /
-        // ButtonGroup) sorts nothing even where a pre-existing tree still
-        // declares a field on it, so a descriptor naming one is ignored.
-        match List.tryItem colIndex columns |> Option.bind Fuaran.UI.GridColumn.dataField with
-        | None -> rows
-        | Some field ->
-            rows
-            |> List.map (fun r -> projectRowFieldValue r field, r)
-            |> List.sortWith (fun (ka, _) (kb, _) ->
-                match ka, kb with
-                | CellValue.Empty, CellValue.Empty -> 0
-                | CellValue.Empty, _ -> 1
-                | _, CellValue.Empty -> -1
-                | _ ->
-                    let c = compareCells ka kb
-
-                    (match direction with
-                     | Fuaran.UI.Types.SortDirection.Asc -> c
-                     | Fuaran.UI.Types.SortDirection.Desc -> -c))
-            |> List.map snd
-
-// ─── Data-bound grid pagination (Phase 862 — `pageStateKey` / `pageSize`) ────
-//
-// The second instance of the Phase-860 grid-behaviour rule, and it mirrors the
-// sort machinery above deliberately: the grid names a State key, the runtime
-// reads a validated descriptor from it, and the affordance that writes the key
-// is renderer-owned. One implementation serves the client renderer and any SSR
-// host, so two surfaces cannot disagree about which rows are on page 3.
-//
-// Who slices is decided by the SOURCE shape, never by a second declaration. A
-// `Binding.Query` whose `dependsOn` names the page key re-runs host-side on a
-// page change and already returns the page, so the grid must NOT slice again;
-// any other source resolves to the whole set and the grid slices it.
-
-/// Read the page descriptor carried at `key` in the State store: `{"page": N}`,
-/// 1-based. Validated rather than trusted — a malformed or absent descriptor
-/// reads as page 1, which is the honest default (never an arbitrary offset).
+/// Phase 862 — read the page descriptor carried at `key` in the State store:
+/// `{"page": N}`, 1-based, validated by `GridModel.pageOfJVal`. A malformed or
+/// absent descriptor reads as page 1, which is the honest default (never an
+/// arbitrary offset).
 let readPageDescriptor (sources: BindingSources) (key: string) : int =
-    Map.tryFind key sources.State
-    |> Option.bind jvalOfResolved
-    |> Option.bind (fun jv ->
-        match jv with
-        | JObj fields ->
-            fields
-            |> List.tryPick (function
-                | ("page", JInt i) when i >= 1 -> Some i
-                | ("page", JFloat f) when floor f = f && f >= 1.0 -> Some(int f)
-                | _ -> None)
-        | _ -> None)
+    stateJVal sources key
+    |> Option.bind GridModel.pageOfJVal
     |> Option.defaultValue 1
 
-/// Does this source page HOST-side for the given page key? True when the source
-/// is a `Query` declaring a `dependsOn` on that key — the query re-runs on a
-/// page change and hands back the page itself, so a client-side slice on top
-/// would page the page (FUARAN096 warns pre-emit).
-let sourceHostPagesOn (source: Binding<'T>) (pageKey: string) : bool =
-    match source with
-    | Binding.Query(_, _, Some deps) -> deps |> List.contains pageKey
-    | _ -> false
-
-/// How many pages a row count divides into at this page size. Always at least
-/// one, so an empty grid still reads as "page 1 of 1" rather than "of 0".
-let pageCountOf (pageSize: int) (rowCount: int) : int =
-    if pageSize <= 0 then
-        1
-    else
-        max 1 ((rowCount + pageSize - 1) / pageSize)
-
-/// The page actually shown, given where the user left the position and how many
-/// rows there now are. A page past the end clamps to the LAST page rather than
-/// rendering empty: the row count can shrink under a filter while the position
-/// stays put, and showing nothing there reads as data loss rather than as the
-/// end of the list. Single-sourced because the slice and the row-index offset
-/// the write-back path uses must agree — an off-by-one page between them would
-/// commit an edit to the wrong row.
-let clampPage (pageSize: int) (page: int) (rowCount: int) : int =
-    min (max 1 page) (pageCountOf pageSize rowCount)
-
-/// The rows on `page` (1-based) at `pageSize`, after clamping.
-let sliceRowsToPage (pageSize: int) (page: int) (rows: Row list) : Row list =
-    if pageSize <= 0 then
-        rows
-    else
-        let count = List.length rows
-        let clamped = clampPage pageSize page count
-
-        rows
-        |> List.skip (min count ((clamped - 1) * pageSize))
-        |> List.truncate pageSize
-
-// ─── The row window (Phase 1892 — `windowStateKey` / `rowTotal`) ─────────────
-//
-// The fourth instance of the Phase-860 grid-behaviour rule, built on the page
-// machinery above and deliberately shaped like it: the grid names a State key,
-// the runtime reads a VALIDATED descriptor from it, the renderer writes it as
-// the viewport moves, and one implementation serves every render leg so a
-// server rendering and a client rendering cannot disagree about which rows are
-// in the window.
-//
-// Who slices extends the page rule by one key. A `Query` whose `dependsOn`
-// names the window key returns the window itself — the grid slices nothing, and
-// the total is the one the document DECLARES through `rowTotal`, since the host
-// alone knows how many rows its query matched. Otherwise the grid holds the rows
-// it presents (the whole set, or the page a host-paged query returned) and
-// windows them, and its total is their count.
-
-/// A usable window descriptor: the 0-based offset of the first row and how many
-/// rows the window holds.
-type RowWindow = { Offset: int; Count: int }
-
-/// What a grid presents once the window is applied: the rows, the index of the
-/// first of them in the range the window moves over, that range's size where it
-/// is known, and whether a window is in effect at all (which is what decides
-/// whether the grid annotates its rows as a slice).
-type PresentedWindow<'row> =
-    { Rows: 'row list
-      Offset: int
-      Total: int option
-      Windowed: bool }
-
-/// A JSON integer, from either spelling a store can hold: an int, or a float
-/// with no fractional part (`2.0` is `2`). Anything else is not an integer.
-let private jvalInt (jv: JVal) : int option =
-    match jv with
-    | JInt i -> Some i
-    | JFloat f when
-        floor f = f
-        && f >= float System.Int32.MinValue
-        && f <= float System.Int32.MaxValue
-        ->
-        Some(int f)
-    | _ -> None
-
-/// Validate a window descriptor value: usable only as an object whose `offset`
-/// is an integer >= 0 and whose `count` is an integer >= 1. Every other shape is
-/// `None` — NO window — which is the honest default: the grid presents every row
-/// it would have presented without the field, so no malformed value can hide a
-/// row. Split from the store read so the corpus's behaviour vectors, which carry
-/// the raw descriptor, run through the same validation the renderer does.
-let windowOfJVal (jv: JVal) : RowWindow option =
-    match jv with
-    | JObj fields ->
-        let memberInt name =
-            fields |> List.tryPick (fun (k, v) -> if k = name then jvalInt v else None)
-
-        match memberInt "offset", memberInt "count" with
-        | Some offset, Some count when offset >= 0 && count >= 1 -> Some { Offset = offset; Count = count }
-        | _ -> None
-    | _ -> None
-
-/// Read the window descriptor carried at `key` in the State store.
+/// Phase 1892 — read the window descriptor carried at `key` in the State store,
+/// validated by `GridModel.windowOfJVal`.
 let readWindowDescriptor (sources: BindingSources) (key: string) : RowWindow option =
-    Map.tryFind key sources.State
-    |> Option.bind jvalOfResolved
-    |> Option.bind windowOfJVal
-
-/// Does this source window HOST-side for the given window key? The page rule's
-/// test, on the other key: a `Query` whose `dependsOn` names it re-runs on a
-/// window change and returns the window itself.
-let sourceHostWindowsOn (source: Binding<'T>) (windowKey: string) : bool = sourceHostPagesOn source windowKey
+    stateJVal sources key |> Option.bind GridModel.windowOfJVal
 
 /// Resolve a declared `rowTotal`: an integer >= 0, or `None` — no declared total,
 /// so the total is unknown rather than guessed. Every store-held spelling goes
-/// through [[jvalOfResolved]] and the integer test above, so a total written as
+/// through [[jvalOfResolved]] and `GridModel.jvalInt`, so a total written as
 /// `120.0`, as an `int64` or as a JSON element reads the same, and a fractional
 /// or negative one is refused on every host — including under Fable, where an
 /// `unbox<int>` of `2.5` would succeed and smuggle a fraction into a count. A
@@ -1993,7 +1780,7 @@ let sourceHostWindowsOn (source: Binding<'T>) (windowKey: string) : bool = sourc
 /// yield an integral cell.
 let resolveRowTotal (sources: BindingSources) (rowTotal: Binding<int> option) : int option =
     let lifted (raw: obj) : int option =
-        jvalOfResolved raw |> Option.bind jvalInt
+        jvalOfResolved raw |> Option.bind GridModel.jvalInt
 
     let integralCell (c: Fuaran.Core.Cell) : Result<int, string> =
         match cellToFloat c with
@@ -2032,55 +1819,6 @@ let resolveRowTotal (sources: BindingSources) (rowTotal: Binding<int> option) : 
             | _ -> None)
     |> Option.filter (fun n -> n >= 0)
 
-/// The window a grid presents over `range` — the rows it holds after sort and
-/// page. Pure, and the one function every render leg and the corpus's
-/// `grid-window/` vectors run through.
-///
-/// A host-windowed grid slices nothing: `range` IS the window the host returned,
-/// its position is the descriptor's offset (0 where there is none yet), and its
-/// total is the declared one. Otherwise the offset CLAMPS to
-/// `min(offset, max(0, n - count))`, so a window past the end — a filter that
-/// shrank the set under a scrolled viewport — presents the last full window
-/// rather than an empty grid, exactly as a page past the end clamps to the last
-/// page; and the total is the range's own row count, which is exact.
-let presentWindow
-    (hostWindows: bool)
-    (declaredTotal: int option)
-    (window: RowWindow option)
-    (range: 'row list)
-    : PresentedWindow<'row> =
-    if hostWindows then
-        { Rows = range
-          Offset = window |> Option.map _.Offset |> Option.defaultValue 0
-          Total = declaredTotal
-          Windowed = true }
-    else
-        let n = List.length range
-
-        match window with
-        | None ->
-            { Rows = range
-              Offset = 0
-              Total = Some n
-              Windowed = false }
-        | Some w ->
-            let offset = min w.Offset (max 0 (n - w.Count))
-
-            { Rows = range |> List.skip offset |> List.truncate w.Count
-              Offset = offset
-              Total = Some n
-              Windowed = true }
-
-/// Phase 1892 — the page count a HOST-paged grid can state once its total is
-/// declared: `None` where it is not, so the pager keeps to previous/next.
-let declaredPageCount (pageSize: int) (declaredTotal: int option) : int option =
-    declaredTotal |> Option.map (pageCountOf pageSize)
-
-/// Phase 1892 — does this grid's HOST return the window? Then the grid slices
-/// nothing, neither a page nor a window.
-let gridHostWindows (spec: DataGridSpec<'Msg>) : bool =
-    spec.WindowStateKey |> Option.exists (sourceHostWindowsOn spec.Source)
-
 /// Phase 1892 — the page a paged grid shows and the last page it can name, off
 /// the page rule plus the declared total. A client-paged grid counts its own
 /// rows; a HOST-paged grid clamps and states a page count only when the document
@@ -2094,14 +1832,14 @@ let gridPage
     : (string * int * int * bool * int option) option =
     match spec.PageStateKey, spec.PageSize with
     | Some key, Some size when size > 0 ->
-        let hostPages = sourceHostPagesOn spec.Source key
+        let hostPages = GridModel.sourceHostPagesOn spec.Source key
         let requested = readPageDescriptor sources key
 
         let lastPage =
             if hostPages then
-                declaredPageCount size (resolveRowTotal sources spec.RowTotal)
+                GridModel.declaredPageCount size (resolveRowTotal sources spec.RowTotal)
             else
-                Some(pageCountOf size rowCount)
+                Some(GridModel.pageCountOf size rowCount)
 
         let page =
             match lastPage with
@@ -2118,7 +1856,7 @@ let gridPage
 let gridWindow (sources: BindingSources) (spec: DataGridSpec<'Msg>) (range: 'row list) : PresentedWindow<'row> option =
     spec.WindowStateKey
     |> Option.map (fun key ->
-        let hostWindows = sourceHostWindowsOn spec.Source key
+        let hostWindows = GridModel.sourceHostWindowsOn spec.Source key
 
         let declared =
             if hostWindows then
@@ -2126,239 +1864,4 @@ let gridWindow (sources: BindingSources) (spec: DataGridSpec<'Msg>) (range: 'row
             else
                 None
 
-        presentWindow hostWindows declared (readWindowDescriptor sources key) range)
-
-/// Phase 1892 — the ARIA row annotations a windowed grid carries: the table's
-/// `aria-rowcount` (the total plus the header row, `-1` where the total is
-/// unknown) and each presented row's `aria-rowindex` (its 0-based index in the
-/// range plus 2, the header being row 1). `None` where no window is in effect,
-/// so an unwindowed grid's markup is unchanged.
-let windowRowCount (window: PresentedWindow<'row> option) : int option =
-    window
-    |> Option.filter _.Windowed
-    |> Option.map (fun w ->
-        match w.Total with
-        | Some t -> t + 1
-        | None -> -1)
-
-/// The `aria-rowindex` of the presented row at `rowIndex` (0-based within the
-/// presented rows), or `None` where no window is in effect.
-let windowRowIndex (window: PresentedWindow<'row> option) (rowIndex: int) : int option =
-    window
-    |> Option.filter _.Windowed
-    |> Option.map (fun w -> w.Offset + rowIndex + 2)
-
-// ─── Phase 1911 — the window a scrolling viewport writes ─────────────────────
-//
-// The WRITE half of `windowStateKey`, which Phase 1892 left to the interactive
-// hosts: as the grid's scroll viewport moves, the renderer measures which rows
-// are visible and writes `{"offset", "count"}` to the key through the same
-// `SetState` route the pager's `{"page": N}` takes. The measurement and the
-// write decision live HERE, pure, so the Fable viewport in `Render.fs` and the
-// .NET tests run one function rather than a copy each.
-//
-// Parity-locked with the TS renderer's `GridWindowViewport`
-// (`packages/renderer/src/render/Visualisation.tsx`): the same two constants,
-// the same arithmetic, and the same dedupe — a window equal to the one last
-// written, or to the one State already holds, is never written, so a write that
-// re-renders the grid cannot loop.
-//
-// Phase 1922 — the parity is CERTIFIED, not just asserted: the corpus's
-// `grid-window-writer/` vectors (scripted measurements, the expected write at
-// every step) run through `stepWindowWriter` here and through the TS
-// renderer's own `stepWindowWriter`, which `GridWindowViewport` now calls.
-
-/// The row height assumed until a rendered row can be measured (the TS
-/// renderer's `DEFAULT_WINDOW_ROW_HEIGHT_PX`).
-let defaultWindowRowHeightPx: float = 32.0
-
-/// The viewport's height bound, and the height assumed where none is measurable
-/// (the TS renderer's `WINDOW_VIEWPORT_MAX_HEIGHT_PX`).
-let windowViewportMaxHeightPx: float = 480.0
-
-/// What a grid's scroll viewport measured on one scroll, resize or render, in
-/// CSS pixels. A figure `<= 0` is "not measurable" — no row rendered yet, a
-/// container with no layout (a test DOM) — and falls back as the TS viewport's
-/// does: the row height to [[defaultWindowRowHeightPx]], the viewport height to
-/// [[windowViewportMaxHeightPx]]. `HeaderHeight` is the table head's height,
-/// `0` where there is none; `ScrollTop` is the container's scroll offset.
-type ViewportMeasure =
-    { ScrollTop: float
-      HeaderHeight: float
-      RowHeight: float
-      ViewportHeight: float }
-
-/// The window a viewport shows: the first row whose top edge is at or above the
-/// scroll offset (below the header), and how many rows the viewport's height
-/// holds, rounded up so a partly visible last row is in the window. The offset
-/// is never negative and the count never below 1, so the result is always a
-/// USABLE descriptor ([[windowOfJVal]] reads it back unchanged).
-let measureWindow (m: ViewportMeasure) : RowWindow =
-    let rowHeight =
-        if m.RowHeight > 0.0 then
-            m.RowHeight
-        else
-            defaultWindowRowHeightPx
-
-    let viewport =
-        if m.ViewportHeight > 0.0 then
-            m.ViewportHeight
-        else
-            windowViewportMaxHeightPx
-
-    { Offset = max 0 (int (floor ((m.ScrollTop - m.HeaderHeight) / rowHeight)))
-      Count = max 1 (int (ceil (viewport / rowHeight))) }
-
-/// The descriptor a window is written as: `{"offset": n, "count": n}`, the
-/// shape [[windowOfJVal]] validates.
-let windowDescriptorJVal (w: RowWindow) : JVal =
-    JObj [ "offset", JInt w.Offset; "count", JInt w.Count ]
-
-/// One step of a grid's window writer. Given the grid's window key (`None` for a
-/// grid declaring no `windowStateKey`), the window State currently holds at it,
-/// the window this viewport last wrote, and a fresh measurement, returns the
-/// window the viewport has now written and the write it owes — `None` where the
-/// grid names no key (a grid without `windowStateKey` NEVER writes), and `None`
-/// where the measured window equals the one last written or the one State
-/// already holds (an unchanged window is never written).
-let stepWindowWriter
-    (windowKey: string option)
-    (current: RowWindow option)
-    (lastWritten: RowWindow option)
-    (measure: ViewportMeasure)
-    : RowWindow option * (string * JVal) option =
-    match windowKey with
-    | None -> lastWritten, None
-    | Some key ->
-        let next = measureWindow measure
-
-        if lastWritten = Some next || current = Some next then
-            lastWritten, None
-        else
-            Some next, Some(key, windowDescriptorJVal next)
-
-/// Phase 750 — lower a `CellKindErased.TonedPill` for one row: the named field's
-/// text IS the pill's label, and its tone is the map's entry for that text, or
-/// `defaultTone` for a value the map does not mention.
-///
-/// This is the whole of the declarative pill's semantics, in ONE place, because
-/// three surfaces render it (the simple-table cell, the AG Grid cell renderer, and
-/// the TS tier's two renderers) and a per-surface copy of a lookup-with-fallback is
-/// exactly how two hosts come to disagree about an unmapped value. Keyed on the
-/// same `projectRowFieldString` the row-key floor uses, so a numeric or boolean
-/// field maps by its canonical text rather than by a second coercion rule.
-/// Parity-locked with the TS renderers' `tonedPillOf`.
-let tonedPillOf
-    (row: Row)
-    (field: string)
-    (toneMap: Map<string, ToneVariant>)
-    (defaultTone: ToneVariant)
-    : string * ToneVariant =
-    let label = projectRowFieldString row field
-    let tone = toneMap |> Map.tryFind label |> Option.defaultValue defaultTone
-    label, tone
-
-/// Phase 934 / Phase 863 — where a WHOLE-ROWS write commits. Stated ONCE
-/// because a grid's two whole-rows writers — an edited cell and a reordered
-/// row — are writes of the same collection, and two copies of this rule is
-/// exactly how one grid comes to have two destinations:
-///
-///   1. a declared `editStateKey` wins. Phase 863 added it so a *decoded*
-///      grid could say where its writes land at all (the only previous
-///      spelling was a host closure, which crosses the wire as `"<closure>"`);
-///   2. else the Phase-663 floor: the grid's own `source` when that source is
-///      a DIRECT `Binding.State` (the only source shape with a writable slot);
-///   3. else NONE — and the caller must not draw the affordance at all. A
-///      Transform pipeline is not invertible and Static/Query rows are host
-///      data, so an input or a drag handle over them would be a gesture with
-///      no destination: exactly the fake-affordance class Phase 866 charters
-///      against, and the reason this returns an option rather than a no-op
-///      writer.
-let gridWriteDestination (editStateKey: string option) (source: Binding<Row seq>) : Binding<Row seq> option =
-    match editStateKey with
-    | Some key -> Some(Binding.State(key, None))
-    | None ->
-        match source with
-        | Binding.State _ -> Some source
-        | _ -> None
-
-/// Phase 934 — where a REORDER commits: the shared grid destination above,
-/// drawn only where the grid declares itself reorderable.
-let reorderDestination
-    (reorderable: bool)
-    (editStateKey: string option)
-    (source: Binding<Row seq>)
-    : Binding<Row seq> option =
-    if reorderable then
-        gridWriteDestination editStateKey source
-    else
-        None
-
-/// Phase 1123 — where a CROSS-CONTAINER TRANSFER commits at one end: the same
-/// shared grid destination, drawn only where that end declares its side of the
-/// pair (`transferOutKey` on the releasing grid, `transferInKey` on the
-/// receiving one). A third caller of one rule rather than a third rule: a
-/// transfer IS a write of each end's whole rows value, so it mints no
-/// destination of its own — the `reorderable` ruling one field over, extended
-/// across two nodes.
-///
-/// `None` does NOT mean the declaration is inert. The record is still written
-/// to the shared key, because a column that is a filtered view over one
-/// collection has no writable slot and is exactly the case the transfer
-/// vocabulary exists for; what `None` means is that THIS host cannot apply that
-/// half, and the application reading the key does.
-let transferDestination
-    (declared: string option)
-    (editStateKey: string option)
-    (source: Binding<Row seq>)
-    : Binding<Row seq> option =
-    match declared with
-    | Some _ -> gridWriteDestination editStateKey source
-    | None -> None
-
-/// Phase 863 — where an EDITED CELL commits: the shared grid destination
-/// above, drawn only where the grid declares itself editable.
-///
-/// Before this, the renderer resolved the edit destination inline as "the
-/// grid's own source, when that source is `State`" — the Phase-663 floor and
-/// nothing else. So a grid that *declared* `editStateKey` over a `Query`
-/// source decoded, passed pre-emit validation (FUARAN090 was widened by 863
-/// precisely because a declared destination is a real one) and then rendered
-/// with no inputs at all: a declaration that reads as live everywhere except
-/// where it is supposed to act. Routing both writers through one function is
-/// what keeps that from recurring per-affordance.
-let editDestination
-    (editable: bool)
-    (editStateKey: string option)
-    (source: Binding<Row seq>)
-    : Binding<Row seq> option =
-    if editable then
-        gridWriteDestination editStateKey source
-    else
-        None
-
-/// Phase 934 — move the row at `fromIndex` to `toIndex` (both absolute in the
-/// full set). Out-of-range either side, or a no-move, returns the list
-/// UNCHANGED — the caller writes the result back wholesale, so "invalid move
-/// writes nothing new" and "invalid move is refused" are the same behaviour,
-/// with no partial state in between.
-let moveRow (fromIndex: int) (toIndex: int) (rows: 'a list) : 'a list =
-    let count = List.length rows
-
-    if
-        fromIndex = toIndex
-        || fromIndex < 0
-        || fromIndex >= count
-        || toIndex < 0
-        || toIndex >= count
-    then
-        rows
-    else
-        let item = List.item fromIndex rows
-
-        let without =
-            List.mapi (fun i r -> i, r) rows
-            |> List.filter (fun (i, _) -> i <> fromIndex)
-            |> List.map snd
-
-        (List.truncate toIndex without) @ (item :: List.skip toIndex without)
+        GridModel.presentWindow hostWindows declared (readWindowDescriptor sources key) range)

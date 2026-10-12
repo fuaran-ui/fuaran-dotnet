@@ -2278,173 +2278,24 @@ let expandFragmentUncached (prefix: string) (body: Node<'Msg>) : Node<'Msg> =
 [<RequireQualifiedAccess>]
 module private FieldRules =
 
-    /// Whitespace test written by enumeration rather than through
-    /// `Char.IsWhiteSpace`, so the semantics are identical on both pipelines.
-    let private hasWhitespace (s: string) : bool =
-        s |> Seq.exists (fun c -> c = ' ' || c = '\t' || c = '\n' || c = '\r')
+    module Shared = Fuaran.UI.Renderer.FieldRules
 
-    /// The `format` check, DELIBERATELY structural rather than authoritative.
-    /// The attribute projection puts `type=email` / `url` / `tel` on the
-    /// control and the browser's native check is what actually gates a
-    /// user-typed value; this mirrors the SHAPE of that check so the gate also
-    /// covers a programmatically-seeded value (several native checks apply only
-    /// once a control is user-dirty). An RFC 5322 email validator is not what
-    /// this is for — it rejects deliverable addresses and accepts undeliverable
-    /// ones, and the rule slot is not a security boundary.
-    let private matchesFormat (fmt: TextFormat) (s: string) : bool =
-        match fmt with
-        // Exactly the shape `<input type=email>` demands: one `@`, something
-        // either side of it, no whitespace.
-        | TextFormat.Email ->
-            let parts = s.Split('@')
-            parts.Length = 2 && parts[0] <> "" && parts[1] <> "" && not (hasWhitespace s)
-        // `<input type=url>` demands an ABSOLUTE URL — a scheme and a body. The
-        // scheme set is deliberately not enumerated: the control does not
-        // enumerate one either.
-        | TextFormat.Url -> not (hasWhitespace s) && s.Contains "://" && not (s.StartsWith "://")
-        // `<input type=tel>` enforces NOTHING natively, because telephone
-        // formats vary worldwide. Claiming a shape here would make the gate and
-        // the projected attribute disagree, which is the one outcome the
-        // shared-attribute design exists to prevent.
-        | TextFormat.Tel -> true
-
-    /// Ordinal comparison of two harvested values, or `None` when the two are
-    /// not comparable. WIRE_FORMAT: same-variant ISO-8601 strings compare
-    /// lexicographically in chronological order (the `DateRange` ordering,
-    /// borrowed wholesale — an ordinal string compare, no parsing, no locale);
-    /// numbers compare numerically; **a comparison between values of different
-    /// shapes is UNMET, not an error.**
-    let private compareValues (lhs: JVal) (rhs: JVal) : int option =
-        let asFloat v =
-            match v with
-            | JInt i -> Some(float i)
-            | JFloat f -> Some f
-            | _ -> None
-
-        match lhs, rhs with
-        | JStr x, JStr y ->
-            Some(
-                if x < y then -1
-                elif x > y then 1
-                else 0
-            )
-        | (JInt _ | JFloat _), (JInt _ | JFloat _) ->
-            match asFloat lhs, asFloat rhs with
-            | Some x, Some y ->
-                Some(
-                    if x < y then -1
-                    elif x > y then 1
-                    else 0
-                )
-            | _ -> None
-        | _ -> None
-
-    /// Does `lhs <op> rhs` hold? Anything not comparable is UNMET (`false`).
-    let private meets (op: CompareOp) (lhs: JVal) (rhs: JVal) : bool =
-        match op, lhs, rhs with
-        // Booleans carry equality but no ordering. The specification defines
-        // ordering for numbers and same-variant ISO-8601 strings only, so an
-        // ordering operator over booleans is UNMET rather than given an
-        // invented order — claiming less than an order nobody wrote down.
-        | CompareOp.Eq, JBool x, JBool y -> x = y
-        | CompareOp.Neq, JBool x, JBool y -> x <> y
-        | _, JBool _, _
-        | _, _, JBool _ -> false
-        | _ ->
-            match compareValues lhs rhs with
-            | None -> false
-            | Some c ->
-                match op with
-                | CompareOp.Eq -> c = 0
-                | CompareOp.Neq -> c <> 0
-                | CompareOp.Lt -> c < 0
-                | CompareOp.Lte -> c <= 0
-                | CompareOp.Gt -> c > 0
-                | CompareOp.Gte -> c >= 0
+    /// The client's value adapter: a harvested `JVal` as the shape a rule reads.
+    let private ruleValue (v: JVal) : Shared.RuleValue =
+        match v with
+        | JStr s -> Shared.RuleValue.Text s
+        | JInt i -> Shared.RuleValue.Number(float i)
+        | JFloat f -> Shared.RuleValue.Number f
+        | JBool b -> Shared.RuleValue.Flag b
+        | _ -> Shared.RuleValue.Other
 
     /// The first unmet slot of one field's declared rule, as its message.
     /// `values` is the form's own submit harvest (`SubmitPayload.harvestFields`
     /// keyed by field id) — the same values the submit would carry, read
-    /// exactly as this renderer's own controls read them.
+    /// exactly as this renderer's own controls read them. `pattern` is left to
+    /// the browser (see above), so no pattern predicate is passed.
     let unmet (resolveText: TextSource -> string) (values: Map<string, JVal>) (field: FormField<'Msg>) : string option =
-        match field.Rule with
-        | None -> None
-        | Some rule ->
-            let value = Map.tryFind field.Id values
-
-            let text =
-                match value with
-                | Some(JStr s) -> Some s
-                | _ -> None
-
-            // An EMPTY value is not length- or format-checked. That is exactly
-            // what the browser does with `minlength` / `type=email` on a
-            // control the author did not mark required, and the whole point of
-            // projecting into the platform's attributes is that the two agree.
-            // `required` is the slot that makes emptiness a failure.
-            //
-            // Length rules read a STRING value only: a rule never duplicates a
-            // bound its control already holds, so a numeric control's bounds are
-            // `RangedNumber`'s `min`/`max`, not a length.
-            let lengthAndFormat =
-                match text with
-                | Some s when s <> "" ->
-                    [ (match rule.MinLength with
-                       | Some n when s.Length < n -> Some(sprintf "Must be at least %d characters." n)
-                       | _ -> None)
-                      (match rule.MaxLength with
-                       | Some n when s.Length > n -> Some(sprintf "Must be at most %d characters." n)
-                       | _ -> None)
-                      (match rule.Format with
-                       | Some fmt when not (matchesFormat fmt s) ->
-                           Some(
-                               match fmt with
-                               | TextFormat.Email -> "Enter an email address."
-                               | TextFormat.Url -> "Enter a URL."
-                               | TextFormat.Tel -> "Enter a telephone number."
-                           )
-                       | _ -> None) ]
-                    |> List.tryPick id
-                | _ -> None
-
-            let compareUnmet =
-                match rule.Compare with
-                | None -> None
-                | Some cmp ->
-                    match cmp.Against with
-                    | Binding.State(key, _) ->
-                        match value, Map.tryFind key values with
-                        | Some l, Some r when meets cmp.Op l r -> None
-                        | _ -> Some "This value does not match the field it is compared against."
-                    // RECORDED KNOWN LIMIT — only a `State`-keyed operand is
-                    // read on this tier, which is the shape WIRE_FORMAT
-                    // describes ("a form field with no `value` already
-                    // auto-binds `State(<its own id>)`, so
-                    // `{"$type":"State","key":"<sibling field id>"}` reads a
-                    // sibling with no addressing vocabulary of its own"). Any
-                    // other binding shape is NOT evaluated and is reported here
-                    // rather than blocked: refusing a submit over an operand we
-                    // did not read would claim a check we did not perform.
-                    | _ -> None
-
-            [ lengthAndFormat; compareUnmet ]
-            |> List.tryPick id
-            |> Option.map (fun generated ->
-                // The authored `message` is the prose shown when SOME slot is
-                // unmet — one message per rule, not per slot — so it replaces
-                // the generated sentence wholesale when present.
-                match rule.Message with
-                | Some ts -> resolveText ts
-                | None -> generated)
-
-    /// The control `type` a `format` rule selects for a text input. Absent
-    /// rule / absent `format` leaves the pre-864 `text`, byte-identically.
-    let textInputType (rule: FieldRule option) : string =
-        match rule |> Option.bind (fun r -> r.Format) with
-        | Some TextFormat.Email -> "email"
-        | Some TextFormat.Url -> "url"
-        | Some TextFormat.Tel -> "tel"
-        | None -> "text"
+        Shared.unmet None (resolveText >> Some) (fun id -> Map.tryFind id values |> Option.map ruleValue) field
 
     /// The platform's own constraint attributes for a declared rule.
     /// `withPattern` is false on controls where HTML's `pattern` does not apply
@@ -2470,22 +2321,7 @@ module private FieldRules =
               // the submit gate's decision is inspectable; the gate, not this
               // attribute, is what enforces it.
               match r.Compare with
-              | Some c ->
-                  let opText =
-                      match c.Op with
-                      | CompareOp.Eq -> "eq"
-                      | CompareOp.Neq -> "neq"
-                      | CompareOp.Lt -> "lt"
-                      | CompareOp.Lte -> "lte"
-                      | CompareOp.Gt -> "gt"
-                      | CompareOp.Gte -> "gte"
-
-                  let againstText =
-                      match c.Against with
-                      | Binding.State(key, _) -> key
-                      | _ -> ""
-
-                  prop.custom ("data-fuaran-field-compare", opText + ":" + againstText)
+              | Some c -> prop.custom ("data-fuaran-field-compare", Shared.compareDeclaration c)
               | None -> () ]
 
     /// Mark / clear the unmet fields in the DOM. `data-fuaran-field-error` is
@@ -2810,7 +2646,7 @@ let private announceTransfer (nodeId: string) (message: string) : unit =
 // a vertical scroll container that measures the visible rows on mount, on every
 // render, on scroll and on resize, and writes `{"offset", "count"}` through the
 // same `SetState` route the pager's `{"page": N}` takes. The measurement and the
-// dedupe are `BindingResolver.stepWindowWriter` — pure, shared with the .NET
+// dedupe are `GridModel.stepWindowWriter` — pure, shared with the .NET
 // tests, and parity-locked with the TS renderer's `GridWindowViewport` — so an
 // unchanged window is never written and a write that re-renders cannot loop.
 //
@@ -2873,17 +2709,16 @@ type private GridWindowViewportProps =
        total: int option
        colSpan: int
        windowKey: string
-       current: BindingResolver.RowWindow option
+       current: GridModel.RowWindow option
        write: string -> JVal -> unit
        renderTable: ReactElement list -> ReactElement list -> ReactElement |}
 
 let private renderGridWindowViewport (props: GridWindowViewportProps) : ReactElement =
     let viewportRef = React.useElementRef ()
 
-    let rowHeight, setRowHeight =
-        React.useState BindingResolver.defaultWindowRowHeightPx
+    let rowHeight, setRowHeight = React.useState GridModel.defaultWindowRowHeightPx
 
-    let lastWritten = React.useRef (None: BindingResolver.RowWindow option)
+    let lastWritten = React.useRef (None: GridModel.RowWindow option)
 
     let measure () =
         match viewportRef.current with
@@ -2896,7 +2731,7 @@ let private renderGridWindowViewport (props: GridWindowViewportProps) : ReactEle
                 setRowHeight measured
 
             let written, write =
-                BindingResolver.stepWindowWriter
+                GridModel.stepWindowWriter
                     (Some props.windowKey)
                     props.current
                     lastWritten.current
@@ -2943,7 +2778,7 @@ let private renderGridWindowViewport (props: GridWindowViewportProps) : ReactEle
         [ prop.ref viewportRef
           prop.style
               [ style.custom ("overflowY", "auto")
-                style.custom ("maxHeight", string BindingResolver.windowViewportMaxHeightPx + "px") ]
+                style.custom ("maxHeight", string GridModel.windowViewportMaxHeightPx + "px") ]
           prop.onScroll (fun _ -> measureRef.current ())
           prop.children [ props.renderTable (spacer props.offset) (spacer trailing) ] ]
 
@@ -4111,7 +3946,7 @@ let rec private renderKind
         let selected = BindingResolver.readSelectedItem ctx.Sources spec.SelectionStateKey
 
         let focusable =
-            BindingResolver.focusableTreeItem expandedKeyNamed expanded selected spec.Items
+            TreeModel.focusableTreeItem expandedKeyNamed expanded selected spec.Items
 
         // Write the open set back. The WHOLE set is written rather than a
         // per-row flag, because the specification fixes one shape for this slot
@@ -4218,7 +4053,7 @@ let rec private renderKind
 
             items
             |> List.mapi (fun i item ->
-                let isOpen = BindingResolver.treeItemExpanded expandedKeyNamed expanded item
+                let isOpen = TreeModel.treeItemExpanded expandedKeyNamed expanded item
                 let hasChildren = not (List.isEmpty item.Children)
                 let label = renderText ctx item.Label
 
@@ -5577,7 +5412,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                 // authored before 864 renders byte-identically.
                 Html.input (
                     [ prop.className "fuaran-form-input"
-                      prop.type' (FieldRules.textInputType field.Rule)
+                      prop.type' (Fuaran.UI.Renderer.FieldRules.textInputType field.Rule)
                       prop.id field.Id
                       prop.required field.Required
                       prop.value current
@@ -6740,7 +6575,7 @@ and private renderGrid
             // library settles for itself; the declared order is the same file.
             let sorted =
                 rows
-                |> BindingResolver.sortRowsByDescriptor
+                |> GridModel.sortRowsByDescriptor
                     spec.Columns
                     (BindingResolver.effectiveSortDescriptor spec.SortStateKey spec.DefaultSort ctx.Sources)
 
@@ -6803,7 +6638,7 @@ and private renderGrid
                 (match resolution with
                  | BindingResolver.Resolved seq -> Seq.toList seq
                  | _ -> [])
-                |> BindingResolver.sortRowsByDescriptor spec.Columns sortDescriptor
+                |> GridModel.sortRowsByDescriptor spec.Columns sortDescriptor
 
             // Phase 862 — `pageStateKey` + `pageSize`: the grid shows one page
             // at a time and owns the pager that moves between them. `hostPages`
@@ -6821,7 +6656,7 @@ and private renderGrid
 
             // Phase 1892 — a grid whose HOST returns the window slices nothing:
             // the rows it resolved ARE the window, page and all.
-            let hostWindows = BindingResolver.gridHostWindows spec
+            let hostWindows = GridModel.gridHostWindows spec
 
             // The rows this render actually paints. `rowOffset` is what makes
             // the page-relative index the cell loop hands back addressable in
@@ -6830,7 +6665,7 @@ and private renderGrid
             let pageRows, pageOffset =
                 match pagination with
                 | Some(_, size, page, false) when not hostWindows ->
-                    BindingResolver.sliceRowsToPage size page rows, (page - 1) * size
+                    GridModel.sliceRowsToPage size page rows, (page - 1) * size
                 | _ -> rows, 0
 
             // Phase 1892 — the row window, over the page. A client-sliced
@@ -6883,7 +6718,7 @@ and private renderGrid
                 // for the grid): an editable grid commits an edited cell as the WHOLE updated
                 // rows value, so every other reader of that key (a Chart sourced on the same
                 // `$state` entry) re-renders with the edit.
-                // Phase 863 — WHERE it commits is `BindingResolver.editDestination`, the same
+                // Phase 863 — WHERE it commits is `GridModel.editDestination`, the same
                 // precedence the reorder path resolves through: a declared `editStateKey` wins,
                 // else the 663 floor (the grid's own `State` source), else no destination and
                 // no input. That is what makes a declared destination act — a `Query`-sourced
@@ -6908,7 +6743,7 @@ and private renderGrid
                 // HTML obtains this destination out of band from its own core,
                 // not by reading it back out of its own markup.
                 let editCommit: (int -> string -> obj -> unit) option =
-                    BindingResolver.editDestination spec.Editable spec.EditStateKey spec.Source
+                    GridModel.editDestination spec.Editable spec.EditStateKey spec.Source
                     |> Option.map (fun dest ->
                         fun (rowIndex: int) (field: string) (newValue: obj) ->
                             let absolute = rowOffset + rowIndex
@@ -6951,7 +6786,7 @@ and private renderGrid
                           | _ -> None ]
 
                 let pasteBlock: (int -> int -> string -> bool) option =
-                    BindingResolver.editDestination spec.Editable spec.EditStateKey spec.Source
+                    GridModel.editDestination spec.Editable spec.EditStateKey spec.Source
                     |> Option.map (fun dest ->
                         fun (rowIndex: int) (columnIndex: int) (clipboardText: string) ->
                             let block = GridPaste.parse clipboardText
@@ -7027,10 +6862,10 @@ and private renderGrid
                     match sortDescriptor with
                     | Some _ -> None
                     | None ->
-                        BindingResolver.reorderDestination spec.Reorderable spec.EditStateKey spec.Source
+                        GridModel.reorderDestination spec.Reorderable spec.EditStateKey spec.Source
                         |> Option.map (fun dest ->
                             fun (fromAbs: int) (toAbs: int) ->
-                                let moved = BindingResolver.moveRow fromAbs toAbs rows
+                                let moved = GridModel.moveRow fromAbs toAbs rows
 
                                 // `moveRow` returns the SAME list instance for an
                                 // out-of-range or no-op move; writing it back
@@ -7049,7 +6884,7 @@ and private renderGrid
                 // case cross-container transfer exists for — the record is still
                 // written to the shared key, and the application applies it.
                 let releaseCommit: (int -> unit) option =
-                    BindingResolver.transferDestination spec.TransferOutKey spec.EditStateKey spec.Source
+                    GridModel.transferDestination spec.TransferOutKey spec.EditStateKey spec.Source
                     |> Option.map (fun dest ->
                         fun (absolute: int) ->
                             let remaining = GridTransfer.removeAt absolute rows
@@ -7102,7 +6937,7 @@ and private renderGrid
                 // because it is the only part of a transfer that is promised on
                 // every source shape.
                 let transferInDestination =
-                    BindingResolver.transferDestination spec.TransferInKey spec.EditStateKey spec.Source
+                    GridModel.transferDestination spec.TransferInKey spec.EditStateKey spec.Source
 
                 let receive (lifted: GridTransfer.Lifted<Row>) (index: int) : unit =
                     match spec.TransferInKey with
@@ -7488,7 +7323,7 @@ and private renderGrid
                           // Phase 1892 — a windowed grid tells assistive
                           // technology its rows are a slice; an unwindowed one
                           // carries no attribute, so its markup is unchanged.
-                          match BindingResolver.windowRowCount window with
+                          match GridModel.windowRowCount window with
                           | Some count -> prop.custom ("aria-rowcount", count)
                           | None -> ()
                           prop.children
@@ -7594,7 +7429,7 @@ and private renderGrid
                                                       )
                                                       prop.onClick (fun _ ->
                                                           gridRowSelected (runAction ctx) parentNodeId spec row)
-                                                      match BindingResolver.windowRowIndex window rowIndex with
+                                                      match GridModel.windowRowIndex window rowIndex with
                                                       | Some index -> prop.custom ("aria-rowindex", index)
                                                       | None -> () ]
                                                     @ reorderRowProps rowIndex
@@ -7890,7 +7725,7 @@ and private renderGridCell
         // vocabulary and text as the hosted `Pill` arm above: the wire variant exists
         // to make the tone rule *expressible*, not to render differently, and a
         // parity test pins the two against each other.
-        let label, tone = BindingResolver.tonedPillOf row field toneMap defaultTone
+        let label, tone = GridModel.tonedPillOf row field toneMap defaultTone
 
         Html.span [ prop.className (Css.gridCellPill (Theme.toneVar tone)); prop.text label ]
     | CellKindErased.Progress(fraction, label) ->

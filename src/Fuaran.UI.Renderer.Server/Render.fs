@@ -1732,14 +1732,14 @@ and private renderKind
         let selected = BindingResolver.readSelectedItem ctx.Sources spec.SelectionStateKey
 
         let focusable =
-            BindingResolver.focusableTreeItem expandedKeyNamed expanded selected spec.Items
+            TreeModel.focusableTreeItem expandedKeyNamed expanded selected spec.Items
 
         let rec renderItems (level: int) (items: TreeItem list) : ReactElement list =
             let setSize = List.length items
 
             items
             |> List.mapi (fun i item ->
-                let isOpen = BindingResolver.treeItemExpanded expandedKeyNamed expanded item
+                let isOpen = TreeModel.treeItemExpanded expandedKeyNamed expanded item
                 let hasChildren = not (List.isEmpty item.Children)
                 let label = renderText ctx item.Label
 
@@ -2558,15 +2558,8 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
             // Phase 864 — a declared `format` rule retypes the control so the
             // BROWSER enforces it (`<input type=email|url|tel>`). Absent, the
             // control stays `text` and the emitted markup is byte-identical to
-            // a pre-864 tree.
-            let t =
-                match field.Rule |> Option.bind (fun r -> r.Format) with
-                | Some TextFormat.Email -> "email"
-                | Some TextFormat.Url -> "url"
-                | Some TextFormat.Tel -> "tel"
-                | None -> "text"
-
-            t, (BindingResolver.tryResolve ctx.Sources v |> Option.defaultValue "")
+            // a pre-864 tree. One mapping, shared with the client (`FieldRules`).
+            FieldRules.textInputType field.Rule, (BindingResolver.tryResolve ctx.Sources v |> Option.defaultValue "")
         | FormFieldKind.Number(FieldView.Number v, _) ->
             let v =
                 v
@@ -3073,22 +3066,7 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
                       | Some n -> prop.custom ("maxlength", string n)
                       | None -> ()
                       match r.Compare with
-                      | Some c ->
-                          let opText =
-                              match c.Op with
-                              | CompareOp.Eq -> "eq"
-                              | CompareOp.Neq -> "neq"
-                              | CompareOp.Lt -> "lt"
-                              | CompareOp.Lte -> "lte"
-                              | CompareOp.Gt -> "gt"
-                              | CompareOp.Gte -> "gte"
-
-                          let againstText =
-                              match c.Against with
-                              | Binding.State(key, _) -> key
-                              | _ -> ""
-
-                          prop.custom ("data-fuaran-field-compare", opText + ":" + againstText)
+                      | Some c -> prop.custom ("data-fuaran-field-compare", FieldRules.compareDeclaration c)
                       | None -> () ]
 
             // Phase 1648 — the per-control class, from the SHARED mapping the
