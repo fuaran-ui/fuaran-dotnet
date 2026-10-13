@@ -2475,10 +2475,12 @@ module Binding =
     /// `inline` is what makes the target type available at all. Fable erases a
     /// non-inline function's generic parameter, so `typeof<'T>` inside one has
     /// nothing to resolve; inlining puts the call site's own instantiation
-    /// here. Every call site already writes the type argument explicitly
-    /// (`projectSelectionField<obj>` on the four decoded paths,
-    /// `projectSelectionField<'T>` from the typed authoring surface), so
-    /// nothing about how it is CALLED changes.
+    /// here. Every call site writes the type argument explicitly: the decoder
+    /// passes each concrete instantiation into `bindingGeneric`
+    /// (`projectSelectionField<float>`, `<int>`, `<string>`, `<bool>` and the
+    /// list and record shapes; Phase 2174), the typed authoring surface passes
+    /// `projectSelectionField<'T>` through its own `inline`, and the renderers
+    /// that project an untyped cell ask for `projectSelectionField<obj>`.
     ///
     /// The coercions mirror `Convert.ChangeType`'s and no more: a numeric
     /// string becomes a number, anything becomes its own string form, and
@@ -2486,9 +2488,8 @@ module Binding =
     /// become `NaN` — it throws, with the same didactic the .NET leg raises,
     /// because the whole point is that the two hosts answer alike.
     ///
-    /// `'T = obj` — which is what the decoded paths ask for — wants no
-    /// coercion at all and takes the value as it is. That keeps the wire path
-    /// byte-identical to before this change.
+    /// `'T = obj` — which is what the renderers' untyped projection asks for —
+    /// wants no coercion at all and takes the value as it is.
     let inline private coerceCell<'T> (field: string) (v: obj) : 'T =
         let target = typeof<'T>
 
