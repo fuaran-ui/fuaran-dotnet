@@ -7818,7 +7818,7 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.93.1 — the slot opened after v0.93.0 was released (DRAFT — untagged)
+## 0.94.0 — the slot opened after v0.93.0 was released; advanced from 0.93.1 on 2026-10-13 ahead of Phase 2052, whose change is breaking (DRAFT — untagged)
 
 _Class: **BEHAVIOUR change + additive API** — no type is removed or retyped and no wire byte moves. `v0.93.0`
 was tagged and published at `b654b31` while a commit numbered 0.93.0 was still landing after it: Phase 2198
