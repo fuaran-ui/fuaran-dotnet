@@ -51,7 +51,9 @@ let private row slot posture phase =
 /// The full table — one row per closure-bearing slot in `WIRE_FORMAT.md` §4.
 let all: SlotCapability list =
     [ // ── Write-back defaults (the 423/426/427 family) ──
-      row "FilterKind.onChange" SlotPosture.WriteBack "423"
+      // Form fields AND filter chips: a chip's control has been a FormFieldKind since
+      // the filters unification, so the Phase 423 chip handler is this slot. Phase 2052
+      // retired the `FilterKind.onChange` row, which named the DU that unification removed.
       row "FormFieldKind.onChange" SlotPosture.WriteBack "426"
       row "SelectSpec.onChange" SlotPosture.WriteBack "426"
       row "SelectSpec.onChangeMulti" SlotPosture.WriteBack "426"
@@ -169,7 +171,6 @@ let decoderPlaceholderSlots: string list =
       "TabsSpec.onSelectTag"
       "StepperSpec.onSelect"
       "DisclosureSpec.onToggle"
-      "FilterKind.onChange"
       "CellKindErased.handlers"
       "GridSpec.onRowClick"
       "ChartSpec.onPointClick"

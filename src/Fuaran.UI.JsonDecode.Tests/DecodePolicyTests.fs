@@ -368,7 +368,7 @@ let preEmitMirror =
                   // Advisory, deliberately: an authoring host may build a tree
                   // for a different deployment under a different policy, and the
                   // decode boundary is where a policy is enforced.
-                  Expect.equal severity Fuaran.UI.PreEmitValidate.DefectSeverity.Warning "advisory severity")
+                  Expect.equal severity Fuaran.Core.Severity.Warning "advisory severity")
 
           testCase "the plain walk is unchanged" (fun () ->
               let tree =

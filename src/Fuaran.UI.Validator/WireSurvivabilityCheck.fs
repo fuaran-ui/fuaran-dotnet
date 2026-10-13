@@ -35,6 +35,7 @@ module Fuaran.UI.Validator.WireSurvivabilityCheck
 //  `WireSurvivability`; only that table is shared.
 // ============================================================================
 
+open Fuaran.UI.PreEmitValidate
 open Fuaran.UI.Validator.Findings
 open Fuaran.UI.Validator.Syntax
 
@@ -59,7 +60,11 @@ let private sites (sources: ParsedSource list) : Location list =
 /// `orchestrated = true` escalates the finding to Error (an AI-emitted tree
 /// must stay wire-survivable); hand-authored source gets a Warning (advisory).
 let check (orchestrated: bool) (sources: ParsedSource list) : Finding list =
-    let severity = if orchestrated then Error else Warning
+    let severity =
+        if orchestrated then
+            Fuaran.Core.Severity.Error
+        else
+            Fuaran.Core.Severity.Warning
 
     let message =
         sprintf
@@ -72,5 +77,6 @@ let check (orchestrated: bool) (sources: ParsedSource list) : Finding list =
 
     sites sources
     |> List.map (fun loc ->
-        { create severity "FUARAN084" loc message with
-            Suggestion = Some alternative })
+        create FindingCodes.computedHostOnly loc message
+        |> withSeverity severity
+        |> withRemedy alternative)

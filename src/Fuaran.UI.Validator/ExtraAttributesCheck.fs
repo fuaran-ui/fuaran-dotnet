@@ -20,6 +20,7 @@ module Fuaran.UI.Validator.ExtraAttributesCheck
 // ============================================================================
 
 
+open Fuaran.UI.PreEmitValidate
 open Fuaran.UI.Validator.Findings
 open Fuaran.UI.Validator.Syntax
 
@@ -52,8 +53,7 @@ let check (sources: ParsedSource list) : Finding list =
 
             let base' =
                 create
-                    Warning
-                    "FUARAN060"
+                    FindingCodes.extraAttributeKey
                     call.Location
                     (sprintf
                         "Node.withExtraAttribute key \"%s\" is %s. The render-time Sanitize.sanitizeExtraAttributes floor will drop this entry, but the build-time signal catches it earlier. Use a data-* or aria-* key, or move the behaviour into a typed Action / Accessibility field."

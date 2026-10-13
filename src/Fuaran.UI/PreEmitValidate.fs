@@ -2050,14 +2050,6 @@ let private emissionGrammarDefects (n: Node<'Msg>) : PreEmitDefect list =
 
     List.ofSeq defects
 
-/// Severity of a described defect. Local to this module (not `Fuaran.Core.Severity`)
-/// so `Fuaran.UI` keeps its lean dependency set; the .NET validator maps it to the
-/// Core type at its own boundary.
-[<RequireQualifiedAccess>]
-type DefectSeverity =
-    | Error
-    | Warning
-
 /// One row of the pre-emit code table: one MESSAGE SHAPE a defect can render to.
 ///
 /// `Variant` is the defect case, qualified by the sub-case or flag that selects a
@@ -2073,7 +2065,7 @@ type DefectSeverity =
 type DefectCodeRow =
     { Variant: string
       Code: string
-      Severity: DefectSeverity
+      Severity: Severity
       Template: string
       Notes: string }
 
@@ -2082,7 +2074,7 @@ type DefectCodeRow =
 [<RequireQualifiedAccess>]
 module DefectCodes =
 
-    let private row (variant: string, code: string, severity: DefectSeverity, template: string, notes: string) =
+    let private row (variant: string, code: string, severity: Severity, template: string, notes: string) =
         { Variant = variant
           Code = code
           Severity = severity
@@ -2091,740 +2083,742 @@ module DefectCodes =
 
     /// Every row, in the order the defect cases are declared.
     let table: DefectCodeRow list =
-        [ row ("DuplicateNodeId", "FUARAN-DUP-ID", DefectSeverity.Error, "node id '{nodeId}' appears {count} times", "")
-          row ("EmptyNodeId", "FUARAN-EMPTY-ID", DefectSeverity.Error, "a node carries an empty id", "")
+        [ row ("DuplicateNodeId", "FUARAN-DUP-ID", Severity.Error, "node id '{nodeId}' appears {count} times", "")
+          row ("EmptyNodeId", "FUARAN-EMPTY-ID", Severity.Error, "a node carries an empty id", "")
           row (
               "EmptyCustomKindIdentifier",
               "FUARAN-EMPTY-CUSTOM",
-              DefectSeverity.Error,
+              Severity.Error,
               "Custom node has empty moduleId='{moduleId}' / componentId='{componentId}'",
               ""
           )
           row (
               "KindNotAdmitted",
               "FUARAN104",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "node '{nodeId}' is a '{kind}', which decode policy '{policy}' does not admit",
               "Phase 1020"
           )
           row (
               "CustomPropSchemaViolation",
-              "FUARAN068",
-              DefectSeverity.Error,
+              // The one code whose literal lives outside this table: `CustomRegistry`
+              // compiles before this module and stamps it on every prop defect it returns.
+              CustomRegistry.propDefectCode,
+              Severity.Error,
               "custom node '{nodeId}' ({moduleId}/{componentId}) violates its declared prop schema — {propDefectCount} prop defect(s)",
               ""
           )
           row (
               "TabHeaderCountMismatch",
               "FUARAN047",
-              DefectSeverity.Error,
+              Severity.Error,
               "tabs '{nodeId}' declares {headerCount} headers but {childrenCount} children — the renderer aligns headers 1:1 with children by index",
               ""
           )
           row (
               "TabTagCountMismatch",
               "FUARAN048",
-              DefectSeverity.Error,
+              Severity.Error,
               "tabs '{nodeId}' declares {tagCount} tags but {childrenCount} children — the tag → index round-trip needs parity",
               ""
           )
           row (
               "TabActiveTagWithoutTags",
               "FUARAN049",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "tabs '{nodeId}' sets ActiveTag but TabTags = None — the tag binding has nothing to resolve against",
               ""
           )
           row (
               "DecorativeFilter",
               "FUARAN074",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "filter '{name}' (declared on '{declaringNodeId}') is consumed by nothing — no Binding.Filter read, Query.dependsOn, or Transform param references it",
               "Phases 421, 424"
           )
           row (
               "DanglingFilterReference",
               "FUARAN075",
-              DefectSeverity.Error,
+              Severity.Error,
               "'{readerNodeId}' declares a filter edge on '{name}' (dependsOn / Transform param source) but no Filters chip declares that name",
               "Phases 421, 424, 862, 1892"
           )
           row (
               "UnreferencedTransformParam",
               "FUARAN076",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "'{readerNodeId}' declares Transform param '{name}' but the pipeline never references it (paramsOf)",
               "Phases 421, 424"
           )
           row (
               "BlankGridColumn",
               "FUARAN077",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "grid '{nodeId}' column '{columnLabel}' has neither a value closure nor a field — it renders blank",
               "Phase 425"
           )
           row (
               "UnstableRowIdentity",
               "FUARAN078",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "grid '{nodeId}' has neither rowKey nor rowKeyField — no stable row identity",
               "Phases 425, 427"
           )
           row (
               "OrphanQueryFetch",
               "FUARAN072",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "'{readerNodeId}' calls into Query '{queryName}' but no Binding.Query in the tree reads that slot — an orphan fetch (name typo?)",
               "Phase 428"
           )
           row (
               "CallResultDropped",
               "FUARAN073",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "'{readerNodeId}' calls '{endpoint}' with neither an onResult closure nor an into target — the response is dropped (fine for a command endpoint; add into for data)",
               "Phase 428"
           )
           row (
               "DanglingSelection",
               "FUARAN070",
-              DefectSeverity.Error,
+              Severity.Error,
               "'{readerNodeId}' reads Binding.Selection on '{target}' but no node with that id exists — point the binding at the selection-producing node's id",
               "Phase 427"
           )
           row (
               "SelectionOverNonProducer",
               "FUARAN071",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "'{readerNodeId}' reads Binding.Selection on '{target}', which is not a selection-producing (Visualisation) node — nothing in the tree will write that selection",
               "Phase 427"
           )
           row (
               "DuplicateWriteBackKey",
               "FUARAN085",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "state key '{stateKey}' has {writerCount} handler-free write-back writers ({writers}) — typing in one silently overwrites the other's captured value; give each field its own key",
               "Phase 596"
           )
           row (
               "InertControl",
               "FUARAN069",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "{control} on '{nodeId}' has no event handler and no writable value binding — bind its value to $state.<key> / $filters.<name>, or supply the handler (Phase 426 write-back default)",
               "Phases 423, 426"
           )
           row (
               "DuplicateSwitchMatch",
               "FUARAN082",
-              DefectSeverity.Error,
+              Severity.Error,
               "Switch '{nodeId}' has two or more cases matching '{matchValue}' — first-match-wins makes the later case dead; give each case a distinct match value (Phase 392)",
               "Phase 392"
           )
           row (
               "VisibleStateNoWriter",
               "FUARAN148",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "node '{nodeId}' is visible only while state key '{key}' is true, and nothing in this tree writes it — a default-less State binding resolves to false at a bool slot, so the node is removed with nothing saying why; declare the default (true = visible unless something says otherwise) or add the writer (Phase 1535)",
               "Phases 782, 1535"
           )
           row (
               "SwitchCaseSelectorShape.BothPresent",
               "FUARAN147",
-              DefectSeverity.Error,
+              Severity.Error,
               "Switch '{nodeId}' case {caseIndex} carries both 'match' and 'when' — exactly one selects a case; 'match' compares the switch's `on` selector against a literal, 'when' evaluates a Binding<bool> and needs no selector (Phase 1535)",
               "Phase 1535"
           )
           row (
               "SwitchCaseSelectorShape.NeitherPresent",
               "FUARAN147",
-              DefectSeverity.Error,
+              Severity.Error,
               "Switch '{nodeId}' case {caseIndex} carries neither 'match' nor 'when' — a case that names no condition can never be selected; give it a literal 'match' against the switch's `on` selector, or a 'when' Binding<bool> predicate (Phase 1535)",
               "Phase 1535"
           )
           row (
               "UngroundedSwitchStateKey",
               "FUARAN083",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "Switch '{nodeId}' has an empty stateKey — it can never resolve a case and is stuck on its default; name the state key the switch selects on (Phase 392)",
               "Phases 12, 392, 768"
           )
           row (
               "ChartFieldUngrounded",
               "FUARAN086",
-              DefectSeverity.Error,
+              Severity.Error,
               "chart '{nodeId}' references field '{field}' absent from the schema its own source PRODUCES [{schemaColumns}] — it would lower silently flat/empty; fix the name, or change the pipeline so it produces the column (Phase 640/1486)",
               "Phases 640, 1486"
           )
           row (
               "ChartFieldTypeMismatch",
               "FUARAN087",
-              DefectSeverity.Error,
+              Severity.Error,
               "chart '{nodeId}' plots field '{field}' of type '{columnType}' — the lowering reads non-numeric cells as 0.0, a silently flat series (Phase 640)",
               "Phase 640"
           )
           row (
               "ChartAnnotationNonFinite",
               "FUARAN137",
-              DefectSeverity.Error,
+              Severity.Error,
               "chart '{nodeId}' {subject} carries the value {value} — an annotation addresses a place on the value axis, and NaN / Infinity names none; it would also enter the axis domain and take every gridline, tick and mark to NaN with it. Give a finite value in the axis's own units, or drop the annotation (Phase 1490)",
               "Phases 1490, 1492"
           )
           row (
               "ChartAnnotationKeyUngrounded.Absent",
               "FUARAN138",
-              DefectSeverity.Error,
+              Severity.Error,
               "chart '{nodeId}' {subject} addresses the category '{key}', which none of the rows carries — a band axis's domain IS the set of keys in its rows, so a key outside that set names no band to draw at. Use a key the x column carries, or declare xScale 'Temporal' and address a date (Phase 1491)",
               "Phases 1491, 1492"
           )
           row (
               "ChartAnnotationKeyUngrounded.Repeated",
               "FUARAN138",
-              DefectSeverity.Error,
+              Severity.Error,
               "chart '{nodeId}' {subject} addresses the category '{key}', which {occurrences} rows carry — an annotation is placed from the band's own extent, and a duplicated key has two, so which one it lands on would depend on traversal order rather than on the data. Aggregate the rows to one per key, or address a key that appears once (Phase 1491)",
               "Phases 1491, 1492"
           )
           row (
               "ChartAnnotationAxisMismatch",
               "FUARAN139",
-              DefectSeverity.Error,
+              Severity.Error,
               "chart '{nodeId}' {subject} carries a {addressForm} address on a {axisForm} x axis — an annotation addresses the axis in the axis's own form, and the language refuses the mismatch rather than coercing it (a date read as a category grounds against no band; a category read as a date lands on 1970-01-01). Give the address in the axis's form, or change the axis (Phase 1491)",
               "Phases 1491, 1492"
           )
           row (
               "ChartAnnotationDateUnparseable",
               "FUARAN140",
-              DefectSeverity.Error,
+              Severity.Error,
               "chart '{nodeId}' {subject} carries the date '{iso}', which is not a readable ISO-8601 day — a temporal address enters the axis extent before the ticks are chosen, so an unreadable one would be placed at 1970-01-01 and drag the whole axis back with it. Give a canonical YYYY-MM-DD date naming a real calendar day (Phase 1491)",
               "Phases 1491, 1492"
           )
           row (
               "ChartAnnotationRangeUnordered",
               "FUARAN141",
-              DefectSeverity.Error,
+              Severity.Error,
               "chart '{nodeId}' {subject} runs from '{fromText}' to '{toText}', which is backwards on the axis it addresses — a band names an interval, and the ends are not interchangeable. Swap them; the language will not, because a pair written backwards is a mistake about the data and drawing the band you did not describe would carry it through to the reader (Phase 1492)",
               "Phase 1492"
           )
           row (
               "ChartPieSeriesShape",
               "FUARAN088",
-              DefectSeverity.Error,
+              Severity.Error,
               "pie chart '{nodeId}' declares {seriesCount} series — the pie lowering refuses anything but exactly one (no silent truncation; Phase 638/640)",
               "Phases 638, 640"
           )
           row (
               "ChartStackedMeaningless",
               "FUARAN089",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "chart '{nodeId}' sets Stacked=true on kind {kind} — the lowering ignores it (dead intent; Phase 637/640)",
               "Phases 637, 640"
           )
           row (
               "InertEditableGrid",
               "FUARAN090",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "grid '{nodeId}' sets editable=true but its source is not a direct $state binding — edits have nowhere to go, every cell renders read-only; source the grid (and any chart that should track edits) from a shared {\"$type\":\"State\",\"key\":…,\"default\":[rows]} binding",
               "Phase 663"
           )
           row (
               "MaxDepthExceeded",
               "FUARAN091",
-              DefectSeverity.Error,
+              Severity.Error,
               "node '{nodeId}' nests deeper than the wire limit MaxDepth = {limit} (WIRE_FORMAT §21) — the tree was not walked past this point; flatten the nesting",
               "Phase 781"
           )
           row (
               "SkeletonRowsOutOfRange",
               "FUARAN152",
-              DefectSeverity.Error,
+              Severity.Error,
               "Skeleton '{nodeId}' declares rows = {rows}, outside 0 … {maxRows} (WIRE_FORMAT §21.9) — a negative count draws nothing, and a count above the bound names more placeholder rows than any conformant host may carry, so the encoded tree would be refused on decode; pick a count in range",
               "Phase 1666"
           )
           row (
               "BadgeToneContradictsLabel",
               "FUARAN153",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "Badge '{nodeId}' reads \"{label}\" and is toned {variant} — the label and the tone name two different severities, and the tone is what a reader scanning the page acts on first. Tone it {label} to agree with the word, or reword the label to the severity you meant. If the badge is deliberately untoned, Neutral and Brand carry no severity claim and this rule is silent on them",
               "Phase 1734"
           )
           row (
               "PillToneContradictsValue",
               "FUARAN154",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "a TonedPill column on '{nodeId}' paints the value \"{value}\" in the {tone} tone — the value names one severity and the tone names another, so every row carrying it is coloured against what it says. Map \"{value}\" to the {value} tone, or drop the entry and let the column's default carry it",
               "Phase 1734"
           )
           row (
               "UnstyledDateFormat",
               "FUARAN155",
-              DefectSeverity.Error,
+              Severity.Error,
               "'{nodeId}' formats an instant with a Date format that declares neither dateStyle nor timeStyle, so nothing says what the reader is shown. Declare dateStyle for a date, timeStyle for a time of day, or both for a date-time",
               "Phase 1810"
           )
           row (
               "FallbackRepeatsKind",
               "FUARAN156",
-              DefectSeverity.Error,
+              Severity.Error,
               "'{nodeId}' declares a fallback that itself contains a {kind} — the kind it stands in for. A reader that needs the fallback is one that cannot read {kind}, so this fallback would be a placeholder too. Build the fallback from kinds every reader has (a Markdown or a Box of them)",
               "Phase 1812"
           )
           row (
               "NestedFallback",
               "FUARAN157",
-              DefectSeverity.Error,
+              Severity.Error,
               "'{nodeId}' declares a fallback in which '{innerId}' declares a fallback of its own. A behind reader lifts one fallback — the one on the node it cannot read — and never consults a fallback's fallback, so the inner one has no reader. Remove it, or make the inner node plain",
               "Phase 1812"
           )
           row (
               "HostNodeCountExceeded",
               "FUARAN158",
-              DefectSeverity.Error,
+              Severity.Error,
               "the tree carries {measured} nodes, over the {limit} this host allows (maxNodes, host limits '{limits}'); '{nodeId}' is the first node past the budget. Emit less: summarise, page a list, or split the content across views",
               "Phase 1817"
           )
           row (
               "HostDepthExceeded",
               "FUARAN159",
-              DefectSeverity.Error,
+              Severity.Error,
               "'{nodeId}' is the first node below nesting level {limit}, the deepest this host allows (maxDepth, host limits '{limits}'); the tree reaches level {measured}. Flatten the nesting — remove a wrapper box, or lift the subtree a level",
               "Phase 1817"
           )
           row (
               "HostChildrenExceeded",
               "FUARAN160",
-              DefectSeverity.Error,
+              Severity.Error,
               "container '{nodeId}' holds {measured} direct children; this host allows {limit} (maxChildren, host limits '{limits}'). Group the children into sub-containers, or move the repeated items into a list or grid",
               "Phase 1817"
           )
           row (
               "HostGridRowsExceeded",
               "FUARAN161",
-              DefectSeverity.Error,
+              Severity.Error,
               "grid '{nodeId}' carries {measured} inline rows; this host allows {limit} (maxGridRows, host limits '{limits}'). Trim the rows to the ones the reader needs, or bind the grid to a source the host pages",
               "Phase 1817"
           )
           row (
               "HostPayloadBytesExceeded",
               "FUARAN162",
-              DefectSeverity.Error,
+              Severity.Error,
               "the tree rooted at '{nodeId}' encodes to {measured} bytes; this host allows {limit} (maxSerializedBytes, host limits '{limits}'). Emit less content, or move large inline data (static rows, long text) behind a bound source",
               "Phase 1817"
           )
           row (
               "UnsafeUrlScheme",
               "FUARAN142",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "node '{nodeId}' declares a {slot} the renderer floor refuses: {reason}. Every conformant host refuses this before it reaches the document, so the slot renders as a refusal marker rather than as the destination you wrote. If the intent was to run something on click, the wire has typed actions for it (Action.Notify, Action.Call, Action.SetState); if the destination is real, name its scheme (http / https / mailto / tel / ftp / sftp) or write a same-origin relative path",
               "Phase 1523"
           )
           row (
               "UnsafeCssValue",
               "FUARAN143",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "node '{nodeId}' declares '{value}' in its {slot} slot, which carries a character or function that lets a CSS value leave its own declaration (a semicolon, a brace, a backslash, a control byte, `url(`, `expression(`). Every renderer emits an empty value here instead, because the same string in a style attribute is a second declaration the document never wrote - and `url(` is a network request made at render time with no user act. Write a single CSS value with none of those",
               "Phase 1523"
           )
           row (
               "MalformedTrackList",
               "FUARAN144",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "grid '{nodeId}' declares templateColumns '{value}', which is not shaped like a CSS track-list. It is safe - the renderers emit it - but no browser reads it as a column definition, so the grid falls back to one column. Write track sizes (1fr 2fr auto), a repeat(...), or a minmax(...)",
               "Phase 1523"
           )
           row (
               "UnsafePaintValue",
               "FUARAN145",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "node '{nodeId}' declares '{value}' as its {slot} paint, which is not a colour. The renderers emit `none` instead: an SVG paint slot accepts `url(...)` as a paint-server reference, which is also how a remote fetch is spelled, so the slot admits only hex (#rgb / #rrggbb / #rrggbbaa), a bare ident (every named colour and keyword - red, steelblue, currentColor, none, transparent, inherit), and the colour functions (rgb, rgba, hsl, hsla, oklch, oklab, lch, lab, color)",
               "Phase 1523"
           )
           row (
               "UnsupportedLinkAnchor",
               "FUARAN146",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "link '{nodeId}' declares {slot}='{value}', which every renderer drops. `target` is closed to `_self` and `_blank` - `_parent` / `_top` navigate a document that framed this one, and a named frame addresses a browsing context this document did not create. `rel` is closed to the descriptive tokens, and `opener` in particular is refused: it re-enables window.opener on a `_blank` link, handing the opened page a live reference to this one. A `_blank` link is emitted with `noopener noreferrer` whether or not it asks",
               "Phase 1523"
           )
           row (
               "ProtectedNonMailtoLink",
               "FUARAN092",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "link '{nodeId}' sets protection=\"email\" on a non-mailto href — the Email strategy only protects a mailto: address, so the renderers ignore the flag (dead intent); drop the protection or point the href at mailto:<address>",
               "Phase 812"
           )
           row (
               "PageSizeWithoutPageKey",
               "FUARAN093",
-              DefectSeverity.Error,
+              Severity.Error,
               "grid '{nodeId}' declares pageSize but no pageStateKey — nothing carries the page position, so the grid renders every row and the page size is dead intent; add pageStateKey naming the State key the pager writes {\"page\":N} to",
               "Phase 862"
           )
           row (
               "DoublePagedGrid",
               "FUARAN096",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "grid '{nodeId}' pages client-side on pageStateKey '{pageStateKey}' while its source is a query depending on that same key — the host already returns the page, so slicing it again would page the page; drop pageSize to let the host page, or drop the dependsOn to page client-side",
               "Phase 862"
           )
           row (
               "UnhonourableSort.NoSortStateKey",
               "FUARAN094",
-              DefectSeverity.Error,
+              Severity.Error,
               "grid '{nodeId}' column '{label}' declares sortable=true but the grid names no sortStateKey — a column narrows a behaviour, it cannot turn one on; add sortStateKey to the grid or drop the column flag",
               "Phases 861, 863"
           )
           row (
               "UnhonourableSort.ColumnHasNoField",
               "FUARAN094",
-              DefectSeverity.Error,
+              Severity.Error,
               "grid '{nodeId}' column '{label}' declares sortable=true but has no field — nothing names the row property to order by; add field, or drop the flag and let the column render unsorted",
               "Phases 861, 863"
           )
           row (
               "UnhonourableSort.DefaultSortColumnOutOfRange",
               "FUARAN094",
-              DefectSeverity.Error,
+              Severity.Error,
               "grid '{nodeId}' declares defaultSort on column {column} but the grid has {count} column(s) — the declared order can never be applied; point it at an existing column index",
               "Phases 861, 863"
           )
           row (
               "UneditableColumnDeclared.GridNotEditable",
               "FUARAN095",
-              DefectSeverity.Error,
+              Severity.Error,
               "grid '{nodeId}' column '{columnLabel}' declares editable=true but the grid is not editable — a column narrows a behaviour, it cannot turn one on; set editable on the grid, or drop the column flag",
               "Phase 863"
           )
           row (
               "UneditableColumnDeclared.NoReachableDestination",
               "FUARAN095",
-              DefectSeverity.Error,
+              Severity.Error,
               "grid '{nodeId}' column '{columnLabel}' is editable but no destination is reachable — declare editStateKey, or source the grid from a direct {\"$type\":\"State\",\"key\":…} binding so the edit has somewhere to commit",
               "Phase 863"
           )
           row (
               "ChartTemporalXNotDate",
               "FUARAN097",
-              DefectSeverity.Error,
+              Severity.Error,
               "chart '{nodeId}' declares a temporal x-axis over field '{field}' of type '{columnType}' — a date axis needs a date column, and every row's x would read as 1970-01-01; give the column type 'date' (canonical ISO-8601 YYYY-MM-DD cells), or drop xScale to plot the values as categories (Phase 882)",
               "Phases 882, 1486"
           )
           row (
               "SetStateNoReader",
               "FUARAN098",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "'{nodeId}' writes state key '{key}' but nothing in the tree reads it — the gesture runs and the user sees no change (a fake affordance); bind a reader to {\"$type\":\"State\",\"key\":\"{key}\"}, select a Switch on it, or name it as a grid's sortStateKey/pageStateKey. If the key is written for the HOST to read, this warning is expected and can be ignored (Phase 932)",
               "Phases 782, 860, 866, 932"
           )
           row (
               "ReservedStateKeyWrite.Declared",
               "FUARAN149",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "'{nodeId}' writes state key '{key}', which the host has reserved — every tree-originated write to it is refused at dispatch, so the gesture runs and nothing happens; write a key the host has not closed, or ask the host to expose the slot through a Query or a Call (Phase 1550)",
               "Phases 782, 1550"
           )
           row (
               "ReservedStateKeyWrite.Undeclared",
               "FUARAN149",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "'{nodeId}' writes state key '{key}', which is not host-reserved and which nothing in this tree reads — the shape of a host-owned slot a rendered tree can reach. If the key is the HOST's, declare it (StateStore.declareReserved) and this write is refused instead of silently landing in the host's slot; if it is the tree's own, FUARAN098 beside this says what is missing (Phase 1550)",
               "Phases 782, 1550"
           )
           row (
               "DateLiteralWhereNowPlausible",
               "FUARAN102",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "'{nodeId}' names the current instant and states a hardcoded date: \"{literal}\" — the value was true when it was written and is wrong from the next day onward; bind the slot to {\"$type\":\"Now\"} (with a Format binding for the display shape) so the host furnishes the instant. If the date is genuinely historical, reword the label so it does not read as the present",
               "Phase 765"
           )
           row (
               "SwitchKeyNoWriter",
               "FUARAN103",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "switch '{nodeId}' selects on state key '{key}' but nothing in the tree can write it — one branch renders forever; give the key a writer (an Action.SetState on a button, a Call with into: {\"$type\":\"State\",\"key\":\"{key}\"}, or a control write-back slot bound to it), or select on the binding that already changes (a Selection, a Filter, a Query). If the key is written by the HOST, this warning is expected and can be ignored",
               "Phases 768, 782, 1122, 1646"
           )
           row (
               "TransformSourceInert",
               "FUARAN105",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "'{nodeId}' derives from a Transform over state key '{key}', but NOTHING in the tree seeds that key — no reader declares a defaultValue for it and nothing writes it — so the pipeline runs over an EMPTY table and renders a plausible wrong answer (a count of zero) that nothing reports; declare the rows once on any reader of the key ({\"$type\":\"State\",\"key\":\"{key}\",\"defaultValue\":[…]}), which seeds the slot for every reader including this one, or give the key a writer. If the key is populated by the HOST, this warning is expected and can be ignored",
               "Phases 782, 865, 1075, 1665"
           )
           row (
               "ConflictingStateSeeds",
               "FUARAN106",
-              DefectSeverity.Error,
+              Severity.Error,
               "state key '{key}' is seeded twice with DIFFERENT values — '{firstNodeId}' and '{secondNodeId}' each declare a defaultValue for it, and a key has one slot, so only the first declaration ('{firstNodeId}') takes effect and the second is silently discarded; declare the value ONCE and let the other reader carry {\"$type\":\"State\",\"key\":\"{key}\"} with no defaultValue, or give the two readers different keys if they are genuinely different data",
               "Phases 782, 1075"
           )
           row (
               "DuplicateInlineTable",
               "FUARAN107",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "'{firstNodeId}' and '{secondNodeId}' each carry their own inline copy of the SAME table — the two copies can silently diverge, and nothing in the tree says they are meant to be one source; declare the rows once under a state key ({seedKeyState}) and have the other read {\"$type\":\"State\",\"key\":\"<key>\"} with no defaultValue, which resolves to the seeded slot. If the two are genuinely independent data that happen to match, this warning is expected and can be ignored",
               "Phase 1075"
           )
           row (
               "CompareKeyUnreachable",
               "FUARAN099",
-              DefectSeverity.Error,
+              Severity.Error,
               "form '{nodeId}' field '{fieldId}' compares against state key '{key}', but no field in the form owns that key and nothing in the tree writes it — the predicate can never be met or unmet, only absent, so the field reads as constrained and is not; point 'against' at a sibling field's id (a form field's value lives in State under its own id), or give the key a writer",
               "Phases 782, 864"
           )
           row (
               "RuleSlotUnhonourable",
               "FUARAN100",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "form '{nodeId}' field '{fieldId}' declares {slot} on a {control} control, which cannot honour it — the constraint is carried and never applied (dead intent); move the rule to a text control, or drop the slot. If a host you target DOES honour it, this warning is expected and can be ignored",
               "Phase 864"
           )
           row (
               "CompareDuplicatesBound",
               "FUARAN101",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "form '{nodeId}' field '{fieldId}' compares against a LITERAL while its control already declares {bound} — two sources for one bound, free to disagree, and nothing decides which wins; drop the compare and keep the control's bound, or make the operand read something that changes ({\"$type\":\"State\",\"key\":\"<sibling field id>\"}), which is what the rule slot is for",
               "Phase 864"
           )
           row (
               "MediaWithoutLabel",
               "FUARAN108",
-              DefectSeverity.Error,
+              Severity.Error,
               "media node '{nodeId}' has an EMPTY label — a media element is a transport, not a picture, so it is never decorative and there is no honest empty case the way there is for an image's alt; without a name it is announced to a screen reader as \"video\" or \"audio\" and nothing more, telling the reader that a player exists and not what it plays. Give 'label' the text a listener needs to decide whether to play it",
               "Phase 1076"
           )
           row (
               "TrackWithoutLabel",
               "FUARAN113",
-              DefectSeverity.Error,
+              Severity.Error,
               "media node '{nodeId}' carries a text track at index {trackIndex} with an EMPTY label - a track's label IS its entry in the user agent's track menu, and it is the only thing that tells one track from another there, so an unlabelled one is offered as its kind alone and a reader choosing between two captions tracks is shown two identical choices. Give the track's 'label' the text a reader needs to pick it",
               "Phase 1110"
           )
           row (
               "EmbedWithoutTitle",
               "FUARAN115",
-              DefectSeverity.Error,
+              Severity.Error,
               "embed node '{nodeId}' has an EMPTY title — a frame is a focus container a reader tabs into, not a picture, so it is never decorative; without a name it is announced to a screen reader as \"frame\" and nothing more, telling the reader that something is embedded and not what. Give 'title' the text a reader needs to decide whether to enter it",
               "Phase 1111"
           )
           row (
               "EmbedSandboxWeakened",
               "FUARAN116",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "embed node '{nodeId}' declares both AllowScripts and AllowSameOrigin — against a SAME-ORIGIN document that pair is the documented sandbox escape, because the framed document can then reach its own frame element and remove the sandbox attribute. It is also what every real cross-origin embed needs, and nothing in this tree says which this is, so this is a warning rather than a refusal: confirm the source is a third-party origin, or drop AllowSameOrigin if the provider does not need its own storage",
               "Phase 1111"
           )
           row (
               "EmptyTooltipDeclaration",
               "FUARAN118",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "node '{nodeId}' declares a tooltip and leaves it EMPTY — a hint that hints nothing. The renderers emit no hint element for an empty one, so the markup you expected is silently absent and so is the aria-describedby that would have carried it to a screen reader; write the sentence the reader needs, or drop the slot",
               "Phase 1112"
           )
           row (
               "TooltipOnHiddenNode",
               "FUARAN119",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "node '{nodeId}' carries a tooltip while declaring accessibility.hidden = true — aria-hidden removes the node and its whole subtree from the accessibility tree, taking the hint and its aria-describedby with it, so what is left is a hover affordance for sighted pointer users on a node declared not to be part of the interface. Drop the hint, or drop the hidden declaration if the node was meant to be announced",
               "Phase 1112"
           )
           row (
               "ComboboxWithoutOptions",
               "FUARAN120",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "combobox '{fieldId}' on node '{nodeId}' declares a STATIC and EMPTY option list — a typeahead with nothing to suggest, and no dynamic source that could supply anything later. It renders, it takes focus, and it opens no listbox: with allowFreeText it is a plain text input you did not ask for, and without it no value is admissible at all. Give the options a Query / State source if the suggestions arrive at runtime, list them if they are known, or use a Text field if free text is what you meant",
               "Phase 1113"
           )
           row (
               "RatingValueOutOfScale",
               "FUARAN132",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "rating '{fieldId}' on node '{nodeId}' declares the static value {value} on a scale of 0 to {max} — a figure the control cannot show. The renderer clamps into the scale and announces the clamped figure, so the reader is told something the document did not say. Correct the value, or raise max if the larger scale is what you meant",
               "Phase 1130"
           )
           row (
               "ColorValueNotHex",
               "FUARAN133",
-              DefectSeverity.Error,
+              Severity.Error,
               "colour field '{fieldId}' on node '{nodeId}' declares the static value '{value}', which is not the canonical #rrggbb hex form. This is the one shape a native colour input can hold, and it is what the decoder accepts: a tree carrying anything else encodes to a document no conformant host will read back, including this one. Write the six-digit form (#ff8800), or bind the value if it arrives at runtime",
               "Phase 1130"
           )
           row (
               "TokensAdmitsNothing",
               "FUARAN135",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "token field '{fieldId}' on node '{nodeId}' admits no free text and declares a STATIC and EMPTY suggestion list — no token can ever be put into it, by any gesture. It renders as an empty chip row beside an entry box that refuses every keystroke. Give the suggestions a Query / State source if they arrive at runtime, list them if they are known, or leave allowFreeText at its default of true if open tokens are what you meant",
               "Phase 1121"
           )
           row (
               "TokensStaticDuplicate",
               "FUARAN136",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "token field '{fieldId}' on node '{nodeId}' declares the static token '{token}' more than once. A token list is a set the reader sees as chips, and two identical chips are one fact drawn twice with two remove buttons that do different things. The renderer refuses a duplicate at the moment of adding and the server-side submission floor refuses it on arrival; remove the repeat here",
               "Phase 1121"
           )
           row (
               "UploadGestureWithoutHandler",
               "FUARAN121",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "file upload '{nodeId}' declares {gestures} and carries no onSelect handler — the gesture is invited and consumes nothing. A picker at least leaves the chosen filename in the user agent's own chrome; a dropped or pasted file disappears on release with no feedback at all, so the reader is told the upload worked and it did not. Wire onSelect, or drop the gesture declaration until it is wired",
               "Phase 1115"
           )
           row (
               "CaptureAcceptMismatch",
               "FUARAN134",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "file upload '{nodeId}' asks for the {device} but its accept list ({accept}) does not select that device. The capture keyword asks the platform for a recording device; which one it opens is decided by accept, so this document opens whichever the user agent guesses and the reader is handed a device you did not name. Add the device's own media type to accept (image/* or video/* for the camera, audio/* for the microphone), or drop the capture declaration if the ordinary file picker was what you meant",
               "Phases 1116, 1130"
           )
           row (
               "PopoverWithoutAnchor.NoAnchor",
               "FUARAN122",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "popover '{nodeId}' declares no anchor — a Popover is positioned against the node it was opened from, and with nothing to position against the renderer leaves it in the document flow wherever the node happens to sit, which is the static floor and not the surface you asked for. Set anchor to the id of the control that opens it, or use modality Modal if a blocking dialog is what you meant",
               "Phase 1119"
           )
           row (
               "PopoverWithoutAnchor.DanglingAnchor",
               "FUARAN122",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "popover '{nodeId}' declares anchor = '{target}', which is not a node in this tree — the anchor resolves to no element, so the popover is left in the document flow exactly as an undeclared one is, and the declaration reads as honoured when it was not. Point it at a node that exists (a dangling anchor is usually a typo or a node that has since moved), or drop the declaration and use modality Modal if a blocking dialog is what you meant",
               "Phase 1119"
           )
           row (
               "AnchorOnBlockingModal",
               "FUARAN123",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "modal '{nodeId}' declares anchor = '{anchor}' while its modality is Modal — a dead declaration. A blocking dialog is positioned by its scrim and not by an element, so the id rides the wire, survives every round trip and changes nothing on any host. Set modality to Popover if an anchored surface is what you meant, or drop the anchor",
               "Phase 1119"
           )
           row (
               "DirectionOnTextlessNode",
               "FUARAN124",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "node '{nodeId}' declares style.direction while its kind is {kind} — a dead declaration. A direction states which way a run of text reads and isolates it from the bidirectional context around it, and this kind lays out no text and holds no children to inherit it, so the declaration rides the wire, survives every round trip and changes nothing on any host. Move it to the node that carries the text, or drop it",
               "Phase 1472"
           )
           row (
               "DeadPrintBreak.RepeatHeaderNoHeader",
               "FUARAN125",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "grid '{nodeId}' declares repeatHeader while it renders no header cells — a dead declaration. Repeating a header at the top of every page needs a header row group with something in it, so this rides the wire, survives every round trip and changes nothing on any host. Give the grid its columns (or, on the static leg, its headers), or drop the declaration",
               "Phase 1473"
           )
           row (
               "DeadPrintBreak.NoSubtreeToKeepTogether",
               "FUARAN125",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "node '{nodeId}' declares keepTogether while it renders no subtree — a dead declaration. Keeping a subtree whole across a page boundary needs a subtree that could straddle one, and this container has no rendered children, so the declaration rides the wire, survives every round trip and changes nothing on any host. Move it to the container that holds the content, or drop it",
               "Phase 1473"
           )
           row (
               "DeadExportAffordance.NoRowSource",
               "FUARAN131",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "grid '{nodeId}' declares exportable while it names no row source — a dead control. The reader is offered a download of the rows this grid holds, and it holds none and can never be given any on this binding, so the file would be a header record and nothing else. Give the grid a source (or staticRows), or drop the declaration",
               "Phase 1125"
           )
           row (
               "DeadExportAffordance.NoColumns",
               "FUARAN131",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "grid '{nodeId}' declares exportable while it declares no columns — a dead control. The columns are the exported file's fields, so with none the header record is empty and so is every row record, whatever the source resolves to. Give the grid its columns, or drop the declaration",
               "Phase 1125"
           )
           row (
               "TreeItemIdDuplicated",
               "FUARAN126",
-              DefectSeverity.Error,
+              Severity.Error,
               "tree '{nodeId}' carries more than one row with the id '{itemId}' — a row id is what the expanded set and the selection NAME, so a repeated one makes both ambiguous: expanding one row opens two, and a restored selection lands on whichever the host reached first. Give every row in this tree its own id",
               "Phase 1120"
           )
           row (
               "DeadTransferPairing.NoSource",
               "FUARAN129",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "grid '{nodeId}' accepts transfers on the key '{key}' and no grid in this tree releases to it — a dead drop zone. The grid draws its place control and its rows accept drops, so a reader is invited to move something into it, and no drag that could satisfy the invitation can ever begin. Declare transferOutKey '{key}' on the grid rows should come FROM, or drop transferInKey",
               "Phase 1123"
           )
           row (
               "DeadTransferPairing.NoTarget",
               "FUARAN129",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "grid '{nodeId}' releases transfers to the key '{key}' and no grid in this tree accepts from it — a drag handle with nowhere to go. A reader can lift a row and will find no list that will take it. Declare transferInKey '{key}' on the grid rows should go TO, or drop transferOutKey",
               "Phase 1123"
           )
           row (
               "TransferWithoutRowIdentity",
               "FUARAN130",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "grid '{nodeId}' declares a cross-container transfer with no rowKeyField — the transfer record names the moved row by its identity, and a rowKey closure crosses the wire as the closure placeholder, so a decoded transfer out of this grid would report that nothing moved. Name the column that identifies a row with rowKeyField",
               "Phase 1123"
           )
           row (
               "DeadAutoAdvance.NoWritableSelector",
               "FUARAN128",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "switch '{nodeId}' declares autoAdvanceMs while it selects on a binding that is not a state key — a dead declaration. Timed advance moves the switch's OWN key, and a switch driven by a selection, a filter or a query has no key of its own to move, so the interval rides the wire, survives every round trip and advances nothing on any host. Select on a state key, or drop the interval",
               "Phase 1122"
           )
           row (
               "DeadAutoAdvance.NotEnoughCases",
               "FUARAN128",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "switch '{nodeId}' declares autoAdvanceMs while it carries fewer than two cases — a dead declaration. There is nowhere for a tick to advance to but the case already showing, so the interval would rewrite the key with the value it already holds. Give the switch the cases it cycles through, or drop the interval",
               "Phase 1122"
           )
           row (
               "TreeItemWithoutLabel",
               "FUARAN127",
-              DefectSeverity.Error,
+              Severity.Error,
               "tree '{nodeId}' carries a row '{itemId}' with an EMPTY label — a row's label is the only thing a reader walking the hierarchy has, so an unnamed one is announced as its level and its position and nothing else. Give the row's 'label' the text a reader needs to decide whether to open it",
               "Phase 1120"
           )
           row (
               "InteractiveWithoutAccessibleName",
               "FUARAN109",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "{kind} '{nodeId}' reaches a screen reader with no name — '{slot}' is empty and the node declares neither accessibility.label nor accessibility.labelledBy, so its accessible name would have to come from its text content and there is none; give '{slot}' the text a listener needs, or name the element with accessibility.label",
               "Phase 727"
           )
           row (
               "DanglingAccessibilityReference",
               "FUARAN110",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "node '{nodeId}' declares accessibility.{slot} = '{target}', which is not a node in this tree — the emitted {attribute} points at nothing and the browser ignores it, so the element is announced as though the reference had never been written; point it at a node that exists, or drop the slot and name the element with accessibility.label",
               "Phase 727"
           )
           row (
               "EmptyAccessibilityDeclaration",
               "FUARAN111",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "node '{nodeId}' declares accessibility.{slot} and leaves it EMPTY — a declared name that names nothing, which the renderer drops rather than emits, and which additionally silences the missing-name check that would otherwise have caught this node; give the slot real text, or remove it so the element's own content supplies the name",
               "Phase 727"
           )
           row (
               "WireLossyActionClosure",
               "FUARAN112",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "node '{nodeId}' carries a host closure in '{slot}' — the canonical encoder drops the payload and the decoder rebuilds it as \"<closure>\", so a decoding host receives an affordance that fires and does nothing; replace it with a wire-representable action (Action.Notify, or Action.Call with into:) and bind the typed behaviour host-side to the artifact's declared action hole. Encode with encodeNodeForTransport to have this refused rather than warned. If this tree is rendered IN PROCESS and never serialised, the closure is correct and this warning is expected",
               "Phase 577"
           )
           row (
               "GridFieldUngrounded",
               "FUARAN114",
-              DefectSeverity.Error,
+              Severity.Error,
               "grid '{nodeId}' names field '{field}', absent from the schema its own source PRODUCES [{schemaColumns}] — everything that reads the name resolves it against nothing: a cell whose kind displays the column's field shows an empty value, sort and export read an empty key, and for rowKeyField every row shares one empty key and row identity collapses; fix the name, or change the pipeline so it produces the column (Phase 1149/1486)",
               "Phases 1149, 1486, 1909"
           )
           row (
               "PillFieldUngrounded",
               "FUARAN114",
-              DefectSeverity.Error,
+              Severity.Error,
               "grid '{nodeId}' column '{columnLabel}' has a TonedPill cell naming field '{field}', absent from the schema its own source PRODUCES [{schemaColumns}] — the pill's label and its tone key both resolve against nothing, so every row draws an empty pill in the default tone; fix the name, or change the pipeline so it produces the column (Phase 1909)",
               "Phases 1149, 1909"
           )
           row (
               "ActionColumnField",
               "FUARAN163",
-              DefectSeverity.Warning,
+              Severity.Warning,
               "grid '{nodeId}' column '{columnLabel}' is an action column (Button / ButtonGroup cell) and declares field '{field}' — an action cell draws its own label and hands the whole row to its handler, so the field is never displayed, and sort and export ignore it; drop the field: an action column carries none (Phase 1909)",
               "Phase 1909"
           ) ]
@@ -2881,10 +2875,11 @@ module DefectCodes =
         pieces.Add(template.Substring(runStart))
         String.concat "" pieces
 
-    let private severityName (s: DefectSeverity) =
+    let private severityName (s: Severity) =
         match s with
-        | DefectSeverity.Error -> "Error"
-        | DefectSeverity.Warning -> "Warning"
+        | Severity.Error -> "Error"
+        | Severity.Warning -> "Warning"
+        | Severity.Info -> "Info"
 
     /// The table as the Markdown `docs/ERROR_CODES.md` publishes between its
     /// generated-section markers: one heading per code (ordinal order), one fenced
@@ -2910,6 +2905,231 @@ module DefectCodes =
                 line ""
 
         String.concat "" lines
+
+/// The family a `FindingCode` belongs to: who raises a code that has no `PreEmitDefect`
+/// case. The pre-emit family's codes are `DefectCodes.table`'s, and are not repeated here.
+[<RequireQualifiedAccess>]
+type FindingFamily =
+    /// The build-time source-AST walker (`Fuaran.UI.Validator`), which reads F# source.
+    | BuildTime
+    /// The dead-on-decode lint (`DeadOnDecode.lint`), which reads a decoded tree.
+    | DecodedLint
+    /// The query-binding check (`QueryBinding`), which reads a tree against a resolved schema.
+    | QueryBinding
+    /// Allocated to a rule no check in this repository raises. Listed so the code is
+    /// never minted again for something else.
+    | Reserved
+
+/// One code of the lint, query-binding and build-time families: the code, the severity
+/// it is raised at, and the family that raises it. A check names its code by referring
+/// to one of the `FindingCodes` values, never by writing the string.
+type FindingCode =
+    { Code: string
+      Severity: Severity
+      Family: FindingFamily }
+
+/// Where a dead-on-decode finding is: the node, and the slot in the `SlotCapability`
+/// vocabulary (`Spec.slot`).
+type SlotLocation = { Node: string; Slot: string }
+
+/// One finding of a lint or a build-time check — the ONE shape both families report in.
+/// `'Location` is what the family can point at: a source position for the build-time
+/// walker, a node and slot for the dead-on-decode lint.
+///
+/// `Code` and `Severity` are copied from the `FindingCode` the finding was created from
+/// (`Finding.create`), so the code is a reference into the registry and a finding cannot
+/// carry a code the registry does not hold. A check that escalates (FUARAN062 enforced,
+/// FUARAN084 orchestrated) says so with `Finding.withSeverity`.
+type Finding<'Location> =
+    {
+        Code: string
+        Severity: Severity
+        Location: 'Location
+        Message: string
+        /// The fix to make: the declarative remedy, the substitute to write, or the
+        /// best-guess name. The build-time validator renders it as `suggestion`.
+        Remedy: string option
+        /// The §4d AI-recovery enumeration — the names that would have resolved — when
+        /// there is one.
+        AvailableFields: string list option
+    }
+
+/// Constructors for `Finding`.
+[<RequireQualifiedAccess>]
+module Finding =
+
+    /// A finding raised under `code`, at the code's severity, with no remedy yet.
+    let create (code: FindingCode) (location: 'Location) (message: string) : Finding<'Location> =
+        { Code = code.Code
+          Severity = code.Severity
+          Location = location
+          Message = message
+          Remedy = None
+          AvailableFields = None }
+
+    /// The finding with its remedy stated.
+    let withRemedy (remedy: string) (finding: Finding<'Location>) : Finding<'Location> =
+        { finding with Remedy = Some remedy }
+
+    /// The finding raised at `severity` rather than its code's default — for the two
+    /// codes whose severity depends on how the check was run.
+    let withSeverity (severity: Severity) (finding: Finding<'Location>) : Finding<'Location> =
+        { finding with Severity = severity }
+
+    /// Whether the finding is a fault, the one severity that fails a run.
+    let isError (finding: Finding<'Location>) : bool = finding.Severity = Severity.Error
+
+/// The codes of the lint, query-binding and build-time families — with
+/// `DefectCodes.table`, the one registry of `FUARAN*` codes. A check refers to the value;
+/// `all` is what the allocation script and the census tests read.
+[<RequireQualifiedAccess>]
+module FindingCodes =
+
+    let private code (family: FindingFamily) (severity: Severity) (c: string) : FindingCode =
+        { Code = c
+          Severity = severity
+          Family = family }
+
+    let private walker = code FindingFamily.BuildTime
+
+    // ── The build-time walker (docs/ERROR_CODES.md §4 says what fires each) ──
+
+    /// Two calls in one tree with one NodeId literal. The tree-time `DuplicateNodeId`
+    /// code and severity, read from its row, so the two validators cannot disagree
+    /// (Phase 2052; the walker raised FUARAN001 before — see `retired`).
+    let duplicateNodeId =
+        let r = DefectCodes.rowOf "DuplicateNodeId"
+        walker r.Severity r.Code
+
+    /// One NodeId literal in two different trees.
+    let nodeIdAcrossTrees = walker Severity.Warning "FUARAN002"
+    /// `binding.query` naming a query the manifest does not declare.
+    let unresolvedQuery = walker Severity.Error "FUARAN010"
+    /// `Action.dispatch` of a Msg case the manifest does not declare.
+    let undeclaredMsgCase = walker Severity.Error "FUARAN020"
+    /// A grid whose source query has no row type in the manifest.
+    let gridRowTypeMissing = walker Severity.Warning "FUARAN030"
+    /// A grid whose `toRow` parameter names a type other than the manifest's.
+    let gridRowTypeMismatch = walker Severity.Error "FUARAN031"
+    /// `binding.local` with `format = None`.
+    let localWithoutFormat = walker Severity.Error "FUARAN042"
+    /// `binding.local` flushing on commit in a project with no `Action.CommitLocal`.
+    let localCommitUnhandled = walker Severity.Warning "FUARAN043"
+    /// `binding.local` outside a Text / Number / RangedNumber field.
+    let localOutsideTextField = walker Severity.Error "FUARAN044"
+    /// A segmented choice with more than seven static options.
+    let segmentedChoiceTooWide = walker Severity.Warning "FUARAN045"
+    /// `gridLayoutTemplated` with a `repeat(N, 1fr)` template.
+    let gridTemplateRepeatFr = walker Severity.Warning "FUARAN046"
+    /// A static progress fraction outside `[0, 1]`.
+    let progressFractionOutOfRange = walker Severity.Warning "FUARAN050"
+    /// A static ranged-number value outside its bounds.
+    let rangedNumberOutOfRange = walker Severity.Warning "FUARAN051"
+    /// A Custom node declaring interior ids with no matching renderer registration.
+    let customRendererUnregistered = walker Severity.Warning "FUARAN053"
+    /// The project's Custom-node ratio above its ceiling.
+    let customNodeRatio = walker Severity.Warning "FUARAN054"
+    /// A Custom node with no content hash.
+    let customWithoutContentHash = walker Severity.Warning "FUARAN055"
+    /// Two fragment declarations with one name.
+    let fragmentDuplicateName = walker Severity.Error "FUARAN056"
+    /// A fragment reference no declaration names.
+    let fragmentUnresolved = walker Severity.Error "FUARAN057"
+    /// A fragment reference cycle.
+    let fragmentCycle = walker Severity.Error "FUARAN058"
+    /// A `Repeat` hole with an unbounded count space.
+    let repeatUnbounded = walker Severity.Error "FUARAN059"
+    /// An extra attribute whose key is outside `data-*` / `aria-*`.
+    let extraAttributeKey = walker Severity.Warning "FUARAN060"
+    /// A blank ISO-4217 currency code.
+    let currencyBlank = walker Severity.Error "FUARAN061"
+    /// A Custom content hash that disagrees with the body-shape hash. Error when the
+    /// declaration is enforced; the check lowers it to a Warning otherwise.
+    let customContentHashStale = walker Severity.Error "FUARAN062"
+    /// A blank static href on a link.
+    let blankHref = walker Severity.Warning "FUARAN063"
+    /// A button whose `Disabled` is a constant-false static binding.
+    let disabledConstantFalse = walker Severity.Warning "FUARAN064"
+    /// A `Value` hole whose default lies outside its value space.
+    let holeDefaultOutOfSpace = walker Severity.Error "FUARAN065"
+    /// `Binding.Computed`, which erases on the wire. Advisory in hand-authored source;
+    /// the check raises it to an Error in an orchestrated run.
+    let computedHostOnly = walker Severity.Warning "FUARAN084"
+    /// No manifest beside the project, so the schema-coupled rules are silent.
+    let manifestMissing = walker Severity.Warning "FUARAN900"
+
+    // ── The dead-on-decode lint ──
+
+    /// A decoded event slot holding the `"<closure>"` sentinel: inert, and it suppresses
+    /// the write-back default.
+    let deadEventSlot = code FindingFamily.DecodedLint Severity.Warning "FUARAN080"
+    /// A decoded display slot holding the sentinel: it renders blank and shadows the
+    /// field-name form.
+    let blankDisplaySlot = code FindingFamily.DecodedLint Severity.Warning "FUARAN081"
+
+    // ── The query-binding check ──
+
+    /// A query column bound into a sink whose scalar class it is not compatible with.
+    let queryColumnTypeMismatch =
+        code FindingFamily.QueryBinding Severity.Error "FUARAN066"
+
+    /// A query-bound slot naming a column absent from the resolved schema.
+    let queryColumnAbsent = code FindingFamily.QueryBinding Severity.Error "FUARAN067"
+
+    // ── Reserved ──
+
+    /// A Custom content-hash mismatch at op-stream replay, raised by a replaying apply
+    /// engine rather than by any check here.
+    let customReplayHashMismatch =
+        code FindingFamily.Reserved Severity.Error "FUARAN052"
+
+    /// Every code above, in code order.
+    let all: FindingCode list =
+        [ duplicateNodeId
+          nodeIdAcrossTrees
+          unresolvedQuery
+          undeclaredMsgCase
+          gridRowTypeMissing
+          gridRowTypeMismatch
+          localWithoutFormat
+          localCommitUnhandled
+          localOutsideTextField
+          segmentedChoiceTooWide
+          gridTemplateRepeatFr
+          progressFractionOutOfRange
+          rangedNumberOutOfRange
+          customReplayHashMismatch
+          customRendererUnregistered
+          customNodeRatio
+          customWithoutContentHash
+          fragmentDuplicateName
+          fragmentUnresolved
+          fragmentCycle
+          repeatUnbounded
+          extraAttributeKey
+          currencyBlank
+          customContentHashStale
+          blankHref
+          disabledConstantFalse
+          holeDefaultOutOfSpace
+          queryColumnTypeMismatch
+          queryColumnAbsent
+          deadEventSlot
+          blankDisplaySlot
+          computedHostOnly
+          manifestMissing ]
+
+    /// Retired codes still ACCEPTED where a code is named (a suppression pragma), each
+    /// with the code that now reports its defect. One release each: FUARAN001 was the
+    /// build-time walker's duplicate-NodeId code until Phase 2052 (0.94.0) gave both
+    /// validators the tree-time code, and it is accepted through the 0.94.x line.
+    let retired: (string * FindingCode) list = [ "FUARAN001", duplicateNodeId ]
+
+    /// The current code for `code`: itself, or the code a retired one now reports as.
+    let canonical (code: string) : string =
+        match List.tryFind (fun (old, _) -> old = code) retired with
+        | Some(_, now) -> now.Code
+        | None -> code
 
 /// The variant and the message arguments of a defect — the per-case half of
 /// `describe`, which renders the matching code-table row's template with them.
@@ -3210,7 +3430,7 @@ let private describeArgs (d: PreEmitDefect) : string * (string * string) list =
 /// counterexamples, and Fable-side hosts surfacing advisories to a model).
 /// Exhaustive by construction: a new defect case cannot compile without its
 /// `describeArgs` arm, and cannot pass the suite without its `DefectCodes.table` row.
-let describe (d: PreEmitDefect) : string * DefectSeverity * string =
+let describe (d: PreEmitDefect) : string * Severity * string =
     let variant, args = describeArgs d
     let row = DefectCodes.rowOf variant
     row.Code, row.Severity, DefectCodes.render row.Template args
@@ -6158,7 +6378,7 @@ type ProducedColumn = { Name: string; Type: string option }
 type BindingDiagnostic =
     {
         Code: string
-        Severity: DefectSeverity
+        Severity: Severity
         Message: string
         /// JSONPath of the slot the finding is about — the `xField`, the
         /// `yFields` entry, the column's `field`, or the `rowKeyField`.

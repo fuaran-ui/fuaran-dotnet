@@ -26,6 +26,7 @@ module Fuaran.UI.Validator.LinkCheck
 // ============================================================================
 
 open Fuaran.UI.Validator.AstWalker
+open Fuaran.UI.PreEmitValidate
 open Fuaran.UI.Validator.Findings
 
 let check (calls: FuaranCall list) : Finding list =
@@ -35,8 +36,7 @@ let check (calls: FuaranCall list) : Finding list =
         | Some { HrefLiteral = Some href } when System.String.IsNullOrWhiteSpace href ->
             let base' =
                 create
-                    Warning
-                    "FUARAN063"
+                    FindingCodes.blankHref
                     c.Location
                     "NodeKind.Link has a blank Href. A link with an empty href renders an <a> that navigates to the current page — provide a real destination URL. If you meant an in-app routing gesture (no crawlable URL), use a Button + Action.Navigate instead."
 

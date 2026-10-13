@@ -15,6 +15,7 @@ module Fuaran.UI.Validator.BindingResolution
 // ============================================================================
 
 open Fuaran.UI.Validator.AstWalker
+open Fuaran.UI.PreEmitValidate
 open Fuaran.UI.Validator.Findings
 open Fuaran.UI.Validator.Manifest
 
@@ -38,8 +39,7 @@ let check (manifest: Manifest) (calls: FuaranCall list) : Finding list =
 
                 let base' =
                     create
-                        Error
-                        "FUARAN010"
+                        FindingCodes.unresolvedQuery
                         q.Location
                         (sprintf
                             "Unresolved binding.query \"%s\" — name is not in the module's manifest queries list."

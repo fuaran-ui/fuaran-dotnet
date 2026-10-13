@@ -9,45 +9,40 @@ module Fuaran.UI.Validator.Findings
 //  print to stdout and do not fail the build.
 // ============================================================================
 
-type Severity =
-    | Error
-    | Warning
+open Fuaran.UI
 
 /// A finding's location in source. Line / Column are 1-based per FCS convention.
 type Location =
     { File: string; Line: int; Column: int }
 
-/// One emitted check result. `Code` is a short stable id (e.g. "FUARAN001")
-/// so an AI consumer can pattern-match on the failure class; `Message` is
-/// human-readable. `AvailableFields` / `Suggestion` are the §4d AI-recovery
-/// fields — populated when the finding is something a re-emission could fix
-/// (unresolved query name → list of registered names + best-guess
-/// suggestion), `None` otherwise.
-type Finding =
-    { Severity: Severity
-      Code: string
-      Location: Location
-      Message: string
-      AvailableFields: string list option
-      Suggestion: string option }
+/// One emitted check result — the shape the lints share
+/// (`Fuaran.UI.PreEmitValidate.Finding`), located in source. `Code` and `Severity`
+/// come from the registry entry the check names (`PreEmitValidate.FindingCodes`), so an
+/// AI consumer can pattern-match on the failure class; `Message` is human-readable.
+/// `AvailableFields` / `Remedy` are the §4d AI-recovery fields — populated when the
+/// finding is something a re-emission could fix (unresolved query name → list of
+/// registered names + best-guess suggestion), `None` otherwise. Severity is
+/// `Fuaran.Core.Severity`.
+type Finding = PreEmitValidate.Finding<Location>
 
-let create severity code location message =
-    { Severity = severity
-      Code = code
-      Location = location
-      Message = message
-      AvailableFields = None
-      Suggestion = None }
+/// A finding raised under `code` at `location`, at the code's own severity.
+let create (code: PreEmitValidate.FindingCode) (location: Location) (message: string) : Finding =
+    PreEmitValidate.Finding.create code location message
 
 let withRecovery (available: string list) (suggestion: string option) (finding: Finding) : Finding =
     { finding with
         AvailableFields = Some available
-        Suggestion = suggestion }
+        Remedy = suggestion }
 
-let isError (finding: Finding) =
-    match finding.Severity with
-    | Error -> true
-    | Warning -> false
+/// The finding raised at `severity` rather than its code's default (FUARAN062, FUARAN084).
+let withSeverity (severity: Fuaran.Core.Severity) (finding: Finding) : Finding =
+    PreEmitValidate.Finding.withSeverity severity finding
+
+/// The finding with its remedy — the substitute to write — stated.
+let withRemedy (remedy: string) (finding: Finding) : Finding =
+    PreEmitValidate.Finding.withRemedy remedy finding
+
+let isError (finding: Finding) = PreEmitValidate.Finding.isError finding
 
 /// Levenshtein distance, for best-guess recovery suggestions. Inputs are
 /// identifier-sized, so the plain 2D table is fine.

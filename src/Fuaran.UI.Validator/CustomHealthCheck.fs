@@ -12,9 +12,9 @@ module Fuaran.UI.Validator.CustomHealthCheck
 //
 //   - FUARAN052 NOT IMPLEMENTED HERE — it surfaces at op-stream replay
 //     time inside the apply engine (the build-time validator has no
-//     op-stream view). The constant lives in `Findings.codeFUARAN052`
-//     for documentation and cross-reference; the apply engine surfaces
-//     the runtime defect through `ApplyError`-shaped records.
+//     op-stream view). The code is reserved in the registry
+//     (`FindingCodes.customReplayHashMismatch`); the apply engine surfaces the
+//     runtime defect through `ApplyError`-shaped records.
 //
 //   - FUARAN053 CustomExposedNodeIdsUnverified (Warning): a Custom node
 //     declares `exposedNodeIds = [...]` but no `RegisterCustomRenderer`
@@ -48,17 +48,9 @@ module Fuaran.UI.Validator.CustomHealthCheck
 
 open FSharp.Compiler.Syntax
 open Fuaran.UI.Validator.AstWalker
+open Fuaran.UI.PreEmitValidate
 open Fuaran.UI.Validator.Findings
 open Fuaran.UI.Validator.Syntax
-
-/// Documentation constant for FUARAN052 — surfaced by the apply engine,
-/// not this module. Kept here so a code-search for `FUARAN052` lands on
-/// the right comment block.
-let codeFUARAN052 = "FUARAN052"
-
-let codeFUARAN053 = "FUARAN053"
-let codeFUARAN054 = "FUARAN054"
-let codeFUARAN055 = "FUARAN055"
 
 let defaultCustomNodeRatio = 0.05
 
@@ -163,8 +155,7 @@ let check (manifest: Manifest.Manifest) (calls: FuaranCall list) (sources: Parse
                 | _ -> "<unresolved>"
 
             create
-                Warning
-                codeFUARAN055
+                FindingCodes.customWithoutContentHash
                 c.Location
                 (sprintf
                     "Custom node %s lacks a contentHash. The bounded-escape safety feature is opt-in — adding a contentHash lets op-stream replay verify the body hasn't drifted from the registered renderer."
@@ -191,8 +182,7 @@ let check (manifest: Manifest.Manifest) (calls: FuaranCall list) (sources: Parse
                 | _ -> "<unresolved>"
 
             create
-                Warning
-                codeFUARAN053
+                FindingCodes.customRendererUnregistered
                 c.Location
                 (sprintf
                     "Custom node %s declares exposedNodeIds but no RegisterCustomRenderer call for the same (moduleId, componentId) appears in the project. The layout observer / AiTools introspection / Apply structural ops can't address the declared interior NodeIds without a registered renderer."
@@ -263,8 +253,7 @@ let check (manifest: Manifest.Manifest) (calls: FuaranCall list) (sources: Parse
                           Column = 1 }
 
                 [ create
-                      Warning
-                      codeFUARAN054
+                      FindingCodes.customNodeRatio
                       projectLocation
                       (sprintf
                           "Project Custom-node ratio %.3f (%d Custom / %d total) exceeds the healthy threshold of %.3f. This project-health metric tracks Custom as the language's last-resort escape; consider whether each Custom signals a typed-contract gap the language should close upstream rather than absorbing the creep. Contributors: %s. Raise customNodeRatio in fuaran-validator.manifest.json to acknowledge legitimately higher usage."

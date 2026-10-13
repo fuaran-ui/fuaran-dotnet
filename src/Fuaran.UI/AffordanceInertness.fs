@@ -416,10 +416,10 @@ let report<'Msg> (root: Node<'Msg>) : InertAffordance list =
     let fromLint =
         DeadOnDecode.lint root
         |> List.map (fun f ->
-            { Node = f.Node
-              Subject = f.Slot
+            { Node = f.Location.Node
+              Subject = f.Location.Slot
               Verdict = DecodedVerdict.Inert
-              Consequence = f.Remedy
+              Consequence = defaultArg f.Remedy f.Message
               Alternative = None })
 
     let rec walk (n: Node<'Msg>) : InertAffordance list =

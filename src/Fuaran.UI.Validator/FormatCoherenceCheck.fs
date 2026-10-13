@@ -29,6 +29,7 @@ module Fuaran.UI.Validator.FormatCoherenceCheck
 //      that's a runtime `RangeError`, out of scope for the static rule.
 // ============================================================================
 
+open Fuaran.UI.PreEmitValidate
 open Fuaran.UI.Validator.Findings
 open Fuaran.UI.Validator.Syntax
 
@@ -61,8 +62,7 @@ let check (sources: ParsedSource list) : Finding list =
             | Some iso when System.String.IsNullOrWhiteSpace iso ->
                 let base' =
                     create
-                        Error
-                        "FUARAN061"
+                        FindingCodes.currencyBlank
                         call.Location
                         "Format.Currency was given a blank ISO-4217 currency code. The renderer passes it to Intl.NumberFormat({ style: 'currency', currency: '' }), which throws a RangeError at render time. Supply a valid ISO-4217 code (e.g. \"GBP\", \"USD\", \"EUR\")."
 

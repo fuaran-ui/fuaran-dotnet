@@ -18,7 +18,7 @@ module Fuaran.UI.Validator.CustomContentHashCheck
 //      `Enforced` → Error (fails the build — the mechanical contract);
 //      `StrictReplay` / `AdvisoryWarning` → Warning (the advisory posture,
 //      surfacing the drift without breaking the build). The finding carries
-//      the computed hash in its `Suggestion` so the author can paste it in —
+//      the computed hash in its `Remedy` (`suggestion`) so the author can paste it in —
 //      the migration mechanism from hand-set sentinels to computed hashes.
 //
 //  The "body shape" the hash covers (the load-bearing definition):
@@ -53,10 +53,9 @@ module Fuaran.UI.Validator.CustomContentHashCheck
 open System.Security.Cryptography
 open System.Text
 open FSharp.Compiler.Syntax
+open Fuaran.UI.PreEmitValidate
 open Fuaran.UI.Validator.Findings
 open Fuaran.UI.Validator.Syntax
-
-let codeFUARAN062 = "FUARAN062"
 
 /// Canonical body-shape hash. PURE + host-portable — the validator and any
 /// consumer-side build target compute the same digest from the same inputs.
@@ -272,7 +271,11 @@ let check (sources: ParsedSource list) : Finding list =
                 if System.String.Equals(computed, hl.Hash, System.StringComparison.OrdinalIgnoreCase) then
                     None
                 else
-                    let severity = if hl.Strictness = "Enforced" then Error else Warning
+                    let severity =
+                        if hl.Strictness = "Enforced" then
+                            Fuaran.Core.Severity.Error
+                        else
+                            Fuaran.Core.Severity.Warning
 
                     let sentinelNote =
                         if looksLikeHexDigest hl.Hash then
@@ -281,7 +284,7 @@ let check (sources: ParsedSource list) : Finding list =
                             " The current value is not a 64-char hex digest, so it looks like a hand-set sentinel rather than a computed hash."
 
                     let enforcement =
-                        if severity = Error then
+                        if severity = Fuaran.Core.Severity.Error then
                             "build-failing (Strictness = Enforced)"
                         else
                             sprintf
@@ -298,7 +301,8 @@ let check (sources: ParsedSource list) : Finding list =
                             enforcement
                             computed
 
-                    create severity codeFUARAN062 site.Location message
+                    create FindingCodes.customContentHashStale site.Location message
+                    |> withSeverity severity
                     |> withRecovery
                         [ "Hash" ]
                         (Some(
