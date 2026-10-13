@@ -93,28 +93,16 @@ let private runtime: Runtime.IFuaranRuntime = BrowserRuntime.create ()
 
 let view (model: Model) (dispatch: Msg -> unit) =
     let ctx: Render.RenderContext<obj> =
-        { Sources = sources
-          Runtime = runtime
-          VisAdapter = VisAdapter.noOp<obj>
-          Dispatch = ignore
-          TelemetrySink = None
-          InErrorBoundary = false
-          Fragments = Map.empty
-          ExpandingFragments = Set.empty
-          Scope = None
-          SessionContext = Map.empty
-          // Phase 889 — no user-action recording in the samples.
-          ActionSink = None
-          CurrentNodeId = None
-          // Phase 1026 — a HAND-AUTHORED tree, where the author is the trust
-          // boundary, so the permissive posture is correct and is reached BY NAME.
-          // A host rendering a DECODED tree must not copy this line.
-          EgressPolicy = Sanitize.permissiveEgress
-          // Phase 1117 — no upload sink: this surface performs no uploads.
-          UploadSink = None
-          CustomHashFloor = None
-          // Phase 1545 — the default posture; samples render under no CSP mode.
-          Csp = Csp.Permissive }
+        let baseCtx = Render.RenderContext.create sources ignore model.Tree
+
+        { baseCtx with
+            Runtime = runtime
+            // A HAND-AUTHORED tree, where the author is the trust boundary, so the
+            // permissive egress posture is correct and is reached BY NAME. A host
+            // rendering a DECODED tree must not copy this line.
+            Policy =
+                { baseCtx.Policy with
+                    Egress = Sanitize.permissiveEgress } }
 
     // The host-supplied apply handler: decode the wire TreeOp, apply it to the
     // live Node<obj> tree, and dispatch ReplaceTree to re-render. Phase 90's

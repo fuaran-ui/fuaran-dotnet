@@ -365,6 +365,9 @@
          guest passes the host's capability policy, not just an
          orchestration-driven one). -->
     <Compile Include="RenderEntrySeamTests.fs" />
+    <!-- Phase 2067 — the one render-context builder, and the guard that no full
+         RenderContext literal grows back outside it. -->
+    <Compile Include="RenderContextBuilderTests.fs" />
     <!-- Phase 2041 — the client half of the renderer-agreement fixtures. -->
     <Compile Include="RendererAgreementTests.fs" />
     <!-- Phase 1146 — the pure tier's algebra laws, defined ONCE and consumed by

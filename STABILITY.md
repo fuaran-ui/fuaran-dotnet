@@ -8066,6 +8066,153 @@ the label of a known stage is unchanged. A `match` over `TurnStage` that lists t
 **Certified by** `src/Fuaran.UI.Client.Tests/TurnStageTests.fs`, which reads every row of the table through
 `Wire.parseTurnResponse` at a 422 and at a 500, and through `TurnStage.ofLabel`.
 
+### What rides this slot — Phase 2067
+
+**Class: BREAKING (record shape) + additive API.** Rendered output does not change and no wire byte
+moves. The render-context records change shape: both renderers' contexts now hold their policy
+settings in one shared record, and the client context is built by one function.
+
+- **Additive: `Render.RenderContext.create sources dispatch node`** builds the client context. It runs
+  the two one-shot pre-render passes over `node`, the state seeds and the fragment registry, and pins
+  every other field to its convenience default: `Runtime.diagnostic`, `VisAdapter.noOp`, no telemetry,
+  action or upload sink, an empty `SessionContext`, and `RenderPolicy.defaults`. A host adjusts the
+  result with `with`. **`Render.RenderContext.inScope scopeId ctx`** renders under a runtime scope: it
+  merges `StateStore.forScope scopeId`'s snapshot over `Sources.State` and sets `Policy.Scope`. All
+  eight convenience entries, the `Mount` guest context and the catalog now build their context
+  through these two functions. Each entry is `render` over `create`, plus a `with` for the fields it
+  lets a host supply.
+- **Additive: `Fuaran.UI.Renderer.RenderPolicy`** (in `Fuaran.UI.Renderer.Core`), the record
+  `{ Egress; CustomHashFloor; Csp; Scope }`, and `RenderPolicy.defaults` (default-deny egress, the
+  process hash floor, `Csp.Permissive`, the root scope). Both contexts hold it as `Policy`.
+- **Additive: `Fuaran.UI.Renderer.StateSeeds.apply node sources`**, the one state-seeding fold. The
+  client builder and the server's `mkContextWith` both call it, where each used to carry its own copy.
+- **Breaking: four fields on each context fold into `Policy`.** A full record literal of either
+  context no longer compiles, and neither does a read or a `with` of a moved field:
+
+  | Before (`RenderContext<'Msg>` and `ServerRenderContext`) | After |
+  |---|---|
+  | `ctx.EgressPolicy` | `ctx.Policy.Egress` |
+  | `ctx.CustomHashFloor` | `ctx.Policy.CustomHashFloor` |
+  | `ctx.Csp` | `ctx.Policy.Csp` |
+  | `ctx.Scope` | `ctx.Policy.Scope` |
+  | `{ ctx with EgressPolicy = p }` | `{ ctx with Policy = { ctx.Policy with Egress = p } }` |
+  | a full `RenderContext` literal | `{ RenderContext.create sources dispatch node with … }` |
+  | a client scoped literal (`Scope = Some id` with a merged `State`) | `RenderContext.create … \|> RenderContext.inScope id` |
+
+  The server's by-name builders (`mkContextWithEgress`, `mkContextWithCsp`, `mkContextInScope`) and
+  every server entry are unchanged in signature and in what they emit.
+- **Breaking: `Render.withStateSeeds` is removed.** Call `StateSeeds.apply`, which has the same
+  signature and the same result.
+- **Obsolete: `Render.renderWithSourcesSinkAndContext` and
+  `Render.renderWithSourcesSinkContextAndActionSink`.** Both are field permutations of
+  `renderWithSourcesAndSink`, neither has an in-repo caller, and each is one `with` over `create`,
+  which is what its `[<Obsolete>]` message spells out. `renderWithSourcesAndEgress` and
+  `renderWithSourcesAndCsp` also have no in-repo caller, but they are the documented by-name posture
+  opt-outs (`SANITIZATION.md`, `docs/migrations/1026-ambient-destination-policy.md`), so they stay.
+  Under `TreatWarningsAsErrors` a consumer that calls an obsoleted entry fails to build until it
+  moves to `create`.
+- **Evidence for the breaking class.** An estate-wide search found no consumer outside this
+  repository that builds either context as a literal, reads one of the four moved fields, or calls
+  `withStateSeeds` or one of the obsoleted entries. Inside it, every full `RenderContext` literal
+  outside `create` (29 before this change: nine in `Render.fs`, sixteen in `samples/catalog`, one each
+  in `samples/demo` and `samples/apply-demo`, two in `Fuaran.UI.Tests`) is gone.
+- **Samples: the catalog pages are named by feature.** `Tabs69` → `TabsNavigation`,
+  `BoundedEscape70` → `CustomBoundedEscape`, `ErrorBoundary60` → `ErrorBoundaries`, `Inspector57` →
+  `OpStreamInspector`, `Fragments61` → `FragmentPartials`, `StateReactive106` → `StateReactiveRender`,
+  `Formatting102` → `LocaleFormatting`, `InteractiveDisabled130` → `BoundDisabledState`. Their page
+  URLs (`?tabs-69=1` and the rest) and their DOM ids are unchanged, so the snapshot specs still find
+  them. Every page renders through `SampleContext.render`, which is `create` plus the permissive egress
+  posture, reached by name once for the whole catalog.
+
+#### The render-context field history
+
+The record definitions now carry one sentence per field; the history that used to sit in their
+comments is recorded here.
+
+- **`Sources`, `Runtime`, `VisAdapter`, `Dispatch`.** The original bundle. A record rather than
+  threaded parameters keeps the per-kind renderers' signatures readable, and lets a later dependency
+  extend the record rather than every match arm. `Sources` is kept apart from `Runtime` to preserve
+  the boundary between read-only data and the effect substrate.
+- **`TelemetrySink`.** `None` swallows a render failure into the fallback placeholder, which suits
+  dev and test contexts with no observability backend. `renderWithSourcesAndSink` is the entry that
+  supplies a real sink.
+- **`InErrorBoundary`.** True underneath an active `ErrorBoundary`'s child subtree. The per-node guard
+  suspends itself there, so a throw propagates to the boundary, which renders its `Fallback`. The
+  boundary resets the flag to `false` for the fallback's own render, so a flaky fallback is itself
+  per-node guarded rather than blanking the whole boundary, and a nested boundary sets it back on
+  entry.
+- **`Fragments`.** The registry `collectFragments` builds in one pre-render walk, mapping a
+  `FragmentId` to its declaration's `Body`. Empty, and free, for a tree that declares no fragment. On a
+  name collision the last declaration seen wins (`Map.add` overwrites); the validator's FUARAN056
+  reports the collision at build time, so the runtime corner case is loud rather than silent.
+- **`ExpandingFragments`.** The cycle guard for fragment expansion. Each `FragmentRef` adds its target
+  while it expands, and a nested expansion that revisits an in-progress id renders a labelled
+  placeholder instead of recursing. FUARAN058 catches most cycles at build time; this is the runtime
+  floor for trees the validator has not seen.
+- **`Scope` (now `Policy.Scope`).** Phase 266 (§4o). `None` is the process-global default
+  `StateStore`, byte-identical to the behaviour before 266. `Some scopeId` routes `Binding.State`
+  reads and `Action.SetState` writes to the isolated `StateStore.forScope scopeId` (Phase 128), so a
+  `Mount` guest's state stays off the host's. It is set at a `Mount` boundary or by a scope-aware
+  entry. On the server (Phase 783) the same field constrains `Custom`-renderer lookup, so a tree
+  rendered for a public surface cannot invoke a renderer registered for a privileged one.
+- **`SessionContext`.** Phase 330. The host's correlation context as an opaque string map; `Map.empty`
+  means the host supplies none and pays nothing (GP 13). The renderer reads only the well-known keys
+  `promptIdKey` and `userIdKey` and stamps them onto render-failure telemetry, so a failure joins the
+  interaction whose op records and apply telemetry preceded it. It is deliberately a
+  `Map<string, string>` rather than a typed `{ PromptId; TurnId; UserId }` record: the renderer
+  threads and stamps a host's ids without knowing what they mean, and a typed field set would publish
+  a host's correlation design on this surface (precedent: `Node.ExtraAttributes`). It is never hashed
+  and never on the wire.
+- **`ActionSink`.** Phase 889. `None` records nothing and costs nothing, the posture a privacy-classed
+  log has to ship with. The sink declares its own `CaptureMode`, so wiring a destination and opting
+  into payload values are two separate host acts, and neither happens by omission.
+- **`CurrentNodeId`.** Phase 889. The id of the node whose subtree is rendering, set once per node by
+  `render`, so a handler closure created underneath carries the node it belongs to; `runAction` is
+  handed the resolved `Action`, never the node. It is set only when `ActionSink` is wired, so an
+  unrecorded render pays no per-node record copy (GP 13).
+- **`EgressPolicy` (now `Policy.Egress`).** Phase 897 shipped the policy as available seam functions,
+  but every emission site still called `sanitizeUrlOrBlank`, so a decoded tree's egress was checked
+  only where a host remembered to ask. Phase 1026 made it ambient: every `href`, `src` and route the
+  renderer emits is checked against the field on the record every call already threads. The default
+  is `Sanitize.denyNonLocalEgress` at every entry, because an emission cannot declare its own egress.
+  `Sanitize.permissiveEgress` is reached by name, so a grep finds each host that opted out. Under the
+  default a `mailto:` or `tel:` href is refused (`AllowNonNetwork = false`), since those channels have
+  no host a rule could name, and same-origin destinations are allowed (`AllowLocal = true`), so
+  ordinary in-app links render unchanged. A refused destination renders as a refusal
+  (`Sanitize.egressRefusalUrl` with `Sanitize.egressRefusalAttribute`), never as a silent neuter. The
+  server twin has to move with the client's: the two tiers' DOM is parity-locked, so a policy that
+  admitted an origin on one tier only would be a parity defect, and the server is the sharper case,
+  because an SSR document is read by every visitor and an undeclared `Image.src` becomes a request
+  from each of their browsers.
+- **`UploadSink`.** Phase 1117. `None` means the host performs no uploads: a `FileUpload` declaring a
+  `destination` refuses the transfer loudly rather than falling back to another route (default-deny
+  by shape, FGP 3). The sink is the destination registry as well as the transport, and it is consulted
+  only after the dispatch gate (`ActionDescriptor.Upload`) has allowed the tree an upload, so a
+  permissive sink behind a denying runtime still uploads nothing.
+- **`CustomHashFloor` (now `Policy.CustomHashFloor`).** Phase 1532. The floor was a process global
+  alone, and a process is not a tenant: an SSR tier serves every tenant from one process, so one
+  declaration decided verification strictness for all of them and the last writer won. Carrying it
+  per render lets one request enforce without the host making every request enforce. It is
+  raise-only, like the installer: the effective floor is the stricter of this and the process floor
+  (`CustomHash.effectiveFloor`), because a per-request field that could lower it would hand a tenant
+  the bypass the floor exists to close.
+- **`Csp` (now `Policy.Csp`).** Phase 1545. `Permissive` is byte-for-byte the emission this renderer
+  has always produced. Under `Csp.Strict` no `style` attribute is emitted: each continuous value rides
+  a generated class the server renderer derived for the same node and slot, with its declaration in
+  the document's collected `<style>` element, so hydration leaves a strict policy intact. Strict is the
+  hydration posture, which is a boundary rather than an omission: a nonce has to match the
+  `Content-Security-Policy` header of the response that delivered the document, so a client-only
+  strict render emits the classes and finds no rules behind them. `SANITIZATION.md` states the limit.
+- **`Mount` guests inherit the policy.** A guest renders under its own scope but the host's egress,
+  hash floor and CSP posture. Its tree is not more trusted than the tree that mounted it, so it must not
+  widen its egress (Phase 1026), it is verified at the floor the host raised for the request
+  (Phase 1532), and it must not restore under `Permissive` the inline style a strict document forbids
+  (Phase 1545).
+
+**Certified by** `Fuaran.UI.Tests` (the client renderer suites, `SsrParityTests` and
+`RendererAgreementTests` included), `Fuaran.UI.Renderer.Server.Tests`, and the `samples/catalog`
+build.
+
 ## 0.93.0 — the slot opened after v0.92.0 was released (RELEASED — tagged v0.93.0 at b654b31, 2026-10-10)
 
 _Class: **BREAKING (API: the `Fuaran.UI.Validator` library surface)** — raised from additive by Phase 2053,

@@ -3,7 +3,7 @@ import { test, expect, Page } from "@playwright/test";
 // Phase 69 — explicit headers + ARIA / keyboard navigation + typed-tag
 // overlay headless invariants.
 //
-// The catalog page at `?tabs-69=1` mounts the Tabs69 fixture: three tabs
+// The catalog page at `?tabs-69=1` mounts the TabsNavigation fixture: three tabs
 // (Overview / Detail / Audit) wired through `Fuaran.tabsTagged`. Overview
 // is a typed Fuaran body; Detail is a `NodeKind.Custom`-wrapped Feliz
 // fragment registered via `IFuaranRuntime.RegisterCustomRenderer`; Audit

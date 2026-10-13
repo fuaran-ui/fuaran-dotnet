@@ -20,7 +20,7 @@ should.
 
 ## What is already scoped
 
-- **`Binding.State` reads and `Action.SetState` writes** — `RenderContext.Scope` selects
+- **`Binding.State` reads and `Action.SetState` writes** — `RenderContext.Policy.Scope` selects
   `StateStore.forScope`, so a guest's state is isolated from its host's (Phase 266, §4o).
 - **Custom renderers** — `IFuaranRuntime.TryGetCustomRendererInScope` takes the scope.
 - **Persistent-key declarations** — declared per store instance, and cleared with it

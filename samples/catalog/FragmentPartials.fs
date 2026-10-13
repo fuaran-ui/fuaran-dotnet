@@ -1,4 +1,4 @@
-module Fuaran.Samples.Catalog.Fragments61
+module Fuaran.Samples.Catalog.FragmentPartials
 
 // ============================================================================
 //  Reusable subtree fragments + named partials catalog page.
@@ -60,7 +60,7 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
 //
 // Wraps the diagnostic runtime, relaying `Warn` calls into the Elmish
 // dispatch so the cycle-guard placeholder + unresolved-ref placeholder
-// surfaces visibly below the cards. Mirrors the `ErrorBoundary60.fs`
+// surfaces visibly below the cards. Mirrors the `ErrorBoundaries.fs`
 // capturing-runtime pattern.
 
 type private CapturingRuntime(dispatch: Msg -> unit) =
@@ -236,29 +236,7 @@ let private rootDashboard: Node<Msg> =
 let view (model: Model) (dispatch: Msg -> unit) : ReactElement =
     let runtime = wireRuntime dispatch
 
-    let ctx: Render.RenderContext<Msg> =
-        { Sources = BindingResolver.empty
-          Runtime = runtime
-          VisAdapter = VisAdapter.noOp<Msg>
-          Dispatch = dispatch
-          TelemetrySink = None
-          InErrorBoundary = false
-          Fragments = Render.collectFragments Map.empty rootDashboard
-          ExpandingFragments = Set.empty
-          Scope = None
-          SessionContext = Map.empty
-          // Phase 889 — no user-action recording in the samples.
-          ActionSink = None
-          CurrentNodeId = None
-          // Phase 1026 — a HAND-AUTHORED tree, where the author is the trust
-          // boundary, so the permissive posture is correct and is reached BY NAME.
-          // A host rendering a DECODED tree must not copy this line.
-          EgressPolicy = Sanitize.permissiveEgress
-          // Phase 1117 — no upload sink: this surface performs no uploads.
-          UploadSink = None
-          CustomHashFloor = None
-          // Phase 1545 — the default posture; samples render under no CSP mode.
-          Csp = Csp.Permissive }
+    let render = SampleContext.render runtime BindingResolver.empty dispatch
 
     React.Fragment
         [ Render.themeStyleElement Defaults.theme
@@ -266,7 +244,7 @@ let view (model: Model) (dispatch: Msg -> unit) : ReactElement =
               [ prop.id "fragments-61-page"
                 prop.style [ style.padding 24 ]
                 prop.children
-                    [ Render.render ctx rootDashboard
+                    [ render rootDashboard
                       Html.section
                           [ prop.custom ("data-testid", "frag61-captured-warnings")
                             prop.style [ style.marginTop 32; style.fontFamily "monospace" ]

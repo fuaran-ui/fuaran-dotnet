@@ -225,33 +225,9 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
 // through to the `[i18n:<key>]` debug shape (the en pass-through locale's
 // catalog is empty so every key shows the placeholder — the contract is
 // visible at sight).
-let private renderContext (locale: LocaleOption) : Render.RenderContext<unit> =
-    let sources =
-        { BindingResolver.empty with
-            I18nResolver = BindingResolver.makeI18nResolver locale.Catalog }
-
-    { Sources = sources
-      Runtime = Runtime.diagnostic
-      VisAdapter = VisAdapter.noOp<unit>
-      Dispatch = (fun () -> ())
-      TelemetrySink = None
-      InErrorBoundary = false
-      Fragments = Map.empty
-      ExpandingFragments = Set.empty
-      Scope = None
-      SessionContext = Map.empty
-      // Phase 889 — no user-action recording in the samples.
-      ActionSink = None
-      CurrentNodeId = None
-      // Phase 1026 — a HAND-AUTHORED tree, where the author is the trust
-      // boundary, so the permissive posture is correct and is reached BY NAME.
-      // A host rendering a DECODED tree must not copy this line.
-      EgressPolicy = Sanitize.permissiveEgress
-      // Phase 1117 — no upload sink: this surface performs no uploads.
-      UploadSink = None
-      CustomHashFloor = None
-      // Phase 1545 — the default posture; samples render under no CSP mode.
-      Csp = Csp.Permissive }
+let private localeSources (locale: LocaleOption) : BindingResolver.BindingSources =
+    { BindingResolver.empty with
+        I18nResolver = BindingResolver.makeI18nResolver locale.Catalog }
 
 // ─── Side-nav ────────────────────────────────────────────────────────────
 
@@ -340,7 +316,7 @@ let private missingAccessibilityFields () : string list =
     // see the full surface they'd populate if they opted into the trait.
     [ "Label"; "LabelledBy"; "DescribedBy"; "Role"; "LiveRegion"; "Hidden" ]
 
-let private a11yInspectorPane (ctx: Render.RenderContext<unit>) (node: Node<unit>) : ReactElement =
+let private a11yInspectorPane (sources: BindingResolver.BindingSources) (node: Node<unit>) : ReactElement =
     match node.Accessibility with
     | None ->
         let fields = missingAccessibilityFields ()
@@ -358,7 +334,7 @@ let private a11yInspectorPane (ctx: Render.RenderContext<unit>) (node: Node<unit
                         [ prop.className "catalog-a11y-missing-fields"
                           prop.children [ for field in fields -> Html.li [ prop.text field ] ] ] ] ]
     | Some _ ->
-        let attrs = Render.accessibilityAttributes ctx.Sources node.Accessibility
+        let attrs = Render.accessibilityAttributes sources node.Accessibility
 
         let body =
             if List.isEmpty attrs then
@@ -391,7 +367,7 @@ let private a11yInspectorPane (ctx: Render.RenderContext<unit>) (node: Node<unit
 let private copyToClipboard (text: string) : unit = jsNative
 
 let private renderCard
-    (ctx: Render.RenderContext<unit>)
+    (sources: BindingResolver.BindingSources)
     (a11yAuditOn: bool)
     (entry: Matrix.KindEntry)
     (tone: ToneVariant)
@@ -452,9 +428,9 @@ let private renderCard
                                               prop.text (Matrix.emphasisLabel emphasis) ] ] ] ] ]
                 Html.div
                     [ prop.className "catalog-card-render"
-                      prop.children [ Render.render ctx node ] ]
+                      prop.children [ SampleContext.render Runtime.diagnostic sources ignore node ] ]
                 (if a11yAuditOn then
-                     a11yInspectorPane ctx node
+                     a11yInspectorPane sources node
                  else
                      Html.none)
                 Html.details
@@ -481,13 +457,13 @@ let private mainPane (model: Model) (_dispatch: Msg -> unit) : ReactElement =
         |> List.tryFind (fun e -> e.Id = model.ActiveKind)
         |> Option.defaultValue (List.head entries)
 
-    let ctx = renderContext model.ActiveLocale
+    let sources = localeSources model.ActiveLocale
 
     let cards =
         [ for tone in Matrix.allTones do
               for weight in Matrix.allWeights do
                   for emphasis in Matrix.allEmphases do
-                      renderCard ctx model.A11yAuditOn active tone weight emphasis ]
+                      renderCard sources model.A11yAuditOn active tone weight emphasis ]
 
     Html.main
         [ prop.className "catalog-main"

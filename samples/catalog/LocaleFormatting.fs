@@ -1,4 +1,4 @@
-module Fuaran.Samples.Catalog.Formatting102
+module Fuaran.Samples.Catalog.LocaleFormatting
 
 // ============================================================================
 //  Catalog page for Phase 102 — locale-aware number / date / currency / percent
@@ -128,31 +128,12 @@ let private tree: Node<Msg> =
 let view (_model: Model) (dispatch: Msg -> unit) : ReactElement =
     // The Ambient row resolves against this `Locale`; Explicit rows pin their
     // own tag and ignore it.
-    let ctx: Render.RenderContext<Msg> =
-        { Sources =
+    let render =
+        SampleContext.render
+            (BrowserRuntime.create ())
             { BindingResolver.empty with
                 Locale = "en-GB" }
-          Runtime = BrowserRuntime.create ()
-          VisAdapter = VisAdapter.noOp<Msg>
-          Dispatch = dispatch
-          TelemetrySink = None
-          InErrorBoundary = false
-          Fragments = Map.empty
-          ExpandingFragments = Set.empty
-          Scope = None
-          SessionContext = Map.empty
-          // Phase 889 — no user-action recording in the samples.
-          ActionSink = None
-          CurrentNodeId = None
-          // Phase 1026 — a HAND-AUTHORED tree, where the author is the trust
-          // boundary, so the permissive posture is correct and is reached BY NAME.
-          // A host rendering a DECODED tree must not copy this line.
-          EgressPolicy = Sanitize.permissiveEgress
-          // Phase 1117 — no upload sink: this surface performs no uploads.
-          UploadSink = None
-          CustomHashFloor = None
-          // Phase 1545 — the default posture; samples render under no CSP mode.
-          Csp = Csp.Permissive }
+            dispatch
 
     React.Fragment
         [ Render.themeStyleElement Defaults.theme
@@ -165,4 +146,4 @@ let view (_model: Model) (dispatch: Msg -> unit) : ReactElement =
                       Html.p
                           [ prop.text
                                 "Each row renders one numeric source through binding.format against several locales. Number grouping, currency symbols, percent shape, date style and relative-time wording all derive from the bounded Format intent × the locale — no raw Intl format strings. The Ambient row defers to the surface's resolver Locale (the 12.I locale source)." ]
-                      Render.render ctx tree ] ] ]
+                      render tree ] ] ]

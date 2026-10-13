@@ -1,4 +1,4 @@
-module Fuaran.Samples.Catalog.ErrorBoundary60
+module Fuaran.Samples.Catalog.ErrorBoundaries
 
 // ============================================================================
 //  Render-time error boundaries + per-node fallback catalog page.
@@ -63,7 +63,7 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
 // Wraps the diagnostic runtime, registering a deliberately-throwing
 // Custom renderer + relaying `Warn` calls into the Elmish dispatch so
 // the warnings panel below the cards can render them. Mirrors the
-// `BoundedEscape70.fs` capturing-runtime pattern.
+// `CustomBoundedEscape.fs` capturing-runtime pattern.
 
 let private throwingModuleId = "error-boundary-catalog"
 let private throwingComponentId = "ThrowingLeaf"
@@ -209,29 +209,7 @@ let private rootDashboard: Node<Msg> =
 let view (model: Model) (dispatch: Msg -> unit) : ReactElement =
     let runtime = wireRuntime dispatch
 
-    let ctx: Render.RenderContext<Msg> =
-        { Sources = BindingResolver.empty
-          Runtime = runtime
-          VisAdapter = VisAdapter.noOp<Msg>
-          Dispatch = dispatch
-          TelemetrySink = None
-          InErrorBoundary = false
-          Fragments = Map.empty
-          ExpandingFragments = Set.empty
-          Scope = None
-          SessionContext = Map.empty
-          // Phase 889 — no user-action recording in the samples.
-          ActionSink = None
-          CurrentNodeId = None
-          // Phase 1026 — a HAND-AUTHORED tree, where the author is the trust
-          // boundary, so the permissive posture is correct and is reached BY NAME.
-          // A host rendering a DECODED tree must not copy this line.
-          EgressPolicy = Sanitize.permissiveEgress
-          // Phase 1117 — no upload sink: this surface performs no uploads.
-          UploadSink = None
-          CustomHashFloor = None
-          // Phase 1545 — the default posture; samples render under no CSP mode.
-          Csp = Csp.Permissive }
+    let render = SampleContext.render runtime BindingResolver.empty dispatch
 
     React.Fragment
         [ Render.themeStyleElement Defaults.theme
@@ -239,7 +217,7 @@ let view (model: Model) (dispatch: Msg -> unit) : ReactElement =
               [ prop.id "error-boundary-60-page"
                 prop.style [ style.padding 24 ]
                 prop.children
-                    [ Render.render ctx rootDashboard
+                    [ render rootDashboard
                       Html.section
                           [ prop.custom ("data-testid", "eb60-captured-warnings")
                             prop.style [ style.marginTop 32; style.fontFamily "monospace" ]

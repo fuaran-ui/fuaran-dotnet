@@ -39,29 +39,9 @@ let private exhibitIds: string list =
       "Form"
       "Button" ]
 
-let private renderCtx: Render.RenderContext<unit> =
-    { Sources = BindingResolver.empty
-      Runtime = Runtime.diagnostic
-      VisAdapter = VisAdapter.noOp<unit>
-      Dispatch = (fun () -> ())
-      TelemetrySink = None
-      InErrorBoundary = false
-      Fragments = Map.empty
-      ExpandingFragments = Set.empty
-      Scope = None
-      SessionContext = Map.empty
-      // Phase 889 — no user-action recording in the samples.
-      ActionSink = None
-      CurrentNodeId = None
-      // Phase 1026 — a HAND-AUTHORED tree, where the author is the trust
-      // boundary, so the permissive posture is correct and is reached BY NAME.
-      // A host rendering a DECODED tree must not copy this line.
-      EgressPolicy = Sanitize.permissiveEgress
-      // Phase 1117 — no upload sink: this surface performs no uploads.
-      UploadSink = None
-      CustomHashFloor = None
-      // Phase 1545 — the default posture; samples render under no CSP mode.
-      Csp = Csp.Permissive }
+/// Each sample tree renders under the context built for it.
+let private renderSample (node: Node<unit>) : ReactElement =
+    SampleContext.render Runtime.diagnostic BindingResolver.empty ignore node
 
 let private sample (entry: Matrix.KindEntry) : ReactElement =
     let node = entry.Build(ToneVariant.Brand, StyleWeight.Standard, Emphasis.Normal)
@@ -71,7 +51,7 @@ let private sample (entry: Matrix.KindEntry) : ReactElement =
           prop.custom ("data-kind", entry.Id)
           prop.children
               [ Html.h2 [ prop.className "viewport-mobile-label"; prop.text entry.Label ]
-                Render.render renderCtx node ] ]
+                renderSample node ] ]
 
 let view () : ReactElement =
     let items =

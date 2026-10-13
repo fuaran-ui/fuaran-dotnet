@@ -1,4 +1,4 @@
-module Fuaran.Samples.Catalog.StateReactive106
+module Fuaran.Samples.Catalog.StateReactiveRender
 
 // ============================================================================
 //  Catalog page for Phase 106 — state-channel-driven live re-render of all
@@ -92,29 +92,8 @@ let private togglePane: Node<Msg> =
 
 let view (_model: Model) (dispatch: Msg -> unit) : ReactElement =
     // Toggle context: a real BrowserRuntime so SetState writes the store.
-    let toggleCtx: Render.RenderContext<Msg> =
-        { Sources = BindingResolver.empty
-          Runtime = BrowserRuntime.create ()
-          VisAdapter = VisAdapter.noOp<Msg>
-          Dispatch = dispatch
-          TelemetrySink = None
-          InErrorBoundary = false
-          Fragments = Map.empty
-          ExpandingFragments = Set.empty
-          Scope = None
-          SessionContext = Map.empty
-          // Phase 889 — no user-action recording in the samples.
-          ActionSink = None
-          CurrentNodeId = None
-          // Phase 1026 — a HAND-AUTHORED tree, where the author is the trust
-          // boundary, so the permissive posture is correct and is reached BY NAME.
-          // A host rendering a DECODED tree must not copy this line.
-          EgressPolicy = Sanitize.permissiveEgress
-          // Phase 1117 — no upload sink: this surface performs no uploads.
-          UploadSink = None
-          CustomHashFloor = None
-          // Phase 1545 — the default posture; samples render under no CSP mode.
-          Csp = Csp.Permissive }
+    let renderToggle =
+        SampleContext.render (BrowserRuntime.create ()) BindingResolver.empty dispatch
 
     React.Fragment
         [ Render.themeStyleElement Defaults.theme
@@ -127,9 +106,7 @@ let view (_model: Model) (dispatch: Msg -> unit) : ReactElement =
                       Html.p
                           [ prop.text
                                 "Two independent panes each read the same global Binding.State key via renderStateReactive. Click a toggle: a single global Action.SetState re-renders BOTH panes at once — not just the control that owns the value. The Elmish model is unit; the refresh comes from the StateStore subscription." ]
-                      Html.section
-                          [ prop.style [ style.marginTop 16 ]
-                            prop.children [ Render.render toggleCtx togglePane ] ]
+                      Html.section [ prop.style [ style.marginTop 16 ]; prop.children [ renderToggle togglePane ] ]
                       Html.section
                           [ prop.style [ style.marginTop 24; style.display.flex; style.gap 24 ]
                             prop.children

@@ -38,28 +38,9 @@ open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
 
-let private renderCtx: Render.RenderContext<unit> =
-    { Sources = BindingResolver.empty
-      Runtime = Runtime.diagnostic
-      VisAdapter = VisAdapter.noOp<unit>
-      Dispatch = (fun () -> ())
-      TelemetrySink = None
-      InErrorBoundary = false
-      Fragments = Map.empty
-      ExpandingFragments = Set.empty
-      Scope = None
-      SessionContext = Map.empty
-      ActionSink = None
-      CurrentNodeId = None
-      // Phase 1026 — a HAND-AUTHORED tree, where the author is the trust
-      // boundary, so the permissive posture is correct and is reached BY NAME.
-      // A host rendering a DECODED tree must not copy this line.
-      EgressPolicy = Sanitize.permissiveEgress
-      // Phase 1117 — no upload sink: this surface performs no uploads.
-      UploadSink = None
-      CustomHashFloor = None
-      // Phase 1545 — the default posture; samples render under no CSP mode.
-      Csp = Csp.Permissive }
+/// Each sample tree renders under the context built for it.
+let private renderSample (node: Node<unit>) : ReactElement =
+    SampleContext.render Runtime.diagnostic BindingResolver.empty ignore node
 
 /// The mirrored surfaces, in the order they read best stacked. Each id resolves
 /// against `Matrix.entries`, so the harness stays in lockstep with the catalog's
@@ -86,7 +67,7 @@ let private sample (entry: Matrix.KindEntry) : ReactElement =
           prop.custom ("data-kind", entry.Id)
           prop.children
               [ Html.h2 [ prop.className "bidi-rtl-label"; prop.text entry.Label ]
-                Render.render renderCtx node ] ]
+                renderSample node ] ]
 
 let private samples (ids: string list) : ReactElement list =
     ids
@@ -123,10 +104,10 @@ let private textRun (regionLabel: string) : ReactElement =
               [ Html.h2
                     [ prop.className "bidi-rtl-label"
                       prop.text ("Bound text run — " + regionLabel) ]
-                Render.render renderCtx (boundHeading ("bound-ar-" + regionLabel) "مرحبا بالعالم")
-                Render.render renderCtx (boundHeading ("bound-en-" + regionLabel) "Hello, world")
-                Render.render renderCtx (boundHeading ("bound-mixed-" + regionLabel) "الإيرادات: 1,240 USD")
-                Render.render renderCtx (literalHeading ("literal-" + regionLabel) "Authored control line") ] ]
+                renderSample (boundHeading ("bound-ar-" + regionLabel) "مرحبا بالعالم")
+                renderSample (boundHeading ("bound-en-" + regionLabel) "Hello, world")
+                renderSample (boundHeading ("bound-mixed-" + regionLabel) "الإيرادات: 1,240 USD")
+                renderSample (literalHeading ("literal-" + regionLabel) "Authored control line") ] ]
 
 let view () : ReactElement =
     React.Fragment
