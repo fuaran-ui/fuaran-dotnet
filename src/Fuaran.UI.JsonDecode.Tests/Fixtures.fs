@@ -193,9 +193,10 @@ let heading: Node<obj> =
     node
         "heading-1"
         (NodeKind.Heading(
-            { Level = 2
-              Text = TextSource.Literal "Channel performance"
-              Variant = HeadingVariant.Standard }
+            { Defaults.heading with
+                Level = 2
+                Text = TextSource.Literal "Channel performance"
+                Variant = HeadingVariant.Standard }
         ))
         None
 
@@ -205,7 +206,13 @@ let heading: Node<obj> =
 /// differ from `StyleRole.None` / `FontVoice.Default`.
 [<NodeFixture "Display/Markdown (Phase 147 Role=Data + Voice=Display)">]
 let styleRoleVoice: Node<obj> =
-    { node "style-role-voice-1" (NodeKind.Markdown({ Text = TextSource.Literal "Q3 revenue" })) None with
+    { node
+          "style-role-voice-1"
+          (NodeKind.Markdown(
+              { Defaults.markdown with
+                  Text = TextSource.Literal "Q3 revenue" }
+          ))
+          None with
         Style =
             Some
                 { defaultStyle with
@@ -214,7 +221,13 @@ let styleRoleVoice: Node<obj> =
 
 [<NodeFixture "Display/Markdown">]
 let markdown: Node<obj> =
-    node "markdown-1" (NodeKind.Markdown({ Text = TextSource.Literal "Updated hourly." })) None
+    node
+        "markdown-1"
+        (NodeKind.Markdown(
+            { Defaults.markdown with
+                Text = TextSource.Literal "Updated hourly." }
+        ))
+        None
 
 /// Phase 1472 — a `SemanticStyle` carrying `Direction` and NOTHING ELSE, so the
 /// emitted `style` object is exactly `{"direction":"ltr"}`. One member is the
@@ -223,7 +236,13 @@ let markdown: Node<obj> =
 /// prove nothing about the slot it was written for.
 [<NodeFixture "Display/Markdown (Phase 1472 Direction=Ltr, the only style member)">]
 let styleDirectionLtrRun: Node<obj> =
-    { node "style-direction-ltr-1" (NodeKind.Markdown({ Text = TextSource.Literal "RR123456789IL" })) None with
+    { node
+          "style-direction-ltr-1"
+          (NodeKind.Markdown(
+              { Defaults.markdown with
+                  Text = TextSource.Literal "RR123456789IL" }
+          ))
+          None with
         Style =
             Some
                 { defaultStyle with
@@ -234,8 +253,9 @@ let badge: Node<obj> =
     node
         "badge-1"
         (NodeKind.Badge(
-            { Label = TextSource.Literal "Beta"
-              Variant = BadgeVariant.Info }
+            { Defaults.badge with
+                Label = TextSource.Literal "Beta"
+                Variant = BadgeVariant.Info }
         ))
         None
 
@@ -369,7 +389,8 @@ let textI18nBoundArg: Node<obj> =
     node
         "text-i18n-bound-arg-1"
         (NodeKind.Markdown(
-            { Text = TextSource.I18n("cart.remaining", Map.ofList [ "count", Binding.State("cartCount", None) ]) }
+            { Defaults.markdown with
+                Text = TextSource.I18n("cart.remaining", Map.ofList [ "count", Binding.State("cartCount", None) ]) }
         ))
         None
 
@@ -385,14 +406,15 @@ let textI18nMixedArgs: Node<obj> =
     node
         "text-i18n-mixed-args-1"
         (NodeKind.Markdown(
-            { Text =
-                TextSource.I18n(
-                    "invoice.summary",
-                    Map.ofList
-                        [ "currency", Binding.Static(Some(JStr "GBP"))
-                          "total", Binding.State("invoiceTotal", Some(JFloat 1250.5))
-                          "year", Binding.Static(Some(JInt 2026)) ]
-                ) }
+            { Defaults.markdown with
+                Text =
+                    TextSource.I18n(
+                        "invoice.summary",
+                        Map.ofList
+                            [ "currency", Binding.Static(Some(JStr "GBP"))
+                              "total", Binding.State("invoiceTotal", Some(JFloat 1250.5))
+                              "year", Binding.Static(Some(JInt 2026)) ]
+                    ) }
         ))
         None
 
@@ -810,8 +832,9 @@ let listDisplay: Node<obj> =
     node
         "list-1"
         (NodeKind.List(
-            { Items = [ TextSource.Literal "First"; TextSource.Literal "Second" ]
-              Ordered = true }
+            { Defaults.list with
+                Items = [ TextSource.Literal "First"; TextSource.Literal "Second" ]
+                Ordered = true }
         ))
         None
 
@@ -850,14 +873,21 @@ let math: Node<obj> =
     node
         "math-1"
         (NodeKind.Math(
-            { Source = "x^2 + y^2 = z^2"
-              Display = MathDisplay.Block }
+            { Defaults.math with
+                Source = "x^2 + y^2 = z^2"
+                Display = MathDisplay.Block }
         ))
         None
 
 [<NodeFixture "Display/Sparkline">]
 let sparkline: Node<obj> =
-    node "spark-1" (NodeKind.Sparkline({ Source = Binding.Static(Some [ 1.0; 2.0; 3.0; 2.0; 4.0 ]) })) None
+    node
+        "spark-1"
+        (NodeKind.Sparkline(
+            { Defaults.sparkline with
+                Source = Binding.Static(Some [ 1.0; 2.0; 3.0; 2.0; 4.0 ]) }
+        ))
+        None
 
 let private bareDrawStyle: DrawStyle = Defaults.drawStyle
 
@@ -1141,16 +1171,17 @@ let sparklineNonfiniteSentinel: Node<obj> =
     node
         "spark-nonfinite-sentinel"
         (NodeKind.Sparkline(
-            { Source =
-                Binding.Static(
-                    Some
-                        [ 1.0
-                          System.Double.NaN
-                          3.0
-                          System.Double.PositiveInfinity
-                          System.Double.NegativeInfinity
-                          5.0 ]
-                ) }
+            { Defaults.sparkline with
+                Source =
+                    Binding.Static(
+                        Some
+                            [ 1.0
+                              System.Double.NaN
+                              3.0
+                              System.Double.PositiveInfinity
+                              System.Double.NegativeInfinity
+                              5.0 ]
+                    ) }
         ))
         None
 
@@ -1170,7 +1201,8 @@ let metricNonfiniteSentinel: Node<obj> =
         None
 
 [<NodeFixture "Display/Skeleton">]
-let skeleton: Node<obj> = node "skel-1" (NodeKind.Skeleton({ Rows = 3 })) None
+let skeleton: Node<obj> =
+    node "skel-1" (NodeKind.Skeleton({ Defaults.skeleton with Rows = 3 })) None
 
 [<NodeFixture "Display/Callout">]
 let callout: Node<obj> =
@@ -1290,10 +1322,11 @@ let iconDecorative: Node<obj> =
     node
         "icon-1"
         (NodeKind.Icon(
-            { Icon = "sparkles"
-              Size = IconSize.Large
-              Tone = ToneVariant.Default
-              Label = None }
+            { Defaults.icon with
+                Icon = "sparkles"
+                Size = IconSize.Large
+                Tone = ToneVariant.Default
+                Label = None }
         ))
         None
 
@@ -1304,12 +1337,10 @@ let dashboardEmpty: Node<obj> =
     node
         "dash-empty"
         (NodeKind.Box(
-            { Layout = BoxLayout.Auto
-              Role = BoxRole.Dashboard
-              Heading = None
-              Children = []
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Layout = BoxLayout.Auto
+                Role = BoxRole.Dashboard
+                Children = [] }
         ))
         None
 
@@ -1330,27 +1361,27 @@ let styleDirectionIsolatedValue: Node<obj> =
     { node
           "style-direction-isolated-1"
           (NodeKind.Box(
-              { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
-                Role = BoxRole.Group
-                Heading = None
-                Children =
-                  [ node
-                        "style-direction-prose-1"
-                        (NodeKind.Markdown({ Text = TextSource.Literal "מספר האסמכתא שלך הוא" }))
-                        None
-                    { node
-                          "style-direction-reference-1"
-                          (NodeKind.Badge(
-                              { Label = TextSource.Literal "RR123456789IL"
-                                Variant = BadgeVariant.Neutral }
-                          ))
-                          None with
-                        Style =
-                            Some
-                                { defaultStyle with
-                                    Direction = TextDirection.Ltr } } ]
-                KeepTogether = false
-                BreakBefore = false }
+              { Defaults.box with
+                  Children =
+                      [ node
+                            "style-direction-prose-1"
+                            (NodeKind.Markdown(
+                                { Defaults.markdown with
+                                    Text = TextSource.Literal "מספר האסמכתא שלך הוא" }
+                            ))
+                            None
+                        { node
+                              "style-direction-reference-1"
+                              (NodeKind.Badge(
+                                  { Defaults.badge with
+                                      Label = TextSource.Literal "RR123456789IL"
+                                      Variant = BadgeVariant.Neutral }
+                              ))
+                              None with
+                            Style =
+                                Some
+                                    { defaultStyle with
+                                        Direction = TextDirection.Ltr } } ] }
           ))
           None with
         Style =
@@ -1372,18 +1403,32 @@ let boxKeepTogether: Node<obj> =
     node
         "box-keep-together-1"
         (NodeKind.Box(
-            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
-              Role = BoxRole.Card
-              Heading = Some(TextSource.Literal "Totals")
-              Children =
-                [ node "box-keep-together-net-1" (NodeKind.Markdown({ Text = TextSource.Literal "Net 1,200.00" })) None
-                  node "box-keep-together-vat-1" (NodeKind.Markdown({ Text = TextSource.Literal "VAT 240.00" })) None
-                  node
-                      "box-keep-together-gross-1"
-                      (NodeKind.Markdown({ Text = TextSource.Literal "Gross 1,440.00" }))
-                      None ]
-              KeepTogether = true
-              BreakBefore = false }
+            { Defaults.box with
+                Role = BoxRole.Card
+                Heading = Some(TextSource.Literal "Totals")
+                Children =
+                    [ node
+                          "box-keep-together-net-1"
+                          (NodeKind.Markdown(
+                              { Defaults.markdown with
+                                  Text = TextSource.Literal "Net 1,200.00" }
+                          ))
+                          None
+                      node
+                          "box-keep-together-vat-1"
+                          (NodeKind.Markdown(
+                              { Defaults.markdown with
+                                  Text = TextSource.Literal "VAT 240.00" }
+                          ))
+                          None
+                      node
+                          "box-keep-together-gross-1"
+                          (NodeKind.Markdown(
+                              { Defaults.markdown with
+                                  Text = TextSource.Literal "Gross 1,440.00" }
+                          ))
+                          None ]
+                KeepTogether = true }
         ))
         None
 
@@ -1395,13 +1440,16 @@ let boxBreakBefore: Node<obj> =
     node
         "box-break-before-1"
         (NodeKind.Box(
-            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
-              Role = BoxRole.Group
-              Heading = None
-              Children =
-                [ node "box-break-before-body-1" (NodeKind.Markdown({ Text = TextSource.Literal "Appendix A" })) None ]
-              KeepTogether = false
-              BreakBefore = true }
+            { Defaults.box with
+                Children =
+                    [ node
+                          "box-break-before-body-1"
+                          (NodeKind.Markdown(
+                              { Defaults.markdown with
+                                  Text = TextSource.Literal "Appendix A" }
+                          ))
+                          None ]
+                BreakBefore = true }
         ))
         None
 
@@ -1410,12 +1458,8 @@ let stack: Node<obj> =
     node
         "stack-1"
         (NodeKind.Box(
-            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
-              Role = BoxRole.Group
-              Heading = None
-              Children = [ metric; markdown ]
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Children = [ metric; markdown ] }
         ))
         None
 
@@ -1424,12 +1468,9 @@ let gridLayout: Node<obj> =
     node
         "glayout-1"
         (NodeKind.Box(
-            { Layout = BoxLayout.Grid(12, None, None)
-              Role = BoxRole.Group
-              Heading = None
-              Children = [ metric ]
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Layout = BoxLayout.Grid(12, None, None)
+                Children = [ metric ] }
         ))
         None
 
@@ -1443,12 +1484,9 @@ let gridLayoutTemplatedRatio: Node<obj> =
     node
         "glayout-tpl-ratio"
         (NodeKind.Box(
-            { Layout = BoxLayout.Grid(2, Some "1fr 2fr", None)
-              Role = BoxRole.Group
-              Heading = None
-              Children = [ metric ]
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Layout = BoxLayout.Grid(2, Some "1fr 2fr", None)
+                Children = [ metric ] }
         ))
         None
 
@@ -1457,12 +1495,9 @@ let gridLayoutTemplatedFixedPlusFlex: Node<obj> =
     node
         "glayout-tpl-fixed"
         (NodeKind.Box(
-            { Layout = BoxLayout.Grid(4, Some "100px repeat(3, minmax(30px, 1fr))", None)
-              Role = BoxRole.Group
-              Heading = None
-              Children = [ metric ]
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Layout = BoxLayout.Grid(4, Some "100px repeat(3, minmax(30px, 1fr))", None)
+                Children = [ metric ] }
         ))
         None
 
@@ -1471,12 +1506,9 @@ let gridLayoutTemplatedAutoFit: Node<obj> =
     node
         "glayout-tpl-autofit"
         (NodeKind.Box(
-            { Layout = BoxLayout.Grid(1, Some "repeat(auto-fit, minmax(150px, 1fr))", None)
-              Role = BoxRole.Group
-              Heading = None
-              Children = [ metric ]
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Layout = BoxLayout.Grid(1, Some "repeat(auto-fit, minmax(150px, 1fr))", None)
+                Children = [ metric ] }
         ))
         None
 
@@ -1492,12 +1524,9 @@ let masonryLayout: Node<obj> =
     node
         "masonry-1"
         (NodeKind.Box(
-            { Layout = BoxLayout.Masonry(3, None)
-              Role = BoxRole.Group
-              Heading = None
-              Children = [ metric; markdown ]
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Layout = BoxLayout.Masonry(3, None)
+                Children = [ metric; markdown ] }
         ))
         None
 
@@ -1506,12 +1535,9 @@ let masonryLayoutGap: Node<obj> =
     node
         "masonry-gap"
         (NodeKind.Box(
-            { Layout = BoxLayout.Masonry(4, Some 16)
-              Role = BoxRole.Group
-              Heading = None
-              Children = [ metric; markdown ]
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Layout = BoxLayout.Masonry(4, Some 16)
+                Children = [ metric; markdown ] }
         ))
         None
 
@@ -1520,8 +1546,9 @@ let splitPanel: Node<obj> =
     node
         "split-1"
         (NodeKind.SplitPanel(
-            { Weight = 0.6
-              Children = [ metric; markdown ] }
+            { Defaults.splitPanel with
+                Weight = 0.6
+                Children = [ metric; markdown ] }
         ))
         None
 
@@ -1557,12 +1584,14 @@ let tabsExplicitHeaders: Node<obj> =
                 OnSelect = Some(fun _ -> Action.Chain [])
                 TabHeaders =
                     Some
-                        [ { Label = TextSource.Literal "Overview"
-                            Icon = Some "overview-glyph"
-                            Disabled = Option.None }
-                          { Label = TextSource.Literal "Detail"
-                            Icon = Option.None
-                            Disabled = Some(Binding.Static(Some false)) } ]
+                        [ { Defaults.tabHeader with
+                              Label = TextSource.Literal "Overview"
+                              Icon = Some "overview-glyph"
+                              Disabled = Option.None }
+                          { Defaults.tabHeader with
+                              Label = TextSource.Literal "Detail"
+                              Icon = Option.None
+                              Disabled = Some(Binding.Static(Some false)) } ]
                 TabTags = Some [ "overview"; "detail" ]
                 ActiveTag = Some(Binding.Static(Some "overview")) }
         ))
@@ -1619,16 +1648,15 @@ let compositeTabsPanels: Node<obj> =
         node
             "overview-panel"
             (NodeKind.Box(
-                { Layout = BoxLayout.Grid(2, Option.None, Some 16)
-                  Role = BoxRole.Card
-                  Heading = Some(TextSource.Literal "This month")
-                  // Sparkline + Badge rather than the fat shared `metric`: this tree is
-                  // meant to SUPERSEDE `tabs-explicit-1` as the pack's Tabs exemplar, so
-                  // it has to carry that fixture's leaf vocabulary, and Metric is already
-                  // exemplified several times over while Sparkline is exemplified once.
-                  Children = [ sparkline; badge ]
-                  KeepTogether = false
-                  BreakBefore = false }
+                { Defaults.box with
+                    Layout = BoxLayout.Grid(2, Option.None, Some 16)
+                    Role = BoxRole.Card
+                    Heading = Some(TextSource.Literal "This month")
+                    // Sparkline + Badge rather than the fat shared `metric`: this tree is
+                    // meant to SUPERSEDE `tabs-explicit-1` as the pack's Tabs exemplar, so
+                    // it has to carry that fixture's leaf vocabulary, and Metric is already
+                    // exemplified several times over while Sparkline is exemplified once.
+                    Children = [ sparkline; badge ] }
             ))
             None
 
@@ -1636,12 +1664,11 @@ let compositeTabsPanels: Node<obj> =
         node
             "settings-panel"
             (NodeKind.Box(
-                { Layout = BoxLayout.Flex(Orientation.Vertical, false, Some 12)
-                  Role = BoxRole.Card
-                  Heading = Some(TextSource.Literal "Preferences")
-                  Children = [ preferencesForm ]
-                  KeepTogether = false
-                  BreakBefore = false }
+                { Defaults.box with
+                    Layout = BoxLayout.Flex(Orientation.Vertical, false, Some 12)
+                    Role = BoxRole.Card
+                    Heading = Some(TextSource.Literal "Preferences")
+                    Children = [ preferencesForm ] }
             ))
             None
 
@@ -1652,12 +1679,14 @@ let compositeTabsPanels: Node<obj> =
                 Children = [ overviewPanel; settingsPanel ]
                 TabHeaders =
                     Some
-                        [ { Label = TextSource.Literal "Overview"
-                            Icon = Some "chart-glyph"
-                            Disabled = Option.None }
-                          { Label = TextSource.Literal "Settings"
-                            Icon = Option.None
-                            Disabled = Some(Binding.Static(Some false)) } ]
+                        [ { Defaults.tabHeader with
+                              Label = TextSource.Literal "Overview"
+                              Icon = Some "chart-glyph"
+                              Disabled = Option.None }
+                          { Defaults.tabHeader with
+                              Label = TextSource.Literal "Settings"
+                              Icon = Option.None
+                              Disabled = Some(Binding.Static(Some false)) } ]
                 TabTags = Some [ "overview"; "settings" ]
                 ActiveTag = Some(Binding.Static(Some "overview")) }
         ))
@@ -1668,12 +1697,10 @@ let card: Node<obj> =
     node
         "card-1"
         (NodeKind.Box(
-            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
-              Role = BoxRole.Card
-              Heading = Some(TextSource.Literal "Insights")
-              Children = [ metric ]
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Role = BoxRole.Card
+                Heading = Some(TextSource.Literal "Insights")
+                Children = [ metric ] }
         ))
         None
 
@@ -1682,11 +1709,12 @@ let stepper: Node<obj> =
     node
         "step-1"
         (NodeKind.Stepper(
-            { ActiveStep = Binding.Static(Some 1)
-              Children = [ markdown; withId "markdown-2" markdown ]
-              // `Some` (Phase 692–694 swap) — the slot is optional now; Some
-              // keeps the `"onSelect":"<closure>"` sentinel on the wire.
-              OnSelect = Some(fun _ -> Action.Chain []) }
+            { Defaults.stepper with
+                ActiveStep = Binding.Static(Some 1)
+                Children = [ markdown; withId "markdown-2" markdown ]
+                // `Some` (Phase 692–694 swap) — the slot is optional now; Some
+                // keeps the `"onSelect":"<closure>"` sentinel on the wire.
+                OnSelect = Some(fun _ -> Action.Chain []) }
         ))
         None
 
@@ -1695,8 +1723,9 @@ let summaryList: Node<obj> =
     node
         "summary-1"
         (NodeKind.SummaryList(
-            { Heading = Some(TextSource.Literal "Stats")
-              Children = [ labelValueRow ] }
+            { Defaults.summaryList with
+                Heading = Some(TextSource.Literal "Stats")
+                Children = [ labelValueRow ] }
         ))
         None
 
@@ -1922,23 +1951,25 @@ let formRangedNumber: Node<obj> =
 let filtersBoth: Node<obj> =
     // `Some` closures — the F#-authored shape, byte-identical to pre-Phase-423 (`"onChange":"<closure>"`).
     let textFilter: FilterSpec<obj> =
-        { Name = "q"
-          Label = TextSource.Literal "Search"
-          Kind =
-            FormFieldKind.Text(
-                Some(FieldValue.ofText (Binding.Static(Some ""))),
-                Some(FieldChange.ofText (fun _ -> placeholderChain))
-            ) }
+        { Defaults.filter with
+            Name = "q"
+            Label = TextSource.Literal "Search"
+            Kind =
+                FormFieldKind.Text(
+                    Some(FieldValue.ofText (Binding.Static(Some ""))),
+                    Some(FieldChange.ofText (fun _ -> placeholderChain))
+                ) }
 
     let choiceFilter: FilterSpec<obj> =
-        { Name = "tier"
-          Label = TextSource.Literal "Tier"
-          Kind =
-            FormFieldKind.Choice(
-                Binding.Static(Some [ { Value = "all"; Label = "All" } ]),
-                Some(FieldValue.ofText (Binding.Static(Some "all"))),
-                Some(FieldChange.ofChoice (fun _ -> placeholderChain))
-            ) }
+        { Defaults.filter with
+            Name = "tier"
+            Label = TextSource.Literal "Tier"
+            Kind =
+                FormFieldKind.Choice(
+                    Binding.Static(Some [ { Value = "all"; Label = "All" } ]),
+                    Some(FieldValue.ofText (Binding.Static(Some "all"))),
+                    Some(FieldChange.ofChoice (fun _ -> placeholderChain))
+                ) }
 
     node "filters-1" (NodeKind.Filters { Items = [ textFilter; choiceFilter ] }) None
 
@@ -1948,31 +1979,34 @@ let filtersBoth: Node<obj> =
 [<NodeFixture "Input/Filters (declarative — omitted onChange + typed range bounds)">]
 let filtersDeclarative: Node<obj> =
     let textFilter: FilterSpec<obj> =
-        { Name = "q"
-          Label = TextSource.Literal "Search"
-          Kind = FormFieldKind.Text(Some(FieldValue.ofText (Binding.Filter("q", None))), None) }
+        { Defaults.filter with
+            Name = "q"
+            Label = TextSource.Literal "Search"
+            Kind = FormFieldKind.Text(Some(FieldValue.ofText (Binding.Filter("q", None))), None) }
 
     let choiceFilter: FilterSpec<obj> =
-        { Name = "tier"
-          Label = TextSource.Literal "Tier"
-          Kind =
-            FormFieldKind.Choice(
-                Binding.Static(Some [ { Value = "all"; Label = "All" } ]),
-                Some(FieldValue.ofText (Binding.Filter("tier", None))),
-                None
-            ) }
+        { Defaults.filter with
+            Name = "tier"
+            Label = TextSource.Literal "Tier"
+            Kind =
+                FormFieldKind.Choice(
+                    Binding.Static(Some [ { Value = "all"; Label = "All" } ]),
+                    Some(FieldValue.ofText (Binding.Filter("tier", None))),
+                    None
+                ) }
 
     let rangeFilter: FilterSpec<obj> =
-        { Name = "age"
-          Label = TextSource.Literal "Age"
-          Kind =
-            FormFieldKind.Range(
-                Some(FieldValue.ofRange (Binding.Static(Some { Min = 0.0; Max = 100.0 }))),
-                None,
-                None,
-                None,
-                None
-            ) }
+        { Defaults.filter with
+            Name = "age"
+            Label = TextSource.Literal "Age"
+            Kind =
+                FormFieldKind.Range(
+                    Some(FieldValue.ofRange (Binding.Static(Some { Min = 0.0; Max = 100.0 }))),
+                    None,
+                    None,
+                    None,
+                    None
+                ) }
 
     node "filters-declarative" (NodeKind.Filters { Items = [ textFilter; choiceFilter; rangeFilter ] }) None
 
@@ -2217,13 +2251,20 @@ let filtersRatingColour: Node<obj> =
         "filters-rating-colour"
         (NodeKind.Filters
             { Items =
-                [ { Name = "stars"
-                    Label = TextSource.Literal "At least"
-                    Kind =
-                      FormFieldKind.Rating(false, 5, None, Some(FieldValue.ofNumber (Binding.Filter("stars", None)))) }
-                  { Name = "swatch"
-                    Label = TextSource.Literal "Colour"
-                    Kind = FormFieldKind.Color(None, Some(FieldValue.ofText (Binding.Filter("swatch", None)))) } ] })
+                [ { Defaults.filter with
+                      Name = "stars"
+                      Label = TextSource.Literal "At least"
+                      Kind =
+                          FormFieldKind.Rating(
+                              false,
+                              5,
+                              None,
+                              Some(FieldValue.ofNumber (Binding.Filter("stars", None)))
+                          ) }
+                  { Defaults.filter with
+                      Name = "swatch"
+                      Label = TextSource.Literal "Colour"
+                      Kind = FormFieldKind.Color(None, Some(FieldValue.ofText (Binding.Filter("swatch", None)))) } ] })
         None
 
 /// Phase 1121 — `FormFieldKind.Tokens` in its SHORTEST spelling: `allowFreeText`
@@ -2327,21 +2368,22 @@ let filtersTokens: Node<obj> =
         "filters-tokens"
         (NodeKind.Filters
             { Items =
-                [ { Name = "labels"
-                    Label = TextSource.Literal "Labels"
-                    Kind =
-                      FormFieldKind.Tokens(
-                          false,
-                          None,
-                          Some(
-                              Binding.Static(
-                                  Some
-                                      [ { Label = "Urgent"; Value = "urgent" }
-                                        { Label = "Blocked"; Value = "blocked" } ]
-                              )
-                          ),
-                          Some(FieldValue.ofTokens (Binding.Filter("labels", None)))
-                      ) } ] })
+                [ { Defaults.filter with
+                      Name = "labels"
+                      Label = TextSource.Literal "Labels"
+                      Kind =
+                          FormFieldKind.Tokens(
+                              false,
+                              None,
+                              Some(
+                                  Binding.Static(
+                                      Some
+                                          [ { Label = "Urgent"; Value = "urgent" }
+                                            { Label = "Blocked"; Value = "blocked" } ]
+                                  )
+                              ),
+                              Some(FieldValue.ofTokens (Binding.Filter("labels", None)))
+                          ) } ] })
         None
 
 /// Round-trip cover for `FilterKind.SegmentedFilter`. Parallel
@@ -2349,15 +2391,16 @@ let filtersTokens: Node<obj> =
 [<NodeFixture "Input/Filters (SegmentedFilter horizontal)">]
 let filtersSegmented: Node<obj> =
     let segmentedFilter: FilterSpec<obj> =
-        { Name = "view"
-          Label = TextSource.Literal "View"
-          Kind =
-            FormFieldKind.SegmentedChoice(
-                Binding.Static(Some [ { Value = "table"; Label = "Table" }; { Value = "chart"; Label = "Chart" } ]),
-                Some(FieldValue.ofText (Binding.Static(Some "table"))),
-                Some(FieldChange.ofChoice (fun _ -> placeholderChain)),
-                Orientation.Horizontal
-            ) }
+        { Defaults.filter with
+            Name = "view"
+            Label = TextSource.Literal "View"
+            Kind =
+                FormFieldKind.SegmentedChoice(
+                    Binding.Static(Some [ { Value = "table"; Label = "Table" }; { Value = "chart"; Label = "Chart" } ]),
+                    Some(FieldValue.ofText (Binding.Static(Some "table"))),
+                    Some(FieldChange.ofChoice (fun _ -> placeholderChain)),
+                    Orientation.Horizontal
+                ) }
 
     node "filters-segmented" (NodeKind.Filters { Items = [ segmentedFilter ] }) None
 
@@ -2507,17 +2550,18 @@ let formDateRange: Node<obj> =
 [<NodeFixture "Input/Filters (Phase 725 — DateRange chip: one filter param carries the pair, value auto-bound)">]
 let filtersDateRange: Node<obj> =
     let stayChip: FilterSpec<obj> =
-        { Name = "stay"
-          Label = TextSource.Literal "Stay"
-          Kind =
-            FormFieldKind.DateTimeRange(
-                Some(FieldValue.ofDateRange (Binding.Filter("stay", None))),
-                None,
-                DateTimeVariant.Date,
-                None,
-                None,
-                None
-            ) }
+        { Defaults.filter with
+            Name = "stay"
+            Label = TextSource.Literal "Stay"
+            Kind =
+                FormFieldKind.DateTimeRange(
+                    Some(FieldValue.ofDateRange (Binding.Filter("stay", None))),
+                    None,
+                    DateTimeVariant.Date,
+                    None,
+                    None,
+                    None
+                ) }
 
     node "filters-date-range" (NodeKind.Filters { Items = [ stayChip ] }) None
 
@@ -2831,12 +2875,8 @@ let callInto: Node<obj> =
     node
         "call-into"
         (NodeKind.Box(
-            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
-              Role = BoxRole.Group
-              Heading = None
-              Children = [ closureButton; intoStateButton; stateReader; intoQueryButton; queryReader ]
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Children = [ closureButton; intoStateButton; stateReader; intoQueryButton; queryReader ] }
         ))
         None
 
@@ -3149,29 +3189,28 @@ let emptyStateCard: Node<obj> =
     node
         "empty-state-card"
         (NodeKind.Box(
-            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
-              Role = BoxRole.Card
-              Heading = Some(TextSource.Literal "No saved searches yet")
-              Children =
-                [ node
-                      "empty-state-note"
-                      (NodeKind.Markdown(
-                          { Text =
-                              TextSource.Literal
-                                  "Searches you save will appear here so you can re-run them with one click." }
-                      ))
-                      None
-                  node
-                      "empty-state-cta"
-                      (NodeKind.Button(
-                          { Defaults.button with
-                              Label = TextSource.Literal "Browse jobs"
-                              Variant = ButtonVariant.Primary
-                              Icon = Some "search" }
-                      ))
-                      None ]
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Role = BoxRole.Card
+                Heading = Some(TextSource.Literal "No saved searches yet")
+                Children =
+                    [ node
+                          "empty-state-note"
+                          (NodeKind.Markdown(
+                              { Defaults.markdown with
+                                  Text =
+                                      TextSource.Literal
+                                          "Searches you save will appear here so you can re-run them with one click." }
+                          ))
+                          None
+                      node
+                          "empty-state-cta"
+                          (NodeKind.Button(
+                              { Defaults.button with
+                                  Label = TextSource.Literal "Browse jobs"
+                                  Variant = ButtonVariant.Primary
+                                  Icon = Some "search" }
+                          ))
+                          None ] }
         ))
         None
 
@@ -3573,12 +3612,8 @@ let controlsDeclarative: Node<obj> =
     node
         "controls-declarative"
         (NodeKind.Box(
-            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
-              Role = BoxRole.Group
-              Heading = None
-              Children = [ tabsNode; modalNode; disclosureNode; selectNode ]
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Children = [ tabsNode; modalNode; disclosureNode; selectNode ] }
         ))
         None
 
@@ -3630,12 +3665,8 @@ let multiSelectClosure: Node<obj> =
     node
         "controls-closure"
         (NodeKind.Box(
-            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
-              Role = BoxRole.Group
-              Heading = None
-              Children = [ tabsNode; disclosureNode; multiNode ]
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Children = [ tabsNode; disclosureNode; multiNode ] }
         ))
         None
 
@@ -3644,48 +3675,27 @@ let multiSelectClosure: Node<obj> =
 [<NodeFixture "Visualisation/Grid">]
 let gridVis: Node<obj> =
     let col: ColumnErased<obj> =
-        { Label = "Channel"
-          Value = Some(fun _ -> CellValue.Empty)
-          Field = None
-          Sortable = None
-          Editable = None
-          Format = CellFormat.None
-          Kind = CellKindErased.Text
-          Width = ColumnWidth.Auto }
+        { Defaults.columnErased with
+            Label = "Channel"
+            Value = Some(fun _ -> CellValue.Empty) }
 
     node
         "grid-1"
         (NodeKind.DataGrid(
-            { SortStateKey = None
-              PageSize = None
-              PageStateKey = None
-              EditStateKey = None
-              DefaultSort = None
-              Source =
-                // fuaran#665 — typed rows: a Static rows payload IS wire-representable
-                // (int cells ride rule 5's integer form). Mirrors Fuaran-Core's
-                // authored `gridNode` sample byte-for-byte.
-                Binding.Static(
-                    Some(
-                        Seq.ofList
-                            [ (Map.ofList [ "channel", box "Direct"; "revenue", box 1200 ]: Row)
-                              Map.ofList [ "channel", box "Referral"; "revenue", box 830 ] ]
+            { Defaults.dataGrid with
+                Source =
+                    // fuaran#665 — typed rows: a Static rows payload IS wire-representable
+                    // (int cells ride rule 5's integer form). Mirrors Fuaran-Core's
+                    // authored `gridNode` sample byte-for-byte.
+                    Binding.Static(
+                        Some(
+                            Seq.ofList
+                                [ (Map.ofList [ "channel", box "Direct"; "revenue", box 1200 ]: Row)
+                                  Map.ofList [ "channel", box "Referral"; "revenue", box 830 ] ]
+                        )
                     )
-                )
-              RowKey = Some(fun _ -> "<closure>")
-              RowKeyField = None
-              Columns = [ col ]
-              OnRowClick = None
-              Editable = false
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              StaticRows = None
-              KeepRowsTogether = false
-              RepeatHeader = false
-              WindowStateKey = None
-              RowTotal = None
-              Exportable = false }
+                RowKey = Some(fun _ -> "<closure>")
+                Columns = [ col ] }
         ))
         None
 
@@ -3698,38 +3708,18 @@ let gridVis: Node<obj> =
 [<NodeFixture "Visualisation/Grid (Phase 1473 keepRowsTogether, the only new member)">]
 let gridKeepRowsTogether: Node<obj> =
     let col: ColumnErased<obj> =
-        { Label = "Note"
-          Value = None
-          Field = Some "note"
-          Sortable = None
-          Editable = None
-          Format = CellFormat.None
-          Kind = CellKindErased.Text
-          Width = ColumnWidth.Auto }
+        { Defaults.columnErased with
+            Label = "Note"
+            Field = Some "note" }
 
     node
         "grid-keep-rows-together-1"
         (NodeKind.DataGrid(
-            { SortStateKey = None
-              PageSize = None
-              PageStateKey = None
-              EditStateKey = None
-              DefaultSort = None
-              Source = Binding.Query("notes", (fun _ -> Seq.empty), None)
-              RowKey = None
-              RowKeyField = Some "note"
-              Columns = [ col ]
-              OnRowClick = None
-              Editable = false
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              StaticRows = None
-              KeepRowsTogether = true
-              RepeatHeader = false
-              WindowStateKey = None
-              RowTotal = None
-              Exportable = false }
+            { Defaults.dataGrid with
+                Source = Binding.Query("notes", (fun _ -> Seq.empty), None)
+                RowKeyField = Some "note"
+                Columns = [ col ]
+                KeepRowsTogether = true }
         ))
         None
 
@@ -3743,38 +3733,18 @@ let gridKeepRowsTogether: Node<obj> =
 [<NodeFixture "Visualisation/Grid (Phase 1473 repeatHeader, the only new member)">]
 let gridRepeatHeader: Node<obj> =
     let col: ColumnErased<obj> =
-        { Label = "Line"
-          Value = None
-          Field = Some "line"
-          Sortable = None
-          Editable = None
-          Format = CellFormat.None
-          Kind = CellKindErased.Text
-          Width = ColumnWidth.Auto }
+        { Defaults.columnErased with
+            Label = "Line"
+            Field = Some "line" }
 
     node
         "grid-repeat-header-1"
         (NodeKind.DataGrid(
-            { SortStateKey = None
-              PageSize = None
-              PageStateKey = None
-              EditStateKey = None
-              DefaultSort = None
-              Source = Binding.Query("lines", (fun _ -> Seq.empty), None)
-              RowKey = None
-              RowKeyField = Some "line"
-              Columns = [ col ]
-              OnRowClick = None
-              Editable = false
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              StaticRows = None
-              KeepRowsTogether = false
-              RepeatHeader = true
-              WindowStateKey = None
-              RowTotal = None
-              Exportable = false }
+            { Defaults.dataGrid with
+                Source = Binding.Query("lines", (fun _ -> Seq.empty), None)
+                RowKeyField = Some "line"
+                Columns = [ col ]
+                RepeatHeader = true }
         ))
         None
 
@@ -3793,48 +3763,25 @@ let gridRepeatHeader: Node<obj> =
 [<NodeFixture "Visualisation/Grid (Phase 1125 exportable, the only new member)">]
 let gridExportable: Node<obj> =
     let reference: ColumnErased<obj> =
-        { Label = "Reference"
-          Value = None
-          Field = Some "reference"
-          Sortable = None
-          Editable = None
-          Format = CellFormat.None
-          Kind = CellKindErased.Text
-          Width = ColumnWidth.Auto }
+        { Defaults.columnErased with
+            Label = "Reference"
+            Field = Some "reference" }
 
     let amount: ColumnErased<obj> =
-        { Label = "Amount"
-          Value = None
-          Field = Some "amount"
-          Sortable = None
-          Editable = None
-          Format = CellFormat.Currency "GBP"
-          Kind = CellKindErased.Numeric
-          Width = ColumnWidth.Auto }
+        { Defaults.columnErased with
+            Label = "Amount"
+            Field = Some "amount"
+            Format = CellFormat.Currency "GBP"
+            Kind = CellKindErased.Numeric }
 
     node
         "grid-exportable-1"
         (NodeKind.DataGrid(
-            { SortStateKey = None
-              PageSize = None
-              PageStateKey = None
-              EditStateKey = None
-              DefaultSort = None
-              Source = Binding.Query("settlements", (fun _ -> Seq.empty), None)
-              RowKey = None
-              RowKeyField = Some "reference"
-              Columns = [ reference; amount ]
-              OnRowClick = None
-              Editable = false
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              StaticRows = None
-              KeepRowsTogether = false
-              RepeatHeader = false
-              WindowStateKey = None
-              RowTotal = None
-              Exportable = true }
+            { Defaults.dataGrid with
+                Source = Binding.Query("settlements", (fun _ -> Seq.empty), None)
+                RowKeyField = Some "reference"
+                Columns = [ reference; amount ]
+                Exportable = true }
         ))
         None
 
@@ -3879,61 +3826,40 @@ let gridTonedPill: Node<obj> =
                         Fuaran.Core.Str "Cancelled" ] ] }
 
     let declarative (label: string) (field: string) (kind: CellKindErased<obj>) : ColumnErased<obj> =
-        { Label = label
-          // Phase 425 — no `value` closure: `Field` alone drives the projection.
-          Value = None
-          Field = Some field
-          Sortable = None
-          Editable = None
-          Format = CellFormat.None
-          Kind = kind
-          Width = ColumnWidth.Auto }
+        { Defaults.columnErased with
+            Label = label
+            Field = Some field
+            Kind = kind }
 
     node
         "grid-toned-pill"
         (NodeKind.DataGrid(
-            { SortStateKey = None
-              PageSize = None
-              PageStateKey = None
-              EditStateKey = None
-              DefaultSort = None
-              Source = Binding.Transform(TransformSource.Data(source), [], None)
-              RowKey = None
-              RowKeyField = Some "id"
-              Columns =
-                [ declarative "Shipment" "id" CellKindErased.Text
-                  declarative
-                      "Carrier"
-                      "carrier"
-                      (CellKindErased.TonedPill(
-                          "carrier",
-                          Map [ "Meridian", ToneVariant.Info ],
-                          // Left at the identity default — the `default` key is OMITTED.
-                          ToneVariant.Default
-                      ))
-                  declarative
-                      "Status"
-                      "status"
-                      (CellKindErased.TonedPill(
-                          "status",
-                          Map
-                              [ "On time", ToneVariant.Success
-                                "Delayed", ToneVariant.Warning
-                                "Cancelled", ToneVariant.Critical ],
-                          // Non-identity — the `default` key IS emitted.
-                          ToneVariant.Subdued
-                      )) ]
-              OnRowClick = None
-              Editable = false
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              StaticRows = None
-              KeepRowsTogether = false
-              RepeatHeader = false
-              WindowStateKey = None
-              RowTotal = None
-              Exportable = false }
+            { Defaults.dataGrid with
+                Source = Binding.Transform(TransformSource.Data(source), [], None)
+                RowKeyField = Some "id"
+                Columns =
+                    [ declarative "Shipment" "id" CellKindErased.Text
+                      declarative
+                          "Carrier"
+                          "carrier"
+                          (CellKindErased.TonedPill(
+                              "carrier",
+                              Map [ "Meridian", ToneVariant.Info ],
+                              // Left at the identity default — the `default` key is OMITTED.
+                              ToneVariant.Default
+                          ))
+                      declarative
+                          "Status"
+                          "status"
+                          (CellKindErased.TonedPill(
+                              "status",
+                              Map
+                                  [ "On time", ToneVariant.Success
+                                    "Delayed", ToneVariant.Warning
+                                    "Cancelled", ToneVariant.Critical ],
+                              // Non-identity — the `default` key IS emitted.
+                              ToneVariant.Subdued
+                          )) ] }
         ))
         None
 
@@ -4168,68 +4094,66 @@ let chartAnnotationEvents: Node<obj> =
     node
         "chart-annotation-events"
         (NodeKind.Box
-            { Layout = BoxLayout.Auto
-              Role = BoxRole.Dashboard
-              Heading = None
-              KeepTogether = false
-              BreakBefore = false
-              Children =
-                [ node
-                      "events-band"
-                      (NodeKind.Chart(
-                          { Defaults.chart with
-                              Source =
-                                  Binding.Static(
-                                      Some(
-                                          Seq.ofList
-                                              [ (Map.ofList [ "quarter", box "Q1"; "revenue", box 120 ]: Row)
-                                                Map.ofList [ "quarter", box "Q2"; "revenue", box 150 ]
-                                                Map.ofList [ "quarter", box "Q3"; "revenue", box 90 ]
-                                                Map.ofList [ "quarter", box "Q4"; "revenue", box 175 ] ]
+            { Defaults.box with
+                Layout = BoxLayout.Auto
+                Role = BoxRole.Dashboard
+                Children =
+                    [ node
+                          "events-band"
+                          (NodeKind.Chart(
+                              { Defaults.chart with
+                                  Source =
+                                      Binding.Static(
+                                          Some(
+                                              Seq.ofList
+                                                  [ (Map.ofList [ "quarter", box "Q1"; "revenue", box 120 ]: Row)
+                                                    Map.ofList [ "quarter", box "Q2"; "revenue", box 150 ]
+                                                    Map.ofList [ "quarter", box "Q3"; "revenue", box 90 ]
+                                                    Map.ofList [ "quarter", box "Q4"; "revenue", box 175 ] ]
+                                          )
                                       )
-                                  )
-                              Kind = ChartKind.Bar
-                              XField = "quarter"
-                              YFields = [ "revenue" ]
-                              Title = Some(TextSource.Literal "Revenue by quarter")
-                              Annotations =
-                                  Some
-                                      [ ChartAnnotation.EventMarker(
-                                            ChartAnnotationX.Category "Q3",
-                                            Some(TextSource.Literal "Repricing")
-                                        ) ] }
-                      ))
-                      None
-                  node
-                      "events-temporal"
-                      (NodeKind.Chart(
-                          { Defaults.chart with
-                              Source =
-                                  Binding.Static(
-                                      Some(
-                                          Seq.ofList
-                                              [ (Map.ofList [ "day", box "2026-01-05"; "sessions", box 40 ]: Row)
-                                                Map.ofList [ "day", box "2026-02-05"; "sessions", box 65 ]
-                                                Map.ofList [ "day", box "2026-03-05"; "sessions", box 55 ] ]
+                                  Kind = ChartKind.Bar
+                                  XField = "quarter"
+                                  YFields = [ "revenue" ]
+                                  Title = Some(TextSource.Literal "Revenue by quarter")
+                                  Annotations =
+                                      Some
+                                          [ ChartAnnotation.EventMarker(
+                                                ChartAnnotationX.Category "Q3",
+                                                Some(TextSource.Literal "Repricing")
+                                            ) ] }
+                          ))
+                          None
+                      node
+                          "events-temporal"
+                          (NodeKind.Chart(
+                              { Defaults.chart with
+                                  Source =
+                                      Binding.Static(
+                                          Some(
+                                              Seq.ofList
+                                                  [ (Map.ofList [ "day", box "2026-01-05"; "sessions", box 40 ]: Row)
+                                                    Map.ofList [ "day", box "2026-02-05"; "sessions", box 65 ]
+                                                    Map.ofList [ "day", box "2026-03-05"; "sessions", box 55 ] ]
+                                          )
                                       )
-                                  )
-                              Kind = ChartKind.Line
-                              XField = "day"
-                              YFields = [ "sessions" ]
-                              XScale = Some ChartXScale.Temporal
-                              Title = Some(TextSource.Literal "Sessions by day")
-                              // The bare arm too: an event marker with no label
-                              // still draws its line, so the codec has to carry
-                              // the absence as an absence.
-                              Annotations =
-                                  Some
-                                      [ ChartAnnotation.EventMarker(
-                                            ChartAnnotationX.Date "2026-02-14",
-                                            Some(TextSource.Literal "Launch")
-                                        )
-                                        ChartAnnotation.EventMarker(ChartAnnotationX.Date "2026-03-01", None) ] }
-                      ))
-                      None ] })
+                                  Kind = ChartKind.Line
+                                  XField = "day"
+                                  YFields = [ "sessions" ]
+                                  XScale = Some ChartXScale.Temporal
+                                  Title = Some(TextSource.Literal "Sessions by day")
+                                  // The bare arm too: an event marker with no label
+                                  // still draws its line, so the codec has to carry
+                                  // the absence as an absence.
+                                  Annotations =
+                                      Some
+                                          [ ChartAnnotation.EventMarker(
+                                                ChartAnnotationX.Date "2026-02-14",
+                                                Some(TextSource.Literal "Launch")
+                                            )
+                                            ChartAnnotation.EventMarker(ChartAnnotationX.Date "2026-03-01", None) ] }
+                          ))
+                          None ] })
         None
 
 /// Phase 1492 (§4l) — the RANGE BAND, in all three of its addressing forms.
@@ -4252,96 +4176,94 @@ let chartAnnotationBands: Node<obj> =
     node
         "chart-annotation-bands"
         (NodeKind.Box
-            { Layout = BoxLayout.Auto
-              Role = BoxRole.Dashboard
-              Heading = None
-              KeepTogether = false
-              BreakBefore = false
-              Children =
-                [ node
-                      "bands-value"
-                      (NodeKind.Chart(
-                          { Defaults.chart with
-                              Source =
-                                  Binding.Static(
-                                      Some(
-                                          Seq.ofList
-                                              [ (Map.ofList [ "week", box "W1"; "latencyMs", box 180 ]: Row)
-                                                Map.ofList [ "week", box "W2"; "latencyMs", box 240 ]
-                                                Map.ofList [ "week", box "W3"; "latencyMs", box 210 ] ]
+            { Defaults.box with
+                Layout = BoxLayout.Auto
+                Role = BoxRole.Dashboard
+                Children =
+                    [ node
+                          "bands-value"
+                          (NodeKind.Chart(
+                              { Defaults.chart with
+                                  Source =
+                                      Binding.Static(
+                                          Some(
+                                              Seq.ofList
+                                                  [ (Map.ofList [ "week", box "W1"; "latencyMs", box 180 ]: Row)
+                                                    Map.ofList [ "week", box "W2"; "latencyMs", box 240 ]
+                                                    Map.ofList [ "week", box "W3"; "latencyMs", box 210 ] ]
+                                          )
                                       )
-                                  )
-                              Kind = ChartKind.Line
-                              XField = "week"
-                              YFields = [ "latencyMs" ]
-                              Title = Some(TextSource.Literal "p95 latency")
-                              Annotations =
-                                  Some
-                                      [ ChartAnnotation.RangeBand(
-                                            ChartAnnotationRange.ValueRange(200.0, 260.0),
-                                            Some(TextSource.Literal "Tolerance")
-                                        )
-                                        ChartAnnotation.RangeBand(ChartAnnotationRange.ValueRange(0.0, 100.0), None) ] }
-                      ))
-                      None
-                  node
-                      "bands-category"
-                      (NodeKind.Chart(
-                          { Defaults.chart with
-                              Source =
-                                  Binding.Static(
-                                      Some(
-                                          Seq.ofList
-                                              [ (Map.ofList [ "quarter", box "Q1"; "revenue", box 120 ]: Row)
-                                                Map.ofList [ "quarter", box "Q2"; "revenue", box 150 ]
-                                                Map.ofList [ "quarter", box "Q3"; "revenue", box 90 ]
-                                                Map.ofList [ "quarter", box "Q4"; "revenue", box 175 ] ]
+                                  Kind = ChartKind.Line
+                                  XField = "week"
+                                  YFields = [ "latencyMs" ]
+                                  Title = Some(TextSource.Literal "p95 latency")
+                                  Annotations =
+                                      Some
+                                          [ ChartAnnotation.RangeBand(
+                                                ChartAnnotationRange.ValueRange(200.0, 260.0),
+                                                Some(TextSource.Literal "Tolerance")
+                                            )
+                                            ChartAnnotation.RangeBand(ChartAnnotationRange.ValueRange(0.0, 100.0), None) ] }
+                          ))
+                          None
+                      node
+                          "bands-category"
+                          (NodeKind.Chart(
+                              { Defaults.chart with
+                                  Source =
+                                      Binding.Static(
+                                          Some(
+                                              Seq.ofList
+                                                  [ (Map.ofList [ "quarter", box "Q1"; "revenue", box 120 ]: Row)
+                                                    Map.ofList [ "quarter", box "Q2"; "revenue", box 150 ]
+                                                    Map.ofList [ "quarter", box "Q3"; "revenue", box 90 ]
+                                                    Map.ofList [ "quarter", box "Q4"; "revenue", box 175 ] ]
+                                          )
                                       )
-                                  )
-                              Kind = ChartKind.Bar
-                              XField = "quarter"
-                              YFields = [ "revenue" ]
-                              Title = Some(TextSource.Literal "Revenue by quarter")
-                              Annotations =
-                                  Some
-                                      [ ChartAnnotation.RangeBand(
-                                            ChartAnnotationRange.XRange(
-                                                ChartAnnotationX.Category "Q2",
-                                                ChartAnnotationX.Category "Q3"
-                                            ),
-                                            Some(TextSource.Literal "Freeze")
-                                        ) ] }
-                      ))
-                      None
-                  node
-                      "bands-temporal"
-                      (NodeKind.Chart(
-                          { Defaults.chart with
-                              Source =
-                                  Binding.Static(
-                                      Some(
-                                          Seq.ofList
-                                              [ (Map.ofList [ "day", box "2026-01-05"; "sessions", box 40 ]: Row)
-                                                Map.ofList [ "day", box "2026-02-05"; "sessions", box 65 ]
-                                                Map.ofList [ "day", box "2026-03-05"; "sessions", box 55 ] ]
+                                  Kind = ChartKind.Bar
+                                  XField = "quarter"
+                                  YFields = [ "revenue" ]
+                                  Title = Some(TextSource.Literal "Revenue by quarter")
+                                  Annotations =
+                                      Some
+                                          [ ChartAnnotation.RangeBand(
+                                                ChartAnnotationRange.XRange(
+                                                    ChartAnnotationX.Category "Q2",
+                                                    ChartAnnotationX.Category "Q3"
+                                                ),
+                                                Some(TextSource.Literal "Freeze")
+                                            ) ] }
+                          ))
+                          None
+                      node
+                          "bands-temporal"
+                          (NodeKind.Chart(
+                              { Defaults.chart with
+                                  Source =
+                                      Binding.Static(
+                                          Some(
+                                              Seq.ofList
+                                                  [ (Map.ofList [ "day", box "2026-01-05"; "sessions", box 40 ]: Row)
+                                                    Map.ofList [ "day", box "2026-02-05"; "sessions", box 65 ]
+                                                    Map.ofList [ "day", box "2026-03-05"; "sessions", box 55 ] ]
+                                          )
                                       )
-                                  )
-                              Kind = ChartKind.Line
-                              XField = "day"
-                              YFields = [ "sessions" ]
-                              XScale = Some ChartXScale.Temporal
-                              Title = Some(TextSource.Literal "Sessions by day")
-                              Annotations =
-                                  Some
-                                      [ ChartAnnotation.RangeBand(
-                                            ChartAnnotationRange.XRange(
-                                                ChartAnnotationX.Date "2026-01-20",
-                                                ChartAnnotationX.Date "2026-02-20"
-                                            ),
-                                            Some(TextSource.Literal "Incident")
-                                        ) ] }
-                      ))
-                      None ] })
+                                  Kind = ChartKind.Line
+                                  XField = "day"
+                                  YFields = [ "sessions" ]
+                                  XScale = Some ChartXScale.Temporal
+                                  Title = Some(TextSource.Literal "Sessions by day")
+                                  Annotations =
+                                      Some
+                                          [ ChartAnnotation.RangeBand(
+                                                ChartAnnotationRange.XRange(
+                                                    ChartAnnotationX.Date "2026-01-20",
+                                                    ChartAnnotationX.Date "2026-02-20"
+                                                ),
+                                                Some(TextSource.Literal "Incident")
+                                            ) ] }
+                          ))
+                          None ] })
         None
 
 // ─── fuaran#665 — the Phase 663 editable-grid anchor (grid + chart on ONE state key) ──
@@ -4361,40 +4283,21 @@ let private planRows: Row list =
 [<NodeFixture "Visualisation/Grid (Phase 663/665 — editable State-sourced grid, typed rows on the wire)">]
 let gridEditableState: Node<obj> =
     let col (label: string) (field: string) (kind: CellKindErased<obj>) : ColumnErased<obj> =
-        { Label = label
-          Value = None
-          Field = Some field
-          Sortable = None
-          Editable = None
-          Format = CellFormat.None
-          Kind = kind
-          Width = ColumnWidth.Auto }
+        { Defaults.columnErased with
+            Label = label
+            Field = Some field
+            Kind = kind }
 
     node
         "grid-editable-state"
         (NodeKind.DataGrid(
-            { SortStateKey = None
-              PageSize = None
-              PageStateKey = None
-              EditStateKey = None
-              DefaultSort = None
-              Source = Binding.State("planRows", Some(Seq.ofList planRows))
-              RowKey = None
-              RowKeyField = Some "month"
-              Columns =
-                [ col "Month" "month" CellKindErased.Text
-                  col "Revenue" "revenue" CellKindErased.Numeric ]
-              OnRowClick = None
-              Editable = true
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              StaticRows = None
-              KeepRowsTogether = false
-              RepeatHeader = false
-              WindowStateKey = None
-              RowTotal = None
-              Exportable = false }
+            { Defaults.dataGrid with
+                Source = Binding.State("planRows", Some(Seq.ofList planRows))
+                RowKeyField = Some "month"
+                Columns =
+                    [ col "Month" "month" CellKindErased.Text
+                      col "Revenue" "revenue" CellKindErased.Numeric ]
+                Editable = true }
         ))
         None
 
@@ -4451,26 +4354,9 @@ let gridTransform: Node<obj> =
     node
         "grid-transform"
         (NodeKind.DataGrid(
-            { SortStateKey = None
-              PageSize = None
-              PageStateKey = None
-              EditStateKey = None
-              DefaultSort = None
-              Source = Binding.Transform(TransformSource.Data(source), pipeline, None)
-              RowKey = Some(fun _ -> "<closure>")
-              RowKeyField = None
-              Columns = []
-              OnRowClick = None
-              Editable = false
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              StaticRows = None
-              KeepRowsTogether = false
-              RepeatHeader = false
-              WindowStateKey = None
-              RowTotal = None
-              Exportable = false }
+            { Defaults.dataGrid with
+                Source = Binding.Transform(TransformSource.Data(source), pipeline, None)
+                RowKey = Some(fun _ -> "<closure>") }
         ))
         None
 
@@ -4497,33 +4383,16 @@ let gridTransformParam: Node<obj> =
     node
         "grid-transform-param"
         (NodeKind.DataGrid(
-            { SortStateKey = None
-              PageSize = None
-              PageStateKey = None
-              EditStateKey = None
-              DefaultSort = None
-              Source =
-                Binding.Transform(
-                    TransformSource.Data(source),
-                    pipeline,
-                    Some
-                        [ { From = Binding.Filter("dept", None)
-                            Name = "dept" } ]
-                )
-              RowKey = Some(fun _ -> "<closure>")
-              RowKeyField = None
-              Columns = []
-              OnRowClick = None
-              Editable = false
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              StaticRows = None
-              KeepRowsTogether = false
-              RepeatHeader = false
-              WindowStateKey = None
-              RowTotal = None
-              Exportable = false }
+            { Defaults.dataGrid with
+                Source =
+                    Binding.Transform(
+                        TransformSource.Data(source),
+                        pipeline,
+                        Some
+                            [ { From = Binding.Filter("dept", None)
+                                Name = "dept" } ]
+                    )
+                RowKey = Some(fun _ -> "<closure>") }
         ))
         None
 
@@ -4571,26 +4440,9 @@ let transformUndeclaredParam: Node<obj> =
     node
         "grid-transform-undeclared-param"
         (NodeKind.DataGrid(
-            { SortStateKey = None
-              PageSize = None
-              PageStateKey = None
-              EditStateKey = None
-              DefaultSort = None
-              Source = Binding.Transform(TransformSource.Data(source), pipeline, None)
-              RowKey = Some(fun _ -> "<closure>")
-              RowKeyField = None
-              Columns = []
-              OnRowClick = None
-              Editable = false
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              StaticRows = None
-              KeepRowsTogether = false
-              RepeatHeader = false
-              WindowStateKey = None
-              RowTotal = None
-              Exportable = false }
+            { Defaults.dataGrid with
+                Source = Binding.Transform(TransformSource.Data(source), pipeline, None)
+                RowKey = Some(fun _ -> "<closure>") }
         ))
         None
 
@@ -4617,72 +4469,52 @@ let multiselectChipListParam: Node<obj> =
                       [ Fuaran.Core.Int 100; Fuaran.Core.Int 90; Fuaran.Core.Int 70 ] ] }
 
     let fieldCol (label: string) (field: string) : ColumnErased<obj> =
-        { Label = label
-          Value = None
-          Field = Some field
-          Sortable = None
-          Editable = None
-          Format = CellFormat.None
-          Kind = CellKindErased.Text
-          Width = ColumnWidth.Auto }
+        { Defaults.columnErased with
+            Label = label
+            Field = Some field }
 
     node
         "multiselect-chip-list-param"
         (NodeKind.Box(
-            { Layout = BoxLayout.Auto
-              Role = BoxRole.Dashboard
-              Heading = Some(TextSource.Literal "Spend by department")
-              Children =
-                [ node
-                      "dept-chip"
-                      (NodeKind.Select(
-                          { Defaults.select with
-                              Label = TextSource.Literal "Departments"
-                              Source =
-                                  Binding.Static(
-                                      Some
-                                          [ { Value = "eng"; Label = "Engineering" }
-                                            { Value = "sales"; Label = "Sales" }
-                                            { Value = "ops"; Label = "Operations" } ]
-                                  )
-                              Multiple = Some true
-                              Values = Some(Binding.Filter("depts", None)) }
-                      ))
-                      None
-                  node
-                      "dept-grid"
-                      (NodeKind.DataGrid(
-                          { SortStateKey = None
-                            PageSize = None
-                            PageStateKey = None
-                            EditStateKey = None
-                            DefaultSort = None
-                            Source =
-                              Binding.Transform(
-                                  TransformSource.Data(source),
-                                  [ Fuaran.Compute.Filter(Fuaran.Compute.InParam(Fuaran.Compute.Col "dept", "depts")) ],
-                                  Some
-                                      [ { From = Binding.Filter("depts", None)
-                                          Name = "depts" } ]
-                              )
-                            RowKey = None
-                            RowKeyField = Some "dept"
-                            Columns = [ fieldCol "Department" "dept"; fieldCol "Spend" "amount" ]
-                            OnRowClick = None
-                            Editable = false
-                            Reorderable = false
-                            TransferInKey = None
-                            TransferOutKey = None
-                            StaticRows = None
-                            KeepRowsTogether = false
-                            RepeatHeader = false
-                            WindowStateKey = None
-                            RowTotal = None
-                            Exportable = false }
-                      ))
-                      None ]
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Layout = BoxLayout.Auto
+                Role = BoxRole.Dashboard
+                Heading = Some(TextSource.Literal "Spend by department")
+                Children =
+                    [ node
+                          "dept-chip"
+                          (NodeKind.Select(
+                              { Defaults.select with
+                                  Label = TextSource.Literal "Departments"
+                                  Source =
+                                      Binding.Static(
+                                          Some
+                                              [ { Value = "eng"; Label = "Engineering" }
+                                                { Value = "sales"; Label = "Sales" }
+                                                { Value = "ops"; Label = "Operations" } ]
+                                      )
+                                  Multiple = Some true
+                                  Values = Some(Binding.Filter("depts", None)) }
+                          ))
+                          None
+                      node
+                          "dept-grid"
+                          (NodeKind.DataGrid(
+                              { Defaults.dataGrid with
+                                  Source =
+                                      Binding.Transform(
+                                          TransformSource.Data(source),
+                                          [ Fuaran.Compute.Filter(
+                                                Fuaran.Compute.InParam(Fuaran.Compute.Col "dept", "depts")
+                                            ) ],
+                                          Some
+                                              [ { From = Binding.Filter("depts", None)
+                                                  Name = "depts" } ]
+                                      )
+                                  RowKeyField = Some "dept"
+                                  Columns = [ fieldCol "Department" "dept"; fieldCol "Spend" "amount" ] }
+                          ))
+                          None ] }
         ))
         None
 
@@ -4699,38 +4531,17 @@ let gridFieldNamed: Node<obj> =
                   Fuaran.Core.Column.create "amount" Fuaran.Core.IntType [ Fuaran.Core.Int 100 ] ] }
 
     let fieldCol (label: string) (field: string) : ColumnErased<obj> =
-        { Label = label
-          Value = None
-          Field = Some field
-          Sortable = None
-          Editable = None
-          Format = CellFormat.None
-          Kind = CellKindErased.Text
-          Width = ColumnWidth.Auto }
+        { Defaults.columnErased with
+            Label = label
+            Field = Some field }
 
     node
         "grid-field-named"
         (NodeKind.DataGrid(
-            { SortStateKey = None
-              PageSize = None
-              PageStateKey = None
-              EditStateKey = None
-              DefaultSort = None
-              Source = Binding.Transform(TransformSource.Data(source), [], None)
-              RowKey = None
-              RowKeyField = Some "dept"
-              Columns = [ fieldCol "Dept" "dept"; fieldCol "Amount" "amount" ]
-              OnRowClick = None
-              Editable = false
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              StaticRows = None
-              KeepRowsTogether = false
-              RepeatHeader = false
-              WindowStateKey = None
-              RowTotal = None
-              Exportable = false }
+            { Defaults.dataGrid with
+                Source = Binding.Transform(TransformSource.Data(source), [], None)
+                RowKeyField = Some "dept"
+                Columns = [ fieldCol "Dept" "dept"; fieldCol "Amount" "amount" ] }
         ))
         None
 
@@ -4759,135 +4570,94 @@ let masterDetailPreselected: Node<obj> =
                       [ Fuaran.Core.Str "high"; Fuaran.Core.Str "low" ] ] }
 
     let fieldCol (label: string) (field: string) : ColumnErased<obj> =
-        { Label = label
-          Value = None
-          Field = Some field
-          Sortable = None
-          Editable = None
-          Format = CellFormat.None
-          Kind = CellKindErased.Text
-          Width = ColumnWidth.Auto }
+        { Defaults.columnErased with
+            Label = label
+            Field = Some field }
 
     node
         "master-detail-preselected"
         (NodeKind.Box(
-            { Layout = BoxLayout.Auto
-              Role = BoxRole.Dashboard
-              Heading = None
-              Children =
-                [ node
-                      "ticket-grid"
-                      (NodeKind.DataGrid(
-                          { SortStateKey = None
-                            PageSize = None
-                            PageStateKey = None
-                            EditStateKey = None
-                            DefaultSort = None
-                            Source = Binding.Transform(TransformSource.Data(source), [], None)
-                            RowKey = None
-                            RowKeyField = Some "id"
-                            Columns = [ fieldCol "Ticket" "id"; fieldCol "Priority" "priority" ]
-                            OnRowClick = None
-                            Editable = false
-                            Reorderable = false
-                            TransferInKey = None
-                            TransferOutKey = None
-                            StaticRows = None
-                            KeepRowsTogether = false
-                            RepeatHeader = false
-                            WindowStateKey = None
-                            RowTotal = None
-                            Exportable = false }
-                      ))
-                      None
-                  node
-                      "ticket-detail"
-                      (NodeKind.Box(
-                          { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
-                            Role = BoxRole.Card
-                            Heading = Some(TextSource.Literal "Ticket detail")
-                            Children =
-                              [ node
-                                    "detail-ticket"
-                                    (NodeKind.Fact(
-                                        { Defaults.fact with
-                                            Label = TextSource.Literal "Selected ticket"
-                                            // 0.2.9 (Phase 629): the defaulted-Selection form —
-                                            // the composition models emit naturally, now
-                                            // expressible (was the State workaround pre-629).
-                                            // 0.2.10 (Phase 632): + `field` — the projected
-                                            // row-key stays scalar after a real click (the
-                                            // identity form yielded the whole row).
-                                            Value =
-                                                TextSource.Bound(
+            { Defaults.box with
+                Layout = BoxLayout.Auto
+                Role = BoxRole.Dashboard
+                Children =
+                    [ node
+                          "ticket-grid"
+                          (NodeKind.DataGrid(
+                              { Defaults.dataGrid with
+                                  Source = Binding.Transform(TransformSource.Data(source), [], None)
+                                  RowKeyField = Some "id"
+                                  Columns = [ fieldCol "Ticket" "id"; fieldCol "Priority" "priority" ] }
+                          ))
+                          None
+                      node
+                          "ticket-detail"
+                          (NodeKind.Box(
+                              { Defaults.box with
+                                  Role = BoxRole.Card
+                                  Heading = Some(TextSource.Literal "Ticket detail")
+                                  Children =
+                                      [ node
+                                            "detail-ticket"
+                                            (NodeKind.Fact(
+                                                { Defaults.fact with
+                                                    Label = TextSource.Literal "Selected ticket"
+                                                    // 0.2.9 (Phase 629): the defaulted-Selection form —
+                                                    // the composition models emit naturally, now
+                                                    // expressible (was the State workaround pre-629).
+                                                    // 0.2.10 (Phase 632): + `field` — the projected
+                                                    // row-key stays scalar after a real click (the
+                                                    // identity form yielded the whole row).
+                                                    Value =
+                                                        TextSource.Bound(
+                                                            Binding.Selection(
+                                                                "ticket-grid",
+                                                                Binding.projectSelectionField<string> "id",
+                                                                Some "TCK-2041",
+                                                                Some "id"
+                                                            )
+                                                        )
+                                                    Emphasis = true }
+                                            ))
+                                            None ] }
+                          ))
+                          None
+                      // 2026-07-20 demand pin: `Selection` as a `Transform.params`
+                      // source (the sol 040 r42 emission's composition) — the
+                      // related-items grid filters the embedded rows by the
+                      // ticket-grid's selection, defaulted. Wire-confirms the
+                      // param `from` slot accepts any Binding, Selection included.
+                      node
+                          "related-grid"
+                          (NodeKind.DataGrid(
+                              { Defaults.dataGrid with
+                                  Source =
+                                      Binding.Transform(
+                                          TransformSource.Data(source),
+                                          [ Fuaran.Compute.Filter(
+                                                Fuaran.Compute.Binary(
+                                                    Fuaran.Compute.Eq,
+                                                    Fuaran.Compute.Col "id",
+                                                    Fuaran.Compute.ColExpr.Param "ticketId"
+                                                )
+                                            ) ],
+                                          Some
+                                              [ { From =
+                                                    // 0.2.10 (Phase 632): `field` keeps the param SCALAR
+                                                    // after a real click — the identity form handed the
+                                                    // whole row to `objToCell` (a loud non-scalar error).
                                                     Binding.Selection(
                                                         "ticket-grid",
-                                                        Binding.projectSelectionField<string> "id",
-                                                        Some "TCK-2041",
+                                                        Binding.projectSelectionField<JVal> "id",
+                                                        Some(JStr "TCK-2041"),
                                                         Some "id"
                                                     )
-                                                )
-                                            Emphasis = true }
-                                    ))
-                                    None ]
-                            KeepTogether = false
-                            BreakBefore = false }
-                      ))
-                      None
-                  // 2026-07-20 demand pin: `Selection` as a `Transform.params`
-                  // source (the sol 040 r42 emission's composition) — the
-                  // related-items grid filters the embedded rows by the
-                  // ticket-grid's selection, defaulted. Wire-confirms the
-                  // param `from` slot accepts any Binding, Selection included.
-                  node
-                      "related-grid"
-                      (NodeKind.DataGrid(
-                          { SortStateKey = None
-                            PageSize = None
-                            PageStateKey = None
-                            EditStateKey = None
-                            DefaultSort = None
-                            Source =
-                              Binding.Transform(
-                                  TransformSource.Data(source),
-                                  [ Fuaran.Compute.Filter(
-                                        Fuaran.Compute.Binary(
-                                            Fuaran.Compute.Eq,
-                                            Fuaran.Compute.Col "id",
-                                            Fuaran.Compute.ColExpr.Param "ticketId"
-                                        )
-                                    ) ],
-                                  Some
-                                      [ { From =
-                                            // 0.2.10 (Phase 632): `field` keeps the param SCALAR
-                                            // after a real click — the identity form handed the
-                                            // whole row to `objToCell` (a loud non-scalar error).
-                                            Binding.Selection(
-                                                "ticket-grid",
-                                                Binding.projectSelectionField<JVal> "id",
-                                                Some(JStr "TCK-2041"),
-                                                Some "id"
-                                            )
-                                          Name = "ticketId" } ]
-                              )
-                            RowKey = None
-                            RowKeyField = Some "id"
-                            Columns = [ fieldCol "Ticket" "id"; fieldCol "Priority" "priority" ]
-                            OnRowClick = None
-                            Editable = false
-                            Reorderable = false
-                            TransferInKey = None
-                            TransferOutKey = None
-                            StaticRows = None
-                            KeepRowsTogether = false
-                            RepeatHeader = false
-                            WindowStateKey = None
-                            RowTotal = None
-                            Exportable = false }
-                      ))
-                      None ]
-              KeepTogether = false
-              BreakBefore = false }
+                                                  Name = "ticketId" } ]
+                                      )
+                                  RowKeyField = Some "id"
+                                  Columns = [ fieldCol "Ticket" "id"; fieldCol "Priority" "priority" ] }
+                          ))
+                          None ] }
         ))
         None
 
@@ -4927,14 +4697,9 @@ let masterDetailMultiField: Node<obj> =
                       [ Fuaran.Core.Str "R. Okafor"; Fuaran.Core.Str "M. Lindqvist" ] ] }
 
     let fieldCol (label: string) (field: string) : ColumnErased<obj> =
-        { Label = label
-          Value = None
-          Field = Some field
-          Sortable = None
-          Editable = None
-          Format = CellFormat.None
-          Kind = CellKindErased.Text
-          Width = ColumnWidth.Auto }
+        { Defaults.columnErased with
+            Label = label
+            Field = Some field }
 
     // One slot of the detail card: a Fact projecting ONE named column off the
     // shared selection. The only thing that varies across the three is `field`.
@@ -4959,80 +4724,60 @@ let masterDetailMultiField: Node<obj> =
     node
         "master-detail-multi-field"
         (NodeKind.Box(
-            { Layout = BoxLayout.Auto
-              Role = BoxRole.Dashboard
-              Heading = None
-              Children =
-                [ node
-                      "ticket-grid"
-                      (NodeKind.DataGrid(
-                          { SortStateKey = None
-                            PageSize = None
-                            PageStateKey = None
-                            EditStateKey = None
-                            DefaultSort = None
-                            Source = Binding.Transform(TransformSource.Data(source), [], None)
-                            RowKey = None
-                            RowKeyField = Some "id"
-                            Columns =
-                              [ fieldCol "Ticket" "id"
-                                fieldCol "Priority" "priority"
-                                fieldCol "Assignee" "assignee" ]
-                            OnRowClick = None
-                            Editable = false
-                            Reorderable = false
-                            TransferInKey = None
-                            TransferOutKey = None
-                            StaticRows = None
-                            KeepRowsTogether = false
-                            RepeatHeader = false
-                            WindowStateKey = None
-                            RowTotal = None
-                            Exportable = false }
-                      ))
-                      None
-                  node
-                      "ticket-detail"
-                      (NodeKind.Box(
-                          { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
-                            Role = BoxRole.Card
-                            Heading = Some(TextSource.Literal "Ticket detail")
-                            Children =
-                              [ projectedFact "detail-ticket" "Selected ticket" "id"
-                                projectedFact "detail-priority" "Priority" "priority"
-                                projectedFact "detail-assignee" "Assignee" "assignee"
-                                // A PROSE slot on the same selection. The 2026-08-02
-                                // flip-4 shakedown found models wiring the Facts
-                                // correctly and leaving the narration literal, so the
-                                // panel's numbers follow the click and its sentence
-                                // does not (036/c8, 5/6). `Callout.Body` is a
-                                // TextSource like any other — this is the SIMPLE
-                                // bound-body form; the only other bound body in the
-                                // corpus is the heavy Transform composition in
-                                // `scalar-transform-composition`, which is not a
-                                // shape a model reaches for to write one sentence.
-                                node
-                                    "detail-note"
-                                    (NodeKind.Callout(
-                                        { Defaults.callout with
-                                            Heading = Some(TextSource.Literal "Assigned to")
-                                            Body =
-                                                TextSource.Bound(
-                                                    Binding.Selection(
-                                                        "ticket-grid",
-                                                        Binding.projectSelectionField<string> "assignee",
-                                                        Some "R. Okafor",
-                                                        Some "assignee"
-                                                    )
-                                                ) }
-                                    ))
-                                    None ]
-                            KeepTogether = false
-                            BreakBefore = false }
-                      ))
-                      None ]
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Layout = BoxLayout.Auto
+                Role = BoxRole.Dashboard
+                Children =
+                    [ node
+                          "ticket-grid"
+                          (NodeKind.DataGrid(
+                              { Defaults.dataGrid with
+                                  Source = Binding.Transform(TransformSource.Data(source), [], None)
+                                  RowKeyField = Some "id"
+                                  Columns =
+                                      [ fieldCol "Ticket" "id"
+                                        fieldCol "Priority" "priority"
+                                        fieldCol "Assignee" "assignee" ] }
+                          ))
+                          None
+                      node
+                          "ticket-detail"
+                          (NodeKind.Box(
+                              { Defaults.box with
+                                  Role = BoxRole.Card
+                                  Heading = Some(TextSource.Literal "Ticket detail")
+                                  Children =
+                                      [ projectedFact "detail-ticket" "Selected ticket" "id"
+                                        projectedFact "detail-priority" "Priority" "priority"
+                                        projectedFact "detail-assignee" "Assignee" "assignee"
+                                        // A PROSE slot on the same selection. The 2026-08-02
+                                        // flip-4 shakedown found models wiring the Facts
+                                        // correctly and leaving the narration literal, so the
+                                        // panel's numbers follow the click and its sentence
+                                        // does not (036/c8, 5/6). `Callout.Body` is a
+                                        // TextSource like any other — this is the SIMPLE
+                                        // bound-body form; the only other bound body in the
+                                        // corpus is the heavy Transform composition in
+                                        // `scalar-transform-composition`, which is not a
+                                        // shape a model reaches for to write one sentence.
+                                        node
+                                            "detail-note"
+                                            (NodeKind.Callout(
+                                                { Defaults.callout with
+                                                    Heading = Some(TextSource.Literal "Assigned to")
+                                                    Body =
+                                                        TextSource.Bound(
+                                                            Binding.Selection(
+                                                                "ticket-grid",
+                                                                Binding.projectSelectionField<string> "assignee",
+                                                                Some "R. Okafor",
+                                                                Some "assignee"
+                                                            )
+                                                        ) }
+                                            ))
+                                            None ] }
+                          ))
+                          None ] }
         ))
         None
 
@@ -5093,14 +4838,9 @@ let masterDetailPreselectedSecondRow: Node<obj> =
                         Fuaran.Core.Str "Avatar upload fails" ] ] }
 
     let fieldCol (label: string) (field: string) : ColumnErased<obj> =
-        { Label = label
-          Value = None
-          Field = Some field
-          Sortable = None
-          Editable = None
-          Format = CellFormat.None
-          Kind = CellKindErased.Text
-          Width = ColumnWidth.Auto }
+        { Defaults.columnErased with
+            Label = label
+            Field = Some field }
 
     /// The one `Transform.params` entry every non-control leg shares: the
     /// ticket-grid's selection, defaulted to the SECOND row, projected through
@@ -5118,114 +4858,85 @@ let masterDetailPreselectedSecondRow: Node<obj> =
     node
         "master-detail-preselected-second-row"
         (NodeKind.Box(
-            { Layout = BoxLayout.Auto
-              Role = BoxRole.Dashboard
-              Heading = None
-              Children =
-                [ node
-                      "ticket-grid"
-                      (NodeKind.DataGrid(
-                          { SortStateKey = None
-                            PageSize = None
-                            PageStateKey = None
-                            EditStateKey = None
-                            DefaultSort = None
-                            Source = Binding.Transform(TransformSource.Data(source), [], None)
-                            RowKey = None
-                            RowKeyField = Some "id"
-                            Columns =
-                              [ fieldCol "Ticket" "id"
-                                fieldCol "Priority" "priority"
-                                fieldCol "Note" "note" ]
-                            OnRowClick = None
-                            Editable = false
-                            Reorderable = false
-                            TransferInKey = None
-                            TransferOutKey = None
-                            StaticRows = None
-                            KeepRowsTogether = false
-                            RepeatHeader = false
-                            WindowStateKey = None
-                            RowTotal = None
-                            Exportable = false }
-                      ))
-                      None
-                  node
-                      "ticket-detail"
-                      (NodeKind.Box(
-                          { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
-                            Role = BoxRole.Card
-                            Heading = Some(TextSource.Literal "Ticket detail")
-                            Children =
-                              [ node
-                                    "detail-ticket"
-                                    (NodeKind.Fact(
-                                        { Defaults.fact with
-                                            Label = TextSource.Literal "Selected ticket"
-                                            Value =
-                                                TextSource.Bound(
-                                                    Binding.Selection(
-                                                        "ticket-grid",
-                                                        Binding.projectSelectionField<string> "id",
-                                                        Some "TCK-2042",
-                                                        Some "id"
-                                                    )
-                                                )
-                                            Emphasis = true }
-                                    ))
-                                    None ]
-                            KeepTogether = false
-                            BreakBefore = false }
-                      ))
-                      None
-                  node
-                      "related-grid"
-                      (NodeKind.DataGrid(
-                          { SortStateKey = None
-                            PageSize = None
-                            PageStateKey = None
-                            EditStateKey = None
-                            DefaultSort = None
-                            Source =
-                              Binding.Transform(TransformSource.Data(source), [ filterById ], Some [ ticketIdParam ])
-                            RowKey = None
-                            RowKeyField = Some "id"
-                            Columns =
-                              [ fieldCol "Ticket" "id"
-                                fieldCol "Priority" "priority"
-                                fieldCol "Note" "note" ]
-                            OnRowClick = None
-                            Editable = false
-                            Reorderable = false
-                            TransferInKey = None
-                            TransferOutKey = None
-                            StaticRows = None
-                            KeepRowsTogether = false
-                            RepeatHeader = false
-                            WindowStateKey = None
-                            RowTotal = None
-                            Exportable = false }
-                      ))
-                      None
-                  node
-                      "detail-note"
-                      (NodeKind.Callout(
-                          { Defaults.callout with
-                              Heading = Some(TextSource.Literal "Ticket note")
-                              Body =
-                                  TextSource.Bound(
+            { Defaults.box with
+                Layout = BoxLayout.Auto
+                Role = BoxRole.Dashboard
+                Children =
+                    [ node
+                          "ticket-grid"
+                          (NodeKind.DataGrid(
+                              { Defaults.dataGrid with
+                                  Source = Binding.Transform(TransformSource.Data(source), [], None)
+                                  RowKeyField = Some "id"
+                                  Columns =
+                                      [ fieldCol "Ticket" "id"
+                                        fieldCol "Priority" "priority"
+                                        fieldCol "Note" "note" ] }
+                          ))
+                          None
+                      node
+                          "ticket-detail"
+                          (NodeKind.Box(
+                              { Defaults.box with
+                                  Role = BoxRole.Card
+                                  Heading = Some(TextSource.Literal "Ticket detail")
+                                  Children =
+                                      [ node
+                                            "detail-ticket"
+                                            (NodeKind.Fact(
+                                                { Defaults.fact with
+                                                    Label = TextSource.Literal "Selected ticket"
+                                                    Value =
+                                                        TextSource.Bound(
+                                                            Binding.Selection(
+                                                                "ticket-grid",
+                                                                Binding.projectSelectionField<string> "id",
+                                                                Some "TCK-2042",
+                                                                Some "id"
+                                                            )
+                                                        )
+                                                    Emphasis = true }
+                                            ))
+                                            None ] }
+                          ))
+                          None
+                      node
+                          "related-grid"
+                          (NodeKind.DataGrid(
+                              { Defaults.dataGrid with
+                                  Source =
                                       Binding.Transform(
                                           TransformSource.Data(source),
-                                          [ filterById
-                                            Fuaran.Compute.Project [ "note", "note" ]
-                                            Fuaran.Compute.Limit(Fuaran.Compute.Slot.Lit 1, Fuaran.Compute.Slot.Lit 0) ],
+                                          [ filterById ],
                                           Some [ ticketIdParam ]
                                       )
-                                  ) }
-                      ))
-                      None ]
-              KeepTogether = false
-              BreakBefore = false }
+                                  RowKeyField = Some "id"
+                                  Columns =
+                                      [ fieldCol "Ticket" "id"
+                                        fieldCol "Priority" "priority"
+                                        fieldCol "Note" "note" ] }
+                          ))
+                          None
+                      node
+                          "detail-note"
+                          (NodeKind.Callout(
+                              { Defaults.callout with
+                                  Heading = Some(TextSource.Literal "Ticket note")
+                                  Body =
+                                      TextSource.Bound(
+                                          Binding.Transform(
+                                              TransformSource.Data(source),
+                                              [ filterById
+                                                Fuaran.Compute.Project [ "note", "note" ]
+                                                Fuaran.Compute.Limit(
+                                                    Fuaran.Compute.Slot.Lit 1,
+                                                    Fuaran.Compute.Slot.Lit 0
+                                                ) ],
+                                              Some [ ticketIdParam ]
+                                          )
+                                      ) }
+                          ))
+                          None ] }
         ))
         None
 
@@ -5273,75 +4984,52 @@ let nowEnvironmentBinding: Node<obj> =
                       [ Fuaran.Core.Str "2026-07-01"; Fuaran.Core.Str "2026-07-28" ] ] }
 
     let fieldCol (label: string) (field: string) : ColumnErased<obj> =
-        { Label = label
-          Value = None
-          Field = Some field
-          Sortable = None
-          Editable = None
-          Format = CellFormat.None
-          Kind = CellKindErased.Text
-          Width = ColumnWidth.Auto }
+        { Defaults.columnErased with
+            Label = label
+            Field = Some field }
 
     node
         "now-environment-binding"
         (NodeKind.Box(
-            { Layout = BoxLayout.Auto
-              Role = BoxRole.Dashboard
-              Heading = None
-              Children =
-                [ node
-                      "today-fact"
-                      (NodeKind.Fact(
-                          { Defaults.fact with
-                              Label = TextSource.Literal "Today"
-                              Value = TextSource.Bound(Binding.Now((fun (o: obj) -> unbox<string> o), None)) }
-                      ))
-                      None
-                  node
-                      "overdue-grid"
-                      (NodeKind.DataGrid(
-                          { SortStateKey = None
-                            PageSize = None
-                            PageStateKey = None
-                            EditStateKey = None
-                            DefaultSort = None
-                            Source =
-                              Binding.Transform(
-                                  TransformSource.Data(source),
-                                  // days overdue = dateDiffDays(today, due) — the
-                                  // param is the ONLY new part; the verb is Core's.
-                                  [ Fuaran.Compute.Derive(
-                                        "daysOverdue",
-                                        Fuaran.Compute.ApplyFn(
-                                            Fuaran.Compute.DateDiffDays,
-                                            [ Fuaran.Compute.ColExpr.Param "today"; Fuaran.Compute.Col "due" ]
-                                        )
-                                    ) ],
-                                  Some
-                                      [ { From = Binding.Now((fun (o: obj) -> JStr(unbox<string> o)), None)
-                                          Name = "today" } ]
-                              )
-                            RowKey = None
-                            RowKeyField = Some "id"
-                            Columns =
-                              [ fieldCol "Invoice" "id"
-                                fieldCol "Due" "due"
-                                fieldCol "Days overdue" "daysOverdue" ]
-                            OnRowClick = None
-                            Editable = false
-                            Reorderable = false
-                            TransferInKey = None
-                            TransferOutKey = None
-                            StaticRows = None
-                            KeepRowsTogether = false
-                            RepeatHeader = false
-                            WindowStateKey = None
-                            RowTotal = None
-                            Exportable = false }
-                      ))
-                      None ]
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Layout = BoxLayout.Auto
+                Role = BoxRole.Dashboard
+                Children =
+                    [ node
+                          "today-fact"
+                          (NodeKind.Fact(
+                              { Defaults.fact with
+                                  Label = TextSource.Literal "Today"
+                                  Value = TextSource.Bound(Binding.Now((fun (o: obj) -> unbox<string> o), None)) }
+                          ))
+                          None
+                      node
+                          "overdue-grid"
+                          (NodeKind.DataGrid(
+                              { Defaults.dataGrid with
+                                  Source =
+                                      Binding.Transform(
+                                          TransformSource.Data(source),
+                                          // days overdue = dateDiffDays(today, due) — the
+                                          // param is the ONLY new part; the verb is Core's.
+                                          [ Fuaran.Compute.Derive(
+                                                "daysOverdue",
+                                                Fuaran.Compute.ApplyFn(
+                                                    Fuaran.Compute.DateDiffDays,
+                                                    [ Fuaran.Compute.ColExpr.Param "today"; Fuaran.Compute.Col "due" ]
+                                                )
+                                            ) ],
+                                          Some
+                                              [ { From = Binding.Now((fun (o: obj) -> JStr(unbox<string> o)), None)
+                                                  Name = "today" } ]
+                                      )
+                                  RowKeyField = Some "id"
+                                  Columns =
+                                      [ fieldCol "Invoice" "id"
+                                        fieldCol "Due" "due"
+                                        fieldCol "Days overdue" "daysOverdue" ] }
+                          ))
+                          None ] }
         ))
         None
 
@@ -5369,14 +5057,9 @@ let nowGrain: Node<obj> =
                   Fuaran.Core.Column.create "due" Fuaran.Core.StringType [ Fuaran.Core.Str "2026-07-01" ] ] }
 
     let fieldCol (label: string) (field: string) : ColumnErased<obj> =
-        { Label = label
-          Value = None
-          Field = Some field
-          Sortable = None
-          Editable = None
-          Format = CellFormat.None
-          Kind = CellKindErased.Text
-          Width = ColumnWidth.Auto }
+        { Defaults.columnErased with
+            Label = label
+            Field = Some field }
 
     let grainFact (id: string) (label: string) (grain: TimeGrain) : Node<obj> =
         node
@@ -5391,57 +5074,42 @@ let nowGrain: Node<obj> =
     node
         "now-grain"
         (NodeKind.Box(
-            { Layout = BoxLayout.Auto
-              Role = BoxRole.Dashboard
-              Heading = None
-              Children =
-                [ grainFact "asof-minute" "As of (minute)" TimeGrain.Minute
-                  grainFact "asof-hour" "As of (hour)" TimeGrain.Hour
-                  grainFact "asof-day" "Today" TimeGrain.Day
-                  node
-                      "overdue-grid-day-grain"
-                      (NodeKind.DataGrid(
-                          { SortStateKey = None
-                            PageSize = None
-                            PageStateKey = None
-                            EditStateKey = None
-                            DefaultSort = None
-                            Source =
-                              Binding.Transform(
-                                  TransformSource.Data(source),
-                                  [ Fuaran.Compute.Derive(
-                                        "daysOverdue",
-                                        Fuaran.Compute.ApplyFn(
-                                            Fuaran.Compute.DateDiffDays,
-                                            [ Fuaran.Compute.ColExpr.Param "today"; Fuaran.Compute.Col "due" ]
-                                        )
-                                    ) ],
-                                  Some
-                                      [ { From =
-                                            Binding.Now((fun (o: obj) -> JStr(unbox<string> o)), Some TimeGrain.Day)
-                                          Name = "today" } ]
-                              )
-                            RowKey = None
-                            RowKeyField = Some "id"
-                            Columns =
-                              [ fieldCol "Invoice" "id"
-                                fieldCol "Due" "due"
-                                fieldCol "Days overdue" "daysOverdue" ]
-                            OnRowClick = None
-                            Editable = false
-                            Reorderable = false
-                            TransferInKey = None
-                            TransferOutKey = None
-                            StaticRows = None
-                            KeepRowsTogether = false
-                            RepeatHeader = false
-                            WindowStateKey = None
-                            RowTotal = None
-                            Exportable = false }
-                      ))
-                      None ]
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Layout = BoxLayout.Auto
+                Role = BoxRole.Dashboard
+                Children =
+                    [ grainFact "asof-minute" "As of (minute)" TimeGrain.Minute
+                      grainFact "asof-hour" "As of (hour)" TimeGrain.Hour
+                      grainFact "asof-day" "Today" TimeGrain.Day
+                      node
+                          "overdue-grid-day-grain"
+                          (NodeKind.DataGrid(
+                              { Defaults.dataGrid with
+                                  Source =
+                                      Binding.Transform(
+                                          TransformSource.Data(source),
+                                          [ Fuaran.Compute.Derive(
+                                                "daysOverdue",
+                                                Fuaran.Compute.ApplyFn(
+                                                    Fuaran.Compute.DateDiffDays,
+                                                    [ Fuaran.Compute.ColExpr.Param "today"; Fuaran.Compute.Col "due" ]
+                                                )
+                                            ) ],
+                                          Some
+                                              [ { From =
+                                                    Binding.Now(
+                                                        (fun (o: obj) -> JStr(unbox<string> o)),
+                                                        Some TimeGrain.Day
+                                                    )
+                                                  Name = "today" } ]
+                                      )
+                                  RowKeyField = Some "id"
+                                  Columns =
+                                      [ fieldCol "Invoice" "id"
+                                        fieldCol "Due" "due"
+                                        fieldCol "Days overdue" "daysOverdue" ] }
+                          ))
+                          None ] }
         ))
         None
 
@@ -5461,27 +5129,29 @@ let nowGrain: Node<obj> =
 [<NodeFixture "Binding.Format (Phase 1533 — Since: the instant-reading twin of RelativeTime, declared unit and auto)">]
 let formatSince: Node<obj> =
     let md (id: string) (b: Binding<string>) : Node<obj> =
-        node id (NodeKind.Markdown({ Text = TextSource.Bound b })) None
+        node
+            id
+            (NodeKind.Markdown(
+                { Defaults.markdown with
+                    Text = TextSource.Bound b }
+            ))
+            None
 
     node
         "format-since"
         (NodeKind.Box(
-            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
-              Role = BoxRole.Group
-              Heading = None
-              Children =
-                [ md
-                      "since-auto"
-                      (Binding.Format(Binding.Static(Some 1700000000.0), Format.Since None, LocaleSource.Ambient))
-                  md
-                      "since-declared-hour"
-                      (Binding.Format(
-                          Binding.Static(Some 1700000000.0),
-                          Format.Since(Some RelativeTimeUnit.Hour),
-                          LocaleSource.Explicit "en-GB"
-                      )) ]
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Children =
+                    [ md
+                          "since-auto"
+                          (Binding.Format(Binding.Static(Some 1700000000.0), Format.Since None, LocaleSource.Ambient))
+                      md
+                          "since-declared-hour"
+                          (Binding.Format(
+                              Binding.Static(Some 1700000000.0),
+                              Format.Since(Some RelativeTimeUnit.Hour),
+                              LocaleSource.Explicit "en-GB"
+                          )) ] }
         ))
         None
 
@@ -5499,42 +5169,44 @@ let formatSince: Node<obj> =
 [<NodeFixture "Binding.Format (Phase 1810 — Date with a time of day: dateStyle + timeStyle, and timeStyle alone)">]
 let formatDateTime: Node<obj> =
     let md (id: string) (b: Binding<string>) : Node<obj> =
-        node id (NodeKind.Markdown({ Text = TextSource.Bound b })) None
+        node
+            id
+            (NodeKind.Markdown(
+                { Defaults.markdown with
+                    Text = TextSource.Bound b }
+            ))
+            None
 
     node
         "format-date-time"
         (NodeKind.Box(
-            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
-              Role = BoxRole.Group
-              Heading = None
-              Children =
-                [ md
-                      "fmt-date-time"
-                      (Binding.Format(
-                          Binding.Static(Some 1700000000.0),
-                          Format.DateTime(Some DateStyle.Medium, Some TimeStyle.Short),
-                          LocaleSource.Explicit "en-GB"
-                      ))
-                  md
-                      "fmt-time-only"
-                      (Binding.Format(
-                          Binding.Static(Some 1700000000.0),
-                          Format.DateTime(None, Some TimeStyle.Short),
-                          LocaleSource.Ambient
-                      ))
-                  md
-                      "fmt-time-full"
-                      (Binding.Format(
-                          Binding.Static(Some 1700000000.0),
-                          // `Medium` rather than `Full` at the time half, on
-                          // purpose: `Long` / `Full` time styles carry the ZONE
-                          // NAME, and a render snapshot of one differs between
-                          // a UTC runner and a GMT one.
-                          Format.DateTime(Some DateStyle.Full, Some TimeStyle.Medium),
-                          LocaleSource.Explicit "de-DE"
-                      )) ]
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Children =
+                    [ md
+                          "fmt-date-time"
+                          (Binding.Format(
+                              Binding.Static(Some 1700000000.0),
+                              Format.DateTime(Some DateStyle.Medium, Some TimeStyle.Short),
+                              LocaleSource.Explicit "en-GB"
+                          ))
+                      md
+                          "fmt-time-only"
+                          (Binding.Format(
+                              Binding.Static(Some 1700000000.0),
+                              Format.DateTime(None, Some TimeStyle.Short),
+                              LocaleSource.Ambient
+                          ))
+                      md
+                          "fmt-time-full"
+                          (Binding.Format(
+                              Binding.Static(Some 1700000000.0),
+                              // `Medium` rather than `Full` at the time half, on
+                              // purpose: `Long` / `Full` time styles carry the ZONE
+                              // NAME, and a render snapshot of one differs between
+                              // a UTC runner and a GMT one.
+                              Format.DateTime(Some DateStyle.Full, Some TimeStyle.Medium),
+                              LocaleSource.Explicit "de-DE"
+                          )) ] }
         ))
         None
 
@@ -5556,62 +5228,64 @@ let exprScalar: Node<obj> =
         Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Str s)
 
     let md (id: string) (b: Binding<string>) : Node<obj> =
-        node id (NodeKind.Markdown({ Text = TextSource.Bound b })) None
+        node
+            id
+            (NodeKind.Markdown(
+                { Defaults.markdown with
+                    Text = TextSource.Bound b }
+            ))
+            None
 
     node
         "expr-scalar"
         (NodeKind.Box(
-            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
-              Role = BoxRole.Group
-              Heading = None
-              Children =
-                [ md
-                      "expr-concat"
-                      (Binding.Expr(
-                          Fuaran.Compute.ApplyFn(Fuaran.Compute.Concat, [ lit "Ada"; lit " "; lit "Lovelace" ]),
+            { Defaults.box with
+                Children =
+                    [ md
+                          "expr-concat"
+                          (Binding.Expr(
+                              Fuaran.Compute.ApplyFn(Fuaran.Compute.Concat, [ lit "Ada"; lit " "; lit "Lovelace" ]),
+                              None
+                          ))
+                      node
+                          "expr-arithmetic"
+                          (NodeKind.Metric(
+                              { Defaults.metric with
+                                  Label = TextSource.Literal "Line total"
+                                  Value =
+                                      Binding.Expr(
+                                          Fuaran.Compute.Binary(
+                                              Fuaran.Compute.Mul,
+                                              Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Float 12.5),
+                                              Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Float 4.0)
+                                          ),
+                                          None
+                                      ) }
+                          ))
                           None
-                      ))
-                  node
-                      "expr-arithmetic"
-                      (NodeKind.Metric(
-                          { Defaults.metric with
-                              Label = TextSource.Literal "Line total"
-                              Value =
-                                  Binding.Expr(
-                                      Fuaran.Compute.Binary(
-                                          Fuaran.Compute.Mul,
-                                          Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Float 12.5),
-                                          Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Float 4.0)
-                                      ),
-                                      None
-                                  ) }
-                      ))
-                      None
-                  md
-                      "expr-boolean"
-                      (Binding.Expr(
-                          Fuaran.Compute.Case(
-                              [ Fuaran.Compute.Binary(
-                                    Fuaran.Compute.And,
-                                    Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Bool true),
-                                    Fuaran.Compute.Not(Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Bool false))
-                                ),
-                                lit "ready" ],
-                              lit "blocked"
-                          ),
-                          None
-                      ))
-                  md
-                      "expr-null-test"
-                      (Binding.Expr(
-                          Fuaran.Compute.Case(
-                              [ Fuaran.Compute.IsNull(Fuaran.Compute.ColExpr.Lit Fuaran.Core.Null), lit "empty" ],
-                              lit "has a value"
-                          ),
-                          None
-                      )) ]
-              KeepTogether = false
-              BreakBefore = false }
+                      md
+                          "expr-boolean"
+                          (Binding.Expr(
+                              Fuaran.Compute.Case(
+                                  [ Fuaran.Compute.Binary(
+                                        Fuaran.Compute.And,
+                                        Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Bool true),
+                                        Fuaran.Compute.Not(Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Bool false))
+                                    ),
+                                    lit "ready" ],
+                                  lit "blocked"
+                              ),
+                              None
+                          ))
+                      md
+                          "expr-null-test"
+                          (Binding.Expr(
+                              Fuaran.Compute.Case(
+                                  [ Fuaran.Compute.IsNull(Fuaran.Compute.ColExpr.Lit Fuaran.Core.Null), lit "empty" ],
+                                  lit "has a value"
+                              ),
+                              None
+                          )) ] }
         ))
         None
 
@@ -5632,86 +5306,89 @@ let exprParamsStateSelection: Node<obj> =
         Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Str s)
 
     let md (id: string) (b: Binding<string>) : Node<obj> =
-        node id (NodeKind.Markdown({ Text = TextSource.Bound b })) None
+        node
+            id
+            (NodeKind.Markdown(
+                { Defaults.markdown with
+                    Text = TextSource.Bound b }
+            ))
+            None
 
     node
         "expr-params-state-selection"
         (NodeKind.Box(
-            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
-              Role = BoxRole.Group
-              Heading = None
-              Children =
-                [ md
-                      "badge-preview"
-                      (Binding.Expr(
-                          Fuaran.Compute.ApplyFn(
-                              Fuaran.Compute.Concat,
-                              [ Fuaran.Compute.ColExpr.Param "firstName"
-                                lit " "
-                                Fuaran.Compute.ColExpr.Param "lastName"
-                                lit " - "
-                                Fuaran.Compute.ColExpr.Param "track" ]
-                          ),
-                          Some
-                              [ { From = Binding.State("form.firstName", None)
-                                  Name = "firstName" }
-                                { From = Binding.State("form.lastName", None)
-                                  Name = "lastName" }
-                                { From = Binding.Selection("tracks", (fun (o: obj) -> unbox<JVal> o), None, Some "name")
-                                  Name = "track" } ]
-                      ))
-                  node
-                      "order-total"
-                      (NodeKind.Metric(
-                          { Defaults.metric with
-                              Label = TextSource.Literal "Order total"
-                              Value =
-                                  Binding.Expr(
-                                      Fuaran.Compute.Binary(
-                                          Fuaran.Compute.Mul,
-                                          Fuaran.Compute.ColExpr.Param "unitPrice",
-                                          Fuaran.Compute.ColExpr.Param "quantity"
-                                      ),
-                                      Some
-                                          [ { From =
-                                                Binding.Query(
-                                                    "catalogue.unitPrice",
-                                                    (fun (o: obj) -> unbox<JVal> o),
-                                                    None
-                                                )
-                                              Name = "unitPrice" }
-                                            { From = Binding.State("form.quantity", None)
-                                              Name = "quantity" } ]
-                                  ) }
-                      ))
-                      None
-                  md
-                      "asof-day"
-                      (Binding.Expr(
-                          Fuaran.Compute.ApplyFn(
-                              Fuaran.Compute.Concat,
-                              [ lit "As of "; Fuaran.Compute.ColExpr.Param "today" ]
-                          ),
-                          Some
-                              [ { From = Binding.Now((fun (o: obj) -> JStr(unbox<string> o)), Some TimeGrain.Day)
-                                  Name = "today" } ]
-                      ))
-                  md
-                      "membership"
-                      (Binding.Expr(
-                          Fuaran.Compute.Case(
-                              [ Fuaran.Compute.InParam(Fuaran.Compute.ColExpr.Param "status", "openStatuses"),
-                                lit "open" ],
-                              lit "closed"
-                          ),
-                          Some
-                              [ { From = Binding.State("row.status", None)
-                                  Name = "status" }
-                                { From = Binding.Filter("statuses", None)
-                                  Name = "openStatuses" } ]
-                      )) ]
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Children =
+                    [ md
+                          "badge-preview"
+                          (Binding.Expr(
+                              Fuaran.Compute.ApplyFn(
+                                  Fuaran.Compute.Concat,
+                                  [ Fuaran.Compute.ColExpr.Param "firstName"
+                                    lit " "
+                                    Fuaran.Compute.ColExpr.Param "lastName"
+                                    lit " - "
+                                    Fuaran.Compute.ColExpr.Param "track" ]
+                              ),
+                              Some
+                                  [ { From = Binding.State("form.firstName", None)
+                                      Name = "firstName" }
+                                    { From = Binding.State("form.lastName", None)
+                                      Name = "lastName" }
+                                    { From =
+                                        Binding.Selection("tracks", (fun (o: obj) -> unbox<JVal> o), None, Some "name")
+                                      Name = "track" } ]
+                          ))
+                      node
+                          "order-total"
+                          (NodeKind.Metric(
+                              { Defaults.metric with
+                                  Label = TextSource.Literal "Order total"
+                                  Value =
+                                      Binding.Expr(
+                                          Fuaran.Compute.Binary(
+                                              Fuaran.Compute.Mul,
+                                              Fuaran.Compute.ColExpr.Param "unitPrice",
+                                              Fuaran.Compute.ColExpr.Param "quantity"
+                                          ),
+                                          Some
+                                              [ { From =
+                                                    Binding.Query(
+                                                        "catalogue.unitPrice",
+                                                        (fun (o: obj) -> unbox<JVal> o),
+                                                        None
+                                                    )
+                                                  Name = "unitPrice" }
+                                                { From = Binding.State("form.quantity", None)
+                                                  Name = "quantity" } ]
+                                      ) }
+                          ))
+                          None
+                      md
+                          "asof-day"
+                          (Binding.Expr(
+                              Fuaran.Compute.ApplyFn(
+                                  Fuaran.Compute.Concat,
+                                  [ lit "As of "; Fuaran.Compute.ColExpr.Param "today" ]
+                              ),
+                              Some
+                                  [ { From = Binding.Now((fun (o: obj) -> JStr(unbox<string> o)), Some TimeGrain.Day)
+                                      Name = "today" } ]
+                          ))
+                      md
+                          "membership"
+                          (Binding.Expr(
+                              Fuaran.Compute.Case(
+                                  [ Fuaran.Compute.InParam(Fuaran.Compute.ColExpr.Param "status", "openStatuses"),
+                                    lit "open" ],
+                                  lit "closed"
+                              ),
+                              Some
+                                  [ { From = Binding.State("row.status", None)
+                                      Name = "status" }
+                                    { From = Binding.Filter("statuses", None)
+                                      Name = "openStatuses" } ]
+                          )) ] }
         ))
         None
 
@@ -5746,111 +5423,87 @@ let scalarTransformComposition: Node<obj> =
     node
         "scalar-transform-composition"
         (NodeKind.Box(
-            { Layout = BoxLayout.Auto
-              Role = BoxRole.Dashboard
-              Heading = None
-              Children =
-                [ node
-                      "scalar-ticket-grid"
-                      (NodeKind.DataGrid(
-                          { SortStateKey = None
-                            PageSize = None
-                            PageStateKey = None
-                            EditStateKey = None
-                            DefaultSort = None
-                            Source = Binding.Transform(TransformSource.Data(source), [], None)
-                            RowKey = None
-                            RowKeyField = Some "id"
-                            Columns =
-                              [ { Label = "Ticket"
-                                  Value = None
-                                  Field = Some "id"
-                                  Sortable = None
-                                  Editable = None
-                                  Format = CellFormat.None
-                                  Kind = CellKindErased.Text
-                                  Width = ColumnWidth.Auto }
-                                { Label = "Severity"
-                                  Value = None
-                                  Field = Some "severity"
-                                  Sortable = None
-                                  Editable = None
-                                  Format = CellFormat.None
-                                  Kind = CellKindErased.Text
-                                  Width = ColumnWidth.Auto } ]
-                            OnRowClick = None
-                            Editable = false
-                            Reorderable = false
-                            TransferInKey = None
-                            TransferOutKey = None
-                            StaticRows = None
-                            KeepRowsTogether = false
-                            RepeatHeader = false
-                            WindowStateKey = None
-                            RowTotal = None
-                            Exportable = false }
-                      ))
-                      None
-                  node
-                      "critical-count-badge"
-                      (NodeKind.Badge(
-                          { Label =
-                              TextSource.Bound(
-                                  Binding.Transform(
-                                      TransformSource.Data(source),
-                                      [ Fuaran.Compute.Filter(
-                                            Fuaran.Compute.Binary(
-                                                Fuaran.Compute.Eq,
-                                                Fuaran.Compute.Col "severity",
-                                                Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Str "critical")
-                                            )
-                                        )
-                                        Fuaran.Compute.GroupBy(
-                                            [],
-                                            [ { Name = "n"
-                                                Fn = Fuaran.Core.AggFn.Count
-                                                Of = "id" } ]
-                                        ) ],
-                                      None
-                                  )
-                              )
-                            Variant = BadgeVariant.Critical }
-                      ))
-                      None
-                  node
-                      "sla-warning"
-                      (NodeKind.Callout(
-                          { Defaults.callout with
-                              Tone = ToneVariant.Warning
-                              Heading = Some(TextSource.Literal "SLA breach imminent")
-                              Body =
-                                  TextSource.Bound(
-                                      Binding.Transform(
-                                          TransformSource.Data(source),
-                                          [ Fuaran.Compute.Filter(
-                                                Fuaran.Compute.Binary(
-                                                    Fuaran.Compute.Eq,
-                                                    Fuaran.Compute.Col "id",
-                                                    Fuaran.Compute.ColExpr.Param "ticketId"
-                                                )
-                                            )
-                                            Fuaran.Compute.Project [ "alert", "alert" ]
-                                            Fuaran.Compute.Limit(Fuaran.Compute.Slot.Lit 1, Fuaran.Compute.Slot.Lit 0) ],
-                                          Some
-                                              [ { From =
-                                                    Binding.Selection(
-                                                        "scalar-ticket-grid",
-                                                        Binding.projectSelectionField<JVal> "id",
-                                                        Some(JStr "TCK-2041"),
-                                                        Some "id"
+            { Defaults.box with
+                Layout = BoxLayout.Auto
+                Role = BoxRole.Dashboard
+                Children =
+                    [ node
+                          "scalar-ticket-grid"
+                          (NodeKind.DataGrid(
+                              { Defaults.dataGrid with
+                                  Source = Binding.Transform(TransformSource.Data(source), [], None)
+                                  RowKeyField = Some "id"
+                                  Columns =
+                                      [ { Defaults.columnErased with
+                                            Label = "Ticket"
+                                            Field = Some "id" }
+                                        { Defaults.columnErased with
+                                            Label = "Severity"
+                                            Field = Some "severity" } ] }
+                          ))
+                          None
+                      node
+                          "critical-count-badge"
+                          (NodeKind.Badge(
+                              { Defaults.badge with
+                                  Label =
+                                      TextSource.Bound(
+                                          Binding.Transform(
+                                              TransformSource.Data(source),
+                                              [ Fuaran.Compute.Filter(
+                                                    Fuaran.Compute.Binary(
+                                                        Fuaran.Compute.Eq,
+                                                        Fuaran.Compute.Col "severity",
+                                                        Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Str "critical")
                                                     )
-                                                  Name = "ticketId" } ]
+                                                )
+                                                Fuaran.Compute.GroupBy(
+                                                    [],
+                                                    [ { Name = "n"
+                                                        Fn = Fuaran.Core.AggFn.Count
+                                                        Of = "id" } ]
+                                                ) ],
+                                              None
+                                          )
                                       )
-                                  ) }
-                      ))
-                      None ]
-              KeepTogether = false
-              BreakBefore = false }
+                                  Variant = BadgeVariant.Critical }
+                          ))
+                          None
+                      node
+                          "sla-warning"
+                          (NodeKind.Callout(
+                              { Defaults.callout with
+                                  Tone = ToneVariant.Warning
+                                  Heading = Some(TextSource.Literal "SLA breach imminent")
+                                  Body =
+                                      TextSource.Bound(
+                                          Binding.Transform(
+                                              TransformSource.Data(source),
+                                              [ Fuaran.Compute.Filter(
+                                                    Fuaran.Compute.Binary(
+                                                        Fuaran.Compute.Eq,
+                                                        Fuaran.Compute.Col "id",
+                                                        Fuaran.Compute.ColExpr.Param "ticketId"
+                                                    )
+                                                )
+                                                Fuaran.Compute.Project [ "alert", "alert" ]
+                                                Fuaran.Compute.Limit(
+                                                    Fuaran.Compute.Slot.Lit 1,
+                                                    Fuaran.Compute.Slot.Lit 0
+                                                ) ],
+                                              Some
+                                                  [ { From =
+                                                        Binding.Selection(
+                                                            "scalar-ticket-grid",
+                                                            Binding.projectSelectionField<JVal> "id",
+                                                            Some(JStr "TCK-2041"),
+                                                            Some "id"
+                                                        )
+                                                      Name = "ticketId" } ]
+                                          )
+                                      ) }
+                          ))
+                          None ] }
         ))
         None
 
@@ -5914,77 +5567,56 @@ let filterableStaticDashboard: Node<obj> =
         )
 
     let choice (name: string) (label: string) (options: (string * string) list) : FilterSpec<obj> =
-        { Name = name
-          Label = TextSource.Literal label
-          Kind =
-            FormFieldKind.Choice(
-                Binding.Static(Some [ for value, optLabel in options -> { Value = value; Label = optLabel } ]),
-                Some(FieldValue.ofText (Binding.Filter(name, None))),
-                None
-            ) }
+        { Defaults.filter with
+            Name = name
+            Label = TextSource.Literal label
+            Kind =
+                FormFieldKind.Choice(
+                    Binding.Static(Some [ for value, optLabel in options -> { Value = value; Label = optLabel } ]),
+                    Some(FieldValue.ofText (Binding.Filter(name, None))),
+                    None
+                ) }
 
     let fieldCol (label: string) (field: string) : ColumnErased<obj> =
-        { Label = label
-          Value = None
-          Field = Some field
-          Sortable = None
-          Editable = None
-          Format = CellFormat.None
-          Kind = CellKindErased.Text
-          Width = ColumnWidth.Auto }
+        { Defaults.columnErased with
+            Label = label
+            Field = Some field }
 
     node
         "filterable-static-dashboard"
         (NodeKind.Box(
-            { Layout = BoxLayout.Auto
-              Role = BoxRole.Dashboard
-              Heading = Some(TextSource.Literal "Content performance")
-              Children =
-                [ node
-                      "content-filters"
-                      (NodeKind.Filters(
-                          { Items =
-                              [ choice "region" "Region" [ "emea", "EMEA"; "amer", "Americas" ]
-                                choice "genre" "Genre" [ "drama", "Drama"; "docs", "Documentary" ] ] }
-                      ))
-                      None
-                  node
-                      "retention-chart"
-                      (NodeKind.Chart(
-                          { Defaults.chart with
-                              Source = filteredSource ()
-                              XField = "month"
-                              YFields = [ "retention" ]
-                              Title = Some(TextSource.Literal "Retention") }
-                      ))
-                      None
-                  node
-                      "episode-grid"
-                      (NodeKind.DataGrid(
-                          { SortStateKey = None
-                            PageSize = None
-                            PageStateKey = None
-                            EditStateKey = None
-                            DefaultSort = None
-                            Source = filteredSource ()
-                            RowKey = None
-                            RowKeyField = Some "month"
-                            Columns = [ fieldCol "Month" "month"; fieldCol "Retention" "retention" ]
-                            OnRowClick = None
-                            Editable = false
-                            Reorderable = false
-                            TransferInKey = None
-                            TransferOutKey = None
-                            StaticRows = None
-                            KeepRowsTogether = false
-                            RepeatHeader = false
-                            WindowStateKey = None
-                            RowTotal = None
-                            Exportable = false }
-                      ))
-                      None ]
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Layout = BoxLayout.Auto
+                Role = BoxRole.Dashboard
+                Heading = Some(TextSource.Literal "Content performance")
+                Children =
+                    [ node
+                          "content-filters"
+                          (NodeKind.Filters(
+                              { Items =
+                                  [ choice "region" "Region" [ "emea", "EMEA"; "amer", "Americas" ]
+                                    choice "genre" "Genre" [ "drama", "Drama"; "docs", "Documentary" ] ] }
+                          ))
+                          None
+                      node
+                          "retention-chart"
+                          (NodeKind.Chart(
+                              { Defaults.chart with
+                                  Source = filteredSource ()
+                                  XField = "month"
+                                  YFields = [ "retention" ]
+                                  Title = Some(TextSource.Literal "Retention") }
+                          ))
+                          None
+                      node
+                          "episode-grid"
+                          (NodeKind.DataGrid(
+                              { Defaults.dataGrid with
+                                  Source = filteredSource ()
+                                  RowKeyField = Some "month"
+                                  Columns = [ fieldCol "Month" "month"; fieldCol "Retention" "retention" ] }
+                          ))
+                          None ] }
         ))
         None
 
@@ -6040,14 +5672,15 @@ let private filterEdgeTable =
 /// `$filters.<name>` slot. A self-read is a DECLARATION rather than a
 /// consumption, so it is the grid's param sources below that consume these.
 let private filterEdgeChip (name: string) (label: string) (options: (string * string) list) : FilterSpec<obj> =
-    { Name = name
-      Label = TextSource.Literal label
-      Kind =
-        FormFieldKind.Choice(
-            Binding.Static(Some [ for value, optLabel in options -> { Value = value; Label = optLabel } ]),
-            Some(FieldValue.ofText (Binding.Filter(name, None))),
-            None
-        ) }
+    { Defaults.filter with
+        Name = name
+        Label = TextSource.Literal label
+        Kind =
+            FormFieldKind.Choice(
+                Binding.Static(Some [ for value, optLabel in options -> { Value = value; Label = optLabel } ]),
+                Some(FieldValue.ofText (Binding.Filter(name, None))),
+                None
+            ) }
 
 /// The consumer both documents share: a `Transform` whose pipeline filters on
 /// two params, each sourced from a `Binding.Filter` of the same name. Both
@@ -6076,50 +5709,28 @@ let private filterEdgeSource () : Binding<Row seq> =
 /// `declaredChips` is the ONLY thing that varies between the pair.
 let private filterEdgeDoc (id: string) (declaredChips: FilterSpec<obj> list) : Node<obj> =
     let fieldCol (label: string) (field: string) : ColumnErased<obj> =
-        { Label = label
-          Value = None
-          Field = Some field
-          Sortable = None
-          Editable = None
-          Format = CellFormat.None
-          Kind = CellKindErased.Text
-          Width = ColumnWidth.Auto }
+        { Defaults.columnErased with
+            Label = label
+            Field = Some field }
 
     node
         id
         (NodeKind.Box(
-            { Layout = BoxLayout.Auto
-              Role = BoxRole.Dashboard
-              Heading = Some(TextSource.Literal "Catalogue")
-              Children =
-                [ node "edge-chips" (NodeKind.Filters({ Items = declaredChips })) None
-                  node
-                      "scoped-grid"
-                      (NodeKind.DataGrid(
-                          { SortStateKey = None
-                            PageSize = None
-                            PageStateKey = None
-                            EditStateKey = None
-                            DefaultSort = None
-                            Source = filterEdgeSource ()
-                            RowKey = None
-                            RowKeyField = Some "region"
-                            Columns = [ fieldCol "Region" "region"; fieldCol "Amount" "amount" ]
-                            OnRowClick = None
-                            Editable = false
-                            Reorderable = false
-                            TransferInKey = None
-                            TransferOutKey = None
-                            StaticRows = None
-                            KeepRowsTogether = false
-                            RepeatHeader = false
-                            WindowStateKey = None
-                            RowTotal = None
-                            Exportable = false }
-                      ))
-                      None ]
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Layout = BoxLayout.Auto
+                Role = BoxRole.Dashboard
+                Heading = Some(TextSource.Literal "Catalogue")
+                Children =
+                    [ node "edge-chips" (NodeKind.Filters({ Items = declaredChips })) None
+                      node
+                          "scoped-grid"
+                          (NodeKind.DataGrid(
+                              { Defaults.dataGrid with
+                                  Source = filterEdgeSource ()
+                                  RowKeyField = Some "region"
+                                  Columns = [ fieldCol "Region" "region"; fieldCol "Amount" "amount" ] }
+                          ))
+                          None ] }
         ))
         None
 
@@ -6170,22 +5781,21 @@ let private filterEdgeDependsOnDoc (id: string) (declaredChips: FilterSpec<obj> 
     node
         id
         (NodeKind.Box(
-            { Layout = BoxLayout.Auto
-              Role = BoxRole.Dashboard
-              Heading = Some(TextSource.Literal "Catalogue")
-              Children =
-                [ node "edge-chips" (NodeKind.Filters({ Items = declaredChips })) None
-                  node
-                      "scoped-metric"
-                      (NodeKind.Metric(
-                          { metricSpec with
-                              Value = Binding.Query("orders", (fun _ -> 0.0), Some [ "region"; "genre" ])
-                              Trend = None
-                              TrendFormat = None }
-                      ))
-                      None ]
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Layout = BoxLayout.Auto
+                Role = BoxRole.Dashboard
+                Heading = Some(TextSource.Literal "Catalogue")
+                Children =
+                    [ node "edge-chips" (NodeKind.Filters({ Items = declaredChips })) None
+                      node
+                          "scoped-metric"
+                          (NodeKind.Metric(
+                              { metricSpec with
+                                  Value = Binding.Query("orders", (fun _ -> 0.0), Some [ "region"; "genre" ])
+                                  Trend = None
+                                  TrendFormat = None }
+                          ))
+                          None ] }
         ))
         None
 
@@ -6230,36 +5840,19 @@ let table: Node<obj> =
         (
         // Phase 393 — the static read-only table is now the `StaticRows` mode of `DataGrid`.
         NodeKind.DataGrid
-            { SortStateKey = None
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              PageSize = None
-              PageStateKey = None
-              EditStateKey = None
-              DefaultSort = None
-              Source = Binding.Static(Some Seq.empty)
-              RowKey = None
-              RowKeyField = None
-              Columns = []
-              OnRowClick = None
-              Editable = false
-              StaticRows =
-                Some
-                    // Phase 801 — the sort-intent slots stay ABSENT here deliberately.
-                    // `table-1.json` is the byte-identity anchor for the pre-801 wire:
-                    // if this fixture's payload ever moves, the addition was not additive.
-                    { DefaultSort = None
-                      Headers = [ TextSource.Literal "Term"; TextSource.Literal "Definition" ]
-                      Rows =
-                        [ [ TextSource.Literal "MVU"; TextSource.Literal "Model-View-Update" ]
-                          [ TextSource.Literal "DSL"; TextSource.Literal "Domain-specific language" ] ]
-                      Sortable = None }
-              KeepRowsTogether = false
-              RepeatHeader = false
-              WindowStateKey = None
-              RowTotal = None
-              Exportable = false })
+            { Defaults.dataGrid with
+                Source = Binding.Static(Some Seq.empty)
+                StaticRows =
+                    Some
+                        // Phase 801 — the sort-intent slots stay ABSENT here deliberately.
+                        // `table-1.json` is the byte-identity anchor for the pre-801 wire:
+                        // if this fixture's payload ever moves, the addition was not additive.
+                        { DefaultSort = None
+                          Headers = [ TextSource.Literal "Term"; TextSource.Literal "Definition" ]
+                          Rows =
+                            [ [ TextSource.Literal "MVU"; TextSource.Literal "Model-View-Update" ]
+                              [ TextSource.Literal "DSL"; TextSource.Literal "Domain-specific language" ] ]
+                          Sortable = None } })
         None
 
 /// Phase 801 — the same static table DECLARING sort intent: `sortable: true` plus a
@@ -6272,36 +5865,19 @@ let tableSortable: Node<obj> =
     node
         "table-sortable-1"
         (NodeKind.DataGrid
-            { SortStateKey = None
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              PageSize = None
-              PageStateKey = None
-              EditStateKey = None
-              DefaultSort = None
-              Source = Binding.Static(Some Seq.empty)
-              RowKey = None
-              RowKeyField = None
-              Columns = []
-              OnRowClick = None
-              Editable = false
-              StaticRows =
-                Some
-                    { DefaultSort =
-                        Some
-                            { Column = 1
-                              Direction = SortDirection.Desc }
-                      Headers = [ TextSource.Literal "Region"; TextSource.Literal "Revenue" ]
-                      Rows =
-                        [ [ TextSource.Literal "North"; TextSource.Literal "1200" ]
-                          [ TextSource.Literal "South"; TextSource.Literal "980" ] ]
-                      Sortable = Some true }
-              KeepRowsTogether = false
-              RepeatHeader = false
-              WindowStateKey = None
-              RowTotal = None
-              Exportable = false })
+            { Defaults.dataGrid with
+                Source = Binding.Static(Some Seq.empty)
+                StaticRows =
+                    Some
+                        { DefaultSort =
+                            Some
+                                { Column = 1
+                                  Direction = SortDirection.Desc }
+                          Headers = [ TextSource.Literal "Region"; TextSource.Literal "Revenue" ]
+                          Rows =
+                            [ [ TextSource.Literal "North"; TextSource.Literal "1200" ]
+                              [ TextSource.Literal "South"; TextSource.Literal "980" ] ]
+                          Sortable = Some true } })
         None
 
 [<NodeFixture "Visualisation/Map">]
@@ -6419,17 +5995,25 @@ let errorBoundary: Node<obj> =
     node
         "boundary-1"
         (NodeKind.ErrorBoundary
-            { Child = node "boundary-child" (NodeKind.Markdown({ Text = TextSource.Literal "Child body" })) None
-              Fallback =
-                node
-                    "boundary-fallback"
-                    (NodeKind.Callout(
-                        { Defaults.callout with
-                            Tone = ToneVariant.Warning
-                            Heading = Some(TextSource.Literal "Couldn't render")
-                            Body = TextSource.Literal "Fallback rendered" }
-                    ))
-                    None })
+            { Defaults.errorBoundary with
+                Child =
+                    node
+                        "boundary-child"
+                        (NodeKind.Markdown(
+                            { Defaults.markdown with
+                                Text = TextSource.Literal "Child body" }
+                        ))
+                        None
+                Fallback =
+                    node
+                        "boundary-fallback"
+                        (NodeKind.Callout(
+                            { Defaults.callout with
+                                Tone = ToneVariant.Warning
+                                Heading = Some(TextSource.Literal "Couldn't render")
+                                Body = TextSource.Literal "Fallback rendered" }
+                        ))
+                        None })
         None
 
 // Switch fixture (Phase 392) pinning the wire-form round-trip. The encoder
@@ -6465,81 +6049,62 @@ let switchOnSelection: Node<obj> =
                       [ Fuaran.Core.Str "steady"; Fuaran.Core.Str "critical" ] ] }
 
     let fieldCol (label: string) (field: string) : ColumnErased<obj> =
-        { Label = label
-          Value = None
-          Field = Some field
-          Sortable = None
-          Editable = None
-          Format = CellFormat.None
-          Kind = CellKindErased.Text
-          Width = ColumnWidth.Auto }
+        { Defaults.columnErased with
+            Label = label
+            Field = Some field }
 
     node
         "switch-on-selection"
         (NodeKind.Box(
-            { Layout = BoxLayout.Auto
-              Role = BoxRole.Dashboard
-              Heading = None
-              Children =
-                [ node
-                      "ward-grid"
-                      (NodeKind.DataGrid(
-                          { SortStateKey = None
-                            PageSize = None
-                            PageStateKey = None
-                            EditStateKey = None
-                            DefaultSort = None
-                            Source = Binding.Transform(TransformSource.Data(source), [], None)
-                            RowKey = None
-                            RowKeyField = Some "id"
-                            Columns = [ fieldCol "Ward" "id"; fieldCol "Status" "status" ]
-                            OnRowClick = None
-                            Editable = false
-                            Reorderable = false
-                            TransferInKey = None
-                            TransferOutKey = None
-                            StaticRows = None
-                            KeepRowsTogether = false
-                            RepeatHeader = false
-                            WindowStateKey = None
-                            RowTotal = None
-                            Exportable = false }
-                      ))
-                      None
-                  node
-                      "ward-status-panel"
-                      (NodeKind.Switch(
-                          { Defaults.switch with
-                              On =
-                                  Binding.Selection(
-                                      "ward-grid",
-                                      Binding.projectSelectionField<string> "status",
-                                      Some "steady",
-                                      Some "status"
-                                  )
-                              Cases =
-                                  [ { Match = Some "critical"
-                                      When = None
-                                      Child =
-                                        node
-                                            "ward-critical"
-                                            (NodeKind.Callout(
-                                                { Defaults.callout with
-                                                    Tone = ToneVariant.Critical
-                                                    Heading = Some(TextSource.Literal "Ward at capacity")
-                                                    Body =
-                                                        TextSource.Literal "Escalate admissions to the on-call manager." }
-                                            ))
-                                            None } ]
-                              Default =
-                                  node
-                                      "ward-steady"
-                                      (NodeKind.Markdown({ Text = TextSource.Literal "Occupancy within normal range." }))
-                                      None }
-                      ))
-                      None ]
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Layout = BoxLayout.Auto
+                Role = BoxRole.Dashboard
+                Children =
+                    [ node
+                          "ward-grid"
+                          (NodeKind.DataGrid(
+                              { Defaults.dataGrid with
+                                  Source = Binding.Transform(TransformSource.Data(source), [], None)
+                                  RowKeyField = Some "id"
+                                  Columns = [ fieldCol "Ward" "id"; fieldCol "Status" "status" ] }
+                          ))
+                          None
+                      node
+                          "ward-status-panel"
+                          (NodeKind.Switch(
+                              { Defaults.switch with
+                                  On =
+                                      Binding.Selection(
+                                          "ward-grid",
+                                          Binding.projectSelectionField<string> "status",
+                                          Some "steady",
+                                          Some "status"
+                                      )
+                                  Cases =
+                                      [ { Match = Some "critical"
+                                          When = None
+                                          Child =
+                                            node
+                                                "ward-critical"
+                                                (NodeKind.Callout(
+                                                    { Defaults.callout with
+                                                        Tone = ToneVariant.Critical
+                                                        Heading = Some(TextSource.Literal "Ward at capacity")
+                                                        Body =
+                                                            TextSource.Literal
+                                                                "Escalate admissions to the on-call manager." }
+                                                ))
+                                                None } ]
+                                  Default =
+                                      node
+                                          "ward-steady"
+                                          (NodeKind.Markdown(
+                                              { Defaults.markdown with
+                                                  Text = TextSource.Literal "Occupancy within normal range." }
+                                          ))
+                                          None }
+                          ))
+                          None ] }
         ))
         None
 
@@ -6575,26 +6140,38 @@ let switchAutoAdvance: Node<obj> =
                         Child =
                           node
                               "switch-carousel-panel-one"
-                              (NodeKind.Markdown({ Text = TextSource.Literal "Built for the long term" }))
+                              (NodeKind.Markdown(
+                                  { Defaults.markdown with
+                                      Text = TextSource.Literal "Built for the long term" }
+                              ))
                               None }
                       { Match = Some "two"
                         When = None
                         Child =
                           node
                               "switch-carousel-panel-two"
-                              (NodeKind.Markdown({ Text = TextSource.Literal "Typed all the way down" }))
+                              (NodeKind.Markdown(
+                                  { Defaults.markdown with
+                                      Text = TextSource.Literal "Typed all the way down" }
+                              ))
                               None }
                       { Match = Some "three"
                         When = None
                         Child =
                           node
                               "switch-carousel-panel-three"
-                              (NodeKind.Markdown({ Text = TextSource.Literal "One wire, many hosts" }))
+                              (NodeKind.Markdown(
+                                  { Defaults.markdown with
+                                      Text = TextSource.Literal "One wire, many hosts" }
+                              ))
                               None } ]
                 Default =
                     node
                         "switch-carousel-default"
-                        (NodeKind.Markdown({ Text = TextSource.Literal "Built for the long term" }))
+                        (NodeKind.Markdown(
+                            { Defaults.markdown with
+                                Text = TextSource.Literal "Built for the long term" }
+                        ))
                         None })
         None
 
@@ -6660,19 +6237,28 @@ let switchOnTransformScalar: Node<obj> =
                         Child =
                           node
                               "switch-scalar-busy"
-                              (NodeKind.Markdown({ Text = TextSource.Literal "Plenty of rows" }))
+                              (NodeKind.Markdown(
+                                  { Defaults.markdown with
+                                      Text = TextSource.Literal "Plenty of rows" }
+                              ))
                               None }
                       { Match = Some "quiet"
                         When = None
                         Child =
                           node
                               "switch-scalar-quiet"
-                              (NodeKind.Markdown({ Text = TextSource.Literal "Not many rows" }))
+                              (NodeKind.Markdown(
+                                  { Defaults.markdown with
+                                      Text = TextSource.Literal "Not many rows" }
+                              ))
                               None } ]
                 Default =
                     node
                         "switch-scalar-default"
-                        (NodeKind.Markdown({ Text = TextSource.Literal "Could not tell" }))
+                        (NodeKind.Markdown(
+                            { Defaults.markdown with
+                                Text = TextSource.Literal "Could not tell" }
+                        ))
                         None })
         None
 
@@ -6703,7 +6289,10 @@ let switchPredicate: Node<obj> =
                         Child =
                           node
                               "switch-predicate-empty"
-                              (NodeKind.Markdown({ Text = TextSource.Literal "Your basket is empty" }))
+                              (NodeKind.Markdown(
+                                  { Defaults.markdown with
+                                      Text = TextSource.Literal "Your basket is empty" }
+                              ))
                               None }
                       { Match = None
                         When =
@@ -6722,19 +6311,28 @@ let switchPredicate: Node<obj> =
                         Child =
                           node
                               "switch-predicate-many"
-                              (NodeKind.Markdown({ Text = TextSource.Literal "Plenty in your basket" }))
+                              (NodeKind.Markdown(
+                                  { Defaults.markdown with
+                                      Text = TextSource.Literal "Plenty in your basket" }
+                              ))
                               None }
                       { Match = Some "summary"
                         When = None
                         Child =
                           node
                               "switch-predicate-summary"
-                              (NodeKind.Markdown({ Text = TextSource.Literal "Summary view" }))
+                              (NodeKind.Markdown(
+                                  { Defaults.markdown with
+                                      Text = TextSource.Literal "Summary view" }
+                              ))
                               None } ]
                 Default =
                     node
                         "switch-predicate-default"
-                        (NodeKind.Markdown({ Text = TextSource.Literal "A few things in your basket" }))
+                        (NodeKind.Markdown(
+                            { Defaults.markdown with
+                                Text = TextSource.Literal "A few things in your basket" }
+                        ))
                         None })
         None
 
@@ -6760,12 +6358,18 @@ let switchPredicateOnly: Node<obj> =
                         Child =
                           node
                               "switch-predicate-only-ready"
-                              (NodeKind.Markdown({ Text = TextSource.Literal "Ready to send" }))
+                              (NodeKind.Markdown(
+                                  { Defaults.markdown with
+                                      Text = TextSource.Literal "Ready to send" }
+                              ))
                               None } ]
                 Default =
                     node
                         "switch-predicate-only-default"
-                        (NodeKind.Markdown({ Text = TextSource.Literal "Fill in the form to continue" }))
+                        (NodeKind.Markdown(
+                            { Defaults.markdown with
+                                Text = TextSource.Literal "Fill in the form to continue" }
+                        ))
                         None })
         None
 
@@ -6787,59 +6391,67 @@ let switchPredicateOnly: Node<obj> =
 [<NodeFixture "Node envelope (Phase 1535 — visible: removal from flow, three predicate spellings, beside an aria-hidden sibling)">]
 let nodeVisible: Node<obj> =
     let visibleNode (id: string) (text: string) (predicate: Binding<bool>) : Node<obj> =
-        { node id (NodeKind.Markdown({ Text = TextSource.Literal text })) None with
+        { node
+              id
+              (NodeKind.Markdown(
+                  { Defaults.markdown with
+                      Text = TextSource.Literal text }
+              ))
+              None with
             Visible = Some predicate }
 
     node
         "node-visible"
         (NodeKind.Box(
-            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
-              Role = BoxRole.Group
-              Heading = None
-              Children =
-                [ visibleNode "visible-state-flag" "Shown while the flag is set" (Binding.State("banner.shown", None))
-                  visibleNode
-                      "visible-computed"
-                      "Shown once the basket has more than three things in it"
-                      (Binding.Expr(
-                          Fuaran.Compute.Binary(
-                              Fuaran.Compute.Gt,
-                              Fuaran.Compute.ColExpr.Param "itemCount",
-                              Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Int 3)
-                          ),
-                          Some
-                              [ { From = Binding.State("cart.itemCount", None)
-                                  Name = "itemCount" } ]
-                      ))
-                  // The DEFAULT-VISIBLE spelling, and the reason it is spelled
-                  // rather than assumed: `visible` is an ordinary `Binding<bool>`
-                  // and follows the shared `Binding.State` rule, under which a
-                  // key nothing has written resolves to the slot default —
-                  // `false` for a bool, which HIDES. An author who means
-                  // "visible unless something says otherwise" declares the
-                  // default, exactly as `Modal.open` and `Disclosure.open`
-                  // already require. FUARAN148 reports the shape that omits it.
-                  visibleNode
-                      "visible-until-dismissed"
-                      "Shown until the reader dismisses it"
-                      (Binding.State("banner.dismissed", Some true))
-                  // GENUINELY unresolved: a query result the host has not
-                  // furnished. The rule this pins is that the node RENDERS —
-                  // absence of a verdict is not a `false`.
-                  visibleNode
-                      "visible-unresolved"
-                      "Rendered, because nothing could say whether to hide it"
-                      (Binding.Query("flags.betaEnabled", (fun (o: obj) -> unbox<bool> o), None))
-                  // The CONTRAST, on a sibling rather than in prose: `hidden` is
-                  // `aria-hidden` over a node that is drawn and occupies layout.
-                  node
-                      "aria-hidden-decoration"
-                      (NodeKind.Markdown({ Text = TextSource.Literal "*" }))
-                      (Some
-                          { Defaults.Accessibility.empty with
-                              Hidden = Some(Binding.Static(Some true)) }) ]
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Children =
+                    [ visibleNode
+                          "visible-state-flag"
+                          "Shown while the flag is set"
+                          (Binding.State("banner.shown", None))
+                      visibleNode
+                          "visible-computed"
+                          "Shown once the basket has more than three things in it"
+                          (Binding.Expr(
+                              Fuaran.Compute.Binary(
+                                  Fuaran.Compute.Gt,
+                                  Fuaran.Compute.ColExpr.Param "itemCount",
+                                  Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Int 3)
+                              ),
+                              Some
+                                  [ { From = Binding.State("cart.itemCount", None)
+                                      Name = "itemCount" } ]
+                          ))
+                      // The DEFAULT-VISIBLE spelling, and the reason it is spelled
+                      // rather than assumed: `visible` is an ordinary `Binding<bool>`
+                      // and follows the shared `Binding.State` rule, under which a
+                      // key nothing has written resolves to the slot default —
+                      // `false` for a bool, which HIDES. An author who means
+                      // "visible unless something says otherwise" declares the
+                      // default, exactly as `Modal.open` and `Disclosure.open`
+                      // already require. FUARAN148 reports the shape that omits it.
+                      visibleNode
+                          "visible-until-dismissed"
+                          "Shown until the reader dismisses it"
+                          (Binding.State("banner.dismissed", Some true))
+                      // GENUINELY unresolved: a query result the host has not
+                      // furnished. The rule this pins is that the node RENDERS —
+                      // absence of a verdict is not a `false`.
+                      visibleNode
+                          "visible-unresolved"
+                          "Rendered, because nothing could say whether to hide it"
+                          (Binding.Query("flags.betaEnabled", (fun (o: obj) -> unbox<bool> o), None))
+                      // The CONTRAST, on a sibling rather than in prose: `hidden` is
+                      // `aria-hidden` over a node that is drawn and occupies layout.
+                      node
+                          "aria-hidden-decoration"
+                          (NodeKind.Markdown(
+                              { Defaults.markdown with
+                                  Text = TextSource.Literal "*" }
+                          ))
+                          (Some
+                              { Defaults.Accessibility.empty with
+                                  Hidden = Some(Binding.Static(Some true)) }) ] }
         ))
         None
 
@@ -6854,11 +6466,23 @@ let switchBasic: Node<obj> =
                     [ { Match = Some "details"
                         When = None
                         Child =
-                          node "switch-details" (NodeKind.Markdown({ Text = TextSource.Literal "Details view" })) None }
+                          node
+                              "switch-details"
+                              (NodeKind.Markdown(
+                                  { Defaults.markdown with
+                                      Text = TextSource.Literal "Details view" }
+                              ))
+                              None }
                       { Match = Some "summary"
                         When = None
                         Child =
-                          node "switch-summary" (NodeKind.Markdown({ Text = TextSource.Literal "Summary view" })) None } ]
+                          node
+                              "switch-summary"
+                              (NodeKind.Markdown(
+                                  { Defaults.markdown with
+                                      Text = TextSource.Literal "Summary view" }
+                              ))
+                              None } ]
                 Default =
                     node
                         "switch-default"
@@ -6884,7 +6508,14 @@ let fragmentDecl: Node<obj> =
             // the wire.
             { Defaults.fragmentDecl with
                 Name = "card-template"
-                Body = node "frag-body" (NodeKind.Markdown({ Text = TextSource.Literal "Template body" })) None })
+                Body =
+                    node
+                        "frag-body"
+                        (NodeKind.Markdown(
+                            { Defaults.markdown with
+                                Text = TextSource.Literal "Template body" }
+                        ))
+                        None })
         None
 
 [<NodeFixture "FragmentRef (name-only wire shape)">]
@@ -6892,9 +6523,10 @@ let fragmentRef: Node<obj> =
     node
         "frag-ref-1"
         (NodeKind.FragmentRef
-            { Name = "card-template"
-              // `None` ≡ the old empty Map — the key stays off the wire.
-              Args = None })
+            { Defaults.fragmentRef with
+                Name = "card-template"
+                // `None` ≡ the old empty Map — the key stays off the wire.
+                Args = None })
         None
 
 // Parameterised-fragment fixtures (Phase 180). The decl exercises every hole
@@ -6909,7 +6541,14 @@ let fragmentDeclParam: Node<obj> =
         (NodeKind.FragmentDecl
             { Defaults.fragmentDecl with
                 Name = "stat-card"
-                Body = node "param-body" (NodeKind.Markdown({ Text = TextSource.Literal "Parameterised body" })) None
+                Body =
+                    node
+                        "param-body"
+                        (NodeKind.Markdown(
+                            { Defaults.markdown with
+                                Text = TextSource.Literal "Parameterised body" }
+                        ))
+                        None
                 Holes =
                     [ HoleDecl.Value("title", HoleValueSpace.StringLen(1, 40), Some(Scalar.Str "Untitled"))
                       HoleDecl.Value("count", HoleValueSpace.IntRange(0, 100), None)
@@ -6925,16 +6564,23 @@ let fragmentRefArgs: Node<obj> =
     node
         "frag-ref-args"
         (NodeKind.FragmentRef
-            { Name = "stat-card"
-              Args =
-                Some(
-                    Map.ofList
-                        [ "count", FragmentArg.Int 7
-                          "content",
-                          FragmentArg.SlotArg(
-                              node "slot-tree" (NodeKind.Markdown({ Text = TextSource.Literal "Bound slot" })) None
-                          ) ]
-                ) })
+            { Defaults.fragmentRef with
+                Name = "stat-card"
+                Args =
+                    Some(
+                        Map.ofList
+                            [ "count", FragmentArg.Int 7
+                              "content",
+                              FragmentArg.SlotArg(
+                                  node
+                                      "slot-tree"
+                                      (NodeKind.Markdown(
+                                          { Defaults.markdown with
+                                              Text = TextSource.Literal "Bound slot" }
+                                      ))
+                                      None
+                              ) ]
+                    ) })
         None
 
 // Mount fixtures (Phase 265, §4o — the isolation/embedding boundary).
@@ -6975,7 +6621,10 @@ let mountFull: Node<obj> =
                           FragmentArg.SlotArg(
                               node
                                   "seed-tree"
-                                  (NodeKind.Markdown({ Text = TextSource.Literal "Initial guest state" }))
+                                  (NodeKind.Markdown(
+                                      { Defaults.markdown with
+                                          Text = TextSource.Literal "Initial guest state" }
+                                  ))
                                   None
                           ) ]
                 )
@@ -6991,24 +6640,20 @@ let composite: Node<obj> =
     node
         "composite-root"
         (NodeKind.Box(
-            { Layout = BoxLayout.Auto
-              Role = BoxRole.Dashboard
-              Heading = None
-              Children =
-                [ node
-                      "composite-card"
-                      (NodeKind.Box(
-                          { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
-                            Role = BoxRole.Card
-                            Heading = Some(TextSource.Literal "Composite")
-                            Children = [ withId "metric-2" metric; labelValueRow ]
-                            KeepTogether = false
-                            BreakBefore = false }
-                      ))
-                      None
-                  stack ]
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Layout = BoxLayout.Auto
+                Role = BoxRole.Dashboard
+                Children =
+                    [ node
+                          "composite-card"
+                          (NodeKind.Box(
+                              { Defaults.box with
+                                  Role = BoxRole.Card
+                                  Heading = Some(TextSource.Literal "Composite")
+                                  Children = [ withId "metric-2" metric; labelValueRow ] }
+                          ))
+                          None
+                      stack ] }
         ))
         None
 
@@ -7016,7 +6661,13 @@ let composite: Node<obj> =
 
 [<OpFixture "EditNode">]
 let opEditNode: TreeOp<obj> =
-    TreeOp.EditNode(NodeId "metric-1", NodeKind.Markdown({ Text = TextSource.Literal "Edited" }))
+    TreeOp.EditNode(
+        NodeId "metric-1",
+        NodeKind.Markdown(
+            { Defaults.markdown with
+                Text = TextSource.Literal "Edited" }
+        )
+    )
 
 [<OpFixture "UpdateProp">]
 let opUpdateProp: TreeOp<obj> =
@@ -7302,40 +6953,50 @@ let opEditNodeCommitLocal: TreeOp<obj> =
 [<NodeFixture "Binding.Format (number/currency/percent/date/relativeTime across locales)">]
 let formatBindings: Node<obj> =
     let md (id: string) (b: Binding<string>) : Node<obj> =
-        node id (NodeKind.Markdown({ Text = TextSource.Bound b })) None
+        node
+            id
+            (NodeKind.Markdown(
+                { Defaults.markdown with
+                    Text = TextSource.Bound b }
+            ))
+            None
 
     node
         "format-bindings"
         (NodeKind.Box(
-            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
-              Role = BoxRole.Group
-              Heading = None
-              Children =
-                [ md
-                      "fmt-number"
-                      (Binding.Format(Binding.Static(Some 1234.5), Format.Number(Some 2), LocaleSource.Explicit "en-US"))
-                  md
-                      "fmt-currency"
-                      (Binding.Format(Binding.Static(Some 1234.5), Format.Currency "GBP", LocaleSource.Explicit "en-GB"))
-                  md
-                      "fmt-percent"
-                      (Binding.Format(Binding.Static(Some 0.42), Format.Percent None, LocaleSource.Ambient))
-                  md
-                      "fmt-date"
-                      (Binding.Format(
-                          Binding.Static(Some 1700000000.0),
-                          Format.DateTime(Some DateStyle.Medium, None),
-                          LocaleSource.Explicit "fr-FR"
-                      ))
-                  md
-                      "fmt-relative"
-                      (Binding.Format(
-                          Binding.Static(Some(-3.0)),
-                          Format.RelativeTime RelativeTimeUnit.Day,
-                          LocaleSource.Explicit "en-US"
-                      )) ]
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Children =
+                    [ md
+                          "fmt-number"
+                          (Binding.Format(
+                              Binding.Static(Some 1234.5),
+                              Format.Number(Some 2),
+                              LocaleSource.Explicit "en-US"
+                          ))
+                      md
+                          "fmt-currency"
+                          (Binding.Format(
+                              Binding.Static(Some 1234.5),
+                              Format.Currency "GBP",
+                              LocaleSource.Explicit "en-GB"
+                          ))
+                      md
+                          "fmt-percent"
+                          (Binding.Format(Binding.Static(Some 0.42), Format.Percent None, LocaleSource.Ambient))
+                      md
+                          "fmt-date"
+                          (Binding.Format(
+                              Binding.Static(Some 1700000000.0),
+                              Format.DateTime(Some DateStyle.Medium, None),
+                              LocaleSource.Explicit "fr-FR"
+                          ))
+                      md
+                          "fmt-relative"
+                          (Binding.Format(
+                              Binding.Static(Some(-3.0)),
+                              Format.RelativeTime RelativeTimeUnit.Day,
+                              LocaleSource.Explicit "en-US"
+                          )) ] }
         ))
         None
 
@@ -7378,8 +7039,9 @@ let badgeTransformLive: Node<obj> =
     node
         "badge-transform-live"
         (NodeKind.Badge(
-            { Label = TextSource.Bound(Binding.Transform(TransformSource.Live(source, initial), pipeline, None))
-              Variant = BadgeVariant.Info }
+            { Defaults.badge with
+                Label = TextSource.Bound(Binding.Transform(TransformSource.Live(source, initial), pipeline, None))
+                Variant = BadgeVariant.Info }
         ))
         None
 
@@ -7423,34 +7085,13 @@ let sharedSourceSeededPair: Node<obj> =
         node
             "member-grid"
             (NodeKind.DataGrid(
-                { SortStateKey = None
-                  PageSize = None
-                  PageStateKey = None
-                  EditStateKey = None
-                  DefaultSort = None
-                  Source = Binding.State("members", Some rows)
-                  RowKey = None
-                  RowKeyField = Some "team"
-                  Columns =
-                    [ { Label = "Team"
-                        Value = None
-                        Field = Some "team"
-                        Sortable = None
-                        Editable = None
-                        Format = CellFormat.None
-                        Kind = CellKindErased.Text
-                        Width = ColumnWidth.Auto } ]
-                  OnRowClick = None
-                  Editable = false
-                  Reorderable = false
-                  TransferInKey = None
-                  TransferOutKey = None
-                  StaticRows = None
-                  KeepRowsTogether = false
-                  RepeatHeader = false
-                  WindowStateKey = None
-                  RowTotal = None
-                  Exportable = false }
+                { Defaults.dataGrid with
+                    Source = Binding.State("members", Some rows)
+                    RowKeyField = Some "team"
+                    Columns =
+                        [ { Defaults.columnErased with
+                              Label = "Team"
+                              Field = Some "team" } ] }
             ))
             None
 
@@ -7460,32 +7101,31 @@ let sharedSourceSeededPair: Node<obj> =
         node
             "member-count"
             (NodeKind.Badge(
-                { Label =
-                    TextSource.Bound(
-                        Binding.Transform(
-                            TransformSource.Live(derivedSource, Fuaran.UI.HostPrelude.TransformLive.emptySource),
-                            [ Fuaran.Compute.GroupBy(
-                                  [],
-                                  [ { Name = "n"
-                                      Fn = Fuaran.Core.AggFn.Count
-                                      Of = "team" } ]
-                              ) ],
-                            None
+                { Defaults.badge with
+                    Label =
+                        TextSource.Bound(
+                            Binding.Transform(
+                                TransformSource.Live(derivedSource, Fuaran.UI.HostPrelude.TransformLive.emptySource),
+                                [ Fuaran.Compute.GroupBy(
+                                      [],
+                                      [ { Name = "n"
+                                          Fn = Fuaran.Core.AggFn.Count
+                                          Of = "team" } ]
+                                  ) ],
+                                None
+                            )
                         )
-                    )
-                  Variant = BadgeVariant.Info }
+                    Variant = BadgeVariant.Info }
             ))
             None
 
     node
         "shared-source-seeded-pair"
         (NodeKind.Box(
-            { Layout = BoxLayout.Auto
-              Role = BoxRole.Dashboard
-              Heading = None
-              Children = [ grid; badge ]
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Layout = BoxLayout.Auto
+                Role = BoxRole.Dashboard
+                Children = [ grid; badge ] }
         ))
         None
 
@@ -7496,44 +7136,26 @@ let sharedSourceSeededPair: Node<obj> =
 [<NodeFixture "Visualisation/Grid (Phase 861 — bound-path sort: per-column sortable narrowing + a declared initial order)">]
 let gridBoundSort: Node<obj> =
     let col (label: string) (field: string) (sortable: bool option) : ColumnErased<obj> =
-        { Label = label
-          Value = None
-          Field = Some field
-          Sortable = sortable
-          Editable = None
-          Format = CellFormat.None
-          Kind = CellKindErased.Text
-          Width = ColumnWidth.Auto }
+        { Defaults.columnErased with
+            Label = label
+            Field = Some field
+            Sortable = sortable }
 
     node
         "grid-bound-sort"
         (NodeKind.DataGrid(
-            { SortStateKey = Some "ledger-sort"
-              PageSize = None
-              PageStateKey = None
-              EditStateKey = None
-              DefaultSort =
-                Some
-                    { Column = 1
-                      Direction = SortDirection.Desc }
-              Source = Binding.State("ledger", Some(Seq.ofList planRows))
-              RowKey = None
-              RowKeyField = Some "month"
-              Columns =
-                [ col "Month" "month" None
-                  col "Revenue" "revenue" None
-                  col "Note" "note" (Some false) ]
-              OnRowClick = None
-              Editable = false
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              StaticRows = None
-              KeepRowsTogether = false
-              RepeatHeader = false
-              WindowStateKey = None
-              RowTotal = None
-              Exportable = false }
+            { Defaults.dataGrid with
+                SortStateKey = Some "ledger-sort"
+                DefaultSort =
+                    Some
+                        { Column = 1
+                          Direction = SortDirection.Desc }
+                Source = Binding.State("ledger", Some(Seq.ofList planRows))
+                RowKeyField = Some "month"
+                Columns =
+                    [ col "Month" "month" None
+                      col "Revenue" "revenue" None
+                      col "Note" "note" (Some false) ] }
         ))
         None
 
@@ -7550,41 +7172,22 @@ let gridBoundSort: Node<obj> =
 [<NodeFixture "Visualisation/Grid (Phase 1692, carrying 1691 — the sixth mapped enum token with no round-trip vector: SortDirection asc in defaultSort.direction)">]
 let gridSortAscending: Node<obj> =
     let col (label: string) (field: string) : ColumnErased<obj> =
-        { Label = label
-          Value = None
-          Field = Some field
-          Sortable = None
-          Editable = None
-          Format = CellFormat.None
-          Kind = CellKindErased.Text
-          Width = ColumnWidth.Auto }
+        { Defaults.columnErased with
+            Label = label
+            Field = Some field }
 
     node
         "grid-sort-ascending"
         (NodeKind.DataGrid(
-            { SortStateKey = Some "ledger-sort"
-              PageSize = None
-              PageStateKey = None
-              EditStateKey = None
-              DefaultSort =
-                Some
-                    { Column = 0
-                      Direction = SortDirection.Asc }
-              Source = Binding.State("ledger", Some(Seq.ofList planRows))
-              RowKey = None
-              RowKeyField = Some "month"
-              Columns = [ col "Month" "month"; col "Revenue" "revenue" ]
-              OnRowClick = None
-              Editable = false
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              StaticRows = None
-              KeepRowsTogether = false
-              RepeatHeader = false
-              WindowStateKey = None
-              RowTotal = None
-              Exportable = false }
+            { Defaults.dataGrid with
+                SortStateKey = Some "ledger-sort"
+                DefaultSort =
+                    Some
+                        { Column = 0
+                          Direction = SortDirection.Asc }
+                Source = Binding.State("ledger", Some(Seq.ofList planRows))
+                RowKeyField = Some "month"
+                Columns = [ col "Month" "month"; col "Revenue" "revenue" ] }
         ))
         None
 
@@ -7596,41 +7199,23 @@ let gridSortAscending: Node<obj> =
 [<NodeFixture "Visualisation/Grid (Phase 863 — declared edit destination + per-column read-only narrowing)">]
 let gridDeclaredEdit: Node<obj> =
     let col (label: string) (field: string) (editable: bool option) : ColumnErased<obj> =
-        { Label = label
-          Value = None
-          Field = Some field
-          Sortable = None
-          Editable = editable
-          Format = CellFormat.None
-          Kind = CellKindErased.Text
-          Width = ColumnWidth.Auto }
+        { Defaults.columnErased with
+            Label = label
+            Field = Some field
+            Editable = editable }
 
     node
         "grid-declared-edit"
         (NodeKind.DataGrid(
-            { SortStateKey = None
-              PageSize = None
-              PageStateKey = None
-              EditStateKey = Some "stock-adjustments"
-              DefaultSort = None
-              Source = Binding.Query("stock", (fun _ -> Seq.ofList planRows), None)
-              RowKey = None
-              RowKeyField = Some "month"
-              Columns =
-                [ col "Month" "month" None
-                  col "Revenue" "revenue" None
-                  col "Note" "note" (Some false) ]
-              OnRowClick = None
-              Editable = true
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              StaticRows = None
-              KeepRowsTogether = false
-              RepeatHeader = false
-              WindowStateKey = None
-              RowTotal = None
-              Exportable = false }
+            { Defaults.dataGrid with
+                EditStateKey = Some "stock-adjustments"
+                Source = Binding.Query("stock", (fun _ -> Seq.ofList planRows), None)
+                RowKeyField = Some "month"
+                Columns =
+                    [ col "Month" "month" None
+                      col "Revenue" "revenue" None
+                      col "Note" "note" (Some false) ]
+                Editable = true }
         ))
         None
 
@@ -7643,14 +7228,10 @@ let gridDeclaredEdit: Node<obj> =
 [<NodeFixture "Visualisation/Grid (Phase 934 — declarative row reorder: omit-when-false flag; edits and reorders share one destination)">]
 let gridReorderable: Node<obj> =
     let col (label: string) (field: string) (kind: CellKindErased<obj>) : ColumnErased<obj> =
-        { Label = label
-          Value = None
-          Field = Some field
-          Sortable = None
-          Editable = None
-          Format = CellFormat.None
-          Kind = kind
-          Width = ColumnWidth.Auto }
+        { Defaults.columnErased with
+            Label = label
+            Field = Some field
+            Kind = kind }
 
     let sprintRows: Row list =
         [ Map.ofList [ "task", box "Design"; "rank", box 1 ]
@@ -7660,28 +7241,14 @@ let gridReorderable: Node<obj> =
     node
         "grid-reorderable"
         (NodeKind.DataGrid(
-            { SortStateKey = None
-              PageSize = None
-              PageStateKey = None
-              EditStateKey = Some "sprint-order"
-              DefaultSort = None
-              Source = Binding.State("sprint-order", Some(Seq.ofList sprintRows))
-              RowKey = None
-              RowKeyField = Some "task"
-              Columns =
-                [ col "Task" "task" CellKindErased.Text
-                  col "Rank" "rank" CellKindErased.Numeric ]
-              OnRowClick = None
-              Editable = false
-              Reorderable = true
-              TransferInKey = None
-              TransferOutKey = None
-              StaticRows = None
-              KeepRowsTogether = false
-              RepeatHeader = false
-              WindowStateKey = None
-              RowTotal = None
-              Exportable = false }
+            { Defaults.dataGrid with
+                EditStateKey = Some "sprint-order"
+                Source = Binding.State("sprint-order", Some(Seq.ofList sprintRows))
+                RowKeyField = Some "task"
+                Columns =
+                    [ col "Task" "task" CellKindErased.Text
+                      col "Rank" "rank" CellKindErased.Numeric ]
+                Reorderable = true }
         ))
         None
 
@@ -7705,14 +7272,9 @@ let gridReorderable: Node<obj> =
 [<NodeFixture "Layout/Box (Phase 1123 — cross-container transfer: two two-way columns and a one-way archive on one shared key)">]
 let gridTransferBoard: Node<obj> =
     let col (label: string) (field: string) : ColumnErased<obj> =
-        { Label = label
-          Value = None
-          Field = Some field
-          Sortable = None
-          Editable = None
-          Format = CellFormat.None
-          Kind = CellKindErased.Text
-          Width = ColumnWidth.Auto }
+        { Defaults.columnErased with
+            Label = label
+            Field = Some field }
 
     let cards (titles: string list) : Row list =
         titles |> List.map (fun t -> Map.ofList [ "card", box t ])
@@ -7721,42 +7283,27 @@ let gridTransferBoard: Node<obj> =
         node
             id
             (NodeKind.DataGrid(
-                { SortStateKey = None
-                  PageSize = None
-                  PageStateKey = None
-                  EditStateKey = None
-                  DefaultSort = None
-                  Source = Binding.State(key, Some(Seq.ofList (cards titles)))
-                  RowKey = None
-                  RowKeyField = Some "card"
-                  Columns = [ col "Card" "card" ]
-                  OnRowClick = None
-                  Editable = false
-                  Reorderable = true
-                  TransferInKey = inKey
-                  TransferOutKey = outKey
-                  StaticRows = None
-                  KeepRowsTogether = false
-                  RepeatHeader = false
-                  WindowStateKey = None
-                  RowTotal = None
-                  Exportable = false }
+                { Defaults.dataGrid with
+                    Source = Binding.State(key, Some(Seq.ofList (cards titles)))
+                    RowKeyField = Some "card"
+                    Columns = [ col "Card" "card" ]
+                    Reorderable = true
+                    TransferInKey = inKey
+                    TransferOutKey = outKey }
             ))
             None
 
     node
         "transfer-board"
         (NodeKind.Box
-            { Children =
-                [ column "todo" "board-todo" (Some "board") (Some "board") [ "Draft the brief"; "Size the work" ]
-                  column "doing" "board-doing" (Some "board") (Some "board") [ "Write the walk" ]
-                  // Accepts and never releases: a card filed here stays filed.
-                  column "archive" "board-archive" None (Some "board") [] ]
-              Heading = Some(TextSource.Literal "Sprint board")
-              Layout = BoxLayout.Auto
-              Role = BoxRole.Group
-              KeepTogether = false
-              BreakBefore = false })
+            { Defaults.box with
+                Children =
+                    [ column "todo" "board-todo" (Some "board") (Some "board") [ "Draft the brief"; "Size the work" ]
+                      column "doing" "board-doing" (Some "board") (Some "board") [ "Write the walk" ]
+                      // Accepts and never releases: a card filed here stays filed.
+                      column "archive" "board-archive" None (Some "board") [] ]
+                Heading = Some(TextSource.Literal "Sprint board")
+                Layout = BoxLayout.Auto })
         None
 
 /// Phase 862 — declarative pagination: `pageStateKey` names the State slot
@@ -7767,40 +7314,22 @@ let gridTransferBoard: Node<obj> =
 [<NodeFixture "Visualisation/Grid (Phase 862 — pageStateKey + pageSize: declarative pagination, renderer-owned pager)">]
 let gridPaged: Node<obj> =
     let col (label: string) (field: string) (kind: CellKindErased<obj>) : ColumnErased<obj> =
-        { Label = label
-          Value = None
-          Field = Some field
-          Sortable = None
-          Editable = None
-          Format = CellFormat.None
-          Kind = kind
-          Width = ColumnWidth.Auto }
+        { Defaults.columnErased with
+            Label = label
+            Field = Some field
+            Kind = kind }
 
     node
         "grid-paged"
         (NodeKind.DataGrid(
-            { SortStateKey = None
-              PageSize = Some 20
-              PageStateKey = Some "members-page"
-              EditStateKey = None
-              DefaultSort = None
-              Source = Binding.State("members", Some(Seq.ofList planRows))
-              RowKey = None
-              RowKeyField = Some "month"
-              Columns =
-                [ col "Month" "month" CellKindErased.Text
-                  col "Revenue" "revenue" CellKindErased.Numeric ]
-              OnRowClick = None
-              Editable = false
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              StaticRows = None
-              KeepRowsTogether = false
-              RepeatHeader = false
-              WindowStateKey = None
-              RowTotal = None
-              Exportable = false }
+            { Defaults.dataGrid with
+                PageSize = Some 20
+                PageStateKey = Some "members-page"
+                Source = Binding.State("members", Some(Seq.ofList planRows))
+                RowKeyField = Some "month"
+                Columns =
+                    [ col "Month" "month" CellKindErased.Text
+                      col "Revenue" "revenue" CellKindErased.Numeric ] }
         ))
         None
 
@@ -7811,40 +7340,23 @@ let gridPaged: Node<obj> =
 [<NodeFixture "Visualisation/Grid (Phase 862 — paging and sorting composed: two behaviours, two state keys, one rule)">]
 let gridPagedSorted: Node<obj> =
     let col (label: string) (field: string) (kind: CellKindErased<obj>) : ColumnErased<obj> =
-        { Label = label
-          Value = None
-          Field = Some field
-          Sortable = None
-          Editable = None
-          Format = CellFormat.None
-          Kind = kind
-          Width = ColumnWidth.Auto }
+        { Defaults.columnErased with
+            Label = label
+            Field = Some field
+            Kind = kind }
 
     node
         "grid-paged-sorted"
         (NodeKind.DataGrid(
-            { SortStateKey = Some "ledger-sort"
-              PageSize = Some 10
-              PageStateKey = Some "ledger-page"
-              EditStateKey = None
-              DefaultSort = None
-              Source = Binding.State("ledger", Some(Seq.ofList planRows))
-              RowKey = None
-              RowKeyField = Some "month"
-              Columns =
-                [ col "Month" "month" CellKindErased.Text
-                  col "Revenue" "revenue" CellKindErased.Numeric ]
-              OnRowClick = None
-              Editable = false
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              StaticRows = None
-              KeepRowsTogether = false
-              RepeatHeader = false
-              WindowStateKey = None
-              RowTotal = None
-              Exportable = false }
+            { Defaults.dataGrid with
+                SortStateKey = Some "ledger-sort"
+                PageSize = Some 10
+                PageStateKey = Some "ledger-page"
+                Source = Binding.State("ledger", Some(Seq.ofList planRows))
+                RowKeyField = Some "month"
+                Columns =
+                    [ col "Month" "month" CellKindErased.Text
+                      col "Revenue" "revenue" CellKindErased.Numeric ] }
         ))
         None
 
@@ -7855,40 +7367,22 @@ let gridPagedSorted: Node<obj> =
 [<NodeFixture "Visualisation/Grid (Phase 1892 — windowStateKey + rowTotal: a host-windowed Query and the total it declares)">]
 let gridWindowed: Node<obj> =
     let col (label: string) (field: string) (kind: CellKindErased<obj>) : ColumnErased<obj> =
-        { Label = label
-          Value = None
-          Field = Some field
-          Sortable = None
-          Editable = None
-          Format = CellFormat.None
-          Kind = kind
-          Width = ColumnWidth.Auto }
+        { Defaults.columnErased with
+            Label = label
+            Field = Some field
+            Kind = kind }
 
     node
         "grid-windowed"
         (NodeKind.DataGrid(
-            { SortStateKey = None
-              PageSize = None
-              PageStateKey = None
-              EditStateKey = None
-              DefaultSort = None
-              Source = Binding.Query("orders", unbox, Some [ "orders-window" ])
-              RowKey = None
-              RowKeyField = Some "reference"
-              Columns =
-                [ col "Reference" "reference" CellKindErased.Text
-                  col "Amount" "amount" CellKindErased.Numeric ]
-              OnRowClick = None
-              Editable = false
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              StaticRows = None
-              KeepRowsTogether = false
-              RepeatHeader = false
-              Exportable = false
-              WindowStateKey = Some "orders-window"
-              RowTotal = Some(Binding.Query("orders.total", unbox, None)) }
+            { Defaults.dataGrid with
+                Source = Binding.Query("orders", unbox, Some [ "orders-window" ])
+                RowKeyField = Some "reference"
+                Columns =
+                    [ col "Reference" "reference" CellKindErased.Text
+                      col "Amount" "amount" CellKindErased.Numeric ]
+                WindowStateKey = Some "orders-window"
+                RowTotal = Some(Binding.Query("orders.total", unbox, None)) }
         ))
         None
 
@@ -7898,43 +7392,26 @@ let gridWindowed: Node<obj> =
 [<NodeFixture "Visualisation/Grid (Phase 1892 — the client-sliced window under a sort: the window indexes the sorted rows)">]
 let gridWindowedSorted: Node<obj> =
     let col (label: string) (field: string) (kind: CellKindErased<obj>) : ColumnErased<obj> =
-        { Label = label
-          Value = None
-          Field = Some field
-          Sortable = None
-          Editable = None
-          Format = CellFormat.None
-          Kind = kind
-          Width = ColumnWidth.Auto }
+        { Defaults.columnErased with
+            Label = label
+            Field = Some field
+            Kind = kind }
 
     node
         "grid-windowed-sorted"
         (NodeKind.DataGrid(
-            { SortStateKey = Some "ledger-sort"
-              PageSize = None
-              PageStateKey = None
-              EditStateKey = None
-              DefaultSort =
-                Some
-                    { Column = 1
-                      Direction = SortDirection.Desc }
-              Source = Binding.State("ledger", Some(Seq.ofList planRows))
-              RowKey = None
-              RowKeyField = Some "month"
-              Columns =
-                [ col "Month" "month" CellKindErased.Text
-                  col "Revenue" "revenue" CellKindErased.Numeric ]
-              OnRowClick = None
-              Editable = false
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              StaticRows = None
-              KeepRowsTogether = false
-              RepeatHeader = false
-              Exportable = false
-              WindowStateKey = Some "ledger-window"
-              RowTotal = None }
+            { Defaults.dataGrid with
+                SortStateKey = Some "ledger-sort"
+                DefaultSort =
+                    Some
+                        { Column = 1
+                          Direction = SortDirection.Desc }
+                Source = Binding.State("ledger", Some(Seq.ofList planRows))
+                RowKeyField = Some "month"
+                Columns =
+                    [ col "Month" "month" CellKindErased.Text
+                      col "Revenue" "revenue" CellKindErased.Numeric ]
+                WindowStateKey = Some "ledger-window" }
         ))
         None
 
@@ -7989,40 +7466,21 @@ let buttonPrint: Node<obj> =
 [<NodeFixture "Visualisation/Grid (Phase 818 — sortStateKey: the data-bound grid-sort header affordance)">]
 let gridSortStateKey: Node<obj> =
     let col (label: string) (field: string) (kind: CellKindErased<obj>) : ColumnErased<obj> =
-        { Label = label
-          Value = None
-          Field = Some field
-          Sortable = None
-          Editable = None
-          Format = CellFormat.None
-          Kind = kind
-          Width = ColumnWidth.Auto }
+        { Defaults.columnErased with
+            Label = label
+            Field = Some field
+            Kind = kind }
 
     node
         "grid-sort-state-key"
         (NodeKind.DataGrid(
-            { SortStateKey = Some "inventory-sort"
-              PageSize = None
-              PageStateKey = None
-              EditStateKey = None
-              DefaultSort = None
-              Source = Binding.State("inventory", Some(Seq.ofList planRows))
-              RowKey = None
-              RowKeyField = Some "month"
-              Columns =
-                [ col "Month" "month" CellKindErased.Text
-                  col "Revenue" "revenue" CellKindErased.Numeric ]
-              OnRowClick = None
-              Editable = false
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              StaticRows = None
-              KeepRowsTogether = false
-              RepeatHeader = false
-              WindowStateKey = None
-              RowTotal = None
-              Exportable = false }
+            { Defaults.dataGrid with
+                SortStateKey = Some "inventory-sort"
+                Source = Binding.State("inventory", Some(Seq.ofList planRows))
+                RowKeyField = Some "month"
+                Columns =
+                    [ col "Month" "month" CellKindErased.Text
+                      col "Revenue" "revenue" CellKindErased.Numeric ] }
         ))
         None
 
@@ -8084,13 +7542,14 @@ let a11ySpeak: Node<obj> =
                 Tone = ToneVariant.Success }
         ))
         (Some
-            { Label = Some(Binding.Static(Some "Service status"))
-              LabelledBy = None
-              DescribedBy = None
-              Role = Some AriaRole.Status
-              Speak = Some(TextSource.Literal "Service status: all systems are operational as of the last check.")
-              LiveRegion = Some LiveRegionKind.Polite
-              Hidden = None })
+            { Defaults.Accessibility.empty with
+                Label = Some(Binding.Static(Some "Service status"))
+                LabelledBy = None
+                DescribedBy = None
+                Role = Some AriaRole.Status
+                Speak = Some(TextSource.Literal "Service status: all systems are operational as of the last check.")
+                LiveRegion = Some LiveRegionKind.Polite
+                Hidden = None })
 
 /// A `Chart` carrying an author-declared `fallback` — a `Box` of `Markdown` a
 /// behind reader can always show — with a `speak` line on the fallback's own
@@ -8111,22 +7570,22 @@ let envelopeFallback: Node<obj> =
         node
             "envelope-fallback-alt"
             (NodeKind.Box(
-                { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
-                  Role = BoxRole.Group
-                  Heading = None
-                  Children =
-                    [ node
-                          "envelope-fallback-alt-text"
-                          (NodeKind.Markdown(
-                              { Text = TextSource.Literal "Revenue by month: a chart would appear here." }
-                          ))
-                          None
-                      node
-                          "envelope-fallback-alt-total"
-                          (NodeKind.Markdown({ Text = TextSource.Bound(Binding.State("revenue.total", None)) }))
-                          None ]
-                  KeepTogether = false
-                  BreakBefore = false }
+                { Defaults.box with
+                    Children =
+                        [ node
+                              "envelope-fallback-alt-text"
+                              (NodeKind.Markdown(
+                                  { Defaults.markdown with
+                                      Text = TextSource.Literal "Revenue by month: a chart would appear here." }
+                              ))
+                              None
+                          node
+                              "envelope-fallback-alt-total"
+                              (NodeKind.Markdown(
+                                  { Defaults.markdown with
+                                      Text = TextSource.Bound(Binding.State("revenue.total", None)) }
+                              ))
+                              None ] }
             ))
             (Some
                 { Defaults.Accessibility.empty with
@@ -8144,21 +7603,18 @@ let a11yWrapperAllSlots: Node<obj> =
     node
         "a11y-wrapper-all-slots"
         (NodeKind.Box(
-            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
-              Role = BoxRole.Group
-              Heading = None
-              Children = [ withId "a11y-wrapper-heading" heading; withId "a11y-wrapper-note" markdown ]
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Children = [ withId "a11y-wrapper-heading" heading; withId "a11y-wrapper-note" markdown ] }
         ))
         (Some
-            { Label = Some(Binding.Static(Some "Channel performance summary"))
-              LabelledBy = Some "a11y-wrapper-heading"
-              DescribedBy = Some "a11y-wrapper-note"
-              Role = Some AriaRole.Region
-              Speak = None
-              LiveRegion = Some LiveRegionKind.Polite
-              Hidden = Some(Binding.Static(Some false)) })
+            { Defaults.Accessibility.empty with
+                Label = Some(Binding.Static(Some "Channel performance summary"))
+                LabelledBy = Some "a11y-wrapper-heading"
+                DescribedBy = Some "a11y-wrapper-note"
+                Role = Some AriaRole.Region
+                Speak = None
+                LiveRegion = Some LiveRegionKind.Polite
+                Hidden = Some(Binding.Static(Some false)) })
 
 /// The bound shape: `label` and `hidden` as `State` bindings rather than
 /// literals, plus the mixed-case custom role and the `off` live-region token.
@@ -8169,24 +7625,22 @@ let a11yWrapperStateBound: Node<obj> =
     node
         "a11y-wrapper-state-bound"
         (NodeKind.Box(
-            { Layout = BoxLayout.Flex(Orientation.Horizontal, false, None)
-              Role = BoxRole.Group
-              Heading = None
-              Children = [ withId "a11y-footer-note" markdown ]
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Layout = BoxLayout.Flex(Orientation.Horizontal, false, None)
+                Children = [ withId "a11y-footer-note" markdown ] }
         ))
         (Some
-            { Label = Some(Binding.State("footerLabel", Some "Site footer"))
-              LabelledBy = None
-              DescribedBy = None
-              // Mixed case on purpose: `AriaRole.Custom` is verbatim
-              // passthrough, so this fixture goes red on any host that folds
-              // case anywhere along the wire-to-attribute path.
-              Role = Some(AriaRole.Custom "doc-pageFooter")
-              Speak = None
-              LiveRegion = Some LiveRegionKind.Off
-              Hidden = Some(Binding.State("footerCollapsed", Some false)) })
+            { Defaults.Accessibility.empty with
+                Label = Some(Binding.State("footerLabel", Some "Site footer"))
+                LabelledBy = None
+                DescribedBy = None
+                // Mixed case on purpose: `AriaRole.Custom` is verbatim
+                // passthrough, so this fixture goes red on any host that folds
+                // case anywhere along the wire-to-attribute path.
+                Role = Some(AriaRole.Custom "doc-pageFooter")
+                Speak = None
+                LiveRegion = Some LiveRegionKind.Off
+                Hidden = Some(Binding.State("footerCollapsed", Some false)) })
 
 /// The announcement shape: a named role plus the `assertive` token, the
 /// combination a host must project as `role="alert"` + `aria-live="assertive"`.
@@ -8203,13 +7657,14 @@ let a11yAlertAssertive: Node<obj> =
                 Dismissable = true }
         ))
         (Some
-            { Label = None
-              LabelledBy = None
-              DescribedBy = None
-              Role = Some AriaRole.Alert
-              Speak = None
-              LiveRegion = Some LiveRegionKind.Assertive
-              Hidden = None })
+            { Defaults.Accessibility.empty with
+                Label = None
+                LabelledBy = None
+                DescribedBy = None
+                Role = Some AriaRole.Alert
+                Speak = None
+                LiveRegion = Some LiveRegionKind.Assertive
+                Hidden = None })
 
 /// Semantic element 1 of 3 — the accessible name OVERRIDING the visible text.
 /// The canonical "Read more" link: the trait's `label` is what a screen reader
@@ -8225,13 +7680,14 @@ let a11yLinkLabelled: Node<obj> =
                 Label = TextSource.Literal "Read more" }
         ))
         (Some
-            { Label = Some(Binding.Static(Some "Read the 2026 annual report (PDF)"))
-              LabelledBy = None
-              DescribedBy = None
-              Role = None
-              Speak = None
-              LiveRegion = None
-              Hidden = None })
+            { Defaults.Accessibility.empty with
+                Label = Some(Binding.Static(Some "Read the 2026 annual report (PDF)"))
+                LabelledBy = None
+                DescribedBy = None
+                Role = None
+                Speak = None
+                LiveRegion = None
+                Hidden = None })
 
 /// Semantic element 2 of 3 — an explicit named role on a kind that already has
 /// a native one. Redundant by intent: the trait's `role` must win over whatever
@@ -8248,13 +7704,14 @@ let a11yButtonNamed: Node<obj> =
                 Icon = Some "refresh" }
         ))
         (Some
-            { Label = Some(Binding.Static(Some "Refresh revenue figures"))
-              LabelledBy = None
-              DescribedBy = None
-              Role = Some AriaRole.Button
-              Speak = None
-              LiveRegion = None
-              Hidden = None })
+            { Defaults.Accessibility.empty with
+                Label = Some(Binding.Static(Some "Refresh revenue figures"))
+                LabelledBy = None
+                DescribedBy = None
+                Role = Some AriaRole.Button
+                Speak = None
+                LiveRegion = None
+                Hidden = None })
 
 /// Semantic element 3 of 3 — the decorative image: empty `alt` plus
 /// `hidden: Static true`, the `aria-hidden` projection slot that was missing
@@ -8270,13 +7727,14 @@ let a11yImageDecorative: Node<obj> =
                 Alt = TextSource.Literal "" }
         ))
         (Some
-            { Label = None
-              LabelledBy = None
-              DescribedBy = None
-              Role = None
-              Speak = None
-              LiveRegion = None
-              Hidden = Some(Binding.Static(Some true)) })
+            { Defaults.Accessibility.empty with
+                Label = None
+                LabelledBy = None
+                DescribedBy = None
+                Role = None
+                Speak = None
+                LiveRegion = None
+                Hidden = Some(Binding.Static(Some true)) })
 
 /// Fuaran-UI Phase 1665 — the COMPUTED accessible name: `label` as a
 /// `Binding.Transform` yielding exactly one cell.
@@ -8311,46 +7769,43 @@ let a11yWrapperTransformLabel: Node<obj> =
     node
         "a11y-wrapper-transform-label"
         (NodeKind.Box(
-            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
-              Role = BoxRole.Group
-              Heading = None
-              Children = [ withId "a11y-transform-note" markdown ]
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Children = [ withId "a11y-transform-note" markdown ] }
         ))
         (Some
-            { Label =
-                Some(
-                    Binding.Transform(
-                        TransformSource.Data source,
-                        [ Fuaran.Compute.GroupBy(
-                              [],
-                              [ { Name = "n"
-                                  Fn = Fuaran.Core.AggFn.Count
-                                  Of = "severity" } ]
-                          )
-                          Fuaran.Compute.Derive(
-                              "label",
-                              Fuaran.Compute.Case(
-                                  [ Fuaran.Compute.Binary(
-                                        Fuaran.Compute.Gt,
-                                        Fuaran.Compute.Col "n",
-                                        Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Int 2)
-                                    ),
-                                    Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Str "3 open alerts") ],
-                                  Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Str "No open alerts")
+            { Defaults.Accessibility.empty with
+                Label =
+                    Some(
+                        Binding.Transform(
+                            TransformSource.Data source,
+                            [ Fuaran.Compute.GroupBy(
+                                  [],
+                                  [ { Name = "n"
+                                      Fn = Fuaran.Core.AggFn.Count
+                                      Of = "severity" } ]
                               )
-                          )
-                          Fuaran.Compute.Project [ "label", "label" ] ],
-                        None
+                              Fuaran.Compute.Derive(
+                                  "label",
+                                  Fuaran.Compute.Case(
+                                      [ Fuaran.Compute.Binary(
+                                            Fuaran.Compute.Gt,
+                                            Fuaran.Compute.Col "n",
+                                            Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Int 2)
+                                        ),
+                                        Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Str "3 open alerts") ],
+                                      Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Str "No open alerts")
+                                  )
+                              )
+                              Fuaran.Compute.Project [ "label", "label" ] ],
+                            None
+                        )
                     )
-                )
-              LabelledBy = None
-              DescribedBy = None
-              Role = Some AriaRole.Region
-              Speak = None
-              LiveRegion = None
-              Hidden = None })
+                LabelledBy = None
+                DescribedBy = None
+                Role = Some AriaRole.Region
+                Speak = None
+                LiveRegion = None
+                Hidden = None })
 
 // ─── Public collections ─────────────────────────────────────────────────
 
@@ -8442,31 +7897,29 @@ let tooltipIconButton: Node<obj> =
     node
         "tooltip-icon-button-1"
         (NodeKind.Box(
-            { Layout = BoxLayout.Flex(Orientation.Horizontal, false, None)
-              Role = BoxRole.Group
-              Heading = None
-              Children =
-                [ { node
-                        "tooltip-icon-button-control"
-                        (NodeKind.Button(
-                            { Defaults.button with
-                                Label = TextSource.Literal ""
-                                OnClick = Action.Notify("export", Fuaran.Core.JObj [])
-                                Variant = ButtonVariant.Tertiary
-                                Icon = Some "download" }
-                        ))
-                        (Some
-                            { Label = Some(Binding.Static(Some "Download CSV"))
-                              LabelledBy = None
-                              DescribedBy = Some "tooltip-icon-button-note"
-                              Role = None
-                              Speak = None
-                              LiveRegion = None
-                              Hidden = None }) with
-                      Tooltip = Some(TextSource.Literal "Exports the rows currently shown, not the whole table.") }
-                  withId "tooltip-icon-button-note" markdown ]
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Layout = BoxLayout.Flex(Orientation.Horizontal, false, None)
+                Children =
+                    [ { node
+                            "tooltip-icon-button-control"
+                            (NodeKind.Button(
+                                { Defaults.button with
+                                    Label = TextSource.Literal ""
+                                    OnClick = Action.Notify("export", Fuaran.Core.JObj [])
+                                    Variant = ButtonVariant.Tertiary
+                                    Icon = Some "download" }
+                            ))
+                            (Some
+                                { Defaults.Accessibility.empty with
+                                    Label = Some(Binding.Static(Some "Download CSV"))
+                                    LabelledBy = None
+                                    DescribedBy = Some "tooltip-icon-button-note"
+                                    Role = None
+                                    Speak = None
+                                    LiveRegion = None
+                                    Hidden = None }) with
+                          Tooltip = Some(TextSource.Literal "Exports the rows currently shown, not the whole table.") }
+                      withId "tooltip-icon-button-note" markdown ] }
         ))
         None
 
@@ -8498,14 +7951,10 @@ let tooltipIconButton: Node<obj> =
 [<NodeFixture "Binding (Phase 1656 — an ABSENT State.defaultValue at Float / Int / rows / options / floatSeq: absence OMITS)">]
 let stateAbsentDefault: Node<obj> =
     let col (label: string) (field: string) (kind: CellKindErased<obj>) : ColumnErased<obj> =
-        { Label = label
-          Value = None
-          Field = Some field
-          Sortable = None
-          Editable = None
-          Format = CellFormat.None
-          Kind = kind
-          Width = ColumnWidth.Auto }
+        { Defaults.columnErased with
+            Label = label
+            Field = Some field
+            Kind = kind }
 
     // Float — the slot the Phase 1084 pin named. Its placeholder is `0`.
     let metricNode =
@@ -8533,7 +7982,13 @@ let stateAbsentDefault: Node<obj> =
 
     // `float seq` — placeholder `[]`.
     let sparklineNode =
-        node "absent-default-sparkline" (NodeKind.Sparkline({ Source = Binding.State("series", None) })) None
+        node
+            "absent-default-sparkline"
+            (NodeKind.Sparkline(
+                { Defaults.sparkline with
+                    Source = Binding.State("series", None) }
+            ))
+            None
 
     // `SelectOption list` — placeholder `[]`. `value` carries a DECLARED
     // default beside it, so the fixture also proves the two members of one
@@ -8555,40 +8010,20 @@ let stateAbsentDefault: Node<obj> =
         node
             "absent-default-grid"
             (NodeKind.DataGrid(
-                { SortStateKey = None
-                  PageSize = None
-                  PageStateKey = None
-                  EditStateKey = None
-                  DefaultSort = None
-                  Source = Binding.State("planRows", None)
-                  RowKey = None
-                  RowKeyField = Some "month"
-                  Columns =
-                    [ col "Month" "month" CellKindErased.Text
-                      col "Revenue" "revenue" CellKindErased.Numeric ]
-                  OnRowClick = None
-                  Editable = false
-                  Reorderable = false
-                  TransferInKey = None
-                  TransferOutKey = None
-                  StaticRows = None
-                  KeepRowsTogether = false
-                  RepeatHeader = false
-                  WindowStateKey = None
-                  RowTotal = None
-                  Exportable = false }
+                { Defaults.dataGrid with
+                    Source = Binding.State("planRows", None)
+                    RowKeyField = Some "month"
+                    Columns =
+                        [ col "Month" "month" CellKindErased.Text
+                          col "Revenue" "revenue" CellKindErased.Numeric ] }
             ))
             None
 
     node
         "state-absent-default"
         (NodeKind.Box(
-            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
-              Role = BoxRole.Group
-              Heading = None
-              Children = [ metricNode; tabsNode; sparklineNode; selectNode; gridNode ]
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Children = [ metricNode; tabsNode; sparklineNode; selectNode; gridNode ] }
         ))
         None
 
@@ -8646,38 +8081,17 @@ let private bindingCheckChart (id: string) (source: Binding<Row seq>) (x: string
 
 let private bindingCheckGrid (id: string) (source: Binding<Row seq>) (fields: string list) (rowKey: string option) =
     let col (field: string) : ColumnErased<obj> =
-        { Label = field
-          Value = None
-          Field = Some field
-          Sortable = None
-          Editable = None
-          Format = CellFormat.None
-          Kind = CellKindErased.Text
-          Width = ColumnWidth.Auto }
+        { Defaults.columnErased with
+            Label = field
+            Field = Some field }
 
     node
         id
         (NodeKind.DataGrid(
-            { SortStateKey = None
-              PageSize = None
-              PageStateKey = None
-              EditStateKey = None
-              DefaultSort = None
-              Source = source
-              RowKey = None
-              RowKeyField = rowKey
-              Columns = fields |> List.map col
-              OnRowClick = None
-              Editable = false
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              StaticRows = None
-              KeepRowsTogether = false
-              RepeatHeader = false
-              Exportable = false
-              WindowStateKey = None
-              RowTotal = None }
+            { Defaults.dataGrid with
+                Source = source
+                RowKeyField = rowKey
+                Columns = fields |> List.map col }
         ))
         None
 
@@ -8685,12 +8099,10 @@ let private bindingCheckBox (id: string) (children: Node<obj> list) : Node<obj> 
     node
         id
         (NodeKind.Box(
-            { Layout = BoxLayout.Auto
-              Role = BoxRole.Dashboard
-              Heading = None
-              Children = children
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Layout = BoxLayout.Auto
+                Role = BoxRole.Dashboard
+                Children = children }
         ))
         None
 
@@ -8770,39 +8182,21 @@ let bindingCheckUnchecked: Node<obj> =
 // is required cannot represent its absence).
 
 let private columnKindColumn (label: string) (field: string option) (kind: CellKindErased<obj>) : ColumnErased<obj> =
-    { Label = label
-      Value = None
-      Field = field
-      Sortable = None
-      Editable = None
-      Format = CellFormat.None
-      Kind = kind
-      Width = ColumnWidth.Auto }
+    { Defaults.columnErased with
+        Label = label
+        Field = field
+        Kind = kind }
 
 let private columnKindGrid (id: string) (columns: ColumnErased<obj> list) : Node<obj> =
     node
         id
         (NodeKind.DataGrid(
-            { SortStateKey = Some "spend-sort"
-              PageSize = None
-              PageStateKey = None
-              EditStateKey = None
-              DefaultSort = None
-              Source = bindingCheckFeed
-              RowKey = None
-              RowKeyField = Some "dept"
-              Columns = columns
-              OnRowClick = None
-              Editable = false
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              StaticRows = None
-              KeepRowsTogether = false
-              RepeatHeader = false
-              Exportable = true
-              WindowStateKey = None
-              RowTotal = None }
+            { Defaults.dataGrid with
+                SortStateKey = Some "spend-sort"
+                Source = bindingCheckFeed
+                RowKeyField = Some "dept"
+                Columns = columns
+                Exportable = true }
         ))
         None
 

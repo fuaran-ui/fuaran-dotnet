@@ -8066,6 +8066,82 @@ the label of a known stage is unchanged. A `match` over `TurnStage` that lists t
 **Certified by** `src/Fuaran.UI.Client.Tests/TurnStageTests.fs`, which reads every row of the table through
 `Wire.parseTurnResponse` at a 422 and at a 500, and through `TurnStage.ofLabel`.
 
+### What rides this slot — Phase 2055
+
+_Class: **ADDITIVE API + five obsoletions** — no public name is removed or retyped, no behaviour moves and no
+wire byte moves. It rides the draft without raising its class._
+
+**One `Box` builder, and the retired-kind convenience records are obsolete.** `DashboardSpec`, `StackSpec`,
+`GridLayoutSpec`, `MasonryLayoutSpec` and `CardSpec` all lower to `Box`, and each now carries
+`[<Obsolete>]` pointing at the direct form, `Fuaran.box id { Defaults.box with Layout = BoxLayout.Grid(…);
+Role = …; Children = … }`. The `BoxLayout` cases are the layout helpers; no helper module is added. The
+records stay, and so do their seeds (`Defaults.dashboard` and the rest). The convenience constructors that take
+them (`Fuaran.dashboard`, `.stack`, `.gridLayout`, `.gridLayoutTemplated`, `.masonryLayout`, `.card`,
+`.divider`) are NOT obsolete, and they keep each convenience's accessibility default: a `dashboard` still
+carries the `main` landmark and a `card` its region role. F# raises FS0044 for an obsolete record TYPE only
+where the type is NAMED, in an annotation or a C# constructor (CS0618). A construction by copy-update
+(`{ Defaults.dashboard with Children = … }`) or by labels names no type, so the call sites in common use stay
+silent. Under warnings-as-errors the only consumer affected is one that annotates the type. Inside the
+constructors, the seven full `Box` literals in `Fuaran.fs` (six of them under one repeated comment) are now one
+private builder that starts from the new **`Defaults.box`** seed (a vertical flex group, no heading, no
+children, no print break). `gridLayoutTemplated` is `gridLayout` over a copy-updated spec.
+
+**One form-field constructor per control, with an optional handler.** Fourteen members on `FormFieldKind`,
+reached through `open Fuaran.UI` (they are type extensions in the `AutoOpen` module `FormFieldKindControls`,
+because F# admits extensions only inside a module): `textControl`, `numberControl`, `checkboxControl`,
+`toggleControl`, `choiceControl`, `textAreaControl`, `rangedNumberControl`, `segmentedChoiceControl`,
+`comboboxControl`, `ratingControl`, `colorControl`, `tokensControl`, `dateTimeControl` and
+`dateTimeRangeControl`. Each takes the typed value binding and the control's required arguments positionally,
+and takes `?onChange` plus the optional constraints as named arguments, so
+`FormFieldKind.rangedNumberControl(binding.state "year" 2024.0, min = 1979.0)` works as written. The
+`rangedNumber` header had promised that form; until now it took positional options. Leaving `onChange` out
+gives the Phase 426 handler-free shape. Every member carries the one handler shape Phase 2177 decided,
+`onChange`, Checkbox and Toggle included. The defaults the curried helpers' documentation describes become
+argument defaults:
+- `segmentedChoiceControl`'s `orientation` defaults to `Horizontal`;
+- `comboboxControl`'s `allowFreeText` defaults to `false`, and `tokensControl`'s to `true`;
+- `ratingControl`'s `max` defaults to `Defaults.ratingMax` and its `allowHalf` to `false`.
+
+The members carry a `Control` suffix because a member spelled like a union case, or like a module function,
+is unreachable: the case and the function win name resolution. The curried helpers keep their signatures and
+are now one-line shims over these members. That covers the handler-bearing `rangedNumber`, `numberStepped`,
+`segmentedChoice`, `combobox`, `rating`, `color`, `tokens`, `dateTime` and `dateTimeRange`, and all fourteen
+`*Declarative` helpers. None of them is obsoleted.
+
+**Three more seeds, so a constructor that builds a record copies one.**
+- **`Defaults.dataGrid`** is the tree-level (erased) `DataGridSpec`. Every slot is absent or off, field for
+  field with the typed `Defaults.grid`; `RowKey` and `StaticRows` are `None`. `Fuaran.table` now copies it.
+- **`Defaults.columnErased`** is the tree-level column: empty label, no `Value` override, no `Field`, inherited
+  flags, `CellFormat.None`, `Text`, `Auto`.
+- **`Defaults.icon`** is a decorative medium icon in the default tone. `Fuaran.icon` now copies it, and
+  `Fuaran.treeItem`, `Fuaran.skeleton` and `Fuaran.fragmentRef` copy their existing seeds.
+
+The fixtures that generate the conformance corpus write every literal of a seeded record as
+`{ Defaults.x with … }` (208 sites across 19 record types). Every node and op fixture encodes byte-identically
+before and after the change. The Phase 1106 lint (`SpecConstructionTests`) starts governing `BoxSpec`, `DataGridSpec`,
+`ColumnErased` and `IconSpec` once each has a seed, so their 67 full literals in other test projects are rewritten
+the same way.
+
+**What is deliberately NOT routed through a seed.** Some constructions are exhaustive on purpose:
+- the hand decoders (`Ops/JsonDecode.fs`) and the mappers (`NodeMap.fs`, `Column.erase`, `Fuaran.grid`'s
+  erasure, `Fuaran.custom`);
+- the generated layer (`Generated.fs`).
+
+Each of them builds a record from another value field by field, so a new field there is a compile error. That
+error is the obligation to decode or map the new field, and a copy-update would silently drop it instead.
+
+**Not in this entry: the C#, VB and analyzer vocabulary are still hand-kept.** No generator targets them; the
+IDL generator emits `Generated.fs`, `idl.json`, `support.json` and the F* proofs only. Generating them is
+Phase 2241's work. The pins that guard the hand mirrors (`AuthoringSurfacePin`, the VB vocabulary pin, the C#
+coverage-vs-corpus and enum-token pins) are unchanged and green. The C# veneer's `Dashboard` / `Stack` /
+`Grid` / `Card` factories still lower through the F# convenience constructors, scoped off CS0618 at that one
+block.
+
+**Certified by** `src/Fuaran.UI.Tests/AuthoringControlTests.fs`. It pins each `<control>Control` member, with
+and without `onChange`, to the union case its helpers built, and each curried helper to its member. It also
+pins `Fuaran.dashboard`, `.card` and `.stack` to the direct `Box` form their obsoletion names, with the same
+encoded bytes.
+
 ## 0.93.0 — the slot opened after v0.92.0 was released (RELEASED — tagged v0.93.0 at b654b31, 2026-10-10)
 
 _Class: **BREAKING (API: the `Fuaran.UI.Validator` library surface)** — raised from additive by Phase 2053,

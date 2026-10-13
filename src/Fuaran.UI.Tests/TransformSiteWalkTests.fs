@@ -135,34 +135,13 @@ let private liveGrid
     { Id = id
       Kind =
         NodeKind.DataGrid(
-            { SortStateKey = None
-              PageSize = None
-              PageStateKey = None
-              EditStateKey = None
-              DefaultSort = None
-              Source = source
-              RowKey = None
-              RowKeyField = rowKeyField
-              Columns =
-                [ { Label = "N"
-                    Value = None
-                    Field = Some "n"
-                    Sortable = None
-                    Editable = None
-                    Format = CellFormat.None
-                    Kind = CellKindErased.Text
-                    Width = ColumnWidth.Auto } ]
-              OnRowClick = None
-              Editable = false
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              StaticRows = None
-              KeepRowsTogether = false
-              RepeatHeader = false
-              WindowStateKey = None
-              RowTotal = None
-              Exportable = false }
+            { Defaults.dataGrid with
+                Source = source
+                RowKeyField = rowKeyField
+                Columns =
+                    [ { Defaults.columnErased with
+                          Label = "N"
+                          Field = Some "n" } ] }
         )
       State = None
       Style = None

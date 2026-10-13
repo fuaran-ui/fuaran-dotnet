@@ -231,26 +231,9 @@ let tests =
               let info =
                   DebugGlobal.extractBindingSlots (
                       NodeKind.DataGrid
-                          { SortStateKey = None
-                            PageSize = None
-                            PageStateKey = None
-                            EditStateKey = None
-                            DefaultSort = None
-                            Source = scoped
-                            RowKey = None
-                            RowKeyField = Some "dept"
-                            Columns = []
-                            OnRowClick = None
-                            Editable = false
-                            Reorderable = false
-                            TransferInKey = None
-                            TransferOutKey = None
-                            StaticRows = None
-                            KeepRowsTogether = false
-                            RepeatHeader = false
-                            WindowStateKey = None
-                            RowTotal = None
-                            Exportable = false }
+                          { Defaults.dataGrid with
+                              Source = scoped
+                              RowKeyField = Some "dept" }
                   )
 
               Expect.isTrue

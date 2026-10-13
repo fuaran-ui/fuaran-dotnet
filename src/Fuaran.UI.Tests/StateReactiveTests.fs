@@ -154,34 +154,18 @@ let tests =
                   { Id = "orders"
                     Kind =
                       NodeKind.DataGrid(
-                          { Source = binding.state "orders-rows" Seq.empty
-                            SortStateKey = Some "orders-sort"
-                            PageSize = Some 25
-                            PageStateKey = Some "orders-page"
-                            EditStateKey = Some "orders-edit"
-                            DefaultSort = None
-                            RowKey = None
-                            RowKeyField = Some "id"
-                            Columns =
-                              [ { Label = "Id"
-                                  Value = None
-                                  Field = Some "id"
-                                  Sortable = Some true
-                                  Editable = None
-                                  Format = CellFormat.None
-                                  Kind = CellKindErased.Text
-                                  Width = ColumnWidth.Auto } ]
-                            OnRowClick = None
-                            Editable = false
-                            Reorderable = false
-                            TransferInKey = None
-                            TransferOutKey = None
-                            StaticRows = None
-                            KeepRowsTogether = false
-                            RepeatHeader = false
-                            WindowStateKey = None
-                            RowTotal = None
-                            Exportable = false }
+                          { Defaults.dataGrid with
+                              Source = binding.state "orders-rows" Seq.empty
+                              SortStateKey = Some "orders-sort"
+                              PageSize = Some 25
+                              PageStateKey = Some "orders-page"
+                              EditStateKey = Some "orders-edit"
+                              RowKeyField = Some "id"
+                              Columns =
+                                  [ { Defaults.columnErased with
+                                        Label = "Id"
+                                        Field = Some "id"
+                                        Sortable = Some true } ] }
                       )
                     State = None
                     Style = None

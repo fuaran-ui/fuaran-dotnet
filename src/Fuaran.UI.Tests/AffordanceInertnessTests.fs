@@ -49,12 +49,8 @@ let private stack (id: string) (children: Node<Msg> list) : Node<Msg> =
     node
         id
         (NodeKind.Box(
-            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
-              Role = BoxRole.Group
-              Heading = None
-              Children = children
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Children = children }
         ))
 
 /// A grid carrying one column, spelled the way a DECODED grid is.
@@ -62,37 +58,16 @@ let private gridWith (id: string) (col: ColumnErased<Msg>) : Node<Msg> =
     node
         id
         (NodeKind.DataGrid(
-            { SortStateKey = None
-              PageSize = None
-              PageStateKey = None
-              EditStateKey = None
-              DefaultSort = None
-              Source = Binding.Static(Some Seq.empty)
-              RowKey = None
-              RowKeyField = Some "id"
-              Columns = [ col ]
-              OnRowClick = None
-              Editable = false
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              StaticRows = None
-              KeepRowsTogether = false
-              RepeatHeader = false
-              WindowStateKey = None
-              RowTotal = None
-              Exportable = false }
+            { Defaults.dataGrid with
+                Source = Binding.Static(Some Seq.empty)
+                RowKeyField = Some "id"
+                Columns = [ col ] }
         ))
 
 let private column (kind: CellKindErased<Msg>) : ColumnErased<Msg> =
-    { Label = "Col"
-      Value = None
-      Field = None
-      Sortable = None
-      Editable = None
-      Format = CellFormat.None
-      Kind = kind
-      Width = ColumnWidth.Auto }
+    { Defaults.columnErased with
+        Label = "Col"
+        Kind = kind }
 
 let private chartNode (id: string) (onPointClick: (Fuaran.Core.Row -> Action<Msg>) option) : Node<Msg> =
     node

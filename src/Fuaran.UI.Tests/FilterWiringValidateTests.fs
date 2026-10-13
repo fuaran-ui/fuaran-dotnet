@@ -55,34 +55,14 @@ let private gridWithEditable (editable: bool) (source: Binding<Row seq>) : Node<
     { Id = "grid"
       Kind =
         NodeKind.DataGrid(
-            { SortStateKey = None
-              PageSize = None
-              PageStateKey = None
-              EditStateKey = None
-              DefaultSort = None
-              Source = source
-              RowKey = None
-              RowKeyField = Some "dept"
-              Columns =
-                [ { Label = "Dept"
-                    Value = None
-                    Field = Some "dept"
-                    Sortable = None
-                    Editable = None
-                    Format = CellFormat.None
-                    Kind = CellKindErased.Text
-                    Width = ColumnWidth.Auto } ]
-              OnRowClick = None
-              Editable = editable
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              StaticRows = None
-              KeepRowsTogether = false
-              RepeatHeader = false
-              WindowStateKey = None
-              RowTotal = None
-              Exportable = false }
+            { Defaults.dataGrid with
+                Source = source
+                RowKeyField = Some "dept"
+                Columns =
+                    [ { Defaults.columnErased with
+                          Label = "Dept"
+                          Field = Some "dept" } ]
+                Editable = editable }
         )
       State = None
       Style = None
@@ -106,36 +86,15 @@ let private gridNamingFields
     { Id = "grid"
       Kind =
         NodeKind.DataGrid(
-            { SortStateKey = None
-              PageSize = None
-              PageStateKey = None
-              EditStateKey = None
-              DefaultSort = None
-              Source = source
-              RowKey = None
-              RowKeyField = rowKeyField
-              Columns =
-                columnFields
-                |> List.map (fun f ->
-                    { Label = f
-                      Value = None
-                      Field = Some f
-                      Sortable = None
-                      Editable = None
-                      Format = CellFormat.None
-                      Kind = CellKindErased.Text
-                      Width = ColumnWidth.Auto })
-              OnRowClick = None
-              Editable = false
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              StaticRows = None
-              KeepRowsTogether = false
-              RepeatHeader = false
-              WindowStateKey = None
-              RowTotal = None
-              Exportable = false }
+            { Defaults.dataGrid with
+                Source = source
+                RowKeyField = rowKeyField
+                Columns =
+                    columnFields
+                    |> List.map (fun f ->
+                        { Defaults.columnErased with
+                            Label = f
+                            Field = Some f }) }
         )
       State = None
       Style = None
@@ -271,34 +230,11 @@ let tests =
                   { Id = "bare-grid"
                     Kind =
                       NodeKind.DataGrid(
-                          { SortStateKey = None
-                            PageSize = None
-                            PageStateKey = None
-                            EditStateKey = None
-                            DefaultSort = None
-                            Source = Binding.Static(Some Seq.empty)
-                            RowKey = None
-                            RowKeyField = None
-                            Columns =
-                              [ { Label = "Blank"
-                                  Value = None
-                                  Field = None
-                                  Sortable = None
-                                  Editable = None
-                                  Format = CellFormat.None
-                                  Kind = CellKindErased.Text
-                                  Width = ColumnWidth.Auto } ]
-                            OnRowClick = None
-                            Editable = false
-                            Reorderable = false
-                            TransferInKey = None
-                            TransferOutKey = None
-                            StaticRows = None
-                            KeepRowsTogether = false
-                            RepeatHeader = false
-                            WindowStateKey = None
-                            RowTotal = None
-                            Exportable = false }
+                          { Defaults.dataGrid with
+                              Source = Binding.Static(Some Seq.empty)
+                              Columns =
+                                  [ { Defaults.columnErased with
+                                        Label = "Blank" } ] }
                       )
                     State = None
                     Style = None

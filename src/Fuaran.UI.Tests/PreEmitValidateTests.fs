@@ -178,38 +178,17 @@ let private seedingGrid (id: string) (key: string) : Node<Msg> =
     { Id = id
       Kind =
         NodeKind.DataGrid(
-            { SortStateKey = None
-              PageSize = None
-              PageStateKey = None
-              EditStateKey = None
-              DefaultSort = None
-              Source =
-                Binding.State(
-                    key,
-                    Some(Seq.ofList [ (Map.ofList [ "team", Unchecked.nonNull (box 1) ]: Fuaran.Core.Row) ])
-                )
-              RowKey = None
-              RowKeyField = Some "id"
-              Columns =
-                [ { Label = "Team"
-                    Value = None
-                    Field = Some "team"
-                    Sortable = None
-                    Editable = None
-                    Format = CellFormat.None
-                    Kind = CellKindErased.Text
-                    Width = ColumnWidth.Auto } ]
-              OnRowClick = None
-              Editable = false
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              StaticRows = None
-              KeepRowsTogether = false
-              RepeatHeader = false
-              WindowStateKey = None
-              RowTotal = None
-              Exportable = false }
+            { Defaults.dataGrid with
+                Source =
+                    Binding.State(
+                        key,
+                        Some(Seq.ofList [ (Map.ofList [ "team", Unchecked.nonNull (box 1) ]: Fuaran.Core.Row) ])
+                    )
+                RowKeyField = Some "id"
+                Columns =
+                    [ { Defaults.columnErased with
+                          Label = "Team"
+                          Field = Some "team" } ] }
         )
       State = None
       Style = None
@@ -338,40 +317,22 @@ let private sortGrid
     { Id = "sorted"
       Kind =
         NodeKind.DataGrid(
-            { SortStateKey = sortStateKey
-              PageSize = None
-              PageStateKey = None
-              EditStateKey = None
-              DefaultSort =
-                defaultSortColumn
-                |> Option.map (fun c ->
-                    { Column = c
-                      Direction = SortDirection.Asc })
-              Source = Binding.Static(Some Seq.empty)
-              RowKey = None
-              RowKeyField = Some "id"
-              Columns =
-                columns
-                |> List.map (fun (label, field, sortable) ->
-                    { Label = label
-                      Value = None
-                      Field = field
-                      Sortable = sortable
-                      Editable = None
-                      Format = CellFormat.None
-                      Kind = CellKindErased.Text
-                      Width = ColumnWidth.Auto })
-              OnRowClick = None
-              Editable = false
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              StaticRows = None
-              KeepRowsTogether = false
-              RepeatHeader = false
-              WindowStateKey = None
-              RowTotal = None
-              Exportable = false }
+            { Defaults.dataGrid with
+                SortStateKey = sortStateKey
+                DefaultSort =
+                    defaultSortColumn
+                    |> Option.map (fun c ->
+                        { Column = c
+                          Direction = SortDirection.Asc })
+                Source = Binding.Static(Some Seq.empty)
+                RowKeyField = Some "id"
+                Columns =
+                    columns
+                    |> List.map (fun (label, field, sortable) ->
+                        { Defaults.columnErased with
+                            Label = label
+                            Field = field
+                            Sortable = sortable }) }
         )
       State = None
       Style = None
@@ -393,36 +354,18 @@ let private editGrid
     { Id = "edited"
       Kind =
         NodeKind.DataGrid(
-            { SortStateKey = None
-              PageSize = None
-              PageStateKey = None
-              EditStateKey = editStateKey
-              DefaultSort = None
-              Source = source
-              RowKey = None
-              RowKeyField = Some "id"
-              Columns =
-                columns
-                |> List.map (fun (label, editable) ->
-                    { Label = label
-                      Value = None
-                      Field = Some "note"
-                      Sortable = None
-                      Editable = editable
-                      Format = CellFormat.None
-                      Kind = CellKindErased.Text
-                      Width = ColumnWidth.Auto })
-              OnRowClick = None
-              Editable = gridEditable
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              StaticRows = None
-              KeepRowsTogether = false
-              RepeatHeader = false
-              WindowStateKey = None
-              RowTotal = None
-              Exportable = false }
+            { Defaults.dataGrid with
+                EditStateKey = editStateKey
+                Source = source
+                RowKeyField = Some "id"
+                Columns =
+                    columns
+                    |> List.map (fun (label, editable) ->
+                        { Defaults.columnErased with
+                            Label = label
+                            Field = Some "note"
+                            Editable = editable })
+                Editable = gridEditable }
         )
       State = None
       Style = None
@@ -445,26 +388,11 @@ let private pagedGrid
     { Id = "paged"
       Kind =
         NodeKind.DataGrid(
-            { SortStateKey = None
-              PageSize = pageSize
-              PageStateKey = pageStateKey
-              EditStateKey = None
-              DefaultSort = None
-              Source = source
-              RowKey = None
-              RowKeyField = Some "id"
-              Columns = []
-              OnRowClick = None
-              Editable = false
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              StaticRows = None
-              KeepRowsTogether = false
-              RepeatHeader = false
-              WindowStateKey = None
-              RowTotal = None
-              Exportable = false }
+            { Defaults.dataGrid with
+                PageSize = pageSize
+                PageStateKey = pageStateKey
+                Source = source
+                RowKeyField = Some "id" }
         )
       State = None
       Style = None
@@ -704,12 +632,11 @@ let private breakBox
     { Id = id
       Kind =
         NodeKind.Box(
-            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
-              Role = role
-              Heading = None
-              Children = children
-              KeepTogether = keepTogether
-              BreakBefore = breakBefore }
+            { Defaults.box with
+                Role = role
+                Children = children
+                KeepTogether = keepTogether
+                BreakBefore = breakBefore }
         )
       State = None
       Style = None
@@ -820,14 +747,9 @@ let private exportableGrid (id: string) (source: Binding<Row seq>) (columns: Col
 
 /// The one column every export fixture that HAS columns uses.
 let private exportColumn: ColumnErased<Msg> =
-    { Label = "Team"
-      Value = None
-      Field = Some "team"
-      Sortable = None
-      Editable = None
-      Format = CellFormat.None
-      Kind = CellKindErased.Text
-      Width = ColumnWidth.Auto }
+    { Defaults.columnErased with
+        Label = "Team"
+        Field = Some "team" }
 
 /// A source a grid genuinely has: a `State` binding seeded with one row.
 let private exportSource: Binding<Row seq> =
@@ -1659,26 +1581,9 @@ let tests =
                   { Id = "orders-grid"
                     Kind =
                       NodeKind.DataGrid(
-                          { SortStateKey = None
-                            PageSize = None
-                            PageStateKey = None
-                            EditStateKey = None
-                            DefaultSort = None
-                            Source = Binding.Static(Some Seq.empty)
-                            RowKey = None
-                            RowKeyField = Some "id"
-                            Columns = []
-                            OnRowClick = None
-                            Editable = false
-                            Reorderable = false
-                            TransferInKey = None
-                            TransferOutKey = None
-                            StaticRows = None
-                            KeepRowsTogether = false
-                            RepeatHeader = false
-                            WindowStateKey = None
-                            RowTotal = None
-                            Exportable = false }
+                          { Defaults.dataGrid with
+                              Source = Binding.Static(Some Seq.empty)
+                              RowKeyField = Some "id" }
                       )
                     State = None
                     Style = None
@@ -4164,14 +4069,9 @@ let tests =
 
           test "FUARAN125 go-red check: repeatHeader on a grid WITH columns is silent" {
               let column: ColumnErased<Msg> =
-                  { Label = "Line"
-                    Value = None
-                    Field = Some "line"
-                    Sortable = None
-                    Editable = None
-                    Format = CellFormat.None
-                    Kind = CellKindErased.Text
-                    Width = ColumnWidth.Auto }
+                  { Defaults.columnErased with
+                      Label = "Line"
+                      Field = Some "line" }
 
               let tree = dashboard "root" [ repeatHeaderGrid "grid" [ column ] ]
 
@@ -4768,34 +4668,15 @@ let private transferGrid
     { Id = id
       Kind =
         NodeKind.DataGrid(
-            { SortStateKey = None
-              PageSize = None
-              PageStateKey = None
-              EditStateKey = None
-              DefaultSort = None
-              Source = Binding.State(id + "-rows", None)
-              RowKey = None
-              RowKeyField = rowKeyField
-              Columns =
-                [ { Label = "Task"
-                    Value = None
-                    Field = Some "task"
-                    Sortable = None
-                    Editable = None
-                    Format = CellFormat.None
-                    Kind = CellKindErased.Text
-                    Width = ColumnWidth.Auto } ]
-              OnRowClick = None
-              Editable = false
-              Reorderable = false
-              TransferInKey = inKey
-              TransferOutKey = outKey
-              KeepRowsTogether = false
-              RepeatHeader = false
-              WindowStateKey = None
-              RowTotal = None
-              Exportable = false
-              StaticRows = None }
+            { Defaults.dataGrid with
+                Source = Binding.State(id + "-rows", None)
+                RowKeyField = rowKeyField
+                Columns =
+                    [ { Defaults.columnErased with
+                          Label = "Task"
+                          Field = Some "task" } ]
+                TransferInKey = inKey
+                TransferOutKey = outKey }
         )
       Accessibility = None
       Fallback = None
@@ -5737,34 +5618,14 @@ let private pillGridWith (id: string) (map: Map<string, ToneVariant>) (dflt: Ton
     { Id = id
       Kind =
         NodeKind.DataGrid(
-            { SortStateKey = None
-              PageSize = None
-              PageStateKey = None
-              EditStateKey = None
-              DefaultSort = None
-              Source = Binding.Static(Some Seq.empty)
-              RowKey = None
-              RowKeyField = Some "id"
-              Columns =
-                [ { Label = "Status"
-                    Value = None
-                    Field = Some "status"
-                    Sortable = None
-                    Editable = None
-                    Format = CellFormat.None
-                    Kind = CellKindErased.TonedPill("status", map, dflt)
-                    Width = ColumnWidth.Auto } ]
-              OnRowClick = None
-              Editable = false
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              StaticRows = None
-              KeepRowsTogether = false
-              RepeatHeader = false
-              WindowStateKey = None
-              RowTotal = None
-              Exportable = false }
+            { Defaults.dataGrid with
+                Source = Binding.Static(Some Seq.empty)
+                RowKeyField = Some "id"
+                Columns =
+                    [ { Defaults.columnErased with
+                          Label = "Status"
+                          Field = Some "status"
+                          Kind = CellKindErased.TonedPill("status", map, dflt) } ] }
         )
       State = None
       Style = None

@@ -598,10 +598,11 @@ let private genDisplayKind: Gen<NodeKind<obj>> =
 
               return
                   NodeKind.Icon
-                      { Icon = name
-                        Size = size
-                        Tone = tone
-                        Label = label }
+                      { Defaults.icon with
+                          Icon = name
+                          Size = size
+                          Tone = tone
+                          Label = label }
           }
           Gen.map NodeKind.LabelValueRow genLabelValueRowSpec ]
 
@@ -959,14 +960,11 @@ let private genGridColumns: Gen<ColumnErased<obj> list> =
         return
             cellKinds
             |> List.mapi (fun i kind ->
-                { Label = sprintf "col%d" i
-                  Value = Some(fun _ -> CellValue.Empty)
-                  Field = None
-                  Sortable = None
-                  Editable = None
-                  Format = allCellFormats[i % List.length allCellFormats]
-                  Kind = kind
-                  Width = ColumnWidth.Auto })
+                { Defaults.columnErased with
+                    Label = sprintf "col%d" i
+                    Value = Some(fun _ -> CellValue.Empty)
+                    Format = allCellFormats[i % List.length allCellFormats]
+                    Kind = kind })
     }
 
 let private genGridSpec: Gen<GridSpec<obj>> =
@@ -980,26 +978,13 @@ let private genGridSpec: Gen<GridSpec<obj>> =
         let! repeatHeader = genBool
 
         return
-            { SortStateKey = None
-              PageSize = None
-              PageStateKey = None
-              EditStateKey = None
-              DefaultSort = None
-              Source = Binding.Static(Some Seq.empty)
-              RowKey = Some(fun _ -> "<rowkey>")
-              RowKeyField = None
-              Columns = columns
-              OnRowClick = None
-              Editable = editable
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              StaticRows = None
-              KeepRowsTogether = keepRowsTogether
-              RepeatHeader = repeatHeader
-              WindowStateKey = None
-              RowTotal = None
-              Exportable = false }
+            { Defaults.dataGrid with
+                Source = Binding.Static(Some Seq.empty)
+                RowKey = Some(fun _ -> "<rowkey>")
+                Columns = columns
+                Editable = editable
+                KeepRowsTogether = keepRowsTogether
+                RepeatHeader = repeatHeader }
     }
 
 /// Phase 1490 — one data-addressed annotation. It sits here rather than beside
@@ -1286,12 +1271,13 @@ let rec private genLayoutKind (size: int) : Gen<NodeKind<obj>> =
 
               return
                   NodeKind.Box
-                      { Layout = layout
-                        Role = role
-                        Heading = heading
-                        Children = children
-                        KeepTogether = keepTogether
-                        BreakBefore = breakBefore }
+                      { Defaults.box with
+                          Layout = layout
+                          Role = role
+                          Heading = heading
+                          Children = children
+                          KeepTogether = keepTogether
+                          BreakBefore = breakBefore }
           }
           gen {
               let! weight = genFiniteFloat

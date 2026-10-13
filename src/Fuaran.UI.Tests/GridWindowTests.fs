@@ -25,14 +25,9 @@ open Fuaran.UI.Renderer
 let private nn (x: 'a) : obj = box x |> Unchecked.nonNull
 
 let private field (label: string) (name: string) : ColumnErased<obj> =
-    { Label = label
-      Value = None
-      Field = Some name
-      Sortable = None
-      Editable = None
-      Format = CellFormat.None
-      Kind = CellKindErased.Text
-      Width = ColumnWidth.Auto }
+    { Defaults.columnErased with
+        Label = label
+        Field = Some name }
 
 let private rowOf (el: JsonElement) : Row =
     el.EnumerateObject()

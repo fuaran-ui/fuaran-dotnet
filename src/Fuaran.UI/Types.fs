@@ -784,9 +784,19 @@ and LayoutMode = Generated.BoxLayout
 
 /// What a `Box` means — drives the emitted element, ARIA landmark, and chrome.
 and BoxRole = Generated.BoxRole
-and DashboardSpec<'Msg> = { Children: Node<'Msg> list }
 
-and StackSpec<'Msg> =
+/// Phase 2055 — the five retired-kind convenience records below
+/// (`DashboardSpec`, `StackSpec`, `GridLayoutSpec`, `MasonryLayoutSpec`,
+/// `CardSpec`) all lower to `Box` and are OBSOLETE in favour of building the
+/// `Box` directly from `Defaults.box` with a `BoxLayout` case. They are not
+/// removed, and the convenience constructors that take them (`Fuaran.dashboard`,
+/// `Fuaran.stack`, …) are not obsolete: `Fuaran.dashboard "id" { Defaults.dashboard
+/// with Children = … }` names no obsolete type, so it raises no warning.
+and [<System.Obsolete("A retired-kind convenience record that lowers to Box (Phase 2055). Build the Box directly: Fuaran.box id { Defaults.box with Layout = BoxLayout.Auto; Role = BoxRole.Dashboard; Children = … }. Fuaran.dashboard stays and need not name this type.")>] DashboardSpec<'Msg>
+    = { Children: Node<'Msg> list }
+
+and [<System.Obsolete("A retired-kind convenience record that lowers to Box (Phase 2055). Build the Box directly: Fuaran.box id { Defaults.box with Layout = BoxLayout.Flex(orientation, wrap, gap); Children = … }. Fuaran.stack stays and need not name this type.")>] StackSpec<'Msg>
+    =
     {
         Orientation: Orientation
         Children: Node<'Msg> list
@@ -799,7 +809,8 @@ and StackSpec<'Msg> =
         Wrap: bool
     }
 
-and GridLayoutSpec<'Msg> =
+and [<System.Obsolete("A retired-kind convenience record that lowers to Box (Phase 2055). Build the Box directly: Fuaran.box id { Defaults.box with Layout = BoxLayout.Grid(cols, templateColumns, gap); Children = … }. Fuaran.gridLayout stays and need not name this type.")>] GridLayoutSpec<'Msg>
+    =
     {
         Cols: int
         Children: Node<'Msg> list
@@ -846,7 +857,8 @@ and GridLayoutSpec<'Msg> =
 /// There is deliberately **no** `TemplateColumns` twin: that field is a
 /// verbatim `grid-template-columns` sizing function, and the multi-column
 /// model has no track list for one to name.
-and MasonryLayoutSpec<'Msg> =
+and [<System.Obsolete("A retired-kind convenience record that lowers to Box (Phase 2055). Build the Box directly: Fuaran.box id { Defaults.box with Layout = BoxLayout.Masonry(cols, gap); Children = … }. Fuaran.masonryLayout stays and need not name this type.")>] MasonryLayoutSpec<'Msg>
+    =
     {
         /// The number of columns to fill. Must be POSITIVE — the
         /// decoder and the published schema both refuse zero and
@@ -881,7 +893,8 @@ and TabsSpec<'Msg> = Generated.TabsSpec<'Msg>
 /// binding's resolution path does not need to flow `'Msg` through.
 and TabHeader = Generated.TabHeader
 
-and CardSpec<'Msg> =
+and [<System.Obsolete("A retired-kind convenience record that lowers to Box (Phase 2055). Build the Box directly: Fuaran.box id { Defaults.box with Role = BoxRole.Card; Heading = …; Children = … }. Fuaran.card stays and need not name this type.")>] CardSpec<'Msg>
+    =
     { Heading: TextSource option
       Children: Node<'Msg> list }
 

@@ -75,14 +75,10 @@ let private openSource: Binding<Row seq> =
     )
 
 let private column (label: string) (field: string option) (kind: CellKindErased<obj>) : ColumnErased<obj> =
-    { Label = label
-      Value = None
-      Field = field
-      Sortable = None
-      Editable = None
-      Format = CellFormat.None
-      Kind = kind
-      Width = ColumnWidth.Auto }
+    { Defaults.columnErased with
+        Label = label
+        Field = field
+        Kind = kind }
 
 let private button: CellKindErased<obj> =
     CellKindErased.Button(TextSource.Literal "Open", None)
@@ -96,26 +92,11 @@ let private pill (field: string) : CellKindErased<obj> =
     CellKindErased.TonedPill(field, Map [ "eng", ToneVariant.Info ], ToneVariant.Default)
 
 let private gridSpec (src: Binding<Row seq>) (columns: ColumnErased<obj> list) : GridSpec<obj> =
-    { SortStateKey = Some "sort"
-      PageSize = None
-      PageStateKey = None
-      EditStateKey = None
-      DefaultSort = None
-      Source = src
-      RowKey = None
-      RowKeyField = Some "dept"
-      Columns = columns
-      OnRowClick = None
-      Editable = false
-      Reorderable = false
-      TransferInKey = None
-      TransferOutKey = None
-      StaticRows = None
-      KeepRowsTogether = false
-      RepeatHeader = false
-      Exportable = false
-      WindowStateKey = None
-      RowTotal = None }
+    { Defaults.dataGrid with
+        SortStateKey = Some "sort"
+        Source = src
+        RowKeyField = Some "dept"
+        Columns = columns }
 
 let private grid (src: Binding<Row seq>) (columns: ColumnErased<obj> list) : Node<obj> =
     { Id = "g"

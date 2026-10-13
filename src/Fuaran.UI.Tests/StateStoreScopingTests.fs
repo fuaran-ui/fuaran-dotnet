@@ -280,12 +280,10 @@ let mountScopeTests =
                   mkNode
                       "guest-root"
                       (NodeKind.Box(
-                          { Layout = BoxLayout.Auto
-                            Role = BoxRole.Dashboard
-                            Heading = None
-                            Children = []
-                            KeepTogether = false
-                            BreakBefore = false }
+                          { Fuaran.UI.Defaults.box with
+                              Layout = BoxLayout.Auto
+                              Role = BoxRole.Dashboard
+                              Children = [] }
                       ))
 
               let rt = recordingRuntime loaded (Some guest)

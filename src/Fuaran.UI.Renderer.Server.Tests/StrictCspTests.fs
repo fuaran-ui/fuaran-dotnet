@@ -74,12 +74,10 @@ let private leaf (id: string) : Node<obj> = Fuaran.markdown id "x"
 let private box (id: string) (layout: BoxLayout) (children: Node<obj> list) : Node<obj> =
     Fuaran.box
         id
-        { Children = children
-          Heading = Option.None
-          Layout = layout
-          Role = BoxRole.Group
-          KeepTogether = false
-          BreakBefore = false }
+        { Defaults.box with
+            Children = children
+            Heading = Option.None
+            Layout = layout }
 
 let private styleBearingCorpus: (string * Node<obj>) list =
     [ "Box/Grid (track list + gap)",

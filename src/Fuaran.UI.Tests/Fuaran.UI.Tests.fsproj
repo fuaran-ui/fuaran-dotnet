@@ -468,6 +468,8 @@
     <Compile Include="GridColumnKindTests.fs" />
     <!-- Phase 2177 - the FormFieldKind reshape moved no value byte: the recorded pre-reshape value bytes, held against the corpus. -->
     <Compile Include="FormFieldValueBytesTests.fs" />
+    <!-- Phase 2055 — one form-field constructor per control and one Box builder. -->
+    <Compile Include="AuthoringControlTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
