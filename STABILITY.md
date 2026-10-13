@@ -8120,7 +8120,8 @@ The fixtures that generate the conformance corpus write every literal of a seede
 `{ Defaults.x with … }` (208 sites across 19 record types). Every node and op fixture encodes byte-identically
 before and after the change. The Phase 1106 lint (`SpecConstructionTests`) starts governing `BoxSpec`, `DataGridSpec`,
 `ColumnErased` and `IconSpec` once each has a seed, so their 67 full literals in other test projects are rewritten
-the same way.
+the same way. So is the `Box` literal in `tests/fable-laws/TestSupport.fs`, which the lint does not scan; a throwaway
+probe that added a field to `BoxSpec` and `DataGridSpec` found it.
 
 **What is deliberately NOT routed through a seed.** Some constructions are exhaustive on purpose:
 - the hand decoders (`Ops/JsonDecode.fs`) and the mappers (`NodeMap.fs`, `Column.erase`, `Fuaran.grid`'s
