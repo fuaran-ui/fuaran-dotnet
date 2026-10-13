@@ -38,6 +38,7 @@ module Fuaran.UI.Validator.FragmentCheck
 
 
 open FSharp.Compiler.Syntax
+open Fuaran.UI.PreEmitValidate
 open Fuaran.UI.Validator.Findings
 open Fuaran.UI.Validator.Syntax
 
@@ -390,8 +391,7 @@ let check (sources: ParsedSource list) : Finding list =
                 occurrences
                 |> List.map (fun (_, decl) ->
                     create
-                        Error
-                        "FUARAN056"
+                        FindingCodes.fragmentDuplicateName
                         decl.DeclLocation
                         (sprintf
                             "Fragment name '%s' is declared %d times in this project. Fragment names must be unique per project — the renderer's runtime resolver picks one decl per name, the other(s) become unreachable. Rename the colliding decls or merge their bodies."
@@ -409,8 +409,7 @@ let check (sources: ParsedSource list) : Finding list =
             | Some name when not (Set.contains name knownNames) ->
                 Some(
                     create
-                        Error
-                        "FUARAN057"
+                        FindingCodes.fragmentUnresolved
                         r.RefLocation
                         (sprintf
                             "Fragment reference '%s' has no matching Fuaran.fragmentDecl in this project. The renderer will substitute a labelled placeholder at runtime. Declare a `Fuaran.fragmentDecl _ { Name = \"%s\"; Body = ... }` somewhere in the tree, or fix the typo on this reference."
@@ -448,8 +447,7 @@ let check (sources: ParsedSource list) : Finding list =
             | Some name when hasCycle adjacency name ->
                 Some(
                     create
-                        Error
-                        "FUARAN058"
+                        FindingCodes.fragmentCycle
                         d.DeclLocation
                         (sprintf
                             "Fragment '%s' transitively references itself via Fuaran.fragmentRef. The renderer's runtime cycle-guard renders a labelled placeholder rather than recursing forever, but this defect should be fixed at the source — break the cycle by inlining one of the bodies or restructuring the reuse pattern."
@@ -471,8 +469,7 @@ let check (sources: ParsedSource list) : Finding list =
             | "Repeat", Some _ ->
                 Some(
                     create
-                        Error
-                        "FUARAN059"
+                        FindingCodes.repeatUnbounded
                         h.Location
                         (sprintf
                             "Repeat hole '%s' has an unbounded count value-space. A repeat/iteration count must be a bounded HoleValueSpace.IntRange (totality, invariant 1) — an unbounded count diverges at apply time. Change the count-space to IntRange(min, max)."
@@ -519,8 +516,7 @@ let check (sources: ParsedSource list) : Finding list =
                 | Some why ->
                     Some(
                         create
-                            Error
-                            "FUARAN065"
+                            FindingCodes.holeDefaultOutOfSpace
                             h.Location
                             (sprintf
                                 "Value hole '%s' has a default that violates its value-space: %s. The default is validated against the hole's space at apply time, so this binding can never succeed. Fix the default or widen the value-space."

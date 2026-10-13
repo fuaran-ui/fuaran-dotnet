@@ -149,7 +149,7 @@ let tests =
                       PreEmitValidate.describe (PreEmitDefect.DanglingFilterReference(ConsumerId, UndeclaredName))
 
                   Expect.equal code "FUARAN075" "the rule that names this defect"
-                  Expect.equal severity DefectSeverity.Error "an unreachable edge is an error, never a warning"
+                  Expect.equal severity Fuaran.Core.Severity.Error "an unreachable edge is an error, never a warning"
 
                   // Tie the projection to the document rather than to a
                   // hand-built tree: the fixture really does produce this code.
@@ -162,7 +162,7 @@ let tests =
 
                   Expect.equal
                       emitted
-                      [ "FUARAN075", DefectSeverity.Error ]
+                      [ "FUARAN075", Fuaran.Core.Severity.Error ]
                       "from the fixture, not from a fixture-shaped tree"
           }
 
@@ -273,7 +273,7 @@ let dependsOnTests =
                       PreEmitValidate.describe (PreEmitDefect.DanglingFilterReference(MetricConsumerId, UndeclaredName))
 
                   Expect.equal code "FUARAN075" "the same rule as the param-source arm, not a second code"
-                  Expect.equal severity DefectSeverity.Error "an unreachable edge is an error on either arm"
+                  Expect.equal severity Fuaran.Core.Severity.Error "an unreachable edge is an error on either arm"
           }
 
           test "the SUBSCRIPTION cannot tell the two documents apart — the silent no-op" {

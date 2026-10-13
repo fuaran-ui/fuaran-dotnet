@@ -421,7 +421,7 @@ let tests =
                       Fuaran.stack
                           "collide"
                           { Defaults.stack with
-                              // fuaran-validator: disable-next-line FUARAN001 — negative fixture: the duplicate id is the defect under test
+                              // fuaran-validator: disable-next-line FUARAN-DUP-ID — negative fixture: the duplicate id is the defect under test
                               Children = [ Fuaran.markdown "same-id" "first"; Fuaran.markdown "same-id" "second" ] }
 
               let verdict = certifyFragment f.Name f.Decl broken MaxCases Seed

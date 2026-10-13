@@ -194,7 +194,7 @@ The contract surface is deliberately small so the manifest stays reviewable and 
 
 | Code | Severity | Trigger |
 |---|---|---|
-| `FUARAN001` | Error | Duplicate `NodeId` within one `Fuaran.dashboard` subtree. |
+| `FUARAN-DUP-ID` | Error | Duplicate `NodeId` within one `Fuaran.dashboard` subtree — the tree-time validator's code for the same defect (`FUARAN001` until 0.94.0). |
 | `FUARAN002` | Warning | Same `NodeId` appears across multiple trees. |
 | `FUARAN010` | Error | `binding.query "name"` where `"name"` ∉ `queries`. Carries `available_fields` + best-guess `suggestion`. |
 | `FUARAN020` | Error | `Action.dispatch (Case ...)` where `Case` ∉ `msgCases`. Carries `available_fields` + best-guess `suggestion`. |

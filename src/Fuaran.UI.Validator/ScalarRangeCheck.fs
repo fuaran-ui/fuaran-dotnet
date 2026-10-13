@@ -22,6 +22,7 @@ module Fuaran.UI.Validator.ScalarRangeCheck
 // ============================================================================
 
 open Fuaran.UI.Validator.AstWalker
+open Fuaran.UI.PreEmitValidate
 open Fuaran.UI.Validator.Findings
 
 /// The known-bounded domain of a progress fraction.
@@ -35,8 +36,7 @@ let check (calls: FuaranCall list) : Finding list =
         | "progress", Some { FractionLiteral = Some v } when v < fractionMin || v > fractionMax ->
             let base' =
                 create
-                    Warning
-                    "FUARAN050"
+                    FindingCodes.progressFractionOutOfRange
                     c.Location
                     (sprintf
                         "Fuaran.progress Fraction literal %g is outside the known-bounded domain [0, 1]. A progress fraction is a bounded scalar — declare an honest 0..1 value, or set Indeterminate = true with a Caveat when no honest bound exists. supportedRange={\"kind\":\"decimalRange\",\"min\":0,\"max\":1}"

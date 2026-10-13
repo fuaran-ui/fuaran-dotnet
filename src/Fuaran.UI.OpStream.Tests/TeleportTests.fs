@@ -335,7 +335,7 @@ let tests =
                       "dup-root"
                       { Orientation = Orientation.Vertical
                         Wrap = false
-                        // fuaran-validator: disable-next-line FUARAN001 — negative fixture: the duplicate id is the defect under test
+                        // fuaran-validator: disable-next-line FUARAN-DUP-ID — negative fixture: the duplicate id is the defect under test
                         Children = [ Fuaran.markdown "dup" "one"; Fuaran.markdown "dup" "two" ] }
 
               let encoded =

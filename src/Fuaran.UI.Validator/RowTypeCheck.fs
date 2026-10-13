@@ -26,6 +26,7 @@ module Fuaran.UI.Validator.RowTypeCheck
 // ============================================================================
 
 open Fuaran.UI.Validator.AstWalker
+open Fuaran.UI.PreEmitValidate
 open Fuaran.UI.Validator.Findings
 open Fuaran.UI.Validator.Manifest
 
@@ -39,8 +40,7 @@ let private checkGrid (manifest: Manifest) (call: FuaranCall) (detail: GridDetai
 
             let base' =
                 create
-                    Warning
-                    "FUARAN030"
+                    FindingCodes.gridRowTypeMissing
                     call.Location
                     (sprintf
                         "Cannot verify row type for Fuaran.grid Source = binding.query \"%s\" — manifest queryRowTypes has no entry for this query. Add one to enable strict checking."
@@ -58,8 +58,7 @@ let private checkGrid (manifest: Manifest) (call: FuaranCall) (detail: GridDetai
                 else
                     let base' =
                         create
-                            Error
-                            "FUARAN031"
+                            FindingCodes.gridRowTypeMismatch
                             annotation.Location
                             (sprintf
                                 "Row type mismatch in Fuaran.grid: toRow parameter annotated `%s` but manifest declares query \"%s\" returns rows of type `%s`."

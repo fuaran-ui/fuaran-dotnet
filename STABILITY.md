@@ -8212,6 +8212,63 @@ comments is recorded here.
 **Certified by** `Fuaran.UI.Tests` (the client renderer suites, `SsrParityTests` and
 `RendererAgreementTests` included), `Fuaran.UI.Renderer.Server.Tests`, and the `samples/catalog`
 build.
+### What rides this slot — Phase 2052
+
+**Class: BREAKING.** The public finding types of the runtime validator, the dead-on-decode lint and the
+build-time validator change shape, and one build-time code changes. This is the change the slot was advanced
+for, and it makes the slot's class BREAKING. No wire byte moves, and neither does the conformance corpus:
+`describe` still returns the same code, severity name and message for every defect, so
+`validator/defect-vocabulary.json` regenerates byte-identical.
+
+- **One severity type.** `Fuaran.UI.PreEmitValidate.DefectSeverity` is **removed**, and so is
+  `Fuaran.UI.Validator.Findings.Severity`. Both are `Fuaran.Core.Severity` now (`Error | Warning | Info`,
+  `RequireQualifiedAccess`). Write `Severity.Error` with `open Fuaran.Core`. A `match` over a severity
+  that listed `Error` and `Warning` warns (FS0025) until it handles `Info`, which no Fuaran check raises.
+  These change shape with it:
+  `PreEmitValidate.describe : PreEmitDefect -> string * Severity * string`,
+  `DefectCodeRow.Severity`, and `BindingDiagnostic.Severity`.
+- **One finding shape.** New `PreEmitValidate.Finding<'Location>` =
+  `{ Code; Severity; Location; Message; Remedy; AvailableFields }`, built only through
+  `PreEmitValidate.Finding.create : FindingCode -> 'Location -> string -> Finding<'Location>`, which copies the
+  code and its severity from a registry entry. `withRemedy`, `withSeverity` and `isError` complete the module.
+  - `Fuaran.UI.Validator.Findings.Finding` is now `PreEmitValidate.Finding<Location>`. Its field
+    `Suggestion` is renamed **`Remedy`**. The JSON key is still `suggestion`, and the plain renderer still
+    prints `suggestion:`. `Findings.create` takes a `FindingCode` in place of a severity and a code string:
+    `create (code: FindingCode) (location: Location) (message: string)`. `Findings.withSeverity` and
+    `Findings.withRemedy` are new.
+  - `DeadOnDecode.LintFinding` is now `PreEmitValidate.Finding<SlotLocation>`, where `SlotLocation` is
+    `{ Node; Slot }`. It was `{ Node; Slot; Code; Remedy }`, so `f.Node` is now `f.Location.Node`,
+    `f.Slot` is now `f.Location.Slot`, and `Remedy` is a `string option`. The finding gains a `Severity`
+    (Warning for both lint codes) and a `Message` naming the slot and the node.
+  - `AffordanceInertness.InertAffordance` keeps its shape. It is a report of decoded verdicts, not a code-bearing
+    finding.
+- **One code registry.** New `PreEmitValidate.FindingCodes` holds, beside `DefectCodes.table`, every code that
+  has no `PreEmitDefect` case: the build-time walker's codes, the lint's FUARAN080/081, the query-binding
+  check's FUARAN066/067, and the reserved FUARAN052. Each is a `FindingCode = { Code; Severity; Family }`,
+  with `FindingFamily = BuildTime | DecodedLint | QueryBinding | Reserved`. It also holds `all`, `retired` and
+  `canonical`. A check names the entry and never writes the string. Removed: the walker's
+  `CustomHealthCheck.codeFUARAN052` / `053` / `054` / `055` and `CustomContentHashCheck.codeFUARAN062`.
+  `QueryBinding.TypeMismatchCode` and `ColumnAbsentCode` read the registry and are no longer `[<Literal>]`,
+  so a pattern match on either one stops compiling: compare with `=`.
+  `CustomRegistry.propDefectCode` is the one code literal outside the registry. That module compiles first, and
+  the FUARAN068 table row reads the constant.
+- **Duplicate id has one code in both validators.** The build-time walker reports a duplicate NodeId as
+  **`FUARAN-DUP-ID`**, the tree-time code, where it reported `FUARAN001`. Its JSON output is otherwise
+  byte-identical. `FUARAN001` is a **retired alias for the 0.94.x line**: a
+  `// fuaran-validator: disable FUARAN001` pragma still suppresses the finding, and it stops doing so in the
+  release after. A pragma may now name a hyphenated code. The C# / VB analyzers keep `FUARAN001`, because a
+  `#pragma warning` cannot name a hyphenated id.
+- **The retired slot name is corrected.** The dead-on-decode lint names a filter chip's dead `onChange` as
+  `FormFieldKind.onChange`, which is what a chip's control is. It said `FilterKind.onChange`, the DU the filters
+  unification retired. The `SlotCapability` row and the decoder-placeholder entry of that name are removed.
+  `AffordanceInertness.report` reports the chip under the same subject.
+
+**Certified by** `src/Fuaran.UI.Validator.Tests/ValidatorTests.fs`, which runs the census over the registry,
+checks that no walker source writes a code, checks that the walker's duplicate-id code is the tree-time row's,
+and checks that the retired alias still suppresses. `src/Fuaran.UI.Tests/DeadOnDecodeTests.fs` covers the
+chip's slot, code and severity, and checks that every slot the lint names has a capability row.
+`scripts/fuaran-codes.ps1 -Check` reads the registry and fails on a `FUARAN*` literal in any non-test source
+outside it.
 
 ## 0.93.0 — the slot opened after v0.92.0 was released (RELEASED — tagged v0.93.0 at b654b31, 2026-10-10)
 

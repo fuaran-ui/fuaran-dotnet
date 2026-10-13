@@ -37,6 +37,7 @@ module Fuaran.UI.Validator.LocalBindingCheck
 
 
 open FSharp.Compiler.Syntax
+open Fuaran.UI.PreEmitValidate
 open Fuaran.UI.Validator.Findings
 open Fuaran.UI.Validator.Syntax
 
@@ -128,8 +129,7 @@ let check (sources: ParsedSource list) : Finding list =
     |> List.collect (fun call ->
         [ if call.FormatExplicitNone then
               create
-                  Error
-                  "FUARAN042"
+                  FindingCodes.localWithoutFormat
                   call.Location
                   "binding.local was given `format = None` — a Local-bound text/number input needs a typed display formatter to round-trip the buffer (the Salary-style canonical shape uses thousands-separator formatting). Pass `Some <formatter>` or use `binding.state` instead if no formatting is needed."
 
@@ -138,14 +138,12 @@ let check (sources: ParsedSource list) : Finding list =
           // not extract.
           if call.FlushOnIsCommitAction && not anyCommitLocalRef then
               create
-                  Warning
-                  "FUARAN043"
+                  FindingCodes.localCommitUnhandled
                   call.Location
                   "binding.local was declared with FlushOn = OnCommitAction, but no `Action.CommitLocal _` reference was found in the project. The buffer will never drain — wire an inline button or external commit trigger that dispatches Action.CommitLocal with this field's id, or pick a different FlushOn (OnBlur for free text, OnSubmit for form-scoped commit)."
 
           if call.EnclosingKind.IsNone then
               create
-                  Error
-                  "FUARAN044"
+                  FindingCodes.localOutsideTextField
                   call.Location
                   "binding.local was used outside an enclosing FormFieldKind.Text(...) / FormFieldKind.Number(...) / FormFieldKind.RangedNumber(...) constructor — the renderer's useState slot is only mounted for those three field kinds. Move the Local binding into a form-field Text/Number/RangedNumber value, or use binding.state / binding.query for read-side bindings." ])
