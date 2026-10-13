@@ -153,30 +153,6 @@ let private aiEvalUpdate (msg: AiEvalMsg) (model: AiEvalModel) : AiEvalModel * C
 
         { model with Rendered = Some decoded }, Cmd.none
 
-let private aiEvalRenderCtx () : Render.RenderContext<obj> =
-    { Sources = BindingResolver.empty
-      Runtime = Runtime.diagnostic
-      VisAdapter = VisAdapter.noOp<obj>
-      Dispatch = ignore
-      TelemetrySink = None
-      InErrorBoundary = false
-      Fragments = Map.empty
-      ExpandingFragments = Set.empty
-      Scope = None
-      SessionContext = Map.empty
-      // Phase 889 — no user-action recording in the samples.
-      ActionSink = None
-      CurrentNodeId = None
-      // Phase 1026 — a HAND-AUTHORED tree, where the author is the trust
-      // boundary, so the permissive posture is correct and is reached BY NAME.
-      // A host rendering a DECODED tree must not copy this line.
-      EgressPolicy = Sanitize.permissiveEgress
-      // Phase 1117 — no upload sink: this surface performs no uploads.
-      UploadSink = None
-      CustomHashFloor = None
-      // Phase 1545 — the default posture; samples render under no CSP mode.
-      Csp = Csp.Permissive }
-
 let private aiEvalView (model: AiEvalModel) (dispatch: AiEvalMsg -> unit) : ReactElement =
     React.Fragment
         [ Render.themeStyleElement Defaults.theme
@@ -199,7 +175,8 @@ let private aiEvalView (model: AiEvalModel) (dispatch: AiEvalMsg -> unit) : Reac
                       | Some(Ok node) ->
                           Html.div
                               [ prop.className "catalog-ai-eval-render"
-                                prop.children [ Render.render (aiEvalRenderCtx ()) node ] ]
+                                prop.children
+                                    [ SampleContext.render Runtime.diagnostic BindingResolver.empty ignore node ] ]
                       | Some(Error envelope) -> Html.pre [ prop.className "catalog-ai-eval-error"; prop.text envelope ] ] ] ]
 
 // ─── Parity-mode entry (Playwright harness target) ───────────────────────
@@ -228,34 +205,10 @@ let private parityView () : ReactElement =
                     prop.style [ style.padding 24 ]
                     prop.children [ p.Feliz ] ]
           | Some p ->
-              let ctx: Render.RenderContext<unit> =
-                  { Sources = BindingResolver.empty
-                    Runtime = Runtime.diagnostic
-                    VisAdapter = VisAdapter.noOp<unit>
-                    Dispatch = (fun () -> ())
-                    TelemetrySink = None
-                    InErrorBoundary = false
-                    Fragments = Map.empty
-                    ExpandingFragments = Set.empty
-                    Scope = None
-                    SessionContext = Map.empty
-                    // Phase 889 — no user-action recording in the samples.
-                    ActionSink = None
-                    CurrentNodeId = None
-                    // Phase 1026 — a HAND-AUTHORED tree, where the author is the trust
-                    // boundary, so the permissive posture is correct and is reached BY NAME.
-                    // A host rendering a DECODED tree must not copy this line.
-                    EgressPolicy = Sanitize.permissiveEgress
-                    // Phase 1117 — no upload sink: this surface performs no uploads.
-                    UploadSink = None
-                    CustomHashFloor = None
-                    // Phase 1545 — the default posture; samples render under no CSP mode.
-                    Csp = Csp.Permissive }
-
               Html.div
                   [ prop.id ("parity-fuaran-" + p.Id)
                     prop.style [ style.padding 24 ]
-                    prop.children [ Render.render ctx p.Fuaran ] ] ]
+                    prop.children [ SampleContext.render Runtime.diagnostic BindingResolver.empty ignore p.Fuaran ] ] ]
 
 // ─── Boot ────────────────────────────────────────────────────────────────
 
@@ -319,13 +272,13 @@ let private bootLocalBindings () : unit =
 // ─── Tabs harness (?tabs-69=1) ───────────────────────────────────────────
 //
 // Explicit headers + ARIA / keyboard navigation + typed-tag
-// overlay snapshot target. Renders the Tabs69 fixture (Overview / Detail
+// overlay snapshot target. Renders the TabsNavigation fixture (Overview / Detail
 // Custom-wrapped / Audit disabled). Playwright spec at
 // `snapshot/tabs-69.spec.mts` probes the ARIA emission, arrow-key
 // behaviour, disabled-tab skipping, and tag-overlay round-trip.
 
-let private bootTabs69 () : unit =
-    Program.mkProgram Tabs69.init Tabs69.update Tabs69.view
+let private bootTabsNavigation () : unit =
+    Program.mkProgram TabsNavigation.init TabsNavigation.update TabsNavigation.view
     |> Program.withReactSynchronous mountId
     |> Program.run
 
@@ -349,8 +302,8 @@ let private bootClipboard () : unit =
 // The captured-warnings panel surfaces the renderer's Warn-channel
 // output so the Playwright spec can assert the verification fired.
 
-let private bootBoundedEscape70 () : unit =
-    Program.mkProgram BoundedEscape70.init BoundedEscape70.update BoundedEscape70.view
+let private bootCustomBoundedEscape () : unit =
+    Program.mkProgram CustomBoundedEscape.init CustomBoundedEscape.update CustomBoundedEscape.view
     |> Program.withReactSynchronous mountId
     |> Program.run
 
@@ -364,8 +317,8 @@ let private bootBoundedEscape70 () : unit =
 // fallback placeholder + the boundary's Fallback callout + the
 // captured-warnings panel.
 
-let private bootErrorBoundary60 () : unit =
-    Program.mkProgram ErrorBoundary60.init ErrorBoundary60.update ErrorBoundary60.view
+let private bootErrorBoundaries () : unit =
+    Program.mkProgram ErrorBoundaries.init ErrorBoundaries.update ErrorBoundaries.view
     |> Program.withReactSynchronous mountId
     |> Program.run
 
@@ -377,10 +330,10 @@ let private bootErrorBoundary60 () : unit =
 // entries. Append `?inspector-fork=1` to flip the chain-verified flag
 // false and exercise the `StepDiffsError.IntegrityFailed` banner state.
 
-let private bootInspector57 () : unit =
+let private bootOpStreamInspector () : unit =
     let verifiedChain = queryParam "inspector-fork" |> Option.isNone
 
-    Program.mkSimple (fun () -> Inspector57.init verifiedChain) Inspector57.update Inspector57.view
+    Program.mkSimple (fun () -> OpStreamInspector.init verifiedChain) OpStreamInspector.update OpStreamInspector.view
     |> Program.withReactSynchronous mountId
     |> Program.run
 
@@ -391,8 +344,8 @@ let private bootInspector57 () : unit =
 // demonstrating interior-id namespacing; a cyclic decl pair exercising
 // the runtime cycle-guard placeholder.
 
-let private bootFragments61 () : unit =
-    Program.mkProgram Fragments61.init Fragments61.update Fragments61.view
+let private bootFragmentPartials () : unit =
+    Program.mkProgram FragmentPartials.init FragmentPartials.update FragmentPartials.view
     |> Program.withReactSynchronous mountId
     |> Program.run
 
@@ -402,8 +355,8 @@ let private bootFragments61 () : unit =
 // key via renderStateReactive; a toggle writes the key through
 // Action.SetState and BOTH panes re-render at once.
 
-let private bootStateReactive106 () : unit =
-    Program.mkSimple StateReactive106.init StateReactive106.update StateReactive106.view
+let private bootStateReactiveRender () : unit =
+    Program.mkSimple StateReactiveRender.init StateReactiveRender.update StateReactiveRender.view
     |> Program.withReactSynchronous mountId
     |> Program.run
 
@@ -413,8 +366,8 @@ let private bootStateReactive106 () : unit =
 // formatting bindings (`binding.format`), one axis per Format case rendering
 // the same source across multiple locales via the browser Intl APIs.
 
-let private bootFormatting102 () : unit =
-    Program.mkSimple Formatting102.init Formatting102.update Formatting102.view
+let private bootLocaleFormatting () : unit =
+    Program.mkSimple LocaleFormatting.init LocaleFormatting.update LocaleFormatting.view
     |> Program.withReactSynchronous mountId
     |> Program.run
 
@@ -425,8 +378,8 @@ let private bootFormatting102 () : unit =
 // `Binding.State "busy"` key; a toggle disables / enables the whole class at
 // once through `Action.setState`, re-rendering via the StateStore subscription.
 
-let private bootInteractiveDisabled130 () : unit =
-    Program.mkSimple InteractiveDisabled130.init InteractiveDisabled130.update InteractiveDisabled130.view
+let private bootBoundDisabledState () : unit =
+    Program.mkSimple BoundDisabledState.init BoundDisabledState.update BoundDisabledState.view
     |> Program.withReactSynchronous mountId
     |> Program.run
 
@@ -475,13 +428,13 @@ else
     | _, Some _, _, _, _, _, _, _, _, _, _, _, _ -> bootAiEval ()
     | _, _, Some _, _, _, _, _, _, _, _, _, _, _ -> bootInteractionStates ()
     | _, _, _, Some _, _, _, _, _, _, _, _, _, _ -> bootLocalBindings ()
-    | _, _, _, _, Some _, _, _, _, _, _, _, _, _ -> bootTabs69 ()
+    | _, _, _, _, Some _, _, _, _, _, _, _, _, _ -> bootTabsNavigation ()
     | _, _, _, _, _, Some _, _, _, _, _, _, _, _ -> bootClipboard ()
-    | _, _, _, _, _, _, Some _, _, _, _, _, _, _ -> bootBoundedEscape70 ()
-    | _, _, _, _, _, _, _, Some _, _, _, _, _, _ -> bootErrorBoundary60 ()
-    | _, _, _, _, _, _, _, _, Some _, _, _, _, _ -> bootInspector57 ()
-    | _, _, _, _, _, _, _, _, _, Some _, _, _, _ -> bootFragments61 ()
-    | _, _, _, _, _, _, _, _, _, _, Some _, _, _ -> bootStateReactive106 ()
-    | _, _, _, _, _, _, _, _, _, _, _, Some _, _ -> bootFormatting102 ()
-    | _, _, _, _, _, _, _, _, _, _, _, _, Some _ -> bootInteractiveDisabled130 ()
+    | _, _, _, _, _, _, Some _, _, _, _, _, _, _ -> bootCustomBoundedEscape ()
+    | _, _, _, _, _, _, _, Some _, _, _, _, _, _ -> bootErrorBoundaries ()
+    | _, _, _, _, _, _, _, _, Some _, _, _, _, _ -> bootOpStreamInspector ()
+    | _, _, _, _, _, _, _, _, _, Some _, _, _, _ -> bootFragmentPartials ()
+    | _, _, _, _, _, _, _, _, _, _, Some _, _, _ -> bootStateReactiveRender ()
+    | _, _, _, _, _, _, _, _, _, _, _, Some _, _ -> bootLocaleFormatting ()
+    | _, _, _, _, _, _, _, _, _, _, _, _, Some _ -> bootBoundDisabledState ()
     | None, None, None, None, None, None, None, None, None, None, None, None, None -> bootGallery ()

@@ -136,15 +136,13 @@ type Defect =
 
 /// **FUARAN066 (Error)** — a query column is bound into a sink whose scalar
 /// class it is not compatible with (e.g. a `string` column into a `numeric`
-/// Metric / chart-Y).
-[<Literal>]
-let TypeMismatchCode = "FUARAN066"
+/// Metric / chart-Y). Read from the code registry (`PreEmitValidate.FindingCodes`).
+let TypeMismatchCode = PreEmitValidate.FindingCodes.queryColumnTypeMismatch.Code
 
 /// **FUARAN067 (Error)** — a query-bound slot references a column ABSENT from
 /// the resolved schema (default-deny by shape, FGP 3 — an unresolved column is
-/// a defect, not a silent pass).
-[<Literal>]
-let ColumnAbsentCode = "FUARAN067"
+/// a defect, not a silent pass). Read from the code registry.
+let ColumnAbsentCode = PreEmitValidate.FindingCodes.queryColumnAbsent.Code
 
 // ─── Query-bound-ref extraction (the walk) ──────────────────────────────────
 //

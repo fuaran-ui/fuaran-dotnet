@@ -70,45 +70,11 @@ type ServerRenderContext =
         /// the registry would have made a description obtainable only where a
         /// renderer already existed.
         Cards: Fuaran.UI.CustomCardStore
-        /// The render SCOPE this tree runs under (Phase 783). `None` is the root
-        /// scope. Custom-renderer lookup is constrained to it, so a tree rendered
-        /// for a public surface cannot invoke a renderer registered for a
-        /// privileged one — the server twin of the client's `RenderContext.Scope`.
-        Scope: string option
-        /// Phase 1026 — the ambient destination policy, the server twin of the
-        /// client's `RenderContext.EgressPolicy`. Same default
-        /// (`Sanitize.denyNonLocalEgress`), same reasoning, same
-        /// reached-by-name opt-out.
-        ///
-        /// **It has to move with the client's, not after it.** The two tiers'
-        /// emitted DOM is parity-locked (`SsrParityTests`, `docs/SSR.md` "SSR
-        /// parity contract"), so a policy that refused an origin on one tier and
-        /// admitted it on the other would not be a partial adoption — it would
-        /// be a parity defect, and the tier that admitted it would be the one a
-        /// crawler reads.
-        ///
-        /// If anything the server side is the sharper of the two: an SSR
-        /// document is emitted once and read by every visitor, so an undeclared
-        /// `Image.src` in a decoded tree becomes a request from each of their
-        /// browsers, carrying each of their IP addresses and referers.
-        EgressPolicy: Sanitize.EgressPolicy
-        /// Phase 1532 — this render's own `Custom` content-hash floor, the server
-        /// twin of the client's `RenderContext.CustomHashFloor`. `None` (the
-        /// default at every convenience entry point) is the process floor.
-        ///
-        /// It matters more here than on the client. A browser page is one
-        /// tenant; this tier serves every tenant's documents from ONE process,
-        /// so a process-global floor meant one declaration decided verification
-        /// strictness for all of them, and a later `installCustomHashFloor`
-        /// anywhere lowered it for everyone. RAISE-ONLY on both axes: the
-        /// effective floor is the stricter of this and the process floor.
-        CustomHashFloor: HashStrictness option
-        /// Phase 1545 — the Content-Security-Policy posture this render runs
-        /// under. `Permissive` (the default at every convenience entry point) is
-        /// byte-for-byte the emission this renderer has always produced;
-        /// `Csp.Strict nonce` is reached by name (`mkContextWithCsp` /
-        /// `renderWithCsp`) and emits no `style` attribute anywhere.
-        Csp: Csp.CspMode
+        /// What this render may do: its egress, `Custom` hash floor, CSP
+        /// posture and scope (`RenderPolicy`, shared in shape with the client
+        /// context). The two tiers' emitted DOM is parity-locked, so a posture
+        /// moves on both at once or it is a parity defect.
+        Policy: RenderPolicy
         /// Phase 1545 — the rules this render generated, in walk order. Empty
         /// and untouched under `Permissive`: nothing on that path registers
         /// anything, which is what keeps the default emission unchanged.
@@ -145,7 +111,7 @@ let private cspStyle
     : string * IReactProperty list =
     if List.isEmpty declarations then
         "", []
-    elif Csp.isStrict ctx.Csp then
+    elif Csp.isStrict ctx.Policy.Csp then
         let className = Csp.generatedClass nodeId slot declarations
         ctx.Styles.Register(className, declarations)
         " " + className, []
@@ -963,13 +929,13 @@ and private renderKind
         | _ -> Html.h6 props
     | NodeKind.Markdown spec ->
         // Phase 1032 — the markdown body's own link/image destinations are
-        // policy-checked with the same `ctx.EgressPolicy` the href/src emission
+        // policy-checked with the same `ctx.Policy.Egress` the href/src emission
         // sites use. The two tiers' emitted DOM is parity-locked, so this call
         // and the client's must pass the same policy or the parity corpus is the
         // thing that breaks.
         Html.div
             [ prop.className Css.Class.Markdown
-              prop.dangerouslySetInnerHTML (Markdown.toHtmlWithEgress ctx.EgressPolicy (renderText ctx spec.Text)) ]
+              prop.dangerouslySetInnerHTML (Markdown.toHtmlWithEgress ctx.Policy.Egress (renderText ctx spec.Text)) ]
     | NodeKind.Metric spec ->
         // Phase 632 — the Metric value is a scalar slot: a `Binding.Transform`
         // resolves to its 1×1 result cell (a global aggregate / row-field
@@ -1166,7 +1132,7 @@ and private renderKind
         // arm makes the identical call with the identical class, which is what
         // keeps the two emitted hrefs parity-locked.
         let safeHref, egressAttrs =
-            Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Hyperlink resolvedHref
+            Sanitize.sanitizeUrlForEgress ctx.Policy.Egress Sanitize.EgressClass.Hyperlink resolvedHref
 
         // Phase 1523 — the anchor token slots, resolved through the same shared
         // grammar the client tier calls with the same arguments, so the two
@@ -1238,7 +1204,7 @@ and private renderKind
 
         // Phase 1026 — `Media`: the class the browser fetches with no user act.
         let safeSrc, egressAttrs =
-            Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Media resolvedSrc
+            Sanitize.sanitizeUrlForEgress ctx.Policy.Egress Sanitize.EgressClass.Media resolvedSrc
 
         let variantClass = Css.imageVariant spec.Variant
 
@@ -1292,7 +1258,7 @@ and private renderKind
                     // URL it substitutes, so a later change to that substitute
                     // cannot silently turn a dropped candidate into a served one.
                     let safe, refusal =
-                        Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Media resolved
+                        Sanitize.sanitizeUrlForEgress ctx.Policy.Egress Sanitize.EgressClass.Media resolved
 
                     if safe = "" || not (List.isEmpty refusal) then
                         None
@@ -1428,7 +1394,7 @@ and private renderKind
             BindingResolver.tryResolve ctx.Sources spec.Src |> Option.defaultValue ""
 
         let safeSrc, egressAttrs =
-            Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Media resolvedSrc
+            Sanitize.sanitizeUrlForEgress ctx.Policy.Egress Sanitize.EgressClass.Media resolvedSrc
 
         // Phase 1110 - the timed-text tracks. Three obligations live in this one
         // fold, and each of them is something the bytes cannot carry:
@@ -1466,7 +1432,7 @@ and private renderKind
                         BindingResolver.tryResolve ctx.Sources t.Src |> Option.defaultValue ""
 
                     let safe, refusal =
-                        Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Media resolved
+                        Sanitize.sanitizeUrlForEgress ctx.Policy.Egress Sanitize.EgressClass.Media resolved
 
                     if safe = "" || not (List.isEmpty refusal) then
                         claimed, acc
@@ -1543,7 +1509,7 @@ and private renderKind
                     // `SrcSet` candidate rule, applied to the one other URL
                     // this vocabulary fetches unprompted.
                     let safe, refusal =
-                        Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Media resolved
+                        Sanitize.sanitizeUrlForEgress ctx.Policy.Egress Sanitize.EgressClass.Media resolved
 
                     if safe = "" || not (List.isEmpty refusal) then
                         []
@@ -1604,7 +1570,7 @@ and private renderKind
             BindingResolver.tryResolve ctx.Sources spec.Src |> Option.defaultValue ""
 
         let safeSrc, egressAttrs =
-            Sanitize.sanitizeEmbedSrcForEgress ctx.EgressPolicy resolvedSrc
+            Sanitize.sanitizeEmbedSrcForEgress ctx.Policy.Egress resolvedSrc
 
         let aspectClass = Css.embedAspect spec.AspectRatio
 
@@ -2346,7 +2312,7 @@ and private renderCustom
         | Some card -> carded (Fuaran.UI.CustomCard.describe contentHash props card)
 
     // Phase 783 — SCOPE-CONSTRAINED lookup. No cross-scope fallback.
-    match Registry.tryRenderInScope ctx.Scope moduleId componentId ctx.Customs with
+    match Registry.tryRenderInScope ctx.Policy.Scope moduleId componentId ctx.Customs with
     | None -> placeholder ()
     | Some renderer ->
         // Bounded-escape hash check (Phase 70). When the node declares a
@@ -2361,12 +2327,12 @@ and private renderCustom
         // `AdvisoryWarning` and get warn-then-render, and omitting the hash
         // skipped verification altogether.
         let registeredHash =
-            Registry.tryHashInScope ctx.Scope moduleId componentId ctx.Customs
+            Registry.tryHashInScope ctx.Policy.Scope moduleId componentId ctx.Customs
 
         // Phase 1532 — the strictest of the process floor and this render's own
         // declaration. The server tier is where the single-tenant floor hurt
         // most: one process serves every tenant's documents.
-        let floor = CustomHash.effectiveFloor ctx.CustomHashFloor
+        let floor = CustomHash.effectiveFloor ctx.Policy.CustomHashFloor
 
         let outcome =
             match contentHash, registeredHash with
@@ -3451,48 +3417,21 @@ let mkContextWith
     (sources: BindingResolver.BindingSources)
     (node: Node<obj>)
     : ServerRenderContext =
-    // Phase 1075 — the SEEDING PASS, at the server tier's single context choke
-    // point so it lands on every entry point below by construction rather than
-    // by each one remembering it (the same argument the egress default makes
-    // just under this line).
-    //
-    // A `Binding.State` carrying a `defaultValue` declares the value of its
-    // slot, so `ctx.Sources.State` is populated by the same pass the client
-    // renderer runs and the two hosts' first render read an identical map —
-    // which is what keeps hydration mismatch-free (`docs/SSR.md`). A
-    // host-furnished value wins over a seed (charter §4); the fold lays the
-    // caller's map over the seeds, never under them.
-    let seeded =
-        let seeds = Fuaran.UI.BindingWalk.stateSeeds node
-
-        if Map.isEmpty seeds then
-            sources
-        else
-            { sources with
-                State = sources.State |> Map.fold (fun acc k v -> Map.add k v acc) seeds }
-
-    { Sources = seeded
+    // Phase 1075 — the SEEDING PASS (`StateSeeds.apply`, the fold the client
+    // builder runs too), at the server tier's single context choke point, so it
+    // lands on every entry point below by construction and the two hosts' first
+    // render read an identical `State` map (`docs/SSR.md`).
+    { Sources = StateSeeds.apply node sources
       Fragments = collectFragments Map.empty node
       Customs = customs
       // Phase 1108 — empty by default. A host that holds cards reaches them by
       // name (`mkContextWithCards`), exactly as it reaches a non-default egress
       // policy, so no existing entry point changes what it emits.
       Cards = Fuaran.UI.CustomCardStore.Empty
-      Scope = None
-      // Phase 1026 — default-deny, reached-by-name opt-out
-      // (`mkContextWithEgress`). This is the server tier's single context choke
-      // point, so the default lands on every entry point below by construction
-      // rather than by each one remembering it.
-      EgressPolicy = Sanitize.denyNonLocalEgress
-      // Phase 1532 — no per-render floor here: this render uses whatever process
-      // floor the host installed. A multi-tenant host that needs one request
-      // enforced sets it on that request's context.
-      CustomHashFloor = None
-      // Phase 1545 — `Permissive` at this single context choke point, so every
-      // existing entry point keeps emitting exactly what it emitted before and
-      // the strict posture is reached BY NAME (`mkContextWithCsp` /
-      // `renderWithCsp`) — the same reasoning the egress default above gives.
-      Csp = Csp.Permissive
+      // Default-deny egress, the process hash floor, `Permissive` CSP and the
+      // root scope; each other posture is reached BY NAME below
+      // (`mkContextWithEgress` / `mkContextWithCsp` / `mkContextInScope`).
+      Policy = RenderPolicy.defaults
       // One collector per context, so it can never outlive the render that
       // built it or be shared between two. Untouched under `Permissive`.
       Styles = Csp.StyleCollector() }
@@ -3511,8 +3450,12 @@ let mkContextWithEgress
     (sources: BindingResolver.BindingSources)
     (node: Node<obj>)
     : ServerRenderContext =
-    { mkContextWith customs sources node with
-        EgressPolicy = egressPolicy }
+    let ctx = mkContextWith customs sources node
+
+    { ctx with
+        Policy =
+            { ctx.Policy with
+                Egress = egressPolicy } }
 
 /// `mkContextWith` plus a host-supplied CONTRACT-CARD store (Phase 1108) — what
 /// a host passes when it can DESCRIBE components it cannot render.
@@ -3543,8 +3486,10 @@ let mkContextWithCsp
     (sources: BindingResolver.BindingSources)
     (node: Node<obj>)
     : ServerRenderContext =
-    { mkContextWith customs sources node with
-        Csp = csp }
+    let ctx = mkContextWith customs sources node
+
+    { ctx with
+        Policy = { ctx.Policy with Csp = csp } }
 
 /// Build a `ServerRenderContext` under a named render SCOPE (Phase 783) —
 /// Custom-renderer lookup is then constrained to renderers registered for that
@@ -3555,8 +3500,10 @@ let mkContextInScope
     (sources: BindingResolver.BindingSources)
     (node: Node<obj>)
     : ServerRenderContext =
-    { mkContextWith customs sources node with
-        Scope = Some scope }
+    let ctx = mkContextWith customs sources node
+
+    { ctx with
+        Policy = { ctx.Policy with Scope = Some scope } }
 
 /// Build a `ServerRenderContext` with no Custom renderers registered (every
 /// `Custom` node falls back to the labelled placeholder).
@@ -3690,7 +3637,7 @@ let collectedStyleHtml (ctx: ServerRenderContext) : string =
         let css = Csp.stylesheetText ctx.Styles.Rules
 
         let element =
-            match Csp.nonce ctx.Csp with
+            match Csp.nonce ctx.Policy.Csp with
             | Some n -> Html.style [ prop.custom ("nonce", n); prop.dangerouslySetInnerHTML css ]
             | None -> Html.style [ prop.dangerouslySetInnerHTML css ]
 

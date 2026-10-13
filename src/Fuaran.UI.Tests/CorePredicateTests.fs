@@ -76,8 +76,13 @@ let private tabsOver (active: Binding<int>) : Node<Msg> =
 /// What the lint's remedy says about the value binding: `true` when it tells
 /// the author the binding is already writable.
 let private lintCallsWritable (tree: Node<Msg>) : bool =
-    match DeadOnDecode.lint tree |> List.filter (fun f -> f.Slot = "TabsSpec.onSelect") with
-    | [ f ] -> f.Remedy.Contains("already writable", StringComparison.Ordinal)
+    match
+        DeadOnDecode.lint tree
+        |> List.filter (fun f -> f.Location.Slot = "TabsSpec.onSelect")
+    with
+    | [ f ] ->
+        f.Remedy
+        |> Option.exists (fun r -> r.Contains("already writable", StringComparison.Ordinal))
     | other -> failwithf "expected exactly one TabsSpec.onSelect finding, got %A" other
 
 let private writeBackTests =

@@ -58,29 +58,8 @@ let private copyButton: Node<Msg> =
                       Action.dispatch (CopiedSentinel clipboardPayload) ] }
 
 let view (model: Model) (dispatch: Msg -> unit) : ReactElement =
-    let ctx: Render.RenderContext<Msg> =
-        { Sources = BindingResolver.empty
-          Runtime = BrowserRuntime.create ()
-          VisAdapter = VisAdapter.noOp<Msg>
-          Dispatch = dispatch
-          TelemetrySink = None
-          InErrorBoundary = false
-          Fragments = Map.empty
-          ExpandingFragments = Set.empty
-          Scope = None
-          SessionContext = Map.empty
-          // Phase 889 — no user-action recording in the samples.
-          ActionSink = None
-          CurrentNodeId = None
-          // Phase 1026 — a HAND-AUTHORED tree, where the author is the trust
-          // boundary, so the permissive posture is correct and is reached BY NAME.
-          // A host rendering a DECODED tree must not copy this line.
-          EgressPolicy = Sanitize.permissiveEgress
-          // Phase 1117 — no upload sink: this surface performs no uploads.
-          UploadSink = None
-          CustomHashFloor = None
-          // Phase 1545 — the default posture; samples render under no CSP mode.
-          Csp = Csp.Permissive }
+    let render =
+        SampleContext.render (BrowserRuntime.create ()) BindingResolver.empty dispatch
 
     React.Fragment
         [ Render.themeStyleElement Defaults.theme
@@ -93,9 +72,7 @@ let view (model: Model) (dispatch: Msg -> unit) : ReactElement =
                       Html.p
                           [ prop.text
                                 "A single Fuaran.button whose OnClick dispatches Action.WriteToClipboard. The browser runtime wires navigator.clipboard.writeText; the mirror below confirms the dispatch chain fired." ]
-                      Html.section
-                          [ prop.style [ style.marginTop 16 ]
-                            prop.children [ Render.render ctx copyButton ] ]
+                      Html.section [ prop.style [ style.marginTop 16 ]; prop.children [ render copyButton ] ]
                       Html.section
                           [ prop.style [ style.marginTop 24; style.padding 12 ]
                             prop.children

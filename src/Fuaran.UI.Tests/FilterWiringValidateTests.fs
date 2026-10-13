@@ -348,7 +348,7 @@ let tests =
                       PreEmitValidate.describe (PreEmitDefect.GridFieldUngrounded("grid", "headcount", deptSchema))
 
                   Expect.equal code "FUARAN114" "the stable code"
-                  Expect.equal severity DefectSeverity.Error "FUARAN114 is an error, not an advisory"
+                  Expect.equal severity Fuaran.Core.Severity.Error "FUARAN114 is an error, not an advisory"
               | Ok() -> failtest "Expected FUARAN114 defect, got Ok"
           }
 

@@ -169,7 +169,7 @@ let private validatorTests =
                   describe (PreEmitDefect.ActionColumnField("g", "Actions", "action"))
 
               Expect.equal code "FUARAN163" "the minted code"
-              Expect.equal severity DefectSeverity.Warning "a warning: the field does nothing, it breaks nothing"
+              Expect.equal severity Fuaran.Core.Severity.Warning "a warning: the field does nothing, it breaks nothing"
               Expect.stringContains message "drop the field" "the repair is stated"
           }
 
@@ -213,7 +213,7 @@ let private validatorTests =
                   describe (PreEmitDefect.PillFieldUngrounded("g", "Status", "status", [ "dept"; "total" ]))
 
               Expect.equal code "FUARAN114" "a sub-case: the repair is FUARAN114's"
-              Expect.equal severity DefectSeverity.Error "an error, like the rule it belongs to"
+              Expect.equal severity Fuaran.Core.Severity.Error "an error, like the rule it belongs to"
               Expect.stringContains message "TonedPill" "the message names the cell"
               Expect.stringContains message "default tone" "and says what the reader actually sees"
           }

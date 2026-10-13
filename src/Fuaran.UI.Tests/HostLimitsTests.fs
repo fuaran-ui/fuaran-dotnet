@@ -328,7 +328,7 @@ let tests =
                                 Measured = 2 }
                       )
 
-                  Expect.equal severity DefectSeverity.Error "an emission limit is a refusal, not advice"
+                  Expect.equal severity Fuaran.Core.Severity.Error "an emission limit is a refusal, not advice"
           }
 
           test "utf8Length agrees with the platform encoder" {

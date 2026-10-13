@@ -13,16 +13,29 @@
   walker each minted FUARAN060 and FUARAN061 for different defects, so one code
   named two things depending on which tool reported it.
 
-  THE CODE SPACE IS SHARED BY THREE REGISTRIES, and that is what makes the
-  by-eyeball mint unsafe rather than merely untidy. Each is DERIVED from its own
-  sources, never listed here:
+  THE CODE SPACE IS SHARED BY THREE FAMILIES, and that is what makes the
+  by-eyeball mint unsafe rather than merely untidy. Since Phase 2052 the two F#
+  families are ONE registry, in one file, and this script reads that registry
+  rather than every check site:
 
-    preemit   the tree-time validator's `describe` arms
-              (src/Fuaran.UI/PreEmitValidate.fs)
-    walker    the build-time source-AST walker's findings
-              (src/Fuaran.UI.Validator/*.fs)
+    preemit   the tree-time validator's code table, `DefectCodes.table`
+              (src/Fuaran.UI/PreEmitValidate.fs). One code may span several
+              rows — a code with more than one message shape — so a repeat
+              there is ordinary. FUARAN068's literal is
+              `CustomRegistry.propDefectCode` (src/Fuaran.UI/CustomRegistry.fs),
+              which the table row reads: that module compiles first.
+    findings  every other F# code, `FindingCodes` in the same file: the
+              build-time walker's, the dead-on-decode lint's, the query-binding
+              check's and the reserved ones. One entry per code, so a repeat
+              there IS a collision.
     analyzer  the Roslyn diagnostic descriptors for the C#/VB surfaces
-              (src/Fuaran.UI.Analyzers/**/*.cs)
+              (src/Fuaran.UI.Analyzers/**/*.cs), a C# assembly that cannot read
+              the F# registry.
+
+  `FindingCodes.retired` lists codes still accepted for one release (FUARAN001,
+  the walker's duplicate-NodeId code until both validators took FUARAN-DUP-ID).
+  A retired code still holds its number: it is in the allocation floor and a
+  collision partner, so it is never handed out again while anything names it.
 
   A fourth source is consulted for ALLOCATION only: the conformance corpus's
   `validator/defect-vocabulary.json`, which is a PROJECTION of `preemit` and so
@@ -31,8 +44,9 @@
 
   And so can a SIBLING WORKTREE of this same repository: a concurrent session's
   unpushed branch is invisible to `git log` and to this tree, which is exactly
-  where the FUARAN114 collision came from. Every other worktree's three
-  registries are read too (`-SkipWorktrees` opts out).
+  where the FUARAN114 collision came from. Every other worktree's registries
+  are read too (`-SkipWorktrees` opts out) — including a branch cut before the
+  registry existed, whose walker codes are still literals at the check sites.
 
 .PARAMETER Next
   Print the next free code (or `-Count N` of them, contiguously). The floor is
@@ -40,18 +54,25 @@
   sibling worktree's unpushed allocation as well as against this tree's.
 
 .PARAMETER Check
-  Report every code claimed by more than one registry for a DIFFERENT rule, and
-  exit 1. A code deliberately mirrored across registries — the same rule stated
-  at two layers — is declared in `$Mirrors` below with its reason; a declaration
-  that has stopped being true is reported too, on the `AuthoringSurfacePin`
-  posture: the value of an enumeration is that it is complete, so an entry whose
-  subject has been renumbered or retired fails here rather than outliving it.
+  Report, and exit 1 on:
+    - a code claimed by more than one registry for a DIFFERENT rule. A code
+      deliberately mirrored across registries — the same rule stated at two
+      layers — is declared in `$Mirrors` below with its reason; a declaration
+      that has stopped being true is reported too, on the `AuthoringSurfacePin`
+      posture: the value of an enumeration is that it is complete, so an entry
+      whose subject has been renumbered or retired fails here rather than
+      outliving it;
+    - a code with two `findings` entries;
+    - a quoted `FUARAN*` literal in an F# source outside the registry (Phase
+      2052): a check names its code by referring to a registry entry, so a
+      literal anywhere else is a code the registry does not hold.
 
   WHAT IT DOES NOT CHECK, stated so the green is not read as wider than it is:
-  two codes WITHIN one registry. `describe` is a match over a defect DU and
-  several cases legitimately share one code (the corpus vocabulary carries the
-  case list per code for exactly that reason), so a within-registry repeat is
-  ordinary rather than a defect, and nothing here can tell the two apart.
+  two rows of `DefectCodes.table` under one code. Several defect cases
+  legitimately share one code (the corpus vocabulary carries the case list per
+  code for exactly that reason), so nothing here can tell that from a defect.
+  Test sources are not scanned for literals: a test asserting a code by its
+  string is asserting the published contract.
 
 .PARAMETER List
   Print every code with the registries that claim it, in numeric order.
@@ -74,45 +95,69 @@ param(
 $ErrorActionPreference = "Stop"
 # Seeded because a stage that never runs a native command otherwise compares
 # `$null` and takes the success branch — the estate-wide launcher trap.
-$LASTEXITCODE = 0
+$global:LASTEXITCODE = 0
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+
+$registryRel = "src/Fuaran.UI/PreEmitValidate.fs"
+$customRegistryRel = "src/Fuaran.UI/CustomRegistry.fs"
 
 # ── Deliberate cross-registry mirrors ────────────────────────────────────────
 # ONE rule stated at two layers under one code. Every entry names the registries
 # that share it and why sharing is correct; anything else that shares a code is
 # two rules under one name, which is the defect.
 $Mirrors = [ordered]@{
-    "FUARAN001" = "walker+analyzer — NodeId uniqueness, the same rule read off F# source and off C#/VB source"
-    "FUARAN010" = "walker+analyzer — Binding.Query name resolution against the module manifest, likewise"
+    "FUARAN001" = "retired+analyzer — NodeId uniqueness. The F# validators report it as FUARAN-DUP-ID since Phase 2052 and accept FUARAN001 for one release; the Roslyn analyzers keep FUARAN001 because a hyphenated id cannot be named in a #pragma"
+    "FUARAN010" = "findings+analyzer — Binding.Query name resolution against the module manifest, read off F# source and off C#/VB source"
 }
 
 function Get-CodesFromTree {
     <#
       .SYNOPSIS
-        The three in-repo registries of one checkout, as registry -> code set.
+        The registries of one checkout, as registry -> code list.
       .DESCRIPTION
         Regexes over DECLARATION sites, not over every mention: a doc comment
         cross-referencing another rule's code must not read as a claim on it.
-        `preemit` and `walker` claim a code where the source carries the bare
-        string literal that `describe` / a finding returns; `analyzer` claims one
-        at a descriptor's `id:` argument.
+        `preemit` claims a code where a table row carries it on its own line,
+        `findings` where a `FindingCodes` entry is declared, `retired` where
+        `FindingCodes.retired` names it, `analyzer` at a descriptor's `id:`.
+        `legacy` is the pre-registry walker shape (a literal at a check site),
+        read so a sibling branch cut before Phase 2052 still raises the floor.
+        `findings` is NOT de-duplicated: a repeat there is what -Check reports.
     #>
     param([string] $root)
 
-    $result = [ordered]@{ preemit = @(); walker = @(); analyzer = @() }
+    $result = [ordered]@{ preemit = @(); findings = @(); retired = @(); analyzer = @(); legacy = @() }
 
-    $preemitFile = Join-Path $root "src/Fuaran.UI/PreEmitValidate.fs"
-    if (Test-Path $preemitFile) {
+    $registryFile = Join-Path $root $registryRel
+    if (Test-Path $registryFile) {
+        $text = Get-Content -Raw -Path $registryFile
         $result.preemit = @(
-            Select-String -Path $preemitFile -Pattern '^\s*"(FUARAN\d{3})",\s*$' -AllMatches
-            | ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value }
+            [regex]::Matches($text, '(?m)^\s*"(FUARAN\d{3})",\s*$') | ForEach-Object { $_.Groups[1].Value }
         ) | Sort-Object -Unique
+        $result.findings = @(
+            # `\s+` spans a line break: Fantomas wraps an entry whose line runs long.
+            [regex]::Matches($text, '(?m)^\s*let \w+ =\s+(?:walker|code FindingFamily\.\w+) Severity\.\w+ "(FUARAN\d{3})"\s*$') |
+                ForEach-Object { $_.Groups[1].Value }
+        )
+        $result.retired = @(
+            [regex]::Matches($text, '(?m)^\s*let retired: .*$') |
+                ForEach-Object { [regex]::Matches($_.Value, '"(FUARAN\d{3})"') } | ForEach-Object { $_.Groups[1].Value }
+        ) | Sort-Object -Unique
+    }
+
+    $customFile = Join-Path $root $customRegistryRel
+    if (Test-Path $customFile) {
+        $custom = @(
+            Select-String -Path $customFile -Pattern 'let propDefectCode = "(FUARAN\d{3})"' |
+                ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value }
+        )
+        $result.preemit = @($result.preemit) + $custom | Sort-Object -Unique
     }
 
     $walkerDir = Join-Path $root "src/Fuaran.UI.Validator"
     if (Test-Path $walkerDir) {
-        $result.walker = @(
+        $result.legacy = @(
             Get-ChildItem -Path $walkerDir -Filter *.fs -File
             | Select-String -Pattern '"(FUARAN\d{3})"' -AllMatches
             | ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value }
@@ -129,6 +174,36 @@ function Get-CodesFromTree {
     }
 
     return $result
+}
+
+function Get-StrayLiterals {
+    <#
+      .SYNOPSIS
+        Every quoted `FUARAN*` literal in a non-test F# source outside the
+        registry, as "path:line: code".
+      .DESCRIPTION
+        Comment lines are skipped (a doc comment citing a code is not a claim on
+        it), and so are test projects. CustomRegistry's one literal is the
+        registry's own entry, read through `CustomRegistry.propDefectCode`.
+    #>
+    param([string] $root)
+
+    $src = Join-Path $root "src"
+    $allowed = @(
+        (Join-Path $root $registryRel),
+        (Join-Path $root $customRegistryRel)
+    ) | ForEach-Object { [IO.Path]::GetFullPath($_) }
+
+    return @(
+        Get-ChildItem -Path $src -Filter *.fs -File -Recurse
+        | Where-Object { $_.FullName -notmatch '[\\/][^\\/]*Tests?[\\/]' -and $_.FullName -notmatch '[\\/](bin|obj)[\\/]' }
+        | Where-Object { $allowed -notcontains [IO.Path]::GetFullPath($_.FullName) }
+        | Select-String -CaseSensitive -Pattern '"FUARAN(\d+|-[A-Z-]+)"'
+        | Where-Object { $_.Line -notmatch '^\s*//' }
+        | ForEach-Object {
+            "{0}:{1}: {2}" -f [IO.Path]::GetRelativePath($root, $_.Path), $_.LineNumber, $_.Matches[0].Value
+        }
+    )
 }
 
 function Get-CorpusCodes {
@@ -169,7 +244,7 @@ function Get-SiblingWorktrees {
     try {
         $lines = & git -C $root worktree list --porcelain 2>$null
         if ($LASTEXITCODE -ne 0) {
-            $LASTEXITCODE = 0
+            $global:LASTEXITCODE = 0
             Write-Host "  (sibling worktrees NOT consulted — 'git worktree list' failed here)" -ForegroundColor Yellow
             return @()
         }
@@ -189,6 +264,11 @@ function Get-SiblingWorktrees {
     )
 }
 
+function Get-Flat {
+    param($codes)
+    return @($codes.preemit) + @($codes.findings) + @($codes.retired) + @($codes.analyzer) + @($codes.legacy)
+}
+
 # ── Gather ───────────────────────────────────────────────────────────────────
 $local = Get-CodesFromTree $repoRoot
 
@@ -206,8 +286,7 @@ $siblingCodes = @()
 $siblingSources = @()
 if (-not $SkipWorktrees) {
     foreach ($wt in (Get-SiblingWorktrees $repoRoot)) {
-        $wtCodes = Get-CodesFromTree $wt
-        $flat = @($wtCodes.preemit) + @($wtCodes.walker) + @($wtCodes.analyzer)
+        $flat = @(Get-Flat (Get-CodesFromTree $wt))
         if ($flat.Count -gt 0) {
             $siblingCodes += $flat
             $siblingSources += $wt
@@ -225,7 +304,7 @@ function Get-Ordinal {
 # the walker's own tooling codes) is excluded from the floor: it is a separate
 # range, and folding it in would push every future mint to 901.
 $reservedFloor = 900
-$allForFloor = @($local.preemit) + @($local.walker) + @($local.analyzer) + @($siblingCodes)
+$allForFloor = @(Get-Flat $local) + @($siblingCodes)
 if ($null -ne $corpusCodes) { $allForFloor += $corpusCodes }
 
 $ordinals = @(
@@ -242,16 +321,19 @@ if ($ordinals.Count -eq 0) {
 
 $max = ($ordinals | Measure-Object -Maximum).Maximum
 
-if ($List) {
-    $claims = @{}
-    foreach ($registry in @("preemit", "walker", "analyzer")) {
-        foreach ($c in $local.$registry) {
-            if (-not $claims.ContainsKey($c)) { $claims[$c] = @() }
-            $claims[$c] += $registry
-        }
+# Each code in this tree, with the registries that claim it (a code repeated
+# within `findings` appears once per entry, which is what -Check reports).
+$claimedBy = @{}
+foreach ($registry in @("preemit", "findings", "retired", "analyzer")) {
+    foreach ($c in @($local.$registry)) {
+        if (-not $claimedBy.ContainsKey($c)) { $claimedBy[$c] = @() }
+        $claimedBy[$c] += $registry
     }
-    foreach ($c in ($claims.Keys | Sort-Object)) {
-        "{0}  {1}" -f $c, ($claims[$c] -join ", ")
+}
+
+if ($List) {
+    foreach ($c in ($claimedBy.Keys | Sort-Object)) {
+        "{0}  {1}" -f $c, ($claimedBy[$c] -join ", ")
     }
     exit 0
 }
@@ -260,8 +342,8 @@ if ($Next) {
     if ($Count -lt 1) { Write-Error "-Count must be at least 1."; exit 1 }
 
     Write-Host "highest allocated: FUARAN$($max.ToString('000'))" -ForegroundColor DarkGray
-    Write-Host ("  sources: preemit {0} · walker {1} · analyzer {2} · corpus {3} · sibling worktrees {4}" -f `
-            $local.preemit.Count, $local.walker.Count, $local.analyzer.Count,
+    Write-Host ("  sources: preemit {0} · findings {1} · retired {2} · analyzer {3} · corpus {4} · sibling worktrees {5}" -f `
+            @($local.preemit).Count, @($local.findings).Count, @($local.retired).Count, @($local.analyzer).Count,
         $(if ($null -eq $corpusCodes) { "NOT READ (absent at $CorpusRoot)" } else { "$($corpusCodes.Count)" }),
         $(if ($siblingSources.Count -eq 0) { "none" } else { $siblingSources -join "; " })) -ForegroundColor DarkGray
 
@@ -277,25 +359,24 @@ if (-not $Check) {
 }
 
 # ── -Check: the collision report ─────────────────────────────────────────────
-$claimedBy = @{}
-foreach ($registry in @("preemit", "walker", "analyzer")) {
-    foreach ($c in $local.$registry) {
-        if (-not $claimedBy.ContainsKey($c)) { $claimedBy[$c] = @() }
-        $claimedBy[$c] += $registry
-    }
+$failed = $false
+
+$repeated = @($claimedBy.Keys | Where-Object { @($claimedBy[$_] | Where-Object { $_ -eq "findings" }).Count -gt 1 } | Sort-Object)
+if ($repeated.Count -gt 0) {
+    $failed = $true
+    Write-Host "FUARAN code declared twice in FindingCodes — one code, two rules:" -ForegroundColor Red
+    foreach ($c in $repeated) { Write-Host "  $c" -ForegroundColor Red }
 }
 
-$shared = @($claimedBy.Keys | Where-Object { $claimedBy[$_].Count -gt 1 } | Sort-Object)
+$shared = @($claimedBy.Keys | Where-Object { @($claimedBy[$_] | Sort-Object -Unique).Count -gt 1 } | Sort-Object)
 $undeclared = @($shared | Where-Object { -not $Mirrors.Contains($_) })
 $orphaned = @($Mirrors.Keys | Where-Object { $shared -notcontains $_ })
-
-$failed = $false
 
 if ($undeclared.Count -gt 0) {
     $failed = $true
     Write-Host "FUARAN code collision — one code, two registries, and nothing says they are one rule:" -ForegroundColor Red
     foreach ($c in $undeclared) {
-        Write-Host ("  {0}  claimed by {1}" -f $c, ($claimedBy[$c] -join " + ")) -ForegroundColor Red
+        Write-Host ("  {0}  claimed by {1}" -f $c, (($claimedBy[$c] | Sort-Object -Unique) -join " + ")) -ForegroundColor Red
     }
     Write-Host ""
     Write-Host "  Renumber the later claimant with: pwsh ./scripts/fuaran-codes.ps1 -Next" -ForegroundColor Yellow
@@ -312,16 +393,23 @@ if ($orphaned.Count -gt 0) {
     Write-Host '  Remove the entry from $Mirrors — a declaration nothing checks is worse than none.' -ForegroundColor Yellow
 }
 
+$stray = @(Get-StrayLiterals $repoRoot)
+if ($stray.Count -gt 0) {
+    $failed = $true
+    Write-Host "FUARAN literal outside the registry — name the code through a FindingCodes entry (or a DefectCodes row):" -ForegroundColor Red
+    foreach ($s in $stray) { Write-Host "  $s" -ForegroundColor Red }
+}
+
 # The vacuity guard. Every assertion above is a "no undeclared collision" claim,
 # which a run that read no source at all satisfies perfectly.
-if ($local.preemit.Count -lt 50 -or $local.walker.Count -lt 20 -or $local.analyzer.Count -lt 3) {
+if (@($local.preemit).Count -lt 50 -or @($local.findings).Count -lt 20 -or @($local.analyzer).Count -lt 3) {
     $failed = $true
-    Write-Host ("Refusing to report clean: read {0} preemit / {1} walker / {2} analyzer codes — too few to be the real registries." -f `
-            $local.preemit.Count, $local.walker.Count, $local.analyzer.Count) -ForegroundColor Red
+    Write-Host ("Refusing to report clean: read {0} preemit / {1} findings / {2} analyzer codes — too few to be the real registries." -f `
+            @($local.preemit).Count, @($local.findings).Count, @($local.analyzer).Count) -ForegroundColor Red
 }
 
 if ($failed) { exit 1 }
 
-Write-Host ("FUARAN codes OK — {0} preemit / {1} walker / {2} analyzer, {3} declared mirror(s), highest FUARAN{4}." -f `
-        $local.preemit.Count, $local.walker.Count, $local.analyzer.Count, $Mirrors.Count, $max.ToString("000"))
+Write-Host ("FUARAN codes OK — {0} preemit / {1} findings / {2} retired / {3} analyzer, {4} declared mirror(s), no literal outside the registry, highest FUARAN{5}." -f `
+        @($local.preemit).Count, @($local.findings).Count, @($local.retired).Count, @($local.analyzer).Count, $Mirrors.Count, $max.ToString("000"))
 exit 0

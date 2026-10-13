@@ -25,6 +25,7 @@ module Fuaran.UI.Validator.NumberFieldRangeCheck
 // ============================================================================
 
 open FSharp.Compiler.Syntax
+open Fuaran.UI.PreEmitValidate
 open Fuaran.UI.Validator.Findings
 open Fuaran.UI.Validator.Syntax
 
@@ -122,8 +123,7 @@ let check (sources: ParsedSource list) : Finding list =
 
                     let base' =
                         create
-                            Warning
-                            "FUARAN051"
+                            FindingCodes.rangedNumberOutOfRange
                             call.Location
                             (sprintf
                                 "FormFieldKind.rangedNumber: the Binding.Static value literal %g is outside the declared [Min, Max] range. The renderer will pass the literal through to the browser's <input type=number>, which will clamp or reject the field on submission. supportedRange=%s"

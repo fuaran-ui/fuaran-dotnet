@@ -21,6 +21,7 @@ module Fuaran.UI.Validator.NodeIdCheck
 // ============================================================================
 
 open Fuaran.UI.Validator.AstWalker
+open Fuaran.UI.PreEmitValidate
 open Fuaran.UI.Validator.Findings
 
 let private looseBucket = "__loose__"
@@ -56,8 +57,7 @@ let check (calls: FuaranCall list) : Finding list =
                         dups
                         |> List.map (fun w ->
                             create
-                                Error
-                                "FUARAN001"
+                                FindingCodes.duplicateNodeId
                                 w.Call.Location
                                 (sprintf
                                     "Duplicate NodeId \"%s\" within tree \"%s\" — every NodeId inside one tree must be unique (§4g op-target stability)."
@@ -78,8 +78,7 @@ let check (calls: FuaranCall list) : Finding list =
                 items
                 |> List.map (fun w ->
                     create
-                        Warning
-                        "FUARAN002"
+                        FindingCodes.nodeIdAcrossTrees
                         w.Call.Location
                         (sprintf
                             "NodeId \"%s\" appears across multiple trees (%s) — legitimate when modules share a stable id, but worth flagging."

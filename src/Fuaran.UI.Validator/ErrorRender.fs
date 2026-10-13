@@ -20,12 +20,14 @@ module Fuaran.UI.Validator.ErrorRender
 // ============================================================================
 
 open System.Text.Json
+open Fuaran.Core
 open Fuaran.UI.Validator.Findings
 
 let private severityToken (s: Severity) =
     match s with
-    | Error -> "error"
-    | Warning -> "warning"
+    | Severity.Error -> "error"
+    | Severity.Warning -> "warning"
+    | Severity.Info -> "info"
 
 let renderPlain (finding: Finding) : string =
     let head =
@@ -38,7 +40,7 @@ let renderPlain (finding: Finding) : string =
             finding.Code
             finding.Message
 
-    match finding.AvailableFields, finding.Suggestion with
+    match finding.AvailableFields, finding.Remedy with
     | Some available, Some s -> sprintf "%s\n  available: %s\n  suggestion: %s" head (String.concat ", " available) s
     | Some available, None -> sprintf "%s\n  available: %s" head (String.concat ", " available)
     | None, Some s -> sprintf "%s\n  suggestion: %s" head s
@@ -67,7 +69,7 @@ let renderJson (finding: Finding) : string =
             jw.WriteEndArray()
         | None -> ()
 
-        match finding.Suggestion with
+        match finding.Remedy with
         | Some s -> jw.WriteString("suggestion", s)
         | None -> ()
 

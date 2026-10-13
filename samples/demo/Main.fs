@@ -489,28 +489,17 @@ let view (model: Model) (dispatch: Msg -> unit) =
     let sources = buildSources model
 
     let ctx: Render.RenderContext<Msg> =
-        { Sources = sources
-          Runtime = fuaranRuntime
-          VisAdapter = AgAdapter.adapter<Msg>
-          Dispatch = dispatch
-          TelemetrySink = None
-          InErrorBoundary = false
-          Fragments = Map.empty
-          ExpandingFragments = Set.empty
-          Scope = None
-          SessionContext = Map.empty
-          // Phase 889 — no user-action recording in the samples.
-          ActionSink = None
-          CurrentNodeId = None
-          // Phase 1026 — a HAND-AUTHORED tree, where the author is the trust
-          // boundary, so the permissive posture is correct and is reached BY NAME.
-          // A host rendering a DECODED tree must not copy this line.
-          EgressPolicy = Sanitize.permissiveEgress
-          // Phase 1117 — no upload sink: this surface performs no uploads.
-          UploadSink = None
-          CustomHashFloor = None
-          // Phase 1545 — the default posture; samples render under no CSP mode.
-          Csp = Csp.Permissive }
+        let baseCtx = Render.RenderContext.create sources dispatch tree
+
+        { baseCtx with
+            Runtime = fuaranRuntime
+            VisAdapter = AgAdapter.adapter<Msg>
+            // A HAND-AUTHORED tree, where the author is the trust boundary, so the
+            // permissive egress posture is correct and is reached BY NAME. A host
+            // rendering a DECODED tree must not copy this line.
+            Policy =
+                { baseCtx.Policy with
+                    Egress = Sanitize.permissiveEgress } }
 
     // Phase 90 — register the in-page introspection REPL over the live tree.
     // The host opt-in is read from THIS project's build (Phase 1532), not

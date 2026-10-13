@@ -78,13 +78,15 @@ The build-time validator's findings carry `FUARAN###` codes (e.g. `FUARAN050` `S
 above describes the walker, which reads F# *source* — but the larger family by far is the
 **pre-emit validator**, which reads a *tree* just before it goes on the wire and raises the whole
 `FUARAN047`–`FUARAN163` range. A code you have in hand belongs to whichever family reported it, and
-the two are enumerated in different places: the pre-emit family's codes, severities and message
+the two are enumerated in different places, though since Phase 2052 both are entries of one registry in one
+file (`PreEmitValidate.DefectCodes.table` and `PreEmitValidate.FindingCodes`): the pre-emit family's codes, severities and message
 shapes are published as data in the conformance corpus's `validator/defect-vocabulary.json`
 (generated from the reference host, never hand-maintained) and as the table in
 [§5](#5-pre-emit-validator-codes--the-full-table) below, generated from the same source; each host
 declares which of them it implements in its own `validator-coverage.json`. The walker's family is
-enumerated by hand in the table below; a test in the validator's own suite fails when the walker's
-sources emit a code that has no compiled snippet making it fire.
+listed in the table below; a test in the validator's own suite fails when a `FindingCodes` build-time
+entry has no compiled snippet making it fire, and another when a walker source writes a code as a
+string instead of naming its entry.
 
 **The build-time walker's codes (Phase 2053).** Every code here fires on source that compiles
 against the current types. The column on the right says whether the tree-time validator covers
@@ -92,7 +94,7 @@ the same defect; where it does, the build-time rule has been retired in its favo
 
 | Code | Severity | Fires on | Tree-time coverage |
 |---|---|---|---|
-| `FUARAN001` | Error | Two calls in one tree with the same NodeId literal. A tree is the subtree under an outermost constructor that takes a child node (`Fuaran.box`, `stack`, `card`, `dashboard`, …) | `FUARAN-DUP-ID`, one emitted tree at a time; the build-time rule stays because it sees every tree a source can build |
+| `FUARAN-DUP-ID` | Error | Two calls in one tree with the same NodeId literal. A tree is the subtree under an outermost constructor that takes a child node (`Fuaran.box`, `stack`, `card`, `dashboard`, …) | The same code, one emitted tree at a time; the build-time rule stays because it sees every tree a source can build. It was `FUARAN001` until 0.94.0 (see below) |
 | `FUARAN002` | Warning | The same NodeId literal in two different trees | None: the tree-time validator sees one tree |
 | `FUARAN010` | Error | `binding.query "name"` naming a query the manifest does not declare | None |
 | `FUARAN020` | Error | `Action.dispatch` of a Msg case the manifest does not declare | None |
@@ -126,6 +128,7 @@ release so that a consumer matching on it can find where the defect is now repor
 
 | Code | Was | Now |
 |---|---|---|
+| `FUARAN001` | Two calls in one tree with the same NodeId literal | **Alias of `FUARAN-DUP-ID`**, through the 0.94.x line (Phase 2052): both validators now report a duplicate id under the tree-time code. A suppression pragma naming `FUARAN001` still suppresses it. The C# / VB analyzers keep `FUARAN001` for the same rule, because a `#pragma warning` cannot name a hyphenated id |
 | `FUARAN040` | A button with `Accessibility = None` and no label | Alias of the tree-time **`FUARAN109`** (an interactive node with no accessible name). The build-time rule matched a field `ButtonSpec` does not have, so it never fired on compiling code |
 | `FUARAN041` | A Warning / Critical callout with `Accessibility = None` | **Withdrawn, with no replacement.** It matched a field `CalloutSpec` does not have, so it never fired on compiling code, and no tree-time rule checks the callout live-region opt-out. The gap is open |
 | `FUARAN047` | Tab headers and children of different lengths | The tree-time rule of the same code. Only the duplicate build-time emitter is gone |

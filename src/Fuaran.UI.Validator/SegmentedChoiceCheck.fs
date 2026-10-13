@@ -25,6 +25,7 @@ module Fuaran.UI.Validator.SegmentedChoiceCheck
 // ============================================================================
 
 open FSharp.Compiler.Syntax
+open Fuaran.UI.PreEmitValidate
 open Fuaran.UI.Validator.Findings
 open Fuaran.UI.Validator.Syntax
 
@@ -74,8 +75,7 @@ let check (sources: ParsedSource list) : Finding list =
             | Some count when count > OptionCountWarningThreshold ->
                 let base' =
                     create
-                        Warning
-                        "FUARAN045"
+                        FindingCodes.segmentedChoiceTooWide
                         call.Location
                         (sprintf
                             "FormFieldKind.segmentedChoice: %d options is more than the recommended maximum of %d for a visible-options exclusive-choice surface. Reach for FormFieldKind.Choice (dropdown) instead — the segmented-control trade-off inverts past 7 options."

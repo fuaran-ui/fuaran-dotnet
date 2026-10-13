@@ -695,7 +695,7 @@ and private renderKind
             [ Html.tr
                   [ Html.td
                         [ prop.custom ("style", textStyle opts "font-size:15px;line-height:22px;")
-                          prop.dangerouslySetInnerHTML (emailSafeMarkdown ctx.EgressPolicy (text spec.Text)) ] ] ]
+                          prop.dangerouslySetInnerHTML (emailSafeMarkdown ctx.Policy.Egress (text spec.Text)) ] ] ]
 
     | NodeKind.Metric spec ->
         let resolution = BindingResolver.resolveScalarFloat ctx.Sources spec.Value
@@ -896,7 +896,7 @@ and private renderKind
         // not dropped — `safeHref` still becomes `egressRefusalUrl`, which is
         // the part that stops the destination being reached.
         let safeHref, _ =
-            Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Hyperlink resolvedHref
+            Sanitize.sanitizeUrlForEgress ctx.Policy.Egress Sanitize.EgressClass.Hyperlink resolvedHref
 
         // A protected email link entity-encodes its address so no plaintext
         // address sits in the document source. That defence is aimed at
@@ -917,7 +917,7 @@ and private renderKind
         // pixel: an undeclared `src` here is fetched by each recipient's client
         // on open, reporting that this named person read this message.
         let safeSrc, _ =
-            Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Media resolvedSrc
+            Sanitize.sanitizeUrlForEgress ctx.Policy.Egress Sanitize.EgressClass.Media resolvedSrc
 
         Html.img
             [ prop.src safeSrc

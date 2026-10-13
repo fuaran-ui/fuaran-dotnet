@@ -1,4 +1,4 @@
-module Fuaran.Samples.Catalog.Inspector57
+module Fuaran.Samples.Catalog.OpStreamInspector
 
 // ============================================================================
 //  Snapshot-diff + op-stream visual inspector.
@@ -215,31 +215,7 @@ let private changeDetail (k: DemoNodeChangeKind) : string =
     | TextChanged(fromText, toText) -> sprintf "\"%s\" → \"%s\"" fromText toText
 
 let private renderTreeAfter (tree: Node<unit>) : ReactElement =
-    let ctx: Render.RenderContext<unit> =
-        { Sources = BindingResolver.empty
-          Runtime = Runtime.diagnostic
-          VisAdapter = VisAdapter.noOp<unit>
-          Dispatch = (fun () -> ())
-          TelemetrySink = None
-          InErrorBoundary = false
-          Fragments = Map.empty
-          ExpandingFragments = Set.empty
-          Scope = None
-          SessionContext = Map.empty
-          // Phase 889 — no user-action recording in the samples.
-          ActionSink = None
-          CurrentNodeId = None
-          // Phase 1026 — a HAND-AUTHORED tree, where the author is the trust
-          // boundary, so the permissive posture is correct and is reached BY NAME.
-          // A host rendering a DECODED tree must not copy this line.
-          EgressPolicy = Sanitize.permissiveEgress
-          // Phase 1117 — no upload sink: this surface performs no uploads.
-          UploadSink = None
-          CustomHashFloor = None
-          // Phase 1545 — the default posture; samples render under no CSP mode.
-          Csp = Csp.Permissive }
-
-    Render.render ctx tree
+    SampleContext.render Runtime.diagnostic BindingResolver.empty ignore tree
 
 let private timelineStep (model: Model) (dispatch: Msg -> unit) (index: int) (step: DemoStep) : ReactElement =
     let isActive = index = model.ActiveStepIndex

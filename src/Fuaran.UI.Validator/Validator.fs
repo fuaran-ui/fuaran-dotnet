@@ -11,6 +11,7 @@ module Fuaran.UI.Validator.Validator
 open System.IO
 open FSharp.Compiler.CodeAnalysis
 
+open Fuaran.UI.PreEmitValidate
 open Fuaran.UI.Validator.Findings
 open Fuaran.UI.Validator.Manifest
 
@@ -106,16 +107,12 @@ let runWith (parse: Syntax.Parser) (options: RunOptions) : Async<RunResult> =
         let preamble =
             match manifestPath with
             | None ->
-                [ { Severity = Warning
-                    Code = "FUARAN900"
-                    Location =
+                [ create
+                      FindingCodes.manifestMissing
                       { File = options.ProjectPath
                         Line = 1
                         Column = 1 }
-                    Message =
-                      "No fuaran-validator.manifest.json found next to the .fsproj — schema-coupled checks (Binding.Query name resolution, Action.Dispatch case names, RowType match) are silenced. See Fuaran/docs/VALIDATOR-MANIFEST.md."
-                    AvailableFields = None
-                    Suggestion = None } ]
+                      "No fuaran-validator.manifest.json found next to the .fsproj — schema-coupled checks (Binding.Query name resolution, Action.Dispatch case names, RowType match) are silenced. See Fuaran/docs/VALIDATOR-MANIFEST.md." ]
             | Some _ -> []
 
         // Source-level pragmas filter the REPORTING layer — every check ran in

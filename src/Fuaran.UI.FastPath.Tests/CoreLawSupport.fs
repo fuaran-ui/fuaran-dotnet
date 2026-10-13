@@ -458,10 +458,7 @@ module CoreLawSupport =
                                   let code, severity, message = PreEmitValidate.describe d
 
                                   { Code = code
-                                    Severity =
-                                      match severity with
-                                      | PreEmitValidate.DefectSeverity.Error -> Severity.Error
-                                      | PreEmitValidate.DefectSeverity.Warning -> Severity.Warning
+                                    Severity = severity
                                     Message = message
                                     Node = Some f.Tag
                                     Family = ""

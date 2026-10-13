@@ -42,6 +42,21 @@ let private stack (id: string) (children: Node<Msg> list) : Node<Msg> =
 /// The shape a decoded closure takes — an inert placeholder.
 let private placeholder: 'a -> Action<Msg> = fun _ -> Action.Chain []
 
+/// A filter chip whose decoded `onChange` is the sentinel — dead, and it suppresses
+/// the chip's own `$filters.q` write-back.
+let private deadChip: Node<Msg> =
+    node
+        "filters"
+        (NodeKind.Filters
+            { Items =
+                [ { Name = "q"
+                    Label = TextSource.Literal "Search"
+                    Kind =
+                      FormFieldKind.Text(
+                          Some(FieldValue.ofText (Binding.Filter("q", Some ""))),
+                          (Some placeholder |> Option.map FieldChange.ofText)
+                      ) } ] })
+
 [<Tests>]
 let tests =
     testList
@@ -114,26 +129,26 @@ let tests =
 
               Expect.isTrue
                   (byCode "FUARAN080"
-                   |> List.exists (fun f -> f.Node = "frm" && f.Slot = "FormFieldKind.onChange"))
+                   |> List.exists (fun f -> f.Location.Node = "frm" && f.Location.Slot = "FormFieldKind.onChange"))
                   "sentinel form handler flagged"
 
               Expect.isTrue
                   (byCode "FUARAN081"
-                   |> List.exists (fun f -> f.Node = "grid" && f.Slot = "ColumnErased.value"))
+                   |> List.exists (fun f -> f.Location.Node = "grid" && f.Location.Slot = "ColumnErased.value"))
                   "sentinel column accessor flagged"
 
               Expect.isTrue
                   (byCode "FUARAN081"
-                   |> List.exists (fun f -> f.Node = "grid" && f.Slot = "GridSpec.rowKey"))
+                   |> List.exists (fun f -> f.Location.Node = "grid" && f.Location.Slot = "GridSpec.rowKey"))
                   "sentinel row key flagged"
 
               Expect.isTrue
                   (byCode "FUARAN080"
-                   |> List.exists (fun f -> f.Node = "fetch" && f.Slot = "Action.Call.onResult"))
+                   |> List.exists (fun f -> f.Location.Node = "fetch" && f.Location.Slot = "Action.Call.onResult"))
                   "sentinel call continuation flagged"
 
               for f in findings do
-                  Expect.isTrue (f.Remedy.Length > 0) "every finding names a remedy"
+                  Expect.isTrue (f.Remedy |> Option.exists (fun r -> r.Length > 0)) "every finding names a remedy"
           }
 
           // Phase 2039 — the lint folds every nested action (the generated
@@ -159,8 +174,30 @@ let tests =
 
               Expect.isTrue
                   (findings
-                   |> List.exists (fun f -> f.Code = "FUARAN080" && f.Node = "ask" && f.Slot = "Action.Call.onResult"))
+                   |> List.exists (fun f ->
+                       f.Code = "FUARAN080"
+                       && f.Location.Node = "ask"
+                       && f.Location.Slot = "Action.Call.onResult"))
                   "the confirmation's yes branch is walked"
+          }
+
+          test "a chip's dead handler names its FormFieldKind slot, at the registry's code and severity (Phase 2052)" {
+              match DeadOnDecode.lint (stack "root" [ deadChip ]) with
+              | [ f ] ->
+                  Expect.equal f.Location.Slot "FormFieldKind.onChange" "a chip's control is a FormFieldKind"
+                  Expect.equal f.Code PreEmitValidate.FindingCodes.deadEventSlot.Code "the registry's code"
+                  Expect.equal f.Severity Fuaran.Core.Severity.Warning "the registry's severity"
+                  Expect.stringContains f.Message "FormFieldKind.onChange" "the message names the slot"
+              | other -> failtestf "expected one finding, got %A" other
+          }
+
+          test "every slot the lint names is a capability row" {
+              let rows = SlotCapability.all |> List.map _.Slot |> Set.ofList
+
+              for f in DeadOnDecode.lint (stack "root" [ deadChip ]) do
+                  Expect.isTrue
+                      (Set.contains f.Location.Slot rows)
+                      (sprintf "'%s' has a capability row" f.Location.Slot)
           }
 
           test "a fully-declarative tree (423–428 idioms) lints clean; HostOnly escapes stay silent" {

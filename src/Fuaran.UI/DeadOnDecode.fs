@@ -26,35 +26,54 @@
 
 open Fuaran.UI.Types
 
-/// One lint finding: the owning node, the slot (the `SlotCapability`
-/// vocabulary), the umbrella code, and the declarative remedy.
-///   FUARAN080 — dead event slot on decode (a sentinel handler; inert AND
-///               suppresses the write-back default).
-///   FUARAN081 — blank display slot on decode (a sentinel accessor; renders
-///               blank AND shadows the field-name form).
-type LintFinding =
-    { Node: string
-      Slot: string
-      Code: string
-      Remedy: string }
+/// One lint finding, in the shape the build-time checks share
+/// (`PreEmitValidate.Finding`): the code and severity from the registry, the node and
+/// slot (the `SlotCapability` vocabulary), and the declarative remedy.
+///   FUARAN080 (`FindingCodes.deadEventSlot`) — dead event slot on decode (a sentinel
+///               handler; inert AND suppresses the write-back default).
+///   FUARAN081 (`FindingCodes.blankDisplaySlot`) — blank display slot on decode (a
+///               sentinel accessor; renders blank AND shadows the field-name form).
+type LintFinding = PreEmitValidate.Finding<PreEmitValidate.SlotLocation>
 
-let private deadEvent (node: string) (slot: string) (valueWritable: bool) (bindHint: string) : LintFinding =
-    { Node = node
-      Slot = slot
-      Code = "FUARAN080"
-      Remedy =
-        if valueWritable then
-            sprintf
-                "omit %s — the value binding is already writable, so the write-back default takes over on the decoded path"
-                slot
-        else
-            sprintf "omit %s and bind the control's value to %s so the write-back default can fire" slot bindHint }
+let private located
+    (code: PreEmitValidate.FindingCode)
+    (node: string)
+    (slot: string)
+    (consequence: string)
+    (remedy: string)
+    : LintFinding =
+    PreEmitValidate.Finding.create
+        code
+        ({ Node = node; Slot = slot }: PreEmitValidate.SlotLocation)
+        (sprintf "%s on node '%s' decoded to the \"<closure>\" sentinel: %s" slot node consequence)
+    |> PreEmitValidate.Finding.withRemedy remedy
+
+let private deadEvent (node: string) (slot: string) (remedy: string) : LintFinding =
+    located
+        PreEmitValidate.FindingCodes.deadEventSlot
+        node
+        slot
+        "it does nothing, and it suppresses the write-back default"
+        remedy
+
+let private deadHandler (node: string) (slot: string) (valueWritable: bool) (bindHint: string) : LintFinding =
+    deadEvent
+        node
+        slot
+        (if valueWritable then
+             sprintf
+                 "omit %s — the value binding is already writable, so the write-back default takes over on the decoded path"
+                 slot
+         else
+             sprintf "omit %s and bind the control's value to %s so the write-back default can fire" slot bindHint)
 
 let private blankDisplay (node: string) (slot: string) (remedy: string) : LintFinding =
-    { Node = node
-      Slot = slot
-      Code = "FUARAN081"
-      Remedy = remedy }
+    located
+        PreEmitValidate.FindingCodes.blankDisplaySlot
+        node
+        slot
+        "it renders blank, and it shadows the field-name form"
+        remedy
 
 /// The optional-value-slot form (Phase 596): an OMITTED slot (`None`) is
 /// writable by construction — the symmetric auto-bind gives the write-back
@@ -80,14 +99,13 @@ let private callFindings (node: string) (action: Action<'Msg>) : LintFinding lis
             found
             @ (match a with
                | Action.Call(_, Some _, into) ->
-                   [ { Node = node
-                       Slot = "Action.Call.onResult"
-                       Code = "FUARAN080"
-                       Remedy =
-                         match into with
-                         | Some _ -> "omit onResult — the into target already lands the response where readers look"
-                         | None ->
-                             "omit onResult and add into: {\"$type\":\"State\",\"key\":…} or {\"$type\":\"Query\",\"name\":…} so the response lands where a reader binds" } ]
+                   [ deadEvent
+                         node
+                         "Action.Call.onResult"
+                         (match into with
+                          | Some _ -> "omit onResult — the into target already lands the response where readers look"
+                          | None ->
+                              "omit onResult and add into: {\"$type\":\"State\",\"key\":…} or {\"$type\":\"Query\",\"name\":…} so the response lands where a reader binds") ]
                | _ -> []))
         []
         action
@@ -99,7 +117,7 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
 
     let handler (node: string) (slot: string) (present: bool) (writable: bool) (hint: string) =
         if present then
-            findings.Add(deadEvent node slot writable hint)
+            findings.Add(deadHandler node slot writable hint)
 
     let rec walk (n: Node<'Msg>) =
         // `Node.Id` is a bare string since the swap.
@@ -186,15 +204,17 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
                 let present = (Generated.FormFieldKind.onChange fs.Kind).IsSome
 
                 if present then
+                    // The chip's control IS a `FormFieldKind`, so its slot is
+                    // `FormFieldKind.onChange` (Phase 2052: this said
+                    // `FilterKind.onChange`, a DU the filters unification retired).
                     findings.Add(
-                        { Node = nodeId
-                          Slot = "FilterKind.onChange"
-                          Code = "FUARAN080"
-                          Remedy =
-                            sprintf
+                        deadEvent
+                            nodeId
+                            "FormFieldKind.onChange"
+                            (sprintf
                                 "omit onChange on chip '%s' — a handler-free chip writes $filters.%s itself"
                                 fs.Name
-                                fs.Name }
+                                fs.Name)
                     )
 
         | NodeKind.FileUpload _ -> () // HostOnlyByDesign (see SlotCapability)

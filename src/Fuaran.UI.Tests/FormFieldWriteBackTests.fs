@@ -41,28 +41,16 @@ type private Msg = PairChanged of float * float
 let private nn (value: 'T) : obj = box value |> Unchecked.nonNull
 
 let private makeCtx () : Render.RenderContext<Msg> =
-    { Sources = BindingResolver.empty
-      Runtime = Runtime.diagnostic
-      VisAdapter = VisAdapter.noOp<Msg>
-      Dispatch = ignore
-      TelemetrySink = None
-      InErrorBoundary = false
-      Fragments = Map.empty
-      ExpandingFragments = Set.empty
-      Scope = None
-      SessionContext = Map.empty
-      // Phase 889 — recording off, the default at every shipped entry point.
-      ActionSink = None
-      CurrentNodeId = None
-      // Phase 1026 — hand-built test tree; the scheme floor is what these
-      // cases exercise, so the policy is deliberately not the variable.
-      EgressPolicy = Sanitize.permissiveEgress
-      // Phase 1117 — no upload sink: this surface performs no uploads.
-      UploadSink = None
-      CustomHashFloor = None
-      // Phase 1545 — the default posture; these cases are about the write path,
-      // not about CSP.
-      Csp = Csp.Permissive }
+    // The handlers under test take no tree, so the context is built over a bare
+    // leaf: no state seeds and no fragments. The scheme floor is what these
+    // cases exercise, so the egress policy is deliberately not the variable.
+    let ctx =
+        Render.RenderContext.create BindingResolver.empty ignore (Fuaran.UI.Fuaran.divider "write-back-host")
+
+    { ctx with
+        Policy =
+            { ctx.Policy with
+                Egress = Sanitize.permissiveEgress } }
 
 // Annotated constructors, not bare record literals: `{ Min = _; Max = _ }`
 // otherwise infers as `NumberFieldConstraints` (same labels, `float option`

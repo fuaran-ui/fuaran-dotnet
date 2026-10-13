@@ -459,7 +459,7 @@ let private a11yCodes (tree: Node<Msg>) : string list =
 
 /// The severity `describe` publishes for a defect — the family's whole posture
 /// question, asserted rather than asserted-about-in-a-comment.
-let private severityOf (d: PreEmitDefect) : DefectSeverity =
+let private severityOf (d: PreEmitDefect) : Fuaran.Core.Severity =
     let _, severity, _ = PreEmitValidate.describe d
     severity
 
@@ -1790,7 +1790,7 @@ let tests =
                       )
 
                   Expect.equal code "FUARAN086" "the stable code"
-                  Expect.equal severity DefectSeverity.Error "FUARAN086 is an error, not an advisory"
+                  Expect.equal severity Fuaran.Core.Severity.Error "FUARAN086 is an error, not an advisory"
 
                   Expect.isTrue
                       (message.Contains "[quarter, takings]")
@@ -1954,7 +1954,7 @@ let tests =
 
                   Expect.equal
                       severity
-                      DefectSeverity.Error
+                      Fuaran.Core.Severity.Error
                       "an Error: silent coercion would draw every point on 1970-01-01"
 
                   Expect.stringContains message "temporal x-axis" "the message names what was declared"
@@ -2153,7 +2153,7 @@ let tests =
                       PreEmitDefect.ChartAnnotationRangeUnordered("cht", "range band 0", "2026-03-01", "2026-02-01")
                   )
 
-              Expect.equal severity DefectSeverity.Error "an Error: there is no legitimate backwards band"
+              Expect.equal severity Fuaran.Core.Severity.Error "an Error: there is no legitimate backwards band"
               Expect.stringContains message "range band 0" "the message names the band"
               Expect.stringContains message "2026-03-01" "and quotes both ends as authored"
               Expect.stringContains message "2026-02-01" "and quotes both ends as authored"
@@ -2375,7 +2375,7 @@ let tests =
 
                   let code, severity, _ = describe depthDefects.Head
                   Expect.equal code "FUARAN091" "stable code"
-                  Expect.equal severity DefectSeverity.Error "an over-deep tree is an error, not an advisory"
+                  Expect.equal severity Fuaran.Core.Severity.Error "an over-deep tree is an error, not an advisory"
           }
 
           test "a tree exactly at MaxDepth validates cleanly" {
@@ -2403,7 +2403,7 @@ let tests =
                   Expect.contains defects (PreEmitDefect.PageSizeWithoutPageKey "paged") "the defect is raised"
                   let code, severity, _ = describe (PreEmitDefect.PageSizeWithoutPageKey "paged")
                   Expect.equal code "FUARAN093" "stable code"
-                  Expect.equal severity DefectSeverity.Error "a page size that pages nothing is dead intent"
+                  Expect.equal severity Fuaran.Core.Severity.Error "a page size that pages nothing is dead intent"
               | Ok() -> failtest "Expected FUARAN093, got Ok"
           }
 
@@ -2438,7 +2438,7 @@ let tests =
 
                   Expect.equal
                       severity
-                      DefectSeverity.Warning
+                      Fuaran.Core.Severity.Warning
                       "the renderer resolves this correctly, so it is a caution rather than a break"
               | Ok() -> failtest "Expected FUARAN096, got Ok"
           }
@@ -2491,7 +2491,7 @@ let tests =
                       describe (PreEmitDefect.UnhonourableSort("sorted", SortDefect.NoSortStateKey "Month"))
 
                   Expect.equal code "FUARAN094" "stable code"
-                  Expect.equal severity DefectSeverity.Error "a sort that cannot happen is an error"
+                  Expect.equal severity Fuaran.Core.Severity.Error "a sort that cannot happen is an error"
               | Ok() -> failtest "Expected FUARAN094, got Ok"
           }
 
@@ -2548,7 +2548,7 @@ let tests =
                       describe (PreEmitDefect.UneditableColumnDeclared("edited", "Note", EditDefect.GridNotEditable))
 
                   Expect.equal code "FUARAN095" "stable code"
-                  Expect.equal severity DefectSeverity.Error "an edit that cannot happen is an error"
+                  Expect.equal severity Fuaran.Core.Severity.Error "an edit that cannot happen is an error"
               | Ok() -> failtest "Expected FUARAN095, got Ok"
           }
 
@@ -2636,7 +2636,7 @@ let tests =
 
                   Expect.equal
                       severity
-                      DefectSeverity.Warning
+                      Fuaran.Core.Severity.Warning
                       "a key may legitimately be written for a HOST to read, which is why this cannot be an Error"
               | Ok() -> failtest "Expected FUARAN098, got Ok"
           }
@@ -2742,7 +2742,7 @@ let tests =
 
                   Expect.equal
                       severity
-                      DefectSeverity.Warning
+                      Fuaran.Core.Severity.Warning
                       "a candidate finding — the author may have meant the stated date"
               | Ok() -> failtest "Expected FUARAN102, got Ok"
           }
@@ -2828,7 +2828,7 @@ let tests =
 
                   Expect.equal
                       severity
-                      DefectSeverity.Warning
+                      Fuaran.Core.Severity.Warning
                       "the HOST may write the key, and the validator cannot see the host"
               | Ok() -> failtest "Expected FUARAN103, got Ok"
           }
@@ -2912,7 +2912,7 @@ let tests =
 
                   Expect.equal
                       severity
-                      DefectSeverity.Warning
+                      Fuaran.Core.Severity.Warning
                       "the HOST may populate the key, and the validator cannot see the host"
               | Ok() -> failtest "Expected FUARAN105, got Ok"
           }
@@ -3049,7 +3049,7 @@ let tests =
 
                   Expect.equal
                       severity
-                      DefectSeverity.Error
+                      Fuaran.Core.Severity.Error
                       "both declarations are in the tree — the disagreement needs no host to decide it"
               | other -> failtestf "Expected exactly one FUARAN106, got %A" other
           }
@@ -3124,7 +3124,10 @@ let tests =
 
                   Expect.equal code "FUARAN107" "stable code"
 
-                  Expect.equal severity DefectSeverity.Warning "identical is not the same claim as meant-to-be-one"
+                  Expect.equal
+                      severity
+                      Fuaran.Core.Severity.Warning
+                      "identical is not the same claim as meant-to-be-one"
               | other -> failtestf "Expected exactly one FUARAN107, got %A" other
           }
 
@@ -3216,7 +3219,7 @@ let tests =
 
                   Expect.equal
                       severity
-                      DefectSeverity.Error
+                      Fuaran.Core.Severity.Error
                       "a dangling state key is decidable from the tree alone, so it is refused rather than warned"
               | Ok() -> failtest "Expected FUARAN099, got Ok"
           }
@@ -3278,7 +3281,7 @@ let tests =
 
                   Expect.equal
                       severity
-                      DefectSeverity.Warning
+                      Fuaran.Core.Severity.Warning
                       "the projection is the host's, so refusing the tree would decide it for every host"
               | Ok() -> failtest "Expected FUARAN100, got Ok"
           }
@@ -3358,7 +3361,7 @@ let tests =
 
                   Expect.equal
                       severity
-                      DefectSeverity.Warning
+                      Fuaran.Core.Severity.Warning
                       "a literal operand is legal — it is just the shape that collapses the rule/bound distinction"
               | Ok() -> failtest "Expected FUARAN101, got Ok"
           }
@@ -3463,7 +3466,7 @@ let tests =
               let empty = PreEmitDefect.EmptyAccessibilityDeclaration("n", "label")
 
               for d in [ unnamed; dangling; empty ] do
-                  Expect.equal (severityOf d) DefectSeverity.Warning "advisory, not refusal"
+                  Expect.equal (severityOf d) Fuaran.Core.Severity.Warning "advisory, not refusal"
           }
 
           test "FUARAN109 go-red check: a named interactive node is silent" {
@@ -3692,7 +3695,7 @@ let tests =
                       PreEmitValidate.describe (PreEmitDefect.WireLossyActionClosure(nodeId, slot))
 
                   Expect.equal code "FUARAN112" "the published code"
-                  Expect.equal severity DefectSeverity.Warning "advisory — the encoder is the refusal point"
+                  Expect.equal severity Fuaran.Core.Severity.Warning "advisory — the encoder is the refusal point"
                   Expect.stringContains message "go" "names the node the author must repair"
               | other -> failtestf "Expected one FUARAN112, got %A" other
           }
@@ -3761,7 +3764,7 @@ let tests =
 
               Expect.equal
                   (severityOf (embedDefects tree |> List.head))
-                  DefectSeverity.Error
+                  Fuaran.Core.Severity.Error
                   "Error, not Warning — there is no legitimate shape it refuses, and a frame with no name is one a reader cannot identify"
           }
 
@@ -3804,7 +3807,7 @@ let tests =
 
               Expect.equal
                   (severityOf (embedDefects tree |> List.head))
-                  DefectSeverity.Warning
+                  Fuaran.Core.Severity.Warning
                   "Warning, not Error — the pair is also what every real cross-origin embed needs, and nothing in this tree says which case it is"
           }
 
@@ -3865,7 +3868,7 @@ let tests =
 
               Expect.equal
                   (severityOf (directionDefects tree |> List.head))
-                  DefectSeverity.Warning
+                  Fuaran.Core.Severity.Warning
                   "Warning, not Error — the declaration is inert rather than harmful, and a tree mid-edit is an ordinary authoring step"
           }
 
@@ -3939,7 +3942,7 @@ let tests =
 
               Expect.equal
                   (severityOf (autoAdvanceDefects tree |> List.head))
-                  DefectSeverity.Warning
+                  Fuaran.Core.Severity.Warning
                   "Warning, not Error — an inert declaration is not harmful"
           }
 
@@ -4014,7 +4017,7 @@ let tests =
 
               Expect.equal
                   (severityOf (printBreakDefects tree |> List.head))
-                  DefectSeverity.Warning
+                  Fuaran.Core.Severity.Warning
                   "Warning, not Error — an inert declaration is not harmful, and a container whose children arrive in a later authoring step is an ordinary mid-edit tree"
           }
 
@@ -4175,7 +4178,7 @@ let tests =
 
               Expect.equal
                   (severityOf (treeDefects tree |> List.head))
-                  DefectSeverity.Error
+                  Fuaran.Core.Severity.Error
                   "Error, not Warning — there is no legitimate shape it refuses: two rows meaning the same thing are one row"
           }
 
@@ -4245,7 +4248,7 @@ let tests =
 
               Expect.equal
                   (severityOf (treeDefects tree |> List.head))
-                  DefectSeverity.Error
+                  Fuaran.Core.Severity.Error
                   "Error, not Warning — Defaults.treeItem carries the empty literal, so every reading of one is a defect"
           }
 
@@ -4296,7 +4299,7 @@ let tests =
 
               Expect.equal
                   (severityOf (tooltipDefects tree |> List.head))
-                  DefectSeverity.Warning
+                  Fuaran.Core.Severity.Warning
                   "Warning, not Error — what is wrong is the declaration, not the document; a node with no hint is the ordinary state of almost every node"
           }
 
@@ -4336,7 +4339,7 @@ let tests =
 
               Expect.equal
                   (severityOf (tooltipDefects tree |> List.head))
-                  DefectSeverity.Warning
+                  Fuaran.Core.Severity.Warning
                   "Warning, not Error — a decorative node with a debugging hint is a legitimate shape this walk cannot tell from the mistake"
           }
 
@@ -4394,7 +4397,7 @@ let comboboxOptionRuleTests =
 
               Expect.equal
                   (severityOf (comboboxDefects tree |> List.head))
-                  DefectSeverity.Warning
+                  Fuaran.Core.Severity.Warning
                   "Warning, not Error — an empty static list is a legitimate transitional authoring state"
           }
 
@@ -4495,7 +4498,7 @@ let uploadGestureRuleTests =
 
               Expect.equal
                   (severityOf (uploadDefects tree |> List.head))
-                  DefectSeverity.Warning
+                  Fuaran.Core.Severity.Warning
                   "Warning, not Error — a tree assembled before its handler is wired is an ordinary step"
           }
 
@@ -4608,7 +4611,7 @@ let popoverAnchorRuleTests =
 
               Expect.equal
                   (severityOf (anchorDefects tree |> List.head))
-                  DefectSeverity.Warning
+                  Fuaran.Core.Severity.Warning
                   "Warning — the document is well-formed and renders; it just does not do what it says"
           }
 
@@ -4722,7 +4725,7 @@ let crossContainerTransferTests =
 
               Expect.equal
                   severity
-                  DefectSeverity.Warning
+                  Fuaran.Core.Severity.Warning
                   "Warning — a tree mid-authoring holds one end before the other arrives"
 
               Expect.stringContains message "board" "the key is named, so the missing declaration is findable"
@@ -4808,7 +4811,11 @@ let crossContainerTransferTests =
               let _, severity, message =
                   PreEmitValidate.describe (transferDefects tree |> List.head)
 
-              Expect.equal severity DefectSeverity.Warning "Warning — the transfer happens; it cannot be described"
+              Expect.equal
+                  severity
+                  Fuaran.Core.Severity.Warning
+                  "Warning — the transfer happens; it cannot be described"
+
               Expect.stringContains message "rowKeyField" "the message names the slot to fill"
           }
 
@@ -4836,7 +4843,7 @@ let ratingAndColourValueRuleTests =
 
               Expect.equal
                   (severityOf (ratingColourDefects tree |> List.head))
-                  DefectSeverity.Warning
+                  Fuaran.Core.Severity.Warning
                   "Warning, not Error — the renderer clamps, so the document still decodes and renders"
           }
 
@@ -4888,7 +4895,7 @@ let ratingAndColourValueRuleTests =
               // describes a tree that decodes perfectly and reads badly.
               Expect.equal
                   (severityOf (ratingColourDefects tree |> List.head))
-                  DefectSeverity.Error
+                  Fuaran.Core.Severity.Error
                   "Error — this tree cannot survive its own wire format"
           }
 
@@ -4975,7 +4982,7 @@ let captureAcceptRuleTests =
 
               Expect.equal
                   (severityOf (captureDefects tree |> List.head))
-                  DefectSeverity.Warning
+                  Fuaran.Core.Severity.Warning
                   "Warning, not Error — the document decodes, renders, and on a desktop behaves as intended"
           }
 
@@ -5104,7 +5111,7 @@ let tokensValueRuleTests =
 
               Expect.equal
                   (severityOf (tokensDefects tree |> List.head))
-                  DefectSeverity.Warning
+                  Fuaran.Core.Severity.Warning
                   "Warning — the document decodes and renders; what is wrong is that no reader can use it"
           }
 
@@ -5457,7 +5464,11 @@ let reservedStateKeyRuleTests =
                               | _ -> None)
 
                   Expect.equal code "FUARAN149" "the next free spec-band code"
-                  Expect.equal severity DefectSeverity.Warning "a Warning — the tree is legal, the write is futile"
+
+                  Expect.equal
+                      severity
+                      Fuaran.Core.Severity.Warning
+                      "a Warning — the tree is legal, the write is futile"
               finally
                   StateKeyPolicy.clearReservedForTests ()
           }
@@ -5658,7 +5669,10 @@ let severityToneCoherenceTests =
 
                   Expect.equal code "FUARAN153" "stable code"
 
-                  Expect.equal severity DefectSeverity.Warning "gate-strengthening: green on arrival, ratcheted later"
+                  Expect.equal
+                      severity
+                      Fuaran.Core.Severity.Warning
+                      "gate-strengthening: green on arrival, ratcheted later"
               | Ok() -> failtest "Expected FUARAN153, got Ok"
           }
 
@@ -5730,7 +5744,7 @@ let severityToneCoherenceTests =
                       describe (PreEmitDefect.PillToneContradictsValue("g", "Critical", "Success"))
 
                   Expect.equal code "FUARAN154" "stable code"
-                  Expect.equal severity DefectSeverity.Warning "the family is warn-class throughout"
+                  Expect.equal severity Fuaran.Core.Severity.Warning "the family is warn-class throughout"
               | Ok() -> failtest "Expected FUARAN154, got Ok"
           }
 
@@ -5812,7 +5826,7 @@ let unstyledDateFormatTests =
                       Expect.equal defect (PreEmitDefect.UnstyledDateFormat "when") "the reading node is named"
                       let code, severity, _ = PreEmitValidate.describe defect
                       Expect.equal code "FUARAN155" "stable code"
-                      Expect.equal severity DefectSeverity.Error "no host could render it, so it is an Error"
+                      Expect.equal severity Fuaran.Core.Severity.Error "no host could render it, so it is an Error"
                   | None -> failtest "Expected FUARAN155 among the defects"
               | Ok() -> failtest "Expected FUARAN155, got Ok"
           }
@@ -5881,7 +5895,7 @@ let fallbackTests =
               | [ PreEmitDefect.FallbackRepeatsKind("m", "Markdown") as d ] ->
                   let code, severity, _ = PreEmitValidate.describe d
                   Expect.equal code "FUARAN156" "stable code"
-                  Expect.equal severity DefectSeverity.Error "a promise the document cannot keep"
+                  Expect.equal severity Fuaran.Core.Severity.Error "a promise the document cannot keep"
               | other -> failtestf "Expected exactly FUARAN156 on 'm', got %A" other
           }
 
@@ -5917,7 +5931,7 @@ let fallbackTests =
               | [ PreEmitDefect.NestedFallback("b", "m-alt") as d ] ->
                   let code, severity, _ = PreEmitValidate.describe d
                   Expect.equal code "FUARAN157" "stable code"
-                  Expect.equal severity DefectSeverity.Error "the inner fallback has no reader"
+                  Expect.equal severity Fuaran.Core.Severity.Error "the inner fallback has no reader"
               | other -> failtestf "Expected exactly FUARAN157 on ('b', 'm-alt'), got %A" other
           }
 

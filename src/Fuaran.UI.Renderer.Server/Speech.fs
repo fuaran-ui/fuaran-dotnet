@@ -453,7 +453,7 @@ let project (ctx: Render.ServerRenderContext) (root: Node<obj>) : SpeechScript *
         // ── Spoken: authored prose, as written ───────────────────────────────
         | NodeKind.Heading spec -> leaf (derived [ heading (text spec.Text) ])
         | NodeKind.Markdown spec ->
-            leaf (derived (markdownBlocks ctx.EgressPolicy (text spec.Text) |> List.map sentence))
+            leaf (derived (markdownBlocks ctx.Policy.Egress (text spec.Text) |> List.map sentence))
         | NodeKind.Callout spec ->
             leaf (
                 derived (

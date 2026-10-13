@@ -1,4 +1,4 @@
-module Fuaran.Samples.Catalog.Tabs69
+module Fuaran.Samples.Catalog.TabsNavigation
 
 // ============================================================================
 //  Explicit headers + ARIA / keyboard navigation + typed-tag
@@ -158,29 +158,7 @@ let private wireRuntime () : Runtime.IFuaranRuntime =
 let view (model: Model) (dispatch: Msg -> unit) : ReactElement =
     let runtime = wireRuntime ()
 
-    let ctx: Render.RenderContext<Msg> =
-        { Sources = BindingResolver.empty
-          Runtime = runtime
-          VisAdapter = VisAdapter.noOp<Msg>
-          Dispatch = dispatch
-          TelemetrySink = None
-          InErrorBoundary = false
-          Fragments = Map.empty
-          ExpandingFragments = Set.empty
-          Scope = None
-          SessionContext = Map.empty
-          // Phase 889 — no user-action recording in the samples.
-          ActionSink = None
-          CurrentNodeId = None
-          // Phase 1026 — a HAND-AUTHORED tree, where the author is the trust
-          // boundary, so the permissive posture is correct and is reached BY NAME.
-          // A host rendering a DECODED tree must not copy this line.
-          EgressPolicy = Sanitize.permissiveEgress
-          // Phase 1117 — no upload sink: this surface performs no uploads.
-          UploadSink = None
-          CustomHashFloor = None
-          // Phase 1545 — the default posture; samples render under no CSP mode.
-          Csp = Csp.Permissive }
+    let render = SampleContext.render runtime BindingResolver.empty dispatch
 
     React.Fragment
         [ Render.themeStyleElement Defaults.theme
@@ -195,4 +173,4 @@ let view (model: Model) (dispatch: Msg -> unit) : ReactElement =
                       Html.div
                           [ prop.custom ("data-testid", "tabs-69-active-tag-mirror")
                             prop.text (sprintf "Active tag: %s" (tagOf model.Active)) ]
-                      Render.render ctx (tabsNode model) ] ] ]
+                      render (tabsNode model) ] ] ]
