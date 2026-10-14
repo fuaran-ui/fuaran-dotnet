@@ -6626,7 +6626,9 @@ let bindingChecksWithFacts (facts: BindingWalk.TreeFacts) (node: Node<'Msg>) : B
         System.Collections.Generic.Dictionary<obj, string>(HashIdentity.Reference)
 
     for _, _, path, n in readers do
-        occurrencePaths.TryAdd((n :> obj), path) |> ignore
+        // `ContainsKey` + `Add` rather than `TryAdd`, which Fable does not lower.
+        if not (occurrencePaths.ContainsKey(n :> obj)) then
+            occurrencePaths.Add((n :> obj), path)
 
     let seen = System.Collections.Generic.HashSet<string>()
 
