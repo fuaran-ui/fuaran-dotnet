@@ -38,6 +38,10 @@
     <Compile Include="Checkpoint.fs" />
     <!-- Phase 267: the guest-<scopeId> op-stream keying convention (§4o). -->
     <Compile Include="GuestStream.fs" />
+    <!-- Phase 437 / 2058: pure Fable-safe UTF-8 / base64url / raw-DEFLATE, the
+         teleport codec's byte substrate, beside its one consumer (moved from the
+         core Fuaran.UI package by Phase 2058). FSharp.Core only. -->
+    <Compile Include="Compression.fs" />
     <!-- Phase 437: the teleport state-bundle codec — tree + Binding.State map
          (+ bounded op-history + chain head) → canonical JSON → deflate →
          base64url, with digest integrity + decode-validate-resume. -->
@@ -47,6 +51,10 @@
          decode-side answer-conformance validation; value spaces reuse
          Fuaran.Core.Function's ValueSpace (see the Phase 465 design note). -->
     <Compile Include="Elicitation.fs" />
+    <!-- Phase 2058: the obsolete Fuaran.UI.Utf8 / Base64Url / Deflate forwards, for one
+         release. LAST on purpose: a file here that opens Fuaran.UI must never resolve
+         the obsolete modules ahead of the new home. -->
+    <Compile Include="CompressionForward.fs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />

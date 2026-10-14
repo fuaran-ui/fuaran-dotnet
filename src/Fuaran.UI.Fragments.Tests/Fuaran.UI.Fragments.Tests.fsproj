@@ -17,8 +17,9 @@
     <ProjectReference Include="..\Fuaran.UI.Fragments\Fuaran.UI.Fragments.fsproj" />
     <!-- The certification floor. The dependency runs THIS way only: the library
          itself never references the validator, which is what keeps it
-         Fable-clean. -->
-    <ProjectReference Include="..\Fuaran.UI.Validator\Fuaran.UI.Validator.fsproj" />
+         Fable-clean. Phase 2058: the certification library, not the validator
+         executable it used to live in. -->
+    <ProjectReference Include="..\Fuaran.UI.Validator.Certification\Fuaran.UI.Validator.Certification.fsproj" />
     <!-- Phase 1670 — the canonical encoder, so the wire-shape assertions below
          read the BYTES the host emits rather than the record it emits them from.
          Not the renderer: this is the FSharp.Core-level codec, so no React /

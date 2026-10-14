@@ -7850,6 +7850,41 @@ Each is now decided and under test.
 **Certified by** `src/Fuaran.UI.Tests/FactsWalkTests.fs`. One test covers a repeated chart id (three shapes)
 and a repeated grid id, and asserts that every emitted path resolves in the encoded document. A second covers a
 chart and a grid in a `Custom` bag, and a bag value sharing a real chart's id.
+### What rides this slot — Phase 2058
+
+**Class: BREAKING (public module paths and assemblies move) + a new package id at its first version.** No
+behaviour and no wire byte moves: every moved function is the same code, and the teleport bundle bytes are
+unchanged (the teleport and compression suites pin them). The slot was opened at this class for this phase.
+
+- **`Fuaran.UI.Utf8`, `Fuaran.UI.Base64Url` and `Fuaran.UI.Deflate` (with `Deflate.InflateError`) move out of
+  the core `Fuaran.UI` package** to `Fuaran.UI.OpStream.Abstractions.Utf8`, `.Base64Url` and `.Deflate`, in the
+  `Fuaran.UI.OpStream.Abstractions` package, beside their one consumer, the teleport codec. The file keeps its
+  name (`Compression.fs`) and ships under that package's `fable/` sources, so a Fable consumer of the teleport
+  codec compiles it exactly as before. **Forward, for one release:** the same package carries obsolete modules
+  at the OLD paths (`CompressionForward.fs`), each member delegating to the new home and
+  `Fuaran.UI.Deflate.InflateError` an abbreviation of the new type, so pattern matches over its cases still
+  compile. A consumer that references `Fuaran.UI.OpStream.Abstractions` keeps compiling, with an `FS0044`
+  warning naming the new path; a file that opens both `Fuaran.UI` and `Fuaran.UI.OpStream.Abstractions`, in
+  that order, already resolves the new home and sees no warning. A consumer that references ONLY `Fuaran.UI`
+  and used these modules must add the `Fuaran.UI.OpStream.Abstractions` package: that is the break, and it is
+  the point of the move. The forwards are removed in the release after 0.95.0.
+- **`Fuaran.UI.Validator.RecipeCertification` moves out of the `Fuaran.UI.Validator` executable** into a new
+  library package, **`Fuaran.UI.Validator.Certification`, first published at 0.95.0**. The MODULE PATH is
+  unchanged, so source that opens it compiles as before; the type identities move assembly, so a binary
+  compiled against 0.94.0 must be rebuilt. Its dependencies are `FSharp.Core`, `Fuaran.UI`,
+  `Fuaran.UI.Core.Function` and `Fuaran.Core.Conformance`, and NOT FSharp.Compiler.Service: certifying a
+  runtime tree no longer drags in the compiler. It is .NET-only (`FableDotNetOnly`), packs with the rest
+  (`Build.fs`'s pack set) and is pinned by the shared `<Version>`. **Forward, for one release and beyond:** the
+  `Fuaran.UI.Validator` package references the new library, so a consumer of the validator package still
+  resolves the module. The validator's own direct references to `Fuaran.UI.Core.Function` and
+  `Fuaran.Core.Conformance` are gone (only certification used them), so its nupkg declares the new library
+  in their place.
+- **The core package's dependency list is unchanged** (`FSharp.Core`, `Fuaran.Compute.DataFrame`,
+  `Fuaran.Core.Column`, `.Tree`, `.Validator`, `.Wire`, `Fable.Core`, `Fuaran.Core.Ops`,
+  `.Propagation`): the moved code depended on FSharp.Core only, so the move shrinks the core package's
+  CONTENT, not its closure.
+- **`HoleValueSpace` to Core has one home already**, `Fuaran.UI.Core.Function.Projection` (Phase 2234,
+  ridden in 0.94.0); the certification library reads it unchanged.
 
 ---
 
