@@ -21,15 +21,18 @@ module Fuaran.UI.Validator.Suppressions
 //      wherever the comment appears (convention: near the top, beside the
 //      module's doc comment, so a reader meets it before the fixtures).
 //
-//    // fuaran-validator: disable-next-line FUARAN001
+//    // fuaran-validator: disable-next-line FUARAN-DUP-ID
 //
 //      Suppresses the listed codes on the FOLLOWING source line only — the
 //      precise form, for a single exceptional call site in a file that should
 //      otherwise stay gated.
 //
 //  Any text after the codes is free prose, so a pragma can carry its
-//  justification on the same line. Codes are matched as `FUARAN` + digits;
-//  a pragma naming a code that never fires is silently inert.
+//  justification on the same line. Codes are matched as `FUARAN` + digits
+//  or `FUARAN-` + an upper-case name (`FUARAN-DUP-ID`); a retired code a
+//  registry entry still accepts (`FUARAN001`, Phase 2052) suppresses the
+//  code that now reports its defect. A pragma naming a code that never fires
+//  is silently inert.
 //
 //  Suppression applies to Warnings as well as Errors, and is keyed on the
 //  finding's own (file, line, code) — so it is the reporting layer that is
@@ -39,6 +42,7 @@ module Fuaran.UI.Validator.Suppressions
 open System
 open System.IO
 open System.Text.RegularExpressions
+open Fuaran.UI.PreEmitValidate
 open Fuaran.UI.Validator.Findings
 
 /// Pragma marker. Matched case-insensitively so `// FUARAN-VALIDATOR:` reads
@@ -46,7 +50,8 @@ open Fuaran.UI.Validator.Findings
 let private pragma =
     Regex(@"//.*?fuaran-validator\s*:\s*(disable-next-line|disable)\b(?<rest>.*)$", RegexOptions.IgnoreCase)
 
-let private codeToken = Regex(@"FUARAN\d+", RegexOptions.IgnoreCase)
+let private codeToken =
+    Regex(@"FUARAN(?:\d+|-[A-Z]+(?:-[A-Z]+)*)", RegexOptions.IgnoreCase)
 
 /// The suppressions declared by one source file.
 type FileSuppressions =
@@ -69,7 +74,7 @@ let private normalise (path: string) =
 
 let private codesOn (rest: string) =
     codeToken.Matches rest
-    |> Seq.map (fun m -> m.Value.ToUpperInvariant())
+    |> Seq.map (fun m -> FindingCodes.canonical (m.Value.ToUpperInvariant()))
     |> Set.ofSeq
 
 /// Parse one file's pragmas. Lines are 1-based to match FCS locations.

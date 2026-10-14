@@ -38,6 +38,7 @@ module Fuaran.UI.Validator.GridTemplateColumnsCheck
 // ============================================================================
 
 open System.Text.RegularExpressions
+open Fuaran.UI.PreEmitValidate
 open Fuaran.UI.Validator.Findings
 open Fuaran.UI.Validator.Syntax
 
@@ -71,8 +72,7 @@ let check (sources: ParsedSource list) : Finding list =
             | Some s when repeatOneFrRegex.IsMatch s ->
                 let base' =
                     create
-                        Warning
-                        "FUARAN046"
+                        FindingCodes.gridTemplateRepeatFr
                         call.Location
                         (sprintf
                             "Fuaran.gridLayoutTemplated: templateColumns %A is equivalent to the typed Cols-based emission. Use Fuaran.gridLayout with `Cols = N` instead — the typed shape avoids the unbounded-string escape's review tax for no expressivity gain."

@@ -19,6 +19,7 @@ open System.Text.RegularExpressions
 open FSharp.Compiler.CodeAnalysis
 open Expecto
 open Fuaran.UI.Validator
+open Fuaran.Core
 open Fuaran.UI.Validator.Findings
 
 // ─── Harness ────────────────────────────────────────────────────────────────
@@ -123,7 +124,7 @@ let private codes (code: string) (fs: Finding list) =
 let private hasCode (code: string) (fs: Finding list) = not (List.isEmpty (codes code fs))
 
 let private errorCount (fs: Finding list) =
-    fs |> List.filter (fun f -> f.Severity = Error) |> List.length
+    fs |> List.filter (fun f -> f.Severity = Severity.Error) |> List.length
 
 let private single (code: string) (fs: Finding list) =
     match codes code fs with
@@ -136,7 +137,7 @@ let private single (code: string) (fs: Finding list) =
 /// walker's sources can emit; the census test below fails when a code appears
 /// in the sources without a row here.
 let private firing: (string * Setup) list =
-    [ "FUARAN001", setup [ "DuplicateInBox" ]
+    [ "FUARAN-DUP-ID", setup [ "DuplicateInBox" ]
       "FUARAN002", setup [ "CrossTree" ]
       "FUARAN010", setup [ "UnresolvedQuery" ]
       "FUARAN020", setup [ "MistypedMsg" ]
@@ -169,20 +170,27 @@ let private firing: (string * Setup) list =
       { setup [ "ValidTree" ] with
           Manifest = None } ]
 
-/// Codes the walker's sources name without emitting: a documentation constant.
-let private notEmitted = set [ "FUARAN052" ]
-
-/// The codes the walker's own sources emit, read the way the repository's
-/// code-allocation script reads them: a quoted `FUARAN###` literal.
+/// The codes the walker raises, read from the one registry
+/// (`PreEmitValidate.FindingCodes`): the build-time family's entries.
 let private walkerCodes () =
+    Fuaran.UI.PreEmitValidate.FindingCodes.all
+    |> List.filter (fun c -> c.Family = Fuaran.UI.PreEmitValidate.FindingFamily.BuildTime)
+    |> List.map _.Code
+    |> Set.ofList
+
+/// Every quoted `FUARAN*` literal in the walker's own sources: the shape a code
+/// written at a check site takes, which the registry exists to replace.
+let private walkerSourceLiterals () =
     let dir = Path.Combine(__SOURCE_DIRECTORY__, "..", "Fuaran.UI.Validator")
 
-    Directory.GetFiles(dir, "*.fs")
-    |> Seq.collect (fun f ->
-        Regex.Matches(File.ReadAllText f, "\"(FUARAN\\d{3})\"")
-        |> Seq.map _.Groups[1].Value)
-    |> Set.ofSeq
-    |> fun all -> Set.difference all notEmitted
+    [ for file in Directory.GetFiles(dir, "*.fs") do
+          let name =
+              match Path.GetFileName file with
+              | null -> file
+              | n -> n
+
+          for m in Regex.Matches(File.ReadAllText file, "\"(FUARAN(?:\\d+|-[A-Z-]+))\"") do
+              yield name + ": " + m.Groups[1].Value ]
 
 let private census =
     testList
@@ -196,6 +204,22 @@ let private census =
               Expect.isEmpty (Set.difference emitted covered) "a code with no compiled snippet that makes it fire"
 
               Expect.isEmpty (Set.difference covered emitted) "a census row for a code the walker no longer emits"
+          }
+
+          test "no walker source writes a code: every check names a registry entry (Phase 2052)" {
+              Expect.isEmpty (walkerSourceLiterals ()) "a FUARAN literal at a check site"
+          }
+
+          test "the walker's duplicate-NodeId code IS the tree-time one (Phase 2052)" {
+              let tree = Fuaran.UI.PreEmitValidate.DefectCodes.rowOf "DuplicateNodeId"
+              let walker = Fuaran.UI.PreEmitValidate.FindingCodes.duplicateNodeId
+              Expect.equal walker.Code tree.Code "one code in both validators"
+              Expect.equal walker.Severity tree.Severity "one severity in both validators"
+
+              Expect.equal
+                  (Fuaran.UI.PreEmitValidate.FindingCodes.canonical "FUARAN001")
+                  tree.Code
+                  "the retired code is an alias"
           }
 
           yield!
@@ -257,8 +281,8 @@ let private behaviour =
 
           test "Binding.Computed is an advisory Warning by default (FUARAN084)" {
               let f = single "FUARAN084" (findings (setup [ "Computed" ]))
-              Expect.equal f.Severity Warning "hand-authored Binding.Computed is advisory"
-              Expect.isSome f.Suggestion "the finding names a recoverable alternative"
+              Expect.equal f.Severity Severity.Warning "hand-authored Binding.Computed is advisory"
+              Expect.isSome f.Remedy "the finding names a recoverable alternative"
           }
 
           test "Binding.Computed escalates to Error in an orchestrated context (FUARAN084)" {
@@ -269,7 +293,7 @@ let private behaviour =
                           { setup [ "Computed" ] with
                               Orchestrated = true })
 
-              Expect.equal f.Severity Error "orchestrated Binding.Computed is an error"
+              Expect.equal f.Severity Severity.Error "orchestrated Binding.Computed is an error"
           }
 
           test "a state-bound metric raises no FUARAN084" {
@@ -278,15 +302,15 @@ let private behaviour =
 
           // ── NodeId uniqueness ─────────────────────────────────────────────
 
-          test "a duplicate id under Fuaran.box is an Error (FUARAN001)" {
+          test "a duplicate id under Fuaran.box is an Error (FUARAN-DUP-ID)" {
               let fs = findings (setup [ "DuplicateInBox" ])
-              Expect.equal (codes "FUARAN001" fs).Length 2 "both duplicate sites reported"
-              Expect.stringContains (codes "FUARAN001" fs).Head.Message "\"box-root\"" "named by the root's id"
+              Expect.equal (codes "FUARAN-DUP-ID" fs).Length 2 "both duplicate sites reported"
+              Expect.stringContains (codes "FUARAN-DUP-ID" fs).Head.Message "\"box-root\"" "named by the root's id"
           }
 
-          test "a duplicate id under Fuaran.dashboard is an Error (FUARAN001)" {
+          test "a duplicate id under Fuaran.dashboard is an Error (FUARAN-DUP-ID)" {
               let fs = findings (setup [ "DuplicateInDashboard" ])
-              Expect.isTrue (hasCode "FUARAN001" fs) "FUARAN001 raised"
+              Expect.isTrue (hasCode "FUARAN-DUP-ID" fs) "FUARAN-DUP-ID raised"
               Expect.isGreaterThan (errorCount fs) 0 "at least one Error"
           }
 
@@ -296,22 +320,24 @@ let private behaviour =
               Expect.equal (errorCount fs) 0 "no Errors"
           }
 
-          test "two trees sharing a root id are two trees (FUARAN002), not one with duplicates (FUARAN001)" {
+          test "two trees sharing a root id are two trees (FUARAN002), not one with duplicates (FUARAN-DUP-ID)" {
               let fs = findings (setup [ "SameRootId" ])
-              Expect.isFalse (hasCode "FUARAN001" fs) "the two dashboards are distinct trees"
+              Expect.isFalse (hasCode "FUARAN-DUP-ID" fs) "the two dashboards are distinct trees"
               Expect.isTrue (hasCode "FUARAN002" fs) "the shared ids surface as the cross-tree warning"
               Expect.equal (errorCount fs) 0 "no Errors"
           }
 
           test "a duplicate inside ONE tree is still an Error when a same-id sibling tree exists" {
-              Expect.isTrue (hasCode "FUARAN001" (findings (setup [ "DupWithTwin" ]))) "the intra-tree duplicate errors"
+              Expect.isTrue
+                  (hasCode "FUARAN-DUP-ID" (findings (setup [ "DupWithTwin" ])))
+                  "the intra-tree duplicate errors"
           }
 
-          test "a one-argument root call closes its tree (no FUARAN001 on later loose calls)" {
+          test "a one-argument root call closes its tree (no FUARAN-DUP-ID on later loose calls)" {
               // The old walker pushed the root of a one-argument call and never
               // popped it, so every later call in the file joined that tree.
               let fs = findings (setup [ "UnpoppedRoot" ])
-              Expect.isFalse (hasCode "FUARAN001" fs) "loose helpers are in no tree"
+              Expect.isFalse (hasCode "FUARAN-DUP-ID" fs) "loose helpers are in no tree"
           }
 
           // ── Schema-coupled checks ─────────────────────────────────────────
@@ -319,7 +345,7 @@ let private behaviour =
           test "an unresolved binding.query is an Error (FUARAN010) with a suggestion" {
               let f = single "FUARAN010" (findings (setup [ "UnresolvedQuery" ]))
               Expect.isSome f.AvailableFields "available_fields populated"
-              Expect.equal f.Suggestion (Some "totalRevenue") "the closest registered name"
+              Expect.equal f.Remedy (Some "totalRevenue") "the closest registered name"
           }
 
           test "an unresolved query nested four calls deep is reported once (FUARAN010)" {
@@ -331,7 +357,7 @@ let private behaviour =
 
           test "a mistyped Msg case in Action.dispatch is an Error (FUARAN020)" {
               let f = single "FUARAN020" (findings (setup [ "MistypedMsg" ]))
-              Expect.equal f.Suggestion (Some "LoadData") "the suggestion fixes the typo"
+              Expect.equal f.Remedy (Some "LoadData") "the suggestion fixes the typo"
           }
 
           test "a toRow row-type mismatch in Fuaran.grid is an Error (FUARAN031)" {
@@ -372,10 +398,10 @@ let private behaviour =
 
           test "plain rendering of an Error carries severity, code and message" {
               let plain =
-                  ErrorRender.renderPlain (codes "FUARAN001" (findings (setup [ "DuplicateInDashboard" ]))).Head
+                  ErrorRender.renderPlain (codes "FUARAN-DUP-ID" (findings (setup [ "DuplicateInDashboard" ]))).Head
 
               Expect.stringContains plain "error" "severity"
-              Expect.stringContains plain "FUARAN001" "code"
+              Expect.stringContains plain "FUARAN-DUP-ID" "code"
               Expect.stringContains plain "shared-id" "the duplicate id"
           }
 
@@ -411,7 +437,7 @@ let private behaviour =
                   |> Async.RunSynchronously
 
               Expect.equal result.FilesWalked 1 "only CrossTree.fs walked"
-              Expect.isFalse (hasCode "FUARAN001" result.Findings) "the filtered-out file is not checked"
+              Expect.isFalse (hasCode "FUARAN-DUP-ID" result.Findings) "the filtered-out file is not checked"
           }
 
           // ── Scalar / link / button ────────────────────────────────────────
@@ -421,7 +447,7 @@ let private behaviour =
               let f = single "FUARAN050" fs
               Expect.equal (errorCount fs) 0 "advisory only"
               Expect.stringContains f.Message "supportedRange=" "carries supportedRange"
-              Expect.isSome f.Suggestion "carries a recovery suggestion"
+              Expect.isSome f.Remedy "carries a recovery suggestion"
           }
 
           test "an in-range progress Fraction raises no FUARAN050" {
@@ -441,7 +467,7 @@ let private behaviour =
           test "Disabled = Some (Binding.Static (Some false)) is a no-op Warning (FUARAN064)" {
               let fs = findings (setup [ "DisabledNoOp"; "DisabledNoOpSmartCtor" ])
               Expect.equal (codes "FUARAN064" fs).Length 2 "the case and the smart constructor"
-              Expect.isSome (codes "FUARAN064" fs).Head.Suggestion "carries a recovery suggestion"
+              Expect.isSome (codes "FUARAN064" fs).Head.Remedy "carries a recovery suggestion"
           }
 
           test "a constant-true or state-bound Disabled raises no FUARAN064" {
@@ -498,7 +524,7 @@ let private behaviour =
               let fs = findings (setup [ "CurrencyBlankCase"; "CurrencyBlankSmartCtor" ])
               let found = codes "FUARAN061" fs
               Expect.equal found.Length 2 "both shapes"
-              Expect.equal found.Head.Severity Error "an Error"
+              Expect.equal found.Head.Severity Severity.Error "an Error"
           }
 
           test "a valid currency code raises no FUARAN061" {
@@ -554,9 +580,9 @@ let private behaviour =
           test "a stale contentHash is an Error under Enforced and a Warning under AdvisoryWarning (FUARAN062)" {
               let enforced = single "FUARAN062" (findings (setup [ "CustomStaleEnforced" ]))
               let advisory = single "FUARAN062" (findings (setup [ "CustomStaleAdvisory" ]))
-              Expect.equal enforced.Severity Error "Enforced"
-              Expect.isSome enforced.Suggestion "carries the computed hash"
-              Expect.equal advisory.Severity Warning "AdvisoryWarning"
+              Expect.equal enforced.Severity Severity.Error "Enforced"
+              Expect.isSome enforced.Remedy "carries the computed hash"
+              Expect.equal advisory.Severity Severity.Warning "AdvisoryWarning"
           }
 
           test "the NodeKind.Custom record form is checked too (FUARAN062, FUARAN053, FUARAN055)" {
@@ -617,11 +643,21 @@ let private behaviour =
               let result =
                   run
                       { setup [ "DuplicateInDashboard" ] with
-                          Prefix = "// fuaran-validator: disable FUARAN001 — negative-test fixture\n" }
+                          Prefix = "// fuaran-validator: disable FUARAN-DUP-ID — negative-test fixture\n" }
 
-              Expect.isFalse (hasCode "FUARAN001" result.Findings) "suppressed"
+              Expect.isFalse (hasCode "FUARAN-DUP-ID" result.Findings) "suppressed"
               Expect.equal (errorCount result.Findings) 0 "no Errors survive"
               Expect.isGreaterThan result.Suppressed 0 "the run reports what it suppressed"
+          }
+
+          test "a pragma naming the retired FUARAN001 still suppresses the duplicate-id finding (one release)" {
+              let result =
+                  run
+                      { setup [ "DuplicateInDashboard" ] with
+                          Prefix = "// fuaran-validator: disable FUARAN001 — written before Phase 2052\n" }
+
+              Expect.isFalse (hasCode "FUARAN-DUP-ID" result.Findings) "suppressed through the alias"
+              Expect.isGreaterThan result.Suppressed 0 "and counted"
           }
 
           test "a disable pragma naming a different code suppresses nothing" {
@@ -630,7 +666,7 @@ let private behaviour =
                       { setup [ "DuplicateInDashboard" ] with
                           Prefix = "// fuaran-validator: disable FUARAN057\n" }
 
-              Expect.isTrue (hasCode "FUARAN001" result.Findings) "untouched"
+              Expect.isTrue (hasCode "FUARAN-DUP-ID" result.Findings) "untouched"
               Expect.equal result.Suppressed 0 "nothing suppressed"
           }
 
@@ -650,7 +686,7 @@ let build () : Node<unit> =
         { Defaults.dashboard with
             Children =
                 [
-                  // fuaran-validator: disable-next-line FUARAN001
+                  // fuaran-validator: disable-next-line FUARAN-DUP-ID
                   Fuaran.metric "shared-id" Defaults.metric
                   Fuaran.metric "shared-id" Defaults.metric ] }
 """
@@ -664,7 +700,7 @@ let build () : Node<unit> =
                         Orchestrated = false }
                   |> Async.RunSynchronously
 
-              Expect.equal (codes "FUARAN001" result.Findings).Length 1 "only the un-pragma'd site"
+              Expect.equal (codes "FUARAN-DUP-ID" result.Findings).Length 1 "only the un-pragma'd site"
               Expect.equal result.Suppressed 1 "exactly one suppressed"
           }
 
@@ -674,7 +710,7 @@ let build () : Node<unit> =
                       { setup [ "DuplicateInDashboard" ] with
                           Prefix = "// fuaran-validator: disable\n" }
 
-              Expect.isTrue (hasCode "FUARAN001" result.Findings) "not a blanket disable"
+              Expect.isTrue (hasCode "FUARAN-DUP-ID" result.Findings) "not a blanket disable"
               Expect.equal result.Suppressed 0 "nothing suppressed"
           } ]
 

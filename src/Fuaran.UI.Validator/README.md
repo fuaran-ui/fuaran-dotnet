@@ -14,14 +14,14 @@ Exit codes: `0` on no Error-severity findings, `1` on at least one Error, `2` on
 
 ## How it runs
 
-Each source file under the project is parsed **once**, and every check is a visitor over that one parsed-input list. The set of smart constructors it recognises, and which of them root a tree for NodeId uniqueness (an outermost constructor that takes a child node — `Fuaran.box`, `stack`, `card`, `dashboard`, …), is derived from the `Fuaran` module by reflection rather than listed by hand, so a new constructor is checked from the release that adds it. The codes it emits, and the build-time codes it has retired in favour of the tree-time validator, are enumerated in [`docs/ERROR_CODES.md`](../../docs/ERROR_CODES.md) §4.
+Each source file under the project is parsed **once**, and every check is a visitor over that one parsed-input list. The set of smart constructors it recognises, and which of them root a tree for NodeId uniqueness (an outermost constructor that takes a child node — `Fuaran.box`, `stack`, `card`, `dashboard`, …), is derived from the `Fuaran` module by reflection rather than listed by hand, so a new constructor is checked from the release that adds it. Every code it emits is an entry of the one code registry, `Fuaran.UI.PreEmitValidate.FindingCodes`, which also holds the dead-on-decode lint's and the query-binding check's codes beside the tree-time table; a check names its entry, never a string. A finding is `PreEmitValidate.Finding<Location>`, the shape the lints share, and its severity is `Fuaran.Core.Severity`. The codes, and the build-time codes retired in favour of the tree-time validator, are listed in [`docs/ERROR_CODES.md`](../../docs/ERROR_CODES.md) §4.
 
 ## Suppressing a finding
 
 Some source deliberately holds a shape the validator is right to reject in application code — most often a **negative test**, whose whole purpose is to construct the defect and assert the runtime reports it. There the finding is correct about the code and wrong about the intent, and no edit fixes it without destroying the test. Two comment pragmas opt a source out:
 
 ```fsharp
-// fuaran-validator: disable FUARAN001, FUARAN058 — negative-test fixtures
+// fuaran-validator: disable FUARAN-DUP-ID, FUARAN058 — negative-test fixtures
 ```
 
 File-scoped: suppresses the listed codes anywhere in the file, wherever the comment sits (convention: beside the module's doc comment, so a reader meets it before the fixtures).
@@ -32,6 +32,6 @@ File-scoped: suppresses the listed codes anywhere in the file, wherever the comm
 
 Line-scoped: suppresses the listed codes on the **following** source line only — the precise form, for a single exceptional call site in a file that should otherwise stay gated.
 
-Any text after the codes is free prose, so a pragma carries its justification on the same line. A pragma naming a code that never fires is inert, and a pragma naming no code at all suppresses nothing (a bare `disable` is a typo, not a blanket). Suppression applies to warnings as well as errors, and filters only the reporting layer — every check still runs. Suppressed findings are counted in the run summary (`… 0 error(s), 3 warning(s), 2 suppressed, …`) so a silenced rule stays visible in the build log.
+Any text after the codes is free prose, so a pragma carries its justification on the same line. A code is `FUARAN` + digits or `FUARAN-` + a name (`FUARAN-DUP-ID`); a retired code that is still accepted (`FUARAN001`, which reported duplicate ids until 0.94.0) suppresses the code that replaced it. A pragma naming a code that never fires is inert, and a pragma naming no code at all suppresses nothing (a bare `disable` is a typo, not a blanket). Suppression applies to warnings as well as errors, and filters only the reporting layer — every check still runs. Suppressed findings are counted in the run summary (`… 0 error(s), 3 warning(s), 2 suppressed, …`) so a silenced rule stays visible in the build log.
 
 Apache-2.0 licensed — see the repo [LICENSE](../../LICENSE).

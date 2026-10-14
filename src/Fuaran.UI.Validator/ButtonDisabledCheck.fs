@@ -43,6 +43,7 @@ module Fuaran.UI.Validator.ButtonDisabledCheck
 // ============================================================================
 
 open Fuaran.UI.Validator.AstWalker
+open Fuaran.UI.PreEmitValidate
 open Fuaran.UI.Validator.Findings
 
 let check (calls: FuaranCall list) : Finding list =
@@ -51,8 +52,7 @@ let check (calls: FuaranCall list) : Finding list =
         match c.Ctor, c.ButtonDetail with
         | "button", Some detail when detail.DisabledBoundToStaticFalse ->
             create
-                Warning
-                "FUARAN064"
+                FindingCodes.disabledConstantFalse
                 c.Location
                 "Fuaran.button Disabled is bound to Binding.Static (Some false) — a constant-false disabled binding never disables the button, so it is equivalent to omitting Disabled (default None). This is almost always an unfinished binding: point Disabled at the live state, e.g. Disabled = Some (binding.state \"loading\" false). A permanently-disabled placeholder uses Binding.Static (Some true) and is not flagged."
             |> withRecovery

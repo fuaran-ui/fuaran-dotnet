@@ -142,20 +142,6 @@ let private rawId (NodeId s) : string = s
 
 // ─── The validity ORACLE — PreEmitValidate as a Core Validator.Registry ─────
 
-/// Render a `PreEmitValidate.PreEmitDefect` as a stable (code, severity,
-/// message) triple. The projection itself lives beside the DU
-/// (`PreEmitValidate.describe`, Phase 664) so every consumer — this oracle,
-/// certification counterexamples, Fable-side hosts — shares one vocabulary.
-let private renderPreEmitDefect (d: PreEmitValidate.PreEmitDefect) : string * Fuaran.Core.Severity * string =
-    let code, severity, message = PreEmitValidate.describe d
-
-    let coreSeverity =
-        match severity with
-        | PreEmitValidate.DefectSeverity.Error -> Fuaran.Core.Severity.Error
-        | PreEmitValidate.DefectSeverity.Warning -> Fuaran.Core.Severity.Warning
-
-    code, coreSeverity, message
-
 /// The UI validity oracle as a `Fuaran.Core.Validator.Registry<Node<'Msg>,
 /// NodeId>`: one rule family that runs the shipped `PreEmitValidate` tree walk
 /// over the emitted tree and lowers each `PreEmitDefect` into a Core `Defect`.
@@ -171,7 +157,10 @@ let uiValidityRegistry<'Msg> : Fuaran.Core.Validator.Registry<Node<'Msg>, NodeId
                 | Error defects ->
                     defects
                     |> List.map (fun d ->
-                        let code, sev, msg = renderPreEmitDefect d
+                        // `describe` (Phase 664) is the one projection every consumer
+                        // shares, and its severity is already `Fuaran.Core.Severity`
+                        // (Phase 2052), so the oracle lowers a defect with no mapping.
+                        let code, sev, msg = PreEmitValidate.describe d
 
                         { Code = code
                           Severity = sev
