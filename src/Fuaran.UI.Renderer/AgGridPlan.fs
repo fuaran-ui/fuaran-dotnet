@@ -149,7 +149,7 @@ let paginates (spec: GridSpec<'Msg>) : bool =
 /// `Query` whose `dependsOn` names the page key hands back the page itself.
 let hostPages (spec: GridSpec<'Msg>) : bool =
     match spec.PageStateKey with
-    | Some key -> BindingResolver.sourceHostPagesOn spec.Source key
+    | Some key -> GridModel.sourceHostPagesOn spec.Source key
     | None -> false
 
 /// Does any column narrow `sortable`?
@@ -225,7 +225,7 @@ let firstPartyDisposition (sources: BindingResolver.BindingSources) (spec: GridS
     | Behaviour.EditStateKey ->
         if spec.EditStateKey.IsNone then
             Disposition.NotDeclared
-        elif (BindingResolver.editDestination spec.Editable spec.EditStateKey spec.Source).IsSome then
+        elif (GridModel.editDestination spec.Editable spec.EditStateKey spec.Source).IsSome then
             Disposition.Honoured
         else
             Disposition.Inert noEditDestination
@@ -237,7 +237,7 @@ let firstPartyDisposition (sources: BindingResolver.BindingSources) (spec: GridS
     | Behaviour.Reorderable ->
         if not spec.Reorderable then
             Disposition.NotDeclared
-        elif (BindingResolver.reorderDestination spec.Reorderable spec.EditStateKey spec.Source).IsSome then
+        elif (GridModel.reorderDestination spec.Reorderable spec.EditStateKey spec.Source).IsSome then
             Disposition.Honoured
         else
             Disposition.Inert noReorderDestination
@@ -389,11 +389,11 @@ let plan (sources: BindingResolver.BindingSources) (rowCount: int) (spec: GridSp
       Pagination =
         match spec.PageStateKey, spec.PageSize with
         | Some key, Some size when size > 0 && not (hostPages spec) ->
-            Some(key, size, BindingResolver.clampPage size (BindingResolver.readPageDescriptor sources key) rowCount)
+            Some(key, size, GridModel.clampPage size (BindingResolver.readPageDescriptor sources key) rowCount)
         | _ -> None
       ColumnEditable = columnEditable spec
-      EditCommit = BindingResolver.editDestination spec.Editable spec.EditStateKey spec.Source
-      ReorderCommit = BindingResolver.reorderDestination spec.Reorderable spec.EditStateKey spec.Source
+      EditCommit = GridModel.editDestination spec.Editable spec.EditStateKey spec.Source
+      ReorderCommit = GridModel.reorderDestination spec.Reorderable spec.EditStateKey spec.Source
       Refusals = agRefusals sources spec }
 
 /// The render-time refusal line, one per unacted declaration. Named, and it

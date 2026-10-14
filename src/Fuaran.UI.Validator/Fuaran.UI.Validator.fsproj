@@ -59,6 +59,9 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <!-- Phase 2234 (D17) - the one hole value-space / effect projection RecipeCertification
+         reads, shared with Fuaran.UI.AiTools; neither package references the other. -->
+    <ProjectReference Include="..\Fuaran.UI.Core.Function\Fuaran.UI.Core.Function.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />

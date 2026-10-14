@@ -11,13 +11,12 @@ module Fuaran.UI.Renderer.GridModel
 //  no store. The store READS (`readSortDescriptor`, `readPageDescriptor`,
 //  `readWindowDescriptor`, `resolveRowTotal`, `gridPage`, `gridWindow`) stay in
 //  `BindingResolver`, where reading a `State` key is the job, and validate what
-//  they read through the decoders here. `BindingResolver` also re-exports every
-//  name that moved, for one release (see STABILITY.md, 0.93.1).
+//  they read through the decoders here.
 //
 //  One implementation serves the client renderer, the SSR renderer and the
 //  grid adapter, so two surfaces cannot disagree about which rows are on page 3
-//  or where a moved row lands. Compiled ahead of `BindingResolver` so that
-//  module can re-export it.
+//  or where a moved row lands. Compiled ahead of `BindingResolver`, which reads
+//  the State keys that feed it.
 // ============================================================================
 
 open Fuaran.UI.Types

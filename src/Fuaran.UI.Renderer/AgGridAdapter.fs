@@ -77,7 +77,7 @@
 //                          — so the commit crosses the same scope routing and
 //                          host-reserved-key refusal a first-party edit does.
 //      reorderable         AG row drag on the first column; the move is
-//                          `BindingResolver.moveRow` and the commit is the same
+//                          `GridModel.moveRow` and the commit is the same
 //                          whole-rows write, to the same destination.
 //      exportable          honoured by RENDERER-OWNED chrome around whatever
 //                          drew the grid (`Render.fs`), which is where it sits
@@ -440,7 +440,7 @@ let private buildColumnDef<'Msg>
             // an unmapped value.
             let cellRenderer (p: obj) : ReactElement =
                 let row: Row = p?data
-                let label, tone = BindingResolver.tonedPillOf row field toneMap defaultTone
+                let label, tone = GridModel.tonedPillOf row field toneMap defaultTone
 
                 Html.span
                     [ prop.className (sprintf "fuaran-grid-cell-pill fuaran-pill-%s" (Theme.toneVar tone))
@@ -591,7 +591,7 @@ let renderGridWithReady<'Msg>
             // pinned to "equal" on every sortable column (see `buildColumnDef`)
             // so the header raises the gesture while this stays the single
             // ordering implementation across both backends.
-            let sortedRows = rows |> BindingResolver.sortRowsByDescriptor spec.Columns plan.Sort
+            let sortedRows = rows |> GridModel.sortRowsByDescriptor spec.Columns plan.Sort
 
             // Phase 863's whole-rows commit, through the renderer's own write
             // path (`VisualisationContext.WriteRows`) rather than a store this
@@ -729,7 +729,7 @@ let renderGridWithReady<'Msg>
                       "onPaginationChanged" ==> onPaginationChanged ]
 
             // Phase 934 — the reorder commit. The handle is on the first column
-            // (see `columnDefs`); the move itself is `BindingResolver.moveRow`,
+            // (see `columnDefs`); the move itself is `GridModel.moveRow`,
             // the same function the first-party handle calls, over the same
             // SORTED list, writing the same whole-rows value to the same
             // destination. `rowDragManaged` stays OFF deliberately: a managed
@@ -744,9 +744,7 @@ let renderGridWithReady<'Msg>
                         let fromIndex: int = p?node?rowIndex
                         let toIndex: int = p?overIndex
 
-                        context.WriteRows
-                            destination
-                            (BindingResolver.moveRow fromIndex toIndex sortedRows |> Seq.ofList)
+                        context.WriteRows destination (GridModel.moveRow fromIndex toIndex sortedRows |> Seq.ofList)
 
                     [ "rowDragManaged" ==> false; "onRowDragEnd" ==> onRowDragEnd ]
 

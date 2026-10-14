@@ -131,6 +131,10 @@ let private packableProjects =
       "Fuaran.UI.Ops.Abstractions"
       "Fuaran.UI.Ops"
       "Fuaran.UI.AiTools"
+      // Phase 2234 (D17) — the one hole value-space / effect projection onto the Core
+      // function model. AiTools and Validator both project-reference it, so their nupkgs
+      // declare a dependency on it; it must pack alongside them.
+      "Fuaran.UI.Core.Function"
       // Phase 512 — the public signature-searchable pattern bank (a Fable-clean
       // façade over Fuaran.Core.FunctionRegistry + a domain-neutral seed catalogue).
       "Fuaran.UI.FastPath"

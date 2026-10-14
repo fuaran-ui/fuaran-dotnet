@@ -110,7 +110,7 @@ let tonedPillParityTests =
             let hosted = pillCellShape (textOfLiteral (labelFn row)) (toneFn row)
 
             let declarativeLabel, declarativeTone =
-                BindingResolver.tonedPillOf row "status" statusToneMap statusDefault
+                GridModel.tonedPillOf row "status" statusToneMap statusDefault
 
             let declarative = pillCellShape declarativeLabel declarativeTone
             Expect.equal declarative hosted "the declarative pill's (class, text) must equal the hosted pill's"
@@ -132,7 +132,7 @@ let tonedPillParityTests =
 
           test "an explicit map entry beats the default even when the default is louder" {
               let _, tone =
-                  BindingResolver.tonedPillOf (statusRow "On time") "status" statusToneMap ToneVariant.Critical
+                  GridModel.tonedPillOf (statusRow "On time") "status" statusToneMap ToneVariant.Critical
 
               Expect.equal tone ToneVariant.Success "the map wins over `default` for a mentioned value"
           }
@@ -141,7 +141,7 @@ let tonedPillParityTests =
               let row: Row = Map.ofList [ "code", nn 3.0 ]
 
               let _, tone =
-                  BindingResolver.tonedPillOf row "code" (Map [ "3", ToneVariant.Info ]) ToneVariant.Default
+                  GridModel.tonedPillOf row "code" (Map [ "3", ToneVariant.Info ]) ToneVariant.Default
 
               Expect.equal tone ToneVariant.Info "numeric field keys by `projectRowFieldString`"
           } ]
