@@ -51,7 +51,7 @@ let private jvalOf (el: JsonElement) : JVal =
 
 /// Run one vector through this host's own pieces, exactly as the family's
 /// description prescribes.
-let private run (input: JsonElement) : BindingResolver.PresentedWindow<Row> =
+let private run (input: JsonElement) : GridModel.PresentedWindow<Row> =
     let slicing = input.GetProperty("slicing").GetString()
 
     let columns =
@@ -68,13 +68,13 @@ let private run (input: JsonElement) : BindingResolver.PresentedWindow<Row> =
                 else
                     SortDirection.Asc
 
-            BindingResolver.sortRowsByDescriptor columns (Some(s.GetProperty("column").GetInt32(), dir)) rows
+            GridModel.sortRowsByDescriptor columns (Some(s.GetProperty("column").GetInt32(), dir)) rows
         | _ -> rows
 
     let range =
         match slicing, input.TryGetProperty "page" with
         | "client", (true, p) when p.ValueKind = JsonValueKind.Object ->
-            BindingResolver.sliceRowsToPage (p.GetProperty("size").GetInt32()) (p.GetProperty("page").GetInt32()) sorted
+            GridModel.sliceRowsToPage (p.GetProperty("size").GetInt32()) (p.GetProperty("page").GetInt32()) sorted
         | _ -> sorted
 
     // The raw descriptor goes through the STORE read, as the renderer's does.
@@ -102,7 +102,7 @@ let private run (input: JsonElement) : BindingResolver.PresentedWindow<Row> =
         else
             None
 
-    BindingResolver.presentWindow hostWindows declared (BindingResolver.readWindowDescriptor sources windowKey) range
+    GridModel.presentWindow hostWindows declared (BindingResolver.readWindowDescriptor sources windowKey) range
 
 let private corpusVectors () : (string * JsonElement * JsonElement) list =
     match Fuaran.Tests.CorpusRoot.tryFind () with
@@ -181,8 +181,8 @@ let tests =
                     Expect.equal
                         (BindingResolver.readWindowDescriptor sources "w")
                         (Some
-                            { BindingResolver.RowWindow.Offset = 3
-                              BindingResolver.RowWindow.Count = 7 })
+                            { GridModel.RowWindow.Offset = 3
+                              GridModel.RowWindow.Count = 7 })
                         "a usable descriptor"
                 }
                 test "an F# map written by the renderer's SetState path reads the same" {
@@ -193,8 +193,8 @@ let tests =
                     Expect.equal
                         (BindingResolver.readWindowDescriptor sources "w")
                         (Some
-                            { BindingResolver.RowWindow.Offset = 4
-                              BindingResolver.RowWindow.Count = 2 })
+                            { GridModel.RowWindow.Offset = 4
+                              GridModel.RowWindow.Count = 2 })
                         "the store lift is total over the spellings a store holds"
                 } ]
 
@@ -240,16 +240,14 @@ let tests =
           testList
               "who slices"
               [ test "a Query depending on the window key windows host-side" {
-                    Expect.isTrue (BindingResolver.gridHostWindows (queryGrid [ "w" ] (Some "w") None)) "host windows"
+                    Expect.isTrue (GridModel.gridHostWindows (queryGrid [ "w" ] (Some "w") None)) "host windows"
                 }
                 test "a Query depending on the page key only does not window host-side" {
-                    Expect.isFalse
-                        (BindingResolver.gridHostWindows (queryGrid [ "p" ] (Some "w") None))
-                        "client windows"
+                    Expect.isFalse (GridModel.gridHostWindows (queryGrid [ "p" ] (Some "w") None)) "client windows"
                 }
                 test "a grid naming no window key is untouched" {
                     let spec = queryGrid [] None None
-                    Expect.isFalse (BindingResolver.gridHostWindows spec) "no window key"
+                    Expect.isFalse (GridModel.gridHostWindows spec) "no window key"
                     Expect.isNone (BindingResolver.gridWindow BindingResolver.empty spec [ 1; 2; 3 ]) "no window at all"
                 }
                 test "the declared total is read only where the host windows" {
@@ -284,35 +282,35 @@ let tests =
               [ test "a windowed grid annotates the slice; an unwindowed one does not" {
                     let w =
                         Some(
-                            BindingResolver.presentWindow
+                            GridModel.presentWindow
                                 false
                                 None
                                 (Some
-                                    { BindingResolver.RowWindow.Offset = 10
-                                      BindingResolver.RowWindow.Count = 5 })
+                                    { GridModel.RowWindow.Offset = 10
+                                      GridModel.RowWindow.Count = 5 })
                                 [ 1..40 ]
                         )
 
-                    Expect.equal (BindingResolver.windowRowCount w) (Some 41) "total plus the header row"
-                    Expect.equal (BindingResolver.windowRowIndex w 0) (Some 12) "offset 10, row 0, header is row 1"
+                    Expect.equal (GridModel.windowRowCount w) (Some 41) "total plus the header row"
+                    Expect.equal (GridModel.windowRowIndex w 0) (Some 12) "offset 10, row 0, header is row 1"
 
-                    let none = Some(BindingResolver.presentWindow false None None [ 1..40 ])
-                    Expect.isNone (BindingResolver.windowRowCount none) "no window, no attribute"
-                    Expect.isNone (BindingResolver.windowRowIndex none 0) "no window, no attribute"
+                    let none = Some(GridModel.presentWindow false None None [ 1..40 ])
+                    Expect.isNone (GridModel.windowRowCount none) "no window, no attribute"
+                    Expect.isNone (GridModel.windowRowIndex none 0) "no window, no attribute"
                 }
                 test "an unknown total is aria-rowcount -1" {
                     let w =
                         Some(
-                            BindingResolver.presentWindow
+                            GridModel.presentWindow
                                 true
                                 None
                                 (Some
-                                    { BindingResolver.RowWindow.Offset = 0
-                                      BindingResolver.RowWindow.Count = 5 })
+                                    { GridModel.RowWindow.Offset = 0
+                                      GridModel.RowWindow.Count = 5 })
                                 [ 1..5 ]
                         )
 
-                    Expect.equal (BindingResolver.windowRowCount w) (Some -1) "unknown"
+                    Expect.equal (GridModel.windowRowCount w) (Some -1) "unknown"
                 } ]
 
           testList
@@ -384,7 +382,7 @@ let tests =
 
 // ============================================================================
 //  Phase 1911 — the viewport's WRITE half on the reference host. The Fable
-//  viewport in `Render.fs` runs `BindingResolver.stepWindowWriter` on every
+//  viewport in `Render.fs` runs `GridModel.stepWindowWriter` on every
 //  scroll, resize and render; these tests drive the same function with a
 //  scripted sequence of measurements, reflecting each write back into State the
 //  way `SetState` does, so the descriptor sequence a scroll produces is pinned
@@ -393,7 +391,7 @@ let tests =
 
 /// A measurement at `scrollTop` over 32px rows under a 40px header, in a
 /// viewport `height` pixels tall.
-let private at (scrollTop: float) (height: float) : BindingResolver.ViewportMeasure =
+let private at (scrollTop: float) (height: float) : GridModel.ViewportMeasure =
     { ScrollTop = scrollTop
       HeaderHeight = 40.0
       RowHeight = 32.0
@@ -404,12 +402,12 @@ let private at (scrollTop: float) (height: float) : BindingResolver.ViewportMeas
 /// Returns every write in order.
 let private script
     (windowKey: string option)
-    (seeded: BindingResolver.RowWindow option)
-    (measures: BindingResolver.ViewportMeasure list)
+    (seeded: GridModel.RowWindow option)
+    (measures: GridModel.ViewportMeasure list)
     : (string * JVal) list =
     let folder (current, lastWritten, writes) measure =
         let written, write =
-            BindingResolver.stepWindowWriter windowKey current lastWritten measure
+            GridModel.stepWindowWriter windowKey current lastWritten measure
 
         match write with
         | Some(key, descriptor) ->
@@ -469,7 +467,7 @@ let writerTests =
           }
           test "an unmeasurable viewport falls back to the TS viewport's defaults" {
               let measured =
-                  BindingResolver.measureWindow
+                  GridModel.measureWindow
                       { ScrollTop = 64.0
                         HeaderHeight = 0.0
                         RowHeight = 0.0
@@ -477,13 +475,12 @@ let writerTests =
 
               Expect.equal
                   measured
-                  { BindingResolver.RowWindow.Offset = 2
-                    BindingResolver.RowWindow.Count = 15 }
+                  { GridModel.RowWindow.Offset = 2
+                    GridModel.RowWindow.Count = 15 }
                   "32px rows in a 480px viewport"
           }
           test "the written descriptor reads back through the renderer's own reader and moves the window" {
-              let _, write =
-                  BindingResolver.stepWindowWriter (Some "w") None None (at 400.0 320.0)
+              let _, write = GridModel.stepWindowWriter (Some "w") None None (at 400.0 320.0)
 
               match write with
               | None -> failtest "a first measurement writes"
@@ -517,7 +514,7 @@ let writerTests =
 // ============================================================================
 
 /// Read a RAW held value through the renderer's own State-store read.
-let private heldOf (raw: JsonElement) : BindingResolver.RowWindow option =
+let private heldOf (raw: JsonElement) : GridModel.RowWindow option =
     BindingResolver.readWindowDescriptor
         { BindingResolver.empty with
             State = Map.ofList [ "held", nn (jvalOf raw) ] }
@@ -544,7 +541,7 @@ let private writerVectors () : (string * JsonElement * JsonElement) list =
 
 /// Run one writer script exactly as the family's description prescribes; one
 /// entry per step, the written window or `None`.
-let private runWriter (input: JsonElement) : BindingResolver.RowWindow option list =
+let private runWriter (input: JsonElement) : GridModel.RowWindow option list =
     let windowKey =
         match input.TryGetProperty "windowStateKey" with
         | true, k -> k.GetString() |> Option.ofObj
@@ -569,7 +566,7 @@ let private runWriter (input: JsonElement) : BindingResolver.RowWindow option li
         let m = step.GetProperty "measure"
 
         let written, write =
-            BindingResolver.stepWindowWriter
+            GridModel.stepWindowWriter
                 windowKey
                 held
                 lastWritten
@@ -613,7 +610,7 @@ let writerVectorTests =
                                     None
                                 else
                                     Some
-                                        { BindingResolver.RowWindow.Offset = w.GetProperty("offset").GetInt32()
-                                          BindingResolver.RowWindow.Count = w.GetProperty("count").GetInt32() } ]
+                                        { GridModel.RowWindow.Offset = w.GetProperty("offset").GetInt32()
+                                          GridModel.RowWindow.Count = w.GetProperty("count").GetInt32() } ]
 
                       Expect.equal (runWriter input) want $"{id}: the write owed at each step" ]

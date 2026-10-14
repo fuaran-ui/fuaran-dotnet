@@ -51,50 +51,50 @@ let tests =
               "reorderDestination"
               [ test "not reorderable resolves to no destination whatever else is declared" {
                     Expect.isNone
-                        (BindingResolver.reorderDestination false (Some "sprint-order") stateSource)
+                        (GridModel.reorderDestination false (Some "sprint-order") stateSource)
                         "reorderable=false must yield None — this is what keeps a plain grid byte-identical"
                 }
 
                 test "a declared editStateKey wins, and is returned as a State binding on that key" {
-                    match BindingResolver.reorderDestination true (Some "sprint-order") querySource with
+                    match GridModel.reorderDestination true (Some "sprint-order") querySource with
                     | Some(Binding.State(key, None)) -> Expect.equal key "sprint-order" "the declared destination key"
                     | other -> failtestf "expected State(sprint-order, None), got %A" other
                 }
 
                 test "no declared key falls to the Phase-663 floor: the grid's own State source" {
-                    match BindingResolver.reorderDestination true None stateSource with
+                    match GridModel.reorderDestination true None stateSource with
                     | Some(Binding.State(key, _)) -> Expect.equal key "sprint-order" "the source's own key"
                     | other -> failtestf "expected the State source itself, got %A" other
                 }
 
                 test "no declared key over a non-State source refuses — no destination, no affordance" {
                     Expect.isNone
-                        (BindingResolver.reorderDestination true None querySource)
+                        (GridModel.reorderDestination true None querySource)
                         "Query rows are host data: a handle over them would be the Phase-866 fake-affordance class"
                 } ]
 
           testList
               "moveRow"
               [ test "a forward move re-seats the row at the target index" {
-                    let moved = BindingResolver.moveRow 0 2 (rows [ "a"; "b"; "c"; "d" ])
+                    let moved = GridModel.moveRow 0 2 (rows [ "a"; "b"; "c"; "d" ])
                     Expect.equal (taskNames moved) [ "b"; "c"; "a"; "d" ] "a moved to index 2"
                 }
 
                 test "a backward move re-seats the row at the target index" {
-                    let moved = BindingResolver.moveRow 3 1 (rows [ "a"; "b"; "c"; "d" ])
+                    let moved = GridModel.moveRow 3 1 (rows [ "a"; "b"; "c"; "d" ])
                     Expect.equal (taskNames moved) [ "a"; "d"; "b"; "c" ] "d moved to index 1"
                 }
 
                 test "first-to-last and last-to-first are exact end moves, not clamps" {
-                    let toEnd = BindingResolver.moveRow 0 3 (rows [ "a"; "b"; "c"; "d" ])
+                    let toEnd = GridModel.moveRow 0 3 (rows [ "a"; "b"; "c"; "d" ])
                     Expect.equal (taskNames toEnd) [ "b"; "c"; "d"; "a" ] "a to the end"
-                    let toStart = BindingResolver.moveRow 3 0 (rows [ "a"; "b"; "c"; "d" ])
+                    let toStart = GridModel.moveRow 3 0 (rows [ "a"; "b"; "c"; "d" ])
                     Expect.equal (taskNames toStart) [ "d"; "a"; "b"; "c" ] "d to the start"
                 }
 
                 test "a no-op move returns the SAME list instance — the write-nothing contract" {
                     let original = rows [ "a"; "b"; "c" ]
-                    let moved = BindingResolver.moveRow 1 1 original
+                    let moved = GridModel.moveRow 1 1 original
 
                     Expect.isTrue
                         (obj.ReferenceEquals(moved, original))
@@ -105,7 +105,7 @@ let tests =
                     let original = rows [ "a"; "b"; "c" ]
 
                     for fromIdx, toIdx in [ -1, 1; 3, 1; 1, -1; 1, 3 ] do
-                        let moved = BindingResolver.moveRow fromIdx toIdx original
+                        let moved = GridModel.moveRow fromIdx toIdx original
 
                         Expect.isTrue
                             (obj.ReferenceEquals(moved, original))
@@ -126,33 +126,33 @@ let tests =
               "editDestination"
               [ test "not editable resolves to no destination whatever else is declared" {
                     Expect.isNone
-                        (BindingResolver.editDestination false (Some "stock-adjustments") stateSource)
+                        (GridModel.editDestination false (Some "stock-adjustments") stateSource)
                         "editable=false must yield None — a non-editable grid renders spans, as before"
                 }
 
                 test "a declared editStateKey makes a Query-sourced grid writable — 863's whole point" {
-                    match BindingResolver.editDestination true (Some "stock-adjustments") querySource with
+                    match GridModel.editDestination true (Some "stock-adjustments") querySource with
                     | Some(Binding.State(key, None)) ->
                         Expect.equal key "stock-adjustments" "the declared destination key"
                     | other -> failtestf "expected State(stock-adjustments, None), got %A" other
                 }
 
                 test "a declared editStateKey WINS over the source, so one collection has one destination" {
-                    match BindingResolver.editDestination true (Some "stock-adjustments") stateSource with
+                    match GridModel.editDestination true (Some "stock-adjustments") stateSource with
                     | Some(Binding.State(key, None)) ->
                         Expect.equal key "stock-adjustments" "the declared key, not the source's own"
                     | other -> failtestf "expected the declared key to win, got %A" other
                 }
 
                 test "no declared key falls to the Phase-663 floor — the shipped behaviour, unchanged" {
-                    match BindingResolver.editDestination true None stateSource with
+                    match GridModel.editDestination true None stateSource with
                     | Some(Binding.State(key, _)) -> Expect.equal key "sprint-order" "the source's own key"
                     | other -> failtestf "expected the State source itself, got %A" other
                 }
 
                 test "no declared key over a non-State source refuses — display-only, as FUARAN090 warns" {
                     Expect.isNone
-                        (BindingResolver.editDestination true None querySource)
+                        (GridModel.editDestination true None querySource)
                         "no writable slot: the grid stays display-only rather than committing nowhere"
                 }
 
@@ -171,7 +171,7 @@ let tests =
                     for key in [ None; Some "sprint-order" ] do
                         for label, source in [ "State", stateSource; "Query", querySource ] do
                             Expect.equal
-                                (describe (BindingResolver.editDestination true key source))
-                                (describe (BindingResolver.reorderDestination true key source))
+                                (describe (GridModel.editDestination true key source))
+                                (describe (GridModel.reorderDestination true key source))
                                 (sprintf "edit and reorder must agree for key=%A over a %s source" key label)
                 } ] ]

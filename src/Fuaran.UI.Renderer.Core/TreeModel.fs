@@ -8,10 +8,9 @@ module Fuaran.UI.Renderer.TreeModel
 //  Pure: every function is a total function of values the caller holds. The
 //  two State READS (`readExpandedItems`, `readSelectedItem`) stay in
 //  `BindingResolver`, where reading a key is the job, and decode what they read
-//  through the two decoders here; `BindingResolver` also re-exports every name
-//  that moved, for one release. Both render legs call this module, and they
+//  through the two decoders here. Both render legs call this module, and they
 //  must answer identically or a hydrating client would replace the server's
-//  rows. Compiled ahead of `BindingResolver` so that module can re-export it.
+//  rows. Compiled ahead of `BindingResolver`, which reads the State keys.
 // ============================================================================
 
 open Fuaran.UI.Types

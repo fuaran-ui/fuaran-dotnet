@@ -115,28 +115,9 @@ type CertificationVerdict =
         Counterexample: Counterexample option
     }
 
-// ─── UI ↔ Core effect/space projection (structural mirrors) ──────────────────
-
-let private toCoreSpace (s: HoleValueSpace) : Fuaran.Core.ValueSpace =
-    match s with
-    | HoleValueSpace.IntRange(lo, hi) -> Fuaran.Core.IntRange(lo, hi)
-    | HoleValueSpace.FloatRange(lo, hi) -> Fuaran.Core.FloatRange(lo, hi)
-    | HoleValueSpace.StringLen(lo, hi) -> Fuaran.Core.StringLen(lo, hi)
-    | HoleValueSpace.Enum choices -> Fuaran.Core.Enum choices
-    | HoleValueSpace.AnyString -> Fuaran.Core.AnyString
-
-let private toCoreEffect (e: EffectClass) : Fuaran.Core.EffectClass =
-    { Host =
-        match e.HostEffect with
-        | HostEffect.Pure -> Fuaran.Core.Pure
-        | HostEffect.ReadsHost -> Fuaran.Core.ReadsHost
-        | HostEffect.WritesHost -> Fuaran.Core.WritesHost
-      Determinism =
-        match e.Determinism with
-        | DeterminismSource.Deterministic -> Fuaran.Core.Effect.deterministic
-        | DeterminismSource.Clock -> Fuaran.Core.Effect.clock
-        | DeterminismSource.Random -> Fuaran.Core.Effect.random
-        | DeterminismSource.Network -> Fuaran.Core.Effect.network }
+// The hole value-space / effect projection is the one definition in
+// `Fuaran.UI.Core.Function.Projection`, shared with the AI-tool witness (D17).
+module Projection = Fuaran.UI.Core.Function.Projection
 
 let private rawId (NodeId s) : string = s
 
@@ -260,12 +241,12 @@ let private certifyWitness<'Msg> (materialize: Materialize<'Msg>) : Fuaran.Core.
                     Some
                         { Addr = holeAddr declId n
                           Name = n
-                          Kind = Fuaran.Core.ValueHole(toCoreSpace space) }
+                          Kind = Fuaran.Core.ValueHole(Projection.toCoreSpace space) }
                 | HoleDecl.Repeat(n, space) ->
                     Some
                         { Addr = holeAddr declId n
                           Name = n
-                          Kind = Fuaran.Core.RepeatHole(toCoreSpace space) }
+                          Kind = Fuaran.Core.RepeatHole(Projection.toCoreSpace space) }
                 | HoleDecl.Slot _ -> None)
         | _ -> []
 
@@ -274,7 +255,7 @@ let private certifyWitness<'Msg> (materialize: Materialize<'Msg>) : Fuaran.Core.
         | NodeKind.FragmentDecl spec ->
             // Phase 1670 — `Effect` is an omit-at-default slot, so the
             // degenerate value is already in it and there is nothing to default.
-            toCoreEffect spec.Effect
+            Projection.toCoreEffect spec.Effect
         | _ -> Fuaran.Core.Effect.pureDeterministic
 
     // Record hole@addr := value into the decl's matching hole default.
