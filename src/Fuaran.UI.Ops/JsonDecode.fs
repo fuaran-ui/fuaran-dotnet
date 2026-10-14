@@ -189,9 +189,14 @@ type DecodeError =
 /// seam; Phase 2040 measured it). The generated decoders are `Result.bind`
 /// chains that stop at the first defect and expose one whole-node entry, so a
 /// layer above them could keep the sentences and the aliases but not the §29
-/// list, nor the first entry of it on every document. The layering waits on the
-/// generator emitting defect-collecting, per-spec decoders; the tests pinning
-/// that precondition are in `GeneratedLayerTests` ("structural substrate").
+/// list, nor the first entry of it on every document. The generator now emits
+/// defect-collecting, per-spec decoders on request (fuaran-core#377), but
+/// requested against this vocabulary the emission does not compile (Phase 2127:
+/// the `Binding.Local.parse` placeholder names the short-circuiting decoder's
+/// `decT`, which the collecting decoder does not bind), so the layering still
+/// waits on the generator binding it (fuaran-core#460). The tests pinning both
+/// facts are in `GeneratedLayerTests`
+/// ("structural substrate", "collecting derivation").
 //
 // Under Fable the slot is a plain static: a JS host runs one decode at a time on
 // its one thread, so a plain static IS per-thread there (Phase 2064 checked it).
