@@ -1598,82 +1598,8 @@ let projectRowFieldString (row: Row) (field: string) : string =
 // reads of a `State` key (and of a declared `rowTotal` binding) that feed those
 // models, each validating what it read through the model's own decoder.
 //
-// RE-EXPORTS, FOR ONE RELEASE. Every name that moved is re-exported below under
-// its old `BindingResolver.*` spelling, so a consumer compiles unchanged across
-// 0.93.1. They are plain aliases rather than `[<Obsolete>]` ones because an
-// obsolete alias is a build error under `TreatWarningsAsErrors`, which is a
-// source break by this repository's own Semver. New code calls `GridModel` /
-// `TreeModel`; the aliases are removed in a later release (STABILITY.md).
-
-type RowWindow = GridModel.RowWindow
-type PresentedWindow<'row> = GridModel.PresentedWindow<'row>
-type ViewportMeasure = GridModel.ViewportMeasure
-
-let inline sortRowsByDescriptor columns descriptor rows =
-    GridModel.sortRowsByDescriptor columns descriptor rows
-
-let inline sourceHostPagesOn source pageKey =
-    GridModel.sourceHostPagesOn source pageKey
-
-let inline pageCountOf pageSize rowCount = GridModel.pageCountOf pageSize rowCount
-
-let inline clampPage pageSize page rowCount =
-    GridModel.clampPage pageSize page rowCount
-
-let inline sliceRowsToPage pageSize page rows =
-    GridModel.sliceRowsToPage pageSize page rows
-
-let inline windowOfJVal jv = GridModel.windowOfJVal jv
-
-let inline sourceHostWindowsOn source windowKey =
-    GridModel.sourceHostWindowsOn source windowKey
-
-let inline presentWindow hostWindows declaredTotal window range =
-    GridModel.presentWindow hostWindows declaredTotal window range
-
-let inline declaredPageCount pageSize declaredTotal =
-    GridModel.declaredPageCount pageSize declaredTotal
-
-let inline gridHostWindows spec = GridModel.gridHostWindows spec
-let inline windowRowCount window = GridModel.windowRowCount window
-
-let inline windowRowIndex window rowIndex =
-    GridModel.windowRowIndex window rowIndex
-
-let defaultWindowRowHeightPx: float = GridModel.defaultWindowRowHeightPx
-let windowViewportMaxHeightPx: float = GridModel.windowViewportMaxHeightPx
-let inline measureWindow m = GridModel.measureWindow m
-let inline windowDescriptorJVal w = GridModel.windowDescriptorJVal w
-
-let inline stepWindowWriter windowKey current lastWritten measure =
-    GridModel.stepWindowWriter windowKey current lastWritten measure
-
-let inline tonedPillOf row field toneMap defaultTone =
-    GridModel.tonedPillOf row field toneMap defaultTone
-
-let inline gridWriteDestination editStateKey source =
-    GridModel.gridWriteDestination editStateKey source
-
-let inline reorderDestination reorderable editStateKey source =
-    GridModel.reorderDestination reorderable editStateKey source
-
-let inline transferDestination declared editStateKey source =
-    GridModel.transferDestination declared editStateKey source
-
-let inline editDestination editable editStateKey source =
-    GridModel.editDestination editable editStateKey source
-
-let inline moveRow fromIndex toIndex rows =
-    GridModel.moveRow fromIndex toIndex rows
-
-let inline treeItemExpanded expandedKeyNamed expanded item =
-    TreeModel.treeItemExpanded expandedKeyNamed expanded item
-
-let inline visibleTreeItems expandedKeyNamed expanded items =
-    TreeModel.visibleTreeItems expandedKeyNamed expanded items
-
-let inline focusableTreeItem expandedKeyNamed expanded selected items =
-    TreeModel.focusableTreeItem expandedKeyNamed expanded selected items
+// The names that moved are not re-exported: callers use `GridModel` / `TreeModel`
+// directly (Phase 2235).
 
 /// The `JVal` a `State` key holds, or `None` when the key is unset or its value
 /// is not a JSON value.
@@ -1767,7 +1693,7 @@ let readPageDescriptor (sources: BindingSources) (key: string) : int =
 
 /// Phase 1892 — read the window descriptor carried at `key` in the State store,
 /// validated by `GridModel.windowOfJVal`.
-let readWindowDescriptor (sources: BindingSources) (key: string) : RowWindow option =
+let readWindowDescriptor (sources: BindingSources) (key: string) : GridModel.RowWindow option =
     stateJVal sources key |> Option.bind GridModel.windowOfJVal
 
 /// Resolve a declared `rowTotal`: an integer >= 0, or `None` — no declared total,
@@ -1853,7 +1779,11 @@ let gridPage
 /// sort and page), or `None` for a grid naming no window key, which renders
 /// exactly as it did before 1892. The declared total is read only where the host
 /// windows; everywhere else the range is the grid's own and counts itself.
-let gridWindow (sources: BindingSources) (spec: DataGridSpec<'Msg>) (range: 'row list) : PresentedWindow<'row> option =
+let gridWindow
+    (sources: BindingSources)
+    (spec: DataGridSpec<'Msg>)
+    (range: 'row list)
+    : GridModel.PresentedWindow<'row> option =
     spec.WindowStateKey
     |> Option.map (fun key ->
         let hostWindows = GridModel.sourceHostWindowsOn spec.Source key

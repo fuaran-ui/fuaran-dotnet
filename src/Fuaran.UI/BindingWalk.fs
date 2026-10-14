@@ -1637,6 +1637,28 @@ let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts =
             for c in closuresOfAction readerId action do
                 closures.Add c
 
+    // Phase 2054 — the slot readers below fold each slot's usages straight into
+    // the accumulators, one `record` per slot, in the order the slots were
+    // always read. Recording `a` then `b` leaves every accumulator exactly as
+    // recording `a @ b` did — `record` appends per accumulator, in order, and no
+    // two slots of one node interleave within one accumulator — so the walk
+    // builds no per-node list of usages to concatenate and then fold.
+    let recordText (inUses: bool) (readerId: string) (text: TextSource) =
+        record inUses readerId (usesOfText text)
+
+    let recordTextOpt (inUses: bool) (readerId: string) (text: TextSource option) =
+        match text with
+        | Some t -> recordText inUses readerId t
+        | None -> ()
+
+    let recordBinding (inUses: bool) (readerId: string) (binding: Binding<'T>) =
+        record inUses readerId (usesOfBinding binding)
+
+    let recordBindingOpt (inUses: bool) (readerId: string) (binding: Binding<'T> option) =
+        match binding with
+        | Some b -> recordBinding inUses readerId b
+        | None -> ()
+
     let rec walk (inUses: bool) (n: Node<'Msg>) =
         let readerId = n.Id
 
@@ -1649,7 +1671,9 @@ let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts =
             nodes[readerId] <- isProducer
 
         match n.Accessibility with
-        | Some a -> record inUses readerId (usesOfBindingOpt a.Label @ usesOfBindingOpt a.Hidden)
+        | Some a ->
+            recordBindingOpt inUses readerId a.Label
+            recordBindingOpt inUses readerId a.Hidden
         | None -> ()
 
         // Phase 1112 — the node-level tooltip trait. A `TextSource.Bound` hint
@@ -1675,8 +1699,13 @@ let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts =
         // place of the body — a real reader the walk never descended into.
         match n.State with
         | Some sb ->
-            sb.OnEmpty |> Option.iter (walk inUses)
-            sb.OnLoading |> Option.iter (walk inUses)
+            match sb.OnEmpty with
+            | Some branch -> walk inUses branch
+            | None -> ()
+
+            match sb.OnLoading with
+            | Some branch -> walk inUses branch
+            | None -> ()
         | None -> ()
 
         // Phase 1812 — the author-declared `fallback` is a wire-encoded node a
@@ -1686,383 +1715,408 @@ let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts =
         // reactive walk (`Render.collectKeys`) deliberately does NOT: a current
         // reader never renders the fallback, and the census in
         // `WalkConformanceTests` records the asymmetry with its reason.
-        n.Fallback |> Option.iter (walk inUses)
+        match n.Fallback with
+        | Some fallback -> walk inUses fallback
+        | None -> ()
 
         // Phase 692 — one exhaustive match over the flat vocabulary, where this
-        // was four nested ones under the category envelope. Every arm yields
-        // `(the bindings it reads, the children to walk)`; only the container
-        // kinds have children, so the rest yield `[]`.
-        let directUses, children =
-            match n.Kind with
-            // ── Layout ──
-            | NodeKind.Box s -> usesOfTextOpt s.Heading, s.Children
-            | NodeKind.SplitPanel s -> [], s.Children
-            | NodeKind.SummaryList s -> usesOfTextOpt s.Heading, s.Children
-            | NodeKind.Stepper s ->
-                // Phase 1801 — NOT a write-back position, on EITHER channel.
-                // The reference renderer resolves `ActiveStep` to mark the
-                // active step, and a step-header click runs `OnSelect` or
-                // nothing at all; it never reaches `writeBackTo`. Phase 1785
-                // took the filter half off this list on exactly that evidence
-                // and left the state half, which went on asserting the same
-                // untrue thing on the other channel. A present `OnSelect` is
-                // still an opaque writer — that is a claim about the CLOSURE,
-                // which may write anything, not about this slot.
-                noteOpaqueIf s.OnSelect.IsSome
-                usesOfBinding s.ActiveStep, s.Children
-            | NodeKind.Disclosure s ->
-                noteWriteBackOf readerId s.Open
-                noteOpaqueIf s.OnToggle.IsSome
-                (usesOfText s.Heading @ usesOfBinding s.Open), s.Children
-            | NodeKind.Tabs s ->
-                noteWriteBackOf readerId s.ActiveIndex
-                s.ActiveTag |> Option.iter (noteWriteBackOf readerId)
-                noteOpaqueIf (s.OnSelect.IsSome || s.OnSelectTag.IsSome)
+        // was four nested ones under the category envelope. Every arm records
+        // the bindings it reads, then walks the nodes it holds; only the
+        // container kinds hold any.
+        match n.Kind with
+        // ── Layout ──
+        | NodeKind.Box s ->
+            recordTextOpt inUses readerId s.Heading
 
-                let headerUses =
-                    match s.TabHeaders with
-                    | Some headers ->
-                        headers
-                        |> List.collect (fun h -> usesOfText h.Label @ usesOfBindingOpt h.Disabled)
-                    | None -> []
+            walkAll inUses s.Children
+        | NodeKind.SplitPanel s -> walkAll inUses s.Children
+        | NodeKind.SummaryList s ->
+            recordTextOpt inUses readerId s.Heading
 
-                (usesOfBinding s.ActiveIndex @ usesOfBindingOpt s.ActiveTag @ headerUses), s.Children
-            | NodeKind.Modal s ->
-                // Modal's OnDismiss is the wire-survivable Action slot (Phase 428).
-                s.OnDismiss |> Option.iter (recordCalls inUses readerId)
-                // A dismissable modal's close gesture writes its own `open` slot.
-                noteWriteBackOf readerId s.Open
-                (usesOfTextOpt s.Heading @ usesOfBinding s.Open), s.Children
-            | NodeKind.ScrollArea s -> [], s.Children
-            // ── Display ──
-            | NodeKind.Heading h -> usesOfText h.Text, []
-            | NodeKind.Markdown m -> usesOfText m.Text, []
-            | NodeKind.Metric k ->
-                let uses =
-                    usesOfText k.Label
-                    @ usesOfBinding k.Value
-                    @ usesOfBindingOpt k.Trend
-                    @ usesOfTextOpt k.Subtext
+            walkAll inUses s.Children
+        | NodeKind.Stepper s ->
+            // Phase 1801 — NOT a write-back position, on EITHER channel.
+            // The reference renderer resolves `ActiveStep` to mark the
+            // active step, and a step-header click runs `OnSelect` or
+            // nothing at all; it never reaches `writeBackTo`. Phase 1785
+            // took the filter half off this list on exactly that evidence
+            // and left the state half, which went on asserting the same
+            // untrue thing on the other channel. A present `OnSelect` is
+            // still an opaque writer — that is a claim about the CLOSURE,
+            // which may write anything, not about this slot.
+            noteOpaqueIf s.OnSelect.IsSome
+            recordBinding inUses readerId s.ActiveStep
 
-                uses, []
-            | NodeKind.Badge b -> usesOfText b.Label, []
-            | NodeKind.Sparkline s -> usesOfBinding s.Source, []
-            | NodeKind.Callout c -> usesOfTextOpt c.Heading @ usesOfText c.Body, []
-            | NodeKind.Progress p -> usesOfBinding p.Fraction @ usesOfTextOpt p.Label @ usesOfTextOpt p.Caveat, []
-            | NodeKind.Skeleton _ -> [], []
-            | NodeKind.Icon _ -> [], []
-            | NodeKind.LabelValueRow r -> usesOfText r.Label @ usesOfBinding r.Value @ usesOfTextOpt r.Help, []
-            | NodeKind.Fact fa -> usesOfText fa.Label @ usesOfText fa.Value @ usesOfTextOpt fa.Help, []
-            | NodeKind.Link l -> usesOfBinding l.Href @ usesOfText l.Label, []
-            // Phase 1079 — `Caption` (Phase 1078) and every `SrcSet` candidate's
-            // `Src` (Phase 1080) join `Src`/`Alt` here, and the omission they
-            // close is the one this walk exists to prevent. Both slots hold
-            // ordinary bindings over the same sources `Src` and `Alt` use, so a
-            // caption bound to a State key, or a candidate resolved from a
-            // query, was invisible to every analysis that runs on this walk:
-            // unknown-key detection, write-back inference, the dependency
-            // report. Neither slot arm was written; each new field simply landed
-            // green, which is exactly the residue `WalkConformanceTests`'s own
-            // header predicted for a new FIELD on an existing spec. The census
-            // rows added with this fix are what make reverting either line red.
-            | NodeKind.Image i ->
-                usesOfBinding i.Src
-                @ usesOfText i.Alt
-                @ usesOfTextOpt i.Caption
-                @ (i.SrcSet |> List.collect (fun e -> usesOfBinding e.Src)),
-                []
-            // Phase 1076 — three reactive slots, and the third is the one a
-            // walk written from the record's field list would miss: `Poster`
-            // lives inside the `MediaKind.Video` case payload, not on the spec.
-            // A poster resolved from a query is as much a dependency as the
-            // primary `Src`, so the case is matched rather than the slot
-            // ignored; `Audio` genuinely contributes nothing beyond the shared
-            // pair.
-            | NodeKind.Media m ->
-                let kindUses =
-                    match m.Kind with
-                    | MediaKind.Video(_, poster) -> usesOfBindingOpt poster
-                    | MediaKind.Audio -> []
+            walkAll inUses s.Children
+        | NodeKind.Disclosure s ->
+            noteWriteBackOf readerId s.Open
+            noteOpaqueIf s.OnToggle.IsSome
+            recordText inUses readerId s.Heading
+            recordBinding inUses readerId s.Open
 
-                usesOfBinding m.Src @ usesOfText m.Label @ kindUses, []
-            // Phase 1111 — two reactive slots, both on the spec: the document
-            // URL and the frame's accessible name. `Permissions` and
-            // `AspectRatio` are closed enums, never bindings.
-            | NodeKind.Embed e -> usesOfBinding e.Src @ usesOfText e.Title, []
-            | NodeKind.List l -> l.Items |> List.collect usesOfText, []
-            // Phase 1120 — a tree's bindings are its rows' labels, and the
-            // recursion is over `TreeItem` rather than over `Node`, so the
-            // children slot stays empty: nothing below a `Tree` is a node.
-            | NodeKind.Tree t ->
-                noteOpaqueIf t.OnSelect.IsSome
+            walkAll inUses s.Children
+        | NodeKind.Tabs s ->
+            noteWriteBackOf readerId s.ActiveIndex
+            s.ActiveTag |> Option.iter (noteWriteBackOf readerId)
+            noteOpaqueIf (s.OnSelect.IsSome || s.OnSelectTag.IsSome)
+            recordBinding inUses readerId s.ActiveIndex
+            recordBindingOpt inUses readerId s.ActiveTag
 
-                let rec labelUses (items: TreeItem list) =
-                    items |> List.collect (fun i -> usesOfText i.Label @ labelUses i.Children)
+            match s.TabHeaders with
+            | Some headers ->
+                for h in headers do
+                    recordText inUses readerId h.Label
+                    recordBindingOpt inUses readerId h.Disabled
+            | None -> ()
 
-                labelUses t.Items, []
-            | NodeKind.Toast t ->
-                // Phase 1801 — NOT a write-back position, on EITHER channel; see
-                // the `Stepper` arm above for the shape of the argument. A
-                // `Toast`'s dismiss button carries no handler in the reference
-                // renderer at all, so `Open` is READ to decide the `hidden`
-                // attribute and written by nothing.
-                usesOfText t.Message @ usesOfBinding t.Open, []
-            | NodeKind.CodeBlock _ -> [], []
-            | NodeKind.Math _ -> [], []
-            | NodeKind.Drawing d ->
-                let uses =
-                    // Phase 524 — geometry is static; the reactive slots are the
-                    // DrawStyle colour bindings + Label text, walked recursively
-                    // through Group nesting.
-                    let usesOfDrawStyle (st: DrawStyle) =
-                        usesOfBindingOpt st.Fill
-                        @ usesOfBindingOpt st.Stroke
-                        @ usesOfBindingOpt st.StrokeWidth
-                        @ usesOfBindingOpt st.Opacity
+            walkAll inUses s.Children
+        | NodeKind.Modal s ->
+            // Modal's OnDismiss is the wire-survivable Action slot (Phase 428).
+            s.OnDismiss |> Option.iter (recordCalls inUses readerId)
+            // A dismissable modal's close gesture writes its own `open` slot.
+            noteWriteBackOf readerId s.Open
+            recordTextOpt inUses readerId s.Heading
+            recordBinding inUses readerId s.Open
 
-                    let rec usesOfShape (sh: Shape) =
-                        match sh with
-                        | Shape.Group(children, st) -> (children |> List.collect usesOfShape) @ usesOfDrawStyle st
-                        | Shape.Rectangle(_, _, _, _, _, st) -> usesOfDrawStyle st
-                        | Shape.Line(_, _, _, _, st) -> usesOfDrawStyle st
-                        | Shape.Polyline(_, st) -> usesOfDrawStyle st
-                        | Shape.Polygon(_, st) -> usesOfDrawStyle st
-                        | Shape.Curve(_, st) -> usesOfDrawStyle st
-                        | Shape.Circle(_, _, _, st) -> usesOfDrawStyle st
-                        | Shape.Ellipse(_, _, _, _, st) -> usesOfDrawStyle st
-                        | Shape.Label(_, _, text, st) -> usesOfText text @ usesOfDrawStyle st
+            walkAll inUses s.Children
+        | NodeKind.ScrollArea s -> walkAll inUses s.Children
+        // ── Display ──
+        | NodeKind.Heading h -> recordText inUses readerId h.Text
+        | NodeKind.Markdown m -> recordText inUses readerId m.Text
+        | NodeKind.Metric k ->
+            recordText inUses readerId k.Label
+            recordBinding inUses readerId k.Value
+            recordBindingOpt inUses readerId k.Trend
+            recordTextOpt inUses readerId k.Subtext
+        | NodeKind.Badge b -> recordText inUses readerId b.Label
+        | NodeKind.Sparkline s -> recordBinding inUses readerId s.Source
+        | NodeKind.Callout c ->
+            recordTextOpt inUses readerId c.Heading
+            recordText inUses readerId c.Body
+        | NodeKind.Progress p ->
+            recordBinding inUses readerId p.Fraction
+            recordTextOpt inUses readerId p.Label
+            recordTextOpt inUses readerId p.Caveat
+        | NodeKind.Skeleton _ -> ()
+        | NodeKind.Icon _ -> ()
+        | NodeKind.LabelValueRow r ->
+            recordText inUses readerId r.Label
+            recordBinding inUses readerId r.Value
+            recordTextOpt inUses readerId r.Help
+        | NodeKind.Fact fa ->
+            recordText inUses readerId fa.Label
+            recordText inUses readerId fa.Value
+            recordTextOpt inUses readerId fa.Help
+        | NodeKind.Link l ->
+            recordBinding inUses readerId l.Href
+            recordText inUses readerId l.Label
+        // Phase 1079 — `Caption` (Phase 1078) and every `SrcSet` candidate's
+        // `Src` (Phase 1080) join `Src`/`Alt` here, and the omission they
+        // close is the one this walk exists to prevent. Both slots hold
+        // ordinary bindings over the same sources `Src` and `Alt` use, so a
+        // caption bound to a State key, or a candidate resolved from a
+        // query, was invisible to every analysis that runs on this walk:
+        // unknown-key detection, write-back inference, the dependency
+        // report. Neither slot arm was written; each new field simply landed
+        // green, which is exactly the residue `WalkConformanceTests`'s own
+        // header predicted for a new FIELD on an existing spec. The census
+        // rows added with this fix are what make reverting either line red.
+        | NodeKind.Image i ->
+            recordBinding inUses readerId i.Src
+            recordText inUses readerId i.Alt
+            recordTextOpt inUses readerId i.Caption
 
-                    usesOfDrawStyle d.Style
-                    @ (d.Shapes |> List.collect usesOfShape)
-                    @ usesOfTextOpt d.Title
-                    @ usesOfTextOpt d.Description
+            for e in i.SrcSet do
+                recordBinding inUses readerId e.Src
+        // Phase 1076 — three reactive slots, and the third is the one a
+        // walk written from the record's field list would miss: `Poster`
+        // lives inside the `MediaKind.Video` case payload, not on the spec.
+        // A poster resolved from a query is as much a dependency as the
+        // primary `Src`, so the case is matched rather than the slot
+        // ignored; `Audio` genuinely contributes nothing beyond the shared
+        // pair.
+        | NodeKind.Media m ->
+            recordBinding inUses readerId m.Src
+            recordText inUses readerId m.Label
 
-                uses, []
-            // ── Input ──
-            | NodeKind.Button b ->
-                let uses =
-                    // OnClick is a wire-survivable Action slot (Phase 428).
-                    recordCalls inUses readerId b.OnClick
-                    usesOfText b.Label @ usesOfTextOpt b.Tooltip @ usesOfBindingOpt b.Disabled
+            match m.Kind with
+            | MediaKind.Video(_, poster) -> recordBindingOpt inUses readerId poster
+            | MediaKind.Audio -> ()
+        // Phase 1111 — two reactive slots, both on the spec: the document
+        // URL and the frame's accessible name. `Permissions` and
+        // `AspectRatio` are closed enums, never bindings.
+        | NodeKind.Embed e ->
+            recordBinding inUses readerId e.Src
+            recordText inUses readerId e.Title
+        | NodeKind.List l ->
+            for item in l.Items do
+                recordText inUses readerId item
+        // Phase 1120 — a tree's bindings are its rows' labels, and the
+        // recursion is over `TreeItem` rather than over `Node`, so nothing
+        // below a `Tree` is a node to walk.
+        | NodeKind.Tree t ->
+            noteOpaqueIf t.OnSelect.IsSome
 
-                uses, []
-            | NodeKind.FileUpload fu ->
-                noteOpaqueIf fu.OnSelect.IsSome
-                usesOfText fu.Label @ usesOfBindingOpt fu.Disabled, []
-            | NodeKind.Select s ->
-                noteWriteBackOf readerId s.Value
-                s.Values |> Option.iter (noteWriteBackOf readerId)
-                noteOpaqueIf (s.OnChange.IsSome || s.OnChangeMulti.IsSome)
+            let rec labels (items: TreeItem list) =
+                for i in items do
+                    recordText inUses readerId i.Label
+                    labels i.Children
 
-                let uses =
-                    usesOfText s.Label
-                    @ usesOfBinding s.Source
-                    @ usesOfBinding s.Value
-                    @ usesOfBindingOpt s.Values
-                    @ usesOfTextOpt s.Placeholder
-                    @ usesOfBindingOpt s.Disabled
+            labels t.Items
+        | NodeKind.Toast t ->
+            // Phase 1801 — NOT a write-back position, on EITHER channel; see
+            // the `Stepper` arm above for the shape of the argument. A
+            // `Toast`'s dismiss button carries no handler in the reference
+            // renderer at all, so `Open` is READ to decide the `hidden`
+            // attribute and written by nothing.
+            recordText inUses readerId t.Message
+            recordBinding inUses readerId t.Open
+        | NodeKind.CodeBlock _ -> ()
+        | NodeKind.Math _ -> ()
+        | NodeKind.Drawing d ->
+            // Phase 524 — geometry is static; the reactive slots are the
+            // DrawStyle colour bindings + Label text, walked recursively
+            // through Group nesting.
+            let style (st: DrawStyle) =
+                recordBindingOpt inUses readerId st.Fill
+                recordBindingOpt inUses readerId st.Stroke
+                recordBindingOpt inUses readerId st.StrokeWidth
+                recordBindingOpt inUses readerId st.Opacity
 
-                uses, []
-            | NodeKind.Form f ->
-                let uses =
-                    // OnSubmit is a wire-survivable Action slot (Phase 428).
-                    recordCalls inUses readerId f.OnSubmit
+            let rec shape (sh: Shape) =
+                match sh with
+                | Shape.Group(children, st) ->
+                    children |> List.iter shape
+                    style st
+                | Shape.Rectangle(_, _, _, _, _, st) -> style st
+                | Shape.Line(_, _, _, _, st) -> style st
+                | Shape.Polyline(_, st) -> style st
+                | Shape.Polygon(_, st) -> style st
+                | Shape.Curve(_, st) -> style st
+                | Shape.Circle(_, _, _, st) -> style st
+                | Shape.Ellipse(_, _, _, _, st) -> style st
+                | Shape.Label(_, _, label, st) ->
+                    recordText inUses readerId label
+                    style st
 
-                    let fieldUses =
-                        f.Fields
-                        |> List.collect (fun field ->
-                            recordFormFieldWrites readerId false (Some field.Id) field.Kind
+            style d.Style
+            d.Shapes |> List.iter shape
+            recordTextOpt inUses readerId d.Title
+            recordTextOpt inUses readerId d.Description
+        // ── Input ──
+        | NodeKind.Button b ->
+            // OnClick is a wire-survivable Action slot (Phase 428).
+            recordCalls inUses readerId b.OnClick
+            recordText inUses readerId b.Label
+            recordTextOpt inUses readerId b.Tooltip
+            recordBindingOpt inUses readerId b.Disabled
+        | NodeKind.FileUpload fu ->
+            noteOpaqueIf fu.OnSelect.IsSome
+            recordText inUses readerId fu.Label
+            recordBindingOpt inUses readerId fu.Disabled
+        | NodeKind.Select s ->
+            noteWriteBackOf readerId s.Value
+            s.Values |> Option.iter (noteWriteBackOf readerId)
+            noteOpaqueIf (s.OnChange.IsSome || s.OnChangeMulti.IsSome)
+            recordText inUses readerId s.Label
+            recordBinding inUses readerId s.Source
+            recordBinding inUses readerId s.Value
+            recordBindingOpt inUses readerId s.Values
+            recordTextOpt inUses readerId s.Placeholder
+            recordBindingOpt inUses readerId s.Disabled
+        | NodeKind.Form f ->
+            // OnSubmit is a wire-survivable Action slot (Phase 428).
+            recordCalls inUses readerId f.OnSubmit
+            recordText inUses readerId f.SubmitLabel
+            recordBindingOpt inUses readerId f.Disabled
 
-                            usesOfText field.Label
-                            @ usesOfTextOpt field.Help
-                            @ usesOfFormFieldKind (Some(BindingUse.State field.Id)) field.Kind)
+            for field in f.Fields do
+                recordFormFieldWrites readerId false (Some field.Id) field.Kind
+                recordText inUses readerId field.Label
+                recordTextOpt inUses readerId field.Help
+                record inUses readerId (usesOfFormFieldKind (Some(BindingUse.State field.Id)) field.Kind)
+        | NodeKind.Filters spec ->
+            if inUses then
+                for fs in spec.Items do
+                    declaredFilters.Add(readerId, fs.Name)
 
-                    usesOfText f.SubmitLabel @ usesOfBindingOpt f.Disabled @ fieldUses
+            for fs in spec.Items do
+                // No implicit key: an absent value slot on a chip
+                // auto-binds to the FILTER store, not the State store.
+                recordFormFieldWrites readerId true None fs.Kind
+                recordText inUses readerId fs.Label
+                record inUses readerId (usesOfFormFieldKind (Some(BindingUse.Filter fs.Name)) fs.Kind)
+        // ── Visualisation ──
+        | NodeKind.DataGrid g ->
+            // Phase 932 — `sortStateKey` / `pageStateKey` are plain STRINGS the
+            // renderer READS (`readSortSlot` / `readPageDescriptor`), so they are
+            // state reads with no `Binding` for the walk to see. `editStateKey` is
+            // a write DESTINATION with no reader anywhere in the renderer, and
+            // counting it would mask the very defect this rule looks for.
+            g.SortStateKey |> Option.iter (fun k -> stateReads.Add k |> ignore)
+            g.PageStateKey |> Option.iter (fun k -> stateReads.Add k |> ignore)
+            // Phase 1892 — the window descriptor is the same shape of slot: a
+            // string the renderer READS (`readWindowDescriptor`) and WRITES as
+            // the viewport moves.
+            g.WindowStateKey |> Option.iter (fun k -> stateReads.Add k |> ignore)
 
-                uses, []
-            | NodeKind.Filters spec ->
-                let uses =
-                    if inUses then
-                        for fs in spec.Items do
-                            declaredFilters.Add(readerId, fs.Name)
+            // The write side of the same three slots: a header click writes
+            // the sort descriptor, the pager writes the page descriptor, and
+            // an edited cell commits to `editStateKey` — or, absent one, back
+            // to a directly-State-bound `source` (Phase 663).
+            g.SortStateKey |> Option.iter (fun k -> stateWriteKeys.Add k |> ignore)
+            g.PageStateKey |> Option.iter (fun k -> stateWriteKeys.Add k |> ignore)
+            g.WindowStateKey |> Option.iter (fun k -> stateWriteKeys.Add k |> ignore)
+            g.EditStateKey |> Option.iter (fun k -> stateWriteKeys.Add k |> ignore)
 
-                    spec.Items
-                    |> List.collect (fun (fs: FilterSpec<_>) ->
-                        // No implicit key: an absent value slot on a chip
-                        // auto-binds to the FILTER store, not the State store.
-                        recordFormFieldWrites readerId true None fs.Kind
+            if g.Editable && g.EditStateKey.IsNone then
+                noteWriteBackOf readerId g.Source
 
-                        usesOfText fs.Label
-                        @ usesOfFormFieldKind (Some(BindingUse.Filter fs.Name)) fs.Kind)
+            // A row-click handler is a closure over the row: an arbitrary
+            // action per row, so an arbitrary write.
+            noteOpaqueIf g.OnRowClick.IsSome
 
-                uses, []
-            // ── Visualisation ──
-            | NodeKind.DataGrid g ->
-                // Phase 932 — `sortStateKey` / `pageStateKey` are plain STRINGS the
-                // renderer READS (`readSortSlot` / `readPageDescriptor`), so they are
-                // state reads with no `Binding` for the walk to see. `editStateKey` is
-                // a write DESTINATION with no reader anywhere in the renderer, and
-                // counting it would mask the very defect this rule looks for.
-                g.SortStateKey |> Option.iter (fun k -> stateReads.Add k |> ignore)
-                g.PageStateKey |> Option.iter (fun k -> stateReads.Add k |> ignore)
-                // Phase 1892 — the window descriptor is the same shape of slot: a
-                // string the renderer READS (`readWindowDescriptor`) and WRITES as
-                // the viewport moves.
-                g.WindowStateKey |> Option.iter (fun k -> stateReads.Add k |> ignore)
+            // A closure-bearing cell produces an arbitrary `Action` per row,
+            // so it may write any key. The value-only cell kinds cannot.
+            for col in g.Columns do
+                match col.Kind with
+                | CellKindErased.Editable onEdit -> noteOpaqueIf onEdit.IsSome
+                | CellKindErased.Checkbox(_, onToggle) -> noteOpaqueIf onToggle.IsSome
+                | CellKindErased.Button(_, onClick) -> noteOpaqueIf onClick.IsSome
+                | CellKindErased.ButtonGroup _
+                | CellKindErased.Custom _ -> opaqueWriter <- true
+                | CellKindErased.Text
+                | CellKindErased.Numeric
+                | CellKindErased.Date
+                | CellKindErased.Link _
+                | CellKindErased.Pill _
+                | CellKindErased.TonedPill _
+                | CellKindErased.Progress _ -> ()
 
-                // The write side of the same three slots: a header click writes
-                // the sort descriptor, the pager writes the page descriptor, and
-                // an edited cell commits to `editStateKey` — or, absent one, back
-                // to a directly-State-bound `source` (Phase 663).
-                g.SortStateKey |> Option.iter (fun k -> stateWriteKeys.Add k |> ignore)
-                g.PageStateKey |> Option.iter (fun k -> stateWriteKeys.Add k |> ignore)
-                g.WindowStateKey |> Option.iter (fun k -> stateWriteKeys.Add k |> ignore)
-                g.EditStateKey |> Option.iter (fun k -> stateWriteKeys.Add k |> ignore)
+            // Phase 393 — a static read-only grid carries its cells as `TextSource`
+            // in `StaticRows`; a data-bound grid carries a `Source` binding.
+            // Phase 1615 — the grid's `rowKeyField` IS the row-identity
+            // column: the column whose value identifies a row, which is
+            // exactly what a live-Transform store's `identityColumn`
+            // wants and what nothing in a rendered tree previously said.
+            record inUses readerId (tagSourceSite "source" g.RowKeyField g.Source (rowFeedUses g.Source))
+            // Phase 1892 — the declared total is a scalar binding the
+            // renderer resolves, so it is a read like any other.
+            recordBindingOpt inUses readerId g.RowTotal
 
-                if g.Editable && g.EditStateKey.IsNone then
-                    noteWriteBackOf readerId g.Source
+            match g.StaticRows with
+            | Some sr ->
+                for header in sr.Headers do
+                    recordText inUses readerId header
 
-                // A row-click handler is a closure over the row: an arbitrary
-                // action per row, so an arbitrary write.
-                noteOpaqueIf g.OnRowClick.IsSome
+                for row in sr.Rows do
+                    for cell in row do
+                        recordText inUses readerId cell
+            | None -> ()
+        // Phase 1615 — a chart and a map declare no row identity, so the
+        // slot is named and the identity column is honestly absent.
+        | NodeKind.Chart c ->
+            record inUses readerId (tagSourceSite "source" None c.Source (rowFeedUses c.Source))
+            recordTextOpt inUses readerId c.Title
+        | NodeKind.Map m -> record inUses readerId (tagSourceSite "source" None m.Source (usesOfBinding m.Source))
+        // ── Structural ──
+        | NodeKind.ErrorBoundary spec ->
+            walk inUses spec.Child
+            walk inUses spec.Fallback
+        // Phase 932 — the branch SELECTOR is a BINDING since Phase 768; the comment
+        // that stood here still described the `StateKey: string` field that change
+        // retired. Its state reads are collected (a button writing the key a Switch
+        // selects on is the canonical HONEST affordance, so missing this surface
+        // alone would false-warn on the most idiomatic shape in the language).
+        //
+        // Tidy-Up follow-on — 932 routed this to `recordStateOf`, i.e. into the
+        // state projection but deliberately NOT into `Uses`, because widening `Uses`
+        // is a behaviour change outside an additive Warning rule's remit. It now
+        // goes through `record` into BOTH: 768 made `On` any `Binding`, so a
+        // `Binding.Selection` selector is a Selection READ and a dangling one is
+        // FUARAN070's own case. Measured before landing — the full suite stays
+        // green, and reverting this line reddens exactly the Switch-selector probe
+        // in `PreEmitValidateTests`. The case children + default are walked so
+        // their own bindings are captured.
+        | NodeKind.Switch spec ->
+            recordBinding inUses readerId spec.On
 
-                // A closure-bearing cell produces an arbitrary `Action` per row,
-                // so it may write any key. The value-only cell kinds cannot.
-                for col in g.Columns do
-                    match col.Kind with
-                    | CellKindErased.Editable onEdit -> noteOpaqueIf onEdit.IsSome
-                    | CellKindErased.Checkbox(_, onToggle) -> noteOpaqueIf onToggle.IsSome
-                    | CellKindErased.Button(_, onClick) -> noteOpaqueIf onClick.IsSome
-                    | CellKindErased.ButtonGroup _
-                    | CellKindErased.Custom _ -> opaqueWriter <- true
-                    | CellKindErased.Text
-                    | CellKindErased.Numeric
-                    | CellKindErased.Date
-                    | CellKindErased.Link _
-                    | CellKindErased.Pill _
-                    | CellKindErased.TonedPill _
-                    | CellKindErased.Progress _ -> ()
+            // Fuaran-UI Phase 1535 — a PREDICATE case's `when` binding is a
+            // read on exactly the same footing as the selector: it decides
+            // which branch renders, so a state key only a `when` reads is
+            // read.
+            for c in spec.Cases do
+                recordBindingOpt inUses readerId c.When
 
-                let uses =
-                    // Phase 393 — a static read-only grid carries its cells as `TextSource`
-                    // in `StaticRows`; a data-bound grid carries a `Source` binding.
-                    // Phase 1615 — the grid's `rowKeyField` IS the row-identity
-                    // column: the column whose value identifies a row, which is
-                    // exactly what a live-Transform store's `identityColumn`
-                    // wants and what nothing in a rendered tree previously said.
-                    tagSourceSite "source" g.RowKeyField g.Source (rowFeedUses g.Source)
-                    // Phase 1892 — the declared total is a scalar binding the
-                    // renderer resolves, so it is a read like any other.
-                    @ (g.RowTotal |> Option.map usesOfBinding |> Option.defaultValue [])
-                    @ (match g.StaticRows with
-                       | Some sr ->
-                           (sr.Headers |> List.collect usesOfText)
-                           @ (sr.Rows |> List.collect (List.collect usesOfText))
-                       | None -> [])
-
-                uses, []
-            // Phase 1615 — a chart and a map declare no row identity, so the
-            // slot is named and the identity column is honestly absent.
-            | NodeKind.Chart c ->
-                tagSourceSite "source" None c.Source (rowFeedUses c.Source)
-                @ usesOfTextOpt c.Title,
-                []
-            | NodeKind.Map m -> tagSourceSite "source" None m.Source (usesOfBinding m.Source), []
-            // ── Structural ──
-            | NodeKind.ErrorBoundary spec -> [], [ spec.Child; spec.Fallback ]
-            // Phase 932 — the branch SELECTOR is a BINDING since Phase 768; the comment
-            // that stood here still described the `StateKey: string` field that change
-            // retired. Its state reads are collected (a button writing the key a Switch
-            // selects on is the canonical HONEST affordance, so missing this surface
-            // alone would false-warn on the most idiomatic shape in the language).
+            // The selector, recorded EXPLICITLY for FUARAN103: a Switch's
+            // accessibility slots are State-bindable too, so a reader-tagged
+            // State use on this node does not identify the branch selector.
             //
-            // Tidy-Up follow-on — 932 routed this to `recordStateOf`, i.e. into the
-            // state projection but deliberately NOT into `Uses`, because widening `Uses`
-            // is a behaviour change outside an additive Warning rule's remit. It now
-            // goes through `record` into BOTH: 768 made `On` any `Binding`, so a
-            // `Binding.Selection` selector is a Selection READ and a dangling one is
-            // FUARAN070's own case. Measured before landing — the full suite stays
-            // green, and reverting this line reddens exactly the Switch-selector probe
-            // in `PreEmitValidateTests`. The case children + default are walked so
-            // their own bindings are captured.
-            | NodeKind.Switch spec ->
-                record inUses readerId (usesOfBinding spec.On)
+            // Fuaran-UI Phase 1535 — and recorded ONLY when some case
+            // actually consults it. A switch whose cases are all predicates
+            // never reads `on` at all, so "nothing writes the key this
+            // switch selects on" is not a defect there: it is a selector
+            // that is simply unused, and FUARAN103 reasons from the absence
+            // of a write to conclude one branch renders forever. That
+            // conclusion is false when the branch is chosen by predicate.
+            // The rule fires on a MIXED switch, which does still consult
+            // `on`.
+            let consultsSelector = spec.Cases |> List.exists (fun c -> c.Match.IsSome)
 
-                // Fuaran-UI Phase 1535 — a PREDICATE case's `when` binding is a
-                // read on exactly the same footing as the selector: it decides
-                // which branch renders, so a state key only a `when` reads is
-                // read.
-                record inUses readerId (spec.Cases |> List.collect (fun c -> usesOfBindingOpt c.When))
+            match spec.On with
+            | Binding.State(key, _) when consultsSelector -> switchSelectors.Add(readerId, key)
+            | _ -> ()
 
-                // The selector, recorded EXPLICITLY for FUARAN103: a Switch's
-                // accessibility slots are State-bindable too, so a reader-tagged
-                // State use on this node does not identify the branch selector.
-                //
-                // Fuaran-UI Phase 1535 — and recorded ONLY when some case
-                // actually consults it. A switch whose cases are all predicates
-                // never reads `on` at all, so "nothing writes the key this
-                // switch selects on" is not a defect there: it is a selector
-                // that is simply unused, and FUARAN103 reasons from the absence
-                // of a write to conclude one branch renders forever. That
-                // conclusion is false when the branch is chosen by predicate.
-                // The rule fires on a MIXED switch, which does still consult
-                // `on`.
-                let consultsSelector = spec.Cases |> List.exists (fun c -> c.Match.IsSome)
+            // Phase 1122's `autoAdvanceMs` IS a writer of the switch's own
+            // index key, and Phase 1646 teaches the write projection so
+            // (fuaran#1474, finding 2). A LIVE auto-advance ticks and writes
+            // the next branch's key, exactly as a dot control's `SetState`
+            // would — so a timer-only carousel, which is the whole point of
+            // the feature, was reported by FUARAN103 as a switch nothing can
+            // write, and could not cross the pre-emit gate at all. The
+            // orchestration bank had to carry two dot controls purely to
+            // ground the key.
+            //
+            // The condition is FUARAN128's, deliberately and not
+            // coincidentally: that rule reports a declared interval that
+            // CANNOT advance, and it can advance exactly when the selector is
+            // a state key and there are at least two cases to advance
+            // between. Any looser and this would ground a key the renderer
+            // never writes — turning FUARAN103 off for a dead declaration
+            // FUARAN128 is separately reporting, which is the one shape a
+            // writer projection must not invent.
+            match spec.AutoAdvanceMs, spec.On with
+            | Some _, Binding.State(key, _) when List.length spec.Cases >= 2 -> stateWriteKeys.Add key |> ignore
+            | _ -> ()
 
-                match spec.On with
-                | Binding.State(key, _) when consultsSelector -> switchSelectors.Add(readerId, key)
-                | _ -> ()
+            for c in spec.Cases do
+                walk inUses c.Child
 
-                // Phase 1122's `autoAdvanceMs` IS a writer of the switch's own
-                // index key, and Phase 1646 teaches the write projection so
-                // (fuaran#1474, finding 2). A LIVE auto-advance ticks and writes
-                // the next branch's key, exactly as a dot control's `SetState`
-                // would — so a timer-only carousel, which is the whole point of
-                // the feature, was reported by FUARAN103 as a switch nothing can
-                // write, and could not cross the pre-emit gate at all. The
-                // orchestration bank had to carry two dot controls purely to
-                // ground the key.
-                //
-                // The condition is FUARAN128's, deliberately and not
-                // coincidentally: that rule reports a declared interval that
-                // CANNOT advance, and it can advance exactly when the selector is
-                // a state key and there are at least two cases to advance
-                // between. Any looser and this would ground a key the renderer
-                // never writes — turning FUARAN103 off for a dead declaration
-                // FUARAN128 is separately reporting, which is the one shape a
-                // writer projection must not invent.
-                match spec.AutoAdvanceMs, spec.On with
-                | Some _, Binding.State(key, _) when List.length spec.Cases >= 2 -> stateWriteKeys.Add key |> ignore
-                | _ -> ()
+            walk inUses spec.Default
+        | NodeKind.FragmentDecl spec -> walk inUses spec.Body
+        // Custom props are JVal literals, not bindings; a FragmentRef carries
+        // no body; a Mount guest owns its own scoped stores.
+        | NodeKind.Custom _ ->
+            // Phase 932 — a REGISTERED custom renderer is host code that may read
+            // any state key, so the tree can no longer be shown to read nothing.
+            // It may equally WRITE any key, which is the same argument on the
+            // other channel.
+            noteOpaqueReader (OpaqueReaderAt.Custom readerId)
+            opaqueWriter <- true
+        | NodeKind.FragmentRef spec -> spec.Args |> Option.iter walkSlotArgs
+        | NodeKind.Mount spec ->
+            // A guest's INTERIOR reads no host key (it renders under an isolated
+            // `StateStore.forScope`), but a `SlotArg` handed to it is host-authored
+            // and its render-time scope is not settled by the type. Counted as a
+            // read: over-counting costs a missed finding, under-counting costs a
+            // false accusation. The same holds on the write channel — a guest
+            // is another tree entirely, and this walk never sees its body.
+            opaqueWriter <- true
+            spec.Inputs |> Option.iter walkSlotArgs
 
-                [], (spec.Cases |> List.map _.Child) @ [ spec.Default ]
-            | NodeKind.FragmentDecl spec -> [], [ spec.Body ]
-            // Custom props are JVal literals, not bindings; a FragmentRef carries
-            // no body; a Mount guest owns its own scoped stores.
-            | NodeKind.Custom _ ->
-                // Phase 932 — a REGISTERED custom renderer is host code that may read
-                // any state key, so the tree can no longer be shown to read nothing.
-                // It may equally WRITE any key, which is the same argument on the
-                // other channel.
-                noteOpaqueReader (OpaqueReaderAt.Custom readerId)
-                opaqueWriter <- true
-                [], []
-            | NodeKind.FragmentRef spec ->
-                spec.Args |> Option.iter walkSlotArgs
-                [], []
-            | NodeKind.Mount spec ->
-                // A guest's INTERIOR reads no host key (it renders under an isolated
-                // `StateStore.forScope`), but a `SlotArg` handed to it is host-authored
-                // and its render-time scope is not settled by the type. Counted as a
-                // read: over-counting costs a missed finding, under-counting costs a
-                // false accusation. The same holds on the write channel — a guest
-                // is another tree entirely, and this walk never sees its body.
-                opaqueWriter <- true
-                spec.Inputs |> Option.iter walkSlotArgs
-                [], []
-
-        record inUses readerId directUses
-        children |> List.iter (walk inUses)
+    and walkAll (inUses: bool) (children: Node<'Msg> list) =
+        for child in children do
+            walk inUses child
 
     and walkSlotArgs (args: Map<string, FragmentArg<'Msg>>) =
         for KeyValue(_, arg) in args do

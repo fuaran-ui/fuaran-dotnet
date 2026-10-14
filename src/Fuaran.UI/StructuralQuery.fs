@@ -488,7 +488,7 @@ type private Ix<'Msg> =
       Uses: BindingWalk.BindingUse list[]
       Actions: Carried list[] }
 
-let private index (options: Options<'Msg>) (root: Node<'Msg>) : Ix<'Msg> =
+let private index (options: Options<'Msg>) (facts: BindingWalk.TreeBindingFacts) (root: Node<'Msg>) : Ix<'Msg> =
     let nodes = ResizeArray<Node<'Msg>>()
     let kids = ResizeArray<int list>()
     let parent = ResizeArray<int>()
@@ -524,8 +524,6 @@ let private index (options: Options<'Msg>) (root: Node<'Msg>) : Ix<'Msg> =
     // forward-coupled to every binding-bearing slot. It is reader-ID-keyed, so
     // a duplicate id attributes to both holders — the only place in this module
     // where positions cannot rescue the ambiguity.
-    let facts = BindingWalk.collect root
-
     let usesById =
         facts.Uses
         |> List.groupBy _.Reader
@@ -635,9 +633,17 @@ let rec private vector (ix: Ix<'Msg>) (predicate: Predicate) : Verdict[] =
                 { Hit = true
                   Witness = found @ (found |> List.collect (fun a -> v[a].Witness)) })
 
-/// Evaluate `predicate` over every node of `tree`, with match traces.
-let evaluateWith (options: Options<'Msg>) (predicate: Predicate) (tree: Node<'Msg>) : Result =
-    let ix = index options tree
+/// `evaluateWith` over binding facts the caller already holds (Phase 2054), so
+/// a caller that also validates the tree or projects its wiring graph walks the
+/// tree's bindings once. `facts` MUST be `BindingWalk.collectFacts tree` for this
+/// same `tree`; under that precondition the result is `evaluateWith`'s.
+let evaluateWithFacts
+    (options: Options<'Msg>)
+    (facts: BindingWalk.TreeFacts)
+    (predicate: Predicate)
+    (tree: Node<'Msg>)
+    : Result =
+    let ix = index options facts.Bindings tree
     let verdicts = vector ix predicate
 
     let hits =
@@ -654,6 +660,10 @@ let evaluateWith (options: Options<'Msg>) (predicate: Predicate) (tree: Node<'Ms
     { Hits = hits
       Matched = hits |> List.map _.NodeId |> Set.ofList
       Highlight = hits |> List.collect (fun h -> h.NodeId :: h.Witnesses) |> Set.ofList }
+
+/// Evaluate `predicate` over every node of `tree`, with match traces.
+let evaluateWith (options: Options<'Msg>) (predicate: Predicate) (tree: Node<'Msg>) : Result =
+    evaluateWithFacts options (BindingWalk.collectFacts tree) predicate tree
 
 /// Evaluate `predicate` over `tree`, treating message payloads as opaque — the
 /// decoded-tree posture.

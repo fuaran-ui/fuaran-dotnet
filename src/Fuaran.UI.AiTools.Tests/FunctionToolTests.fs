@@ -378,3 +378,50 @@ let tests =
               Expect.isOk
                   (FunctionTool.auditFragmentEffect decl)
                   "an honest network declaration covers its network body" ]
+
+// ─── Phase 2234 — the one hole/effect projection (Fuaran.UI.Core.Function) ───
+//
+// The witness above and the validator's recipe certification read the same
+// projection; these pin it case by case, so a mirror that drifts on either side
+// fails here rather than as two tiers disagreeing about one fragment.
+
+module Projection = Fuaran.UI.Core.Function.Projection
+
+[<Tests>]
+let projectionTests =
+    testList
+        "Phase 2234 - the hole value-space and effect projection"
+        [ test "every value space projects to its Core mirror" {
+              let cases =
+                  [ HoleValueSpace.IntRange(1, 9), Fuaran.Core.IntRange(1, 9)
+                    HoleValueSpace.FloatRange(0.5, 2.5), Fuaran.Core.FloatRange(0.5, 2.5)
+                    HoleValueSpace.StringLen(0, 40), Fuaran.Core.StringLen(0, 40)
+                    HoleValueSpace.Enum [ "a"; "b" ], Fuaran.Core.Enum [ "a"; "b" ]
+                    HoleValueSpace.AnyString, Fuaran.Core.AnyString ]
+
+              for ui, core in cases do
+                  Expect.equal (Projection.toCoreSpace ui) core (sprintf "%A" ui)
+          }
+
+          test "every effect class projects host and determinism to the Core mirror" {
+              let hosts =
+                  [ HostEffect.Pure, Fuaran.Core.Pure
+                    HostEffect.ReadsHost, Fuaran.Core.ReadsHost
+                    HostEffect.WritesHost, Fuaran.Core.WritesHost ]
+
+              let determinisms =
+                  [ DeterminismSource.Deterministic, Fuaran.Core.Effect.deterministic
+                    DeterminismSource.Clock, Fuaran.Core.Effect.clock
+                    DeterminismSource.Random, Fuaran.Core.Effect.random
+                    DeterminismSource.Network, Fuaran.Core.Effect.network ]
+
+              for uiHost, coreHost in hosts do
+                  for uiDet, coreDet in determinisms do
+                      let projected =
+                          Projection.toCoreEffect
+                              { HostEffect = uiHost
+                                Determinism = uiDet }
+
+                      Expect.equal projected.Host coreHost (sprintf "host of %A/%A" uiHost uiDet)
+                      Expect.equal projected.Determinism coreDet (sprintf "determinism of %A/%A" uiHost uiDet)
+          } ]

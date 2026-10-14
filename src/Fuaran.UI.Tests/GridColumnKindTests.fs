@@ -18,7 +18,7 @@ module Fuaran.UI.Tests.GridColumnKind
 //
 //  Three layers are pinned here: the validator (constructed trees), the
 //  renderer's shared sort / sortable decisions (`GridColumn.dataField`,
-//  `BindingResolver.sortRowsByDescriptor`, `AgGridPlan.columnSortable`, and a
+//  `GridModel.sortRowsByDescriptor`, `AgGridPlan.columnSortable`, and a
 //  source read of the first-party leg's header and both export legs, which
 //  only run under Fable), and the three corpus fixtures every host certifies.
 // ============================================================================
@@ -302,12 +302,12 @@ let private rendererTests =
                     column "Actions" (Some "dept") button ]
 
               let byAction =
-                  Fuaran.UI.Renderer.BindingResolver.sortRowsByDescriptor columns (Some(1, SortDirection.Asc)) rows
+                  Fuaran.UI.Renderer.GridModel.sortRowsByDescriptor columns (Some(1, SortDirection.Asc)) rows
 
               Expect.equal byAction rows "sort ignores an action column's field"
 
               let byData =
-                  Fuaran.UI.Renderer.BindingResolver.sortRowsByDescriptor columns (Some(0, SortDirection.Asc)) rows
+                  Fuaran.UI.Renderer.GridModel.sortRowsByDescriptor columns (Some(0, SortDirection.Asc)) rows
 
               Expect.equal byData (List.rev rows) "and the probe runs the other way: the data column does sort"
           }

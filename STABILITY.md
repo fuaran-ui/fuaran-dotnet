@@ -8346,6 +8346,134 @@ chip's slot, code and severity, and checks that every slot the lint names has a 
 `scripts/fuaran-codes.ps1 -Check` reads the registry and fails on a `FUARAN*` literal in any non-test source
 outside it.
 
+### What rides this slot — Phase 2054 (one facts walk per validation)
+
+**Class: ADDITIVE API + performance.** Three functions are added; no type, member, verdict, finding or wire byte
+moves. Every defect `validate` reports, every binding-check diagnostic and path, every inertness finding and the
+wiring graph are byte-identical before and after over the whole node corpus and a 5,001-node synthetic tree
+(`benchmarks/Fuaran.UI.Ops.Benchmarks validate-snapshot`).
+
+- **New `PreEmitValidate.validateWithFacts options facts node`** — `validateWith` over the
+  `BindingWalk.collectFacts` result a caller already holds. **New `PreEmitValidate.bindingChecksWithFacts facts
+  node`** and **`StructuralQuery.evaluateWithFacts options facts predicate tree`** — the same for the
+  binding-check report and the structural query. With `WiringGraph.ofFacts`, a caller reading a tree all four
+  ways walks its bindings once. `facts` must be the walk over the same tree; under that precondition each
+  answers exactly what its tree-taking twin answers.
+- **`bindingChecks` no longer encodes the tree.** A reader's node path is read from the typed tree's held
+  positions (`NodeChildren.slots`), and a finding's slot is recorded by the rule that raises it, at the moment it
+  raises it. The paths are the ones the canonical document gives; a corpus test computes them the old way and
+  compares. The report runs the binding walk once, where it ran it twice.
+- **`BindingWalk.collectFacts` writes its accumulators directly**, slot by slot, rather than building each
+  node's usage list with `@` and folding it. `AffordanceInertness.report` writes into one accumulator.
+- **FUARAN107 compares a table only with the tables equal to it.** The all-pairs scan compared every inline
+  table with every other one, which made `validate` quadratic on a tree with many charts and grids. The pairs
+  come out in the same order.
+
+**Certified by** `src/Fuaran.UI.Tests/FactsWalkTests.fs`: each `*WithFacts` form against its twin over every
+corpus node fixture, every reader path against the encoded document's, a reader in each held position, and
+FUARAN107's pair order.
+### What rides this slot — Phase 2239
+
+**Class: BEHAVIOUR change, no API change.** `Fuaran.UI.Client`'s tolerant member read follows one rule for a
+canonical member of the wrong type, the rule `@fuaran-ui/client` already followed. Until now the two clients agreed
+only on well-formed input.
+
+**The rule, recorded in the same words by both clients.** An alternate spelling is a fallback for an ABSENT
+canonical member, never a type fallback:
+
+- A canonical member that is missing, or JSON `null`, is absent, so the alias is read.
+- A canonical member that is present and not `null` is the answer, whatever its type. When the caller wants another
+  type the field reads as absent: the alias is not consulted, and the caller's existing absent-field handling
+  applies (a string field's documented default, an op count that falls back to the length of the op list).
+
+**What changes for a consumer.** Before, `pickString` read the alias whenever the canonical member was not a
+string, so `{"state":7,"State":"done"}` read as `done` here and as no state in the TypeScript client. It now reads as
+no state in both. The same holds for every field the helper serves: `provider`, `servedModel`, the snapshot's
+members, an applied op's `opId` and `opJson`, the version echo, a refusal's `code`, `message` and `stage`, and a 401's
+`Reason`. Two further reads change:
+
+- A JSON `null` canonical element (`tree`, `ops`, `error`) used to be returned as a present member, which stopped the
+  alias being read. It is absent now, as it always was for a string.
+- **A refusal whose `error` member is not an object no longer throws.** `{"error":"boom"}` made
+  `parseTurnResponse` raise `InvalidOperationException` from `JsonElement.TryGetProperty`, where the TypeScript
+  client read the body as the envelope. It reads the body as the envelope here too.
+
+A payload only a proxy or mock that has not yet moved would send, with the canonical key present and mistyped, is the
+case that changes; a payload using either spelling well-typed reads as before.
+
+**Certified by** `src/Fuaran.UI.Client.Tests/WireMemberTests.fs`, which reads every row of the parity table through
+`parseTurnResponse` and `parseProducedDetail`. The TypeScript client holds the same table, row for row, in
+`packages/client/test/wireMember.test.ts`. A row changed in one is changed in the other in the same change-set.
+### What rides this slot — Phase 2235
+
+**Class: BREAKING on `Fuaran.UI.Renderer.Core`** (source and binary). The slot is already breaking-class (Phases
+2052 and 2067), so it does not move. Phase 2070 left every grid and tree name it moved re-exported from
+`Fuaran.UI.Renderer.BindingResolver` as a plain alias, for one release, and recorded that their removal would be
+a breaking change here. This is that removal. No wire byte moves and no behaviour moves: each name is still
+defined once, in the module that owns it.
+
+- **Removed from `BindingResolver`, with the owning module for each:**
+  - Types (type abbreviations): `RowWindow`, `PresentedWindow<'row>` and `ViewportMeasure` are now
+    `GridModel.RowWindow`, `GridModel.PresentedWindow<'row>` and `GridModel.ViewportMeasure`.
+  - `GridModel`: `sortRowsByDescriptor`, `sourceHostPagesOn`, `pageCountOf`, `clampPage`, `sliceRowsToPage`,
+    `windowOfJVal`, `sourceHostWindowsOn`, `presentWindow`, `declaredPageCount`, `gridHostWindows`,
+    `windowRowCount`, `windowRowIndex`, `defaultWindowRowHeightPx`, `windowViewportMaxHeightPx`,
+    `measureWindow`, `windowDescriptorJVal`, `stepWindowWriter`, `tonedPillOf`, `gridWriteDestination`,
+    `reorderDestination`, `transferDestination`, `editDestination` and `moveRow`.
+  - `TreeModel`: `treeItemExpanded`, `visibleTreeItems` and `focusableTreeItem`.
+- **Migration.** Replace `BindingResolver.<name>` with `GridModel.<name>` or `TreeModel.<name>` per the list; the
+  signatures are identical. A file that does `open Fuaran.UI.Renderer.BindingResolver` and calls one of these
+  unqualified adds `open Fuaran.UI.Renderer` (or qualifies the call). The record literals
+  `{ BindingResolver.RowWindow.Offset = …; Count = … }` become `{ GridModel.RowWindow.Offset = …; Count = … }`.
+- **Unchanged on `BindingResolver`:** the State reads (`readSortDescriptor`, `readSortSlot`,
+  `effectiveSortDescriptor`, `readExpandedItems`, `readSelectedItem`, `readPageDescriptor`,
+  `readWindowDescriptor`, `resolveRowTotal`, `gridPage`, `gridWindow`), and the Phase 213 re-exports
+  `BindingSources`, `empty` and `passthroughI18nResolver`, which are a different kind of name: the record was
+  promoted to `Fuaran.UI` and the abbreviation is the spelling every consumer annotates with, which the
+  samples and the program tiers still use.
+- **Callers moved in this repository:** `AgGridAdapter.fs` and `AgGridPlan.fs` in `Fuaran.UI.Renderer`, and the
+  tests in `Fuaran.UI.Tests`, `Fuaran.UI.JsonDecode.Tests` and `Fuaran.UI.Renderer.Server.Tests`. `Render.fs` in
+  both renderers and `VisAdapter.fs` already called the owning modules. The one test that compared an alias with
+  its target is removed, since there is no alias to compare.
+- **Outside the repository.** This repository has no consumer of any removed name beyond those files. The
+  estate-wide search over the private consumers is not part of this entry.
+- **`Renderer.Web` is unaffected.** No TypeScript changes, so the embedded bundle check does not move.
+
+**Certified by** the build of `Fuaran.UI.Renderer.Core` and its callers (a removed name is a compile error at
+every remaining use) and by `Fuaran.UI.Tests`, `Fuaran.UI.JsonDecode.Tests` and
+`Fuaran.UI.Renderer.Server.Tests`, which exercise the models through `GridModel` / `TreeModel`.
+### What rides this slot — Phase 2234
+
+**Class: BREAKING (a dependency-closure change) + a new package id at its first version.** No public type,
+member or behaviour moves and no wire byte moves. The slot is already BREAKING (Phase 2052) and untagged, so
+this rides it and the number does not move.
+
+- **New package `Fuaran.UI.Core.Function`, first published at 0.94.0.** It holds ONE module,
+  `Fuaran.UI.Core.Function.Projection`, with two functions:
+  `toCoreSpace : HoleValueSpace -> Fuaran.Core.ValueSpace` and
+  `toCoreEffect : EffectClass -> Fuaran.Core.EffectClass`, the projection of a fragment's typed holes and
+  declared effect class onto the Core function model. Its dependencies are `FSharp.Core`, `Fuaran.UI` and
+  `Fuaran.Core.Function`, all already in the closure of both packages that reference it. It is Fable-clean and
+  ships its sources under `fable/`, so the Fable stage compiles it as an entry project. It is pinned like every
+  package here, by the shared `<Version>`, and packs with them (`Build.fs`'s pack set).
+- **`Fuaran.UI.AiTools` and `Fuaran.UI.Validator` each gain a dependency on it.** That is the
+  dependency-closure change, and it is classed BREAKING because a consumer restoring either package now needs
+  one more package id to be obtainable: a mirror, a vendored feed or an allow-list that carried the old closure
+  fails to restore until it carries `Fuaran.UI.Core.Function` too, and a Fable consumer of `AiTools` transpiles
+  one more source package. Nothing else in either closure moves: `AiTools` already referenced `Fuaran.UI` and
+  `Fuaran.Core.Function`, and the validator already reached `Fuaran.Core.Function` through
+  `Fuaran.Core.Conformance`. `Fuaran.UI` itself is untouched; neither `AiTools` nor the validator references
+  the other (decision D17, which rejected both of those widenings).
+- **The two private copies are deleted.** `FunctionTool.fs` (`AiTools`) and `RecipeCertification.fs` (the
+  validator) each carried a private `toCoreSpace` / `toCoreEffect`, written on opposite sides of the package
+  boundary (Phase 2042 found the pair). Both call sites now read the one definition. The inverse,
+  `fromCoreEffect`, has one copy and stays private in `FunctionTool.fs`.
+
+**Certified by** `src/Fuaran.UI.AiTools.Tests/FunctionToolTests.fs` (the projection, case by case, for every
+value space and every host and determinism pair, beside the existing composition and effect-audit tests),
+`src/Fuaran.UI.Validator.Tests` (recipe certification reads the shared projection), and the Fable stage, which
+compiles the new package as an entry project.
+
 ## 0.93.0 — the slot opened after v0.92.0 was released (RELEASED — tagged v0.93.0 at b654b31, 2026-10-10)
 
 _Class: **BREAKING (API: the `Fuaran.UI.Validator` library surface)** — raised from additive by Phase 2053,

@@ -43,6 +43,9 @@
   <ItemGroup>
     <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
     <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <!-- Phase 2234 (D17) - the one hole value-space / effect projection, shared with the
+         build-time validator. -->
+    <ProjectReference Include="..\Fuaran.UI.Core.Function\Fuaran.UI.Core.Function.fsproj" />
     <!-- Compute layer (Phase 283): the invocable Capability + registry surface for the
          capability discovery + dispatch glue (Capabilities.fs). -->
     <PackageReference Include="Fuaran.Core.Function" />

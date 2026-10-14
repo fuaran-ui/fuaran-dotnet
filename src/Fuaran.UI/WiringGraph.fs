@@ -427,11 +427,19 @@ let ofFacts (treeFacts: BindingWalk.TreeFacts) : WiringGraph =
             | BindingWalk.BindingUse.TransformSite _
             | BindingWalk.BindingUse.UnstyledDateFormat -> [])
 
+    // Phase 2054 — the consumers of each (channel, name), in consumer order, so
+    // a control meets only the consumers of what it drives rather than every
+    // consumer in the tree: the edges come out in the same order, and the
+    // projection is no longer controls × consumers on a large tree.
+    let consumersOf = consumers |> List.groupBy (fun r -> r.Channel, r.Name) |> dict
+
     let edges =
         controls
         |> List.collect (fun c ->
-            consumers
-            |> List.filter (fun r -> r.Channel = c.Channel && r.Name = c.Name && not (isSelfRead c r))
+            (match consumersOf.TryGetValue((c.Channel, c.Name)) with
+             | true, matching -> matching
+             | false, _ -> [])
+            |> List.filter (fun r -> not (isSelfRead c r))
             |> List.map (fun r ->
                 { Channel = c.Channel
                   Name = c.Name

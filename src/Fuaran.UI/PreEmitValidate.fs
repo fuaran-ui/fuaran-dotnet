@@ -4048,11 +4048,24 @@ type private WalkAccumulators =
 /// shared defect list (appended in walk order — the order is part of the
 /// contract), the accumulators, and the two facts computed once per tree.
 type private WalkContext =
-    { Options: ValidateOptions
-      Defects: ResizeArray<PreEmitDefect>
-      CustomCheck: string -> string -> string -> Map<string, JVal> -> PreEmitDefect option
-      ProducedSchemaOf: string -> SchemaKnowledge option
-      Acc: WalkAccumulators }
+    {
+        Options: ValidateOptions
+        Defects: ResizeArray<PreEmitDefect>
+        CustomCheck: string -> string -> string -> Map<string, JVal> -> PreEmitDefect option
+        ProducedSchemaOf: string -> SchemaKnowledge option
+        Acc: WalkAccumulators
+        /// Phase 2054 — the slot a column-grounding finding is about, keyed by
+        /// the finding's index in `Defects`: the path from the reader's `kind`
+        /// object (`yFields[1]`, `columns[0].field`), written by the rule at the
+        /// moment it raises the finding, where the slot is known. The
+        /// binding-check report reads it instead of re-deriving the slot from
+        /// the encoded tree.
+        GroundingSlots: System.Collections.Generic.Dictionary<int, string>
+    }
+
+/// Record that the finding just added to `ctx.Defects` is about `slot`.
+let private locateLast (ctx: WalkContext) (slot: string) : unit =
+    ctx.GroundingSlots[ctx.Defects.Count - 1] <- slot
 
 
 /// Rules that read the node itself, whatever its kind.
@@ -4402,9 +4415,10 @@ module private GridRules =
              if SchemaWalk.isClosed produced then
                  let schemaColumns = SchemaWalk.names produced
 
-                 let ground (field: string) =
+                 let ground (slot: string) (field: string) =
                      if not (SchemaWalk.has field produced) then
                          defects.Add(PreEmitDefect.GridFieldUngrounded(nodeIdStr, field, schemaColumns))
+                         locateLast ctx slot
 
                  // Reported per offending name rather than once per grid: a grid
                  // pointed at the wrong source names several missing columns, and
@@ -4416,16 +4430,18 @@ module private GridRules =
                  // into inventing one. A TonedPill cell's OWN field IS a
                  // column reference — the pill's label and tone key — and is
                  // grounded here, in the same window, as FUARAN114's sub-case.
-                 for col in spec.Columns do
+                 spec.Columns
+                 |> List.iteri (fun i col ->
                      if not (GridColumn.isAction col) then
-                         col.Field |> Option.iter ground
+                         col.Field |> Option.iter (ground (sprintf "columns[%d].field" i))
 
                      match col.Kind with
                      | CellKindErased.TonedPill(pillField, _, _) when not (SchemaWalk.has pillField produced) ->
                          defects.Add(PreEmitDefect.PillFieldUngrounded(nodeIdStr, col.Label, pillField, schemaColumns))
-                     | _ -> ()
+                         locateLast ctx (sprintf "columns[%d].kind.field" i)
+                     | _ -> ())
 
-                 spec.RowKeyField |> Option.iter ground
+                 spec.RowKeyField |> Option.iter (ground "rowKeyField")
          | _ -> ())
 
         // FUARAN090: `editable: true` only means anything when the
@@ -5157,6 +5173,7 @@ module private ChartRules =
 
                  if not (SchemaWalk.has spec.XField produced) then
                      defects.Add(PreEmitDefect.ChartFieldUngrounded(nodeIdStr, spec.XField, schemaColumns))
+                     locateLast ctx "xField"
                  else
                      match colType spec.XField with
                      // Present, type data-dependent (an undecided `Derive`): the
@@ -5165,6 +5182,7 @@ module private ChartRules =
                      | Some t ->
                          if temporalX && not (dated t) then
                              defects.Add(PreEmitDefect.ChartTemporalXNotDate(nodeIdStr, spec.XField, ColumnType.tag t))
+                             locateLast ctx "xField"
 
                          // FUARAN087's x arm is NARROWED by a temporal declaration:
                          // a temporal Scatter reads its x as dates, so a date
@@ -5175,16 +5193,20 @@ module private ChartRules =
                          match spec.Kind with
                          | ChartKind.Scatter when not (numeric t) && not temporalX ->
                              defects.Add(PreEmitDefect.ChartFieldTypeMismatch(nodeIdStr, spec.XField, ColumnType.tag t))
+                             locateLast ctx "xField"
                          | _ -> ()
 
-                 for yf in spec.YFields do
+                 spec.YFields
+                 |> List.iteri (fun i yf ->
                      if not (SchemaWalk.has yf produced) then
                          defects.Add(PreEmitDefect.ChartFieldUngrounded(nodeIdStr, yf, schemaColumns))
+                         locateLast ctx (sprintf "yFields[%d]" i)
                      else
                          match colType yf with
                          | Some t when not (numeric t) ->
                              defects.Add(PreEmitDefect.ChartFieldTypeMismatch(nodeIdStr, yf, ColumnType.tag t))
-                         | _ -> ()
+                             locateLast ctx (sprintf "yFields[%d]" i)
+                         | _ -> ())
          | _ -> ())
 
 /// Media, embeds, trees and links: the content kinds that carry their own rules.
@@ -5880,14 +5902,41 @@ module private CrossTreeRules =
 
         if not (List.isEmpty inlineTables) then
             let reportedPair = System.Collections.Generic.HashSet<string>()
-            let indexed = inlineTables |> List.indexed
+            let tables = Array.ofList inlineTables
 
-            for (i, a) in indexed do
-                for (j, b) in indexed do
+            // Phase 2054 — a pair can only be reported when its two tables are
+            // EQUAL, so each table is compared against the later tables in its
+            // own equality class rather than against every later table. The
+            // classes keep walk order, so the pairs come out in exactly the
+            // (i, j) order the all-pairs scan produced; that scan compared every
+            // table with every other one structurally, which made this rule
+            // quadratic in table size times table count on every tree.
+            let equalClass =
+                let classes =
+                    System.Collections.Generic.Dictionary<Fuaran.Core.Table, ResizeArray<int>>(HashIdentity.Structural)
+
+                tables
+                |> Array.mapi (fun i d ->
+                    let members =
+                        match classes.TryGetValue d.Table with
+                        | true, ms -> ms
+                        | false, _ ->
+                            let ms = ResizeArray<int>()
+                            classes[d.Table] <- ms
+                            ms
+
+                    members.Add i
+                    members)
+
+            for i in 0 .. tables.Length - 1 do
+                let a = tables[i]
+
+                for j in equalClass[i] do
+                    let b = tables[j]
+
                     if
                         j > i
                         && a.Reader <> b.Reader
-                        && a.Table = b.Table
                         // One shared key is one source, however many readers point
                         // at it — the shape the seeding rule creates.
                         && not (a.SeedKey.IsSome && a.SeedKey = b.SeedKey)
@@ -5987,11 +6036,31 @@ module private CrossTreeRules =
           unreachableCompareKeys
           wireLossyClosures ]
 
+/// The `source`-slot Transform sites of a tree, indexed by READER — the window
+/// the schema-grounding rules and the binding-check report both judge through,
+/// built in one place so the two cannot disagree about which readers it holds.
+///
+/// First-wins on a repeated id, matching the tree order the rules read in.
+let private sourceSitesOf (facts: BindingWalk.TreeBindingFacts) : Map<string, BindingWalk.TransformSiteFacts> =
+    facts.TransformSites
+    |> List.filter (fun (d: BindingWalk.TransformSiteDecl) -> d.Site.Slot = Some "source")
+    |> List.fold
+        (fun acc d ->
+            if Map.containsKey d.Reader acc then
+                acc
+            else
+                Map.add d.Reader d.Site acc)
+        Map.empty
+
 /// The ONE walk behind every `validate*` entry point: per node, the shared node
 /// rules then the kind's rule family; after the walk, the cross-tree rules; last,
 /// the emission-budget breaches. Every entry point is an options preset, so no two
 /// can drift.
-let private validateCore (options: ValidateOptions) (node: Node<'Msg>) : Result<unit, PreEmitDefect list> =
+let private validateLocated
+    (options: ValidateOptions)
+    (treeFacts: BindingWalk.TreeBindingFacts)
+    (node: Node<'Msg>)
+    : PreEmitDefect list * System.Collections.Generic.Dictionary<int, string> =
     let meter = options.Meter
 
     let customCheck: string -> string -> string -> Map<string, JVal> -> PreEmitDefect option =
@@ -6036,7 +6105,7 @@ let private validateCore (options: ValidateOptions) (node: Node<'Msg>) : Result<
     // no defect list, hence no "structured error, never an exception".
     //
     // A local mutable is the right shape here rather than a threaded parameter:
-    // `walk` is a closure created fresh per `validateCore` call, so the counter
+    // `walk` is a closure created fresh per `validateLocated` call, so the counter
     // is per-invocation and cannot be shared across threads.
     let mutable depth = 0
     // One defect, not one per over-deep node — an over-deep subtree would
@@ -6045,8 +6114,9 @@ let private validateCore (options: ValidateOptions) (node: Node<'Msg>) : Result<
 
     // ── The ONE enumeration of this tree's Transform sites ──
     //
-    // `BindingWalk.collect` runs ONCE per validation, before the per-node walk,
-    // so the per-node rules that need a Transform site read it here and the
+    // The binding facts are collected ONCE per validation, before the per-node
+    // walk (or handed in by a caller already holding them — `validateWithFacts`),
+    // so the per-node rules that need a Transform site read them here and the
     // cross-tree rules read the same facts after the walk.
     //
     // Indexed by READER, restricted to the sites the reading node's own arm
@@ -6059,18 +6129,7 @@ let private validateCore (options: ValidateOptions) (node: Node<'Msg>) : Result<
     // First-wins on a repeated id, matching the tree order the rules read in;
     // a duplicated node id is FUARAN's own defect (`DuplicateNodeId`) and not
     // this index's to re-report.
-    let treeFacts = BindingWalk.collect node
-
-    let sourceSites =
-        treeFacts.TransformSites
-        |> List.filter (fun (d: BindingWalk.TransformSiteDecl) -> d.Site.Slot = Some "source")
-        |> List.fold
-            (fun acc d ->
-                if Map.containsKey d.Reader acc then
-                    acc
-                else
-                    Map.add d.Reader d.Site acc)
-            Map.empty
+    let sourceSites = sourceSitesOf treeFacts
 
     /// The schema a reader's `source` slot PRODUCES, when the walk enumerated a
     /// non-live Transform there. `None` on every other shape — a live source
@@ -6087,7 +6146,8 @@ let private validateCore (options: ValidateOptions) (node: Node<'Msg>) : Result<
           Defects = defects
           CustomCheck = customCheck
           ProducedSchemaOf = producedSchemaOf
-          Acc = acc }
+          Acc = acc
+          GroundingSlots = System.Collections.Generic.Dictionary<int, string>() }
 
 
     let rec walk (n: Node<'Msg>) =
@@ -6204,17 +6264,33 @@ let private validateCore (options: ValidateOptions) (node: Node<'Msg>) : Result<
             defects.Add(hostLimitDefect m.Limits.Identity breach)
     | None -> ()
 
-    if defects.Count = 0 then
-        Ok()
-    else
-        Error(List.ofSeq defects)
+    List.ofSeq defects, ctx.GroundingSlots
+
+let private asResult (defects: PreEmitDefect list) : Result<unit, PreEmitDefect list> =
+    if List.isEmpty defects then Ok() else Error defects
+
+/// `validateWith` over binding facts the caller already holds — so a caller that
+/// also reads the wiring graph, the structural query or the binding-check report
+/// walks the tree's bindings ONCE (`BindingWalk.collectFacts`) and reads that
+/// walk every way it needs.
+///
+/// `facts` MUST be `BindingWalk.collectFacts node` for this same `node`: the
+/// cross-tree rules judge the facts, the per-node rules judge the tree, and
+/// facts from another tree make the two disagree. Under that precondition the
+/// result is exactly `validateWith options node`'s.
+let validateWithFacts
+    (options: ValidateOptions)
+    (facts: BindingWalk.TreeFacts)
+    (node: Node<'Msg>)
+    : Result<unit, PreEmitDefect list> =
+    validateLocated options facts.Bindings node |> fst |> asResult
 
 /// Walk `node` under `options` and surface every pre-emit defect — the one entry
 /// point every other `validate*` name is a preset of. Combine freely: a transport
 /// walk under a narrowed policy with a registry is one record, not a missing
 /// overload.
 let validateWith (options: ValidateOptions) (node: Node<'Msg>) : Result<unit, PreEmitDefect list> =
-    validateCore options node
+    validateLocated options (BindingWalk.collect node) node |> fst |> asResult
 
 
 /// Walk `node` (depth-first, pre-order) and surface every pre-emit defect.
@@ -6334,10 +6410,11 @@ let validateWithLimits (limits: HostLimits) (node: Node<'Msg>) : Result<unit, Pr
 // accompanied by the schema the source does produce, typed. A model repairing a
 // binding by name needs both; the finding alone names the node, not the slot.
 //
-// Paths are computed over the canonical encoding (`Generated.encodeNodeJson`),
-// so they address the document a host actually receives, whatever container
-// kinds sit above the reader. The encode happens only here, never in
-// `validate`.
+// Paths address the canonical wire document (`Generated.encodeNodeJson`) a host
+// actually receives, whatever container kinds sit above the reader. Since
+// Phase 2054 they are computed without encoding it: the node's path from the
+// tree's own held positions, and the slot from the rule that raised the
+// finding, at the moment it raised it.
 
 /// Why a reader's column references could not be judged. Each case is a
 /// statement about the SOURCE, never about the reader — the reader is not
@@ -6422,139 +6499,111 @@ let private jField (key: string) (v: JVal) : JVal option =
     | JObj members -> members |> List.tryFind (fun (k, _) -> k = key) |> Option.map snd
     | _ -> None
 
-let private jString (v: JVal option) : string option =
-    match v with
-    | Some(JStr s) -> Some s
-    | _ -> None
+/// The nodes `n` holds, each with the JSONPath step from `n`'s object to the
+/// held node's object in the canonical wire document, in the order that
+/// document lists them: the kind's own positions (`kind.children[i]`,
+/// `kind.child`, `kind.cases[i].child`, `kind.args.<name>.tree`, …), then the
+/// envelope `fallback`, then `state.onEmpty` and `state.onLoading` — the member
+/// order of the node object and of `StateBehaviour`.
+///
+/// The positions come from `NodeChildren.slots`, the tier's one enumeration of
+/// where a node holds another, so a new held position reaches this report with
+/// no edit here; only the label-to-member spelling below is this function's,
+/// and the corpus test that compares these paths with the encoded document's
+/// is what pins it.
+let private wirePositions (n: Node<'Msg>) : (string * Node<'Msg>) list =
+    let step (slot: NodeChildren.Slot<'Msg>) : int * string =
+        let label = slot.Label
+        let rest = label.Substring(label.IndexOf '.' + 1)
 
-/// Every Chart / DataGrid node object in the canonical document, in document
-/// order, with its JSONPath. A node object is one carrying a string `id` and an
-/// object `kind` with a `$type`; a chart spec's own `kind` is a string, so the
-/// spec is never mistaken for a node.
-let private readerObjects (doc: JVal) : (string * string * string * JVal) list =
-    let found = ResizeArray<string * string * string * JVal>()
+        match slot.Position with
+        | NodeChildren.Position.Fallback -> 1, ".fallback"
+        | NodeChildren.Position.StateArm -> (if label = "state.onEmpty" then 2 else 3), "." + label
+        | NodeChildren.Position.Argument ->
+            // `FragmentRef.args[name]` / `Mount.inputs[name]` — a `SlotArg`
+            // value, whose tree rides its `tree` member.
+            let bracket = rest.IndexOf '['
+            let name = rest.Substring(bracket + 1, rest.Length - bracket - 2)
+            0, ".kind." + rest.Substring(0, bracket) + jsonPathMember name + ".tree"
+        // A `FragmentDecl` body is enumerated as a one-element ordered list
+        // (`FragmentDecl.body[0]`) but encoded as the single member `body`.
+        | NodeChildren.Position.Ordered when rest = "body[0]" -> 0, ".kind.body"
+        | NodeChildren.Position.Ordered
+        | NodeChildren.Position.Arm -> 0, ".kind." + rest
 
-    let rec go (path: string) (v: JVal) =
-        match v with
-        | JObj members ->
-            (match jString (jField "id" v), jField "kind" v with
-             | Some id, Some(JObj _ as kind) ->
-                 match jString (jField "$type" kind) with
-                 | Some "Chart" -> found.Add(id, "Chart", path, kind)
-                 | Some "DataGrid" -> found.Add(id, "DataGrid", path, kind)
-                 | _ -> ()
-             | _ -> ())
+    NodeChildren.slots n
+    |> List.map (fun slot ->
+        let rank, path = step slot
+        rank, path, slot.Node)
+    |> List.sortBy (fun (rank, _, _) -> rank)
+    |> List.map (fun (_, path, held) -> path, held)
 
-            for (k, child) in members do
-                go (path + jsonPathMember k) child
-        | JArr items -> items |> List.iteri (fun i child -> go (path + "[" + string i + "]") child)
+/// Every Chart / DataGrid node in `node`, in canonical-document order, with the
+/// JSONPath of its node object. Read off the typed tree rather than off an
+/// encoding of it: the report used to encode the whole tree and walk the
+/// document only to learn these paths.
+let private readerNodes (node: Node<'Msg>) : (string * string * string * Node<'Msg>) list =
+    let found = ResizeArray<string * string * string * Node<'Msg>>()
+
+    let rec go (path: string) (n: Node<'Msg>) =
+        match n.Kind with
+        | NodeKind.Chart _ -> found.Add(n.Id, "Chart", path, n)
+        | NodeKind.DataGrid _ -> found.Add(n.Id, "DataGrid", path, n)
         | _ -> ()
 
-    go "$" doc
+        for step, held in wirePositions n do
+            go (path + step) held
+
+    go "$" node
     List.ofSeq found
 
-/// The slots a finding of rule `case` can be about, in the order that rule
-/// reads them, as (field name, JSONPath). Per rule, because the rules read
-/// different slots: FUARAN097 reads only the x-axis, and FUARAN087 reads it only
-/// on a non-temporal `Scatter` — so a chart whose `xField` and a `yFields` entry
-/// name the same column locates a value-series mismatch at the series.
-let private referenceSlots (case: string) (reader: string) (kindPath: string) (kind: JVal) : (string * string) list =
-    match reader with
-    | "Chart" ->
-        let x =
-            jString (jField "xField" kind)
-            |> Option.map (fun f -> f, kindPath + ".xField")
-            |> Option.toList
+/// The `$type` of a reader's `source` binding as the wire spells it — read from
+/// the canonical encoding of the reader's own kind, so the spelling has one
+/// author. Only a reader with no static schema reaches this.
+let private sourceWireType (kind: NodeKind<'Msg>) : string =
+    match
+        Generated.encodeNodeKindJson kind
+        |> jField "source"
+        |> Option.bind (jField "$type")
+    with
+    | Some(JStr t) -> t
+    | _ -> "absent"
 
-        let ys =
-            match jField "yFields" kind with
-            | Some(JArr items) ->
-                items
-                |> List.mapi (fun i y ->
-                    jString (Some y)
-                    |> Option.map (fun f -> f, kindPath + ".yFields[" + string i + "]"))
-                |> List.choose id
-            | _ -> []
+/// The column-grounding findings a binding-check diagnostic can carry, with the
+/// reader kind each one is raised on.
+let private groundingReader (d: PreEmitDefect) : (string * string) option =
+    match d with
+    | PreEmitDefect.ChartFieldUngrounded(n, _, _)
+    | PreEmitDefect.ChartFieldTypeMismatch(n, _, _)
+    | PreEmitDefect.ChartTemporalXNotDate(n, _, _) -> Some(n, "Chart")
+    | PreEmitDefect.GridFieldUngrounded(n, _, _)
+    | PreEmitDefect.PillFieldUngrounded(n, _, _, _) -> Some(n, "DataGrid")
+    | _ -> None
 
-        let scatter = jString (jField "kind" kind) = Some "Scatter"
-        let temporal = jString (jField "xScale" kind) = Some "Temporal"
+/// `bindingChecks` over binding facts the caller already holds — the report,
+/// `validateWithFacts`, the wiring graph and the structural query can all read
+/// one `BindingWalk.collectFacts` walk. `facts` MUST be that walk over this same
+/// `node`; under that precondition the result is exactly `bindingChecks node`'s.
+let bindingChecksWithFacts (facts: BindingWalk.TreeFacts) (node: Node<'Msg>) : BindingCheck list =
+    let sites = sourceSitesOf facts.Bindings
+    let findings, slots = validateLocated ValidateOptions.defaults facts.Bindings node
 
-        match case with
-        | "097" -> x
-        | "087" -> (if scatter && not temporal then x else []) @ ys
-        | _ -> x @ ys
-    | _ ->
-        let cols =
-            match jField "columns" kind with
-            | Some(JArr items) ->
-                items
-                |> List.mapi (fun i col ->
-                    // Phase 1909 — an action column's field is never grounded,
-                    // so it is no slot a FUARAN114 finding can be about.
-                    let action =
-                        match jField "kind" col |> Option.bind (jField "$type") |> jString with
-                        | Some "Button"
-                        | Some "ButtonGroup" -> true
-                        | _ -> false
+    // Each grounding finding, located at the slot its rule named when it raised
+    // it, grouped by the reader it names — in report order within a reader.
+    let byReader =
+        System.Collections.Generic.Dictionary<string * string, ResizeArray<PreEmitDefect * string>>()
 
-                    if action then
-                        None
-                    else
-                        jString (jField "field" col)
-                        |> Option.map (fun f -> f, kindPath + ".columns[" + string i + "].field"))
-                |> List.choose id
-            | _ -> []
-
-        let key =
-            jString (jField "rowKeyField" kind)
-            |> Option.map (fun f -> f, kindPath + ".rowKeyField")
-            |> Option.toList
-
-        // Phase 1909 — FUARAN114's TonedPill sub-case names the cell's OWN
-        // field, one level down, so it has slots of its own.
-        let pills =
-            match jField "columns" kind with
-            | Some(JArr items) ->
-                items
-                |> List.mapi (fun i col ->
-                    match jField "kind" col with
-                    | Some cellKind when jString (jField "$type" cellKind) = Some "TonedPill" ->
-                        jString (jField "field" cellKind)
-                        |> Option.map (fun f -> f, kindPath + ".columns[" + string i + "].kind.field")
-                    | _ -> None)
-                |> List.choose id
-            | _ -> []
-
-        match case with
-        | "114-pill" -> pills
-        | _ -> cols @ key
-
-/// Every chart and grid in `node`, graded, with `validate`'s findings about each
-/// located by JSONPath and paired with the schema its source produces.
-///
-/// A reader is `Checked` exactly when the FUARAN086 / FUARAN114 rules could
-/// judge it — the same window, reached through the same site enumeration — so
-/// the report and the rules cannot disagree about which readers were judged. A
-/// repeated node id is reported once, at its first occurrence, which is the
-/// occurrence the rules read.
-let bindingChecks (node: Node<'Msg>) : BindingCheck list =
-    let doc = Generated.encodeNodeJson node
-
-    let sites =
-        (BindingWalk.collect node).TransformSites
-        |> List.filter (fun (d: BindingWalk.TransformSiteDecl) -> d.Site.Slot = Some "source")
-        |> List.fold
-            (fun acc d ->
-                if Map.containsKey d.Reader acc then
-                    acc
-                else
-                    Map.add d.Reader d.Site acc)
-            Map.empty
-
-    let findings =
-        match validate node with
-        | Ok() -> []
-        | Error defects -> defects
+    findings
+    |> List.iteri (fun i d ->
+        match groundingReader d, slots.TryGetValue i with
+        | Some key, (true, slot) ->
+            match byReader.TryGetValue key with
+            | true, found -> found.Add(d, slot)
+            | false, _ ->
+                let found = ResizeArray()
+                found.Add(d, slot)
+                byReader[key] <- found
+        | _ -> ())
 
     let produced (knowledge: SchemaKnowledge) : ProducedColumn list =
         SchemaWalk.columns knowledge
@@ -6564,11 +6613,15 @@ let bindingChecks (node: Node<'Msg>) : BindingCheck list =
 
     let seen = System.Collections.Generic.HashSet<string>()
 
-    readerObjects doc
+    readerNodes node
     |> List.filter (fun (id, _, _, _) -> seen.Add id)
-    |> List.map (fun (id, reader, path, kind) ->
+    |> List.map (fun (id, reader, path, n) ->
         let kindPath = path + ".kind"
-        let staticRows = reader = "DataGrid" && (jField "staticRows" kind).IsSome
+
+        let staticRows =
+            match n.Kind with
+            | NodeKind.DataGrid g -> g.StaticRows.IsSome
+            | _ -> false
 
         let grade, columns =
             if staticRows then
@@ -6582,51 +6635,22 @@ let bindingChecks (node: Node<'Msg>) : BindingCheck list =
                     match SchemaWalk.reason knowledge with
                     | None -> BindingGrade.Checked, produced knowledge
                     | Some why -> BindingGrade.Unchecked(UncheckedReason.OpenSchema why), produced knowledge
-                | None ->
-                    let sourceKind =
-                        jField "source" kind
-                        |> Option.bind (jField "$type")
-                        |> jString
-                        |> Option.defaultValue "absent"
-
-                    BindingGrade.Unchecked(UncheckedReason.NoStaticSchema sourceKind), []
-
-        // A finding consumes the first unconsumed slot naming its field, per
-        // defect case, so a field named twice locates each finding at its own
-        // slot. The rules report in slot order, so the pairing is exact.
-        let consumed = System.Collections.Generic.HashSet<string>()
-
-        let locate (case: string) (field: string) : string =
-            match
-                referenceSlots case reader kindPath kind
-                |> List.tryFind (fun (f, p) -> f = field && not (consumed.Contains(case + p)))
-            with
-            | Some(_, p) ->
-                consumed.Add(case + p) |> ignore
-                p
-            | None -> kindPath
-
-        let located (d: PreEmitDefect) : (string * string) option =
-            match d with
-            | PreEmitDefect.ChartFieldUngrounded(n, f, _) when n = id && reader = "Chart" -> Some("086", f)
-            | PreEmitDefect.ChartFieldTypeMismatch(n, f, _) when n = id && reader = "Chart" -> Some("087", f)
-            | PreEmitDefect.ChartTemporalXNotDate(n, f, _) when n = id && reader = "Chart" -> Some("097", f)
-            | PreEmitDefect.GridFieldUngrounded(n, f, _) when n = id && reader = "DataGrid" -> Some("114", f)
-            | PreEmitDefect.PillFieldUngrounded(n, _, f, _) when n = id && reader = "DataGrid" -> Some("114-pill", f)
-            | _ -> None
+                | None -> BindingGrade.Unchecked(UncheckedReason.NoStaticSchema(sourceWireType n.Kind)), []
 
         let diagnostics =
-            findings
-            |> List.choose (fun d ->
-                located d
-                |> Option.map (fun (case, field) ->
+            match byReader.TryGetValue((id, reader)) with
+            | true, found ->
+                found
+                |> Seq.map (fun (d, slot) ->
                     let code, severity, message = describe d
 
                     { Code = code
                       Severity = severity
                       Message = message
-                      Path = locate case field
-                      Defect = d }))
+                      Path = kindPath + "." + slot
+                      Defect = d })
+                |> List.ofSeq
+            | false, _ -> []
 
         { NodeId = id
           Reader = reader
@@ -6634,3 +6658,14 @@ let bindingChecks (node: Node<'Msg>) : BindingCheck list =
           Grade = grade
           Produced = columns
           Diagnostics = diagnostics })
+
+/// Every chart and grid in `node`, graded, with `validate`'s findings about each
+/// located by JSONPath and paired with the schema its source produces.
+///
+/// A reader is `Checked` exactly when the FUARAN086 / FUARAN114 rules could
+/// judge it — the same window, reached through the same site enumeration — so
+/// the report and the rules cannot disagree about which readers were judged. A
+/// repeated node id is reported once, at its first occurrence, which is the
+/// occurrence the rules read.
+let bindingChecks (node: Node<'Msg>) : BindingCheck list =
+    bindingChecksWithFacts (BindingWalk.collectFacts node) node

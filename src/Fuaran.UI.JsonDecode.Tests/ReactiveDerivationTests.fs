@@ -321,22 +321,22 @@ let sortStateKeyTests =
                   rs |> List.map (fun r -> string r["month"])
 
               Expect.equal
-                  (months (BindingResolver.sortRowsByDescriptor columns (Some(1, SortDirection.Asc)) rows))
+                  (months (GridModel.sortRowsByDescriptor columns (Some(1, SortDirection.Asc)) rows))
                   [ "Mar"; "Jan"; "Feb" ]
                   "ascending by revenue, the unmeasured row LAST"
 
               Expect.equal
-                  (months (BindingResolver.sortRowsByDescriptor columns (Some(1, SortDirection.Desc)) rows))
+                  (months (GridModel.sortRowsByDescriptor columns (Some(1, SortDirection.Desc)) rows))
                   [ "Jan"; "Mar"; "Feb" ]
                   "descending by revenue, the unmeasured row still last"
 
               Expect.equal
-                  (months (BindingResolver.sortRowsByDescriptor [ col None ] (Some(0, SortDirection.Asc)) rows))
+                  (months (GridModel.sortRowsByDescriptor [ col None ] (Some(0, SortDirection.Asc)) rows))
                   [ "Jan"; "Feb"; "Mar" ]
                   "a field-less closure column cannot be honoured — authored order stands"
 
               Expect.equal
-                  (months (BindingResolver.sortRowsByDescriptor columns None rows))
+                  (months (GridModel.sortRowsByDescriptor columns None rows))
                   [ "Jan"; "Feb"; "Mar" ]
                   "no descriptor ⇒ natural source order"
           } ]
@@ -493,18 +493,12 @@ let gridPaginationTests =
               let ns (rs: Row list) =
                   rs |> List.map (fun r -> BindingResolver.projectRowFieldString r "n")
 
-              Expect.equal
-                  (BindingResolver.sliceRowsToPage 10 1 rows |> ns |> List.length)
-                  10
-                  "page 1 holds pageSize rows"
+              Expect.equal (GridModel.sliceRowsToPage 10 1 rows |> ns |> List.length) 10 "page 1 holds pageSize rows"
+
+              Expect.equal (GridModel.sliceRowsToPage 10 2 rows |> ns |> List.head) "11" "page 2 starts one page in"
 
               Expect.equal
-                  (BindingResolver.sliceRowsToPage 10 2 rows |> ns |> List.head)
-                  "11"
-                  "page 2 starts one page in"
-
-              Expect.equal
-                  (BindingResolver.sliceRowsToPage 10 3 rows |> ns)
+                  (GridModel.sliceRowsToPage 10 3 rows |> ns)
                   [ "21"; "22"; "23"; "24"; "25" ]
                   "the last page is short, not padded"
 
@@ -512,12 +506,12 @@ let gridPaginationTests =
               // stays where the user left it. Showing nothing there reads as
               // data loss rather than as the end of the list.
               Expect.equal
-                  (BindingResolver.sliceRowsToPage 10 99 rows |> ns)
+                  (GridModel.sliceRowsToPage 10 99 rows |> ns)
                   [ "21"; "22"; "23"; "24"; "25" ]
                   "a page past the end clamps to the last page rather than rendering empty"
 
-              Expect.equal (BindingResolver.pageCountOf 10 25) 3 "25 rows at 10 a page is 3 pages"
-              Expect.equal (BindingResolver.pageCountOf 10 0) 1 "an empty grid is page 1 of 1, never of 0"
+              Expect.equal (GridModel.pageCountOf 10 25) 3 "25 rows at 10 a page is 3 pages"
+              Expect.equal (GridModel.pageCountOf 10 0) 1 "an empty grid is page 1 of 1, never of 0"
           }
 
           test "clampPage agrees with sliceRowsToPage — the write-back offset cannot drift from the window" {
@@ -527,8 +521,8 @@ let gridPaginationTests =
               let rows = [ for i in 1..25 -> (Map.ofList [ "n", box (string i) ]: Row) ]
 
               for requested in [ 1; 2; 3; 4; 99 ] do
-                  let page = BindingResolver.clampPage 10 requested (List.length rows)
-                  let window = BindingResolver.sliceRowsToPage 10 requested rows
+                  let page = GridModel.clampPage 10 requested (List.length rows)
+                  let window = GridModel.sliceRowsToPage 10 requested rows
                   let offset = (page - 1) * 10
 
                   let firstByOffset = rows |> List.item offset
@@ -545,16 +539,16 @@ let gridPaginationTests =
                   Binding.Query("members", (fun (_: obj) -> Seq.empty), deps)
 
               Expect.isTrue
-                  (BindingResolver.sourceHostPagesOn (q (Some [ "members-page" ])) "members-page")
+                  (GridModel.sourceHostPagesOn (q (Some [ "members-page" ])) "members-page")
                   "a query depending on the page key pages host-side"
 
               Expect.isFalse
-                  (BindingResolver.sourceHostPagesOn (q (Some [ "region" ])) "members-page")
+                  (GridModel.sourceHostPagesOn (q (Some [ "region" ])) "members-page")
                   "a query depending on something else does not"
 
-              Expect.isFalse (BindingResolver.sourceHostPagesOn (q None) "members-page") "no dependsOn, no host paging"
+              Expect.isFalse (GridModel.sourceHostPagesOn (q None) "members-page") "no dependsOn, no host paging"
 
               Expect.isFalse
-                  (BindingResolver.sourceHostPagesOn (Binding.State("members", None)) "members-page")
+                  (GridModel.sourceHostPagesOn (Binding.State("members", None)) "members-page")
                   "a state source never pages host-side"
           } ]

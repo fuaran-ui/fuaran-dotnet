@@ -35,7 +35,7 @@ module Fuaran.UI.AiTools.FunctionTool
 //        JOIN — a `network` inner (a live query) correctly flips the composed
 //        dashboard's class to `network` (surfaced by `composedEffect`).
 //
-//  FGP 2 / FGP 4: `FSharp.Core` + `Fuaran.UI` + `Fuaran.UI.Ops` + the
+//  FGP 2 / FGP 4: `FSharp.Core` + `Fuaran.UI` + `Fuaran.UI.Ops` + `Fuaran.UI.Core.Function` + the
 //  FSharp.Core-only `Fuaran.Core.Function` contract — no renderer, no `System.*`,
 //  no reflection; the composition runs byte-identically under Fable and .NET.
 //  Additive (GP 11): the existing fragment / slot / `FragmentApply` surface is
@@ -46,32 +46,10 @@ open Fuaran.UI.Types
 
 module Introspect = Fuaran.UI.Ops.Introspect
 
-// ─── UI ↔ Core hole/effect projection ────────────────────────────────────────
-//
-// The UI hole + effect vocabulary (`Fuaran.UI.Types`) and the Core one
-// (`Fuaran.Core`) are structurally identical mirrors — this is the byte-for-byte
-// translation the witness reads at the seam.
-
-let private toCoreSpace (s: HoleValueSpace) : Fuaran.Core.ValueSpace =
-    match s with
-    | HoleValueSpace.IntRange(lo, hi) -> Fuaran.Core.IntRange(lo, hi)
-    | HoleValueSpace.FloatRange(lo, hi) -> Fuaran.Core.FloatRange(lo, hi)
-    | HoleValueSpace.StringLen(lo, hi) -> Fuaran.Core.StringLen(lo, hi)
-    | HoleValueSpace.Enum choices -> Fuaran.Core.Enum choices
-    | HoleValueSpace.AnyString -> Fuaran.Core.AnyString
-
-let private toCoreEffect (e: EffectClass) : Fuaran.Core.EffectClass =
-    { Host =
-        match e.HostEffect with
-        | HostEffect.Pure -> Fuaran.Core.Pure
-        | HostEffect.ReadsHost -> Fuaran.Core.ReadsHost
-        | HostEffect.WritesHost -> Fuaran.Core.WritesHost
-      Determinism =
-        match e.Determinism with
-        | DeterminismSource.Deterministic -> Fuaran.Core.Effect.deterministic
-        | DeterminismSource.Clock -> Fuaran.Core.Effect.clock
-        | DeterminismSource.Random -> Fuaran.Core.Effect.random
-        | DeterminismSource.Network -> Fuaran.Core.Effect.network }
+// The UI hole + effect vocabulary projects onto the Core one through the shared
+// `Fuaran.UI.Core.Function.Projection` (one definition, read by the build-time
+// validator too; D17).
+module Projection = Fuaran.UI.Core.Function.Projection
 
 let private rawId (NodeId s) : string = s
 
@@ -95,9 +73,9 @@ let private declHoles (node: Node<'Msg>) : Fuaran.Core.HoleDecl list =
 
             let kind =
                 match h with
-                | HoleDecl.Value(_, space, _) -> Fuaran.Core.ValueHole(toCoreSpace space)
+                | HoleDecl.Value(_, space, _) -> Fuaran.Core.ValueHole(Projection.toCoreSpace space)
                 | HoleDecl.Slot(_, constraintOpt) -> Fuaran.Core.SlotHole constraintOpt
-                | HoleDecl.Repeat(_, space) -> Fuaran.Core.RepeatHole(toCoreSpace space)
+                | HoleDecl.Repeat(_, space) -> Fuaran.Core.RepeatHole(Projection.toCoreSpace space)
 
             { Addr = holeAddr declId name
               Name = name
@@ -108,7 +86,7 @@ let private declHoles (node: Node<'Msg>) : Fuaran.Core.HoleDecl list =
 /// non-decl node — it declares no effect surface).
 let private declEffect (node: Node<'Msg>) : Fuaran.Core.EffectClass =
     match node.Kind with
-    | NodeKind.FragmentDecl spec -> toCoreEffect spec.Effect
+    | NodeKind.FragmentDecl spec -> Projection.toCoreEffect spec.Effect
     | _ -> Fuaran.Core.Effect.pureDeterministic
 
 // ── the hygienic slot substitution (the renderer's FragmentApply logic, over
@@ -247,7 +225,7 @@ let composedEffect<'Msg, 'B, 'IdB>
 
 // ─── Effect-soundness audit (task 16) ─────────────────────────────────────────
 
-/// Inverse of `toCoreEffect` — lower a `Fuaran.Core.EffectClass` back to the UI
+/// Inverse of `Projection.toCoreEffect` — lower a `Fuaran.Core.EffectClass` back to the UI
 /// DU, so the audit reports its verdict in the UI's own vocabulary.
 let private fromCoreEffect (e: Fuaran.Core.EffectClass) : EffectClass =
     { HostEffect =

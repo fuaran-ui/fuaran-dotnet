@@ -266,23 +266,29 @@ type InertAffordance =
       Consequence: string
       Alternative: string option }
 
-let private finding (nodeId: string) (subject: string) (verdictOverride: DecodedVerdict option) : InertAffordance list =
+/// Add the finding for `subject` on `nodeId` to `found` — nothing when the
+/// subject is unclassified or its verdict is `Fine`.
+let private finding
+    (found: ResizeArray<InertAffordance>)
+    (nodeId: string)
+    (subject: string)
+    (verdictOverride: DecodedVerdict option)
+    : unit =
     match Map.tryFind subject bySubject with
-    | None -> []
+    | None -> ()
     | Some c ->
         let verdict = defaultArg verdictOverride c.Verdict
 
-        if verdict = DecodedVerdict.Fine then
-            []
-        else
-            [ { Node = nodeId
-                Subject = subject
-                Verdict = verdict
-                Consequence = c.Consequence
-                Alternative =
-                  Fuaran.UI.WireSurvivability.byCase
-                  |> Map.tryFind subject
-                  |> Option.bind (fun s -> s.Alternative) } ]
+        if verdict <> DecodedVerdict.Fine then
+            found.Add
+                { Node = nodeId
+                  Subject = subject
+                  Verdict = verdict
+                  Consequence = c.Consequence
+                  Alternative =
+                    Fuaran.UI.WireSurvivability.byCase
+                    |> Map.tryFind subject
+                    |> Option.bind (fun s -> s.Alternative) }
 
 // Phase 1152 — `Action.Dispatch` is marked in-process-only by the IDL
 // annotation, which renders as `[<Obsolete(…, false)>]`: FS0044 at every
@@ -301,15 +307,14 @@ let private finding (nodeId: string) (subject: string) (verdictOverride: Decoded
 /// Phase 2039 — the recursion is the generated `Action.fold`, so a `Confirm`'s
 /// continuations are walked as `Chain`'s members always were. They were not
 /// before: an inert `Dispatch` inside a confirmation's yes was unreported.
-let private actionFindings (nodeId: string) (action: Action<'Msg>) : InertAffordance list =
+let private actionFindings (found: ResizeArray<InertAffordance>) (nodeId: string) (action: Action<'Msg>) : unit =
     Generated.Action.fold
-        (fun found a ->
-            found
-            @ (match a with
-               | Action.Dispatch _ -> finding nodeId "Action.Dispatch" None
-               | Action.ReadFileBody(_, _, _, Some _) -> finding nodeId "Action.ReadFileBody.onRead" None
-               | _ -> []))
-        []
+        (fun () a ->
+            match a with
+            | Action.Dispatch _ -> finding found nodeId "Action.Dispatch" None
+            | Action.ReadFileBody(_, _, _, Some _) -> finding found nodeId "Action.ReadFileBody.onRead" None
+            | _ -> ())
+        ()
         action
 
 #warnon "44"
@@ -317,7 +322,7 @@ let private actionFindings (nodeId: string) (action: Action<'Msg>) : InertAfford
 /// The grid-cell arm: six whole-case cell erasures plus the custom cell format.
 /// `Progress` is verdict-shifted by the column's own `field`, which is the one
 /// place a neighbouring declarative slot changes the answer.
-let private columnFindings (nodeId: string) (col: ColumnErased<'Msg>) : InertAffordance list =
+let private columnFindings (found: ResizeArray<InertAffordance>) (nodeId: string) (col: ColumnErased<'Msg>) : unit =
     let kindSubject =
         match col.Kind with
         | CellKindErased.Editable _ -> Some("CellKindErased.Editable", None)
@@ -342,58 +347,58 @@ let private columnFindings (nodeId: string) (col: ColumnErased<'Msg>) : InertAff
         | CellKindErased.ButtonGroup _
         | CellKindErased.TonedPill _ -> None
 
-    let fromKind =
-        match kindSubject with
-        | Some(subject, verdict) -> finding nodeId subject verdict
-        | None -> []
+    match kindSubject with
+    | Some(subject, verdict) -> finding found nodeId subject verdict
+    | None -> ()
 
-    let fromFormat =
-        match col.Format with
-        | CellFormat.Custom _ -> finding nodeId "CellFormat.Custom" None
-        | _ -> []
-
-    fromKind @ fromFormat
+    match col.Format with
+    | CellFormat.Custom _ -> finding found nodeId "CellFormat.Custom" None
+    | _ -> ()
 
 /// The per-node arm: the host-only slots a node's own spec carries.
-let private nodeFindings (n: Node<'Msg>) : InertAffordance list =
+let private nodeFindings (found: ResizeArray<InertAffordance>) (n: Node<'Msg>) : unit =
     let id = n.Id
 
-    let fromState =
-        match n.State with
-        | Some s when s.OnError.IsSome -> finding id "StateBehaviour.onError" None
-        | _ -> []
+    match n.State with
+    | Some s when s.OnError.IsSome -> finding found id "StateBehaviour.onError" None
+    | _ -> ()
 
-    let fromKind =
-        match n.Kind with
-        | NodeKind.FileUpload s when s.OnSelect.IsSome -> finding id "FileUploadSpec.onSelect" None
-        | NodeKind.Stepper s when s.OnSelect.IsSome -> finding id "StepperSpec.onSelect" None
-        | NodeKind.Map s when s.OnMarkerClick.IsSome -> finding id "MapSpec.onMarkerClick" None
-        | NodeKind.Mount s when s.OnBubble.IsSome -> finding id "MountSpec.onBubble" None
-        | NodeKind.DataGrid g -> g.Columns |> List.collect (columnFindings id)
-        | NodeKind.Button b -> actionFindings id b.OnClick
-        | NodeKind.Form f -> actionFindings id f.OnSubmit
-        | NodeKind.Modal m -> m.OnDismiss |> Option.map (actionFindings id) |> Option.defaultValue []
-        | _ -> []
-
-    fromState @ fromKind
+    match n.Kind with
+    | NodeKind.FileUpload s when s.OnSelect.IsSome -> finding found id "FileUploadSpec.onSelect" None
+    | NodeKind.Stepper s when s.OnSelect.IsSome -> finding found id "StepperSpec.onSelect" None
+    | NodeKind.Map s when s.OnMarkerClick.IsSome -> finding found id "MapSpec.onMarkerClick" None
+    | NodeKind.Mount s when s.OnBubble.IsSome -> finding found id "MountSpec.onBubble" None
+    | NodeKind.DataGrid g -> g.Columns |> List.iter (columnFindings found id)
+    | NodeKind.Button b -> actionFindings found id b.OnClick
+    | NodeKind.Form f -> actionFindings found id f.OnSubmit
+    | NodeKind.Modal m -> m.OnDismiss |> Option.iter (actionFindings found id)
+    | _ -> ()
 
 /// The binding arm, taken from the shared binding walk's reader-tagged usages
-/// rather than by re-walking every binding-bearing slot.
+/// rather than by re-walking every binding-bearing slot. Each distinct finding
+/// is reported once, at its first occurrence.
 ///
 /// The two identity-projection accessors are OFFERED here even though both are
 /// classified `Fine`: the `finding` guard drops them, so the report stays
 /// silent, and a decoder change that made either of them lossy would start
 /// reporting the moment its verdict row moved — with no edit to this walk. A
 /// walk that skipped them would have to be remembered instead.
-let private bindingFindings (root: Node<'Msg>) : InertAffordance list =
-    (BindingWalk.collect root).Uses
-    |> List.collect (fun u ->
+let private bindingFindings (found: ResizeArray<InertAffordance>) (root: Node<'Msg>) : unit =
+    let fromUses = ResizeArray<InertAffordance>()
+
+    for u in (BindingWalk.collect root).Uses do
         match u.Use with
-        | BindingWalk.BindingUse.Computed -> finding u.Reader "Binding.Computed" None
-        | BindingWalk.BindingUse.Query _ -> finding u.Reader "Binding.Query.accessor" None
-        | BindingWalk.BindingUse.Selection _ -> finding u.Reader "Binding.Selection.accessor" None
-        | _ -> [])
-    |> List.distinct
+        | BindingWalk.BindingUse.Computed -> finding fromUses u.Reader "Binding.Computed" None
+        | BindingWalk.BindingUse.Query _ -> finding fromUses u.Reader "Binding.Query.accessor" None
+        | BindingWalk.BindingUse.Selection _ -> finding fromUses u.Reader "Binding.Selection.accessor" None
+        | _ -> ()
+
+    let seen =
+        System.Collections.Generic.HashSet<InertAffordance>(HashIdentity.Structural)
+
+    for f in fromUses do
+        if seen.Add f then
+            found.Add f
 
 /// Ask a DECODED tree which of its affordances are inert.
 ///
@@ -409,20 +414,31 @@ let private bindingFindings (root: Node<'Msg>) : InertAffordance list =
 /// alternative arm or a `Mount` guest's interior is outside this walk, exactly
 /// as it is outside the dead-on-decode lint's.
 ///
+/// Phase 2054 — the arms write into ONE accumulator, in report order: the
+/// lint's findings, then the node walk's, preorder, then the binding arm's.
+/// The binding arm reads the shared binding walk, whose containment is wider
+/// (it enters `State` arms, the envelope `fallback` and slot arguments), so it
+/// stays its own pass rather than being folded into the node walk, where it
+/// would report a different set.
+///
 /// Run it on a decoded / wire-ingested tree. On an F#-authored tree the
 /// closures are real and every finding here is a false accusation, which is the
 /// same precondition `DeadOnDecode.lint` carries and for the same reason.
 let report<'Msg> (root: Node<'Msg>) : InertAffordance list =
-    let fromLint =
-        DeadOnDecode.lint root
-        |> List.map (fun f ->
+    let found = ResizeArray<InertAffordance>()
+
+    for f in DeadOnDecode.lint root do
+        found.Add
             { Node = f.Location.Node
               Subject = f.Location.Slot
               Verdict = DecodedVerdict.Inert
               Consequence = defaultArg f.Remedy f.Message
-              Alternative = None })
+              Alternative = None }
 
-    let rec walk (n: Node<'Msg>) : InertAffordance list =
-        nodeFindings n @ (StructuralQuery.children n |> List.collect walk)
+    let rec walk (n: Node<'Msg>) =
+        nodeFindings found n
+        StructuralQuery.children n |> List.iter walk
 
-    fromLint @ walk root @ bindingFindings root
+    walk root
+    bindingFindings found root
+    List.ofSeq found
