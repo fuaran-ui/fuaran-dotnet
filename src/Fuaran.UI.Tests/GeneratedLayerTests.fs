@@ -1150,3 +1150,74 @@ let decoderSubstrateTests =
                     "reject-tokens-closed-without-suggestions" ]
                   (sprintf "generated first defect vs §29 head moved (id, generated, expected): %A" headDiffers)
           } ]
+
+// ============================================================================
+//  Phase 2127 — the collecting derivation, requested against THIS vocabulary.
+//
+//  fuaran-core#377 made the generator emit public, per-spec, defect-COLLECTING
+//  decoders (`Gen.Derivation.SpecDecoders`, opt-in), and the pinned Core carries
+//  it. Requested here, the emission does not COMPILE, so the layering 2040
+//  deferred stays blocked one step later than 2040 measured.
+//
+//  The cause is the vocabulary's `TFn` placeholder for `Binding.Local.parse`
+//  (`Vocabulary.fs`, and through it `idl.json`, which the specification
+//  repository publishes): it is a text snippet naming `decT`, the parameter the
+//  SHORT-CIRCUITING emitter gives the type-parameter decoder of
+//  `decBinding<'T>`. The collecting emitter names that parameter `colT` and binds
+//  no `decT`, so the snippet is unbound in `colBinding`'s `Local` arm (FS0039).
+//  The two remedies are both outside this repository's own act: the generator
+//  binds the short-circuiting name in a collecting decoder (fuaran-core#460, the
+//  route taken), or the placeholder stops naming an emitter local, which changes
+//  the published `idl.json`.
+//
+//  Measured with that one token patched by hand (never committed), over every
+//  node-decoder corpus fixture: all 248 `nodes/` fixtures decode byte-identically;
+//  107 of 165 `reject/` fixtures give the hand decoder's exact path list with the
+//  codes mapping one to one; 40 rejects are ACCEPTED by the structural decoder
+//  (relational and value checks, near-miss sets, limits — the policy's work);
+//  16 report a different head, six of them because `JVal` has no null and Core's
+//  parser refuses the whole document at `$`; 42 of 79 `lenient/` documents are
+//  refused (aliases — the policy's work). So the substrate is close enough to
+//  layer on, once it compiles here.
+//
+//  The test goes RED when the blocker clears — the collecting section stops
+//  naming `decT`, or starts binding it — which is the signal to re-open the
+//  layering (2040.t3/t4) on this evidence.
+// ============================================================================
+
+[<Tests>]
+let collectingDerivationTests =
+    testList
+        "the collecting derivation against this vocabulary (Phase 2127)"
+        [ test "the collecting decoders name a short-circuiting local the vocabulary's placeholder needs" {
+              let idl = Fuaran.Core.Idl.Artifact.canonicalise Fuaran.UI.Vocabulary.uiIdl
+
+              let emitted =
+                  match
+                      Fuaran.Core.Idl.Gen.fsharpModuleDerived
+                          Fuaran.UI.VocabularySupport.support
+                          (Fuaran.UI.VocabularySupport.derivations
+                           @ [ Fuaran.Core.Idl.Gen.Derivation.SpecDecoders ])
+                          "Fuaran.UI.Generated"
+                          idl
+                          (idl.Kinds |> List.map _.Tag)
+                  with
+                  | Ok text -> text
+                  | Error e -> failtestf "the generator refused the collecting derivation for this vocabulary: %A" e
+
+              let marker = "COLLECTING DECODERS"
+              let at = emitted.IndexOf marker
+
+              Expect.isGreaterThan at 0 "the collecting section is emitted when SpecDecoders is requested"
+
+              let collecting = emitted.Substring at
+
+              Expect.stringContains
+                  collecting
+                  "identityParse (decT"
+                  "the Local.parse placeholder no longer names `decT` inside the collecting decoders — re-open the layering (fuaran-core#460 landed)"
+
+              Expect.isFalse
+                  (collecting.Contains "(decT:" || collecting.Contains "let decT")
+                  "a collecting decoder now binds `decT` — the emission may compile here; re-open the layering (fuaran-core#460 landed)"
+          } ]
