@@ -7824,6 +7824,33 @@ _Class: **breaking**. `v0.94.0` was tagged and published at `90082d3` on 2026-10
 because the first change it is opened for, Phase 2058 (public module paths move), is breaking; a draft advances to the
 class of its highest rider, and pre-1.0 breaking is minor (version cut recorded on the ledger, 2026-10-14)._
 
+### What rides this slot — Phase 2252 (the binding-check report on a repeated reader id)
+
+**Class: BEHAVIOUR change, no API change.** No type, member, defect, wire byte or `validate` verdict moves.
+On a tree with a unique id per reader, the binding-check report is byte-identical: every corpus fixture and the
+5,001-node synthetic tree give the same snapshot before and after (`benchmarks/Fuaran.UI.Ops.Benchmarks
+validate-snapshot`). Phase 2054 left two inputs untested where the report differed from its pre-2054 form.
+Each is now decided and under test.
+
+- **A repeated reader id: `BindingDiagnostic.Path` names the slot of the occurrence that raised the
+  finding.** Only a tree that already carries `FUARAN-DUP-ID` is affected. The report still lists the id once,
+  at its first occurrence (`NodeId`, `Path`, `Grade` and `Produced` are unchanged), but the rules judge every
+  occurrence. A finding on a later occurrence was located under the FIRST occurrence's node. Before 2054 that
+  was the first occurrence's `kind` (or a same-named slot of the first occurrence). From 2054 it was the later
+  occurrence's slot spelled under the first's node, which is a path that resolves to nothing or names another
+  slot (`$.kind.children[0].kind.yFields[1]` on a first chart with one series). It is now that occurrence's own
+  slot (`$.kind.children[1].kind.yFields[1]`). The rule records the node it judged beside the slot, and the
+  report maps the node to its path. There is no second walk.
+- **A chart- or grid-shaped object inside a `Custom` prop bag is not a reader** (kept as 2054 left it, now
+  pinned). A `Custom` bag is opaque: no rule judges a value in it and no renderer draws one as a chart or grid.
+  Before 2054 the report listed such a value as an `Unchecked` reader, because it walked the encoded document.
+  Where the value shared a real reader's id and came first in the document, it stood in for that reader: the
+  real reader's findings were located inside the bag. Neither happens now.
+
+**Certified by** `src/Fuaran.UI.Tests/FactsWalkTests.fs`. One test covers a repeated chart id (three shapes)
+and a repeated grid id, and asserts that every emitted path resolves in the encoded document. A second covers a
+chart and a grid in a `Custom` bag, and a bag value sharing a real chart's id.
+
 ---
 
 ## 0.94.0 — the slot opened after v0.93.0 was released; advanced from 0.93.1 on 2026-10-13 ahead of Phase 2052, whose change is breaking (RELEASED — tagged v0.94.0 at 90082d3, 2026-10-14)
