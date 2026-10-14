@@ -108,6 +108,81 @@ let private repeatedTables () : Node<obj> =
     | Ok n -> n
     | Error e -> failtestf "the probe tree does not decode: %s at %s" e.Code e.Path
 
+
+// Phase 2252 — the probe trees for the two inputs the facts walk changed. The
+// source groups `amount` by `dept` into `total`, so `amount` is ungrounded.
+let private probeSource =
+    """{"$type":"Transform","pipeline":[{"$type":"groupBy","aggs":[{"fn":"sum","name":"total","of":"amount"}],"keys":["dept"]}],"source":{"columns":{"amount":{"validity":[true,true,true],"values":[100,120,90]},"dept":{"validity":[true,true,true],"values":["eng","eng","sales"]}},"schema":[{"name":"dept","type":"string"},{"name":"amount","type":"int"}]}}"""
+
+let private probeChart (id: string) (ys: string list) =
+    sprintf
+        """{"id":"%s","kind":{"$type":"Chart","kind":"Bar","source":%s,"xField":"dept","yFields":[%s]}}"""
+        id
+        probeSource
+        (ys |> List.map (sprintf "\"%s\"") |> String.concat ",")
+
+let private probeGrid (id: string) (cols: string list) =
+    sprintf
+        """{"id":"%s","kind":{"$type":"DataGrid","columns":[%s],"rowKeyField":"dept","source":%s}}"""
+        id
+        (cols
+         |> List.map (fun c -> sprintf """{"field":"%s","kind":{"$type":"Text"},"label":"%s"}""" c c)
+         |> String.concat ",")
+        probeSource
+
+let private probeCustom (id: string) (inner: string) =
+    sprintf
+        """{"id":"%s","kind":{"$type":"Custom","componentId":"trend-card","moduleId":"analytics","props":{"inner":%s}}}"""
+        id
+        inner
+
+let private probeBox (children: string list) : Node<obj> =
+    let json =
+        sprintf
+            """{"id":"root","kind":{"$type":"Box","children":[%s],"layout":{"$type":"Auto"},"role":"Dashboard"}}"""
+            (String.concat "," children)
+
+    match Fuaran.UI.Ops.JsonDecode.decodeNodeObj json with
+    | Ok n -> n
+    | Error e -> failtestf "the probe tree does not decode: %s at %s" e.Code e.Path
+
+/// Whether a JSONPath of the shape the report writes (`$`, `.member`, `[i]`)
+/// names a value in the tree's canonical document.
+let private resolves (tree: Node<obj>) (path: string) : bool =
+    let rec go (v: JVal) (rest: string) =
+        if rest = "" then
+            true
+        elif rest.[0] = '.' then
+            let stop = rest.IndexOfAny([| '.'; '[' |], 1)
+
+            let key, tail =
+                if stop < 0 then
+                    rest.Substring 1, ""
+                else
+                    rest.Substring(1, stop - 1), rest.Substring stop
+
+            match v with
+            | JObj members ->
+                match members |> List.tryFind (fun (k, _) -> k = key) with
+                | Some(_, child) -> go child tail
+                | None -> false
+            | _ -> false
+        elif rest.[0] = '[' then
+            let close = rest.IndexOf ']'
+
+            match v, System.Int32.TryParse(rest.Substring(1, close - 1)) with
+            | JArr items, (true, i) when i < List.length items -> go (List.item i items) (rest.Substring(close + 1))
+            | _ -> false
+        else
+            false
+
+    path.StartsWith "$" && go (Generated.encodeNodeJson tree) (path.Substring 1)
+
+/// The report as (reader id, reader kind, source path, [diagnostic code, path]).
+let private reportOf (tree: Node<obj>) =
+    bindingChecks tree
+    |> List.map (fun c -> c.NodeId, c.Reader, c.Path, c.Diagnostics |> List.map (fun d -> d.Code, d.Path))
+
 [<Tests>]
 let tests =
     testList
@@ -221,4 +296,80 @@ let tests =
                   pairs
                   [ "c0", "c2"; "c0", "c5"; "c1", "c4"; "c2", "c5" ]
                   "every pair of equal tables, none of unequal ones, ordered by first then second copy"
+          }
+
+          // Phase 2252 — a duplicated reader id. The rules judge every occurrence,
+          // so a finding can be about the second; it is located at the slot of
+          // the occurrence that raised it. Before 2054 it fell back to the first
+          // occurrence's `kind`; 2054 put the second's slot under the first's
+          // node, a path that did not resolve or named another slot.
+          test "a finding on a repeated reader id is located at the occurrence that raised it" {
+              let cases =
+                  [ "a second chart's extra series",
+                    [ probeChart "c" [ "total" ]; probeChart "c" [ "total"; "amount" ] ],
+                    [ "FUARAN086", "$.kind.children[1].kind.yFields[1]" ]
+                    "both charts naming the ungrounded column",
+                    [ probeChart "c" [ "amount" ]; probeChart "c" [ "total"; "amount" ] ],
+                    [ "FUARAN086", "$.kind.children[0].kind.yFields[0]"
+                      "FUARAN086", "$.kind.children[1].kind.yFields[1]" ]
+                    "a shorter second chart",
+                    [ probeChart "c" [ "total"; "total" ]; probeChart "c" [ "amount" ] ],
+                    [ "FUARAN086", "$.kind.children[1].kind.yFields[0]" ] ]
+
+              for name, children, expected in cases do
+                  let tree = probeBox children
+
+                  for _, _, _, diagnostics in reportOf tree do
+                      for _, path in diagnostics do
+                          Expect.isTrue (resolves tree path) (sprintf "%s: %s names a slot in the tree" name path)
+
+                  match reportOf tree with
+                  | [ id, reader, path, diagnostics ] ->
+                      Expect.equal
+                          (id, reader, path)
+                          ("c", "Chart", "$.kind.children[0].kind.source")
+                          (name + ": one entry, at the first occurrence")
+
+                      Expect.equal diagnostics expected (name + ": each finding at its own occurrence's slot")
+                  | other -> failtestf "%s: expected one reader, got %A" name other
+
+              let grids =
+                  probeBox [ probeGrid "g" [ "dept" ]; probeGrid "g" [ "dept"; "amount" ] ]
+
+              match reportOf grids with
+              | [ _, _, _, diagnostics ] ->
+                  for _, path in diagnostics do
+                      Expect.isTrue (resolves grids path) (sprintf "%s names a slot in the tree" path)
+
+                  Expect.equal
+                      diagnostics
+                      [ "FUARAN114", "$.kind.children[1].kind.columns[1].field" ]
+                      "a grid's finding too"
+              | other -> failtestf "expected one grid, got %A" other
+          }
+
+          // Phase 2252 — a `Custom` prop bag is opaque. A chart- or grid-shaped
+          // object inside one is no reader: no rule judges it and no renderer
+          // draws it as one. Before 2054 the report listed it, and where it shared
+          // a real reader's id and came first it shadowed that reader.
+          test "a chart- or grid-shaped object in a Custom prop bag is not a reader" {
+              Expect.isEmpty
+                  (reportOf (probeBox [ probeCustom "k" (probeChart "phantom" [ "amount" ]) ]))
+                  "a chart-shaped bag value"
+
+              Expect.isEmpty
+                  (reportOf (probeBox [ probeCustom "k" (probeGrid "phantom" [ "amount" ]) ]))
+                  "a grid-shaped bag value"
+
+              Expect.equal
+                  (reportOf (
+                      probeBox
+                          [ probeCustom "k" (probeChart "c" [ "total" ])
+                            probeChart "c" [ "total"; "amount" ] ]
+                  ))
+                  [ "c",
+                    "Chart",
+                    "$.kind.children[1].kind.source",
+                    [ "FUARAN086", "$.kind.children[1].kind.yFields[1]" ] ]
+                  "a bag value sharing a real chart's id does not stand in for it"
           } ]

@@ -4060,12 +4060,17 @@ type private WalkContext =
         /// moment it raises the finding, where the slot is known. The
         /// binding-check report reads it instead of re-deriving the slot from
         /// the encoded tree.
-        GroundingSlots: System.Collections.Generic.Dictionary<int, string>
+        ///
+        /// Phase 2252 — beside the slot, the reader NODE the rule judged, so
+        /// the report locates the finding under that occurrence's own path
+        /// when a reader id is repeated (every occurrence is judged).
+        GroundingSlots: System.Collections.Generic.Dictionary<int, obj * string>
     }
 
-/// Record that the finding just added to `ctx.Defects` is about `slot`.
-let private locateLast (ctx: WalkContext) (slot: string) : unit =
-    ctx.GroundingSlots[ctx.Defects.Count - 1] <- slot
+/// Record that the finding just added to `ctx.Defects` is about `slot` of the
+/// reader `n`.
+let private locateLast (ctx: WalkContext) (n: Node<'Msg>) (slot: string) : unit =
+    ctx.GroundingSlots[ctx.Defects.Count - 1] <- ((n :> obj), slot)
 
 
 /// Rules that read the node itself, whatever its kind.
@@ -4418,7 +4423,7 @@ module private GridRules =
                  let ground (slot: string) (field: string) =
                      if not (SchemaWalk.has field produced) then
                          defects.Add(PreEmitDefect.GridFieldUngrounded(nodeIdStr, field, schemaColumns))
-                         locateLast ctx slot
+                         locateLast ctx n slot
 
                  // Reported per offending name rather than once per grid: a grid
                  // pointed at the wrong source names several missing columns, and
@@ -4438,7 +4443,7 @@ module private GridRules =
                      match col.Kind with
                      | CellKindErased.TonedPill(pillField, _, _) when not (SchemaWalk.has pillField produced) ->
                          defects.Add(PreEmitDefect.PillFieldUngrounded(nodeIdStr, col.Label, pillField, schemaColumns))
-                         locateLast ctx (sprintf "columns[%d].kind.field" i)
+                         locateLast ctx n (sprintf "columns[%d].kind.field" i)
                      | _ -> ())
 
                  spec.RowKeyField |> Option.iter (ground "rowKeyField")
@@ -5173,7 +5178,7 @@ module private ChartRules =
 
                  if not (SchemaWalk.has spec.XField produced) then
                      defects.Add(PreEmitDefect.ChartFieldUngrounded(nodeIdStr, spec.XField, schemaColumns))
-                     locateLast ctx "xField"
+                     locateLast ctx n "xField"
                  else
                      match colType spec.XField with
                      // Present, type data-dependent (an undecided `Derive`): the
@@ -5182,7 +5187,7 @@ module private ChartRules =
                      | Some t ->
                          if temporalX && not (dated t) then
                              defects.Add(PreEmitDefect.ChartTemporalXNotDate(nodeIdStr, spec.XField, ColumnType.tag t))
-                             locateLast ctx "xField"
+                             locateLast ctx n "xField"
 
                          // FUARAN087's x arm is NARROWED by a temporal declaration:
                          // a temporal Scatter reads its x as dates, so a date
@@ -5193,19 +5198,19 @@ module private ChartRules =
                          match spec.Kind with
                          | ChartKind.Scatter when not (numeric t) && not temporalX ->
                              defects.Add(PreEmitDefect.ChartFieldTypeMismatch(nodeIdStr, spec.XField, ColumnType.tag t))
-                             locateLast ctx "xField"
+                             locateLast ctx n "xField"
                          | _ -> ()
 
                  spec.YFields
                  |> List.iteri (fun i yf ->
                      if not (SchemaWalk.has yf produced) then
                          defects.Add(PreEmitDefect.ChartFieldUngrounded(nodeIdStr, yf, schemaColumns))
-                         locateLast ctx (sprintf "yFields[%d]" i)
+                         locateLast ctx n (sprintf "yFields[%d]" i)
                      else
                          match colType yf with
                          | Some t when not (numeric t) ->
                              defects.Add(PreEmitDefect.ChartFieldTypeMismatch(nodeIdStr, yf, ColumnType.tag t))
-                             locateLast ctx (sprintf "yFields[%d]" i)
+                             locateLast ctx n (sprintf "yFields[%d]" i)
                          | _ -> ())
          | _ -> ())
 
@@ -6060,7 +6065,7 @@ let private validateLocated
     (options: ValidateOptions)
     (treeFacts: BindingWalk.TreeBindingFacts)
     (node: Node<'Msg>)
-    : PreEmitDefect list * System.Collections.Generic.Dictionary<int, string> =
+    : PreEmitDefect list * System.Collections.Generic.Dictionary<int, obj * string> =
     let meter = options.Meter
 
     let customCheck: string -> string -> string -> Map<string, JVal> -> PreEmitDefect option =
@@ -6147,7 +6152,7 @@ let private validateLocated
           CustomCheck = customCheck
           ProducedSchemaOf = producedSchemaOf
           Acc = acc
-          GroundingSlots = System.Collections.Generic.Dictionary<int, string>() }
+          GroundingSlots = System.Collections.Generic.Dictionary<int, obj * string>() }
 
 
     let rec walk (n: Node<'Msg>) =
@@ -6591,17 +6596,17 @@ let bindingChecksWithFacts (facts: BindingWalk.TreeFacts) (node: Node<'Msg>) : B
     // Each grounding finding, located at the slot its rule named when it raised
     // it, grouped by the reader it names — in report order within a reader.
     let byReader =
-        System.Collections.Generic.Dictionary<string * string, ResizeArray<PreEmitDefect * string>>()
+        System.Collections.Generic.Dictionary<string * string, ResizeArray<PreEmitDefect * obj * string>>()
 
     findings
     |> List.iteri (fun i d ->
         match groundingReader d, slots.TryGetValue i with
-        | Some key, (true, slot) ->
+        | Some key, (true, (judged, slot)) ->
             match byReader.TryGetValue key with
-            | true, found -> found.Add(d, slot)
+            | true, found -> found.Add(d, judged, slot)
             | false, _ ->
                 let found = ResizeArray()
-                found.Add(d, slot)
+                found.Add(d, judged, slot)
                 byReader[key] <- found
         | _ -> ())
 
@@ -6611,9 +6616,23 @@ let bindingChecksWithFacts (facts: BindingWalk.TreeFacts) (node: Node<'Msg>) : B
             { Name = c.Name
               Type = c.Type |> Option.map ColumnType.tag })
 
+    let readers = readerNodes node
+
+    // Phase 2252 — every occurrence's node path, by node identity. The rules
+    // judge every occurrence of a repeated reader id, so a finding is located
+    // under the occurrence that raised it, not under the first one the report
+    // lists. (An instance held twice is located at its first position.)
+    let occurrencePaths =
+        System.Collections.Generic.Dictionary<obj, string>(HashIdentity.Reference)
+
+    for _, _, path, n in readers do
+        // `ContainsKey` + `Add` rather than `TryAdd`, which Fable does not lower.
+        if not (occurrencePaths.ContainsKey(n :> obj)) then
+            occurrencePaths.Add((n :> obj), path)
+
     let seen = System.Collections.Generic.HashSet<string>()
 
-    readerNodes node
+    readers
     |> List.filter (fun (id, _, _, _) -> seen.Add id)
     |> List.map (fun (id, reader, path, n) ->
         let kindPath = path + ".kind"
@@ -6641,13 +6660,18 @@ let bindingChecksWithFacts (facts: BindingWalk.TreeFacts) (node: Node<'Msg>) : B
             match byReader.TryGetValue((id, reader)) with
             | true, found ->
                 found
-                |> Seq.map (fun (d, slot) ->
+                |> Seq.map (fun (d, judged, slot) ->
                     let code, severity, message = describe d
+
+                    let occurrence =
+                        match occurrencePaths.TryGetValue judged with
+                        | true, p -> p
+                        | false, _ -> path
 
                     { Code = code
                       Severity = severity
                       Message = message
-                      Path = kindPath + "." + slot
+                      Path = occurrence + ".kind." + slot
                       Defect = d })
                 |> List.ofSeq
             | false, _ -> []
@@ -6665,7 +6689,8 @@ let bindingChecksWithFacts (facts: BindingWalk.TreeFacts) (node: Node<'Msg>) : B
 /// A reader is `Checked` exactly when the FUARAN086 / FUARAN114 rules could
 /// judge it — the same window, reached through the same site enumeration — so
 /// the report and the rules cannot disagree about which readers were judged. A
-/// repeated node id is reported once, at its first occurrence, which is the
-/// occurrence the rules read.
+/// repeated node id is reported once, at its first occurrence, whose source the
+/// rules read; a finding the rules raise on a later occurrence is located at
+/// that occurrence's own slot.
 let bindingChecks (node: Node<'Msg>) : BindingCheck list =
     bindingChecksWithFacts (BindingWalk.collectFacts node) node
