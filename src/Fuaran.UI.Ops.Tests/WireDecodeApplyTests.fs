@@ -181,34 +181,13 @@ let tests =
                       Id = "channel-grid"
                       Kind =
                           NodeKind.DataGrid(
-                              { SortStateKey = None
-                                PageSize = None
-                                PageStateKey = None
-                                EditStateKey = None
-                                DefaultSort = None
-                                Source = Binding.Static(Some Seq.empty)
-                                RowKey = Some(fun _ -> "")
-                                RowKeyField = None
-                                Columns =
-                                  [ { Label = "Channel"
-                                      Value = Some(fun _ -> CellValue.Text "")
-                                      Field = None
-                                      Sortable = None
-                                      Editable = None
-                                      Format = CellFormat.None
-                                      Kind = CellKindErased.Text
-                                      Width = ColumnWidth.Auto } ]
-                                OnRowClick = None
-                                Editable = false
-                                Reorderable = false
-                                TransferInKey = None
-                                TransferOutKey = None
-                                StaticRows = None
-                                KeepRowsTogether = false
-                                RepeatHeader = false
-                                WindowStateKey = None
-                                RowTotal = None
-                                Exportable = false }
+                              { Defaults.dataGrid with
+                                  Source = Binding.Static(Some Seq.empty)
+                                  RowKey = Some(fun _ -> "")
+                                  Columns =
+                                      [ { Defaults.columnErased with
+                                            Label = "Channel"
+                                            Value = Some(fun _ -> CellValue.Text "") } ] }
                           ) }
 
               let wire =
@@ -234,34 +213,13 @@ let tests =
                       Id = "channel-grid"
                       Kind =
                           NodeKind.DataGrid(
-                              { SortStateKey = None
-                                PageSize = None
-                                PageStateKey = None
-                                EditStateKey = None
-                                DefaultSort = None
-                                Source = Binding.Static(Some Seq.empty)
-                                RowKey = Some(fun _ -> "")
-                                RowKeyField = None
-                                Columns =
-                                  [ { Label = "Channel"
-                                      Value = Some(fun _ -> CellValue.Text "")
-                                      Field = None
-                                      Sortable = None
-                                      Editable = None
-                                      Format = CellFormat.None
-                                      Kind = CellKindErased.Text
-                                      Width = ColumnWidth.Auto } ]
-                                OnRowClick = None
-                                Editable = false
-                                Reorderable = false
-                                TransferInKey = None
-                                TransferOutKey = None
-                                StaticRows = None
-                                KeepRowsTogether = false
-                                RepeatHeader = false
-                                WindowStateKey = None
-                                RowTotal = None
-                                Exportable = false }
+                              { Defaults.dataGrid with
+                                  Source = Binding.Static(Some Seq.empty)
+                                  RowKey = Some(fun _ -> "")
+                                  Columns =
+                                      [ { Defaults.columnErased with
+                                            Label = "Channel"
+                                            Value = Some(fun _ -> CellValue.Text "") } ] }
                           ) }
 
               let wire =

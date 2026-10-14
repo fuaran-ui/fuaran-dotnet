@@ -122,12 +122,8 @@ let private mkStack (id: string) (kids: EqNode list) : EqNode =
         { Id = id
           Kind =
             NodeKind.Box(
-                { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
-                  Role = BoxRole.Group
-                  Heading = None
-                  Children = kids |> List.map unwrap
-                  KeepTogether = false
-                  BreakBefore = false }
+                { Defaults.box with
+                    Children = kids |> List.map unwrap }
             )
           State = None
           Style = None
@@ -663,36 +659,18 @@ module Columnar =
         { Id = "grid"
           Kind =
             Fuaran.UI.Types.NodeKind.DataGrid(
-                { SortStateKey = None
-                  PageSize = None
-                  PageStateKey = None
-                  EditStateKey = None
-                  DefaultSort = None
-                  Source = source
-                  RowKey = None
-                  RowKeyField = rowKeyField
-                  Columns =
-                    columnFields
-                    |> List.map (fun f ->
-                        { Label = f
-                          Value = None
-                          Field = Some f
-                          Sortable = None
-                          Editable = None
-                          Format = Fuaran.UI.Types.CellFormat.None
-                          Kind = Fuaran.UI.Types.CellKindErased.Text
-                          Width = Fuaran.UI.Types.ColumnWidth.Auto })
-                  OnRowClick = None
-                  Editable = false
-                  Reorderable = false
-                  TransferInKey = None
-                  TransferOutKey = None
-                  StaticRows = None
-                  KeepRowsTogether = false
-                  RepeatHeader = false
-                  WindowStateKey = None
-                  RowTotal = None
-                  Exportable = false }
+                { Defaults.dataGrid with
+                    Source = source
+                    RowKeyField = rowKeyField
+                    Columns =
+                        columnFields
+                        |> List.map (fun f ->
+                            { Defaults.columnErased with
+                                Label = f
+                                Field = Some f
+                                Format = Fuaran.UI.Types.CellFormat.None
+                                Kind = Fuaran.UI.Types.CellKindErased.Text
+                                Width = Fuaran.UI.Types.ColumnWidth.Auto }) }
             )
           State = None
           Style = None

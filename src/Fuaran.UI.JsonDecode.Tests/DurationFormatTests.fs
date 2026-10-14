@@ -74,40 +74,23 @@ let wireRoundTrips =
 
           testCase "grid column with CellFormat.RelativeTime round-trips" (fun () ->
               let col: ColumnErased<obj> =
-                  { Label = "Last seen"
-                    Value = None
-                    Field = Some "lastSeen"
-                    Sortable = None
-                    Editable = None
-                    Format = CellFormat.RelativeTime RelativeTimeUnit.Hour
-                    Kind = CellKindErased.Numeric
-                    Width = ColumnWidth.Auto }
+                  { Fuaran.UI.Defaults.columnErased with
+                      Label = "Last seen"
+                      Field = Some "lastSeen"
+                      Format = CellFormat.RelativeTime RelativeTimeUnit.Hour
+                      Kind = CellKindErased.Numeric }
 
               let grid: Node<obj> =
                   { Id = "grid-relative-1"
                     Kind =
                       NodeKind.DataGrid(
-                          { SortStateKey = None
-                            PageSize = None
-                            PageStateKey = None
-                            EditStateKey = None
-                            DefaultSort = None
-                            Source =
-                              Binding.Static(Some(Seq.ofList [ (Map.ofList [ "lastSeen", box -3 ]: Fuaran.Core.Row) ]))
-                            RowKey = None
-                            RowKeyField = Some "lastSeen"
-                            Columns = [ col ]
-                            OnRowClick = None
-                            Editable = false
-                            Reorderable = false
-                            TransferInKey = None
-                            TransferOutKey = None
-                            StaticRows = None
-                            KeepRowsTogether = false
-                            RepeatHeader = false
-                            WindowStateKey = None
-                            RowTotal = None
-                            Exportable = false }
+                          { Fuaran.UI.Defaults.dataGrid with
+                              Source =
+                                  Binding.Static(
+                                      Some(Seq.ofList [ (Map.ofList [ "lastSeen", box -3 ]: Fuaran.Core.Row) ])
+                                  )
+                              RowKeyField = Some "lastSeen"
+                              Columns = [ col ] }
                       )
                     State = None
                     Style = None
@@ -186,10 +169,11 @@ let wireRoundTrips =
                   { Id = "icon-labelled-1"
                     Kind =
                       NodeKind.Icon(
-                          { Icon = "check-circle"
-                            Size = IconSize.Medium
-                            Tone = ToneVariant.Success
-                            Label = Some "Payment received" }
+                          { Fuaran.UI.Defaults.icon with
+                              Icon = "check-circle"
+                              Size = IconSize.Medium
+                              Tone = ToneVariant.Success
+                              Label = Some "Payment received" }
                       )
                     State = None
                     Style = None

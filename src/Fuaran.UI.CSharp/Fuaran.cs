@@ -109,6 +109,11 @@ public static partial class Fuaran
                 options.BreakBefore)));
     }
 
+    // The F# convenience records these four lower through are obsolete (Phase 2055)
+    // in favour of building the Box directly. The F# constructors that take them are
+    // not, and they carry each convenience's accessibility default, so the veneer keeps
+    // calling them and names the record only here.
+#pragma warning disable CS0618
     /// <summary>A dashboard — the page's primary content region.</summary>
     public static FuaranNode Dashboard(DashboardOptions options) =>
         new(FsFactory.dashboard<object>(options.Id, new FsTypes.DashboardSpec<object>(Kids(options.Children))));
@@ -135,6 +140,7 @@ public static partial class Fuaran
             new FsTypes.CardSpec<object>(
                 options.Heading is { } h ? Fs.Some(h.Inner) : Fs.None<FsGen.TextSource>(),
                 Kids(options.Children))));
+#pragma warning restore CS0618
 
     // ─── Display ──────────────────────────────────────────────────────────────
 

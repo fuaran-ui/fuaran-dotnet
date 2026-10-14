@@ -2132,7 +2132,7 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts = (collectFacts root).Bi
 ///    deliberate floor.
 ///  - **The seed is the FLOOR, not an override.** The caller merges a
 ///    host-furnished value and any written value OVER this map — see the
-///    renderers' `withStateSeeds`.
+///    renderers' `StateSeeds.apply`.
 let stateSeeds<'Msg> (root: Node<'Msg>) : Map<string, obj> =
     (collect root).StateKeys.Seeds
     |> List.fold

@@ -35,12 +35,8 @@ let private stack (id: string) (children: Node<Msg> list) : Node<Msg> =
     node
         id
         (NodeKind.Box(
-            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
-              Role = BoxRole.Group
-              Heading = None
-              Children = children
-              KeepTogether = false
-              BreakBefore = false }
+            { Defaults.box with
+                Children = children }
         ))
 
 /// The shape a decoded closure takes — an inert placeholder.
@@ -107,34 +103,13 @@ let tests =
                   node
                       "grid"
                       (NodeKind.DataGrid(
-                          { SortStateKey = None
-                            PageSize = None
-                            PageStateKey = None
-                            EditStateKey = None
-                            DefaultSort = None
-                            Source = Binding.Static(Some Seq.empty)
-                            RowKey = Some(fun _ -> "<closure>")
-                            RowKeyField = None
-                            Columns =
-                              [ { Label = "Dept"
-                                  Value = Some(fun _ -> CellValue.Empty)
-                                  Field = None
-                                  Sortable = None
-                                  Editable = None
-                                  Format = CellFormat.None
-                                  Kind = CellKindErased.Text
-                                  Width = ColumnWidth.Auto } ]
-                            OnRowClick = None
-                            Editable = false
-                            Reorderable = false
-                            TransferInKey = None
-                            TransferOutKey = None
-                            StaticRows = None
-                            KeepRowsTogether = false
-                            RepeatHeader = false
-                            WindowStateKey = None
-                            RowTotal = None
-                            Exportable = false }
+                          { Defaults.dataGrid with
+                              Source = Binding.Static(Some Seq.empty)
+                              RowKey = Some(fun _ -> "<closure>")
+                              Columns =
+                                  [ { Defaults.columnErased with
+                                        Label = "Dept"
+                                        Value = Some(fun _ -> CellValue.Empty) } ] }
                       ))
 
               let closureCall =
@@ -247,34 +222,13 @@ let tests =
                   node
                       "grid"
                       (NodeKind.DataGrid(
-                          { SortStateKey = None
-                            PageSize = None
-                            PageStateKey = None
-                            EditStateKey = None
-                            DefaultSort = None
-                            Source = Binding.Static(Some Seq.empty)
-                            RowKey = None
-                            RowKeyField = Some "id"
-                            Columns =
-                              [ { Label = "Dept"
-                                  Value = None
-                                  Field = Some "dept"
-                                  Sortable = None
-                                  Editable = None
-                                  Format = CellFormat.None
-                                  Kind = CellKindErased.Text
-                                  Width = ColumnWidth.Auto } ]
-                            OnRowClick = None
-                            Editable = false
-                            Reorderable = false
-                            TransferInKey = None
-                            TransferOutKey = None
-                            StaticRows = None
-                            KeepRowsTogether = false
-                            RepeatHeader = false
-                            WindowStateKey = None
-                            RowTotal = None
-                            Exportable = false }
+                          { Defaults.dataGrid with
+                              Source = Binding.Static(Some Seq.empty)
+                              RowKeyField = Some "id"
+                              Columns =
+                                  [ { Defaults.columnErased with
+                                        Label = "Dept"
+                                        Field = Some "dept" } ] }
                       ))
 
               let declarativeFetch =

@@ -94,7 +94,7 @@ type DriverServices<'Msg> =
         ActionRecording: ActionRecordingServices option
         /// Phase 1026 — the destination policy the driver checks every
         /// tree-declared route against, the driver-path twin of
-        /// `RenderContext.EgressPolicy`. Defaults to
+        /// `RenderContext.Policy.Egress`. Defaults to
         /// `Sanitize.denyNonLocalEgress` in `create`; `createPermissive` opens
         /// it alongside the dispatch gate, on the reasoning its own doc gives —
         /// a constructor named for opting out of one default should not leave a

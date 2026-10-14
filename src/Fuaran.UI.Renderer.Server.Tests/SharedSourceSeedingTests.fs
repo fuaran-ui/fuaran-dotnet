@@ -27,7 +27,7 @@
 //
 //  `BindingWalk.stateSeeds` is called directly rather than through a renderer
 //  entry point on purpose: it is the ONE definition both reference renderers
-//  call (the client's `Render.withStateSeeds`, the server's `mkContextWith`),
+//  call (through `StateSeeds.apply`, from the client's `RenderContext.create` and the server's `mkContextWith`),
 //  so a test that goes through it tests what both hosts do.
 // ============================================================================
 

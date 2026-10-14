@@ -50,12 +50,8 @@ let private wrap (middle: Node<obj>) : Node<obj> =
     { leaf "root" "" with
         Kind =
             NodeKind.Box
-                { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
-                  Role = BoxRole.Group
-                  Heading = None
-                  Children = [ leaf "before" "BEFORE"; middle; leaf "after" "AFTER" ]
-                  KeepTogether = false
-                  BreakBefore = false } }
+                { Defaults.box with
+                    Children = [ leaf "before" "BEFORE"; middle; leaf "after" "AFTER" ] } }
 
 let private withVisible (b: Binding<bool>) : Node<obj> =
     { leaf "subject" "SUBJECT" with
@@ -115,12 +111,8 @@ let tests =
                   { leaf "panel" "" with
                       Kind =
                           NodeKind.Box
-                              { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
-                                Role = BoxRole.Group
-                                Heading = None
-                                Children = [ child ]
-                                KeepTogether = false
-                                BreakBefore = false }
+                              { Defaults.box with
+                                  Children = [ child ] }
                       Visible = Some(Binding.State("shown", None)) }
 
               let html = Render.render (sources [ "shown", nn false ]) (wrap parent)

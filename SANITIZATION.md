@@ -266,7 +266,7 @@ above did not address it: the CLOSURE was trusted, but WHICH closure ran was cho
 
 The key now carries the render scope on both renderers. `None` is the root scope, where the unscoped
 `Register` / `register` land; a host separates surfaces by rendering under distinct scopes
-(`Render.renderWithSourcesInScope` client-side, `ServerRenderContext.Scope` /
+(`Render.renderWithSourcesInScope` client-side, `ServerRenderContext.Policy.Scope` /
 `Render.renderWithInScope` server-side) and registering with `RegisterInScope` /
 `Registry.registerInScope`. Lookup does **not** fall back across scopes — a fallback would make the
 scoping advisory, which is indistinguishable from not having it. A mounted guest already renders

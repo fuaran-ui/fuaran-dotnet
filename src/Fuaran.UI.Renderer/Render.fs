@@ -193,191 +193,56 @@ let private renderNodeFallback
 
 // ─── Render context — bundles renderer-wide dependencies ───────────────────
 //
-// Sources + runtime + dispatch travel together through every recursive
-// renderer call. A record beats threading three parameters because the
-// per-Kind renderers' signatures stay readable AND because future renderer
-// additions (eval probe hooks, theme overrides, etc.) can extend the record
-// without rippling through every match arm.
-//
-// `'Msg` flows through `dispatch`; `Sources` + `Runtime` are 'Msg-agnostic.
-// Keeping `Sources` separate from `Runtime` preserves the "data sources vs
-// effect substrate" boundary (read-only state lookup vs side-effect ports).
+// Everything a recursive renderer call needs travels in one record, so the
+// per-kind renderers' signatures stay readable and a new dependency extends
+// the record rather than every match arm. `'Msg` flows through `Dispatch`;
+// everything else is `'Msg`-agnostic. Build one with `RenderContext.create`
+// and adjust it with `with`: a full record literal outside `create` is a
+// construction site every new field would break. Each field's history (the
+// phase that introduced it and the reasoning behind its default) is recorded
+// in `STABILITY.md` under 0.94.0, Phase 2067.
 
 type RenderContext<'Msg> =
     {
+        /// The read-only data every `Binding` resolves against.
         Sources: BindingResolver.BindingSources
+        /// The host substrate every effecting `Action` runs through, including
+        /// the `CanDispatch` gate, the custom-renderer registry and the
+        /// `TryLoadGuest` mount seam.
         Runtime: Runtime.IFuaranRuntime
+        /// The adapter that renders client-library visualisations.
         VisAdapter: VisAdapter.IVisualisationAdapter<'Msg>
+        /// Where a dispatched `'Msg` goes.
         Dispatch: 'Msg -> unit
-        /// Optional render-failure telemetry sink. When
-        /// `Some sink`, the renderer emits a `RenderFailureTelemetry` event on
-        /// every per-node-guard catch and on every `ErrorBoundary` catch.
-        /// `None` (the default for the `renderWithSources` convenience entry
-        /// point) silently swallows the failure into the fallback placeholder —
-        /// useful for dev / test contexts where no observability backend is
-        /// wired. See `renderWithSourcesAndSink` for the entry point that
-        /// pre-supplies a real sink.
+        /// Where render failures are reported (every per-node-guard catch and
+        /// every `ErrorBoundary` catch), or `None` to swallow them into the
+        /// fallback placeholder.
         TelemetrySink: IFuaranTelemetrySink option
-        /// True when this render is happening underneath
-        /// an active `NodeKind.ErrorBoundary`'s child subtree. The per-node
-        /// render guard *suspends* itself in this state — throws propagate up
-        /// to the boundary, which catches them and renders its `Fallback`
-        /// subtree. The boundary explicitly resets this flag to `false` for
-        /// the fallback's render so the fallback itself is per-node-guarded
-        /// (so a flaky fallback doesn't blank the whole boundary). Nested
-        /// boundaries set this flag back to true on entry.
+        /// True under an active `ErrorBoundary`'s child subtree, where the
+        /// per-node guard is suspended so a throw reaches the boundary.
         InErrorBoundary: bool
-        /// The fragment registry collected from one
-        /// pre-render walk of the input tree by `collectFragments`. Maps
-        /// `FragmentId` → the decl's `Body`. Empty (`Map.empty`) for trees
-        /// that don't declare fragments — zero-cost for the common case.
-        /// First-decl-wins on name collision (`collectFragments` uses
-        /// `Map.add` which overwrites, so the deepest / last-seen decl
-        /// would win at runtime — the validator's FUARAN056 catches the
-        /// collision at build time so this corner case is loud, not silent).
+        /// The fragment registry `collectFragments` gathered from the tree in
+        /// one pre-render walk; the last declaration wins on a name collision.
         Fragments: Map<FragmentId, Node<'Msg>>
-        /// Cycle-guard for fragment expansion. As
-        /// each `FragmentRef` expands, its target id is added; nested
-        /// expansion that revisits an in-progress id renders a labelled
-        /// placeholder rather than recurring forever. FUARAN058 catches
-        /// most cycles at build time; this runtime guard is the
-        /// belt-and-braces floor for trees the validator hasn't seen.
+        /// The fragment ids being expanded on this path, so a cycle renders a
+        /// labelled placeholder instead of recursing.
         ExpandingFragments: Set<FragmentId>
-        /// The runtime scope this subtree renders under (Phase 266, §4o). `None`
-        /// (the default) = the process-global default `StateStore` — byte-identical
-        /// to pre-266 behaviour. `Some scopeId` routes `Binding.State` reads and
-        /// `Action.SetState` writes to the isolated `StateStore.forScope scopeId`
-        /// instance (Phase 128), so a `Mount` guest's state stays isolated from the
-        /// host's. Set at a `Mount` boundary (per its guest scope id) or at a
-        /// scope-aware render entry (`?scope`).
-        Scope: string option
-        /// Host-supplied correlation context for this render, as an OPAQUE
-        /// string map (Phase 330). `Map.empty` (the default at every
-        /// convenience entry point) means the host supplies none and nothing
-        /// changes — a simple-tree host passes nothing and pays nothing
-        /// (GP 13).
-        ///
-        /// The renderer reads exactly one well-known key from it —
-        /// `Render.promptIdKey` — and stamps the value onto
-        /// `RenderFailureTelemetry.PromptId`, so a render failure joins the
-        /// same interaction as the op-record and apply telemetry that
-        /// preceded it. Every other key is carried untouched.
-        ///
-        /// **Deliberately a `Map<string,string>` rather than a typed
-        /// correlation record.** The renderer does not know, and must not
-        /// know, what a host's ids MEAN — it threads and stamps them. A typed
-        /// `{ PromptId; TurnId; UserId }` field set would publish a host's
-        /// correlation design on this surface; an opaque map cannot, by
-        /// construction. Precedent: `Node.ExtraAttributes`.
-        ///
-        /// Contract: never hashed, never on the wire, host-filled, opaque
-        /// keys.
+        /// The host's opaque correlation map, read only for `promptIdKey` and
+        /// `userIdKey`; never hashed and never on the wire.
         SessionContext: Map<string, string>
-        /// Phase 889 — the user-action record sink. `None` (the default at
-        /// every convenience entry point) records nothing and costs nothing:
-        /// an unconfigured host keeps no user-action log at all, which is the
-        /// posture a privacy-classed log has to ship with.
-        ///
-        /// The sink also declares its own `CaptureMode`, so wiring a
-        /// destination and opting into payload VALUES are two separate host
-        /// acts and neither is reached by omission.
+        /// The user-action record sink, or `None` to record nothing; the sink
+        /// declares its own `CaptureMode`.
         ActionSink: IActionInvocationSink option
-        /// Phase 889 — the id of the node whose subtree is being rendered, set
-        /// once per node by `render` so a handler closure created underneath it
-        /// carries the node it belongs to. There is no other route: `runAction`
-        /// is handed the resolved `Action`, never the node.
-        ///
-        /// Set ONLY when `ActionSink` is wired — an unrecorded render pays no
-        /// per-node record copy (GP 13).
+        /// The id of the node being rendered, set only when `ActionSink` is
+        /// wired, so a recorded gesture names the node it came from.
         CurrentNodeId: string option
-        /// Phase 1026 — the AMBIENT destination policy. Every `href`, `src` and
-        /// route the renderer emits from this tree is checked against it, with
-        /// no caller opt-in anywhere on the path.
-        ///
-        /// Phase 897 shipped the policy *available*: the seam functions existed
-        /// and every emission site still called `sanitizeUrlOrBlank`, so a
-        /// decoded tree's egress was policy-checked only where a host had
-        /// remembered to ask. A guarantee that holds where it is remembered is
-        /// not a guarantee, which is why this field is on the record every
-        /// renderer call already threads rather than a parameter on the
-        /// emission helpers.
-        ///
-        /// **The default is `Sanitize.denyNonLocalEgress` at every convenience
-        /// entry point**, on the same argument as the dispatch gate's: an
-        /// emission cannot declare its own egress, so absent a host's
-        /// declaration it gets none. `Sanitize.permissiveEgress` is reached BY
-        /// NAME, so a grep for `permissiveEgress` finds every host that has
-        /// opted back out — the permissive choice is visible in the host's own
-        /// source instead of inherited silently.
-        ///
-        /// Two consequences a host meets on adoption, both deliberate. A
-        /// `mailto:` / `tel:` href is REFUSED under the default
-        /// (`AllowNonNetwork = false`): those are egress channels with no host
-        /// for a rule to name, so they can only be permitted wholesale, and
-        /// permitting them by omission is the failure this default exists to
-        /// prevent. And same-origin destinations are ALLOWED
-        /// (`AllowLocal = true`), so ordinary in-app links and assets render
-        /// unchanged — the default denies leaving, not linking.
-        ///
-        /// A refused destination RENDERS as a refusal
-        /// (`Sanitize.egressRefusalUrl` + `Sanitize.egressRefusalAttribute`),
-        /// never as a silent neuter: "nothing happened" and "this was refused"
-        /// are different facts, and only one of them is debuggable.
-        EgressPolicy: Sanitize.EgressPolicy
-        /// Phase 1117 — the host's large-binary upload sink. `None` — the
-        /// default at every convenience entry point — means this host performs
-        /// no uploads at all: a `FileUpload` declaring a `destination` renders
-        /// exactly as it does today and refuses the transfer loudly rather than
-        /// falling back to any other route. Default-deny by shape (FGP 3): an
-        /// unwired host cannot send a reader's file anywhere, and pays nothing
-        /// for the member it never calls (GP 13).
-        ///
-        /// The sink is the destination REGISTRY as well as the transport — see
-        /// `Fuaran.UI.Ops.UploadSink`. It is consulted only after the dispatch
-        /// gate (`ActionDescriptor.Upload`) has allowed the tree an upload at
-        /// all, so a permissive sink behind a denying runtime still uploads
-        /// nothing.
+        /// The host's large-binary upload sink and destination registry, or
+        /// `None` to perform no upload at all.
         UploadSink: Fuaran.UI.Ops.UploadSink.IFuaranUploadSink option
-        /// Phase 1532 — this render's own `Custom` content-hash floor, or `None`
-        /// (the default at every convenience entry point) for the process floor
-        /// `CustomHash.installCustomHashFloor` declared.
-        ///
-        /// The floor was a process global alone, and a process is not a tenant:
-        /// an SSR tier serves every tenant's documents from one, so one
-        /// declaration decided verification strictness for all of them and the
-        /// last writer won. Carrying it here lets a request that needs
-        /// enforcement have it without the host having to make every other
-        /// request enforce too.
-        ///
-        /// **RAISE-ONLY**, like the installer: the effective floor is the
-        /// STRICTER of this and the process floor (`CustomHash.effectiveFloor`).
-        /// A per-request field that could LOWER would hand a tenant the ability
-        /// to switch off the host's verification for its own documents — the
-        /// tree-side bypass the floor exists to close, re-opened one layer up.
-        CustomHashFloor: HashStrictness option
-        /// Phase 1545 — the Content-Security-Policy posture this render runs
-        /// under. `Permissive` (the default at every convenience entry point) is
-        /// byte-for-byte the emission this renderer has always produced.
-        ///
-        /// Under `Csp.Strict` no `style` attribute is emitted: each continuous
-        /// value rides the generated class the SERVER renderer derived for the
-        /// same node and slot, whose declaration is already in the document's
-        /// collected `<style>` element. So the hydrate leaves the strict policy
-        /// intact rather than re-writing the attribute the server was careful
-        /// not to emit.
-        ///
-        /// **Strict is the HYDRATION posture, and that is a boundary rather
-        /// than an omission.** A nonce has to match the `Content-Security-Policy`
-        /// header of the response that delivered the document, and a render with
-        /// no such response has nothing to match — a nonce this tier minted for
-        /// itself would be exactly the derivable nonce `ScriptRef.Nonce` refuses
-        /// to generate. So a client-only strict render emits the classes and
-        /// finds no rules behind them; the mode is for a document a server
-        /// rendered under the same posture. `SANITIZATION.md` states the limit.
-        Csp: Csp.CspMode
+        /// What this render may do: its egress, `Custom` hash floor, CSP
+        /// posture and scope, shared in shape with the server context.
+        Policy: RenderPolicy
     }
-
-// ─── Text-source rendering — handles i18n + bound text ─────────────────────
 
 // ─── Accessibility-attribute emission ──────────────────────────────────────
 //
@@ -439,7 +304,7 @@ let private cspStyle
     : string * IReactProperty list =
     if List.isEmpty canonical then
         "", []
-    elif Csp.isStrict ctx.Csp then
+    elif Csp.isStrict ctx.Policy.Csp then
         " " + Csp.generatedClass nodeId slot canonical, []
     else
         "", [ prop.style permissive ]
@@ -877,7 +742,7 @@ let rec private runActionCore (ctx: RenderContext<'Msg>) (denied: string list re
         // seam; the SANITISED string is what reaches the runtime, so a call
         // never leaves through a spelling the policy did not see.
         note (
-            treeCallOutcome ctx.Runtime ctx.EgressPolicy ep (fun safeEp ->
+            treeCallOutcome ctx.Runtime ctx.Policy.Egress ep (fun safeEp ->
                 let endpoint = ApiEndpoint safeEp
 
                 match onResult, into with
@@ -892,7 +757,7 @@ let rec private runActionCore (ctx: RenderContext<'Msg>) (denied: string list re
                                 // host-reserved keys are refused (Phase 782) — the response
                                 // target is as tree-declared as an `Action.SetState` key is.
                                 stateWrite key (fun () ->
-                                    match ctx.Scope with
+                                    match ctx.Policy.Scope with
                                     | Some scopeId -> (StateStore.forScope scopeId).Set(key, raw)
                                     | None -> StateStore.set key raw)
                             | CallResultTarget.Query name -> QueryStore.set name raw
@@ -936,7 +801,7 @@ let rec private runActionCore (ctx: RenderContext<'Msg>) (denied: string list re
 
             note (Error "Action.Navigate refused — route did not resolve to a destination")
         | Some resolved ->
-            note (treeNavigateOutcome ctx.Runtime ctx.EgressPolicy resolved (performNavigation ctx.Runtime target))
+            note (treeNavigateOutcome ctx.Runtime ctx.Policy.Egress resolved (performNavigation ctx.Runtime target))
     | Action.SetState(key, value, valueFrom) ->
         // Phase 782 — gated, and host-reserved keys refused. Scope-aware routing
         // (Phase 266): a guest rendered under `Some scopeId` writes to its own
@@ -981,7 +846,7 @@ let rec private runActionCore (ctx: RenderContext<'Msg>) (denied: string list re
                 match payload with
                 | None -> ()
                 | Some jv ->
-                    (match ctx.Scope with
+                    (match ctx.Policy.Scope with
                      | Some scopeId ->
                          let raw = Runtime.JsonBridge.jvalToJs jv
                          (StateStore.forScope scopeId).Set(key, raw)
@@ -1214,7 +1079,7 @@ let private writeBackTo (ctx: RenderContext<'Msg>) (binding: Binding<'T>) (value
         // a tree-originated write like any other, and a decoded control binding
         // to `host.<x>` must not become a back door around `Action.SetState`.
         treeStateWrite ctx.Runtime key (fun () ->
-            match ctx.Scope, value with
+            match ctx.Policy.Scope, value with
             | Some scopeId, Some v -> (StateStore.forScope scopeId).Set(key, v)
             | Some scopeId, None -> (StateStore.forScope scopeId).Remove key
             | None, Some v -> StateStore.set key v
@@ -1556,43 +1421,10 @@ let private ensureTooltipDismissal () : unit = ()
 // expansions get the prefix concatenated by the recursive render call,
 // so `outerRef.innerRef.btn` is what reaches the DOM.
 
-/// The Phase 1075 SEEDING PASS — one-shot, pre-render, whole-tree.
-///
-/// A `Binding.State` carrying a `defaultValue` DECLARES the value of its slot
-/// rather than merely falling back to it for itself, so a grid bound to
-/// `$state.members` and a `Transform` deriving over the same key read the same
-/// rows. This is where that happens on the client tier: the declared values are
-/// collected once for the tree and laid UNDER whatever the caller already
-/// furnished.
-///
-/// **Precedence, per the shared-data-source charter §4:** a host-furnished
-/// value (and, in a scoped render, a value written into the scope's store) wins
-/// over a seed. A seed is the value before anything else has said anything —
-/// never an override — which is the only reading consistent with the wire's
-/// standing posture that the host owns named data.
-///
-/// **Order-independent, per §5.** The pass runs over the whole tree before any
-/// binding resolves, so a badge appearing BEFORE the grid that declares the
-/// rows is not a special case and document order carries no meaning.
-///
-/// Zero-cost when the tree declares nothing: an empty seed map returns the
-/// caller's sources unchanged, by reference.
-let withStateSeeds<'Msg> (node: Node<'Msg>) (sources: BindingResolver.BindingSources) : BindingResolver.BindingSources =
-    let seeds = Fuaran.UI.BindingWalk.stateSeeds node
-
-    if Map.isEmpty seeds then
-        sources
-    else
-        { sources with
-            State = sources.State |> Map.fold (fun acc k v -> Map.add k v acc) seeds }
-
 /// One-shot pre-render walk that collects every
 /// reachable `NodeKind.FragmentDecl` body into a `Map<FragmentId, _>`.
-/// The convenience entry points (`renderWithSources` /
-/// `renderWithSourcesAndSink`) call this on the input tree and stash
-/// the result on the `RenderContext.Fragments` field. Hand-constructed
-/// contexts (catalog axes, test fixtures) call this directly so
-/// `FragmentRef` expansion works the same way. Empty for trees that
+/// `RenderContext.create` calls this on the input tree and stashes the
+/// result on the `RenderContext.Fragments` field. Empty for trees that
 /// don't declare fragments — zero-cost for the common case.
 let rec collectFragments<'Msg> (acc: Map<FragmentId, Node<'Msg>>) (node: Node<'Msg>) : Map<FragmentId, Node<'Msg>> =
     match node.Kind with
@@ -1661,6 +1493,55 @@ let rec collectFragments<'Msg> (acc: Map<FragmentId, Node<'Msg>>) (node: Node<'M
     // resolved by its own loader; host-level fragment collection stops at the
     // boundary (same posture as FragmentRef).
     | NodeKind.Mount _ -> acc
+
+// ─── Building a render context (Phase 2067) ────────────────────────────────
+
+/// Builders over `RenderContext`. Every entry point below, the `Mount` guest
+/// context and the catalog build their context here; a host adjusts the
+/// result with `with` rather than spelling out the record.
+[<RequireQualifiedAccess>]
+module RenderContext =
+
+    /// The context for rendering `node` against `sources`, dispatching to
+    /// `dispatch`. It runs the two one-shot pre-render passes (the state seeds
+    /// laid under `sources.State`, and the fragment registry) and pins every
+    /// other field to its convenience default: the diagnostic runtime, the
+    /// no-op visualisation adapter, no telemetry, action or upload sink, an
+    /// empty session context, and `RenderPolicy.defaults` (default-deny
+    /// egress, the process hash floor, `Permissive` CSP, the root scope).
+    let create
+        (sources: BindingResolver.BindingSources)
+        (dispatch: 'Msg -> unit)
+        (node: Node<'Msg>)
+        : RenderContext<'Msg> =
+        { Sources = StateSeeds.apply node sources
+          Runtime = Runtime.diagnostic
+          VisAdapter = VisAdapter.noOp<'Msg>
+          Dispatch = dispatch
+          TelemetrySink = None
+          InErrorBoundary = false
+          Fragments = collectFragments Map.empty node
+          ExpandingFragments = Set.empty
+          SessionContext = Map.empty
+          ActionSink = None
+          CurrentNodeId = None
+          UploadSink = None
+          Policy = RenderPolicy.defaults }
+
+    /// `ctx` rendered under the runtime scope `scopeId` (Phase 266, §4o): the
+    /// scope's `StateStore.forScope` snapshot is merged over `Sources.State`
+    /// (scoped values winning over furnished ones, which win over seeds) and
+    /// `Policy.Scope` routes `Action.SetState` writes to that isolated store.
+    /// Setting `Policy.Scope` alone skips the snapshot merge, so a scoped
+    /// render goes through here.
+    let inScope (scopeId: string) (ctx: RenderContext<'Msg>) : RenderContext<'Msg> =
+        let scopedState =
+            (StateStore.forScope scopeId).Snapshot()
+            |> Map.fold (fun acc k v -> Map.add k v acc) ctx.Sources.State
+
+        { ctx with
+            Sources = { ctx.Sources with State = scopedState }
+            Policy = { ctx.Policy with Scope = Some scopeId } }
 
 // ─── Binding.State key collection (Phase 106) ──────────────────────────────
 //
@@ -3457,7 +3338,7 @@ let rec private renderKind
         // of the same node). Phase 1032: the context's destination policy now
         // reaches the markdown body's own link and image destinations, which the
         // scheme floor alone never decided.
-        let html = Markdown.toHtmlWithEgress ctx.EgressPolicy (renderText ctx spec.Text)
+        let html = Markdown.toHtmlWithEgress ctx.Policy.Egress (renderText ctx spec.Text)
 
         Html.div
             [ prop.className Css.Class.Markdown
@@ -3522,7 +3403,7 @@ let rec private renderKind
             BindingResolver.tryResolve ctx.Sources spec.Href |> Option.defaultValue ""
 
         let safeHref, egressAttrs =
-            Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Hyperlink resolvedHref
+            Sanitize.sanitizeUrlForEgress ctx.Policy.Egress Sanitize.EgressClass.Hyperlink resolvedHref
 
         // Phase 1523 — `rel` and `target` were emitted VERBATIM, so a decoded
         // tree could write `rel="opener"` on a `_blank` link and re-enable
@@ -3593,7 +3474,7 @@ let rec private renderKind
             BindingResolver.tryResolve ctx.Sources spec.Src |> Option.defaultValue ""
 
         let safeSrc, egressAttrs =
-            Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Media resolvedSrc
+            Sanitize.sanitizeUrlForEgress ctx.Policy.Egress Sanitize.EgressClass.Media resolvedSrc
 
         let variantClass = Css.imageVariant spec.Variant
 
@@ -3634,7 +3515,7 @@ let rec private renderKind
                         BindingResolver.tryResolve ctx.Sources entry.Src |> Option.defaultValue ""
 
                     let safe, refusal =
-                        Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Media resolved
+                        Sanitize.sanitizeUrlForEgress ctx.Policy.Egress Sanitize.EgressClass.Media resolved
 
                     if safe = "" || not (List.isEmpty refusal) then
                         None
@@ -3719,7 +3600,7 @@ let rec private renderKind
             BindingResolver.tryResolve ctx.Sources spec.Src |> Option.defaultValue ""
 
         let safeSrc, egressAttrs =
-            Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Media resolvedSrc
+            Sanitize.sanitizeUrlForEgress ctx.Policy.Egress Sanitize.EgressClass.Media resolvedSrc
 
         // Phase 1110 - structural parity with the server arm, which states the
         // three track obligations at length: authored order preserved, one
@@ -3743,7 +3624,7 @@ let rec private renderKind
                         BindingResolver.tryResolve ctx.Sources t.Src |> Option.defaultValue ""
 
                     let safe, refusal =
-                        Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Media resolved
+                        Sanitize.sanitizeUrlForEgress ctx.Policy.Egress Sanitize.EgressClass.Media resolved
 
                     if safe = "" || not (List.isEmpty refusal) then
                         claimed, acc
@@ -3809,7 +3690,7 @@ let rec private renderKind
                     let resolved = BindingResolver.tryResolve ctx.Sources p |> Option.defaultValue ""
 
                     let safe, refusal =
-                        Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Media resolved
+                        Sanitize.sanitizeUrlForEgress ctx.Policy.Egress Sanitize.EgressClass.Media resolved
 
                     if safe = "" || not (List.isEmpty refusal) then
                         []
@@ -3865,7 +3746,7 @@ let rec private renderKind
             BindingResolver.tryResolve ctx.Sources spec.Src |> Option.defaultValue ""
 
         let safeSrc, egressAttrs =
-            Sanitize.sanitizeEmbedSrcForEgress ctx.EgressPolicy resolvedSrc
+            Sanitize.sanitizeEmbedSrcForEgress ctx.Policy.Egress resolvedSrc
 
         let aspectClass = Css.embedAspect spec.AspectRatio
 
@@ -4367,7 +4248,7 @@ let rec private renderKind
                 // 768-form defaultValue seeds the un-written key, mirroring the
                 // Filter/Selection default law.
                 let raw =
-                    match ctx.Scope with
+                    match ctx.Policy.Scope with
                     | Some scopeId -> (StateStore.forScope scopeId).Get key
                     | None -> StateStore.get key
 
@@ -4446,7 +4327,7 @@ let rec private renderKind
                 match spec.On with
                 | Binding.State(key, _) ->
                     Some(fun (v: string) ->
-                        match ctx.Scope with
+                        match ctx.Policy.Scope with
                         | Some scopeId -> (StateStore.forScope scopeId).Set(key, box v)
                         | None -> StateStore.set key (box v))
                 | _ -> None
@@ -4501,16 +4382,16 @@ let rec private renderKind
                               prop.text (sprintf "props: %s" propKeys) ] ] ]
 
         let registryProbe =
-            ctx.Runtime.TryGetCustomRendererInScope(ctx.Scope, moduleId, componentId)
+            ctx.Runtime.TryGetCustomRendererInScope(ctx.Policy.Scope, moduleId, componentId)
 
         let registryHash = registryProbe |> Option.bind snd
-        let outcome = classifyCustomHash ctx.CustomHashFloor contentHash registryHash
+        let outcome = classifyCustomHash ctx.Policy.CustomHashFloor contentHash registryHash
 
         let dispatchToRenderer () : ReactElement =
             match registryProbe with
             | Some(fn, _) -> fn props
             | None ->
-                match ctx.Runtime.TryRenderCustomInScope(ctx.Scope, moduleId, componentId, props) with
+                match ctx.Runtime.TryRenderCustomInScope(ctx.Policy.Scope, moduleId, componentId, props) with
                 | Some element -> element
                 | None -> renderPlaceholder ()
 
@@ -4660,13 +4541,6 @@ let rec private renderKind
         let boundaryChild =
             match ctx.Runtime.TryLoadGuest spec.ScopeId, renderGuestHook with
             | Some guestTree, Some renderGuest ->
-                // Merge the guest scope's StateStore snapshot over the inherited
-                // State sources (scoped values win) so the guest reads its own
-                // isolated state; the host's default store is untouched.
-                let scopedState =
-                    (StateStore.forScope spec.ScopeId).Snapshot()
-                    |> Map.fold (fun acc k v -> Map.add k v acc) ctx.Sources.State
-
                 // `MountSpec.OnBubble` is optional in the generated record — an
                 // unwired bubble channel swallows guest dispatches (inert,
                 // exactly like the old no-op).
@@ -4747,48 +4621,33 @@ let rec private renderKind
                     // unchanged): the host's walk never sees this tree, because
                     // the guest is loaded by the host's runtime rather than
                     // carried in the host's own nodes, so nothing leaks upward
-                    // by construction. Downward, the host's furnished State and
-                    // the scope's written values both sit OVER the guest's
-                    // seeds, which is the same precedence every other entry
-                    // point applies.
-                    { Sources = withStateSeeds guestTree { ctx.Sources with State = scopedState }
-                      Runtime = guestRuntime
-                      VisAdapter = VisAdapter.noOp<obj>
-                      Dispatch = guestDispatch
-                      TelemetrySink = ctx.TelemetrySink
-                      InErrorBoundary = false
-                      Fragments = collectFragments Map.empty guestTree
-                      ExpandingFragments = Set.empty
-                      Scope = Some spec.ScopeId
-                      // The host's correlation context follows the guest: a
-                      // failure inside a mounted region belongs to the same
-                      // interaction as the render that mounted it (Phase 330).
-                      SessionContext = ctx.SessionContext
-                      ActionSink = ctx.ActionSink
-                      CurrentNodeId = ctx.CurrentNodeId
-                      // Phase 1026 — the guest INHERITS the host's egress
-                      // policy. A Mount guest is composed by a host-side loader
-                      // but its tree is not thereby more trusted than the tree
-                      // that mounted it, and a guest able to widen the policy it
-                      // renders under would make the ambient default reachable
-                      // around. Narrowing for a guest is a host act, available
-                      // by constructing the guest context directly.
-                      EgressPolicy = ctx.EgressPolicy
-                      UploadSink = ctx.UploadSink
-                      // Phase 1532 — the guest inherits the host's declared
-                      // floor. It could not lower it in any case (the effective
-                      // floor is the stricter of context and process), but
-                      // inheriting means a host that raised for this request has
-                      // raised for the guest it mounts, which is the answer a
-                      // reader expects and the one that does not depend on a
-                      // second rule to be safe.
-                      CustomHashFloor = ctx.CustomHashFloor
-                      // Phase 1545 — the guest inherits the host's posture, for
-                      // the egress reason directly above: a guest that could
-                      // render under `Permissive` inside a strict document
-                      // would put back the inline style attribute the host's
-                      // policy exists to forbid.
-                      Csp = ctx.Csp }
+                    // by construction. Downward, the guest scope's StateStore
+                    // snapshot and the host's furnished State both sit OVER the
+                    // guest's seeds (`RenderContext.inScope`), the precedence
+                    // every other entry point applies; the host's default store
+                    // is untouched.
+                    { (RenderContext.create ctx.Sources guestDispatch guestTree
+                       |> RenderContext.inScope spec.ScopeId) with
+                        Runtime = guestRuntime
+                        TelemetrySink = ctx.TelemetrySink
+                        // The host's correlation context follows the guest: a
+                        // failure inside a mounted region belongs to the same
+                        // interaction as the render that mounted it (Phase 330).
+                        SessionContext = ctx.SessionContext
+                        ActionSink = ctx.ActionSink
+                        CurrentNodeId = ctx.CurrentNodeId
+                        UploadSink = ctx.UploadSink
+                        // The guest INHERITS the host's policy, scope aside. Its
+                        // tree is not more trusted than the tree that mounted
+                        // it, so it cannot widen the egress it renders under
+                        // (Phase 1026), it is verified at the floor the host
+                        // raised for this request (Phase 1532), and it cannot
+                        // put back under `Permissive` the inline style a strict
+                        // document forbids (Phase 1545). Narrowing for a guest
+                        // is a host act, through its own `GuestSeam`.
+                        Policy =
+                            { ctx.Policy with
+                                Scope = Some spec.ScopeId } }
 
                 // Route through the late-bound hook (a function *value*), not a
                 // direct call into the recursive `render` group at type obj —
@@ -6482,7 +6341,7 @@ and private renderGrid
           RecurseRender = render ctx
           RunAction = runAction ctx
           NodeId = parentNodeId
-          EgressPolicy = ctx.EgressPolicy
+          EgressPolicy = ctx.Policy.Egress
           // Phase 1611 — the whole-rows write, supplied rather than reachable.
           // `writeBackTo` is where Phase 266's scope routing and Phase 782's
           // host-reserved-key refusal live, and an adapter holds neither the
@@ -7648,7 +7507,7 @@ and private renderGridCell
         // tree emits one per row, and a grid pointed at attacker-influenced
         // rows is the highest-volume egress surface the renderer has.
         let safeHref, egressAttrs =
-            Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Hyperlink (href row)
+            Sanitize.sanitizeUrlForEgress ctx.Policy.Egress Sanitize.EgressClass.Hyperlink (href row)
 
         Html.a (
             [ prop.className "fuaran-grid-cell-link"
@@ -7702,7 +7561,7 @@ and private renderChart
           RecurseRender = render ctx
           RunAction = runAction ctx
           NodeId = parentNodeId
-          EgressPolicy = ctx.EgressPolicy
+          EgressPolicy = ctx.Policy.Egress
           // Phase 1611 — the same write path the grid leg supplies. A chart has
           // no whole-rows destination of its own, so this is the identity of
           // `writeBackTo` and nothing on the chart path calls it; supplying it
@@ -8287,9 +8146,6 @@ and private renderPresent (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactE
 // group, so instantiating `render` at `obj` here is not polymorphic recursion.
 renderGuestHook <- Some render
 
-/// Convenience entry point that constructs the `RenderContext` for callers
-/// that only need the default `DiagnosticRuntime` + the no-op visualisation
-/// adapter. Identical signature to the session-3a `render` so existing
 /// Phase 1812 — the BEHIND reader's render (WIRE_FORMAT §15.3). A `Rendered`
 /// view — the node itself, or the author-declared `fallback` lifted out of a
 /// transport-only `Unknown` — renders through `render` exactly as any node
@@ -8314,55 +8170,31 @@ let renderBehind (ctx: RenderContext<'Msg>) (view: BehindView<'Msg>) : ReactElem
               | None -> ()
               prop.text label ]
 
-/// in-tree callers continue to compile — the runtime and the adapter are
-/// supplied implicitly.
+// ─── Convenience entry points ──────────────────────────────────────────────
+//
+// Each entry below is `render` over `RenderContext.create` with the fields it
+// lets a host supply, and nothing else; `docs/RENDER-ENTRIES.md` is the grid of
+// which axes each one pins. A host needing a combination no entry offers builds
+// `{ RenderContext.create sources dispatch node with … }` and calls `render`,
+// rather than this family growing one permutation per field.
+
+/// `render` with every axis at its convenience default (`RenderContext.create`):
+/// the diagnostic runtime, so anything effecting is inert, and no sink.
 let renderWithSources
     (sources: BindingResolver.BindingSources)
     (dispatch: 'Msg -> unit)
     (node: Node<'Msg>)
     : ReactElement =
-    render
-        { Sources = withStateSeeds node sources
-          Runtime = Runtime.diagnostic
-          VisAdapter = VisAdapter.noOp<'Msg>
-          Dispatch = dispatch
-          TelemetrySink = None
-          InErrorBoundary = false
-          // One-shot pre-render fragment registry walk.
-          // Empty for trees that don't declare fragments — zero-cost for the
-          // common case.
-          Fragments = collectFragments Map.empty node
-          ExpandingFragments = Set.empty
-          Scope = None
-          SessionContext = Map.empty
-          ActionSink = None
-          CurrentNodeId = None
-          // Phase 1026 — default-deny. A host that needs a wider posture
-          // reaches for it BY NAME (`renderWithSourcesAndEgress`, or by
-          // constructing the `RenderContext` directly), so the opt-out is
-          // visible in the host's own source.
-          EgressPolicy = Sanitize.denyNonLocalEgress
-          // Phase 1117 — no sink at any convenience entry point: an unwired
-          // host uploads nothing, and a declared destination refuses loudly
-          // rather than reaching any other route.
-          UploadSink = None
-          // Phase 1532 — no per-render floor at a convenience entry point: this
-          // render uses whatever process floor the host installed.
-          CustomHashFloor = None
-          // Phase 1545 — `Permissive` at every convenience entry point, so the
-          // emission is unchanged; strict mode is reached by name.
-          Csp = Csp.Permissive }
-        node
+    render (RenderContext.create sources dispatch node) node
 
 /// `renderWithSources` with an EXPLICIT destination policy (Phase 1026) — the
 /// named opt-out from the ambient default-deny.
 ///
-/// A separate entry point rather than an optional parameter, and named rather
-/// than inferred, for the reason every other gate inversion in this codebase is:
-/// a grep for `permissiveEgress` (or for this function) finds every host that
-/// has widened its egress, so the choice is visible in the host's own source
-/// instead of inherited silently. Passing `Sanitize.denyNonLocalEgress` here is
-/// exactly `renderWithSources`.
+/// Named rather than inferred, for the reason every other gate inversion in this
+/// codebase is: a grep for `permissiveEgress` (or for this function) finds every
+/// host that has widened its egress, so the choice is visible in the host's own
+/// source instead of inherited silently. Passing `Sanitize.denyNonLocalEgress`
+/// here is exactly `renderWithSources`.
 ///
 /// Three postures a host reaches for, in descending order of how much they
 /// should have to justify:
@@ -8376,47 +8208,24 @@ let renderWithSources
 ///   - `Sanitize.permissiveEgress` — every destination, for a HAND-AUTHORED
 ///     tree where the author is the trust boundary. Correct for a catalog or a
 ///     sample; wrong for anything that renders a decoded tree.
-///
-/// Hosts that need a policy AND a telemetry sink / session context / action
-/// sink construct the `RenderContext` record directly — it is public, and
-/// minting a sixth entry-point permutation per field is the combinatorial
-/// growth this family is already close to.
 let renderWithSourcesAndEgress
     (sources: BindingResolver.BindingSources)
     (egressPolicy: Sanitize.EgressPolicy)
     (dispatch: 'Msg -> unit)
     (node: Node<'Msg>)
     : ReactElement =
+    let ctx = RenderContext.create sources dispatch node
+
     render
-        { Sources = withStateSeeds node sources
-          Runtime = Runtime.diagnostic
-          VisAdapter = VisAdapter.noOp<'Msg>
-          Dispatch = dispatch
-          TelemetrySink = None
-          InErrorBoundary = false
-          Fragments = collectFragments Map.empty node
-          ExpandingFragments = Set.empty
-          Scope = None
-          SessionContext = Map.empty
-          ActionSink = None
-          CurrentNodeId = None
-          EgressPolicy = egressPolicy
-          UploadSink = None
-          // Phase 1532 — no per-render floor at a convenience entry point: this
-          // render uses whatever process floor the host installed.
-          CustomHashFloor = None
-          // Phase 1545 — `Permissive` at every convenience entry point, so the
-          // emission is unchanged; strict mode is reached by name.
-          Csp = Csp.Permissive }
+        { ctx with
+            Policy =
+                { ctx.Policy with
+                    Egress = egressPolicy } }
         node
 
-/// Convenience entry point that pre-wires the optional
-/// `IFuaranTelemetrySink` so per-node-guard catches and `ErrorBoundary`
-/// catches surface to the host's observability backend. Hosts that
-/// implement `IFuaranTelemetrySink` against a host platform's telemetry
-/// implementation (or a Prometheus / OTel exporter, or `Fuaran.UI.Telemetry.Default.ConsoleSink`
-/// for dev) pass it here; the renderer threads it through the
-/// `RenderContext` without further wiring.
+/// `render` with the host's runtime and telemetry sink — the ordinary
+/// production host. Per-node-guard catches and `ErrorBoundary` catches are
+/// emitted to the sink.
 let renderWithSourcesAndSink
     (sources: BindingResolver.BindingSources)
     (runtime: Runtime.IFuaranRuntime)
@@ -8425,50 +8234,15 @@ let renderWithSourcesAndSink
     (node: Node<'Msg>)
     : ReactElement =
     render
-        { Sources = withStateSeeds node sources
-          Runtime = runtime
-          VisAdapter = VisAdapter.noOp<'Msg>
-          Dispatch = dispatch
-          TelemetrySink = Some telemetrySink
-          InErrorBoundary = false
-          Fragments = collectFragments Map.empty node
-          ExpandingFragments = Set.empty
-          Scope = None
-          SessionContext = Map.empty
-          ActionSink = None
-          CurrentNodeId = None
-          // Phase 1026 — default-deny. A host that needs a wider posture
-          // reaches for it BY NAME (`renderWithSourcesAndEgress`, or by
-          // constructing the `RenderContext` directly), so the opt-out is
-          // visible in the host's own source.
-          EgressPolicy = Sanitize.denyNonLocalEgress
-          // Phase 1117 — no sink at any convenience entry point: an unwired
-          // host uploads nothing, and a declared destination refuses loudly
-          // rather than reaching any other route.
-          UploadSink = None
-          // Phase 1532 — no per-render floor at a convenience entry point: this
-          // render uses whatever process floor the host installed.
-          CustomHashFloor = None
-          // Phase 1545 — `Permissive` at every convenience entry point, so the
-          // emission is unchanged; strict mode is reached by name.
-          Csp = Csp.Permissive }
+        { RenderContext.create sources dispatch node with
+            Runtime = runtime
+            TelemetrySink = Some telemetrySink }
         node
 
-/// Correlation-aware render entry (Phase 330). As `renderWithSourcesAndSink`,
-/// plus the host's opaque `SessionContext` — so a render failure inside this
-/// tree carries the interaction id the host supplied, and joins whatever else
-/// that host stamped with the same id.
-///
-/// A separate entry point rather than a parameter on the existing one: a host
-/// with no correlation context should not have to write `Map.empty` at a call
-/// site that never had the concept. Passing `Map.empty` here is exactly
-/// `renderWithSourcesAndSink`.
-///
-/// The context is a VALUE, read once for this render. A host whose id changes
-/// per interaction re-reads its own current value at each render call — which
-/// is the natural shape, because render is already per-frame. Do NOT capture a
-/// context at host-construction time and reuse it: that freezes the first
-/// interaction's id onto every later frame's telemetry.
+/// Correlation-aware render entry (Phase 330): `renderWithSourcesAndSink` plus
+/// the host's opaque `SessionContext`. Superseded by `RenderContext.create`
+/// plus `with`; it has no in-repo caller.
+[<System.Obsolete("Use render { RenderContext.create sources dispatch node with Runtime = runtime; TelemetrySink = Some sink; SessionContext = context } node (Phase 2067).")>]
 let renderWithSourcesSinkAndContext
     (sources: BindingResolver.BindingSources)
     (runtime: Runtime.IFuaranRuntime)
@@ -8478,51 +8252,17 @@ let renderWithSourcesSinkAndContext
     (node: Node<'Msg>)
     : ReactElement =
     render
-        { Sources = withStateSeeds node sources
-          Runtime = runtime
-          VisAdapter = VisAdapter.noOp<'Msg>
-          Dispatch = dispatch
-          TelemetrySink = Some telemetrySink
-          InErrorBoundary = false
-          Fragments = collectFragments Map.empty node
-          ExpandingFragments = Set.empty
-          Scope = None
-          SessionContext = sessionContext
-          ActionSink = None
-          CurrentNodeId = None
-          // Phase 1026 — default-deny. A host that needs a wider posture
-          // reaches for it BY NAME (`renderWithSourcesAndEgress`, or by
-          // constructing the `RenderContext` directly), so the opt-out is
-          // visible in the host's own source.
-          EgressPolicy = Sanitize.denyNonLocalEgress
-          // Phase 1117 — no sink at any convenience entry point: an unwired
-          // host uploads nothing, and a declared destination refuses loudly
-          // rather than reaching any other route.
-          UploadSink = None
-          // Phase 1532 — no per-render floor at a convenience entry point: this
-          // render uses whatever process floor the host installed.
-          CustomHashFloor = None
-          // Phase 1545 — `Permissive` at every convenience entry point, so the
-          // emission is unchanged; strict mode is reached by name.
-          Csp = Csp.Permissive }
+        { RenderContext.create sources dispatch node with
+            Runtime = runtime
+            TelemetrySink = Some telemetrySink
+            SessionContext = sessionContext }
         node
 
-/// User-action-recording render entry (Phase 889). As
-/// `renderWithSourcesSinkAndContext`, plus the `IActionInvocationSink` every
-/// gesture dispatched inside this tree is recorded through.
-///
-/// A separate entry point for the same reason 330 added one: a host with no
-/// user-action log should not have to write `None` at a call site that never
-/// had the concept, and `None` here IS `renderWithSourcesSinkAndContext`. It is
-/// also what makes recording an explicit host act — the four entry points above
-/// pass `None`, so an unconfigured host records nothing.
-///
-/// The sink carries its own `CaptureMode`, so opting into payload VALUES is a
-/// second, separate decision from wiring a destination. The default sinks are
-/// redacted. **The end user is not the opt-in party**: this is host-side
-/// instrumentation, and where the host is user-facing, obtaining the user's
-/// consent is the host's obligation, which shipping a redaction default does
-/// not discharge.
+/// User-action-recording render entry (Phase 889):
+/// `renderWithSourcesSinkAndContext` plus the `IActionInvocationSink` every
+/// gesture dispatched inside this tree is recorded through. Superseded by
+/// `RenderContext.create` plus `with`; it has no in-repo caller.
+[<System.Obsolete("Use render { RenderContext.create sources dispatch node with Runtime = runtime; TelemetrySink = Some sink; SessionContext = context; ActionSink = actionSink } node (Phase 2067).")>]
 let renderWithSourcesSinkContextAndActionSink
     (sources: BindingResolver.BindingSources)
     (runtime: Runtime.IFuaranRuntime)
@@ -8533,43 +8273,21 @@ let renderWithSourcesSinkContextAndActionSink
     (node: Node<'Msg>)
     : ReactElement =
     render
-        { Sources = withStateSeeds node sources
-          Runtime = runtime
-          VisAdapter = VisAdapter.noOp<'Msg>
-          Dispatch = dispatch
-          TelemetrySink = Some telemetrySink
-          InErrorBoundary = false
-          Fragments = collectFragments Map.empty node
-          ExpandingFragments = Set.empty
-          Scope = None
-          SessionContext = sessionContext
-          ActionSink = actionSink
-          CurrentNodeId = None
-          // Phase 1026 — default-deny. A host that needs a wider posture
-          // reaches for it BY NAME (`renderWithSourcesAndEgress`, or by
-          // constructing the `RenderContext` directly), so the opt-out is
-          // visible in the host's own source.
-          EgressPolicy = Sanitize.denyNonLocalEgress
-          // Phase 1117 — no sink at any convenience entry point: an unwired
-          // host uploads nothing, and a declared destination refuses loudly
-          // rather than reaching any other route.
-          UploadSink = None
-          // Phase 1532 — no per-render floor at a convenience entry point: this
-          // render uses whatever process floor the host installed.
-          CustomHashFloor = None
-          // Phase 1545 — `Permissive` at every convenience entry point, so the
-          // emission is unchanged; strict mode is reached by name.
-          Csp = Csp.Permissive }
+        { RenderContext.create sources dispatch node with
+            Runtime = runtime
+            TelemetrySink = Some telemetrySink
+            SessionContext = sessionContext
+            ActionSink = actionSink }
         node
 
-/// Scope-aware render entry (Phase 266, §4o). Renders `node` under an explicit
-/// runtime `scopeId`: `Binding.State` reads resolve against
-/// `StateStore.forScope scopeId` (its snapshot merged over `sources.State`, scoped
-/// values winning) and `Action.SetState` writes route to that isolated store, so
-/// a whole tree — or a `Mount` guest the orchestration tier renders directly —
-/// keeps its state off the process-global default store. `scopeId = None` is
-/// exactly `renderWithSources` (byte-identical; the default store). The
-/// orchestration tier maps its `FuaranRuntimeScope` to the `scopeId` string.
+/// Scope-aware render entry (Phase 266, §4o): `render` with the host's runtime,
+/// under the runtime scope `scopeId` (`RenderContext.inScope`). `Binding.State`
+/// reads resolve against `StateStore.forScope scopeId` (its snapshot merged over
+/// `sources.State`, scoped values winning) and `Action.SetState` writes route to
+/// that isolated store, so a whole tree — or a `Mount` guest the orchestration
+/// tier renders directly — keeps its state off the process-global default
+/// store. The orchestration tier maps its `FuaranRuntimeScope` to the `scopeId`
+/// string.
 let renderWithSourcesInScope
     (scopeId: string)
     (sources: BindingResolver.BindingSources)
@@ -8577,61 +8295,16 @@ let renderWithSourcesInScope
     (dispatch: 'Msg -> unit)
     (node: Node<'Msg>)
     : ReactElement =
-    let scopedState =
-        (StateStore.forScope scopeId).Snapshot()
-        |> Map.fold (fun acc k v -> Map.add k v acc) sources.State
-
     render
-        { Sources = withStateSeeds node { sources with State = scopedState }
-          Runtime = runtime
-          VisAdapter = VisAdapter.noOp<'Msg>
-          Dispatch = dispatch
-          TelemetrySink = None
-          InErrorBoundary = false
-          Fragments = collectFragments Map.empty node
-          ExpandingFragments = Set.empty
-          Scope = Some scopeId
-          SessionContext = Map.empty
-          ActionSink = None
-          CurrentNodeId = None
-          // Phase 1026 — default-deny. A host that needs a wider posture
-          // reaches for it BY NAME (`renderWithSourcesAndEgress`, or by
-          // constructing the `RenderContext` directly), so the opt-out is
-          // visible in the host's own source.
-          EgressPolicy = Sanitize.denyNonLocalEgress
-          // Phase 1117 — no sink at any convenience entry point: an unwired
-          // host uploads nothing, and a declared destination refuses loudly
-          // rather than reaching any other route.
-          UploadSink = None
-          // Phase 1532 — no per-render floor at a convenience entry point: this
-          // render uses whatever process floor the host installed.
-          CustomHashFloor = None
-          // Phase 1545 — `Permissive` at every convenience entry point, so the
-          // emission is unchanged; strict mode is reached by name.
-          Csp = Csp.Permissive }
+        { (RenderContext.create sources dispatch node |> RenderContext.inScope scopeId) with
+            Runtime = runtime }
         node
 
-/// Scope-aware render entry WITH a telemetry sink — `renderWithSourcesInScope`
-/// plus the `IFuaranTelemetrySink` of `renderWithSourcesAndSink`.
-///
-/// It exists because the two axes were previously exclusive: every entry that
-/// carried a sink rendered against the process-global `StateStore`, and the one
-/// entry that took a `scopeId` hard-coded `TelemetrySink = None`. A host that
-/// needed state isolation — canonically a registered-custom-renderer host
-/// mounting guests, which is exactly the host most likely to see render
-/// failures it did not author — silently lost every render-failure event as the
-/// price of that isolation. Isolation and observability are orthogonal, and no
-/// entry should make a host trade one for the other.
-///
-/// Scoping semantics are identical to `renderWithSourcesInScope`:
-/// `Binding.State` reads resolve against `StateStore.forScope scopeId`
-/// (its snapshot merged over `sources.State`, scoped values winning) and
-/// `Action.SetState` writes route to that isolated store. Sink semantics are
-/// identical to `renderWithSourcesAndSink`: per-node-guard catches and
-/// `ErrorBoundary` catches are emitted to the host's sink.
-///
-/// For correlation context on top of this, see the hosting matrix in
-/// `docs/RENDER-ENTRIES.md`.
+/// `renderWithSourcesInScope` plus the telemetry sink of
+/// `renderWithSourcesAndSink`. Isolation and observability are orthogonal: the
+/// host most likely to need a scope (a registered-custom-renderer host mounting
+/// guests) is also the host most likely to see render failures it did not
+/// author, so no entry makes it trade one for the other.
 let renderWithSourcesInScopeAndSink
     (scopeId: string)
     (sources: BindingResolver.BindingSources)
@@ -8640,38 +8313,10 @@ let renderWithSourcesInScopeAndSink
     (dispatch: 'Msg -> unit)
     (node: Node<'Msg>)
     : ReactElement =
-    let scopedState =
-        (StateStore.forScope scopeId).Snapshot()
-        |> Map.fold (fun acc k v -> Map.add k v acc) sources.State
-
     render
-        { Sources = withStateSeeds node { sources with State = scopedState }
-          Runtime = runtime
-          VisAdapter = VisAdapter.noOp<'Msg>
-          Dispatch = dispatch
-          TelemetrySink = Some telemetrySink
-          InErrorBoundary = false
-          Fragments = collectFragments Map.empty node
-          ExpandingFragments = Set.empty
-          Scope = Some scopeId
-          SessionContext = Map.empty
-          ActionSink = None
-          CurrentNodeId = None
-          // Phase 1026 — default-deny. A host that needs a wider posture
-          // reaches for it BY NAME (`renderWithSourcesAndEgress`, or by
-          // constructing the `RenderContext` directly), so the opt-out is
-          // visible in the host's own source.
-          EgressPolicy = Sanitize.denyNonLocalEgress
-          // Phase 1117 — no sink at any convenience entry point: an unwired
-          // host uploads nothing, and a declared destination refuses loudly
-          // rather than reaching any other route.
-          UploadSink = None
-          // Phase 1532 — no per-render floor at a convenience entry point: this
-          // render uses whatever process floor the host installed.
-          CustomHashFloor = None
-          // Phase 1545 — `Permissive` at every convenience entry point, so the
-          // emission is unchanged; strict mode is reached by name.
-          Csp = Csp.Permissive }
+        { (RenderContext.create sources dispatch node |> RenderContext.inScope scopeId) with
+            Runtime = runtime
+            TelemetrySink = Some telemetrySink }
         node
 
 // ─── State-reactive render (Phase 106) ─────────────────────────────────────
@@ -8883,21 +8528,9 @@ let renderWithSourcesAndCsp
     (dispatch: 'Msg -> unit)
     (node: Node<'Msg>)
     : ReactElement =
+    let ctx = RenderContext.create sources dispatch node
+
     render
-        { Sources = withStateSeeds node sources
-          Runtime = Runtime.diagnostic
-          VisAdapter = VisAdapter.noOp<'Msg>
-          Dispatch = dispatch
-          TelemetrySink = None
-          InErrorBoundary = false
-          Fragments = collectFragments Map.empty node
-          ExpandingFragments = Set.empty
-          Scope = None
-          SessionContext = Map.empty
-          ActionSink = None
-          CurrentNodeId = None
-          EgressPolicy = Sanitize.denyNonLocalEgress
-          UploadSink = None
-          CustomHashFloor = None
-          Csp = csp }
+        { ctx with
+            Policy = { ctx.Policy with Csp = csp } }
         node

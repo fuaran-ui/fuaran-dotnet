@@ -740,25 +740,189 @@ module locale =
 
 // ─── FormFieldKind smart constructors ──────────────────────────────────────
 //
-// Number-with-constraints helpers. Authors call:
+// Phase 2055 — ONE constructor per control, with the change handler OPTIONAL.
+// Each `<control>Control` member takes the typed value binding and named
+// optional arguments, so authors call:
 //
-//   FormFieldKind.rangedNumber
-//       (value = binding.state "year" 2024.0)
-//       (onChange = SetYear >> Action.dispatch)
-//       (min = 1979.0)
-//       (max = 2028.0)
+//   FormFieldKind.rangedNumberControl(
+//       binding.state "year" 2024.0,
+//       onChange = (SetYear >> Action.dispatch),
+//       min = 1979.0,
+//       max = 2028.0)
 //
-// to layer the optional Min / Max / Step trio onto the parallel-additive
-// `RangedNumber` DU case without forcing every author to write the full
-// `NumberFieldConstraints` record. The classic two-positional `Number`
-// case stays as-is — authors who need no constraints construct it
-// directly.
+// and leave `onChange` out for the handler-free shape an AI author emits
+// (Phase 426: the renderer writes the changed value back to the field's own
+// `value` binding when that binding is directly `Binding.State` /
+// `Binding.Filter`; any other shape is inert — FUARAN069 warns). Every case
+// carries the one handler shape Phase 2177 decided — `onChange`, Checkbox and
+// Toggle included. The member names carry a `Control` suffix because a member
+// spelled like a union case or like a module function is unreachable: the case
+// and the function win name resolution.
+//
+// The older curried helpers in the module below — the handler-bearing `x` and
+// the handler-free `xDeclarative` — are kept, unchanged in signature, as
+// one-line shims over these members.
+
+// The members are type extensions, which F# admits only inside a module; the
+// module is `AutoOpen`, so `open Fuaran.UI` brings them into scope.
+[<AutoOpen>]
+module FormFieldKindControls =
+
+    type Generated.FormFieldKind<'Msg> with
+
+        /// `Text` — a single-line string field.
+        static member textControl(value: Binding<string>, ?onChange: string -> Action<'Msg>) : FormFieldKind<'Msg> =
+            FormFieldKind.Text(Some(FieldValue.ofText value), Option.map FieldChange.ofText onChange)
+
+        /// `Number` — an unconstrained numeric field (`rangedNumberControl` for min / max / step).
+        static member numberControl(value: Binding<float>, ?onChange: float -> Action<'Msg>) : FormFieldKind<'Msg> =
+            FormFieldKind.Number(Some(FieldValue.ofNumber value), Option.map FieldChange.ofNumber onChange)
+
+        /// `Checkbox` — consent, opt-in and multi-select list items.
+        static member checkboxControl(value: Binding<bool>, ?onChange: bool -> Action<'Msg>) : FormFieldKind<'Msg> =
+            FormFieldKind.Checkbox(Some(FieldValue.ofBool value), Option.map FieldChange.ofBool onChange)
+
+        /// `Toggle` — the on/off SWITCH affordance (Phase 766): the same boolean data
+        /// and write-back as `checkboxControl`, rendered as `role="switch"`.
+        static member toggleControl(value: Binding<bool>, ?onChange: bool -> Action<'Msg>) : FormFieldKind<'Msg> =
+            FormFieldKind.Toggle(Some(FieldValue.ofBool value), Option.map FieldChange.ofBool onChange)
+
+        /// `Choice` — one option of a list; a cleared choice reaches the handler as `None`.
+        static member choiceControl
+            (options: Binding<SelectOption list>, value: Binding<string>, ?onChange: string option -> Action<'Msg>)
+            : FormFieldKind<'Msg> =
+            FormFieldKind.Choice(options, Some(FieldValue.ofText value), Option.map FieldChange.ofChoice onChange)
+
+        /// `TextArea` — a multi-line string field `rows` lines tall.
+        static member textAreaControl
+            (value: Binding<string>, rows: int, ?onChange: string -> Action<'Msg>)
+            : FormFieldKind<'Msg> =
+            FormFieldKind.TextArea(Some(FieldValue.ofText value), Option.map FieldChange.ofText onChange, rows)
+
+        /// `RangedNumber` — a number with any of `min` / `max` / `step`.
+        static member rangedNumberControl
+            (value: Binding<float>, ?onChange: float -> Action<'Msg>, ?min: float, ?max: float, ?step: float)
+            : FormFieldKind<'Msg> =
+            FormFieldKind.RangedNumber(
+                Some(FieldValue.ofNumber value),
+                Option.map FieldChange.ofNumber onChange,
+                min,
+                max,
+                step
+            )
+
+        /// `SegmentedChoice` — `choiceControl`'s triple as a segmented row; pass
+        /// `orientation = Orientation.Vertical` for the radio-list shape.
+        static member segmentedChoiceControl
+            (
+                options: Binding<SelectOption list>,
+                value: Binding<string>,
+                ?onChange: string option -> Action<'Msg>,
+                ?orientation: Orientation
+            ) : FormFieldKind<'Msg> =
+            FormFieldKind.SegmentedChoice(
+                options,
+                Some(FieldValue.ofText value),
+                Option.map FieldChange.ofChoice onChange,
+                defaultArg orientation Orientation.Horizontal
+            )
+
+        /// `Combobox` (Phase 1113) — typeahead over `options`; `allowFreeText`
+        /// (default `false`) admits a value that is not one of them.
+        static member comboboxControl
+            (
+                options: Binding<SelectOption list>,
+                value: Binding<string>,
+                ?onChange: string option -> Action<'Msg>,
+                ?allowFreeText: bool
+            ) : FormFieldKind<'Msg> =
+            FormFieldKind.Combobox(
+                defaultArg allowFreeText false,
+                Option.map FieldChange.ofChoice onChange,
+                options,
+                Some(FieldValue.ofText value)
+            )
+
+        /// `Rating` (Phase 1130) — a score out of `max` (default `Defaults.ratingMax`);
+        /// `allowHalf` (default `false`) admits half positions on entry.
+        static member ratingControl
+            (value: Binding<float>, ?onChange: float -> Action<'Msg>, ?max: int, ?allowHalf: bool)
+            : FormFieldKind<'Msg> =
+            FormFieldKind.Rating(
+                defaultArg allowHalf false,
+                defaultArg max Defaults.ratingMax,
+                Option.map FieldChange.ofNumber onChange,
+                Some(FieldValue.ofNumber value)
+            )
+
+        /// `Color` (Phase 1130) — the platform colour picker over a `#rrggbb` value.
+        static member colorControl(value: Binding<string>, ?onChange: string -> Action<'Msg>) : FormFieldKind<'Msg> =
+            FormFieldKind.Color(Option.map FieldChange.ofText onChange, Some(FieldValue.ofText value))
+
+        /// `Tokens` (Phase 1121) — several values as removable chips. `allowFreeText`
+        /// defaults to `true` here, unlike `comboboxControl`: a token box with
+        /// nothing to suggest is the commonest shape.
+        static member tokensControl
+            (
+                value: Binding<string list>,
+                ?onChange: string list -> Action<'Msg>,
+                ?suggestions: Binding<SelectOption list>,
+                ?allowFreeText: bool
+            ) : FormFieldKind<'Msg> =
+            FormFieldKind.Tokens(
+                defaultArg allowFreeText true,
+                Option.map FieldChange.ofTokens onChange,
+                suggestions,
+                Some(FieldValue.ofTokens value)
+            )
+
+        /// `DateTime` (Phase 288 / 1811) — an ISO-8601 date, time or date-time per
+        /// `variant`. The control is clearable; a cleared value reaches the handler
+        /// as `""`.
+        static member dateTimeControl
+            (
+                value: Binding<string>,
+                variant: DateTimeVariant,
+                ?onChange: string -> Action<'Msg>,
+                ?min: string,
+                ?max: string,
+                ?step: float
+            ) : FormFieldKind<'Msg> =
+            FormFieldKind.DateTime(
+                Some(FieldValue.ofText value),
+                onChange
+                |> Option.map (fun h -> FieldChange.ofChoice (fun v -> h (defaultArg v ""))),
+                variant,
+                min,
+                max,
+                step
+            )
+
+        /// `DateTimeRange` (Phase 725 / 1811) — the ordered `{From; To}` pair; `min` /
+        /// `max` / `step` bound both ends.
+        static member dateTimeRangeControl
+            (
+                value: Binding<DateTimeRangePair>,
+                variant: DateTimeVariant,
+                ?onChange: string * string -> Action<'Msg>,
+                ?min: string,
+                ?max: string,
+                ?step: float
+            ) : FormFieldKind<'Msg> =
+            FormFieldKind.DateTimeRange(
+                Some(FieldValue.ofDateRange value),
+                Option.map FieldChange.ofDateRange onChange,
+                variant,
+                min,
+                max,
+                step
+            )
 
 [<RequireQualifiedAccess>]
 module FormFieldKind =
-    /// `RangedNumber` with all three of `min` / `max` / `step`
-    /// available as optional named arguments. Pass `?min`, `?max`, `?step`
-    /// to omit any of them (each defaults to `None`).
+    /// `RangedNumber` with `min` / `max` / `step` as positional options (`None`
+    /// omits one). A shim over `FormFieldKind.rangedNumberControl`, which takes
+    /// them — and the handler — as named optional arguments.
     let rangedNumber
         (value: Binding<float>)
         (onChange: float -> Action<'Msg>)
@@ -766,20 +930,14 @@ module FormFieldKind =
         (max: float option)
         (step: float option)
         : FormFieldKind<'Msg> =
-        FormFieldKind.RangedNumber(Some(FieldValue.ofNumber value), Some(FieldChange.ofNumber onChange), min, max, step)
+        FormFieldKind.rangedNumberControl (value, onChange, ?min = min, ?max = max, ?step = step)
 
     /// `RangedNumber` shorthand for the common "stepped only"
     /// shape (e.g. a percentage field that allows any value but advances
     /// by 0.5 on the spinner). Equivalent to `rangedNumber value onChange
     /// ?step=step` — distinct name for grep-ability at the call site.
     let numberStepped (value: Binding<float>) (onChange: float -> Action<'Msg>) (step: float) : FormFieldKind<'Msg> =
-        FormFieldKind.RangedNumber(
-            Some(FieldValue.ofNumber value),
-            Some(FieldChange.ofNumber onChange),
-            None,
-            None,
-            Some step
-        )
+        FormFieldKind.rangedNumberControl (value, onChange, step = step)
 
     /// `SegmentedChoice` with the same triple `Choice` takes plus
     /// an optional orientation defaulting to `Horizontal` (segmented row).
@@ -800,12 +958,7 @@ module FormFieldKind =
         // "No selection" is `Binding.Static None` since the swap (the slot is
         // `Binding<string> option`; the old `Binding<string option>` payload
         // option moved into the generated Static payload).
-        FormFieldKind.SegmentedChoice(
-            options,
-            Some(FieldValue.ofText value),
-            Some(FieldChange.ofChoice onChange),
-            orientation
-        )
+        FormFieldKind.segmentedChoiceControl (options, value, onChange, orientation)
 
     /// `Combobox` (Phase 1113) — the typeahead / autocomplete control: the same
     /// triple `choice` takes plus the free-text admission, in `segmentedChoice`'s
@@ -826,12 +979,7 @@ module FormFieldKind =
         (onChange: string option -> Action<'Msg>)
         (allowFreeText: bool)
         : FormFieldKind<'Msg> =
-        FormFieldKind.Combobox(
-            allowFreeText,
-            Some(FieldChange.ofChoice onChange),
-            options,
-            Some(FieldValue.ofText value)
-        )
+        FormFieldKind.comboboxControl (options, value, onChange, allowFreeText)
 
     /// `Rating` (Phase 1130) — the subjective score on a small ordinal scale.
     /// `max` is the scale (5 is the conventional choice and the one
@@ -854,7 +1002,7 @@ module FormFieldKind =
         (max: int)
         (allowHalf: bool)
         : FormFieldKind<'Msg> =
-        FormFieldKind.Rating(allowHalf, max, Some(FieldChange.ofNumber onChange), Some(FieldValue.ofNumber value))
+        FormFieldKind.ratingControl (value, onChange, max = max, allowHalf = allowHalf)
 
     /// `Color` (Phase 1130) — the platform's own colour picker. The bound value
     /// is the canonical `#rrggbb` hex form, which is the one shape a native
@@ -866,7 +1014,7 @@ module FormFieldKind =
     ///       (value = binding.state "brand" "#ff8800")
     ///       (onChange = SetBrand >> Action.dispatch)
     let color (value: Binding<string>) (onChange: string -> Action<'Msg>) : FormFieldKind<'Msg> =
-        FormFieldKind.Color(Some(FieldChange.ofText onChange), Some(FieldValue.ofText value))
+        FormFieldKind.colorControl (value, onChange)
 
     /// `Tokens` (Phase 1121) — the multi-token input: several values
     /// accumulated as removable chips, over a set that may be open, searchable,
@@ -896,12 +1044,7 @@ module FormFieldKind =
         (suggestions: Binding<SelectOption list> option)
         (allowFreeText: bool)
         : FormFieldKind<'Msg> =
-        FormFieldKind.Tokens(
-            allowFreeText,
-            Some(FieldChange.ofTokens onChange),
-            suggestions,
-            Some(FieldValue.ofTokens value)
-        )
+        FormFieldKind.tokensControl (value, onChange, ?suggestions = suggestions, allowFreeText = allowFreeText)
 
     /// `DateTime` field (Phase 288; renamed from `date` by Phase 1811) — a
     /// date, a time of day or a date-time per `variant`, with the optional
@@ -924,16 +1067,9 @@ module FormFieldKind =
         (step: float option)
         : FormFieldKind<'Msg> =
         // The generated Date handler receives `string option` (a clearable
-        // control); the typed builder keeps its plain-string signature and
+        // control); `dateTimeControl` keeps the plain-string signature and
         // maps a cleared value to "".
-        FormFieldKind.DateTime(
-            Some(FieldValue.ofText value),
-            Some(FieldChange.ofChoice (fun v -> onChange (defaultArg v ""))),
-            variant,
-            min,
-            max,
-            step
-        )
+        FormFieldKind.dateTimeControl (value, variant, onChange, ?min = min, ?max = max, ?step = step)
 
     /// Single-control date-time range (Phase 725; renamed from `dateRange` by
     /// Phase 1811) — the pair-valued sibling of `dateTime`. `value` is a `Binding<DateTimeRangePair>` carrying the ordered
@@ -956,34 +1092,26 @@ module FormFieldKind =
         (max: string option)
         (step: float option)
         : FormFieldKind<'Msg> =
-        FormFieldKind.DateTimeRange(
-            Some(FieldValue.ofDateRange value),
-            Some(FieldChange.ofDateRange onChange),
-            variant,
-            min,
-            max,
-            step
-        )
+        FormFieldKind.dateTimeRangeControl (value, variant, onChange, ?min = min, ?max = max, ?step = step)
 
     // ── Handler-free (declarative) ctors — Phase 426, the control write-back
     //    default. Each emits `onChange = None`, the shape an AI author uses: the
     //    renderer writes the changed value back to the field's own `value`
     //    binding when that binding is directly `Binding.State` / `Binding.Filter`
-    //    (any other shape is inert — FUARAN069 warns). Mirrors the Phase 423
+    //    (any other shape is inert — FUARAN069 warns). Each is a one-line shim
+    //    over the `<control>Control` member with `onChange` left out (Phase
+    //    2055). Mirrors the retired Phase 423
     //    `FilterKind.*Declarative` family.
 
     /// Handler-free `Text` — the renderer writes the typed string to the
     /// `value` binding's own State/Filter slot on change.
-    let textDeclarative (value: Binding<string>) : FormFieldKind<'Msg> =
-        FormFieldKind.Text(Some(FieldValue.ofText value), None)
+    let textDeclarative (value: Binding<string>) : FormFieldKind<'Msg> = FormFieldKind.textControl (value)
 
     /// Handler-free `Number` — writes the typed float back to the value slot.
-    let numberDeclarative (value: Binding<float>) : FormFieldKind<'Msg> =
-        FormFieldKind.Number(Some(FieldValue.ofNumber value), None)
+    let numberDeclarative (value: Binding<float>) : FormFieldKind<'Msg> = FormFieldKind.numberControl (value)
 
     /// Handler-free `Checkbox` — writes the toggled bool back to the value slot.
-    let checkboxDeclarative (value: Binding<bool>) : FormFieldKind<'Msg> =
-        FormFieldKind.Checkbox(Some(FieldValue.ofBool value), None)
+    let checkboxDeclarative (value: Binding<bool>) : FormFieldKind<'Msg> = FormFieldKind.checkboxControl (value)
 
     /// Handler-free `Toggle` — the on/off SWITCH affordance (Phase 766). Same
     /// boolean data and write-back as `checkbox`; what differs is the rendered
@@ -992,17 +1120,16 @@ module FormFieldKind =
     ///
     /// Reach for it when the prompt says switch / toggle / on-off / start-stop;
     /// reach for `checkbox` for consent, opt-in and multi-select list items.
-    let toggleDeclarative (value: Binding<bool>) : FormFieldKind<'Msg> =
-        FormFieldKind.Toggle(Some(FieldValue.ofBool value), None)
+    let toggleDeclarative (value: Binding<bool>) : FormFieldKind<'Msg> = FormFieldKind.toggleControl (value)
 
     /// Handler-free `Choice` — writes the chosen option (string option) back to
     /// the value slot; a cleared choice clears the slot.
     let choiceDeclarative (options: Binding<SelectOption list>) (value: Binding<string>) : FormFieldKind<'Msg> =
-        FormFieldKind.Choice(options, Some(FieldValue.ofText value), None)
+        FormFieldKind.choiceControl (options, value)
 
     /// Handler-free `TextArea` — writes the typed string back to the value slot.
     let textAreaDeclarative (value: Binding<string>) (rows: int) : FormFieldKind<'Msg> =
-        FormFieldKind.TextArea(Some(FieldValue.ofText value), None, rows)
+        FormFieldKind.textAreaControl (value, rows)
 
     /// Handler-free `RangedNumber` — writes the typed float back to the value slot.
     let rangedNumberDeclarative
@@ -1011,7 +1138,7 @@ module FormFieldKind =
         (max: float option)
         (step: float option)
         : FormFieldKind<'Msg> =
-        FormFieldKind.RangedNumber(Some(FieldValue.ofNumber value), None, min, max, step)
+        FormFieldKind.rangedNumberControl (value, ?min = min, ?max = max, ?step = step)
 
     /// Handler-free `SegmentedChoice` — writes the chosen option back to the value slot.
     let segmentedChoiceDeclarative
@@ -1019,7 +1146,7 @@ module FormFieldKind =
         (value: Binding<string>)
         (orientation: Orientation)
         : FormFieldKind<'Msg> =
-        FormFieldKind.SegmentedChoice(options, Some(FieldValue.ofText value), None, orientation)
+        FormFieldKind.segmentedChoiceControl (options, value, orientation = orientation)
 
     /// Handler-free `Combobox` (Phase 1113) — writes the chosen or typed value
     /// back to the value slot; a cleared entry clears the slot.
@@ -1028,17 +1155,16 @@ module FormFieldKind =
         (value: Binding<string>)
         (allowFreeText: bool)
         : FormFieldKind<'Msg> =
-        FormFieldKind.Combobox(allowFreeText, None, options, Some(FieldValue.ofText value))
+        FormFieldKind.comboboxControl (options, value, allowFreeText = allowFreeText)
 
     /// Handler-free `Rating` (Phase 1130) — writes the chosen score back to the
     /// value slot.
     let ratingDeclarative (value: Binding<float>) (max: int) (allowHalf: bool) : FormFieldKind<'Msg> =
-        FormFieldKind.Rating(allowHalf, max, None, Some(FieldValue.ofNumber value))
+        FormFieldKind.ratingControl (value, max = max, allowHalf = allowHalf)
 
     /// Handler-free `Color` (Phase 1130) — writes the picked `#rrggbb` back to
     /// the value slot.
-    let colorDeclarative (value: Binding<string>) : FormFieldKind<'Msg> =
-        FormFieldKind.Color(None, Some(FieldValue.ofText value))
+    let colorDeclarative (value: Binding<string>) : FormFieldKind<'Msg> = FormFieldKind.colorControl (value)
 
     /// Handler-free `Tokens` (Phase 1121) — writes the WHOLE token list back to
     /// the value slot on every add and every remove. That is what keeps the
@@ -1049,7 +1175,7 @@ module FormFieldKind =
         (suggestions: Binding<SelectOption list> option)
         (allowFreeText: bool)
         : FormFieldKind<'Msg> =
-        FormFieldKind.Tokens(allowFreeText, None, suggestions, Some(FieldValue.ofTokens value))
+        FormFieldKind.tokensControl (value, ?suggestions = suggestions, allowFreeText = allowFreeText)
 
     /// Handler-free `DateTime` — writes the ISO-8601 string back to the value slot.
     let dateTimeDeclarative
@@ -1059,7 +1185,7 @@ module FormFieldKind =
         (max: string option)
         (step: float option)
         : FormFieldKind<'Msg> =
-        FormFieldKind.DateTime(Some(FieldValue.ofText value), None, variant, min, max, step)
+        FormFieldKind.dateTimeControl (value, variant, ?min = min, ?max = max, ?step = step)
 
     /// Handler-free `DateTimeRange` — writes the changed `(from, to)` ISO-8601
     /// pair back to the value slot.
@@ -1070,7 +1196,7 @@ module FormFieldKind =
         (max: string option)
         (step: float option)
         : FormFieldKind<'Msg> =
-        FormFieldKind.DateTimeRange(Some(FieldValue.ofDateRange value), None, variant, min, max, step)
+        FormFieldKind.dateTimeRangeControl (value, variant, ?min = min, ?max = max, ?step = step)
 
 /// Smart-ctors for filter strips. Closure-bearing ctors (`Some onChange`) preserve the
 /// F#-authored dispatch behaviour byte-for-byte; the closure-free ctors (Phase 423) emit
@@ -1362,52 +1488,54 @@ module Fuaran =
     let box (id: string) (spec: BoxSpec<'Msg>) : Node<'Msg> =
         buildNode id (NodeKind.Box(spec)) Defaults.Accessibility.none
 
-    let dashboard (id: string) (spec: DashboardSpec<'Msg>) : Node<'Msg> =
+    /// Phase 2055 — the one `Box` builder every convenience surface below
+    /// lowers through. It starts from `Defaults.box`, so a new `BoxSpec` field
+    /// is defaulted in `Defaults` and nowhere here. A convenience surface sets
+    /// no print break (Phase 1473): an author who wants one builds the `Box`
+    /// directly, or sets the field with record-with syntax.
+    let private boxed
+        (id: string)
+        (layout: BoxLayout)
+        (role: BoxRole)
+        (heading: TextSource option)
+        (children: Node<'Msg> list)
+        (accessibility: Accessibility option)
+        : Node<'Msg> =
         buildNode
             id
             (NodeKind.Box(
-                { Layout = BoxLayout.Auto
-                  Role = BoxRole.Dashboard
-                  Heading = Option.None
-                  Children = spec.Children
-                  // Phase 1473 — a convenience surface declares no print break; an
-                  // author who wants one builds the `Box` directly, or sets the
-                  // field with record-with syntax.
-                  KeepTogether = false
-                  BreakBefore = false }
+                { Defaults.box with
+                    Layout = layout
+                    Role = role
+                    Heading = heading
+                    Children = children }
             ))
-            Defaults.Accessibility.dashboard
+            accessibility
+
+    // The retired-kind convenience records are obsolete (Phase 2055); the
+    // constructors that take them are not, and name the type in their own
+    // signatures, so the warning is scoped off for exactly them.
+    #nowarn "44"
+
+    let dashboard (id: string) (spec: DashboardSpec<'Msg>) : Node<'Msg> =
+        boxed id BoxLayout.Auto BoxRole.Dashboard Option.None spec.Children Defaults.Accessibility.dashboard
 
     let stack (id: string) (spec: StackSpec<'Msg>) : Node<'Msg> =
-        buildNode
+        boxed
             id
-            (NodeKind.Box(
-                { Layout = BoxLayout.Flex(spec.Orientation, spec.Wrap, Option.None)
-                  Role = BoxRole.Group
-                  Heading = Option.None
-                  Children = spec.Children
-                  // Phase 1473 — a convenience surface declares no print break; an
-                  // author who wants one builds the `Box` directly, or sets the
-                  // field with record-with syntax.
-                  KeepTogether = false
-                  BreakBefore = false }
-            ))
+            (BoxLayout.Flex(spec.Orientation, spec.Wrap, Option.None))
+            BoxRole.Group
+            Option.None
+            spec.Children
             Defaults.Accessibility.none
 
     let gridLayout (id: string) (spec: GridLayoutSpec<'Msg>) : Node<'Msg> =
-        buildNode
+        boxed
             id
-            (NodeKind.Box(
-                { Layout = BoxLayout.Grid(spec.Cols, spec.TemplateColumns, Option.None)
-                  Role = BoxRole.Group
-                  Heading = Option.None
-                  Children = spec.Children
-                  // Phase 1473 — a convenience surface declares no print break; an
-                  // author who wants one builds the `Box` directly, or sets the
-                  // field with record-with syntax.
-                  KeepTogether = false
-                  BreakBefore = false }
-            ))
+            (BoxLayout.Grid(spec.Cols, spec.TemplateColumns, Option.None))
+            BoxRole.Group
+            Option.None
+            spec.Children
             Defaults.Accessibility.none
 
     /// Irregular-grid smart-ctor. Pre-populates the
@@ -1421,20 +1549,10 @@ module Fuaran =
     /// `Fuaran.gridLayout` shape is unchanged for callers who don't need
     /// the escape.
     let gridLayoutTemplated (id: string) (templateColumns: string) (spec: GridLayoutSpec<'Msg>) : Node<'Msg> =
-        buildNode
+        gridLayout
             id
-            (NodeKind.Box(
-                { Layout = BoxLayout.Grid(spec.Cols, Some templateColumns, Option.None)
-                  Role = BoxRole.Group
-                  Heading = Option.None
-                  Children = spec.Children
-                  // Phase 1473 — a convenience surface declares no print break; an
-                  // author who wants one builds the `Box` directly, or sets the
-                  // field with record-with syntax.
-                  KeepTogether = false
-                  BreakBefore = false }
-            ))
-            Defaults.Accessibility.none
+            { spec with
+                TemplateColumns = Some templateColumns }
 
     /// Column-fill smart-ctor (Phase 1082) — the masonry hang. Children flow
     /// DOWN each column in turn instead of across each row, so children of
@@ -1444,19 +1562,12 @@ module Fuaran =
     /// similarly proportioned or must be read in sequence (multi-column fill
     /// puts document order down each column, not across the page).
     let masonryLayout (id: string) (spec: MasonryLayoutSpec<'Msg>) : Node<'Msg> =
-        buildNode
+        boxed
             id
-            (NodeKind.Box(
-                { Layout = BoxLayout.Masonry(spec.Cols, Option.None)
-                  Role = BoxRole.Group
-                  Heading = Option.None
-                  Children = spec.Children
-                  // Phase 1473 — a convenience surface declares no print break; an
-                  // author who wants one builds the `Box` directly, or sets the
-                  // field with record-with syntax.
-                  KeepTogether = false
-                  BreakBefore = false }
-            ))
+            (BoxLayout.Masonry(spec.Cols, Option.None))
+            BoxRole.Group
+            Option.None
+            spec.Children
             Defaults.Accessibility.none
 
     let splitPanel (id: string) (spec: SplitPanelSpec<'Msg>) : Node<'Msg> =
@@ -1479,20 +1590,15 @@ module Fuaran =
                 "Fuaran.tabsTagged requires both TabHeaders and TabTags to be populated; use Fuaran.tabs for the integer-indexed shape."
 
     let card (id: string) (spec: CardSpec<'Msg>) : Node<'Msg> =
-        buildNode
+        boxed
             id
-            (NodeKind.Box(
-                { Layout = BoxLayout.Flex(Orientation.Vertical, false, Option.None)
-                  Role = BoxRole.Card
-                  Heading = spec.Heading
-                  Children = spec.Children
-                  // Phase 1473 — a convenience surface declares no print break; an
-                  // author who wants one builds the `Box` directly, or sets the
-                  // field with record-with syntax.
-                  KeepTogether = false
-                  BreakBefore = false }
-            ))
+            (BoxLayout.Flex(Orientation.Vertical, false, Option.None))
+            BoxRole.Card
+            spec.Heading
+            spec.Children
             Defaults.Accessibility.card
+
+    #warnon "44"
 
     let stepper (id: string) (spec: StepperSpec<'Msg>) : Node<'Msg> =
         buildNode id (NodeKind.Stepper(spec)) Defaults.Accessibility.none
@@ -1707,10 +1813,10 @@ module Fuaran =
     /// affordances, so turning a tree interactive is naming one, never setting
     /// a flag.
     let treeItem (itemId: string) (label: string) (children: TreeItem list) : TreeItem =
-        { Children = children
-          Icon = Option.None
-          Id = itemId
-          Label = TextSource.Literal label }
+        { Defaults.treeItem with
+            Children = children
+            Id = itemId
+            Label = TextSource.Literal label }
 
     let tree (id: string) (items: TreeItem list) : Node<'Msg> =
         buildNode id (NodeKind.Tree({ Defaults.tree with Items = items })) Defaults.Accessibility.none
@@ -1723,16 +1829,12 @@ module Fuaran =
     /// For a labelled / vertical separator, author a `Fuaran.box` with
     /// `Role = Separator` + a `Heading` / horizontal layout axis directly.
     let divider (id: string) : Node<'Msg> =
-        buildNode
+        boxed
             id
-            (NodeKind.Box(
-                { Layout = BoxLayout.Flex(Orientation.Horizontal, false, Option.None)
-                  Role = BoxRole.Separator
-                  Heading = Option.None
-                  Children = []
-                  KeepTogether = false
-                  BreakBefore = false }
-            ))
+            (BoxLayout.Flex(Orientation.Horizontal, false, Option.None))
+            BoxRole.Separator
+            Option.None
+            []
             Defaults.Accessibility.none
 
     /// Transient notification surface (Phase 289). The declarative, in-tree,
@@ -1826,20 +1928,12 @@ module Fuaran =
         buildNode id (NodeKind.Sparkline(spec)) Defaults.Accessibility.none
 
     let skeleton (id: string) (rows: int) : Node<'Msg> =
-        buildNode id (NodeKind.Skeleton({ Rows = rows })) Defaults.Accessibility.none
+        buildNode id (NodeKind.Skeleton({ Defaults.skeleton with Rows = rows })) Defaults.Accessibility.none
 
     /// Phase 821 — the standalone icon-only display kind, decorative form
     /// (`Label = None` → `aria-hidden`). Full record form via `iconSpec`.
     let icon (id: string) (name: string) : Node<'Msg> =
-        buildNode
-            id
-            (NodeKind.Icon(
-                { Icon = name
-                  Size = IconSize.Medium
-                  Tone = ToneVariant.Default
-                  Label = None }
-            ))
-            Defaults.Accessibility.none
+        buildNode id (NodeKind.Icon({ Defaults.icon with Icon = name })) Defaults.Accessibility.none
 
     let iconSpec (id: string) (spec: IconSpec) : Node<'Msg> =
         buildNode id (NodeKind.Icon(spec)) Defaults.Accessibility.none
@@ -1905,55 +1999,33 @@ module Fuaran =
         // string-narrowing at the IDL seam) — `Bound` / `I18n` cells ride
         // through unchanged, exactly as the retired hand shape carried them.
         let staticGrid: GridSpec<'Msg> =
-            {
-              // Phase 1647 — `Some []`, not `None`. A static table holds its rows
-              // in `StaticRows`, so its grid SOURCE carries nothing either way;
-              // but the two spell that differently on the wire —
-              // `{"$type":"Static"}` against `{"$type":"Static","value":[]}` —
-              // and the corpus (`nodes/table-1.json`) and `@fuaran-ui/ops` both
-              // say the second. This constructor said the first, so a table
-              // authored through the F# facade did not encode like the corpus's
-              // own table, and Phase 286's cross-host tour found the divergence
-              // live at 0.70.0 rather than any test finding it: the fixture is
-              // hand-built from the record and never went through here.
-              //
-              // The ENCODER was never wrong — it faithfully encoded two
-              // different values. What was wrong is which value the facade
-              // built. `Some []` is the empty collection; `None` is the absent
-              // one, and absent is not what a static table's source is.
-              Source = Binding.Static(Some [])
-              RowKey = None
-              RowKeyField = None
-              SortStateKey = None
-              PageSize = None
-              PageStateKey = None
-              DefaultSort = None
-              EditStateKey = None
-              Reorderable = false
-              // Phase 1123 — a static table holds its rows in the tree, so it has
-              // no state-held collection for a transfer to move and declares
-              // neither end of the pair.
-              TransferInKey = None
-              TransferOutKey = None
-              // Phase 1473 — a static table declares no print break; the author sets
-              // it on the `DataGridSpec` directly, or on the typed facade below.
-              KeepRowsTogether = false
-              RepeatHeader = false
-              // Phase 1125 — nor an export affordance, on the same reasoning.
-              Exportable = false
-              // Phase 1892 — a static table holds every row in the tree, so it
-              // has neither a host-sliced window nor a total to declare.
-              WindowStateKey = None
-              RowTotal = None
-              Columns = []
-              OnRowClick = None
-              Editable = false
-              StaticRows =
-                Some
-                    { DefaultSort = spec.DefaultSort
-                      Headers = spec.Headers
-                      Rows = spec.Rows
-                      Sortable = spec.Sortable } }
+            { Defaults.dataGrid with
+                // Phase 1647 — `Some []`, not `None`. A static table holds its rows
+                // in `StaticRows`, so its grid SOURCE carries nothing either way;
+                // but the two spell that differently on the wire —
+                // `{"$type":"Static"}` against `{"$type":"Static","value":[]}` —
+                // and the corpus (`nodes/table-1.json`) and `@fuaran-ui/ops` both
+                // say the second. This constructor said the first, so a table
+                // authored through the F# facade did not encode like the corpus's
+                // own table, and Phase 286's cross-host tour found the divergence
+                // live at 0.70.0 rather than any test finding it: the fixture is
+                // hand-built from the record and never went through here.
+                //
+                // The ENCODER was never wrong — it faithfully encoded two
+                // different values. What was wrong is which value the facade
+                // built. `Some []` is the empty collection; `None` is the absent
+                // one, and absent is not what a static table's source is.
+                Source = Binding.Static(Some [])
+                // Every other slot is the seed's: a static table holds its rows in
+                // the tree, so it has no key, no sort / page / edit / window state,
+                // no transfer pair (Phase 1123), no print break (Phase 1473), no
+                // export (Phase 1125) and no total (Phase 1892).
+                StaticRows =
+                    Some
+                        { DefaultSort = spec.DefaultSort
+                          Headers = spec.Headers
+                          Rows = spec.Rows
+                          Sortable = spec.Sortable } }
 
         buildNode id (NodeKind.DataGrid(staticGrid)) Defaults.Accessibility.table
 
@@ -2173,7 +2245,12 @@ module Fuaran =
     let fragmentRef (id: string) (name: string) : Node<'Msg> =
         // `Name` is a bare string on the generated spec; `Args = None` is the
         // name-only degenerate ref (≡ the old empty map, omitted on the wire).
-        buildNode id (NodeKind.FragmentRef { Name = name; Args = Option.None }) Defaults.Accessibility.none
+        buildNode
+            id
+            (NodeKind.FragmentRef
+                { Defaults.fragmentRef with
+                    Name = name })
+            Defaults.Accessibility.none
 
     // ─── Mount — isolation/embedding boundary (Phase 265, §4o) ──────────
     //

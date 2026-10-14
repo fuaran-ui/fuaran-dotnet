@@ -66,12 +66,10 @@ let private benignBox (id: string) : Node<obj> =
     mkNode
         id
         (NodeKind.Box
-            { Layout = BoxLayout.Auto
-              Role = BoxRole.Dashboard
-              Heading = None
-              Children = []
-              KeepTogether = false
-              BreakBefore = false })
+            { Fuaran.UI.Defaults.box with
+                Layout = BoxLayout.Auto
+                Role = BoxRole.Dashboard
+                Children = [] })
 
 let private mountNodeWithDirection
     (id: string)

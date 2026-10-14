@@ -87,6 +87,24 @@ let localBinding<'T> : Binding<'T> =
 
 // ─── Layout defaults ────────────────────────────────────────────────────────
 
+/// Phase 2055 — the `Box` seed: a vertical flex group, no heading, no children,
+/// no print break. The one place a `BoxSpec` field gets its default, so every
+/// `Box` the convenience constructors build — and every one an author builds with
+/// `{ Defaults.box with Layout = …; Role = … }` — picks up a new field from here.
+/// (Defined after the last use of the `box` operator in this module, which this
+/// name shadows from here on.)
+let box<'Msg> : BoxSpec<'Msg> =
+    { Layout = BoxLayout.Flex(Orientation.Vertical, false, Option.None)
+      Role = BoxRole.Group
+      Heading = Option.None
+      Children = []
+      KeepTogether = false
+      BreakBefore = false }
+
+// The retired-kind convenience records are obsolete (Phase 2055); their seeds
+// stay, and name the type, so the warning is scoped off for exactly them.
+#nowarn "44"
+
 let dashboard<'Msg> : DashboardSpec<'Msg> = { Children = [] }
 
 let stack<'Msg> : StackSpec<'Msg> =
@@ -135,6 +153,8 @@ let tabHeader: TabHeader =
       Disabled = Option.None }
 
 let card<'Msg> : CardSpec<'Msg> = { Heading = Option.None; Children = [] }
+
+#warnon "44"
 
 let stepper<'Msg> : StepperSpec<'Msg> =
     // `OnSelect = None` since the swap (the generated record's handler is an
@@ -217,6 +237,15 @@ let metric: MetricSpec =
 let badge: BadgeSpec =
     { Label = emptyLiteral
       Variant = BadgeVariant.Neutral }
+
+/// Phase 2055 — the standalone icon seed: a decorative (`Label = None` →
+/// `aria-hidden`) medium icon in the default tone. `Icon` names the glyph and
+/// is the field every author sets.
+let icon: IconSpec =
+    { Icon = ""
+      Size = IconSize.Medium
+      Tone = ToneVariant.Default
+      Label = Option.None }
 
 let link: LinkSpec =
     { Href = noBinding<string>
@@ -556,6 +585,34 @@ let grid<'row, 'Msg> : GridSpecOf<'row, 'Msg> =
       // emitted, `Fuaran.grid` having pinned the slot off until now.
       RowKeyField = Option.None }
 
+/// Phase 2055 — the tree-level (erased) `DataGrid` seed, which a constructor
+/// that builds the wire record directly copies:
+/// `{ Defaults.dataGrid with Source = …; Columns = … }`. Every slot is absent or
+/// off, matching the typed `grid` default above field for field; `RowKey` is
+/// the closure override (`None` here, where the typed seed must hold a closure)
+/// and `StaticRows` is the static-table payload the typed facade does not carry.
+let dataGrid<'Msg> : DataGridSpec<'Msg> =
+    { Source = noBinding<Fuaran.Core.Row seq>
+      RowKey = Option.None
+      RowKeyField = Option.None
+      Columns = []
+      OnRowClick = Option.None
+      Editable = false
+      SortStateKey = Option.None
+      DefaultSort = Option.None
+      PageSize = Option.None
+      PageStateKey = Option.None
+      EditStateKey = Option.None
+      KeepRowsTogether = false
+      RepeatHeader = false
+      TransferOutKey = Option.None
+      TransferInKey = Option.None
+      Exportable = false
+      WindowStateKey = Option.None
+      RowTotal = Option.None
+      Reorderable = false
+      StaticRows = Option.None }
+
 let column<'Msg> : Column<'Msg> =
     { Label = ""
       Value = (fun _ -> CellValue.Empty)
@@ -565,6 +622,20 @@ let column<'Msg> : Column<'Msg> =
       // Phases 861 / 863 — both narrowing flags inherit by default.
       Sortable = Option.None
       Editable = Option.None }
+
+/// Phase 2055 — the tree-level (erased) column seed:
+/// `{ Defaults.columnErased with Label = …; Field = Some … }`. `Value` is the
+/// closure override and `Field` the declarative key; both are absent here, so an
+/// author names whichever the column reads.
+let columnErased<'Msg> : ColumnErased<'Msg> =
+    { Label = ""
+      Value = Option.None
+      Field = Option.None
+      Sortable = Option.None
+      Editable = Option.None
+      Format = CellFormat.None
+      Kind = CellKindErased.Text
+      Width = ColumnWidth.Auto }
 
 // ─── Custom — bounded-escape defaults ────────────────────────────────────────
 //

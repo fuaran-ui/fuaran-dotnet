@@ -54,6 +54,11 @@
          the shared emission grammar's CSS-value gate) and after Ids.fs (the
          generated class name is that module's deterministic hash). -->
     <Compile Include="Csp.fs" />
+    <!-- Phase 2067 — the render policy both contexts hold (egress, hash floor,
+         CSP, scope) and the one state-seeding fold both context builders run.
+         After Csp.fs and BindingResolver.fs, whose types they carry. -->
+    <Compile Include="RenderPolicy.fs" />
+    <Compile Include="StateSeeds.fs" />
     <!-- Phase 1151 — the fragment-expansion memo and its lifetime owner. Depends
          on Fuaran.UI's Types + FragmentMemo primitives only, and nothing inside
          this project depends on it, so it compiles last. -->

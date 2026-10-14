@@ -102,12 +102,8 @@ let private mkStack (id: string) (kids: EqNode list) : EqNode =
         { Id = id
           Kind =
             NodeKind.Box(
-                { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
-                  Role = BoxRole.Group
-                  Heading = None
-                  Children = kids |> List.map unwrap
-                  KeepTogether = false
-                  BreakBefore = false }
+                { Defaults.box with
+                    Children = kids |> List.map unwrap }
             )
           State = None
           Style = None

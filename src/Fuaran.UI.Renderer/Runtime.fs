@@ -224,7 +224,7 @@ type CustomRendererRegistry() =
         this.TryRenderInScope(None, moduleId, componentId, props)
 
     /// Scope-constrained lookup (Phase 783). `scope` is the render scope the
-    /// current tree is running under (`RenderContext.Scope`); `None` is the root
+    /// current tree is running under (`RenderContext.Policy.Scope`); `None` is the root
     /// scope. There is deliberately NO fallback to another scope — falling back
     /// would make the scoping advisory, which is the same as not having it.
     member _.TryRenderInScope
@@ -547,7 +547,7 @@ type IFuaranRuntime =
     /// renderer's `Custom` arm actually calls.**
     ///
     /// `scope` is the render scope the current tree is running under
-    /// (`RenderContext.Scope`): `None` for a plain `render`, `Some scopeId`
+    /// (`RenderContext.Policy.Scope`): `None` for a plain `render`, `Some scopeId`
     /// inside a mounted guest or under `renderWithSourcesInScope`. An
     /// implementation MUST NOT fall back to another scope — a fallback makes the
     /// scoping advisory, which is indistinguishable from not having it.

@@ -305,14 +305,9 @@ let sortStateKeyTests =
 
           test "sortRowsByDescriptor sorts by the addressed column's field; empty cells last; field-less columns inert" {
               let col (field: string option) : ColumnErased<obj> =
-                  { Label = "c"
-                    Value = None
-                    Field = field
-                    Sortable = None
-                    Editable = None
-                    Format = CellFormat.None
-                    Kind = CellKindErased.Text
-                    Width = ColumnWidth.Auto }
+                  { Fuaran.UI.Defaults.columnErased with
+                      Label = "c"
+                      Field = field }
 
               let row (m: string) (r: float option) : Row =
                   match r with

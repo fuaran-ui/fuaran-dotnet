@@ -60,14 +60,9 @@ let private querySlot (name: string) : Binding<Fuaran.Core.Row seq> =
     Binding.Query(name, (fun (value: obj) -> unbox<Fuaran.Core.Row seq> value), None)
 
 let private gridColumn (field: string option) : ColumnErased<obj> =
-    { Field = field
-      Format = CellFormat.None
-      Kind = CellKindErased.Text
-      Label = defaultArg field "computed"
-      Sortable = None
-      Editable = None
-      Value = None
-      Width = ColumnWidth.Auto }
+    { Defaults.columnErased with
+        Field = field
+        Label = defaultArg field "computed" }
 
 /// A grid bound to a query slot, naming the fields its columns read.
 let private grid (id: string) (slot: string) (fields: string option list) : Node<obj> =
@@ -76,32 +71,9 @@ let private grid (id: string) (slot: string) (fields: string option list) : Node
     { node with
         Kind =
             NodeKind.DataGrid
-                { Columns = fields |> List.map gridColumn
-                  Editable = false
-                  RowKey = None
-                  RowKeyField = None
-                  SortStateKey = None
-                  PageSize = None
-                  PageStateKey = None
-                  DefaultSort = None
-                  EditStateKey = None
-                  Reorderable = false
-                  // Every member the tier has added to this record since is at
-                  // its absent / off value. These fixtures exist to ask what a
-                  // grid READS FROM A QUERY SLOT, and none of the transfer,
-                  // print-break or export members answers that question — so
-                  // giving them anything else would put a second variable into
-                  // a test with one subject.
-                  TransferInKey = None
-                  TransferOutKey = None
-                  KeepRowsTogether = false
-                  RepeatHeader = false
-                  Exportable = false
-                  WindowStateKey = None
-                  RowTotal = None
-                  Source = querySlot slot
-                  StaticRows = None
-                  OnRowClick = None } }
+                { Defaults.dataGrid with
+                    Columns = fields |> List.map gridColumn
+                    Source = querySlot slot } }
 
 /// A chart bound to a query slot, naming its axes.
 let private chart (id: string) (slot: string) (x: string) (ys: string list) : Node<obj> =
@@ -388,26 +360,9 @@ let private readerTests =
                   { node with
                       Kind =
                           NodeKind.DataGrid
-                              { Columns = [ gridColumn (Some "id") ]
-                                Editable = false
-                                RowKey = None
-                                RowKeyField = None
-                                SortStateKey = None
-                                PageSize = None
-                                PageStateKey = None
-                                DefaultSort = None
-                                EditStateKey = None
-                                Reorderable = false
-                                TransferInKey = None
-                                TransferOutKey = None
-                                KeepRowsTogether = false
-                                RepeatHeader = false
-                                Exportable = false
-                                WindowStateKey = None
-                                RowTotal = None
-                                Source = Binding.Static None
-                                StaticRows = None
-                                OnRowClick = None } }
+                              { Defaults.dataGrid with
+                                  Columns = [ gridColumn (Some "id") ]
+                                  Source = Binding.Static None } }
 
               Expect.isEmpty (QuerySchema.readersOfTree (page [ unbound ])) "a static grid demands nothing of a query"
           } ]

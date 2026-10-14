@@ -433,34 +433,14 @@ let private adapterSource (fileName: string) : string =
     System.IO.File.ReadAllText path
 
 let private gridSpecWith (onRowClick: (Row -> Action<obj>) option) : GridSpec<obj> =
-    { SortStateKey = None
-      PageSize = None
-      PageStateKey = None
-      EditStateKey = None
-      DefaultSort = None
-      Source = Binding.Static(Some(Seq.ofList chartRows))
-      RowKey = None
-      RowKeyField = Some "region"
-      Columns =
-        [ { Label = "Region"
-            Value = None
-            Field = Some "region"
-            Sortable = None
-            Editable = None
-            Format = CellFormat.None
-            Kind = CellKindErased.Text
-            Width = ColumnWidth.Auto } ]
-      OnRowClick = onRowClick
-      Editable = false
-      Reorderable = false
-      TransferInKey = None
-      TransferOutKey = None
-      StaticRows = None
-      KeepRowsTogether = false
-      RepeatHeader = false
-      WindowStateKey = None
-      RowTotal = None
-      Exportable = false }
+    { Defaults.dataGrid with
+        Source = Binding.Static(Some(Seq.ofList chartRows))
+        RowKeyField = Some "region"
+        Columns =
+            [ { Defaults.columnErased with
+                  Label = "Region"
+                  Field = Some "region" } ]
+        OnRowClick = onRowClick }
 
 [<Tests>]
 let adapterSelectionDefaultTests =

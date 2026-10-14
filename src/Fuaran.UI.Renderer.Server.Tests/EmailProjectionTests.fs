@@ -126,26 +126,17 @@ let private dynamicGrid id : Node<obj> =
     bare
         id
         (NodeKind.DataGrid
-            { Source = Binding.Static Option.None
-              RowKey = Option.None
-              RowKeyField = Option.None
-              SortStateKey = Option.None
-              PageSize = Option.None
-              PageStateKey = Option.None
-              DefaultSort = Option.None
-              EditStateKey = Option.None
-              Reorderable = false
-              TransferInKey = None
-              TransferOutKey = None
-              Columns = []
-              OnRowClick = Option.None
-              Editable = false
-              StaticRows = Option.None
-              KeepRowsTogether = false
-              RepeatHeader = false
-              WindowStateKey = None
-              RowTotal = None
-              Exportable = false })
+            { Defaults.dataGrid with
+                Source = Binding.Static Option.None
+                RowKey = Option.None
+                RowKeyField = Option.None
+                SortStateKey = Option.None
+                PageSize = Option.None
+                PageStateKey = Option.None
+                DefaultSort = Option.None
+                EditStateKey = Option.None
+                OnRowClick = Option.None
+                StaticRows = Option.None })
 
 let private metricTile id label value =
     Fuaran.metric

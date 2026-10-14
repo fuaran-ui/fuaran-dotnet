@@ -616,12 +616,8 @@ let tests =
                   { leaf "root" with
                       Kind =
                           NodeKind.Box
-                              { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
-                                Role = BoxRole.Group
-                                Heading = None
-                                Children = [ banner; writer ]
-                                KeepTogether = false
-                                BreakBefore = false } }
+                              { Defaults.box with
+                                  Children = [ banner; writer ] } }
 
               Expect.isFalse (List.contains "FUARAN148" (codesOf tree)) "the key has a writer"
           } ]

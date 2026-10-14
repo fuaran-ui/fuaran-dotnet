@@ -184,7 +184,7 @@ let mutable private declaredFloor: HashStrictness option = None
 /// is also what makes the result independent of host initialisation order.
 ///
 /// A host that needs a NARROWER floor for one render declares it on that
-/// render's context instead (`RenderContext.CustomHashFloor`) — where it can
+/// render's context instead (`RenderContext.Policy.CustomHashFloor`) — where it can
 /// only raise, and where it cannot reach another tenant.
 ///
 /// Raise-only applies among DECLARATIONS (Phase 1550). A first declaration is

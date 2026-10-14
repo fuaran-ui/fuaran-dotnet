@@ -36,7 +36,7 @@ type ServerCustomRenderer = Map<string, JVal> -> ReactElement
 /// renderer registered for a privileged one. `None` is the root scope, where the
 /// unscoped `register` / `registerWithHash` / `registerContract` land, so an
 /// existing host is unaffected; a host separates surfaces by rendering under
-/// distinct `ServerRenderContext.Scope` values and registering with
+/// distinct `ServerRenderContext.Policy.Scope` values and registering with
 /// `registerInScope`.
 type ServerCustomRendererRegistry =
     { Renderers: Map<string option * string * string, ServerCustomRenderer>

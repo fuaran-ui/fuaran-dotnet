@@ -8,14 +8,11 @@ open Fuaran.UI.Types
 let build () : Node<unit> =
     Fuaran.box
         "box-root"
-        { Children =
-            [ Fuaran.stack
-                  "inner"
-                  { Defaults.stack with
-                      Children = [ Fuaran.metric "twice" Defaults.metric ] }
-              Fuaran.metric "twice" Defaults.metric ]
-          Heading = None
-          Layout = BoxLayout.Auto
-          Role = BoxRole.Group
-          KeepTogether = false
-          BreakBefore = false }
+        { Defaults.box with
+            Children =
+                [ Fuaran.stack
+                      "inner"
+                      { Defaults.stack with
+                          Children = [ Fuaran.metric "twice" Defaults.metric ] }
+                  Fuaran.metric "twice" Defaults.metric ]
+            Layout = BoxLayout.Auto }
