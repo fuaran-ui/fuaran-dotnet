@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.Core.Function</PackageId>
+    <Description>The projection of a Fuaran UI fragment's hole value-spaces and effect classes onto the Fuaran.Core function model (toCoreSpace / toCoreEffect), with one definition shared by the AI-tool surface and the build-time validator. Deliberately small: FSharp.Core + Fuaran.UI + Fuaran.Core.Function, Fable-clean. Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>fuaran;fragments;holes;effects;function</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Projection.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <!-- Pack source for Fable consumers under fable/, as Fuaran.UI.AiTools does; the Fable stage
+       derives its portability set from this pack path, so this project is compiled there as an
+       entry project. -->
+  <ItemGroup>
+    <Content Include="**\*.fsproj;**\*.fs" Exclude="**\*.fs.js;**\bin\**;**\obj\**" PackagePath="fable\" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <PackageReference Include="Fuaran.Core.Function" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>

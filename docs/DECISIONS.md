@@ -25,6 +25,12 @@ for.
 **Consequence.** One more package id to publish and pin, carried as its own `STABILITY.md` slot; the two copies
 (Phase 2042 found them on opposite sides of the boundary) are deleted when it lands. The work is Phase 2234.
 
+**Landed (Phase 2234).** The package is `Fuaran.UI.Core.Function`, module `Projection`: named on the
+`Fuaran.UI.*` pattern for the Core package it projects onto (`Fuaran.Core.Function`), so a reader looking for
+the UI side of that model finds it by name. It references `Fuaran.UI` and `Fuaran.Core.Function` only, ships
+Fable sources, and is first published at 0.94.0. Both copies are deleted; `STABILITY.md`'s 0.94.0 entry records
+the closure change as breaking, riding the already-breaking draft.
+
 Roadmap: [Phase 2234](../../roadmap/phases/2234-one-home-for-the-hole-value-space-mapping-is-a-packaging-decision.md),
 [Phase 2042](../../roadmap/phases/2042-core-predicates-have-one-definition.md).
 
