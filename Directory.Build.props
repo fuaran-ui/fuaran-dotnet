@@ -823,7 +823,7 @@
          leg) with Phase 2198's additive API; it ADVANCES because v0.93.0 is
          TAGGED. An UNTAGGED DRAFT: changes of this class or lower ride it. See
          STABILITY.md "0.93.1". -->
-    <Version>0.94.0</Version>
+    <Version>0.95.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

@@ -7818,7 +7818,15 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.94.0 — the slot opened after v0.93.0 was released; advanced from 0.93.1 on 2026-10-13 ahead of Phase 2052, whose change is breaking (DRAFT — untagged)
+## 0.95.0 — the slot opened after v0.94.0 was released (DRAFT — untagged)
+
+_Class: **breaking**. `v0.94.0` was tagged and published at `90082d3` on 2026-10-14. The slot opens at the minor number
+because the first change it is opened for, Phase 2058 (public module paths move), is breaking; a draft advances to the
+class of its highest rider, and pre-1.0 breaking is minor (version cut recorded on the ledger, 2026-10-14)._
+
+---
+
+## 0.94.0 — the slot opened after v0.93.0 was released; advanced from 0.93.1 on 2026-10-13 ahead of Phase 2052, whose change is breaking (RELEASED — tagged v0.94.0 at 90082d3, 2026-10-14)
 
 _Class: **BEHAVIOUR change + additive API** — no type is removed or retyped and no wire byte moves. `v0.93.0`
 was tagged and published at `b654b31` while a commit numbered 0.93.0 was still landing after it: Phase 2198
