@@ -49,11 +49,15 @@ module Fuaran.UI.Validator.RecipeCertification
 //      fragment's declared effect class on the verdict so a consumer reads a
 //      certified non-deterministic recipe as "structure-only certified".
 //
-//  This module lands in the PUBLIC `Fuaran.UI.Validator` tier: generic fragment
-//  certification, no private / orchestration / eval vocabulary. It references
-//  `Fuaran.UI` (the runtime tree + `PreEmitValidate` + `Fragment`) and
-//  `Fuaran.Core.Conformance` (the `verifyFunction` operator). The validator is
-//  a build-time .NET tool (FCS-based), so this code is not Fable-distributed.
+//  This module lives in the PUBLIC `Fuaran.UI.Validator.Certification` library:
+//  generic fragment certification, no private / orchestration / eval
+//  vocabulary. It references `Fuaran.UI` (the runtime tree + `PreEmitValidate`
+//  + `Fragment`), `Fuaran.UI.Core.Function` (the hole projection) and
+//  `Fuaran.Core.Conformance` (the `verifyFunction` operator) — and NOT the
+//  FCS-based build-time validator executable, which references this library
+//  instead (Phase 2058 moved it out of that executable, so certifying a
+//  runtime tree no longer pulls in FSharp.Compiler.Service). The module path is
+//  unchanged. .NET-only: it ships no Fable sources.
 // ============================================================================
 
 open Fuaran.UI

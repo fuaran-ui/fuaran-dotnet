@@ -49,7 +49,7 @@ open Fuaran.UI.Ops.Types
 //
 //  Cross-pipeline determinism (FGP 4 discipline): every stage — canonical
 //  JSON, SHA-256 (`Fuaran.UI.Hashing`), deflate + base64url
-//  (`Fuaran.UI.Compression`) — is the same pure F# on the .NET and Fable
+//  (`Compression.fs`, beside this file) — is the same pure F# on the .NET and Fable
 //  pipelines, so the same bundle produces the same string everywhere.
 // ============================================================================
 

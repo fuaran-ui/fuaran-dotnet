@@ -1121,7 +1121,7 @@ module KeyedEnumeration =
               "Fuaran.UI.Renderer/Render.fs"
               "Fuaran.UI.Renderer.Server/Email.fs"
               "Fuaran.UI.Renderer.Server/Speech.fs"
-              "Fuaran.UI.Validator/RecipeCertification.fs" ]
+              "Fuaran.UI.Validator.Certification/RecipeCertification.fs" ]
 
     /// The enumeration's home — the one module allowed to take a `NodeKind`
     /// apart to find its children.

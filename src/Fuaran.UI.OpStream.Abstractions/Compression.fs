@@ -1,10 +1,15 @@
-namespace Fuaran.UI
+namespace Fuaran.UI.OpStream.Abstractions
 
 // ============================================================================
 //  Fuaran — pure, Fable-safe UTF-8 / base64url / raw-DEFLATE primitives
 //  (Phase 437 — the teleport state-bundle codec's byte substrate).
 //
-//  `Fuaran.UI` ships its source for Fable consumers, so everything here must
+//  Lives beside its one consumer, `Teleport.fs` (Phase 2058 moved it here from
+//  the core `Fuaran.UI` package, whose old `Fuaran.UI.Utf8` / `.Base64Url` /
+//  `.Deflate` paths are obsolete forwards for one release — see
+//  `CompressionForward.fs`).
+//
+//  This package ships its source for Fable consumers, so everything here must
 //  compile under Fable — which rules out `System.IO.Compression` and the BCL
 //  `Convert`/`Encoding` seams whose byte behaviour differs (or is absent)
 //  across pipelines. These are dependency-free managed implementations that

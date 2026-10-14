@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.Validator.Certification</PackageId>
+    <Description>Fuaran recipe / fragment certification: proves a parameterised fragment emits a validator-conformant tree for every binding of its holes, by driving Fuaran.Core.Conformance's verifyFunction with the runtime pre-emit rules as the oracle. A library; the build-time validator references it. Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>fuaran;fragments;certification;conformance;validator</PackageTags>
+    <!-- Phase 2128: a .NET-only package a Fable consumer could otherwise reach (it references
+         packages that ship fable/ sources); checked by build/FablePackCheck.fs. -->
+    <FableDotNetOnly>Certification enumerates a fragment's whole binding space in a .NET test or build step; it is not a browser-side API, so it ships no fable/ sources.</FableDotNetOnly>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Phase 359, moved here from the validator executable by Phase 2058. -->
+    <Compile Include="RecipeCertification.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <!-- Phase 2234 (D17) - the one hole value-space / effect projection, shared with
+         Fuaran.UI.AiTools; neither package references the other. -->
+    <ProjectReference Include="..\Fuaran.UI.Core.Function\Fuaran.UI.Core.Function.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <!-- Phase 359 - the verifyFunction / verifyFunctionSymbolic operators the harness drives. -->
+    <PackageReference Include="Fuaran.Core.Conformance" />
+  </ItemGroup>
+</Project>

@@ -139,6 +139,9 @@ let private packableProjects =
       // façade over Fuaran.Core.FunctionRegistry + a domain-neutral seed catalogue).
       "Fuaran.UI.FastPath"
       "Fuaran.UI.Validator"
+      // Phase 2058 — recipe / fragment certification, moved out of the validator executable
+      // into a library it references; the validator nupkg declares a dependency on it.
+      "Fuaran.UI.Validator.Certification"
       "Fuaran.UI.OpStream.Abstractions"
       "Fuaran.UI.OpStream.InMemory"
       "Fuaran.UI.OpStream.Sqlite"
