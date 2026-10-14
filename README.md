@@ -67,6 +67,7 @@ the parity gate; neither bumps without all hosts + the corpus moving together.
 | `Fuaran.UI.Renderer` | Fable + React + Feliz renderer + reference CSS |
 | `Fuaran.UI.Ops` | Tree-op apply engine |
 | `Fuaran.UI.AiTools` | Runtime introspection |
+| `Fuaran.UI.Core.Function` | Hole value-space and effect-class projection onto the `Fuaran.Core` function model, shared by `AiTools` and `Validator` |
 | `Fuaran.UI.Validator` | Build-time F# AST walker |
 | `Fuaran.UI.OpStream.*` | Op-stream persistence + replay |
 | `Fuaran.UI.LayoutObserver.*` | Layout observability |
