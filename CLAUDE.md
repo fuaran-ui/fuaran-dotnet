@@ -28,6 +28,32 @@ Cross-repo development conventions (port allocation, launcher patterns, formatti
 | `Fuaran.UI.Cli` | The `fuaran` dotnet tool — `generate` / `validate` / `scaffold` over the public surfaces. Published from 0.88.0 (the 0.87.0 slot, superseded before release) |
 | `Fuaran.UI.Renderer.Web` | Embedded browser renderer for .NET hosts — the built `@fuaran-ui/renderer` bundle + reference CSS as embedded static web assets, `MapFuaranRenderer()`, and the mount snippet. No Node toolchain on the consumer side |
 | `Fuaran.UI.AiWire` | Portable AI-connector wire substrate — ordered `JsonValue` + byte-stable canonical writer + host-bridged parser, the provider contract records and error vocabulary, and the one-method `IHttpTransport` egress seam. FSharp.Core + Fable.Core only; references no other package here and none references it |
+| `Fuaran.UI.Core.Function` | The projection of a fragment's hole value-spaces and effect class onto the `Fuaran.Core` function model (`toCoreSpace` / `toCoreEffect`), one definition shared by `AiTools` and `Validator`. FSharp.Core + `Fuaran.UI` + `Fuaran.Core.Function`; Fable-clean. First published at 0.94.0 (Phase 2234) |
+| `Fuaran.UI.Ops.Abstractions` | The pure op type contract (`TreeOp`, `ErrorPayload`, `ApplyHint`) without the apply engine or decoder. FSharp.Core-only, Fable-portable |
+| `Fuaran.UI.Ops.CleanRoom` | Structure-only clean room for `Fuaran.UI.Ops` — a content-free skeleton projection plus a substitutable structural-op gate for untrusted op sources. Published as a compiled assembly for .NET hosts |
+| `Fuaran.UI.OpStream.Dag.Abstractions` | Opt-in branching-DAG op-stream contract — multi-parent content-addressed records and the `IDagOpStreamSink` interface with an atomic head compare-and-swap |
+| `Fuaran.UI.OpStream.Dag.InMemory` | In-memory DAG sink, for tests and ephemeral environments |
+| `Fuaran.UI.OpStream.Dag.Sqlite` | SQLite-backed durable DAG sink |
+| `Fuaran.UI.OpStream.Dag.Merge` | Branch-merge engine for the op-stream DAG — common-ancestor search, fast-forward and disjoint auto-merge |
+| `Fuaran.UI.OpStream.Dag.Inspect` | Read-only DAG inspector substrate — layered render model and replay-to-snapshot by content-addressed coordinate |
+| `Fuaran.UI.StyleObserver.Abstractions` | Resolved-style feedback channel contract — flag DU, observer interface, effective-background and WCAG contrast derivation. Twin of the layout-observer contract |
+| `Fuaran.UI.StyleObserver` | Concrete style observers — a browser (Fable) observer and an in-memory observer for tests |
+| `Fuaran.UI.ThemeManifest` | Declared token contract — a DTCG-compatible theme manifest with per-token tone roles and soft-weighted invariants |
+| `Fuaran.UI.Renderer.Core` | The emission-agnostic render spine shared by both renderers — class-name vocabulary, accessibility projection, sanitisation, binding resolution, locale formatting, deterministic ids. FSharp.Core only |
+| `Fuaran.UI.Renderer.Server` | Server-side renderer — Node tree to an HTML string on plain .NET via Feliz.ViewEngine, with class and ARIA parity with the client renderer |
+| `Fuaran.UI.Giraffe` | Giraffe / ASP.NET adapter that serves a Node tree as a crawlable page, with a typed document shell (meta, canonical, OG, JSON-LD) |
+| `Fuaran.UI.Site` | Page-set layer for pure-SSR sites — markdown page discovery, a typed site check, and a computed render plan |
+| `Fuaran.UI.Site.Giraffe` | Giraffe host for `Fuaran.UI.Site` — one route per pre-rendered page, optional raw-markdown routes, sitemap and robots |
+| `Fuaran.UI.ServerDriven` | Transport-agnostic core for server-driven interactivity — DomPatch and ClientEffect wire vocabularies, op-to-patch lowering and the per-connection driver |
+| `Fuaran.UI.ServerDriven.AspNetCore` | Default server-driven backend — SSE push with POST receive over ASP.NET |
+| `Fuaran.UI.ServerDriven.WebSocket` | Second server-driven backend — one bidirectional WebSocket channel for high-frequency interaction |
+| `Fuaran.UI.Program` | UI adapter for the bounded program core — the UI witness and the transport loop (bounded driver) |
+| `Fuaran.UI.Program.Server` | Server-placement adapter for the bounded program core — the event step with its validation gate, for the server session and durable interpreter |
+| `Fuaran.UI.Charts` | Render-time chart lowering — bounded, deterministic `ChartSpec` plus data to a canonical `Drawing` subtree |
+| `Fuaran.UI.Content` | Host-neutral validated-exemplar seam for content pipelines — decode, pre-emit validation and a canonical round-trip gate |
+| `Fuaran.UI.Fragments` | Certified fragment library — parameterised `FragmentDecl`s with typed holes, declared effect classes and conformance fixtures |
+| `Fuaran.UI.FastPath` | Signature-searchable pattern bank — deterministic, server-free structural retrieval over the artifact-function registry. Fable-clean |
+| `Fuaran.UI.Memo` | Effect-aware memoisation over fragment apply — a value-parameter change recomputes only the affected hole-addressed bindings |
 
 All packs land in `../local-nuget-feed/` for local downstream consumption.
 

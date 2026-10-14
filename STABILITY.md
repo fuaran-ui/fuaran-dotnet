@@ -7864,11 +7864,30 @@ unchanged (the teleport and compression suites pin them). The slot was opened at
 
 ## 0.94.0 — the slot opened after v0.93.0 was released; advanced from 0.93.1 on 2026-10-13 ahead of Phase 2052, whose change is breaking (RELEASED — tagged v0.94.0 at 90082d3, 2026-10-14)
 
-_Class: **BEHAVIOUR change + additive API** — no type is removed or retyped and no wire byte moves. `v0.93.0`
-was tagged and published at `b654b31` while a commit numbered 0.93.0 was still landing after it: Phase 2198
-(`b33aa65`, moved here from the 0.93.0 entry, where it was recorded before the tag was seen). A released version
-names one contract, so everything after the tag rides this number. Phase 2174 opens it. An UNTAGGED DRAFT:
-changes of this class or lower ride it._
+_Class: **BREAKING** — raised from additive by the riders below, the first of which (Phase 2052) is the change the slot
+was advanced for; pre-1.0 breaking is a minor number. The slot also carries BEHAVIOUR changes and additive API (each
+rider's own entry states its class). No wire byte moves. `v0.93.0` was tagged and published at `b654b31` while a
+commit numbered 0.93.0 was still landing after it: Phase 2198 (`b33aa65`, moved here from the 0.93.0 entry, where it
+was recorded before the tag was seen). A released version names one contract, so everything after the tag rides this
+number. Phase 2174 opens it. RELEASED as `v0.94.0`; the class above is the whole slot's.
+The breaking riders, and what a consumer must change (each entry holds the full migration):_
+
+- _Phase 2052 — finding vocabulary._ `DefectSeverity` and `Findings.Severity` are removed for `Fuaran.Core.Severity`;
+  `Findings.Finding`, `DeadOnDecode.LintFinding` and the `create` signature change shape (`Suggestion` is now
+  `Remedy`, a lint finding's `Node` / `Slot` move under `Location`); five walker code literals are removed and two
+  `QueryBinding` code literals stop being `[<Literal>]`; the build-time duplicate-id code is `FUARAN-DUP-ID`.
+  Update severity opens, field reads and pattern matches on those codes.
+- _Phase 2067 — render-context records._ Four fields on each context fold into `Policy`, and
+  `Render.withStateSeeds` is removed: a full record literal of either context no longer compiles. Build the client
+  context with `Render.RenderContext.create` and adjust it with `with`; call `StateSeeds.apply`.
+- _Phase 2235 — `BindingResolver` aliases._ The grid and tree names Phase 2070 re-exported from
+  `Fuaran.UI.Renderer.BindingResolver` are removed (source and binary). Replace `BindingResolver.<name>` with
+  `GridModel.<name>` or `TreeModel.<name>`.
+- _Phase 2234 — dependency closure._ `Fuaran.UI.AiTools` and `Fuaran.UI.Validator` each gain a dependency on the new
+  package `Fuaran.UI.Core.Function`: a mirror, vendored feed or allow-list that carried the old closure must carry
+  that package id too, and a Fable consumer of `AiTools` transpiles one more source package.
+
+_Every other entry below is BEHAVIOUR or additive (at worst a new-case or obsoletion warning); none stops a consumer compiling._
 
 ### What rides this slot — Phase 2174
 
