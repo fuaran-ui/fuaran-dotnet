@@ -73,28 +73,31 @@ module Wire =
 
         Encoding.UTF8.GetString(stream.ToArray())
 
-    /// Read a string value tolerant of the canonical wire key or an alternate
-    /// spelling, so a proxy or mock that has not yet moved still parses.
-    let private pickString (el: JsonElement) (canonical: string) (alias: string) : string option =
-        let tryGet (name: string) =
-            match el.TryGetProperty name with
-            | true, v when v.ValueKind = JsonValueKind.String ->
-                match v.GetString() with
-                | null -> None
-                | s -> Some s
-            | _ -> None
-
-        match tryGet canonical with
-        | Some s -> Some s
-        | None -> tryGet alias
-
+    /// Read a member tolerant of the canonical wire key or an alternate spelling,
+    /// so a proxy or mock that has not yet moved still parses.
+    ///
+    /// THE RULE (Phase 2239, held identically by `@fuaran-ui/client`'s `pick`):
+    /// the alias is a spelling fallback for an ABSENT canonical member, never a
+    /// type fallback. A canonical member that is missing or JSON `null` is
+    /// absent, so the alias is read. A canonical member that is present and not
+    /// `null` is the answer, whatever its type: when the caller wants another
+    /// type the field reads as absent and the caller's own absent-field handling
+    /// applies. Both clients share one parity table, `WireMemberTests.fs`.
     let private pickElement (el: JsonElement) (canonical: string) (alias: string) : JsonElement option =
-        match el.TryGetProperty canonical with
-        | true, v -> Some v
-        | _ ->
-            match el.TryGetProperty alias with
-            | true, v -> Some v
-            | _ -> None
+        let tryGet (name: string) =
+            if el.ValueKind <> JsonValueKind.Object then
+                None
+            else
+                match el.TryGetProperty name with
+                | true, v when v.ValueKind <> JsonValueKind.Null -> Some v
+                | _ -> None
+
+        tryGet canonical |> Option.orElse (tryGet alias)
+
+    let private pickString (el: JsonElement) (canonical: string) (alias: string) : string option =
+        match pickElement el canonical alias with
+        | Some v when v.ValueKind = JsonValueKind.String -> Option.ofObj (v.GetString())
+        | _ -> None
 
     let private pickInt (el: JsonElement) (canonical: string) (alias: string) : int option =
         match pickElement el canonical alias with
@@ -199,7 +202,11 @@ module Wire =
     let parseTurnResponse (status: int) (bodyText: string) : TurnResult =
         let body = parseRoot bodyText |> Option.defaultValue emptyObject
 
-        let envelope = pickElement body "error" "Error" |> Option.defaultValue body
+        // An `error` member that is not an object is malformed, not an envelope.
+        let envelope =
+            match pickElement body "error" "Error" with
+            | Some e when e.ValueKind = JsonValueKind.Object -> e
+            | _ -> body
 
         let code fallback =
             pickString envelope "code" "Code" |> Option.defaultValue fallback

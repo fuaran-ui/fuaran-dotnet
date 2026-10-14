@@ -8346,6 +8346,39 @@ chip's slot, code and severity, and checks that every slot the lint names has a 
 `scripts/fuaran-codes.ps1 -Check` reads the registry and fails on a `FUARAN*` literal in any non-test source
 outside it.
 
+### What rides this slot — Phase 2239
+
+**Class: BEHAVIOUR change, no API change.** `Fuaran.UI.Client`'s tolerant member read follows one rule for a
+canonical member of the wrong type, the rule `@fuaran-ui/client` already followed. Until now the two clients agreed
+only on well-formed input.
+
+**The rule, recorded in the same words by both clients.** An alternate spelling is a fallback for an ABSENT
+canonical member, never a type fallback:
+
+- A canonical member that is missing, or JSON `null`, is absent, so the alias is read.
+- A canonical member that is present and not `null` is the answer, whatever its type. When the caller wants another
+  type the field reads as absent: the alias is not consulted, and the caller's existing absent-field handling
+  applies (a string field's documented default, an op count that falls back to the length of the op list).
+
+**What changes for a consumer.** Before, `pickString` read the alias whenever the canonical member was not a
+string, so `{"state":7,"State":"done"}` read as `done` here and as no state in the TypeScript client. It now reads as
+no state in both. The same holds for every field the helper serves: `provider`, `servedModel`, the snapshot's
+members, an applied op's `opId` and `opJson`, the version echo, a refusal's `code`, `message` and `stage`, and a 401's
+`Reason`. Two further reads change:
+
+- A JSON `null` canonical element (`tree`, `ops`, `error`) used to be returned as a present member, which stopped the
+  alias being read. It is absent now, as it always was for a string.
+- **A refusal whose `error` member is not an object no longer throws.** `{"error":"boom"}` made
+  `parseTurnResponse` raise `InvalidOperationException` from `JsonElement.TryGetProperty`, where the TypeScript
+  client read the body as the envelope. It reads the body as the envelope here too.
+
+A payload only a proxy or mock that has not yet moved would send, with the canonical key present and mistyped, is the
+case that changes; a payload using either spelling well-typed reads as before.
+
+**Certified by** `src/Fuaran.UI.Client.Tests/WireMemberTests.fs`, which reads every row of the parity table through
+`parseTurnResponse` and `parseProducedDetail`. The TypeScript client holds the same table, row for row, in
+`packages/client/test/wireMember.test.ts`. A row changed in one is changed in the other in the same change-set.
+
 ## 0.93.0 — the slot opened after v0.92.0 was released (RELEASED — tagged v0.93.0 at b654b31, 2026-10-10)
 
 _Class: **BREAKING (API: the `Fuaran.UI.Validator` library surface)** — raised from additive by Phase 2053,
