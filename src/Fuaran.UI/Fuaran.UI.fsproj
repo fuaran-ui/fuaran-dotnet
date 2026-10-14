@@ -56,10 +56,6 @@
          Depends only on Types.fs. -->
     <Compile Include="NodeMap.fs" />
     <Compile Include="Hashing.fs" />
-    <!-- Phase 437: pure Fable-safe UTF-8 / base64url / raw-DEFLATE — the
-         teleport state-bundle codec's byte substrate (same cross-pipeline
-         byte-parity posture as Hashing.fs). Depends on FSharp.Core only. -->
-    <Compile Include="Compression.fs" />
     <Compile Include="Bounded.fs" />
     <Compile Include="Defaults.fs" />
     <Compile Include="Fragment.fs" />

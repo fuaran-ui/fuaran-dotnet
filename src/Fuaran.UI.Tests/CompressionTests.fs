@@ -23,6 +23,8 @@ module Fuaran.UI.Tests.CompressionTests
 open System
 open Expecto
 open Fuaran.UI
+// Phase 2058: the codec moved out of the core package, beside the teleport codec.
+open Fuaran.UI.OpStream.Abstractions
 
 let private rngBytes (seed: int) (count: int) : byte[] =
     // Deterministic xorshift so the corpus is stable across runs/hosts.
@@ -118,7 +120,7 @@ let private bclDeflate (data: byte[]) : byte[] =
 [<Tests>]
 let tests =
     testList
-        "Fuaran.UI.Compression"
+        "Fuaran.UI.OpStream.Abstractions.Compression"
         [ testList
               "Utf8"
               [ test "round-trips ascii, bmp, and astral text" {
@@ -255,3 +257,51 @@ let tests =
                 }
 #endif
                 ] ]
+
+// Phase 2058: the old `Fuaran.UI.*` paths are obsolete forwards for one release. They must
+// stay the SAME functions (one implementation), including the error type's cases.
+#nowarn "44"
+
+module private OldPath =
+    let utf8Encode = Fuaran.UI.Utf8.encode
+    let utf8Decode = Fuaran.UI.Utf8.decode
+    let b64Encode = Fuaran.UI.Base64Url.encode
+    let b64Decode = Fuaran.UI.Base64Url.decode
+    let compress = Fuaran.UI.Deflate.compress
+    let inflate = Fuaran.UI.Deflate.inflate
+
+    let isOutputLimit (e: Fuaran.UI.Deflate.InflateError) =
+        match e with
+        | Fuaran.UI.Deflate.InflateError.OutputLimit _ -> true
+        | Fuaran.UI.Deflate.InflateError.Malformed _ -> false
+
+#warnon "44"
+
+[<Tests>]
+let forwardTests =
+    testList
+        "Compression (Phase 2058 obsolete forwards)"
+        [ test "the old Fuaran.UI paths agree byte-for-byte with the new home" {
+              for name, input in corpus do
+                  let packed = Deflate.compress input
+                  Expect.equal (OldPath.compress input) packed (sprintf "compress: %s" name)
+                  Expect.equal (OldPath.inflate (input.Length + 64) packed) (Ok input) (sprintf "inflate: %s" name)
+                  Expect.equal (OldPath.b64Encode input) (Base64Url.encode input) (sprintf "base64url: %s" name)
+                  Expect.equal (OldPath.b64Decode (Base64Url.encode input)) (Ok input) (sprintf "unbase64url: %s" name)
+
+              Expect.equal (OldPath.utf8Encode "héllo ☃") (Utf8.encode "héllo ☃") "utf8 encode"
+              Expect.equal (OldPath.utf8Decode (Utf8.encode "héllo ☃")) (Ok "héllo ☃") "utf8 decode"
+          }
+
+          test "the forwarded error type is the new home's type" {
+              let big = Array.create 4096 0uy
+
+              match OldPath.inflate 16 (Deflate.compress big) with
+              | Error e ->
+                  Expect.isTrue (OldPath.isOutputLimit e) "an over-cap inflate is OutputLimit via the old path"
+
+                  match e with
+                  | Deflate.InflateError.OutputLimit limit -> Expect.equal limit 16 "same case, new home"
+                  | Deflate.InflateError.Malformed m -> failtestf "unexpected Malformed: %s" m
+              | Ok _ -> failtest "an inflate over its cap must fail"
+          } ]

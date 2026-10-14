@@ -41,11 +41,6 @@
     <Compile Include="FormatCoherenceCheck.fs" />
     <Compile Include="WireSurvivabilityCheck.fs" />
     <Compile Include="ErrorRender.fs" />
-    <!-- Phase 359 — recipe / fragment certification: adopts
-         Fuaran.Core.Conformance's verifyFunction so a parameterised fragment is
-         certified valid-for-all-bindings (a correct-by-construction template),
-         bridging the runtime PreEmitValidate rule family as the validity oracle. -->
-    <Compile Include="RecipeCertification.fs" />
     <!-- Phase 377 — manifest generation: derives the validator manifest from
          the consumer app's own source (declaration sites, never the reference
          sites the checks gate), merges the hand-asserted override tier over
@@ -59,15 +54,14 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
-    <!-- Phase 2234 (D17) - the one hole value-space / effect projection RecipeCertification
-         reads, shared with Fuaran.UI.AiTools; neither package references the other. -->
-    <ProjectReference Include="..\Fuaran.UI.Core.Function\Fuaran.UI.Core.Function.fsproj" />
+    <!-- Phase 2058 - recipe / fragment certification (Phase 359) is a runtime-tree API, so it
+         lives in a library this executable references rather than inside it: certifying a
+         tree no longer pulls in FSharp.Compiler.Service, and the module path
+         Fuaran.UI.Validator.RecipeCertification still resolves for a consumer of this package. -->
+    <ProjectReference Include="..\Fuaran.UI.Validator.Certification\Fuaran.UI.Validator.Certification.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />
     <PackageReference Include="FSharp.Compiler.Service" />
-    <!-- Phase 359 — the verifyFunction / verifyFunctionSymbolic operators the
-         recipe-certification harness drives (RecipeCertification.fs). -->
-    <PackageReference Include="Fuaran.Core.Conformance" />
   </ItemGroup>
 </Project>
