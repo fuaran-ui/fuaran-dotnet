@@ -37,9 +37,15 @@
     spelling the smoke touches gets a constant here, defined at or past that version
     (`$([MSBuild]::VersionGreaterThanOrEquals('$(CoreFableEffectiveCore)', '<version>'))`), and
     Program.fs writes the new spelling under it. When the pin reaches that version, the constant and
-    the old-pin arm it guards are deleted together. None is defined today: CORE_0_36 (Core Phases 398
-    and 390) was retired when the pin was raised to 0.36.0.
+    the old-pin arm it guards are deleted together. CORE_0_36 (Core Phases 398 and 390) was retired when
+    the pin was raised to 0.36.0.
+    CORE_0_37: Core 0.37.0 makes a schema entry a `Field` (fuaran-core#423) and a column a typed vector
+    built by its type's constructor (fuaran-core#444). It is defined for the Core 0.37.0 candidate and
+    for the compute 0.39.0 candidate, which builds on it (Phase 2246).
   -->
+  <PropertyGroup Condition="'$(CoreFableEffectiveCore)' != '' And $([MSBuild]::VersionGreaterThanOrEquals('$(CoreFableEffectiveCore)', '0.37.0'))">
+    <DefineConstants>$(DefineConstants);CORE_0_37</DefineConstants>
+  </PropertyGroup>
   <!--
     `CoreFableSkipCompute=true` is set by the script for a Core-only cut, and only then: the compute
     packages ship from their own producer from 0.33.0 and pin an older Core until this Core release is
@@ -91,7 +97,6 @@
   -->
   <PropertyGroup Condition="'$(FuaranCoreVersion)' != '' And $([MSBuild]::VersionGreaterThanOrEquals('$(FuaranCoreVersion)', '0.37.0'))">
     <CoreFableUnit>true</CoreFableUnit>
-    <DefineConstants>$(DefineConstants);CORE_UNIT</DefineConstants>
   </PropertyGroup>
   <ItemGroup Condition="'$(CoreFableUnit)' == 'true'">
     <PackageReference Include="Fuaran.Core.Unit" CandidateFrom="0.37.0" />

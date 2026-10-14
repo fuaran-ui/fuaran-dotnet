@@ -19,7 +19,8 @@ module CoreFable.Program
 // The program is written for Fuaran.Core 0.36.0, the pin: the `CORE_0_36` arms that let it compile
 // against the 0.35.2 pin and the 0.36.0 candidate alike were retired when the pin was raised to
 // 0.36.0. A later candidate that breaks a spelling touched here gets a version constant in
-// `CoreFable.fsproj` (keyed off `CoreFableEffectiveCore`) the same way.
+// `CoreFable.fsproj` (keyed off `CoreFableEffectiveCore`) the same way; `CORE_0_37` is the one defined
+// today, and the `field` / `strColumn` / `intColumn` helpers below hold its arms.
 //
 // With `CORE_PARITY` defined (see `core-fable.ps1`), the program is also the VALUE leg: `--vectors`
 // prints `Fuaran.Core.ParityVectors.lines ()` — the cross-pipeline table the conformance kit ships
@@ -96,7 +97,32 @@ let private functionTouch =
 // Column + DataFrame — the cell-type probe + the Phase-55 float cell-string.
 let private columnTouch = Cell.typeOf (Int 1)
 
+// A schema entry, spelled once for every table and declaration below. Core 0.37.0 (fuaran-core#423)
+// makes it a `Field`; the pin's is a name and a type.
+let private field (name: string) (ty: ColumnType) =
+#if CORE_0_37
+    Field.create name ty
+#else
+    name, ty
+#endif
+
 #if CORE_FABLE_COMPUTE
+// A column, spelled once for every compute table below. Core 0.37.0 (fuaran-core#444) makes a column
+// a typed vector built by its type's constructor; the pin's is built from cells of a declared type.
+let private strColumn (name: string) (values: string list) =
+#if CORE_0_37
+    Column.ofStrs name (Vector.ofList values) AllValid
+#else
+    Column.create name StringType (List.map Str values)
+#endif
+
+let private intColumn (name: string) (values: int list) =
+#if CORE_0_37
+    Column.ofInts name (Vector.ofList values) AllValid
+#else
+    Column.create name IntType (List.map Int values)
+#endif
+
 let private dataFrameTouch = DataFrame.cellString (Float 1.5)
 
 // Delta (Phase 98) — the delta algebra's encode AND decode, plus the identity witness. Named here
@@ -121,10 +147,8 @@ let private incrementalTouch =
     let idw = RowIdentity.byColumn "id"
 
     let t: Table =
-        { Schema = [ "id", StringType; "a", IntType ]
-          Columns =
-            [ Column.create "id" StringType [ Str "r0"; Str "r1" ]
-              Column.create "a" IntType [ Int 1; Int 2 ] ] }
+        { Schema = [ field "id" StringType; field "a" IntType ]
+          Columns = [ strColumn "id" [ "r0"; "r1" ]; intColumn "a" [ 1; 2 ] ] }
 
     // The sort is deliberately part of the touched pipeline (Phase 115): the merge path is the
     // only place in the seam that reaches `List.sortWith`, `List.indexed` and a stored order, and a
@@ -135,7 +159,7 @@ let private incrementalTouch =
     let declared = Incremental.isIncremental (Incremental.plan pipeline)
 
     let ordering =
-        DataFrame.rowCompareBy [ "a", IntType ] [ "a", Asc ] [ Int 1 ] [ Int 2 ]
+        DataFrame.rowCompareBy [ field "a" IntType ] [ "a", Asc ] [ Int 1 ] [ Int 2 ]
 
     match Incremental.primeOn idw pipeline t with
     | Ok primed ->
@@ -152,8 +176,8 @@ let private incrementalTouch =
 // that binds a page size or names `now` reaches all three.
 let private slotAndClockTouch =
     let t: Table =
-        { Schema = [ "a", IntType ]
-          Columns = [ Column.create "a" IntType [ Int 3; Int 1; Int 2 ] ] }
+        { Schema = [ field "a" IntType ]
+          Columns = [ intColumn "a" [ 3; 1; 2 ] ] }
 
     // A param at both slot kinds, resolved through the SAME env an expression param reads.
     let paged =
@@ -209,12 +233,7 @@ let private queryTouch =
     let q: Query =
         { Id = "q"
           Params = []
-#if CORE_UNIT
-          // Core 0.37.0 (Phase 427): a schema entry is a `Field`.
-          ResultSchema = [ Field.create "n" IntType ]
-#else
-          ResultSchema = [ "n", IntType ]
-#endif
+          ResultSchema = [ field "n" IntType ]
           Effect =
             { Host = ReadsHost
               Determinism = networkDeterminism }
@@ -528,10 +547,8 @@ let private constructThenEncodeTouch =
 #if CORE_FABLE_COMPUTE
 let private columnOpsTouch =
     let t: Table =
-        { Schema = [ "id", StringType; "amount", IntType ]
-          Columns =
-            [ Column.create "id" StringType [ Str "r0" ]
-              Column.create "amount" IntType [ Int 1 ] ] }
+        { Schema = [ field "id" StringType; field "amount" IntType ]
+          Columns = [ strColumn "id" [ "r0" ]; intColumn "amount" [ 1 ] ] }
 
     let op = SetCell("amount", 0, Int 2)
 
