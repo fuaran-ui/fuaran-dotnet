@@ -8346,6 +8346,33 @@ chip's slot, code and severity, and checks that every slot the lint names has a 
 `scripts/fuaran-codes.ps1 -Check` reads the registry and fails on a `FUARAN*` literal in any non-test source
 outside it.
 
+### What rides this slot — Phase 2054 (one facts walk per validation)
+
+**Class: ADDITIVE API + performance.** Three functions are added; no type, member, verdict, finding or wire byte
+moves. Every defect `validate` reports, every binding-check diagnostic and path, every inertness finding and the
+wiring graph are byte-identical before and after over the whole node corpus and a 5,001-node synthetic tree
+(`benchmarks/Fuaran.UI.Ops.Benchmarks validate-snapshot`).
+
+- **New `PreEmitValidate.validateWithFacts options facts node`** — `validateWith` over the
+  `BindingWalk.collectFacts` result a caller already holds. **New `PreEmitValidate.bindingChecksWithFacts facts
+  node`** and **`StructuralQuery.evaluateWithFacts options facts predicate tree`** — the same for the
+  binding-check report and the structural query. With `WiringGraph.ofFacts`, a caller reading a tree all four
+  ways walks its bindings once. `facts` must be the walk over the same tree; under that precondition each
+  answers exactly what its tree-taking twin answers.
+- **`bindingChecks` no longer encodes the tree.** A reader's node path is read from the typed tree's held
+  positions (`NodeChildren.slots`), and a finding's slot is recorded by the rule that raises it, at the moment it
+  raises it. The paths are the ones the canonical document gives; a corpus test computes them the old way and
+  compares. The report runs the binding walk once, where it ran it twice.
+- **`BindingWalk.collectFacts` writes its accumulators directly**, slot by slot, rather than building each
+  node's usage list with `@` and folding it. `AffordanceInertness.report` writes into one accumulator.
+- **FUARAN107 compares a table only with the tables equal to it.** The all-pairs scan compared every inline
+  table with every other one, which made `validate` quadratic on a tree with many charts and grids. The pairs
+  come out in the same order.
+
+**Certified by** `src/Fuaran.UI.Tests/FactsWalkTests.fs`: each `*WithFacts` form against its twin over every
+corpus node fixture, every reader path against the encoded document's, a reader in each held position, and
+FUARAN107's pair order.
+
 ## 0.93.0 — the slot opened after v0.92.0 was released (RELEASED — tagged v0.93.0 at b654b31, 2026-10-10)
 
 _Class: **BREAKING (API: the `Fuaran.UI.Validator` library surface)** — raised from additive by Phase 2053,

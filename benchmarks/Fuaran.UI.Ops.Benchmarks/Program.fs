@@ -216,6 +216,38 @@ let main argv =
 
         printAppendRates count
         0
+    // Phase 2054 — the validator and the facts readers over the corpus tree
+    // and the 5,001-node synthetic tree, and the identity snapshot the change
+    // is diffed against.
+    | "validate-rate" :: rest ->
+        let iterations =
+            rest
+            |> List.tryHead
+            |> Option.bind (fun s ->
+                match Int32.TryParse s with
+                | true, n -> Some n
+                | _ -> None)
+            |> Option.defaultValue 50
+
+        let trees =
+            [ match ValidateRate.corpus () with
+              | Some t -> "corpus", t
+              | None -> printfn "validate.corpus NOT RUN: no wire-format corpus beside this repository"
+              "synthetic", ValidateRate.synthetic () ]
+
+        for name, tree in trees do
+            printfn "validate.%s.nodes = %d" name (ValidateRate.nodeCount tree)
+
+            for s in ValidateRate.all do
+                let meanUs, allocB = ValidateRate.measure s tree iterations
+                printfn "validate.%s.%s.mean_us = %.1f" name s.Name meanUs
+                printfn "validate.%s.%s.alloc_b = %.0f" name s.Name allocB
+
+        0
+    | "validate-snapshot" :: path :: _ ->
+        ValidateRate.writeSnapshot path
+        printfn "Wrote validator snapshot: %s" path
+        0
     | _ ->
         BenchmarkSwitcher
             .FromTypes(
