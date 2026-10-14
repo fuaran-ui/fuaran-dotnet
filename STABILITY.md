@@ -8346,6 +8346,45 @@ chip's slot, code and severity, and checks that every slot the lint names has a 
 `scripts/fuaran-codes.ps1 -Check` reads the registry and fails on a `FUARAN*` literal in any non-test source
 outside it.
 
+### What rides this slot — Phase 2235
+
+**Class: BREAKING on `Fuaran.UI.Renderer.Core`** (source and binary). The slot is already breaking-class (Phases
+2052 and 2067), so it does not move. Phase 2070 left every grid and tree name it moved re-exported from
+`Fuaran.UI.Renderer.BindingResolver` as a plain alias, for one release, and recorded that their removal would be
+a breaking change here. This is that removal. No wire byte moves and no behaviour moves: each name is still
+defined once, in the module that owns it.
+
+- **Removed from `BindingResolver`, with the owning module for each:**
+  - Types (type abbreviations): `RowWindow`, `PresentedWindow<'row>` and `ViewportMeasure` are now
+    `GridModel.RowWindow`, `GridModel.PresentedWindow<'row>` and `GridModel.ViewportMeasure`.
+  - `GridModel`: `sortRowsByDescriptor`, `sourceHostPagesOn`, `pageCountOf`, `clampPage`, `sliceRowsToPage`,
+    `windowOfJVal`, `sourceHostWindowsOn`, `presentWindow`, `declaredPageCount`, `gridHostWindows`,
+    `windowRowCount`, `windowRowIndex`, `defaultWindowRowHeightPx`, `windowViewportMaxHeightPx`,
+    `measureWindow`, `windowDescriptorJVal`, `stepWindowWriter`, `tonedPillOf`, `gridWriteDestination`,
+    `reorderDestination`, `transferDestination`, `editDestination` and `moveRow`.
+  - `TreeModel`: `treeItemExpanded`, `visibleTreeItems` and `focusableTreeItem`.
+- **Migration.** Replace `BindingResolver.<name>` with `GridModel.<name>` or `TreeModel.<name>` per the list; the
+  signatures are identical. A file that does `open Fuaran.UI.Renderer.BindingResolver` and calls one of these
+  unqualified adds `open Fuaran.UI.Renderer` (or qualifies the call). The record literals
+  `{ BindingResolver.RowWindow.Offset = …; Count = … }` become `{ GridModel.RowWindow.Offset = …; Count = … }`.
+- **Unchanged on `BindingResolver`:** the State reads (`readSortDescriptor`, `readSortSlot`,
+  `effectiveSortDescriptor`, `readExpandedItems`, `readSelectedItem`, `readPageDescriptor`,
+  `readWindowDescriptor`, `resolveRowTotal`, `gridPage`, `gridWindow`), and the Phase 213 re-exports
+  `BindingSources`, `empty` and `passthroughI18nResolver`, which are a different kind of name: the record was
+  promoted to `Fuaran.UI` and the abbreviation is the spelling every consumer annotates with, which the
+  samples and the program tiers still use.
+- **Callers moved in this repository:** `AgGridAdapter.fs` and `AgGridPlan.fs` in `Fuaran.UI.Renderer`, and the
+  tests in `Fuaran.UI.Tests`, `Fuaran.UI.JsonDecode.Tests` and `Fuaran.UI.Renderer.Server.Tests`. `Render.fs` in
+  both renderers and `VisAdapter.fs` already called the owning modules. The one test that compared an alias with
+  its target is removed, since there is no alias to compare.
+- **Outside the repository.** This repository has no consumer of any removed name beyond those files. The
+  estate-wide search over the private consumers is not part of this entry.
+- **`Renderer.Web` is unaffected.** No TypeScript changes, so the embedded bundle check does not move.
+
+**Certified by** the build of `Fuaran.UI.Renderer.Core` and its callers (a removed name is a compile error at
+every remaining use) and by `Fuaran.UI.Tests`, `Fuaran.UI.JsonDecode.Tests` and
+`Fuaran.UI.Renderer.Server.Tests`, which exercise the models through `GridModel` / `TreeModel`.
+
 ## 0.93.0 — the slot opened after v0.92.0 was released (RELEASED — tagged v0.93.0 at b654b31, 2026-10-10)
 
 _Class: **BREAKING (API: the `Fuaran.UI.Validator` library surface)** — raised from additive by Phase 2053,

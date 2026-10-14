@@ -431,12 +431,12 @@ let tests =
 
                   Expect.equal
                       (destinationOf plan.EditCommit)
-                      (destinationOf (BindingResolver.editDestination spec.Editable spec.EditStateKey spec.Source))
+                      (destinationOf (GridModel.editDestination spec.Editable spec.EditStateKey spec.Source))
                       $"{label}: the adapter must commit where Phase 863 says, not where it likes"
 
                   Expect.equal
                       (destinationOf plan.ReorderCommit)
-                      (destinationOf (BindingResolver.reorderDestination spec.Reorderable spec.EditStateKey spec.Source))
+                      (destinationOf (GridModel.reorderDestination spec.Reorderable spec.EditStateKey spec.Source))
                       $"{label}: the reorder handle is drawn exactly where a reorder has somewhere to go"
           }
 

@@ -240,14 +240,6 @@ let rowEditTests =
 
               for f, t in [ -1, 1; 3, 1; 1, -1; 1, 3; 1, 1 ] do
                   Expect.isTrue (obj.ReferenceEquals(GridModel.moveRow f t xs, xs)) (sprintf "move %d->%d refused" f t)
-          }
-
-          test "the BindingResolver re-export is the same function" {
-              let xs = [ 1; 2; 3; 4 ]
-
-              for f in -1 .. 4 do
-                  for t in -1 .. 4 do
-                      Expect.equal (BindingResolver.moveRow f t xs) (GridModel.moveRow f t xs) (sprintf "%d->%d" f t)
           } ]
 
 [<Tests>]
