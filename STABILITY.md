@@ -7924,6 +7924,41 @@ either renderer changes, and no wire byte moves.
   internal `renderText` and `formatNumber` names for the email and speech projections, both now the shared
   definitions.
 
+
+### What rides this slot — Phase 2241 (the authoring mirrors are generated from the vocabulary)
+
+**Class: breaking, and only by the letter** — one public type is retired; nothing a consumer can call changes.
+Additive otherwise. It rides the 0.95.0 draft, which is already breaking.
+
+- **The VB analyzer's vocabulary is GENERATED.** `Kinds`, `Structural` and `Attributes` in
+  `Fuaran.UI.Analyzers` (internal) are emitted into `VisualBasic/Vocabulary.Generated.cs` from
+  `src/Fuaran.UI.Idl/idl.json` plus the dialect's declared divergences (`src/Fuaran.UI.Idl/AuthoringDialect.fs`
+  — element conveniences, structural child elements and the slot each spells, renames, flattenings, sugar,
+  gaps), by `src/Fuaran.UI.Idl/AuthoringMirrors.fs`. The emitted tables equal the hand-kept ones they
+  replace, row for row: **no VB document the analyzer accepted is refused, and none it refused is accepted.**
+  Checked by the regeneration test beside `Generated.fs`
+  (`FUARAN_REGEN=1 dotnet run --project src/Fuaran.UI.Idl.Tests`), which also refuses a stale or missing
+  declaration at generation, naming the entry.
+- **The C# veneer's enum translation seam is GENERATED** (`Facade/EnumMap.Generated.cs`): one `ToFs` arm per
+  vocabulary case, plus the fallback arm each hand-kept map ended in, so behaviour is unchanged for every value,
+  out-of-range casts included. The 35 enum DECLARATIONS stay hand-authored, because they carry per-member
+  documentation the vocabulary has no slot for. A vocabulary case the C# declaration lacks now fails the compile
+  in the generated seam instead of mapping silently to the fallback.
+- **Retired: `Fuaran.UI.CSharp.VocabularyMap1532`** (public static class). Its four members were `internal`, so
+  nothing could call them from outside the assembly; the type name is the whole of the break. Its maps moved into
+  the generated `EnumMap`.
+- **Pins.** `AuthoringSurfacePin`'s field-level legs and `StructuralElementPin` (the VB analyzer suite) guarded
+  the hand mirror, and they went with it: their declarations are the generator's input now. The authoring-surface
+  pin is RE-POINTED at the generator. It asserts that every attribute the generator derives can be set on the C#
+  `<Kind>Options` record the VB translator builds through, so a field the vocabulary gains is not admitted by
+  the analyzer and then dropped by the translator. The `Kinds == KnownElements` pin is unchanged and now guards
+  generated against translator. `EnumTokenPin`'s per-case mapping leg guarded the hand-kept `ToFs` and went with
+  it. Its case-list leg stays, because a C# case the vocabulary does not declare still falls to the fallback arm.
+- **Not generated:** the C# factory's `*Options` records and kind-keyed factory methods, and the VB Mapping
+  builders. Each is a per-field decision (expose or pass the default, which wrapper type, which per-kind default)
+  that the vocabulary does not carry, made deliberately at the factory's positional spec construction. Whether
+  those published records become generated is an open operator decision (fuaran#2257).
+
 ---
 
 ## 0.94.0 — the slot opened after v0.93.0 was released; advanced from 0.93.1 on 2026-10-13 ahead of Phase 2052, whose change is breaking (RELEASED — tagged v0.94.0 at 90082d3, 2026-10-14)

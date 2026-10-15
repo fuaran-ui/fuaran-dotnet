@@ -19,11 +19,16 @@ namespace Fuaran.UI.CSharp.Conformance.Tests;
 // red anywhere.
 //
 // This reads `enum-tokens.json` — the corpus artefact, not a local copy of the
-// vocabulary — and asserts, for every mirrored enum:
+// vocabulary — and asserts, for every mirrored enum, that the C# case names are
+// exactly the declared host cases, in order.
 //
-//   * the C# case names are exactly the declared host cases, in order; and
-//   * `ToFs` maps each C# case to the F# case of the SAME NAME, which is what
-//     the `_ =>` default cannot be relied on to do.
+// Phase 2241 — the second leg went with the mirror it guarded. It asserted that
+// `ToFs` maps each C# case to the F# case of the SAME NAME, because the seam was
+// hand-kept. The seam is generated now (`Facade/EnumMap.Generated.cs`), one arm
+// per vocabulary case mapping a name to the same name, and a vocabulary case the
+// C# declaration lacks fails the compile there. What generation cannot catch is
+// the other direction — a C# case the vocabulary does NOT declare still falls to
+// the `_ =>` arm — and that is exactly what the case-list leg below asserts.
 //
 // The pairing is DERIVED from the `ToFs` overloads rather than declared here,
 // because the C# name need not match the F# one (`Tone` mirrors
@@ -88,21 +93,8 @@ internal static class EnumTokenPin
                 $"C# {csharpType.Name} mirrors the declared cases of {fsharpName}",
                 csharpCases.SequenceEqual(declaredCases),
                 $"declared [{string.Join(", ", declaredCases)}] but the veneer has [{string.Join(", ", csharpCases)}]. "
-                + "A veneer case with no declared counterpart is not a compile error: ToFs's `_ =>` default absorbs it "
-                + "and authors the wrong wire token.");
-
-            foreach (var value in Enum.GetValues(csharpType))
-            {
-                var name = value.ToString()!;
-                var mapped = method.Invoke(null, new[] { value })!;
-                var fsCase = Microsoft.FSharp.Reflection.FSharpValue.GetUnionFields(mapped, mapped.GetType(), null).Item1.Name;
-
-                h.Check(
-                    $"C# {csharpType.Name}.{name} maps to {fsharpName}.{name}",
-                    fsCase == name,
-                    $"ToFs mapped it to {fsharpName}.{fsCase}. This is the `_ =>` default swallowing a case, which "
-                    + "silently authors a different wire token than the one the author asked for.");
-            }
+                + "A veneer case with no declared counterpart is not a compile error: the generated ToFs seam's `_ =>` "
+                + "default absorbs it and authors the wrong wire token.");
 
             checkedPairs++;
         }

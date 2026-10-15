@@ -76,6 +76,13 @@ let private idlPath = path [ "src"; "Fuaran.UI.Idl"; "idl.json" ]
 let private supportPath = path [ "src"; "Fuaran.UI.Idl"; "support.json" ]
 let private generatedPath = path [ "src"; "Fuaran.UI"; "Generated.fs" ]
 
+// Phase 2241 — the two authoring mirrors generated from the same vocabulary.
+let private analyzerVocabularyPath =
+    path [ "src"; "Fuaran.UI.Analyzers"; "VisualBasic"; "Vocabulary.Generated.cs" ]
+
+let private enumMapPath =
+    path [ "src"; "Fuaran.UI.CSharp"; "Facade"; "EnumMap.Generated.cs" ]
+
 let private regenerating = Environment.GetEnvironmentVariable "FUARAN_REGEN" = "1"
 
 /// Read a committed artifact exactly as it sits on disk. No trimming and no
@@ -226,6 +233,98 @@ let tests =
                       (read generatedPath)
                       generated
                       "src/Fuaran.UI/Generated.fs is not what src/Fuaran.UI.Idl/{idl,support}.json regenerate. If the vocabulary changed deliberately: FUARAN_REGEN=1 dotnet run --project src/Fuaran.UI.Idl.Tests. If it did not, the generated file was hand-edited — it is generated output, and content it needs belongs in the support document beside the vocabulary.")
+
+          // Phase 2241 — the authoring mirrors, FROM BYTES like `Generated.fs`. The
+          // VB analyzer's vocabulary and the C# veneer's enum seam used to be hand
+          // mirrors that test pins compared against the vocabulary after the fact;
+          // they are emitted now, and the dialect's divergences are generator input
+          // (`AuthoringDialect.fs`). A refusal lists every declaration to fix.
+          testCase "the authoring mirrors are what the committed vocabulary regenerates" (fun _ ->
+              let idl =
+                  match Artifact.parse (read idlPath) with
+                  | Ok v -> v
+                  | Error m -> failtestf "idl.json did not parse: %s" m
+
+              let emitted name (r: Result<string, string list>) =
+                  match r with
+                  | Ok s -> s
+                  | Error es -> failtestf "%s: the generator refused:%s" name (String.concat "\n  " ("" :: es))
+
+              let mirrors =
+                  [ ("src/Fuaran.UI.Analyzers/VisualBasic/Vocabulary.Generated.cs",
+                     analyzerVocabularyPath,
+                     emitted "analyzer vocabulary" (Fuaran.UI.AuthoringMirrors.analyzerVocabulary idl))
+                    ("src/Fuaran.UI.CSharp/Facade/EnumMap.Generated.cs",
+                     enumMapPath,
+                     emitted "C# enum seam" (Fuaran.UI.AuthoringMirrors.csharpEnumMap idl)) ]
+
+              for (name, p, rendered) in mirrors do
+                  if regenerating then
+                      regenerate p rendered
+                  else
+                      Expect.equal
+                          (read p)
+                          rendered
+                          (sprintf
+                              "%s is not what src/Fuaran.UI.Idl/{idl.json,AuthoringDialect.fs} regenerate. If the vocabulary or the dialect changed deliberately: FUARAN_REGEN=1 dotnet run --project src/Fuaran.UI.Idl.Tests. If it did not, the generated file was hand-edited — a divergence belongs in AuthoringDialect.fs."
+                              name))
+
+          // The generator's refusals are the pin now, so they must be able to go
+          // red. Each perturbation is one a session could plausibly make; the
+          // generator has to name it rather than emit around it.
+          testCase "the authoring-mirror generator refuses a stale or missing declaration" (fun _ ->
+              let idl = Fuaran.UI.Vocabulary.uiIdl
+
+              let refused (label: string) (idl': Idl) (needle: string) =
+                  match Fuaran.UI.AuthoringMirrors.analyzerVocabulary idl' with
+                  | Ok _ -> failtestf "%s: the generator emitted instead of refusing" label
+                  | Error es ->
+                      Expect.isTrue
+                          (es |> List.exists (fun e -> e.Contains(needle: string)))
+                          (sprintf "%s: no refusal names %s; got %A" label needle es)
+
+              let mapKind tag f (v: Idl) =
+                  { v with
+                      Kinds = v.Kinds |> List.map (fun k -> if k.Tag = tag then f k else k) }
+
+              // A new STRUCTURED field with no child element and no declaration.
+              let probeField =
+                  { (List.head (List.head idl.Kinds).Fields) with
+                      Name = "probeRows"
+                      Type = TList(TRecord "StaticRows") }
+
+              refused
+                  "undeclared structured field"
+                  (idl
+                   |> mapKind "Heading" (fun k ->
+                       { k with
+                           Fields = k.Fields @ [ probeField ] }))
+                  "Heading.probeRows"
+
+              // A declared GAP whose field has gone: the declaration is stale.
+              refused
+                  "orphaned unspelled declaration"
+                  (idl
+                   |> mapKind "Button" (fun k ->
+                       { k with
+                           Fields = k.Fields |> List.filter (fun f -> f.Name <> "icon") }))
+                  "Button.icon"
+
+              // A dialect convenience that has become a wire kind.
+              refused
+                  "convenience shadowing a kind"
+                  { idl with
+                      Kinds =
+                          idl.Kinds
+                          @ [ { (List.head idl.Kinds) with
+                                  Tag = "Stack" } ] }
+                  "<Stack>"
+
+              // And the unperturbed vocabulary emits, so the cases above are red
+              // for their perturbation rather than for everything.
+              match Fuaran.UI.AuthoringMirrors.analyzerVocabulary idl with
+              | Ok _ -> ()
+              | Error es -> failtestf "the real vocabulary was refused: %A" es)
 
           // Phase 1152 — the `Action.Dispatch` in-process-only marking, pinned at
           // all three of its stations.

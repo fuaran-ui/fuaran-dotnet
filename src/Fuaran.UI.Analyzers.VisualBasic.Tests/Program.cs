@@ -208,16 +208,11 @@ internal static class Program
             Vocabulary.Kinds.SetEquals(translatorKinds),
             $"analyzer-only: [{string.Join(",", Vocabulary.Kinds.Except(translatorKinds))}]  translator-only: [{string.Join(",", translatorKinds.Except(Vocabulary.Kinds))}]");
 
-        // ── Phase 1104: the same question one level down — the attribute table
-        //    against the IDL's per-kind FIELDS. The pin above is at kind level and
-        //    cannot see a kind that gained a field.
+        // ── Phase 2241: the attribute and child-element tables are GENERATED from
+        //    the vocabulary (the declarations the Phase 1104 and structural pins
+        //    held are generator input, refused at generation when stale). What is
+        //    left to pin is that a derived attribute is one the translator can set.
         AuthoringSurfacePin.Run(Check);
-
-        // ── The same question again for the CHILD-ELEMENT table. The pin above
-        //    stops where the attribute stops; a structured wire field takes a
-        //    child element instead, and `Vocabulary.Structural` — the set that
-        //    decides whether FUARAN150 fires — was pinned against nothing.
-        StructuralElementPin.Run(Check, AuthoringSurfacePin.FindIdl());
 
         Console.WriteLine($"[vb-analyzer-tests] {_passed} passed, {Failures.Count} failed.");
         foreach (var f in Failures)

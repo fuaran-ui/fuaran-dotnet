@@ -19,6 +19,9 @@
     <ProjectReference Include="..\Fuaran.UI.Analyzers\Fuaran.UI.Analyzers.csproj" />
     <!-- The VB veneer — the translator's runtime vocabulary (FuaranXml.KnownElements). -->
     <ProjectReference Include="..\Fuaran.UI.VisualBasic\Fuaran.UI.VisualBasic.vbproj" />
+    <!-- Phase 2241 — the generator's derivation, which the authoring-surface pin
+         checks against the C# options records the translator sets. -->
+    <ProjectReference Include="..\Fuaran.UI.Idl\Fuaran.UI.Idl.fsproj" />
   </ItemGroup>
 
   <ItemGroup>
