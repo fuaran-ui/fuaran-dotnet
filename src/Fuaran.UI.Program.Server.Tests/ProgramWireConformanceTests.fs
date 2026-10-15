@@ -38,13 +38,16 @@ module Fuaran.UI.Program.Server.Tests.ProgramWireConformanceTests
 //
 // THIS suite enforces the other direction: every arm of the DU is discriminated
 // by something, whether a corpus vector or a case constructed here. It is the
-// only place the DU can be enumerated at all, so it is the only place a SEVENTH
+// only place the DU can be enumerated at all, so it is the only place a NEW
 // arm can be made to arrive with its coverage or turn the gate red. And it is
 // the only place `unencodable-op` can be reached: that arm names a defect in
 // this reader's own rendering of a referenced position, and no conformant
 // document produces it — an op that does not decode is refused before any
 // classification runs. §7.5 records that asymmetry rather than leaving it to be
-// rediscovered as a gap.
+// rediscovered as a gap. `staged-query` is the other arm a document alone does
+// not decide: an ordinary read reaches it only under a HOST's declaration that
+// its query evaluator is not a pure read (§7.4), so it is discriminated here by
+// a document run under that posture (Phase 2247).
 //
 // ── The corpus is a BUILD INPUT, and its absence is a failure ────────────────
 // The corpus lives in a sibling clone. A suite that skipped when it was missing
@@ -138,7 +141,7 @@ let private derivedReasons (query: QueryPosture) (handler: Handler) : (int * str
 /// Every token `ReplayDefect` spells, enumerated FROM THE TYPE.
 ///
 /// A list written out beside the DU would be a second copy of the vocabulary,
-/// and a seventh arm would arrive without disturbing it — which is the whole
+/// and a new arm would arrive without disturbing it — which is the whole
 /// failure this pin exists to prevent, reintroduced inside the pin.
 let private allDefectTokens: string list =
     FSharpType.GetUnionCases typeof<ReplayDefect>
@@ -167,6 +170,19 @@ let private hostConstructedCases: (string * Handler) list =
           [ Effect(
                 ServerEffect.ApplyOps [ TreeOp.UpdateProp(NodeId "orders-total", "Label", PropValue.Native(box None)) ]
             ) ] } ]
+
+/// Arms reached from an ordinary handler under a HOST's declaration rather than
+/// from the document alone (§7.4), each with the posture that reaches it.
+///
+/// `staged-query` is a read under an evaluator the host could not declare a
+/// pure read. The handler is one any document can carry; the token is the
+/// host's declaration, never the form's, so no vector read under the default
+/// posture can discriminate it.
+let private hostDeclaredCases: (string * QueryPosture * Handler) list =
+    [ "staged-query",
+      QueryPosture.Reaching,
+      { Name = "orders.read"
+        Stages = [ Effect(ServerEffect.RunQuery("orders", Fuaran.Core.Ref "orders", [])) ] } ]
 
 let private everyVector () : Vector list =
     let manifestPath = Path.Combine(corpusRoot, "manifest.json")
@@ -378,8 +394,29 @@ let tests =
                       $"…and the verdict it carries is the one {token} forces"
           }
 
+          test "an arm reachable only under a host's declared posture is discriminated here" {
+              // Run, as above: under its posture each case reports its token and
+              // nothing else, and under the default posture the same handler
+              // reports nothing — which is what makes the case discriminate the
+              // ARM rather than the handler.
+              for token, query, handler in hostDeclaredCases do
+                  Expect.equal
+                      (derivedReasons query handler)
+                      [ 0, token ]
+                      $"the host-declared case for {token} reports exactly that reason under its posture"
+
+                  Expect.equal
+                      (ProgramWire.replaySafetyTag (HandlerWire.replaySafety query handler))
+                      "unsafe"
+                      $"…and the verdict it carries is the one {token} forces"
+
+                  Expect.isEmpty
+                      (derivedReasons QueryPosture.PureRead handler)
+                      $"…and under the default posture the same handler reports no {token}"
+          }
+
           test "every arm of the defect vocabulary is discriminated by something" {
-              // The coverage pin. Enumerated from the DU, so a seventh arm
+              // The coverage pin. Enumerated from the DU, so a new arm
               // arrives with its discriminating expectation or this goes red
               // naming it — which is the one thing no corpus checker can do,
               // never having seen an F# type.
@@ -397,7 +434,11 @@ let tests =
                       | _ -> None)
                   |> Set.ofList
 
-              let discriminatedByHost = hostConstructedCases |> List.map fst |> Set.ofList
+              let discriminatedByHost =
+                  (hostConstructedCases |> List.map fst)
+                  @ (hostDeclaredCases |> List.map (fun (token, _, _) -> token))
+                  |> Set.ofList
+
               let covered = Set.union discriminatedByCorpus discriminatedByHost
 
               Expect.isEmpty
