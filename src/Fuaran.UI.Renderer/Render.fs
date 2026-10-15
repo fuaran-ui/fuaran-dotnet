@@ -172,25 +172,6 @@ let emitRenderFailure
     : string =
     emitRenderFailureWithContext sink Map.empty nodeId kindName errorMessage source
 
-/// Default fallback placeholder rendered in place of a single throwing
-/// node by the per-node render guard. Carries `data-fuaran-render-failed`
-/// + `data-fuaran-render-correlation` so consumer-side selectors / log
-/// filters can correlate the DOM-side failure marker with the
-/// telemetry-side `CorrelationId`. The text body is intentionally
-/// terse — hosts that want a custom failure UI wrap their nodes in
-/// `Fuaran.errorBoundary` and author their own `Fallback` shape.
-let private renderNodeFallback
-    (nodeId: string)
-    (kindName: string)
-    (errorMessage: string)
-    (corrId: string)
-    : ReactElement =
-    Html.div
-        [ prop.className Css.Class.NodeFallback
-          prop.custom ("data-fuaran-render-failed", "true")
-          prop.custom ("data-fuaran-render-correlation", corrId)
-          prop.text (RenderParity.renderFailureText nodeId kindName errorMessage) ]
-
 // ─── Render context — bundles renderer-wide dependencies ───────────────────
 //
 // Everything a recursive renderer call needs travels in one record, so the
@@ -263,11 +244,54 @@ let accessibilityAttributes
     : (string * string) list =
     Accessibility.accessibilityAttributes sources a11y
 
-/// Attribute pairs → Feliz props. Phase 951 routes the pairs to the wrapper or
-/// to the kind body before either becomes an `IReactProperty`, so the mapping
-/// is shared rather than inlined at the one former emission site.
-let private toProps (pairs: (string * string) list) : IReactProperty list =
-    pairs |> List.map (fun (k, v) -> prop.custom (k, v))
+// ─── The plan emitter (Phase 2108) ──────────────────────────────────────────
+
+/// This renderer's emitter for `ElementPlan` — the one place the client turns a
+/// planned element into a Feliz element. `class` becomes React's `className`;
+/// every other attribute lands under its document name; inline style
+/// declarations arrive in canonical CSS spelling and are camel-cased for
+/// React's style object; a reconciliation key is React's and is emitted;
+/// pre-built markup passes through Trusted Types. The server renderer's
+/// `Emit` is the same mapping onto Feliz.ViewEngine.
+[<RequireQualifiedAccess>]
+module private Emit =
+    let private attr (name: string) (value: string) : IReactProperty =
+        match name with
+        | "class" -> prop.className value
+        | _ -> prop.custom (name, value)
+
+    /// Attribute pairs as properties.
+    let attrs (pairs: (string * string) list) : IReactProperty list =
+        pairs |> List.map (fun (k, v) -> attr k v)
+
+    let private property (p: ElementPlan.Prop) : IReactProperty =
+        match p with
+        | ElementPlan.Prop.Attr(name, value) -> attr name value
+        | ElementPlan.Prop.Style declarations ->
+            prop.style (
+                declarations
+                |> List.map (fun (k, v) -> style.custom (ElementPlan.camelCaseProperty k, v))
+            )
+
+    /// Emit a plan.
+    let rec plan (p: ElementPlan.Plan<ReactElement>) : ReactElement =
+        match p with
+        | ElementPlan.Plan.Host element -> element
+        | ElementPlan.Plan.Nothing -> Html.none
+        | ElementPlan.Plan.TextNode text -> Html.text text
+        | ElementPlan.Plan.Element spec ->
+            let props =
+                [ match spec.Key with
+                  | Some key -> prop.key key
+                  | None -> ()
+                  yield! spec.Props |> List.map property
+                  match spec.Content with
+                  | ElementPlan.Content.Empty -> ()
+                  | ElementPlan.Content.Text text -> prop.text text
+                  | ElementPlan.Content.Children children -> prop.children (children |> List.map plan)
+                  | ElementPlan.Content.InnerHtml markup -> prop.dangerouslySetInnerHTML (TrustedTypes.html markup) ]
+
+            HtmlHelper.createElement spec.Tag props
 
 // ─── Strict-CSP style emission (Phase 1545) ────────────────────────────────
 
@@ -2260,18 +2284,6 @@ module private FieldRules =
 // restores it in a `finally`, so a throw caught by a guard or a boundary
 // leaves it exactly where the catching frame expects.
 
-/// The element emitted in place of a subtree nested past `WireLimits.MaxDepth`
-/// — the server renderer's `depthExceededElement`, attribute for attribute,
-/// with its text from `RenderParity` so the two cannot disagree.
-let private depthExceededElement (id: string) : ReactElement =
-    Html.div
-        [ prop.id id
-          prop.custom ("data-fuaran-node-id", id)
-          prop.custom ("data-fuaran-depth-exceeded", string Fuaran.UI.WireLimits.MaxDepth)
-          prop.className Css.Class.DepthExceeded
-          prop.custom ("role", "note")
-          prop.children [ Html.text RenderParity.depthExceededText ] ]
-
 [<RequireQualifiedAccess>]
 module private RenderDepth =
 #if FABLE_COMPILER
@@ -3440,7 +3452,7 @@ let rec private renderKind
             // outranks reaching one tier's anchor. See `docs/DECISIONS.md` D4.
             Html.span (
                 [ prop.className Css.Class.LinkProtectedWrap ]
-                @ toProps semanticAttrs
+                @ Emit.attrs semanticAttrs
                 @ [ prop.children
                         [ Html.a
                               [ prop.className "fuaran-link fuaran-link-protected"
@@ -3452,11 +3464,11 @@ let rec private renderKind
                 [ prop.className Css.Class.Link; prop.href safeHref ]
                 @ optionalAttrs
                 // Phase 951 — the node's a11y projection lands on the anchor.
-                @ toProps semanticAttrs
+                @ Emit.attrs semanticAttrs
                 // Phase 1026 — the refusal marker rides the element that
                 // carries the refused href, so a reader of the DOM sees WHY
                 // this anchor points at `about:blank`. Empty on an allow.
-                @ toProps egressAttrs
+                @ Emit.attrs egressAttrs
                 @ [ prop.text (renderText ctx spec.Label) ]
             )
     | NodeKind.Image spec ->
@@ -3538,10 +3550,10 @@ let rec private renderKind
                 [ prop.className (variantClass + fitClass + aspectClass)
                   prop.src safeSrc
                   prop.alt (renderText ctx spec.Alt) ]
-                @ toProps srcSetAttrs
-                @ toProps loadingAttrs
-                @ toProps semanticAttrs
-                @ toProps egressAttrs
+                @ Emit.attrs srcSetAttrs
+                @ Emit.attrs loadingAttrs
+                @ Emit.attrs semanticAttrs
+                @ Emit.attrs egressAttrs
             )
 
         // Phase 1079 — the expansion affordance, byte-parity with the server
@@ -3713,8 +3725,8 @@ let rec private renderKind
                     sharedProps Css.Class.MediaVideo
                     @ posterProps
                     @ autoplayProps
-                    @ toProps semanticAttrs
-                    @ toProps egressAttrs
+                    @ Emit.attrs semanticAttrs
+                    @ Emit.attrs egressAttrs
                     @ trackChildren
                 )
             )
@@ -3724,8 +3736,8 @@ let rec private renderKind
             withTranscript (
                 Html.audio (
                     sharedProps Css.Class.MediaAudio
-                    @ toProps semanticAttrs
-                    @ toProps egressAttrs
+                    @ Emit.attrs semanticAttrs
+                    @ Emit.attrs egressAttrs
                     @ trackChildren
                 )
             )
@@ -3773,8 +3785,8 @@ let rec private renderKind
                    [ prop.custom ("allow", "fullscreen") ]
                else
                    [])
-            @ toProps semanticAttrs
-            @ toProps egressAttrs
+            @ Emit.attrs semanticAttrs
+            @ Emit.attrs egressAttrs
         )
     // Phase 1120 — the WAI-ARIA tree pattern, in full. This arm is the reason
     // the Kind exists: everything below is behaviour that no `List` +
@@ -4226,11 +4238,13 @@ let rec private renderKind
                     RenderFailureSource.ErrorBoundary
                 |> ignore
 
-                renderNodeFallback
-                    parentNodeId
-                    (nodeKindName kind + ".Fallback")
-                    (RenderParity.boundaryDoubleFailureMessage ex.Message ex2.Message)
-                    corrId
+                Emit.plan (
+                    ElementPlan.NodePlan.renderFailure
+                        parentNodeId
+                        (nodeKindName kind + ".Fallback")
+                        (RenderParity.boundaryDoubleFailureMessage ex.Message ex2.Message)
+                        corrId
+                )
     | NodeKind.Switch spec ->
         // State-bound conditional child (Phase 392). Read the reactive state
         // value at `spec.StateKey` (scope-aware, mirroring `writeBackTo` /
@@ -4954,7 +4968,7 @@ and private renderButton
           if isDisabled then
               prop.disabled true
           prop.onClick (fun _ -> runAction ctx spec.OnClick) ]
-        @ toProps semanticAttrs
+        @ Emit.attrs semanticAttrs
     )
 
 and private renderSelect (ctx: RenderContext<'Msg>) (spec: SelectSpec<'Msg>) : ReactElement =
@@ -7513,7 +7527,7 @@ and private renderGridCell
             [ prop.className "fuaran-grid-cell-link"
               prop.href safeHref
               prop.text (renderText ctx (label row)) ]
-            @ toProps egressAttrs
+            @ Emit.attrs egressAttrs
         )
     | CellKindErased.Pill(label, tone) ->
         Html.span
@@ -7920,14 +7934,14 @@ and private renderCellValue (format: CellFormat) (value: CellValue) : string =
 /// order: the depth is checked BEFORE visibility, as the server checks it, so a
 /// hidden node past the limit renders the marker on both tiers. The root renders
 /// at depth 1 and every nested `render` one deeper; past
-/// `WireLimits.MaxDepth` the subtree is replaced by `depthExceededElement` and
+/// `WireLimits.MaxDepth` the subtree is replaced by the shared depth marker and
 /// the omission is reported through `Warn`.
 and render (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactElement =
     let depth = RenderDepth.current () + 1
 
     if depth > Fuaran.UI.WireLimits.MaxDepth then
         ctx.Runtime.Warn(sprintf "[Fuaran] node '%s' %s" node.Id RenderParity.depthExceededText)
-        depthExceededElement node.Id
+        Emit.plan (ElementPlan.NodePlan.depthExceeded node.Id)
     else
         RenderDepth.set depth
 
@@ -7961,98 +7975,15 @@ and private renderPresent (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactE
         | Some _ -> { ctx with CurrentNodeId = Some id }
         | None -> ctx
 
-    // Project Node.Accessibility into HTML aria-* / role
-    // attributes via the shared `accessibilityAttributes` helper (testable
-    // in isolation). `prop.custom` emits the kebab-case attribute name
-    // verbatim — React 16+ accepts `aria-*` props this way without
-    // case-conversion gymnastics.
-    let a11yPairs: (string * string) list =
-        accessibilityAttributes ctx.Sources node.Accessibility
-
-    // Append the motion-token class to the outer wrapper
-    // when `Node.Motion` is `Some token`. Defaults to no class (the
-    // original shape) when `None`. The reference CSS supplies four
-    // keyframe rules; the remaining four tokens are no-op class hooks.
-    // `Node.Style` is optional in the generated envelope — `None` is the old
-    // default record, so materialise `Defaults.style` for the class projection
-    // (identical class emission for decoded trees).
-    let baseClassName =
-        Theme.nodeClassName node.Kind (node.Style |> Option.defaultValue Fuaran.UI.Defaults.style)
-
-    // Phase 1112 — the node-level tooltip trait. An EMPTY resolved hint emits
-    // nothing at all: a declared hint that says nothing is markup that reveals
-    // an empty box on hover, and the wrapper class / focus stop / describedby
-    // would then advertise a description that is not there. FUARAN118 reports
-    // the declaration at validate time; the renderer simply does not draw it.
-    // Parity-locked with the server renderer, filter included.
-    let tooltipText =
-        node.Tooltip
-        |> Option.map (renderText ctx)
-        |> Option.filter (fun t -> t.Trim() <> "")
-
-    let className =
-        Css.nodeWrapper baseClassName (node.Motion |> Option.map Theme.motionVar) tooltipText.IsSome
-
-    // Emit consumer-side `data-*` / `aria-*` test
-    // hooks from `Node.ExtraAttributes`. A render-time
-    // floor: even if a hand-built record-with bypasses the smart-ctor's
-    // prefix gate, `Sanitize.sanitizeExtraAttributes` filters the map
-    // down to the entries that pass the data-*/aria-* allowlist + value
-    // safety check before emission. Iteration order is the Map's natural
-    // ordering (key-sorted) so the emitted attribute list is deterministic
-    // across re-renders.
-    let extraPairs: (string * string) list =
-        match node.ExtraAttributes with
-        | Some attrs -> attrs |> Sanitize.sanitizeExtraAttributes |> Map.toList
-        | None -> []
-
-    // Phase 951 — route the projection. A kind whose body IS the node's
-    // semantic element takes the a11y attributes (plus the `aria-*` half of
-    // `ExtraAttributes`) onto that element; the wrapper keeps only the `data-*`
-    // addressing half, beside `data-fuaran-node-id`. Every other kind is
-    // unchanged: a11y then extras, on the wrapper, in that order. Parity-locked
-    // with the server renderer via the shared predicate — see
-    // `Accessibility.forwardsToSemanticElement` + `docs/DECISIONS.md` D4.
-    // Phase 1114 — the `dir="auto"` isolation for a display leaf carrying
-    // runtime-bound text. Wrapper-side in BOTH arms and FIRST in the list, so
-    // the emitted attribute order is identical under SSR and CSR; the policy
-    // itself is the shared `Accessibility.bidiAttributes`.
-    // Phase 1472 — a DECLARED `style.direction` wins over that heuristic; see
-    // `Accessibility.bidiAttributes`. The isolation itself is CSS, on the
-    // `fuaran-dir-*` class the shared `Theme.className` already put on this
-    // wrapper — markup and stylesheet only, so it holds with no script at all.
-    let bidi =
-        Accessibility.bidiAttributes node.Kind (node.Style |> Option.defaultValue Fuaran.UI.Defaults.style)
-
-    let wrapperAttrs0, semanticAttrs0 =
-        if Accessibility.forwardsToSemanticElement node.Kind then
-            let dataExtras, ariaExtras = Accessibility.partitionExtraAttributes extraPairs
-            bidi @ dataExtras, a11yPairs @ ariaExtras
-        else
-            bidi @ a11yPairs @ extraPairs, []
-
-    // Phase 1112 — route the hint's description and, where the wrapper is the
-    // described element, its focus stop. The two travel together by
-    // construction: see `Accessibility.tooltipRidesSemanticElement`. Emitted
-    // attribute-for-attribute as the server renderer emits them, so the hydrated
-    // DOM matches the served one.
-    let wrapperAttrs, semanticAttrs =
-        match tooltipText with
-        | None -> wrapperAttrs0, semanticAttrs0
-        | Some _ ->
-            let hintId = Accessibility.tooltipHintId id
-
-            if Accessibility.tooltipRidesSemanticElement node.Kind then
-                wrapperAttrs0, Accessibility.withTooltipDescribedBy hintId semanticAttrs0
-            else
-                (Accessibility.withTooltipDescribedBy hintId wrapperAttrs0)
-                @ [ "tabindex", "0" ],
-                semanticAttrs0
+    // Phase 2108 — the wrapper is the shared `NodePlan`: tooltip, motion class,
+    // bidi, accessibility / extra-attribute routing and the wrapper props are
+    // decided once for both renderers, and this tier only emits them.
+    let routing = ElementPlan.NodePlan.route ctx.Sources node
 
     // The dismissal listener (WCAG 1.4.13) is document-level and installed once,
     // lazily, the first time any node renders a hint. See
     // `ensureTooltipDismissal` for why it is not a per-node handler.
-    if tooltipText.IsSome then
+    if routing.TooltipText.IsSome then
         ensureTooltipDismissal ()
 
     // Per-node render guard. A throwing leaf-body renderer
@@ -8080,7 +8011,7 @@ and private renderPresent (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactE
                 id
                 (node.State |> Option.defaultValue Fuaran.UI.Defaults.stateBehaviour)
                 node.Kind
-                semanticAttrs
+                routing.SemanticAttrs
         with ex when not ctx.InErrorBoundary ->
             let corrId =
                 emitRenderFailureWithContext
@@ -8091,53 +8022,9 @@ and private renderPresent (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactE
                     ex.Message
                     RenderFailureSource.PerNodeGuard
 
-            renderNodeFallback id (nodeKindName node.Kind) ex.Message corrId
+            Emit.plan (ElementPlan.NodePlan.renderFailure id (nodeKindName node.Kind) ex.Message corrId)
 
-    // Per-node wrapper props. `data-fuaran-node-id` is the addressable-element
-    // marker the browser LayoutObserver's MutationObserver scans for (binding a
-    // ResizeObserver on mount); it is independent of the HTML `id` so id-handling
-    // changes don't break layout addressing.
-    //
-    // The common case — nothing left to carry on the wrapper — is a 4-element
-    // literal (no append, no ResizeArray). Only when the wrapper has attributes
-    // do we build via a ResizeArray, replacing the old 4-way `List.append` that
-    // copied the base list 2-3x per node per frame even when both were empty.
-    // Order is load-bearing (id, node-id, class, attrs, children) and identical
-    // in both branches. Perf primitive: do not "simplify" back to a `@` chain.
-    // The hint element itself — a sibling of the body inside the wrapper, which
-    // is what makes it HOVERABLE: the pointer moving from the node onto the hint
-    // never leaves the wrapper, so the `:hover` that revealed it still holds
-    // (WCAG 1.4.13). Placed after the body so the reading order is
-    // thing-then-description. Byte-for-byte the server renderer's element.
-    let wrapperChildren: ReactElement list =
-        match tooltipText with
-        | None -> [ kindBody ]
-        | Some t ->
-            [ kindBody
-              Html.span
-                  [ prop.id (Accessibility.tooltipHintId id)
-                    prop.className Css.Class.Tooltip
-                    prop.custom ("role", "tooltip")
-                    prop.text t ] ]
-
-    let wrapperProps: IReactProperty list =
-        match wrapperAttrs with
-        | [] ->
-            [ prop.id id
-              prop.custom ("data-fuaran-node-id", id)
-              prop.className className
-              prop.children wrapperChildren ]
-        | _ ->
-            let props = ResizeArray<IReactProperty>(4 + List.length wrapperAttrs)
-
-            props.Add(prop.id id)
-            props.Add(prop.custom ("data-fuaran-node-id", id))
-            props.Add(prop.className className)
-            props.AddRange(toProps wrapperAttrs)
-            props.Add(prop.children wrapperChildren)
-            List.ofSeq props
-
-    Html.div wrapperProps
+    Emit.plan (ElementPlan.NodePlan.wrapper id routing (ElementPlan.Plan.Host kindBody))
 
 // Wire the late-bound guest renderer (Phase 266): now that the recursive `render`
 // group is fully defined, bind the hook to `render` instantiated at `obj`. This
