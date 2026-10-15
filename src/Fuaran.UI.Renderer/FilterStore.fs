@@ -9,7 +9,7 @@ module Fuaran.UI.Renderer.FilterStore
 //  separate (filters keep their typed vocabulary — `ChoiceFilter` options etc.
 //  — the store only shares the write/subscribe/snapshot plumbing).
 //
-//    - WRITE: a chip whose `FilterKind.onChange` is `None` (the declarative /
+//    - WRITE: a chip whose `FormFieldKind.onChange` is `None` (the declarative /
 //      AI-authored shape) writes its typed value here under its `FilterSpec.Name`
 //      on change — zero host code. A `Some` closure dispatches exactly as before
 //      and never touches this store.

@@ -30,6 +30,7 @@ let sinkCount = List.length sinks
 // boundary. `merge3Way` takes and returns `Fuaran.UI` trees; the `DagMerge.merge` binding names the
 // DAG abstraction's sink and record types in its signature.
 
+open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.OpStream.Dag.Abstractions
 open Fuaran.UI.OpStream.Dag.Merge
@@ -48,15 +49,7 @@ let private leaf (id: string) (text: string) : Node<obj> =
 
 let private box (id: string) (kids: Node<obj> list) : Node<obj> =
     { leaf id "" with
-        Kind =
-            NodeKind.Box(
-                { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
-                  Role = BoxRole.Group
-                  Heading = None
-                  Children = kids
-                  KeepTogether = false
-                  BreakBefore = false }
-            ) }
+        Kind = NodeKind.Box({ Defaults.box with Children = kids }) }
 
 /// Two branches inserting different children under one root: disjoint, so the merge resolves.
 let mergedChildCount: int =

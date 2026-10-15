@@ -1517,12 +1517,12 @@ and TextFormat = Generated.TextFormat
 /// Phase 864 — the comparison a cross-field `CompareRule` makes.
 and CompareOp = Generated.CompareOp
 // Every value-carrying event handler is optional (Phase 426 — the control write-back
-// default, generalising `FilterKind.onChange`'s Phase 423 mechanics). A `Some` closure
-// dispatches on change exactly as before (F#-authored apps unchanged; `"<closure>"`
-// sentinel on the wire, byte-identical). `None` — the shape an AI author emits, and the
-// shape a decoded field takes when the wire omits the handler — arms the renderer's
-// write-back default: when the field's `value` binding is directly `Binding.State(key,_)`
-// the renderer writes the changed value to the reactive `StateStore` under `key`
+// default, generalising the Phase 423 filter-chip mechanics (a chip's control is a
+// `FormFieldKind`). A `Some` closure dispatches on change exactly as before (F#-authored
+// apps unchanged; `"<closure>"` sentinel on the wire, byte-identical). `None` — the shape an
+// AI author emits, and the shape a decoded field takes when the wire omits the handler —
+// arms the renderer's write-back default: when the field's `value` binding is directly
+// `Binding.State(key,_)` the renderer writes the changed value to the reactive `StateStore` under `key`
 // (`Binding.Filter(name, None)` ⇒ `FilterStore`); any other binding shape means no write (the
 // FUARAN069 inert-control check covers it). Wire: `Some` → `"onChange":"<closure>"`
 // (byte-stable); `None` → the field is omitted.

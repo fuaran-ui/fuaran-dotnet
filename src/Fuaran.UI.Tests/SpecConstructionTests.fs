@@ -30,8 +30,9 @@ module Fuaran.UI.Tests.SpecConstructionTests
 //     and the declaration is checked for completeness: a new public default is
 //     either governed or named there, never silently neither.
 //
-//   * The FILES are the authoring sites — the test projects, `samples/` and
-//     `benchmarks/`. Library sources are deliberately NOT governed, and that is
+//   * The FILES are the authoring sites — the test projects, the top-level
+//     `tests/` tree (the Fable law project's helpers build specs too),
+//     `samples/` and `benchmarks/`. Library sources are deliberately NOT governed, and that is
 //     the load-bearing half of the boundary: a decoder RECONSTRUCTS a record
 //     from external data, and there the full literal is exactly right, because
 //     FS0764 is what makes a new wire field impossible to forget in the codec.
@@ -339,7 +340,8 @@ let private governedSpecs: Map<string, string * Set<string>> =
 
 // ─── The governed construction sites ───────────────────────────────────────
 
-/// The authoring sites: every test project, `samples/` and `benchmarks/`.
+/// The authoring sites: every test project, the top-level `tests/` tree,
+/// `samples/` and `benchmarks/`.
 /// Discovered rather than listed, so a new test project is governed on the day
 /// it is created — a list would have to be remembered, and the whole class of
 /// defect here is what happens when it is not.
@@ -357,7 +359,7 @@ let private constructionSites: string list =
         [ yield!
               Directory.EnumerateDirectories(Path.Combine(repoRoot, "src"), "*.Tests")
               |> Seq.filter (fun d -> not (excluded d))
-          for name in [ "samples"; "benchmarks" ] do
+          for name in [ "tests"; "samples"; "benchmarks" ] do
               let d = Path.Combine(repoRoot, name)
 
               if Directory.Exists d then
