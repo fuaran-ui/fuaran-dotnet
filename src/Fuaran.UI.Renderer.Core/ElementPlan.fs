@@ -694,11 +694,15 @@ module DisplayPlan =
 /// the walk, which is each renderer's own (depth, error-boundary suspension,
 /// fragment expansion), arriving as `Plan.Host`.
 type PlanContext<'Msg, 'E> =
-    { Sources: BindingResolver.BindingSources
-      Csp: Csp.CspMode
-      Collector: Csp.StyleCollector option
-      NodeId: string
-      Child: Node<'Msg> -> Plan<'E> }
+    {
+        Sources: BindingResolver.BindingSources
+        Csp: Csp.CspMode
+        Collector: Csp.StyleCollector option
+        /// The render's egress policy, for the URL-bearing kinds.
+        Egress: Sanitize.EgressPolicy
+        NodeId: string
+        Child: Node<'Msg> -> Plan<'E>
+    }
 
 /// The behaviour attachment points the planned kinds declare. The client's
 /// resolver closures match on these names; a test pins which kind declares
@@ -1173,3 +1177,278 @@ module LayoutPlan =
                Prop.Attr("tabindex", "0") ]
              @ styleProps)
             (children pc spec.Children)
+
+// ─── Media kinds (Phase 2278) ──────────────────────────────────────────────
+
+/// Link, Image, Media and Embed: the egress, srcset and class-map logic each
+/// renderer used to carry twice "kept in step" by comment. `semanticAttrs` is
+/// the node's a11y projection for the kinds whose body IS the semantic element
+/// (Phase 951).
+[<RequireQualifiedAccess>]
+module MediaPlan =
+
+    /// A media URL that passed egress, or `None` when it resolved empty or was
+    /// refused — a refused secondary URL (a srcset candidate, a track, a
+    /// poster) is dropped rather than marked.
+    let private acceptedMediaUrl (pc: PlanContext<'Msg, 'E>) (src: Binding<string>) : string option =
+        let resolved = BindingResolver.tryResolve pc.Sources src |> Option.defaultValue ""
+
+        let safe, refusal =
+            Sanitize.sanitizeUrlForEgress pc.Egress Sanitize.EgressClass.Media resolved
+
+        if safe = "" || not (List.isEmpty refusal) then
+            None
+        else
+            Some safe
+
+    /// Every character as a decimal character reference — the protected
+    /// e-mail link's obfuscation (Phase 1056).
+    let private entityEncode (s: string) : string =
+        s |> Seq.map (fun c -> "&#" + string (int c) + ";") |> String.concat ""
+
+    /// The protected anchor's classes, as their own literal so the class
+    /// vocabulary scan reads them.
+    let private protectedLinkClass = "fuaran-link fuaran-link-protected"
+
+    /// A hyperlink through the hyperlink egress class and the target / rel
+    /// sanitiser. A protected `mailto:` link is written as entity-encoded
+    /// markup inside its wrapper, so a scraper reading the source finds no
+    /// plain address; the document it builds is the same anchor on both tiers.
+    let link (pc: PlanContext<'Msg, 'E>) (spec: LinkSpec) (semanticAttrs: (string * string) list) : Plan<'E> =
+        let resolvedHref =
+            BindingResolver.tryResolve pc.Sources spec.Href |> Option.defaultValue ""
+
+        let safeHref, egressAttrs =
+            Sanitize.sanitizeUrlForEgress pc.Egress Sanitize.EgressClass.Hyperlink resolvedHref
+
+        let safeTarget, safeRel = Sanitize.sanitizeLinkAnchor spec.Target spec.Rel
+        let label = BindingResolver.resolveTextSource pc.Sources spec.Label
+
+        match spec.Protection with
+        | Some LinkProtection.Email when safeHref.StartsWith("mailto:", System.StringComparison.Ordinal) ->
+            Plan.element
+                "span"
+                ([ Prop.Attr("class", Css.Class.LinkProtectedWrap) ] @ Plan.attrs semanticAttrs)
+                (Content.InnerHtml(
+                    "<a class=\""
+                    + protectedLinkClass
+                    + "\" href=\""
+                    + entityEncode safeHref
+                    + "\">"
+                    + entityEncode label
+                    + "</a>"
+                ))
+        | _ ->
+            Plan.element
+                "a"
+                ([ Prop.Attr("class", Css.Class.Link)
+                   Prop.Attr("href", safeHref)
+                   match safeRel with
+                   | Some rel -> Prop.Attr("rel", rel)
+                   | None -> ()
+                   match safeTarget with
+                   | Some target -> Prop.Attr("target", target)
+                   | None -> ()
+                   if spec.Download then
+                       Prop.Flag "download" ]
+                 @ Plan.attrs semanticAttrs
+                 @ Plan.attrs egressAttrs)
+                (Content.Text label)
+
+    /// An image: variant / fit / aspect classes, egress-checked `src`, the
+    /// width-sorted `srcset` of the candidates that pass egress, lazy loading,
+    /// an expand link (only for an accepted, unrefused source) and a caption.
+    let image (pc: PlanContext<'Msg, 'E>) (spec: ImageSpec) (semanticAttrs: (string * string) list) : Plan<'E> =
+        let resolvedSrc =
+            BindingResolver.tryResolve pc.Sources spec.Src |> Option.defaultValue ""
+
+        let safeSrc, egressAttrs =
+            Sanitize.sanitizeUrlForEgress pc.Egress Sanitize.EgressClass.Media resolvedSrc
+
+        let srcSetAttrs =
+            let candidates =
+                spec.SrcSet
+                |> List.sortBy _.Width
+                |> List.choose (fun entry ->
+                    acceptedMediaUrl pc entry.Src
+                    |> Option.map (fun safe -> safe + " " + string entry.Width + "w"))
+
+            match candidates with
+            | [] -> []
+            | xs -> [ "srcset", String.concat ", " xs; "sizes", "100vw" ]
+
+        let loadingAttrs =
+            match spec.Loading with
+            | ImageLoading.Eager -> []
+            | ImageLoading.Lazy -> [ "loading", "lazy" ]
+
+        let img =
+            Plan.element
+                "img"
+                ([ Prop.Attr(
+                       "class",
+                       Css.imageVariant spec.Variant
+                       + Css.imageFit spec.Fit
+                       + Css.imageAspect spec.AspectRatio
+                   )
+                   Prop.Attr("src", safeSrc)
+                   Prop.Attr("alt", BindingResolver.resolveTextSource pc.Sources spec.Alt) ]
+                 @ Plan.attrs srcSetAttrs
+                 @ Plan.attrs loadingAttrs
+                 @ Plan.attrs semanticAttrs
+                 @ Plan.attrs egressAttrs)
+                Content.Empty
+
+        let expandable =
+            if spec.Expandable && safeSrc <> "" && List.isEmpty egressAttrs then
+                Plan.element
+                    "a"
+                    [ Prop.Attr("class", Css.Class.ImageExpand)
+                      Prop.Attr("href", safeSrc)
+                      Prop.Attr("data-fuaran-expandable", "") ]
+                    (Content.Children [ img ])
+            else
+                img
+
+        match spec.Caption with
+        | None -> expandable
+        | Some caption ->
+            Plan.classChildren
+                "figure"
+                Css.Class.ImageFigure
+                [ expandable
+                  Plan.classText
+                      "figcaption"
+                      Css.Class.ImageFigureCaption
+                      (BindingResolver.resolveTextSource pc.Sources caption) ]
+
+    let private trackKindToken (k: TrackKind) : string =
+        match k with
+        | TrackKind.Subtitles -> "subtitles"
+        | TrackKind.Captions -> "captions"
+        | TrackKind.Descriptions -> "descriptions"
+        | TrackKind.Chapters -> "chapters"
+
+    /// Video or audio: egress-checked source, the timed-text tracks that pass
+    /// egress (the first `Default` per kind keeps it — HTML allows one), an
+    /// accepted poster, autoplay always muted, and an optional transcript
+    /// disclosure beside the element.
+    let media (pc: PlanContext<'Msg, 'E>) (spec: MediaSpec) (semanticAttrs: (string * string) list) : Plan<'E> =
+        let resolvedSrc =
+            BindingResolver.tryResolve pc.Sources spec.Src |> Option.defaultValue ""
+
+        let safeSrc, egressAttrs =
+            Sanitize.sanitizeUrlForEgress pc.Egress Sanitize.EgressClass.Media resolvedSrc
+
+        let label = BindingResolver.resolveTextSource pc.Sources spec.Label
+
+        let tracks =
+            spec.Tracks
+            |> List.fold
+                (fun (claimed: Set<string>, acc) (t: TrackEntry) ->
+                    match acceptedMediaUrl pc t.Src with
+                    | None -> claimed, acc
+                    | Some safe ->
+                        let token = trackKindToken t.Kind
+                        let takesDefault = t.Default && not (Set.contains token claimed)
+
+                        let track =
+                            Plan.element
+                                "track"
+                                [ Prop.Attr("kind", token)
+                                  Prop.Attr("src", safe)
+                                  Prop.Attr("srclang", t.SrcLang)
+                                  Prop.Attr("label", BindingResolver.resolveTextSource pc.Sources t.Label)
+                                  if takesDefault then
+                                      Prop.Flag "default" ]
+                                Content.Empty
+
+                        (if takesDefault then Set.add token claimed else claimed), track :: acc)
+                (Set.empty, [])
+            |> snd
+            |> List.rev
+
+        let shared (variantClass: string) : Prop list =
+            [ Prop.Attr("class", Css.media variantClass)
+              Prop.Attr("src", safeSrc)
+              Prop.Attr("aria-label", label)
+              if spec.Controls then
+                  Prop.Flag "controls"
+              if spec.Loop then
+                  Prop.Flag "loop" ]
+
+        let trailing = Plan.attrs semanticAttrs @ Plan.attrs egressAttrs
+
+        let content =
+            if List.isEmpty tracks then
+                Content.Empty
+            else
+                Content.Children tracks
+
+        let element =
+            match spec.Kind with
+            | MediaKind.Video(autoplay, poster) ->
+                Plan.element
+                    "video"
+                    (shared Css.Class.MediaVideo
+                     @ [ match poster |> Option.bind (acceptedMediaUrl pc) with
+                         | Some p -> Prop.Attr("poster", p)
+                         | None -> ()
+                         if autoplay then
+                             Prop.Flag "autoplay"
+                             Prop.Flag "muted" ]
+                     @ trailing)
+                    content
+            | MediaKind.Audio -> Plan.element "audio" (shared Css.Class.MediaAudio @ trailing) content
+
+        match spec.Transcript with
+        | None -> element
+        | Some transcript ->
+            Plan.classChildren
+                "div"
+                Css.Class.MediaGroup
+                [ element
+                  Plan.element
+                      "details"
+                      [ Prop.Attr("class", Css.Class.MediaTranscript)
+                        Prop.Attr("aria-label", label) ]
+                      (Content.Children
+                          [ Plan.classText "summary" Css.Class.MediaTranscriptSummary "Transcript"
+                            Plan.classText
+                                "div"
+                                Css.Class.MediaTranscriptBody
+                                (BindingResolver.resolveTextSource pc.Sources transcript) ]) ]
+
+    /// A sandboxed, lazy, strict-referrer iframe; the sandbox grants exactly
+    /// the declared permissions, fullscreen rides `allow`, and a refused source
+    /// omits `src` and carries the refusal marker.
+    let embed (pc: PlanContext<'Msg, 'E>) (spec: EmbedSpec) (semanticAttrs: (string * string) list) : Plan<'E> =
+        let resolvedSrc =
+            BindingResolver.tryResolve pc.Sources spec.Src |> Option.defaultValue ""
+
+        let safeSrc, egressAttrs = Sanitize.sanitizeEmbedSrcForEgress pc.Egress resolvedSrc
+        let has p = List.contains p spec.Permissions
+
+        let sandboxTokens =
+            [ if has EmbedPermission.AllowScripts then
+                  "allow-scripts"
+              if has EmbedPermission.AllowSameOrigin then
+                  "allow-same-origin"
+              if has EmbedPermission.AllowForms then
+                  "allow-forms" ]
+
+        Plan.element
+            "iframe"
+            ([ Prop.Attr("class", Css.Class.Embed + Css.embedAspect spec.AspectRatio)
+               Prop.Attr("title", BindingResolver.resolveTextSource pc.Sources spec.Title)
+               Prop.Attr("sandbox", String.concat " " sandboxTokens)
+               Prop.Attr("loading", "lazy")
+               Prop.Attr("referrerpolicy", "strict-origin-when-cross-origin")
+               match safeSrc with
+               | Some s -> Prop.Attr("src", s)
+               | None -> ()
+               if has EmbedPermission.AllowFullscreen then
+                   Prop.Attr("allow", "fullscreen") ]
+             @ Plan.attrs semanticAttrs
+             @ Plan.attrs egressAttrs)
+            Content.Empty

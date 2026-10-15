@@ -8004,6 +8004,12 @@ fixture corpus (permissive, strict and decorated).
     empty-string attribute, which React reads as false and drops, so a closed modal rendered by the client
     alone was not hidden;
   - (j) a disabled tab attaches no click handler (it attached a no-op).
+- **Both renderers emit the four media kinds (`Link`, `Image`, `Media`, `Embed`) from `ElementPlan.MediaPlan`**
+  (`link`, `image`, `media`, `embed`): the egress, `srcset`, track and class-map logic each renderer carried a
+  copy of. `PlanContext` gains `Egress`. One client-only move:
+  - (k) a protected (`mailto:`) link is written on the client as the same entity-encoded anchor markup the server
+    serves (it built the anchor as elements); the resulting document is the same, and hydration now compares
+    identical markup.
 
 
 ## 0.94.0 — the slot opened after v0.93.0 was released; advanced from 0.93.1 on 2026-10-13 ahead of Phase 2052, whose change is breaking (RELEASED — tagged v0.94.0 at 90082d3, 2026-10-14)

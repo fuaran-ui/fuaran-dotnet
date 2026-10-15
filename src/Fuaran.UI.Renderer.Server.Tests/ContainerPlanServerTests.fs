@@ -33,6 +33,7 @@ let private pc: ElementPlan.PlanContext<obj, string> =
     { Sources = BindingResolver.empty
       Csp = Csp.CspMode.Permissive
       Collector = None
+      Egress = Sanitize.permissiveEgress
       NodeId = "n"
       Child = fun child -> ElementPlan.Plan.TextNode child.Id }
 
@@ -256,4 +257,89 @@ let tests =
                                 Css.Class.PopoverDismiss)
                             html)
                         "popover"
+                } ]
+          testList
+              "the media kinds: the served bytes are the pre-plan bytes"
+              [ test "Media: the library booleans keep their spelling, a default track an empty one" {
+                    let node =
+                        { (Fuaran.video "v" "/v.mp4" "L": Node<obj>) with
+                            Kind =
+                                NodeKind.Media
+                                    { Defaults.media with
+                                        Src = Binding.Static(Some "/v.mp4")
+                                        Label = TextSource.Literal "L"
+                                        Loop = true
+                                        Kind = MediaKind.Video(true, Some(Binding.Static(Some "/p.png")))
+                                        Tracks =
+                                            [ { Default = true
+                                                Kind = TrackKind.Captions
+                                                Label = TextSource.Literal "English"
+                                                Src = Binding.Static(Some "/c.vtt")
+                                                SrcLang = "en" } ] } }
+
+                    let html = Render.renderStatic node
+                    inert html
+
+                    Expect.isTrue
+                        (contains
+                            (sprintf
+                                "<video class=\"%s\" src=\"/v.mp4\" aria-label=\"L\" controls=\"true\" loop=\"true\" poster=\"/p.png\" autoplay=\"true\" muted=\"true\"><track kind=\"captions\" src=\"/c.vtt\" srclang=\"en\" label=\"English\" default=\"\"></video>"
+                                (Css.media Css.Class.MediaVideo))
+                            html)
+                        html
+                }
+                test "Image: srcset in document spelling, width-sorted" {
+                    let node =
+                        { (Fuaran.image "i" "/a.png" "alt": Node<obj>) with
+                            Kind =
+                                NodeKind.Image
+                                    { Defaults.image with
+                                        Src = Binding.Static(Some "/a.png")
+                                        Alt = TextSource.Literal "alt"
+                                        SrcSet =
+                                            [ { Src = Binding.Static(Some "/b.png")
+                                                Width = 200 }
+                                              { Src = Binding.Static(Some "/a.png")
+                                                Width = 100 } ] } }
+
+                    let html = Render.renderStatic node
+
+                    Expect.isTrue
+                        (contains "src=\"/a.png\" alt=\"alt\" srcset=\"/a.png 100w, /b.png 200w\" sizes=\"100vw\">" html)
+                        html
+                }
+                test "Link: download is a bare attribute; a protected address is entity-encoded markup" {
+                    let download =
+                        Render.renderStatic (
+                            { (Fuaran.link "l" "/f.pdf" "File": Node<obj>) with
+                                Kind =
+                                    NodeKind.Link
+                                        { Defaults.link with
+                                            Href = Binding.Static(Some "/f.pdf")
+                                            Label = TextSource.Literal "File"
+                                            Download = true } }
+                        )
+
+                    Expect.isTrue
+                        (contains "<a class=\"fuaran-link\" href=\"/f.pdf\" download=\"\">File</a>" download)
+                        download
+
+                    let protectedLink =
+                        Render.renderWithEgress
+                            Sanitize.permissiveEgress
+                            Registry.empty
+                            BindingResolver.empty
+                            ({ (Fuaran.link "p" "mailto:a@b" "a": Node<obj>) with
+                                Kind =
+                                    NodeKind.Link
+                                        { Defaults.link with
+                                            Href = Binding.Static(Some "mailto:a@b")
+                                            Label = TextSource.Literal "a"
+                                            Protection = Some LinkProtection.Email } })
+
+                    Expect.isTrue
+                        (contains
+                            "<span class=\"fuaran-link-protected-wrap\"><a class=\"fuaran-link fuaran-link-protected\" href=\"&#109;&#97;&#105;&#108;&#116;&#111;&#58;&#97;&#64;&#98;\">&#97;</a></span>"
+                            protectedLink)
+                        protectedLink
                 } ] ]
