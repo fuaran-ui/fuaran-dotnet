@@ -10,6 +10,39 @@ consequence.
 
 ---
 
+## 2026-10-15 — D18: the C# `*Options` records, the C# factory members and the VB mapping builders stay hand-written
+
+**Decided.** Phase 2241 generated the VB analyzer vocabulary and the C# enum maps from the IDL. The remaining two
+authoring mirrors — the C# factory's kind-keyed members over the public `*Options` records, and the VB XML-literal
+mapping builders — stay hand-written. Their drift is guarded rather than generated away:
+
+- the positional spec construction in `src/Fuaran.UI.CSharp/Factories/` and `Fuaran.cs` (the
+  SPEC-CONSTRUCTION-TRIPWIRE, held by `SpecConstructionTests`): a spec slot added to the vocabulary is a CS7036 at
+  the one site that decides whether C# exposes it or passes its default;
+- the re-pointed authoring-surface pin (Phase 2241): every attribute the generated analyzer vocabulary admits must
+  be a settable property on the C# `<Kind>Options` record — the only route by which VB can read it — or be declared
+  a GAP.
+
+**Rejected.** Generating the `*Options` records, the factories and the VB builders from the IDL plus a declared
+table of per-kind defaults (Stack vertical, Tabs horizontal, Grid 12 columns, SplitPanel 0.5, Media controls on,
+Button Secondary) and wrapper types (`Text` / `OptText` over `TextSource`, `IntBinding?` over `Binding<int>`, the
+Video/Audio split of Media, the row-generic `DataGridOptions`, the conveniences that lower onto Box, DataGrid and
+Select). It would make the whole public C# and VB authoring surface generator output, need a defaults table the
+size of that surface, and remove the tripwire, so a new field would be exposed to C# and VB by default instead of by
+decision.
+
+**Consequence.** Adding a field to a spec the authoring surfaces map is a hand edit in the C# factory (forced by
+CS7036) and, where VB should read it, a C# `*Options` property (forced by the pin) — plus, as the Phase 2241 probe
+showed, the F# record literals that construct that spec in `src/Fuaran.UI/Defaults.fs` and
+`src/Fuaran.UI.Ops/JsonDecode.fs`. The analyzer vocabulary and the C# enum maps move on their own. Phase 2241's
+deferred tasks (generating the factory members and VB builders; the probe moving all three mirrors with no hand
+edit) are closed by this decision rather than built.
+
+Roadmap: [Phase 2257](../../roadmap/phases/2257-whether-the-published-csharp-options-records-and-vb-builders-become-generated.md),
+[Phase 2241](../../roadmap/phases/2241-the-csharp-vb-and-analyzer-vocabulary-is-generated-from-the-idl.md).
+
+---
+
 ## 2026-10-13 — D17: the hole value-space mapping gets its own small package rather than widening `Fuaran.UI` or the validator
 
 **Decided.** `toCoreSpace` and `toCoreEffect` — the projection of a hole's `ValueSpace` and `EffectClass`
