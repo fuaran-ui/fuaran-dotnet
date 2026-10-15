@@ -244,6 +244,37 @@ let main argv =
                 printfn "validate.%s.%s.alloc_b = %.0f" name s.Name allocB
 
         0
+    // Phase 2062 — DAG merge cost against the length of the shared history,
+    // and the merge-result snapshot the change is diffed against.
+    | "merge-rate" :: rest ->
+        let iterations =
+            rest
+            |> List.tryHead
+            |> Option.bind (fun s ->
+                match Int32.TryParse s with
+                | true, n -> Some n
+                | _ -> None)
+            |> Option.defaultValue 5
+
+        let sizes =
+            rest
+            |> List.tryItem 1
+            |> Option.map (fun s -> s.Split ',' |> Array.map int |> Array.toList)
+            |> Option.defaultValue [ 1_000; 5_000; 20_000 ]
+
+        for n in sizes do
+            let f = MergeRate.fixture n
+
+            for s in MergeRate.all do
+                let meanMs, allocB = MergeRate.measure s f iterations
+                printfn "merge.%s.%d.mean_ms = %.3f" s.Name n meanMs
+                printfn "merge.%s.%d.alloc_b = %.0f" s.Name n allocB
+
+        0
+    | "merge-snapshot" :: path :: _ ->
+        MergeRate.writeSnapshot path
+        printfn "Wrote merge snapshot: %s" path
+        0
     | "validate-snapshot" :: path :: _ ->
         ValidateRate.writeSnapshot path
         printfn "Wrote validator snapshot: %s" path

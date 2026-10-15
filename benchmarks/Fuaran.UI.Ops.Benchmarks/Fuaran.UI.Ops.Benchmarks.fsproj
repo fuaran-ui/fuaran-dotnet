@@ -24,6 +24,7 @@
     <Compile Include="TreeDiffRate.fs" />
     <Compile Include="DecodeRate.fs" />
     <Compile Include="ValidateRate.fs" />
+    <Compile Include="MergeRate.fs" />
     <Compile Include="Capture.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
@@ -42,6 +43,10 @@
     <ProjectReference Include="..\..\src\Fuaran.UI.OpStream.InMemory\Fuaran.UI.OpStream.InMemory.fsproj" />
     <!-- Phase 2063: the tree diff under measurement (`TreeOpDiff.diff`, `tree-diff`). -->
     <ProjectReference Include="..\..\src\Fuaran.UI.OpStream.Replay\Fuaran.UI.OpStream.Replay.fsproj" />
+    <!-- Phase 2062: the DAG merge under measurement (`merge-rate`, `merge-snapshot`). -->
+    <ProjectReference Include="..\..\src\Fuaran.UI.OpStream.Dag.Abstractions\Fuaran.UI.OpStream.Dag.Abstractions.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.OpStream.Dag.InMemory\Fuaran.UI.OpStream.Dag.InMemory.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.OpStream.Dag.Merge\Fuaran.UI.OpStream.Dag.Merge.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" />

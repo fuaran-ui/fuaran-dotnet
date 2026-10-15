@@ -1,5 +1,6 @@
 namespace Fuaran.UI.OpStream.Dag.Merge
 
+open System.Collections.Generic
 open Fuaran.UI.Types
 open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.OpStream.Dag.Abstractions
@@ -13,17 +14,17 @@ open Fuaran.UI.OpStream.Dag.Abstractions
 //  host branch and the guest branch share the Mount op as an ancestor — a
 //  well-defined lowest-common-ancestor. Convergence is therefore an ORDINARY
 //  3-way DAG merge with the Mount op as the base; there is NO new merge math —
-//  this module only presents the two streams to `DagMerge.merge` as one.
+//  this module only presents the two streams to the merge as one.
 //
-//  The presentation is the whole trick. `DagMerge.merge` is single-stream: it
-//  reads `sink.Records streamId` and `sink.Lca(streamId, headA, headB)`. Host and
-//  guest live in DISTINCT streams, so `converge` builds a read-only VIEW sink
-//  whose `Records` returns the UNION of both streams and whose topology
-//  (`Lca` / `Parents` / `Reachable`) runs over that union. Record hashes are
-//  stream-id-independent (`DagOpRecord.computeHash` folds parents + op +
-//  timestamp only — never the stream id), so unioning host + guest records
-//  preserves every content hash and parent link: the Mount op stays the shared
-//  ancestor, hence the LCA the merge resolves on.
+//  The presentation is the whole trick. Host and guest live in DISTINCT
+//  streams, and the merge reads the DAG only through two lookups
+//  (`DagMerge.mergeLookups`, Phase 2062), so `converge` answers them over the
+//  UNION of both streams' records. Record hashes are stream-id-independent
+//  (`DagOpRecord.computeHash` folds parents, op and provenance — never the
+//  stream id), so unioning host + guest records preserves every content hash
+//  and parent link: the Mount op stays the shared ancestor, hence the LCA the
+//  merge resolves on. (Until Phase 2062 the union was dressed as a read-only
+//  stand-in sink, eleven members of which only one was ever read.)
 //
 //  A guest edit that overlaps a host edit at the same `(NodeId, facet)` cell
 //  surfaces the existing `MergeConflict` envelope (`NeedsManualMerge`), never a
@@ -49,55 +50,9 @@ module GuestConvergence =
         else
             MergeAuthor.Primary
 
-    /// A READ-ONLY `IDagOpStreamSink` view over a fixed record set, all answered
-    /// under `viewStreamId`. Only the query surface the merge decision touches
-    /// (`Records` / `Lca` / topology) is meaningful; the mutating members are
-    /// inert (the caller commits the merge node into the REAL sink). Records keep
-    /// their true `StreamId`, so a `recordAuthor` classifier can still tell host
-    /// from guest.
-    let private viewSink<'Msg> (viewStreamId: string) (records: DagOpRecord<'Msg> list) : IDagOpStreamSink<'Msg> =
-        let byHash = records |> List.map (fun r -> r.Hash, r) |> dict
-
-        let getParents (h: string) : string list =
-            match byHash.TryGetValue h with
-            | true, r -> r.Parents
-            | false, _ -> []
-
-        let tryGet (h: string) : DagOpRecord<'Msg> option =
-            match byHash.TryGetValue h with
-            | true, r -> Some r
-            | false, _ -> None
-
-        { new IDagOpStreamSink<'Msg> with
-            member _.Records _ = async { return records }
-            member _.TryGet(_, hash) = async { return tryGet hash }
-            member _.Parents(_, hash) = async { return getParents hash }
-
-            member _.Reachable(_, hash) =
-                async { return DagTopology.reachable getParents hash }
-
-            member _.Lca(_, a, b) =
-                async { return DagTopology.lca getParents a b }
-
-            member _.Heads _ =
-                async {
-                    // Leaf nodes of the union — records that are no record's parent.
-                    let parentSet = records |> List.collect _.Parents |> Set.ofList
-                    return records |> List.map _.Hash |> List.filter (parentSet.Contains >> not)
-                }
-
-            member _.Head _ = async { return None }
-            member _.Streams() = async { return [ viewStreamId ] }
-
-            // Inert mutators — a convergence merge only READS; the caller commits
-            // the built merge node into the real sink via `DagMerge.commitMerge`.
-            member _.Add _ = async { return () }
-            member _.TryAdvanceHead(_, _, _) = async { return false }
-            member _.Tombstone(_, _) = async { return false } }
-
     /// Converge guest scope `scopeId` into the host stream `hostStreamId` under a
     /// custom precedence classifier. Reads both streams' records from `sink`,
-    /// unions them under a `hostStreamId` view, and runs the shipped merge with
+    /// answers the merge's lookups over their union, and runs the shipped merge with
     /// `hostHead` as trunk and `guestHead` as the branch. The LCA is the Mount
     /// creation op (the guest genesis's anchor parent), so the result is:
     ///   * `FastForward guestHead` — host made no op since the Mount (guest just
@@ -124,8 +79,35 @@ module GuestConvergence =
         async {
             let! hostRecords = sink.Records hostStreamId
             let! guestRecords = sink.Records(GuestStream.streamId scopeId)
-            let view = viewSink hostStreamId (hostRecords @ guestRecords)
-            return! DagMerge.merge recordAuthor view hostStreamId initial hostHead guestHead now
+            // Last record wins on a repeated hash, as a stream load does.
+            let byHash = Dictionary<string, DagOpRecord<'Msg>>()
+
+            for r in hostRecords @ guestRecords do
+                byHash[r.Hash] <- r
+
+            let getRec (h: string) =
+                match byHash.TryGetValue h with
+                | true, r -> Some r
+                | false, _ -> None
+
+            let getParents (h: string) =
+                match byHash.TryGetValue h with
+                | true, r -> r.Parents
+                | false, _ -> []
+
+            let outcome =
+                DagMerge.mergeLookups
+                    recordAuthor
+                    getRec
+                    getParents
+                    hostStreamId
+                    initial
+                    hostHead
+                    guestHead
+                    now
+                    MergeContext.defaults
+
+            return outcome.Result
         }
 
     /// `convergeWith` under the default `hostPrimaryAuthor` classifier — host ops
