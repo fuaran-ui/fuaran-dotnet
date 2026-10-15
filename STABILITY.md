@@ -8010,6 +8010,10 @@ fixture corpus (permissive, strict and decorated).
   - (k) a protected (`mailto:`) link is written on the client as the same entity-encoded anchor markup the server
     serves (it built the anchor as elements); the resulting document is the same, and hydration now compares
     identical markup.
+- **The structural kinds stay renderer-side by ruling** (`ErrorBoundary`, `Switch`, `Custom`, `FragmentDecl`,
+  `FragmentRef`, `Mount` are walk control, and the walk is each renderer's own); the leaf markup both emit for
+  them is `ElementPlan.StructuralPlan` (`fragmentCycle`, `fragmentUnresolved`, `mountBoundary`,
+  `mountPlaceholder`). No output moves.
 
 
 ## 0.94.0 — the slot opened after v0.93.0 was released; advanced from 0.93.1 on 2026-10-13 ahead of Phase 2052, whose change is breaking (RELEASED — tagged v0.94.0 at 90082d3, 2026-10-14)

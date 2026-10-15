@@ -269,6 +269,16 @@ and private renderNodeCore (walk: Walk) (ctx: ServerRenderContext) (node: Node<o
               prop.children [ element ] ]
     | None -> element
 
+/// The per-kind dispatch. Phase 2108 / 2278 — a planned kind is ONE behaviour
+/// emitted twice: its arm is a call to the shared `ElementPlan` planner (the
+/// display, layout and media kinds) plus, on the client, the resolver closure
+/// that binds the plan's named attachment points. The six STRUCTURAL arms —
+/// `ErrorBoundary`, `Switch`, `Custom`, `FragmentDecl`, `FragmentRef`, `Mount` —
+/// stay here by nature (Phase 2278 ruling): they are walk control, deciding
+/// which node renders and how (error suspension, case selection, fragment
+/// expansion with cycle tracking, host renderer registries, guest loaders),
+/// and the walk is each renderer's own; the leaf markup they emit is
+/// `ElementPlan.StructuralPlan`.
 and private renderKind
     (walk: Walk)
     (ctx: ServerRenderContext)
@@ -843,10 +853,7 @@ and private renderKind
         let raw = spec.Name
 
         if Set.contains raw walk.Expanding then
-            Html.div
-                [ prop.className Css.Class.FragmentCyclePlaceholder
-                  prop.custom ("data-fuaran-fragment-cycle", raw)
-                  prop.text (RenderParity.fragmentCycleText raw) ]
+            Emit.plan (ElementPlan.StructuralPlan.fragmentCycle raw)
         else
             match Map.tryFind raw ctx.Fragments with
             | Some body ->
@@ -858,11 +865,7 @@ and private renderKind
                         Expanding = Set.add raw walk.Expanding }
                     ctx
                     namespaced
-            | None ->
-                Html.div
-                    [ prop.className Css.Class.FragmentUnresolvedPlaceholder
-                      prop.custom ("data-fuaran-fragment-unresolved", raw)
-                      prop.text (sprintf "[fuaran:fragment unresolved '%s']" raw) ]
+            | None -> Emit.plan (ElementPlan.StructuralPlan.fragmentUnresolved raw)
     | NodeKind.Custom spec ->
         renderCustom
             ctx
@@ -877,13 +880,11 @@ and private renderKind
         // as the client renderer, so server and client emit byte-identical
         // structure across the boundary (no hydration mismatch); the guest
         // loader attaches client-side (Phase 266).
-        Html.div
-            [ prop.className Css.Class.MountBoundary
-              prop.custom ("data-fuaran-mount-scope", spec.ScopeId)
-              prop.children
-                  [ Html.div
-                        [ prop.className Css.Class.MountPlaceholder
-                          prop.text (sprintf "[fuaran:mount '%s' — guest loader not attached]" spec.ScopeId) ] ] ]
+        Emit.plan (
+            ElementPlan.StructuralPlan.mountBoundary
+                spec.ScopeId
+                (ElementPlan.StructuralPlan.mountPlaceholder spec.ScopeId)
+        )
 
 // ─── Custom escape hatch (Phase 141 — server registry seam) ─────────────────
 

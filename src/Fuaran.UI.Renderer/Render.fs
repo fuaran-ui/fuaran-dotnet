@@ -2518,6 +2518,16 @@ let private renderGridWindowViewport (props: GridWindowViewportProps) : ReactEle
           prop.onScroll (fun _ -> measureRef.current ())
           prop.children [ props.renderTable (spacer props.offset) (spacer trailing) ] ]
 
+/// The per-kind dispatch. Phase 2108 / 2278 — a planned kind is ONE behaviour
+/// emitted twice: its arm is a call to the shared `ElementPlan` planner (the
+/// display, layout and media kinds) plus, on the client, the resolver closure
+/// that binds the plan's named attachment points. The six STRUCTURAL arms —
+/// `ErrorBoundary`, `Switch`, `Custom`, `FragmentDecl`, `FragmentRef`, `Mount` —
+/// stay here by nature (Phase 2278 ruling): they are walk control, deciding
+/// which node renders and how (error suspension, case selection, fragment
+/// expansion with cycle tracking, host renderer registries, guest loaders),
+/// and the walk is each renderer's own; the leaf markup they emit is
+/// `ElementPlan.StructuralPlan`.
 let rec private renderKind
     (ctx: RenderContext<'Msg>)
     (parentNodeId: string)
@@ -3249,10 +3259,7 @@ let rec private renderKind
                     rawName
             )
 
-            Html.div
-                [ prop.className Css.Class.FragmentCyclePlaceholder
-                  prop.custom ("data-fuaran-fragment-cycle", rawName)
-                  prop.text (RenderParity.fragmentCycleText rawName) ]
+            Emit.plan (ElementPlan.StructuralPlan.fragmentCycle rawName)
         else
             match Map.tryFind fragmentKey ctx.Fragments with
             | None ->
@@ -3263,10 +3270,7 @@ let rec private renderKind
                         rawName
                 )
 
-                Html.div
-                    [ prop.className Css.Class.FragmentUnresolvedPlaceholder
-                      prop.custom ("data-fuaran-fragment-unresolved", rawName)
-                      prop.text (sprintf "[fuaran:fragment unresolved '%s']" rawName) ]
+                Emit.plan (ElementPlan.StructuralPlan.fragmentUnresolved rawName)
             | Some body ->
                 // Prefix interior ids with the ref's NodeId + "." so
                 // sibling refs to the same fragment stay DOM-unique.
@@ -3431,15 +3435,9 @@ let rec private renderKind
                 // F# forbids polymorphic recursion, so the obj-typed guest render
                 // crosses the type boundary via the hook set at module init below.
                 renderGuest guestCtx guestTree
-            | _ ->
-                Html.div
-                    [ prop.className Css.Class.MountPlaceholder
-                      prop.text (sprintf "[fuaran:mount '%s' — guest loader not attached]" spec.ScopeId) ]
+            | _ -> Emit.plan (ElementPlan.StructuralPlan.mountPlaceholder spec.ScopeId)
 
-        Html.div
-            [ prop.className Css.Class.MountBoundary
-              prop.custom ("data-fuaran-mount-scope", spec.ScopeId)
-              prop.children [ boundaryChild ] ]
+        Emit.plan (ElementPlan.StructuralPlan.mountBoundary spec.ScopeId (ElementPlan.Plan.Host boundaryChild))
 
 // ─── Inputs ────────────────────────────────────────────────────────────────
 

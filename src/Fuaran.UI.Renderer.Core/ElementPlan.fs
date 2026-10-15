@@ -1452,3 +1452,46 @@ module MediaPlan =
              @ Plan.attrs semanticAttrs
              @ Plan.attrs egressAttrs)
             Content.Empty
+
+// ─── Structural kinds' leaf markup (Phase 2278) ────────────────────────────
+
+/// The six structural kinds (ErrorBoundary, Switch, Custom, FragmentDecl,
+/// FragmentRef, Mount) are WALK CONTROL — they decide which node renders and
+/// how (error suspension, case selection, fragment expansion with cycle
+/// tracking, host renderer registries, guest loaders), and the walk is each
+/// renderer's own, so they stay renderer-side by nature (Phase 2278 ruling).
+/// The leaf markup both tiers emit for them is planned here.
+[<RequireQualifiedAccess>]
+module StructuralPlan =
+
+    /// A `FragmentRef` that re-enters a fragment already being expanded.
+    let fragmentCycle (name: string) : Plan<'E> =
+        Plan.element
+            "div"
+            [ Prop.Attr("class", Css.Class.FragmentCyclePlaceholder)
+              Prop.Attr("data-fuaran-fragment-cycle", name) ]
+            (Content.Text(RenderParity.fragmentCycleText name))
+
+    /// A `FragmentRef` naming no declaration in the tree.
+    let fragmentUnresolved (name: string) : Plan<'E> =
+        Plan.element
+            "div"
+            [ Prop.Attr("class", Css.Class.FragmentUnresolvedPlaceholder)
+              Prop.Attr("data-fuaran-fragment-unresolved", name) ]
+            (Content.Text(sprintf "[fuaran:fragment unresolved '%s']" name))
+
+    /// A `Mount`'s boundary around what the guest seam rendered (or the
+    /// placeholder).
+    let mountBoundary (scopeId: string) (child: Plan<'E>) : Plan<'E> =
+        Plan.element
+            "div"
+            [ Prop.Attr("class", Css.Class.MountBoundary)
+              Prop.Attr("data-fuaran-mount-scope", scopeId) ]
+            (Content.Children [ child ])
+
+    /// What a `Mount` shows when no guest loader is attached.
+    let mountPlaceholder (scopeId: string) : Plan<'E> =
+        Plan.classText
+            "div"
+            Css.Class.MountPlaceholder
+            (sprintf "[fuaran:mount '%s' — guest loader not attached]" scopeId)
