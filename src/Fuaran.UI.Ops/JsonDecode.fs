@@ -5898,7 +5898,7 @@ let private decodeFormFieldKind
     match requireObject path j with
     | Error e -> Error e
     | Ok fields ->
-        // Handlers are optional (Phase 426, the Phase 423 `FilterKind.onChange`
+        // Handlers are optional (Phase 426, the Phase 423 filter-chip
         // mechanics generalised): a present `"<closure>"` decodes to the inert
         // placeholder (`Some (fun _ -> Chain [])` — a decoded F# closure never
         // dispatches, same dead behaviour as before); an absent field decodes
