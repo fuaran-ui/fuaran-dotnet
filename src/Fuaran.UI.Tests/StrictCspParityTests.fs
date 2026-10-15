@@ -65,6 +65,17 @@ let private cspSlots (source: string) : string list =
     |> Seq.sort
     |> List.ofSeq
 
+/// Phase 2108 — every slot discriminator a SHARED plan names. A planned kind
+/// (`ElementPlan.DisplayPlan.progress`) receives the posture-bound site as a
+/// function and names its slot at the one call, which both tiers then emit, so
+/// the slot belongs to both by construction.
+let private planSlots (source: string) : string list =
+    Regex.Matches(source, @"styleSite\s+""([^""]+)""")
+    |> Seq.cast<Match>
+    |> Seq.map (fun m -> m.Groups[1].Value)
+    |> Seq.sort
+    |> List.ofSeq
+
 [<Tests>]
 let tests =
     testList
@@ -110,7 +121,9 @@ let tests =
                     "split-right" ]
 
               Expect.equal
-                  (cspSlots (sourceText "server" "Render.fs"))
+                  (cspSlots (sourceText "server" "Render.fs")
+                   @ planSlots (sourceText "core" "ElementPlan.fs")
+                   |> List.sort)
                   expected
                   "the strict-mode slot inventory. A new slot belongs in SANITIZATION.md's inventory table and in StrictCspTests' style-bearing corpus, and this assertion is what says so."
           }

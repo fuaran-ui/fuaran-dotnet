@@ -306,3 +306,368 @@ module NodePlan =
               Prop.Attr("class", Css.Class.DepthExceeded)
               Prop.Attr("role", "note") ]
             (Content.Children [ Plan.TextNode RenderParity.depthExceededText ])
+
+// ─── The leaf display kinds (Stage 2) ──────────────────────────────────────
+
+/// The identity of one member of a repeated-children arm: a usable declared key
+/// wins; anything else is the position, marked so it can never collide with a
+/// real key. The empty string and the `"<closure>"` constant a decoded `RowKey`
+/// projects are refused as identities — under the second every row would
+/// answer one key, which is worse than positional reconciliation.
+let reconciliationKey (declared: string option) (index: int) : string =
+    match declared with
+    | Some key when key <> "" && key <> "<closure>" -> key
+    | _ -> "#" + string index
+
+[<RequireQualifiedAccess>]
+module DisplayPlan =
+
+    /// The uniform icon hook: ONE empty placement element whose glyph NAME
+    /// rides `data-icon` (never text content — the reference CSS ships no
+    /// glyphs, and a host maps the name itself), `aria-hidden` because every
+    /// icon-bearing spec pairs the icon with a visible label.
+    let iconHook (kindClass: string) (name: string) : Plan<'E> =
+        Plan.element
+            "span"
+            [ Prop.Attr("class", Css.iconPlacement kindClass)
+              Prop.Attr("data-icon", name)
+              Prop.Attr("aria-hidden", "true") ]
+            Content.Empty
+
+    /// The node a value-bearing kind renders INSTEAD of its body: the
+    /// `OnLoading` slot while the value has not resolved, the `OnError` slot
+    /// (with a deterministic correlation id) when it errored. `None` renders
+    /// the body. One rule for both tiers — the server used to honour only
+    /// `OnLoading` (Phase 2108 parity fix (d)).
+    let stateSlot
+        (nodeId: string)
+        (state: StateBehaviour<'Msg>)
+        (resolution: BindingResolver.Resolution<'T>)
+        : Node<'Msg> option =
+        match resolution, state.OnLoading, state.OnError with
+        | BindingResolver.NotResolved, Some loading, _ -> Some loading
+        | BindingResolver.Errored msg, _, Some onError ->
+            Some(
+                onError
+                    { Kind = ErrorKind.BindingResolution
+                      Message = msg
+                      CorrelationId = Ids.deterministicCorrelationId nodeId }
+            )
+        | _ -> None
+
+    /// A scalar's display text: the formatted value, the em-dash while it has
+    /// not resolved, and the loud error / missing-translation sentinels.
+    let scalarText (format: CellFormat) (resolution: BindingResolver.Resolution<float>) : string =
+        match resolution with
+        | BindingResolver.Resolved value -> Formatting.formatNumber format value
+        | BindingResolver.NotResolved -> "—"
+        | BindingResolver.Errored msg -> sprintf "(error: %s)" msg
+        | BindingResolver.I18nUnresolved key -> sprintf "[i18n:%s]" key
+
+    let heading (sources: BindingResolver.BindingSources) (spec: HeadingSpec) : Plan<'E> =
+        // HTML heading levels are 1..6; anything outside that range falls to h6.
+        let tag =
+            match spec.Level with
+            | 1
+            | 2
+            | 3
+            | 4
+            | 5 -> "h" + string spec.Level
+            | _ -> "h6"
+
+        Plan.classText
+            tag
+            (Css.heading (Css.headingVariant spec.Variant))
+            (BindingResolver.resolveTextSource sources spec.Text)
+
+    /// Phase 292 / 1032 — one deterministic GFM renderer, its link and image
+    /// destinations under the render's egress policy.
+    let markdown
+        (egress: Sanitize.EgressPolicy)
+        (sources: BindingResolver.BindingSources)
+        (spec: MarkdownSpec)
+        : Plan<'E> =
+        Plan.element
+            "div"
+            [ Prop.Attr("class", Css.Class.Markdown) ]
+            (Content.InnerHtml(Markdown.toHtmlWithEgress egress (BindingResolver.resolveTextSource sources spec.Text)))
+
+    let badge (sources: BindingResolver.BindingSources) (spec: BadgeSpec) : Plan<'E> =
+        Plan.classText
+            "span"
+            (Css.badge (Css.badgeVariant spec.Variant))
+            (BindingResolver.resolveTextSource sources spec.Label)
+
+    /// A skeleton's rows are interchangeable placeholders with no identity
+    /// beyond their position, so the index IS the key.
+    let skeleton (spec: SkeletonSpec) : Plan<'E> =
+        Plan.classChildren
+            "div"
+            Css.Class.Skeleton
+            [ for i in 1 .. spec.Rows ->
+                  Plan.Element
+                      { Tag = "div"
+                        Props = [ Prop.Attr("class", Css.Class.SkeletonRow) ]
+                        Key = Some(reconciliationKey None i)
+                        Content = Content.Empty } ]
+
+    /// Phase 821 — the standalone icon. Decorative (`Label = None`) is
+    /// `aria-hidden`; labelled is `role="img"` + `aria-label`.
+    let icon (spec: IconSpec) : Plan<'E> =
+        Plan.element
+            "span"
+            ([ Prop.Attr("class", Css.icon (Theme.iconSizeClass spec.Size) (Theme.toneVar spec.Tone))
+               Prop.Attr("data-icon", spec.Icon) ]
+             @ (match spec.Label with
+                | Some label -> [ Prop.Attr("role", "img"); Prop.Attr("aria-label", label) ]
+                | None -> [ Prop.Attr("aria-hidden", "true") ]))
+            Content.Empty
+
+    let metric
+        (sources: BindingResolver.BindingSources)
+        (resolution: BindingResolver.Resolution<float>)
+        (spec: MetricSpec)
+        : Plan<'E> =
+        let text = BindingResolver.resolveTextSource sources
+
+        // Phase 867 — the trend element carries a SENTIMENT (sign and declared
+        // polarity), not a constant; `tone` colours the tile alone.
+        let trend =
+            match spec.Trend with
+            | Some trendBinding ->
+                match BindingResolver.tryResolveScalarFloat sources trendBinding with
+                | Some t ->
+                    let sentiment, glyph = Theme.trendSentiment spec.TrendPolarity t
+
+                    Plan.classChildren
+                        "div"
+                        (Css.metricTrend sentiment)
+                        [ Plan.element
+                              "span"
+                              [ Prop.Attr("class", Css.Class.MetricTrendGlyph)
+                                Prop.Attr("role", "img")
+                                Prop.Attr("aria-label", sentiment) ]
+                              (Content.Text glyph)
+                          Plan.TextNode(
+                              Formatting.formatNumber (spec.TrendFormat |> Option.defaultValue CellFormat.None) t
+                          ) ]
+                | None -> Plan.classText "div" Css.Class.MetricTrend ""
+            | None -> Plan.Nothing
+
+        Plan.classChildren
+            "div"
+            (Css.metric (Theme.toneVar spec.Tone))
+            [ spec.Icon |> Plan.ofOption (iconHook Css.Class.MetricIcon)
+              Plan.classText "div" Css.Class.MetricLabel (text spec.Label)
+              Plan.classText "div" Css.Class.MetricValue (scalarText spec.Format resolution)
+              trend
+              spec.Subtext
+              |> Plan.ofOption (fun s -> Plan.classText "div" Css.Class.MetricSubtext (text s)) ]
+
+    /// A labelled TEXT fact tile — Metric's chrome for a TextSource value.
+    let fact (sources: BindingResolver.BindingSources) (spec: FactSpec) : Plan<'E> =
+        let text = BindingResolver.resolveTextSource sources
+
+        Plan.classChildren
+            "div"
+            (Css.fact (Theme.toneVar spec.Tone) (Css.factEmphasis spec.Emphasis))
+            [ Plan.classText "div" Css.Class.FactLabel (text spec.Label)
+              Plan.classChildren
+                  "div"
+                  Css.Class.FactValue
+                  [ spec.Icon |> Plan.ofOption (iconHook Css.Class.FactIcon)
+                    Plan.element "span" [] (Content.Text(text spec.Value)) ]
+              spec.Help
+              |> Plan.ofOption (fun h -> Plan.classText "div" Css.Class.FactHelp (text h)) ]
+
+    /// The dismiss affordance is inert on BOTH tiers — no handler is attached
+    /// on the client either (Phase 2108 parity fix (a): the server omitted it).
+    let callout (sources: BindingResolver.BindingSources) (spec: CalloutSpec) : Plan<'E> =
+        let text = BindingResolver.resolveTextSource sources
+
+        Plan.classChildren
+            "div"
+            (Css.callout (Theme.toneVar spec.Tone))
+            [ spec.Icon |> Plan.ofOption (iconHook Css.Class.CalloutIcon)
+              spec.Heading
+              |> Plan.ofOption (fun h -> Plan.classText "div" Css.Class.CalloutHeading (text h))
+              Plan.classText "div" Css.Class.CalloutBody (text spec.Body)
+              if spec.Dismissable then
+                  Plan.element
+                      "button"
+                      [ Prop.Attr("class", "fuaran-callout-dismiss")
+                        Prop.Attr("aria-label", "Dismiss") ]
+                      (Content.Text "×")
+              else
+                  Plan.Nothing ]
+
+    /// The fill's width is a continuous-value style site (Phase 1545), placed
+    /// by `styleSite` under the render's CSP posture. The caveat is parity fix
+    /// (b): the server omitted it.
+    let progress
+        (sources: BindingResolver.BindingSources)
+        (styleSite: string -> (string * string) list -> string * Prop list)
+        (resolution: BindingResolver.Resolution<float>)
+        (spec: ProgressSpec)
+        : Plan<'E> =
+        let text = BindingResolver.resolveTextSource sources
+
+        let fraction =
+            match resolution with
+            | BindingResolver.Resolved value -> value
+            | _ -> 0.0
+
+        let fillClass, fillProps =
+            styleSite "progress-fill" (Csp.Declarations.progressFill fraction)
+
+        Plan.classChildren
+            "div"
+            (Css.progress (Theme.toneVar spec.Tone) (Css.progressIndeterminate spec.Indeterminate))
+            [ spec.Label
+              |> Plan.ofOption (fun l -> Plan.classText "div" Css.Class.ProgressLabel (text l))
+              Plan.classChildren
+                  "div"
+                  Css.Class.ProgressBar
+                  [ Plan.element
+                        "div"
+                        (Prop.Attr("class", Css.Class.ProgressFill + fillClass) :: fillProps)
+                        Content.Empty ]
+              spec.Caveat
+              |> Plan.ofOption (fun c -> Plan.classText "div" "fuaran-progress-caveat" (text c)) ]
+
+    /// Phase 1098 — the shared `Sparkline -> Drawing` lowering, emitted through
+    /// the same `DrawingSvg` builder; an unresolved or empty series keeps the
+    /// em-dash element. `lowered` is the caller's lowering of the resolved
+    /// series (the lowering lives in a package that depends on this one).
+    let sparkline (sources: BindingResolver.BindingSources) (lowered: DrawingSpec option) : Plan<'E> =
+        match lowered with
+        | Some drawing ->
+            Plan.element
+                "div"
+                [ Prop.Attr("class", Css.Class.Sparkline) ]
+                (Content.InnerHtml(DrawingSvg.render sources (BindingResolver.resolveTextSource sources) drawing))
+        | None -> Plan.classText "div" Css.Class.SparklineEmpty "—"
+
+    /// Phase 525 — first-party inline SVG from the canonical Core builder.
+    let drawing (sources: BindingResolver.BindingSources) (spec: DrawingSpec) : Plan<'E> =
+        Plan.element
+            "div"
+            []
+            (Content.InnerHtml(DrawingSvg.render sources (BindingResolver.resolveTextSource sources) spec))
+
+    /// Label left, value right. The label block with its optional help is
+    /// parity fix (c): the server emitted a flat label and no help.
+    let labelValueRow
+        (sources: BindingResolver.BindingSources)
+        (resolution: BindingResolver.Resolution<float>)
+        (spec: LabelValueRowSpec)
+        : Plan<'E> =
+        let text = BindingResolver.resolveTextSource sources
+
+        Plan.classChildren
+            "div"
+            (Css.labelValueRow (Css.labelValueRowEmphasis spec.Emphasis))
+            [ Plan.classChildren
+                  "div"
+                  "fuaran-label-value-row-label-block"
+                  [ Plan.classText "span" Css.Class.LabelValueRowLabel (text spec.Label)
+                    spec.Help
+                    |> Plan.ofOption (fun h -> Plan.classText "span" "fuaran-label-value-row-help" (text h)) ]
+              Plan.classText "span" Css.Class.LabelValueRowValue (scalarText spec.Format resolution) ]
+
+    /// Phase 287 — `<ol>` / `<ul>` of literal items in document order, so the
+    /// position is the identity.
+    let list (sources: BindingResolver.BindingSources) (spec: ListSpec) : Plan<'E> =
+        let items =
+            spec.Items
+            |> List.mapi (fun i item ->
+                Plan.Element
+                    { Tag = "li"
+                      Props = [ Prop.Attr("class", Css.Class.ListItem) ]
+                      Key = Some(reconciliationKey None i)
+                      Content = Content.Text(BindingResolver.resolveTextSource sources item) })
+
+        if spec.Ordered then
+            Plan.classChildren "ol" Css.Class.ListOrdered items
+        else
+            Plan.classChildren "ul" Css.Class.ListUnordered items
+
+    /// Phase 289 — ALWAYS in the DOM (no portal); closed is the `hidden`
+    /// attribute; `role="status"` + `aria-live="polite"` announce politely.
+    let toast (sources: BindingResolver.BindingSources) (spec: ToastSpec) : Plan<'E> =
+        let isOpen =
+            BindingResolver.tryResolve sources spec.Open |> Option.defaultValue false
+
+        Plan.element
+            "div"
+            ([ Prop.Attr("class", Css.toast (Theme.toneVar spec.Tone))
+               Prop.Attr("role", "status")
+               Prop.Attr("aria-live", "polite") ]
+             @ (if isOpen then [] else [ Prop.Attr("hidden", "") ]))
+            (Content.Children
+                [ Plan.classText "span" Css.Class.ToastMessage (BindingResolver.resolveTextSource sources spec.Message)
+                  if spec.Dismissable then
+                      Plan.element
+                          "button"
+                          [ Prop.Attr("class", Css.Class.ToastDismiss)
+                            Prop.Attr("type", "button")
+                            Prop.Attr("aria-label", "Dismiss") ]
+                          (Content.Text "×")
+                  else
+                      Plan.Nothing ])
+
+    /// Phase 290 / 1854 — a deterministic `<pre><code>`; a language with a
+    /// grammar gets the class-only highlighting tier, marked so a richer
+    /// client-only highlighter can skip it.
+    let codeBlock (spec: CodeBlockSpec) : Plan<'E> =
+        let containerClass =
+            if spec.LineNumbers then
+                Css.Class.CodeblockNumbered
+            else
+                Css.Class.Codeblock
+
+        let code =
+            match CodeHighlight.highlight spec.Language spec.Code with
+            | Some markup ->
+                Plan.element
+                    "code"
+                    [ Prop.Attr("class", Css.codeBlockCode spec.Language)
+                      Prop.Attr("data-highlighted", CodeHighlight.TierMarker) ]
+                    (Content.InnerHtml markup)
+            | None -> Plan.classText "code" (Css.codeBlockCode spec.Language) spec.Code
+
+        Plan.element
+            "div"
+            ([ Prop.Attr("class", containerClass)
+               Prop.Attr("data-language", spec.Language) ]
+             @ (match spec.HighlightLines with
+                | [] -> []
+                | lines -> [ Prop.Attr("data-highlight-lines", String.concat "," (lines |> List.map string)) ]))
+            (Content.Children
+                [ if spec.Copyable then
+                      Plan.element
+                          "button"
+                          [ Prop.Attr("class", Css.Class.CodeblockCopy)
+                            Prop.Attr("type", "button")
+                            Prop.Attr("aria-label", "Copy") ]
+                          (Content.Text "Copy")
+                  else
+                      Plan.Nothing
+                  Plan.classChildren "pre" Css.Class.CodeblockPre [ code ] ])
+
+    /// Phase 658 — native MathML for the closed subset, the escaped source
+    /// span otherwise; KaTeX upgrades either shape client-only, outside parity.
+    let math (spec: MathSpec) : Plan<'E> =
+        let displayStr, isBlock =
+            match spec.Display with
+            | MathDisplay.Block -> "block", true
+            | MathDisplay.Inline -> "inline", false
+
+        Plan.element
+            (if isBlock then "div" else "span")
+            [ Prop.Attr("class", Css.mathContainer isBlock)
+              Prop.Attr("data-math-display", displayStr)
+              Prop.Attr("data-fuaran-math-src", spec.Source) ]
+            (match MathMl.translate spec.Source spec.Display with
+             | Some markup -> Content.InnerHtml markup
+             | None -> Content.Children [ Plan.classText "span" Css.Class.MathSource spec.Source ])

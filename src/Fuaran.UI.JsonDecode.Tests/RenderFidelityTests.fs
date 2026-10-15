@@ -521,18 +521,24 @@ let badgeDerivation =
 // suite is where that lives. What this lock buys is that no intrinsic emission
 // can appear, vanish, or diverge across the pipelines unnoticed.
 
-/// One of the two per-kind renderer arms, as this build compiled it.
+/// One of the two per-kind renderer arms, as this build compiled it: the tier's
+/// own `Render.fs`, plus the element plan BOTH tiers emit (Phase 2108). A role or
+/// live region planned in `Fuaran.UI.Renderer.Core/ElementPlan.fs` reaches each
+/// tier through its plan emitter, so it belongs to both arms by construction.
 let private rendererArm (tier: string) : string =
-    let path =
-        Path.Combine(AppContext.BaseDirectory, "renderer-sources", tier, "Render.fs")
+    let read (path: string) =
+        if not (File.Exists path) then
+            failwithf
+                "a renderer source is not beside the test binary (%s) — the `renderer-sources` Content copy in Fuaran.UI.JsonDecode.Tests.fsproj did not run"
+                path
 
-    if not (File.Exists path) then
-        failwithf
-            "the %s renderer arm is not beside the test binary (%s) — the `renderer-sources` Content copy in Fuaran.UI.JsonDecode.Tests.fsproj did not run"
-            tier
-            path
+        File.ReadAllText path
 
-    File.ReadAllText path
+    let sources = Path.Combine(AppContext.BaseDirectory, "renderer-sources")
+
+    read (Path.Combine(sources, tier, "Render.fs"))
+    + "\n"
+    + read (Path.Combine(sources, "core", "ElementPlan.fs"))
 
 /// The arm's EMITTING lines: comment lines dropped, so a role named in prose
 /// (`// … same classes + role="dialog" …`) is not read as an emission. The

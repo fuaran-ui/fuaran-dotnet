@@ -362,9 +362,9 @@ let private cspStyle
 /// different rows as one. `usableKey` in the grid arm applies the same rule to
 /// selection, for the same reason.
 let reconciliationKey (declared: string option) (index: int) : string =
-    match declared with
-    | Some key when key <> "" && key <> "<closure>" -> key
-    | _ -> "#" + string index
+    // Phase 2108 — defined once in `ElementPlan`, where the planned repeated
+    // children (skeleton rows, list items) take their keys from.
+    ElementPlan.reconciliationKey declared index
 
 // ─── Text-source rendering — handles i18n + bound text ─────────────────────
 
@@ -3322,79 +3322,51 @@ let rec private renderKind
             @ [ prop.children (spec.Children |> List.map (render ctx)) ]
         )
     // -- Display --
-    | NodeKind.Heading spec ->
-        // Feliz-parity additive: Heading.Variant
-        // appends `fuaran-heading-{variant}` so eyebrow / caption / lead
-        // styling can pick out the shape without overriding `<h{Level}>`
-        // semantics. `Standard` emits the bare `fuaran-heading` class —
-        // existing callers see no class change.
-        let variantSuffix = Css.headingVariant spec.Variant
+    // Phase 2108 — the leaf display kinds are `DisplayPlan` values this tier
+    // emits; the server renderer emits the same plans. A value-bearing kind
+    // first asks the shared state-slot rule whether it renders its
+    // `OnLoading` / `OnError` node instead of its body.
+    | NodeKind.Heading spec -> Emit.plan (ElementPlan.DisplayPlan.heading ctx.Sources spec)
+    | NodeKind.Markdown spec -> Emit.plan (ElementPlan.DisplayPlan.markdown ctx.Policy.Egress ctx.Sources spec)
+    | NodeKind.Metric spec ->
+        // Phase 632 — a scalar slot: a `Binding.Transform` resolves to its 1×1
+        // result cell.
+        let resolution = BindingResolver.resolveScalarFloat ctx.Sources spec.Value
 
-        let props: IReactProperty list =
-            [ prop.className (Css.heading variantSuffix)
-              prop.text (renderText ctx spec.Text) ]
+        match ElementPlan.DisplayPlan.stateSlot parentNodeId state resolution with
+        | Some slot -> render ctx slot
+        | None -> Emit.plan (ElementPlan.DisplayPlan.metric ctx.Sources resolution spec)
+    | NodeKind.Badge spec -> Emit.plan (ElementPlan.DisplayPlan.badge ctx.Sources spec)
+    | NodeKind.Skeleton spec -> Emit.plan (ElementPlan.DisplayPlan.skeleton spec)
+    | NodeKind.Icon spec -> Emit.plan (ElementPlan.DisplayPlan.icon spec)
+    | NodeKind.Callout spec -> Emit.plan (ElementPlan.DisplayPlan.callout ctx.Sources spec)
+    | NodeKind.Progress spec ->
+        let resolution = BindingResolver.resolve ctx.Sources spec.Fraction
 
-        // HTML heading levels are 1..6; anything outside that range falls to h6.
-        match spec.Level with
-        | 1 -> Html.h1 props
-        | 2 -> Html.h2 props
-        | 3 -> Html.h3 props
-        | 4 -> Html.h4 props
-        | 5 -> Html.h5 props
-        | _ -> Html.h6 props
-    | NodeKind.Markdown spec ->
-        // Phase 292: one deterministic GFM renderer in Renderer.Core. The same
-        // `Markdown.toHtmlWithEgress` runs on Fable (client) and .NET
-        // (Renderer.Server), so SSR↔CSR output is byte-identical by construction
-        // (was: npm `marked` here, Markdig server-side — two different renders
-        // of the same node). Phase 1032: the context's destination policy now
-        // reaches the markdown body's own link and image destinations, which the
-        // scheme floor alone never decided.
-        let html = Markdown.toHtmlWithEgress ctx.Policy.Egress (renderText ctx spec.Text)
+        match ElementPlan.DisplayPlan.stateSlot parentNodeId state resolution with
+        | Some slot -> render ctx slot
+        | None ->
+            Emit.plan (
+                ElementPlan.DisplayPlan.progress
+                    ctx.Sources
+                    (ElementPlan.styleSite ctx.Policy.Csp None parentNodeId)
+                    resolution
+                    spec
+            )
+    | NodeKind.Sparkline spec ->
+        BindingResolver.tryResolve ctx.Sources spec.Source
+        |> Option.bind (Fuaran.UI.Charts.tryLowerSparkline spec)
+        |> ElementPlan.DisplayPlan.sparkline ctx.Sources
+        |> Emit.plan
+    | NodeKind.Drawing spec -> Emit.plan (ElementPlan.DisplayPlan.drawing ctx.Sources spec)
+    | NodeKind.LabelValueRow spec ->
+        // Phase 632 — a scalar slot, as `Metric`'s.
+        let resolution = BindingResolver.resolveScalarFloat ctx.Sources spec.Value
 
-        Html.div
-            [ prop.className Css.Class.Markdown
-              prop.dangerouslySetInnerHTML (TrustedTypes.html html) ]
-    | NodeKind.Metric spec -> renderMetric ctx parentNodeId state spec
-    | NodeKind.Badge spec ->
-        Html.span
-            [ prop.className (Css.badge (Css.badgeVariant spec.Variant))
-              prop.text (renderText ctx spec.Label) ]
-    | NodeKind.Skeleton spec ->
-        Html.div
-            [ prop.className Css.Class.Skeleton
-              // A skeleton's rows are interchangeable placeholders with no
-              // identity beyond their position, so the index IS the key here.
-              prop.children
-                  [ for i in 1 .. spec.Rows ->
-                        Html.div [ prop.key (reconciliationKey None i); prop.className Css.Class.SkeletonRow ] ] ]
-    | NodeKind.Icon spec ->
-        // Phase 821 — the standalone icon-only display kind. The glyph NAME
-        // rides `data-icon` (the uniform icon-hook contract — no text
-        // content, hosts map it to glyphs); size + tone are modifier classes.
-        // A11y: decorative (`Label = None`) emits `aria-hidden="true"`;
-        // labelled emits `role="img"` + `aria-label`. Mirrors the SSR
-        // renderer byte-for-byte.
-        Html.span
-            [ prop.className (Css.icon (Theme.iconSizeClass spec.Size) (Theme.toneVar spec.Tone))
-              prop.custom ("data-icon", spec.Icon)
-              match spec.Label with
-              | Some label ->
-                  prop.custom ("role", "img")
-                  prop.custom ("aria-label", label)
-              | None -> prop.custom ("aria-hidden", "true") ]
-    | NodeKind.Callout spec -> renderCallout ctx spec
-    | NodeKind.Progress spec -> renderProgress ctx parentNodeId state spec
-    | NodeKind.Sparkline spec -> renderSparkline ctx spec
-    | NodeKind.Drawing spec ->
-        // Phase 525 — first-party inline SVG from the canonical Core builder
-        // (the ONE serialisation the SSR + TS + Python legs also emit, so the
-        // client / server are parity by construction). Rides
-        // `dangerouslySetInnerHTML` like Markdown/Math — an inert display node.
-        Html.div
-            [ prop.dangerouslySetInnerHTML (TrustedTypes.html (DrawingSvg.render ctx.Sources (renderText ctx) spec)) ]
-    | NodeKind.LabelValueRow spec -> renderLabelValueRow ctx parentNodeId state spec
-    | NodeKind.Fact spec -> renderFact ctx spec
+        match ElementPlan.DisplayPlan.stateSlot parentNodeId state resolution with
+        | Some slot -> render ctx slot
+        | None -> Emit.plan (ElementPlan.DisplayPlan.labelValueRow ctx.Sources resolution spec)
+    | NodeKind.Fact spec -> Emit.plan (ElementPlan.DisplayPlan.fact ctx.Sources spec)
     | NodeKind.Link spec ->
         // A real `<a href>` — crawlable + works with JS disabled. `href`
         // resolves the binding then passes through the ambient destination
@@ -4012,131 +3984,10 @@ let rec private renderKind
             [ prop.className Css.Class.Tree
               prop.role "tree"
               prop.children (renderItems 1 spec.Items) ]
-    | NodeKind.List spec ->
-        // Phase 287 — `<ol>` (ordered) / `<ul>` (unordered) of `<li>` items.
-        let items =
-            spec.Items
-            |> List.mapi (fun i item ->
-                // Literal items in document order: position is the identity.
-                Html.li
-                    [ prop.key (reconciliationKey None i)
-                      prop.className Css.Class.ListItem
-                      prop.text (renderText ctx item) ])
-
-        if spec.Ordered then
-            Html.ol [ prop.className Css.Class.ListOrdered; prop.children items ]
-        else
-            Html.ul [ prop.className Css.Class.ListUnordered; prop.children items ]
-    | NodeKind.Toast spec ->
-        // Phase 289 overlay render-fidelity contract: ALWAYS in the DOM (no
-        // portal); closed = the `hidden` attribute. `role="status"` +
-        // `aria-live="polite"` announce the message without interrupting.
-        let isOpen =
-            BindingResolver.tryResolve ctx.Sources spec.Open |> Option.defaultValue false
-
-        let toneClass = Theme.toneVar spec.Tone
-
-        let dismissEls =
-            if spec.Dismissable then
-                [ Html.button
-                      [ prop.className Css.Class.ToastDismiss
-                        prop.type' "button"
-                        prop.ariaLabel "Dismiss"
-                        prop.text "×" ] ]
-            else
-                []
-
-        Html.div
-            [ prop.className (Css.toast toneClass)
-              prop.role "status"
-              prop.custom ("aria-live", "polite")
-              if not isOpen then
-                  prop.custom ("hidden", "")
-              prop.children (
-                  [ Html.span
-                        [ prop.className Css.Class.ToastMessage
-                          prop.text (renderText ctx spec.Message) ] ]
-                  @ dismissEls
-              ) ]
-    | NodeKind.CodeBlock spec ->
-        // Phase 290 — DETERMINISTIC `<pre><code>` (HTML-escaped via `prop.text`,
-        // NO markdown library), byte-identical across all hosts + SSR. Line
-        // numbers + highlight ranges are deterministic class / data hooks.
-        // Phase 1854 — a language with a grammar (F*, F#) gets the
-        // deterministic highlighting tier: class-only `tok-*` spans from the
-        // shared `CodeHighlight.highlight` (byte-identical to the server
-        // renderer), marked `data-highlighted="deterministic"` so a richer
-        // client-only highlighter targeting `language-{x}` can skip or replace
-        // it. Any other language keeps the escaped text exactly. See
-        // docs/CODE-HIGHLIGHT.md.
-        let containerClass =
-            if spec.LineNumbers then
-                Css.Class.CodeblockNumbered
-            else
-                Css.Class.Codeblock
-
-        let highlightAttr =
-            match spec.HighlightLines with
-            | [] -> []
-            | lines -> [ prop.custom ("data-highlight-lines", String.concat "," (lines |> List.map string)) ]
-
-        let copyEls =
-            if spec.Copyable then
-                [ Html.button
-                      [ prop.className Css.Class.CodeblockCopy
-                        prop.type' "button"
-                        prop.ariaLabel "Copy"
-                        prop.text "Copy" ] ]
-            else
-                []
-
-        let codeEl =
-            match CodeHighlight.highlight spec.Language spec.Code with
-            | Some markup ->
-                Html.code
-                    [ prop.className (Css.codeBlockCode spec.Language)
-                      prop.custom ("data-highlighted", CodeHighlight.TierMarker)
-                      prop.dangerouslySetInnerHTML (TrustedTypes.html markup) ]
-            | None -> Html.code [ prop.className (Css.codeBlockCode spec.Language); prop.text spec.Code ]
-
-        Html.div (
-            [ prop.className containerClass; prop.custom ("data-language", spec.Language) ]
-            @ highlightAttr
-            @ [ prop.children (
-                    copyEls
-                    @ [ Html.pre [ prop.className Css.Class.CodeblockPre; prop.children [ codeEl ] ] ]
-                ) ]
-        )
-    | NodeKind.Math spec ->
-        // Phase 658 — DETERMINISTIC native MathML for the closed subset (real
-        // superscripts / fractions with NO JavaScript); the raw escaped LaTeX
-        // source span for out-of-subset input (today's fallback, unchanged).
-        // KaTeX upgrades EITHER shape client-only post-hydration (targets the
-        // `.fuaran-math` container, reads `data-fuaran-math-src`), OUTSIDE the
-        // parity output. `MathMl.translate` is a pure Fable-safe function shared
-        // with the server renderer, so both emit byte-identical markup — see
-        // docs/MATH-DEGRADATION.md (the normative subset + fixture oracle).
-        let mathml = MathMl.translate spec.Source spec.Display
-
-        let displayStr, isBlock =
-            match spec.Display with
-            | MathDisplay.Block -> "block", true
-            | MathDisplay.Inline -> "inline", false
-
-        let containerProps =
-            [ prop.className (Css.mathContainer isBlock)
-              prop.custom ("data-math-display", displayStr)
-              prop.custom ("data-fuaran-math-src", spec.Source) ]
-
-        let content =
-            match mathml with
-            | Some markup -> [ prop.dangerouslySetInnerHTML (TrustedTypes.html markup) ]
-            | None -> [ prop.children [ Html.span [ prop.className Css.Class.MathSource; prop.text spec.Source ] ] ]
-
-        if isBlock then
-            Html.div (containerProps @ content)
-        else
-            Html.span (containerProps @ content)
+    | NodeKind.List spec -> Emit.plan (ElementPlan.DisplayPlan.list ctx.Sources spec)
+    | NodeKind.Toast spec -> Emit.plan (ElementPlan.DisplayPlan.toast ctx.Sources spec)
+    | NodeKind.CodeBlock spec -> Emit.plan (ElementPlan.DisplayPlan.codeBlock spec)
+    | NodeKind.Math spec -> Emit.plan (ElementPlan.DisplayPlan.math spec)
     // -- Input --
     | NodeKind.Button spec -> renderButton ctx spec semanticAttrs
     | NodeKind.Select spec -> renderSelect ctx spec
@@ -4677,241 +4528,6 @@ let rec private renderKind
             [ prop.className Css.Class.MountBoundary
               prop.custom ("data-fuaran-mount-scope", spec.ScopeId)
               prop.children [ boundaryChild ] ]
-
-// ─── Layouts ───────────────────────────────────────────────────────────────
-
-// ─── Displays ──────────────────────────────────────────────────────────────
-
-and private renderMetric
-    (ctx: RenderContext<'Msg>)
-    (parentNodeId: string)
-    (state: StateBehaviour<'Msg>)
-    (spec: MetricSpec)
-    : ReactElement =
-    // Phase 632 — the Metric value is a scalar slot: a `Binding.Transform`
-    // resolves to its 1×1 result cell (a global aggregate / row-field lookup).
-    let resolution = BindingResolver.resolveScalarFloat ctx.Sources spec.Value
-
-    match resolution, state.OnLoading, state.OnError with
-    | BindingResolver.NotResolved, Some loadingNode, _ -> render ctx loadingNode
-    | BindingResolver.Errored msg, _, Some errorFn ->
-        render
-            ctx
-            (errorFn
-                { Kind = ErrorKind.BindingResolution
-                  Message = msg
-                  CorrelationId = correlationId parentNodeId })
-    | _ ->
-        Html.div
-            [ prop.className (Css.metric (Theme.toneVar spec.Tone))
-              prop.children
-                  [ match spec.Icon with
-                    | Some icon -> iconHook Css.Class.MetricIcon icon
-                    | None -> Html.none
-                    Html.div [ prop.className Css.Class.MetricLabel; prop.text (renderText ctx spec.Label) ]
-                    Html.div
-                        [ prop.className Css.Class.MetricValue
-                          prop.text (
-                              match resolution with
-                              | BindingResolver.Resolved value -> formatNumber spec.Format value
-                              | BindingResolver.NotResolved -> "—"
-                              | BindingResolver.Errored msg -> sprintf "(error: %s)" msg
-                              | BindingResolver.I18nUnresolved key -> sprintf "[i18n:%s]" key
-                          ) ]
-                    match spec.Trend with
-                    | Some trendBinding ->
-                        // Phase 867 — the trend element carries a SENTIMENT, not a
-                        // constant. `tone` above still colours the tile; this says
-                        // which way the quantity moved, and nothing derives one from
-                        // the other. The numeric text — sign included — is unchanged.
-                        match BindingResolver.tryResolveScalarFloat ctx.Sources trendBinding with
-                        | Some t ->
-                            let sentiment, glyph = Theme.trendSentiment spec.TrendPolarity t
-
-                            Html.div
-                                [ prop.className (Css.metricTrend sentiment)
-                                  prop.children
-                                      [ Html.span
-                                            [ prop.className Css.Class.MetricTrendGlyph
-                                              prop.role "img"
-                                              prop.ariaLabel sentiment
-                                              prop.text glyph ]
-                                        Html.text (
-                                            formatNumber (spec.TrendFormat |> Option.defaultValue CellFormat.None) t
-                                        ) ] ]
-                        | None -> Html.div [ prop.className Css.Class.MetricTrend; prop.text "" ]
-                    | None -> Html.none
-                    match spec.Subtext with
-                    | Some subtext ->
-                        Html.div [ prop.className Css.Class.MetricSubtext; prop.text (renderText ctx subtext) ]
-                    | None -> Html.none ] ]
-
-and private renderFact (ctx: RenderContext<'Msg>) (spec: FactSpec) : ReactElement =
-    // A labeled TEXT fact tile — Metric's chrome for a TextSource value.
-    // No binding resolution stage: `renderText` already resolves the
-    // Literal / Bound / I18n legs, exactly as it does for every label.
-    let emphasisSuffix = Css.factEmphasis spec.Emphasis
-
-    Html.div
-        [ prop.className (Css.fact (Theme.toneVar spec.Tone) emphasisSuffix)
-          prop.children
-              [ Html.div [ prop.className Css.Class.FactLabel; prop.text (renderText ctx spec.Label) ]
-                Html.div
-                    [ prop.className Css.Class.FactValue
-                      prop.children
-                          [ match spec.Icon with
-                            | Some icon -> iconHook Css.Class.FactIcon icon
-                            | None -> Html.none
-                            Html.span [ prop.text (renderText ctx spec.Value) ] ] ]
-                match spec.Help with
-                | Some help -> Html.div [ prop.className Css.Class.FactHelp; prop.text (renderText ctx help) ]
-                | None -> Html.none ] ]
-
-and private renderCallout (ctx: RenderContext<'Msg>) (spec: CalloutSpec) : ReactElement =
-    Html.div
-        [ prop.className (Css.callout (Theme.toneVar spec.Tone))
-          prop.children
-              [ match spec.Icon with
-                | Some icon -> iconHook Css.Class.CalloutIcon icon
-                | None -> Html.none
-                match spec.Heading with
-                | Some heading ->
-                    Html.div [ prop.className Css.Class.CalloutHeading; prop.text (renderText ctx heading) ]
-                | None -> Html.none
-                Html.div [ prop.className Css.Class.CalloutBody; prop.text (renderText ctx spec.Body) ]
-                if spec.Dismissable then
-                    Html.button
-                        [ prop.className "fuaran-callout-dismiss"
-                          prop.text "×"
-                          prop.ariaLabel "Dismiss" ]
-                else
-                    Html.none ] ]
-
-and private renderProgress
-    (ctx: RenderContext<'Msg>)
-    (parentNodeId: string)
-    (state: StateBehaviour<'Msg>)
-    (spec: ProgressSpec)
-    : ReactElement =
-    let resolution = BindingResolver.resolve ctx.Sources spec.Fraction
-
-    match resolution, state.OnLoading, state.OnError with
-    | BindingResolver.NotResolved, Some loadingNode, _ -> render ctx loadingNode
-    | BindingResolver.Errored msg, _, Some errorFn ->
-        render
-            ctx
-            (errorFn
-                { Kind = ErrorKind.BindingResolution
-                  Message = msg
-                  CorrelationId = correlationId parentNodeId })
-    | _ ->
-        let fraction =
-            match resolution with
-            | BindingResolver.Resolved value -> value
-            | _ -> 0.0
-
-        Html.div
-            [ prop.className (Css.progress (Theme.toneVar spec.Tone) (Css.progressIndeterminate spec.Indeterminate))
-              prop.children
-                  [ match spec.Label with
-                    | Some label ->
-                        Html.div [ prop.className Css.Class.ProgressLabel; prop.text (renderText ctx label) ]
-                    | None -> Html.none
-                    Html.div
-                        [ prop.className Css.Class.ProgressBar
-                          prop.children
-                              [ let fillClass, fillStyleProps =
-                                    cspStyle
-                                        ctx
-                                        parentNodeId
-                                        "progress-fill"
-                                        (Csp.Declarations.progressFill fraction)
-                                        [ style.width (length.percent (fraction * 100.0)) ]
-
-                                Html.div ([ prop.className (Css.Class.ProgressFill + fillClass) ] @ fillStyleProps) ] ]
-                    match spec.Caveat with
-                    | Some caveat ->
-                        Html.div [ prop.className "fuaran-progress-caveat"; prop.text (renderText ctx caveat) ]
-                    | None -> Html.none ] ]
-
-and private renderLabelValueRow
-    (ctx: RenderContext<'Msg>)
-    (parentNodeId: string)
-    (state: StateBehaviour<'Msg>)
-    (spec: LabelValueRowSpec)
-    : ReactElement =
-    // Feliz-parity additive: label-left,
-    // value-right, baseline-aligned single row. Honours `OnLoading` /
-    // `OnError` like `Metric` (resolver against `Source`); `OnEmpty` is
-    // intentionally not handled here — a single-row primitive has no
-    // empty-collection semantics, unlike Grid.
-    // Phase 632 — a scalar slot: Transform resolves to its 1×1 result cell.
-    let resolution = BindingResolver.resolveScalarFloat ctx.Sources spec.Value
-
-    match resolution, state.OnLoading, state.OnError with
-    | BindingResolver.NotResolved, Some loadingNode, _ -> render ctx loadingNode
-    | BindingResolver.Errored msg, _, Some errorFn ->
-        render
-            ctx
-            (errorFn
-                { Kind = ErrorKind.BindingResolution
-                  Message = msg
-                  CorrelationId = correlationId parentNodeId })
-    | _ ->
-        let emphasisSuffix = Css.labelValueRowEmphasis spec.Emphasis
-
-        let valueText =
-            match resolution with
-            | BindingResolver.Resolved value -> formatNumber spec.Format value
-            | BindingResolver.NotResolved -> "—"
-            | BindingResolver.Errored msg -> sprintf "(error: %s)" msg
-            | BindingResolver.I18nUnresolved key -> sprintf "[i18n:%s]" key
-
-        Html.div
-            [ prop.className (Css.labelValueRow emphasisSuffix)
-              prop.children
-                  [ Html.div
-                        [ prop.className "fuaran-label-value-row-label-block"
-                          prop.children
-                              [ Html.span
-                                    [ prop.className Css.Class.LabelValueRowLabel
-                                      prop.text (renderText ctx spec.Label) ]
-                                match spec.Help with
-                                | Some help ->
-                                    Html.span
-                                        [ prop.className "fuaran-label-value-row-help"
-                                          prop.text (renderText ctx help) ]
-                                | None -> Html.none ] ]
-                    Html.span [ prop.className Css.Class.LabelValueRowValue; prop.text valueText ] ] ]
-
-and private renderSparkline (ctx: RenderContext<'Msg>) (spec: SparklineSpec) : ReactElement =
-    // Phase 1098 — the bespoke polyline builder is retired in favour of the
-    // shared `Sparkline -> Drawing` lowering (Phase 644's D7), emitted through
-    // the SAME `DrawingSvg` builder the `Drawing` and `Chart` arms already use.
-    // So this arm and the server arm are byte-identical BY CONSTRUCTION rather
-    // than by two hand-written copies kept in step — which is exactly what moved
-    // `Sparkline` from `clientOnly` to `none` in the render-fidelity contract.
-    //
-    // The `fuaran-sparkline` class moves to the CONTAINER. That is where the
-    // sizing (100x30) and the inherited `color` the lowering's `currentColor`
-    // stroke reads have always lived, so the hook `render-fidelity.json` names
-    // survives and the picture does not move; the inner SVG is the shared
-    // builder's `fuaran-drawing` root.
-    //
-    // An unresolved or empty series keeps the em-dash element, unchanged: it is
-    // a host element rather than a `Shape`, so `tryLowerSparkline` reports it in
-    // the type rather than lowering an empty canvas nobody can read.
-    match BindingResolver.tryResolve ctx.Sources spec.Source with
-    | Some series ->
-        match Fuaran.UI.Charts.tryLowerSparkline spec series with
-        | Some drawing ->
-            Html.div
-                [ prop.className Css.Class.Sparkline
-                  prop.dangerouslySetInnerHTML (
-                      TrustedTypes.html (DrawingSvg.render ctx.Sources (renderText ctx) drawing)
-                  ) ]
-        | None -> Html.div [ prop.className Css.Class.SparklineEmpty; prop.text "—" ]
-    | None -> Html.div [ prop.className Css.Class.SparklineEmpty; prop.text "—" ]
 
 // ─── Inputs ────────────────────────────────────────────────────────────────
 

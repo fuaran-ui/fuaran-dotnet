@@ -146,4 +146,102 @@ let tests =
 
                     Expect.equal suffix (" " + Csp.generatedClass "n" "progress-fill" decls) "strict: the class"
                     Expect.isEmpty props "and no inline style"
+                } ]
+
+          testList
+              "stage 2 — the leaf display kinds"
+              [ test "skeleton rows and list items carry their positional keys in the plan" {
+                    let rows =
+                        match (DisplayPlan.skeleton ({ Rows = 2 }: SkeletonSpec): Plan<unit>) with
+                        | Plan.Element { Content = Content.Children rows } -> rows
+                        | other -> failtestf "unexpected %A" other
+
+                    Expect.equal
+                        (rows
+                         |> List.map (function
+                             | Plan.Element e -> e.Key
+                             | _ -> None))
+                        [ Some "#1"; Some "#2" ]
+                        "keyed by position, from 1"
+
+                    let items =
+                        match
+                            (DisplayPlan.list
+                                BindingResolver.empty
+                                { Defaults.list with
+                                    Items = [ TextSource.Literal "a"; TextSource.Literal "b" ] }
+                            : Plan<unit>)
+                        with
+                        | Plan.Element { Content = Content.Children items } -> items
+                        | other -> failtestf "unexpected %A" other
+
+                    Expect.equal
+                        (items
+                         |> List.map (function
+                             | Plan.Element e -> e.Key
+                             | _ -> None))
+                        [ Some "#0"; Some "#1" ]
+                        "list items keyed by position, from 0"
+                }
+
+                test "parity fix (f) — the progress fill's inline style is the canonical declaration on both tiers" {
+                    let plan: Plan<unit> =
+                        DisplayPlan.progress
+                            BindingResolver.empty
+                            (styleSite Csp.Permissive None "p")
+                            (BindingResolver.Resolved 0.5)
+                            { Defaults.progress with
+                                Fraction = Binding.Static(Some 0.5) }
+
+                    let rec styles (p: Plan<unit>) : (string * string) list list =
+                        match p with
+                        | Plan.Element e ->
+                            (e.Props
+                             |> List.choose (function
+                                 | Prop.Style d -> Some d
+                                 | _ -> None))
+                            @ (match e.Content with
+                               | Content.Children cs -> cs |> List.collect styles
+                               | _ -> [])
+                        | _ -> []
+
+                    Expect.equal (styles plan) [ Csp.Declarations.progressFill 0.5 ] "one fill style, canonical"
+                }
+
+                test "(d) the state-slot rule: OnLoading while unresolved, OnError with the deterministic id" {
+                    let loading: Node<unit> = Fuaran.markdown "ld" "loading"
+
+                    let state: StateBehaviour<unit> =
+                        { Defaults.stateBehaviour<unit> with
+                            OnLoading = Some loading
+                            OnError = Some(fun e -> Fuaran.markdown "er" e.CorrelationId) }
+
+                    Expect.equal
+                        (DisplayPlan.stateSlot "k" state BindingResolver.NotResolved |> Option.map _.Id)
+                        (Some "ld")
+                        "loading"
+
+                    match
+                        DisplayPlan.stateSlot "k" state (BindingResolver.Errored "x": BindingResolver.Resolution<float>)
+                    with
+                    | Some node -> Expect.equal node.Id "er" "the error slot"
+                    | None -> failtest "expected the error slot"
+
+                    Expect.isNone
+                        (DisplayPlan.stateSlot "k" state (BindingResolver.Resolved 1.0))
+                        "a resolved value renders the body"
+                }
+
+                test "the scalar text is the formatted value or its loud sentinel" {
+                    Expect.equal
+                        (DisplayPlan.scalarText (CellFormat.Number(Some 1)) (BindingResolver.Resolved 2.0))
+                        "2.0"
+                        "value"
+
+                    Expect.equal (DisplayPlan.scalarText CellFormat.None BindingResolver.NotResolved) "—" "pending"
+
+                    Expect.equal
+                        (DisplayPlan.scalarText CellFormat.None (BindingResolver.Errored "e"))
+                        "(error: e)"
+                        "error"
                 } ] ]

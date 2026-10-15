@@ -194,10 +194,14 @@ let tests =
               [ test "the scan finds the sinks it is meant to govern" {
                     // Non-vacuity. A scan that matched nothing would pass every
                     // assertion below while proving nothing at all, and this
-                    // renderer's sinks are spread over two files.
+                    // renderer's sinks are spread over two files. Phase 2108 took
+                    // the floor from 7 to 5: the Markdown, Drawing, Sparkline,
+                    // CodeBlock and Math arms now plan their markup as
+                    // `Content.InnerHtml`, and ONE sink — the plan emitter's —
+                    // mints every one of them.
                     Expect.isGreaterThanOrEqual
                         clientSinks.Length
-                        7
+                        5
                         "the client renderer's raw-HTML sink count; a sudden drop means the scan stopped matching, not that the sinks went away"
 
                     let files = clientSinks |> List.map _.File |> List.distinct |> List.sort

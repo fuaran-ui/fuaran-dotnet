@@ -106,4 +106,86 @@ let tests =
                                 (RenderParity.renderFailureCorrelationId "w" kindName))
                             html)
                         "the per-node guard stamps the failure's own correlation id"
+                } ]
+
+          testList
+              "stage 2 — parity fixes: the server now emits what the client always did"
+              [ test "(a) a dismissable callout carries its (inert) dismiss button" {
+                    let html =
+                        Render.renderStatic (
+                            Fuaran.callout
+                                "c"
+                                { Defaults.callout with
+                                    Body = TextSource.Literal "body"
+                                    Dismissable = true }
+                        )
+
+                    Expect.stringContains
+                        html
+                        "<button class=\"fuaran-callout-dismiss\" aria-label=\"Dismiss\">×</button>"
+                        "the dismiss button"
+                }
+
+                test "(b) a progress caveat renders" {
+                    let html =
+                        Render.renderStatic (
+                            Fuaran.progress
+                                "p"
+                                { Defaults.progress with
+                                    Fraction = Binding.Static(Some 0.5)
+                                    Caveat = Some(TextSource.Literal "estimate") }
+                        )
+
+                    Expect.stringContains html "<div class=\"fuaran-progress-caveat\">estimate</div>" "the caveat"
+                }
+
+                test "(c) a label-value row nests its label and help in the label block" {
+                    let html =
+                        Render.renderStatic (
+                            Fuaran.labelValueRow
+                                "r"
+                                { Defaults.labelValueRow with
+                                    Label = TextSource.Literal "Margin"
+                                    Help = Some(TextSource.Literal "gross")
+                                    Value = Binding.Static(Some 2.0) }
+                        )
+
+                    Expect.stringContains
+                        html
+                        "<div class=\"fuaran-label-value-row-label-block\"><span class=\"fuaran-label-value-row-label\">Margin</span><span class=\"fuaran-label-value-row-help\">gross</span></div>"
+                        "the label block"
+                }
+
+                test "(d) an errored value renders the node's OnError slot, with the client's correlation id" {
+                    let erroring: Binding<float> = Binding.Computed(fun _ -> failwith "value exploded")
+
+                    let onError (e: ErrorPayload) : Node<obj> =
+                        md "err" ("VALUE-ERROR " + e.CorrelationId)
+
+                    let withError (node: Node<obj>) =
+                        { node with
+                            State =
+                                Some
+                                    { Defaults.stateBehaviour<obj> with
+                                        OnError = Some onError } }
+
+                    for node in
+                        [ Fuaran.metric
+                              "k"
+                              { Defaults.metric with
+                                  Value = erroring }
+                          Fuaran.progress
+                              "k"
+                              { Defaults.progress with
+                                  Fraction = erroring }
+                          Fuaran.labelValueRow
+                              "k"
+                              { Defaults.labelValueRow with
+                                  Value = erroring } ] do
+                        let html = Render.renderStatic (withError node)
+
+                        Expect.stringContains
+                            html
+                            ("VALUE-ERROR " + Ids.deterministicCorrelationId "k")
+                            (sprintf "%s renders its OnError slot" (RenderParity.nodeKindName node.Kind))
                 } ] ]
