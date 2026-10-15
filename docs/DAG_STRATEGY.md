@@ -19,6 +19,27 @@ Both shapes share the same op vocabulary (`TreeOp`), the same canonical encoder,
 host-side SHA-256 `HashFn`. Moving from linear to DAG is a persistence-layer choice, not a rewrite of
 your edit logic.
 
+## Moving a linear stream onto a DAG branch
+
+The two formats stay two formats: a linear stream is not silently re-read as a DAG. To continue a linear
+stream as a branch, use the **lift**, `DagLift` in `Fuaran.UI.OpStream.Dag.Abstractions` (Phase 2116). It
+is the sanctioned route from linear to DAG, and it is one-way.
+
+- `DagLift.ofLinearVerified records` re-walks the linear segment (`Verify.segment`) and refuses a broken
+  link, a hash that does not recompute, a gap, an empty segment, or one spanning two streams. It then
+  lifts the segment to a branch rooted at a DAG genesis.
+- `DagLift.ofLinearAnchored anchor records` does the same, with the first record hung off an existing DAG
+  node. This is the guest-fork form: a guest's linear journal continued from the host's `Mount` op.
+- Both return a `LiftReceipt` naming the linear range and the DAG head it became.
+  `LiftReceipt.verify receipt records` recomputes it. What a receipt does and does not prove is in
+  [`../CRYPTO.md`](../CRYPTO.md#lift-receipts--a-recomputation-not-a-signature).
+
+The lifted DAG addresses are **not** the linear chain hashes. The linear pre-image folds the sequence and
+the previous hash; the DAG pre-image folds the parents. Nothing is re-addressed by a lift: the linear
+records are read, never written, and the DAG records are addressed exactly as any DAG record is.
+`DagOpRecord.ofLinear` remains as the unverified embedding, for callers that have already verified the
+segment and want no receipt.
+
 ## Why is the UI's DAG separate from `Fuaran.Core.OpStream.Dag`?
 
 `Fuaran.Core` ships a **minimal** op-DAG whose node identity is essentially
@@ -51,6 +72,7 @@ unkeyed, so it is not evidence against a writer who re-chains – see [`../CRYPT
 ## In short
 
 - One stream, one writer → **linear chain**.
+- A linear stream that must continue as a branch → **lift it** with `DagLift`, never re-read it.
 - Diverging writers that must merge → **branching DAG**.
 - The UI DAG being separate from the Core DAG is a boundary decision (merge-outcome identity, sorted
   parents, retention, tree-merge), not a half-finished migration – please don't "unify" them without

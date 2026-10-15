@@ -8024,6 +8024,57 @@ wire byte changes.
   on read by contract, plus the base replay when no checkpoint bounds it. The merge itself no longer grows.
   `MergeEntryPointTests` holds the new LCA to the old definition over random DAGs, and counts its walk on a 5,000-record
   chain.
+### What rides this slot — Phase 2116 (the verified lift from a linear stream to a DAG branch)
+
+**Class: additive.** A new module and new types in `Fuaran.UI.OpStream.Dag.Abstractions`; no existing member
+changes, no hash moves, and no wire byte moves. It rides the 0.95.0 draft without moving it.
+
+- **Added: `DagLift`**, the sanctioned route from a linear stream to a DAG branch.
+  - `DagLift.ofLinearVerified` re-walks the linear segment with `Verify.segment` and refuses a broken one.
+    It then lifts the segment to a genesis-rooted branch.
+  - `DagLift.ofLinearAnchored` is the guest form: the first record hangs off an anchor, an existing DAG node.
+  - `DagLift.describe` renders a refusal.
+  - Both return `Result<LiftedBranch<'Msg>, LiftRefusal>`. `LiftRefusal` is `EmptySegment`, `MixedStreams` or
+    `BrokenLinearSegment`.
+- **Added: `LiftReceipt` and `LiftReceipt.verify`.** The receipt names the linear range: stream id, chain
+  format version, from and to sequence, previous hash and head. It also names the DAG stream id, DAG head and
+  anchor. `verify` recomputes the lift from linear records and returns a `LiftVerdict`.
+  - `Recomputes` carries a `LiftBasis`.
+  - `DoesNotRecompute` carries a `LiftMismatch` naming the first field that parts.
+  - No case is worded as attestation. `CRYPTO.md`, "Lift receipts", says what a receipt proves and what it
+    does not: it is evidence only beside a signed segment attestation over the same linear range.
+- **Unchanged: `DagOpRecord.ofLinear`.** Its signature and output are the same. It is now documented as the
+  UNVERIFIED embedding and shares its fold with the lift, so the two cannot embed differently.
+- **Pinned: lifted addresses are not linear hashes.** The lifted address of each `chain/chain-corpus.json`
+  record is pinned beside its linear chain hash (`DagLiftTests.fs`), through both the in-memory and the SQLite
+  DAG sinks. The two digests are over different pre-images and are never equal.
+### What rides this slot — Phase 2285 (a state arm is fragment scope, as on every host)
+
+**Class: BEHAVIOUR change, no API change.** No type, member signature, defect code or wire byte moves. It rides the
+0.95.0 draft without moving it, because the draft is already at the minor number a consumer-visible fragment-set
+change needs pre-1.0.
+
+The question was which positions are fragment scope. The specification states no rule. fuaran-ts already entered
+`state.onLoading` / `state.onEmpty` for both its fragment walks. This host did not, although its own slot substitution
+and hygienic renaming already did. `FragmentExpansion.collectFragments` and `FragmentExpansion.namespaceIds` now both
+walk `NodeChildren.Reach.fragmentScope`: the kind-held positions plus the two `state` alternatives. The envelope
+`fallback`, a `FragmentRef`'s slot arguments and a `Mount` guest stay outside on every host.
+
+Two effects are consumer-visible:
+
+- **A `FragmentDecl` held in `state.onLoading` or `state.onEmpty` is now registered, so a reference to it resolves.**
+  Before this change, both .NET renderers rendered the unresolved placeholder for such a reference. On a repeated
+  name, the last decl in the walk's canonical order still wins. That order is a container's list, then
+  `state.onLoading` and `state.onEmpty`, then the kind's arms.
+- **State-arm ids inside an expanded fragment body are now prefixed by the referring node**, like every other interior
+  id (`<refId>.<id>`). Before, a body whose node carried `onLoading` / `onEmpty` emitted the arm's bare id once per
+  reference. Two references therefore duplicated it in the DOM, which the specification's id-uniqueness section says
+  expansion namespacing exists to prevent. A consumer selecting an arm node by its bare id inside an expansion now
+  selects `<refId>.<id>`.
+
+The evidence: `FragmentRegistryFixture.parityWire` is one wire document that fuaran-ts's renderer suite asserts
+byte for byte. The client and server agreement tests certify the same registered set and rendered output against it.
+The Phase 2244 every-position tree now lists `in-on-loading` and `in-on-empty` as registered.
 
 ---
 

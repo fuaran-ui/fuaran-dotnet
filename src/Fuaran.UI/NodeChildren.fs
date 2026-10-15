@@ -57,16 +57,17 @@ module Reach =
 
     /// Every node the node's own KIND holds: the ordered lists plus the arms.
     /// The tree as the vocabulary shapes it, and the relation the structural
-    /// query, the island and resume walks, the fragment registries and the
-    /// lints run on. It deliberately leaves out the envelope alternatives
+    /// query, the island and resume walks and the lints run on. It deliberately leaves out the envelope alternatives
     /// (which render INSTEAD of the node) and slot arguments (which belong to
     /// the scope they are passed into).
     let kindHeld: Reach = set [ Position.Ordered; Position.Arm ]
 
-    /// What a fragment body's slot substitution and hygienic renaming descend
-    /// through: the kind-held positions plus the two `state` alternatives.
-    /// The envelope `fallback` and slot arguments are outside it today; that
-    /// boundary is stated here so it is one decision rather than two copies.
+    /// Fragment scope: what the fragment registry walk and expansion
+    /// namespacing (`FragmentExpansion`), a fragment body's slot substitution
+    /// and hygienic renaming descend through — the kind-held positions plus the
+    /// two `state` alternatives, the answer every host gives (Phase 2285). The
+    /// envelope `fallback` and slot arguments are outside it; that boundary is
+    /// stated here so it is one decision rather than several copies.
     let fragmentScope: Reach = set [ Position.Ordered; Position.Arm; Position.StateArm ]
 
     /// Every position a node holds another node in — structural plus keyed. The

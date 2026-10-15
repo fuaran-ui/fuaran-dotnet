@@ -27,6 +27,9 @@
     <!-- Phase 267: guest-fork causal anchor (guest genesis = DAG child of the
          Mount creation op) + guest-op provenance projection (§4o). -->
     <Compile Include="GuestFork.fs" />
+    <!-- Phase 2116: the verified lift from a linear segment to a DAG branch,
+         with a receipt anyone can recompute. -->
+    <Compile Include="DagLift.fs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
