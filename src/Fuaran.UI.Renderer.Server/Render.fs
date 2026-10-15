@@ -108,42 +108,6 @@ let internal renderText (ctx: ServerRenderContext) (text: TextSource) : string =
 /// identically to the figure on the page.
 let internal formatNumber (format: CellFormat) (value: float) : string = Formatting.formatNumber format value
 
-// ─── Fragment registry (mirrors the client `collectFragments`) ──────────────
-
-/// The children the registry walk descends through — the tier's one
-/// enumeration at the kind-held reach, which is the relation the client
-/// `collectFragments` walks. (A private copy here read only an error
-/// boundary's `Child`, so a `FragmentDecl` in its `Fallback` resolved on the
-/// client and not on the server.)
-let private fragmentChildren (node: Node<obj>) : Node<obj> list =
-    Fuaran.UI.NodeChildren.children Fuaran.UI.NodeChildren.Reach.kindHeld node
-
-/// Collect the tree's `FragmentDecl` bodies by name.
-///
-/// ITERATIVE, with an explicit stack (Phase 781). This runs from `mkContext`,
-/// i.e. BEFORE `renderNode` on every server render, so it is the first walk an
-/// untrusted tree meets on this path — a recursive version would have made the
-/// depth guard on `renderNode` unreachable for anything deep enough to matter.
-/// Insertion order is preserved against the previous fold: children are pushed
-/// in reverse so they pop left-to-right, and a later `Map.add` for the same
-/// fragment name wins exactly as it did before.
-let internal collectFragments (acc: Map<string, Node<obj>>) (node: Node<obj>) : Map<string, Node<obj>> =
-    let pending = System.Collections.Generic.Stack<Node<obj>>()
-    pending.Push node
-    let mutable result = acc
-
-    while pending.Count > 0 do
-        let current = pending.Pop()
-
-        match current.Kind with
-        | NodeKind.FragmentDecl spec -> result <- Map.add spec.Name spec.Body result
-        | _ -> ()
-
-        for child in List.rev (fragmentChildren current) do
-            pending.Push child
-
-    result
-
 // ─── The plan emitter (Phase 2108) ──────────────────────────────────────────
 
 /// This renderer's emitter for `ElementPlan` — the one place the server turns
@@ -2982,7 +2946,8 @@ let mkContextWith
     // lands on every entry point below by construction and the two hosts' first
     // render read an identical `State` map (`docs/SSR.md`).
     { Sources = StateSeeds.apply node sources
-      Fragments = collectFragments Map.empty node
+      // The registry walk the client builds its table with too (Phase 2244).
+      Fragments = FragmentExpansion.collectFragments id Map.empty node
       Customs = customs
       // Phase 1108 — empty by default. A host that holds cards reaches them by
       // name (`mkContextWithCards`), exactly as it reaches a non-default egress

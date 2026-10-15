@@ -7959,6 +7959,28 @@ Additive otherwise. It rides the 0.95.0 draft, which is already breaking.
   that the vocabulary does not carry, made deliberately at the factory's positional spec construction. Whether
   those published records become generated is an open operator decision (fuaran#2257).
 
+### What rides this slot — Phase 2244 (one fragment registry walk for both .NET renderers)
+
+**Class: additive, and no consumer-visible fragment set changed.** It rides the 0.95.0 draft without moving it.
+
+- **Added: `FragmentExpansion.collectFragments`** in `Fuaran.UI.Renderer.Core`. This is the registry walk both renderers
+  now build their fragment table with, and its doc comment is where the enumeration is decided. It walks
+  `NodeChildren.Reach.kindHeld` in pre-order, which is the same reach `FragmentExpansion.namespaceIds` rewrites
+  through. On a repeated name, the last decl wins.
+  - It does not enter the envelope alternatives (`state.onLoading`, `state.onEmpty`, `fallback`).
+  - It does not enter slot arguments or a `Mount` guest.
+  - It is iterative, so it lowers unchanged under Fable.
+- **Unchanged: `Render.collectFragments`** in `Fuaran.UI.Renderer`. Its signature and results are the same; it is now a
+  one-line call of the shared walk, keyed by `FragmentId`. The server renderer's internal copy is deleted.
+- **The evidence for "no set changed".** At the phase's start, the two private walks were run over one tree. That tree
+  declared a fragment in every position class: every container kind's list, a decl body, both `ErrorBoundary` arms,
+  a `Switch` case and its default, `state.onLoading` and `state.onEmpty`, the envelope `fallback`, a `FragmentRef`
+  slot argument, and a repeated name. Both walks returned the same ten entries. The tree is
+  `Fuaran.UI.Tests/FragmentRegistryFixture.fs`. Both halves of the renderer-agreement tests now assert over it.
+- **One behaviour difference closed.** The client walk was recursive, so a tree deep enough overflowed the stack
+  before the renderer's depth guard could refuse it. The shared walk is iterative, as the server's already was
+  (Phase 781). That changes no fragment set: it only removes a crash.
+
 ---
 
 ## 0.94.0 — the slot opened after v0.93.0 was released; advanced from 0.93.1 on 2026-10-13 ahead of Phase 2052, whose change is breaking (RELEASED — tagged v0.94.0 at 90082d3, 2026-10-14)
