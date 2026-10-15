@@ -13,9 +13,10 @@
 //  by the Phase 142 conformance corpus). The class-name vocabulary, the
 //  accessibility-attribute projection, sanitize, binding resolution, and locale
 //  formatting all come from the shared `Fuaran.UI.Renderer.Core` spine, so the
-//  two renderers cannot drift on those axes. The element *structure* is
-//  re-emitted here against the ViewEngine API (the same Feliz-shaped calls), so
-//  it stays near-identical to `Render.fs`.
+//  two renderers cannot drift on those axes. The per-node wrapper and the leaf
+//  display kinds are `ElementPlan` values both renderers emit (Phase 2108), so
+//  their element structure is defined once; the remaining kinds are still
+//  re-emitted here against the ViewEngine API (the same Feliz-shaped calls).
 //
 //  Server semantics (see `docs/SSR.md` for the full table):
 //   - No runtime, no dispatch. `Action`-bearing nodes render inert: a `Button`
