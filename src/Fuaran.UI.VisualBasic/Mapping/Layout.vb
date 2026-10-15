@@ -15,7 +15,8 @@ Friend Module LayoutMapping
         ' from each child body's heading. FORWARD-COUPLING TRIPWIRE: if you add a
         ' <TabHeader>/<TabTag> child (or header/tag attributes) here, also port the F#
         ' validator's FUARAN047/048 count-mismatch rules into the VB XML analyzer
-        ' (Vocabulary.cs Tabs entry + FuaranVbXmlAnalyzer) and add tests in the same
+        ' (the Tabs.tabHeaders / tabTags gaps in src/Fuaran.UI.Idl/AuthoringDialect.fs +
+        ' FuaranVbXmlAnalyzer) and add tests in the same
         ' change — the deferral in Phase 315 holds ONLY while this surface stays absent.
         d("Tabs") = Function(el) Csharp.Fuaran.Tabs(
             New Csharp.TabsOptions With {
