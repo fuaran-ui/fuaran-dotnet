@@ -409,6 +409,34 @@ let formatRelativeEnglish (unit: RelativeTimeUnit) (value: float) : string =
         else
             sprintf "in %d %s" magnitude plural
 
+/// The `CellFormat` projection of a number — a Metric / LabelValueRow value, a
+/// Metric trend, a grid cell (Phase 2108: one definition, where each renderer
+/// used to carry a byte-identical copy). Locale-independent, so SSR, CSR and
+/// the grid adapter read one figure.
+///
+/// Precision-from-arg `sprintf` (`"%.*f"`) is unsupported by Fable's printf, so
+/// precision rides `ToString("F<n>")` / `ToString("G<n>")`, which round-trip on
+/// both pipelines; the "is whole?" test is `floor` because
+/// `System.Double.IsInteger` is outside Fable's surface (NaN fails it by IEEE
+/// 754, so no separate guard).
+let formatNumber (format: CellFormat) (value: float) : string =
+    match format with
+    | CellFormat.None -> string value
+    | CellFormat.Number(Some decimals) -> value.ToString("F" + string decimals)
+    | CellFormat.Number None ->
+        if value = floor value then
+            sprintf "%.0f" value
+        else
+            sprintf "%g" value
+    | CellFormat.Currency code -> sprintf "%s %.2f" code value
+    | CellFormat.Percent(Some decimals) -> (value * 100.0).ToString("F" + string decimals) + "%"
+    | CellFormat.Percent None -> sprintf "%.1f%%" (value * 100.0)
+    | CellFormat.SignificantDigits digits -> value.ToString("G" + string digits)
+    | CellFormat.DateTime _ -> string value
+    | CellFormat.Duration(unit, style) -> formatDuration unit style value
+    | CellFormat.RelativeTime unit -> formatRelativeEnglish unit value
+    | CellFormat.Custom f -> f (CellValue.Numeric value)
+
 #if FABLE_COMPILER
 
 open Fable.Core

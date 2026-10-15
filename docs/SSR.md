@@ -83,7 +83,10 @@ and `OnError` is not synthesised for an async that has not failed; a data-bound
 component whose binding resolves renders its body, and one that does not renders
 `OnLoading` when present. A **Chart** whose source resolves to an error renders
 its `OnError` node when one is wired, built from the same `BindingResolution`
-payload (and the same correlation id) the client passes (Phase 2041).
+payload (and the same correlation id) the client passes (Phase 2041). So do a
+**Metric**, **Progress** and **LabelValueRow** whose value errors: both tiers
+ask the one shared state-slot rule (`ElementPlan.DisplayPlan.stateSlot`,
+Phase 2108).
 
 ## Per-kind server behaviour
 

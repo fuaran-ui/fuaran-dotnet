@@ -59,6 +59,11 @@
          After Csp.fs and BindingResolver.fs, whose types they carry. -->
     <Compile Include="RenderPolicy.fs" />
     <Compile Include="StateSeeds.fs" />
+    <!-- Phase 2108 — the per-kind element plan both renderers emit: the plan
+         type, the per-node wrapper and the leaf display kinds. After every
+         module whose vocabulary a plan carries (Css, Theme, Accessibility,
+         RenderParity, Csp, the shared builders). -->
+    <Compile Include="ElementPlan.fs" />
     <!-- Phase 1151 — the fragment-expansion memo and its lifetime owner. Depends
          on Fuaran.UI's Types + FragmentMemo primitives only, and nothing inside
          this project depends on it, so it compiles last. -->

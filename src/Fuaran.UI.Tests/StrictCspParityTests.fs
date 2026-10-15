@@ -55,11 +55,27 @@ let private declarationBuilders (source: string) : string list =
     |> Seq.sort
     |> List.ofSeq
 
-/// Every slot discriminator passed to a `cspStyle` call, as the literal. The
-/// pattern spans newlines because both tiers write the call multi-line where the
-/// argument list is long.
+/// Every slot discriminator a renderer passes to the shared style site
+/// (`ElementPlan.styleSite`, Phase 2108 — each tier used to carry its own
+/// `cspStyle` copy), as the literal. The pattern spans newlines because a long
+/// call is written multi-line.
 let private cspSlots (source: string) : string list =
-    Regex.Matches(source, "cspStyle\\s+ctx\\s+parentNodeId\\s+\"([^\"]+)\"", RegexOptions.Singleline)
+    Regex.Matches(
+        source,
+        @"styleSite\s+ctx\.Policy\.Csp\s+(?:None|\(Some ctx\.Styles\))\s+parentNodeId\s+""([^""]+)""",
+        RegexOptions.Singleline
+    )
+    |> Seq.cast<Match>
+    |> Seq.map (fun m -> m.Groups[1].Value)
+    |> Seq.sort
+    |> List.ofSeq
+
+/// Phase 2108 — every slot discriminator a SHARED plan names. A planned kind
+/// (`ElementPlan.DisplayPlan.progress`) receives the posture-bound site as a
+/// function and names its slot at the one call, which both tiers then emit, so
+/// the slot belongs to both by construction.
+let private planSlots (source: string) : string list =
+    Regex.Matches(source, @"styleSite\s+""([^""]+)""")
     |> Seq.cast<Match>
     |> Seq.map (fun m -> m.Groups[1].Value)
     |> Seq.sort
@@ -87,7 +103,7 @@ let tests =
               let client = cspSlots (sourceText "client" "Render.fs")
               let server = cspSlots (sourceText "server" "Render.fs")
 
-              Expect.isNonEmpty server "the server renderer has cspStyle call sites"
+              Expect.isNonEmpty server "the server renderer has style-site call sites"
 
               Expect.equal
                   client
@@ -110,7 +126,9 @@ let tests =
                     "split-right" ]
 
               Expect.equal
-                  (cspSlots (sourceText "server" "Render.fs"))
+                  (cspSlots (sourceText "server" "Render.fs")
+                   @ planSlots (sourceText "core" "ElementPlan.fs")
+                   |> List.sort)
                   expected
                   "the strict-mode slot inventory. A new slot belongs in SANITIZATION.md's inventory table and in StrictCspTests' style-bearing corpus, and this assertion is what says so."
           }

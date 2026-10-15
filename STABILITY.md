@@ -7885,6 +7885,44 @@ unchanged (the teleport and compression suites pin them). The slot was opened at
   CONTENT, not its closure.
 - **`HoleValueSpace` to Core has one home already**, `Fuaran.UI.Core.Function.Projection` (Phase 2234,
   ridden in 0.94.0); the certification library reads it unchanged.
+### What rides this slot — Phase 2108
+
+**Class: ADDITIVE (new `Fuaran.UI.Renderer.Core` surface) + SSR behaviour changes.** No public entry point of
+either renderer changes, and no wire byte moves.
+
+- **New: `Fuaran.UI.Renderer.ElementPlan`** in `Fuaran.UI.Renderer.Core` — the element tree a node renders as,
+  as data: `Prop` (an attribute or canonical inline style declarations), `Content<'E>`, `Plan<'E>` and
+  `ElementSpec<'E>`, generic over the emitter's own element type; `Plan` helpers; `voidTags`;
+  `camelCaseProperty`; `styleSite` (the continuous-value style site under a CSP posture, Phase 1545's helper,
+  now one definition); `reconciliationKey` (the client renderer's public `Render.reconciliationKey` delegates to
+  it, unchanged); `WrapperRouting` and `NodePlan` (`extraAttributePairs`, `route`, `wrapper`, `renderFailure`,
+  `depthExceeded`); `DisplayPlan` (`iconHook`, `stateSlot`, `scalarText`, and one planner per leaf display
+  kind: `heading`, `markdown`, `badge`, `skeleton`, `icon`, `metric`, `fact`, `callout`, `progress`,
+  `sparkline`, `drawing`, `labelValueRow`, `list`, `toast`, `codeBlock`, `math`).
+- **New: `Formatting.formatNumber`** (the `CellFormat` projection both renderers carried a copy of) and
+  **`BindingResolver.resolveOptions`** (the options source with the `<opaque>` placeholder removed, likewise).
+- **Both renderers emit the per-node wrapper and the sixteen leaf display kinds from these plans.** Where the
+  two arms differed, both now emit ONE behaviour, the client's:
+  - (a) a dismissable `Callout` carries its dismiss button (inert on both tiers) — **server HTML moves**;
+  - (b) a `Progress` caveat renders — **server HTML moves**;
+  - (c) a `LabelValueRow` nests its label and optional help in `fuaran-label-value-row-label-block` —
+    **server HTML moves** (the help text renders; the block wraps the label);
+  - (d) `Metric`, `Progress` and `LabelValueRow` render their `OnError` slot when the value errors, with the
+    client's correlation id — **server HTML moves**;
+  - (e) the extra-attribute NAME gate (`Sanitize.isSafeAttributeName`) applies on the client too — **client
+    output moves** only for a name React already refused to write;
+  - (f) the `Progress` fill's inline width is the canonical declaration (`50.000000%`) on both tiers — **client
+    output moves** (it wrote `50%`; the served HTML always carried the canonical value, so hydration now agrees);
+  - (g) an `ErrorBoundary` whose fallback also fails stamps the PRIMARY failure's correlation id on the server,
+    as the client always did.
+  Over the whole node fixture corpus, rendered permissive, strict and with every fixture decorated, the SSR
+  output is otherwise byte-identical; the moved bytes are (a) and (c).
+- **Retired from the renderer files** (all private or internal): each renderer's `toProps`, `cspStyle`,
+  `resolveOptions`, `iconHook`, `renderNodeFallback`, `depthExceededElement` and its local
+  `isWriteBackTarget`; the client's `renderText`, `formatNumber`, `renderMetric`, `renderFact`,
+  `renderCallout`, `renderProgress`, `renderLabelValueRow` and `renderSparkline`. The server keeps its
+  internal `renderText` and `formatNumber` names for the email and speech projections, both now the shared
+  definitions.
 
 
 ### What rides this slot — Phase 2241 (the authoring mirrors are generated from the vocabulary)

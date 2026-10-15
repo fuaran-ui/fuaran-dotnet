@@ -176,8 +176,9 @@ let private repeatedChildArms =
       "tab", "prop.role \"tab\""
       "stepper step", "Css.Class.StepperStep"
       "tree item", "prop.className Css.Class.TreeItem"
-      "list item", "prop.className Css.Class.ListItem"
-      "skeleton row", "prop.className Css.Class.SkeletonRow"
+      // Phase 2108 — list items and skeleton rows are planned in
+      // `ElementPlan.DisplayPlan` and carry their keys in the plan's `Key`, which
+      // the one emitter writes as `prop.key`; `ElementPlanTests` asserts the keys.
       "form field", "prop.className Css.Class.FormField"
       // Phase 1648 — the chip's class became `Css.filter (Theme.filterKindClass
       // spec.Kind)`, because this renderer had been emitting a bare

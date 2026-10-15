@@ -199,34 +199,28 @@ let tests =
 
                   let source = File.ReadAllText path
 
-                  // The declaration, then everything up to the next blank line
-                  // that starts a new declaration — enough to hold a three-line
-                  // match and nothing more. Located by declaration rather than
-                  // by line number, which has already drifted twice.
-                  let marker = "isWriteBackTarget (binding: Binding<'T>) : bool ="
-                  let i = source.IndexOf(marker, StringComparison.Ordinal)
+                  // Phase 2108 — neither renderer declares the predicate at all
+                  // any more: each call site asks `BindingWalk.isWriteBackTarget`
+                  // directly, so there is no delegate left for a local answer to
+                  // grow back into. The scan therefore asserts the ABSENCE of a
+                  // declaration and the PRESENCE of the call (non-vacuity: a scan
+                  // that found neither would pass while proving nothing).
+                  let declarations =
+                      Text.RegularExpressions.Regex.Matches(
+                          source,
+                          @"^\s*(let|and)\b[^=\n]*\bisWriteBackTarget\b",
+                          Text.RegularExpressions.RegexOptions.Multiline
+                      )
 
-                  if i < 0 then
-                      failwithf
-                          "census marker not found in the %s renderer — the scan cannot report on a declaration it did not locate."
-                          tier
-
-                  let body = source.Substring(i + marker.Length)
-                  let body = body.Substring(0, min 400 body.Length)
+                  Expect.equal
+                      declarations.Count
+                      0
+                      (sprintf
+                          "the %s renderer declares a write-back predicate of its own — call BindingWalk.isWriteBackTarget, the one definition"
+                          tier)
 
                   Expect.stringContains
-                      body
-                      "BindingWalk.isWriteBackTarget binding"
-                      (sprintf
-                          "the %s renderer must DELEGATE to the one definition in BindingWalk, not answer for itself"
-                          tier)
-
-                  // The negative half: no local match. A copy re-appearing would
-                  // agree on the day it was written, which is how the last one
-                  // arrived and why a behavioural test cannot see this.
-                  Expect.isFalse
-                      (body.Contains("| Binding.Local _ -> true", StringComparison.Ordinal))
-                      (sprintf
-                          "the %s renderer has re-grown a local write-back match — that is the drift Phase 1667 closed, and it admits every Local unconditionally"
-                          tier)
+                      source
+                      "Fuaran.UI.BindingWalk.isWriteBackTarget"
+                      (sprintf "the %s renderer asks the one definition (the census found no call to scan)" tier)
           } ]

@@ -13,9 +13,10 @@
 //  by the Phase 142 conformance corpus). The class-name vocabulary, the
 //  accessibility-attribute projection, sanitize, binding resolution, and locale
 //  formatting all come from the shared `Fuaran.UI.Renderer.Core` spine, so the
-//  two renderers cannot drift on those axes. The element *structure* is
-//  re-emitted here against the ViewEngine API (the same Feliz-shaped calls), so
-//  it stays near-identical to `Render.fs`.
+//  two renderers cannot drift on those axes. The per-node wrapper and the leaf
+//  display kinds are `ElementPlan` values both renderers emit (Phase 2108), so
+//  their element structure is defined once; the remaining kinds are still
+//  re-emitted here against the ViewEngine API (the same Feliz-shaped calls).
 //
 //  Server semantics (see `docs/SSR.md` for the full table):
 //   - No runtime, no dispatch. `Action`-bearing nodes render inert: a `Button`
@@ -86,42 +87,6 @@ type ServerRenderContext =
         Styles: Csp.StyleCollector
     }
 
-// ─── Strict-CSP style emission (Phase 1545) ────────────────────────────────
-
-/// The class suffix and the props one continuous-value site emits, under
-/// whichever posture the render is running.
-///
-/// `declarations` are the CANONICAL CSS pairs, built by `Csp.Declarations` —
-/// the same builders the client renderer calls, so the generated class name
-/// cannot drift between the two tiers. Under `Permissive` they become the
-/// `style` attribute this renderer has always emitted, byte for byte, through
-/// `style.custom` so the property name lands verbatim (which is what this
-/// tier's kebab-case spelling is FOR: Feliz.ViewEngine writes the key straight
-/// into the attribute). Under `Strict` they are registered in the
-/// render's collector under a derived class and NO style prop is emitted; the
-/// caller appends the returned suffix to its own class string.
-///
-/// One helper for all seven sites rather than a branch at each, so a site added
-/// later cannot emit a style attribute under strict mode by forgetting to.
-let private cspStyle
-    (ctx: ServerRenderContext)
-    (nodeId: string)
-    (slot: string)
-    (declarations: (string * string) list)
-    : string * IReactProperty list =
-    if List.isEmpty declarations then
-        "", []
-    elif Csp.isStrict ctx.Policy.Csp then
-        let className = Csp.generatedClass nodeId slot declarations
-        ctx.Styles.Register(className, declarations)
-        " " + className, []
-    else
-        "",
-        [ prop.style (
-              declarations
-              |> List.map (fun (property, value) -> style.custom (property, value))
-          ) ]
-
 // ─── Text + value helpers ──────────────────────────────────────────────────
 
 // `internal`, not `private`: the email projection (`Email.fs`) resolves its
@@ -136,73 +101,12 @@ let internal renderText (ctx: ServerRenderContext) (text: TextSource) : string =
     // are unchanged.
     BindingResolver.resolveTextSource ctx.Sources text
 
-/// Mirrors the client `formatNumber` (the `CellFormat` projection) so a Metric /
-/// LabelValueRow value reads identically server- and client-side.
-/// `internal` for the same reason as `renderText` above — the email projection
-/// formats a Metric / LabelValueRow value through this exact function, so the
-/// figure in a digest reads identically to the figure on the page.
-let internal formatNumber (format: CellFormat) (value: float) : string =
-    match format with
-    | CellFormat.None -> string value
-    | CellFormat.Number(Some decimals) -> value.ToString("F" + string decimals)
-    | CellFormat.Number None ->
-        if value = floor value then
-            sprintf "%.0f" value
-        else
-            sprintf "%g" value
-    | CellFormat.Currency code -> sprintf "%s %.2f" code value
-    | CellFormat.Percent(Some decimals) -> (value * 100.0).ToString("F" + string decimals) + "%"
-    | CellFormat.Percent None -> sprintf "%.1f%%" (value * 100.0)
-    | CellFormat.SignificantDigits digits -> value.ToString("G" + string digits)
-    | CellFormat.DateTime _ -> string value
-    // Phase 819 — both delegate to the shared Renderer.Core helpers so SSR,
-    // CSR and the grid adapter render byte-identically (locale-independent).
-    | CellFormat.Duration(unit, style) -> Formatting.formatDuration unit style value
-    | CellFormat.RelativeTime unit -> Formatting.formatRelativeEnglish unit value
-    | CellFormat.Custom f -> f (CellValue.Numeric value)
-
-// ─── Options resolution (mirrors the client `resolveOptions`) ───────────────
-
-let private opaqueOptionsSentinel = "<opaque>"
-
-let private isOpaqueOptionPlaceholder (option: SelectOption) : bool =
-    // `SelectOption.Label` is a bare string since the swap — no TextSource unwrap.
-    option.Value = opaqueOptionsSentinel && option.Label = opaqueOptionsSentinel
-
-let private resolveOptions (ctx: ServerRenderContext) (binding: Binding<SelectOption list>) : SelectOption list =
-    let resolved =
-        BindingResolver.tryResolve ctx.Sources binding |> Option.defaultValue []
-
-    // Per-render hot path (Phase 207) — the client mirror's reasoning, verbatim:
-    // `List.filter` allocates a fresh list even when it removes nothing, and the
-    // opaque placeholder is a decode-time rarity. Ask first, copy only when there
-    // is something to drop. Result-identical; do NOT "simplify" back to a bare
-    // `List.filter`.
-    if resolved |> List.exists isOpaqueOptionPlaceholder then
-        resolved |> List.filter (isOpaqueOptionPlaceholder >> not)
-    else
-        resolved
-
-// ─── The uniform icon hook ─────────────────────────────────────────────────
-//
-// Every icon-bearing spec (TabHeader / Fact / Metric / Callout / Button)
-// renders its `IconSource` as ONE empty placement element:
-//
-//   <span class="fuaran-icon fuaran-{kind}-icon" data-icon="{name}" aria-hidden="true"></span>
-//
-// The icon NAME rides the `data-icon` attribute, never the text content — the
-// reference CSS ships no glyphs, so a host with no icon system sees nothing
-// (not the raw name), and a host maps `data-icon` to glyphs via its own
-// mechanism (CSS `::before` content, font classes, or hydration-time SVG
-// injection). `aria-hidden` because every icon-bearing spec pairs the icon
-// with a visible text label. Mirrors the client renderer's `iconHook` — the
-// SSR parity corpus pins the shape.
-
-let private iconHook (kindClass: string) (name: string) : ReactElement =
-    Html.span
-        [ prop.className (Css.iconPlacement kindClass)
-          prop.custom ("data-icon", name)
-          prop.custom ("aria-hidden", "true") ]
+/// The `CellFormat` projection — `Formatting.formatNumber`, the one definition
+/// both renderers format through (Phase 2108). `internal` for the same reason
+/// as `renderText` above: the email and speech projections format a Metric /
+/// LabelValueRow value through this name, so a figure in a digest reads
+/// identically to the figure on the page.
+let internal formatNumber (format: CellFormat) (value: float) : string = Formatting.formatNumber format value
 
 // ─── Fragment registry (mirrors the client `collectFragments`) ──────────────
 
@@ -240,74 +144,51 @@ let internal collectFragments (acc: Map<string, Node<obj>>) (node: Node<obj>) : 
 
     result
 
-// ─── Accessibility + node attribute helpers ─────────────────────────────────
+// ─── The plan emitter (Phase 2108) ──────────────────────────────────────────
 
-/// Attribute pairs, not props: Phase 951 routes them to the wrapper or to the
-/// kind body before either becomes an `IReactProperty`.
-let private toProps (pairs: (string * string) list) : IReactProperty list =
-    pairs |> List.map (fun (k, v) -> prop.custom (k, v))
+/// This renderer's emitter for `ElementPlan` — the one place the server turns
+/// a planned element into a Feliz.ViewEngine element. Attributes land verbatim
+/// (`class` included, which is what `prop.className` writes); a void tag goes
+/// through the void-element constructor the library's own `Html.*` members
+/// use; inline style declarations are written in their canonical spelling;
+/// a reconciliation key is React's alone and is dropped; pre-built markup is
+/// written raw. The client renderer's `Emit` is the same mapping onto Feliz.
+[<RequireQualifiedAccess>]
+module private Emit =
+    /// Attribute pairs as properties.
+    let attrs (pairs: (string * string) list) : IReactProperty list =
+        pairs |> List.map (fun (k, v) -> prop.custom (k, v))
 
-let private a11yPairs (ctx: ServerRenderContext) (a11y: Accessibility option) : (string * string) list =
-    Accessibility.accessibilityAttributes ctx.Sources a11y
+    let private property (p: ElementPlan.Prop) : IReactProperty =
+        match p with
+        | ElementPlan.Prop.Attr(name, value) -> prop.custom (name, value)
+        | ElementPlan.Prop.Style declarations ->
+            prop.style (declarations |> List.map (fun (k, v) -> style.custom (k, v)))
 
-let private extraAttrPairs (node: Node<obj>) : (string * string) list =
-    match node.ExtraAttributes with
-    | Some attrs ->
-        attrs
-        // The island marker (Phase 163) is lifted onto the boundary wrapper,
-        // not the node's own element — strip it here so it never double-emits.
-        |> Map.remove Fuaran.UI.Node.IslandAttributeKey
-        |> Sanitize.sanitizeExtraAttributes
-        |> Map.toList
-        // Defence in depth (Phase 788). `Sanitize.sanitizeExtraAttributes` has
-        // already gated the key, but this is the site that writes an attribute
-        // NAME verbatim: Feliz.ViewEngine's `ViewBuilder.buildElement` emits
-        // `" " + key + "=\"" + value + "\""`, and `Interop.mkAttr` escapes the
-        // VALUE only — nothing anywhere escapes the name. React's own attribute-
-        // name validation gives the client renderer an accidental floor the
-        // server path does not have, so the server re-checks rather than
-        // depending on upstream validation staying correct. Dropping, not
-        // escaping, is the response: HTML cannot escape an illegal character in
-        // an attribute name (see `Sanitize.isSafeAttributeName`).
-        |> List.filter (fun (k, _) -> Sanitize.isSafeAttributeName k)
-    | None -> []
+    /// Planned properties (a style site's inline declarations, typically).
+    let props (ps: ElementPlan.Prop list) : IReactProperty list = ps |> List.map property
+
+    /// Emit a plan.
+    let rec plan (p: ElementPlan.Plan<ReactElement>) : ReactElement =
+        match p with
+        | ElementPlan.Plan.Host element -> element
+        | ElementPlan.Plan.Nothing -> Html.none
+        | ElementPlan.Plan.TextNode text -> Html.text text
+        | ElementPlan.Plan.Element spec ->
+            let props =
+                [ yield! spec.Props |> List.map property
+                  match spec.Content with
+                  | ElementPlan.Content.Empty -> ()
+                  | ElementPlan.Content.Text text -> prop.text text
+                  | ElementPlan.Content.Children children -> prop.children (children |> List.map plan)
+                  | ElementPlan.Content.InnerHtml markup -> prop.dangerouslySetInnerHTML markup ]
+
+            if ElementPlan.voidTags.Contains spec.Tag then
+                Interop.createVoidElement spec.Tag props
+            else
+                Interop.createElement spec.Tag props
 
 // ─── The renderer ───────────────────────────────────────────────────────────
-
-/// The element emitted in place of a subtree nested past `WireLimits.MaxDepth`
-/// (Phase 781). The renderer's contract is `Node<obj> -> ReactElement`, total by
-/// signature, so refusal cannot be a `Result` here without breaking every caller
-/// — it is a visible, machine-readable truncation marker instead. Two properties
-/// make that acceptable rather than a silent lie: the marker CARRIES the fact
-/// (`data-fuaran-depth-exceeded` + the limit, plus text in the rendered output),
-/// and every path that produces a tree from the wire has already refused this
-/// input with a typed error, so a host reaching the marker built the tree
-/// in-process rather than accepting it from outside.
-///
-/// It exists because the alternative is not "a deep tree renders" — it is
-/// `StackOverflowException`. Measured, this walk costs roughly 15 KB of stack
-/// per node level in Release and 34 KB in Debug, surviving 67 / 30 levels on the
-/// .NET default 1 MB thread stack: by a wide margin the shallowest walk in the
-/// stack, and the reason `MaxDepth` is the number it is.
-let private depthExceededElement (id: string) : ReactElement =
-    Html.div
-        [ prop.id id
-          prop.custom ("data-fuaran-node-id", id)
-          prop.custom ("data-fuaran-depth-exceeded", string Fuaran.UI.WireLimits.MaxDepth)
-          prop.className Css.Class.DepthExceeded
-          prop.custom ("role", "note")
-          prop.children [ Html.text RenderParity.depthExceededText ] ]
-
-/// The per-node render guard's fallback element (Phase 2041) — the client
-/// renderer's `renderNodeFallback`, attribute for attribute, with its text and
-/// correlation id from `RenderParity`, so a node that fails on both tiers emits
-/// the same markup on both and hydration has nothing to discard.
-let private renderNodeFallback (nodeId: string) (kindName: string) (errorMessage: string) : ReactElement =
-    Html.div
-        [ prop.className Css.Class.NodeFallback
-          prop.custom ("data-fuaran-render-failed", "true")
-          prop.custom ("data-fuaran-render-correlation", RenderParity.renderFailureCorrelationId nodeId kindName)
-          prop.text (RenderParity.renderFailureText nodeId kindName errorMessage) ]
 
 /// What the walk carries that the PUBLIC `ServerRenderContext` does not
 /// (Phase 2041). Private, so adding to it is free; on the record it would be a
@@ -337,7 +218,12 @@ module private Walk =
 
 let rec private renderNode (walk: Walk) (ctx: ServerRenderContext) (node: Node<obj>) : ReactElement =
     if walk.Depth > Fuaran.UI.WireLimits.MaxDepth then
-        depthExceededElement node.Id
+        // Phase 781 — a visible, machine-readable truncation marker in place of a
+        // subtree nested past `WireLimits.MaxDepth`: the renderer is total by
+        // signature, and the alternative is a `StackOverflowException` (this walk
+        // costs ~15 KB of stack per level in Release). Every wire path refused such
+        // a tree already, so a host reaching it built the tree in-process.
+        Emit.plan (ElementPlan.NodePlan.depthExceeded node.Id)
     // Fuaran-UI Phase 1535 — CONDITIONAL PRESENCE. A resolved `false` on
     // `node.Visible` emits NOTHING: no element, no placeholder, no comment
     // marker and no `aria-hidden`. The rule is `BindingResolver.isNodeVisible`,
@@ -361,63 +247,13 @@ let rec private renderNode (walk: Walk) (ctx: ServerRenderContext) (node: Node<o
 and private renderNodeCore (walk: Walk) (ctx: ServerRenderContext) (node: Node<obj>) : ReactElement =
     let id = node.Id
 
-    let baseClassName =
-        Theme.nodeClassName node.Kind (node.Style |> Option.defaultValue Fuaran.UI.Defaults.style)
-
-    // Phase 1112 — the node-level tooltip trait. An EMPTY resolved hint emits
-    // nothing at all: a declared hint that says nothing is markup that reveals
-    // an empty box on hover, and the wrapper class / focus stop / describedby
-    // would then advertise a description that is not there. FUARAN118 reports
-    // the declaration at validate time; the renderer simply does not draw it.
-    let tooltipText =
-        node.Tooltip
-        |> Option.map (renderText ctx)
-        |> Option.filter (fun t -> t.Trim() <> "")
-
-    let className =
-        Css.nodeWrapper baseClassName (node.Motion |> Option.map Theme.motionVar) tooltipText.IsSome
-
-    let a11y = a11yPairs ctx node.Accessibility
-    let extras = extraAttrPairs node
-
-    // Phase 951 — route the projection. A kind whose body IS the node's
-    // semantic element takes the a11y attributes (plus the `aria-*` half of
-    // `ExtraAttributes`) onto that element; the wrapper keeps only the `data-*`
-    // addressing half. Every other kind is unchanged: a11y then extras, on the
-    // wrapper, in that order. See `Accessibility.forwardsToSemanticElement`.
-    // Phase 1114 — the `dir="auto"` isolation for a display leaf carrying
-    // runtime-bound text. Wrapper-side in BOTH arms and FIRST in the list, so
-    // the emitted attribute order is identical under SSR and CSR; the policy
-    // itself is the shared `Accessibility.bidiAttributes`.
-    // Phase 1472 — a DECLARED `style.direction` wins over that heuristic; see
-    // `Accessibility.bidiAttributes`. The isolation itself is CSS, on the
-    // `fuaran-dir-*` class the shared `Theme.className` already put on this
-    // wrapper — markup and stylesheet only, so it holds with no script at all.
-    let bidi =
-        Accessibility.bidiAttributes node.Kind (node.Style |> Option.defaultValue Fuaran.UI.Defaults.style)
-
-    let wrapperAttrs0, semanticAttrs0 =
-        if Accessibility.forwardsToSemanticElement node.Kind then
-            let dataExtras, ariaExtras = Accessibility.partitionExtraAttributes extras
-            bidi @ dataExtras, a11y @ ariaExtras
-        else
-            bidi @ a11y @ extras, []
-
-    // Phase 1112 — route the hint's description and, where the wrapper is the
-    // described element, its focus stop. The two travel together by
-    // construction: see `Accessibility.tooltipRidesSemanticElement`.
-    let wrapperAttrs, semanticAttrs =
-        match tooltipText with
-        | None -> wrapperAttrs0, semanticAttrs0
-        | Some _ ->
-            let hintId = Accessibility.tooltipHintId id
-
-            if Accessibility.tooltipRidesSemanticElement node.Kind then
-                wrapperAttrs0, Accessibility.withTooltipDescribedBy hintId semanticAttrs0
-            else
-                (Accessibility.withTooltipDescribedBy hintId wrapperAttrs0)
-                @ [ "tabindex", "0" ],
-                semanticAttrs0
+    // Phase 2108 — the wrapper is the shared `NodePlan`: tooltip, motion class,
+    // bidi, accessibility / extra-attribute routing and the wrapper props are
+    // decided once for both renderers. The island marker (Phase 163) is lifted
+    // onto the boundary below, not the node's own wrapper, so the routing reads
+    // the node without it.
+    let routing =
+        ElementPlan.NodePlan.route ctx.Sources (Fuaran.UI.Node.stripIsland node)
 
     // Per-node render guard (Phase 2041) — the client renderer's, same
     // semantics. A node body that throws (a host `ServerCustomRenderer`, a
@@ -429,48 +265,20 @@ and private renderNodeCore (walk: Walk) (ctx: ServerRenderContext) (node: Node<o
     // in place of a placeholder where the bad leaf was.
     let kindBody =
         try
-            renderKind walk ctx id node.State node.Kind semanticAttrs
+            renderKind walk ctx id node.State node.Kind routing.SemanticAttrs
         with ex when not walk.InErrorBoundary ->
-            renderNodeFallback id (RenderParity.nodeKindName node.Kind) ex.Message
+            let kindName = RenderParity.nodeKindName node.Kind
 
-    // The hint element itself — a sibling of the body inside the wrapper, which
-    // is what makes it HOVERABLE: the pointer moving from the node onto the hint
-    // never leaves the wrapper, so the `:hover` that revealed it still holds
-    // (WCAG 1.4.13). Placed after the body so the reading order is
-    // thing-then-description.
-    let tooltipHint: ReactElement list =
-        match tooltipText with
-        | None -> []
-        | Some t ->
-            [ Html.span
-                  [ prop.id (Accessibility.tooltipHintId id)
-                    prop.className Css.Class.Tooltip
-                    prop.custom ("role", "tooltip")
-                    prop.text t ] ]
+            Emit.plan (
+                ElementPlan.NodePlan.renderFailure
+                    id
+                    kindName
+                    ex.Message
+                    (RenderParity.renderFailureCorrelationId id kindName)
+            )
 
-    let wrapperChildren = kindBody :: tooltipHint
-
-    // Per-node wrapper props — parity-locked with the Fable renderer's shape.
-    // Common case (nothing to carry) is a 4-element literal; otherwise a
-    // ResizeArray, not the old 4-way `List.append`. Order is load-bearing
-    // (id, node-id, class, attrs, children). Do not "simplify" to `@`.
-    let wrapperProps: IReactProperty list =
-        match wrapperAttrs with
-        | [] ->
-            [ prop.id id
-              prop.custom ("data-fuaran-node-id", id)
-              prop.className className
-              prop.children wrapperChildren ]
-        | _ ->
-            let props = ResizeArray<IReactProperty>(4 + List.length wrapperAttrs)
-            props.Add(prop.id id)
-            props.Add(prop.custom ("data-fuaran-node-id", id))
-            props.Add(prop.className className)
-            props.AddRange(toProps wrapperAttrs)
-            props.Add(prop.children wrapperChildren)
-            List.ofSeq props
-
-    let element = Html.div wrapperProps
+    let element =
+        Emit.plan (ElementPlan.NodePlan.wrapper id routing (ElementPlan.Plan.Host kindBody))
 
     // Hydration island boundary (Phase 163). When the node is marked
     // `Node.asIsland`, wrap its rendered element in a `data-fuaran-island`
@@ -559,11 +367,12 @@ and private renderKind
             // Phase 1545 — under `Csp.Strict` these become a generated class and
             // a collected declaration; under `Permissive` the `style` attribute
             // above, byte for byte.
-            let gridClass, gridStyleProps = cspStyle ctx parentNodeId "grid" gridDeclarations
+            let gridClass, gridStyleProps =
+                ElementPlan.styleSite ctx.Policy.Csp (Some ctx.Styles) parentNodeId "grid" gridDeclarations
 
             Html.div (
                 [ prop.className (Css.Class.LayoutGrid + brk + gridClass) ]
-                @ gridStyleProps
+                @ Emit.props gridStyleProps
                 @ [ prop.children (spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)) ]
                 @ (cssRefusalAttrs |> List.map (fun (k, v) -> prop.custom (k, v)))
             )
@@ -582,11 +391,11 @@ and private renderKind
             let masonryDeclarations = Csp.Declarations.masonry cols masonryGap
 
             let masonryClass, masonryStyleProps =
-                cspStyle ctx parentNodeId "masonry" masonryDeclarations
+                ElementPlan.styleSite ctx.Policy.Csp (Some ctx.Styles) parentNodeId "masonry" masonryDeclarations
 
             Html.div (
                 [ prop.className (Css.Class.LayoutMasonry + brk + masonryClass) ]
-                @ masonryStyleProps
+                @ Emit.props masonryStyleProps
                 @ [ prop.children (spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)) ]
             )
         | BoxRole.Group, BoxLayout.Flex(direction, flexWrap, flexGap) ->
@@ -594,11 +403,16 @@ and private renderKind
             let wrap = Css.stackWrap flexWrap
 
             let flexClass, flexStyleProps =
-                cspStyle ctx parentNodeId "flex" (Csp.Declarations.flex flexGap)
+                ElementPlan.styleSite
+                    ctx.Policy.Csp
+                    (Some ctx.Styles)
+                    parentNodeId
+                    "flex"
+                    (Csp.Declarations.flex flexGap)
 
             Html.div (
                 [ prop.className (Css.layoutStack dir wrap + brk + flexClass) ]
-                @ flexStyleProps
+                @ Emit.props flexStyleProps
                 @ [ prop.children (spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)) ]
             )
     | NodeKind.SplitPanel spec ->
@@ -615,22 +429,32 @@ and private renderKind
         // Phase 1545 — the two panes are one node, so the slot discriminator is
         // what keeps their generated classes apart when the weights are equal.
         let leftClass, leftStyleProps =
-            cspStyle ctx parentNodeId "split-left" (Csp.Declarations.splitPane weightLeft)
+            ElementPlan.styleSite
+                ctx.Policy.Csp
+                (Some ctx.Styles)
+                parentNodeId
+                "split-left"
+                (Csp.Declarations.splitPane weightLeft)
 
         let rightClass, rightStyleProps =
-            cspStyle ctx parentNodeId "split-right" (Csp.Declarations.splitPane weightRight)
+            ElementPlan.styleSite
+                ctx.Policy.Csp
+                (Some ctx.Styles)
+                parentNodeId
+                "split-right"
+                (Csp.Declarations.splitPane weightRight)
 
         Html.div
             [ prop.className Css.Class.LayoutSplitPanel
               prop.children
                   [ Html.div (
                         [ prop.className (Css.Class.SplitPaneLeft + leftClass) ]
-                        @ leftStyleProps
+                        @ Emit.props leftStyleProps
                         @ [ prop.children leftChildren ]
                     )
                     Html.div (
                         [ prop.className (Css.Class.SplitPaneRight + rightClass) ]
-                        @ rightStyleProps
+                        @ Emit.props rightStyleProps
                         @ [ prop.children rightChildren ]
                     ) ] ]
     | NodeKind.Tabs spec ->
@@ -730,7 +554,10 @@ and private renderKind
                                                [])
                                         @ [ prop.children
                                                 [ match t.icon with
-                                                  | Some iconSrc -> iconHook Css.Class.TabIcon iconSrc
+                                                  | Some iconSrc ->
+                                                      Emit.plan (
+                                                          ElementPlan.DisplayPlan.iconHook Css.Class.TabIcon iconSrc
+                                                      )
                                                   | None -> Html.none
                                                   Html.span [ prop.className Css.Class.TabLabel; prop.text t.label ] ] ]
                                     ) ] ]
@@ -901,7 +728,7 @@ and private renderKind
         let scrollDeclarations = Csp.Declarations.scrollArea spec.MaxHeight spec.MaxWidth
 
         let scrollClass, scrollStyleProps =
-            cspStyle ctx parentNodeId "scroll" scrollDeclarations
+            ElementPlan.styleSite ctx.Policy.Csp (Some ctx.Styles) parentNodeId "scroll" scrollDeclarations
 
         Html.div (
             // `prop.custom ("tabindex", ...)` emits the lowercase attribute the
@@ -909,221 +736,70 @@ and private renderKind
             // byte-identical (Feliz.ViewEngine's `prop.tabIndex` would emit the
             // camelCase `tabIndex`, diverging from React's DOM `tabindex`).
             [ prop.className (axisClass + scrollClass); prop.custom ("tabindex", "0") ]
-            @ scrollStyleProps
+            @ Emit.props scrollStyleProps
             @ [ prop.children (spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)) ]
         )
     // -- Display --
-    | NodeKind.Heading spec ->
-        let variantSuffix = Css.headingVariant spec.Variant
-
-        let props =
-            [ prop.className (Css.heading variantSuffix)
-              prop.text (renderText ctx spec.Text) ]
-
-        match spec.Level with
-        | 1 -> Html.h1 props
-        | 2 -> Html.h2 props
-        | 3 -> Html.h3 props
-        | 4 -> Html.h4 props
-        | 5 -> Html.h5 props
-        | _ -> Html.h6 props
-    | NodeKind.Markdown spec ->
-        // Phase 1032 — the markdown body's own link/image destinations are
-        // policy-checked with the same `ctx.Policy.Egress` the href/src emission
-        // sites use. The two tiers' emitted DOM is parity-locked, so this call
-        // and the client's must pass the same policy or the parity corpus is the
-        // thing that breaks.
-        Html.div
-            [ prop.className Css.Class.Markdown
-              prop.dangerouslySetInnerHTML (Markdown.toHtmlWithEgress ctx.Policy.Egress (renderText ctx spec.Text)) ]
+    // Phase 2108 — the leaf display kinds are `DisplayPlan` values this tier
+    // emits; the client renderer emits the same plans. A value-bearing kind
+    // first asks the shared state-slot rule whether it renders its
+    // `OnLoading` / `OnError` node instead of its body.
+    | NodeKind.Heading spec -> Emit.plan (ElementPlan.DisplayPlan.heading ctx.Sources spec)
+    | NodeKind.Markdown spec -> Emit.plan (ElementPlan.DisplayPlan.markdown ctx.Policy.Egress ctx.Sources spec)
     | NodeKind.Metric spec ->
-        // Phase 632 — the Metric value is a scalar slot: a `Binding.Transform`
-        // resolves to its 1×1 result cell (a global aggregate / row-field
-        // lookup), the same dispatch as the client's `renderMetric`.
+        // Phase 632 — a scalar slot: a `Binding.Transform` resolves to its 1×1
+        // result cell.
         let resolution = BindingResolver.resolveScalarFloat ctx.Sources spec.Value
 
-        match resolution, (state |> Option.bind _.OnLoading) with
-        | BindingResolver.NotResolved, Some loadingNode -> renderNode (Walk.deeper walk) ctx loadingNode
-        | _ ->
-            Html.div
-                [ prop.className (Css.metric (Theme.toneVar spec.Tone))
-                  prop.children
-                      [ match spec.Icon with
-                        | Some icon -> iconHook Css.Class.MetricIcon icon
-                        | None -> Html.none
-                        Html.div [ prop.className Css.Class.MetricLabel; prop.text (renderText ctx spec.Label) ]
-                        Html.div
-                            [ prop.className Css.Class.MetricValue
-                              prop.text (
-                                  match resolution with
-                                  | BindingResolver.Resolved value -> formatNumber spec.Format value
-                                  | BindingResolver.NotResolved -> "—"
-                                  | BindingResolver.Errored msg -> sprintf "(error: %s)" msg
-                                  | BindingResolver.I18nUnresolved key -> sprintf "[i18n:%s]" key
-                              ) ]
-                        match spec.Trend with
-                        | Some trendBinding ->
-                            // Phase 867 — mirrors the client renderer byte-for-byte:
-                            // the trend element carries a SENTIMENT (sign, and from
-                            // Part B the declared polarity), not an unconditional
-                            // success class. `tone` still colours the tile alone.
-                            match BindingResolver.tryResolveScalarFloat ctx.Sources trendBinding with
-                            | Some t ->
-                                let sentiment, glyph = Theme.trendSentiment spec.TrendPolarity t
-
-                                Html.div
-                                    [ prop.className (Css.metricTrend sentiment)
-                                      prop.children
-                                          [ Html.span
-                                                [ prop.className Css.Class.MetricTrendGlyph
-                                                  prop.role "img"
-                                                  prop.ariaLabel sentiment
-                                                  prop.text glyph ]
-                                            Html.text (
-                                                formatNumber (spec.TrendFormat |> Option.defaultValue CellFormat.None) t
-                                            ) ] ]
-                            | None -> Html.div [ prop.className Css.Class.MetricTrend; prop.text "" ]
-                        | None -> Html.none
-                        match spec.Subtext with
-                        | Some subtext ->
-                            Html.div [ prop.className Css.Class.MetricSubtext; prop.text (renderText ctx subtext) ]
-                        | None -> Html.none ] ]
-    | NodeKind.Badge spec ->
-        Html.span
-            [ prop.className (Css.badge (Css.badgeVariant spec.Variant))
-              prop.text (renderText ctx spec.Label) ]
-    | NodeKind.Skeleton spec ->
-        Html.div
-            [ prop.className Css.Class.Skeleton
-              prop.children [ for _ in 1 .. spec.Rows -> Html.div [ prop.className Css.Class.SkeletonRow ] ] ]
-    | NodeKind.Icon spec ->
-        // Phase 821 — the standalone icon-only display kind. The glyph NAME
-        // rides `data-icon` (the uniform icon-hook contract above — no text
-        // content, hosts map it to glyphs); size + tone are modifier classes.
-        // A11y: decorative (`Label = None`) emits `aria-hidden="true"`;
-        // labelled emits `role="img"` + `aria-label`. Mirrors the client
-        // renderer byte-for-byte.
-        Html.span
-            [ prop.className (Css.icon (Theme.iconSizeClass spec.Size) (Theme.toneVar spec.Tone))
-              prop.custom ("data-icon", spec.Icon)
-              match spec.Label with
-              | Some label ->
-                  prop.custom ("role", "img")
-                  prop.custom ("aria-label", label)
-              | None -> prop.custom ("aria-hidden", "true") ]
-    | NodeKind.Callout spec ->
-        Html.div
-            [ prop.className (Css.callout (Theme.toneVar spec.Tone))
-              prop.children
-                  [ match spec.Icon with
-                    | Some icon -> iconHook Css.Class.CalloutIcon icon
-                    | None -> Html.none
-                    match spec.Heading with
-                    | Some heading ->
-                        Html.div [ prop.className Css.Class.CalloutHeading; prop.text (renderText ctx heading) ]
-                    | None -> Html.none
-                    Html.div [ prop.className Css.Class.CalloutBody; prop.text (renderText ctx spec.Body) ] ] ]
+        match
+            ElementPlan.DisplayPlan.stateSlot
+                parentNodeId
+                (state |> Option.defaultValue Fuaran.UI.Defaults.stateBehaviour)
+                resolution
+        with
+        | Some slot -> renderNode (Walk.deeper walk) ctx slot
+        | None -> Emit.plan (ElementPlan.DisplayPlan.metric ctx.Sources resolution spec)
+    | NodeKind.Badge spec -> Emit.plan (ElementPlan.DisplayPlan.badge ctx.Sources spec)
+    | NodeKind.Skeleton spec -> Emit.plan (ElementPlan.DisplayPlan.skeleton spec)
+    | NodeKind.Icon spec -> Emit.plan (ElementPlan.DisplayPlan.icon spec)
+    | NodeKind.Callout spec -> Emit.plan (ElementPlan.DisplayPlan.callout ctx.Sources spec)
     | NodeKind.Progress spec ->
         let resolution = BindingResolver.resolve ctx.Sources spec.Fraction
 
-        match resolution, (state |> Option.bind _.OnLoading) with
-        | BindingResolver.NotResolved, Some loadingNode -> renderNode (Walk.deeper walk) ctx loadingNode
-        | _ ->
-            let fraction =
-                match resolution with
-                | BindingResolver.Resolved value -> value
-                | _ -> 0.0
-
-            Html.div
-                [ prop.className (Css.progress (Theme.toneVar spec.Tone) (Css.progressIndeterminate spec.Indeterminate))
-                  prop.children
-                      [ match spec.Label with
-                        | Some label ->
-                            Html.div [ prop.className Css.Class.ProgressLabel; prop.text (renderText ctx label) ]
-                        | None -> Html.none
-                        Html.div
-                            [ prop.className Css.Class.ProgressBar
-                              prop.children
-                                  [ let fillClass, fillStyleProps =
-                                        cspStyle
-                                            ctx
-                                            parentNodeId
-                                            "progress-fill"
-                                            (Csp.Declarations.progressFill fraction)
-
-                                    Html.div ([ prop.className (Css.Class.ProgressFill + fillClass) ] @ fillStyleProps) ] ] ] ]
+        match
+            ElementPlan.DisplayPlan.stateSlot
+                parentNodeId
+                (state |> Option.defaultValue Fuaran.UI.Defaults.stateBehaviour)
+                resolution
+        with
+        | Some slot -> renderNode (Walk.deeper walk) ctx slot
+        | None ->
+            Emit.plan (
+                ElementPlan.DisplayPlan.progress
+                    ctx.Sources
+                    (ElementPlan.styleSite ctx.Policy.Csp (Some ctx.Styles) parentNodeId)
+                    resolution
+                    spec
+            )
     | NodeKind.Sparkline spec ->
-        // Phase 1098 — the em-dash placeholder is retired for a RESOLVED series.
-        // The server now lowers the sparkline through the same
-        // `Charts.tryLowerSparkline` + `DrawingSvg` pair the client arm calls, so
-        // the two tiers emit identical bytes by construction — the journey
-        // `Drawing` took at Phase 525 and each `ChartKind` arm has taken since.
-        // This is a deliberate SSR BEHAVIOUR change: `render-fidelity.json`,
-        // `docs/SSR.md` and the site's SSR guide move with it.
-        //
-        // The em-dash branch survives for the UNRESOLVED or EMPTY series only —
-        // a readable, deterministic stand-in rather than a blank, exactly as
-        // before.
-        match BindingResolver.tryResolve ctx.Sources spec.Source with
-        | Some series ->
-            match Fuaran.UI.Charts.tryLowerSparkline spec series with
-            | Some drawing ->
-                Html.div
-                    [ prop.className Css.Class.Sparkline
-                      prop.dangerouslySetInnerHTML (DrawingSvg.render ctx.Sources (renderText ctx) drawing) ]
-            | None -> Html.div [ prop.className Css.Class.SparklineEmpty; prop.text "—" ]
-        | None -> Html.div [ prop.className Css.Class.SparklineEmpty; prop.text "—" ]
-    | NodeKind.Drawing spec ->
-        // Phase 525 — the SAME canonical Core SVG string the client emits (so
-        // SSR ↔ CSR are byte-identical for this static-geometry node); resolved
-        // + rendered on the server, headless included (D4).
-        Html.div [ prop.dangerouslySetInnerHTML (DrawingSvg.render ctx.Sources (renderText ctx) spec) ]
+        BindingResolver.tryResolve ctx.Sources spec.Source
+        |> Option.bind (Fuaran.UI.Charts.tryLowerSparkline spec)
+        |> ElementPlan.DisplayPlan.sparkline ctx.Sources
+        |> Emit.plan
+    | NodeKind.Drawing spec -> Emit.plan (ElementPlan.DisplayPlan.drawing ctx.Sources spec)
     | NodeKind.LabelValueRow spec ->
-        // Phase 632 — a scalar slot: Transform resolves to its 1×1 result cell,
-        // and an ambiguous (>1×1) result stays loud, matching the client's
-        // `renderLabelValueRow` value projection.
+        // Phase 632 — a scalar slot, as `Metric`'s.
         let resolution = BindingResolver.resolveScalarFloat ctx.Sources spec.Value
 
-        match resolution, (state |> Option.bind _.OnLoading) with
-        | BindingResolver.NotResolved, Some loadingNode -> renderNode (Walk.deeper walk) ctx loadingNode
-        | _ ->
-            let emphasisSuffix = Css.labelValueRowEmphasis spec.Emphasis
-
-            Html.div
-                [ prop.className (Css.labelValueRow emphasisSuffix)
-                  prop.children
-                      [ Html.span
-                            [ prop.className Css.Class.LabelValueRowLabel
-                              prop.text (renderText ctx spec.Label) ]
-                        Html.span
-                            [ prop.className Css.Class.LabelValueRowValue
-                              prop.text (
-                                  match resolution with
-                                  | BindingResolver.Resolved value -> formatNumber spec.Format value
-                                  | BindingResolver.NotResolved -> "—"
-                                  | BindingResolver.Errored msg -> sprintf "(error: %s)" msg
-                                  | BindingResolver.I18nUnresolved key -> sprintf "[i18n:%s]" key
-                              ) ] ] ]
-    | NodeKind.Fact spec ->
-        // Server-side Fact mirrors the client tile; `renderText` resolves the
-        // TextSource value identically on both sides (see the module doc's
-        // SSR<->CSR parity note).
-        let emphasisSuffix = Css.factEmphasis spec.Emphasis
-
-        Html.div
-            [ prop.className (Css.fact (Theme.toneVar spec.Tone) emphasisSuffix)
-              prop.children
-                  [ Html.div [ prop.className Css.Class.FactLabel; prop.text (renderText ctx spec.Label) ]
-                    Html.div
-                        [ prop.className Css.Class.FactValue
-                          prop.children
-                              [ match spec.Icon with
-                                | Some icon -> iconHook Css.Class.FactIcon icon
-                                | None -> Html.none
-                                Html.span [ prop.text (renderText ctx spec.Value) ] ] ]
-                    match spec.Help with
-                    | Some help -> Html.div [ prop.className Css.Class.FactHelp; prop.text (renderText ctx help) ]
-                    | None -> Html.none ] ]
+        match
+            ElementPlan.DisplayPlan.stateSlot
+                parentNodeId
+                (state |> Option.defaultValue Fuaran.UI.Defaults.stateBehaviour)
+                resolution
+        with
+        | Some slot -> renderNode (Walk.deeper walk) ctx slot
+        | None -> Emit.plan (ElementPlan.DisplayPlan.labelValueRow ctx.Sources resolution spec)
+    | NodeKind.Fact spec -> Emit.plan (ElementPlan.DisplayPlan.fact ctx.Sources spec)
     | NodeKind.Link spec ->
         let resolvedHref =
             BindingResolver.tryResolve ctx.Sources spec.Href |> Option.defaultValue ""
@@ -1176,7 +852,7 @@ and private renderKind
             Html.span (
                 [ prop.className Css.Class.LinkProtectedWrap
                   prop.dangerouslySetInnerHTML anchor ]
-                @ toProps semanticAttrs
+                @ Emit.attrs semanticAttrs
             )
         | _ ->
             Html.a (
@@ -1192,10 +868,10 @@ and private renderKind
                    else
                        [])
                 // Phase 951 — the node's a11y projection lands on the anchor.
-                @ toProps semanticAttrs
+                @ Emit.attrs semanticAttrs
                 // Phase 1026 — the refusal marker rides the element carrying
                 // the refused href. Empty on an allow.
-                @ toProps egressAttrs
+                @ Emit.attrs egressAttrs
                 @ [ prop.text (renderText ctx spec.Label) ]
             )
     | NodeKind.Image spec ->
@@ -1281,10 +957,10 @@ and private renderKind
                 [ prop.className (variantClass + fitClass + aspectClass)
                   prop.src safeSrc
                   prop.alt (renderText ctx spec.Alt) ]
-                @ toProps srcSetAttrs
-                @ toProps loadingAttrs
-                @ toProps semanticAttrs
-                @ toProps egressAttrs
+                @ Emit.attrs srcSetAttrs
+                @ Emit.attrs loadingAttrs
+                @ Emit.attrs semanticAttrs
+                @ Emit.attrs egressAttrs
             )
 
         // Phase 1079 — the expansion affordance. Three decisions, all of them
@@ -1527,8 +1203,8 @@ and private renderKind
                     sharedProps Css.Class.MediaVideo
                     @ posterProps
                     @ autoplayProps
-                    @ toProps semanticAttrs
-                    @ toProps egressAttrs
+                    @ Emit.attrs semanticAttrs
+                    @ Emit.attrs egressAttrs
                     @ trackChildren
                 )
             )
@@ -1536,8 +1212,8 @@ and private renderKind
             withTranscript (
                 Html.audio (
                     sharedProps Css.Class.MediaAudio
-                    @ toProps semanticAttrs
-                    @ toProps egressAttrs
+                    @ Emit.attrs semanticAttrs
+                    @ Emit.attrs egressAttrs
                     @ trackChildren
                 )
             )
@@ -1605,8 +1281,8 @@ and private renderKind
                    [ prop.custom ("allow", "fullscreen") ]
                else
                    [])
-            @ toProps semanticAttrs
-            @ toProps egressAttrs
+            @ Emit.attrs semanticAttrs
+            @ Emit.attrs egressAttrs
         )
     // Phase 1120 — the `Tree` SSR floor, and it is NORMATIVE (docs/SSR.md): a
     // server rendering of a tree is nested lists carrying the full ARIA tree
@@ -1685,121 +1361,10 @@ and private renderKind
             [ prop.className Css.Class.Tree
               prop.role "tree"
               prop.children (renderItems 1 spec.Items) ]
-    | NodeKind.List spec ->
-        let items =
-            spec.Items
-            |> List.map (fun item -> Html.li [ prop.className Css.Class.ListItem; prop.text (renderText ctx item) ])
-
-        if spec.Ordered then
-            Html.ol [ prop.className Css.Class.ListOrdered; prop.children items ]
-        else
-            Html.ul [ prop.className Css.Class.ListUnordered; prop.children items ]
-    | NodeKind.Toast spec ->
-        // Phase 289 overlay render-fidelity contract (server half): ALWAYS
-        // emitted; closed = the `hidden` attribute. `role="status"` +
-        // `aria-live="polite"` — byte-identical to the client renderer.
-        let isOpen =
-            BindingResolver.tryResolve ctx.Sources spec.Open |> Option.defaultValue false
-
-        let toneClass = Theme.toneVar spec.Tone
-
-        let dismissEls =
-            if spec.Dismissable then
-                [ Html.button
-                      [ prop.className Css.Class.ToastDismiss
-                        prop.custom ("type", "button")
-                        prop.ariaLabel "Dismiss"
-                        prop.text "×" ] ]
-            else
-                []
-
-        Html.div (
-            [ prop.className (Css.toast toneClass)
-              prop.role "status"
-              prop.custom ("aria-live", "polite") ]
-            @ (if not isOpen then [ prop.custom ("hidden", "") ] else [])
-            @ [ prop.children (
-                    [ Html.span
-                          [ prop.className Css.Class.ToastMessage
-                            prop.text (renderText ctx spec.Message) ] ]
-                    @ dismissEls
-                ) ]
-        )
-    | NodeKind.CodeBlock spec ->
-        // Phase 290 — DETERMINISTIC `<pre><code>` (HTML-escaped via `prop.text`,
-        // no markdown library), byte-identical to the client renderer. Phase
-        // 1854 — a language with a grammar (F*, F#) gets the deterministic
-        // highlighting tier from the shared `CodeHighlight.highlight`
-        // (class-only `tok-*` spans, `data-highlighted="deterministic"`);
-        // any other language keeps the escaped text exactly. A richer
-        // client-only highlighter (targets `language-{x}`) stays outside the
-        // parity output. See docs/CODE-HIGHLIGHT.md.
-        let containerClass =
-            if spec.LineNumbers then
-                Css.Class.CodeblockNumbered
-            else
-                Css.Class.Codeblock
-
-        let highlightAttr =
-            match spec.HighlightLines with
-            | [] -> []
-            | lines -> [ prop.custom ("data-highlight-lines", String.concat "," (lines |> List.map string)) ]
-
-        let copyEls =
-            if spec.Copyable then
-                [ Html.button
-                      [ prop.className Css.Class.CodeblockCopy
-                        prop.custom ("type", "button")
-                        prop.ariaLabel "Copy"
-                        prop.text "Copy" ] ]
-            else
-                []
-
-        let codeEl =
-            match CodeHighlight.highlight spec.Language spec.Code with
-            | Some markup ->
-                Html.code
-                    [ prop.className (Css.codeBlockCode spec.Language)
-                      prop.custom ("data-highlighted", CodeHighlight.TierMarker)
-                      prop.dangerouslySetInnerHTML markup ]
-            | None -> Html.code [ prop.className (Css.codeBlockCode spec.Language); prop.text spec.Code ]
-
-        Html.div (
-            [ prop.className containerClass; prop.custom ("data-language", spec.Language) ]
-            @ highlightAttr
-            @ [ prop.children (
-                    copyEls
-                    @ [ Html.pre [ prop.className Css.Class.CodeblockPre; prop.children [ codeEl ] ] ]
-                ) ]
-        )
-    | NodeKind.Math spec ->
-        // Phase 658 — DETERMINISTIC native MathML for the closed subset (real
-        // superscripts with NO JavaScript); the raw escaped-source span for
-        // out-of-subset input. Byte-identical to the client renderer via the
-        // shared `MathMl.translate`. KaTeX upgrades either shape client-only
-        // (targets the `.fuaran-math` container), outside parity. See
-        // docs/MATH-DEGRADATION.md.
-        let mathml = MathMl.translate spec.Source spec.Display
-
-        let displayStr, isBlock =
-            match spec.Display with
-            | MathDisplay.Block -> "block", true
-            | MathDisplay.Inline -> "inline", false
-
-        let containerProps =
-            [ prop.className (Css.mathContainer isBlock)
-              prop.custom ("data-math-display", displayStr)
-              prop.custom ("data-fuaran-math-src", spec.Source) ]
-
-        let content =
-            match mathml with
-            | Some markup -> [ prop.dangerouslySetInnerHTML markup ]
-            | None -> [ prop.children [ Html.span [ prop.className Css.Class.MathSource; prop.text spec.Source ] ] ]
-
-        if isBlock then
-            Html.div (containerProps @ content)
-        else
-            Html.span (containerProps @ content)
+    | NodeKind.List spec -> Emit.plan (ElementPlan.DisplayPlan.list ctx.Sources spec)
+    | NodeKind.Toast spec -> Emit.plan (ElementPlan.DisplayPlan.toast ctx.Sources spec)
+    | NodeKind.CodeBlock spec -> Emit.plan (ElementPlan.DisplayPlan.codeBlock spec)
+    | NodeKind.Math spec -> Emit.plan (ElementPlan.DisplayPlan.math spec)
     // -- Input --
     | NodeKind.Button spec ->
         let variantClass = Css.buttonVariant spec.Variant
@@ -1825,18 +1390,21 @@ and private renderKind
               // as a text node beside the hook; an icon-less button keeps the
               // plain `prop.text` shape (markup unchanged for existing trees).
               match spec.Icon with
-              | Some icon -> prop.children [ iconHook Css.Class.ButtonIcon icon; Html.text (renderText ctx spec.Label) ]
+              | Some icon ->
+                  prop.children
+                      [ Emit.plan (ElementPlan.DisplayPlan.iconHook Css.Class.ButtonIcon icon)
+                        Html.text (renderText ctx spec.Label) ]
               | None -> prop.text (renderText ctx spec.Label) ]
             @ (match spec.Tooltip with
                | Some t -> [ prop.title (renderText ctx t) ]
                | None -> [])
             @ commitProps
             // Phase 951 — the a11y projection lands on the `<button>` itself.
-            @ toProps semanticAttrs
+            @ Emit.attrs semanticAttrs
             @ (if isDisabled then [ prop.disabled true ] else [])
         )
     | NodeKind.Select spec ->
-        let options = resolveOptions ctx spec.Source
+        let options = BindingResolver.resolveOptions ctx.Sources spec.Source
         // The select value is `Binding<string>` since the swap — a null/empty
         // resolution is no-selection (the segmented-filter shape).
         let selected =
@@ -2138,10 +1706,18 @@ and private renderKind
             try
                 renderNode { child with InErrorBoundary = false } ctx spec.Fallback
             with ex2 ->
-                renderNodeFallback
-                    parentNodeId
-                    (RenderParity.nodeKindName kind + ".Fallback")
-                    (RenderParity.boundaryDoubleFailureMessage ex.Message ex2.Message)
+                // The placeholder carries the PRIMARY failure's correlation id, as
+                // the client's does, so a log filter joins the two reports (Phase
+                // 2108: this tier used to hash the `.Fallback` name instead).
+                let kindName = RenderParity.nodeKindName kind
+
+                Emit.plan (
+                    ElementPlan.NodePlan.renderFailure
+                        parentNodeId
+                        (kindName + ".Fallback")
+                        (RenderParity.boundaryDoubleFailureMessage ex.Message ex2.Message)
+                        (RenderParity.renderFailureCorrelationId parentNodeId kindName)
+                )
     | NodeKind.Switch spec ->
         // State-bound conditional child (Phase 392). SSR resolves the initial
         // state value from `ctx.Sources.State` (host pre-populated) and renders
@@ -2404,24 +1980,10 @@ and private renderCustom
                     @ [ prop.children [ body ] ]
                 )
 
-// ─── Layouts ────────────────────────────────────────────────────────────────
-
-// ─── Displays ────────────────────────────────────────────────────────────────
-
 // ─── Inputs (rendered inert — no dispatch server-side) ──────────────────────
 
 /// A form field rendered inert: the labelled control with the correct class
 /// vocabulary. Interactive binding (onChange) is a client-hydration concern.
-/// Whether the control write-back default has somewhere to write (Phase 1130).
-/// The two tiers choose DIFFERENT markup from this one answer (a picture, or an
-/// adjustable control), so disagreeing about it would make the floor and the
-/// hydrated control disagree about what the document even is — which is why
-/// Phase 1667 made it one DEFINITION (`BindingWalk.isWriteBackTarget`) shared
-/// with the client renderer and the FUARAN069 check, rather than three copies
-/// under a comment asserting they agree.
-and private isWriteBackTarget (binding: Binding<'T>) : bool =
-    Fuaran.UI.BindingWalk.isWriteBackTarget binding
-
 and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) : ReactElement =
     // Phase 596 — the value slots are `Binding<_> option` since the swap. An
     // absent (`None`) slot is the auto-bind form: substitute exactly the
@@ -2657,7 +2219,7 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
                             prop.className ("fuaran-rating-star " + RatingModel.fillClass fill)
                             prop.custom ("aria-hidden", "true") ] ]
 
-            if onChange.IsNone && not (isWriteBackTarget value) then
+            if onChange.IsNone && not (Fuaran.UI.BindingWalk.isWriteBackTarget value) then
                 Html.span
                     [ prop.className "fuaran-form-field-control fuaran-rating fuaran-rating-static"
                       prop.custom ("role", "img")
@@ -2693,7 +2255,7 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
                       ) ]
         | FormFieldKind.Combobox(allowFreeText, _, options, _) ->
             let listId = field.Id + "-options"
-            let opts = resolveOptions ctx options
+            let opts = BindingResolver.resolveOptions ctx.Sources options
 
             Html.span
                 [ prop.className "fuaran-combobox"
@@ -2727,7 +2289,7 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
         | FormFieldKind.Tokens(allowFreeText, _, suggestions, _) ->
             let listId = field.Id + "-suggestions"
 
-            let opts = suggestions |> Option.map (resolveOptions ctx)
+            let opts = suggestions |> Option.map (BindingResolver.resolveOptions ctx.Sources)
 
             Html.span
                 [ prop.className "fuaran-tokens"
@@ -2879,7 +2441,7 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
                       prop.text "—"
                       if current.IsNone then
                           prop.custom ("selected", "selected") ]
-                :: [ for option in resolveOptions ctx options ->
+                :: [ for option in BindingResolver.resolveOptions ctx.Sources options ->
                          Html.option
                              [ prop.value option.Value
                                prop.text option.Label
@@ -3078,7 +2640,7 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
                   prop.custom ("data-filter-name", spec.Name) ]
         | FormFieldKind.Choice(options, FieldView.Text value, _) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
-            let opts = resolveOptions ctx options
+            let opts = BindingResolver.resolveOptions ctx.Sources options
 
             // The choice value is `Binding<string>` since the swap ("no
             // selection" was `Binding<string option>`): a null/empty
@@ -3184,7 +2746,7 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
             // `data-fuaran-field`.
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
             let listId = spec.Name + "-filter-options"
-            let opts = resolveOptions ctx options
+            let opts = BindingResolver.resolveOptions ctx.Sources options
 
             let current = BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue ""
 
@@ -3276,7 +2838,7 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
                 |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.tokens
 
             let listId = spec.Name + "-suggestions"
-            let opts = suggestions |> Option.map (resolveOptions ctx)
+            let opts = suggestions |> Option.map (BindingResolver.resolveOptions ctx.Sources)
 
             Html.span
                 [ prop.className "fuaran-tokens"
@@ -3336,7 +2898,7 @@ and private renderSegmentedChoiceCore
     (value: Binding<string>)
     (orientation: Orientation)
     : ReactElement =
-    let opts = resolveOptions ctx options
+    let opts = BindingResolver.resolveOptions ctx.Sources options
 
     // The choice value is `Binding<string>` since the swap — a null/empty
     // resolution is no-selection.
@@ -3404,8 +2966,6 @@ and private renderSegmentedChoiceCore
                   Html.legend [ prop.className Css.Class.SegmentedLegend; prop.text idNamespace ]
                   :: [ for index, option in List.indexed opts -> optionRow index option ]
               ) ]
-
-// ─── Visualisations ──────────────────────────────────────────────────────────
 
 // ─── Public entry points ─────────────────────────────────────────────────────
 

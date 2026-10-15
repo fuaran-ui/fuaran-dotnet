@@ -1795,3 +1795,34 @@ let gridWindow
                 None
 
         GridModel.presentWindow hostWindows declared (readWindowDescriptor sources key) range)
+
+// ─── Options resolution + the `<opaque>` non-array source contract ─────────
+//
+// Phase 131: a non-array `Static` options source the encoder could not
+// serialise round-trips to the `"<opaque>"` sentinel (WIRE_FORMAT.md §5). The
+// decoder rebuilds it as a single-element placeholder whose value and label are
+// both the sentinel — a NON-NULL ref, so re-encode stays byte-stable. That
+// placeholder must NOT reach the DOM: it is an erased source, not a real
+// option. The cross-host contract is **render no concrete options** for an
+// opaque / non-array options source (the TS renderer's `asArray` coercion), so
+// every options-bearing control on both .NET renderers strips it here
+// (Phase 2108: one definition where each renderer carried a copy).
+
+let private opaqueOptionsSentinel = "<opaque>"
+
+let private isOpaqueOptionPlaceholder (option: SelectOption) : bool =
+    option.Value = opaqueOptionsSentinel && option.Label = opaqueOptionsSentinel
+
+/// The concrete options an options source resolves to, the opaque placeholder
+/// removed.
+let resolveOptions (sources: BindingSources) (binding: Binding<SelectOption list>) : SelectOption list =
+    let resolved = tryResolve sources binding |> Option.defaultValue []
+
+    // Per-render hot path (Phase 207): `List.filter` allocates a fresh list even
+    // when it removes nothing, and the placeholder is a decode-time rarity. Ask
+    // first, copy only when there is something to drop. Result-identical; do
+    // NOT "simplify" back to a bare `List.filter`.
+    if resolved |> List.exists isOpaqueOptionPlaceholder then
+        resolved |> List.filter (isOpaqueOptionPlaceholder >> not)
+    else
+        resolved

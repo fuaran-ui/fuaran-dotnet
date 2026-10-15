@@ -222,6 +222,12 @@
       <Link>renderer-sources\server\Render.fs</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- Phase 2108 - the element plan BOTH arms emit: a role or live region
+         planned there is emitted by each tier through its plan emitter. -->
+    <Content Include="..\Fuaran.UI.Renderer.Core\ElementPlan.fs">
+      <Link>renderer-sources\core\ElementPlan.fs</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
