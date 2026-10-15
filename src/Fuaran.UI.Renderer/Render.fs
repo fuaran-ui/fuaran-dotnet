@@ -273,6 +273,9 @@ module private Emit =
                 |> List.map (fun (k, v) -> style.custom (ElementPlan.camelCaseProperty k, v))
             )
 
+    /// Planned properties (a style site's inline declarations, typically).
+    let props (ps: ElementPlan.Prop list) : IReactProperty list = ps |> List.map property
+
     /// Emit a plan.
     let rec plan (p: ElementPlan.Plan<ReactElement>) : ReactElement =
         match p with
@@ -292,46 +295,6 @@ module private Emit =
                   | ElementPlan.Content.InnerHtml markup -> prop.dangerouslySetInnerHTML (TrustedTypes.html markup) ]
 
             HtmlHelper.createElement spec.Tag props
-
-// ─── Strict-CSP style emission (Phase 1545) ────────────────────────────────
-
-/// The class suffix and the props one continuous-value site emits, under
-/// whichever CSP posture the render is running.
-///
-/// `canonical` comes from `Csp.Declarations` — the SHARED builders the server
-/// arm calls, so the hash input cannot drift between the two tiers. It is the
-/// hash input and nothing this tier emits, which is what makes a shared
-/// definition sufficient: the class only has to NAME the rule the server wrote.
-/// So the progress fill's canonical value is the server's `width:50.000000%`
-/// even though React renders `width: 50%` here — the two tiers have always
-/// spelled that value differently, and under strict mode only one of them
-/// writes it. `permissive` is the React style object this renderer has always
-/// emitted, whose keys are camelCase because React's style object requires it.
-///
-/// **The two are separate arguments precisely because they are spelled
-/// differently**, and that is the one place this could drift: a site whose
-/// camelCase object and kebab-case pairs came to disagree would hydrate onto a
-/// class the server never generated. `Fuaran.UI.Tests/StrictCspTests.fs` pins
-/// them together by rendering the same tree through both tiers and comparing
-/// the class each derived, so the drift fails a test rather than a page.
-///
-/// Under `Permissive` the returned props are exactly what the site emitted
-/// before this mode existed. Under `Strict` there is no style prop at all — the
-/// declaration is already in the document's collected stylesheet, under the name
-/// the server derived from the same canonical pairs.
-let private cspStyle
-    (ctx: RenderContext<'Msg>)
-    (nodeId: string)
-    (slot: string)
-    (canonical: (string * string) list)
-    (permissive: IStyleAttribute list)
-    : string * IReactProperty list =
-    if List.isEmpty canonical then
-        "", []
-    elif Csp.isStrict ctx.Policy.Csp then
-        " " + Csp.generatedClass nodeId slot canonical, []
-    else
-        "", [ prop.style permissive ]
 
 // ─── Reconciliation keys for repeated children ─────────────────────────────
 //
@@ -365,75 +328,6 @@ let reconciliationKey (declared: string option) (index: int) : string =
     // Phase 2108 — defined once in `ElementPlan`, where the planned repeated
     // children (skeleton rows, list items) take their keys from.
     ElementPlan.reconciliationKey declared index
-
-// ─── Text-source rendering — handles i18n + bound text ─────────────────────
-
-let private renderText (ctx: RenderContext<'Msg>) (text: TextSource) : string =
-    // Phase 1126 — the dispatch itself is
-    // `BindingResolver.resolveTextSource`, the one definition this renderer,
-    // the SSR renderer and the server-driven driver all share. The semantics
-    // are unchanged (Phase 632's scalar path for `Bound`, the loud
-    // `[i18n:<key>]` sentinel for a missing translation); what is gone is the
-    // second hand-written copy of them, which a third consumer would otherwise
-    // have made a third.
-    BindingResolver.resolveTextSource ctx.Sources text
-
-// ─── Options resolution + the `<opaque>` non-array source contract ─────────
-//
-// Phase 131: a non-array `Static` options source the encoder could not
-// serialise round-trips to the `"<opaque>"` sentinel (WIRE_FORMAT.md §5). The
-// JsonDecode host rebuilds it as a single-element placeholder
-// `[ { Value = "<opaque>"; Label = Literal "<opaque>" } ]` — a NON-NULL ref so
-// re-encode stays byte-stable (`box []` is `null`, which would emit JSON
-// `null`, not `"<opaque>"`). That placeholder must NOT reach the DOM: it is an
-// erased source, not a real option. The canonical cross-host contract is
-// **render no concrete options** for an opaque/non-array options source, which
-// is exactly what the TS `@fuaran-ui/renderer` `asArray` coercion produces
-// (non-array → `[]`). `resolveOptions` is the F# rendering-side counterpart:
-// it strips the opaque placeholder so every options-bearing control
-// (Select / Choice / SegmentedChoice / ChoiceFilter / SegmentedFilter) emits
-// identical DOM on both hosts.
-let private opaqueOptionsSentinel = "<opaque>"
-
-let private isOpaqueOptionPlaceholder (option: SelectOption) : bool =
-    // `SelectOption.Label` is a bare string since the swap (was `TextSource`),
-    // so the placeholder check is a direct pair comparison.
-    option.Value = opaqueOptionsSentinel && option.Label = opaqueOptionsSentinel
-
-let private resolveOptions (ctx: RenderContext<'Msg>) (binding: Binding<SelectOption list>) : SelectOption list =
-    let resolved =
-        BindingResolver.tryResolve ctx.Sources binding |> Option.defaultValue []
-
-    // Per-render hot path (Phase 207): `List.filter` allocates a fresh list even
-    // when it removes nothing, and the opaque placeholder is a decode-time
-    // rarity — every ordinary options source pays a full copy of its own list on
-    // every render to drop nothing. Ask first, copy only when there is something
-    // to drop. Result-identical; do NOT "simplify" back to a bare `List.filter`.
-    if resolved |> List.exists isOpaqueOptionPlaceholder then
-        resolved |> List.filter (isOpaqueOptionPlaceholder >> not)
-    else
-        resolved
-
-// ─── The uniform icon hook ─────────────────────────────────────────────────
-//
-// Every icon-bearing spec (TabHeader / Fact / Metric / Callout / Button)
-// renders its `IconSource` as ONE empty placement element:
-//
-//   <span class="fuaran-icon fuaran-{kind}-icon" data-icon="{name}" aria-hidden="true"></span>
-//
-// The icon NAME rides the `data-icon` attribute, never the text content — the
-// reference CSS ships no glyphs, so a host with no icon system sees nothing
-// (not the raw name), and a host maps `data-icon` to glyphs via its own
-// mechanism (CSS `::before` content, font classes, or hydration-time SVG
-// injection). `aria-hidden` because every icon-bearing spec pairs the icon
-// with a visible text label. Both renderers and the TS tier emit this same
-// shape — the SSR parity corpus pins it.
-
-let private iconHook (kindClass: string) (name: string) : ReactElement =
-    Html.span
-        [ prop.className (Css.iconPlacement kindClass)
-          prop.custom ("data-icon", name)
-          prop.custom ("aria-hidden", "true") ]
 
 // ─── Detect Actions the renderer's runtime cannot execute ──────────────────
 //
@@ -900,14 +794,15 @@ let rec private runActionCore (ctx: RenderContext<'Msg>) (denied: string list re
         // somewhere with authority.
         //
         // Phase 1126 — the payload is a `TextSource`, resolved HERE, at
-        // dispatch time, through the same `renderText` the surrounding tree
+        // dispatch time, through the same `BindingResolver.resolveTextSource` the surrounding tree
         // renders its labels through. Resolving at dispatch rather than at
         // decode is the whole point of the widening: what lands on the
         // clipboard is what the reader was looking at when they asked for it,
         // not what the document said when it arrived. The substrate seam
         // (`IFuaranRuntime.WriteToClipboard`) still takes a `string` — it
         // performs a write, it does not evaluate a tree.
-        gate Runtime.ActionDescriptor.WriteToClipboard (fun () -> ctx.Runtime.WriteToClipboard(renderText ctx text))
+        gate Runtime.ActionDescriptor.WriteToClipboard (fun () ->
+            ctx.Runtime.WriteToClipboard(BindingResolver.resolveTextSource ctx.Sources text))
     | Action.Print ->
         // Phase 1124 — the reader's own print dialogue. Renderer-native, with no
         // `IFuaranRuntime` member behind it: `window.print()` is the browser's
@@ -952,11 +847,11 @@ let rec private runActionCore (ctx: RenderContext<'Msg>) (denied: string list re
         // was never asked, so neither answer happened; running `onCancel` would
         // report a refusal the reader did not make.
         //
-        // The prompt resolves at DISPATCH time through the same `renderText` the
+        // The prompt resolves at DISPATCH time through the same `BindingResolver.resolveTextSource` the
         // surrounding tree renders its labels through (the `WriteToClipboard`
         // precedent), so a question may name what the reader is looking at.
-        gate (Runtime.ActionDescriptor.Confirm(renderText ctx prompt)) (fun () ->
-            if Browser.Dom.window.confirm (renderText ctx prompt) then
+        gate (Runtime.ActionDescriptor.Confirm(BindingResolver.resolveTextSource ctx.Sources prompt)) (fun () ->
+            if Browser.Dom.window.confirm (BindingResolver.resolveTextSource ctx.Sources prompt) then
                 runActionCore ctx denied onConfirm
             else
                 onCancel |> Option.iter (runActionCore ctx denied))
@@ -1146,23 +1041,6 @@ let private commitLocalTo (ctx: RenderContext<'Msg>) (commitTo: string option) (
 /// sites now routes here. Keep it that way: a local re-implementation inside a
 /// render function is untestable by construction, and the harness census in
 /// `Fuaran.UI.Tests` fails on one reappearing.
-/// Whether the control write-back default has somewhere to write (Phase 1130).
-/// What `PreEmitValidate`'s FUARAN069 inert check calls an inert control is
-/// exactly what this renderer must not dress up as an adjustable one, so the two
-/// must be ONE predicate — and since Phase 1667 they are one DEFINITION
-/// (`BindingWalk.isWriteBackTarget`) rather than three copies under a comment
-/// asserting they agree. A `Binding.Local` counts as live when its commit
-/// pipeline has a destination: an `onCommit` closure, a declared `commitTo`, or a
-/// writable re-sync source. One carrying none of the three buffers a value and
-/// then has nowhere to put it, which is what 1538 corrected and what this copy
-/// still said was always live.
-///
-/// Only the rating control consults it today, because it is the only control
-/// whose ARIA ROLE changes with the answer; every other control renders the
-/// same markup either way and lets the validator do the complaining.
-let internal isWriteBackTarget (binding: Binding<'T>) : bool =
-    Fuaran.UI.BindingWalk.isWriteBackTarget binding
-
 let fieldChange
     (ctx: RenderContext<'Msg>)
     (onChange: ('v -> Action<'Msg>) option)
@@ -2711,7 +2589,9 @@ let rec private renderKind
                   prop.children
                       [ match spec.Heading with
                         | Some heading ->
-                            Html.header [ prop.className Css.Class.CardHeading; prop.text (renderText ctx heading) ]
+                            Html.header
+                                [ prop.className Css.Class.CardHeading
+                                  prop.text (BindingResolver.resolveTextSource ctx.Sources heading) ]
                         | None -> Html.none
                         Html.div
                             [ prop.className Css.Class.CardBody
@@ -2747,44 +2627,38 @@ let rec private renderKind
             let templateColumns, cssRefusalAttrs =
                 Sanitize.sanitizeCssValueForSlot "grid-template-columns" declaredTemplateColumns
 
-            // `gap` (Phase 459 — the Spacer replacement) emits only when set, so
-            // gap-free grids stay byte-identical to the pre-459 emission.
-            let gridStyle =
-                [ style.custom ("gridTemplateColumns", templateColumns) ]
-                @ (match gridGap with
-                   | Some n -> [ style.custom ("gap", sprintf "%dpx" n) ]
-                   | None -> [])
-
-            // Phase 1545 — the canonical pairs come from the SHARED builder the
-            // server arm calls, beside the camelCase object React needs.
+            // Phase 1545 / 2108 — the canonical pairs from the SHARED builder,
+            // placed under the render's CSP posture by the shared style site;
+            // the plan emitter camel-cases them for React. `gap` (Phase 459)
+            // emits only when set.
             let gridClass, gridStyleProps =
-                cspStyle ctx parentNodeId "grid" (Csp.Declarations.grid templateColumns gridGap) gridStyle
+                ElementPlan.styleSite
+                    ctx.Policy.Csp
+                    None
+                    parentNodeId
+                    "grid"
+                    (Csp.Declarations.grid templateColumns gridGap)
 
             Html.div (
                 [ prop.className (Css.Class.LayoutGrid + brk + gridClass) ]
-                @ gridStyleProps
+                @ Emit.props gridStyleProps
                 @ [ prop.children (spec.Children |> List.map (render ctx)) ]
                 @ (cssRefusalAttrs |> List.map (fun (k, v) -> prop.custom (k, v)))
             )
         | BoxRole.Group, BoxLayout.Masonry(cols, masonryGap) ->
             // Phase 1082 — column-FILL, realised through the CSS MULTI-COLUMN
-            // property family per WIRE_FORMAT §3.6.7. Note the property name
-            // diverges from the server arm's kebab-case `column-count` for the
-            // same reason `gridTemplateColumns` does: React's style object
-            // requires camelCase, while Feliz.ViewEngine writes the key verbatim
-            // into the style attribute, where CSS ignores camelCase.
-            let masonryStyle =
-                [ style.custom ("columnCount", string cols) ]
-                @ (match masonryGap with
-                   | Some n -> [ style.custom ("gap", sprintf "%dpx" n) ]
-                   | None -> [])
-
+            // property family per WIRE_FORMAT §3.6.7.
             let masonryClass, masonryStyleProps =
-                cspStyle ctx parentNodeId "masonry" (Csp.Declarations.masonry cols masonryGap) masonryStyle
+                ElementPlan.styleSite
+                    ctx.Policy.Csp
+                    None
+                    parentNodeId
+                    "masonry"
+                    (Csp.Declarations.masonry cols masonryGap)
 
             Html.div (
                 [ prop.className (Css.Class.LayoutMasonry + brk + masonryClass) ]
-                @ masonryStyleProps
+                @ Emit.props masonryStyleProps
                 @ [ prop.children (spec.Children |> List.map (render ctx)) ]
             )
         | BoxRole.Group, BoxLayout.Flex(direction, flexWrap, flexGap) ->
@@ -2794,18 +2668,11 @@ let rec private renderKind
             // `gap` emits only when set (Phase 459) — a gap-free stack carries no
             // `style` attribute, byte-identical to the pre-459 emission.
             let flexClass, flexStyleProps =
-                cspStyle
-                    ctx
-                    parentNodeId
-                    "flex"
-                    (Csp.Declarations.flex flexGap)
-                    (match flexGap with
-                     | Some n -> [ style.custom ("gap", sprintf "%dpx" n) ]
-                     | None -> [])
+                ElementPlan.styleSite ctx.Policy.Csp None parentNodeId "flex" (Csp.Declarations.flex flexGap)
 
             Html.div (
                 [ prop.className (Css.layoutStack dir wrap + brk + flexClass) ]
-                @ flexStyleProps
+                @ Emit.props flexStyleProps
                 @ [ prop.children (spec.Children |> List.map (render ctx)) ]
             )
     | NodeKind.SplitPanel spec ->
@@ -2829,32 +2696,27 @@ let rec private renderKind
         // Phase 1545 — the same slot discriminators the server arm uses, so the
         // two panes hydrate onto the classes it generated.
         let leftClass, leftStyleProps =
-            cspStyle
-                ctx
-                parentNodeId
-                "split-left"
-                (Csp.Declarations.splitPane weightLeft)
-                [ style.custom ("flex", sprintf "%f 1 0" weightLeft) ]
+            ElementPlan.styleSite ctx.Policy.Csp None parentNodeId "split-left" (Csp.Declarations.splitPane weightLeft)
 
         let rightClass, rightStyleProps =
-            cspStyle
-                ctx
+            ElementPlan.styleSite
+                ctx.Policy.Csp
+                None
                 parentNodeId
                 "split-right"
                 (Csp.Declarations.splitPane weightRight)
-                [ style.custom ("flex", sprintf "%f 1 0" weightRight) ]
 
         Html.div
             [ prop.className Css.Class.LayoutSplitPanel
               prop.children
                   [ Html.div (
                         [ prop.className (Css.Class.SplitPaneLeft + leftClass) ]
-                        @ leftStyleProps
+                        @ Emit.props leftStyleProps
                         @ [ prop.children leftChildren ]
                     )
                     Html.div (
                         [ prop.className (Css.Class.SplitPaneRight + rightClass) ]
-                        @ rightStyleProps
+                        @ Emit.props rightStyleProps
                         @ [ prop.children rightChildren ]
                     ) ] ]
     | NodeKind.Tabs spec ->
@@ -2874,7 +2736,7 @@ let rec private renderKind
         let tabsLabelFromChild (child: Node<'Msg>) : string =
             match child.Kind with
             | NodeKind.Box { Role = BoxRole.Card
-                             Heading = Some h } -> renderText ctx h
+                             Heading = Some h } -> BindingResolver.resolveTextSource ctx.Sources h
             | _ -> child.Id
 
         // Resolved per-tab label + disabled state + optional icon.
@@ -2899,7 +2761,7 @@ let rec private renderKind
                     // swap (was `IconSource option`) — no unwrap needed.
                     let icon = h.Icon
 
-                    {| label = renderText ctx h.Label
+                    {| label = BindingResolver.resolveTextSource ctx.Sources h.Label
                        icon = icon
                        disabled = disabled |})
             | None ->
@@ -3063,7 +2925,8 @@ let rec private renderKind
 
                                     let labelChildren =
                                         [ match t.icon with
-                                          | Some iconSrc -> iconHook Css.Class.TabIcon iconSrc
+                                          | Some iconSrc ->
+                                              Emit.plan (ElementPlan.DisplayPlan.iconHook Css.Class.TabIcon iconSrc)
                                           | None -> ()
                                           Html.span [ prop.className Css.Class.TabLabel; prop.text t.label ] ]
 
@@ -3114,7 +2977,7 @@ let rec private renderKind
                     | Some heading ->
                         Html.header
                             [ prop.className Css.Class.SummaryListHeading
-                              prop.text (renderText ctx heading) ]
+                              prop.text (BindingResolver.resolveTextSource ctx.Sources heading) ]
                     | None -> Html.none
                     Html.div
                         [ prop.className Css.Class.SummaryListBody
@@ -3164,7 +3027,7 @@ let rec private renderKind
               prop.children
                   [ Html.summary
                         [ prop.className Css.Class.DisclosureSummary
-                          prop.text (renderText ctx spec.Heading) ]
+                          prop.text (BindingResolver.resolveTextSource ctx.Sources spec.Heading) ]
                     Html.div
                         [ prop.className Css.Class.DisclosureBody
                           prop.children (spec.Children |> List.map (render ctx)) ] ] ]
@@ -3244,7 +3107,10 @@ let rec private renderKind
         let surfaceChildren (headingClass: string) (dismissClass: string) (bodyClass: string) =
             let headingEls =
                 match spec.Heading with
-                | Some h -> [ Html.h2 [ prop.className headingClass; prop.text (renderText ctx h) ] ]
+                | Some h ->
+                    [ Html.h2
+                          [ prop.className headingClass
+                            prop.text (BindingResolver.resolveTextSource ctx.Sources h) ] ]
                 | None -> []
 
             let dismissEls =
@@ -3302,23 +3168,20 @@ let rec private renderKind
     | NodeKind.ScrollArea spec ->
         // Phase 289 — overflow/scroll container. The scroll axis is a class
         // (CSS owns `overflow`); optional pixel bounds are inline max-height /
-        // max-width via the shared Feliz `style` DSL (identical SSR↔CSR).
+        // max-width declarations from the shared builder (identical SSR↔CSR).
         let axisClass = Css.scrollArea spec.Orientation
 
-        let styleProps =
-            [ match spec.MaxHeight with
-              | Some h -> style.maxHeight (length.px h)
-              | None -> ()
-              match spec.MaxWidth with
-              | Some w -> style.maxWidth (length.px w)
-              | None -> () ]
-
         let scrollClass, scrollStyleProps =
-            cspStyle ctx parentNodeId "scroll" (Csp.Declarations.scrollArea spec.MaxHeight spec.MaxWidth) styleProps
+            ElementPlan.styleSite
+                ctx.Policy.Csp
+                None
+                parentNodeId
+                "scroll"
+                (Csp.Declarations.scrollArea spec.MaxHeight spec.MaxWidth)
 
         Html.div (
             [ prop.className (axisClass + scrollClass); prop.tabIndex 0 ]
-            @ scrollStyleProps
+            @ Emit.props scrollStyleProps
             @ [ prop.children (spec.Children |> List.map (render ctx)) ]
         )
     // -- Display --
@@ -3429,7 +3292,7 @@ let rec private renderKind
                         [ Html.a
                               [ prop.className "fuaran-link fuaran-link-protected"
                                 prop.href safeHref
-                                prop.text (renderText ctx spec.Label) ] ] ]
+                                prop.text (BindingResolver.resolveTextSource ctx.Sources spec.Label) ] ] ]
             )
         | _ ->
             Html.a (
@@ -3441,7 +3304,7 @@ let rec private renderKind
                 // carries the refused href, so a reader of the DOM sees WHY
                 // this anchor points at `about:blank`. Empty on an allow.
                 @ Emit.attrs egressAttrs
-                @ [ prop.text (renderText ctx spec.Label) ]
+                @ [ prop.text (BindingResolver.resolveTextSource ctx.Sources spec.Label) ]
             )
     | NodeKind.Image spec ->
         // Phase 287 — real `<img>`; `alt` is mandatory; `variant` appends an
@@ -3521,7 +3384,7 @@ let rec private renderKind
             Html.img (
                 [ prop.className (variantClass + fitClass + aspectClass)
                   prop.src safeSrc
-                  prop.alt (renderText ctx spec.Alt) ]
+                  prop.alt (BindingResolver.resolveTextSource ctx.Sources spec.Alt) ]
                 @ Emit.attrs srcSetAttrs
                 @ Emit.attrs loadingAttrs
                 @ Emit.attrs semanticAttrs
@@ -3565,7 +3428,7 @@ let rec private renderKind
                       [ expandable
                         Html.figcaption
                             [ prop.className Css.Class.ImageFigureCaption
-                              prop.text (renderText ctx caption) ] ] ]
+                              prop.text (BindingResolver.resolveTextSource ctx.Sources caption) ] ] ]
     // Phase 1076 — the media transport, structural parity with the server arm,
     // which states the four contract points at length. In brief, and in the
     // order they appear below: `aria-label` unconditionally (the label is
@@ -3621,7 +3484,7 @@ let rec private renderKind
                                 [ prop.custom ("kind", token)
                                   prop.src safe
                                   prop.custom ("srclang", t.SrcLang)
-                                  prop.custom ("label", renderText ctx t.Label) ]
+                                  prop.custom ("label", BindingResolver.resolveTextSource ctx.Sources t.Label) ]
                                 @ (if takesDefault then [ prop.custom ("default", "") ] else [])
                             )
 
@@ -3650,18 +3513,18 @@ let rec private renderKind
                           [ el
                             Html.details
                                 [ prop.className Css.Class.MediaTranscript
-                                  prop.custom ("aria-label", renderText ctx spec.Label)
+                                  prop.custom ("aria-label", BindingResolver.resolveTextSource ctx.Sources spec.Label)
                                   prop.children
                                       [ Html.summary
                                             [ prop.className Css.Class.MediaTranscriptSummary; prop.text "Transcript" ]
                                         Html.div
                                             [ prop.className Css.Class.MediaTranscriptBody
-                                              prop.text (renderText ctx transcript) ] ] ] ] ]
+                                              prop.text (BindingResolver.resolveTextSource ctx.Sources transcript) ] ] ] ] ]
 
         let sharedProps (variantClass: string) =
             [ prop.className (Css.media variantClass)
               prop.src safeSrc
-              prop.custom ("aria-label", renderText ctx spec.Label) ]
+              prop.custom ("aria-label", BindingResolver.resolveTextSource ctx.Sources spec.Label) ]
             @ (if spec.Controls then [ prop.controls true ] else [])
             @ (if spec.Loop then [ prop.loop true ] else [])
 
@@ -3746,7 +3609,7 @@ let rec private renderKind
 
         Html.iframe (
             [ prop.className (Css.Class.Embed + aspectClass)
-              prop.title (renderText ctx spec.Title)
+              prop.title (BindingResolver.resolveTextSource ctx.Sources spec.Title)
               prop.custom ("sandbox", String.concat " " sandboxTokens)
               prop.custom ("loading", "lazy")
               prop.custom ("referrerpolicy", "strict-origin-when-cross-origin") ]
@@ -3884,7 +3747,7 @@ let rec private renderKind
             |> List.mapi (fun i item ->
                 let isOpen = TreeModel.treeItemExpanded expandedKeyNamed expanded item
                 let hasChildren = not (List.isEmpty item.Children)
-                let label = renderText ctx item.Label
+                let label = BindingResolver.resolveTextSource ctx.Sources item.Label
 
                 let onKey (e: Browser.Types.KeyboardEvent) =
                     let el = e.currentTarget :?> Browser.Types.HTMLElement
@@ -4026,7 +3889,8 @@ let rec private renderKind
                 table
             else
                 let project () =
-                    (sr.Headers |> List.map (renderText ctx)), (sr.Rows |> List.map (List.map (renderText ctx)))
+                    (sr.Headers |> List.map (BindingResolver.resolveTextSource ctx.Sources)),
+                    (sr.Rows |> List.map (List.map (BindingResolver.resolveTextSource ctx.Sources)))
 
                 Html.div
                     [ prop.className "fuaran-grid-exportable"
@@ -4556,7 +4420,7 @@ and private renderButton
     // operator UX. If both fire, the explicit Tooltip is more useful.
     let tooltipText =
         match spec.Tooltip with
-        | Some text -> Some(renderText ctx text)
+        | Some text -> Some(BindingResolver.resolveTextSource ctx.Sources text)
         | None when unwired ->
             Some
                 "This action routes through the IFuaranRuntime substrate (Action.Call/Notify/Navigate/SetState/AiTool)."
@@ -4576,8 +4440,11 @@ and private renderButton
           // text node beside the hook; an icon-less button keeps the plain
           // `prop.text` shape (markup unchanged for existing trees).
           match spec.Icon with
-          | Some icon -> prop.children [ iconHook Css.Class.ButtonIcon icon; Html.text (renderText ctx spec.Label) ]
-          | None -> prop.text (renderText ctx spec.Label)
+          | Some icon ->
+              prop.children
+                  [ Emit.plan (ElementPlan.DisplayPlan.iconHook Css.Class.ButtonIcon icon)
+                    Html.text (BindingResolver.resolveTextSource ctx.Sources spec.Label) ]
+          | None -> prop.text (BindingResolver.resolveTextSource ctx.Sources spec.Label)
           match tooltipText with
           | Some t -> prop.title t
           | None -> ()
@@ -4588,7 +4455,7 @@ and private renderButton
     )
 
 and private renderSelect (ctx: RenderContext<'Msg>) (spec: SelectSpec<'Msg>) : ReactElement =
-    let options = resolveOptions ctx spec.Source
+    let options = BindingResolver.resolveOptions ctx.Sources spec.Source
 
     // `Value` is `Binding<string>` since the swap — a null/empty
     // resolution is no-selection (the same projection as
@@ -4599,7 +4466,10 @@ and private renderSelect (ctx: RenderContext<'Msg>) (spec: SelectSpec<'Msg>) : R
 
     let placeholderItem =
         match spec.Placeholder with
-        | Some placeholder -> [ Html.option [ prop.value ""; prop.text (renderText ctx placeholder) ] ]
+        | Some placeholder ->
+            [ Html.option
+                  [ prop.value ""
+                    prop.text (BindingResolver.resolveTextSource ctx.Sources placeholder) ] ]
         | None -> []
 
     let optionItems =
@@ -4667,7 +4537,9 @@ and private renderSelect (ctx: RenderContext<'Msg>) (spec: SelectSpec<'Msg>) : R
     Html.label
         [ prop.className Css.Class.Select
           prop.children
-              [ Html.span [ prop.className Css.Class.SelectLabel; prop.text (renderText ctx spec.Label) ]
+              [ Html.span
+                    [ prop.className Css.Class.SelectLabel
+                      prop.text (BindingResolver.resolveTextSource ctx.Sources spec.Label) ]
                 control ] ]
 
 and private renderForm (ctx: RenderContext<'Msg>) (spec: FormSpec<'Msg>) : ReactElement =
@@ -4677,7 +4549,7 @@ and private renderForm (ctx: RenderContext<'Msg>) (spec: FormSpec<'Msg>) : React
         Html.button
             [ prop.className Css.Class.FormSubmit
               prop.type'.submit
-              prop.text (renderText ctx spec.SubmitLabel) ]
+              prop.text (BindingResolver.resolveTextSource ctx.Sources spec.SubmitLabel) ]
 
     // Phase 130: optional bound form-level disabled-state. When the slot is
     // present, wrap the fields + submit in a `<fieldset>` so a single
@@ -4742,7 +4614,9 @@ and private renderForm (ctx: RenderContext<'Msg>) (spec: FormSpec<'Msg>) : React
 
               let unmet =
                   spec.Fields
-                  |> List.choose (fun f -> FieldRules.unmet (renderText ctx) values f |> Option.map (fun m -> f.Id, m))
+                  |> List.choose (fun f ->
+                      FieldRules.unmet (BindingResolver.resolveTextSource ctx.Sources) values f
+                      |> Option.map (fun m -> f.Id, m))
 
               FieldRules.markUnmet unmet [ for f in spec.Fields -> f.Id ]
 
@@ -4752,7 +4626,7 @@ and private renderForm (ctx: RenderContext<'Msg>) (spec: FormSpec<'Msg>) : React
           prop.children formChildren ]
 
 and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) : ReactElement =
-    let labelText = renderText ctx field.Label
+    let labelText = BindingResolver.resolveTextSource ctx.Sources field.Label
 
     let labelWithRequired = if field.Required then labelText + " *" else labelText
 
@@ -4936,7 +4810,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                 value
                 |> Option.defaultValue (Binding.State(field.Id, Fuaran.UI.Defaults.ControlValueDefaults.choice))
 
-            let opts = resolveOptions ctx options
+            let opts = BindingResolver.resolveOptions ctx.Sources options
 
             // The choice value is `Binding<string>` since the swap ("no
             // selection" was `Binding<string option>`): a null/empty
@@ -5095,7 +4969,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                    required = field.Required
                    allowFreeText = allowFreeText
                    placeholder = ""
-                   options = resolveOptions ctx options
+                   options = BindingResolver.resolveOptions ctx.Sources options
                    committed = current
                    commit = fun chosen -> fieldChange ctx onChange value (chosen |> Option.map box) chosen |}
         | FormFieldKind.Rating(allowHalf, max, FieldView.OnNumber onChange, FieldView.Number value) ->
@@ -5116,7 +4990,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                    className = "fuaran-form-field-control"
                    max = max
                    allowHalf = allowHalf
-                   interactive = onChange.IsSome || isWriteBackTarget value
+                   interactive = onChange.IsSome || Fuaran.UI.BindingWalk.isWriteBackTarget value
                    label = labelText
                    value = current
                    commit = fun (v: float) -> fieldChange ctx onChange value (Some(box v)) v |}
@@ -5175,7 +5049,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                    // control emits combobox ARIA only where a source was
                    // DECLARED, and an asynchronous source that has not resolved
                    // yet is still a declared one.
-                   suggestions = suggestions |> Option.map (resolveOptions ctx)
+                   suggestions = suggestions |> Option.map (BindingResolver.resolveOptions ctx.Sources)
                    tokens = current
                    commit = fun next -> fieldChange ctx onChange value (Some(box next)) next |}
         | FormFieldKind.SegmentedChoice(options, FieldView.Text value, FieldView.OnChoice onChange, orientation) ->
@@ -5311,7 +5185,10 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                       prop.text labelWithRequired ]
                 control
                 match field.Help with
-                | Some help -> Html.div [ prop.className Css.Class.FormHelp; prop.text (renderText ctx help) ]
+                | Some help ->
+                    Html.div
+                        [ prop.className Css.Class.FormHelp
+                          prop.text (BindingResolver.resolveTextSource ctx.Sources help) ]
                 | None -> Html.none ] ]
 
 and private renderFilters (ctx: RenderContext<'Msg>) (specs: FilterSpec<'Msg> list) : ReactElement =
@@ -5320,7 +5197,7 @@ and private renderFilters (ctx: RenderContext<'Msg>) (specs: FilterSpec<'Msg> li
           prop.children [ for spec in specs -> renderFilterSpec ctx spec ] ]
 
 and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>) : ReactElement =
-    let labelText = renderText ctx spec.Label
+    let labelText = BindingResolver.resolveTextSource ctx.Sources spec.Label
 
     // Phase 423 default write path: a chip whose `onChange` is `None` (the declarative / AI-authored
     // shape) writes its typed value to the reactive `FilterStore` under `spec.Name` — zero host code,
@@ -5451,12 +5328,12 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                    required = false
                    allowFreeText = allowFreeText
                    placeholder = labelText
-                   options = resolveOptions ctx options
+                   options = BindingResolver.resolveOptions ctx.Sources options
                    committed = current
                    commit = fun chosen -> fieldChange ctx onChange filterWriteBinding (chosen |> Option.map box) chosen |}
         | FormFieldKind.Choice(options, FieldView.Text value, FieldView.OnChoice onChange) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
-            let opts = resolveOptions ctx options
+            let opts = BindingResolver.resolveOptions ctx.Sources options
 
             // The choice value is `Binding<string>` since the swap — a
             // null/empty resolution is no-selection, so the placeholder
@@ -5622,7 +5499,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                    required = false
                    allowFreeText = allowFreeText
                    placeholder = ""
-                   suggestions = suggestions |> Option.map (resolveOptions ctx)
+                   suggestions = suggestions |> Option.map (BindingResolver.resolveOptions ctx.Sources)
                    tokens = current
                    commit = fun next -> fieldChange ctx onChange filterWriteBinding (Some(box next)) next |}
 
@@ -5666,7 +5543,7 @@ and private renderSegmentedChoiceCore
     (handleChange: string option -> unit)
     (orientation: Orientation)
     : ReactElement =
-    let opts = resolveOptions ctx options
+    let opts = BindingResolver.resolveOptions ctx.Sources options
 
     // The choice value is `Binding<string>` since the swap — a null/empty
     // resolution is no-selection.
@@ -5911,7 +5788,7 @@ and private renderFileUpload
     let labelChildren =
         [ Html.span
               [ prop.className Css.Class.FileUploadLabel
-                prop.text (renderText ctx spec.Label) ]
+                prop.text (BindingResolver.resolveTextSource ctx.Sources spec.Label) ]
           Html.input inputProps ]
 
     // Phase 1115 — the ingress gestures. Neither declared is the shape every
@@ -7108,7 +6985,7 @@ and private renderGridCell
     | CellKindErased.Button(label, onClick) ->
         Html.button
             [ prop.className "fuaran-grid-cell-button"
-              prop.text (renderText ctx label)
+              prop.text (BindingResolver.resolveTextSource ctx.Sources label)
               prop.onClick (fun e ->
                   e.stopPropagation () // don't trigger row-click handler
 
@@ -7123,7 +7000,7 @@ and private renderGridCell
                         Html.button
                             [ prop.key (reconciliationKey None buttonIndex)
                               prop.className "fuaran-grid-cell-button"
-                              prop.text (renderText ctx item.Label)
+                              prop.text (BindingResolver.resolveTextSource ctx.Sources item.Label)
                               prop.onClick (fun e ->
                                   e.stopPropagation ()
 
@@ -7142,13 +7019,13 @@ and private renderGridCell
         Html.a (
             [ prop.className "fuaran-grid-cell-link"
               prop.href safeHref
-              prop.text (renderText ctx (label row)) ]
+              prop.text (BindingResolver.resolveTextSource ctx.Sources (label row)) ]
             @ Emit.attrs egressAttrs
         )
     | CellKindErased.Pill(label, tone) ->
         Html.span
             [ prop.className (Css.gridCellPill (Theme.toneVar (tone row)))
-              prop.text (renderText ctx (label row)) ]
+              prop.text (BindingResolver.resolveTextSource ctx.Sources (label row)) ]
     | CellKindErased.TonedPill(field, toneMap, defaultTone) ->
         // Phase 750 — the declarative twin. Deliberately the SAME element, class
         // vocabulary and text as the hosted `Pill` arm above: the wire variant exists
@@ -7167,7 +7044,7 @@ and private renderGridCell
                         [ prop.className "fuaran-grid-cell-progress-fill"
                           prop.style [ style.width (length.percent (f * 100.0)) ] ]
                     match label with
-                    | Some l -> Html.span [ prop.text (renderText ctx (l row)) ]
+                    | Some l -> Html.span [ prop.text (BindingResolver.resolveTextSource ctx.Sources (l row)) ]
                     | None -> Html.none ] ]
     | CellKindErased.Custom render' ->
         // Custom cell renderers nest a full Node<'Msg> inside the cell.
@@ -7267,7 +7144,13 @@ and private renderChart
                       // two call sites kept in step. The host-installed scope
                       // ships `Off`, so these client bytes are unchanged.
                       prop.dangerouslySetInnerHTML (
-                          TrustedTypes.html (Fuaran.UI.Charts.renderSvg ctx.Sources (renderText ctx) spec pointRows)
+                          TrustedTypes.html (
+                              Fuaran.UI.Charts.renderSvg
+                                  ctx.Sources
+                                  (BindingResolver.resolveTextSource ctx.Sources)
+                                  spec
+                                  pointRows
+                          )
                       ) ]
             | _ ->
                 // Unresolved data, or a chart kind whose lowering rule has not
@@ -7283,7 +7166,9 @@ and private renderChart
                       prop.children
                           [ match spec.Title with
                             | Some title ->
-                                Html.div [ prop.className Css.Class.ChartTitle; prop.text (renderText ctx title) ]
+                                Html.div
+                                    [ prop.className Css.Class.ChartTitle
+                                      prop.text (BindingResolver.resolveTextSource ctx.Sources title) ]
                             | None -> Html.none
                             Html.div
                                 [ prop.className Css.Class.ChartPlaceholder
@@ -7373,7 +7258,7 @@ and private renderTable (ctx: RenderContext<'Msg>) (printBreak: string) (spec: T
               Html.th
                   [ prop.key (reconciliationKey None headerIndex)
                     prop.className Css.Class.TableHeader
-                    prop.text (renderText ctx h) ] ]
+                    prop.text (BindingResolver.resolveTextSource ctx.Sources h) ] ]
 
     let bodyRows =
         [ for (i, row) in List.indexed spec.Rows ->
@@ -7392,7 +7277,7 @@ and private renderTable (ctx: RenderContext<'Msg>) (printBreak: string) (spec: T
                               Html.td
                                   [ prop.key (reconciliationKey None cellIndex)
                                     prop.className Css.Class.TableCell
-                                    prop.text (renderText ctx cell) ] ] ] ]
+                                    prop.text (BindingResolver.resolveTextSource ctx.Sources cell) ] ] ] ]
 
     Html.table
         [ prop.className (Css.Class.Table + printBreak)
@@ -7480,41 +7365,12 @@ and private renderMap
 
 // ─── Formatters ────────────────────────────────────────────────────────────
 
-and private formatNumber (format: CellFormat) (value: float) : string =
-    match format with
-    | CellFormat.None -> string value
-    // Precision-from-arg sprintf ("%.*f", "%.*g") is unsupported by Fable's
-    // printf — its fsFormat regex only accepts literal digits in the precision
-    // group, so e.g. printf "%.*f" falls into the no-match branch and returns
-    // the format string itself (not a curried printer), tripping
-    // "toText(...) is not a function" at the call site. ToString("F<n>") /
-    // ToString("G<n>") round-trip cleanly through both .NET and Fable.
-    | CellFormat.Number(Some decimals) -> value.ToString("F" + string decimals)
-    | CellFormat.Number None ->
-        // Fable-compatible "is whole?" check — System.Double.IsInteger is not
-        // in Fable's supported surface, so test via floor instead. No IsNaN
-        // guard needed: NaN ≠ NaN by IEEE 754, so `NaN = floor NaN` is false.
-        if value = floor value then
-            sprintf "%.0f" value
-        else
-            sprintf "%g" value
-    | CellFormat.Currency code -> sprintf "%s %.2f" code value
-    | CellFormat.Percent(Some decimals) -> (value * 100.0).ToString("F" + string decimals) + "%"
-    | CellFormat.Percent None -> sprintf "%.1f%%" (value * 100.0)
-    | CellFormat.SignificantDigits digits -> value.ToString("G" + string digits)
-    | CellFormat.DateTime _ -> string value
-    // Phase 819 — both delegate to the shared Renderer.Core helpers so CSR,
-    // SSR and the grid adapter render byte-identically (locale-independent).
-    | CellFormat.Duration(unit, style) -> Formatting.formatDuration unit style value
-    | CellFormat.RelativeTime unit -> Formatting.formatRelativeEnglish unit value
-    | CellFormat.Custom f -> f (CellValue.Numeric value)
-
 and private renderCellValue (format: CellFormat) (value: CellValue) : string =
     match format with
     | CellFormat.Custom f -> f value
     | _ ->
         match value with
-        | CellValue.Numeric n -> formatNumber format n
+        | CellValue.Numeric n -> Formatting.formatNumber format n
         | CellValue.Text s -> s
         | CellValue.Bool b -> if b then "true" else "false"
         | CellValue.Date d ->

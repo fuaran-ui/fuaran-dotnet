@@ -66,7 +66,7 @@ let private strict = Csp.Strict nonce
 //
 //  One tree per site that can emit a `style` attribute on this tier. It is
 //  written out rather than derived, because the point is to name the seven
-//  sites: a site added later without a `cspStyle` call is invisible to a
+//  sites: a site added later without an `ElementPlan.styleSite` call is invisible to a
 //  derived corpus and visible to a reader of this list.
 
 let private leaf (id: string) : Node<obj> = Fuaran.markdown id "x"
@@ -232,7 +232,7 @@ let tests =
           // The task's own words: "a go-red twin that reintroduces one site".
           // The document is otherwise a real strict render; ONE node is
           // rendered through the permissive path and spliced in, which is
-          // exactly what a site that forgot to route through `cspStyle` would
+          // exactly what a site that forgot to route through `ElementPlan.styleSite` would
           // produce. Both detectors must see their construct.
           test "the detectors go red when one site is reintroduced" {
               let strictHtml =

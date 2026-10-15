@@ -55,11 +55,16 @@ let private declarationBuilders (source: string) : string list =
     |> Seq.sort
     |> List.ofSeq
 
-/// Every slot discriminator passed to a `cspStyle` call, as the literal. The
-/// pattern spans newlines because both tiers write the call multi-line where the
-/// argument list is long.
+/// Every slot discriminator a renderer passes to the shared style site
+/// (`ElementPlan.styleSite`, Phase 2108 — each tier used to carry its own
+/// `cspStyle` copy), as the literal. The pattern spans newlines because a long
+/// call is written multi-line.
 let private cspSlots (source: string) : string list =
-    Regex.Matches(source, "cspStyle\\s+ctx\\s+parentNodeId\\s+\"([^\"]+)\"", RegexOptions.Singleline)
+    Regex.Matches(
+        source,
+        @"styleSite\s+ctx\.Policy\.Csp\s+(?:None|\(Some ctx\.Styles\))\s+parentNodeId\s+""([^""]+)""",
+        RegexOptions.Singleline
+    )
     |> Seq.cast<Match>
     |> Seq.map (fun m -> m.Groups[1].Value)
     |> Seq.sort
@@ -98,7 +103,7 @@ let tests =
               let client = cspSlots (sourceText "client" "Render.fs")
               let server = cspSlots (sourceText "server" "Render.fs")
 
-              Expect.isNonEmpty server "the server renderer has cspStyle call sites"
+              Expect.isNonEmpty server "the server renderer has style-site call sites"
 
               Expect.equal
                   client
