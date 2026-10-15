@@ -19,7 +19,7 @@ open Fuaran.UI.FragmentMemo
 //      pass every key is already distinct and a per-render cache can never hit.
 //    * UNSOUND — the fragment NAME is not the input to the expansion. A
 //      different tree may declare a different body under the same name (the
-//      registry is first-decl-wins PER TREE), so a name-keyed cache serves one
+//      registry holds one body per name PER TREE), so a name-keyed cache serves one
 //      tree's body to another tree's ref.
 //
 //  So the key here is the BODY INSTANCE plus the prefix. The body is immutable
@@ -233,3 +233,57 @@ let rec namespaceIds<'Msg> (prefix: string) (node: Node<'Msg>) : Node<'Msg> =
 /// hold one renderer's expansion under a key the other reads.
 let expandNamespaced<'Msg> (prefix: string) (body: Node<'Msg>) : Node<'Msg> =
     expand body prefix (namespaceIds prefix)
+
+// ─── The fragment registry walk (Phase 2244) ───────────────────────────────
+
+/// Collect every `FragmentDecl` body the tree declares, by name, folding into
+/// `acc` under `key name` — THE registry walk both renderers build their
+/// context's fragment table with (the client keys by `FragmentId`, the server
+/// by the bare name). Until Phase 2244 each renderer carried its own copy; the
+/// copies happened to agree, and nothing but a test said they had to.
+///
+/// The enumeration, decided once here:
+///
+/// - WHICH children: `NodeChildren.Reach.kindHeld` — every container's ordered
+///   child list, a `FragmentDecl`'s body, both `ErrorBoundary` arms, and every
+///   `Switch` case child and its default. The same reach `namespaceIds` above
+///   rewrites through, so a decl is registered exactly where an expansion would
+///   namespace it.
+/// - WHICH are not entered: the envelope alternatives (`state.onLoading`,
+///   `state.onEmpty`, `fallback`), which render INSTEAD of their node; a
+///   `FragmentRef`'s slot arguments and a `Mount`'s inputs, which belong to the
+///   scope they are passed into; and a `Mount` guest, which is a separate scope
+///   with its own fragment table resolved by its own loader. A decl in any of
+///   those places is not in the registry.
+/// - IN WHICH ORDER: pre-order, children left to right in `NodeChildren`'s
+///   canonical order (a container's list; an `ErrorBoundary`'s child before its
+///   fallback; `Switch` cases in declaration order, then the default). A decl is
+///   registered before anything inside its body.
+/// - ON A REPEATED NAME: the LAST decl in that order wins. Validator FUARAN056
+///   refuses duplicate names, so this only decides already-invalid trees; it is
+///   stated so both renderers decide them the same way.
+///
+/// ITERATIVE, with an explicit stack (Phase 781): this runs before the first
+/// render, so it is the first walk an untrusted tree meets, and a recursive
+/// walk would overflow on a tree deep enough to make the renderers' depth guard
+/// unreachable. The stack is an F# list so the walk lowers unchanged under Fable.
+let collectFragments<'Key, 'Msg when 'Key: comparison>
+    (key: string -> 'Key)
+    (acc: Map<'Key, Node<'Msg>>)
+    (node: Node<'Msg>)
+    : Map<'Key, Node<'Msg>> =
+    let mutable pending = [ node ]
+    let mutable result = acc
+
+    while not (List.isEmpty pending) do
+        let current = List.head pending
+
+        match current.Kind with
+        | NodeKind.FragmentDecl spec -> result <- Map.add (key spec.Name) spec.Body result
+        | _ -> ()
+
+        pending <-
+            Fuaran.UI.NodeChildren.children Fuaran.UI.NodeChildren.Reach.kindHeld current
+            @ List.tail pending
+
+    result

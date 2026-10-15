@@ -369,6 +369,8 @@
          RenderContext literal grows back outside it. -->
     <Compile Include="RenderContextBuilderTests.fs" />
     <!-- Phase 2041 — the client half of the renderer-agreement fixtures. -->
+    <!-- Phase 2244: the fragment registry tree, also linked into the server half. -->
+    <Compile Include="FragmentRegistryFixture.fs" />
     <Compile Include="RendererAgreementTests.fs" />
     <!-- Phase 2108 — the element plan both renderers emit (the plan half). -->
     <Compile Include="ElementPlanTests.fs" />

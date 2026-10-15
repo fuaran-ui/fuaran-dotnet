@@ -92,11 +92,11 @@ let tests =
           }
 
           // ── collectFragments resolver ───────────────────────────────────
-          // Note: collectFragments is private in Render.fs; tests reason
-          // about its behaviour indirectly via expansion observability
-          // (the catalog axis under Fable; here we pin the structural
-          // shape that drives it).
-          test "FragmentDecl reachable through Layout.Stack children is collectable by tree traversal" {
+          // The registry walk itself: `Render.collectFragments`, the client's
+          // call of the walk both renderers share (Phase 2244). Every position
+          // class it does and does not enter is pinned by
+          // `RendererAgreementTests` over `FragmentRegistryFixture`.
+          test "FragmentDecl reachable through Layout.Stack children is collected" {
               let tree =
                   stack
                       "root"
@@ -104,18 +104,10 @@ let tests =
                         fragmentRef "use-card-1" "card"
                         fragmentRef "use-card-2" "card" ]
 
-              // Walk the tree and assert the decl is reachable from the root
-              // via the standard tree-walker getChildren contract that
-              // collectFragments uses.
-              let rec findFragmentDecls (node: Node<Msg>) : string list =
-                  match node.Kind with
-                  | NodeKind.FragmentDecl spec -> [ spec.Name ] @ findFragmentDecls spec.Body
-                  | NodeKind.Box(s) -> s.Children |> List.collect findFragmentDecls
-                  | _ -> []
+              let registry = Fuaran.UI.Renderer.Render.collectFragments Map.empty tree
 
-              let names = findFragmentDecls tree
-              Expect.contains names "card" "the decl is reachable from the root"
-              Expect.equal (List.length names) 1 "exactly one decl visible"
+              Expect.equal (registry |> Map.toList |> List.map fst) [ FragmentId "card" ] "exactly one decl, by name"
+              Expect.equal registry[FragmentId "card"].Id "card-body" "holding its body"
           }
 
           // ── Body-only emission discipline ────────────────────────────

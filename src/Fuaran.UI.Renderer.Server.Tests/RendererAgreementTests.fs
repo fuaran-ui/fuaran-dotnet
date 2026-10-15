@@ -373,3 +373,55 @@ let tests =
                     Expect.isTrue (contains (textOf RenderParity.depthExceededText) html) "the shared marker text"
                     Expect.isTrue (contains "data-fuaran-node-id=\"leaf\"" html) "on the node one past the limit"
                 } ] ]
+
+// ─── Phase 2244 — one fragment registry walk ────────────────────────────────
+//
+// The server half; the client's is in `Fuaran.UI.Tests/RendererAgreementTests.fs`,
+// over the same `Fuaran.UI.Tests.FragmentRegistryFixture.tree` (one file, linked into both
+// projects). The server's registry is not public, so this half reads it from the
+// OUTPUT: a ref to a registered name expands its body, and a ref to a name the
+// walk did not register renders the unresolved marker.
+
+[<Tests>]
+let fragmentRegistry =
+    testList
+        "Phase 2244 — the server renderer's fragment registry is the shared walk's"
+        [ test "every registered name expands, and every name in an unentered position is unresolved" {
+              let html = Render.renderStatic Fuaran.UI.Tests.FragmentRegistryFixture.withRefs
+
+              for name, _ in Fuaran.UI.Tests.FragmentRegistryFixture.registered do
+                  Expect.isTrue
+                      (contains (Fuaran.UI.Tests.FragmentRegistryFixture.bodyText name) html)
+                      (sprintf "a ref to '%s' expands its body" name)
+
+                  Expect.isFalse
+                      (contains (sprintf "data-fuaran-fragment-unresolved=\"%s\"" name) html)
+                      (sprintf "'%s' is registered" name)
+
+              for name in Fuaran.UI.Tests.FragmentRegistryFixture.notRegistered do
+                  Expect.isTrue
+                      (contains (sprintf "data-fuaran-fragment-unresolved=\"%s\"" name) html)
+                      (sprintf "'%s' sits where the walk does not enter, so a ref to it is unresolved" name)
+
+              Expect.isFalse
+                  (contains (Fuaran.UI.Tests.FragmentRegistryFixture.bodyText "dup-first") html)
+                  "on a repeated name the last decl wins, as on the client"
+          }
+
+          test "the names that resolve are exactly the shared walk's registry" {
+              let html = Render.renderStatic Fuaran.UI.Tests.FragmentRegistryFixture.withRefs
+
+              let resolved =
+                  (Fuaran.UI.Tests.FragmentRegistryFixture.registered |> List.map fst)
+                  @ Fuaran.UI.Tests.FragmentRegistryFixture.notRegistered
+                  |> List.filter (fun name ->
+                      not (contains (sprintf "data-fuaran-fragment-unresolved=\"%s\"" name) html))
+                  |> List.sort
+
+              Expect.equal
+                  resolved
+                  (FragmentExpansion.collectFragments id Map.empty Fuaran.UI.Tests.FragmentRegistryFixture.tree
+                   |> Map.toList
+                   |> List.map fst)
+                  "the server resolves what the one walk registers, and nothing else"
+          } ]

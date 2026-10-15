@@ -455,3 +455,90 @@ let tests =
                             (h.Warnings |> Seq.exists (fun w -> w.Contains RenderParity.depthExceededText))
                             "no truncation at the limit")
                 } ] ]
+
+// ─── Phase 2244 — one fragment registry walk ────────────────────────────────
+//
+// The client half; the server's is in `Fuaran.UI.Renderer.Server.Tests`, over
+// the same `FragmentRegistryFixture.tree` (one file, compiled into both). The
+// registry is a value here — `Render.collectFragments` is public — so this half
+// reads it directly.
+
+let private rendererSource (tier: string) : string =
+    let path =
+        System.IO.Path.Combine(System.AppContext.BaseDirectory, "renderer-sources", tier, "Render.fs")
+
+    if not (System.IO.File.Exists path) then
+        failwithf "renderer source not found at %s — a scan with no source to read reports every renderer clean." path
+
+    System.Text.RegularExpressions.Regex.Replace(System.IO.File.ReadAllText path, @"(?m)//.*$", "")
+
+/// The finding the census below makes: a renderer carrying its own registry
+/// walk (a `collectFragments` that is not a one-line call of the shared one).
+let private ownWalks (code: string) : string list =
+    [ if code.Contains "let rec collectFragments" then
+          "a recursive collectFragments"
+      if code.Contains "fragmentChildren" then
+          "a private child enumeration for the registry"
+      if not (code.Contains "FragmentExpansion.collectFragments") then
+          "no call of FragmentExpansion.collectFragments" ]
+
+[<Tests>]
+let fragmentRegistry =
+    testList
+        "Phase 2244 — the client renderer's fragment registry is the shared walk's"
+        [ test "the registry over the every-position tree is exactly the decided enumeration" {
+              let registry =
+                  Render.collectFragments Map.empty FragmentRegistryFixture.tree
+                  |> Map.toList
+                  |> List.map (fun (FragmentId name, body) -> name, body.Id)
+
+              Expect.equal
+                  registry
+                  FragmentRegistryFixture.registered
+                  "every kind-held position is entered, every envelope alternative and argument is not, and the last `dup` wins"
+          }
+
+          test "the client registry is the shared walk's, keyed by FragmentId" {
+              let shared =
+                  FragmentExpansion.collectFragments id Map.empty FragmentRegistryFixture.tree
+                  |> Map.toList
+                  |> List.map (fun (name, body) -> FragmentId name, body)
+
+              let client =
+                  Render.collectFragments Map.empty FragmentRegistryFixture.tree |> Map.toList
+
+              Expect.equal (List.map fst client) (List.map fst shared) "the same names"
+
+              Expect.isTrue
+                  (List.forall2 (fun (_, a) (_, b) -> obj.ReferenceEquals(a, b)) client shared)
+                  "the same body instances"
+          }
+
+          test "the walk is iterative: a tree far past any stack's recursion depth collects" {
+              // 200,000 nested containers: the recursive walk this replaced
+              // overflowed the default 1 MB stack long before the bottom.
+              let registry =
+                  Render.collectFragments Map.empty (FragmentRegistryFixture.deep 200_000)
+
+              Expect.equal
+                  (registry |> Map.toList |> List.map (fun (FragmentId name, _) -> name))
+                  [ "at-the-bottom" ]
+                  "the decl at the bottom is registered"
+          }
+
+          test "neither renderer carries a registry walk of its own" {
+              for tier in [ "client"; "server" ] do
+                  Expect.isEmpty (ownWalks (rendererSource tier)) (sprintf "the %s renderer calls the shared walk" tier)
+
+              // Go-red proof of the census: the pre-2244 client shape must be found.
+              let reverted =
+                  (rendererSource "client")
+                      .Replace("FragmentExpansion.collectFragments", "collectFragmentsWalk")
+                      .Replace("let collectFragments<'Msg>", "let rec collectFragments<'Msg>")
+
+              Expect.equal
+                  (ownWalks reverted)
+                  [ "a recursive collectFragments"
+                    "no call of FragmentExpansion.collectFragments" ]
+                  "the census fires on a renderer with its own walk"
+          } ]

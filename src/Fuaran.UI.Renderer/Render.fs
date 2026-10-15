@@ -1307,10 +1307,11 @@ let private ensureTooltipDismissal () : unit = ()
 // ─── Fragment resolver + expansion ─────────────────────────────────────────
 //
 // `collectFragments` walks the input tree once before the first render and
-// builds the `RenderContext.Fragments` registry. The walk visits every
-// `NodeKind.FragmentDecl` it can reach via the standard structural arms
-// (Layout children, ErrorBoundary.Child/Fallback, FragmentDecl.Body). Refs
-// don't carry bodies, so they're not visited by collection.
+// builds the `RenderContext.Fragments` registry. The walk is
+// `FragmentExpansion.collectFragments` (Phase 2244: shared with the server
+// renderer, so the two tiers register the same fragments; its doc comment is
+// where the enumeration is decided). Refs don't carry bodies, so they're not
+// visited by collection.
 //
 // `FragmentExpansion.namespaceIds` (Phase 2041: shared with the server
 // renderer, so the two tiers emit the same ids) rewrites every interior
@@ -1327,74 +1328,10 @@ let private ensureTooltipDismissal () : unit = ()
 /// reachable `NodeKind.FragmentDecl` body into a `Map<FragmentId, _>`.
 /// `RenderContext.create` calls this on the input tree and stashes the
 /// result on the `RenderContext.Fragments` field. Empty for trees that
-/// don't declare fragments — zero-cost for the common case.
-let rec collectFragments<'Msg> (acc: Map<FragmentId, Node<'Msg>>) (node: Node<'Msg>) : Map<FragmentId, Node<'Msg>> =
-    match node.Kind with
-    | NodeKind.FragmentDecl spec ->
-        // Validator FUARAN056 catches duplicate names at build time, so a
-        // collision here is a defect the validator missed (or a tree the
-        // validator hasn't seen). Map.add picks last-seen semantically; the
-        // alternative (first-wins via `if not Map.containsKey then add`) is
-        // structurally identical for valid trees and only diverges for
-        // already-broken trees. We pick the last-seen path because it's the
-        // shorter code.
-        // `FragmentDeclSpec.Name` erased to a bare string in the generated
-        // record; the context registry stays keyed by `FragmentId`, so wrap at
-        // this boundary.
-        let acc' = Map.add (FragmentId spec.Name) spec.Body acc
-        collectFragments acc' spec.Body
-    | NodeKind.Box s -> s.Children |> List.fold collectFragments acc
-    | NodeKind.SplitPanel s -> s.Children |> List.fold collectFragments acc
-    | NodeKind.Tabs s -> s.Children |> List.fold collectFragments acc
-    | NodeKind.Stepper s -> s.Children |> List.fold collectFragments acc
-    | NodeKind.SummaryList s -> s.Children |> List.fold collectFragments acc
-    | NodeKind.Disclosure s -> s.Children |> List.fold collectFragments acc
-    | NodeKind.Modal s -> s.Children |> List.fold collectFragments acc
-    | NodeKind.ScrollArea s -> s.Children |> List.fold collectFragments acc
-    | NodeKind.ErrorBoundary spec ->
-        let acc' = collectFragments acc spec.Child
-        collectFragments acc' spec.Fallback
-    | NodeKind.Switch spec ->
-        // Collect fragment decls reachable through the case children + default
-        // so a FragmentRef inside any switch branch resolves at render time.
-        let acc' = spec.Cases |> List.fold (fun a c -> collectFragments a c.Child) acc
-
-        collectFragments acc' spec.Default
-    | NodeKind.Tree _
-    | NodeKind.Heading _
-    | NodeKind.Markdown _
-    | NodeKind.Metric _
-    | NodeKind.Badge _
-    | NodeKind.Sparkline _
-    | NodeKind.Callout _
-    | NodeKind.Progress _
-    | NodeKind.Skeleton _
-    | NodeKind.Icon _
-    | NodeKind.LabelValueRow _
-    | NodeKind.Fact _
-    | NodeKind.Link _
-    | NodeKind.Image _
-    | NodeKind.Media _
-    | NodeKind.Embed _
-    | NodeKind.List _
-    | NodeKind.Toast _
-    | NodeKind.CodeBlock _
-    | NodeKind.Math _
-    | NodeKind.Drawing _
-    | NodeKind.Form _
-    | NodeKind.Filters _
-    | NodeKind.Button _
-    | NodeKind.FileUpload _
-    | NodeKind.Select _
-    | NodeKind.DataGrid _
-    | NodeKind.Chart _
-    | NodeKind.Map _
-    | NodeKind.Custom _
-    | NodeKind.FragmentRef _
-    // Mount (§4o) — the guest is a separate scope with its own fragment table
-    // resolved by its own loader; host-level fragment collection stops at the
-    // boundary (same posture as FragmentRef).
-    | NodeKind.Mount _ -> acc
+/// don't declare fragments — zero-cost for the common case. The walk itself
+/// is `FragmentExpansion.collectFragments`, keyed here by `FragmentId`.
+let collectFragments<'Msg> (acc: Map<FragmentId, Node<'Msg>>) (node: Node<'Msg>) : Map<FragmentId, Node<'Msg>> =
+    FragmentExpansion.collectFragments FragmentId acc node
 
 // ─── Building a render context (Phase 2067) ────────────────────────────────
 
