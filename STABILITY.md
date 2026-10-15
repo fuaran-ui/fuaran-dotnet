@@ -7981,6 +7981,31 @@ Additive otherwise. It rides the 0.95.0 draft, which is already breaking.
   before the renderer's depth guard could refuse it. The shared walk is iterative, as the server's already was
   (Phase 781). That changes no fragment set: it only removes a crash.
 
+### What rides this slot — Phase 2116 (the verified lift from a linear stream to a DAG branch)
+
+**Class: additive.** A new module and new types in `Fuaran.UI.OpStream.Dag.Abstractions`; no existing member
+changes, no hash moves, and no wire byte moves. It rides the 0.95.0 draft without moving it.
+
+- **Added: `DagLift`**, the sanctioned route from a linear stream to a DAG branch.
+  - `DagLift.ofLinearVerified` re-walks the linear segment with `Verify.segment` and refuses a broken one.
+    It then lifts the segment to a genesis-rooted branch.
+  - `DagLift.ofLinearAnchored` is the guest form: the first record hangs off an anchor, an existing DAG node.
+  - `DagLift.describe` renders a refusal.
+  - Both return `Result<LiftedBranch<'Msg>, LiftRefusal>`. `LiftRefusal` is `EmptySegment`, `MixedStreams` or
+    `BrokenLinearSegment`.
+- **Added: `LiftReceipt` and `LiftReceipt.verify`.** The receipt names the linear range: stream id, chain
+  format version, from and to sequence, previous hash and head. It also names the DAG stream id, DAG head and
+  anchor. `verify` recomputes the lift from linear records and returns a `LiftVerdict`.
+  - `Recomputes` carries a `LiftBasis`.
+  - `DoesNotRecompute` carries a `LiftMismatch` naming the first field that parts.
+  - No case is worded as attestation. `CRYPTO.md`, "Lift receipts", says what a receipt proves and what it
+    does not: it is evidence only beside a signed segment attestation over the same linear range.
+- **Unchanged: `DagOpRecord.ofLinear`.** Its signature and output are the same. It is now documented as the
+  UNVERIFIED embedding and shares its fold with the lift, so the two cannot embed differently.
+- **Pinned: lifted addresses are not linear hashes.** The lifted address of each `chain/chain-corpus.json`
+  record is pinned beside its linear chain hash (`DagLiftTests.fs`), through both the in-memory and the SQLite
+  DAG sinks. The two digests are over different pre-images and are never equal.
+
 ---
 
 ## 0.94.0 — the slot opened after v0.93.0 was released; advanced from 0.93.1 on 2026-10-13 ahead of Phase 2052, whose change is breaking (RELEASED — tagged v0.94.0 at 90082d3, 2026-10-14)
