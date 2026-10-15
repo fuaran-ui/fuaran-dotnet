@@ -261,8 +261,13 @@ let tests =
           test "the renderers actually USE the vocabulary (not merely ship it)" {
               // A guard that only forbade the old shape would pass on a renderer
               // that had stopped emitting classes altogether.
+              // Phase 2108 / 2278 — a planned kind's classes and ids are built in
+              // the shared element plan both renderers emit, so each renderer is
+              // read together with it.
+              let plan = code (sourceText "core" "ElementPlan.fs")
+
               for name in [ "client/Render.fs"; "server/Render.fs" ] do
-                  let text = code (sourceOf name)
+                  let text = code (sourceOf name) + plan
                   Expect.isGreaterThan (occurrences "Css." text) 8 (name + " routes its class strings through Css")
                   Expect.isGreaterThan (occurrences "Ids." text) 2 (name + " routes its composite ids through Ids")
           }

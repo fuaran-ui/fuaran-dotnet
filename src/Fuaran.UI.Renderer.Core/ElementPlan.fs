@@ -41,6 +41,19 @@ type Prop =
     /// the `Csp.Declarations` values). The client emitter camel-cases the keys
     /// for React's style object; the server writes them verbatim.
     | Style of declarations: (string * string) list
+    /// A boolean attribute that is present (Phase 2278): `disabled`, `hidden`,
+    /// `open`. Each emitter writes it in its element library's own boolean
+    /// spelling, which is what keeps the served HTML byte-identical to the
+    /// pre-plan emission and gives React a real boolean (an empty string is a
+    /// FALSE boolean to React, so `hidden=""` written as a plain attribute was
+    /// dropped on the client).
+    | Flag of name: string
+    /// A named point where the CLIENT attaches behaviour (Phase 2278). The plan
+    /// names the point and the item it belongs to (`"tab-select"`, `"3"`); the
+    /// client emitter asks the arm's resolver closure for the handler
+    /// properties, so the plan carries no handler type. The server emitter
+    /// writes nothing for it: every affordance it serves is inert.
+    | Behaviour of point: string * key: string
 
 /// What a planned element contains.
 [<RequireQualifiedAccess>]
@@ -671,3 +684,492 @@ module DisplayPlan =
             (match MathMl.translate spec.Source spec.Display with
              | Some markup -> Content.InnerHtml markup
              | None -> Content.Children [ Plan.classText "span" Css.Class.MathSource spec.Source ])
+
+// ─── Container kinds (Phase 2278) ──────────────────────────────────────────
+
+/// What a container kind's plan needs from the emitting renderer: the
+/// resolved sources, the CSP posture with the renderer's style collector (the
+/// server's; the client only names the rule the server wrote), the node id the
+/// kind's ids and style classes derive from, and how to render a CHILD node —
+/// the walk, which is each renderer's own (depth, error-boundary suspension,
+/// fragment expansion), arriving as `Plan.Host`.
+type PlanContext<'Msg, 'E> =
+    { Sources: BindingResolver.BindingSources
+      Csp: Csp.CspMode
+      Collector: Csp.StyleCollector option
+      NodeId: string
+      Child: Node<'Msg> -> Plan<'E> }
+
+/// The behaviour attachment points the planned kinds declare. The client's
+/// resolver closures match on these names; a test pins which kind declares
+/// which, so a handler cannot be dropped silently.
+[<RequireQualifiedAccess>]
+module Attach =
+    /// A tab button was activated; key = the tab index.
+    [<Literal>]
+    let TabSelect = "tab-select"
+
+    /// A key went down on the tab bar (roving focus); key = "".
+    [<Literal>]
+    let TabsKeyDown = "tabs-keydown"
+
+    /// A `<details>` toggled; key = "".
+    [<Literal>]
+    let DisclosureToggle = "disclosure-toggle"
+
+    /// A step number was activated; key = the step index.
+    [<Literal>]
+    let StepSelect = "step-select"
+
+    /// The dismiss button of a modal / popover; key = "".
+    [<Literal>]
+    let ModalDismiss = "modal-dismiss"
+
+    /// A click on a dismissable modal's overlay; key = "".
+    [<Literal>]
+    let ModalOverlay = "modal-overlay"
+
+    /// Every attachment point a plan declares, in document order, with its
+    /// key — what the attachment-point pins compare.
+    let rec points (p: Plan<'E>) : (string * string) list =
+        match p with
+        | Plan.Element spec ->
+            (spec.Props
+             |> List.choose (function
+                 | Prop.Behaviour(point, key) -> Some(point, key)
+                 | _ -> None))
+            @ (match spec.Content with
+               | Content.Children cs -> cs |> List.collect points
+               | _ -> [])
+        | _ -> []
+
+/// One tab of a `Tabs` set, resolved.
+type ResolvedTab =
+    { Label: string
+      Icon: string option
+      Disabled: bool }
+
+/// A `Tabs` node resolved once for both tiers: its headers, the active index
+/// and child, and the orientation. The client's keyboard model reads it too.
+type TabsModel<'Msg> =
+    { Tabs: ResolvedTab list
+      ActiveIndex: int
+      ActiveChild: Node<'Msg> option
+      Vertical: bool }
+
+[<RequireQualifiedAccess>]
+module TabsModel =
+
+    let ofSpec (sources: BindingResolver.BindingSources) (spec: TabsSpec<'Msg>) : TabsModel<'Msg> =
+        // A child without a declared header is labelled by its Card heading,
+        // else by its id.
+        let labelFromChild (child: Node<'Msg>) : string =
+            match child.Kind with
+            | NodeKind.Box { Role = BoxRole.Card
+                             Heading = Some h } -> BindingResolver.resolveTextSource sources h
+            | _ -> child.Id
+
+        let tabs =
+            match spec.TabHeaders with
+            | Some headers ->
+                headers
+                |> List.map (fun h ->
+                    { Label = BindingResolver.resolveTextSource sources h.Label
+                      Icon = h.Icon
+                      Disabled =
+                        h.Disabled
+                        |> Option.bind (BindingResolver.tryResolve sources)
+                        |> Option.defaultValue false })
+            | None ->
+                spec.Children
+                |> List.map (fun child ->
+                    { Label = labelFromChild child
+                      Icon = None
+                      Disabled = false })
+
+        // An `ActiveTag` that resolves to a declared tag wins over `ActiveIndex`;
+        // the index is clamped to the children.
+        let resolvedFromTag =
+            match spec.TabTags, spec.ActiveTag with
+            | Some tags, Some tagBinding ->
+                BindingResolver.tryResolve sources tagBinding
+                |> Option.bind (fun tag -> tags |> List.tryFindIndex ((=) tag))
+            | _ -> None
+
+        let activeIndex =
+            resolvedFromTag
+            |> Option.orElseWith (fun () -> BindingResolver.tryResolve sources spec.ActiveIndex)
+            |> Option.defaultValue 0
+            |> max 0
+            |> min (max 0 (spec.Children.Length - 1))
+
+        { Tabs = tabs
+          ActiveIndex = activeIndex
+          ActiveChild =
+            spec.Children
+            |> List.tryItem activeIndex
+            |> Option.orElseWith (fun () -> spec.Children |> List.tryHead)
+          Vertical = spec.Orientation = Orientation.Vertical }
+
+    /// The next enabled tab from `start` in direction `dir` (±1), wrapping;
+    /// `start` itself when every other tab is disabled.
+    let nextEnabled (model: TabsModel<'Msg>) (start: int) (dir: int) : int =
+        let n = model.Tabs.Length
+
+        if n = 0 then
+            0
+        else
+            let rec loop (visited: int) (idx: int) =
+                if visited >= n then
+                    start
+                else
+                    let candidate = ((idx + dir) % n + n) % n
+
+                    if model.Tabs[candidate].Disabled then
+                        loop (visited + 1) candidate
+                    else
+                        candidate
+
+            loop 0 start
+
+    /// The tab a key on the tab bar moves to (WAI-ARIA tabs pattern): the
+    /// orientation's arrows, Home / End, and Enter / Space re-selecting the
+    /// active tab. `None` — the key is not the tab bar's.
+    let keyTarget (model: TabsModel<'Msg>) (key: string) : int option =
+        let prevKey = if model.Vertical then "ArrowUp" else "ArrowLeft"
+        let nextKey = if model.Vertical then "ArrowDown" else "ArrowRight"
+
+        if key = prevKey then
+            Some(nextEnabled model model.ActiveIndex -1)
+        elif key = nextKey then
+            Some(nextEnabled model model.ActiveIndex 1)
+        elif key = "Home" then
+            Some(
+                model.Tabs
+                |> List.tryFindIndex (fun t -> not t.Disabled)
+                |> Option.defaultValue 0
+            )
+        elif key = "End" then
+            model.Tabs
+            |> List.mapi (fun i t -> i, t)
+            |> List.rev
+            |> List.tryFind (fun (_, t) -> not t.Disabled)
+            |> Option.map fst
+            |> Option.defaultValue (max 0 (model.Tabs.Length - 1))
+            |> Some
+        elif key = "Enter" || key = " " then
+            Some model.ActiveIndex
+        else
+            None
+
+[<RequireQualifiedAccess>]
+module LayoutPlan =
+
+    let private children (pc: PlanContext<'Msg, 'E>) (nodes: Node<'Msg> list) : Content<'E> =
+        Content.Children(nodes |> List.map pc.Child)
+
+    /// A container div: class (plus the style site's class), the site's
+    /// inline props, extra attributes, then the children. The slot comes
+    /// first, where the strict-CSP slot inventory scan reads it.
+    let private styled
+        (pc: PlanContext<'Msg, 'E>)
+        (slot: string)
+        (className: string)
+        (declarations: (string * string) list)
+        (extra: Prop list)
+        (nodes: Node<'Msg> list)
+        : Plan<'E> =
+        let siteClass, styleProps =
+            styleSite pc.Csp pc.Collector pc.NodeId slot declarations
+
+        Plan.element "div" ([ Prop.Attr("class", className + siteClass) ] @ styleProps @ extra) (children pc nodes)
+
+    /// Phase 390 — the unified container. Role + layout drive the element and
+    /// classes: Card → `<section>` with header + body; Dashboard / Group+Auto
+    /// → dashboard div; Separator → `<hr>`; Grid / Masonry / Flex → a div whose
+    /// continuous values ride the CSP style site. Phase 1473 — the print-break
+    /// classes ride the container's own class in every arm.
+    let box (pc: PlanContext<'Msg, 'E>) (spec: BoxSpec<'Msg>) : Plan<'E> =
+        let brk = Theme.printBreakClasses spec.KeepTogether spec.BreakBefore
+
+        match spec.Role, spec.Layout with
+        | BoxRole.Card, _ ->
+            Plan.element
+                "section"
+                [ Prop.Attr("class", Css.Class.LayoutCard + brk) ]
+                (Content.Children
+                    [ spec.Heading
+                      |> Plan.ofOption (fun heading ->
+                          Plan.classText
+                              "header"
+                              Css.Class.CardHeading
+                              (BindingResolver.resolveTextSource pc.Sources heading))
+                      Plan.element "div" [ Prop.Attr("class", Css.Class.CardBody) ] (children pc spec.Children) ])
+        | BoxRole.Dashboard, _
+        | BoxRole.Group, BoxLayout.Auto ->
+            Plan.element "div" [ Prop.Attr("class", Css.Class.LayoutDashboard + brk) ] (children pc spec.Children)
+        | BoxRole.Separator, _ ->
+            Plan.element "hr" [ Prop.Attr("class", Css.Class.LayoutSeparator + brk) ] Content.Empty
+        | BoxRole.Group, BoxLayout.Grid(cols, gridTemplateColumns, gridGap) ->
+            // Column count rides inline style, not a `-cols-N` class, so hosts
+            // need not pre-declare every N. Phase 1523 — the template passes the
+            // CSS-value grammar on both tiers; a refused value is replaced and
+            // marked visibly, the same way on every host.
+            let declared =
+                match gridTemplateColumns with
+                | Some custom -> custom
+                | None -> sprintf "repeat(%d, 1fr)" cols
+
+            let templateColumns, refusalAttrs =
+                Sanitize.sanitizeCssValueForSlot "grid-template-columns" declared
+
+            styled
+                pc
+                "grid"
+                (Css.Class.LayoutGrid + brk)
+                (Csp.Declarations.grid templateColumns gridGap)
+                (Plan.attrs refusalAttrs)
+                spec.Children
+        | BoxRole.Group, BoxLayout.Masonry(cols, masonryGap) ->
+            // Phase 1082 — column-FILL through the CSS multi-column family.
+            styled
+                pc
+                "masonry"
+                (Css.Class.LayoutMasonry + brk)
+                (Csp.Declarations.masonry cols masonryGap)
+                []
+                spec.Children
+        | BoxRole.Group, BoxLayout.Flex(direction, flexWrap, flexGap) ->
+            // `gap` emits only when set (Phase 459).
+            styled
+                pc
+                "flex"
+                (Css.layoutStack (Css.stackDirection direction) (Css.stackWrap flexWrap) + brk)
+                (Csp.Declarations.flex flexGap)
+                []
+                spec.Children
+
+    /// Two panes: the first child takes `Weight` (clamped to 0..1) of the row,
+    /// the rest the remainder. Tolerant of any child count.
+    let splitPanel (pc: PlanContext<'Msg, 'E>) (spec: SplitPanelSpec<'Msg>) : Plan<'E> =
+        let weightLeft = max 0.0 (min 1.0 spec.Weight)
+
+        let left, right =
+            match spec.Children with
+            | [] -> [], []
+            | a :: rest -> [ a ], rest
+
+        Plan.classChildren
+            "div"
+            Css.Class.LayoutSplitPanel
+            [ styled pc "split-left" Css.Class.SplitPaneLeft (Csp.Declarations.splitPane weightLeft) [] left
+              styled pc "split-right" Css.Class.SplitPaneRight (Csp.Declarations.splitPane (1.0 - weightLeft)) [] right ]
+
+    /// The WAI-ARIA tabs pattern: a tablist of buttons (roving tabindex; a
+    /// disabled tab is `aria-disabled` + `disabled` and attaches nothing) and
+    /// the active child's tabpanel.
+    let tabs (pc: PlanContext<'Msg, 'E>) (spec: TabsSpec<'Msg>) (model: TabsModel<'Msg>) : Plan<'E> =
+        let tabId i = Ids.tab pc.NodeId i
+        let panelId i = Ids.panel pc.NodeId i
+
+        let tabButton (i: int) (t: ResolvedTab) : Plan<'E> =
+            let isActive = i = model.ActiveIndex
+
+            let cls =
+                String.concat
+                    " "
+                    [ Css.Class.Tab
+                      if isActive then
+                          Css.Class.TabActive
+                      if t.Disabled then
+                          Css.Class.TabDisabled ]
+
+            Plan.Element
+                { Tag = "button"
+                  // The tab's own DOM id is its identity under reconciliation.
+                  Key = Some(tabId i)
+                  Props =
+                    [ Prop.Attr("id", tabId i)
+                      Prop.Attr("class", cls)
+                      Prop.Attr("role", "tab")
+                      Prop.Attr("aria-selected", (if isActive then "true" else "false"))
+                      Prop.Attr("aria-controls", panelId i)
+                      Prop.Attr("tabIndex", (if isActive then "0" else "-1"))
+                      Prop.Attr("data-tab-index", string i)
+                      if t.Disabled then
+                          Prop.Attr("aria-disabled", "true")
+                          Prop.Flag "disabled"
+                      else
+                          Prop.Behaviour(Attach.TabSelect, string i) ]
+                  Content =
+                    Content.Children
+                        [ t.Icon |> Plan.ofOption (DisplayPlan.iconHook Css.Class.TabIcon)
+                          Plan.classText "span" Css.Class.TabLabel t.Label ] }
+
+        Plan.classChildren
+            "div"
+            (Css.layoutTabs (Css.tabsOrientation spec.Orientation))
+            [ Plan.element
+                  "div"
+                  [ Prop.Attr("class", Css.Class.TabsBar)
+                    Prop.Attr("role", "tablist")
+                    Prop.Attr("aria-orientation", (if model.Vertical then "vertical" else "horizontal"))
+                    Prop.Behaviour(Attach.TabsKeyDown, "") ]
+                  (Content.Children(model.Tabs |> List.mapi tabButton))
+              Plan.classChildren
+                  "div"
+                  Css.Class.TabsPanels
+                  [ model.ActiveChild
+                    |> Plan.ofOption (fun child ->
+                        Plan.element
+                            "div"
+                            [ Prop.Attr("id", panelId model.ActiveIndex)
+                              Prop.Attr("role", "tabpanel")
+                              Prop.Attr("aria-labelledby", tabId model.ActiveIndex)
+                              Prop.Attr("tabIndex", "0")
+                              Prop.Attr("class", Css.Class.TabsPanel) ]
+                            (Content.Children [ pc.Child child ])) ] ]
+
+    let summaryList (pc: PlanContext<'Msg, 'E>) (spec: SummaryListSpec<'Msg>) : Plan<'E> =
+        Plan.classChildren
+            "section"
+            Css.Class.LayoutSummaryList
+            [ spec.Heading
+              |> Plan.ofOption (fun heading ->
+                  Plan.classText
+                      "header"
+                      Css.Class.SummaryListHeading
+                      (BindingResolver.resolveTextSource pc.Sources heading))
+              Plan.element "div" [ Prop.Attr("class", Css.Class.SummaryListBody) ] (children pc spec.Children) ]
+
+    /// A native `<details>`: open from the bound `Open`, else `DefaultOpen`.
+    let disclosure (pc: PlanContext<'Msg, 'E>) (spec: DisclosureSpec<'Msg>) : Plan<'E> =
+        let isOpen =
+            BindingResolver.tryResolve pc.Sources spec.Open
+            |> Option.defaultValue spec.DefaultOpen
+
+        Plan.element
+            "details"
+            [ Prop.Attr("class", Css.Class.LayoutDisclosure)
+              if isOpen then
+                  Prop.Flag "open"
+              Prop.Behaviour(Attach.DisclosureToggle, "") ]
+            (Content.Children
+                [ Plan.classText
+                      "summary"
+                      Css.Class.DisclosureSummary
+                      (BindingResolver.resolveTextSource pc.Sources spec.Heading)
+                  Plan.element "div" [ Prop.Attr("class", Css.Class.DisclosureBody) ] (children pc spec.Children) ])
+
+    /// Numbered steps (a step IS its position, so the index is its key) and the
+    /// active step's child. A step attaches selection only when `OnSelect` is
+    /// declared.
+    let stepper (pc: PlanContext<'Msg, 'E>) (spec: StepperSpec<'Msg>) : Plan<'E> =
+        let activeIndex =
+            BindingResolver.tryResolve pc.Sources spec.ActiveStep |> Option.defaultValue 0
+
+        let step (i: int) : Plan<'E> =
+            Plan.Element
+                { Tag = "li"
+                  Key = Some(reconciliationKey None i)
+                  Props =
+                    [ Prop.Attr(
+                          "class",
+                          (if i = activeIndex then
+                               Css.Class.StepperStepActive
+                           else
+                               Css.Class.StepperStep)
+                      )
+                      Prop.Attr("data-step-index", string i)
+                      if spec.OnSelect.IsSome then
+                          Prop.Behaviour(Attach.StepSelect, string i) ]
+                  Content = Content.Text(sprintf "%d" (i + 1)) }
+
+        Plan.classChildren
+            "div"
+            Css.Class.LayoutStepper
+            [ Plan.classChildren "ol" Css.Class.StepperNumbers (List.init spec.Children.Length step)
+              Plan.classChildren
+                  "div"
+                  Css.Class.StepperBody
+                  [ List.tryItem activeIndex spec.Children |> Plan.ofOption pc.Child ] ]
+
+    /// Whether a `Modal` is open (an unresolved `Open` is closed).
+    let modalOpen (sources: BindingResolver.BindingSources) (spec: ModalSpec<'Msg>) : bool =
+        BindingResolver.tryResolve sources spec.Open |> Option.defaultValue false
+
+    let private surfaceChildren
+        (pc: PlanContext<'Msg, 'E>)
+        (spec: ModalSpec<'Msg>)
+        (headingClass: string)
+        (dismissClass: string)
+        (bodyClass: string)
+        : Plan<'E> list =
+        [ spec.Heading
+          |> Plan.ofOption (fun h -> Plan.classText "h2" headingClass (BindingResolver.resolveTextSource pc.Sources h))
+          if spec.Dismissable then
+              Plan.element
+                  "button"
+                  [ Prop.Attr("class", dismissClass)
+                    Prop.Attr("type", "button")
+                    Prop.Attr("aria-label", "Close")
+                    Prop.Behaviour(Attach.ModalDismiss, "") ]
+                  (Content.Text "×")
+          Plan.element "div" [ Prop.Attr("class", bodyClass) ] (children pc spec.Children) ]
+
+    /// A popover's dialog surface — the child of its positioned outer element.
+    let popoverDialog (pc: PlanContext<'Msg, 'E>) (spec: ModalSpec<'Msg>) : Plan<'E> =
+        Plan.element
+            "div"
+            [ Prop.Attr("class", Css.Class.PopoverSurface); Prop.Attr("role", "dialog") ]
+            (Content.Children(
+                surfaceChildren pc spec Css.Class.PopoverHeading Css.Class.PopoverDismiss Css.Class.PopoverBody
+            ))
+
+    /// A modal (overlay + dialog) or a popover (outer element + dialog surface).
+    /// A closed one renders `hidden`. The client's popover outer element is its
+    /// own positioning component, which writes the same attributes; it takes
+    /// `popoverDialog` as its child.
+    let modal (pc: PlanContext<'Msg, 'E>) (spec: ModalSpec<'Msg>) : Plan<'E> =
+        let isOpen = modalOpen pc.Sources spec
+
+        if spec.Modality = ModalityKind.Popover then
+            Plan.element
+                "div"
+                [ Prop.Attr("class", Css.Class.Popover)
+                  if not isOpen then
+                      Prop.Flag "hidden"
+                  match spec.Anchor with
+                  | Some a -> Prop.Attr("data-fuaran-popover-anchor", a)
+                  | None -> () ]
+                (Content.Children [ popoverDialog pc spec ])
+        else
+            Plan.element
+                "div"
+                [ Prop.Attr("class", Css.Class.ModalOverlay)
+                  if not isOpen then
+                      Prop.Flag "hidden"
+                  if spec.Dismissable then
+                      Prop.Behaviour(Attach.ModalOverlay, "") ]
+                (Content.Children
+                    [ Plan.element
+                          "div"
+                          [ Prop.Attr("class", Css.Class.ModalDialog)
+                            Prop.Attr("role", "dialog")
+                            Prop.Attr("aria-modal", "true") ]
+                          (Content.Children(
+                              surfaceChildren pc spec Css.Class.ModalHeading Css.Class.ModalDismiss Css.Class.ModalBody
+                          )) ])
+
+    /// A focusable scroll container (keyboard-scrollable, WCAG 2.1.1) whose
+    /// max extents ride the CSP style site.
+    let scrollArea (pc: PlanContext<'Msg, 'E>) (spec: ScrollAreaSpec<'Msg>) : Plan<'E> =
+        let siteClass, styleProps =
+            styleSite pc.Csp pc.Collector pc.NodeId "scroll" (Csp.Declarations.scrollArea spec.MaxHeight spec.MaxWidth)
+
+        Plan.element
+            "div"
+            ([ Prop.Attr("class", Css.scrollArea spec.Orientation + siteClass)
+               Prop.Attr("tabindex", "0") ]
+             @ styleProps)
+            (children pc spec.Children)

