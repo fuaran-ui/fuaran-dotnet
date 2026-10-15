@@ -457,7 +457,11 @@ param(
     # Run the go-red proof for the ADDRESS FUNCTION over a scratch tree of plain files and exit. It
     # compiles nothing and costs milliseconds, which is why the same proof also runs automatically
     # at the head of any run that could skip a compile.
-    [switch] $ProveAddressing
+    [switch] $ProveAddressing,
+    # Run the go-red proof for the LEG DIAGNOSTICS and exit (Phase 2253): test doubles that kill a
+    # child, exit with a status of their own and name a command that does not exist, each required
+    # to produce a full account of the leg. Compiles nothing; costs about a second.
+    [switch] $ProveLegDiagnostics
 )
 
 $ErrorActionPreference = 'Stop'
@@ -507,6 +511,14 @@ $FableStageBudgetSeconds = 480
 # exit 143), so this cap is load-bearing rather than tidy. The effective degree is also held at or
 # below the machine's logical core count — see `Get-CompileParallelism`.
 $FableStageMaxParallelCompiles = 4
+#
+# Measured, Phase 2253 (8 logical cores, the 17-compile portability half from a clean output root,
+# FUARAN_FABLE_PARALLELISM=12, four other sessions on the machine): 1554s of wall-clock against the
+# 480s budget above, with individual compiles taking 150-1000s each (the cap-4 run takes about
+# 135s for the whole half). Twelve concurrent `dotnet fable` graphs on eight cores did not finish
+# sooner; they finished later, each holding the project graph in memory for far longer. The cap of 4
+# is therefore a measured bound, and raising it adds the load that gets a leg killed without
+# shortening the stage.
 
 # One row per compile this run performed, skipped, or failed — in the order it met them.
 $timings = New-Object System.Collections.Generic.List[object]
@@ -587,6 +599,179 @@ function Write-Stage {
     param([string] $message)
     Write-Host ""
     Write-Host "── Fable: $message ──────────────────────────────" -ForegroundColor Cyan
+}
+
+# ── Legs: running one and reporting one that failed (Phase 2253) ────────────
+#
+# Under machine load a leg was seen to end `exit -1` with nothing else: the failure line said
+# `(exit -1)`, so a killed child, a crashed compiler and a real defect read the same and the only way
+# to tell was a re-run. Every leg that ends non-zero now goes through `Write-LegFailure`, which
+# prints the leg, the command, the exit and what that status usually means, the elapsed time,
+# whether a timeout fired, the host's memory and process pressure, and the tail of the leg's output.
+#
+# THIS SCRIPT SETS NO PER-LEG TIMEOUT: a leg ends when its process does, so "timeout fired" is
+# always "no" and is printed as such rather than omitted. A -1 is therefore a child that was KILLED
+# or CRASHED (an out-of-memory kill, a sibling session reaping `dotnet`, a runspace torn down), and
+# the memory line is the evidence for the first of those. What bounds the load this script adds
+# itself is `$FableStageMaxParallelCompiles`, with its measurement.
+
+$LegTailLines = 25
+
+function Get-ExitMeaning {
+    param([object] $exit)
+    if ($null -eq $exit) { return 'no exit status was produced: the command never started, or its host was torn down' }
+    switch ([int] $exit) {
+        0 { return 'success' }
+        -1 { return 'killed or crashed: -1 (0xFFFFFFFF) is not a status Fable or fsc return, it is how a child that was terminated reads' }
+        137 { return '128+9 = SIGKILL, typically the out-of-memory killer' }
+        143 { return '128+15 = SIGTERM, the process was asked to stop' }
+        -1073741510 { return '0xC000013A, interrupted (Ctrl+C or the console closed)' }
+        -1073741819 { return '0xC0000005, access violation (a crash)' }
+        -1073740791 { return '0xC0000409, stack buffer overrun (a crash)' }
+        default { return 'the command reported this status itself' }
+    }
+}
+
+function Get-HostPressure {
+    try {
+        $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
+        $free = [Math]::Round($os.FreePhysicalMemory / 1024)
+        $total = [Math]::Round($os.TotalVisibleMemorySize / 1024)
+        $dotnet = @(Get-Process -Name dotnet -ErrorAction SilentlyContinue).Count
+        return "free memory $free MB of $total MB; $dotnet dotnet process(es); $([Environment]::ProcessorCount) logical core(s)"
+    }
+    catch {
+        return "unreadable here ($($_.Exception.Message))"
+    }
+}
+
+function Write-LegFailure {
+    <#
+      Prints the account of one failed leg and returns the one-line summary to put in `$failures`.
+      `-Note` carries a reason the exit status cannot (a leg that returned no result at all).
+    #>
+    param(
+        [string] $Leg,
+        [string] $Command,
+        [object] $Exit,
+        [double] $Seconds,
+        [string[]] $Output = @(),
+        [string] $Note = ''
+    )
+
+    $exitText = if ($null -eq $Exit) { 'none' } else { "$Exit" }
+    $meaning = Get-ExitMeaning $Exit
+    $lines = @($Output | Where-Object { $null -ne $_ })
+    $tail = @($lines | Select-Object -Last $LegTailLines)
+
+    Write-Host "  LEG FAILED: $Leg" -ForegroundColor Red
+    Write-Host "    command : $Command" -ForegroundColor Red
+    Write-Host "    exit    : $exitText ($meaning)" -ForegroundColor Red
+    Write-Host ("    elapsed : {0:F1}s" -f $Seconds) -ForegroundColor Red
+    Write-Host '    timeout : did not fire (this script sets no per-leg timeout; the leg ended when its process did)' -ForegroundColor Red
+    Write-Host "    host    : $(Get-HostPressure)" -ForegroundColor Red
+    if ($Note) { Write-Host "    note    : $Note" -ForegroundColor Red }
+    if ($tail.Count -eq 0) {
+        Write-Host '    output  : none captured - the leg wrote nothing before it ended' -ForegroundColor Red
+    }
+    else {
+        Write-Host "    output  : last $($tail.Count) of $($lines.Count) line(s)" -ForegroundColor Red
+        foreach ($line in $tail) { Write-Host "      | $line" -ForegroundColor Red }
+    }
+
+    $noteText = if ($Note) { "; $Note" } else { '' }
+    return ("{0} FAILED (exit {1} after {2:F1}s: {3}; no script timeout set{4}) - full account above" -f $Leg, $exitText, $Seconds, $meaning, $noteText)
+}
+
+function Invoke-Leg {
+    <#
+      Runs ONE native command as a leg: echoes its output live (stderr merged), keeps every line, and
+      reads the exit status from the command itself. `$LASTEXITCODE` is seeded `$null`, not zero, so a
+      command that never starts reads as "no status" and fails, rather than inheriting a previous
+      leg's zero. The status is read off the pipeline's native command, never off a pipe's last stage.
+      Returns `Exit`, `Seconds`, `Output` and `Command` for `Write-LegFailure`.
+    #>
+    param(
+        [Parameter(Mandatory)] [string] $Exe,
+        [string[]] $Arguments = @(),
+        [string] $Indent = '  ',
+        [switch] $Quiet
+    )
+
+    $legLines = New-Object System.Collections.Generic.List[string]
+    $ErrorActionPreference = 'Continue'
+    $global:LASTEXITCODE = $null
+    $legClock = [Diagnostics.Stopwatch]::StartNew()
+    try {
+        & $Exe @Arguments 2>&1 | ForEach-Object {
+            $text = [string] $_
+            $legLines.Add($text)
+            if (-not $Quiet) { Write-Host "$Indent$text" }
+        }
+    }
+    catch {
+        $legLines.Add("could not run: $($_.Exception.Message)")
+    }
+    $legExit = $global:LASTEXITCODE
+    $legClock.Stop()
+
+    return [pscustomobject]@{
+        Exit    = $legExit
+        Seconds = $legClock.Elapsed.TotalSeconds
+        Output  = $legLines.ToArray()
+        Command = (@($Exe) + $Arguments) -join ' '
+    }
+}
+
+function Invoke-LegDiagnosticsProof {
+    <#
+      The go-red proof for the reporting above, run over test doubles that fail the way a loaded
+      machine made legs fail: a child that is KILLED mid-run, one that exits with a status of its
+      own, and a command that does not exist. For each, the account must name the leg, the command,
+      the exit, the elapsed time and the timeout verdict, and carry the tail of what the leg wrote.
+      Nothing is compiled; it costs about a second. Returns the failures it found.
+    #>
+    $found = New-Object System.Collections.Generic.List[string]
+    $pwshExe = (Get-Process -Id $PID).Path
+
+    $cases = @(
+        @{ Leg = 'killed double'; Arguments = @('-NoProfile', '-Command', 'Write-Output "last words before the kill"; Stop-Process -Id $PID -Force'); Expect = 'last words before the kill'; ExpectExit = $null }
+        @{ Leg = 'exit-7 double'; Arguments = @('-NoProfile', '-Command', 'Write-Output "about to fail"; exit 7'); Expect = 'about to fail'; ExpectExit = 7 }
+        @{ Leg = 'unstartable double'; Arguments = $null; Expect = 'could not run'; ExpectExit = $null }
+    )
+
+    function Assert-Account {
+        param([string] $leg, [string] $what, [bool] $held)
+        if (-not $held) { $found.Add("leg diagnostics proof ($leg): $what") }
+    }
+
+    foreach ($case in $cases) {
+        $leg =
+            if ($null -eq $case.Arguments) { Invoke-Leg -Exe 'fuaran-no-such-command-2253' -Quiet }
+            else { Invoke-Leg -Exe $pwshExe -Arguments $case.Arguments -Quiet }
+
+        # The account is a Write-Host stream, so it is read back from the information stream; the
+        # one-line summary is the function's return value and is kept apart from it.
+        $printed = & {
+            $script:proofSummary = Write-LegFailure -Leg $case.Leg -Command $leg.Command -Exit $leg.Exit -Seconds $leg.Seconds -Output $leg.Output
+        } 6>&1 | ForEach-Object { [string] $_ }
+        $summary = $script:proofSummary
+        $text = $printed -join "`n"
+
+        Assert-Account $case.Leg 'a non-zero or missing status is a failure, never a pass' ($leg.Exit -ne 0)
+        Assert-Account $case.Leg 'the account names the leg' ($text -match [regex]::Escape("LEG FAILED: $($case.Leg)"))
+        Assert-Account $case.Leg 'the account carries the command' ($text -match 'command : \S')
+        Assert-Account $case.Leg 'the account carries the exit' ($text -match 'exit    : ')
+        Assert-Account $case.Leg 'the account carries the elapsed time' ($text -match 'elapsed : \d')
+        Assert-Account $case.Leg 'the account states the timeout verdict' ($text -match 'timeout : did not fire')
+        Assert-Account $case.Leg 'the account carries the tail of the output' ($text -match [regex]::Escape($case.Expect))
+        Assert-Account $case.Leg 'the one-line summary names the leg' ($summary -match [regex]::Escape($case.Leg))
+        if ($null -ne $case.ExpectExit) {
+            Assert-Account $case.Leg "the exit is the leg's own status ($($case.ExpectExit))" ($leg.Exit -eq $case.ExpectExit)
+        }
+    }
+
+    return $found
 }
 
 # ── 1. Portability ──────────────────────────────────────────────────────────
@@ -1226,6 +1411,20 @@ $referenceItems
     return $found
 }
 
+if ($ProveLegDiagnostics) {
+    Write-Host ''
+    Write-Host '── Fable: leg diagnostics go-red proof ───────────────────' -ForegroundColor Cyan
+    $legProofFailures = Invoke-LegDiagnosticsProof
+    Write-Host ''
+    if ($legProofFailures.Count -gt 0) {
+        Write-Host "==== leg diagnostics go-red proof: FAILED ($($legProofFailures.Count))" -ForegroundColor Red
+        foreach ($f in $legProofFailures) { Write-Host "     $f" -ForegroundColor Red }
+        exit 1
+    }
+    Write-Host '==== leg diagnostics go-red proof: green' -ForegroundColor Green
+    exit 0
+}
+
 if ($ProveAddressing) {
     Write-Host ''
     Write-Host '── Fable: address go-red proof ───────────────────────────' -ForegroundColor Cyan
@@ -1362,6 +1561,9 @@ if (-not $SkipPortability) {
                     # STAYS" in the header for the measurement and for the two findings that closed
                     # Phase 1622 as a no-op. Do not drop this flag to recover that time without
                     # answering both of them.
+                    # Seeded `$null`, not left to whatever the runspace held: a compile that never
+                    # started then reads as "no status" and fails, rather than as a zero.
+                    $global:LASTEXITCODE = $null
                     $output = & dotnet fable $job.Path -o $job.OutDir --noCache 2>&1
                     $exit = $LASTEXITCODE
                     $clock.Stop()
@@ -1371,6 +1573,7 @@ if (-not $SkipPortability) {
                         Exit    = $exit
                         Seconds = $clock.Elapsed.TotalSeconds
                         Output  = @($output | ForEach-Object { [string] $_ })
+                        Command = "dotnet fable $($job.Path) -o $($job.OutDir) --noCache"
                     }
                 })
         }
@@ -1394,8 +1597,9 @@ if (-not $SkipPortability) {
             if (-not $result) {
                 # A queued compile with NO result is a failure, never an absence. Nothing proves it
                 # succeeded, and the record is cleared for the same reason a red compile clears it.
-                $failures.Add("Fable portability compile for $($job.Relative) returned no result — the job did not complete")
-                Write-Host "  NO RESULT: $($job.Relative)" -ForegroundColor Red
+                $failures.Add((Write-LegFailure -Leg "Fable portability compile $($job.Relative)" `
+                            -Command "dotnet fable $($job.Path) -o $($job.OutDir) --noCache" -Exit $null -Seconds 0 `
+                            -Note 'the concurrent job returned no result, so it did not complete (its runspace died or was stopped)'))
                 Clear-RecordedGreen $job.Name
                 Add-Timing $job.Relative 'NO RESULT' 0
                 continue
@@ -1406,8 +1610,8 @@ if (-not $SkipPortability) {
             $figures = Get-FableTiming $result.Output
 
             if ($result.Exit -ne 0) {
-                $failures.Add("Fable portability compile FAILED for $($job.Relative) (exit $($result.Exit))")
-                Write-Host "  FAILED: $($job.Relative)" -ForegroundColor Red
+                $failures.Add((Write-LegFailure -Leg "Fable portability compile $($job.Relative)" `
+                            -Command $result.Command -Exit $result.Exit -Seconds $result.Seconds -Output $result.Output))
                 Clear-RecordedGreen $job.Name
                 Add-Timing $job.Relative 'FAILED' $result.Seconds $figures.ParsedMs $figures.EmittedMs
             }
@@ -1489,38 +1693,38 @@ if (-not $SkipLaws) {
 
         # The .NET leg. Filtered to the harness's own line shapes so build chatter can never enter
         # the comparison.
-        $dotnetClock = [Diagnostics.Stopwatch]::StartNew()
-        $dotnetOut = @(dotnet run --project (Join-Path $PSScriptRoot 'FableLaws.fsproj') -c Release |
-            Where-Object { $_ -match $lineShape })
-        $dotnetExit = $LASTEXITCODE
-        $dotnetClock.Stop()
-        Add-Timing "$lawsLabel (.NET run)" 'ran' $dotnetClock.Elapsed.TotalSeconds
+        # Every line is kept (quietly) and only the comparison is filtered: a build that fails before
+        # the harness runs prints its errors in lines the filter drops, and those are the account of it.
+        $dotnetLeg = Invoke-Leg -Exe 'dotnet' -Quiet -Arguments @('run', '--project', (Join-Path $PSScriptRoot 'FableLaws.fsproj'), '-c', 'Release')
+        $dotnetOut = @($dotnetLeg.Output | Where-Object { $_ -match $lineShape })
+        $dotnetExit = $dotnetLeg.Exit
+        Add-Timing "$lawsLabel (.NET run)" 'ran' $dotnetLeg.Seconds
+        if ($dotnetExit -ne 0) {
+            $failures.Add((Write-LegFailure -Leg 'law harness .NET run' -Command $dotnetLeg.Command -Exit $dotnetExit -Seconds $dotnetLeg.Seconds -Output $dotnetLeg.Output))
+        }
 
         # Captured rather than streamed, so Fable's own `parsed in Nms` can be read out of it —
         # the same figure the portability compiles report. Assignment is not a pipe, so
         # `$LASTEXITCODE` still carries Fable's status; the output is echoed immediately below so
         # nothing a live stream would have shown is lost.
-        $lawsFableClock = [Diagnostics.Stopwatch]::StartNew()
-        $lawsFableOutput = & dotnet fable (Join-Path $PSScriptRoot 'FableLaws.fsproj') -o $lawsOut --noCache 2>&1
-        $lawsFableExit = $LASTEXITCODE
-        $lawsFableClock.Stop()
+        $lawsFableLeg = Invoke-Leg -Exe 'dotnet' -Arguments @('fable', (Join-Path $PSScriptRoot 'FableLaws.fsproj'), '-o', $lawsOut, '--noCache')
+        $lawsFableExit = $lawsFableLeg.Exit
 
-        $lawsFableOutput = @($lawsFableOutput | ForEach-Object { [string] $_ })
-        foreach ($line in $lawsFableOutput) { Write-Host "  $line" }
-
-        $lawsFigures = Get-FableTiming $lawsFableOutput
+        $lawsFigures = Get-FableTiming $lawsFableLeg.Output
         Add-Timing "$lawsLabel (Fable compile)" $(if ($lawsFableExit -eq 0) { 'compiled' } else { 'FAILED' }) `
-            $lawsFableClock.Elapsed.TotalSeconds $lawsFigures.ParsedMs $lawsFigures.EmittedMs
+            $lawsFableLeg.Seconds $lawsFigures.ParsedMs $lawsFigures.EmittedMs
 
         if ($lawsFableExit -ne 0) {
-            $failures.Add("Fable compile of the law harness FAILED (exit $lawsFableExit)")
+            $failures.Add((Write-LegFailure -Leg 'law harness Fable compile' -Command $lawsFableLeg.Command -Exit $lawsFableExit -Seconds $lawsFableLeg.Seconds -Output $lawsFableLeg.Output))
         }
         else {
-            $nodeClock = [Diagnostics.Stopwatch]::StartNew()
-            $fableOut = @(node (Join-Path $lawsOut 'Program.js') | Where-Object { $_ -match $lineShape })
-            $fableExit = $LASTEXITCODE
-            $nodeClock.Stop()
-            Add-Timing "$lawsLabel (Node run)" 'ran' $nodeClock.Elapsed.TotalSeconds
+            $nodeLeg = Invoke-Leg -Exe 'node' -Quiet -Arguments @((Join-Path $lawsOut 'Program.js'))
+            $fableOut = @($nodeLeg.Output | Where-Object { $_ -match $lineShape })
+            $fableExit = $nodeLeg.Exit
+            Add-Timing "$lawsLabel (Node run)" 'ran' $nodeLeg.Seconds
+            if ($fableExit -ne 0) {
+                $failures.Add((Write-LegFailure -Leg 'law harness Node run' -Command $nodeLeg.Command -Exit $fableExit -Seconds $nodeLeg.Seconds -Output $nodeLeg.Output))
+            }
 
             if ($dotnetOut.Count -eq 0) {
                 $failures.Add('the law harness produced no output on .NET — it did not run to completion')
@@ -1559,9 +1763,6 @@ if (-not $SkipLaws) {
             elseif ([int]$Matches[1] -ne 0) {
                 $failures.Add("$([int]$Matches[1]) law violation(s) — $total")
             }
-
-            if ($dotnetExit -ne 0) { $failures.Add("the .NET law run exited $dotnetExit") }
-            if ($fableExit -ne 0) { $failures.Add("the Node law run exited $fableExit") }
         }
 
         if (-not $KeepOutput) {
@@ -1640,19 +1841,16 @@ else {
         else {
             # A child process, never piped: its exit status is the verdict, and the script restores
             # the environment it sets rather than leaking it into the rest of this stage.
-            $coreFableClock = [Diagnostics.Stopwatch]::StartNew()
-            & pwsh -NoProfile -File $coreFableScript
-            $coreFableExit = $LASTEXITCODE
-            $coreFableClock.Stop()
+            $coreFableLeg = Invoke-Leg -Exe 'pwsh' -Arguments @('-NoProfile', '-File', $coreFableScript)
 
-            if ($coreFableExit -eq 0) {
-                Add-Timing $coreFableLabel 'compiled' $coreFableClock.Elapsed.TotalSeconds
+            if ($coreFableLeg.Exit -eq 0) {
+                Add-Timing $coreFableLabel 'compiled' $coreFableLeg.Seconds
                 Write-RecordedGreen 'CoreFable' $coreFableAddress $coreFableSemantics
             }
             else {
-                Add-Timing $coreFableLabel 'FAILED' $coreFableClock.Elapsed.TotalSeconds
+                Add-Timing $coreFableLabel 'FAILED' $coreFableLeg.Seconds
                 Clear-RecordedGreen 'CoreFable'
-                $failures.Add("the Fuaran.Core Fable gate FAILED (exit $coreFableExit) — see tests/core-fable/core-fable.ps1's output above")
+                $failures.Add((Write-LegFailure -Leg 'the Fuaran.Core Fable gate' -Command $coreFableLeg.Command -Exit $coreFableLeg.Exit -Seconds $coreFableLeg.Seconds -Output $coreFableLeg.Output))
             }
         }
     }
@@ -1714,32 +1912,25 @@ else {
         $programParityOut = Join-Path (Split-Path -Parent $programParityProject) 'output'
         Remove-Item -Recurse -Force $programParityOut -ErrorAction SilentlyContinue
 
-        $programParityClock = [Diagnostics.Stopwatch]::StartNew()
-        $programParityFable = & dotnet fable $programParityProject -o $programParityOut --noCache 2>&1
-        $programParityFableExit = $LASTEXITCODE
-        $programParityFable = @($programParityFable | ForEach-Object { [string] $_ })
-        foreach ($line in $programParityFable) { Write-Host "  $line" }
+        $programParityFableLeg = Invoke-Leg -Exe 'dotnet' -Arguments @('fable', $programParityProject, '-o', $programParityOut, '--noCache')
 
-        if ($programParityFableExit -ne 0) {
-            $programParityClock.Stop()
-            Add-Timing "$programParityLabel (Fable compile)" 'FAILED' $programParityClock.Elapsed.TotalSeconds
+        if ($programParityFableLeg.Exit -ne 0) {
+            Add-Timing "$programParityLabel (Fable compile)" 'FAILED' $programParityFableLeg.Seconds
             Clear-RecordedGreen 'ProgramUiParity'
-            $failures.Add("Fable compile of the program UI parity leg FAILED (exit $programParityFableExit)")
+            $failures.Add((Write-LegFailure -Leg 'program UI parity Fable compile' -Command $programParityFableLeg.Command -Exit $programParityFableLeg.Exit -Seconds $programParityFableLeg.Seconds -Output $programParityFableLeg.Output))
         }
         else {
-            # A child process, never piped: its exit status is the verdict.
-            & node (Join-Path $programParityOut 'Main.js') (Resolve-Path -LiteralPath $programSpecCorpus).Path
-            $programParityExit = $LASTEXITCODE
-            $programParityClock.Stop()
+            $programParityNodeLeg = Invoke-Leg -Exe 'node' -Arguments @((Join-Path $programParityOut 'Main.js'), (Resolve-Path -LiteralPath $programSpecCorpus).Path)
+            $programParitySeconds = $programParityFableLeg.Seconds + $programParityNodeLeg.Seconds
 
-            if ($programParityExit -eq 0) {
-                Add-Timing $programParityLabel 'compiled' $programParityClock.Elapsed.TotalSeconds
+            if ($programParityNodeLeg.Exit -eq 0) {
+                Add-Timing $programParityLabel 'compiled' $programParitySeconds
                 Write-RecordedGreen 'ProgramUiParity' $programParityAddress $programParitySemantics
             }
             else {
-                Add-Timing $programParityLabel 'FAILED' $programParityClock.Elapsed.TotalSeconds
+                Add-Timing $programParityLabel 'FAILED' $programParitySeconds
                 Clear-RecordedGreen 'ProgramUiParity'
-                $failures.Add("the program UI parity leg FAILED under node (exit $programParityExit) — see its output above")
+                $failures.Add((Write-LegFailure -Leg 'program UI parity run under node' -Command $programParityNodeLeg.Command -Exit $programParityNodeLeg.Exit -Seconds $programParityNodeLeg.Seconds -Output $programParityNodeLeg.Output))
             }
         }
 
@@ -1802,19 +1993,16 @@ else {
         }
         else {
             # A child process, never piped: its exit status is the verdict.
-            $packConsumerClock = [Diagnostics.Stopwatch]::StartNew()
-            & pwsh -NoProfile -File $packConsumerScript
-            $packConsumerExit = $LASTEXITCODE
-            $packConsumerClock.Stop()
+            $packConsumerLeg = Invoke-Leg -Exe 'pwsh' -Arguments @('-NoProfile', '-File', $packConsumerScript)
 
-            if ($packConsumerExit -eq 0) {
-                Add-Timing $packConsumerLabel 'compiled' $packConsumerClock.Elapsed.TotalSeconds
+            if ($packConsumerLeg.Exit -eq 0) {
+                Add-Timing $packConsumerLabel 'compiled' $packConsumerLeg.Seconds
                 if ($packConsumerAddress) { Write-RecordedGreen 'PackConsumer' $packConsumerAddress $packConsumerSemantics }
             }
             else {
-                Add-Timing $packConsumerLabel 'FAILED' $packConsumerClock.Elapsed.TotalSeconds
+                Add-Timing $packConsumerLabel 'FAILED' $packConsumerLeg.Seconds
                 Clear-RecordedGreen 'PackConsumer'
-                $failures.Add("the packed-consumer leg FAILED (exit $packConsumerExit) — see tests/fable-pack-consumer/fable-pack-consumer.ps1's output above")
+                $failures.Add((Write-LegFailure -Leg 'the packed-consumer leg' -Command $packConsumerLeg.Command -Exit $packConsumerLeg.Exit -Seconds $packConsumerLeg.Seconds -Output $packConsumerLeg.Output))
             }
         }
     }
@@ -1863,20 +2051,16 @@ else {
         }
         else {
             # A child process, never piped: its exit status is the verdict.
-            $global:LASTEXITCODE = 0
-            $watchConsumerClock = [Diagnostics.Stopwatch]::StartNew()
-            & pwsh -NoProfile -File $watchConsumerScript
-            $watchConsumerExit = $LASTEXITCODE
-            $watchConsumerClock.Stop()
+            $watchConsumerLeg = Invoke-Leg -Exe 'pwsh' -Arguments @('-NoProfile', '-File', $watchConsumerScript)
 
-            if ($watchConsumerExit -eq 0) {
-                Add-Timing $watchConsumerLabel 'compiled' $watchConsumerClock.Elapsed.TotalSeconds
+            if ($watchConsumerLeg.Exit -eq 0) {
+                Add-Timing $watchConsumerLabel 'compiled' $watchConsumerLeg.Seconds
                 if ($watchConsumerAddress) { Write-RecordedGreen 'WatchConsumer' $watchConsumerAddress $watchConsumerSemantics }
             }
             else {
-                Add-Timing $watchConsumerLabel 'FAILED' $watchConsumerClock.Elapsed.TotalSeconds
+                Add-Timing $watchConsumerLabel 'FAILED' $watchConsumerLeg.Seconds
                 Clear-RecordedGreen 'WatchConsumer'
-                $failures.Add("the watch-mode leg FAILED (exit $watchConsumerExit) — see tests/fable-watch-consumer/fable-watch-consumer.ps1's output above")
+                $failures.Add((Write-LegFailure -Leg 'the watch-mode leg' -Command $watchConsumerLeg.Command -Exit $watchConsumerLeg.Exit -Seconds $watchConsumerLeg.Seconds -Output $watchConsumerLeg.Output))
             }
         }
     }

@@ -421,6 +421,13 @@ try {
     $proofText = (& pwsh -NoProfile -File $gate -ProveAddressing 2>&1 | Out-String)
     Assert "the address function's own go-red proof holds" ($LASTEXITCODE -eq 0) $proofText
 
+    # Phase 2253: a leg that dies under load must be named, not reported as a bare exit status. The
+    # proof kills a child, exits one with a status of its own and names a command that does not
+    # exist, and requires each account to carry the leg, command, exit, elapsed time, timeout
+    # verdict and output tail. Compiles nothing.
+    $legProofText = (& pwsh -NoProfile -File $gate -ProveLegDiagnostics 2>&1 | Out-String)
+    Assert "the leg diagnostics' own go-red proof holds" ($LASTEXITCODE -eq 0) $legProofText
+
     $cleanSource | Set-Content -Path (Join-Path $scratch 'SelfTest.Root/Library.fs') -Encoding utf8NoBOM
 
     # Records outlive a run — they sit under the system temp root, keyed by the source root — so a
