@@ -75,51 +75,30 @@ let private mutant
             else
                 DecoderFuzz.nodeSubject.Run input }
 
-/// Budgets tuned for the self-test: a small soft time budget so the slow mutant
-/// need only sleep briefly. The hard budget stays high, so the watchdog never
-/// fires during a deliberate soft breach and kills the test host.
+/// Budgets for the self-test: the harness runs on a clock that never advances,
+/// so no decode can be judged slow and the self-test measures no machine at all.
+/// A time verdict out of a run under these budgets could only come from the
+/// harness itself, which is what makes every other class's verdict trustworthy
+/// on a loaded machine. The one test that needs elapsed time uses
+/// `slowProbeBudgets`. The hard budget stays high, so the watchdog never fires
+/// during a deliberate soft breach and kills the test host.
 let private selfTestBudgets =
     { DecoderFuzz.defaultBudgets with
+        Clock = fun () -> 0.0
+        LoadScale = fun () -> 1.0 }
+
+/// Budgets for the SLOW mutant alone: the real clock, a 100 ms soft budget and no
+/// load scaling. The mutant sleeps 250 ms, so a busy machine can only make it
+/// slower and the verdict can only be the more certain; the load that would
+/// misclassify some OTHER probe cannot make this one miss.
+let private slowProbeBudgets =
+    { DecoderFuzz.defaultBudgets with
         SoftTimeMs = 100.0
-        HardTimeMs = 60000.0 }
+        LoadScale = fun () -> 1.0 }
 
 let private selfTestConfig =
     { DecoderFuzz.boundedConfig with
         MaxPayloadChars = 8 * 1024 }
-
-/// Budgets for the ALLOCATION probe alone (Phase 1674). Same allocation
-/// ceilings, a soft TIME budget two orders of magnitude larger.
-///
-/// Why it needs its own: `selfTestBudgets`' 100 ms soft time budget is tuned for
-/// the SLOW mutant, which must breach it by sleeping briefly. The allocation
-/// mutant allocates tens of megabytes, and on a loaded machine that takes longer
-/// than 100 ms — so the harness caught it as a `timeout` before the allocation
-/// ceiling was reached, and the probe reported the wrong class. Seen once in a
-/// Phase 1526 gate run, green on the next two, the file untouched by that phase;
-/// a flake by construction rather than by luck, and one that will flap any
-/// `needs`-gated CI chain downstream of this suite.
-///
-/// The fix is a probe whose allocation is guaranteed to trip FIRST, rather than
-/// accepting `timeout` as an equally-caught outcome. Accepting it would have made
-/// the probe pass while proving nothing about allocation detection at all — which
-/// is the exact shape of decoration this go-red suite exists to refuse, and it
-/// would have passed even against a harness with the allocation check deleted.
-///
-/// 30 s is not a machine measurement. It is a bound chosen so that the ONLY way
-/// this probe can time out is a harness that has stopped running at all, at which
-/// point the whole suite is red for a louder reason. The hard budget is unchanged,
-/// so the watchdog still fires on a genuine hang.
-///
-/// Phase 1750 ran the falsifier: 50 consecutive process-level runs of this
-/// go-red list, 50 green, 0 failed, all six tests accounted for on every run, on a
-/// deliberately LOADED machine — a sibling repo's whole gate running beside it, the
-/// slowest run taking 25.2 s against 3.0 s idle. That load is the evidence rather
-/// than the run count: 25 s of wall clock for a list whose own work is ~1.2 s is a
-/// machine under exactly the contention that made the shared 100 ms budget
-/// misclassify this probe, and it did not misclassify once.
-let private allocationProbeBudgets =
-    { selfTestBudgets with
-        SoftTimeMs = 30000.0 }
 
 /// Run a mutant subject under EXPLICIT budgets and return the distinct verdict
 /// classes it produced, with how many counterexamples there were in total.
@@ -138,9 +117,6 @@ let private classesFromWith
         |> List.sort
 
     classes, List.length stats.Counterexamples
-
-let private classesFrom (subject: DecoderFuzz.Subject) (iterations: int) : string list * int =
-    classesFromWith selfTestBudgets subject iterations
 
 let private expectCaughtWith
     (budgets: DecoderFuzz.Budgets)
@@ -164,14 +140,10 @@ let private expectCaughtWith
 let private expectCaught (subject: DecoderFuzz.Subject) (iterations: int) (expectedClass: string) =
     expectCaughtWith selfTestBudgets subject iterations expectedClass
 
-// Sequenced deliberately. Every test in this list drives the harness with
-// `selfTestBudgets`, whose 100 ms soft time budget exists so the slow mutant
-// need only sleep briefly — a budget that small is measuring the machine as
-// much as the decoder, and running these concurrently with the rest of the
-// suite adds exactly the CPU contention that makes it measure the machine.
-// Sequencing removes the contention; the timeout exclusion in the inverse pin
-// below removes the residual sensitivity. Both are needed: sequencing alone
-// still leaves a cold-JIT first decode able to breach 100 ms.
+// Sequenced deliberately: the mutants fire a bounded number of times each and the order they run in
+// should not depend on what else the runner is doing. Wall-clock sensitivity is NOT handled by the
+// sequencing — it is removed by `selfTestBudgets` (a clock that never advances) and `slowProbeBudgets`
+// (a real clock that can only err towards catching the slow mutant).
 // Phase 1553 — SLOW lane: five deliberately-broken decoders driven through the real fuzz machinery, sequenced.
 // Measured 2026-09-08 (Release, warm build): 1.2s net of the ~1.0s process floor, for 6 tests. Excluded from `-Lane fast` and
 // `-Lane pure`; runs in the full lane every release cites.
@@ -197,7 +169,7 @@ let goRedSelfTest =
                           System.Threading.Thread.Sleep 250
                           DecoderFuzz.nodeSubject.Run input)
 
-                  expectCaught broken 400 "timeout"
+                  expectCaughtWith slowProbeBudgets broken 400 "timeout"
               }
 
               test "invariant 3 (bounded work): an allocation blow-up is caught" {
@@ -224,11 +196,9 @@ let goRedSelfTest =
 
                               DecoderFuzz.nodeSubject.Run input)
 
-                  // Under the allocation probe's OWN budgets: this mutant must be
-                  // caught for what it ALLOCATES, and under the shared 100 ms
-                  // soft time budget a loaded machine caught it for how long the
-                  // allocating took instead. See `allocationProbeBudgets`.
-                  expectCaughtWith allocationProbeBudgets broken 400 "overallocated"
+                  // Caught for what it ALLOCATES: the self-test clock never
+                  // advances, so how long the allocating took cannot pre-empt it.
+                  expectCaught broken 400 "overallocated"
               }
 
               test "invariant 4 (fixed point): a canonical form that is not a fixed point is caught" {
@@ -255,30 +225,15 @@ let goRedSelfTest =
                   let stats =
                       DecoderFuzz.run [ DecoderFuzz.nodeSubject ] selfTestBudgets selfTestConfig gateSeed 400 false
 
-                  // TIME verdicts are excluded here, and the exclusion is the fix for
-                  // a long-standing intermittent red (isolation-passes + suite-fails —
-                  // the signature of a wall-clock assertion, not of a decoder defect).
-                  // `selfTestBudgets` sets SoftTimeMs to 100 so the SLOW MUTANT need
-                  // only sleep briefly; that tiny budget is a lever for the mutant, it
-                  // was never a claim about the real decoder. The same gate run
-                  // routinely reports a max decode in the hundreds of milliseconds
-                  // (693 ms on the run that motivated this), so on a loaded machine
-                  // the unmutated decoder trips a 100 ms budget through no fault of
-                  // its own and this test goes red for a reason no one can reproduce
-                  // in isolation.
-                  //
-                  // The time invariant is NOT dropped — it is asserted where it means
-                  // something: the bounded run below measures the real decoder against
-                  // `defaultBudgets` (3 s), which is a budget chosen for the decoder
-                  // rather than for a mutant's convenience.
-                  let substantive =
+                  // No time verdict can occur here: `selfTestBudgets` runs the harness
+                  // on a clock that never advances. The time invariant is asserted
+                  // where it means something, against the real decoder on the real
+                  // clock: the bounded run below, under `defaultBudgets`.
+                  let findings =
                       stats.Counterexamples
-                      |> List.filter (fun c -> DecoderFuzz.verdictClass c.Verdict <> "timeout")
                       |> List.map (fun c -> DecoderFuzz.describeVerdict c.Verdict)
 
-                  Expect.isEmpty
-                      substantive
-                      "the unmutated decoder must be clean over the same inputs the mutants ran on (wall-clock timeouts against the mutant-sized 100 ms budget excluded — see the bounded run for the real time invariant)"
+                  Expect.isEmpty findings "the unmutated decoder must be clean over the same inputs the mutants ran on"
               } ]
     )
 

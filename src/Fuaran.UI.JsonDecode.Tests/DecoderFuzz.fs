@@ -196,7 +196,9 @@ let describeVerdict (v: Verdict) : string =
 
 type Budgets =
     {
-        /// Past this, a decode that DID return is reported as a counterexample.
+        /// Past this, a decode that DID return is reported as a counterexample,
+        /// once `LoadScale` has been applied: the figure is what an idle machine
+        /// may take, not what a busy one must.
         SoftTimeMs: float
         /// Past this the decode has not returned at all, and the watchdog kills
         /// the process — the only way to turn a genuine hang into a report.
@@ -214,6 +216,16 @@ type Budgets =
         /// the invariant, which is the failure mode this whole harness exists
         /// to avoid.
         OverCloseFloorBytes: int64
+        /// Milliseconds on a monotonic clock. A parameter so the go-red self-test
+        /// can run the harness on a clock that never advances and so measure no
+        /// machine at all; the shipped value is the real one.
+        Clock: unit -> float
+        /// Multiplier (>= 1) on `SoftTimeMs`, asked ONLY when a decode has already
+        /// run past the unscaled figure. The shipped value is how much slower this
+        /// machine is right now than when it was quiet, measured on a reference
+        /// decode in this process, so contention that slows the decode slows the
+        /// yardstick it is judged against.
+        LoadScale: unit -> float
     }
 
 /// The shipped budgets, set from measurement rather than from taste.
@@ -236,12 +248,47 @@ type Budgets =
 /// at much finer resolution by the dedicated profile test, and both tiers'
 /// observed maxima are reported in every run, so raising this number could never
 /// be a way to make the finding go away.
+let private realClockMs () : float =
+    float (Stopwatch.GetTimestamp()) * 1000.0 / float Stopwatch.Frequency
+
+/// The cost, in milliseconds, of one reference decode: a small fixed document
+/// through the real node subject. Its fastest of `reps` is taken, because the
+/// fastest repetition is the one the scheduler left alone.
+let private referenceDecodeMs (reps: int) : float =
+    let document =
+        """{"id":"r","kind":{"$type":"Box","children":[],"layout":{"$type":"Auto"},"role":"Group"}}"""
+
+    let mutable fastest = Double.MaxValue
+
+    for _ in 1..reps do
+        let t = realClockMs ()
+        nodeSubject.Run document |> ignore
+        fastest <- min fastest (realClockMs () - t)
+
+    fastest
+
+/// The quietest the reference decode has ever been seen to run, process-wide. It
+/// is measured once warm at start-up and only ever lowered afterwards, so a
+/// process that STARTS under load still converges on the idle figure as soon as
+/// one quiet moment is observed.
+let mutable private quietestReferenceMs =
+    referenceDecodeMs 50 |> ignore // warm the JIT, discard
+    referenceDecodeMs 300
+
+/// How many times slower than quiet this machine is right now (>= 1).
+let machineLoadScale () : float =
+    let now = referenceDecodeMs 30
+    quietestReferenceMs <- min quietestReferenceMs now
+    max 1.0 (now / quietestReferenceMs)
+
 let defaultBudgets =
     { SoftTimeMs = 3000.0
       HardTimeMs = 60000.0
       AllocFloorBytes = 16L * 1024L * 1024L
       AllocPerChar = 512L
-      OverCloseFloorBytes = 512L * 1024L * 1024L }
+      OverCloseFloorBytes = 512L * 1024L * 1024L
+      Clock = realClockMs
+      LoadScale = machineLoadScale }
 
 /// Is this document OVER-CLOSED — does some prefix carry more structural
 /// closers than openers, ignoring brackets inside strings?
@@ -311,6 +358,25 @@ let allocBudgetFor (b: Budgets) (input: string) : int64 =
 
 // ─── The measured check ─────────────────────────────────────────────────────
 
+/// Is a decode that took `elapsedMs` genuinely slow? Only past the soft budget
+/// scaled by the load measured now, and only if running the same input AGAIN is
+/// slow too: a scheduler stall that froze this one decode does not repeat, while
+/// an input that costs too much does, every time. Neither check is paid unless
+/// the first, unscaled comparison already failed.
+let private isSlow (subject: Subject) (budgets: Budgets) (input: string) (elapsedMs: float) : bool =
+    elapsedMs > budgets.SoftTimeMs
+    && (let limit = budgets.SoftTimeMs * budgets.LoadScale()
+
+        elapsedMs > limit
+        && (let startedMs = budgets.Clock()
+
+            try
+                subject.Run input |> ignore
+            with _ ->
+                ()
+
+            budgets.Clock() - startedMs > limit))
+
 /// Run one input through one subject and judge it against all four invariants.
 /// Every exception is caught HERE and nowhere else, which is what makes "no
 /// exception escapes" a measured property rather than a hope.
@@ -321,7 +387,7 @@ let allocBudgetFor (b: Budgets) (input: string) : int64 =
 /// iteration counter reproduce the input that did it.
 let check (subject: Subject) (budgets: Budgets) (input: string) : Verdict =
     let before = GC.GetAllocatedBytesForCurrentThread()
-    let sw = Stopwatch.StartNew()
+    let startedMs = budgets.Clock()
 
     let outcome =
         try
@@ -329,7 +395,7 @@ let check (subject: Subject) (budgets: Budgets) (input: string) : Verdict =
         with ex ->
             Error(ex.GetType().Name, ex.Message)
 
-    sw.Stop()
+    let elapsedMs = budgets.Clock() - startedMs
     let allocated = GC.GetAllocatedBytesForCurrentThread() - before
     let budget = allocBudgetFor budgets input
 
@@ -339,8 +405,8 @@ let check (subject: Subject) (budgets: Budgets) (input: string) : Verdict =
         // Order matters: an input that both ran long AND over-allocated is
         // reported as the time breach, because that is the one an operator has
         // to act on first.
-        if sw.Elapsed.TotalMilliseconds > budgets.SoftTimeMs then
-            TimedOut sw.Elapsed.TotalMilliseconds
+        if isSlow subject budgets input elapsedMs then
+            TimedOut elapsedMs
         elif allocated > budget then
             OverAllocated(allocated, budget)
         else
