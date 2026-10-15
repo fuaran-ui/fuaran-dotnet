@@ -222,11 +222,12 @@ let tests =
                         "interior ids are namespaced under the ref's id"
                 }
 
-                test "the walk reaches exactly the positions the client's own walk did" {
+                test "the walk reaches every kind-held position and the state alternatives" {
                     // The client's walk before Phase 2041 rewrote ordered lists, a
                     // FragmentDecl body, both ErrorBoundary arms and every Switch
-                    // arm, and left envelope alternatives (`state`) and slot
-                    // arguments alone. The shared walk must keep that answer.
+                    // arm. Phase 2285 added the `state` alternatives, which render
+                    // in place of their node (§8.1: two refs must share no id
+                    // there); the envelope `fallback` and slot arguments stay alone.
                     let body: Node<obj> =
                         Fuaran.dashboard
                             "outer"
@@ -268,8 +269,8 @@ let tests =
 
                     Expect.equal
                         (withState.State |> Option.bind _.OnLoading |> Option.map _.Id)
-                        (Some "loading")
-                        "an envelope alternative keeps its id, as it always did"
+                        (Some "p.loading")
+                        "a state alternative is namespaced with its node (Phase 2285)"
                 }
 
                 test "each ref renders the fragment's leaf under its own namespaced id" {
@@ -541,4 +542,35 @@ let fragmentRegistry =
                   [ "a recursive collectFragments"
                     "no call of FragmentExpansion.collectFragments" ]
                   "the census fires on a renderer with its own walk"
+          } ]
+
+// ─── Phase 2285 — a state arm is fragment scope ─────────────────────────────
+//
+// The client half over the parity document fuaran-ts's renderer suite asserts
+// byte for byte; the server's half renders it.
+
+[<Tests>]
+let fragmentScope =
+    testList
+        "Phase 2285 — the client's registry over the fragment-scope parity document"
+        [ test "the state arms are entered; the envelope fallback and a slot argument are not" {
+              let registry =
+                  Render.collectFragments Map.empty FragmentRegistryFixture.parityTree
+                  |> Map.toList
+                  |> List.map (fun (FragmentId name, _) -> name)
+
+              Expect.equal registry FragmentRegistryFixture.parityRegistered "the fragment-scope names, on every host"
+          }
+
+          test "collection and namespacing walk one reach" {
+              // A decl is registered exactly where an expansion namespaces it:
+              // every id at the reach the registry walks is rewritten.
+              let rec reached (n: Node<obj>) : string list =
+                  n.Id
+                  :: (NodeChildren.children NodeChildren.Reach.fragmentScope n |> List.collect reached)
+
+              Expect.equal
+                  (reached (FragmentExpansion.namespaceIds "p." FragmentRegistryFixture.tree))
+                  (reached FragmentRegistryFixture.tree |> List.map (fun id -> "p." + id))
+                  "every position the registry enters is namespaced"
           } ]

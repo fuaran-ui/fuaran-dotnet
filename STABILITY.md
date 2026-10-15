@@ -8005,6 +8005,33 @@ changes, no hash moves, and no wire byte moves. It rides the 0.95.0 draft withou
 - **Pinned: lifted addresses are not linear hashes.** The lifted address of each `chain/chain-corpus.json`
   record is pinned beside its linear chain hash (`DagLiftTests.fs`), through both the in-memory and the SQLite
   DAG sinks. The two digests are over different pre-images and are never equal.
+### What rides this slot — Phase 2285 (a state arm is fragment scope, as on every host)
+
+**Class: BEHAVIOUR change, no API change.** No type, member signature, defect code or wire byte moves. It rides the
+0.95.0 draft without moving it, because the draft is already at the minor number a consumer-visible fragment-set
+change needs pre-1.0.
+
+The question was which positions are fragment scope. The specification states no rule. fuaran-ts already entered
+`state.onLoading` / `state.onEmpty` for both its fragment walks. This host did not, although its own slot substitution
+and hygienic renaming already did. `FragmentExpansion.collectFragments` and `FragmentExpansion.namespaceIds` now both
+walk `NodeChildren.Reach.fragmentScope`: the kind-held positions plus the two `state` alternatives. The envelope
+`fallback`, a `FragmentRef`'s slot arguments and a `Mount` guest stay outside on every host.
+
+Two effects are consumer-visible:
+
+- **A `FragmentDecl` held in `state.onLoading` or `state.onEmpty` is now registered, so a reference to it resolves.**
+  Before this change, both .NET renderers rendered the unresolved placeholder for such a reference. On a repeated
+  name, the last decl in the walk's canonical order still wins. That order is a container's list, then
+  `state.onLoading` and `state.onEmpty`, then the kind's arms.
+- **State-arm ids inside an expanded fragment body are now prefixed by the referring node**, like every other interior
+  id (`<refId>.<id>`). Before, a body whose node carried `onLoading` / `onEmpty` emitted the arm's bare id once per
+  reference. Two references therefore duplicated it in the DOM, which the specification's id-uniqueness section says
+  expansion namespacing exists to prevent. A consumer selecting an arm node by its bare id inside an expansion now
+  selects `<refId>.<id>`.
+
+The evidence: `FragmentRegistryFixture.parityWire` is one wire document that fuaran-ts's renderer suite asserts
+byte for byte. The client and server agreement tests certify the same registered set and rendered output against it.
+The Phase 2244 every-position tree now lists `in-on-loading` and `in-on-empty` as registered.
 
 ---
 
