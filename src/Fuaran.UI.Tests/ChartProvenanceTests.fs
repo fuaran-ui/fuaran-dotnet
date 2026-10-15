@@ -426,11 +426,20 @@ let tests =
               // pinned is that neither tier has its own emission path — and
               // that is what makes the provenance option thread identically by
               // construction rather than by two call sites kept in step.
-              for tier in [ "client"; "server" ] do
-                  let source = rendererSource tier
+              //
+              // The call is matched with its whitespace collapsed, since a
+              // formatter may break it over lines. Each tier names its text
+              // resolver its own way: the client calls the shared
+              // `BindingResolver.resolveTextSource` directly (Phase 2108 retired
+              // its private `renderText`), the server through its `renderText`,
+              // which is that same function.
+              for tier, textOf in
+                  [ "client", "(BindingResolver.resolveTextSource ctx.Sources)"
+                    "server", "(renderText ctx)" ] do
+                  let source = Regex.Replace(rendererSource tier, @"\s+", " ")
 
                   Expect.equal
-                      (occurrences "Fuaran.UI.Charts.renderSvg ctx.Sources (renderText ctx) spec" source)
+                      (occurrences ("Fuaran.UI.Charts.renderSvg ctx.Sources " + textOf + " spec") source)
                       1
                       (tier + " renders a chart through Charts.renderSvg, exactly once")
 

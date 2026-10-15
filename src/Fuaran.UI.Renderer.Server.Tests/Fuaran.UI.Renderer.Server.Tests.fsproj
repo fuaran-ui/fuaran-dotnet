@@ -81,6 +81,8 @@
     <Compile Include="RendererAgreementTests.fs" />
     <!-- Phase 2070 — the shared pure renderer modules: field rules, the grid and tree models. -->
     <Compile Include="SharedRendererModulesTests.fs" />
+    <!-- Phase 2108 — the server half of the element-plan fixtures. -->
+    <Compile Include="ElementPlanServerTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
