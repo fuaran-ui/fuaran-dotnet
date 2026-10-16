@@ -26,6 +26,17 @@ open Fuaran.UI.OpStream.Dag.Abstractions
 //  cell the walk attributes is now correct per-cell; a cell it cannot is no
 //  worse than the tip-based default it already used.
 //
+//  The vertical ops under-attribute the same way, from the other side (Phase
+//  2004). When one branch removes an ancestor of a node the other branch edited,
+//  `TreeMerge` refuses at the removed ancestor's `node` cell, and the editing
+//  side's author of THAT cell is the branch tip: a vertical op names only its
+//  own node's cells, never the ancestors it was written under, so a `Primary`
+//  edit discarded with the subtree is reported unpinned when the tip is
+//  `Secondary`. No cell of the removed node is ever attributed — the merge
+//  refuses before it reaches one — so the walk never names a writer of a node
+//  the merged tree does not hold. Naming the ancestors needs the tree, which
+//  `cellsOf` does not have.
+//
 //  Determinism: precedence is read from the classifier + DAG topology only — NO
 //  wall-clock anywhere (clocks are confined to leases / retention grace, never
 //  the merge-identity path).

@@ -152,35 +152,59 @@ let mkLeafText (id: string) (text: string) : EqNode =
 
 let mkLeaf (id: string) : EqNode = mkLeafText id ""
 
+/// A Metric leaf, the kind every vertical op's corpus fixture targets. Copied from
+/// `CoreLawSupport.mkMetric`.
+let mkMetric (id: string) : EqNode =
+    let json =
+        """{"id":"%ID%","kind":{"$type":"Metric","format":{"$type":"Currency","code":"GBP"},"icon":"trending-up","label":"Revenue","subtext":"vs last month","tone":"Brand","trend":{"$type":"Static","value":0.07},"trendFormat":{"$type":"Percent","decimals":1},"value":{"$type":"Static","value":1234.5}}}"""
+            .Replace("%ID%", id)
+
+    match JsonDecode.decodeNodeObj json with
+    | Ok n -> wrap n
+    | Error e -> failwithf "mkMetric %s: %A" id e
+
+/// The five vertical ops aimed at `target`, from the corpus fixtures' payloads (Phase 2004). Copied
+/// from `CoreLawSupport.verticalOps`.
+let verticalOps (NodeId target) : (string * TreeOp<obj>) list =
+    [ "EditNode", """{"$type":"EditNode","newKind":{"$type":"Markdown","text":"Edited"},"target":"%T%"}"""
+      "UpdateProp", """{"$type":"UpdateProp","path":"Label","target":"%T%","value":"Updated revenue"}"""
+      "UpdateStyle",
+      """{"$type":"UpdateStyle","style":{"emphasis":"Loud","tone":"Success","weight":"Spacious"},"target":"%T%"}"""
+      "UpdateState",
+      """{"$type":"UpdateState","state":{"onLoading":{"id":"skel-%T%","kind":{"$type":"Skeleton","rows":3}}},"target":"%T%"}"""
+      "ReplaceBinding",
+      """{"$type":"ReplaceBinding","binding":{"$type":"Static","value":99.5},"slot":"Value","target":"%T%"}""" ]
+    |> List.map (fun (name, json) ->
+        match JsonDecode.decodeOp (json.Replace("%T%", target)) with
+        | Ok op -> name, op
+        | Error e -> failwithf "verticalOps %s on %s: %A" name target e)
+
 // ---------------------------------------------------------------------------
 //  the tier's own footprint projection over its own op algebra
 // ---------------------------------------------------------------------------
 //
 //  Copied from `CoreLawSupport.footprintOfTreeOp` — the address set of one `TreeOp`, total over
-//  the DU: the structural five delegate to `Fuaran.Core.Ops.footprint`, and a vertical op is a
-//  content write on the node it rewrites plus a read of it.
+//  the DU: the structural five delegate to `Fuaran.Core.Ops.footprint`, and a vertical op carries
+//  Core's `UpdateNode` footprint: a read, a content write and an unknown-parent write of the node it
+//  rewrites (Phase 2004 — without the third term an edit and a concurrent removal of the edited
+//  node's ancestor read as independent and do not commute).
 //
 //  It is not asserted directly. `FoldConfluence.laneFoldLawsAt` is instantiated with it below, so
 //  the fold-confluence claim is made about THIS function.
 
 let private emptyFp: Fuaran.Core.Footprint = Fuaran.Core.Footprint.empty
 
-let private unionFp (a: Fuaran.Core.Footprint) (b: Fuaran.Core.Footprint) : Fuaran.Core.Footprint =
-    { Reads = Set.union a.Reads b.Reads
-      StructureWrites = Set.union a.StructureWrites b.StructureWrites
-      ContentWrites = Set.union a.ContentWrites b.ContentWrites
-      UnknownParentWrites = Set.union a.UnknownParentWrites b.UnknownParentWrites
-      SlotReads = Set.union a.SlotReads b.SlotReads
-      SlotWrites = Set.union a.SlotWrites b.SlotWrites }
+let private unionFp: Fuaran.Core.Footprint -> Fuaran.Core.Footprint -> Fuaran.Core.Footprint =
+    Fuaran.Core.Footprint.union
 
 let private skeletonFp (op: Fuaran.Core.SkeletonOp<EqNode, NodeId>) : Fuaran.Core.Footprint =
     Fuaran.Core.Ops.footprint nodew idw [ op ]
 
-/// A vertical op rewrites one node's own content in place.
-let private contentWrite (NodeId raw) : Fuaran.Core.Footprint =
-    { emptyFp with
-        Reads = Set.singleton raw
-        ContentWrites = Set.singleton raw }
+/// A vertical op rewrites one node in place, under a parent it cannot name: Core's `UpdateNode`
+/// footprint over the unkeyed engine — `Reads{id}`, `ContentWrites{id}`, `UnknownParentWrites{id}`.
+let private verticalWrite (NodeId raw) : Fuaran.Core.Footprint =
+    { Fuaran.Core.Footprint.contentEdit raw with
+        UnknownParentWrites = Set.singleton raw }
 
 /// `ReplaceRoot` is the one case with no honest finite address set — it rewrites the whole tree,
 /// so declaring anything for it would let the reconciler call it independent of an op it certainly
@@ -197,7 +221,7 @@ let rec footprintOfTreeOp (op: TreeOp<obj>) : Fuaran.Core.Footprint =
     | TreeOp.UpdateStyle(id, _)
     // Phase 2291: node-content precision here; the slot-precise `slotEdit id "style.<field>"` is Phase 2292's.
     | TreeOp.PatchStyle(id, _)
-    | TreeOp.UpdateState(id, _) -> contentWrite id
+    | TreeOp.UpdateState(id, _) -> verticalWrite id
     | TreeOp.Batch inner -> inner |> List.fold (fun acc o -> unionFp acc (footprintOfTreeOp o)) emptyFp
     | TreeOp.ReplaceRoot _ ->
         failwith
@@ -294,28 +318,51 @@ let tones = [| ToneVariant.Brand; ToneVariant.Success; ToneVariant.Critical |]
 let styleOp (id: NodeId) (tone: ToneVariant) : TreeOp<obj> =
     TreeOp.UpdateStyle(id, { Defaults.style with Tone = tone })
 
-/// One writer's lane off the shared base — the four shapes of `CoreLawSupport.genLane`, drawn from
-/// the portable source above rather than the kit's. Chosen so that two independently drawn lanes
-/// reach BOTH adequacy classes the fold-confluence pack demands: lanes that touch the same child
-/// (or both append under `root`) must HALT identically under every arrival order, and lanes that
-/// touch different children must FOLD to one state hash.
+/// The lane families' base (Phase 2004), copied from `CoreLawSupport.laneBase`: two containers under
+/// the root, one holding a further container, so a lane can remove an ancestor of a leaf another lane
+/// edits.
+let laneBase =
+    mkBox
+        "root"
+        [ mkBox "a" [ mkMetric "a0"; mkBox "ab" [ mkMetric "ab0" ] ]
+          mkBox "b" [ mkMetric "b0" ] ]
+
+let private laneLeaves = [| NodeId "a0"; NodeId "ab0"; NodeId "b0" |]
+
+let private laneParents = [| NodeId "root"; NodeId "a"; NodeId "ab"; NodeId "b" |]
+
+let private laneAncestors = [| NodeId "a"; NodeId "ab"; NodeId "b" |]
+
+/// One writer's lane off `laneBase` — the four weighted shapes of `CoreLawSupport.genLane`, drawn from
+/// the portable source above rather than the kit's: a vertical edit of a leaf, or that edit and a
+/// restyle of the same leaf (3 in 8); an insert under any container (4 in 8 — inserts under different
+/// parents are the fold class); a removal of a container, an ancestor of one or two leaves (1 in 8).
 let private genLane () : TreeOp<obj> list =
-    let shape = PortableRng.below 4
+    let shape = PortableRng.below 8
     let k = PortableRng.below 3
-    let t = PortableRng.below 3
+    let e = PortableRng.below 5
+
+    let edit () =
+        verticalOps laneLeaves[k] |> List.item e |> snd
 
     match shape with
-    | 0 -> [ styleOp childIds[k] tones[t] ]
-    | 1 ->
+    | 0
+    | 1 -> [ edit () ]
+    | 2 ->
         // Two ops on the SAME node: a lane applies in order, so this stays applyable while still
         // colliding with any other lane that touches that node.
-        let t2 = PortableRng.below 3
-        [ styleOp childIds[k] tones[t]; styleOp childIds[k] tones[t2] ]
-    | 2 -> [ TreeOp.InsertChild(NodeId "root", unwrap (mkLeaf ("l" + string (PortableRng.below 1000)))) ]
-    | _ -> [ TreeOp.RemoveNode childIds[k] ]
+        let t = PortableRng.below 3
+        [ edit (); styleOp laneLeaves[k] tones[t] ]
+    | 3
+    | 4
+    | 5
+    | 6 ->
+        let p = PortableRng.below 4
+        [ TreeOp.InsertChild(laneParents[p], unwrap (mkLeaf ("l" + string (PortableRng.below 1000)))) ]
+    | _ -> [ TreeOp.RemoveNode laneAncestors[k] ]
 
 let laneGen: Fuaran.Core.LaneGen<EqOp, EqNode> =
-    { State0 = baseTree
+    { State0 = laneBase
       // Sits in the base closure — never applied, only content-addressed.
       BaseOp = wrapOp (TreeOp.Batch [])
       Lanes =
