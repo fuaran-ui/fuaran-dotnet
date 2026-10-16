@@ -1183,6 +1183,17 @@ let decoderSubstrateTests =
 //  The test goes RED when the blocker clears — the collecting section stops
 //  naming `decT`, or starts binding it — which is the signal to re-open the
 //  layering (2040.t3/t4) on this evidence.
+//
+//  Phase 2255 (2026-10-17) re-checked the blocker and found it cleared in Core
+//  but not here. fuaran-core#460 shipped (Core commit 3cbed31): the collecting
+//  emitter now binds `let dec<V> (__j: JVal) = cFirst (col<V> __j)` per type
+//  parameter, so the placeholder compiles unchanged. The first Core release
+//  carrying it is v0.38.1, and this tier pins 0.36.0 under a recorded
+//  `cohort-lag(0.38.1)` (`Directory.Packages.props`; `docs/DECISIONS.md` D19:
+//  the raise is not a pin edit). So this test is GREEN on purpose until that
+//  raise lands; the raise turns it red, and the red is fuaran#2255's start
+//  signal. Do not raise the pin to make it red, and do not delete it to land
+//  the layering: replace it with the layering's parity tests (2255's last task).
 // ============================================================================
 
 [<Tests>]
@@ -1215,9 +1226,9 @@ let collectingDerivationTests =
               Expect.stringContains
                   collecting
                   "identityParse (decT"
-                  "the Local.parse placeholder no longer names `decT` inside the collecting decoders — re-open the layering (fuaran-core#460 landed)"
+                  "the Local.parse placeholder no longer names `decT` inside the collecting decoders — re-open the layering (the pin now carries fuaran-core#460, Core >= 0.38.1)"
 
               Expect.isFalse
                   (collecting.Contains "(decT:" || collecting.Contains "let decT")
-                  "a collecting decoder now binds `decT` — the emission may compile here; re-open the layering (fuaran-core#460 landed)"
+                  "a collecting decoder now binds `decT` — the emission may compile here; re-open the layering (the pin now carries fuaran-core#460, Core >= 0.38.1)"
           } ]
