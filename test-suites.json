@@ -132,6 +132,11 @@
       "note": "Phase 169 — catalog wire-JSON round-trip guard. Compile-links the catalog's Matrix.fs and asserts every entry's canonical JSON decodes back through the canonical decoder, so the \"the JSON shown next to the render is real\" promise is build-time-checked."
     },
     {
+      "project": "src/Fuaran.UI.Design.Tests/Fuaran.UI.Design.Tests.fsproj",
+      "lane": "pure",
+      "note": "Phase 2294 — the design-system bundle's contract over the default, Dark and High-Contrast themes: a card per IDL kind and per stdlib fragment, roles never literal colours, every card opening with its group marker, a stable content hash; with the go-red probes (a kind removed from the sweep, a hex-named Colors token, a foreign marker group). In memory only."
+    },
+    {
       "project": "src/Fuaran.UI.Idl.Tests/Fuaran.UI.Idl.Tests.fsproj",
       "note": "Phase 1181 — the generated-layer drift guard, in-process. Regenerates src/Fuaran.UI/Generated.fs from this repo's own idl.json + support.json through the packaged IDL engine and byte-compares. Reads nothing outside this repo and fails (never skips) if it cannot find its inputs."
     },
