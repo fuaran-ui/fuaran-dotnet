@@ -102,7 +102,17 @@ dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- render-al
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- append-rate 20000
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- tree-diff 20
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- decode-rate 50
+dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- merge-rate 5 1000,5000,20000
+dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- merge-snapshot merges.txt
 ```
+
+`merge-rate` (Phase 2062) prints what a DAG merge costs against the length of the history
+its two branches share: two ten-record branches over a trunk of n records, through the
+LCA alone, the sink entry point, the sink entry point with a checkpoint at the fork, and
+`DagMerge.mergeLookups` over records loaded once. `merge-snapshot` writes one line per
+merge and per LCA over seeded random DAG histories (criss-cross, conflicting, trunk and
+guest cases included), so a change to the merge engine is diffed against the engine it
+replaced.
 
 `tree-diff` (Phase 2063) is not a baseline metric: it prints the cost of `TreeOpDiff.diff`
 over a 2,001-node tree for four single-edit shapes (none, one field, one container field,

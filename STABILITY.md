@@ -7981,6 +7981,101 @@ Additive otherwise. It rides the 0.95.0 draft, which is already breaking.
   before the renderer's depth guard could refuse it. The shared walk is iterative, as the server's already was
   (Phase 781). That changes no fragment set: it only removes a crash.
 
+### What rides this slot — Phase 2062 (merge cost stops growing with shared history; one merge entry point)
+
+**Class: breaking for one construction form, otherwise additive and behaviour-preserving.** It rides the 0.95.0 draft,
+which is already breaking-class, so no number moves. No merge result, conflict envelope, merge-node content address or
+wire byte changes.
+
+- **Breaking: `MergeContext` gains `Policy: MergePolicy<'Msg>`** in `Fuaran.UI.OpStream.Dag.Merge`. A full record
+  literal `{ Attribution = …; Checkpoint = … }` no longer compiles (FS0764). Build from `MergeContext.defaults` with
+  `{ … with … }`, which is what every in-repo caller already does. `defaults` sets `Policy = MergePolicy.lenient`, so
+  it still reproduces the pre-1525 behaviour exactly.
+- **Added: `DagMerge.mergeLookups`**, the one merge. It reads the DAG only through `getRec` and `getParents`, is pure
+  and synchronous, and takes everything else in `MergeContext`. `merge`, `mergeGated`, `mergeGatedWith`,
+  `mergeIntoTrunkWith` and `mergeIntoTrunk` keep their signatures and results. They load the stream and call it.
+  `mergeGatedWith`'s `policy` argument wins over the context's `Policy`. `mergeIntoTrunkWith` now honours the
+  context's `Policy`, where it always merged leniently before. `mergeIntoTrunk` passes `defaults`, so it is unchanged.
+- **Obsolete: `MergeResult.NeedsThreeWayMerge` and `TrunkMergeOutcome.NeedsThreeWayMerge`.** Nothing has constructed
+  either since criss-cross histories became recursive-base merges (Phase 179), yet every exhaustive match had to
+  handle them. Matching one now warns (FS0044), which is an error under `TreatWarningsAsErrors`: delete the arm. The
+  cases are removed at the next breaking slot.
+- **Behaviour, cost only:**
+  - `DagTopology.lca` is a two-colour paint down from both heads. It stops just below the base. Before, it built the
+    full ancestor set of every common ancestor, which was quadratic in the shared history.
+  - A unique-base merge replays the base once, and folds each head only over its own spine above the base. Every
+    replay is memoised by head hash.
+  - The minted node hashes the merged tree once. The encode of the replayed delta that checks it (Phase 1526) stays.
+  - `mergeIntoTrunkWith` loads the stream once per call. A CAS retry fetches only the records the moved trunk added.
+  - `GuestConvergence` answers the merge's lookups over the two streams' records. Its stand-in sink is gone.
+- **Evidence.** `benchmarks/Fuaran.UI.Ops.Benchmarks merge-snapshot` writes the result of every merge and LCA over
+  seeded random DAG histories: 1,000+ merges and LCAs, criss-cross, conflict, fast-forward, checkpoint, trunk and
+  guest cases included. It is byte-identical before and after. `merge-rate` times two ten-record branches over a
+  shared history of n records:
+
+  | n | `lca` before | `lca` after | `merge` (sink) before | `merge` (sink) after | `mergeLookups` + checkpoint after |
+  |---|---|---|---|---|---|
+  | 1,000 | 909 ms, 236 MB | 0.04 ms, 4.7 KB | 1,129 ms | 134 ms | 11 ms, 1.4 MB |
+  | 5,000 | 34,468 ms, 7.3 GB | 0.04 ms, 4.7 KB | 36,538 ms | 291 ms | 5.7 ms, 1.4 MB |
+  | 20,000 | not run (about 117 GB allocated, extrapolated) | 0.02 ms, 3.7 KB | not run | 1,400 ms | 6.7 ms, 1.4 MB |
+  | 100,000 | — | 0.02 ms, 3.7 KB | — | 4,334 ms | 19 ms, 1.4 MB |
+
+  The sink entry points still grow with the stream. That is the sink's `Records` load, which re-verifies every record
+  on read by contract, plus the base replay when no checkpoint bounds it. The merge itself no longer grows.
+  `MergeEntryPointTests` holds the new LCA to the old definition over random DAGs, and counts its walk on a 5,000-record
+  chain.
+### What rides this slot — Phase 2116 (the verified lift from a linear stream to a DAG branch)
+
+**Class: additive.** A new module and new types in `Fuaran.UI.OpStream.Dag.Abstractions`; no existing member
+changes, no hash moves, and no wire byte moves. It rides the 0.95.0 draft without moving it.
+
+- **Added: `DagLift`**, the sanctioned route from a linear stream to a DAG branch.
+  - `DagLift.ofLinearVerified` re-walks the linear segment with `Verify.segment` and refuses a broken one.
+    It then lifts the segment to a genesis-rooted branch.
+  - `DagLift.ofLinearAnchored` is the guest form: the first record hangs off an anchor, an existing DAG node.
+  - `DagLift.describe` renders a refusal.
+  - Both return `Result<LiftedBranch<'Msg>, LiftRefusal>`. `LiftRefusal` is `EmptySegment`, `MixedStreams` or
+    `BrokenLinearSegment`.
+- **Added: `LiftReceipt` and `LiftReceipt.verify`.** The receipt names the linear range: stream id, chain
+  format version, from and to sequence, previous hash and head. It also names the DAG stream id, DAG head and
+  anchor. `verify` recomputes the lift from linear records and returns a `LiftVerdict`.
+  - `Recomputes` carries a `LiftBasis`.
+  - `DoesNotRecompute` carries a `LiftMismatch` naming the first field that parts.
+  - No case is worded as attestation. `CRYPTO.md`, "Lift receipts", says what a receipt proves and what it
+    does not: it is evidence only beside a signed segment attestation over the same linear range.
+- **Unchanged: `DagOpRecord.ofLinear`.** Its signature and output are the same. It is now documented as the
+  UNVERIFIED embedding and shares its fold with the lift, so the two cannot embed differently.
+- **Pinned: lifted addresses are not linear hashes.** The lifted address of each `chain/chain-corpus.json`
+  record is pinned beside its linear chain hash (`DagLiftTests.fs`), through both the in-memory and the SQLite
+  DAG sinks. The two digests are over different pre-images and are never equal.
+### What rides this slot — Phase 2285 (a state arm is fragment scope, as on every host)
+
+**Class: BEHAVIOUR change, no API change.** No type, member signature, defect code or wire byte moves. It rides the
+0.95.0 draft without moving it, because the draft is already at the minor number a consumer-visible fragment-set
+change needs pre-1.0.
+
+The question was which positions are fragment scope. The specification states no rule. fuaran-ts already entered
+`state.onLoading` / `state.onEmpty` for both its fragment walks. This host did not, although its own slot substitution
+and hygienic renaming already did. `FragmentExpansion.collectFragments` and `FragmentExpansion.namespaceIds` now both
+walk `NodeChildren.Reach.fragmentScope`: the kind-held positions plus the two `state` alternatives. The envelope
+`fallback`, a `FragmentRef`'s slot arguments and a `Mount` guest stay outside on every host.
+
+Two effects are consumer-visible:
+
+- **A `FragmentDecl` held in `state.onLoading` or `state.onEmpty` is now registered, so a reference to it resolves.**
+  Before this change, both .NET renderers rendered the unresolved placeholder for such a reference. On a repeated
+  name, the last decl in the walk's canonical order still wins. That order is a container's list, then
+  `state.onLoading` and `state.onEmpty`, then the kind's arms.
+- **State-arm ids inside an expanded fragment body are now prefixed by the referring node**, like every other interior
+  id (`<refId>.<id>`). Before, a body whose node carried `onLoading` / `onEmpty` emitted the arm's bare id once per
+  reference. Two references therefore duplicated it in the DOM, which the specification's id-uniqueness section says
+  expansion namespacing exists to prevent. A consumer selecting an arm node by its bare id inside an expansion now
+  selects `<refId>.<id>`.
+
+The evidence: `FragmentRegistryFixture.parityWire` is one wire document that fuaran-ts's renderer suite asserts
+byte for byte. The client and server agreement tests certify the same registered set and rendered output against it.
+The Phase 2244 every-position tree now lists `in-on-loading` and `in-on-empty` as registered.
+
 ---
 
 ### What rides this slot — Phase 2278 (the remaining kinds move onto the element plan)

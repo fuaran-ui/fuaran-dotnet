@@ -242,6 +242,34 @@ portable surface. The .NET verifier shares one curve check with the segment veri
 carrying a second copy: an algorithm id names one curve, a key size does not identify a curve, and two
 copies of that test are two places for the ends of an id to drift apart.
 
+## Lift receipts — a recomputation, not a signature
+
+`Fuaran.UI.OpStream.Dag.Abstractions/DagLift.fs` (Phase 2116) lifts a linear op-stream segment to a
+DAG branch. `DagLift.ofLinearVerified` and `DagLift.ofLinearAnchored` re-walk the linear segment with
+`Verify.segment` first and refuse a broken one. They return a `LiftReceipt`: the linear stream id,
+chain format version, sequence range, previous hash and head, then the DAG stream id, DAG head and
+anchor. `LiftReceipt.verify` recomputes the lift from the linear records it is handed and compares
+every field.
+
+**What a receipt that recomputes proves.** These linear records re-walk as a chain over the
+receipt's range, from its previous hash to its linear head. Lifted under its anchor, they produce
+its DAG head. That is all. The verdict says so by name, `LiftVerdict.Recomputes` with a
+`LiftBasis.RecomputedFromLinearRecords` basis, and no case is worded as attestation.
+
+**What it does not prove.** Who wrote the records, who wrote the receipt, or that either is the
+original. Both hashes are the unkeyed digests described above, and no cryptography was added for
+the lift. Anyone who can write the linear records can recompute a matching receipt, exactly as they
+can re-chain the store. For a segment starting above sequence 1, the receipt's previous hash is
+also only as trustworthy as wherever it came from.
+
+**When it is evidence.** Only beside a signed segment attestation over the same linear range. The
+receipt's linear half repeats a `SegmentDescriptor`'s fields: stream id, chain format version, range,
+previous hash and head. When `Evidence.verify` returns `Attested` for those records and the receipt
+recomputes from them with every linear field equal to the descriptor's, the DAG head is bound to an
+attested linear head. The signature supplies the authorship claim; the receipt contributes only the
+arithmetic linking the two heads. A receipt standing alone has the same strength as the chain:
+corruption detection, not tamper evidence.
+
 ## Why one pure-F# implementation, not the BCL on .NET
 
 `System.Security.Cryptography` does not exist under Fable (the browser/JS target), so the browser host

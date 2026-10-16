@@ -425,3 +425,60 @@ let fragmentRegistry =
                    |> List.map fst)
                   "the server resolves what the one walk registers, and nothing else"
           } ]
+
+// ─── Phase 2285 — a state arm is fragment scope ─────────────────────────────
+//
+// The parity document (`FragmentRegistryFixture.parityWire`) is the same wire
+// JSON fuaran-ts's renderer suite asserts, so the server certifies the answer
+// both hosts give: a decl in `state.onLoading` / `state.onEmpty` resolves, a
+// decl under the envelope `fallback` or in a slot argument does not.
+
+[<Tests>]
+let fragmentScope =
+    testList
+        "Phase 2285 — the server renders the fragment-scope parity document as every host does"
+        [ test "a reference to a state-arm decl expands under its own namespaced ids" {
+              let html = Render.renderStatic Fuaran.UI.Tests.FragmentRegistryFixture.parityTree
+
+              for id in Fuaran.UI.Tests.FragmentRegistryFixture.parityExpandedIds do
+                  Expect.equal (count (idAttr id) html) 1 (sprintf "%s is emitted once" id)
+
+              for name in Fuaran.UI.Tests.FragmentRegistryFixture.parityRegistered do
+                  Expect.isFalse
+                      (contains (sprintf "data-fuaran-fragment-unresolved=\"%s\"" name) html)
+                      (sprintf "'%s' resolves" name)
+          }
+
+          test "a decl under the envelope fallback or in a slot argument stays unresolved" {
+              let html = Render.renderStatic Fuaran.UI.Tests.FragmentRegistryFixture.parityTree
+
+              for name in Fuaran.UI.Tests.FragmentRegistryFixture.parityUnresolved do
+                  Expect.isTrue
+                      (contains (sprintf "data-fuaran-fragment-unresolved=\"%s\"" name) html)
+                      (sprintf "'%s' is outside fragment scope" name)
+          }
+
+          test
+              "id uniqueness (spec 8.1): a body whose state arm renders, referenced twice, emits that arm's ids once per ref" {
+              // The body is a chart whose source is unresolved, so each expansion
+              // renders its `state.onLoading` node in place of the chart.
+              let tree =
+                  Fuaran.dashboard
+                      "loading-page"
+                      { Defaults.dashboard<obj> with
+                          Children =
+                              [ Fuaran.fragmentDecl
+                                    "decl-loading-chart"
+                                    { Defaults.fragmentDecl<obj> with
+                                        Name = "loading-chart"
+                                        Body = chart None }
+                                Fuaran.fragmentRef "r1" "loading-chart"
+                                Fuaran.fragmentRef "r2" "loading-chart" ] }
+
+              let html = Render.renderStatic tree
+
+              Expect.equal (count "CHART-LOADING" html) 2 "both refs render the loading arm"
+              Expect.equal (count (idAttr "r1.ld") html) 1 "the first copy is namespaced under its ref"
+              Expect.equal (count (idAttr "r2.ld") html) 1 "the second copy is namespaced under its ref"
+              Expect.isFalse (contains (idAttr "ld") html) "no copy keeps the bare arm id"
+          } ]

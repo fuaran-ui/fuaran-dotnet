@@ -302,6 +302,27 @@ module DagOpRecord =
           ResultEnvelope = resultEnvelope
           Tombstoned = false }
 
+    /// The one linear-to-DAG embedding fold: each linear record becomes a
+    /// one-parent DAG node whose parent is the prior DAG node's content hash;
+    /// the FIRST node's parents are `firstParents` (`[]` for a genesis, `[ anchor ]`
+    /// for a branch hung off an existing node). Shared by `ofLinear` and the
+    /// verified lift (`DagLift`), so the two cannot embed differently.
+    let internal embedLinear<'Msg> (firstParents: string list) (records: OpRecord<'Msg> list) : DagOpRecord<'Msg> list =
+        records
+        |> List.fold
+            (fun (acc: DagOpRecord<'Msg> list) (r: OpRecord<'Msg>) ->
+                let parents =
+                    match acc with
+                    | [] -> firstParents
+                    | head :: _ -> [ head.Hash ]
+
+                // The linear record's TYPED actor carries over WHOLE (Phase 1144),
+                // so the embedding preserves attribution exactly.
+                create r.StreamId parents r.Op r.PromptId r.Actor r.Timestamp r.ResultEnvelope
+                :: acc)
+            []
+        |> List.rev
+
     /// Embed a *linear* `OpRecord<'Msg>` history as a single-parent DAG: each
     /// record becomes a one-parent DAG node whose parent is the prior DAG
     /// node's content hash (`[]` for the first). The op payloads + timestamps
@@ -311,25 +332,11 @@ module DagOpRecord =
     /// equal the linear `OpRecord.Hash` values — the linear hash folds in
     /// `Sequence`, which the DAG omits), but the chain is fully verifiable via
     /// `DagVerify.chain`.
-    let ofLinear<'Msg> (records: OpRecord<'Msg> list) : DagOpRecord<'Msg> list =
-        records
-        |> List.fold
-            (fun (acc: DagOpRecord<'Msg> list) (r: OpRecord<'Msg>) ->
-                let parents =
-                    match acc with
-                    | [] -> []
-                    | head :: _ -> [ head.Hash ]
-
-                let dag =
-                    // The linear record's TYPED actor carries over WHOLE (Phase 1144).
-                    // Until then the DAG held a bare-string `UserId`, so this call
-                    // projected the actor down to `Actor.id` and the Human/Agent
-                    // distinction was lost in the embedding — a lossy step in the one
-                    // direction the degenerate-equivalence contract is supposed to be
-                    // faithful. Both records now fold the same `Actor.encode` bytes,
-                    // so the embedding preserves attribution exactly.
-                    create r.StreamId parents r.Op r.PromptId r.Actor r.Timestamp r.ResultEnvelope
-
-                dag :: acc)
-            []
-        |> List.rev
+    ///
+    /// **The UNVERIFIED form.** It does not check the linear chain it embeds:
+    /// a broken or re-ordered linear segment is embedded as faithfully as a
+    /// sound one, and the result verifies as a DAG. The sanctioned route from a
+    /// linear stream to a DAG branch is `DagLift.ofLinearVerified` /
+    /// `DagLift.ofLinearAnchored`, which refuse a broken segment and return a
+    /// `LiftReceipt` anyone can recompute.
+    let ofLinear<'Msg> (records: OpRecord<'Msg> list) : DagOpRecord<'Msg> list = embedLinear [] records

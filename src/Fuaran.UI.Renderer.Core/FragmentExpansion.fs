@@ -207,10 +207,12 @@ let refPrefix (refNodeId: string) : string = refNodeId + "."
 /// referenced fragment emitted duplicate DOM ids under SSR and different ids
 /// from the client, which a hydrating client then disagreed with.
 ///
-/// It descends `NodeChildren.Reach.kindHeld` — the ordered child lists, a
-/// `FragmentDecl` body, the `ErrorBoundary` arms and every `Switch` case and
-/// default — and nothing else: an envelope alternative (`state.onLoading`,
-/// `state.onEmpty`, `fallback`) and a slot argument keep their ids, a `Mount`
+/// It descends `NodeChildren.Reach.fragmentScope` — the ordered child lists, a
+/// `FragmentDecl` body, the `ErrorBoundary` arms, every `Switch` case and
+/// default, and the two `state` alternatives (`state.onLoading`,
+/// `state.onEmpty`), which render in place of their node and so must be
+/// DOM-unique across two references to one body (Phase 2285, §8.1). Nothing
+/// else: the envelope `fallback` and a slot argument keep their ids, a `Mount`
 /// guest is its own scope, and nothing under a `Tree` is a `Node`. Bindings,
 /// `Custom` props and accessibility references are not id-bearing here and are
 /// left alone.
@@ -218,7 +220,7 @@ let refPrefix (refNodeId: string) : string = refNodeId + "."
 /// Uncached; the renderers reach it through `expandNamespaced`.
 let rec namespaceIds<'Msg> (prefix: string) (node: Node<'Msg>) : Node<'Msg> =
     let held, put =
-        Fuaran.UI.NodeChildren.lens Fuaran.UI.NodeChildren.Reach.kindHeld node
+        Fuaran.UI.NodeChildren.lens Fuaran.UI.NodeChildren.Reach.fragmentScope node
 
     let rebuilt =
         match held with
@@ -244,21 +246,23 @@ let expandNamespaced<'Msg> (prefix: string) (body: Node<'Msg>) : Node<'Msg> =
 ///
 /// The enumeration, decided once here:
 ///
-/// - WHICH children: `NodeChildren.Reach.kindHeld` — every container's ordered
-///   child list, a `FragmentDecl`'s body, both `ErrorBoundary` arms, and every
-///   `Switch` case child and its default. The same reach `namespaceIds` above
-///   rewrites through, so a decl is registered exactly where an expansion would
-///   namespace it.
-/// - WHICH are not entered: the envelope alternatives (`state.onLoading`,
-///   `state.onEmpty`, `fallback`), which render INSTEAD of their node; a
-///   `FragmentRef`'s slot arguments and a `Mount`'s inputs, which belong to the
-///   scope they are passed into; and a `Mount` guest, which is a separate scope
-///   with its own fragment table resolved by its own loader. A decl in any of
-///   those places is not in the registry.
+/// - WHICH children: `NodeChildren.Reach.fragmentScope` — every container's
+///   ordered child list, a `FragmentDecl`'s body, both `ErrorBoundary` arms,
+///   every `Switch` case child and its default, and `state.onLoading` /
+///   `state.onEmpty`, which render in place of their node and so can declare
+///   fragments too (Phase 2285: the same answer as every other host). The same
+///   reach `namespaceIds` above rewrites through, so a decl is registered
+///   exactly where an expansion would namespace it.
+/// - WHICH are not entered: the envelope `fallback`; a `FragmentRef`'s slot
+///   arguments and a `Mount`'s inputs, which belong to the scope they are
+///   passed into; and a `Mount` guest, which is a separate scope with its own
+///   fragment table resolved by its own loader. A decl in any of those places
+///   is not in the registry.
 /// - IN WHICH ORDER: pre-order, children left to right in `NodeChildren`'s
-///   canonical order (a container's list; an `ErrorBoundary`'s child before its
-///   fallback; `Switch` cases in declaration order, then the default). A decl is
-///   registered before anything inside its body.
+///   canonical order (a container's list, then `state.onLoading` and
+///   `state.onEmpty`, then the kind's arms: an `ErrorBoundary`'s child before
+///   its fallback, `Switch` cases in declaration order, then the default). A
+///   decl is registered before anything inside its body.
 /// - ON A REPEATED NAME: the LAST decl in that order wins. Validator FUARAN056
 ///   refuses duplicate names, so this only decides already-invalid trees; it is
 ///   stated so both renderers decide them the same way.
@@ -283,7 +287,7 @@ let collectFragments<'Key, 'Msg when 'Key: comparison>
         | _ -> ()
 
         pending <-
-            Fuaran.UI.NodeChildren.children Fuaran.UI.NodeChildren.Reach.kindHeld current
+            Fuaran.UI.NodeChildren.children Fuaran.UI.NodeChildren.Reach.fragmentScope current
             @ List.tail pending
 
     result
