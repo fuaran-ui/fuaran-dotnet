@@ -40,28 +40,46 @@ records are read, never written, and the DAG records are addressed exactly as an
 `DagOpRecord.ofLinear` remains as the unverified embedding, for callers that have already verified the
 segment and want no receipt.
 
-## Why is the UI's DAG separate from `Fuaran.Core.OpStream.Dag`?
+## Where the UI's DAG stands relative to `Fuaran.Core.OpStream.Dag`
 
-`Fuaran.Core` ships a **minimal** op-DAG whose node identity is essentially
-`hash(parents-joined , actor+op)`. `Fuaran.UI.OpStream.Dag` does *not* build on it, and that is a
-considered verdict – the two DAGs share the `TreeOp` / stream-witness vocabulary but own genuinely
-different *temporal-graph identity*. The UI DAG needs four things the Core DAG deliberately does not
-model:
+Today `Fuaran.UI.OpStream.Dag` does *not* build on Core's op-DAG: it mints its own content address,
+walks its own topology, verifies its own records, and merges with its own tree-level 3-way engine.
+That separation was a considered verdict (the "F15" verdict, Phase 408), and the four reasons it gave
+were re-examined against Core on 2026-10-16 (Phase 2289). The honest account is now this:
 
-1. **Merge-outcome identity (the load-bearing property).** A UI merge node's content address folds
-   the **outcome tree's hash** under a `"merge"` tag: *two hosts agree iff they reach the same tree*.
-   Core's node hash has no concept of a merge outcome.
-2. **Order-independent merge identity.** The UI DAG sorts a merge node's parents lexicographically, so
-   `merge(A, B)` and `merge(B, A)` are the same node. Core joins parents in author order.
-3. **Retention + tombstones.** The UI DAG models pruning history (`DagRetention`, tombstones) for
-   long-lived collaborative streams. Core models neither.
-4. **A tree-aware 3-way merge engine.** The UI DAG carries the merge machinery (`.Dag.Merge`); Core's
-   DAG is pure graph topology + a minimal node hash.
+1. **Merge-outcome identity.** A UI merge node's content address folds the **outcome tree's hash**
+   under a `"merge"` tag, not the path that reached it. Core's node id is a hash over the sorted
+   parents, the actor and the *encoded op*, generic over the op, so the same identity is expressible
+   on Core as an op carrying the outcome hash and the record's provenance. This was never a reason to
+   stay apart.
+2. **Order-independent merge identity.** Both DAGs sort a merge node's parents before hashing, so
+   `merge(A, B)` and `merge(B, A)` are one node in either. An earlier version of this document said
+   Core joined parents in author order; that was wrong. Core goes further than the UI did: two
+   arrivals of an equal node (parents compared as a set, same actor, same op) are deduplicated rather
+   than refused, which is the rule Phase 2289 adopts here.
+3. **Retention.** Core has a position-sealed checkpoint with compaction, and names the nodes no
+   retained root needs (`prunable`). What Core has no notion of is an in-graph **tombstone**, a node
+   whose payload is withheld while its address stays; Core's verifier recomputes every node's id. A
+   pruned branch's skeleton is therefore a host-side record beside the verified live set, not a node
+   in it.
+4. **The merge model — the one genuine difference, and the one being retired.** A UI merge node
+   *asserts* an outcome and carries a replay delta from its primary parent; replay follows one spine,
+   and nothing on the read path checks the assertion against the secondary parent. Core *derives*
+   state by folding a head's whole ancestor closure in a deterministic order, and refuses deltas that
+   interfere. Measured over the merge-conformance corpus and 18,597 generated triads, Core's fold
+   derives none of the UI merge's refusals and, once style edits carry the field they change and the
+   footprints are precise, 94.5% of its auto-merges; the remainder is an agreement the reconciler can
+   drop, a child-order convention, or a resolution the UI should not have made (a move winning over a
+   concurrent removal that the same engine refuses against an edit).
 
-Growing the Core DAG to fit these would burden every other (non-branching) Core adopter with
-UI-specific merge semantics. The right boundary is: **Core owns the generic tree/op/stream spine; the
-branching, merging, retention-bearing op-DAG is a UI-domain concern that reuses that spine's
-vocabulary but keeps its own identity.** (Internally this is tracked as the "F15" verdict.)
+**Direction.** The UI DAG converges onto Core's. First, with no stored byte moving, the UI adopts
+Core's node-identity rule for order-swapped merges (Phase 2289). Then, at an announced breaking cut,
+the UI DAG becomes Core's DAG over a UI op envelope: Core's `nodeId` is the address, Core's fold is
+the replay, Core's checkpoints and `prunable` are the retention, and the tree-level 3-way merge is
+removed in favour of Core's conflict report consumed by a thin UI reconciliation policy (a footprint
+projection, one rule for concurrent inserts under one parent, the validator gate on the derived
+tree). Until that cut ships, the two DAGs remain two implementations, and this document describes
+the current one.
 
 What *did* transfer regardless: the provenance-hardening applied to the linear chain (folding the
 prompt id / actor / result outcome into the content hash, and delimiting the pre-image) was applied to
@@ -74,6 +92,6 @@ unkeyed, so it is not evidence against a writer who re-chains – see [`../CRYPT
 - One stream, one writer → **linear chain**.
 - A linear stream that must continue as a branch → **lift it** with `DagLift`, never re-read it.
 - Diverging writers that must merge → **branching DAG**.
-- The UI DAG being separate from the Core DAG is a boundary decision (merge-outcome identity, sorted
-  parents, retention, tree-merge), not a half-finished migration – please don't "unify" them without
-  re-opening that decision.
+- The UI DAG is converging onto the Core DAG by decision (identity rule now, the merge model at the
+  announced breaking cut). Until that cut, treat the two as two implementations and do not unify them
+  piecemeal – the migration is one recorded act with a re-mint, not a series of edits.
