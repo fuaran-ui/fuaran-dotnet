@@ -198,7 +198,14 @@ let private vectorBudget =
     // The vocabulary has grown since (43 kinds), which moves the saturation
     // index UP and never down, so the headroom argument is the conservative one
     // — and `FUARAN_FUZZ_VECTORS` is how a soak run re-measures it.
-    let floor' = 4000
+    //
+    // Phase 2300 re-measured it: declaring fifteen fields omit-at-default (the
+    // §3.6 declared-default rule) shifted the draw stream again, and at 4000 and
+    // at 8000 the sample reached NONE of the three refines, so the non-empty
+    // floor below went red for sampling depth and not for a vanished rule. At
+    // 20 000 it reaches one. The budget moves to that figure (~9s for the
+    // three-way case on this machine).
+    let floor' = 20000
 
     match Int32.TryParse(Environment.GetEnvironmentVariable "FUARAN_FUZZ_VECTORS") with
     | true, n when n > floor' -> n

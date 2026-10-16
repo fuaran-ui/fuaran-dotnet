@@ -152,8 +152,7 @@ total row) and a stack (metric + note):
           "heading": "Composite",
           "layout": {
             "$type": "Flex",
-            "direction": "Vertical",
-            "wrap": false
+            "direction": "Vertical"
           },
           "role": "Card"
         }
@@ -199,8 +198,7 @@ total row) and a stack (metric + note):
           ],
           "layout": {
             "$type": "Flex",
-            "direction": "Vertical",
-            "wrap": false
+            "direction": "Vertical"
           },
           "role": "Group"
         }

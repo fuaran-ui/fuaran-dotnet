@@ -2108,6 +2108,24 @@ let private leniencyFamilies: LeniencyFamily list =
           + "read `value`: no renderer, write-back or derivation consulted it once `multiple` was true, "
           + "so dropping it changes nothing a reader can observe. A MALFORMED value is outside the "
           + "domain and still refuses as a malformed binding." }
+      { Name = "Declared defaults written explicitly (the omitted form IS canonical) — Phase 2300"
+        Class = AlreadyCanonical
+        FixtureIds =
+          [ "lenient-2300-declared-default-booleans"
+            "lenient-2300-declared-default-enums"
+            "lenient-2300-declared-default-bindings" ]
+        Evidence =
+          "JUDGEMENT: the §3.6 declared-default rule, applied by Phase 2300 to fifteen fields that "
+          + "were `required` until then. The canonical form is the ABSENT key; the leniency accepts the "
+          + "field written explicitly at its declared default (`\"wrap\":false`, `\"variant\":\"Standard\"`, "
+          + "`\"activeStep\":{\"$type\":\"Static\",\"value\":0}`, `\"dismissable\":true` on a modal, …) and "
+          + "re-encodes without it. Δ bytes is negative on the accepted side, so there is nothing to "
+          + "teach beyond the rule the catalogue states once. TOTAL + LOSS-FREE by construction: every "
+          + "slot is declared `omitDefault` in the IDL, so absence and the explicit default denote the "
+          + "same value and the normalisation cannot lose one — the same judgement as the FragmentDecl "
+          + "family above, at fifteen more slots. One vector per family (booleans and the empty list, "
+          + "enum cases, binding initial values) because the three value shapes exercise three arms of "
+          + "the generated omit test." }
       { Name = "Tagged Static at an I18n argument slot (Phase 1661)"
         Class = AlreadyCanonical
         FixtureIds = [ "lenient-1661-i18n-arg-tagged-static" ]

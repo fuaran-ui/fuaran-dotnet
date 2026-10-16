@@ -85,7 +85,7 @@ three:
 
 <!-- fuaran:example fixture=composite-root -->
 ```json
-{"id":"composite-root","kind":{"$type":"Box","children":[{"id":"composite-card","kind":{"$type":"Box","children":[{"id":"metric-2","kind":{"$type":"Metric","format":{"$type":"Currency","code":"GBP"},"icon":"trending-up","label":"Revenue","subtext":"vs last month","tone":"Brand","trend":{"$type":"Static","value":0.07},"trendFormat":{"$type":"Percent","decimals":1},"value":{"$type":"Static","value":1234.5}}},{"id":"lvr-1","kind":{"$type":"LabelValueRow","emphasis":true,"format":{"$type":"Number","decimals":2},"help":"Last 30 days","label":"Total","value":{"$type":"Static","value":42}}}],"heading":"Composite","layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Card"}},{"id":"stack-1","kind":{"$type":"Box","children":[{"id":"metric-1","kind":{"$type":"Metric","format":{"$type":"Currency","code":"GBP"},"icon":"trending-up","label":"Revenue","subtext":"vs last month","tone":"Brand","trend":{"$type":"Static","value":0.07},"trendFormat":{"$type":"Percent","decimals":1},"value":{"$type":"Static","value":1234.5}}},{"id":"markdown-1","kind":{"$type":"Markdown","text":"Updated hourly."}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}],"layout":{"$type":"Auto"},"role":"Dashboard"}}
+{"id":"composite-root","kind":{"$type":"Box","children":[{"id":"composite-card","kind":{"$type":"Box","children":[{"id":"metric-2","kind":{"$type":"Metric","format":{"$type":"Currency","code":"GBP"},"icon":"trending-up","label":"Revenue","subtext":"vs last month","tone":"Brand","trend":{"$type":"Static","value":0.07},"trendFormat":{"$type":"Percent","decimals":1},"value":{"$type":"Static","value":1234.5}}},{"id":"lvr-1","kind":{"$type":"LabelValueRow","emphasis":true,"format":{"$type":"Number","decimals":2},"help":"Last 30 days","label":"Total","value":{"$type":"Static","value":42}}}],"heading":"Composite","layout":{"$type":"Flex","direction":"Vertical"},"role":"Card"}},{"id":"stack-1","kind":{"$type":"Box","children":[{"id":"metric-1","kind":{"$type":"Metric","format":{"$type":"Currency","code":"GBP"},"icon":"trending-up","label":"Revenue","subtext":"vs last month","tone":"Brand","trend":{"$type":"Static","value":0.07},"trendFormat":{"$type":"Percent","decimals":1},"value":{"$type":"Static","value":1234.5}}},{"id":"markdown-1","kind":{"$type":"Markdown","text":"Updated hourly."}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}],"layout":{"$type":"Auto"},"role":"Dashboard"}}
 ```
 <!-- /fuaran:example -->
 
@@ -99,7 +99,7 @@ request names a control's starting value, that control arrives PRE-FILLED** — 
 
 <!-- fuaran:example fixture=composite-tabs-panels -->
 ```json
-{"id":"composite-tabs-panels","kind":{"$type":"Tabs","activeTag":{"$type":"Static","value":"overview"},"children":[{"id":"overview-panel","kind":{"$type":"Box","children":[{"id":"spark-1","kind":{"$type":"Sparkline","source":{"$type":"Static","value":[1,2,3,2,4]}}},{"id":"badge-1","kind":{"$type":"Badge","label":"Beta","variant":"Info"}}],"heading":"This month","layout":{"$type":"Grid","cols":2,"gap":16},"role":"Card"}},{"id":"settings-panel","kind":{"$type":"Box","children":[{"id":"preferences-form","kind":{"$type":"Form","fields":[{"id":"displayName","kind":{"$type":"Text","value":{"$type":"Static","value":"Ada Lovelace"}},"label":"Display name","required":true},{"id":"theme","kind":{"$type":"Choice","options":{"$type":"Static","value":[{"label":"Light","value":"light"},{"label":"Dark","value":"dark"}]},"value":{"$type":"Static","value":"dark"}},"label":"Theme","required":true}],"onSubmit":{"$type":"Call","endpoint":"/api/preferences"},"submitLabel":"Save preferences"}}],"heading":"Preferences","layout":{"$type":"Flex","direction":"Vertical","gap":12,"wrap":false},"role":"Card"}}],"tabHeaders":[{"icon":"chart-glyph","label":"Overview"},{"disabled":{"$type":"Static","value":false},"label":"Settings"}],"tabTags":["overview","settings"]}}
+{"id":"composite-tabs-panels","kind":{"$type":"Tabs","activeTag":{"$type":"Static","value":"overview"},"children":[{"id":"overview-panel","kind":{"$type":"Box","children":[{"id":"spark-1","kind":{"$type":"Sparkline","source":{"$type":"Static","value":[1,2,3,2,4]}}},{"id":"badge-1","kind":{"$type":"Badge","label":"Beta","variant":"Info"}}],"heading":"This month","layout":{"$type":"Grid","cols":2,"gap":16},"role":"Card"}},{"id":"settings-panel","kind":{"$type":"Box","children":[{"id":"preferences-form","kind":{"$type":"Form","fields":[{"id":"displayName","kind":{"$type":"Text","value":{"$type":"Static","value":"Ada Lovelace"}},"label":"Display name","required":true},{"id":"theme","kind":{"$type":"Choice","options":{"$type":"Static","value":[{"label":"Light","value":"light"},{"label":"Dark","value":"dark"}]},"value":{"$type":"Static","value":"dark"}},"label":"Theme","required":true}],"onSubmit":{"$type":"Call","endpoint":"/api/preferences"},"submitLabel":"Save preferences"}}],"heading":"Preferences","layout":{"$type":"Flex","direction":"Vertical","gap":12},"role":"Card"}}],"tabHeaders":[{"icon":"chart-glyph","label":"Overview"},{"disabled":{"$type":"Static","value":false},"label":"Settings"}],"tabTags":["overview","settings"]}}
 ```
 <!-- /fuaran:example -->
 
@@ -257,13 +257,13 @@ LayoutKind =
 | Box { children:Node[]; layout:BoxLayout; role:"Group"|"Card"|"Dashboard"|"Separator"; breakBefore?:bool; heading?:TextSource; keepTogether?:bool }
 | SplitPanel { children:Node[]; weight:num }
 | Tabs { children:Node[]; activeIndex?:Binding_int; activeTag?:Binding_str; orientation?:Orientation; tabHeaders?:TabHeader[]; tabTags?:str[] }
-| Stepper { activeStep:Binding_int; children:Node[] }
+| Stepper { children:Node[]; activeStep?:Binding_int }
 | SummaryList { children:Node[]; heading?:TextSource }
-| Disclosure { children:Node[]; defaultOpen:bool; heading:TextSource; open:Binding_bool }
-| Modal { children:Node[]; dismissable:bool; open:Binding_bool; anchor?:str; heading?:TextSource; modality?:"Modal"|"Popover"; onDismiss?:Action }
+| Disclosure { children:Node[]; heading:TextSource; defaultOpen?:bool; open?:Binding_bool }
+| Modal { children:Node[]; open:Binding_bool; anchor?:str; dismissable?:bool; heading?:TextSource; modality?:"Modal"|"Popover"; onDismiss?:Action }
 | ScrollArea { children:Node[]; orientation:"Vertical"|"Horizontal"|"Both"; maxHeight?:int; maxWidth?:int }
 DisplayKind =
-| Heading { level:int; text:TextSource; variant:"Standard"|"Eyebrow"|"Caption"|"Lead" }
+| Heading { level:int; text:TextSource; variant?:"Standard"|"Eyebrow"|"Caption"|"Lead" }
 | Markdown { text:TextSource }
 | Metric { label:TextSource; value:Binding_float; emphasis?:Emphasis; format?:CellFormat; icon?:str; subtext?:TextSource; tone?:ToneVariant; trend?:Binding_float; trendFormat?:CellFormat; trendPolarity?:"HigherIsBetter"|"LowerIsBetter"; weight?:StyleWeight }
 | Badge { label:TextSource; variant:"Neutral"|"Brand"|"Success"|"Warning"|"Critical"|"Info" }
@@ -274,21 +274,21 @@ DisplayKind =
 | Icon { icon:str; label?:str; size?:"Small"|"Medium"|"Large"; tone?:ToneVariant }
 | LabelValueRow { label:TextSource; value:Binding_float; emphasis?:bool; format?:CellFormat; help?:TextSource }
 | Fact { label:TextSource; value:TextSource; emphasis?:bool; help?:TextSource; icon?:str; tone?:ToneVariant }
-| Link { download:bool; href:Binding_str; label:TextSource; protection?:"email"; rel?:str; target?:str }
-| Image { alt:TextSource; src:Binding_str; variant:"Default"|"Avatar"|"Rounded"; aspectRatio?:ImageAspect; caption?:TextSource; expandable?:bool; fit?:"Natural"|"Cover"|"Contain"; loading?:"Eager"|"Lazy"; srcSet?:SrcSetEntry[] }
+| Link { href:Binding_str; label:TextSource; download?:bool; protection?:"email"; rel?:str; target?:str }
+| Image { alt:TextSource; src:Binding_str; aspectRatio?:ImageAspect; caption?:TextSource; expandable?:bool; fit?:"Natural"|"Cover"|"Contain"; loading?:"Eager"|"Lazy"; srcSet?:SrcSetEntry[]; variant?:"Default"|"Avatar"|"Rounded" }
 | Media { kind:MediaKind; label:TextSource; src:Binding_str; controls?:bool; loop?:bool; tracks?:TrackEntry[]; transcript?:TextSource }
 | Embed { src:Binding_str; title:TextSource; aspectRatio?:ImageAspect; permissions?:("AllowScripts"|"AllowSameOrigin"|"AllowForms"|"AllowFullscreen")[] }
 | Tree { items:TreeItem[]; expandedStateKey?:str; selectionStateKey?:str }
-| List { items:TextSource[]; ordered:bool }
+| List { items:TextSource[]; ordered?:bool }
 | Toast { message:TextSource; open:Binding_bool; dismissable?:bool; tone?:ToneVariant }
-| CodeBlock { code:str; copyable:bool; highlightLines:int[]; language:str; lineNumbers:bool }
+| CodeBlock { code:str; language:str; copyable?:bool; highlightLines?:int[]; lineNumbers?:bool }
 | Math { display:"Inline"|"Block"; source:str }
 | Drawing { shapes:Shape[]; style:DrawStyle; viewBox:ViewBox; description?:TextSource; title?:TextSource }
 InputKind =
 | Form { fields:FormField[]; onSubmit:Action; submitLabel:TextSource; disabled?:Binding_bool }
 | Filters { items:FilterSpec[] }
 | Button { label:TextSource; onClick:Action; variant:"Primary"|"Secondary"|"Tertiary"|"Destructive"; disabled?:Binding_bool; icon?:str }
-| FileUpload { accept:str[]; label:TextSource; multiple:bool; acceptPaste?:bool; capture?:"Camera"|"Microphone"; destination?:str; disabled?:Binding_bool; dropTarget?:bool; maxBytes?:int; maxFiles?:int }
+| FileUpload { accept:str[]; label:TextSource; acceptPaste?:bool; capture?:"Camera"|"Microphone"; destination?:str; disabled?:Binding_bool; dropTarget?:bool; maxBytes?:int; maxFiles?:int; multiple?:bool }
 | Select { label:TextSource; source:Binding_list_SelectOption; disabled?:Binding_bool; multiple?:bool; placeholder?:TextSource; value?:Binding_str_choice; values?:Binding_list_str }
 VisKind =
 | DataGrid { columns:ColumnErased[]; source:Binding_hosted; defaultSort?:{ column:int; direction:"asc"|"desc" }; editStateKey?:str; editable?:bool; exportable?:bool; keepRowsTogether?:bool; pageSize?:int; pageStateKey?:str; reorderable?:bool; repeatHeader?:bool; rowKeyField?:str; rowTotal?:Binding_int; sortStateKey?:str; staticRows?:{ headers:TextSource[]; rows:TextSource[][]; defaultSort?:{ column:int; direction:"asc"|"desc" }; sortable?:bool }; transferInKey?:str; transferOutKey?:str; windowStateKey?:str }
@@ -477,7 +477,7 @@ Binding_str_choice =
 | Expr { expr:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:{ addr:str; value:str }[]; capabilityId:str }
 BoxLayout =
-| Flex { direction:Orientation; wrap:bool; gap?:int }
+| Flex { direction:Orientation; gap?:int; wrap?:bool }
 | Grid { cols:int; gap?:int; templateColumns?:str }
 | Masonry { cols:int; gap?:int }
 | Auto
@@ -535,7 +535,7 @@ FormFieldKind =
 | Toggle { value?:Binding_bool }
 | Choice { options:Binding_list_SelectOption; value?:Binding_str_choice }
 | RangedNumber { max?:num; min?:num; step?:num; value?:Binding_float }
-| SegmentedChoice { options:Binding_list_SelectOption; orientation:Orientation; value?:Binding_str_choice }
+| SegmentedChoice { options:Binding_list_SelectOption; orientation?:Orientation; value?:Binding_str_choice }
 | TextArea { rows:int; value?:Binding_str }
 | DateTime { variant:DateTimeVariant; max?:str; min?:str; step?:num; value?:Binding_str }
 | DateTimeRange { variant:DateTimeVariant; max?:str; min?:str; step?:num; value?:any }
@@ -622,7 +622,7 @@ DrawStyle { emphasis?:Emphasis; fill?:Binding_str; fontFamily?:str; fontSize?:nu
 EffectClass { determinism:"Deterministic"|"Clock"|"Random"|"Network"; hostEffect:"Pure"|"ReadsHost"|"WritesHost" }
 FieldRule { compare?:CompareRule; format?:"email"|"url"|"tel"; maxLength?:int; message?:TextSource; minLength?:int; pattern?:str }
 FilterSpec { kind:FormFieldKind; label:TextSource; name:str }
-FormField { id:str; kind:FormFieldKind; label:TextSource; required:bool; help?:TextSource; rule?:FieldRule }
+FormField { id:str; kind:FormFieldKind; label:TextSource; help?:TextSource; required?:bool; rule?:FieldRule }
 GuestChannel { direction:"OutOnly"|"TwoWay"; messageShape?:str }
 MapMarker { label:TextSource; latitude:num; longitude:num }
 SelectOption { label:TextSource; value:str }
@@ -801,7 +801,7 @@ a `Callout` whose body follows the same selection:
 
 <!-- fuaran:example fixture=master-detail-multi-field -->
 ```json
-{"id":"master-detail-multi-field","kind":{"$type":"Box","children":[{"id":"ticket-grid","kind":{"$type":"DataGrid","columns":[{"field":"id","kind":{"$type":"Text"},"label":"Ticket"},{"field":"priority","kind":{"$type":"Text"},"label":"Priority"},{"field":"assignee","kind":{"$type":"Text"},"label":"Assignee"}],"rowKeyField":"id","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"assignee":{"validity":[true,true],"values":["R. Okafor","M. Lindqvist"]},"id":{"validity":[true,true],"values":["TCK-2041","TCK-2042"]},"priority":{"validity":[true,true],"values":["high","low"]}},"schema":[{"name":"id","type":"string"},{"name":"priority","type":"string"},{"name":"assignee","type":"string"}]}}}},{"id":"ticket-detail","kind":{"$type":"Box","children":[{"id":"detail-ticket","kind":{"$type":"Fact","label":"Selected ticket","value":{"$type":"Bound","binding":{"$type":"Selection","defaultValue":"TCK-2041","field":"id","nodeId":"ticket-grid"}}}},{"id":"detail-priority","kind":{"$type":"Fact","label":"Priority","value":{"$type":"Bound","binding":{"$type":"Selection","defaultValue":"TCK-2041","field":"priority","nodeId":"ticket-grid"}}}},{"id":"detail-assignee","kind":{"$type":"Fact","label":"Assignee","value":{"$type":"Bound","binding":{"$type":"Selection","defaultValue":"TCK-2041","field":"assignee","nodeId":"ticket-grid"}}}},{"id":"detail-note","kind":{"$type":"Callout","body":{"$type":"Bound","binding":{"$type":"Selection","defaultValue":"R. Okafor","field":"assignee","nodeId":"ticket-grid"}},"heading":"Assigned to","tone":"Info"}}],"heading":"Ticket detail","layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Card"}}],"layout":{"$type":"Auto"},"role":"Dashboard"}}
+{"id":"master-detail-multi-field","kind":{"$type":"Box","children":[{"id":"ticket-grid","kind":{"$type":"DataGrid","columns":[{"field":"id","kind":{"$type":"Text"},"label":"Ticket"},{"field":"priority","kind":{"$type":"Text"},"label":"Priority"},{"field":"assignee","kind":{"$type":"Text"},"label":"Assignee"}],"rowKeyField":"id","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"assignee":{"validity":[true,true],"values":["R. Okafor","M. Lindqvist"]},"id":{"validity":[true,true],"values":["TCK-2041","TCK-2042"]},"priority":{"validity":[true,true],"values":["high","low"]}},"schema":[{"name":"id","type":"string"},{"name":"priority","type":"string"},{"name":"assignee","type":"string"}]}}}},{"id":"ticket-detail","kind":{"$type":"Box","children":[{"id":"detail-ticket","kind":{"$type":"Fact","label":"Selected ticket","value":{"$type":"Bound","binding":{"$type":"Selection","defaultValue":"TCK-2041","field":"id","nodeId":"ticket-grid"}}}},{"id":"detail-priority","kind":{"$type":"Fact","label":"Priority","value":{"$type":"Bound","binding":{"$type":"Selection","defaultValue":"TCK-2041","field":"priority","nodeId":"ticket-grid"}}}},{"id":"detail-assignee","kind":{"$type":"Fact","label":"Assignee","value":{"$type":"Bound","binding":{"$type":"Selection","defaultValue":"TCK-2041","field":"assignee","nodeId":"ticket-grid"}}}},{"id":"detail-note","kind":{"$type":"Callout","body":{"$type":"Bound","binding":{"$type":"Selection","defaultValue":"R. Okafor","field":"assignee","nodeId":"ticket-grid"}},"heading":"Assigned to","tone":"Info"}}],"heading":"Ticket detail","layout":{"$type":"Flex","direction":"Vertical"},"role":"Card"}}],"layout":{"$type":"Auto"},"role":"Dashboard"}}
 ```
 <!-- /fuaran:example -->
 
@@ -1309,7 +1309,7 @@ row; `Medium` is the default — omit it:
 
 <!-- fuaran:example fixture=empty-state-card -->
 ```json
-{"id":"empty-state-card","kind":{"$type":"Box","children":[{"id":"empty-state-note","kind":{"$type":"Markdown","text":"Searches you save will appear here so you can re-run them with one click."}},{"id":"empty-state-cta","kind":{"$type":"Button","icon":"search","label":"Browse jobs","onClick":{"$type":"Chain","ops":[]},"variant":"Primary"}}],"heading":"No saved searches yet","layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Card"}}
+{"id":"empty-state-card","kind":{"$type":"Box","children":[{"id":"empty-state-note","kind":{"$type":"Markdown","text":"Searches you save will appear here so you can re-run them with one click."}},{"id":"empty-state-cta","kind":{"$type":"Button","icon":"search","label":"Browse jobs","onClick":{"$type":"Chain","ops":[]},"variant":"Primary"}}],"heading":"No saved searches yet","layout":{"$type":"Flex","direction":"Vertical"},"role":"Card"}}
 ```
 <!-- /fuaran:example -->
 
@@ -1330,7 +1330,7 @@ mode. A statement is a `Checkbox` — accepting terms, opting in, ticking items 
 
 <!-- fuaran:example fixture=form-toggle -->
 ```json
-{"id":"form-toggle","kind":{"$type":"Form","fields":[{"id":"irrigation-running","kind":{"$type":"Toggle"},"label":"Irrigation","required":false},{"id":"accept-terms","kind":{"$type":"Checkbox"},"label":"I accept the terms","required":true}],"onSubmit":{"$type":"Chain","ops":[]},"submitLabel":"Save"}}
+{"id":"form-toggle","kind":{"$type":"Form","fields":[{"id":"irrigation-running","kind":{"$type":"Toggle"},"label":"Irrigation"},{"id":"accept-terms","kind":{"$type":"Checkbox"},"label":"I accept the terms","required":true}],"onSubmit":{"$type":"Chain","ops":[]},"submitLabel":"Save"}}
 ```
 <!-- /fuaran:example -->
 
