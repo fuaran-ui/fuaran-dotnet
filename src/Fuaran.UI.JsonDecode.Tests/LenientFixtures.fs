@@ -911,6 +911,27 @@ let all: LenientFixture list =
         Description =
           "Parameterised fragments — a `FragmentDecl` carrying the REDUNDANT pure-deterministic `effect` and an empty `holes` list is decode-accepted and re-encodes with both keys OMITTED. Neither slot is optional-with-a-convention any more: both are omit-at-default on every conformant host, so the redundant form is input-only (Phase 1670)" }
 
+      // ─── Phase 1962 — a multi-select's `value` is dropped ───────────────
+      //
+      // Until Phase 1962 the type model required `value` on every `Select`, so
+      // every multi-select carried a meaningless empty `Static` beside its real
+      // `values` binding, and models that followed the type wrote a REAL binding
+      // there too (measured: 14 of the 16 stored emissions carrying both). The
+      // canonical multi-select now carries `values` and no `value`; any `value`
+      // beside `"multiple":true` stays decode-accepted, so every stored document
+      // (eval results, saved sessions, op-streams) still reads, and normalises
+      // to the clean form. Three spellings ride, one per child, so a host that
+      // matched only one fails the others: the bare `{"$type":"Static"}` the
+      // encoder wrote, the `"value":null` form the pre-429 encoder wrote, and a
+      // State binding of the kind models emit.
+      { Id = "lenient-1962-multiselect-value-dropped"
+        LenientJson =
+          """{"id":"len-1962","kind":{"$type":"Box","children":[{"id":"len-1962-tags","kind":{"$type":"Select","label":"Tags","multiple":true,"source":{"$type":"Static","value":[{"label":"Red","value":"red"},{"label":"Green","value":"green"}]},"value":{"$type":"Static"},"values":{"$type":"State","key":"tags"}}},{"id":"len-1962-depts","kind":{"$type":"Select","label":"Departments","multiple":true,"source":{"$type":"Static","value":[{"label":"Sales","value":"sales"}]},"value":{"$type":"Static","value":null},"values":{"$type":"Filter","name":"depts"}}},{"id":"len-1962-cats","kind":{"$type":"Select","label":"Categories","multiple":true,"source":{"$type":"Static","value":[{"label":"Auth","value":"Auth"}]},"value":{"$type":"State","defaultValue":"Auth","key":"category-primary"},"values":{"$type":"State","key":"categories"}}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}"""
+        VerboseJson =
+          """{"id":"len-1962","kind":{"$type":"Box","children":[{"id":"len-1962-tags","kind":{"$type":"Select","label":"Tags","multiple":true,"source":{"$type":"Static","value":[{"label":"Red","value":"red"},{"label":"Green","value":"green"}]},"values":{"$type":"State","key":"tags"}}},{"id":"len-1962-depts","kind":{"$type":"Select","label":"Departments","multiple":true,"source":{"$type":"Static","value":[{"label":"Sales","value":"sales"}]},"values":{"$type":"Filter","name":"depts"}}},{"id":"len-1962-cats","kind":{"$type":"Select","label":"Categories","multiple":true,"source":{"$type":"Static","value":[{"label":"Auth","value":"Auth"}]},"values":{"$type":"State","key":"categories"}}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}"""
+        Description =
+          "§3.2 — a multi-select (`\"multiple\":true`) carrying a `value` beside its `values` decodes and re-encodes WITHOUT `value`: a multi-select carries `values` and no `value`, and never reads one. Three spellings, one per child: the empty-`Static` placeholder every pre-1962 multi-select carried (bare, and with `\"value\":null`) and a real State binding of the kind models wrote beside `values`. A malformed `value` still refuses as a malformed binding (Phase 1962)" }
+
       // ─── Phase 1670 — the `FragmentRef` twin, and why it is NOT here ───────
       //
       // `FragmentRefSpec.Args = Some Map.empty` is the third member of the same

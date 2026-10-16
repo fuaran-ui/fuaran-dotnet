@@ -7633,9 +7633,23 @@
       },
       "required": [
         "label",
-        "source",
-        "value"
-      ]
+        "source"
+      ],
+      "if": {
+        "properties": {
+          "multiple": {
+            "const": true
+          }
+        },
+        "required": [
+          "multiple"
+        ]
+      },
+      "else": {
+        "required": [
+          "value"
+        ]
+      }
     },
     "FileUploadSpec": {
       "type": "object",

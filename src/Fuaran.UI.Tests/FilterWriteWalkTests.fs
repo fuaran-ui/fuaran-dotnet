@@ -62,7 +62,7 @@ let private selectValue () =
     Fuaran.select
         "sel"
         { Defaults.select<Msg> with
-            Value = Binding.Filter("region", None) }
+            Value = Some(Binding.Filter("region", None)) }
 
 let private selectValues () =
     Fuaran.select
@@ -167,7 +167,7 @@ let tests =
                   Fuaran.select
                       "sel"
                       { Defaults.select<Msg> with
-                          Value = Binding.Query("options", string, None) }
+                          Value = Some(Binding.Query("options", string, None)) }
 
               Expect.isEmpty (filterWritesOf inert) "a Query-bound value slot commits to no filter"
           }

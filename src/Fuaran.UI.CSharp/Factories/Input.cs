@@ -17,9 +17,13 @@ namespace Fuaran.UI.CSharp;
 // churn. See src/Fuaran.UI.Tests/SpecConstructionTests.fs ("The C# authoring veneer").
 public static partial class Fuaran
 {
-    // Generated SelectSpec.Value is a plain `Binding<string>` (the old
+    // Generated SelectSpec.Value is a `Binding<string>` (the old
     // `Binding<string option>` double option flattened): "no selection" is
-    // `Static None`, a selection is `Static (Some v)`.
+    // `Static None`, a selection is `Static (Some v)`. Since Phase 1962 the slot
+    // is OPTIONAL in the record — present on a single-select, absent on a
+    // multi-select — and the binding below reaches it through F#'s implicit
+    // `T -> FSharpOption<T>` conversion, so `Select` always carries one and
+    // `MultiSelect` (via `multiSelect`) never does.
     //
     // Phase 1646 — the slot takes a BINDING now, not a bare string. It always
     // was one on the wire; the veneer narrowed it to a literal, and that

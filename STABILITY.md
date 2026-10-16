@@ -7824,6 +7824,71 @@ _Class: **breaking**. `v0.94.0` was tagged and published at `90082d3` on 2026-10
 because the first change it is opened for, Phase 2058 (public module paths move), is breaking; a draft advances to the
 class of its highest rider, and pre-1.0 breaking is minor (version cut recorded on the ledger, 2026-10-14)._
 
+### What rides this slot — Phase 1962 (a multi-select `Select` carries `values` and no `value`)
+
+**Class: BREAKING on `Fuaran.UI`** by the surface guard: `SelectSpec.Value` is RETYPED from `Binding<string>` to
+`Binding<string> option`, the record's primary constructor changes with it, the generated `mkSelect` loses its
+`value` parameter, and `PreEmitDefect` gains a case (`MultiSelectValueIgnored`, `FUARAN164`). The entry below was
+authored on 2026-10-01 against what was then the 0.90.0 draft and HELD FOR REVIEW on its `phase-1962` branches; it
+was merged into Phase 2300's branch on 2026-10-16 and rides this slot, which is already breaking-class, so no number
+moves. The decoder's behaviour (`Fuaran.UI.Ops`) moves with it.
+
+- **Phase 1962 — the single/multi `value` rule** (WIRE_FORMAT.md §3.2, the Phase 291 paragraph made
+  literally true). A `Select` with `"multiple":true` carries `values` and **no** `value`; one without
+  `multiple` carries `value` and no `values`. Until now `SelectSpec.Value` was required whatever
+  `Multiple` said, so every canonical multi-select carried a meaningless `"value":{"$type":"Static"}`
+  beside its real `values` binding, and the decoder refused the `values`-only shape the spec's own
+  prose describes (four stored model emissions were refused for exactly that).
+
+  **The representation, and why.** `SelectSpec.Value` is `Binding<string> option`: `Some` on a
+  single-select, `None` on a multi-select. The alternative — a single/multi union — was the operator's
+  other option and is the stronger type, but `SelectSpec` is generated from the IDL, whose
+  optionality is per field (`required` / `optional` / `omitDefault` / `hostOnly`) and cannot say
+  "required unless a sibling is `true`"; a union would mean a hand-written codec beside the generated
+  one for one kind, which is the drift the generated layer exists to remove. So the slot is `opt` in
+  the IDL and the rule is enforced where a field's siblings are visible:
+  - **decode** (`JsonDecode`): absent on a single-select is `MISSING_FIELD`; a `value` on a
+    multi-select — the empty-`Static` placeholder (`{"$type":"Static"}`, or with `"value":null`) or
+    a real binding — is decoded (a malformed one still refuses) and then dropped, a §16 lenient
+    accept that normalises to `None`. Refusing a non-placeholder `value` was the operator's other
+    option and was measured out: 14 of the 16 stored emissions carrying both keys carry a real
+    binding there, and refusing them would have stopped documents that decode today from reading;
+  - **validate**: `PreEmitValidate` raises the new **`FUARAN164`** (Warning) on a constructed
+    multi-select that still carries a `Value` — the encoder writes what the record holds, so that
+    tree emits a binding every decoder drops (`PreEmitDefect.MultiSelectValueIgnored`, a new case:
+    an exhaustive `match` over `PreEmitDefect` gains an arm);
+  - **construction**: `Fuaran.select` drops a `Value` handed to a multi-select and fills an absent one
+    on a single-select with the empty `Static` ("no selection"); `Fuaran.multiSelect` sets `None`;
+    `Defaults.select` (a single-select) carries `Some(Binding.Static None)`; the C# `Select` veneer
+    always supplies one and `MultiSelect` never does (the VB dialect maps through it);
+  - **apply**: `ReplaceBinding` of the `Value` slot on a multi-select is refused as slot-not-found;
+  - **schema** (`schema.json`): `if`/`then`/`else` states the same relation.
+
+  **What a consumer sees.** Code that reads `spec.Value` now reads an option. A record literal that
+  sets `Value = b` on a single-select writes `Value = Some b`; one that builds a multi-select from
+  `Defaults.select` should set `Value = None` (or go through `Fuaran.select` / `multiSelect`, which do
+  it) — left at the default it still encodes the placeholder, which every conformant decoder accepts
+  and normalises away. `mkSelect` builds a single-select with no `value`; pass the result through
+  `Fuaran.select` or set `Value`. On the wire: the corpus's `nodes/multiselect-1.json`,
+  `nodes/multiselect-chip-list-param.json` and `nodes/controls-closure.json` lose the placeholder;
+  every stored document that carries it still decodes. A reader that still requires `value` refuses
+  a new multi-select with `MISSING_FIELD` — the profile does not step; this is one coordinated change
+  across every host in the WIRE_FORMAT §11.0 roster (operator ruling 2026-10-01).
+
+  **Measured** (2026-10-01, every `emittedText` / `raw_output` in the evaluation store, deduplicated
+  by sha256; the reference decoder at 0.88.0 against this build): of the 4 `values`-only multi-select
+  documents, 2 were refused `MISSING_FIELD` at the select's `value` and now decode and re-encode
+  stably; the other 2 are refused, before and after, for an unrelated `UNKNOWN_DU_CASE` elsewhere in
+  the document. All 16 documents carrying both keys decoded before and decode now; every one
+  re-encodes stably and without a `value` on the multi-select (before, 2 re-encoded the placeholder
+  and 14 re-encoded the real binding the model wrote).
+
+- **Phase 1962 amendment — an explicit `"multiple":false` round-trips as written** (operator ruling
+  2026-10-01). `multiple` is emitted as authored, never omit-at-default; this host already kept it
+  (`Multiple = Some false`), but no fixture said so, and two hosts dropped it unseen. The corpus gains
+  `nodes/select-multiple-false.json`, generated from `Fixtures.selectMultipleFalse`. No surface change
+  here: the slot's class is unchanged.
+
 ### What rides this slot — Phase 2291 (a style edit carries the field it changes)
 
 **Class: BREAKING for F# consumers (two closed DUs gain a case) + a wire ADDITION (a new op) + a BEHAVIOUR

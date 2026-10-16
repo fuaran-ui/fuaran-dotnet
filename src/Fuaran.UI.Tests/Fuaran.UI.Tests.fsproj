@@ -478,6 +478,7 @@
     <!-- Phase 2055 — one form-field constructor per control and one Box builder. -->
     <Compile Include="AuthoringControlTests.fs" />
     <Compile Include="FactsWalkTests.fs" />
+    <Compile Include="SelectValueRuleTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

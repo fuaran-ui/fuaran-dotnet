@@ -258,6 +258,25 @@ let private forbidding (names: string list) (r: J) : J =
         )
     | _ -> r
 
+/// Phase 1962 — the single/multi `value` rule on `SelectSpec`, a relation
+/// between two sibling keys that Draft 2020-12 states with `if`/`else`. A
+/// single-select (`multiple` absent or `false`) REQUIRES `value`. A multi-select
+/// (`"multiple":true`) carries its selection in `values`; a `value` beside it is
+/// a §16 lenient accept the decoder normalises away (it is still a
+/// `Binding_str_choice`, so a malformed one fails here as it does there).
+let private selectValueRule (r: J) : J =
+    match r with
+    | JObj fields ->
+        JObj(
+            fields
+            @ [ "if",
+                JObj
+                    [ "properties", JObj [ "multiple", JObj [ "const", JBool true ] ]
+                      "required", JArr [ JStr "multiple" ] ]
+                "else", JObj [ "required", JArr [ JStr "value" ] ] ]
+        )
+    | _ -> r
+
 /// One `$type`-discriminated DU branch (WIRE_FORMAT.md §3). `$type` is pinned
 /// by `const`, so an unrecognised discriminator matches no branch.
 let private duCase (disc: string) (required: string list) (props: (string * J) list) : J =
@@ -1511,7 +1530,7 @@ let private defs: (string * J) list =
           // default) — omitted for a declarative select; `onChangeMulti` is the
           // multi-select handler's own sentinel key (Phase 426; previously the
           // handler was never encoded).
-          [ "label"; "source"; "value" ]
+          [ "label"; "source" ]
           [ "label", ref "TextSource"
             "onChange", closure
             "source", binding "list_SelectOption"
@@ -1523,6 +1542,7 @@ let private defs: (string * J) list =
             "multiple", boolean
             "values", binding "list_str"
             "onChangeMulti", closure ]
+      |> selectValueRule
 
       "FileUploadSpec",
       record
