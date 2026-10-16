@@ -202,6 +202,11 @@ let private packableProjects =
       // own account, published so the wire layer has ONE public home rather
       // than a copy per consumer.
       "Fuaran.UI.AiWire"
+      // Phase 2294 — the design-system bundle exporter: a card per IDL kind, stdlib fragment
+      // and theme scale, rendered by Renderer.Server under a Theme, beside a DTCG manifest.
+      // .NET-only (it renders). The `fuaran` tool project-references it, so it packs ahead
+      // of the tool, after every package it references.
+      "Fuaran.UI.Design"
       // The typed F#/.NET client over the generation endpoint (Phase 220) and the
       // `fuaran` dotnet tool built on it (Phase 224). Both were marked
       // `IsPackable=true` from the day they landed and named by no entry here, so

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The Dark and High-Contrast sample themes, compile-linked as Fuaran.UI.Tests links them:
+         the bundle checks run over each. -->
+    <Compile Include="..\..\samples\themes\Dark.fs">
+      <Link>SampleThemes\Dark.fs</Link>
+    </Compile>
+    <Compile Include="..\..\samples\themes\HighContrast.fs">
+      <Link>SampleThemes\HighContrast.fs</Link>
+    </Compile>
+    <Compile Include="BundleTests.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI.Design\Fuaran.UI.Design.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Expecto" />
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>

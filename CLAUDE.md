@@ -25,7 +25,7 @@ Cross-repo development conventions (port allocation, launcher patterns, formatti
 | `Fuaran.UI.Telemetry.Default` | NoOp / InMemory / Console sinks + `applyWithTelemetry` |
 | `Fuaran.UI.Telemetry.Drift` | Aggregate metrics + window-over-window regression detector. **Not published** — `IsPackable=false` since Phase 1532; a project in this repo, run by hand, and the last version any registry serves is 0.77.0 |
 | `Fuaran.UI.Client` | Typed F#/.NET client over the generation endpoint — `generate` + session turn-loop (repair diffs) + the closed repair loop + decode glue. Published from 0.88.0 (the 0.87.0 slot, superseded before release) |
-| `Fuaran.UI.Cli` | The `fuaran` dotnet tool — `generate` / `validate` / `scaffold` over the public surfaces. Published from 0.88.0 (the 0.87.0 slot, superseded before release) |
+| `Fuaran.UI.Cli` | The `fuaran` dotnet tool — `generate` / `validate` / `scaffold` / `design-system export` over the public surfaces. Published from 0.88.0 (the 0.87.0 slot, superseded before release) |
 | `Fuaran.UI.Renderer.Web` | Embedded browser renderer for .NET hosts — the built `@fuaran-ui/renderer` bundle + reference CSS as embedded static web assets, `MapFuaranRenderer()`, and the mount snippet. No Node toolchain on the consumer side |
 | `Fuaran.UI.AiWire` | Portable AI-connector wire substrate — ordered `JsonValue` + byte-stable canonical writer + host-bridged parser, the provider contract records and error vocabulary, and the one-method `IHttpTransport` egress seam. FSharp.Core + Fable.Core only; references no other package here and none references it |
 | `Fuaran.UI.Core.Function` | The projection of a fragment's hole value-spaces and effect class onto the `Fuaran.Core` function model (`toCoreSpace` / `toCoreEffect`), one definition shared by `AiTools` and `Validator`. FSharp.Core + `Fuaran.UI` + `Fuaran.Core.Function`; Fable-clean. First published at 0.94.0 (Phase 2234) |
@@ -54,6 +54,7 @@ Cross-repo development conventions (port allocation, launcher patterns, formatti
 | `Fuaran.UI.Fragments` | Certified fragment library — parameterised `FragmentDecl`s with typed holes, declared effect classes and conformance fixtures |
 | `Fuaran.UI.FastPath` | Signature-searchable pattern bank — deterministic, server-free structural retrieval over the artifact-function registry. Fable-clean |
 | `Fuaran.UI.Memo` | Effect-aware memoisation over fragment apply — a value-parameter change recomputes only the affected hole-addressed bindings |
+| `Fuaran.UI.Design` | The language as a design-system bundle — a preview card per IDL kind, stdlib fragment and theme scale, rendered by `Renderer.Server` under a `Theme`, beside a DTCG manifest and a content-hashed bundle manifest; colours offered as roles, never values. .NET-only (it renders). First published at 0.95.0 (Phase 2294); see `docs/DESIGN-SYSTEM-EXPORT.md` |
 
 All packs land in `../local-nuget-feed/` for local downstream consumption.
 

@@ -10,10 +10,18 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>fuaran</ToolCommandName>
     <PackageId>Fuaran.UI.Cli</PackageId>
-    <Description>The Fuaran generative-UI CLI as a dotnet tool — `fuaran generate | validate | scaffold` over the public F# surfaces, zero MCP config. Works against the real endpoint or the local mock. The F# front-end of the Fuaran CLI (sibling to the npm @fuaran-ui/cli). Apache-2.0 licensed.</Description>
+    <Description>The Fuaran generative-UI CLI as a dotnet tool — `fuaran generate | validate | scaffold | design-system export` over the public F# surfaces, zero MCP config. Works against the real endpoint or the local mock. The F# front-end of the Fuaran CLI (sibling to the npm @fuaran-ui/cli). Apache-2.0 licensed.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Phase 2294 — the design-system export verb resolves its dark and high-contrast sample
+         themes, compile-linked as the test projects link them. -->
+    <Compile Include="..\..\samples\themes\Dark.fs">
+      <Link>SampleThemes\Dark.fs</Link>
+    </Compile>
+    <Compile Include="..\..\samples\themes\HighContrast.fs">
+      <Link>SampleThemes\HighContrast.fs</Link>
+    </Compile>
     <Compile Include="Scaffold.fs" />
     <Compile Include="RefusalReport.fs" />
     <Compile Include="Commands.fs" />
@@ -27,6 +35,8 @@
     <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
     <!-- The elicitation reject families decode through `Elicitation`, which lives here. -->
     <ProjectReference Include="..\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+    <!-- Phase 2294 — the design-system bundle exporter behind the design-system export verb. -->
+    <ProjectReference Include="..\Fuaran.UI.Design\Fuaran.UI.Design.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />

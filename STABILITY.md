@@ -7852,6 +7852,27 @@ manifest-free and manifest-wired), in `src/Fuaran.UI.LayoutObserver.Tests/Observ
 `src/Fuaran.UI.StyleObserver.Tests/ObserverLawTests.fs`, beside a cyclic-parent walk on each observer; the Core
 conformance census moves `observerLaws` / `observerLawsAt` from carried to adopted across both ports.
 
+### What rides this slot — Phase 2294 (the language describes itself as a design system)
+
+**Class: ADDITIVE — one new package and one new CLI verb.** No existing type, member, wire byte or rendered
+output moves. It rides the 0.95.0 draft without moving it.
+
+- **New package `Fuaran.UI.Design`, first published at 0.95.0.** Module `Fuaran.UI.Design.Bundle`: `build`
+  (`Theme -> ThemeManifest option -> BundleOptions -> Bundle`), `check` (`Bundle -> string list`, empty when the
+  bundle holds), `write` (`Bundle -> string -> unit`), `manifestJson`, `contentHashOf`, `isLiteralColour`,
+  `marker`, `idlVersion`, `idlKinds`, `catalogSpecimens`, `supplementSpecimens`, `sweep`,
+  `BundleOptions.defaults`; the records `Bundle`, `BundleOptions`, `Card`, `BundleFile`, `ColorRole`,
+  `Specimen`, `IdlKind`, `IdlField` and the closed `CardGroup` (`Type | Colors | Spacing | Components |
+  Fragments`). It compile-links the catalog matrix, so the module `Fuaran.Samples.Catalog.Matrix` ships in this
+  assembly too. .NET-only (`<FableDotNetOnly>`): it renders through `Fuaran.UI.Renderer.Server`.
+- **New verb `fuaran design-system export --theme <manifest.json | default | dark | high-contrast> --out <dir>
+  [--brand <css>]`** in `Fuaran.UI.Cli` (`Commands.designSystemExport`). Exit 0 with the card count and the
+  content hash; 1 when the bundle fails its checks (nothing is written); 2 on a usage error, an unreadable
+  theme or brand, or an output directory that is non-empty and holds no bundle.
+- **The bundle format is versioned by its own `manifest.json`** (`kind: "fuaranDesignSystemBundle"`,
+  `formatVersion: 1`). A change to the card marker, the five groups or the content-hash definition is a format
+  change and moves `formatVersion`. See `docs/DESIGN-SYSTEM-EXPORT.md`.
+
 ### What rides this slot — Phase 2291 (a style edit carries the field it changes)
 
 **Class: BREAKING for F# consumers (two closed DUs gain a case) + a wire ADDITION (a new op) + a BEHAVIOUR

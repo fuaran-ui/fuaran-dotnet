@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <!-- Phase 2294: it RENDERS (through Fuaran.UI.Renderer.Server, itself .NET-only), so it is a
+         .NET package a Fable consumer could otherwise reach through Fuaran.UI; checked by
+         build/FablePackCheck.fs. It ships no fable/ sources, so the Fable stage's derived
+         portability set never contains it. -->
+    <FableDotNetOnly>The design-system bundle exporter renders every card through the server renderer (Feliz.ViewEngine) and writes the bundle to disk; it runs in a .NET process or build step, never in a browser.</FableDotNetOnly>
+    <PackageId>Fuaran.UI.Design</PackageId>
+    <Description>Fuaran UI described as a design system: one call renders a preview card per IDL kind (swept over the tone, weight and emphasis axes), per certified stdlib fragment, and for the type, spacing and colour-role scales of a chosen Theme, beside the theme as a DTCG manifest and a content-hashed bundle manifest. Colours are offered as tone ROLES, never as literal values. Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>fuaran;design-system;design-tokens;dtcg;theme;catalog</PackageTags>
+    <!-- The linked catalog matrix is authored under the Fable sample's nullness posture
+         (Nullable=disable, as Fuaran.UI.Catalog.Tests mirrors for the same file). -->
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The kind set comes from the IDL itself, so a kind admitted there with no card is a
+         failed bundle check rather than a stale bundle. -->
+    <EmbeddedResource Include="..\Fuaran.UI.Idl\idl.json" LogicalName="Fuaran.UI.Design.idl.json" />
+    <!-- The canonical class stylesheet, written once at the bundle root and linked by every card
+         (the Fuaran.UI.Renderer.Web precedent for carrying it as an embedded asset). -->
+    <EmbeddedResource Include="..\Fuaran.UI.Renderer\content\fuaran-reference.css" LogicalName="Fuaran.UI.Design.fuaran-reference.css" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The catalog's component matrix, compile-linked (the Fuaran.UI.Catalog.Tests precedent):
+         the bundle sweeps the SAME specimens the gallery shows, so the two cannot drift. -->
+    <Compile Include="..\..\samples\catalog\Matrix.fs">
+      <Link>Matrix.fs</Link>
+    </Compile>
+    <Compile Include="Bundle.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Fragments\Fuaran.UI.Fragments.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.ThemeManifest\Fuaran.UI.ThemeManifest.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Renderer.Core\Fuaran.UI.Renderer.Core.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Renderer.Server\Fuaran.UI.Renderer.Server.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>
