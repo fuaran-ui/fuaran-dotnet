@@ -141,9 +141,6 @@ module private Emit =
         | ElementPlan.Prop.Flag name -> [ prop.custom (name, "") ]
         | ElementPlan.Prop.Behaviour _ -> []
 
-    /// Planned properties (a style site's inline declarations, typically).
-    let props (ps: ElementPlan.Prop list) : IReactProperty list = ps |> List.collect property
-
     /// Emit a plan.
     let rec plan (p: ElementPlan.Plan<ReactElement>) : ReactElement =
         match p with

@@ -298,9 +298,6 @@ module private Emit =
 
     let private unbound: Attach = fun _ _ -> []
 
-    /// Planned properties (a style site's inline declarations, typically).
-    let props (ps: ElementPlan.Prop list) : IReactProperty list = ps |> List.collect (property unbound)
-
     /// Emit a plan, binding its attachment points through `attach` (Phase 2278).
     let rec planWith (attach: Attach) (p: ElementPlan.Plan<ReactElement>) : ReactElement =
         match p with
