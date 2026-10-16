@@ -564,6 +564,261 @@ let rv_vkind__Callout__tone (#num #flt: eqtype) (x: vkind num flt) : Lemma (requ
   | C__vkind__Callout f0 f1 f2 f3 f4 -> rt_e_tone_variant #num #flt f4; (if f4 = C__e_tone_variant__Default then lk_vkind__Callout__tone__absent #num #flt x else lk_vkind__Callout__tone__present #num #flt x)
   | _ -> ()
 
+(* The suffixes of C__vkind__CodeBlock — each revealed once, here, and cited by name below. *)
+let sk_vkind__CodeBlock__copyable__skip (#num #flt: eqtype) (n: string) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Lemma (requires (n <> "copyable")) (ensures (find_field n (sfx_vkind__CodeBlock__copyable e rest) == find_field n rest))
+  = reveal_opaque (`%sfx_vkind__CodeBlock__copyable) (sfx_vkind__CodeBlock__copyable #num #flt e rest)
+let sk_vkind__CodeBlock__copyable__hit (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Lemma (requires (Some? e)) (ensures (find_field "copyable" (sfx_vkind__CodeBlock__copyable e rest) == Ok (Some?.v e)))
+  = reveal_opaque (`%sfx_vkind__CodeBlock__copyable) (sfx_vkind__CodeBlock__copyable #num #flt e rest)
+let sk_vkind__CodeBlock__copyable__none (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Lemma (requires (None? e)) (ensures (sfx_vkind__CodeBlock__copyable e rest == rest))
+  = reveal_opaque (`%sfx_vkind__CodeBlock__copyable) (sfx_vkind__CodeBlock__copyable #num #flt e rest)
+let sk_vkind__CodeBlock__highlight_lines__skip (#num #flt: eqtype) (n: string) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Lemma (requires (n <> "highlightLines")) (ensures (find_field n (sfx_vkind__CodeBlock__highlight_lines e rest) == find_field n rest))
+  = reveal_opaque (`%sfx_vkind__CodeBlock__highlight_lines) (sfx_vkind__CodeBlock__highlight_lines #num #flt e rest)
+let sk_vkind__CodeBlock__highlight_lines__hit (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Lemma (requires (Some? e)) (ensures (find_field "highlightLines" (sfx_vkind__CodeBlock__highlight_lines e rest) == Ok (Some?.v e)))
+  = reveal_opaque (`%sfx_vkind__CodeBlock__highlight_lines) (sfx_vkind__CodeBlock__highlight_lines #num #flt e rest)
+let sk_vkind__CodeBlock__highlight_lines__none (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Lemma (requires (None? e)) (ensures (sfx_vkind__CodeBlock__highlight_lines e rest == rest))
+  = reveal_opaque (`%sfx_vkind__CodeBlock__highlight_lines) (sfx_vkind__CodeBlock__highlight_lines #num #flt e rest)
+let sk_vkind__CodeBlock__line_numbers__skip (#num #flt: eqtype) (n: string) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Lemma (requires (n <> "lineNumbers")) (ensures (find_field n (sfx_vkind__CodeBlock__line_numbers e rest) == find_field n rest))
+  = reveal_opaque (`%sfx_vkind__CodeBlock__line_numbers) (sfx_vkind__CodeBlock__line_numbers #num #flt e rest)
+let sk_vkind__CodeBlock__line_numbers__hit (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Lemma (requires (Some? e)) (ensures (find_field "lineNumbers" (sfx_vkind__CodeBlock__line_numbers e rest) == Ok (Some?.v e)))
+  = reveal_opaque (`%sfx_vkind__CodeBlock__line_numbers) (sfx_vkind__CodeBlock__line_numbers #num #flt e rest)
+let sk_vkind__CodeBlock__line_numbers__none (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Lemma (requires (None? e)) (ensures (sfx_vkind__CodeBlock__line_numbers e rest == rest))
+  = reveal_opaque (`%sfx_vkind__CodeBlock__line_numbers) (sfx_vkind__CodeBlock__line_numbers #num #flt e rest)
+
+(* lk_vkind__CodeBlock__copyable__present — copyable not at its default *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_vkind__CodeBlock__copyable__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__CodeBlock f0 f1 f2 f3 f4 -> not (f1 = false) | _ -> false)) (ensures (match x with | C__vkind__CodeBlock f0 f1 f2 f3 f4 -> get_prop "copyable" (enc_vkind #num #flt x) == Ok (JBool f1) | _ -> True)) =
+  match x with
+  | C__vkind__CodeBlock f0 f1 f2 f3 f4 ->
+    let s2 = sfx_vkind__CodeBlock__line_numbers #num #flt (enc_dflt_bool #num #flt (false) f4) ([]) in
+    let s1 = sfx_vkind__CodeBlock__highlight_lines #num #flt (enc_dflt_l_int #num #flt ([]) f2 (JArr (enc_items_l_int f2))) (("language", JStr f3) :: s2) in
+    let s0 = sfx_vkind__CodeBlock__copyable #num #flt (enc_dflt_bool #num #flt (false) f1) (s1) in
+    sk_vkind__CodeBlock__copyable__hit #num #flt (enc_dflt_bool #num #flt (false) f1) (s1)
+  | _ -> ()
+#pop-options
+
+(* lk_vkind__CodeBlock__copyable__absent — copyable at its default *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_vkind__CodeBlock__copyable__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__CodeBlock f0 f1 f2 f3 f4 -> f1 = false | _ -> false)) (ensures (Error? (get_prop "copyable" (enc_vkind #num #flt x)))) =
+  match x with
+  | C__vkind__CodeBlock f0 f1 f2 f3 f4 ->
+    let s2 = sfx_vkind__CodeBlock__line_numbers #num #flt (enc_dflt_bool #num #flt (false) f4) ([]) in
+    let s1 = sfx_vkind__CodeBlock__highlight_lines #num #flt (enc_dflt_l_int #num #flt ([]) f2 (JArr (enc_items_l_int f2))) (("language", JStr f3) :: s2) in
+    let s0 = sfx_vkind__CodeBlock__copyable #num #flt (enc_dflt_bool #num #flt (false) f1) (s1) in
+    sk_vkind__CodeBlock__copyable__none #num #flt (enc_dflt_bool #num #flt (false) f1) (s1);
+    sk_vkind__CodeBlock__highlight_lines__skip #num #flt "copyable" (enc_dflt_l_int #num #flt ([]) f2 (JArr (enc_items_l_int f2))) (("language", JStr f3) :: s2);
+    sk_vkind__CodeBlock__line_numbers__skip #num #flt "copyable" (enc_dflt_bool #num #flt (false) f4) ([])
+  | _ -> ()
+#pop-options
+
+(* lk_vkind__CodeBlock__highlight_lines__present — highlightLines not at its default *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_vkind__CodeBlock__highlight_lines__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__CodeBlock f0 f1 f2 f3 f4 -> not (f2 = []) | _ -> false)) (ensures (match x with | C__vkind__CodeBlock f0 f1 f2 f3 f4 -> get_prop "highlightLines" (enc_vkind #num #flt x) == Ok (JArr (enc_items_l_int f2)) | _ -> True)) =
+  match x with
+  | C__vkind__CodeBlock f0 f1 f2 f3 f4 ->
+    let s2 = sfx_vkind__CodeBlock__line_numbers #num #flt (enc_dflt_bool #num #flt (false) f4) ([]) in
+    let s1 = sfx_vkind__CodeBlock__highlight_lines #num #flt (enc_dflt_l_int #num #flt ([]) f2 (JArr (enc_items_l_int f2))) (("language", JStr f3) :: s2) in
+    let s0 = sfx_vkind__CodeBlock__copyable #num #flt (enc_dflt_bool #num #flt (false) f1) (s1) in
+    sk_vkind__CodeBlock__copyable__skip #num #flt "highlightLines" (enc_dflt_bool #num #flt (false) f1) (s1);
+    sk_vkind__CodeBlock__highlight_lines__hit #num #flt (enc_dflt_l_int #num #flt ([]) f2 (JArr (enc_items_l_int f2))) (("language", JStr f3) :: s2)
+  | _ -> ()
+#pop-options
+
+(* lk_vkind__CodeBlock__highlight_lines__absent — highlightLines at its default *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_vkind__CodeBlock__highlight_lines__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__CodeBlock f0 f1 f2 f3 f4 -> f2 = [] | _ -> false)) (ensures (Error? (get_prop "highlightLines" (enc_vkind #num #flt x)))) =
+  match x with
+  | C__vkind__CodeBlock f0 f1 f2 f3 f4 ->
+    let s2 = sfx_vkind__CodeBlock__line_numbers #num #flt (enc_dflt_bool #num #flt (false) f4) ([]) in
+    let s1 = sfx_vkind__CodeBlock__highlight_lines #num #flt (enc_dflt_l_int #num #flt ([]) f2 (JArr (enc_items_l_int f2))) (("language", JStr f3) :: s2) in
+    let s0 = sfx_vkind__CodeBlock__copyable #num #flt (enc_dflt_bool #num #flt (false) f1) (s1) in
+    sk_vkind__CodeBlock__copyable__skip #num #flt "highlightLines" (enc_dflt_bool #num #flt (false) f1) (s1);
+    sk_vkind__CodeBlock__highlight_lines__none #num #flt (enc_dflt_l_int #num #flt ([]) f2 (JArr (enc_items_l_int f2))) (("language", JStr f3) :: s2);
+    sk_vkind__CodeBlock__line_numbers__skip #num #flt "highlightLines" (enc_dflt_bool #num #flt (false) f4) ([])
+  | _ -> ()
+#pop-options
+
+(* lk_vkind__CodeBlock__language — language — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_vkind__CodeBlock__language (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__CodeBlock? x)) (ensures (match x with | C__vkind__CodeBlock f0 f1 f2 f3 f4 -> get_prop "language" (enc_vkind #num #flt x) == Ok (JStr f3) | _ -> True)) =
+  match x with
+  | C__vkind__CodeBlock f0 f1 f2 f3 f4 ->
+    let s2 = sfx_vkind__CodeBlock__line_numbers #num #flt (enc_dflt_bool #num #flt (false) f4) ([]) in
+    let s1 = sfx_vkind__CodeBlock__highlight_lines #num #flt (enc_dflt_l_int #num #flt ([]) f2 (JArr (enc_items_l_int f2))) (("language", JStr f3) :: s2) in
+    let s0 = sfx_vkind__CodeBlock__copyable #num #flt (enc_dflt_bool #num #flt (false) f1) (s1) in
+    sk_vkind__CodeBlock__copyable__skip #num #flt "language" (enc_dflt_bool #num #flt (false) f1) (s1);
+    sk_vkind__CodeBlock__highlight_lines__skip #num #flt "language" (enc_dflt_l_int #num #flt ([]) f2 (JArr (enc_items_l_int f2))) (("language", JStr f3) :: s2)
+  | _ -> ()
+#pop-options
+
+(* lk_vkind__CodeBlock__line_numbers__present — lineNumbers not at its default *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_vkind__CodeBlock__line_numbers__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__CodeBlock f0 f1 f2 f3 f4 -> not (f4 = false) | _ -> false)) (ensures (match x with | C__vkind__CodeBlock f0 f1 f2 f3 f4 -> get_prop "lineNumbers" (enc_vkind #num #flt x) == Ok (JBool f4) | _ -> True)) =
+  match x with
+  | C__vkind__CodeBlock f0 f1 f2 f3 f4 ->
+    let s2 = sfx_vkind__CodeBlock__line_numbers #num #flt (enc_dflt_bool #num #flt (false) f4) ([]) in
+    let s1 = sfx_vkind__CodeBlock__highlight_lines #num #flt (enc_dflt_l_int #num #flt ([]) f2 (JArr (enc_items_l_int f2))) (("language", JStr f3) :: s2) in
+    let s0 = sfx_vkind__CodeBlock__copyable #num #flt (enc_dflt_bool #num #flt (false) f1) (s1) in
+    sk_vkind__CodeBlock__copyable__skip #num #flt "lineNumbers" (enc_dflt_bool #num #flt (false) f1) (s1);
+    sk_vkind__CodeBlock__highlight_lines__skip #num #flt "lineNumbers" (enc_dflt_l_int #num #flt ([]) f2 (JArr (enc_items_l_int f2))) (("language", JStr f3) :: s2);
+    sk_vkind__CodeBlock__line_numbers__hit #num #flt (enc_dflt_bool #num #flt (false) f4) ([])
+  | _ -> ()
+#pop-options
+
+(* lk_vkind__CodeBlock__line_numbers__absent — lineNumbers at its default *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_vkind__CodeBlock__line_numbers__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__CodeBlock f0 f1 f2 f3 f4 -> f4 = false | _ -> false)) (ensures (Error? (get_prop "lineNumbers" (enc_vkind #num #flt x)))) =
+  match x with
+  | C__vkind__CodeBlock f0 f1 f2 f3 f4 ->
+    let s2 = sfx_vkind__CodeBlock__line_numbers #num #flt (enc_dflt_bool #num #flt (false) f4) ([]) in
+    let s1 = sfx_vkind__CodeBlock__highlight_lines #num #flt (enc_dflt_l_int #num #flt ([]) f2 (JArr (enc_items_l_int f2))) (("language", JStr f3) :: s2) in
+    let s0 = sfx_vkind__CodeBlock__copyable #num #flt (enc_dflt_bool #num #flt (false) f1) (s1) in
+    sk_vkind__CodeBlock__copyable__skip #num #flt "lineNumbers" (enc_dflt_bool #num #flt (false) f1) (s1);
+    sk_vkind__CodeBlock__highlight_lines__skip #num #flt "lineNumbers" (enc_dflt_l_int #num #flt ([]) f2 (JArr (enc_items_l_int f2))) (("language", JStr f3) :: s2);
+    sk_vkind__CodeBlock__line_numbers__none #num #flt (enc_dflt_bool #num #flt (false) f4) ([])
+  | _ -> ()
+#pop-options
+
+(* rv_vkind__CodeBlock__copyable — the value of `rd_vkind__CodeBlock__copyable` off the encoded object *)
+let rv_vkind__CodeBlock__copyable (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__CodeBlock? x)) (ensures (match x with | C__vkind__CodeBlock f0 f1 f2 f3 f4 -> rd_vkind__CodeBlock__copyable #num #flt (enc_vkind #num #flt x) == Ok f1 | _ -> True)) =
+  reveal_opaque (`%rd_vkind__CodeBlock__copyable) (rd_vkind__CodeBlock__copyable #num #flt (enc_vkind #num #flt x));
+  match x with
+  | C__vkind__CodeBlock f0 f1 f2 f3 f4 -> (if f1 = false then lk_vkind__CodeBlock__copyable__absent #num #flt x else lk_vkind__CodeBlock__copyable__present #num #flt x)
+  | _ -> ()
+
+(* rv_vkind__CodeBlock__line_numbers — the value of `rd_vkind__CodeBlock__line_numbers` off the encoded object *)
+let rv_vkind__CodeBlock__line_numbers (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__CodeBlock? x)) (ensures (match x with | C__vkind__CodeBlock f0 f1 f2 f3 f4 -> rd_vkind__CodeBlock__line_numbers #num #flt (enc_vkind #num #flt x) == Ok f4 | _ -> True)) =
+  reveal_opaque (`%rd_vkind__CodeBlock__line_numbers) (rd_vkind__CodeBlock__line_numbers #num #flt (enc_vkind #num #flt x));
+  match x with
+  | C__vkind__CodeBlock f0 f1 f2 f3 f4 -> (if f4 = false then lk_vkind__CodeBlock__line_numbers__absent #num #flt x else lk_vkind__CodeBlock__line_numbers__present #num #flt x)
+  | _ -> ()
+
+(* The suffixes of C__vkind__Disclosure — each revealed once, here, and cited by name below. *)
+let sk_vkind__Disclosure__default_open__skip (#num #flt: eqtype) (n: string) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Lemma (requires (n <> "defaultOpen")) (ensures (find_field n (sfx_vkind__Disclosure__default_open e rest) == find_field n rest))
+  = reveal_opaque (`%sfx_vkind__Disclosure__default_open) (sfx_vkind__Disclosure__default_open #num #flt e rest)
+let sk_vkind__Disclosure__default_open__hit (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Lemma (requires (Some? e)) (ensures (find_field "defaultOpen" (sfx_vkind__Disclosure__default_open e rest) == Ok (Some?.v e)))
+  = reveal_opaque (`%sfx_vkind__Disclosure__default_open) (sfx_vkind__Disclosure__default_open #num #flt e rest)
+let sk_vkind__Disclosure__default_open__none (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Lemma (requires (None? e)) (ensures (sfx_vkind__Disclosure__default_open e rest == rest))
+  = reveal_opaque (`%sfx_vkind__Disclosure__default_open) (sfx_vkind__Disclosure__default_open #num #flt e rest)
+let sk_vkind__Disclosure__on_toggle__skip (#num #flt: eqtype) (n: string) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Lemma (requires (n <> "onToggle")) (ensures (find_field n (sfx_vkind__Disclosure__on_toggle e rest) == find_field n rest))
+  = reveal_opaque (`%sfx_vkind__Disclosure__on_toggle) (sfx_vkind__Disclosure__on_toggle #num #flt e rest)
+let sk_vkind__Disclosure__on_toggle__hit (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Lemma (requires (Some? e)) (ensures (find_field "onToggle" (sfx_vkind__Disclosure__on_toggle e rest) == Ok (Some?.v e)))
+  = reveal_opaque (`%sfx_vkind__Disclosure__on_toggle) (sfx_vkind__Disclosure__on_toggle #num #flt e rest)
+let sk_vkind__Disclosure__on_toggle__none (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Lemma (requires (None? e)) (ensures (sfx_vkind__Disclosure__on_toggle e rest == rest))
+  = reveal_opaque (`%sfx_vkind__Disclosure__on_toggle) (sfx_vkind__Disclosure__on_toggle #num #flt e rest)
+let sk_vkind__Disclosure__open__skip (#num #flt: eqtype) (n: string) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Lemma (requires (n <> "open")) (ensures (find_field n (sfx_vkind__Disclosure__open e rest) == find_field n rest))
+  = reveal_opaque (`%sfx_vkind__Disclosure__open) (sfx_vkind__Disclosure__open #num #flt e rest)
+let sk_vkind__Disclosure__open__hit (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Lemma (requires (Some? e)) (ensures (find_field "open" (sfx_vkind__Disclosure__open e rest) == Ok (Some?.v e)))
+  = reveal_opaque (`%sfx_vkind__Disclosure__open) (sfx_vkind__Disclosure__open #num #flt e rest)
+let sk_vkind__Disclosure__open__none (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Lemma (requires (None? e)) (ensures (sfx_vkind__Disclosure__open e rest == rest))
+  = reveal_opaque (`%sfx_vkind__Disclosure__open) (sfx_vkind__Disclosure__open #num #flt e rest)
+
+(* lk_vkind__Disclosure__default_open__present — defaultOpen not at its default *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_vkind__Disclosure__default_open__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Disclosure f0 f1 f2 f3 f4 -> not (f1 = false) | _ -> false)) (ensures (match x with | C__vkind__Disclosure f0 f1 f2 f3 f4 -> get_prop "defaultOpen" (enc_vkind #num #flt x) == Ok (JBool f1) | _ -> True)) =
+  match x with
+  | C__vkind__Disclosure f0 f1 f2 f3 f4 ->
+    let s2 = sfx_vkind__Disclosure__open #num #flt (enc_dflt_u_binding__bool #num #flt ((C__u_binding__bool__Static (Some false))) f4 (enc_u_binding__bool f4)) ([]) in
+    let s1 = sfx_vkind__Disclosure__on_toggle #num #flt (enc_opt_closure #num #flt f3) (s2) in
+    let s0 = sfx_vkind__Disclosure__default_open #num #flt (enc_dflt_bool #num #flt (false) f1) (("heading", enc_u_text_source f2) :: s1) in
+    sk_vkind__Disclosure__default_open__hit #num #flt (enc_dflt_bool #num #flt (false) f1) (("heading", enc_u_text_source f2) :: s1)
+  | _ -> ()
+#pop-options
+
+(* lk_vkind__Disclosure__default_open__absent — defaultOpen at its default *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_vkind__Disclosure__default_open__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Disclosure f0 f1 f2 f3 f4 -> f1 = false | _ -> false)) (ensures (Error? (get_prop "defaultOpen" (enc_vkind #num #flt x)))) =
+  match x with
+  | C__vkind__Disclosure f0 f1 f2 f3 f4 ->
+    let s2 = sfx_vkind__Disclosure__open #num #flt (enc_dflt_u_binding__bool #num #flt ((C__u_binding__bool__Static (Some false))) f4 (enc_u_binding__bool f4)) ([]) in
+    let s1 = sfx_vkind__Disclosure__on_toggle #num #flt (enc_opt_closure #num #flt f3) (s2) in
+    let s0 = sfx_vkind__Disclosure__default_open #num #flt (enc_dflt_bool #num #flt (false) f1) (("heading", enc_u_text_source f2) :: s1) in
+    sk_vkind__Disclosure__default_open__none #num #flt (enc_dflt_bool #num #flt (false) f1) (("heading", enc_u_text_source f2) :: s1);
+    sk_vkind__Disclosure__on_toggle__skip #num #flt "defaultOpen" (enc_opt_closure #num #flt f3) (s2);
+    sk_vkind__Disclosure__open__skip #num #flt "defaultOpen" (enc_dflt_u_binding__bool #num #flt ((C__u_binding__bool__Static (Some false))) f4 (enc_u_binding__bool f4)) ([])
+  | _ -> ()
+#pop-options
+
+(* lk_vkind__Disclosure__heading — heading — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_vkind__Disclosure__heading (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__Disclosure? x)) (ensures (match x with | C__vkind__Disclosure f0 f1 f2 f3 f4 -> get_prop "heading" (enc_vkind #num #flt x) == Ok (enc_u_text_source f2) | _ -> True)) =
+  match x with
+  | C__vkind__Disclosure f0 f1 f2 f3 f4 ->
+    let s2 = sfx_vkind__Disclosure__open #num #flt (enc_dflt_u_binding__bool #num #flt ((C__u_binding__bool__Static (Some false))) f4 (enc_u_binding__bool f4)) ([]) in
+    let s1 = sfx_vkind__Disclosure__on_toggle #num #flt (enc_opt_closure #num #flt f3) (s2) in
+    let s0 = sfx_vkind__Disclosure__default_open #num #flt (enc_dflt_bool #num #flt (false) f1) (("heading", enc_u_text_source f2) :: s1) in
+    sk_vkind__Disclosure__default_open__skip #num #flt "heading" (enc_dflt_bool #num #flt (false) f1) (("heading", enc_u_text_source f2) :: s1)
+  | _ -> ()
+#pop-options
+
+(* lk_vkind__Disclosure__on_toggle__present — onToggle present *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_vkind__Disclosure__on_toggle__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Disclosure f0 f1 f2 f3 f4 -> Some? f3 | _ -> false)) (ensures (match x with | C__vkind__Disclosure f0 f1 f2 f3 f4 -> get_prop "onToggle" (enc_vkind #num #flt x) == Ok (JStr "<closure>") | _ -> True)) =
+  match x with
+  | C__vkind__Disclosure f0 f1 f2 f3 f4 ->
+    let s2 = sfx_vkind__Disclosure__open #num #flt (enc_dflt_u_binding__bool #num #flt ((C__u_binding__bool__Static (Some false))) f4 (enc_u_binding__bool f4)) ([]) in
+    let s1 = sfx_vkind__Disclosure__on_toggle #num #flt (enc_opt_closure #num #flt f3) (s2) in
+    let s0 = sfx_vkind__Disclosure__default_open #num #flt (enc_dflt_bool #num #flt (false) f1) (("heading", enc_u_text_source f2) :: s1) in
+    sk_vkind__Disclosure__default_open__skip #num #flt "onToggle" (enc_dflt_bool #num #flt (false) f1) (("heading", enc_u_text_source f2) :: s1);
+    sk_vkind__Disclosure__on_toggle__hit #num #flt (enc_opt_closure #num #flt f3) (s2)
+  | _ -> ()
+#pop-options
+
+(* lk_vkind__Disclosure__on_toggle__absent — onToggle absent *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_vkind__Disclosure__on_toggle__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Disclosure f0 f1 f2 f3 f4 -> None? f3 | _ -> false)) (ensures (Error? (get_prop "onToggle" (enc_vkind #num #flt x)))) =
+  match x with
+  | C__vkind__Disclosure f0 f1 f2 f3 f4 ->
+    let s2 = sfx_vkind__Disclosure__open #num #flt (enc_dflt_u_binding__bool #num #flt ((C__u_binding__bool__Static (Some false))) f4 (enc_u_binding__bool f4)) ([]) in
+    let s1 = sfx_vkind__Disclosure__on_toggle #num #flt (enc_opt_closure #num #flt f3) (s2) in
+    let s0 = sfx_vkind__Disclosure__default_open #num #flt (enc_dflt_bool #num #flt (false) f1) (("heading", enc_u_text_source f2) :: s1) in
+    sk_vkind__Disclosure__default_open__skip #num #flt "onToggle" (enc_dflt_bool #num #flt (false) f1) (("heading", enc_u_text_source f2) :: s1);
+    sk_vkind__Disclosure__on_toggle__none #num #flt (enc_opt_closure #num #flt f3) (s2);
+    sk_vkind__Disclosure__open__skip #num #flt "onToggle" (enc_dflt_u_binding__bool #num #flt ((C__u_binding__bool__Static (Some false))) f4 (enc_u_binding__bool f4)) ([])
+  | _ -> ()
+#pop-options
+
+(* lk_vkind__Disclosure__open__present — open not at its default *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_vkind__Disclosure__open__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Disclosure f0 f1 f2 f3 f4 -> not (f4 = (C__u_binding__bool__Static (Some false))) | _ -> false)) (ensures (match x with | C__vkind__Disclosure f0 f1 f2 f3 f4 -> get_prop "open" (enc_vkind #num #flt x) == Ok (enc_u_binding__bool f4) | _ -> True)) =
+  match x with
+  | C__vkind__Disclosure f0 f1 f2 f3 f4 ->
+    let s2 = sfx_vkind__Disclosure__open #num #flt (enc_dflt_u_binding__bool #num #flt ((C__u_binding__bool__Static (Some false))) f4 (enc_u_binding__bool f4)) ([]) in
+    let s1 = sfx_vkind__Disclosure__on_toggle #num #flt (enc_opt_closure #num #flt f3) (s2) in
+    let s0 = sfx_vkind__Disclosure__default_open #num #flt (enc_dflt_bool #num #flt (false) f1) (("heading", enc_u_text_source f2) :: s1) in
+    sk_vkind__Disclosure__default_open__skip #num #flt "open" (enc_dflt_bool #num #flt (false) f1) (("heading", enc_u_text_source f2) :: s1);
+    sk_vkind__Disclosure__on_toggle__skip #num #flt "open" (enc_opt_closure #num #flt f3) (s2);
+    sk_vkind__Disclosure__open__hit #num #flt (enc_dflt_u_binding__bool #num #flt ((C__u_binding__bool__Static (Some false))) f4 (enc_u_binding__bool f4)) ([])
+  | _ -> ()
+#pop-options
+
+(* lk_vkind__Disclosure__open__absent — open at its default *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_vkind__Disclosure__open__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Disclosure f0 f1 f2 f3 f4 -> f4 = (C__u_binding__bool__Static (Some false)) | _ -> false)) (ensures (Error? (get_prop "open" (enc_vkind #num #flt x)))) =
+  match x with
+  | C__vkind__Disclosure f0 f1 f2 f3 f4 ->
+    let s2 = sfx_vkind__Disclosure__open #num #flt (enc_dflt_u_binding__bool #num #flt ((C__u_binding__bool__Static (Some false))) f4 (enc_u_binding__bool f4)) ([]) in
+    let s1 = sfx_vkind__Disclosure__on_toggle #num #flt (enc_opt_closure #num #flt f3) (s2) in
+    let s0 = sfx_vkind__Disclosure__default_open #num #flt (enc_dflt_bool #num #flt (false) f1) (("heading", enc_u_text_source f2) :: s1) in
+    sk_vkind__Disclosure__default_open__skip #num #flt "open" (enc_dflt_bool #num #flt (false) f1) (("heading", enc_u_text_source f2) :: s1);
+    sk_vkind__Disclosure__on_toggle__skip #num #flt "open" (enc_opt_closure #num #flt f3) (s2);
+    sk_vkind__Disclosure__open__none #num #flt (enc_dflt_u_binding__bool #num #flt ((C__u_binding__bool__Static (Some false))) f4 (enc_u_binding__bool f4)) ([])
+  | _ -> ()
+#pop-options
+
+(* rv_vkind__Disclosure__default_open — the value of `rd_vkind__Disclosure__default_open` off the encoded object *)
+let rv_vkind__Disclosure__default_open (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__Disclosure? x)) (ensures (match x with | C__vkind__Disclosure f0 f1 f2 f3 f4 -> rd_vkind__Disclosure__default_open #num #flt (enc_vkind #num #flt x) == Ok f1 | _ -> True)) =
+  reveal_opaque (`%rd_vkind__Disclosure__default_open) (rd_vkind__Disclosure__default_open #num #flt (enc_vkind #num #flt x));
+  match x with
+  | C__vkind__Disclosure f0 f1 f2 f3 f4 -> (if f1 = false then lk_vkind__Disclosure__default_open__absent #num #flt x else lk_vkind__Disclosure__default_open__present #num #flt x)
+  | _ -> ()
+
+(* rv_vkind__Disclosure__on_toggle — the value of `rd_vkind__Disclosure__on_toggle` off the encoded object *)
+let rv_vkind__Disclosure__on_toggle (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__Disclosure? x)) (ensures (match x with | C__vkind__Disclosure f0 f1 f2 f3 f4 -> rd_vkind__Disclosure__on_toggle #num #flt (enc_vkind #num #flt x) == Ok f3 | _ -> True)) =
+  reveal_opaque (`%rd_vkind__Disclosure__on_toggle) (rd_vkind__Disclosure__on_toggle #num #flt (enc_vkind #num #flt x));
+  match x with
+  | C__vkind__Disclosure f0 f1 f2 f3 f4 -> (match f3 with | None -> lk_vkind__Disclosure__on_toggle__absent #num #flt x | Some _ -> lk_vkind__Disclosure__on_toggle__present #num #flt x)
+  | _ -> ()
+
 (* The suffixes of C__vkind__Embed — each revealed once, here, and cited by name below. *)
 let sk_vkind__Embed__aspect_ratio__skip (#num #flt: eqtype) (n: string) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Lemma (requires (n <> "aspectRatio")) (ensures (find_field n (sfx_vkind__Embed__aspect_ratio e rest) == find_field n rest))
   = reveal_opaque (`%sfx_vkind__Embed__aspect_ratio) (sfx_vkind__Embed__aspect_ratio #num #flt e rest)
@@ -899,6 +1154,12 @@ let sk_vkind__FileUpload__max_files__hit (#num #flt: eqtype) (e: option (jval nu
   = reveal_opaque (`%sfx_vkind__FileUpload__max_files) (sfx_vkind__FileUpload__max_files #num #flt e rest)
 let sk_vkind__FileUpload__max_files__none (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Lemma (requires (None? e)) (ensures (sfx_vkind__FileUpload__max_files e rest == rest))
   = reveal_opaque (`%sfx_vkind__FileUpload__max_files) (sfx_vkind__FileUpload__max_files #num #flt e rest)
+let sk_vkind__FileUpload__multiple__skip (#num #flt: eqtype) (n: string) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Lemma (requires (n <> "multiple")) (ensures (find_field n (sfx_vkind__FileUpload__multiple e rest) == find_field n rest))
+  = reveal_opaque (`%sfx_vkind__FileUpload__multiple) (sfx_vkind__FileUpload__multiple #num #flt e rest)
+let sk_vkind__FileUpload__multiple__hit (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Lemma (requires (Some? e)) (ensures (find_field "multiple" (sfx_vkind__FileUpload__multiple e rest) == Ok (Some?.v e)))
+  = reveal_opaque (`%sfx_vkind__FileUpload__multiple) (sfx_vkind__FileUpload__multiple #num #flt e rest)
+let sk_vkind__FileUpload__multiple__none (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Lemma (requires (None? e)) (ensures (sfx_vkind__FileUpload__multiple e rest == rest))
+  = reveal_opaque (`%sfx_vkind__FileUpload__multiple) (sfx_vkind__FileUpload__multiple #num #flt e rest)
 let sk_vkind__FileUpload__on_select__skip (#num #flt: eqtype) (n: string) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Lemma (requires (n <> "onSelect")) (ensures (find_field n (sfx_vkind__FileUpload__on_select e rest) == find_field n rest))
   = reveal_opaque (`%sfx_vkind__FileUpload__on_select) (sfx_vkind__FileUpload__on_select #num #flt e rest)
 let sk_vkind__FileUpload__on_select__hit (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Lemma (requires (Some? e)) (ensures (find_field "onSelect" (sfx_vkind__FileUpload__on_select e rest) == Ok (Some?.v e)))
@@ -907,12 +1168,13 @@ let sk_vkind__FileUpload__on_select__none (#num #flt: eqtype) (e: option (jval n
   = reveal_opaque (`%sfx_vkind__FileUpload__on_select) (sfx_vkind__FileUpload__on_select #num #flt e rest)
 
 (* lk_vkind__FileUpload__accept_paste__present — acceptPaste not at its default *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__FileUpload__accept_paste__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f1 = false) | _ -> false)) (ensures (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> get_prop "acceptPaste" (enc_vkind #num #flt x) == Ok (JBool f1) | _ -> True)) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
-    let s7 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
-    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7) in
+    let s8 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
+    let s7 = sfx_vkind__FileUpload__multiple #num #flt (enc_dflt_bool #num #flt (false) f9) (s8) in
+    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (s7) in
     let s5 = sfx_vkind__FileUpload__max_bytes #num #flt (enc_opt_int #num #flt f7) (s6) in
     let s4 = sfx_vkind__FileUpload__drop_target #num #flt (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5) in
     let s3 = sfx_vkind__FileUpload__disabled #num #flt (enc_opt_u_binding__bool #num #flt f4) (s4) in
@@ -924,12 +1186,13 @@ let lk_vkind__FileUpload__accept_paste__present (#num #flt: eqtype) (x: vkind nu
 #pop-options
 
 (* lk_vkind__FileUpload__accept_paste__absent — acceptPaste at its default *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__FileUpload__accept_paste__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f1 = false | _ -> false)) (ensures (Error? (get_prop "acceptPaste" (enc_vkind #num #flt x)))) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
-    let s7 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
-    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7) in
+    let s8 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
+    let s7 = sfx_vkind__FileUpload__multiple #num #flt (enc_dflt_bool #num #flt (false) f9) (s8) in
+    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (s7) in
     let s5 = sfx_vkind__FileUpload__max_bytes #num #flt (enc_opt_int #num #flt f7) (s6) in
     let s4 = sfx_vkind__FileUpload__drop_target #num #flt (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5) in
     let s3 = sfx_vkind__FileUpload__disabled #num #flt (enc_opt_u_binding__bool #num #flt f4) (s4) in
@@ -942,18 +1205,20 @@ let lk_vkind__FileUpload__accept_paste__absent (#num #flt: eqtype) (x: vkind num
     sk_vkind__FileUpload__disabled__skip #num #flt "acceptPaste" (enc_opt_u_binding__bool #num #flt f4) (s4);
     sk_vkind__FileUpload__drop_target__skip #num #flt "acceptPaste" (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5);
     sk_vkind__FileUpload__max_bytes__skip #num #flt "acceptPaste" (enc_opt_int #num #flt f7) (s6);
-    sk_vkind__FileUpload__max_files__skip #num #flt "acceptPaste" (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7);
+    sk_vkind__FileUpload__max_files__skip #num #flt "acceptPaste" (enc_opt_int #num #flt f8) (s7);
+    sk_vkind__FileUpload__multiple__skip #num #flt "acceptPaste" (enc_dflt_bool #num #flt (false) f9) (s8);
     sk_vkind__FileUpload__on_select__skip #num #flt "acceptPaste" (enc_opt_closure #num #flt f10) ([])
   | _ -> ()
 #pop-options
 
 (* lk_vkind__FileUpload__capture__present — capture present *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__FileUpload__capture__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> Some? f2 | _ -> false)) (ensures (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> get_prop "capture" (enc_vkind #num #flt x) == Ok (enc_e_capture_source (Some?.v f2)) | _ -> True)) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
-    let s7 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
-    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7) in
+    let s8 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
+    let s7 = sfx_vkind__FileUpload__multiple #num #flt (enc_dflt_bool #num #flt (false) f9) (s8) in
+    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (s7) in
     let s5 = sfx_vkind__FileUpload__max_bytes #num #flt (enc_opt_int #num #flt f7) (s6) in
     let s4 = sfx_vkind__FileUpload__drop_target #num #flt (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5) in
     let s3 = sfx_vkind__FileUpload__disabled #num #flt (enc_opt_u_binding__bool #num #flt f4) (s4) in
@@ -966,12 +1231,13 @@ let lk_vkind__FileUpload__capture__present (#num #flt: eqtype) (x: vkind num flt
 #pop-options
 
 (* lk_vkind__FileUpload__capture__absent — capture absent *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__FileUpload__capture__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> None? f2 | _ -> false)) (ensures (Error? (get_prop "capture" (enc_vkind #num #flt x)))) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
-    let s7 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
-    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7) in
+    let s8 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
+    let s7 = sfx_vkind__FileUpload__multiple #num #flt (enc_dflt_bool #num #flt (false) f9) (s8) in
+    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (s7) in
     let s5 = sfx_vkind__FileUpload__max_bytes #num #flt (enc_opt_int #num #flt f7) (s6) in
     let s4 = sfx_vkind__FileUpload__drop_target #num #flt (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5) in
     let s3 = sfx_vkind__FileUpload__disabled #num #flt (enc_opt_u_binding__bool #num #flt f4) (s4) in
@@ -984,18 +1250,20 @@ let lk_vkind__FileUpload__capture__absent (#num #flt: eqtype) (x: vkind num flt)
     sk_vkind__FileUpload__disabled__skip #num #flt "capture" (enc_opt_u_binding__bool #num #flt f4) (s4);
     sk_vkind__FileUpload__drop_target__skip #num #flt "capture" (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5);
     sk_vkind__FileUpload__max_bytes__skip #num #flt "capture" (enc_opt_int #num #flt f7) (s6);
-    sk_vkind__FileUpload__max_files__skip #num #flt "capture" (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7);
+    sk_vkind__FileUpload__max_files__skip #num #flt "capture" (enc_opt_int #num #flt f8) (s7);
+    sk_vkind__FileUpload__multiple__skip #num #flt "capture" (enc_dflt_bool #num #flt (false) f9) (s8);
     sk_vkind__FileUpload__on_select__skip #num #flt "capture" (enc_opt_closure #num #flt f10) ([])
   | _ -> ()
 #pop-options
 
 (* lk_vkind__FileUpload__destination__present — destination present *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__FileUpload__destination__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> Some? f3 | _ -> false)) (ensures (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> get_prop "destination" (enc_vkind #num #flt x) == Ok (JStr (Some?.v f3)) | _ -> True)) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
-    let s7 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
-    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7) in
+    let s8 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
+    let s7 = sfx_vkind__FileUpload__multiple #num #flt (enc_dflt_bool #num #flt (false) f9) (s8) in
+    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (s7) in
     let s5 = sfx_vkind__FileUpload__max_bytes #num #flt (enc_opt_int #num #flt f7) (s6) in
     let s4 = sfx_vkind__FileUpload__drop_target #num #flt (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5) in
     let s3 = sfx_vkind__FileUpload__disabled #num #flt (enc_opt_u_binding__bool #num #flt f4) (s4) in
@@ -1009,12 +1277,13 @@ let lk_vkind__FileUpload__destination__present (#num #flt: eqtype) (x: vkind num
 #pop-options
 
 (* lk_vkind__FileUpload__destination__absent — destination absent *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__FileUpload__destination__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> None? f3 | _ -> false)) (ensures (Error? (get_prop "destination" (enc_vkind #num #flt x)))) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
-    let s7 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
-    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7) in
+    let s8 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
+    let s7 = sfx_vkind__FileUpload__multiple #num #flt (enc_dflt_bool #num #flt (false) f9) (s8) in
+    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (s7) in
     let s5 = sfx_vkind__FileUpload__max_bytes #num #flt (enc_opt_int #num #flt f7) (s6) in
     let s4 = sfx_vkind__FileUpload__drop_target #num #flt (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5) in
     let s3 = sfx_vkind__FileUpload__disabled #num #flt (enc_opt_u_binding__bool #num #flt f4) (s4) in
@@ -1027,18 +1296,20 @@ let lk_vkind__FileUpload__destination__absent (#num #flt: eqtype) (x: vkind num 
     sk_vkind__FileUpload__disabled__skip #num #flt "destination" (enc_opt_u_binding__bool #num #flt f4) (s4);
     sk_vkind__FileUpload__drop_target__skip #num #flt "destination" (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5);
     sk_vkind__FileUpload__max_bytes__skip #num #flt "destination" (enc_opt_int #num #flt f7) (s6);
-    sk_vkind__FileUpload__max_files__skip #num #flt "destination" (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7);
+    sk_vkind__FileUpload__max_files__skip #num #flt "destination" (enc_opt_int #num #flt f8) (s7);
+    sk_vkind__FileUpload__multiple__skip #num #flt "destination" (enc_dflt_bool #num #flt (false) f9) (s8);
     sk_vkind__FileUpload__on_select__skip #num #flt "destination" (enc_opt_closure #num #flt f10) ([])
   | _ -> ()
 #pop-options
 
 (* lk_vkind__FileUpload__disabled__present — disabled present *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__FileUpload__disabled__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> Some? f4 | _ -> false)) (ensures (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> get_prop "disabled" (enc_vkind #num #flt x) == Ok (enc_u_binding__bool (Some?.v f4)) | _ -> True)) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
-    let s7 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
-    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7) in
+    let s8 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
+    let s7 = sfx_vkind__FileUpload__multiple #num #flt (enc_dflt_bool #num #flt (false) f9) (s8) in
+    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (s7) in
     let s5 = sfx_vkind__FileUpload__max_bytes #num #flt (enc_opt_int #num #flt f7) (s6) in
     let s4 = sfx_vkind__FileUpload__drop_target #num #flt (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5) in
     let s3 = sfx_vkind__FileUpload__disabled #num #flt (enc_opt_u_binding__bool #num #flt f4) (s4) in
@@ -1053,12 +1324,13 @@ let lk_vkind__FileUpload__disabled__present (#num #flt: eqtype) (x: vkind num fl
 #pop-options
 
 (* lk_vkind__FileUpload__disabled__absent — disabled absent *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__FileUpload__disabled__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> None? f4 | _ -> false)) (ensures (Error? (get_prop "disabled" (enc_vkind #num #flt x)))) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
-    let s7 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
-    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7) in
+    let s8 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
+    let s7 = sfx_vkind__FileUpload__multiple #num #flt (enc_dflt_bool #num #flt (false) f9) (s8) in
+    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (s7) in
     let s5 = sfx_vkind__FileUpload__max_bytes #num #flt (enc_opt_int #num #flt f7) (s6) in
     let s4 = sfx_vkind__FileUpload__drop_target #num #flt (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5) in
     let s3 = sfx_vkind__FileUpload__disabled #num #flt (enc_opt_u_binding__bool #num #flt f4) (s4) in
@@ -1071,18 +1343,20 @@ let lk_vkind__FileUpload__disabled__absent (#num #flt: eqtype) (x: vkind num flt
     sk_vkind__FileUpload__disabled__none #num #flt (enc_opt_u_binding__bool #num #flt f4) (s4);
     sk_vkind__FileUpload__drop_target__skip #num #flt "disabled" (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5);
     sk_vkind__FileUpload__max_bytes__skip #num #flt "disabled" (enc_opt_int #num #flt f7) (s6);
-    sk_vkind__FileUpload__max_files__skip #num #flt "disabled" (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7);
+    sk_vkind__FileUpload__max_files__skip #num #flt "disabled" (enc_opt_int #num #flt f8) (s7);
+    sk_vkind__FileUpload__multiple__skip #num #flt "disabled" (enc_dflt_bool #num #flt (false) f9) (s8);
     sk_vkind__FileUpload__on_select__skip #num #flt "disabled" (enc_opt_closure #num #flt f10) ([])
   | _ -> ()
 #pop-options
 
 (* lk_vkind__FileUpload__drop_target__present — dropTarget not at its default *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__FileUpload__drop_target__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f5 = false) | _ -> false)) (ensures (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> get_prop "dropTarget" (enc_vkind #num #flt x) == Ok (JBool f5) | _ -> True)) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
-    let s7 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
-    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7) in
+    let s8 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
+    let s7 = sfx_vkind__FileUpload__multiple #num #flt (enc_dflt_bool #num #flt (false) f9) (s8) in
+    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (s7) in
     let s5 = sfx_vkind__FileUpload__max_bytes #num #flt (enc_opt_int #num #flt f7) (s6) in
     let s4 = sfx_vkind__FileUpload__drop_target #num #flt (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5) in
     let s3 = sfx_vkind__FileUpload__disabled #num #flt (enc_opt_u_binding__bool #num #flt f4) (s4) in
@@ -1098,12 +1372,13 @@ let lk_vkind__FileUpload__drop_target__present (#num #flt: eqtype) (x: vkind num
 #pop-options
 
 (* lk_vkind__FileUpload__drop_target__absent — dropTarget at its default *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__FileUpload__drop_target__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f5 = false | _ -> false)) (ensures (Error? (get_prop "dropTarget" (enc_vkind #num #flt x)))) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
-    let s7 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
-    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7) in
+    let s8 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
+    let s7 = sfx_vkind__FileUpload__multiple #num #flt (enc_dflt_bool #num #flt (false) f9) (s8) in
+    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (s7) in
     let s5 = sfx_vkind__FileUpload__max_bytes #num #flt (enc_opt_int #num #flt f7) (s6) in
     let s4 = sfx_vkind__FileUpload__drop_target #num #flt (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5) in
     let s3 = sfx_vkind__FileUpload__disabled #num #flt (enc_opt_u_binding__bool #num #flt f4) (s4) in
@@ -1116,18 +1391,20 @@ let lk_vkind__FileUpload__drop_target__absent (#num #flt: eqtype) (x: vkind num 
     sk_vkind__FileUpload__disabled__skip #num #flt "dropTarget" (enc_opt_u_binding__bool #num #flt f4) (s4);
     sk_vkind__FileUpload__drop_target__none #num #flt (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5);
     sk_vkind__FileUpload__max_bytes__skip #num #flt "dropTarget" (enc_opt_int #num #flt f7) (s6);
-    sk_vkind__FileUpload__max_files__skip #num #flt "dropTarget" (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7);
+    sk_vkind__FileUpload__max_files__skip #num #flt "dropTarget" (enc_opt_int #num #flt f8) (s7);
+    sk_vkind__FileUpload__multiple__skip #num #flt "dropTarget" (enc_dflt_bool #num #flt (false) f9) (s8);
     sk_vkind__FileUpload__on_select__skip #num #flt "dropTarget" (enc_opt_closure #num #flt f10) ([])
   | _ -> ()
 #pop-options
 
 (* lk_vkind__FileUpload__label — label — always emitted, at a position the conditionals before it move *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__FileUpload__label (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__FileUpload? x)) (ensures (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> get_prop "label" (enc_vkind #num #flt x) == Ok (enc_u_text_source f6) | _ -> True)) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
-    let s7 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
-    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7) in
+    let s8 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
+    let s7 = sfx_vkind__FileUpload__multiple #num #flt (enc_dflt_bool #num #flt (false) f9) (s8) in
+    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (s7) in
     let s5 = sfx_vkind__FileUpload__max_bytes #num #flt (enc_opt_int #num #flt f7) (s6) in
     let s4 = sfx_vkind__FileUpload__drop_target #num #flt (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5) in
     let s3 = sfx_vkind__FileUpload__disabled #num #flt (enc_opt_u_binding__bool #num #flt f4) (s4) in
@@ -1143,12 +1420,13 @@ let lk_vkind__FileUpload__label (#num #flt: eqtype) (x: vkind num flt) : Lemma (
 #pop-options
 
 (* lk_vkind__FileUpload__max_bytes__present — maxBytes present *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__FileUpload__max_bytes__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> Some? f7 | _ -> false)) (ensures (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> get_prop "maxBytes" (enc_vkind #num #flt x) == Ok (JInt (Some?.v f7)) | _ -> True)) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
-    let s7 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
-    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7) in
+    let s8 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
+    let s7 = sfx_vkind__FileUpload__multiple #num #flt (enc_dflt_bool #num #flt (false) f9) (s8) in
+    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (s7) in
     let s5 = sfx_vkind__FileUpload__max_bytes #num #flt (enc_opt_int #num #flt f7) (s6) in
     let s4 = sfx_vkind__FileUpload__drop_target #num #flt (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5) in
     let s3 = sfx_vkind__FileUpload__disabled #num #flt (enc_opt_u_binding__bool #num #flt f4) (s4) in
@@ -1165,12 +1443,13 @@ let lk_vkind__FileUpload__max_bytes__present (#num #flt: eqtype) (x: vkind num f
 #pop-options
 
 (* lk_vkind__FileUpload__max_bytes__absent — maxBytes absent *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__FileUpload__max_bytes__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> None? f7 | _ -> false)) (ensures (Error? (get_prop "maxBytes" (enc_vkind #num #flt x)))) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
-    let s7 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
-    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7) in
+    let s8 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
+    let s7 = sfx_vkind__FileUpload__multiple #num #flt (enc_dflt_bool #num #flt (false) f9) (s8) in
+    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (s7) in
     let s5 = sfx_vkind__FileUpload__max_bytes #num #flt (enc_opt_int #num #flt f7) (s6) in
     let s4 = sfx_vkind__FileUpload__drop_target #num #flt (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5) in
     let s3 = sfx_vkind__FileUpload__disabled #num #flt (enc_opt_u_binding__bool #num #flt f4) (s4) in
@@ -1183,18 +1462,20 @@ let lk_vkind__FileUpload__max_bytes__absent (#num #flt: eqtype) (x: vkind num fl
     sk_vkind__FileUpload__disabled__skip #num #flt "maxBytes" (enc_opt_u_binding__bool #num #flt f4) (s4);
     sk_vkind__FileUpload__drop_target__skip #num #flt "maxBytes" (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5);
     sk_vkind__FileUpload__max_bytes__none #num #flt (enc_opt_int #num #flt f7) (s6);
-    sk_vkind__FileUpload__max_files__skip #num #flt "maxBytes" (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7);
+    sk_vkind__FileUpload__max_files__skip #num #flt "maxBytes" (enc_opt_int #num #flt f8) (s7);
+    sk_vkind__FileUpload__multiple__skip #num #flt "maxBytes" (enc_dflt_bool #num #flt (false) f9) (s8);
     sk_vkind__FileUpload__on_select__skip #num #flt "maxBytes" (enc_opt_closure #num #flt f10) ([])
   | _ -> ()
 #pop-options
 
 (* lk_vkind__FileUpload__max_files__present — maxFiles present *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__FileUpload__max_files__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> Some? f8 | _ -> false)) (ensures (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> get_prop "maxFiles" (enc_vkind #num #flt x) == Ok (JInt (Some?.v f8)) | _ -> True)) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
-    let s7 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
-    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7) in
+    let s8 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
+    let s7 = sfx_vkind__FileUpload__multiple #num #flt (enc_dflt_bool #num #flt (false) f9) (s8) in
+    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (s7) in
     let s5 = sfx_vkind__FileUpload__max_bytes #num #flt (enc_opt_int #num #flt f7) (s6) in
     let s4 = sfx_vkind__FileUpload__drop_target #num #flt (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5) in
     let s3 = sfx_vkind__FileUpload__disabled #num #flt (enc_opt_u_binding__bool #num #flt f4) (s4) in
@@ -1207,17 +1488,18 @@ let lk_vkind__FileUpload__max_files__present (#num #flt: eqtype) (x: vkind num f
     sk_vkind__FileUpload__disabled__skip #num #flt "maxFiles" (enc_opt_u_binding__bool #num #flt f4) (s4);
     sk_vkind__FileUpload__drop_target__skip #num #flt "maxFiles" (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5);
     sk_vkind__FileUpload__max_bytes__skip #num #flt "maxFiles" (enc_opt_int #num #flt f7) (s6);
-    sk_vkind__FileUpload__max_files__hit #num #flt (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7)
+    sk_vkind__FileUpload__max_files__hit #num #flt (enc_opt_int #num #flt f8) (s7)
   | _ -> ()
 #pop-options
 
 (* lk_vkind__FileUpload__max_files__absent — maxFiles absent *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__FileUpload__max_files__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> None? f8 | _ -> false)) (ensures (Error? (get_prop "maxFiles" (enc_vkind #num #flt x)))) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
-    let s7 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
-    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7) in
+    let s8 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
+    let s7 = sfx_vkind__FileUpload__multiple #num #flt (enc_dflt_bool #num #flt (false) f9) (s8) in
+    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (s7) in
     let s5 = sfx_vkind__FileUpload__max_bytes #num #flt (enc_opt_int #num #flt f7) (s6) in
     let s4 = sfx_vkind__FileUpload__drop_target #num #flt (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5) in
     let s3 = sfx_vkind__FileUpload__disabled #num #flt (enc_opt_u_binding__bool #num #flt f4) (s4) in
@@ -1230,18 +1512,20 @@ let lk_vkind__FileUpload__max_files__absent (#num #flt: eqtype) (x: vkind num fl
     sk_vkind__FileUpload__disabled__skip #num #flt "maxFiles" (enc_opt_u_binding__bool #num #flt f4) (s4);
     sk_vkind__FileUpload__drop_target__skip #num #flt "maxFiles" (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5);
     sk_vkind__FileUpload__max_bytes__skip #num #flt "maxFiles" (enc_opt_int #num #flt f7) (s6);
-    sk_vkind__FileUpload__max_files__none #num #flt (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7);
+    sk_vkind__FileUpload__max_files__none #num #flt (enc_opt_int #num #flt f8) (s7);
+    sk_vkind__FileUpload__multiple__skip #num #flt "maxFiles" (enc_dflt_bool #num #flt (false) f9) (s8);
     sk_vkind__FileUpload__on_select__skip #num #flt "maxFiles" (enc_opt_closure #num #flt f10) ([])
   | _ -> ()
 #pop-options
 
-(* lk_vkind__FileUpload__multiple — multiple — always emitted, at a position the conditionals before it move *)
-#push-options "--fuel 12 --ifuel 4"
-let lk_vkind__FileUpload__multiple (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__FileUpload? x)) (ensures (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> get_prop "multiple" (enc_vkind #num #flt x) == Ok (JBool f9) | _ -> True)) =
+(* lk_vkind__FileUpload__multiple__present — multiple not at its default *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_vkind__FileUpload__multiple__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> not (f9 = false) | _ -> false)) (ensures (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> get_prop "multiple" (enc_vkind #num #flt x) == Ok (JBool f9) | _ -> True)) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
-    let s7 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
-    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7) in
+    let s8 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
+    let s7 = sfx_vkind__FileUpload__multiple #num #flt (enc_dflt_bool #num #flt (false) f9) (s8) in
+    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (s7) in
     let s5 = sfx_vkind__FileUpload__max_bytes #num #flt (enc_opt_int #num #flt f7) (s6) in
     let s4 = sfx_vkind__FileUpload__drop_target #num #flt (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5) in
     let s3 = sfx_vkind__FileUpload__disabled #num #flt (enc_opt_u_binding__bool #num #flt f4) (s4) in
@@ -1254,17 +1538,45 @@ let lk_vkind__FileUpload__multiple (#num #flt: eqtype) (x: vkind num flt) : Lemm
     sk_vkind__FileUpload__disabled__skip #num #flt "multiple" (enc_opt_u_binding__bool #num #flt f4) (s4);
     sk_vkind__FileUpload__drop_target__skip #num #flt "multiple" (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5);
     sk_vkind__FileUpload__max_bytes__skip #num #flt "multiple" (enc_opt_int #num #flt f7) (s6);
-    sk_vkind__FileUpload__max_files__skip #num #flt "multiple" (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7)
+    sk_vkind__FileUpload__max_files__skip #num #flt "multiple" (enc_opt_int #num #flt f8) (s7);
+    sk_vkind__FileUpload__multiple__hit #num #flt (enc_dflt_bool #num #flt (false) f9) (s8)
+  | _ -> ()
+#pop-options
+
+(* lk_vkind__FileUpload__multiple__absent — multiple at its default *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_vkind__FileUpload__multiple__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> f9 = false | _ -> false)) (ensures (Error? (get_prop "multiple" (enc_vkind #num #flt x)))) =
+  match x with
+  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
+    let s8 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
+    let s7 = sfx_vkind__FileUpload__multiple #num #flt (enc_dflt_bool #num #flt (false) f9) (s8) in
+    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (s7) in
+    let s5 = sfx_vkind__FileUpload__max_bytes #num #flt (enc_opt_int #num #flt f7) (s6) in
+    let s4 = sfx_vkind__FileUpload__drop_target #num #flt (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5) in
+    let s3 = sfx_vkind__FileUpload__disabled #num #flt (enc_opt_u_binding__bool #num #flt f4) (s4) in
+    let s2 = sfx_vkind__FileUpload__destination #num #flt (enc_opt_str #num #flt f3) (s3) in
+    let s1 = sfx_vkind__FileUpload__capture #num #flt (enc_opt_e_capture_source #num #flt f2) (s2) in
+    let s0 = sfx_vkind__FileUpload__accept_paste #num #flt (enc_dflt_bool #num #flt (false) f1) (s1) in
+    sk_vkind__FileUpload__accept_paste__skip #num #flt "multiple" (enc_dflt_bool #num #flt (false) f1) (s1);
+    sk_vkind__FileUpload__capture__skip #num #flt "multiple" (enc_opt_e_capture_source #num #flt f2) (s2);
+    sk_vkind__FileUpload__destination__skip #num #flt "multiple" (enc_opt_str #num #flt f3) (s3);
+    sk_vkind__FileUpload__disabled__skip #num #flt "multiple" (enc_opt_u_binding__bool #num #flt f4) (s4);
+    sk_vkind__FileUpload__drop_target__skip #num #flt "multiple" (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5);
+    sk_vkind__FileUpload__max_bytes__skip #num #flt "multiple" (enc_opt_int #num #flt f7) (s6);
+    sk_vkind__FileUpload__max_files__skip #num #flt "multiple" (enc_opt_int #num #flt f8) (s7);
+    sk_vkind__FileUpload__multiple__none #num #flt (enc_dflt_bool #num #flt (false) f9) (s8);
+    sk_vkind__FileUpload__on_select__skip #num #flt "multiple" (enc_opt_closure #num #flt f10) ([])
   | _ -> ()
 #pop-options
 
 (* lk_vkind__FileUpload__on_select__present — onSelect present *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__FileUpload__on_select__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> Some? f10 | _ -> false)) (ensures (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> get_prop "onSelect" (enc_vkind #num #flt x) == Ok (JStr "<closure>") | _ -> True)) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
-    let s7 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
-    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7) in
+    let s8 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
+    let s7 = sfx_vkind__FileUpload__multiple #num #flt (enc_dflt_bool #num #flt (false) f9) (s8) in
+    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (s7) in
     let s5 = sfx_vkind__FileUpload__max_bytes #num #flt (enc_opt_int #num #flt f7) (s6) in
     let s4 = sfx_vkind__FileUpload__drop_target #num #flt (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5) in
     let s3 = sfx_vkind__FileUpload__disabled #num #flt (enc_opt_u_binding__bool #num #flt f4) (s4) in
@@ -1277,18 +1589,20 @@ let lk_vkind__FileUpload__on_select__present (#num #flt: eqtype) (x: vkind num f
     sk_vkind__FileUpload__disabled__skip #num #flt "onSelect" (enc_opt_u_binding__bool #num #flt f4) (s4);
     sk_vkind__FileUpload__drop_target__skip #num #flt "onSelect" (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5);
     sk_vkind__FileUpload__max_bytes__skip #num #flt "onSelect" (enc_opt_int #num #flt f7) (s6);
-    sk_vkind__FileUpload__max_files__skip #num #flt "onSelect" (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7);
+    sk_vkind__FileUpload__max_files__skip #num #flt "onSelect" (enc_opt_int #num #flt f8) (s7);
+    sk_vkind__FileUpload__multiple__skip #num #flt "onSelect" (enc_dflt_bool #num #flt (false) f9) (s8);
     sk_vkind__FileUpload__on_select__hit #num #flt (enc_opt_closure #num #flt f10) ([])
   | _ -> ()
 #pop-options
 
 (* lk_vkind__FileUpload__on_select__absent — onSelect absent *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__FileUpload__on_select__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> None? f10 | _ -> false)) (ensures (Error? (get_prop "onSelect" (enc_vkind #num #flt x)))) =
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
-    let s7 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
-    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7) in
+    let s8 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in
+    let s7 = sfx_vkind__FileUpload__multiple #num #flt (enc_dflt_bool #num #flt (false) f9) (s8) in
+    let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (s7) in
     let s5 = sfx_vkind__FileUpload__max_bytes #num #flt (enc_opt_int #num #flt f7) (s6) in
     let s4 = sfx_vkind__FileUpload__drop_target #num #flt (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5) in
     let s3 = sfx_vkind__FileUpload__disabled #num #flt (enc_opt_u_binding__bool #num #flt f4) (s4) in
@@ -1301,7 +1615,8 @@ let lk_vkind__FileUpload__on_select__absent (#num #flt: eqtype) (x: vkind num fl
     sk_vkind__FileUpload__disabled__skip #num #flt "onSelect" (enc_opt_u_binding__bool #num #flt f4) (s4);
     sk_vkind__FileUpload__drop_target__skip #num #flt "onSelect" (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5);
     sk_vkind__FileUpload__max_bytes__skip #num #flt "onSelect" (enc_opt_int #num #flt f7) (s6);
-    sk_vkind__FileUpload__max_files__skip #num #flt "onSelect" (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7);
+    sk_vkind__FileUpload__max_files__skip #num #flt "onSelect" (enc_opt_int #num #flt f8) (s7);
+    sk_vkind__FileUpload__multiple__skip #num #flt "onSelect" (enc_dflt_bool #num #flt (false) f9) (s8);
     sk_vkind__FileUpload__on_select__none #num #flt (enc_opt_closure #num #flt f10) ([])
   | _ -> ()
 #pop-options
@@ -1346,6 +1661,13 @@ let rv_vkind__FileUpload__max_files (#num #flt: eqtype) (x: vkind num flt) : Lem
   reveal_opaque (`%rd_vkind__FileUpload__max_files) (rd_vkind__FileUpload__max_files #num #flt (enc_vkind #num #flt x));
   match x with
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> (match f8 with | None -> lk_vkind__FileUpload__max_files__absent #num #flt x | Some _ -> lk_vkind__FileUpload__max_files__present #num #flt x)
+  | _ -> ()
+
+(* rv_vkind__FileUpload__multiple — the value of `rd_vkind__FileUpload__multiple` off the encoded object *)
+let rv_vkind__FileUpload__multiple (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__FileUpload? x)) (ensures (match x with | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> rd_vkind__FileUpload__multiple #num #flt (enc_vkind #num #flt x) == Ok f9 | _ -> True)) =
+  reveal_opaque (`%rd_vkind__FileUpload__multiple) (rd_vkind__FileUpload__multiple #num #flt (enc_vkind #num #flt x));
+  match x with
+  | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 -> (if f9 = false then lk_vkind__FileUpload__multiple__absent #num #flt x else lk_vkind__FileUpload__multiple__present #num #flt x)
   | _ -> ()
 
 (* rv_vkind__FileUpload__on_select — the value of `rd_vkind__FileUpload__on_select` off the encoded object *)
@@ -1478,6 +1800,12 @@ let rv_vkind__Icon__tone (#num #flt: eqtype) (x: vkind num flt) : Lemma (require
   | _ -> ()
 
 (* The suffixes of C__vkind__Link — each revealed once, here, and cited by name below. *)
+let sk_vkind__Link__download__skip (#num #flt: eqtype) (n: string) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Lemma (requires (n <> "download")) (ensures (find_field n (sfx_vkind__Link__download e rest) == find_field n rest))
+  = reveal_opaque (`%sfx_vkind__Link__download) (sfx_vkind__Link__download #num #flt e rest)
+let sk_vkind__Link__download__hit (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Lemma (requires (Some? e)) (ensures (find_field "download" (sfx_vkind__Link__download e rest) == Ok (Some?.v e)))
+  = reveal_opaque (`%sfx_vkind__Link__download) (sfx_vkind__Link__download #num #flt e rest)
+let sk_vkind__Link__download__none (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Lemma (requires (None? e)) (ensures (sfx_vkind__Link__download e rest == rest))
+  = reveal_opaque (`%sfx_vkind__Link__download) (sfx_vkind__Link__download #num #flt e rest)
 let sk_vkind__Link__protection__skip (#num #flt: eqtype) (n: string) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Lemma (requires (n <> "protection")) (ensures (find_field n (sfx_vkind__Link__protection e rest) == find_field n rest))
   = reveal_opaque (`%sfx_vkind__Link__protection) (sfx_vkind__Link__protection #num #flt e rest)
 let sk_vkind__Link__protection__hit (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Lemma (requires (Some? e)) (ensures (find_field "protection" (sfx_vkind__Link__protection e rest) == Ok (Some?.v e)))
@@ -1497,86 +1825,160 @@ let sk_vkind__Link__target__hit (#num #flt: eqtype) (e: option (jval num flt)) (
 let sk_vkind__Link__target__none (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Lemma (requires (None? e)) (ensures (sfx_vkind__Link__target e rest == rest))
   = reveal_opaque (`%sfx_vkind__Link__target) (sfx_vkind__Link__target #num #flt e rest)
 
+(* lk_vkind__Link__download__present — download not at its default *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_vkind__Link__download__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> not (f0 = false) | _ -> false)) (ensures (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> get_prop "download" (enc_vkind #num #flt x) == Ok (JBool f0) | _ -> True)) =
+  match x with
+  | C__vkind__Link f0 f1 f2 f3 f4 f5 ->
+    let s3 = sfx_vkind__Link__target #num #flt (enc_opt_str #num #flt f5) ([]) in
+    let s2 = sfx_vkind__Link__rel #num #flt (enc_opt_str #num #flt f4) (s3) in
+    let s1 = sfx_vkind__Link__protection #num #flt (enc_opt_e_link_protection #num #flt f3) (s2) in
+    let s0 = sfx_vkind__Link__download #num #flt (enc_dflt_bool #num #flt (false) f0) (("href", enc_u_binding__str f1) :: ("label", enc_u_text_source f2) :: s1) in
+    sk_vkind__Link__download__hit #num #flt (enc_dflt_bool #num #flt (false) f0) (("href", enc_u_binding__str f1) :: ("label", enc_u_text_source f2) :: s1)
+  | _ -> ()
+#pop-options
+
+(* lk_vkind__Link__download__absent — download at its default *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_vkind__Link__download__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> f0 = false | _ -> false)) (ensures (Error? (get_prop "download" (enc_vkind #num #flt x)))) =
+  match x with
+  | C__vkind__Link f0 f1 f2 f3 f4 f5 ->
+    let s3 = sfx_vkind__Link__target #num #flt (enc_opt_str #num #flt f5) ([]) in
+    let s2 = sfx_vkind__Link__rel #num #flt (enc_opt_str #num #flt f4) (s3) in
+    let s1 = sfx_vkind__Link__protection #num #flt (enc_opt_e_link_protection #num #flt f3) (s2) in
+    let s0 = sfx_vkind__Link__download #num #flt (enc_dflt_bool #num #flt (false) f0) (("href", enc_u_binding__str f1) :: ("label", enc_u_text_source f2) :: s1) in
+    sk_vkind__Link__download__none #num #flt (enc_dflt_bool #num #flt (false) f0) (("href", enc_u_binding__str f1) :: ("label", enc_u_text_source f2) :: s1);
+    sk_vkind__Link__protection__skip #num #flt "download" (enc_opt_e_link_protection #num #flt f3) (s2);
+    sk_vkind__Link__rel__skip #num #flt "download" (enc_opt_str #num #flt f4) (s3);
+    sk_vkind__Link__target__skip #num #flt "download" (enc_opt_str #num #flt f5) ([])
+  | _ -> ()
+#pop-options
+
+(* lk_vkind__Link__href — href — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_vkind__Link__href (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__Link? x)) (ensures (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> get_prop "href" (enc_vkind #num #flt x) == Ok (enc_u_binding__str f1) | _ -> True)) =
+  match x with
+  | C__vkind__Link f0 f1 f2 f3 f4 f5 ->
+    let s3 = sfx_vkind__Link__target #num #flt (enc_opt_str #num #flt f5) ([]) in
+    let s2 = sfx_vkind__Link__rel #num #flt (enc_opt_str #num #flt f4) (s3) in
+    let s1 = sfx_vkind__Link__protection #num #flt (enc_opt_e_link_protection #num #flt f3) (s2) in
+    let s0 = sfx_vkind__Link__download #num #flt (enc_dflt_bool #num #flt (false) f0) (("href", enc_u_binding__str f1) :: ("label", enc_u_text_source f2) :: s1) in
+    sk_vkind__Link__download__skip #num #flt "href" (enc_dflt_bool #num #flt (false) f0) (("href", enc_u_binding__str f1) :: ("label", enc_u_text_source f2) :: s1)
+  | _ -> ()
+#pop-options
+
+(* lk_vkind__Link__label — label — always emitted, at a position the conditionals before it move *)
+#push-options "--fuel 10 --ifuel 4"
+let lk_vkind__Link__label (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__Link? x)) (ensures (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> get_prop "label" (enc_vkind #num #flt x) == Ok (enc_u_text_source f2) | _ -> True)) =
+  match x with
+  | C__vkind__Link f0 f1 f2 f3 f4 f5 ->
+    let s3 = sfx_vkind__Link__target #num #flt (enc_opt_str #num #flt f5) ([]) in
+    let s2 = sfx_vkind__Link__rel #num #flt (enc_opt_str #num #flt f4) (s3) in
+    let s1 = sfx_vkind__Link__protection #num #flt (enc_opt_e_link_protection #num #flt f3) (s2) in
+    let s0 = sfx_vkind__Link__download #num #flt (enc_dflt_bool #num #flt (false) f0) (("href", enc_u_binding__str f1) :: ("label", enc_u_text_source f2) :: s1) in
+    sk_vkind__Link__download__skip #num #flt "label" (enc_dflt_bool #num #flt (false) f0) (("href", enc_u_binding__str f1) :: ("label", enc_u_text_source f2) :: s1)
+  | _ -> ()
+#pop-options
+
 (* lk_vkind__Link__protection__present — protection present *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__Link__protection__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> Some? f3 | _ -> false)) (ensures (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> get_prop "protection" (enc_vkind #num #flt x) == Ok (enc_e_link_protection (Some?.v f3)) | _ -> True)) =
   match x with
   | C__vkind__Link f0 f1 f2 f3 f4 f5 ->
-    let s2 = sfx_vkind__Link__target #num #flt (enc_opt_str #num #flt f5) ([]) in
-    let s1 = sfx_vkind__Link__rel #num #flt (enc_opt_str #num #flt f4) (s2) in
-    let s0 = sfx_vkind__Link__protection #num #flt (enc_opt_e_link_protection #num #flt f3) (s1) in
-    sk_vkind__Link__protection__hit #num #flt (enc_opt_e_link_protection #num #flt f3) (s1)
+    let s3 = sfx_vkind__Link__target #num #flt (enc_opt_str #num #flt f5) ([]) in
+    let s2 = sfx_vkind__Link__rel #num #flt (enc_opt_str #num #flt f4) (s3) in
+    let s1 = sfx_vkind__Link__protection #num #flt (enc_opt_e_link_protection #num #flt f3) (s2) in
+    let s0 = sfx_vkind__Link__download #num #flt (enc_dflt_bool #num #flt (false) f0) (("href", enc_u_binding__str f1) :: ("label", enc_u_text_source f2) :: s1) in
+    sk_vkind__Link__download__skip #num #flt "protection" (enc_dflt_bool #num #flt (false) f0) (("href", enc_u_binding__str f1) :: ("label", enc_u_text_source f2) :: s1);
+    sk_vkind__Link__protection__hit #num #flt (enc_opt_e_link_protection #num #flt f3) (s2)
   | _ -> ()
 #pop-options
 
 (* lk_vkind__Link__protection__absent — protection absent *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__Link__protection__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> None? f3 | _ -> false)) (ensures (Error? (get_prop "protection" (enc_vkind #num #flt x)))) =
   match x with
   | C__vkind__Link f0 f1 f2 f3 f4 f5 ->
-    let s2 = sfx_vkind__Link__target #num #flt (enc_opt_str #num #flt f5) ([]) in
-    let s1 = sfx_vkind__Link__rel #num #flt (enc_opt_str #num #flt f4) (s2) in
-    let s0 = sfx_vkind__Link__protection #num #flt (enc_opt_e_link_protection #num #flt f3) (s1) in
-    sk_vkind__Link__protection__none #num #flt (enc_opt_e_link_protection #num #flt f3) (s1);
-    sk_vkind__Link__rel__skip #num #flt "protection" (enc_opt_str #num #flt f4) (s2);
+    let s3 = sfx_vkind__Link__target #num #flt (enc_opt_str #num #flt f5) ([]) in
+    let s2 = sfx_vkind__Link__rel #num #flt (enc_opt_str #num #flt f4) (s3) in
+    let s1 = sfx_vkind__Link__protection #num #flt (enc_opt_e_link_protection #num #flt f3) (s2) in
+    let s0 = sfx_vkind__Link__download #num #flt (enc_dflt_bool #num #flt (false) f0) (("href", enc_u_binding__str f1) :: ("label", enc_u_text_source f2) :: s1) in
+    sk_vkind__Link__download__skip #num #flt "protection" (enc_dflt_bool #num #flt (false) f0) (("href", enc_u_binding__str f1) :: ("label", enc_u_text_source f2) :: s1);
+    sk_vkind__Link__protection__none #num #flt (enc_opt_e_link_protection #num #flt f3) (s2);
+    sk_vkind__Link__rel__skip #num #flt "protection" (enc_opt_str #num #flt f4) (s3);
     sk_vkind__Link__target__skip #num #flt "protection" (enc_opt_str #num #flt f5) ([])
   | _ -> ()
 #pop-options
 
 (* lk_vkind__Link__rel__present — rel present *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__Link__rel__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> Some? f4 | _ -> false)) (ensures (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> get_prop "rel" (enc_vkind #num #flt x) == Ok (JStr (Some?.v f4)) | _ -> True)) =
   match x with
   | C__vkind__Link f0 f1 f2 f3 f4 f5 ->
-    let s2 = sfx_vkind__Link__target #num #flt (enc_opt_str #num #flt f5) ([]) in
-    let s1 = sfx_vkind__Link__rel #num #flt (enc_opt_str #num #flt f4) (s2) in
-    let s0 = sfx_vkind__Link__protection #num #flt (enc_opt_e_link_protection #num #flt f3) (s1) in
-    sk_vkind__Link__protection__skip #num #flt "rel" (enc_opt_e_link_protection #num #flt f3) (s1);
-    sk_vkind__Link__rel__hit #num #flt (enc_opt_str #num #flt f4) (s2)
+    let s3 = sfx_vkind__Link__target #num #flt (enc_opt_str #num #flt f5) ([]) in
+    let s2 = sfx_vkind__Link__rel #num #flt (enc_opt_str #num #flt f4) (s3) in
+    let s1 = sfx_vkind__Link__protection #num #flt (enc_opt_e_link_protection #num #flt f3) (s2) in
+    let s0 = sfx_vkind__Link__download #num #flt (enc_dflt_bool #num #flt (false) f0) (("href", enc_u_binding__str f1) :: ("label", enc_u_text_source f2) :: s1) in
+    sk_vkind__Link__download__skip #num #flt "rel" (enc_dflt_bool #num #flt (false) f0) (("href", enc_u_binding__str f1) :: ("label", enc_u_text_source f2) :: s1);
+    sk_vkind__Link__protection__skip #num #flt "rel" (enc_opt_e_link_protection #num #flt f3) (s2);
+    sk_vkind__Link__rel__hit #num #flt (enc_opt_str #num #flt f4) (s3)
   | _ -> ()
 #pop-options
 
 (* lk_vkind__Link__rel__absent — rel absent *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__Link__rel__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> None? f4 | _ -> false)) (ensures (Error? (get_prop "rel" (enc_vkind #num #flt x)))) =
   match x with
   | C__vkind__Link f0 f1 f2 f3 f4 f5 ->
-    let s2 = sfx_vkind__Link__target #num #flt (enc_opt_str #num #flt f5) ([]) in
-    let s1 = sfx_vkind__Link__rel #num #flt (enc_opt_str #num #flt f4) (s2) in
-    let s0 = sfx_vkind__Link__protection #num #flt (enc_opt_e_link_protection #num #flt f3) (s1) in
-    sk_vkind__Link__protection__skip #num #flt "rel" (enc_opt_e_link_protection #num #flt f3) (s1);
-    sk_vkind__Link__rel__none #num #flt (enc_opt_str #num #flt f4) (s2);
+    let s3 = sfx_vkind__Link__target #num #flt (enc_opt_str #num #flt f5) ([]) in
+    let s2 = sfx_vkind__Link__rel #num #flt (enc_opt_str #num #flt f4) (s3) in
+    let s1 = sfx_vkind__Link__protection #num #flt (enc_opt_e_link_protection #num #flt f3) (s2) in
+    let s0 = sfx_vkind__Link__download #num #flt (enc_dflt_bool #num #flt (false) f0) (("href", enc_u_binding__str f1) :: ("label", enc_u_text_source f2) :: s1) in
+    sk_vkind__Link__download__skip #num #flt "rel" (enc_dflt_bool #num #flt (false) f0) (("href", enc_u_binding__str f1) :: ("label", enc_u_text_source f2) :: s1);
+    sk_vkind__Link__protection__skip #num #flt "rel" (enc_opt_e_link_protection #num #flt f3) (s2);
+    sk_vkind__Link__rel__none #num #flt (enc_opt_str #num #flt f4) (s3);
     sk_vkind__Link__target__skip #num #flt "rel" (enc_opt_str #num #flt f5) ([])
   | _ -> ()
 #pop-options
 
 (* lk_vkind__Link__target__present — target present *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__Link__target__present (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> Some? f5 | _ -> false)) (ensures (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> get_prop "target" (enc_vkind #num #flt x) == Ok (JStr (Some?.v f5)) | _ -> True)) =
   match x with
   | C__vkind__Link f0 f1 f2 f3 f4 f5 ->
-    let s2 = sfx_vkind__Link__target #num #flt (enc_opt_str #num #flt f5) ([]) in
-    let s1 = sfx_vkind__Link__rel #num #flt (enc_opt_str #num #flt f4) (s2) in
-    let s0 = sfx_vkind__Link__protection #num #flt (enc_opt_e_link_protection #num #flt f3) (s1) in
-    sk_vkind__Link__protection__skip #num #flt "target" (enc_opt_e_link_protection #num #flt f3) (s1);
-    sk_vkind__Link__rel__skip #num #flt "target" (enc_opt_str #num #flt f4) (s2);
+    let s3 = sfx_vkind__Link__target #num #flt (enc_opt_str #num #flt f5) ([]) in
+    let s2 = sfx_vkind__Link__rel #num #flt (enc_opt_str #num #flt f4) (s3) in
+    let s1 = sfx_vkind__Link__protection #num #flt (enc_opt_e_link_protection #num #flt f3) (s2) in
+    let s0 = sfx_vkind__Link__download #num #flt (enc_dflt_bool #num #flt (false) f0) (("href", enc_u_binding__str f1) :: ("label", enc_u_text_source f2) :: s1) in
+    sk_vkind__Link__download__skip #num #flt "target" (enc_dflt_bool #num #flt (false) f0) (("href", enc_u_binding__str f1) :: ("label", enc_u_text_source f2) :: s1);
+    sk_vkind__Link__protection__skip #num #flt "target" (enc_opt_e_link_protection #num #flt f3) (s2);
+    sk_vkind__Link__rel__skip #num #flt "target" (enc_opt_str #num #flt f4) (s3);
     sk_vkind__Link__target__hit #num #flt (enc_opt_str #num #flt f5) ([])
   | _ -> ()
 #pop-options
 
 (* lk_vkind__Link__target__absent — target absent *)
-#push-options "--fuel 12 --ifuel 4"
+#push-options "--fuel 10 --ifuel 4"
 let lk_vkind__Link__target__absent (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> None? f5 | _ -> false)) (ensures (Error? (get_prop "target" (enc_vkind #num #flt x)))) =
   match x with
   | C__vkind__Link f0 f1 f2 f3 f4 f5 ->
-    let s2 = sfx_vkind__Link__target #num #flt (enc_opt_str #num #flt f5) ([]) in
-    let s1 = sfx_vkind__Link__rel #num #flt (enc_opt_str #num #flt f4) (s2) in
-    let s0 = sfx_vkind__Link__protection #num #flt (enc_opt_e_link_protection #num #flt f3) (s1) in
-    sk_vkind__Link__protection__skip #num #flt "target" (enc_opt_e_link_protection #num #flt f3) (s1);
-    sk_vkind__Link__rel__skip #num #flt "target" (enc_opt_str #num #flt f4) (s2);
+    let s3 = sfx_vkind__Link__target #num #flt (enc_opt_str #num #flt f5) ([]) in
+    let s2 = sfx_vkind__Link__rel #num #flt (enc_opt_str #num #flt f4) (s3) in
+    let s1 = sfx_vkind__Link__protection #num #flt (enc_opt_e_link_protection #num #flt f3) (s2) in
+    let s0 = sfx_vkind__Link__download #num #flt (enc_dflt_bool #num #flt (false) f0) (("href", enc_u_binding__str f1) :: ("label", enc_u_text_source f2) :: s1) in
+    sk_vkind__Link__download__skip #num #flt "target" (enc_dflt_bool #num #flt (false) f0) (("href", enc_u_binding__str f1) :: ("label", enc_u_text_source f2) :: s1);
+    sk_vkind__Link__protection__skip #num #flt "target" (enc_opt_e_link_protection #num #flt f3) (s2);
+    sk_vkind__Link__rel__skip #num #flt "target" (enc_opt_str #num #flt f4) (s3);
     sk_vkind__Link__target__none #num #flt (enc_opt_str #num #flt f5) ([])
   | _ -> ()
 #pop-options
+
+(* rv_vkind__Link__download — the value of `rd_vkind__Link__download` off the encoded object *)
+let rv_vkind__Link__download (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__Link? x)) (ensures (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> rd_vkind__Link__download #num #flt (enc_vkind #num #flt x) == Ok f0 | _ -> True)) =
+  reveal_opaque (`%rd_vkind__Link__download) (rd_vkind__Link__download #num #flt (enc_vkind #num #flt x));
+  match x with
+  | C__vkind__Link f0 f1 f2 f3 f4 f5 -> (if f0 = false then lk_vkind__Link__download__absent #num #flt x else lk_vkind__Link__download__present #num #flt x)
+  | _ -> ()
 
 (* rv_vkind__Link__protection — the value of `rd_vkind__Link__protection` off the encoded object *)
 let rv_vkind__Link__protection (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__Link? x)) (ensures (match x with | C__vkind__Link f0 f1 f2 f3 f4 f5 -> rd_vkind__Link__protection #num #flt (enc_vkind #num #flt x) == Ok f3 | _ -> True)) =
@@ -3841,11 +4243,21 @@ and rt_vkind__Callout (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (
 
 and rt_vkind__CodeBlock (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__CodeBlock? x)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
-  | C__vkind__CodeBlock f0 f1 f2 f3 f4 -> rt_items_l_int #num #flt [] f2
+  | C__vkind__CodeBlock f0 f1 f2 f3 f4 ->
+    rv_vkind__CodeBlock__copyable #num #flt x;
+    (if f2 = [] then lk_vkind__CodeBlock__highlight_lines__absent #num #flt x else lk_vkind__CodeBlock__highlight_lines__present #num #flt x);
+    lk_vkind__CodeBlock__language #num #flt x;
+    rv_vkind__CodeBlock__line_numbers #num #flt x;
+    rt_items_l_int #num #flt [] f2
 
 and rt_vkind__Disclosure (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__Disclosure? x)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
-  | C__vkind__Disclosure f0 f1 f2 f3 f4 -> rt_items_l_node #num #flt [] f0; rt_u_text_source #num #flt f2; rt_u_binding__bool #num #flt f4
+  | C__vkind__Disclosure f0 f1 f2 f3 f4 ->
+    rv_vkind__Disclosure__default_open #num #flt x;
+    lk_vkind__Disclosure__heading #num #flt x;
+    rv_vkind__Disclosure__on_toggle #num #flt x;
+    (if f4 = (C__u_binding__bool__Static (Some false)) then lk_vkind__Disclosure__open__absent #num #flt x else lk_vkind__Disclosure__open__present #num #flt x);
+    rt_items_l_node #num #flt [] f0; rt_u_text_source #num #flt f2; rt_u_binding__bool #num #flt f4
 
 and rt_vkind__Embed (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__Embed? x)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
@@ -3882,7 +4294,7 @@ and rt_vkind__FileUpload (#num #flt: eqtype) (x: vkind num flt) : Lemma (require
     lk_vkind__FileUpload__label #num #flt x;
     rv_vkind__FileUpload__max_bytes #num #flt x;
     rv_vkind__FileUpload__max_files #num #flt x;
-    lk_vkind__FileUpload__multiple #num #flt x;
+    rv_vkind__FileUpload__multiple #num #flt x;
     rv_vkind__FileUpload__on_select #num #flt x;
     rt_items_l_str #num #flt [] f0; (match f2 with | None -> () | Some w -> rt_e_capture_source #num #flt w); (match f4 with | None -> () | Some w -> rt_u_binding__bool #num #flt w); rt_u_text_source #num #flt f6
 
@@ -3901,6 +4313,9 @@ and rt_vkind__Icon (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__
 and rt_vkind__Link (#num #flt: eqtype) (x: vkind num flt) : Lemma (requires (C__vkind__Link? x)) (ensures dec_vkind (enc_vkind #num #flt x) == Ok x) (decreases %[x; 1]) =
   match x with
   | C__vkind__Link f0 f1 f2 f3 f4 f5 ->
+    rv_vkind__Link__download #num #flt x;
+    lk_vkind__Link__href #num #flt x;
+    lk_vkind__Link__label #num #flt x;
     rv_vkind__Link__protection #num #flt x;
     rv_vkind__Link__rel #num #flt x;
     rv_vkind__Link__target #num #flt x;
