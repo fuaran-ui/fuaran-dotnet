@@ -7942,6 +7942,54 @@ rulings of 2026-10-01 under phases 1963, 1964 and 1965); it rides the announced 
 **Certified by** the regenerated `nodes/` corpus (no canonical fixture carries a field at its declared default), the
 three `lenient-2300-*` vectors, `SchemaOptionalityParityTests` (an IDL-omittable field is out of the schema's
 `required`), the generated-layer byte test against `heading-1` and the §3.6 tables re-projected from `idl.json`.
+### What rides this slot — Phase 2307 (both in-memory observers run on Core's `ObserverWitness`)
+
+**Class: additive (surface guard: "contract grew", one member per package, nothing removed or retyped) + a
+BEHAVIOUR fix in `Fuaran.UI.StyleObserver`.** The slot is already breaking-class, so no number moves.
+
+- **`Fuaran.UI.LayoutObserver` — off the adapter Core removed.** `InMemoryLayoutObserver` threads an
+  `ObserverState` through `Fuaran.Core`'s `ObserverWitness.register` / `update` / `unregister` / `snapshot` /
+  `observeTree` and keeps its subscriber list beside it; it no longer references the `InMemoryObserver` /
+  `IObserver` adapter, which left `Fuaran.Core.Observer` at 0.37.0. Both observer packages build against
+  `Fuaran.Core.Observer` 0.38.1 with this source, so the tier's Core pin can move. New:
+  `InMemoryLayoutObserver.Witness : LayoutObserverOptions -> ObserverWitness<Flags.LayoutInput, LayoutFlag>`,
+  the witness the observer runs on.
+- **`Fuaran.UI.StyleObserver` — its own engine is gone.** `InMemoryStyleObserver` runs on the same Core
+  functions and now depends on `Fuaran.Core.Observer` (FSharp.Core-only, Fable-clean, source-packed). New:
+  `InMemoryStyleObserver.Witness : StyleObserverOptions * ThemeManifest option -> ObserverWitness<Flags.StyleInput, StyleFlag>`
+  — `Flags.derive`, then the per-node manifest flags when a manifest is wired. The flag content stays the UI's.
+- **Behaviour (`InMemoryStyleObserver`; the layout observer's is unchanged).** `ObserveTree` over a cyclic parent declaration now walks each node once and ends; the engine it
+  replaces looped forever. Subscribers are delivered from a snapshot of the list, so a subscriber that disposes
+  itself or subscribes another during its callback no longer throws out of `RegisterFixture` / `Update`. Every
+  other observable (initial emission on register, the change gate, BFS order by level then registration order,
+  bare `Register`'s baseline entry, a throwing subscriber isolated from its siblings) is unchanged.
+- **Migration.** None: constructors, `RegisterFixture`, `Update` and both observer interfaces are unchanged.
+
+**Certified by** `Conformance.observerLawsAt` over each observer's `Witness` (both emit policies, the style one
+manifest-free and manifest-wired), in `src/Fuaran.UI.LayoutObserver.Tests/ObserverLawTests.fs` and
+`src/Fuaran.UI.StyleObserver.Tests/ObserverLawTests.fs`, beside a cyclic-parent walk on each observer; the Core
+conformance census moves `observerLaws` / `observerLawsAt` from carried to adopted across both ports.
+
+### What rides this slot — Phase 2294 (the language describes itself as a design system)
+
+**Class: ADDITIVE — one new package and one new CLI verb.** No existing type, member, wire byte or rendered
+output moves. It rides the 0.95.0 draft without moving it.
+
+- **New package `Fuaran.UI.Design`, first published at 0.95.0.** Module `Fuaran.UI.Design.Bundle`: `build`
+  (`Theme -> ThemeManifest option -> BundleOptions -> Bundle`), `check` (`Bundle -> string list`, empty when the
+  bundle holds), `write` (`Bundle -> string -> unit`), `manifestJson`, `contentHashOf`, `isLiteralColour`,
+  `marker`, `idlVersion`, `idlKinds`, `catalogSpecimens`, `supplementSpecimens`, `sweep`,
+  `BundleOptions.defaults`; the records `Bundle`, `BundleOptions`, `Card`, `BundleFile`, `ColorRole`,
+  `Specimen`, `IdlKind`, `IdlField` and the closed `CardGroup` (`Type | Colors | Spacing | Components |
+  Fragments`). It compile-links the catalog matrix, so the module `Fuaran.Samples.Catalog.Matrix` ships in this
+  assembly too. .NET-only (`<FableDotNetOnly>`): it renders through `Fuaran.UI.Renderer.Server`.
+- **New verb `fuaran design-system export --theme <manifest.json | default | dark | high-contrast> --out <dir>
+  [--brand <css>]`** in `Fuaran.UI.Cli` (`Commands.designSystemExport`). Exit 0 with the card count and the
+  content hash; 1 when the bundle fails its checks (nothing is written); 2 on a usage error, an unreadable
+  theme or brand, or an output directory that is non-empty and holds no bundle.
+- **The bundle format is versioned by its own `manifest.json`** (`kind: "fuaranDesignSystemBundle"`,
+  `formatVersion: 1`). A change to the card marker, the five groups or the content-hash definition is a format
+  change and moves `formatVersion`. See `docs/DESIGN-SYSTEM-EXPORT.md`.
 
 ### What rides this slot — Phase 2291 (a style edit carries the field it changes)
 

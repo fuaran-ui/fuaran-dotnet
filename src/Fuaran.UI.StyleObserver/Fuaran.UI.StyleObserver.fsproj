@@ -30,6 +30,10 @@
     <ProjectReference Include="..\Fuaran.UI.ThemeManifest\Fuaran.UI.ThemeManifest.fsproj" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Phase 2307 — InMemoryStyleObserver threads Core's ObserverWitness / ObserverState
+         (the engine it used to carry is gone). FSharp.Core-only and Fable-clean;
+         source-packed for the Fable client. -->
+    <PackageReference Include="Fuaran.Core.Observer" />
     <PackageReference Include="FSharp.Core" />
     <PackageReference Include="Fable.Core" />
   </ItemGroup>

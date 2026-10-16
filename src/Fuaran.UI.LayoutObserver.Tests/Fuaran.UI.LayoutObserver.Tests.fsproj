@@ -9,6 +9,9 @@
     <Compile Include="FlagDerivationTests.fs" />
     <Compile Include="InMemoryLayoutObserverTests.fs" />
     <Compile Include="ElementRegistrationTests.fs" />
+    <!-- Phase 2307 - the observer witness under Core observerLawsAt; enrolled in the Core
+         conformance census as this project adoption of the observer family. -->
+    <Compile Include="ObserverLawTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
@@ -17,6 +20,7 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Expecto" />
+    <PackageReference Include="Fuaran.Core.Conformance" />
     <PackageReference Include="FSharp.Core" />
   </ItemGroup>
 </Project>

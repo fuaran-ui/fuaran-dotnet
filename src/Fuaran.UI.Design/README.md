@@ -1,0 +1,73 @@
+# Fuaran.UI.Design
+
+Fuaran UI described as a design system. One call renders the language's own parts into a
+directory of preview cards a design-system tool can ingest, beside the theme as a DTCG
+manifest:
+
+- a **Components** card per kind the IDL declares, swept over the tone, weight and emphasis
+  axes one axis at a time, each with a note on what the kind is for, which fields bind to
+  data and which hold children;
+- a **Fragments** card per certified stdlib fragment (`Fuaran.UI.Fragments`), with its holes
+  named and an applied example;
+- one **Type**, one **Spacing** and one **Colors** card from the chosen `Theme`.
+
+Colours are offered as **roles** (the seven tones and the theme manifest's named roles),
+never as literal values. A design composed from the bundle is a composition of parts a
+Fuaran UI tree can express.
+
+```fsharp
+open Fuaran.UI
+open Fuaran.UI.Design
+
+let bundle = Bundle.build Defaults.theme None (Bundle.BundleOptions.defaults ())
+
+match Bundle.check bundle with
+| [] ->
+    Bundle.write bundle "./design-system"
+    printfn "%s" bundle.ContentHash
+| findings -> findings |> List.iter (printfn "%s")
+```
+
+The same from the command line, through the `fuaran` dotnet tool (`Fuaran.UI.Cli`):
+
+```bash
+fuaran design-system export --theme default --out ./design-system
+fuaran design-system export --theme theme.manifest.json --brand brand.css --out ./design-system
+```
+
+## The bundle
+
+```
+manifest.json          file list with hashes, cards by group, colour roles, content hash, IDL version
+theme.tokens.json      the theme as a DTCG manifest (Fuaran.UI.ThemeManifest)
+fuaran-reference.css   the canonical class stylesheet every card links
+README.md              an authoring note per group
+cards/type/type.html
+cards/colors/colors.html
+cards/spacing/spacing.html
+cards/components/<Kind>.html
+cards/fragments/<fragment>.html
+```
+
+Every card's first line is `<!-- @dsCard group="…" -->`, the group one of `Type`, `Colors`,
+`Spacing`, `Components` or `Fragments`. The rest is a self-contained HTML document rendered by
+`Fuaran.UI.Renderer.Server`, with the theme's `:root` variable block inlined.
+
+The content hash is SHA-256 over the sorted file set (every file except `manifest.json`), so two
+exports of one theme with one brand print the same hash.
+
+## The checks
+
+`Bundle.check` returns the bundle's contract violations, empty when it holds:
+
+- every kind in the IDL has a Components card (the kind set is read from the IDL, so a kind
+  admitted there with no specimen is a finding, not a stale bundle);
+- every stdlib fragment has a Fragments card;
+- there is exactly one Type, Colors and Spacing card;
+- no Colors token is a literal colour (a hex value, a colour function or a CSS colour name);
+- every card's first line is the marker of its group.
+
+See [`docs/DESIGN-SYSTEM-EXPORT.md`](https://github.com/fuaran-ui/fuaran-dotnet/blob/main/docs/DESIGN-SYSTEM-EXPORT.md)
+for the card contract and how a consumer reads the bundle.
+
+.NET only: it renders through the server renderer. Apache-2.0 licensed.

@@ -1,0 +1,1049 @@
+module Fuaran.UI.Design.Bundle
+
+// ============================================================================
+//  Phase 2294 — the language describes itself as a design system.
+//
+//  `build` renders, under one `Theme`, a preview card per IDL kind (swept over
+//  the tone / weight / emphasis axes), per certified stdlib fragment, and for the
+//  Type, Spacing and Colors scales, beside the theme as a DTCG manifest; `write`
+//  puts the bundle on disk with a `manifest.json` naming every file, its group and
+//  the bundle's content hash. `check` is the bundle's own contract, run by the
+//  CLI verb and by the test suite.
+//
+//  Three properties are the point, and each has a check behind it:
+//
+//  - COMPOSITION VOCABULARY, NOT ONLY TOKENS. A card per kind the IDL declares —
+//    the kind set is read from the `idl.json` embedded in this assembly, so a kind
+//    admitted there with no specimen is a failed check, never a stale bundle.
+//  - ROLES, NEVER LITERAL COLOURS. The Colors group offers tone roles and the
+//    manifest's named roles; a resolved value appears on the reference card only.
+//    A Colors token whose NAME is a literal colour is refused.
+//  - ONE CARD FORMAT. A self-contained HTML document whose first line is the
+//    `<!-- @dsCard group="…" -->` marker, with the theme's `:root` block inlined
+//    and the canonical class stylesheet linked from the bundle root. A consumer
+//    wanting another shape adapts the bundle; the bundle names no consumer.
+// ============================================================================
+
+open System
+open System.IO
+open System.Net
+open System.Security.Cryptography
+open System.Text
+open System.Text.Json
+open Fuaran.UI
+open Fuaran.UI.Types
+open Fuaran.UI.ThemeManifest
+open Fuaran.UI.Fragments
+open Fuaran.UI.Renderer
+open Fuaran.Samples.Catalog
+
+// ─── Model ────────────────────────────────────────────────────────────────────
+
+/// The five card groups. Closed: a card in any other group fails `check`.
+[<RequireQualifiedAccess>]
+type CardGroup =
+    | Type
+    | Colors
+    | Spacing
+    | Components
+    | Fragments
+
+module CardGroup =
+    let all: CardGroup list =
+        [ CardGroup.Type
+          CardGroup.Colors
+          CardGroup.Spacing
+          CardGroup.Components
+          CardGroup.Fragments ]
+
+    let label (group: CardGroup) : string =
+        match group with
+        | CardGroup.Type -> "Type"
+        | CardGroup.Colors -> "Colors"
+        | CardGroup.Spacing -> "Spacing"
+        | CardGroup.Components -> "Components"
+        | CardGroup.Fragments -> "Fragments"
+
+    let tryParse (s: string) : CardGroup option =
+        all |> List.tryFind (fun g -> label g = s)
+
+/// One IDL kind as the bundle reads it from `idl.json`.
+type IdlField =
+    { Name: string
+      Type: string
+      Required: bool }
+
+type IdlKind =
+    { Tag: string
+      Category: string
+      Fields: IdlField list }
+
+/// One representative of a kind, swept over the style axes. `Kind` is the WIRE tag
+/// of the kind the specimen demonstrates (the IDL's `tag`).
+type Specimen =
+    { Kind: string
+      Label: string
+      Hint: string
+      Build: ToneVariant * StyleWeight * Emphasis -> Node<unit> }
+
+/// A colour token the bundle offers to compose with: a ROLE bound to a manifest
+/// token. `Reference` is the resolved value, shown on the reference card and never
+/// offered as a token of its own.
+type ColorRole =
+    { Role: string
+      Token: string
+      Reference: string option }
+
+type Card =
+    {
+        Group: CardGroup
+        Name: string
+        /// Bundle-relative, forward-slashed.
+        Path: string
+        Html: string
+    }
+
+type BundleFile = { Path: string; Content: string }
+
+type BundleOptions =
+    {
+        /// A brand stylesheet (custom properties, typically `--fuaran-tone-*`),
+        /// cascaded after the theme in every card and folded into the role values.
+        Brand: string option
+        /// The component sweep. `BundleOptions.defaults` is the catalog matrix plus
+        /// the specimens for the kinds the catalog does not show.
+        Specimens: Specimen list
+    }
+
+type Bundle =
+    {
+        IdlVersion: int
+        Kinds: IdlKind list
+        Cards: Card list
+        Colors: ColorRole list
+        /// The DTCG manifest written beside the cards.
+        Manifest: ThemeManifest
+        /// Every file except `manifest.json`, sorted by path.
+        Files: BundleFile list
+        /// `sha256:` + hex over the sorted file set (see `contentHashOf`).
+        ContentHash: string
+    }
+
+// ─── The IDL, read from the embedded idl.json ────────────────────────────────
+
+let private resource (name: string) : string =
+    let asm = typeof<CardGroup>.Assembly
+
+    use stream = asm.GetManifestResourceStream name
+
+    if isNull stream then
+        failwithf "Fuaran.UI.Design: embedded resource %s is missing" name
+
+    use reader = new StreamReader(stream, Encoding.UTF8)
+    reader.ReadToEnd()
+
+let rec private typeLabel (t: JsonElement) : string =
+    let str (name: string) =
+        match t.TryGetProperty name with
+        | true, v -> v.GetString()
+        | _ -> ""
+
+    match str "$type" with
+    | "union" ->
+        let args =
+            match t.TryGetProperty "args" with
+            | true, a when a.GetArrayLength() > 0 ->
+                "<" + (a.EnumerateArray() |> Seq.map typeLabel |> String.concat ", ") + ">"
+            | _ -> ""
+
+        str "name" + args
+    | "enum"
+    | "record" -> str "name"
+    | "list" ->
+        match t.TryGetProperty "of" with
+        | true, o -> typeLabel o + " list"
+        | _ -> "list"
+    | "option" ->
+        match t.TryGetProperty "of" with
+        | true, o -> typeLabel o + " option"
+        | _ -> "option"
+    | other -> other
+
+let private parseIdl (json: string) : int * IdlKind list =
+    use doc = JsonDocument.Parse json
+    let root = doc.RootElement
+
+    let kinds =
+        [ for k in root.GetProperty("kinds").EnumerateArray() ->
+              { Tag = k.GetProperty("tag").GetString()
+                Category = k.GetProperty("category").GetString()
+                Fields =
+                  [ for f in k.GetProperty("fields").EnumerateArray() ->
+                        { Name = f.GetProperty("name").GetString()
+                          Type = typeLabel (f.GetProperty "type")
+                          Required = f.GetProperty("optionality").GetProperty("$type").GetString() = "required" } ] } ]
+
+    root.GetProperty("version").GetInt32(), kinds
+
+let private idl: Lazy<int * IdlKind list> =
+    lazy (parseIdl (resource "Fuaran.UI.Design.idl.json"))
+
+/// The IDL version and kinds the bundle is checked against.
+let idlVersion () : int = fst idl.Value
+
+let idlKinds () : IdlKind list = snd idl.Value
+
+/// The canonical class stylesheet the cards link.
+let referenceStylesheet: Lazy<string> =
+    lazy (resource "Fuaran.UI.Design.fuaran-reference.css")
+
+// ─── Specimens ────────────────────────────────────────────────────────────────
+
+let private styled (tone, weight, emphasis) (node: Node<unit>) : Node<unit> =
+    { node with
+        Style =
+            Some
+                { Defaults.style with
+                    Tone = tone
+                    Weight = weight
+                    Emphasis = emphasis } }
+
+let private literal (s: string) = TextSource.Literal s
+
+let private sample (kind: string) (hint: string) (build: unit -> Node<unit>) : Specimen =
+    { Kind = kind
+      Label = kind
+      Hint = hint
+      Build = fun axes -> styled axes (build ()) }
+
+let private exampleFragment = Stdlib.labelledMetricRow<unit>
+
+/// Representatives for the kinds the catalog matrix does not show. Each is the
+/// smallest honest instance of its kind; `check` is what notices a kind with none.
+let supplementSpecimens: Specimen list =
+    [ sample "CodeBlock" "Monospaced source with optional line numbers and highlights." (fun () ->
+          Fuaran.codeBlock "codeblock" "fsharp" "let total = items |> List.sumBy _.Price")
+      sample "Drawing" "Vector shapes in a declared view box; charts lower to it." (fun () ->
+          Fuaran.drawing
+              "drawing"
+              { MinX = 0.0
+                MinY = 0.0
+                Width = 120.0
+                Height = 60.0 }
+              [ Shape.Rectangle(4.0, 4.0, 52.0, 52.0, Some 6.0, Defaults.drawStyle)
+                Shape.Circle(90.0, 30.0, 24.0, Defaults.drawStyle) ])
+      sample "Embed" "Sandboxed third-party frame; grants no permission by default." (fun () ->
+          Fuaran.embed "embed" "https://player.example.org/v/demo" "Walkthrough video")
+      { Kind = "ErrorBoundary"
+        Label = "ErrorBoundary"
+        Hint = "Renders its child, or its fallback when the child fails to render."
+        Build =
+          fun axes ->
+              Fuaran.errorBoundary
+                  "errorboundary"
+                  { Child =
+                      styled
+                          axes
+                          (Fuaran.metric
+                              "errorboundary-child"
+                              { Defaults.metric with
+                                  Label = literal "Active users"
+                                  Value = Binding.Static(Some 1280.0) })
+                    Fallback = Fuaran.markdown "errorboundary-fallback" "This panel is unavailable." } }
+      sample "Fact" "A labelled value pair for read-only detail views." (fun () ->
+          Fuaran.fact "fact" "Account owner" "Northwind team")
+      { Kind = "FragmentDecl"
+        Label = "FragmentDecl"
+        Hint = "A parameterised template with typed holes. Paints nothing itself; shown here applied by a FragmentRef."
+        Build =
+          fun axes ->
+              Fuaran.box
+                  "fragmentdecl"
+                  { Defaults.box with
+                      Children = [ exampleFragment.Decl; styled axes exampleFragment.Example ] } }
+      { Kind = "FragmentRef"
+        Label = "FragmentRef"
+        Hint = "Applies a declared fragment, binding its holes."
+        Build =
+          fun axes ->
+              Fuaran.box
+                  "fragmentref"
+                  { Defaults.box with
+                      Children = [ exampleFragment.Decl; styled axes exampleFragment.Example ] } }
+      sample "Icon" "A named glyph from the icon vocabulary, decorative unless labelled." (fun () ->
+          Fuaran.iconSpec
+              "icon"
+              { Defaults.icon with
+                  Icon = "info"
+                  Label = Some "Information" })
+      sample "Image" "A raster or vector image with alt text and a fit." (fun () ->
+          Fuaran.image "image" "https://images.example.org/sample.png" "Sample illustration")
+      sample "Link" "A navigational anchor." (fun () -> Fuaran.link "link" "https://example.org/docs" "Read the guide")
+      sample "List" "An ordered or unordered list of text items." (fun () ->
+          Fuaran.list "list" [ "Draft the brief"; "Review with the team"; "Publish" ])
+      sample "Math" "Typeset mathematics (block or inline)." (fun () -> Fuaran.math "math" "a^2 + b^2 = c^2")
+      sample "Media" "Audio or video with controls, tracks and a transcript." (fun () ->
+          Fuaran.video "media" "https://media.example.org/intro.mp4" "Product introduction")
+      sample "Modal" "A dialog over the page; open state is a binding." (fun () ->
+          Fuaran.modal
+              "modal"
+              { Defaults.modal<unit> with
+                  Open = Binding.Static(Some true)
+                  Heading = Some(literal "Confirm export")
+                  Children = [ Fuaran.markdown "modal-body" "The report will be emailed to the team." ] })
+      { Kind = "Mount"
+        Label = "Mount"
+        Hint = "An isolation boundary a host-registered guest renders into."
+        Build =
+          fun axes ->
+              styled
+                  axes
+                  (Fuaran.mount
+                      "mount"
+                      { Capabilities = []
+                        Channel = Fuaran.guestOutChannel
+                        Inputs = None
+                        OnBubble = None
+                        ScopeId = "design-guest" }) }
+      sample "ScrollArea" "A bounded region that scrolls its children." (fun () ->
+          Fuaran.scrollArea
+              "scrollarea"
+              { Defaults.scrollArea<unit> with
+                  MaxHeight = Some 120
+                  Children =
+                      [ for i in 1..8 -> Fuaran.markdown $"scrollarea-row-{i}" $"Row {i} of the scrolled content." ] })
+      { Kind = "Switch"
+        Label = "Switch"
+        Hint = "Selects one child by a bound value (state, selection or filter)."
+        Build =
+          fun axes ->
+              Fuaran.switch
+                  "switch"
+                  { Defaults.switch<unit> with
+                      On = Binding.State("design.view", Some "summary")
+                      Cases =
+                          [ { Match = Some "summary"
+                              When = None
+                              Child = styled axes (Fuaran.markdown "switch-summary" "Summary view (the selected case).") } ]
+                      Default = Fuaran.markdown "switch-default" "Default view." } }
+      sample "Toast" "A transient status message; open state is a binding." (fun () ->
+          Fuaran.toast
+              "toast"
+              { Defaults.toast with
+                  Message = literal "Settings saved"
+                  Open = Binding.Static(Some true) })
+      sample "Tree" "A hierarchy of labelled items with optional selection." (fun () ->
+          Fuaran.tree
+              "tree"
+              [ Fuaran.treeItem "reports" "Reports" [ Fuaran.treeItem "q1" "Q1" []; Fuaran.treeItem "q2" "Q2" [] ]
+                Fuaran.treeItem "archive" "Archive" [] ]) ]
+
+let private baselineAxes =
+    (ToneVariant.Default, StyleWeight.Standard, Emphasis.Normal)
+
+/// The catalog matrix as specimens: each entry's kind is the wire tag of the node
+/// it builds, so a catalog entry is filed under the kind it actually emits.
+let catalogSpecimens () : Specimen list =
+    Matrix.entries
+    |> List.map (fun e ->
+        { Kind = Kind.wireTag (e.Build baselineAxes).Kind
+          Label = e.Label
+          Hint = e.Hint
+          Build = e.Build })
+
+module BundleOptions =
+    /// The catalog sweep plus the supplement, no brand.
+    let defaults () : BundleOptions =
+        { Brand = None
+          Specimens = catalogSpecimens () @ supplementSpecimens }
+
+/// The axis sweep a component card shows: the baseline, then every other tone, weight
+/// and emphasis with the other two at their defaults. One axis moves at a time, so a
+/// card stays readable; the full cartesian product is the catalog gallery's job.
+let sweep: (ToneVariant * StyleWeight * Emphasis) list =
+    let (t0, w0, e0) = baselineAxes
+
+    [ yield baselineAxes
+      for t in Matrix.allTones do
+          if t <> t0 then
+              yield (t, w0, e0)
+      for w in Matrix.allWeights do
+          if w <> w0 then
+              yield (t0, w, e0)
+      for e in Matrix.allEmphases do
+          if e <> e0 then
+              yield (t0, w0, e) ]
+
+// ─── Colour roles ─────────────────────────────────────────────────────────────
+
+let private namedColours: Set<string> =
+    ("aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue blueviolet brown "
+     + "burlywood cadetblue chartreuse chocolate coral cornflowerblue cornsilk crimson cyan darkblue darkcyan "
+     + "darkgoldenrod darkgray darkgreen darkgrey darkkhaki darkmagenta darkolivegreen darkorange darkorchid "
+     + "darkred darksalmon darkseagreen darkslateblue darkslategray darkslategrey darkturquoise darkviolet "
+     + "deeppink deepskyblue dimgray dimgrey dodgerblue firebrick floralwhite forestgreen fuchsia gainsboro "
+     + "ghostwhite gold goldenrod gray green greenyellow grey honeydew hotpink indianred indigo ivory khaki "
+     + "lavender lavenderblush lawngreen lemonchiffon lightblue lightcoral lightcyan lightgoldenrodyellow "
+     + "lightgray lightgreen lightgrey lightpink lightsalmon lightseagreen lightskyblue lightslategray "
+     + "lightslategrey lightsteelblue lightyellow lime limegreen linen magenta maroon mediumaquamarine "
+     + "mediumblue mediumorchid mediumpurple mediumseagreen mediumslateblue mediumspringgreen mediumturquoise "
+     + "mediumvioletred midnightblue mintcream mistyrose moccasin navajowhite navy oldlace olive olivedrab "
+     + "orange orangered orchid palegoldenrod palegreen paleturquoise palevioletred papayawhip peachpuff peru "
+     + "pink plum powderblue purple rebeccapurple red rosybrown royalblue saddlebrown salmon sandybrown "
+     + "seagreen seashell sienna silver skyblue slateblue slategray slategrey snow springgreen steelblue tan "
+     + "teal thistle tomato turquoise violet wheat white whitesmoke yellow yellowgreen transparent currentcolor")
+        .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+    |> Set.ofArray
+
+let private colourFunctions =
+    [ "rgb("
+      "rgba("
+      "hsl("
+      "hsla("
+      "hwb("
+      "lab("
+      "lch("
+      "oklab("
+      "oklch("
+      "color("
+      "color-mix(" ]
+
+/// Whether a token NAME is a literal colour — a hex value, a colour function or a
+/// CSS named colour. The Colors group offers roles; a name like this is a value
+/// wearing a role's clothes, and composing with it would pin the design to one
+/// palette.
+let isLiteralColour (name: string) : bool =
+    let s = name.Trim().ToLowerInvariant()
+
+    s.StartsWith "#"
+    || colourFunctions |> List.exists s.StartsWith
+    || Set.contains s namedColours
+
+let private roleName (role: ManifestRole) : string =
+    match role with
+    | ManifestRole.Tone t -> ManifestRole.toneToString t
+    | ManifestRole.Named n -> n
+
+let private rolesOf (manifest: ThemeManifest) : ColorRole list =
+    manifest.Roles
+    |> List.map (fun b ->
+        { Role = roleName b.Role
+          Token = b.TokenName
+          Reference = ThemeManifest.tryGetToken b.TokenName manifest |> Option.map _.Value })
+
+// ─── HTML ─────────────────────────────────────────────────────────────────────
+
+let private enc (s: string) : string = WebUtility.HtmlEncode s
+
+/// The marker every card's FIRST line carries.
+let marker (group: CardGroup) : string =
+    $"<!-- @dsCard group=\"{CardGroup.label group}\" -->"
+
+let private cardDocument (group: CardGroup) (title: string) (depth: int) (styles: string) (body: string) : string =
+    let up = String.replicate depth "../"
+
+    String.concat
+        "\n"
+        [ marker group
+          "<!doctype html>"
+          "<html lang=\"en\">"
+          "<head>"
+          "<meta charset=\"utf-8\">"
+          $"<title>{enc title}</title>"
+          $"<link rel=\"stylesheet\" href=\"{up}fuaran-reference.css\">"
+          $"<style>\n{styles}\n</style>"
+          "<style>"
+          "body { margin: 0; padding: var(--fuaran-space-lg, 24px); font-family: system-ui, sans-serif;"
+          "  background: var(--fuaran-tone-default-bg); color: var(--fuaran-tone-default-fg); }"
+          ".ds-note { max-width: 72ch; margin-bottom: var(--fuaran-space-lg, 24px); }"
+          ".ds-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));"
+          "  gap: var(--fuaran-space-md, 16px); }"
+          ".ds-variant { margin: 0; padding: var(--fuaran-space-sm, 8px);"
+          "  border: var(--fuaran-border-width, 1px) dashed var(--fuaran-tone-subdued-border); }"
+          ".ds-variant figcaption { font-size: var(--fuaran-text-xs, 12px); opacity: 0.75;"
+          "  margin-bottom: var(--fuaran-space-xs, 4px); }"
+          ".ds-table { border-collapse: collapse; } .ds-table td, .ds-table th { padding: 4px 12px;"
+          "  text-align: left; border-bottom: 1px solid var(--fuaran-tone-subdued-border); }"
+          ".ds-swatch { display: inline-block; width: 48px; height: 24px; vertical-align: middle;"
+          "  border: 1px solid var(--fuaran-tone-subdued-border); }"
+          "</style>"
+          "</head>"
+          "<body>"
+          body
+          "</body>"
+          "</html>"
+          "" ]
+
+let private render (node: Node<unit>) : string =
+    Server.Render.render BindingResolver.empty (Node.mapMsg box node)
+
+let private axesLabel (tone, weight, emphasis) =
+    $"{Matrix.toneLabel tone} · {Matrix.weightLabel weight} · {Matrix.emphasisLabel emphasis}"
+
+let private bindsOf (kind: IdlKind) : string list =
+    kind.Fields
+    |> List.filter (fun f -> f.Type.StartsWith "Binding" || f.Type.StartsWith "TextSource")
+    |> List.map (fun f -> $"{f.Name} ({f.Type})")
+
+let private slotsOf (kind: IdlKind) : string list =
+    kind.Fields
+    |> List.filter (fun f -> f.Type = "node" || f.Type = "node list")
+    |> List.map _.Name
+
+let private listOrNone (items: string list) =
+    if List.isEmpty items then
+        "none"
+    else
+        String.concat ", " items
+
+let private componentCard (styles: string) (kind: IdlKind) (specimens: Specimen list) : Card =
+    let purpose = specimens |> List.map _.Hint |> List.distinct |> String.concat " "
+    let required = kind.Fields |> List.filter _.Required |> List.map _.Name
+
+    let note =
+        String.concat
+            "\n"
+            [ $"<h1>{enc kind.Tag}</h1>"
+              "<div class=\"ds-note\">"
+              $"<p><strong>Category:</strong> {enc kind.Category}.</p>"
+              $"<p><strong>For:</strong> {enc purpose}</p>"
+              $"<p><strong>Binds to:</strong> {enc (listOrNone (bindsOf kind))}.</p>"
+              $"<p><strong>Children:</strong> {enc (listOrNone (slotsOf kind))}.</p>"
+              $"<p><strong>Required fields:</strong> {enc (listOrNone required)}.</p>"
+              "</div>" ]
+
+    let sections =
+        [ for s in specimens do
+              yield $"<h2>{enc s.Label}</h2>"
+              yield "<div class=\"ds-grid\">"
+
+              for axes in sweep do
+                  yield
+                      $"<figure class=\"ds-variant\"><figcaption>{enc (axesLabel axes)}</figcaption>{render (s.Build axes)}</figure>"
+
+              yield "</div>" ]
+
+    { Group = CardGroup.Components
+      Name = kind.Tag
+      Path = $"cards/components/{kind.Tag}.html"
+      Html = cardDocument CardGroup.Components kind.Tag 2 styles (String.concat "\n" (note :: sections)) }
+
+let private holeLine (h: HoleDecl) : string =
+    match h with
+    | HoleDecl.Value(name, space, dflt) ->
+        let spaceText =
+            match space with
+            | HoleValueSpace.IntRange(lo, hi) -> $"integer {lo}..{hi}"
+            | HoleValueSpace.FloatRange(lo, hi) -> $"number {lo}..{hi}"
+            | HoleValueSpace.StringLen(lo, hi) -> $"text of {lo}..{hi} characters"
+            | HoleValueSpace.Enum choices -> "one of " + String.concat " | " choices
+            | HoleValueSpace.AnyString -> "any text"
+
+        let req = if dflt.IsSome then "optional" else "required"
+        $"{name}: value, {spaceText} ({req})"
+    | HoleDecl.Slot(name, constraintKind) ->
+        let c =
+            constraintKind
+            |> Option.map (fun k -> $", a {k} node")
+            |> Option.defaultValue ""
+
+        $"{name}: slot{c} (required)"
+    | HoleDecl.Repeat(name, _) -> $"{name}: repeat count (required)"
+
+let private fragmentCard (styles: string) (fragment: StdlibFragment<unit>) : Card =
+    let holes =
+        match fragment.Decl.Kind with
+        | NodeKind.FragmentDecl spec -> spec.Holes |> List.map holeLine
+        | _ -> []
+
+    // The example's own arguments, applied the way the certification harness applies
+    // them: `Materialize` over the value and repeat bindings, then each slot marker
+    // replaced by its bound subtree. A renderer expands a `FragmentRef` against its
+    // declaration but binds no arguments (the host applies them), so rendering the
+    // bare reference would show the holes' fallbacks rather than the example.
+    let args =
+        match fragment.Example.Kind with
+        | NodeKind.FragmentRef spec -> spec.Args |> Option.map Map.toList |> Option.defaultValue []
+        | _ -> []
+
+    let values =
+        args
+        |> List.choose (fun (name, arg) ->
+            match arg with
+            | FragmentArg.Int v -> Some(name, box v)
+            | FragmentArg.Float v -> Some(name, box v)
+            | FragmentArg.Bool v -> Some(name, box v)
+            | FragmentArg.Str v -> Some(name, box v)
+            | FragmentArg.SlotArg _ -> None)
+        |> Map.ofList
+
+    let slots =
+        args
+        |> List.choose (fun (name, arg) ->
+            match arg with
+            | FragmentArg.SlotArg tree -> Some(name, tree)
+            | _ -> None)
+        |> Map.ofList
+
+    let rec fillSlots (node: Node<unit>) : Node<unit> =
+        match node.Kind with
+        | NodeKind.FragmentRef spec when spec.Args.IsNone && Map.containsKey spec.Name slots -> Map.find spec.Name slots
+        | _ ->
+            let children, rebuild = NodeChildren.lens NodeChildren.Reach.fragmentScope node
+            rebuild (children |> List.map fillSlots)
+
+    let tree = fillSlots (fragment.Materialize values)
+
+    let body =
+        [ $"<h1>{enc fragment.Name}</h1>"
+          "<div class=\"ds-note\">"
+          $"<p>{enc fragment.Summary}</p>"
+          "<p><strong>Holes:</strong></p><ul>" ]
+        @ (holes |> List.map (fun h -> $"<li>{enc h}</li>"))
+        @ [ "</ul>"
+            $"<p>Apply it with a <code>FragmentRef</code> named <code>{enc fragment.Name}</code>, binding the required holes; the example below binds every one.</p>"
+            "</div>"
+            render tree ]
+        |> String.concat "\n"
+
+    { Group = CardGroup.Fragments
+      Name = fragment.Name
+      Path = $"cards/fragments/{fragment.Name}.html"
+      Html = cardDocument CardGroup.Fragments fragment.Name 2 styles body }
+
+let private tokenRows (vars: (string * string) list) (prefixes: string list) =
+    vars |> List.filter (fun (name, _) -> prefixes |> List.exists name.StartsWith)
+
+let private typeCard (styles: string) (theme: Theme) : Card =
+    let vars = Theme.toCssVariables theme
+
+    let rows =
+        tokenRows vars [ "--fuaran-text-"; "--fuaran-font-weight-"; "--fuaran-line-height-" ]
+        |> List.map (fun (name, value) ->
+            let sampleStyle =
+                if name.StartsWith "--fuaran-text-" then
+                    $"font-size: var({name})"
+                elif name.StartsWith "--fuaran-font-weight-" then
+                    $"font-weight: var({name})"
+                else
+                    $"line-height: var({name}); max-width: 24ch; display: inline-block"
+
+            $"<tr><td><code>{enc name}</code></td><td>{enc value}</td><td><span style=\"{enc sampleStyle}\">The quick brown fox jumps over the lazy dog</span></td></tr>")
+
+    let headings =
+        Fuaran.box
+            "type-headings"
+            { Defaults.box with
+                Children =
+                    [ for level in 1..4 ->
+                          Fuaran.heading
+                              $"type-h{level}"
+                              { Defaults.heading with
+                                  Level = level
+                                  Text = literal $"Heading level {level}" } ]
+                    @ [ Fuaran.markdown
+                            "type-body"
+                            "Body text is **Markdown**: a paragraph, *emphasis*, `code` and [a link](https://example.org)." ] }
+
+    let body =
+        [ "<h1>Type</h1>"
+          "<div class=\"ds-note\"><p>The type scale, weights and line heights of the theme, as the custom properties the renderer reads. Compose with heading levels and Markdown; the renderer maps them onto this scale, so a design names a level, never a size.</p></div>"
+          render headings
+          "<table class=\"ds-table\"><tr><th>Token</th><th>Value</th><th>Sample</th></tr>" ]
+        @ rows
+        @ [ "</table>" ]
+        |> String.concat "\n"
+
+    { Group = CardGroup.Type
+      Name = "Type"
+      Path = "cards/type/type.html"
+      Html = cardDocument CardGroup.Type "Type" 2 styles body }
+
+let private spacingCard (styles: string) (theme: Theme) : Card =
+    let vars = Theme.toCssVariables theme
+
+    let rows =
+        tokenRows
+            vars
+            [ "--fuaran-space-"
+              "--fuaran-radius-"
+              "--fuaran-border-width"
+              "--fuaran-button-pad-" ]
+        |> List.map (fun (name, value) ->
+            let sampleStyle =
+                if name.StartsWith "--fuaran-radius-" then
+                    $"display: inline-block; width: 48px; height: 32px; border-radius: var({name}); background: var(--fuaran-tone-subdued-bg); border: 1px solid var(--fuaran-tone-subdued-border)"
+                elif name = "--fuaran-border-width" then
+                    $"display: inline-block; width: 48px; height: 32px; border: var({name}) solid var(--fuaran-tone-default-border)"
+                else
+                    $"display: inline-block; height: 16px; width: var({name}); background: var(--fuaran-tone-brand-bg)"
+
+            $"<tr><td><code>{enc name}</code></td><td>{enc value}</td><td><span style=\"{enc sampleStyle}\"></span></td></tr>")
+
+    let weights =
+        Fuaran.box
+            "spacing-weights"
+            { Defaults.box with
+                Children =
+                    [ for w in Matrix.allWeights ->
+                          styled
+                              (ToneVariant.Default, w, Emphasis.Normal)
+                              (Fuaran.box
+                                  $"spacing-{Matrix.weightLabel w}"
+                                  { Defaults.box with
+                                      Role = BoxRole.Card
+                                      Heading = Some(literal $"Weight: {Matrix.weightLabel w}")
+                                      Children =
+                                          [ Fuaran.markdown
+                                                $"spacing-{Matrix.weightLabel w}-body"
+                                                "Density follows the weight axis." ] }) ] }
+
+    let body =
+        [ "<h1>Spacing</h1>"
+          "<div class=\"ds-note\"><p>The spacing, radius and border scales. A design chooses DENSITY through the weight axis (Compact, Standard, Spacious) on a node; it never sets a gap or padding directly.</p></div>"
+          render weights
+          "<table class=\"ds-table\"><tr><th>Token</th><th>Value</th><th>Sample</th></tr>" ]
+        @ rows
+        @ [ "</table>" ]
+        |> String.concat "\n"
+
+    { Group = CardGroup.Spacing
+      Name = "Spacing"
+      Path = "cards/spacing/spacing.html"
+      Html = cardDocument CardGroup.Spacing "Spacing" 2 styles body }
+
+let private toneCss (role: string) : string option =
+    Matrix.allTones
+    |> List.tryFind (fun t -> ManifestRole.toneToString t = role)
+    |> Option.map (fun t -> (Matrix.toneLabel t).ToLowerInvariant())
+
+let private colorsCard (styles: string) (roles: ColorRole list) : Card =
+    let rows =
+        roles
+        |> List.map (fun r ->
+            let swatch =
+                match toneCss r.Role, r.Reference with
+                | Some t, _ -> $"<span class=\"ds-swatch\" style=\"background: var(--fuaran-tone-{t}-bg)\"></span>"
+                | None, Some v -> $"<span class=\"ds-swatch\" style=\"background: {enc v}\"></span>"
+                | None, None -> ""
+
+            let reference = r.Reference |> Option.defaultValue "(unresolved)"
+
+            $"<tr><td><strong>{enc r.Role}</strong></td><td><code>{enc r.Token}</code></td><td>{swatch} <small>{enc reference}</small></td></tr>")
+
+    let toneStrip =
+        Fuaran.box
+            "colors-tones"
+            { Defaults.box with
+                Children =
+                    [ for t in Matrix.allTones ->
+                          Fuaran.callout
+                              $"colors-{Matrix.toneLabel t}"
+                              { Defaults.callout with
+                                  Tone = t
+                                  Heading = Some(literal $"Tone.{Matrix.toneLabel t}")
+                                  Body = literal "A role, resolved by the theme." } ] }
+
+    let body =
+        [ "<h1>Colors</h1>"
+          "<div class=\"ds-note\"><p>Colours are ROLES. Compose with the role names in the first column, through a node's tone; the resolved values are shown for reference only and are not tokens. A theme or brand changes the values; a design built on roles follows it.</p></div>"
+          render toneStrip
+          "<table class=\"ds-table\"><tr><th>Role</th><th>Bound token</th><th>Reference value</th></tr>" ]
+        @ rows
+        @ [ "</table>" ]
+        |> String.concat "\n"
+
+    { Group = CardGroup.Colors
+      Name = "Colors"
+      Path = "cards/colors/colors.html"
+      Html = cardDocument CardGroup.Colors "Colors" 2 styles body }
+
+// ─── Authoring notes ──────────────────────────────────────────────────────────
+
+let private readme (idlVersion: int) (kindCount: int) (fragmentCount: int) : string =
+    String.concat
+        "\n"
+        [ "# Fuaran UI design system"
+          ""
+          "Generated from the Fuaran UI language. Every card is a preview of a part a Fuaran UI tree can"
+          "express; a screen composed from these parts lowers to a tree without invention."
+          ""
+          $"IDL version {idlVersion}: {kindCount} kinds, {fragmentCount} stdlib fragments."
+          ""
+          "## Type"
+          ""
+          "The type scale. Choose a heading level or Markdown emphasis; never a font size."
+          ""
+          "## Colors"
+          ""
+          "Tone roles (Default, Subdued, Brand, Success, Warning, Critical, Info) and the theme's named"
+          "roles. Compose with ROLE NAMES only. The values on the card are a reference for this theme;"
+          "a different theme or brand re-resolves every role, and a design that used a value would not"
+          "follow it."
+          ""
+          "## Spacing"
+          ""
+          "Density is the weight axis (Compact, Standard, Spacious) on a node. Gaps, padding and radii are"
+          "the theme's; a design chooses a weight, not a dimension."
+          ""
+          "## Components"
+          ""
+          "One card per IDL kind, swept over the tone, weight and emphasis axes one axis at a time. Each"
+          "card says what the kind is for, which fields bind to data, and which hold children."
+          ""
+          "## Fragments"
+          ""
+          "One card per certified stdlib fragment: a reusable composite with typed holes. Apply one by"
+          "name and bind its holes; its example binds every hole."
+          "" ]
+
+// ─── Content hash ─────────────────────────────────────────────────────────────
+
+let private sha256Hex (bytes: byte array) : string =
+    Convert.ToHexString(SHA256.HashData bytes).ToLowerInvariant()
+
+let private utf8 (s: string) : byte array = Encoding.UTF8.GetBytes s
+
+/// The bundle's content hash: SHA-256 over one line per file, in ordinal path order,
+/// of `<path> <sha256 of the file's UTF-8 bytes>\n`. `manifest.json` is excluded (it
+/// carries the hash). Two builds of one theme with one option set are byte-identical,
+/// so the hash is stable across runs and moves with any card, token or note.
+let contentHashOf (files: BundleFile list) : string =
+    let lines =
+        files
+        |> List.sortWith (fun a b -> String.CompareOrdinal(a.Path, b.Path))
+        |> List.map (fun f -> $"{f.Path} {sha256Hex (utf8 f.Content)}\n")
+        |> String.concat ""
+
+    "sha256:" + sha256Hex (utf8 lines)
+
+// ─── Build ────────────────────────────────────────────────────────────────────
+
+/// Build the bundle for `theme`. `manifest`, when given, supplies the role bindings
+/// and is bridged (literal values) into every card after the theme; without one, the
+/// roles are projected from the theme's own tone variables. A brand stylesheet in
+/// `options.Brand` cascades after both and is folded into the role values.
+let build (theme: Theme) (manifest: ThemeManifest option) (options: BundleOptions) : Bundle =
+    let brand = options.Brand |> Option.defaultValue ""
+
+    if brand.IndexOf("</", StringComparison.Ordinal) >= 0 then
+        invalidArg "options" "the brand stylesheet may not contain '</' (it is inlined into a <style> element)"
+
+    let bridgeCss =
+        match manifest with
+        | Some m ->
+            (ThemeBridge.emitCss
+                m
+                { ThemeBridge.BridgeOptions.defaults with
+                    Mode = ThemeBridge.EmitMode.Literal })
+                .Css
+        | None -> ""
+
+    let styles =
+        [ Theme.toCss theme; bridgeCss; brand ]
+        |> List.filter (fun s -> s.Trim() <> "")
+        |> String.concat "\n"
+
+    let projected = Project.projectFromFuaranToneVars styles
+
+    let dtcg = manifest |> Option.defaultValue projected
+
+    let colors =
+        let declared = manifest |> Option.map rolesOf |> Option.defaultValue []
+        let declaredNames = declared |> List.map _.Role |> Set.ofList
+
+        // The seven tone roles are always offered: a manifest that binds only some of
+        // them leaves the rest resolved from the theme projection.
+        let tones =
+            rolesOf projected
+            |> List.filter (fun r -> not (Set.contains r.Role declaredNames))
+
+        declared @ tones
+
+    let version, kinds = idl.Value
+
+    let bySpecimenKind = options.Specimens |> List.groupBy _.Kind |> Map.ofList
+
+    let components =
+        kinds
+        |> List.choose (fun k -> Map.tryFind k.Tag bySpecimenKind |> Option.map (componentCard styles k))
+
+    let fragments = Stdlib.all<unit> |> List.map (fragmentCard styles)
+
+    let cards =
+        [ typeCard styles theme; colorsCard styles colors; spacingCard styles theme ]
+        @ components
+        @ fragments
+
+    let files =
+        [ yield!
+              cards
+              |> List.map (fun c ->
+                  { BundleFile.Path = c.Path
+                    Content = c.Html })
+          { Path = "theme.tokens.json"
+            Content = Encode.encode dtcg + "\n" }
+          { Path = "fuaran-reference.css"
+            Content = referenceStylesheet.Value }
+          { Path = "README.md"
+            Content = readme version kinds.Length (List.length Stdlib.all<unit>) } ]
+        |> List.sortWith (fun a b -> String.CompareOrdinal(a.Path, b.Path))
+
+    { IdlVersion = version
+      Kinds = kinds
+      Cards = cards
+      Colors = colors
+      Manifest = dtcg
+      Files = files
+      ContentHash = contentHashOf files }
+
+// ─── Check ────────────────────────────────────────────────────────────────────
+
+let private markerPattern =
+    RegularExpressions.Regex(
+        "^<!-- @dsCard group=\"([A-Za-z]+)\" -->$",
+        RegularExpressions.RegexOptions.CultureInvariant
+    )
+
+/// The bundle's contract. Empty means the bundle holds: every IDL kind has a
+/// Components card, every stdlib fragment has a Fragments card, there is exactly one
+/// Type, Colors and Spacing card, no Colors token is a literal colour, and every
+/// card's first line is a marker naming one of the five groups.
+let check (bundle: Bundle) : string list =
+    let cardsIn group =
+        bundle.Cards |> List.filter (fun c -> c.Group = group)
+
+    let named group =
+        cardsIn group |> List.map _.Name |> Set.ofList
+
+    let components = named CardGroup.Components
+    let fragments = named CardGroup.Fragments
+
+    [ for k in bundle.Kinds do
+          if not (Set.contains k.Tag components) then
+              yield $"IDL kind {k.Tag} has no Components card (no specimen in the sweep builds it)"
+      for f in Stdlib.all<unit> do
+          if not (Set.contains f.Name fragments) then
+              yield $"stdlib fragment {f.Name} has no Fragments card"
+      for g in [ CardGroup.Type; CardGroup.Colors; CardGroup.Spacing ] do
+          let n = (cardsIn g).Length
+
+          if n <> 1 then
+              yield $"expected exactly one {CardGroup.label g} card, found {n}"
+      for r in bundle.Colors do
+          if isLiteralColour r.Role then
+              yield $"Colors token \"{r.Role}\" is a literal colour; the Colors group offers roles only"
+      for c in bundle.Cards do
+          let firstLine =
+              match c.Html.IndexOf '\n' with
+              | -1 -> c.Html
+              | i -> c.Html.Substring(0, i)
+
+          let m = markerPattern.Match firstLine
+
+          if not m.Success then
+              yield $"card {c.Path}: first line is not a @dsCard marker"
+          else
+              match CardGroup.tryParse m.Groups[1].Value with
+              | Some g when g = c.Group -> ()
+              | Some g ->
+                  yield
+                      $"card {c.Path}: marker group {CardGroup.label g} disagrees with its group {CardGroup.label c.Group}"
+              | None -> yield $"card {c.Path}: marker group \"{m.Groups[1].Value}\" is not one of the five" ]
+
+// ─── Write ────────────────────────────────────────────────────────────────────
+
+let private manifestKind = "fuaranDesignSystemBundle"
+
+/// The bundle's own `manifest.json`: the file list with each file's hash, the cards
+/// by group, the content hash, and the IDL version the kinds came from.
+let manifestJson (bundle: Bundle) : string =
+    let options = JsonWriterOptions(Indented = true)
+    use stream = new MemoryStream()
+
+    (use w = new Utf8JsonWriter(stream, options)
+     w.WriteStartObject()
+     w.WriteString("kind", manifestKind)
+     w.WriteNumber("formatVersion", 1)
+     w.WriteString("contentHash", bundle.ContentHash)
+     w.WriteStartObject("idl")
+     w.WriteNumber("version", bundle.IdlVersion)
+     w.WriteNumber("kinds", bundle.Kinds.Length)
+     w.WriteEndObject()
+     w.WriteStartObject("groups")
+
+     for g in CardGroup.all do
+         w.WriteStartArray(CardGroup.label g)
+
+         for c in bundle.Cards |> List.filter (fun c -> c.Group = g) do
+             w.WriteStringValue c.Path
+
+         w.WriteEndArray()
+
+     w.WriteEndObject()
+     w.WriteStartArray("colorRoles")
+
+     for r in bundle.Colors do
+         w.WriteStartObject()
+         w.WriteString("role", r.Role)
+         w.WriteString("token", r.Token)
+         w.WriteEndObject()
+
+     w.WriteEndArray()
+     w.WriteStartArray("files")
+
+     for f in bundle.Files do
+         w.WriteStartObject()
+         w.WriteString("path", f.Path)
+         w.WriteString("sha256", sha256Hex (utf8 f.Content))
+         w.WriteEndObject()
+
+     w.WriteEndArray()
+     w.WriteEndObject())
+
+    Encoding.UTF8.GetString(stream.ToArray()) + "\n"
+
+let private isBundleDirectory (dir: string) : bool =
+    let path = Path.Combine(dir, "manifest.json")
+
+    File.Exists path
+    && (try
+            use doc = JsonDocument.Parse(File.ReadAllText path)
+
+            match doc.RootElement.TryGetProperty "kind" with
+            | true, k -> k.GetString() = manifestKind
+            | _ -> false
+        with _ ->
+            false)
+
+/// Write the bundle into `dir`. A directory holding a previous bundle is replaced
+/// (its `cards/` tree and top-level bundle files go first, so a kind that left the
+/// IDL leaves no stale card); a non-empty directory that is NOT a bundle is refused
+/// rather than written into.
+let write (bundle: Bundle) (dir: string) : unit =
+    if
+        Directory.Exists dir
+        && Directory.EnumerateFileSystemEntries dir |> Seq.isEmpty |> not
+    then
+        if not (isBundleDirectory dir) then
+            invalidOp $"{dir} is not empty and holds no design-system bundle; refusing to write into it"
+
+        let cards = Path.Combine(dir, "cards")
+
+        if Directory.Exists cards then
+            Directory.Delete(cards, true)
+
+        for name in [ "manifest.json"; "theme.tokens.json"; "fuaran-reference.css"; "README.md" ] do
+            let p = Path.Combine(dir, name)
+
+            if File.Exists p then
+                File.Delete p
+
+    let utf8NoBom = UTF8Encoding(false)
+
+    for f in bundle.Files do
+        let target = Path.Combine(dir, f.Path.Replace('/', Path.DirectorySeparatorChar))
+        Directory.CreateDirectory(Path.GetDirectoryName target) |> ignore
+        File.WriteAllText(target, f.Content, utf8NoBom)
+
+    File.WriteAllText(Path.Combine(dir, "manifest.json"), manifestJson bundle, utf8NoBom)

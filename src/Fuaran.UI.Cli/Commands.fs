@@ -23,6 +23,8 @@ Usage:
                                                             JSON Schema -> a canonical Form tree
   fuaran recipe <query>                                     (served by @fuaran-ui/cli / the MCP)
   fuaran refusal-report --corpus <dir>                      Conformance corpus -> this host's refusal report (JSON)
+  fuaran design-system export --theme <manifest.json | default | dark | high-contrast> --out <dir> [--brand <css>]
+                                                            The language as a design-system bundle; prints its hash
 
 Secrets: FUARAN_ENDPOINT / FUARAN_ACCESS_TOKEN / FUARAN_PROVIDER_KEY are read from
 the environment (never a flag, never printed). --mock needs no secret."""
@@ -138,6 +140,54 @@ let refusalReport (args: string list) : int * string =
     | Some dir -> RefusalReport.run dir
     | None -> 2, "refusal-report: --corpus <dir> is required (the wire-format corpus root).\n"
 
+/// Phase 2294 — `fuaran design-system export`: the language described as a
+/// design-system bundle (see `Fuaran.UI.Design.Bundle`). The bundle's own checks
+/// run before anything is written; a failing bundle is reported and not written.
+let designSystemExport (args: string list) : int * string =
+    let theme =
+        match flagValue "--theme" args with
+        | None -> Error "--theme <manifest.json | default | dark | high-contrast> is required."
+        | Some "default" -> Ok(Fuaran.UI.Defaults.theme, None)
+        | Some "dark" -> Ok(Fuaran.Samples.Themes.Dark.theme, None)
+        | Some "high-contrast" -> Ok(Fuaran.Samples.Themes.HighContrast.theme, None)
+        | Some file when File.Exists file ->
+            match Fuaran.UI.ThemeManifest.Decode.decode (File.ReadAllText file) with
+            | Ok manifest -> Ok(Fuaran.UI.Defaults.theme, Some manifest)
+            | Error e -> Error $"{file} is not a theme manifest: {e}"
+        | Some other -> Error $"--theme {other} is neither a manifest file nor one of default | dark | high-contrast."
+
+    let brand =
+        match flagValue "--brand" args with
+        | None -> Ok None
+        | Some file when File.Exists file -> Ok(Some(File.ReadAllText file))
+        | Some file -> Error $"brand stylesheet not found: {file}"
+
+    let usageError (msg: string) = 2, $"design-system export: {msg}\n"
+
+    match theme, brand, flagValue "--out" args with
+    | Error msg, _, _
+    | _, Error msg, _ -> usageError msg
+    | _, _, None -> usageError "--out <dir> is required."
+    | Ok(theme, manifest), Ok brand, Some out ->
+        try
+            let bundle =
+                Fuaran.UI.Design.Bundle.build
+                    theme
+                    manifest
+                    { Fuaran.UI.Design.Bundle.BundleOptions.defaults () with
+                        Brand = brand }
+
+            match Fuaran.UI.Design.Bundle.check bundle with
+            | [] ->
+                Fuaran.UI.Design.Bundle.write bundle out
+                0, $"design-system bundle: {bundle.Cards.Length} cards -> {out}\n{bundle.ContentHash}\n"
+            | findings ->
+                let lines = findings |> List.map (fun f -> $"  {f}\n") |> String.concat ""
+                1, "design-system export: the bundle fails its checks; nothing written.\n" + lines
+        with
+        | :? ArgumentException as e -> usageError e.Message
+        | :? InvalidOperationException as e -> usageError e.Message
+
 let recipe (_args: string list) : int * string =
     0,
     "The recipe bank is single-sourced in the TS tier (shared with the MCP recipe tool):\n  npx @fuaran-ui/cli recipe <query>\n"
@@ -151,6 +201,7 @@ let dispatch (argv: string list) : int * string =
     | "scaffold" :: rest -> scaffold rest
     | "recipe" :: rest -> recipe rest
     | "refusal-report" :: rest -> refusalReport rest
+    | "design-system" :: "export" :: rest -> designSystemExport rest
     | []
     | "help" :: _
     | "--help" :: _

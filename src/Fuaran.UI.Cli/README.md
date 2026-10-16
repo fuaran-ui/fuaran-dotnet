@@ -9,6 +9,7 @@ dotnet tool install -g Fuaran.UI.Cli
 fuaran generate "a metric strip showing revenue" --mock   # offline, no secret
 fuaran validate tree.json                                  # canonical-schema check
 fuaran scaffold --target fsharp                            # F#/Fable integration boilerplate
+fuaran design-system export --theme default --out ./ds     # the language as a design-system bundle
 ```
 
 ## Commands
@@ -21,6 +22,13 @@ fuaran scaffold --target fsharp                            # F#/Fable integratio
 - **`scaffold --target fsharp`** — the F#/Fable integration boilerplate
   (turn-loop over the endpoint, rendered through `Fuaran.UI.Renderer`;
   server-proxied).
+- **`design-system export --theme <manifest.json | default | dark | high-contrast>
+  --out <dir> [--brand <css>]`** — the language as a design-system bundle, via
+  `Fuaran.UI.Design`: a preview card per IDL kind, stdlib fragment and theme
+  scale, the theme as a DTCG manifest, and a `manifest.json` with the content
+  hash. Colours are offered as roles, never values. The bundle's checks run
+  first and nothing is written when one fails; on success it prints the card
+  count and the hash (exit 0). See `docs/DESIGN-SYSTEM-EXPORT.md`.
 
 `generate` and `validate` behave **identically** to the npm `@fuaran-ui/cli`
 (they share the wire substrate). The recipe bank and the multi-target scaffold
