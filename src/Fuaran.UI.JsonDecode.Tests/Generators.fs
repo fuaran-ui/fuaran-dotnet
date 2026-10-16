@@ -1461,6 +1461,23 @@ let rec private genOpSized (size: int) : Gen<TreeOp<obj>> =
               return TreeOp.UpdateStyle(NodeId target, style)
           }
           gen {
+              // Phase 2291 — a patch names at least one field (the decoder
+              // refuses an empty one), so the generator draws a style and keeps
+              // the fields that differ from the default, falling back to an
+              // explicit `tone` when it drew the default record.
+              let! target = genNonEmptyString
+              let! style = genSemanticStyle
+              let delta = StyleDelta.between Fuaran.UI.Defaults.style style
+
+              let delta =
+                  if StyleDelta.isEmpty delta then
+                      { delta with Tone = Some style.Tone }
+                  else
+                      delta
+
+              return TreeOp.PatchStyle(NodeId target, delta)
+          }
+          gen {
               let! target = genNonEmptyString
               let! state = genStateBehaviour 1
               return TreeOp.UpdateState(NodeId target, state)

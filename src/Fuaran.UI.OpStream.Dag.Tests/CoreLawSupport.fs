@@ -294,6 +294,8 @@ let rec footprintOfTreeOp (op: TreeOp<obj>) : Fuaran.Core.Footprint =
     | TreeOp.UpdateProp(id, _, _)
     | TreeOp.ReplaceBinding(id, _, _)
     | TreeOp.UpdateStyle(id, _)
+    // Phase 2291: node-content precision here; the slot-precise `slotEdit id "style.<field>"` is Phase 2292's.
+    | TreeOp.PatchStyle(id, _)
     | TreeOp.UpdateState(id, _) -> verticalWrite id
     | TreeOp.Batch inner -> inner |> List.fold (fun acc o -> unionFp acc (footprintOfTreeOp o)) emptyFp
     | TreeOp.ReplaceRoot _ ->

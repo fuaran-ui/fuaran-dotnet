@@ -90,8 +90,9 @@ let tests =
                         "ReplaceRoot"
                         "UpdateProp"
                         "UpdateState"
-                        "UpdateStyle" ])
-                  "the 11 WIRE_FORMAT.md §3.4 op cases")
+                        "UpdateStyle"
+                        "PatchStyle" ])
+                  "the 12 WIRE_FORMAT.md §3.4 op cases")
 
           testCase "InsertChild carries no `position` — read from the corpus, not old prose" (fun _ ->
               // Phase 681 removed it. The phase body that commissioned the

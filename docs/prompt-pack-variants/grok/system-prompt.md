@@ -299,6 +299,7 @@ TreeOp =
 | UpdateProp { path:str; target:str; value:any }
 | ReplaceBinding { binding:Binding_json; slot:str; target:str }
 | UpdateStyle { style:SemanticStyle; target:str }
+| PatchStyle { style:StyleDelta; target:str }
 | UpdateState { state:StateBehaviour; target:str }
 | InsertChild { child:Node; parentId:str }
 | RemoveNode { target:str }
@@ -625,9 +626,10 @@ FormField { id:str; kind:FormFieldKind; label:TextSource; required:bool; help?:T
 GuestChannel { direction:"OutOnly"|"TwoWay"; messageShape?:str }
 MapMarker { label:TextSource; latitude:num; longitude:num }
 SelectOption { label:TextSource; value:str }
-SemanticStyle { direction?:"auto"|"ltr"|"rtl"; emphasis?:Emphasis; role?:"None"|"Eyebrow"|"Data"|"Lede"|"Caption"; tone?:ToneVariant; voice?:"Default"|"Display"|"Structural"; weight?:StyleWeight }
+SemanticStyle { direction?:TextDirection; emphasis?:Emphasis; role?:StyleRole; tone?:ToneVariant; voice?:FontVoice; weight?:StyleWeight }
 SrcSetEntry { src:Binding_str; width:int }
 StateBehaviour { onEmpty?:Node; onLoading?:Node }
+StyleDelta { direction?:TextDirection; emphasis?:Emphasis; role?:StyleRole; tone?:ToneVariant; voice?:FontVoice; weight?:StyleWeight }
 TabHeader { label:TextSource; disabled?:Binding_bool; icon?:str }
 TrackEntry { kind:"Subtitles"|"Captions"|"Descriptions"|"Chapters"; label:TextSource; src:Binding_str; srcLang:str; default?:bool }
 TransformAgg { fn:AggFn; name:str; of:str }
@@ -640,10 +642,13 @@ DateTimeVariant = "Date"|"Time"|"DateTime"
 DurationStyle = "Compact"|"Clock"|"Long"
 DurationUnit = "Seconds"|"Minutes"|"Hours"
 Emphasis = "Quiet"|"Normal"|"Loud"
+FontVoice = "Default"|"Display"|"Structural"
 ImageAspect = "Natural"|"Square"|"FourThree"|"ThreeTwo"|"SixteenNine"
 Orientation = "Vertical"|"Horizontal"
 RelativeTimeUnit = "Second"|"Minute"|"Hour"|"Day"|"Week"|"Month"|"Year"
+StyleRole = "None"|"Eyebrow"|"Data"|"Lede"|"Caption"
 StyleWeight = "Compact"|"Standard"|"Spacious"
+TextDirection = "auto"|"ltr"|"rtl"
 TimeGrain = "Second"|"Minute"|"Hour"|"Day"
 ToneVariant = "Default"|"Subdued"|"Brand"|"Success"|"Warning"|"Critical"|"Info"
 ```

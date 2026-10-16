@@ -1022,7 +1022,7 @@ If your emission violates the wire shape, the decoder returns a structured, reco
 
 For **tree-shape pre-emit checks** that don't require a JSON encoder (duplicate `NodeId` detection, empty identifier strings, empty `Custom` kind ids), call [`Fuaran.UI.PreEmitValidate.validate`](../src/Fuaran.UI/PreEmitValidate.fs). Fable-compatible (no reflection), returns `Result<unit, PreEmitDefect list>` – every defect surfaced in one pass, no short-circuiting, so the AI can repair the tree in a single turn.
 
-## Structural editing: the 10 TreeOp variants
+## Structural editing: the TreeOp variants
 
 After the initial emission, subsequent turns can edit the tree via `Fuaran.UI.Ops.TreeOp` rather than re-emitting the full tree. Source: [`src/Fuaran.UI.Ops/Types.fs:45-96`](../src/Fuaran.UI.Ops/Types.fs).
 
@@ -1031,7 +1031,8 @@ After the initial emission, subsequent turns can edit the tree via `Fuaran.UI.Op
 | **`EditNode`** | Replace one node's `Kind` (preserves `Id` / `State` / `Style`). | "Swap Metric for a Sparkline at the same position." |
 | **`UpdateProp`** | Patch a field on a spec record – top-level (`"Label"`) or nested through the per-kind typed surface (`"Columns[0].Label"`, `"YFields[1]"`, `"TabHeaders[1].Disabled"`, `"Fields[0].Required"`). | "Change Metric.Label from 'Revenue' to 'Net revenue'"; "rename the second grid column". |
 | **`ReplaceBinding`** | Replace a Binding-typed slot's binding source. | "Switch Metric.Value from Query 'revenue' to Query 'revenue-net'." |
-| **`UpdateStyle`** | Replace `SemanticStyle` wholesale. | "Change a callout from Tone.Info to Tone.Warning." |
+| **`UpdateStyle`** | Replace `SemanticStyle` wholesale – every field the payload leaves at its default is RESET to it. | "Restyle the callout as exactly: Warning tone, loud emphasis, nothing else." |
+| **`PatchStyle`** | Set only the style fields it names (`{"tone":"Warning"}`); every other style field is left as it is. A default token is an edit (`{"tone":"Default"}` sets it back). | "Change a callout from Tone.Info to Tone.Warning." |
 | **`UpdateState`** | Replace `StateBehaviour` wholesale. | "Update the Skeleton onLoading slot to use a different shape." |
 | **`InsertChild`** | **Append** a new child to a parent. | "Add a Markdown summary to the dashboard." |
 | **`RemoveNode`** | Remove a node. | "Drop the deprecated progress bar." |

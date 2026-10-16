@@ -2543,6 +2543,25 @@ let rec private applyOne (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Ms
         | Some updated -> Ok updated
         | None -> Error(nodeNotFound target)
 
+    | TreeOp.PatchStyle(target, delta) ->
+        // Phase 2291 — a patch over the node's CURRENT style (an absent style is
+        // the default record), with the same all-default normalisation as
+        // `UpdateStyle`: the fields the delta names are set, the rest carried.
+        let patch (n: Node<'Msg>) =
+            let patched =
+                StyleDelta.applyTo (n.Style |> Option.defaultValue Fuaran.UI.Defaults.style) delta
+
+            { n with
+                Style =
+                    if patched = Fuaran.UI.Defaults.style then
+                        None
+                    else
+                        Some patched }
+
+        match mapNode target patch root with
+        | Some updated -> Ok updated
+        | None -> Error(nodeNotFound target)
+
     | TreeOp.UpdateState(target, state) ->
         // Same normalisation as UpdateStyle — an all-`None` StateBehaviour is
         // the canonical `None` envelope slot.
@@ -2641,7 +2660,7 @@ let rec private treeMetrics (node: Node<'Msg>) : int * int =
 /// a property of placement, not of how many nodes there are.
 ///
 /// Everything else is exempt, because it cannot grow the tree: `UpdateProp`,
-/// `ReplaceBinding` and `UpdateStyle` carry no node (`UpdateProp` refuses every
+/// `ReplaceBinding`, `UpdateStyle` and `PatchStyle` carry no node (`UpdateProp` refuses every
 /// node-valued field - children, an `ErrorBoundary`'s arms, a `Switch`'s cases),
 /// `RemoveNode` shrinks, and `ReorderChildren` permutes children in place.
 let rec private opCanGrow (op: TreeOp<'Msg>) : bool =

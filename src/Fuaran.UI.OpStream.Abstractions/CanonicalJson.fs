@@ -883,6 +883,15 @@ let private semanticStyleAppender (s: SemanticStyle) : Appender =
         sb.Append(Fuaran.Core.Canon.render (Fuaran.UI.Generated.encodeSemanticStyleJson s))
         |> ignore
 
+/// Phase 2291 — the `PatchStyle` payload: exactly the members the delta sets, in
+/// the pinned alphabetical order, each a bare token string. Unlike the
+/// `SemanticStyle` encoder a default token is NOT omitted: in a delta it is the
+/// edit.
+let private styleDeltaAppender (d: StyleDelta) : Appender =
+    fun sb ->
+        sb.Append(Fuaran.Core.Canon.render (JObj(StyleDelta.wireMembers d |> List.map (fun (k, v) -> k, JStr v))))
+        |> ignore
+
 // ─── TreeOp encoder ───────────────────────────────────────────────────────
 
 let private encodeTreeOp<'Msg> (op: TreeOp<'Msg>) : Appender =
@@ -913,6 +922,10 @@ let private encodeTreeOp<'Msg> (op: TreeOp<'Msg>) : Appender =
                 appendObject
                     sb
                     (case "UpdateStyle" [ "style", semanticStyleAppender style; "target", str (nodeIdStr target) ])
+            | TreeOp.PatchStyle(target, delta) ->
+                appendObject
+                    sb
+                    (case "PatchStyle" [ "style", styleDeltaAppender delta; "target", str (nodeIdStr target) ])
             | TreeOp.UpdateState(target, state) ->
                 appendObject
                     sb

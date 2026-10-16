@@ -327,7 +327,7 @@ let tests =
                   "only the changed leaf is patched (granular UpdateProp)"
           }
 
-          test "style change round-trips (UpdateStyle)" {
+          test "style change round-trips as a field-level PatchStyle naming only the moved field" {
               let baseMd = Fuaran.markdown "m" "text"
 
               let toned =
@@ -341,12 +341,22 @@ let tests =
               let b = container "dash" [ toned ]
               let ops = roundTrip a b
 
+              // Phase 2291 — the op names the one field that moved, and nothing else.
               Expect.isTrue
                   (ops
                    |> List.exists (function
-                       | TreeOp.UpdateStyle(NodeId "m", _) -> true
+                       | TreeOp.PatchStyle(NodeId "m", delta) ->
+                           delta = { StyleDelta.empty with
+                                       Tone = Some ToneVariant.Brand }
                        | _ -> false))
-                  "style drift emits UpdateStyle"
+                  "a one-field style drift emits PatchStyle carrying that field alone"
+
+              Expect.isFalse
+                  (ops
+                   |> List.exists (function
+                       | TreeOp.UpdateStyle _ -> true
+                       | _ -> false))
+                  "a partial style drift does not emit the whole-record UpdateStyle"
 
               // Refinement: a style-only change (kind shape unchanged) must
               // NOT wholesale-replace the node — no EditNode is emitted.
@@ -356,6 +366,71 @@ let tests =
                        | TreeOp.EditNode _ -> true
                        | _ -> false))
                   "style-only change does not re-send the kind via EditNode"
+          }
+
+          test "a style change that moves EVERY field round-trips as the whole-record UpdateStyle" {
+              let start =
+                  { Fuaran.markdown "m" "text" with
+                      Style =
+                          Some
+                              { Direction = TextDirection.Ltr
+                                Emphasis = Emphasis.Loud
+                                Role = StyleRole.Eyebrow
+                                Tone = ToneVariant.Brand
+                                Voice = FontVoice.Display
+                                Weight = StyleWeight.Spacious } }
+
+              let moved =
+                  { start with
+                      Style =
+                          Some
+                              { Direction = TextDirection.Rtl
+                                Emphasis = Emphasis.Quiet
+                                Role = StyleRole.Caption
+                                Tone = ToneVariant.Info
+                                Voice = FontVoice.Structural
+                                Weight = StyleWeight.Compact } }
+
+              let ops = roundTrip (container "dash" [ start ]) (container "dash" [ moved ])
+
+              Expect.isTrue
+                  (ops
+                   |> List.exists (function
+                       | TreeOp.UpdateStyle(NodeId "m", _) -> true
+                       | _ -> false))
+                  "all six fields moved: the record IS the edit"
+
+              Expect.isFalse
+                  (ops
+                   |> List.exists (function
+                       | TreeOp.PatchStyle _ -> true
+                       | _ -> false))
+                  "no PatchStyle beside the whole-record write"
+          }
+
+          test "a style change back to the default record is a PatchStyle carrying the default tokens" {
+              // The moved fields' TARGET values are defaults here; a patch spells
+              // them explicitly (a default token in a delta is an edit).
+              let styled =
+                  { Fuaran.markdown "m" "text" with
+                      Style =
+                          Some
+                              { Defaults.style with
+                                  Tone = ToneVariant.Brand
+                                  Voice = FontVoice.Display } }
+
+              let plain = Fuaran.markdown "m" "text"
+              let ops = roundTrip (container "dash" [ styled ]) (container "dash" [ plain ])
+
+              Expect.isTrue
+                  (ops
+                   |> List.exists (function
+                       | TreeOp.PatchStyle(NodeId "m", delta) ->
+                           delta = { StyleDelta.empty with
+                                       Tone = Some ToneVariant.Default
+                                       Voice = Some FontVoice.Default }
+                       | _ -> false))
+                  "the two moved fields, each set back to its default"
           }
 
           test "diffBatched wraps a multi-op diff in a single atomic Batch" {

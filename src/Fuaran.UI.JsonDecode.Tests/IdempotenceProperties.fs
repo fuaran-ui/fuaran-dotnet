@@ -164,6 +164,7 @@ let private requiredOpTokens: string list =
       "\"$type\":\"UpdateProp\""
       "\"$type\":\"ReplaceBinding\""
       "\"$type\":\"UpdateStyle\""
+      "\"$type\":\"PatchStyle\""
       "\"$type\":\"UpdateState\""
       "\"$type\":\"InsertChild\""
       "\"$type\":\"RemoveNode\""

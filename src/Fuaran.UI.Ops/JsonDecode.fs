@@ -1368,6 +1368,7 @@ let opWireFields: (string * (string * bool) list) list =
       "UpdateProp", [ "target", true; "path", true; "value", true ]
       "ReplaceBinding", [ "target", true; "slot", true; "binding", true ]
       "UpdateStyle", [ "target", true; "style", true ]
+      "PatchStyle", [ "target", true; "style", true ]
       "UpdateState", [ "target", true; "state", true ]
       "InsertChild", [ "parentId", true; "child", true ]
       "RemoveNode", [ "target", true ]
@@ -9394,6 +9395,52 @@ and private decodeSemanticStyle (path: string) (j: Json) : Result<SemanticStyle,
         | _, _, _, _, Error e, _
         | _, _, _, _, _, Error e -> Error e
 
+/// Phase 2291 — the `PatchStyle` payload. The same six members, the same closed
+/// token sets and the same per-field decoders as `decodeSemanticStyle`; the one
+/// difference is what ABSENCE means: here it is "leave this field as it is", so
+/// an absent member decodes to `None` rather than to the field's default, and a
+/// present default token (`"tone":"Default"`) is a real edit. A delta naming no
+/// field is not an edit and is refused, `WRONG_TYPE` at the record — the
+/// `reject-fieldrule-empty` precedent (a record declaring nothing).
+and private decodeStyleDelta (path: string) (j: Json) : Result<StyleDelta, DecodeError> =
+    match requireObject path j with
+    | Error e -> Error e
+    | Ok fields ->
+        let optional (key: string) (decode: string -> Json -> Result<'T, DecodeError>) =
+            match tryField fields key with
+            | None -> Ok None
+            | Some v -> decode (path + "." + key) v |> Result.map Some
+
+        match
+            optional "direction" decodeTextDirection,
+            optional "emphasis" decodeEmphasis,
+            optional "role" decodeStyleRole,
+            optional "tone" decodeTone,
+            optional "voice" decodeFontVoice,
+            optional "weight" decodeWeight
+        with
+        | Ok direction, Ok emphasis, Ok role, Ok tone, Ok voice, Ok weight ->
+            let delta: StyleDelta =
+                { Direction = direction
+                  Emphasis = emphasis
+                  Role = role
+                  Tone = tone
+                  Voice = voice
+                  Weight = weight }
+
+            if StyleDelta.isEmpty delta then
+                wrongType
+                    path
+                    "StyleDelta naming at least one field (direction | emphasis | role | tone | voice | weight)"
+            else
+                Ok delta
+        | Error e, _, _, _, _, _
+        | _, Error e, _, _, _, _
+        | _, _, Error e, _, _, _
+        | _, _, _, Error e, _, _
+        | _, _, _, _, Error e, _
+        | _, _, _, _, _, Error e -> Error e
+
 /// The single gate every node in the document passes through — both structural
 /// bounds are enforced here, on the way DOWN (Phase 781; WIRE_FORMAT §21).
 ///
@@ -9710,6 +9757,20 @@ and private decodeTreeOpAstCore (w: Walk) (path: string) (j: Json) : Result<Tree
 
             match targetR, styleR with
             | Ok target, Ok style -> Ok(TreeOp.UpdateStyle(target, style))
+            | Error e, _
+            | _, Error e -> Error e
+        | Ok "PatchStyle" ->
+            let targetR =
+                requireField path fields "target" "target NodeId"
+                |> Result.bind (requireString (path + ".target"))
+                |> Result.map NodeId
+
+            let styleR =
+                requireField path fields "style" "StyleDelta object"
+                |> Result.bind (decodeStyleDelta (path + ".style"))
+
+            match targetR, styleR with
+            | Ok target, Ok style -> Ok(TreeOp.PatchStyle(target, style))
             | Error e, _
             | _, Error e -> Error e
         | Ok "UpdateState" ->

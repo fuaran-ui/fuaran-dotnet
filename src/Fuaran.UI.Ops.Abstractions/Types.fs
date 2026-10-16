@@ -103,6 +103,146 @@ module PropValue =
         | PropValue.Native o -> o
         | PropValue.Wire j -> JValObj.toObj j
 
+/// A field-level edit of a node's `SemanticStyle` — the payload of
+/// `TreeOp.PatchStyle` (Phase 2291). Every field is optional, and the option is
+/// the whole point: `Some v` SETS that style field to `v` (a default value
+/// included — setting `Tone = Some ToneVariant.Default` is a real edit, and the
+/// wire carries it explicitly), while `None` leaves the node's current value
+/// untouched. So an edit names exactly the fields it changes, and two concurrent
+/// edits of different fields on one node do not overlap.
+///
+/// Field names and order mirror `SemanticStyle`; the wire member names are the
+/// same lower-camel names (`WIRE_FORMAT.md` §3.4). A delta naming no field is
+/// not an edit, and the wire refuses it.
+type StyleDelta =
+    { Direction: TextDirection option
+      Emphasis: Emphasis option
+      Role: StyleRole option
+      Tone: ToneVariant option
+      Voice: FontVoice option
+      Weight: StyleWeight option }
+
+[<RequireQualifiedAccess>]
+module StyleDelta =
+    /// The delta that names no field.
+    let empty: StyleDelta =
+        { Direction = None
+          Emphasis = None
+          Role = None
+          Tone = None
+          Voice = None
+          Weight = None }
+
+    /// The delta's wire members — `(member, token)` for every field it sets, in
+    /// the pinned alphabetical member order, each token the canonical WIRE
+    /// spelling (the string the generated `SemanticStyle` encoder emits; note
+    /// `direction`'s lower-case tokens). Written as total matches so a new enum
+    /// case is a build failure here rather than a silent mis-spelling. A
+    /// default token is spelled like any other: in a delta it is a real edit.
+    let wireMembers (d: StyleDelta) : (string * string) list =
+        let direction (v: TextDirection) =
+            match v with
+            | TextDirection.Auto -> "auto"
+            | TextDirection.Ltr -> "ltr"
+            | TextDirection.Rtl -> "rtl"
+
+        let emphasis (v: Emphasis) =
+            match v with
+            | Emphasis.Quiet -> "Quiet"
+            | Emphasis.Normal -> "Normal"
+            | Emphasis.Loud -> "Loud"
+
+        let role (v: StyleRole) =
+            match v with
+            | StyleRole.None -> "None"
+            | StyleRole.Eyebrow -> "Eyebrow"
+            | StyleRole.Data -> "Data"
+            | StyleRole.Lede -> "Lede"
+            | StyleRole.Caption -> "Caption"
+
+        let tone (v: ToneVariant) =
+            match v with
+            | ToneVariant.Default -> "Default"
+            | ToneVariant.Subdued -> "Subdued"
+            | ToneVariant.Brand -> "Brand"
+            | ToneVariant.Success -> "Success"
+            | ToneVariant.Warning -> "Warning"
+            | ToneVariant.Critical -> "Critical"
+            | ToneVariant.Info -> "Info"
+
+        let voice (v: FontVoice) =
+            match v with
+            | FontVoice.Default -> "Default"
+            | FontVoice.Display -> "Display"
+            | FontVoice.Structural -> "Structural"
+
+        let weight (v: StyleWeight) =
+            match v with
+            | StyleWeight.Compact -> "Compact"
+            | StyleWeight.Standard -> "Standard"
+            | StyleWeight.Spacious -> "Spacious"
+
+        [ match d.Direction with
+          | Some v -> "direction", direction v
+          | None -> ()
+          match d.Emphasis with
+          | Some v -> "emphasis", emphasis v
+          | None -> ()
+          match d.Role with
+          | Some v -> "role", role v
+          | None -> ()
+          match d.Tone with
+          | Some v -> "tone", tone v
+          | None -> ()
+          match d.Voice with
+          | Some v -> "voice", voice v
+          | None -> ()
+          match d.Weight with
+          | Some v -> "weight", weight v
+          | None -> () ]
+
+    /// The WIRE member name of every field the delta sets, in the pinned
+    /// (alphabetical) member order — the unit a footprint names as
+    /// `style.<field>`.
+    let fieldNames (d: StyleDelta) : string list = wireMembers d |> List.map fst
+
+    /// True when the delta names no field.
+    let isEmpty (d: StyleDelta) : bool = d = empty
+
+    /// The patch: every field the delta sets replaces the style's own; every
+    /// other field is carried through unchanged.
+    let applyTo (style: SemanticStyle) (d: StyleDelta) : SemanticStyle =
+        { Direction = defaultArg d.Direction style.Direction
+          Emphasis = defaultArg d.Emphasis style.Emphasis
+          Role = defaultArg d.Role style.Role
+          Tone = defaultArg d.Tone style.Tone
+          Voice = defaultArg d.Voice style.Voice
+          Weight = defaultArg d.Weight style.Weight }
+
+    /// The delta that takes `before` to `after`: exactly the fields whose values
+    /// differ, each set to its `after` value. `applyTo before (between before
+    /// after) = after` for every pair, and the result is `empty` exactly when the
+    /// two styles are equal.
+    let between (before: SemanticStyle) (after: SemanticStyle) : StyleDelta =
+        let moved (a: 'T) (b: 'T) = if a = b then None else Some b
+
+        { Direction = moved before.Direction after.Direction
+          Emphasis = moved before.Emphasis after.Emphasis
+          Role = moved before.Role after.Role
+          Tone = moved before.Tone after.Tone
+          Voice = moved before.Voice after.Voice
+          Weight = moved before.Weight after.Weight }
+
+    /// True when the delta sets EVERY field — the one case a style change is
+    /// recorded as the whole-record `TreeOp.UpdateStyle` rather than a patch.
+    let isTotal (d: StyleDelta) : bool =
+        d.Direction.IsSome
+        && d.Emphasis.IsSome
+        && d.Role.IsSome
+        && d.Tone.IsSome
+        && d.Voice.IsSome
+        && d.Weight.IsSome
+
 [<RequireQualifiedAccess>]
 type TreeOp<'Msg> =
     /// Wholesale kind swap of the addressed node. Every other Node field is
@@ -130,8 +270,16 @@ type TreeOp<'Msg> =
     /// by the apply engine.
     | ReplaceBinding of NodeId * slot: string * binding: Binding<obj>
 
-    /// Replace the addressed node's `Style` block.
+    /// Replace the addressed node's `Style` block — the WHOLE record: a field
+    /// the payload leaves at its default resets the node's value to that
+    /// default. For an edit of some fields, `PatchStyle` below.
     | UpdateStyle of NodeId * SemanticStyle
+
+    /// Set the style fields the delta names on the addressed node, leaving
+    /// every other style field as it is (Phase 2291). The field-level twin of
+    /// `UpdateStyle`: the op carries the fields it changes, so a footprint
+    /// read from the op alone can say which ones they were.
+    | PatchStyle of NodeId * StyleDelta
 
     /// Replace the addressed node's `State` block (OnLoading / OnEmpty /
     /// OnError slots).

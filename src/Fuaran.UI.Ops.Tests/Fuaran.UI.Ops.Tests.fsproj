@@ -12,6 +12,7 @@
          Must compile FIRST: the resolvers below delegate to it. -->
     <Compile Include="..\..\tests\corpus-root\CorpusRoot.fs" Link="CorpusRoot.fs" />    <Compile Include="OpsApplyTests.fs" />
     <!-- Phase 1527 - the apply-time §21 guard (WireLimits.MaxDepth / MaxNodes). -->
+    <Compile Include="PatchStyleTests.fs" />
     <Compile Include="ApplyLimitTests.fs" />
     <Compile Include="ApplyDuplicateIdTests.fs" />
     <Compile Include="LimitsApplyCorpusTests.fs" />

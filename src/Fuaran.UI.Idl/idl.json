@@ -3611,6 +3611,31 @@
       "category": "op",
       "fields": [
         {
+          "name": "style",
+          "optionality": {
+            "$type": "required"
+          },
+          "type": {
+            "$type": "record",
+            "name": "StyleDelta"
+          }
+        },
+        {
+          "name": "target",
+          "optionality": {
+            "$type": "required"
+          },
+          "type": {
+            "$type": "str"
+          }
+        }
+      ],
+      "tag": "PatchStyle"
+    },
+    {
+      "category": "op",
+      "fields": [
+        {
           "name": "target",
           "optionality": {
             "$type": "required"
@@ -4797,6 +4822,71 @@
         }
       ],
       "name": "StaticRows"
+    },
+    {
+      "fields": [
+        {
+          "name": "direction",
+          "optionality": {
+            "$type": "optional"
+          },
+          "type": {
+            "$type": "enum",
+            "name": "TextDirection"
+          }
+        },
+        {
+          "name": "emphasis",
+          "optionality": {
+            "$type": "optional"
+          },
+          "type": {
+            "$type": "enum",
+            "name": "Emphasis"
+          }
+        },
+        {
+          "name": "role",
+          "optionality": {
+            "$type": "optional"
+          },
+          "type": {
+            "$type": "enum",
+            "name": "StyleRole"
+          }
+        },
+        {
+          "name": "tone",
+          "optionality": {
+            "$type": "optional"
+          },
+          "type": {
+            "$type": "enum",
+            "name": "ToneVariant"
+          }
+        },
+        {
+          "name": "voice",
+          "optionality": {
+            "$type": "optional"
+          },
+          "type": {
+            "$type": "enum",
+            "name": "FontVoice"
+          }
+        },
+        {
+          "name": "weight",
+          "optionality": {
+            "$type": "optional"
+          },
+          "type": {
+            "$type": "enum",
+            "name": "StyleWeight"
+          }
+        }
+      ],
+      "name": "StyleDelta"
     },
     {
       "fields": [

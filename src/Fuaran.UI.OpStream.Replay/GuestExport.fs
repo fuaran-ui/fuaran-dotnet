@@ -435,6 +435,7 @@ module GuestImport =
         | TreeOp.UpdateProp(id, path, value) -> TreeOp.UpdateProp(f id, path, value)
         | TreeOp.ReplaceBinding(id, slot, binding) -> TreeOp.ReplaceBinding(f id, slot, binding)
         | TreeOp.UpdateStyle(id, style) -> TreeOp.UpdateStyle(f id, style)
+        | TreeOp.PatchStyle(id, delta) -> TreeOp.PatchStyle(f id, delta)
         | TreeOp.UpdateState(id, state) -> TreeOp.UpdateState(f id, state)
         | TreeOp.InsertChild(parentId, child) -> TreeOp.InsertChild(f parentId, mapTreeIds f child)
         | TreeOp.RemoveNode id -> TreeOp.RemoveNode(f id)

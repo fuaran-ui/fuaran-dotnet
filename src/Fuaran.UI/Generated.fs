@@ -4756,7 +4756,7 @@ let envelopeFieldNames: Set<string> =
 
 /// The wire field names of each tree op.
 let opFieldNames: Map<string, Set<string>> =
-    Map.ofList [ "Batch", set [ "ops" ]; "EditNode", set [ "newKind"; "target" ]; "InsertChild", set [ "child"; "parentId" ]; "MoveNode", set [ "newParentId"; "target" ]; "RemoveNode", set [ "target" ]; "ReorderChildren", set [ "newOrder"; "parentId" ]; "ReplaceBinding", set [ "binding"; "slot"; "target" ]; "ReplaceRoot", set [ "node" ]; "UpdateProp", set [ "path"; "target"; "value" ]; "UpdateState", set [ "state"; "target" ]; "UpdateStyle", set [ "style"; "target" ] ]
+    Map.ofList [ "Batch", set [ "ops" ]; "EditNode", set [ "newKind"; "target" ]; "InsertChild", set [ "child"; "parentId" ]; "MoveNode", set [ "newParentId"; "target" ]; "PatchStyle", set [ "style"; "target" ]; "RemoveNode", set [ "target" ]; "ReorderChildren", set [ "newOrder"; "parentId" ]; "ReplaceBinding", set [ "binding"; "slot"; "target" ]; "ReplaceRoot", set [ "node" ]; "UpdateProp", set [ "path"; "target"; "value" ]; "UpdateState", set [ "state"; "target" ]; "UpdateStyle", set [ "style"; "target" ] ]
 
 /// Derived members of `Action`.
 module Action =

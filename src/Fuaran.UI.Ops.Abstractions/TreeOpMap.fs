@@ -183,7 +183,7 @@ module TreeOp =
     /// so a new `TreeOp` case surfaces here as an incomplete-match build
     /// failure rather than escaping the map.
     ///
-    /// The `'Msg`-free ops (`UpdateProp`, `ReplaceBinding`, `UpdateStyle`,
+    /// The `'Msg`-free ops (`UpdateProp`, `ReplaceBinding`, `UpdateStyle`, `PatchStyle`,
     /// `RemoveNode`, `MoveNode`, `ReorderChildren`) are re-tagged and can never
     /// refuse — `PropValue`, `Binding<obj>`, `SemanticStyle` and `NodeId` carry
     /// no message.
@@ -197,6 +197,8 @@ module TreeOp =
         | TreeOp.ReplaceBinding(id, slot, binding) -> Ok(TreeOp.ReplaceBinding(id, slot, binding))
 
         | TreeOp.UpdateStyle(id, style) -> Ok(TreeOp.UpdateStyle(id, style))
+
+        | TreeOp.PatchStyle(id, delta) -> Ok(TreeOp.PatchStyle(id, delta))
 
         | TreeOp.UpdateState(id, state) ->
             through "UpdateState" (addressed id) "state" f (fun m -> TreeOp.UpdateState(id, NodeMap.mapState m state))

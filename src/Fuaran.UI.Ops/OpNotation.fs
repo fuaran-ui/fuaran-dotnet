@@ -37,6 +37,10 @@ module Fuaran.UI.Ops.OpNotation
 //                                                       is told apart from a
 //                                                       property update)
 //    UpdateStyle      `<id>: style → <k>=<v> …`        (or `(defaults)`)
+//    PatchStyle       `<id>: style.<k> → <v>, …`       (only the fields it sets,
+//                                                       a default included —
+//                                                       a patch names fields,
+//                                                       a whole record does not)
 //    UpdateState      `<id>: state → <slot>=<node> …`  (or `(cleared)`)
 //    InsertChild      `<parentId>: + child <node>`
 //    RemoveNode       `<id>: - node`
@@ -277,6 +281,13 @@ let rec private opLines (depth: int) (op: TreeOp<'Msg>) : string list =
     | TreeOp.UpdateProp(id, path, value) -> [ pad + nodeIdText id + ": " + path + " → " + propValueText value ]
     | TreeOp.ReplaceBinding(id, slot, binding) -> [ pad + nodeIdText id + ": " + slot + " → " + bindingText binding ]
     | TreeOp.UpdateStyle(id, style) -> [ pad + nodeIdText id + ": style → " + styleText style ]
+    | TreeOp.PatchStyle(id, delta) ->
+        [ pad
+          + nodeIdText id
+          + ": "
+          + (StyleDelta.wireMembers delta
+             |> List.map (fun (k, v) -> "style." + k + " → " + v)
+             |> String.concat ", ") ]
     | TreeOp.UpdateState(id, state) -> [ pad + nodeIdText id + ": state → " + stateText state ]
     | TreeOp.InsertChild(parentId, child) -> [ pad + nodeIdText parentId + ": + child " + nodeSummary child ]
     | TreeOp.RemoveNode id -> [ pad + nodeIdText id + ": - node" ]

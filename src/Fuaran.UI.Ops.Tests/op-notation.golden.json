@@ -25,6 +25,21 @@
     "op": "{\u0022$type\u0022:\u0022MoveNode\u0022,\u0022newParentId\u0022:\u0022card-1\u0022,\u0022target\u0022:\u0022metric-1\u0022}"
   },
   {
+    "name": "op-patchstyle",
+    "notation": "metric-1: style.tone \u2192 Success, style.voice \u2192 Display",
+    "op": "{\u0022$type\u0022:\u0022PatchStyle\u0022,\u0022style\u0022:{\u0022tone\u0022:\u0022Success\u0022,\u0022voice\u0022:\u0022Display\u0022},\u0022target\u0022:\u0022metric-1\u0022}"
+  },
+  {
+    "name": "op-patchstyle (phase 2291 all six members)",
+    "notation": "metric-1: style.direction \u2192 rtl, style.emphasis \u2192 Quiet, style.role \u2192 Caption, style.tone \u2192 Info, style.voice \u2192 Structural, style.weight \u2192 Compact",
+    "op": "{\u0022$type\u0022:\u0022PatchStyle\u0022,\u0022style\u0022:{\u0022direction\u0022:\u0022rtl\u0022,\u0022emphasis\u0022:\u0022Quiet\u0022,\u0022role\u0022:\u0022Caption\u0022,\u0022tone\u0022:\u0022Info\u0022,\u0022voice\u0022:\u0022Structural\u0022,\u0022weight\u0022:\u0022Compact\u0022},\u0022target\u0022:\u0022metric-1\u0022}"
+  },
+  {
+    "name": "op-patchstyle (phase 2291 tone=default is an edit, not an omission)",
+    "notation": "metric-1: style.tone \u2192 Default",
+    "op": "{\u0022$type\u0022:\u0022PatchStyle\u0022,\u0022style\u0022:{\u0022tone\u0022:\u0022Default\u0022},\u0022target\u0022:\u0022metric-1\u0022}"
+  },
+  {
     "name": "op-removenode",
     "notation": "metric-1: - node",
     "op": "{\u0022$type\u0022:\u0022RemoveNode\u0022,\u0022target\u0022:\u0022metric-1\u0022}"

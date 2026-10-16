@@ -2071,6 +2071,22 @@ let private semanticStyleRecord =
           omit "voice" (TEnum "FontVoice") (VEnum "Default")
           omit "weight" (TEnum "StyleWeight") (VEnum "Standard") ] }
 
+/// Phase 2291 — the `PatchStyle` payload. The same six members as
+/// `SemanticStyle`, each OPTIONAL with no default: absence means "leave this
+/// field as it is", so a present default token is a real edit and is never
+/// omitted. Reachable from no kind and no envelope field — only from the op —
+/// which is why the authoring mirrors do not see it. That a delta names at
+/// least one field is decode POLICY above the IDL (the shape here admits `{}`).
+let private styleDeltaRecord =
+    { Name = "StyleDelta"
+      Fields =
+        [ opt "direction" (TEnum "TextDirection")
+          opt "emphasis" (TEnum "Emphasis")
+          opt "role" (TEnum "StyleRole")
+          opt "tone" (TEnum "ToneVariant")
+          opt "voice" (TEnum "FontVoice")
+          opt "weight" (TEnum "StyleWeight") ] }
+
 /// `{ "onEmpty"?: Node, "onError"?: "<closure>", "onLoading"?: Node }`.
 /// `onError` is the `ErrorPayload -> Node` callback — unobservable, so the
 /// sentinel, and its PRESENCE is the only thing the wire carries. The arg type
@@ -3404,7 +3420,11 @@ let private treeOps: IdlKind list =
       { Tag = "UpdateStyle"
         Category = "op"
         Annotations = Annotations.Empty
-        Fields = [ req "style" (TRecord "SemanticStyle"); req "target" TStr ] } ]
+        Fields = [ req "style" (TRecord "SemanticStyle"); req "target" TStr ] }
+      { Tag = "PatchStyle"
+        Category = "op"
+        Annotations = Annotations.Empty
+        Fields = [ req "style" (TRecord "StyleDelta"); req "target" TStr ] } ]
 
 let uiIdl: Idl =
     { Kinds = displayKinds @ layoutKinds @ inputKinds @ visKinds @ metaKinds
@@ -3481,6 +3501,7 @@ let uiIdl: Idl =
           trackKind ]
       Records =
         [ semanticStyleRecord
+          styleDeltaRecord
           stateBehaviourRecord
           accessibilityRecord
           switchCase
