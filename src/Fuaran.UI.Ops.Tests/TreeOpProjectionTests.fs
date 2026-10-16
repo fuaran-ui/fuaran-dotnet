@@ -75,6 +75,13 @@ let private everyCase: (TreeOp<Msg> * string * NodeId list) list =
       TreeOp.UpdateProp(NodeId "k", "Label", PropValue.Native(nn "y")), "UpdateProp", [ NodeId "k" ]
       TreeOp.ReplaceBinding(NodeId "k", "Source", Binding.Static(Some(nn 2.0))), "ReplaceBinding", [ NodeId "k" ]
       TreeOp.UpdateStyle(NodeId "k", Defaults.style), "UpdateStyle", [ NodeId "k" ]
+      TreeOp.PatchStyle(
+          NodeId "k",
+          { StyleDelta.empty with
+              Tone = Some ToneVariant.Brand }
+      ),
+      "PatchStyle",
+      [ NodeId "k" ]
       TreeOp.UpdateState(NodeId "k", Defaults.stateBehaviour<Msg>), "UpdateState", [ NodeId "k" ]
       TreeOp.InsertChild(NodeId "p", leaf "c"), "InsertChild", [ NodeId "p" ]
       TreeOp.RemoveNode(NodeId "k"), "RemoveNode", [ NodeId "k" ]
@@ -110,6 +117,11 @@ let tests =
               let ops: TreeOp<Msg> list =
                   [ TreeOp.UpdateProp(NodeId "k", "Label", PropValue.Native(nn "y"))
                     TreeOp.UpdateStyle(NodeId "k", Defaults.style)
+                    TreeOp.PatchStyle(
+                        NodeId "k",
+                        { StyleDelta.empty with
+                            Tone = Some ToneVariant.Brand }
+                    )
                     TreeOp.RemoveNode(NodeId "k")
                     TreeOp.MoveNode(NodeId "k", NodeId "p") ]
 
@@ -195,6 +207,11 @@ let tests =
                     TreeOp.UpdateProp(NodeId "k", "Label", PropValue.Native(nn "y"))
                     TreeOp.ReplaceBinding(NodeId "k", "Source", Binding.Static(Some(nn 2.0)))
                     TreeOp.UpdateStyle(NodeId "k", Defaults.style)
+                    TreeOp.PatchStyle(
+                        NodeId "k",
+                        { StyleDelta.empty with
+                            Tone = Some ToneVariant.Brand }
+                    )
                     TreeOp.UpdateState(NodeId "k", Defaults.stateBehaviour<Msg>)
                     TreeOp.RemoveNode(NodeId "k")
                     TreeOp.MoveNode(NodeId "k", NodeId "p")

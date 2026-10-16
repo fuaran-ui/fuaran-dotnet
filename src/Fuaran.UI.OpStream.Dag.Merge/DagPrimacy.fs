@@ -65,6 +65,8 @@ module DagPrimacy =
         | TreeOp.UpdateProp(id, _, _) -> [ rawId id, "kind" ]
         | TreeOp.ReplaceBinding(id, _, _) -> [ rawId id, "kind" ]
         | TreeOp.UpdateStyle(id, _) -> styleCells (rawId id)
+        // Phase 2291 — a patch writes exactly the style sub-fields it names.
+        | TreeOp.PatchStyle(id, delta) -> StyleDelta.fieldNames delta |> List.map (fun f -> rawId id, "style." + f)
         | TreeOp.UpdateState(id, _) -> [ rawId id, "state" ]
         // The parent's child list changed, and the inserted node itself is the
         // subject of the `insert` cell — the one a same-id insert on both sides

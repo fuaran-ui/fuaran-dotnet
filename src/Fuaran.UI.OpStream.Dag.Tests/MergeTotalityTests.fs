@@ -676,6 +676,11 @@ let tests =
                     TreeOp.UpdateProp(leftChildId, "Text", PropValue.Wire(Fuaran.Core.JStr "x"))
                     TreeOp.ReplaceBinding(leftChildId, "Source", Binding.Static None)
                     TreeOp.UpdateStyle(leftChildId, Defaults.style)
+                    TreeOp.PatchStyle(
+                        leftChildId,
+                        { StyleDelta.empty with
+                            Tone = Some ToneVariant.Brand }
+                    )
                     TreeOp.UpdateState(leftChildId, Defaults.stateBehaviour<TestMsg>)
                     TreeOp.InsertChild(dashboardId, Fuaran.markdown "new" "x")
                     TreeOp.RemoveNode rightChildId

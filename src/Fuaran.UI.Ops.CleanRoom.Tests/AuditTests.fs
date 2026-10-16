@@ -101,6 +101,13 @@ let tests =
                     "ReplaceBinding",
                     [ NodeId "k" ]
                     TreeOp.UpdateStyle(NodeId "k", Fuaran.UI.Defaults.style), "UpdateStyle", [ NodeId "k" ]
+                    TreeOp.PatchStyle(
+                        NodeId "k",
+                        { StyleDelta.empty with
+                            Tone = Some ToneVariant.Brand }
+                    ),
+                    "PatchStyle",
+                    [ NodeId "k" ]
                     TreeOp.UpdateState(NodeId "k", Fuaran.UI.Defaults.stateBehaviour<Msg>),
                     "UpdateState",
                     [ NodeId "k" ]

@@ -42,6 +42,12 @@ let tests =
                     TreeOp.UpdateProp(NodeId "k", "Label", PropValue.Native(nn "y")), OpKind.UpdateProp
                     TreeOp.ReplaceBinding(NodeId "k", "Source", Binding.Static(Some(nn 2.0))), OpKind.ReplaceBinding
                     TreeOp.UpdateStyle(NodeId "k", Defaults.style), OpKind.UpdateStyle
+                    TreeOp.PatchStyle(
+                        NodeId "k",
+                        { StyleDelta.empty with
+                            Tone = Some ToneVariant.Brand }
+                    ),
+                    OpKind.PatchStyle
                     TreeOp.UpdateState(NodeId "k", Defaults.stateBehaviour<Msg>), OpKind.UpdateState
                     TreeOp.InsertChild(NodeId "p", leafChild), OpKind.InsertChild
                     TreeOp.RemoveNode(NodeId "k"), OpKind.RemoveNode
@@ -62,6 +68,7 @@ let tests =
                     OpKind.UpdateProp, "UpdateProp"
                     OpKind.ReplaceBinding, "ReplaceBinding"
                     OpKind.UpdateStyle, "UpdateStyle"
+                    OpKind.PatchStyle, "PatchStyle"
                     OpKind.UpdateState, "UpdateState"
                     OpKind.InsertChild, "InsertChild"
                     OpKind.RemoveNode, "RemoveNode"
@@ -82,6 +89,12 @@ let tests =
                     TreeOp.UpdateProp(NodeId "k", "Label", PropValue.Native(nn "y")), Some "k"
                     TreeOp.ReplaceBinding(NodeId "k", "Source", Binding.Static(Some(nn 2.0))), Some "k"
                     TreeOp.UpdateStyle(NodeId "k", Defaults.style), Some "k"
+                    TreeOp.PatchStyle(
+                        NodeId "k",
+                        { StyleDelta.empty with
+                            Tone = Some ToneVariant.Brand }
+                    ),
+                    Some "k"
                     TreeOp.UpdateState(NodeId "k", Defaults.stateBehaviour<Msg>), Some "k"
                     TreeOp.InsertChild(NodeId "p", leafChild), Some "p"
                     TreeOp.RemoveNode(NodeId "k"), Some "k"
@@ -101,6 +114,11 @@ let tests =
                     TreeOp.UpdateProp(NodeId "k", "Label", PropValue.Native(nn "y"))
                     TreeOp.ReplaceBinding(NodeId "k", "Source", Binding.Static(Some(nn 2.0)))
                     TreeOp.UpdateStyle(NodeId "k", Defaults.style)
+                    TreeOp.PatchStyle(
+                        NodeId "k",
+                        { StyleDelta.empty with
+                            Tone = Some ToneVariant.Brand }
+                    )
                     TreeOp.UpdateState(NodeId "k", Defaults.stateBehaviour<Msg>)
                     TreeOp.InsertChild(NodeId "p", leafChild)
                     TreeOp.RemoveNode(NodeId "k")

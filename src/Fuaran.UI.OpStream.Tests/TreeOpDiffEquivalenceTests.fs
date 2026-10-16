@@ -347,7 +347,10 @@ let tests =
                     "ReplaceBinding"
                     "EditNode"
                     "UpdateState"
-                    "UpdateStyle"
+                    // Phase 2291 - a style change is field-level; the whole-record
+                    // `UpdateStyle` is emitted only when all six fields move, which
+                    // no corpus pair does, and is pinned by `TreeOpDiffTests`.
+                    "PatchStyle"
                     "InsertChild"
                     "RemoveNode"
                     "ReorderChildren"

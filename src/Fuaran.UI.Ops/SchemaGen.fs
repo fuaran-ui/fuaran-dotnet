@@ -2067,6 +2067,25 @@ let private defs: (string * J) list =
             "voice", ref "FontVoice"
             "direction", ref "TextDirection" ]
 
+      // Phase 2291 — the `PatchStyle` payload: the same six members, every one
+      // optional, where ABSENCE means "leave this field as it is". A delta that
+      // names no field is refused at decode (`WRONG_TYPE`), so the schema says
+      // so too — `minProperties: 1`, which is what keeps the empty-patch reject
+      // vector failing the schema leg as well as the decoder.
+      "StyleDelta",
+      (match
+          record
+              []
+              [ "direction", ref "TextDirection"
+                "emphasis", ref "Emphasis"
+                "role", ref "StyleRole"
+                "tone", ref "ToneVariant"
+                "voice", ref "FontVoice"
+                "weight", ref "StyleWeight" ]
+       with
+       | JObj fields -> JObj(fields @ [ "minProperties", JInt 1 ])
+       | other -> other)
+
       "Accessibility",
       // Phase 959 — the trait's near-miss set, refused here as it is at decode.
       // Grouped by the slot each points at, in the decoder's declaration order,
@@ -2140,6 +2159,7 @@ let private defs: (string * J) list =
                 [ "binding"; "slot"; "target" ]
                 [ "binding", binding "json"; "slot", str; "target", str ]
             duCase "UpdateStyle" [ "style"; "target" ] [ "style", ref "SemanticStyle"; "target", str ]
+            duCase "PatchStyle" [ "style"; "target" ] [ "style", ref "StyleDelta"; "target", str ]
             duCase "UpdateState" [ "state"; "target" ] [ "state", ref "StateBehaviour"; "target", str ]
             // `position` / `newPosition` are the RETIRED positional slots (Phase
             // 681 removed them, Phase 687 closed the accept-and-ignore window).

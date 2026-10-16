@@ -33,10 +33,14 @@ open Fuaran.UI.OpStream.Abstractions
 //    - otherwise (leaf content change, kind-discriminator change, or a
 //      container whose own content changed) → wholesale node replace:
 //      `EditNode(id, b.Kind)` (brings b's kind incl. its whole subtree) +
-//      `UpdateState(id, b.State)` + `UpdateStyle(id, b.Style)` (EditNode
-//      preserves Id/State/Style, so state/style are set explicitly). Coarse
-//      (may resend an unchanged subtree / re-set unchanged state·style) but
-//      unconditionally correct. The refinement trims to minimal patches.
+//      `UpdateState(id, b.State)` + the style edit (EditNode preserves
+//      Id/State/Style, so state is set explicitly and style by the fields that
+//      moved). Coarse (may resend an unchanged subtree / re-set an unchanged
+//      state) but unconditionally correct. The refinement trims to minimal
+//      patches.
+//    - a style change is ALWAYS field-level (Phase 2291): `PatchStyle` naming
+//      the fields that moved, and the whole-record `UpdateStyle` only when
+//      every one of them did (`styleEdit` below).
 //
 //  **Closure-blindness (documented limitation, inherited).** A changed
 //  `Action` / `Binding` closure that renders identically emits **no** op —
@@ -48,7 +52,7 @@ open Fuaran.UI.OpStream.Abstractions
 //  **Node-trait vocabulary gap (documented limitation).** The canonical wire
 //  surface is id + kind + state + style + **accessibility** + **tooltip**, but
 //  the `TreeOp` vocabulary has **no op for either trait** (only
-//  EditNode/UpdateState/UpdateStyle + structural ops, and `EditNode` replaces
+//  EditNode/UpdateState/UpdateStyle/PatchStyle + structural ops, and `EditNode` replaces
 //  `Kind` alone). So a change to either is **not expressible** and does not
 //  round-trip: an accessibility-only edit diffs to NO ops at all, and a
 //  tooltip-only edit falls to the `EditNode` floor, which reinstates the kind
@@ -95,6 +99,22 @@ module TreeOpDiff =
     // emitted op sequence for any (a, b) pair is unchanged from pre-swap.
     let private styleOf<'Msg> (n: Node<'Msg>) : SemanticStyle =
         n.Style |> Option.defaultValue Fuaran.UI.Defaults.style
+
+    /// The op that takes a node's style from `before` to `after` (Phase 2291):
+    /// nothing when the two are equal; `PatchStyle` naming exactly the fields
+    /// that moved; and the whole-record `UpdateStyle` only when EVERY field
+    /// moved, the one case in which the record is the edit. So a lifted stream
+    /// records a restyle at the granularity it happened, and two restyles of
+    /// different fields on one node carry disjoint field sets.
+    let styleEdit<'Msg> (id: NodeId) (before: SemanticStyle) (after: SemanticStyle) : TreeOp<'Msg> list =
+        let delta = StyleDelta.between before after
+
+        if StyleDelta.isEmpty delta then
+            []
+        elif StyleDelta.isTotal delta then
+            [ TreeOp.UpdateStyle(id, after) ]
+        else
+            [ TreeOp.PatchStyle(id, delta) ]
 
     let private stateOf<'Msg> (n: Node<'Msg>) : StateBehaviour<'Msg> =
         n.State |> Option.defaultValue Fuaran.UI.Defaults.stateBehaviour
@@ -668,26 +688,25 @@ module TreeOpDiff =
                 // materialised records so `None` ≡ the default record (the two
                 // spellings canonical-encode identically — no spurious op).
                 [ yield! fieldOps
-                  if styleOf a <> styleOf b then
-                      TreeOp.UpdateStyle(id, styleOf b)
+                  yield! styleEdit id (styleOf a) (styleOf b)
                   if stateChanged a b shellB then
                       TreeOp.UpdateState(id, stateOf b)
                   yield! childrenDiff id (childrenOf a) (childrenOf b) ]
             | None ->
                 // Floor: wholesale node replace — EditNode brings b's kind incl.
-                // its whole subtree; UpdateState / UpdateStyle bring b's
-                // state·style (EditNode preserves the old ones).
+                // its whole subtree; UpdateState brings b's state, and the style
+                // edit brings whichever style fields moved (EditNode preserves
+                // the old state·style, so an unmoved style needs no op).
                 [ TreeOp.EditNode(id, b.Kind)
                   TreeOp.UpdateState(id, stateOf b)
-                  TreeOp.UpdateStyle(id, styleOf b) ]
+                  yield! styleEdit id (styleOf a) (styleOf b) ]
         else
             // Kind shape identical → no wholesale swap. Emit granular state /
             // style ops only when they actually drifted, and recurse into
             // children (a no-op for a leaf or identical children). This keeps a
             // style-toggle / loading-state change / deep child edit to a
             // minimal patch instead of re-sending the kind + subtree.
-            [ if styleOf a <> styleOf b then
-                  TreeOp.UpdateStyle(id, styleOf b)
+            [ yield! styleEdit id (styleOf a) (styleOf b)
               if not ownContentEqual && stateChanged a b shellB then
                   TreeOp.UpdateState(id, stateOf b)
               yield! childrenDiff id (childrenOf a) (childrenOf b) ]
@@ -759,7 +778,7 @@ module TreeOpDiff =
             // precondition is the caller's to honour).
             [ TreeOp.EditNode(NodeId a.Id, b.Kind)
               TreeOp.UpdateState(NodeId a.Id, stateOf b)
-              TreeOp.UpdateStyle(NodeId a.Id, styleOf b) ]
+              yield! styleEdit (NodeId a.Id) (styleOf a) (styleOf b) ]
         else
             match detectMoves a b with
             | [] -> diffNode a b

@@ -41,6 +41,7 @@ module TreeOp =
         | TreeOp.UpdateProp _ -> "UpdateProp"
         | TreeOp.ReplaceBinding _ -> "ReplaceBinding"
         | TreeOp.UpdateStyle _ -> "UpdateStyle"
+        | TreeOp.PatchStyle _ -> "PatchStyle"
         | TreeOp.UpdateState _ -> "UpdateState"
         | TreeOp.InsertChild _ -> "InsertChild"
         | TreeOp.RemoveNode _ -> "RemoveNode"
@@ -62,6 +63,7 @@ module TreeOp =
         | TreeOp.UpdateProp(id, _, _)
         | TreeOp.ReplaceBinding(id, _, _)
         | TreeOp.UpdateStyle(id, _)
+        | TreeOp.PatchStyle(id, _)
         | TreeOp.UpdateState(id, _)
         | TreeOp.RemoveNode id -> [ id ]
         | TreeOp.InsertChild(parentId, _)
@@ -112,6 +114,7 @@ module TreeOp =
         | TreeOp.UpdateProp _
         | TreeOp.ReplaceBinding _
         | TreeOp.UpdateStyle _
+        | TreeOp.PatchStyle _
         | TreeOp.RemoveNode _
         | TreeOp.MoveNode _
         | TreeOp.ReorderChildren _ -> []

@@ -6,16 +6,16 @@
   "artifacts": { "systemPrompt": "system-prompt.md", "fewShot": "few-shot.jsonl" },
   "schema": "../../prompt-pack/schema.json",
   "schemaNote": "The wire schema is the CONTRACT, not a compiled dimension — every variant shares the canonical artefact rather than carrying a copy.",
-  "variantSha256": "sha256:3dc2bd3ef48ac287593a830f5ebb8eaf7cfe76ae962985cb6927211ade543a0b",
-  "bytes": { "systemPrompt": 98665, "fewShot": 13283, "total": 111948 },
+  "variantSha256": "sha256:a3b2eecf75c77bdee5a88ff563ccb00c06316c1cce5b7cc73013c4b0558aafa2",
+  "bytes": { "systemPrompt": 98920, "fewShot": 13283, "total": 112203 },
   "source": {
     "pack": "docs/prompt-pack-lenient",
-    "systemPromptSha256": "sha256:c2f5a673a6a45656874fb070107b1c29d580c432cbc45a76fad152d526ae529e",
+    "systemPromptSha256": "sha256:21078420b030dc1be104d5a60c6c8d152ad54ae8f6f09b82450e45458c0e336f",
     "fewShotSha256": "sha256:2cebc3a01e7df6bd2a8e475418d43b94467d8cf2e581c5461e27b868c5eddb34"
   },
   "index": {
     "file": "../../tools/section-demand-index.json",
-    "sha256": "sha256:0fe73bb99d476f7d81f3b5e6631f3d1e850f792d91e2da7b70f0a4b52c28e9a3"
+    "sha256": "sha256:00108c0deaeaa664f0a4c2f712624f1b6f3ea9de09ea7640065af719cb6e461b"
   },
   "dimensions": {
     "dialect": { "value": "lenient", "why": "flip record line 808: | \u0060claude-opus-4-8@low\u0060 | 12/12 (was 11/12) | \u22126.0% | **ADOPT** \u2014 dialect eligible as this family\u0027s pack dimension |" },

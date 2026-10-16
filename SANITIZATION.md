@@ -606,7 +606,7 @@ entire and leaves the tree as it was.
 
 **What is not claimed.**
 
-- **Ops that cannot grow the tree are not walked.** `UpdateProp`, `ReplaceBinding` and `UpdateStyle`
+- **Ops that cannot grow the tree are not walked.** `UpdateProp`, `ReplaceBinding`, `UpdateStyle` and `PatchStyle`
   carry no node (`UpdateProp` refuses every node-valued field), `RemoveNode` shrinks and
   `ReorderChildren` permutes. They apply to a tree that is already over a limit, deliberately:
   refusing them would strand a tree they did not create, and they are the ops that can bring it back.

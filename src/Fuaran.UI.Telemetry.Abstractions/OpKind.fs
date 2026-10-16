@@ -13,7 +13,7 @@ open Fuaran.UI.Ops.Types
 //  hosts ship one metric pipeline across multiple apps regardless of
 //  each app's `'Msg` type.
 //
-//  Mirrors the ten `TreeOp` cases verbatim (§4g lines 908–920); when a new
+//  Mirrors every `TreeOp` case verbatim (§4g lines 908–920); when a new
 //  `TreeOp` case lands, `OpKind` gains the matching case AND `ofTreeOp`
 //  gains the matching arm. Exhaustiveness in `ofTreeOp` is enforced via
 //  `TreatWarningsAsErrors` — adding a `TreeOp` case without updating
@@ -33,17 +33,21 @@ type OpKind =
     | ReorderChildren
     | ReplaceRoot
     | Batch
+    /// Phase 2291. Appended rather than placed beside `UpdateStyle`, so every
+    /// existing kind keeps its position in an `OpKind`-ordered aggregate.
+    | PatchStyle
 
 [<RequireQualifiedAccess>]
 module OpKind =
     /// Project a typed `TreeOp<'Msg>` to its flat `OpKind` discriminator.
-    /// Exhaustive across the ten §4g cases.
+    /// Exhaustive across every `TreeOp` case.
     let ofTreeOp (op: TreeOp<'Msg>) : OpKind =
         match op with
         | TreeOp.EditNode _ -> OpKind.EditNode
         | TreeOp.UpdateProp _ -> OpKind.UpdateProp
         | TreeOp.ReplaceBinding _ -> OpKind.ReplaceBinding
         | TreeOp.UpdateStyle _ -> OpKind.UpdateStyle
+        | TreeOp.PatchStyle _ -> OpKind.PatchStyle
         | TreeOp.UpdateState _ -> OpKind.UpdateState
         | TreeOp.InsertChild _ -> OpKind.InsertChild
         | TreeOp.RemoveNode _ -> OpKind.RemoveNode
@@ -68,4 +72,5 @@ module OpKind =
         | OpKind.MoveNode -> "MoveNode"
         | OpKind.ReorderChildren -> "ReorderChildren"
         | OpKind.ReplaceRoot -> "ReplaceRoot"
+        | OpKind.PatchStyle -> "PatchStyle"
         | OpKind.Batch -> "Batch"

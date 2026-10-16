@@ -86,20 +86,9 @@ let private notationOf (opJson: string) : string =
     | Error e -> "DECODE_ERR:" + e.Message
     | Ok op -> OpNotation.render op
 
-/// The op's case name — the coverage axis the corpus is asserted against.
-let private caseName (op: TreeOp<obj>) : string =
-    match op with
-    | TreeOp.EditNode _ -> "EditNode"
-    | TreeOp.UpdateProp _ -> "UpdateProp"
-    | TreeOp.ReplaceBinding _ -> "ReplaceBinding"
-    | TreeOp.UpdateStyle _ -> "UpdateStyle"
-    | TreeOp.UpdateState _ -> "UpdateState"
-    | TreeOp.InsertChild _ -> "InsertChild"
-    | TreeOp.RemoveNode _ -> "RemoveNode"
-    | TreeOp.MoveNode _ -> "MoveNode"
-    | TreeOp.ReorderChildren _ -> "ReorderChildren"
-    | TreeOp.ReplaceRoot _ -> "ReplaceRoot"
-    | TreeOp.Batch _ -> "Batch"
+/// The op's case name — the coverage axis the corpus is asserted against: the
+/// shipped projection (`TreeOp.kindName`, the wire `$type`), not a copy of it.
+let private caseName (op: TreeOp<obj>) : string = Fuaran.UI.Ops.TreeOp.kindName op
 
 /// Every case the corpus must exercise — the same list, in DU declaration order.
 let private allCases =
@@ -107,6 +96,7 @@ let private allCases =
       "UpdateProp"
       "ReplaceBinding"
       "UpdateStyle"
+      "PatchStyle"
       "UpdateState"
       "InsertChild"
       "RemoveNode"

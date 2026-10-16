@@ -77,6 +77,7 @@ let private opFields (op: TreeOp<'Msg>) : (string * JVal) list =
         | TreeOp.UpdateProp(target, path, _) -> [ "id", nodeIdValue target; "path", JStr path ]
         | TreeOp.ReplaceBinding(target, slot, _) -> [ "id", nodeIdValue target; "slot", JStr slot ]
         | TreeOp.UpdateStyle(target, _) -> [ "id", nodeIdValue target ]
+        | TreeOp.PatchStyle(target, _) -> [ "id", nodeIdValue target ]
         | TreeOp.UpdateState(target, _) -> [ "id", nodeIdValue target ]
         | TreeOp.InsertChild(parentId, child) -> [ "parent_id", nodeIdValue parentId; "child_id", JStr child.Id ]
         | TreeOp.RemoveNode target -> [ "id", nodeIdValue target ]

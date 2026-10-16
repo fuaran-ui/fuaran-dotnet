@@ -76,6 +76,7 @@ let rec lowerOp<'Msg> (renderFragment: Node<'Msg> -> string) (newTree: Node<'Msg
     | TreeOp.EditNode(id, _)
     | TreeOp.UpdateProp(id, _, _)
     | TreeOp.UpdateStyle(id, _)
+    | TreeOp.PatchStyle(id, _)
     | TreeOp.UpdateState(id, _)
     | TreeOp.ReplaceBinding(id, _, _) -> reRender id
     // Whole-tree swap: re-render the new root fragment (= replace all content).

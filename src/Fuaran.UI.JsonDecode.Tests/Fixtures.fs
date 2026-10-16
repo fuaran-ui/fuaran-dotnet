@@ -6710,6 +6710,42 @@ let opUpdateStyleRoleVoice: TreeOp<obj> =
             Voice = FontVoice.Structural }
     )
 
+/// Phase 2291 — the field-level style edit: only the fields it sets are on the
+/// wire, and every other style field of the target is left as it is.
+[<OpFixture "PatchStyle">]
+let opPatchStyle: TreeOp<obj> =
+    TreeOp.PatchStyle(
+        NodeId "metric-1",
+        { StyleDelta.empty with
+            Tone = Some ToneVariant.Success
+            Voice = Some FontVoice.Display }
+    )
+
+/// Phase 2291 — a DEFAULT token in a patch is an edit, not an omission: setting
+/// `tone` back to `Default` is written explicitly, which is the one place the
+/// omitted-when-default rule (§3.6) does not apply.
+[<OpFixture "PatchStyle (Phase 2291 tone=Default is an edit, not an omission)">]
+let opPatchStyleDefaultToken: TreeOp<obj> =
+    TreeOp.PatchStyle(
+        NodeId "metric-1",
+        { StyleDelta.empty with
+            Tone = Some ToneVariant.Default }
+    )
+
+/// Phase 2291 — every member at once, pinning the alphabetical member order
+/// and `direction`'s lower-case token on this arm.
+[<OpFixture "PatchStyle (Phase 2291 all six members)">]
+let opPatchStyleAllMembers: TreeOp<obj> =
+    TreeOp.PatchStyle(
+        NodeId "metric-1",
+        { Direction = Some TextDirection.Rtl
+          Emphasis = Some Emphasis.Quiet
+          Role = Some StyleRole.Caption
+          Tone = Some ToneVariant.Info
+          Voice = Some FontVoice.Structural
+          Weight = Some StyleWeight.Compact }
+    )
+
 [<OpFixture "UpdateState">]
 let opUpdateState: TreeOp<obj> =
     TreeOp.UpdateState(

@@ -118,6 +118,19 @@ let tests =
                   "UpdateStyle"
           }
 
+          // Phase 2291 — the field-level style edit is content, like UpdateStyle.
+          test "PatchStyle is withheld (not a move/reorder/reparent/delete)" {
+              Expect.isTrue
+                  (isWithheld (
+                      TreeOp.PatchStyle(
+                          NodeId "recital",
+                          { StyleDelta.empty with
+                              Tone = Some ToneVariant.Brand }
+                      )
+                  ))
+                  "PatchStyle"
+          }
+
           // ── Batch withholds if ANY inner op is withheld ──
           test "Batch with one content op withholds the whole batch" {
               let op =

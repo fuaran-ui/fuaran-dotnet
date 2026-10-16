@@ -136,6 +136,7 @@ let enforce (skeleton: Skeleton) (op: TreeOp<'Msg>) : StructuralGateDecision<'Ms
         | TreeOp.ReplaceRoot _ -> StructuralGateDecision.Withheld(contentReason "ReplaceRoot")
         // ── Withheld: off the structural allowlist (default-deny) ──
         | TreeOp.UpdateStyle _ -> StructuralGateDecision.Withheld(allowlistReason "UpdateStyle")
+        | TreeOp.PatchStyle _ -> StructuralGateDecision.Withheld(allowlistReason "PatchStyle")
 
     go op
 

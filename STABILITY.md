@@ -7824,6 +7824,38 @@ _Class: **breaking**. `v0.94.0` was tagged and published at `90082d3` on 2026-10
 because the first change it is opened for, Phase 2058 (public module paths move), is breaking; a draft advances to the
 class of its highest rider, and pre-1.0 breaking is minor (version cut recorded on the ledger, 2026-10-14)._
 
+### What rides this slot — Phase 2291 (a style edit carries the field it changes)
+
+**Class: BREAKING for F# consumers (two closed DUs gain a case) + a wire ADDITION (a new op) + a BEHAVIOUR
+change in `TreeOpDiff`'s output.** Every existing op, and every existing byte, is unchanged; the slot is already
+breaking-class, so no number moves.
+
+- **`TreeOp.PatchStyle of NodeId * StyleDelta` — the field-level style edit.** `StyleDelta` (in
+  `Fuaran.UI.Ops.Types`) is the six `SemanticStyle` fields, each an `option`: `Some v` sets the field (a default
+  value included), `None` leaves it as it is. It applies as a patch over the node's current style and normalises
+  an all-default result to the absent slot, as `UpdateStyle` does. The `StyleDelta` module carries `empty`,
+  `between` (the delta that takes one style to another), `applyTo`, `fieldNames`, `wireMembers`, `isEmpty` and
+  `isTotal`. The wire form is `{"$type":"PatchStyle","style":{…},"target":…}`, with absence meaning
+  *untouched* and every set member emitted, a default token included; an empty delta is refused, `WRONG_TYPE`
+  at `$.style` (`WIRE_FORMAT.md` §3.4). Admitted under `docs/VOCABULARY.md` (Appendix A, op-vocabulary cluster).
+- **`OpKind.PatchStyle`** (`Fuaran.UI.Telemetry.Abstractions`), appended after `Batch` so every existing kind
+  keeps its position in an `OpKind`-ordered aggregate.
+- **`TreeOpDiff` emits the field-level form.** A style change is now `PatchStyle` naming exactly the fields that
+  moved, and the whole-record `UpdateStyle` only when all six moved (`TreeOpDiff.styleEdit`, public). The
+  wholesale floor no longer re-sends an UNCHANGED style (`EditNode` preserves it). The round-trip law is
+  unchanged; the op list for a style change is not, and `diffBatched` inherits it.
+- **Migration.** `TreeOp.UpdateStyle(..)` call sites keep compiling and keep their meaning. A `match` over
+  `TreeOp` (or `OpKind`) gains an arm — under `TreatWarningsAsErrors` an exhaustive match is a build break until
+  it does. A consumer that pattern-matched `TreeOpDiff`'s output for `UpdateStyle` on a style change matches
+  `PatchStyle` instead (or both). A consumer that wants the old whole-record op from a delta builds it with
+  `TreeOp.UpdateStyle(id, StyleDelta.applyTo current delta)`.
+
+**Certified by** the `ops/` round-trip fixtures `op-patchstyle*.json` and the `reject/reject-op-patchstyle-*.json`
+vectors on every conformant host; `src/Fuaran.UI.Ops.Tests/PatchStyleTests.fs` (apply, commutation of two
+different-field patches, the `between` law, the wire tokens pinned against the generated `SemanticStyle`
+encoder); and `src/Fuaran.UI.OpStream.Tests/TreeOpDiffTests.fs` (the one-field, every-field and back-to-default
+cases).
+
 ### What rides this slot — Phase 2252 (the binding-check report on a repeated reader id)
 
 **Class: BEHAVIOUR change, no API change.** No type, member, defect, wire byte or `validate` verdict moves.

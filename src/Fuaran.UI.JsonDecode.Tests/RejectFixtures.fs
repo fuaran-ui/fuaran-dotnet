@@ -1301,6 +1301,39 @@ let all: RejectFixture list =
         IsOp = true
         Description = "UpdateStyle style.direction not a JSON string (Phase 1472)" }
 
+      // ─── Phase 2291 — `PatchStyle`, the field-level style edit ────────
+      //
+      // The op's payload decodes through the same per-field token decoders as
+      // `UpdateStyle`'s, so the closed-set and wrong-kind vectors are pinned on
+      // this arm too (a host that wired the patch to a lenient decoder would
+      // otherwise pass). The one rule of its own is the empty delta: a patch
+      // that names no field is not an edit, and is refused at the record, the
+      // `reject-fieldrule-empty` precedent.
+      { Id = "reject-op-patchstyle-empty"
+        Json = """{"$type":"PatchStyle","style":{},"target":"n1"}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.style"
+        IsOp = true
+        Description = "PatchStyle naming no style field — an empty patch is not an edit (Phase 2291)" }
+      { Id = "reject-op-patchstyle-tone-unknown"
+        Json = """{"$type":"PatchStyle","style":{"tone":"Neon"},"target":"n1"}"""
+        ExpectedCode = DecodeErrorCode.UNKNOWN_DU_CASE
+        ExpectedPath = "$.style.tone"
+        IsOp = true
+        Description = "PatchStyle style.tone outside the closed set (Phase 2291)" }
+      { Id = "reject-op-patchstyle-direction-nonstring"
+        Json = """{"$type":"PatchStyle","style":{"direction":true},"target":"n1"}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.style.direction"
+        IsOp = true
+        Description = "PatchStyle style.direction not a JSON string (Phase 2291)" }
+      { Id = "reject-op-patchstyle-missing-style"
+        Json = """{"$type":"PatchStyle","target":"n1"}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.style"
+        IsOp = true
+        Description = "PatchStyle missing style (Phase 2291)" }
+
       // (3) `role` is the OPEN slot — any string decodes, as `AriaRole.Custom`
       // verbatim — so a non-string is the only way to malform it, and pinning
       // that is what stops a host from stringifying a number and inventing a

@@ -21,6 +21,12 @@ open Fuaran.UI.OpStream.Abstractions
 //  encoded op lists are byte-identical. This copy is therefore pinned to the
 //  pre-2063 BEHAVIOUR: a later phase that deliberately changes what the diff
 //  emits changes this oracle in the same commit, and says so.
+//
+//  Phase 2291 is the first such phase: a style change is emitted field-level
+//  (`PatchStyle`, whole-record `UpdateStyle` only when every field moved, and
+//  no style op on the floor when the style did not move). The four style sites
+//  below call the production `TreeOpDiff.styleEdit` so the two diffs cannot
+//  disagree about it; everything else stays the pre-2063 copy.
 // ============================================================================
 
 module TreeOpDiffPre2063 =
@@ -675,8 +681,7 @@ module TreeOpDiffPre2063 =
                 // materialised records so `None` ≡ the default record (the two
                 // spellings canonical-encode identically — no spurious op).
                 [ yield! fieldOps
-                  if styleOf a <> styleOf b then
-                      TreeOp.UpdateStyle(id, styleOf b)
+                  yield! Fuaran.UI.OpStream.Replay.TreeOpDiff.styleEdit id (styleOf a) (styleOf b)
                   if stateChanged a b then
                       TreeOp.UpdateState(id, stateOf b)
                   yield! childrenDiff id (childrenOf a) (childrenOf b) ]
@@ -686,15 +691,14 @@ module TreeOpDiffPre2063 =
                 // state·style (EditNode preserves the old ones).
                 [ TreeOp.EditNode(id, b.Kind)
                   TreeOp.UpdateState(id, stateOf b)
-                  TreeOp.UpdateStyle(id, styleOf b) ]
+                  yield! Fuaran.UI.OpStream.Replay.TreeOpDiff.styleEdit id (styleOf a) (styleOf b) ]
         else
             // Kind shape identical → no wholesale swap. Emit granular state /
             // style ops only when they actually drifted, and recurse into
             // children (a no-op for a leaf or identical children). This keeps a
             // style-toggle / loading-state change / deep child edit to a
             // minimal patch instead of re-sending the kind + subtree.
-            [ if styleOf a <> styleOf b then
-                  TreeOp.UpdateStyle(id, styleOf b)
+            [ yield! Fuaran.UI.OpStream.Replay.TreeOpDiff.styleEdit id (styleOf a) (styleOf b)
               if stateChanged a b then
                   TreeOp.UpdateState(id, stateOf b)
               yield! childrenDiff id (childrenOf a) (childrenOf b) ]
@@ -766,7 +770,7 @@ module TreeOpDiffPre2063 =
             // precondition is the caller's to honour).
             [ TreeOp.EditNode(NodeId a.Id, b.Kind)
               TreeOp.UpdateState(NodeId a.Id, stateOf b)
-              TreeOp.UpdateStyle(NodeId a.Id, styleOf b) ]
+              yield! Fuaran.UI.OpStream.Replay.TreeOpDiff.styleEdit (NodeId a.Id) (styleOf a) (styleOf b) ]
         else
             match detectMoves a b with
             | [] -> diffNode a b
