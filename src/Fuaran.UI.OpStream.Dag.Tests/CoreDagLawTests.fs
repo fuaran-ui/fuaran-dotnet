@@ -129,6 +129,58 @@ let private roundTripThroughPort (sink: IDagOpStreamSink<obj>) (ops: TreeOp<obj>
     | _ -> failtest "roundTripThroughPort needs at least four applyable ops"
 
 // ---------------------------------------------------------------------------
+//  Phase 2004 — a vertical edit beside a concurrent removal of its ancestor
+// ---------------------------------------------------------------------------
+
+/// `root → g → p → [n; m]`, with `s` beside `g`: the edited node `n` has a parent and a
+/// grandparent, and both can be removed.
+let private ancestryTree =
+    mkBox "root" [ mkBox "g" [ mkBox "p" [ mkMetric "n"; mkMetric "m" ] ]; mkMetric "s" ]
+
+/// Every pair the phase names: each of the five vertical ops on `n`, beside a `RemoveNode` of
+/// `n`'s parent and of its grandparent.
+let private ancestorPairs =
+    [ for name, edit in verticalOps (NodeId "n") do
+          for ancestor in [ "p"; "g" ] do
+              sprintf "%s(n) || RemoveNode(%s)" name ancestor, edit, TreeOp.RemoveNode(NodeId ancestor) ]
+
+/// `first` then `second` from the ancestry tree, through the tier's own reducer.
+let private applyInOrder (first: TreeOp<obj>) (second: TreeOp<obj>) =
+    UiApply.apply first ancestryTree.Node
+    |> Result.bind (UiApply.apply second)
+    |> Result.map CanonicalJson.encodeNode
+
+/// Both orders apply, and reach one state.
+let private commutes (a: TreeOp<obj>) (b: TreeOp<obj>) =
+    match applyInOrder a b, applyInOrder b a with
+    | Ok x, Ok y -> x = y
+    | _ -> false
+
+/// The pairs `fp` declares INDEPENDENT although their two orders do not reach one state — exactly
+/// what an understated footprint lets a reconciler compose.
+let private unsoundUnder (fp: TreeOp<obj> -> Fuaran.Core.Footprint) =
+    ancestorPairs
+    |> List.filter (fun (_, edit, removal) ->
+        Fuaran.Core.Ops.independent (fp edit) (fp removal)
+        && not (commutes edit removal))
+    |> List.map (fun (name, _, _) -> name)
+
+/// The two arrival orders of a two-lane fold, one lane per op, through Core's reconciler and the
+/// tier's footprint projection.
+let private foldBothOrders (a: TreeOp<obj>) (b: TreeOp<obj>) =
+    let fold lanes =
+        FoldConfluence.foldOnce
+            coreSw
+            footprintOfEqOp
+            uiHashFn
+            hashState
+            ancestryTree
+            (wrapOp (TreeOp.Batch []))
+            (lanes |> List.map (List.map wrapOp))
+
+    fold [ [ a ]; [ b ] ], fold [ [ b ]; [ a ] ]
+
+// ---------------------------------------------------------------------------
 //  the law lists
 // ---------------------------------------------------------------------------
 
@@ -151,7 +203,9 @@ let tests =
           // ---- the fold-confluence family ---------------------------------
           testCase "N-lane folding is arrival-order-invariant under Core's laneFoldLawsAt"
           <| fun _ ->
-              // Three lanes off one base, folded under all 3! = 6 arrival orders per trial.
+              // Three lanes off one base (`laneBase`, deep enough that a lane can remove an ancestor
+              // of a node another lane edits — Phase 2004), folded under all 3! = 6 arrival orders
+              // per trial.
               // The lane generator reaches both adequacy classes the pack demands (a lane set
               // that folds AND one that halts); a run that reached only one fails its coverage
               // guard rather than reporting a hollow green.
@@ -166,6 +220,132 @@ let tests =
               // lanes carrying the same ops stay distinct chains — not a formality.
               FoldConfluence.laneFoldLawsWith coreSw footprintOfEqOp hashState laneGen 3 uiHashFn seed 60
               |> assertAllPassed "laneFoldLawsWith over the tier's SHA-256"
+
+          testCase
+              "the lane generator sees an ancestor removal beside a vertical edit (an understated footprint is red)"
+          <| fun _ ->
+              // Phase 2004's teeth for the family above. `laneBase` gives every edited leaf a
+              // removable ancestor, so a lane removing it lands beside a lane editing the leaf.
+              // Over the projection with the vertical arm's unknown-parent write erased, the fold
+              // composes that pair, the composed script applies in one arrival order and is refused
+              // in the other, and the family must say so. Before the generator was widened its base
+              // was a root over three leaves, and this same erased projection passed.
+              let failures =
+                  FoldConfluence.laneFoldLawsAt
+                      coreSw
+                      (fun e -> footprintErasingVerticalTerm e.Op)
+                      hashState
+                      laneGen
+                      3
+                      seed
+                      100
+                  |> List.filter (fun r -> not r.Passed)
+
+              Expect.isNonEmpty failures "an understated vertical footprint refutes the lane-fold family"
+
+              Expect.isTrue
+                  (failures
+                   |> List.exists (fun r -> (sprintf "%A" r.Counterexample).Contains "RemoveNode"))
+                  "the refutation's shrunk lanes name the ancestor removal"
+
+          // ---- Phase 2004: vertical edits beside ancestor removals ---------
+          testCase "a vertical edit and a concurrent removal of its ancestor are ordered, never composed"
+          <| fun _ ->
+              // Core's Phase 250 found this pair unsound for its own `UpdateNode`: removing an
+              // ancestor takes the edited node with it, so the edit lands in one order and is
+              // refused in the other, while the two footprints share no address. Probed in BOTH
+              // directions first, so the pin is about a real non-commuting pair.
+              for name, edit, removal in ancestorPairs do
+                  Expect.isOk (applyInOrder edit removal) (sprintf "%s: the edit then the removal applies" name)
+
+                  Expect.isError
+                      (applyInOrder removal edit)
+                      (sprintf "%s: the removal then the edit is refused — the edited node is gone" name)
+
+              // The footprints must therefore call every pair dependent.
+              Expect.isEmpty
+                  (unsoundUnder footprintOfTreeOp)
+                  "the tier's projection declares no non-commuting ancestor pair independent"
+
+              // And dependence is what the reconciler acts on: the lane fold HALTS on each pair,
+              // with one canonical report under both arrival orders, instead of composing a script
+              // that applies in one order only.
+              for name, edit, removal in ancestorPairs do
+                  match foldBothOrders edit removal with
+                  | (Fuaran.Core.LaneHalted r1), (Fuaran.Core.LaneHalted r2) ->
+                      Expect.equal r1 r2 (sprintf "%s: one report under both arrival orders" name)
+                  | o1, o2 -> failtestf "%s: expected the fold to halt under both orders, got %A / %A" name o1 o2
+
+              // The erased-term falsifier: without the vertical arm's unknown-parent write every
+              // one of the pairs reads as independent, which is the defect the term closes.
+              Expect.equal
+                  (unsoundUnder footprintErasingVerticalTerm)
+                  (ancestorPairs |> List.map (fun (name, _, _) -> name))
+                  "erasing the unknown-parent term frees every ancestor pair"
+
+          testCase "the merge attributes a pinned vertical edit beside its ancestor's removal to no removed node"
+          <| fun _ ->
+              // The same pair through the tier's three-way merge and its per-cell attribution
+              // (`DagPrimacy`). Branch A restyles `n` as a PRIMARY writer, then a secondary op
+              // restyles `s`; branch B removes `n`'s parent `p`. The merge must refuse at the
+              // removed ancestor, as one delete/modify, and must name no cell of `n` — a pin
+              // attributed to a facet of a node the merged tree no longer holds would name a
+              // writer that does not exist.
+              let ts (i: int) =
+                  DateTimeOffset.FromUnixTimeSeconds(1_700_000_000L + int64 i)
+
+              let record (parents: string list) (i: int) (actor: string) (op: TreeOp<obj>) =
+                  DagOpRecord.create "attr" parents op None (Actor.Human actor) (ts i) OpResultEnvelope.Success
+
+              let styled (id: string) (tone: ToneVariant) =
+                  TreeOp.UpdateStyle(
+                      NodeId id,
+                      { Fuaran.UI.Defaults.style with
+                          Tone = tone }
+                  )
+
+              let g = record [] 0 "base" (TreeOp.Batch [])
+              let a1 = record [ g.Hash ] 1 "primary" (styled "n" ToneVariant.Success)
+              let a2 = record [ a1.Hash ] 2 "secondary" (styled "s" ToneVariant.Critical)
+              let b1 = record [ g.Hash ] 3 "secondary" (TreeOp.RemoveNode(NodeId "p"))
+
+              let byHash = [ g; a1; a2; b1 ] |> List.map (fun r -> r.Hash, r) |> Map.ofList
+              let getRec h = Map.tryFind h byHash
+
+              let recordAuthor (r: DagOpRecord<obj>) =
+                  match r.Actor with
+                  | Actor.Human "primary" -> Fuaran.UI.OpStream.Dag.Merge.MergeAuthor.Primary
+                  | _ -> Fuaran.UI.OpStream.Dag.Merge.MergeAuthor.Secondary None
+
+              let tree (ops: TreeOp<obj> list) =
+                  ops
+                  |> List.fold (fun acc op -> acc |> Result.bind (UiApply.apply op)) (Ok ancestryTree.Node)
+                  |> Result.defaultWith (failwithf "a branch failed to apply: %A")
+
+              let authors (head: DagOpRecord<obj>) =
+                  Fuaran.UI.OpStream.Dag.Merge.DagPrimacy.cellAuthorFn
+                      recordAuthor
+                      getRec
+                      (Some g.Hash)
+                      head.Hash
+                      (recordAuthor head)
+                  |> Result.defaultWith (failwithf "the attribution walk failed: %A")
+
+              let authorsA, authorsB = authors a2, authors b1
+
+              match
+                  Fuaran.UI.OpStream.Dag.Merge.TreeMerge.merge3WayWithCellAuthor
+                      (fun id facet -> authorsA id facet, authorsB id facet)
+                      ancestryTree.Node
+                      (tree [ a1.Op; a2.Op ])
+                      (tree [ b1.Op ])
+              with
+              | Ok merged -> failtestf "the merge composed the pair: %s" (CanonicalJson.encodeNode merged)
+              | Error conflicts ->
+                  Expect.equal
+                      (conflicts |> List.map (fun c -> c.NodeId, c.Facet, c.Class))
+                      [ "p", "node", Fuaran.UI.OpStream.Dag.Merge.MergeConflictClass.DeleteModify ]
+                      "one delete/modify, at the removed ancestor — no cell of the removed descendant"
 
           // ---- the skeleton-op families -----------------------------------
           testCase "the tier's tree footprints are sound, monotone and deterministic (footprintLaws)"
