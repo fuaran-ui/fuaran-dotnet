@@ -7824,6 +7824,34 @@ _Class: **breaking**. `v0.94.0` was tagged and published at `90082d3` on 2026-10
 because the first change it is opened for, Phase 2058 (public module paths move), is breaking; a draft advances to the
 class of its highest rider, and pre-1.0 breaking is minor (version cut recorded on the ledger, 2026-10-14)._
 
+### What rides this slot — Phase 2307 (both in-memory observers run on Core's `ObserverWitness`)
+
+**Class: additive (surface guard: "contract grew", one member per package, nothing removed or retyped) + a
+BEHAVIOUR fix in `Fuaran.UI.StyleObserver`.** The slot is already breaking-class, so no number moves.
+
+- **`Fuaran.UI.LayoutObserver` — off the adapter Core removed.** `InMemoryLayoutObserver` threads an
+  `ObserverState` through `Fuaran.Core`'s `ObserverWitness.register` / `update` / `unregister` / `snapshot` /
+  `observeTree` and keeps its subscriber list beside it; it no longer references the `InMemoryObserver` /
+  `IObserver` adapter, which left `Fuaran.Core.Observer` at 0.37.0. Both observer packages build against
+  `Fuaran.Core.Observer` 0.38.1 with this source, so the tier's Core pin can move. New:
+  `InMemoryLayoutObserver.Witness : LayoutObserverOptions -> ObserverWitness<Flags.LayoutInput, LayoutFlag>`,
+  the witness the observer runs on.
+- **`Fuaran.UI.StyleObserver` — its own engine is gone.** `InMemoryStyleObserver` runs on the same Core
+  functions and now depends on `Fuaran.Core.Observer` (FSharp.Core-only, Fable-clean, source-packed). New:
+  `InMemoryStyleObserver.Witness : StyleObserverOptions * ThemeManifest option -> ObserverWitness<Flags.StyleInput, StyleFlag>`
+  — `Flags.derive`, then the per-node manifest flags when a manifest is wired. The flag content stays the UI's.
+- **Behaviour (`InMemoryStyleObserver`; the layout observer's is unchanged).** `ObserveTree` over a cyclic parent declaration now walks each node once and ends; the engine it
+  replaces looped forever. Subscribers are delivered from a snapshot of the list, so a subscriber that disposes
+  itself or subscribes another during its callback no longer throws out of `RegisterFixture` / `Update`. Every
+  other observable (initial emission on register, the change gate, BFS order by level then registration order,
+  bare `Register`'s baseline entry, a throwing subscriber isolated from its siblings) is unchanged.
+- **Migration.** None: constructors, `RegisterFixture`, `Update` and both observer interfaces are unchanged.
+
+**Certified by** `Conformance.observerLawsAt` over each observer's `Witness` (both emit policies, the style one
+manifest-free and manifest-wired), in `src/Fuaran.UI.LayoutObserver.Tests/ObserverLawTests.fs` and
+`src/Fuaran.UI.StyleObserver.Tests/ObserverLawTests.fs`, beside a cyclic-parent walk on each observer; the Core
+conformance census moves `observerLaws` / `observerLawsAt` from carried to adopted across both ports.
+
 ### What rides this slot — Phase 2294 (the language describes itself as a design system)
 
 **Class: ADDITIVE — one new package and one new CLI verb.** No existing type, member, wire byte or rendered

@@ -97,8 +97,8 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 | `Conformance.noAttestationVacuityLaws` | Adopted | — | `noAttestationVacuityLaws certifies that the un-attested default proves nothing` — via `Conformance.noAttestationVacuityLaws` |
 | `Conformance.normalizeLaws` | Not used | — | Fuaran.Core.Ops.normalize — Apply.fs delegates only the structural-five APPLY to Core (applyContained); the tier ships no op-script normaliser, so the family's subject has no call site here |
 | `Conformance.nowLaws` | Adopted | — | `nowLaws certifies the pinned evaluation clock at this pin` — via `Conformance.nowLaws` |
-| `Conformance.observerLaws` | Carried by phase | — | unfiled — Fuaran.UI.LayoutObserver is a domain instance of Fuaran.Core.Observer (Phase 322), the subject this family certifies; adoption is one ObserverWitness (Core 0.33.0, fuaran-core Phase 298) over the in-memory layout observer |
-| `Conformance.observerLawsAt` | Carried by phase | — | unfiled — the 0.36.0 name of observerLaws (see that row): Fuaran.UI.LayoutObserver is a domain instance of Fuaran.Core.Observer; adoption is one ObserverWitness over the in-memory layout observer |
+| `Conformance.observerLaws` | Adopted | — | `the in-memory layout observer's witness certifies under Core's observerLawsAt` — via `Conformance.observerLawsAt (Fuaran.UI.LayoutObserver)`<br>`the in-memory style observer's witness certifies under Core's observerLawsAt, manifest-free and manifest-wired` — via `Conformance.observerLawsAt (Fuaran.UI.StyleObserver)` |
+| `Conformance.observerLawsAt` | Adopted | — | `the in-memory layout observer's witness certifies under Core's observerLawsAt` — via `Conformance.observerLawsAt (Fuaran.UI.LayoutObserver)`<br>`the in-memory style observer's witness certifies under Core's observerLawsAt, manifest-free and manifest-wired` — via `Conformance.observerLawsAt (Fuaran.UI.StyleObserver)` |
 | `Conformance.opAlgebra` | Adopted | 3400 | `the Fuaran.UI witness certifies end-to-end via the unified Conformance.certify` — via `Conformance.certify` |
 | `Conformance.packLoadingLaws` | Adopted | — | `content-pack loading certifies under Core's packLoadingLaws` — via `Conformance.packLoadingLaws` |
 | `Conformance.paramLaws` | Adopted | — | `parameterised-query binding certifies under Core's paramLaws` — via `Conformance.paramLaws` |
@@ -161,8 +161,8 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 
 | Status | Families |
 |---|---|
-| Adopted | 49 |
-| Carried by phase | 19 |
+| Adopted | 51 |
+| Carried by phase | 17 |
 | Not used | 64 |
 | Sibling host | 1 |
 | **Total** | **133** |

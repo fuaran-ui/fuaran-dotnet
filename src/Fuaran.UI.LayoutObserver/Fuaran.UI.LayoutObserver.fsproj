@@ -42,8 +42,9 @@
     <ProjectReference Include="..\Fuaran.UI.LayoutObserver.Abstractions\Fuaran.UI.LayoutObserver.Abstractions.fsproj" />
   </ItemGroup>
   <ItemGroup>
-    <!-- Phase 322 — InMemoryLayoutObserver is a domain instance of the generic
-         Fuaran.Core.Observer runtime-verification seam. Source-packed for the Fable client. -->
+    <!-- Phase 322 / 2307 — InMemoryLayoutObserver threads Core's ObserverWitness /
+         ObserverState (the generic runtime-verification seam), keeping its subscribers
+         beside the state. Source-packed for the Fable client. -->
     <PackageReference Include="Fuaran.Core.Observer" />
     <PackageReference Include="FSharp.Core" />
     <PackageReference Include="Fable.Core" />

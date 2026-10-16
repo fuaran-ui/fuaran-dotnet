@@ -15,6 +15,9 @@
     <Compile Include="InMemoryStyleObserverTests.fs" />
     <Compile Include="ManifestFlagTests.fs" />
     <Compile Include="ElementRegistrationTests.fs" />
+    <!-- Phase 2307 - the observer witness under Core observerLawsAt; enrolled in the Core
+         conformance census as this project adoption of the observer family. -->
+    <Compile Include="ObserverLawTests.fs" />
     <!-- Phase 1752 — the `style-observer/` conformance family: the authored cases, then the writer
          that PROVES each vector against the reference derivation before writing it. The reference
          emitter lives HERE rather than in the wholesale corpus emitter because the reference
@@ -35,6 +38,7 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Expecto" />
+    <PackageReference Include="Fuaran.Core.Conformance" />
     <PackageReference Include="FSharp.Core" />
   </ItemGroup>
 </Project>
