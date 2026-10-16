@@ -120,11 +120,7 @@ let generatedLayerTests =
               | None -> skiptest "wire-format-fixtures/nodes/heading-1.json not found"
               | Some expected ->
                   let generated: Generated.Node<unit> =
-                      Generated.mkHeading
-                          "heading-1"
-                          2
-                          (Generated.TextSource.Literal "Channel performance")
-                          Generated.HeadingVariant.Standard
+                      Generated.mkHeading "heading-1" 2 (Generated.TextSource.Literal "Channel performance")
 
                   Expect.equal (Generated.encodeNode generated) expected "generated encoder == corpus bytes"
           }
@@ -135,11 +131,7 @@ let generatedLayerTests =
               | None -> skiptest "wire-format-fixtures/nodes/heading-1.json not found"
               | Some expected ->
                   let generated: Generated.Node<unit> =
-                      Generated.mkHeading
-                          "heading-1"
-                          2
-                          (Generated.TextSource.Literal "Channel performance")
-                          Generated.HeadingVariant.Standard
+                      Generated.mkHeading "heading-1" 2 (Generated.TextSource.Literal "Channel performance")
 
                   let handWritten: Node<unit> =
                       Fuaran.heading
@@ -168,7 +160,7 @@ let generatedLayerTests =
               // so it must stay msg-free, matching the hand-written tier, which
               // obj-erases in the same places for the same reason.
               let value: Generated.Node<unit> =
-                  Generated.mkHeading "b" 2 (Generated.TextSource.Literal "x") Generated.HeadingVariant.Standard
+                  Generated.mkHeading "b" 2 (Generated.TextSource.Literal "x")
 
               Expect.equal value.Id "b" "the tree is generic in 'Msg and still constructs plainly"
 

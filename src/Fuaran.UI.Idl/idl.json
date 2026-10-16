@@ -894,7 +894,11 @@
         {
           "name": "copyable",
           "optionality": {
-            "$type": "required"
+            "$type": "omitDefault",
+            "default": {
+              "$type": "bool",
+              "value": false
+            }
           },
           "type": {
             "$type": "bool"
@@ -903,7 +907,11 @@
         {
           "name": "highlightLines",
           "optionality": {
-            "$type": "required"
+            "$type": "omitDefault",
+            "default": {
+              "$type": "list",
+              "items": []
+            }
           },
           "type": {
             "$type": "list",
@@ -924,7 +932,11 @@
         {
           "name": "lineNumbers",
           "optionality": {
-            "$type": "required"
+            "$type": "omitDefault",
+            "default": {
+              "$type": "bool",
+              "value": false
+            }
           },
           "type": {
             "$type": "bool"
@@ -1251,7 +1263,11 @@
         {
           "name": "defaultOpen",
           "optionality": {
-            "$type": "required"
+            "$type": "omitDefault",
+            "default": {
+              "$type": "bool",
+              "value": false
+            }
           },
           "type": {
             "$type": "bool"
@@ -1286,7 +1302,20 @@
         {
           "name": "open",
           "optionality": {
-            "$type": "required"
+            "$type": "omitDefault",
+            "default": {
+              "$type": "union",
+              "fields": [
+                {
+                  "name": "value",
+                  "value": {
+                    "$type": "bool",
+                    "value": false
+                  }
+                }
+              ],
+              "tag": "Static"
+            }
           },
           "type": {
             "$type": "union",
@@ -1554,7 +1583,11 @@
         {
           "name": "multiple",
           "optionality": {
-            "$type": "required"
+            "$type": "omitDefault",
+            "default": {
+              "$type": "bool",
+              "value": false
+            }
           },
           "type": {
             "$type": "bool"
@@ -1857,7 +1890,11 @@
         {
           "name": "variant",
           "optionality": {
-            "$type": "required"
+            "$type": "omitDefault",
+            "default": {
+              "$type": "enum",
+              "case": "Standard"
+            }
           },
           "type": {
             "$type": "enum",
@@ -1951,7 +1988,11 @@
         {
           "name": "variant",
           "optionality": {
-            "$type": "required"
+            "$type": "omitDefault",
+            "default": {
+              "$type": "enum",
+              "case": "Default"
+            }
           },
           "type": {
             "$type": "enum",
@@ -2148,7 +2189,11 @@
         {
           "name": "download",
           "optionality": {
-            "$type": "required"
+            "$type": "omitDefault",
+            "default": {
+              "$type": "bool",
+              "value": false
+            }
           },
           "type": {
             "$type": "bool"
@@ -2205,7 +2250,11 @@
         {
           "name": "ordered",
           "optionality": {
-            "$type": "required"
+            "$type": "omitDefault",
+            "default": {
+              "$type": "bool",
+              "value": false
+            }
           },
           "type": {
             "$type": "bool"
@@ -2588,7 +2637,11 @@
         {
           "name": "dismissable",
           "optionality": {
-            "$type": "required"
+            "$type": "omitDefault",
+            "default": {
+              "$type": "bool",
+              "value": true
+            }
           },
           "type": {
             "$type": "bool"
@@ -3045,7 +3098,20 @@
         {
           "name": "activeStep",
           "optionality": {
-            "$type": "required"
+            "$type": "omitDefault",
+            "default": {
+              "$type": "union",
+              "fields": [
+                {
+                  "name": "value",
+                  "value": {
+                    "$type": "int",
+                    "value": 0
+                  }
+                }
+              ],
+              "tag": "Static"
+            }
           },
           "type": {
             "$type": "union",
@@ -4457,7 +4523,11 @@
         {
           "name": "required",
           "optionality": {
-            "$type": "required"
+            "$type": "omitDefault",
+            "default": {
+              "$type": "bool",
+              "value": false
+            }
           },
           "type": {
             "$type": "bool"
@@ -6034,7 +6104,11 @@
             {
               "name": "wrap",
               "optionality": {
-                "$type": "required"
+                "$type": "omitDefault",
+                "default": {
+                  "$type": "bool",
+                  "value": false
+                }
               },
               "type": {
                 "$type": "bool"
@@ -7368,7 +7442,11 @@
             {
               "name": "orientation",
               "optionality": {
-                "$type": "required"
+                "$type": "omitDefault",
+                "default": {
+                  "$type": "enum",
+                  "case": "Horizontal"
+                }
               },
               "type": {
                 "$type": "enum",

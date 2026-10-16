@@ -8351,7 +8351,7 @@ let boxChain (boxes: int) : string =
         + id
         + "\",\"kind\":{\"$type\":\"Box\",\"children\":["
         + children
-        + "],\"layout\":{\"$type\":\"Flex\",\"direction\":\"Vertical\",\"wrap\":false},\"role\":\"Group\"}}"
+        + "],\"layout\":{\"$type\":\"Flex\",\"direction\":\"Vertical\"},\"role\":\"Group\"}}"
 
     let mutable acc = box "leaf" ""
 

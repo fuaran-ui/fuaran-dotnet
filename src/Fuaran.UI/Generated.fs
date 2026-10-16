@@ -2081,7 +2081,7 @@ and private encBinding<'T> (encT: 'T -> JVal) (v: Binding<'T>) : JVal =
 and private encBoxLayout (v: BoxLayout) : JVal =
     match v with
     | BoxLayout.Auto -> Canon.typed "Auto" [  ]
-    | BoxLayout.Flex (direction, wrap, gap) -> Canon.typed "Flex" ([ Some("direction", encOrientation direction); Some("wrap", JBool wrap); (gap |> Option.map (fun v -> "gap", JInt v)) ] |> List.choose id)
+    | BoxLayout.Flex (direction, wrap, gap) -> Canon.typed "Flex" ([ Some("direction", encOrientation direction); (if wrap = false then None else Some("wrap", JBool wrap)); (gap |> Option.map (fun v -> "gap", JInt v)) ] |> List.choose id)
     | BoxLayout.Grid (cols, templateColumns, gap) -> Canon.typed "Grid" ([ Some("cols", JInt cols); (templateColumns |> Option.map (fun v -> "templateColumns", JStr v)); (gap |> Option.map (fun v -> "gap", JInt v)) ] |> List.choose id)
     | BoxLayout.Masonry (cols, gap) -> Canon.typed "Masonry" ([ Some("cols", JInt cols); (gap |> Option.map (fun v -> "gap", JInt v)) ] |> List.choose id)
 
@@ -2157,7 +2157,7 @@ and private encFormFieldKind<'Msg> (v: FormFieldKind<'Msg>) : JVal =
     | FormFieldKind.TextArea (value, onChange, rows) -> Canon.typed "TextArea" ([ (value |> Option.map (fun v -> "value", (encBinding id) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("rows", JInt rows) ] |> List.choose id)
     | FormFieldKind.RangedNumber (value, onChange, min, max, step) -> Canon.typed "RangedNumber" ([ (value |> Option.map (fun v -> "value", (encBinding id) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (min |> Option.map (fun v -> "min", encFloat v)); (max |> Option.map (fun v -> "max", encFloat v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
     | FormFieldKind.Range (value, onChange, min, max, step) -> Canon.typed "Range" ([ (value |> Option.map (fun v -> "value", (fun (v: Binding<JVal>) -> match v with | Binding.Static(Some p) -> p | __other -> encBinding id __other) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (min |> Option.map (fun v -> "min", encFloat v)); (max |> Option.map (fun v -> "max", encFloat v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
-    | FormFieldKind.SegmentedChoice (options, value, onChange, orientation) -> Canon.typed "SegmentedChoice" ([ Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); (value |> Option.map (fun v -> "value", (encBinding id) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("orientation", encOrientation orientation) ] |> List.choose id)
+    | FormFieldKind.SegmentedChoice (options, value, onChange, orientation) -> Canon.typed "SegmentedChoice" ([ Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); (value |> Option.map (fun v -> "value", (encBinding id) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (if orientation = Orientation.Horizontal then None else Some("orientation", encOrientation orientation)) ] |> List.choose id)
     | FormFieldKind.DateTime (value, onChange, variant, min, max, step) -> Canon.typed "DateTime" ([ (value |> Option.map (fun v -> "value", (encBinding id) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("variant", encDateTimeVariant variant); (min |> Option.map (fun v -> "min", JStr v)); (max |> Option.map (fun v -> "max", JStr v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
     | FormFieldKind.DateTimeRange (value, onChange, variant, min, max, step) -> Canon.typed "DateTimeRange" ([ (value |> Option.map (fun v -> "value", (fun (v: Binding<JVal>) -> match v with | Binding.Static(Some p) -> p | __other -> encBinding id __other) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("variant", encDateTimeVariant variant); (min |> Option.map (fun v -> "min", JStr v)); (max |> Option.map (fun v -> "max", JStr v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
     | FormFieldKind.Combobox (allowFreeText, onChange, options, value) -> Canon.typed "Combobox" ([ (if allowFreeText = false then None else Some("allowFreeText", JBool allowFreeText)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); (value |> Option.map (fun v -> "value", (encBinding id) v)) ] |> List.choose id)
@@ -2276,7 +2276,7 @@ and private encFilterSpec<'Msg> (s: FilterSpec<'Msg>) : JVal =
     JObj([ Some("kind", encFormFieldKind s.Kind); Some("label", encTextSource s.Label); Some("name", JStr s.Name) ] |> List.choose id)
 
 and private encFormField<'Msg> (s: FormField<'Msg>) : JVal =
-    JObj([ Some("id", JStr s.Id); Some("kind", encFormFieldKind s.Kind); Some("label", encTextSource s.Label); Some("required", JBool s.Required); (s.Help |> Option.map (fun v -> "help", encTextSource v)); (s.Rule |> Option.map (fun v -> "rule", encFieldRule v)) ] |> List.choose id)
+    JObj([ Some("id", JStr s.Id); Some("kind", encFormFieldKind s.Kind); Some("label", encTextSource s.Label); (if s.Required = false then None else Some("required", JBool s.Required)); (s.Help |> Option.map (fun v -> "help", encTextSource v)); (s.Rule |> Option.map (fun v -> "rule", encFieldRule v)) ] |> List.choose id)
 
 and private encGuestChannel (s: GuestChannel) : JVal =
     JObj([ Some("direction", encChannelDirection s.Direction); (s.MessageShape |> Option.map (fun v -> "messageShape", JStr v)) ] |> List.choose id)
@@ -2339,7 +2339,7 @@ and private encChartSpec<'Msg> (s: ChartSpec<'Msg>) : JVal =
     Canon.typed "Chart" ([ Some("kind", encChartKind s.Kind); Some("source", (encBinding Fuaran.Core.RowCodec.encodeRows) s.Source); (if s.Stacked = false then None else Some("stacked", JBool s.Stacked)); Some("xField", JStr s.XField); Some("yFields", JArr(List.map JStr s.YFields)); (s.Title |> Option.map (fun v -> "title", encTextSource v)); (s.ValueFormat |> Option.map (fun v -> "valueFormat", encFormat v)); (s.XTitle |> Option.map (fun v -> "xTitle", encTextSource v)); (s.YTitle |> Option.map (fun v -> "yTitle", encTextSource v)); (s.Subtitle |> Option.map (fun v -> "subtitle", encTextSource v)); (s.LegendPosition |> Option.map (fun v -> "legendPosition", encChartLegendPosition v)); (s.DataLabels |> Option.map (fun v -> "dataLabels", encChartDataLabels v)); (s.XScale |> Option.map (fun v -> "xScale", encChartXScale v)); (s.Annotations |> Option.map (fun v -> "annotations", JArr(List.map encChartAnnotation v))); (s.OnPointClick |> Option.map (fun v -> "onPointClick", JStr "<closure>")) ] |> List.choose id)
 
 and private encCodeBlockSpec (s: CodeBlockSpec) : JVal =
-    Canon.typed "CodeBlock" ([ Some("code", JStr s.Code); Some("copyable", JBool s.Copyable); Some("highlightLines", JArr(List.map JInt s.HighlightLines)); Some("language", JStr s.Language); Some("lineNumbers", JBool s.LineNumbers) ] |> List.choose id)
+    Canon.typed "CodeBlock" ([ Some("code", JStr s.Code); (if s.Copyable = false then None else Some("copyable", JBool s.Copyable)); (if List.isEmpty s.HighlightLines then None else Some("highlightLines", JArr(List.map JInt s.HighlightLines))); Some("language", JStr s.Language); (if s.LineNumbers = false then None else Some("lineNumbers", JBool s.LineNumbers)) ] |> List.choose id)
 
 and private encCustomSpec (s: CustomSpec) : JVal =
     Canon.typed "Custom" ([ Some("moduleId", JStr s.ModuleId); Some("componentId", JStr s.ComponentId); Some("props", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, id v))) s.Props); (s.ContentHash |> Option.map (fun v -> "contentHash", encContentHash v)); (s.ExposedNodeIds |> Option.map (fun v -> "exposedNodeIds", JArr(List.map JStr v))) ] |> List.choose id)
@@ -2348,7 +2348,7 @@ and private encDataGridSpec<'Msg> (s: DataGridSpec<'Msg>) : JVal =
     Canon.typed "DataGrid" ([ Some("columns", JArr(List.map encColumnErased s.Columns)); (if s.Editable = false then None else Some("editable", JBool s.Editable)); (s.RowKey |> Option.map (fun v -> "rowKey", JStr "<closure>")); (s.RowKeyField |> Option.map (fun v -> "rowKeyField", JStr v)); (s.SortStateKey |> Option.map (fun v -> "sortStateKey", JStr v)); (s.PageSize |> Option.map (fun v -> "pageSize", JInt v)); (s.PageStateKey |> Option.map (fun v -> "pageStateKey", JStr v)); (s.DefaultSort |> Option.map (fun v -> "defaultSort", encDefaultSort v)); (s.EditStateKey |> Option.map (fun v -> "editStateKey", JStr v)); (if s.Reorderable = false then None else Some("reorderable", JBool s.Reorderable)); (s.TransferInKey |> Option.map (fun v -> "transferInKey", JStr v)); (s.TransferOutKey |> Option.map (fun v -> "transferOutKey", JStr v)); (if s.KeepRowsTogether = false then None else Some("keepRowsTogether", JBool s.KeepRowsTogether)); (if s.RepeatHeader = false then None else Some("repeatHeader", JBool s.RepeatHeader)); (if s.Exportable = false then None else Some("exportable", JBool s.Exportable)); (s.WindowStateKey |> Option.map (fun v -> "windowStateKey", JStr v)); (s.RowTotal |> Option.map (fun v -> "rowTotal", (encBinding JInt) v)); Some("source", (encBinding Fuaran.Core.RowCodec.encodeRows) s.Source); (s.StaticRows |> Option.map (fun v -> "staticRows", encStaticRows v)); (s.OnRowClick |> Option.map (fun v -> "onRowClick", JStr "<closure>")) ] |> List.choose id)
 
 and private encDisclosureSpec<'Msg> (s: DisclosureSpec<'Msg>) : JVal =
-    Canon.typed "Disclosure" ([ Some("children", JArr(List.map encNode s.Children)); Some("defaultOpen", JBool s.DefaultOpen); Some("heading", encTextSource s.Heading); (s.OnToggle |> Option.map (fun v -> "onToggle", JStr "<closure>")); Some("open", (encBinding JBool) s.Open) ] |> List.choose id)
+    Canon.typed "Disclosure" ([ Some("children", JArr(List.map encNode s.Children)); (if s.DefaultOpen = false then None else Some("defaultOpen", JBool s.DefaultOpen)); Some("heading", encTextSource s.Heading); (s.OnToggle |> Option.map (fun v -> "onToggle", JStr "<closure>")); (match s.Open with | Binding.Static(Some(false)) -> None | _ -> Some("open", (encBinding JBool) s.Open)) ] |> List.choose id)
 
 and private encDrawingSpec (s: DrawingSpec) : JVal =
     Canon.typed "Drawing" ([ (s.Description |> Option.map (fun v -> "description", encTextSource v)); Some("shapes", JArr(List.map encShape s.Shapes)); Some("style", encDrawStyle s.Style); (s.Title |> Option.map (fun v -> "title", encTextSource v)); Some("viewBox", encViewBox s.ViewBox) ] |> List.choose id)
@@ -2363,7 +2363,7 @@ and private encFactSpec (s: FactSpec) : JVal =
     Canon.typed "Fact" ([ (if s.Emphasis = false then None else Some("emphasis", JBool s.Emphasis)); (s.Help |> Option.map (fun v -> "help", encTextSource v)); (s.Icon |> Option.map (fun v -> "icon", JStr v)); Some("label", encTextSource s.Label); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); Some("value", encTextSource s.Value) ] |> List.choose id)
 
 and private encFileUploadSpec<'Msg> (s: FileUploadSpec<'Msg>) : JVal =
-    Canon.typed "FileUpload" ([ Some("accept", JArr(List.map JStr s.Accept)); Some("label", encTextSource s.Label); Some("multiple", JBool s.Multiple); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)); (if s.AcceptPaste = false then None else Some("acceptPaste", JBool s.AcceptPaste)); (if s.DropTarget = false then None else Some("dropTarget", JBool s.DropTarget)); (s.Capture |> Option.map (fun v -> "capture", encCaptureSource v)); (s.Destination |> Option.map (fun v -> "destination", JStr v)); (s.MaxBytes |> Option.map (fun v -> "maxBytes", JInt v)); (s.MaxFiles |> Option.map (fun v -> "maxFiles", JInt v)) ] |> List.choose id)
+    Canon.typed "FileUpload" ([ Some("accept", JArr(List.map JStr s.Accept)); Some("label", encTextSource s.Label); (if s.Multiple = false then None else Some("multiple", JBool s.Multiple)); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)); (if s.AcceptPaste = false then None else Some("acceptPaste", JBool s.AcceptPaste)); (if s.DropTarget = false then None else Some("dropTarget", JBool s.DropTarget)); (s.Capture |> Option.map (fun v -> "capture", encCaptureSource v)); (s.Destination |> Option.map (fun v -> "destination", JStr v)); (s.MaxBytes |> Option.map (fun v -> "maxBytes", JInt v)); (s.MaxFiles |> Option.map (fun v -> "maxFiles", JInt v)) ] |> List.choose id)
 
 and private encFiltersSpec<'Msg> (s: FiltersSpec<'Msg>) : JVal =
     Canon.typed "Filters" ([ Some("items", JArr(List.map encFilterSpec s.Items)) ] |> List.choose id)
@@ -2378,7 +2378,7 @@ and private encFragmentRefSpec<'Msg> (s: FragmentRefSpec<'Msg>) : JVal =
     Canon.typed "FragmentRef" ([ Some("name", JStr s.Name); (s.Args |> Option.map (fun v -> "args", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, encFragmentArg v))) v)) ] |> List.choose id)
 
 and private encHeadingSpec (s: HeadingSpec) : JVal =
-    Canon.typed "Heading" ([ Some("level", JInt s.Level); Some("text", encTextSource s.Text); Some("variant", encHeadingVariant s.Variant) ] |> List.choose id)
+    Canon.typed "Heading" ([ Some("level", JInt s.Level); Some("text", encTextSource s.Text); (if s.Variant = HeadingVariant.Standard then None else Some("variant", encHeadingVariant s.Variant)) ] |> List.choose id)
 
 // Phase 821 — Icon display kind.
 // `size` omitted-when-`Medium`, `tone` omitted-when-`Default`, `label`
@@ -2387,16 +2387,16 @@ and private encIconSpec (s: IconSpec) : JVal =
     Canon.typed "Icon" ([ Some("icon", JStr s.Icon); (if s.Size = IconSize.Medium then None else Some("size", encIconSize s.Size)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (s.Label |> Option.map (fun v -> "label", JStr v)) ] |> List.choose id)
 
 and private encImageSpec (s: ImageSpec) : JVal =
-    Canon.typed "Image" ([ Some("alt", encTextSource s.Alt); Some("src", (encBinding JStr) s.Src); Some("variant", encImageVariant s.Variant); (if s.Fit = ImageFit.Natural then None else Some("fit", encImageFit s.Fit)); (if s.AspectRatio = ImageAspect.Natural then None else Some("aspectRatio", encImageAspect s.AspectRatio)); (if s.Loading = ImageLoading.Eager then None else Some("loading", encImageLoading s.Loading)); (if List.isEmpty s.SrcSet then None else Some("srcSet", JArr(List.map encSrcSetEntry s.SrcSet))); (if s.Expandable = false then None else Some("expandable", JBool s.Expandable)); (s.Caption |> Option.map (fun v -> "caption", encTextSource v)) ] |> List.choose id)
+    Canon.typed "Image" ([ Some("alt", encTextSource s.Alt); Some("src", (encBinding JStr) s.Src); (if s.Variant = ImageVariant.Default then None else Some("variant", encImageVariant s.Variant)); (if s.Fit = ImageFit.Natural then None else Some("fit", encImageFit s.Fit)); (if s.AspectRatio = ImageAspect.Natural then None else Some("aspectRatio", encImageAspect s.AspectRatio)); (if s.Loading = ImageLoading.Eager then None else Some("loading", encImageLoading s.Loading)); (if List.isEmpty s.SrcSet then None else Some("srcSet", JArr(List.map encSrcSetEntry s.SrcSet))); (if s.Expandable = false then None else Some("expandable", JBool s.Expandable)); (s.Caption |> Option.map (fun v -> "caption", encTextSource v)) ] |> List.choose id)
 
 and private encLabelValueRowSpec (s: LabelValueRowSpec) : JVal =
     Canon.typed "LabelValueRow" ([ (if s.Emphasis = false then None else Some("emphasis", JBool s.Emphasis)); (match s.Format with | CellFormat.None -> None | _ -> Some("format", encCellFormat s.Format)); Some("label", encTextSource s.Label); Some("value", (encBinding encFloat) s.Value); (s.Help |> Option.map (fun v -> "help", encTextSource v)) ] |> List.choose id)
 
 and private encLinkSpec (s: LinkSpec) : JVal =
-    Canon.typed "Link" ([ Some("href", (encBinding JStr) s.Href); Some("label", encTextSource s.Label); Some("download", JBool s.Download); (s.Rel |> Option.map (fun v -> "rel", JStr v)); (s.Target |> Option.map (fun v -> "target", JStr v)); (s.Protection |> Option.map (fun v -> "protection", encLinkProtection v)) ] |> List.choose id)
+    Canon.typed "Link" ([ Some("href", (encBinding JStr) s.Href); Some("label", encTextSource s.Label); (if s.Download = false then None else Some("download", JBool s.Download)); (s.Rel |> Option.map (fun v -> "rel", JStr v)); (s.Target |> Option.map (fun v -> "target", JStr v)); (s.Protection |> Option.map (fun v -> "protection", encLinkProtection v)) ] |> List.choose id)
 
 and private encListSpec (s: ListSpec) : JVal =
-    Canon.typed "List" ([ Some("items", JArr(List.map encTextSource s.Items)); Some("ordered", JBool s.Ordered) ] |> List.choose id)
+    Canon.typed "List" ([ Some("items", JArr(List.map encTextSource s.Items)); (if s.Ordered = false then None else Some("ordered", JBool s.Ordered)) ] |> List.choose id)
 
 and private encMapSpec<'Msg> (s: MapSpec<'Msg>) : JVal =
     Canon.typed "Map" ([ Some("centreLatitude", encFloat s.CentreLatitude); Some("centreLongitude", encFloat s.CentreLongitude); Some("source", (encBinding (fun __xs -> JArr(List.map encMapMarker __xs))) s.Source); Some("zoom", JInt s.Zoom); (s.OnMarkerClick |> Option.map (fun v -> "onMarkerClick", JStr "<closure>")) ] |> List.choose id)
@@ -2414,7 +2414,7 @@ and private encMetricSpec (s: MetricSpec) : JVal =
     Canon.typed "Metric" ([ Some("label", encTextSource s.Label); Some("value", (encBinding encFloat) s.Value); (match s.Format with | CellFormat.None -> None | _ -> Some("format", encCellFormat s.Format)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (if s.Weight = StyleWeight.Standard then None else Some("weight", encStyleWeight s.Weight)); (if s.Emphasis = Emphasis.Normal then None else Some("emphasis", encEmphasis s.Emphasis)); (s.Trend |> Option.map (fun v -> "trend", (encBinding encFloat) v)); (s.TrendFormat |> Option.map (fun v -> "trendFormat", encCellFormat v)); (if s.TrendPolarity = TrendPolarity.HigherIsBetter then None else Some("trendPolarity", encTrendPolarity s.TrendPolarity)); (s.Icon |> Option.map (fun v -> "icon", JStr v)); (s.Subtext |> Option.map (fun v -> "subtext", encTextSource v)) ] |> List.choose id)
 
 and private encModalSpec<'Msg> (s: ModalSpec<'Msg>) : JVal =
-    Canon.typed "Modal" ([ Some("children", JArr(List.map encNode s.Children)); Some("dismissable", JBool s.Dismissable); (s.OnDismiss |> Option.map (fun v -> "onDismiss", encAction v)); Some("open", (encBinding JBool) s.Open); (s.Heading |> Option.map (fun v -> "heading", encTextSource v)); (if s.Modality = ModalityKind.Modal then None else Some("modality", encModalityKind s.Modality)); (s.Anchor |> Option.map (fun v -> "anchor", JStr v)) ] |> List.choose id)
+    Canon.typed "Modal" ([ Some("children", JArr(List.map encNode s.Children)); (if s.Dismissable = true then None else Some("dismissable", JBool s.Dismissable)); (s.OnDismiss |> Option.map (fun v -> "onDismiss", encAction v)); Some("open", (encBinding JBool) s.Open); (s.Heading |> Option.map (fun v -> "heading", encTextSource v)); (if s.Modality = ModalityKind.Modal then None else Some("modality", encModalityKind s.Modality)); (s.Anchor |> Option.map (fun v -> "anchor", JStr v)) ] |> List.choose id)
 
 and private encMountSpec<'Msg> (s: MountSpec<'Msg>) : JVal =
     Canon.typed "Mount" ([ Some("capabilities", JArr(List.map JStr s.Capabilities)); Some("channel", encGuestChannel s.Channel); (s.Inputs |> Option.map (fun v -> "inputs", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, encFragmentArg v))) v)); (s.OnBubble |> Option.map (fun v -> "onBubble", JStr "<closure>")); Some("scopeId", JStr s.ScopeId) ] |> List.choose id)
@@ -2438,7 +2438,7 @@ and private encSplitPanelSpec<'Msg> (s: SplitPanelSpec<'Msg>) : JVal =
     Canon.typed "SplitPanel" ([ Some("children", JArr(List.map encNode s.Children)); Some("weight", encFloat s.Weight) ] |> List.choose id)
 
 and private encStepperSpec<'Msg> (s: StepperSpec<'Msg>) : JVal =
-    Canon.typed "Stepper" ([ Some("activeStep", (encBinding JInt) s.ActiveStep); Some("children", JArr(List.map encNode s.Children)); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")) ] |> List.choose id)
+    Canon.typed "Stepper" ([ (match s.ActiveStep with | Binding.Static(Some(0)) -> None | _ -> Some("activeStep", (encBinding JInt) s.ActiveStep)); Some("children", JArr(List.map encNode s.Children)); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")) ] |> List.choose id)
 
 and private encSummaryListSpec<'Msg> (s: SummaryListSpec<'Msg>) : JVal =
     Canon.typed "SummaryList" ([ Some("children", JArr(List.map encNode s.Children)); (s.Heading |> Option.map (fun v -> "heading", encTextSource v)) ] |> List.choose id)
@@ -3267,7 +3267,7 @@ and private decBoxLayout (j: JVal) : Result<BoxLayout, DecodeError> =
         | "Auto" -> Ok BoxLayout.Auto
         | "Flex" ->
             dReq "direction" __fs decOrientation |> Result.bind (fun direction ->
-            dReq "wrap" __fs dBool |> Result.bind (fun wrap ->
+            dDef "wrap" __fs dBool (false) |> Result.bind (fun wrap ->
             dOpt "gap" __fs dInt |> Result.bind (fun gap ->
             Ok(BoxLayout.Flex(direction, wrap, gap)))))
         | "Grid" ->
@@ -3513,7 +3513,7 @@ and private decFormFieldKind (j: JVal) : Result<FormFieldKind<obj>, DecodeError>
             dReq "options" __fs (decBinding (dList decSelectOption)) |> Result.bind (fun options ->
             dOpt "value" __fs (fun (__j: JVal) -> (decBinding dStr) __j |> Result.bind (fun _ -> dHosted (((fun (j: JVal) -> decBinding (fun __p -> dStr __p |> Result.map JStr) j |> Result.mapError DecodeError.describe)) __j))) |> Result.bind (fun value ->
             dOpt "onChange" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: JVal) -> Action.Chain []))) |> Result.bind (fun onChange ->
-            dReq "orientation" __fs decOrientation |> Result.bind (fun orientation ->
+            dDef "orientation" __fs decOrientation (Orientation.Horizontal) |> Result.bind (fun orientation ->
             Ok(FormFieldKind.SegmentedChoice(options, value, onChange, orientation))))))
         | "DateTime" ->
             dOpt "value" __fs (fun (__j: JVal) -> (decBinding dStr) __j |> Result.bind (fun _ -> dHosted (((fun (j: JVal) -> decBinding (fun __p -> dStr __p |> Result.map JStr) j |> Result.mapError DecodeError.describe)) __j))) |> Result.bind (fun value ->
@@ -3903,7 +3903,7 @@ and private decFormField (j: JVal) : Result<FormField<obj>, DecodeError> =
     dReq "id" __fs dStr |> Result.bind (fun id ->
     dReq "kind" __fs decFormFieldKind |> Result.bind (fun kind ->
     dReq "label" __fs decTextSource |> Result.bind (fun label ->
-    dReq "required" __fs dBool |> Result.bind (fun required ->
+    dDef "required" __fs dBool (false) |> Result.bind (fun required ->
     dOpt "help" __fs decTextSource |> Result.bind (fun help ->
     dOpt "rule" __fs decFieldRule |> Result.bind (fun rule ->
     Ok { Id = id; Kind = kind; Label = label; Required = required; Help = help; Rule = rule })))))))
@@ -4072,10 +4072,10 @@ and private decChartSpec (j: JVal) : Result<ChartSpec<obj>, DecodeError> =
 and private decCodeBlockSpec (j: JVal) : Result<CodeBlockSpec, DecodeError> =
     dObj j |> Result.bind (fun __fs ->
     dReq "code" __fs dStr |> Result.bind (fun code ->
-    dReq "copyable" __fs dBool |> Result.bind (fun copyable ->
-    dReq "highlightLines" __fs (dList dInt) |> Result.bind (fun highlightLines ->
+    dDef "copyable" __fs dBool (false) |> Result.bind (fun copyable ->
+    dDef "highlightLines" __fs (dList dInt) ([]) |> Result.bind (fun highlightLines ->
     dReq "language" __fs dStr |> Result.bind (fun language ->
-    dReq "lineNumbers" __fs dBool |> Result.bind (fun lineNumbers ->
+    dDef "lineNumbers" __fs dBool (false) |> Result.bind (fun lineNumbers ->
     Ok { Code = code; Copyable = copyable; HighlightLines = highlightLines; Language = language; LineNumbers = lineNumbers }))))))
 
 and private decCustomSpec (j: JVal) : Result<CustomSpec, DecodeError> =
@@ -4114,10 +4114,10 @@ and private decDataGridSpec (j: JVal) : Result<DataGridSpec<obj>, DecodeError> =
 and private decDisclosureSpec (j: JVal) : Result<DisclosureSpec<obj>, DecodeError> =
     dObj j |> Result.bind (fun __fs ->
     dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
-    dReq "defaultOpen" __fs dBool |> Result.bind (fun defaultOpen ->
+    dDef "defaultOpen" __fs dBool (false) |> Result.bind (fun defaultOpen ->
     dReq "heading" __fs decTextSource |> Result.bind (fun heading ->
     dOpt "onToggle" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: bool) -> Action.Chain []))) |> Result.bind (fun onToggle ->
-    dReq "open" __fs (decBinding dBool) |> Result.bind (fun ``open`` ->
+    dDef "open" __fs (decBinding dBool) (Binding.Static(Some(false))) |> Result.bind (fun ``open`` ->
     Ok { Children = children; DefaultOpen = defaultOpen; Heading = heading; OnToggle = onToggle; Open = ``open`` }))))))
 
 and private decDrawingSpec (j: JVal) : Result<DrawingSpec, DecodeError> =
@@ -4157,7 +4157,7 @@ and private decFileUploadSpec (j: JVal) : Result<FileUploadSpec<obj>, DecodeErro
     dObj j |> Result.bind (fun __fs ->
     dReq "accept" __fs (dList dStr) |> Result.bind (fun accept ->
     dReq "label" __fs decTextSource |> Result.bind (fun label ->
-    dReq "multiple" __fs dBool |> Result.bind (fun multiple ->
+    dDef "multiple" __fs dBool (false) |> Result.bind (fun multiple ->
     dOpt "onSelect" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: Fuaran.UI.HostPrelude.FileSelection list) -> Action.Chain []))) |> Result.bind (fun onSelect ->
     dOpt "disabled" __fs (decBinding dBool) |> Result.bind (fun disabled ->
     dDef "acceptPaste" __fs dBool (false) |> Result.bind (fun acceptPaste ->
@@ -4199,7 +4199,7 @@ and private decHeadingSpec (j: JVal) : Result<HeadingSpec, DecodeError> =
     dObj j |> Result.bind (fun __fs ->
     dReq "level" __fs dInt |> Result.bind (fun level ->
     dReq "text" __fs decTextSource |> Result.bind (fun text ->
-    dReq "variant" __fs decHeadingVariant |> Result.bind (fun variant ->
+    dDef "variant" __fs decHeadingVariant (HeadingVariant.Standard) |> Result.bind (fun variant ->
     Ok { Level = level; Text = text; Variant = variant }))))
 
 // Phase 821 — Icon display kind.
@@ -4215,7 +4215,7 @@ and private decImageSpec (j: JVal) : Result<ImageSpec, DecodeError> =
     dObj j |> Result.bind (fun __fs ->
     dReq "alt" __fs decTextSource |> Result.bind (fun alt ->
     dReq "src" __fs (decBinding dStr) |> Result.bind (fun src ->
-    dReq "variant" __fs decImageVariant |> Result.bind (fun variant ->
+    dDef "variant" __fs decImageVariant (ImageVariant.Default) |> Result.bind (fun variant ->
     dDef "fit" __fs decImageFit (ImageFit.Natural) |> Result.bind (fun fit ->
     dDef "aspectRatio" __fs decImageAspect (ImageAspect.Natural) |> Result.bind (fun aspectRatio ->
     dDef "loading" __fs decImageLoading (ImageLoading.Eager) |> Result.bind (fun loading ->
@@ -4237,7 +4237,7 @@ and private decLinkSpec (j: JVal) : Result<LinkSpec, DecodeError> =
     dObj j |> Result.bind (fun __fs ->
     dReq "href" __fs (decBinding dStr) |> Result.bind (fun href ->
     dReq "label" __fs decTextSource |> Result.bind (fun label ->
-    dReq "download" __fs dBool |> Result.bind (fun download ->
+    dDef "download" __fs dBool (false) |> Result.bind (fun download ->
     dOpt "rel" __fs dStr |> Result.bind (fun rel ->
     dOpt "target" __fs dStr |> Result.bind (fun target ->
     dOpt "protection" __fs decLinkProtection |> Result.bind (fun protection ->
@@ -4246,7 +4246,7 @@ and private decLinkSpec (j: JVal) : Result<LinkSpec, DecodeError> =
 and private decListSpec (j: JVal) : Result<ListSpec, DecodeError> =
     dObj j |> Result.bind (fun __fs ->
     dReq "items" __fs (dList decTextSource) |> Result.bind (fun items ->
-    dReq "ordered" __fs dBool |> Result.bind (fun ordered ->
+    dDef "ordered" __fs dBool (false) |> Result.bind (fun ordered ->
     Ok { Items = items; Ordered = ordered })))
 
 and private decMapSpec (j: JVal) : Result<MapSpec<obj>, DecodeError> =
@@ -4298,7 +4298,7 @@ and private decMetricSpec (j: JVal) : Result<MetricSpec, DecodeError> =
 and private decModalSpec (j: JVal) : Result<ModalSpec<obj>, DecodeError> =
     dObj j |> Result.bind (fun __fs ->
     dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
-    dReq "dismissable" __fs dBool |> Result.bind (fun dismissable ->
+    dDef "dismissable" __fs dBool (true) |> Result.bind (fun dismissable ->
     dOpt "onDismiss" __fs decAction |> Result.bind (fun onDismiss ->
     dReq "open" __fs (decBinding dBool) |> Result.bind (fun ``open`` ->
     dOpt "heading" __fs decTextSource |> Result.bind (fun heading ->
@@ -4363,7 +4363,7 @@ and private decSplitPanelSpec (j: JVal) : Result<SplitPanelSpec<obj>, DecodeErro
 
 and private decStepperSpec (j: JVal) : Result<StepperSpec<obj>, DecodeError> =
     dObj j |> Result.bind (fun __fs ->
-    dReq "activeStep" __fs (decBinding dInt) |> Result.bind (fun activeStep ->
+    dDef "activeStep" __fs (decBinding dInt) (Binding.Static(Some(0))) |> Result.bind (fun activeStep ->
     dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
     dOpt "onSelect" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: int) -> Action.Chain []))) |> Result.bind (fun onSelect ->
     Ok { ActiveStep = activeStep; Children = children; OnSelect = onSelect }))))
@@ -4608,8 +4608,8 @@ let mkCallout (id: string) (body: TextSource) : Node<'Msg> =
 let mkChart (id: string) (kind: ChartKind) (source: Binding<Fuaran.Core.Row seq>) (xField: string) (yFields: string list) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Chart { Kind = kind; Source = source; Stacked = false; XField = xField; YFields = yFields; Title = None; ValueFormat = None; XTitle = None; YTitle = None; Subtitle = None; LegendPosition = None; DataLabels = None; XScale = None; Annotations = None; OnPointClick = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
-let mkCodeBlock (id: string) (code: string) (copyable: bool) (highlightLines: int list) (language: string) (lineNumbers: bool) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.CodeBlock { Code = code; Copyable = copyable; HighlightLines = highlightLines; Language = language; LineNumbers = lineNumbers }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+let mkCodeBlock (id: string) (code: string) (language: string) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.CodeBlock { Code = code; Copyable = false; HighlightLines = []; Language = language; LineNumbers = false }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkCustom (id: string) (moduleId: string) (componentId: string) (props: Map<string, JVal>) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Custom { ModuleId = moduleId; ComponentId = componentId; Props = props; ContentHash = None; ExposedNodeIds = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
@@ -4617,8 +4617,8 @@ let mkCustom (id: string) (moduleId: string) (componentId: string) (props: Map<s
 let mkDataGrid (id: string) (columns: ColumnErased<'Msg> list) (source: Binding<Fuaran.Core.Row seq>) : Node<'Msg> =
     { Id = id; Kind = NodeKind.DataGrid { Columns = columns; Editable = false; RowKey = None; RowKeyField = None; SortStateKey = None; PageSize = None; PageStateKey = None; DefaultSort = None; EditStateKey = None; Reorderable = false; TransferInKey = None; TransferOutKey = None; KeepRowsTogether = false; RepeatHeader = false; Exportable = false; WindowStateKey = None; RowTotal = None; Source = source; StaticRows = None; OnRowClick = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
-let mkDisclosure (id: string) (children: Node<'Msg> list) (defaultOpen: bool) (heading: TextSource) (``open``: Binding<bool>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Disclosure { Children = children; DefaultOpen = defaultOpen; Heading = heading; OnToggle = None; Open = ``open`` }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+let mkDisclosure (id: string) (children: Node<'Msg> list) (heading: TextSource) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Disclosure { Children = children; DefaultOpen = false; Heading = heading; OnToggle = None; Open = Binding.Static(Some(false)) }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkDrawing (id: string) (shapes: Shape list) (style: DrawStyle) (viewBox: ViewBox) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Drawing { Description = None; Shapes = shapes; Style = style; Title = None; ViewBox = viewBox }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
@@ -4632,8 +4632,8 @@ let mkErrorBoundary (id: string) (child: Node<'Msg>) (fallback: Node<'Msg>) : No
 let mkFact (id: string) (label: TextSource) (value: TextSource) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Fact { Emphasis = false; Help = None; Icon = None; Label = label; Tone = ToneVariant.Default; Value = value }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
-let mkFileUpload (id: string) (accept: string list) (label: TextSource) (multiple: bool) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.FileUpload { Accept = accept; Label = label; Multiple = multiple; OnSelect = None; Disabled = None; AcceptPaste = false; DropTarget = false; Capture = None; Destination = None; MaxBytes = None; MaxFiles = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+let mkFileUpload (id: string) (accept: string list) (label: TextSource) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.FileUpload { Accept = accept; Label = label; Multiple = false; OnSelect = None; Disabled = None; AcceptPaste = false; DropTarget = false; Capture = None; Destination = None; MaxBytes = None; MaxFiles = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkFilters (id: string) (items: FilterSpec<'Msg> list) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Filters { Items = items }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
@@ -4647,23 +4647,23 @@ let mkFragmentDecl (id: string) (body: Node<'Msg>) (name: string) : Node<'Msg> =
 let mkFragmentRef (id: string) (name: string) : Node<'Msg> =
     { Id = id; Kind = NodeKind.FragmentRef { Name = name; Args = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
-let mkHeading (id: string) (level: int) (text: TextSource) (variant: HeadingVariant) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Heading { Level = level; Text = text; Variant = variant }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+let mkHeading (id: string) (level: int) (text: TextSource) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Heading { Level = level; Text = text; Variant = HeadingVariant.Standard }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkIcon (id: string) (icon: string) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Icon { Icon = icon; Size = IconSize.Medium; Tone = ToneVariant.Default; Label = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
-let mkImage (id: string) (alt: TextSource) (src: Binding<string>) (variant: ImageVariant) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Image { Alt = alt; Src = src; Variant = variant; Fit = ImageFit.Natural; AspectRatio = ImageAspect.Natural; Loading = ImageLoading.Eager; SrcSet = []; Expandable = false; Caption = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+let mkImage (id: string) (alt: TextSource) (src: Binding<string>) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Image { Alt = alt; Src = src; Variant = ImageVariant.Default; Fit = ImageFit.Natural; AspectRatio = ImageAspect.Natural; Loading = ImageLoading.Eager; SrcSet = []; Expandable = false; Caption = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkLabelValueRow (id: string) (label: TextSource) (value: Binding<float>) : Node<'Msg> =
     { Id = id; Kind = NodeKind.LabelValueRow { Emphasis = false; Format = CellFormat.None; Label = label; Value = value; Help = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
-let mkLink (id: string) (href: Binding<string>) (label: TextSource) (download: bool) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Link { Href = href; Label = label; Download = download; Rel = None; Target = None; Protection = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+let mkLink (id: string) (href: Binding<string>) (label: TextSource) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Link { Href = href; Label = label; Download = false; Rel = None; Target = None; Protection = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
-let mkList (id: string) (items: TextSource list) (ordered: bool) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.List { Items = items; Ordered = ordered }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+let mkList (id: string) (items: TextSource list) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.List { Items = items; Ordered = false }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkMap (id: string) (centreLatitude: float) (centreLongitude: float) (source: Binding<MapMarker list>) (zoom: int) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Map { CentreLatitude = centreLatitude; CentreLongitude = centreLongitude; Source = source; Zoom = zoom; OnMarkerClick = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
@@ -4680,8 +4680,8 @@ let mkMedia (id: string) (kind: MediaKind) (label: TextSource) (src: Binding<str
 let mkMetric (id: string) (label: TextSource) (value: Binding<float>) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Metric { Label = label; Value = value; Format = CellFormat.None; Tone = ToneVariant.Default; Weight = StyleWeight.Standard; Emphasis = Emphasis.Normal; Trend = None; TrendFormat = None; TrendPolarity = TrendPolarity.HigherIsBetter; Icon = None; Subtext = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
-let mkModal (id: string) (children: Node<'Msg> list) (dismissable: bool) (``open``: Binding<bool>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Modal { Children = children; Dismissable = dismissable; OnDismiss = None; Open = ``open``; Heading = None; Modality = ModalityKind.Modal; Anchor = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+let mkModal (id: string) (children: Node<'Msg> list) (``open``: Binding<bool>) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Modal { Children = children; Dismissable = true; OnDismiss = None; Open = ``open``; Heading = None; Modality = ModalityKind.Modal; Anchor = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkMount (id: string) (capabilities: string list) (channel: GuestChannel) (scopeId: string) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Mount { Capabilities = capabilities; Channel = channel; Inputs = None; OnBubble = None; ScopeId = scopeId }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
@@ -4704,8 +4704,8 @@ let mkSparkline (id: string) (source: Binding<float list>) : Node<'Msg> =
 let mkSplitPanel (id: string) (children: Node<'Msg> list) (weight: float) : Node<'Msg> =
     { Id = id; Kind = NodeKind.SplitPanel { Children = children; Weight = weight }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
-let mkStepper (id: string) (activeStep: Binding<int>) (children: Node<'Msg> list) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Stepper { ActiveStep = activeStep; Children = children; OnSelect = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
+let mkStepper (id: string) (children: Node<'Msg> list) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Stepper { ActiveStep = Binding.Static(Some(0)); Children = children; OnSelect = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkSummaryList (id: string) (children: Node<'Msg> list) : Node<'Msg> =
     { Id = id; Kind = NodeKind.SummaryList { Children = children; Heading = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }

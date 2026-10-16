@@ -7889,6 +7889,60 @@ moves. The decoder's behaviour (`Fuaran.UI.Ops`) moves with it.
   `nodes/select-multiple-false.json`, generated from `Fixtures.selectMultipleFalse`. No surface change
   here: the slot's class is unchanged.
 
+### What rides this slot — Phase 2300 (the canonical form is rules the generator applies to every row)
+
+**Class: BREAKING on the canonical wire (bytes move for fifteen fields) + BREAKING for F# consumers of the
+generated smart constructors; record field TYPES are unchanged.** The slot is already breaking-class, so no number
+moves. This is the F# side of the three canonical-consistency rules (WIRE_FORMAT.md §3.6, Phase 2300; the operator
+rulings of 2026-10-01 under phases 1963, 1964 and 1965); it rides the announced breaking cut whose carrier is Phase
+2303 (the D6 carrier) — the version is NOT advanced by this phase and nothing is packed or released from it.
+
+- **Rule 1, declared default — applied.** Fifteen fields that were `required` in the IDL now declare their default
+  (`omitDefault`), so the generated encoder omits each at its default and the policy decoder restores it on absence
+  (one helper, `fieldOrDefault`, in place of fifteen `requireField` sites):
+  `Flex.wrap`, `Link.download`, `List.ordered`, `CodeBlock.copyable`, `CodeBlock.lineNumbers`, `CodeBlock.highlightLines`
+  (`[]`), `FormField.required`, `FileUpload.multiple`, `Disclosure.defaultOpen` (all `false`); `Heading.variant`
+  (`Standard`); `Image.variant` (`Default`); `SegmentedChoice.orientation` (`Horizontal` — the decoder restored it since
+  Phase 460 while the encoder still emitted it); `Stepper.activeStep` (`Static{value=0}`, the `Tabs.activeIndex`
+  precedent); `Disclosure.open` (`Static{value=false}`); and `Modal.dismissable` (`true` — the `Toast` polarity; every
+  corpus modal carried `true`, so the Phase 1963 guess of `false` is struck). `Badge.variant` and `Button.variant` stay
+  required: no case dominates the stored emissions, so they have no identity default.
+  - **Wire.** A document carrying one of these fields at its default re-encodes WITHOUT the member; every old document
+    still decodes to the same tree (`lenient/lenient-2300-declared-default-{booleans,enums,bindings}` pin the explicit
+    forms). A reader that required one of these keys refuses new documents — the §11.0 hosts take the change by
+    regeneration under their V1 keystones (2073, 2296, 2297, 2298, 2299), not by a hand pass.
+  - **F# surface.** `Fuaran.UI.Generated.mkHeading`, `mkImage`, `mkLink`, `mkCodeBlock`, `mkList`, `mkModal`,
+    `mkStepper`, `mkDisclosure` and `mkFileUpload` lose the parameter of each now-defaulted field (an `omitDefault` field
+    is not a constructor parameter); set the field on the record instead. `HeadingSpec.Variant`, `LinkSpec.Download`
+    and the rest keep their types (`bool`, `int list`, `Binding<_>`, the enum) — a record literal compiles unchanged.
+    `schema.json` drops the fifteen names from the kinds' `required` lists.
+- **Rule 2, absent when meaningless — declared, two rows applied.** The presence table in §3.6 names each Phase 1964
+  field, the configuration in which it is meaningless and what its absence means. Applied now: `Disclosure.defaultOpen`
+  (rule 1) and the `Select.value` / `values` arity split (Phase 1962, above). Declared and landing at the cut, because
+  each retypes a host field to an option or wants a presence condition the IDL engine cannot yet carry: `Grid.cols`
+  (under `templateColumns`), `DataGrid.columns` / `source` (under `staticRows`), `Form.onSubmit`, `Button.onClick`,
+  `Binding.Local.format` / `parse`, `Binding.Format.locale` (`Ambient`), `Action.Notify.payload` and
+  `TextSource.I18n.args` (`{}` — the IDL engine has no empty-map default literal, the Phase 1670 note), and the
+  icon-only `Button.label`.
+- **Rule 3, one name per concept — decided, landing at the cut.** The naming table in §3.6 (beside the lenient alias
+  table) takes each Phase 1965 decision once, with its evidence and reason. The renames it schedules for the cut, each a
+  wire key AND the generated F# record field, every retired spelling a lenient alias from then on:
+  `Select.source` → `options` and `Tokens.suggestions` → `options` (the choice set of a selection control; a DATA
+  collection stays `source`); `Filters` item `name` → `id` and `Binding.Filter.name` → `key`; `Fact.emphasis` /
+  `LabelValueRow.emphasis` `bool` → the `Emphasis` enum; `Flex.direction` → `orientation`; `Chart.title`, `Drawing.title`,
+  `Embed.title` → `heading`; `Format.Currency.isoCode` → `code`; the `Range` / `DateTimeRange` bare pair → the general
+  `Static` envelope; the Transform source's canonical form becomes the §16.1 preferred form. Decided and already true:
+  one `value` slot per control (`Select`'s arity split the declared exception) and one boolean polarity (`false`, with
+  the overlay and token-field exceptions enumerated in rule 1).
+- **Consumers.** `orchestration`, `eval-suite` and `fuaran-live` compile against `Fuaran.UI` types; their raise to the
+  release carrying this slot is an adoption act after release. What they meet: a `mk*` call for one of the nine kinds
+  above loses an argument; nothing else at the type level in this phase. The renames land their type breaks with the
+  cut, listed above so the raise is planned once.
+
+**Certified by** the regenerated `nodes/` corpus (no canonical fixture carries a field at its declared default), the
+three `lenient-2300-*` vectors, `SchemaOptionalityParityTests` (an IDL-omittable field is out of the schema's
+`required`), the generated-layer byte test against `heading-1` and the §3.6 tables re-projected from `idl.json`.
+
 ### What rides this slot — Phase 2291 (a style edit carries the field it changes)
 
 **Class: BREAKING for F# consumers (two closed DUs gain a case) + a wire ADDITION (a new op) + a BEHAVIOUR

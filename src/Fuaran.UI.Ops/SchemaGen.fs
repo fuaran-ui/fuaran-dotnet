@@ -969,7 +969,7 @@ let private defs: (string * J) list =
                   "step", number ]
             duCase
                 "SegmentedChoice"
-                [ "options"; "orientation" ]
+                [ "options" ]
                 [ "onChange", closure
                   "options", binding "list_SelectOption"
                   "orientation", ref "Orientation"
@@ -1100,9 +1100,7 @@ let private defs: (string * J) list =
             "subtext", ref "TextSource" ]
 
       "HeadingSpec",
-      record
-          [ "level"; "text"; "variant" ]
-          [ "level", integer; "text", ref "TextSource"; "variant", ref "HeadingVariant" ]
+      record [ "level"; "text" ] [ "level", integer; "text", ref "TextSource"; "variant", ref "HeadingVariant" ]
 
       "MarkdownSpec", record [ "text" ] [ "text", ref "TextSource" ]
 
@@ -1110,7 +1108,7 @@ let private defs: (string * J) list =
 
       "LinkSpec",
       record
-          [ "download"; "href"; "label" ]
+          [ "href"; "label" ]
           [ "href", binding "str"
             "label", ref "TextSource"
             "download", boolean
@@ -1129,7 +1127,7 @@ let private defs: (string * J) list =
       // Phase 1079 — `expandable` is omitted-when-`false`, a fourth reason and
       // the plainest: the identity of a bool declaration is not declaring it.
       record
-          [ "alt"; "src"; "variant" ]
+          [ "alt"; "src" ]
           [ "alt", ref "TextSource"
             "aspectRatio", ref "ImageAspect"
             "caption", ref "TextSource"
@@ -1243,7 +1241,7 @@ let private defs: (string * J) list =
             "onSelect", closure
             "selectionStateKey", str ]
 
-      "ListSpec", record [ "items"; "ordered" ] [ "items", arrayOf (ref "TextSource"); "ordered", boolean ]
+      "ListSpec", record [ "items" ] [ "items", arrayOf (ref "TextSource"); "ordered", boolean ]
 
 
       "ToastSpec",
@@ -1257,7 +1255,7 @@ let private defs: (string * J) list =
 
       "CodeBlockSpec",
       record
-          [ "code"; "copyable"; "highlightLines"; "language"; "lineNumbers" ]
+          [ "code"; "language" ]
           [ "code", str
             "copyable", boolean
             "highlightLines", arrayOf integer
@@ -1496,7 +1494,7 @@ let private defs: (string * J) list =
       forbidding
           [ "validation"; "constraints"; "validate" ]
           (record
-              [ "id"; "kind"; "label"; "required" ]
+              [ "id"; "kind"; "label" ]
               [ "id", str
                 "kind", ref "FormFieldKind"
                 "label", ref "TextSource"
@@ -1548,7 +1546,7 @@ let private defs: (string * J) list =
       record
           // `onSelect` leaves `required` (Phase 1568) — IDL-`opt`, decoder
           // `tryField`: a declarative upload with no host continuation is legal.
-          [ "accept"; "label"; "multiple" ]
+          [ "accept"; "label" ]
           [ "accept", arrayOf str
             "label", ref "TextSource"
             "multiple", boolean
@@ -1818,7 +1816,7 @@ let private defs: (string * J) list =
             "keepTogether", boolean
             "breakBefore", boolean ]
 
-      "FlexLayout", record [ "direction"; "wrap" ] [ "direction", ref "Orientation"; "gap", integer; "wrap", boolean ]
+      "FlexLayout", record [ "direction" ] [ "direction", ref "Orientation"; "gap", integer; "wrap", boolean ]
 
       "GridTemplate", record [ "cols" ] [ "cols", integer; "gap", integer; "templateColumns", str ]
 
@@ -1862,7 +1860,7 @@ let private defs: (string * J) list =
 
       "StepperSpec",
       record
-          [ "activeStep"; "children" ]
+          [ "children" ]
           [ "activeStep", binding "int"
             "children", arrayOf (ref "Node")
             // `onSelect` is now carried; optional in the schema to match the
@@ -1877,7 +1875,7 @@ let private defs: (string * J) list =
           // `onToggle` (Phase 426) is an optional closure — present as the
           // sentinel when closure-authored (previously never encoded), omitted
           // for the declarative (write-back) shape.
-          [ "children"; "defaultOpen"; "heading"; "open" ]
+          [ "children"; "heading" ]
           [ "children", arrayOf (ref "Node")
             "defaultOpen", boolean
             "heading", ref "TextSource"
@@ -1893,7 +1891,7 @@ let private defs: (string * J) list =
           // Phase 1119 — `modality` omits at `Modal` and `anchor` is optional, so
           // neither joins the required set; a pre-1119 document validates against
           // this schema unchanged.
-          [ "children"; "dismissable"; "open" ]
+          [ "children"; "open" ]
           [ "children", arrayOf (ref "Node")
             "dismissable", boolean
             "onDismiss", ref "Action"

@@ -1115,7 +1115,10 @@ let private boxLayout =
           // on BOTH layout cases — no corpus fixture carries it; found by the
           // stage-3 swap reading the hand-written encoder.
           { Tag = "Flex"
-            Fields = [ req "direction" (TEnum "Orientation"); req "wrap" TBool; opt "gap" TInt ]
+            Fields =
+              [ req "direction" (TEnum "Orientation")
+                omit "wrap" TBool (VBool false)
+                opt "gap" TInt ]
             Annotations = Annotations.Empty }
           { Tag = "Grid"
             Fields = [ req "cols" TInt; opt "templateColumns" TStr; opt "gap" TInt ]
@@ -1225,7 +1228,7 @@ let private formFieldKind =
               [ req "options" (TUnion("Binding", [ TList(TRecord "SelectOption") ]))
                 opt "value" (fieldValue TStr "dStr" "JStr")
                 opt "onChange" (fieldChange "string | null")
-                req "orientation" (TEnum "Orientation") ]
+                omit "orientation" (TEnum "Orientation") (VEnum "Horizontal") ]
             Annotations = Annotations.Empty }
           // Phase 1811 — `DateTime` (was `Date`): the field already accepted a
           // date, a time of day or a date-time via `variant`; the name now says
@@ -1832,7 +1835,7 @@ let private formFieldRecord =
         [ req "id" TStr
           req "kind" (TUnion("FormFieldKind", []))
           req "label" (TUnion("TextSource", []))
-          req "required" TBool
+          omit "required" TBool (VBool false)
           opt "help" (TUnion("TextSource", []))
           opt "rule" (TRecord "FieldRule") ] }
 
@@ -2157,7 +2160,10 @@ let displayKinds: IdlKind list =
     [ { Tag = "Heading"
         Category = "Display"
         Annotations = Annotations.Empty
-        Fields = [ req "level" TInt; req "text" TS; req "variant" (TEnum "HeadingVariant") ] }
+        Fields =
+          [ req "level" TInt
+            req "text" TS
+            omit "variant" (TEnum "HeadingVariant") (VEnum "Standard") ] }
       { Tag = "Badge"
         Category = "Display"
         Annotations = Annotations.Empty
@@ -2189,7 +2195,7 @@ let displayKinds: IdlKind list =
       { Tag = "List"
         Category = "Display"
         Annotations = Annotations.Empty
-        Fields = [ req "items" (TList TS); req "ordered" TBool ] }
+        Fields = [ req "items" (TList TS); omit "ordered" TBool (VBool false) ] }
       // Phase 1120 — the recursive-disclosure kind, admitted on the SEMANTICS
       // ground. It sits here beside `List`, in the Display family, because the
       // family line is drawn on whether a kind bears `Node` children: `Tree`
@@ -2248,7 +2254,7 @@ let displayKinds: IdlKind list =
         Fields =
           [ req "alt" TS
             req "src" (bindingOf TStr)
-            req "variant" (TEnum "ImageVariant")
+            omit "variant" (TEnum "ImageVariant") (VEnum "Default")
             omit "fit" (TEnum "ImageFit") (VEnum "Natural")
             omit "aspectRatio" (TEnum "ImageAspect") (VEnum "Natural")
             omit "loading" (TEnum "ImageLoading") (VEnum "Eager")
@@ -2360,7 +2366,7 @@ let displayKinds: IdlKind list =
         Fields =
           [ req "href" (bindingOf TStr)
             req "label" TS
-            req "download" TBool
+            omit "download" TBool (VBool false)
             opt "rel" TStr
             opt "target" TStr
             // Phase 812 — the anti-scraper render strategy. Omitted when absent.
@@ -2440,10 +2446,10 @@ let displayKinds: IdlKind list =
         Annotations = Annotations.Empty
         Fields =
           [ req "code" TStr
-            req "copyable" TBool
-            req "highlightLines" (TList TInt)
+            omit "copyable" TBool (VBool false)
+            omit "highlightLines" (TList TInt) (VList [])
             req "language" TStr
-            req "lineNumbers" TBool ] }
+            omit "lineNumbers" TBool (VBool false) ] }
       // Phase 679 — `Toast`. NOTE the polarity: `dismissable` omits when TRUE
       // (a toast defaults dismissable), the opposite of `Callout`'s, which omits
       // when false. Same field name, same type, inverted default.
@@ -2520,10 +2526,10 @@ let layoutKinds: IdlKind list =
         // present. The direct byte-diff caught the drift (`controls-closure`).
         Fields =
           [ req "children" (TList TNode)
-            req "defaultOpen" TBool
+            omit "defaultOpen" TBool (VBool false)
             req "heading" TS
             opt "onToggle" (handlerOf "bool" "boolean")
-            req "open" (bindingOf TBool) ] }
+            omit "open" (bindingOf TBool) (VUnion("Static", [ "value", VBool false ])) ] }
       { Tag = "Modal"
         Category = "Layout"
         Annotations = Annotations.Empty
@@ -2540,7 +2546,7 @@ let layoutKinds: IdlKind list =
         // declaration the tier's validator reports, not a decode refusal).
         Fields =
           [ req "children" (TList TNode)
-            req "dismissable" TBool
+            omit "dismissable" TBool (VBool true)
             opt "onDismiss" (TUnion("Action", []))
             req "open" (bindingOf TBool)
             opt "heading" TS
@@ -2595,7 +2601,7 @@ let layoutKinds: IdlKind list =
         Category = "Layout"
         Annotations = Annotations.Empty
         Fields =
-          [ req "activeStep" (bindingOf TInt)
+          [ omit "activeStep" (bindingOf TInt) (VUnion("Static", [ "value", VInt 0 ]))
             req "children" (TList TNode)
             opt "onSelect" (handlerOf "int" "number") ] } ]
 
@@ -2658,7 +2664,7 @@ let inputKinds: IdlKind list =
         Fields =
           [ req "accept" (TList TStr)
             req "label" (TUnion("TextSource", []))
-            req "multiple" TBool
+            omit "multiple" TBool (VBool false)
             // The handler arg is the hosted browser-file metadata record (prelude
             // type; closure args never serialise, so no codec is needed).
             opt "onSelect" (handlerOf "Fuaran.UI.HostPrelude.FileSelection list" "unknown[]")

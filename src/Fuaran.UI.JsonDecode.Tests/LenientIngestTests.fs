@@ -24,10 +24,10 @@ let tests =
               // {"$type":"Literal","text":…} remains decode-accepted forever,
               // but the CANONICAL encoding is the bare string.
               let shorthand =
-                  """{"id":"heading-1","kind":{"$type":"Heading","level":2,"text":"Channel performance","variant":"Standard"}}"""
+                  """{"id":"heading-1","kind":{"$type":"Heading","level":2,"text":"Channel performance"}}"""
 
               let verbose =
-                  """{"id":"heading-1","kind":{"$type":"Heading","level":2,"text":{"$type":"Literal","text":"Channel performance"},"variant":"Standard"}}"""
+                  """{"id":"heading-1","kind":{"$type":"Heading","level":2,"text":{"$type":"Literal","text":"Channel performance"}}}"""
 
               let fromShorthand = decodeOk "shorthand" shorthand
               let fromVerbose = decodeOk "verbose" verbose

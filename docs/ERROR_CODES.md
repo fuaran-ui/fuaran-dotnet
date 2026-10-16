@@ -1061,6 +1061,14 @@ the tree rooted at '{nodeId}' encodes to {measured} bytes; this host allows {lim
 grid '{nodeId}' column '{columnLabel}' is an action column (Button / ButtonGroup cell) and declares field '{field}' — an action cell draws its own label and hands the whole row to its handler, so the field is never displayed, and sort and export ignore it; drop the field: an action column carries none (Phase 1909)
 ```
 
+#### `FUARAN164` — Warning
+
+`MultiSelectValueIgnored` (Phase 1962)
+
+```text
+multi-select '{nodeId}' carries a `value` — a multi-select's selection is `values`, it never reads `value`, and every conformant decoder drops one; set Value = None, or build it with Fuaran.multiSelect (Phase 1962)
+```
+
 <!-- END GENERATED: PreEmitValidate.DefectCodes.toMarkdown -->
 
 ---

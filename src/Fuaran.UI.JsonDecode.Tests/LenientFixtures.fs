@@ -384,7 +384,7 @@ let all: LenientFixture list =
         VerboseJson =
           """{"id":"len-seg","kind":{"$type":"Filters","items":[{"kind":{"$type":"SegmentedChoice","options":{"$type":"Static","value":[{"label":{"$type":"Literal","text":"Last 7 days"},"value":"Last 7 days"},{"label":{"$type":"Literal","text":"Last 30 days"},"value":"Last 30 days"}]},"orientation":"Horizontal","value":{"$type":"Filter","name":"range"}},"label":{"$type":"Literal","text":"Range"},"name":"range"}]}}"""
         Description =
-          "Omitted-when-default (the Phase 460 posture applied to `orientation`) — an absent segmented `orientation` restores the language default `Horizontal` (observed omitted in eval emission data); decode-only, the encoder still always emits it. Combined here with the bare-options shape coercion." }
+          "Omitted-when-default (the Phase 460 posture applied to `orientation`) — an absent segmented `orientation` restores the language default `Horizontal` (observed omitted in eval emission data). Declared `omitDefault` in the IDL since Phase 2300, so the encoder omits it too. Combined here with the bare-options shape coercion." }
 
       { Id = "lenient-shape-binding-scalar-fraction"
         LenientJson =
@@ -931,6 +931,42 @@ let all: LenientFixture list =
           """{"id":"len-1962","kind":{"$type":"Box","children":[{"id":"len-1962-tags","kind":{"$type":"Select","label":"Tags","multiple":true,"source":{"$type":"Static","value":[{"label":"Red","value":"red"},{"label":"Green","value":"green"}]},"values":{"$type":"State","key":"tags"}}},{"id":"len-1962-depts","kind":{"$type":"Select","label":"Departments","multiple":true,"source":{"$type":"Static","value":[{"label":"Sales","value":"sales"}]},"values":{"$type":"Filter","name":"depts"}}},{"id":"len-1962-cats","kind":{"$type":"Select","label":"Categories","multiple":true,"source":{"$type":"Static","value":[{"label":"Auth","value":"Auth"}]},"values":{"$type":"State","key":"categories"}}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}"""
         Description =
           "§3.2 — a multi-select (`\"multiple\":true`) carrying a `value` beside its `values` decodes and re-encodes WITHOUT `value`: a multi-select carries `values` and no `value`, and never reads one. Three spellings, one per child: the empty-`Static` placeholder every pre-1962 multi-select carried (bare, and with `\"value\":null`) and a real State binding of the kind models wrote beside `values`. A malformed `value` still refuses as a malformed binding (Phase 1962)" }
+
+      // ─── Phase 2300 — the declared-default rule, one vector per field family ──
+      //
+      // §3.6's rule is one sentence: a field with a declared default is ABSENT
+      // from the canonical form at that default, on every kind, and a document
+      // carrying the default explicitly decodes to the same value and
+      // re-encodes without it. Phase 2300 declared the default of fifteen
+      // fields that were `required` until then (the Phase 1963 list, plus the
+      // two the sweep found whose decoder already filled a default the IDL did
+      // not declare: `SegmentedChoice.orientation` and `Disclosure.defaultOpen`).
+      // One vector per family — booleans and the empty list, enum cases, and
+      // binding initial values — pins the explicit-default spelling every
+      // stored document carries.
+      { Id = "lenient-2300-declared-default-booleans"
+        LenientJson =
+          """{"id":"len-2300-bool","kind":{"$type":"Box","children":[{"id":"len-2300-link","kind":{"$type":"Link","download":false,"href":{"$type":"Static","value":"/about"},"label":"About us"}},{"id":"len-2300-list","kind":{"$type":"List","items":["First"],"ordered":false}},{"id":"len-2300-code","kind":{"$type":"CodeBlock","code":"let x = 1","copyable":false,"highlightLines":[],"language":"fsharp","lineNumbers":false}},{"id":"len-2300-upload","kind":{"$type":"FileUpload","accept":[".csv"],"label":"Upload CSV","multiple":false}},{"id":"len-2300-form","kind":{"$type":"Form","fields":[{"id":"guest-name","kind":{"$type":"Text"},"label":"Name","required":false}],"onSubmit":{"$type":"Chain","ops":[]},"submitLabel":"Book"}},{"id":"len-2300-modal","kind":{"$type":"Modal","children":[{"id":"len-2300-md","kind":{"$type":"Markdown","text":"Updated hourly."}}],"dismissable":true,"heading":"Confirm","open":{"$type":"Static","value":false}}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}"""
+        VerboseJson =
+          """{"id":"len-2300-bool","kind":{"$type":"Box","children":[{"id":"len-2300-link","kind":{"$type":"Link","href":{"$type":"Static","value":"/about"},"label":"About us"}},{"id":"len-2300-list","kind":{"$type":"List","items":["First"]}},{"id":"len-2300-code","kind":{"$type":"CodeBlock","code":"let x = 1","language":"fsharp"}},{"id":"len-2300-upload","kind":{"$type":"FileUpload","accept":[".csv"],"label":"Upload CSV"}},{"id":"len-2300-form","kind":{"$type":"Form","fields":[{"id":"guest-name","kind":{"$type":"Text"},"label":"Name"}],"onSubmit":{"$type":"Chain","ops":[]},"submitLabel":"Book"}},{"id":"len-2300-modal","kind":{"$type":"Modal","children":[{"id":"len-2300-md","kind":{"$type":"Markdown","text":"Updated hourly."}}],"heading":"Confirm","open":{"$type":"Static","value":false}}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}"""
+        Description =
+          "§3.6 — the declared-default rule over the boolean and list fields Phase 2300 declared: `Flex.wrap`, `Link.download`, `List.ordered`, `CodeBlock.copyable` / `lineNumbers` / `highlightLines`, `FileUpload.multiple`, `FormField.required` (each `false` / `[]`) and `Modal.dismissable` (`true` — an overlay is dismissable unless it says otherwise, the `Toast` polarity). Each written explicitly at its default decodes to the same tree and re-encodes WITHOUT the member; the same field at the non-default value is unchanged (Phase 2300)" }
+
+      { Id = "lenient-2300-declared-default-enums"
+        LenientJson =
+          """{"id":"len-2300-enum","kind":{"$type":"Box","children":[{"id":"len-2300-heading","kind":{"$type":"Heading","level":2,"text":"Channel performance","variant":"Standard"}},{"id":"len-2300-image","kind":{"$type":"Image","alt":"Logo","src":{"$type":"Static","value":"/logo.png"},"variant":"Default"}},{"id":"len-2300-filters","kind":{"$type":"Filters","items":[{"kind":{"$type":"SegmentedChoice","options":{"$type":"Static","value":[{"label":"Low","value":"low"},{"label":"High","value":"high"}]},"orientation":"Horizontal"},"label":"Tier","name":"tier"}]}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}"""
+        VerboseJson =
+          """{"id":"len-2300-enum","kind":{"$type":"Box","children":[{"id":"len-2300-heading","kind":{"$type":"Heading","level":2,"text":"Channel performance"}},{"id":"len-2300-image","kind":{"$type":"Image","alt":"Logo","src":{"$type":"Static","value":"/logo.png"}}},{"id":"len-2300-filters","kind":{"$type":"Filters","items":[{"kind":{"$type":"SegmentedChoice","options":{"$type":"Static","value":[{"label":"Low","value":"low"},{"label":"High","value":"high"}]}},"label":"Tier","name":"tier"}]}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}"""
+        Description =
+          "§3.6 — the declared-default rule over the enum-valued fields Phase 2300 declared: `Heading.variant` (`Standard`), `Image.variant` (`Default`) and `SegmentedChoice.orientation` (`Horizontal`, which the decoder restored on absence since Phase 460 while the encoder still emitted it). Each written explicitly at its default re-encodes WITHOUT the member (Phase 2300)" }
+
+      { Id = "lenient-2300-declared-default-bindings"
+        LenientJson =
+          """{"id":"len-2300-binding","kind":{"$type":"Box","children":[{"id":"len-2300-stepper","kind":{"$type":"Stepper","activeStep":{"$type":"Static","value":0},"children":[{"id":"len-2300-s1","kind":{"$type":"Markdown","text":"One"}},{"id":"len-2300-s2","kind":{"$type":"Markdown","text":"Two"}}]}},{"id":"len-2300-disclosure","kind":{"$type":"Disclosure","children":[{"id":"len-2300-d1","kind":{"$type":"Markdown","text":"Detail"}}],"defaultOpen":false,"heading":"Advanced","open":{"$type":"Static","value":false}}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}"""
+        VerboseJson =
+          """{"id":"len-2300-binding","kind":{"$type":"Box","children":[{"id":"len-2300-stepper","kind":{"$type":"Stepper","children":[{"id":"len-2300-s1","kind":{"$type":"Markdown","text":"One"}},{"id":"len-2300-s2","kind":{"$type":"Markdown","text":"Two"}}]}},{"id":"len-2300-disclosure","kind":{"$type":"Disclosure","children":[{"id":"len-2300-d1","kind":{"$type":"Markdown","text":"Detail"}}],"heading":"Advanced"}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}"""
+        Description =
+          "§3.6 — the declared-default rule over the binding-valued initial slots Phase 2300 declared: `Stepper.activeStep` (`Static{value=0}`, the `Tabs.activeIndex` precedent) and `Disclosure.open` (`Static{value=false}`) beside `Disclosure.defaultOpen` (`false`). Each written explicitly at its default re-encodes WITHOUT the member; a State-bound `open` is not a default and is kept (Phase 2300)" }
 
       // ─── Phase 1670 — the `FragmentRef` twin, and why it is NOT here ───────
       //
