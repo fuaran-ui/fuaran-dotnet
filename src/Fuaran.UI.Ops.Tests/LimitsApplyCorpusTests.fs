@@ -5,7 +5,11 @@ module Fuaran.UI.Tests.LimitsApplyCorpus
 //  (Phase 2141): every op that can grow a tree is checked on its result, and
 //  one that takes the tree past WireLimits is refused with `LimitExceeded`;
 //  and against `apply/duplicate-ids-apply.json` (Phase 2172): an op that
-//  leaves an id it installed held twice is refused with `DuplicateNodeId`.
+//  leaves an id it installed held twice is refused with `DuplicateNodeId`;
+//  and against `apply/style-normalise-apply.json` (Phase 2313): a style result
+//  equal to the default record is stored as the absent slot, so the applied
+//  tree encodes with no `style` member. A vector that pins `expected.tree`
+//  also requires the applied tree to re-encode to exactly those bytes.
 //
 //  Each vector's tree and op are decoded by this host's own wire decoder and
 //  applied. An absent corpus is a FAILURE, not a skip: a suite that certified
@@ -18,6 +22,7 @@ open Expecto
 open Fuaran.UI
 open Fuaran.UI.Ops
 open Fuaran.UI.Ops.Types
+open Fuaran.UI.OpStream.Abstractions
 
 /// A JSON string member, refusing a null rather than carrying one.
 let private str (e: JsonElement) : string =
@@ -30,7 +35,8 @@ type private Vector =
       Tree: string
       Op: string
       Verdict: string
-      Code: string option }
+      Code: string option
+      ExpectedTree: string option }
 
 let private loadVectors (familyId: string) : int * Vector list =
     let root = Fuaran.Tests.CorpusRoot.find ()
@@ -59,6 +65,10 @@ let private loadVectors (familyId: string) : int * Vector list =
               Code =
                 match expected.TryGetProperty("code") with
                 | true, c -> Some(str c)
+                | _ -> None
+              ExpectedTree =
+                match expected.TryGetProperty("tree") with
+                | true, t -> Some(str t)
                 | _ -> None })
         |> List.ofSeq
 
@@ -87,7 +97,14 @@ let private certify (familyId: string) =
             | Error e -> failtestf "%s: the op did not decode: %A" v.Id e
 
         match v.Verdict, Apply.apply op tree with
-        | "accept", Ok _ -> ()
+        | "accept", Ok applied ->
+            match v.ExpectedTree with
+            | Some bytes ->
+                Expect.equal
+                    (CanonicalJson.encodeNode applied)
+                    bytes
+                    (sprintf "%s: the applied tree's canonical bytes" v.Id)
+            | None -> ()
         | "accept", Error err -> failtestf "%s: expected accept, refused with %A" v.Id err.Code
         | "reject", Error err -> Expect.equal (Some(codeToken err.Code)) v.Code (sprintf "%s: the refusal code" v.Id)
         | "reject", Ok _ -> failtestf "%s: expected a %A refusal, the op applied" v.Id v.Code
@@ -98,4 +115,5 @@ let tests =
     testList
         "Fuaran.UI.Ops apply/ corpus families"
         [ test "every limitsApply vector holds on this host" { certify "limitsApply" }
-          test "every duplicateIdsApply vector holds on this host" { certify "duplicateIdsApply" } ]
+          test "every duplicateIdsApply vector holds on this host" { certify "duplicateIdsApply" }
+          test "every styleNormaliseApply vector holds on this host" { certify "styleNormaliseApply" } ]
