@@ -10,6 +10,86 @@ consequence.
 
 ---
 
+## 2026-10-16 — D19: the decoder does not yet parse through Core's limited parse; two conditions remain, and row 7 is provisionally Core's answer
+
+**Decided.** Phase 2286 set out to route `JsonDecode.tryParse` through `Json.parseWithLimits` (Fuaran.Core.Wire
+0.38.1, fuaran-core#465) with `WireLimits`' values and delete the private parser. It does not, and D16 stands until
+both conditions below are met. What 0.38.1 does close is D16's limits half: Core now takes a limits record and
+enforces it on the way down, reporting a breach as a typed `LimitExceeded`, never as malformed JSON. With rows 1 and
+5 answered since fuaran-core#462, two of D16's three facts no longer hold. One still does, and the cohort raise is a
+prerequisite in its own right.
+
+1. **`JVal` still has no null, and no `NullPolicy` reproduces this host's null answers.** Measured against 0.38.1's
+   `parseWithLimits`, over the corpus's null fixtures:
+   - under `RejectNull`, every one of the seven `reject/*null*` inputs is `NullNotRepresentable`. That maps to
+     `INVALID_JSON` at `$`, where each fixture requires `WRONG_TYPE` at the null's own path (for example
+     `$.kind.srcSet`, `$.kind.onClick.payload`). Both `lenient/*null*` inputs, which must be accepted by read-compat,
+     are refused;
+   - under `EraseMemberNull`, all nine parse, with the null erased to absence. `reject-image-srcset-null` then
+     decodes, because an absent `srcSet` is the empty list. The fixture refuses it on purpose: a present null is a
+     second spelling of an absence that already has one.
+
+   Neither policy keeps the §6 envelope unchanged for every caller, which was the phase's acceptance. The parse can
+   move only when Core carries a null whose answer the decoder chooses by position (D16's rejected option, now the
+   only one left), or when the specification moves its null fixtures. The specification move was rejected in D16
+   and stays rejected here.
+2. **The raise to Fuaran.Core 0.38.1 is not a pin edit.** At 0.38.1, `Fuaran.sln` stops in its first layer with 72
+   errors in `Fuaran.UI` and `Fuaran.UI.Idl`. They fall into five classes: `Fuaran.Core.Row` / `RowCodec` removed;
+   schema entries become `Field`; the typed column vector; `Validator.Registry` becomes `RuleRegistry` in the
+   generated layer; and `KindProjection.MapMsg`. A whole-solution census of the same change set, taken at 0.37.0 on
+   2026-10-15, counted about 500 errors in 88 files. Two runtime prerequisites sit outside this repository:
+   - `Fuaran.Program` 0.9.0, the newest on nuget.org, is built on Fuaran.Core 0.34 and fails at run time on the
+     0.37 column;
+   - `Fuaran.Compute` 0.38.1, the version pinned here, is built on Fuaran.Core 0.36. A raised Core needs Compute
+     0.39 or later, and 0.40.0 is built on 0.37.0.
+
+   The raise therefore waits on Phase 1960, the tier-owned row codec, whose wire ruling is still open. It also
+   waits on a re-scoped Phase 2226 (column, `Field`, timestamp unit), on a Program release built on Core 0.37 or
+   later, and on the Compute pin moving with it. Because every project shares one pin, it lands as one change.
+
+**Row 7, provisional.** `WIRE_FORMAT.md` §20.2 row 7 (an overflowing exponent such as `1e999`) currently requires
+an accept. The direction recorded here, pending the operator's confirmation, is to amend it to Core's answer:
+`INVALID_JSON`, because Core's value model has no non-finite float. This is the conforming direction, since a
+non-finite literal reaches no conformant encoder. The amendment is NOT made to the specification by this entry. All
+five hosts accept today, and nothing in this phase changes their parsers, so the text would make every host
+non-conformant at once. It lands with the parse move, in the same change-set as each host's leg. Core also refuses
+an integer past 2^53 written in a layout that is not a double's canonical one (for example `9007199254740993`,
+`MalformedNumber`), where this host reads it. That divergence is outside §20.2's rows, and the same ruling must
+cover it before the move.
+
+**Measured before the move**, as the baseline the move is held to. Command:
+`dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- decode-rate 50`, one run at `fe90c4f`.
+The inputs are a 2001-node tree (177,216 chars) and 200 ops (79,770 chars):
+
+| Measure | Time (µs) | Allocated (bytes) |
+|---|---|---|
+| `node.string` | 7686.9 | 7,871,215 |
+| `node.jval` | 4204.1 | 5,698,257 |
+| `ops.string` | 825.0 | 3,045,937 |
+| `ops.jval` | 1611.1 | 2,162,825 |
+
+The figures come from a single run on a developer machine, so they are indicative only.
+
+**Rejected.**
+- Routing through `RejectNull` or `EraseMemberNull` and re-pinning the null fixtures to whatever answer results.
+  That is a specification change made to suit one host's parser, and in the `EraseMemberNull` case it admits a
+  document the format refuses on purpose.
+- Pre-scanning the text for nulls or overflowing exponents so that a Core parse returns the old answers. That
+  would be a second tokenizer in front of the one being adopted.
+- Raising only `Fuaran.Core.Wire`. `Row` lives in that package, so the same first-layer breaks occur, and the
+  cohort moves as one.
+
+**Consequence.** `JsonDecode.fs` keeps its parser, and the §20.1 rule-2 declaration in `GeneratedLayerTests.fs`
+stays as the executable record of the two accept sets. `WIRE_FORMAT.md` §20.1 and §21.5 are unchanged. The move
+becomes possible when Core carries a positional null and the 0.38-or-later raise has landed. When it does, it
+deletes the parser, retires the declaration, and makes the row-7 amendment.
+
+Roadmap: [Phase 2286](../../roadmap/phases/2286-the-reference-host-parses-through-core-with-its-own-limits-and-stops-carrying-a-parser-of-its-own.md),
+[Phase 2233](../../roadmap/phases/2233-the-codec-seams-private-parser-stays-until-core-carries-a-positional-null-and-the-limits.md),
+[Phase 1960](../../roadmap/phases/1960-the-ui-tier-hosts-its-own-row-codec.md), [Phase 2226](../../roadmap/phases/2226-fuaran-dotnet-moves-onto-core-s-typed-column.md).
+
+---
+
 ## 2026-10-15 — D18: the C# `*Options` records, the C# factory members and the VB mapping builders stay hand-written
 
 **Decided.** Phase 2241 generated the VB analyzer vocabulary and the C# enum maps from the IDL. The remaining two
