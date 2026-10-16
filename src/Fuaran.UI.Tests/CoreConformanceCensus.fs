@@ -246,6 +246,21 @@ let private aggregateNullSkipTest =
 let private columnarOpWithTest =
     "the columnar op algebra certifies under Core's columnarOpLawsWith at the kit's reference generator"
 
+/// The observer family (Phase 2307), enrolled from the two observer test projects: each in-memory
+/// observer threads Core's `ObserverWitness`, and its own suite certifies the witness it is built
+/// on. Named once each for the same reason every block above is.
+let private layoutObserverLawsTest =
+    "the in-memory layout observer's witness certifies under Core's observerLawsAt"
+
+let private styleObserverLawsTest =
+    "the in-memory style observer's witness certifies under Core's observerLawsAt, manifest-free and manifest-wired"
+
+/// Both observer packages are a port of the one family; the obsolete `observerLaws` forward
+/// delegates to the same laws and is classified the same way.
+let private observerPorts =
+    [ layoutObserverLawsTest, "Conformance.observerLawsAt (Fuaran.UI.LayoutObserver)"
+      styleObserverLawsTest, "Conformance.observerLawsAt (Fuaran.UI.StyleObserver)" ]
+
 /// One row per public law family of the pinned kit. Order here is authoring order (grouped by
 /// classification); the report sorts by family key, so this list may be reordered freely.
 let census: (string * Adoption) list =
@@ -655,9 +670,8 @@ let census: (string * Adoption) list =
       "Conformance.queryLawsAt",
       NotUsed
           "Fuaran.Core.Query's registry seam at a domain's QuerySeamWitness — no project here references the Core query registry (see queryLaws)"
-      "Conformance.observerLaws",
-      CarriedBy
-          "unfiled — Fuaran.UI.LayoutObserver is a domain instance of Fuaran.Core.Observer (Phase 322), the subject this family certifies; adoption is one ObserverWitness (Core 0.33.0, fuaran-core Phase 298) over the in-memory layout observer"
+      // Phase 2307 — the obsolete forward of observerLawsAt, reached through it.
+      "Conformance.observerLaws", AdoptedAcross observerPorts
       "Conformance.containmentLaws",
       CarriedBy
           "unfiled — Fuaran.UI.Ops.Apply delegates the structural-five apply to Core's applyContained under the tier's container predicate (containerLaws above), so containment at the tier's own NodeWitness / OpGen has a subject here; adoption runs it at the witnesses CoreAdoptionTests already builds"
@@ -800,9 +814,9 @@ let census: (string * Adoption) list =
       "Conformance.keyedArbitrationLawsAt",
       CarriedBy
           "unfiled — the 0.36.0 name of keyedArbitrationLaws: needs the same KeyedWitness as keyedChildrenLaws above"
-      "Conformance.observerLawsAt",
-      CarriedBy
-          "unfiled — the 0.36.0 name of observerLaws (see that row): Fuaran.UI.LayoutObserver is a domain instance of Fuaran.Core.Observer; adoption is one ObserverWitness over the in-memory layout observer"
+      // Phase 2307 — both in-memory observers run on Core's ObserverWitness, and each suite
+      // certifies the witness its observer is built on.
+      "Conformance.observerLawsAt", AdoptedAcross observerPorts
       "Conformance.sanitizeLawsAt",
       CarriedBy
           "unfiled — the 0.36.0 name of sanitizeLaws (see that row): Fuaran.UI.Renderer's Sanitize is this host's copy of the sanitisation floor; adoption is one SanitizeWitness over the tier's sanitiser"

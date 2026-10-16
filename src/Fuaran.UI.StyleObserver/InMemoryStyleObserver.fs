@@ -16,18 +16,23 @@ namespace Fuaran.UI.StyleObserver
 // the substrate-free path: write a fixture, register it, assert the
 // derived flags / contrast / subscriber emission pattern.
 //
-// **Tree walk via parent pointers.** Browser-side `ObserveTree`
-// queries the DOM; this implementation walks an explicit
-// `NodeId -> children` map built from the fixture's parent
-// declarations (BFS-ordered, same shape as `InMemoryLayoutObserver`).
-//
-// **Subscribe semantics.** `RegisterFixture` always emits an initial
-// observation; `Update` honours `EmitOnFlagChangeOnly`. Debounce
-// timing doesn't enter the in-memory path — the change-detection
-// contract is what the cost-model test exercises.
+// **A domain instance of `Fuaran.Core.Observer`'s witness (Phase
+// 2307).** The registry, the change-gated emission, the initial
+// emission on register and the parent-pointer tree walk are Core's
+// `ObserverWitness` functions over an `ObserverState` value this type
+// threads — the engine this file used to carry is gone. The UI
+// supplies the flag content: `Flags.derive`, plus the manifest-aware
+// `ManifestFlags.perNodeFlags` when a manifest is wired, and projects
+// each generic observation back into the richer `StyleObservation`.
+// Core's walk carries a visited set, so a cyclic parent declaration
+// walks each node once and ends, where the walk this file used to
+// carry looped forever. Subscription is host state, so the subscriber
+// list lives here, beside the state. Debounce timing doesn't enter
+// the in-memory path — the change-detection contract is what the
+// cost-model test exercises.
 
 open System
-open System.Collections.Generic
+open Fuaran.Core
 open Fuaran.UI.ThemeManifest
 
 /// One in-memory test fixture entry: the `StyleInput` to drive
@@ -42,40 +47,61 @@ type StyleFixture =
 /// `ObserveTree` / subscriber callbacks. When no manifest is supplied
 /// only the manifest-free (Phase 144) flags fire (graceful degradation).
 type InMemoryStyleObserver(options: StyleObserverOptions, manifest: ThemeManifest option) =
-    let registry = Dictionary<string, StyleFixture>()
-    let lastFlagSet = Dictionary<string, StyleFlag list>()
+    let witness = InMemoryStyleObserver.Witness(options, manifest)
+    let mutable state = ObserverWitness.empty<Flags.StyleInput, StyleFlag>
     let subscribers = ResizeArray<string * StyleObservation -> unit>()
 
-    let toObservation (nodeId: string) (fixture: StyleFixture) : StyleObservation =
-        let baseObs = Flags.toObservation options nodeId fixture.Input
+    /// Project a generic observation back into the UI's resolved-style
+    /// shape; the flags are the witness's, manifest-aware ones included.
+    let project (o: Observation<Flags.StyleInput, StyleFlag>) : StyleObservation =
+        { Flags.toObservation options o.NodeId o.Input with
+            Flags = o.Flags }
 
-        match manifest with
-        | Some m ->
-            { baseObs with
-                Flags = baseObs.Flags @ ManifestFlags.perNodeFlags m baseObs }
-        | None -> baseObs
+    // Delivery iterates a SNAPSHOT of the subscriber list, so a subscriber
+    // that disposes itself or subscribes another during its callback changes
+    // the list for the NEXT emission, never the one in flight; and a
+    // subscriber throwing must not poison its siblings (tests assert
+    // directly).
+    let emit (observation: Observation<Flags.StyleInput, StyleFlag>) =
+        let payload = observation.NodeId, project observation
 
-    let emit (nodeId: string) (observation: StyleObservation) =
-        for subscriber in subscribers do
+        for subscriber in subscribers.ToArray() do
             try
-                subscriber (nodeId, observation)
+                subscriber payload
             with ex ->
-                // A subscriber throwing must not poison sibling
-                // subscribers. In-memory path keeps it silent (tests
-                // assert directly).
                 ignore ex
 
     /// Phase 144 constructor — no manifest, manifest-free flags only.
     new(options: StyleObserverOptions) = InMemoryStyleObserver(options, None)
 
+    /// The witness this observer runs on — `Flags.derive` followed, when a
+    /// manifest is wired, by its per-node (Phase 146) flags, under the
+    /// options' emit policy (structural flag-set equality). The flags do not
+    /// depend on the node id. What `Conformance.observerLawsAt` certifies.
+    static member Witness
+        (options: StyleObserverOptions, manifest: ThemeManifest option)
+        : ObserverWitness<Flags.StyleInput, StyleFlag> =
+        let derive (input: Flags.StyleInput) =
+            match manifest with
+            | Some m ->
+                let baseObs = Flags.toObservation options "" input
+                baseObs.Flags @ ManifestFlags.perNodeFlags m baseObs
+            | None -> Flags.derive options input
+
+        ObserverWitness.createWith
+            derive
+            { EmitOnFlagChangeOnly = options.EmitOnFlagChangeOnly
+              FlagsEqual = (=) }
+
     /// Register or replace a fixture for `nodeId`. Fires an initial
     /// emission for the registered node regardless of
     /// `EmitOnFlagChangeOnly` (initial-emission rule).
     member _.RegisterFixture(nodeId: string, fixture: StyleFixture) : unit =
-        registry[nodeId] <- fixture
-        let observation = toObservation nodeId fixture
-        lastFlagSet[nodeId] <- observation.Flags
-        emit nodeId observation
+        let next, observation =
+            ObserverWitness.register witness nodeId fixture.Input fixture.Parent state
+
+        state <- next
+        emit observation
 
     /// Replace the existing fixture's input. Honours
     /// `EmitOnFlagChangeOnly` — fires the subscriber callback only
@@ -83,65 +109,18 @@ type InMemoryStyleObserver(options: StyleObserverOptions, manifest: ThemeManifes
     /// (or always, when the option is false). No-op if `nodeId` isn't
     /// registered.
     member _.Update(nodeId: string, input: Flags.StyleInput) : unit =
-        match registry.TryGetValue(nodeId) with
-        | false, _ -> ()
-        | true, existing ->
-            let next = { existing with Input = input }
-            registry[nodeId] <- next
-            let observation = toObservation nodeId next
-
-            let previousFlags =
-                match lastFlagSet.TryGetValue(nodeId) with
-                | true, flags -> flags
-                | false, _ -> []
-
-            lastFlagSet[nodeId] <- observation.Flags
-
-            let shouldEmit =
-                if options.EmitOnFlagChangeOnly then
-                    observation.Flags <> previousFlags
-                else
-                    true
-
-            if shouldEmit then
-                emit nodeId observation
+        let next, emission = ObserverWitness.update witness nodeId input state
+        state <- next
+        emission |> Option.iter emit
 
     interface IStyleObserver with
         member _.Observe(nodeId: string) : StyleObservation option =
-            match registry.TryGetValue(nodeId) with
-            | true, fixture -> Some(toObservation nodeId fixture)
-            | false, _ -> None
+            ObserverWitness.snapshot state nodeId |> Option.map project
 
         member _.ObserveTree(rootNodeId: string) : StyleObservation list =
-            // Walk children via the fixture's parent pointers. BFS-shaped
-            // to keep the result deterministic by tree level then by
-            // NodeId insertion order (same shape as InMemoryLayoutObserver).
-            match registry.TryGetValue(rootNodeId) with
-            | false, _ -> []
-            | true, _ ->
-                let children =
-                    registry
-                    |> Seq.choose (fun kvp ->
-                        match kvp.Value.Parent with
-                        | Some p -> Some(p, kvp.Key)
-                        | None -> None)
-                    |> Seq.groupBy fst
-                    |> Seq.map (fun (parent, pairs) -> parent, pairs |> Seq.map snd |> Seq.toList)
-                    |> Map.ofSeq
-
-                let rec walk (acc: StyleObservation list) (queue: string list) : StyleObservation list =
-                    match queue with
-                    | [] -> List.rev acc
-                    | nodeId :: rest ->
-                        let observation =
-                            match registry.TryGetValue(nodeId) with
-                            | true, fixture -> [ toObservation nodeId fixture ]
-                            | false, _ -> []
-
-                        let kids = Map.tryFind nodeId children |> Option.defaultValue []
-                        walk (List.rev observation @ acc) (rest @ kids)
-
-                walk [] [ rootNodeId ]
+            // Breadth-first by level, then by registration order — and total
+            // over a cyclic parent declaration (Core's visited set).
+            ObserverWitness.observeTree state rootNodeId |> List.map project
 
         member _.Subscribe(handler: string * StyleObservation -> unit) : IDisposable =
             subscribers.Add(handler)
@@ -155,7 +134,7 @@ type InMemoryStyleObserver(options: StyleObserverOptions, manifest: ThemeManifes
             // from the renderer's mount hook don't crash on the in-memory
             // observer. Test authors normally call RegisterFixture with a
             // populated input.
-            if not (registry.ContainsKey(nodeId)) then
+            if not (Map.containsKey nodeId state.Entries) then
                 this.RegisterFixture(
                     nodeId,
                     { Input = Flags.StyleInput.baseline
@@ -163,8 +142,7 @@ type InMemoryStyleObserver(options: StyleObserverOptions, manifest: ThemeManifes
                 )
 
         member _.Unregister(nodeId: string) : unit =
-            registry.Remove(nodeId) |> ignore
-            lastFlagSet.Remove(nodeId) |> ignore
+            state <- ObserverWitness.unregister nodeId state
 
 module InMemoryStyleObserver =
     /// Construct with the v1 default options.

@@ -7,17 +7,17 @@ namespace Fuaran.UI.LayoutObserver
 // runs the shared `Flags.derive` logic, surfaces results via the
 // same `ILayoutObserver` interface the browser observer satisfies.
 //
-// **Phase 322 — a domain instance of `Fuaran.Core.Observer`.** The
-// registry / change-gated emission / parent-pointer tree walk that
-// used to live here is now the generic `Fuaran.Core.Observer`
-// engine; this type is a thin domain adapter that supplies the UI
-// flag vocabulary (`LayoutFlag`) + metric envelope (`Flags.LayoutInput`)
-// + the pure `Flags.derive` derivation, and projects the generic
-// `Observation<LayoutInput, LayoutFlag>` back into the UI's richer
-// `LayoutObservation` (which reads width / height / viewport
-// coordinates off the input). Behaviour is unchanged — the engine is
-// the faithful lift of what this file used to do — and the existing
-// Expecto suite is the parity test.
+// **A domain instance of `Fuaran.Core.Observer`'s witness.** The
+// registry, the change-gated emission and the parent-pointer tree
+// walk are Core's `ObserverWitness` functions over an `ObserverState`
+// value this type threads (Phase 322 lifted them out of this file;
+// Phase 2307 moved this type off the OO adapter Core removed). The
+// UI supplies the flag vocabulary (`LayoutFlag`), the metric
+// envelope (`Flags.LayoutInput`) and the pure `Flags.derive`, and
+// projects each generic `Observation<LayoutInput, LayoutFlag>` back
+// into the UI's richer `LayoutObservation` (width / height /
+// viewport coordinates read off the input). Subscription is host
+// state, so the subscriber list lives here, beside the state.
 //
 // **Why a separate concrete?** Tests + future eval gates need
 // to drive flag derivation without browser substrate; mocking
@@ -32,7 +32,7 @@ namespace Fuaran.UI.LayoutObserver
 // test purposes; the browser observer's DOM-based walk is the
 // production path.
 
-open Fuaran.Core.Observer
+open Fuaran.Core
 
 /// One in-memory test fixture entry: the `LayoutInput` to drive
 /// derivation, plus an optional parent NodeId to support tree
@@ -42,22 +42,13 @@ type LayoutFixture =
       Parent: string option }
 
 /// In-memory observer. Construct with the desired options; drive
-/// `Register` + `Update` from tests; assert via `Observe` /
-/// `ObserveTree` / subscriber callbacks. A domain instance of the
-/// generic `Fuaran.Core.Observer` seam (Phase 322).
+/// `RegisterFixture` + `Update` from tests; assert via `Observe` /
+/// `ObserveTree` / subscriber callbacks. A domain instance of Core's
+/// `ObserverWitness` (Phase 322, Phase 2307).
 type InMemoryLayoutObserver(options: LayoutObserverOptions) =
-    // The generic engine carries the registry, the change-gated
-    // emission policy, and the parent-pointer tree walk. The UI flag
-    // vocabulary + derivation are supplied here; the emit policy maps
-    // straight across (structural flag-set equality, change-only per
-    // the UI default).
-    let engine =
-        InMemoryObserver.createWith
-            (Flags.derive options)
-            { EmitOnFlagChangeOnly = options.EmitOnFlagChangeOnly
-              FlagsEqual = (=) }
-
-    let asObserver = engine :> IObserver<Flags.LayoutInput, LayoutFlag>
+    let witness = InMemoryLayoutObserver.Witness options
+    let mutable state = ObserverWitness.empty<Flags.LayoutInput, LayoutFlag>
+    let subscribers = ResizeArray<string * LayoutObservation -> unit>()
 
     /// Project a generic observation back into the UI's geometric
     /// observation shape — width / height come straight off the
@@ -72,31 +63,60 @@ type InMemoryLayoutObserver(options: LayoutObserverOptions) =
           ViewportY = elT
           Flags = o.Flags }
 
-    /// Register or replace a fixture for `nodeId`. `element` is
-    /// ignored — present only to satisfy the `ILayoutObserver`
-    /// contract. Fires an initial emission for the registered node
-    /// regardless of `EmitOnFlagChangeOnly` (initial-emission rule).
-    member this.RegisterFixture(nodeId: string, fixture: LayoutFixture) : unit =
-        match fixture.Parent with
-        | Some parent -> engine.RegisterNode(nodeId, fixture.Input, parent)
-        | None -> engine.RegisterNode(nodeId, fixture.Input)
+    // Delivery iterates a SNAPSHOT of the subscriber list, so a subscriber
+    // that disposes itself or subscribes another during its callback changes
+    // the list for the NEXT emission, never the one in flight; and a
+    // subscriber throwing must not poison its siblings.
+    let emit (observation: Observation<Flags.LayoutInput, LayoutFlag>) =
+        let payload = observation.NodeId, project observation
+
+        for subscriber in subscribers.ToArray() do
+            try
+                subscriber payload
+            with ex ->
+                ignore ex
+
+    /// The witness this observer runs on — the UI's `Flags.derive` under
+    /// the options' emit policy (structural flag-set equality). What
+    /// `Conformance.observerLawsAt` certifies.
+    static member Witness(options: LayoutObserverOptions) : ObserverWitness<Flags.LayoutInput, LayoutFlag> =
+        ObserverWitness.createWith
+            (Flags.derive options)
+            { EmitOnFlagChangeOnly = options.EmitOnFlagChangeOnly
+              FlagsEqual = (=) }
+
+    /// Register or replace a fixture for `nodeId`. Fires an initial
+    /// emission for the registered node regardless of
+    /// `EmitOnFlagChangeOnly` (initial-emission rule).
+    member _.RegisterFixture(nodeId: string, fixture: LayoutFixture) : unit =
+        let next, observation =
+            ObserverWitness.register witness nodeId fixture.Input fixture.Parent state
+
+        state <- next
+        emit observation
 
     /// Replace the existing fixture's input. Honours the
     /// `EmitOnFlagChangeOnly` option — fires the subscriber
     /// callback only when the derived flag set differs from the
     /// previous emission (or always, when the option is false).
     /// No-op if `nodeId` isn't registered.
-    member this.Update(nodeId: string, input: Flags.LayoutInput) : unit = engine.Update(nodeId, input)
+    member _.Update(nodeId: string, input: Flags.LayoutInput) : unit =
+        let next, emission = ObserverWitness.update witness nodeId input state
+        state <- next
+        emission |> Option.iter emit
 
     interface ILayoutObserver with
         member _.Observe(nodeId: string) : LayoutObservation option =
-            asObserver.Observe(nodeId) |> Option.map project
+            ObserverWitness.snapshot state nodeId |> Option.map project
 
         member _.ObserveTree(rootNodeId: string) : LayoutObservation list =
-            asObserver.ObserveTree(rootNodeId) |> List.map project
+            ObserverWitness.observeTree state rootNodeId |> List.map project
 
         member _.Subscribe(handler: string * LayoutObservation -> unit) : System.IDisposable =
-            asObserver.Subscribe(fun (nodeId, observation) -> handler (nodeId, project observation))
+            subscribers.Add(handler)
+
+            { new System.IDisposable with
+                member _.Dispose() = subscribers.Remove(handler) |> ignore }
 
         member this.Register(nodeId: string, _element: obj) : unit =
             // Default-fixture registration — the test author would
@@ -105,11 +125,12 @@ type InMemoryLayoutObserver(options: LayoutObserverOptions) =
             // baseline (0x0 element rect) so calls from the
             // renderer's mount hook don't crash on the in-memory
             // observer. Idempotent — only register if absent.
-            if (asObserver.Observe nodeId).IsNone then
+            if not (Map.containsKey nodeId state.Entries) then
                 let baselineInput = Flags.LayoutInput.empty 0.0 0.0
                 this.RegisterFixture(nodeId, { Input = baselineInput; Parent = None })
 
-        member _.Unregister(nodeId: string) : unit = asObserver.Unregister(nodeId)
+        member _.Unregister(nodeId: string) : unit =
+            state <- ObserverWitness.unregister nodeId state
 
 module InMemoryLayoutObserver =
     /// Construct with the v1 default options.
