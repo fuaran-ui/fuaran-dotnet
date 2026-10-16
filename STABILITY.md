@@ -8048,6 +8048,45 @@ changes, no hash moves, and no wire byte moves. It rides the 0.95.0 draft withou
 - **Pinned: lifted addresses are not linear hashes.** The lifted address of each `chain/chain-corpus.json`
   record is pinned beside its linear chain hash (`DagLiftTests.fs`), through both the in-memory and the SQLite
   DAG sinks. The two digests are over different pre-images and are never equal.
+
+### What rides this slot — Phase 2004 (a vertical edit depends on a concurrent removal of its ancestor)
+
+**Class: BEHAVIOUR change of the certified footprint projection; no shipped API, type, wire byte or hash moves.**
+It rides the 0.95.0 draft without moving it.
+
+The tier's projection of a `TreeOp` onto Core's `Footprint` is the one the Core multi-writer law families
+are instantiated with (`CoreLawSupport.footprintOfTreeOp` in `Fuaran.UI.OpStream.Dag.Tests`). No shipped
+package carries a copy yet. Its five VERTICAL arms (`EditNode`, `UpdateProp`, `UpdateStyle`, `UpdateState`,
+`ReplaceBinding`) were a read and a content write of the edited node. That is unsound for the pair Core's
+Phase 250 found for its own `UpdateNode`: an edit of `n` beside a concurrent `RemoveNode` of an ancestor of
+`n`. The two footprints share no address, so the pair read as independent. It does not commute: the edit
+applies in one order and is refused in the other, because the removal took `n` with it.
+
+- **Changed: each vertical arm now carries Core's `UpdateNode` footprint**: `Reads{id}`,
+  `ContentWrites{id}` and `UnknownParentWrites{id}`. The pair is now dependent, so a reconciler orders it
+  (the lane fold halts with one report under every arrival order) instead of composing a script that
+  applies in one order only. The same term covers an `EditNode` of an ancestor, whose swapped kind drops
+  the old children.
+- **What changes for arbitration outcomes: more pairs are ordered rather than merged.** A vertical op is now
+  independent only of a script that writes no structure, and every other `TreeOp` writes some. So a
+  vertical op is independent of no tier op except an empty `Batch`. Two vertical edits of DIFFERENT nodes,
+  which used to fold, are now reported dependent, which is the cost Core's update already pays. The pairs
+  that still fold are inserts and reorders under different named parents.
+- **Migration: a consumer that lowers the tier's ops to Core's `Footprint` itself** adds the
+  unknown-parent write to each vertical arm. Without it, its reconciler composes the pair above.
+- **Pinned.** The pair test in `CoreDagLawTests.fs` covers all five vertical ops against a removal of the
+  parent and of the grandparent, and probes both orders first. It carries the erased-term falsifier:
+  without the term, all ten pairs read as independent.
+- **The lane generator is widened.** The lane families fold from a deeper base (`laneBase`), so a lane can
+  remove an ancestor of a leaf another lane edits, and the lanes draw all five vertical ops. Over the old
+  flat base the projection without the term passed. Over the new base it is red, and a test asserts that.
+- **Merge attribution (`DagPrimacy`), checked: it names no writer of a removed node, and it does
+  under-attribute.** When one branch removes an ancestor of a node the other edited, `TreeMerge` refuses
+  once, at the removed ancestor's `node` cell, and names no cell of the descendant. A test pins that. The
+  editing side's author of that cell is the branch tip, because a vertical op names only its own node's
+  cells. So a `Primary` edit discarded with the subtree is reported unpinned when the tip is `Secondary`.
+  This is recorded in `DagPrimacy`'s header and is not changed here: naming the ancestors needs the tree.
+
 ### What rides this slot — Phase 2285 (a state arm is fragment scope, as on every host)
 
 **Class: BEHAVIOUR change, no API change.** No type, member signature, defect code or wire byte moves. It rides the
