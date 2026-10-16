@@ -8078,6 +8078,39 @@ The Phase 2244 every-position tree now lists `in-on-loading` and `in-on-empty` a
 
 ---
 
+### What rides this slot — Phase 2278 (the remaining kinds move onto the element plan)
+
+**Class: ADDITIVE (new `Fuaran.UI.Renderer.Core` surface) + client-only parity fixes.** No public entry point
+of either renderer changes, no wire byte moves, and the served HTML is byte-identical over the whole node
+fixture corpus (permissive, strict and decorated).
+
+- **New in `Fuaran.UI.Renderer.ElementPlan`:** `Prop.Flag` (a present boolean attribute, written in each
+  element library's own boolean spelling) and `Prop.Behaviour` (a named point where the CLIENT attaches a
+  handler; the server writes nothing for it, so every served affordance is inert); `PlanContext` (what a
+  container plan needs from the emitting renderer, the child walk arriving as `Plan.Host`); `Attach` (the
+  attachment-point names, and `Attach.points` over a plan); `ResolvedTab`, `TabsModel` (`ofSpec`,
+  `nextEnabled`, `keyTarget` — the tab bar's keyboard model, once); `LayoutPlan` (`box`, `splitPanel`,
+  `tabs`, `summaryList`, `disclosure`, `stepper`, `modalOpen`, `popoverDialog`, `modal`, `scrollArea`).
+- **Both renderers emit the eight layout kinds from these plans.** Where the two arms differed, both now emit
+  ONE behaviour; every move is CLIENT output, none is served HTML:
+  - (h) a `Stepper` step carries `data-step-index` on the client too (the server always wrote it, so hydration
+    now agrees);
+  - (i) a closed `Modal` / popover's `hidden` is React's boolean `hidden` on the client — it was written as an
+    empty-string attribute, which React reads as false and drops, so a closed modal rendered by the client
+    alone was not hidden;
+  - (j) a disabled tab attaches no click handler (it attached a no-op).
+- **Both renderers emit the four media kinds (`Link`, `Image`, `Media`, `Embed`) from `ElementPlan.MediaPlan`**
+  (`link`, `image`, `media`, `embed`): the egress, `srcset`, track and class-map logic each renderer carried a
+  copy of. `PlanContext` gains `Egress`. One client-only move:
+  - (k) a protected (`mailto:`) link is written on the client as the same entity-encoded anchor markup the server
+    serves (it built the anchor as elements); the resulting document is the same, and hydration now compares
+    identical markup.
+- **The structural kinds stay renderer-side by ruling** (`ErrorBoundary`, `Switch`, `Custom`, `FragmentDecl`,
+  `FragmentRef`, `Mount` are walk control, and the walk is each renderer's own); the leaf markup both emit for
+  them is `ElementPlan.StructuralPlan` (`fragmentCycle`, `fragmentUnresolved`, `mountBoundary`,
+  `mountPlaceholder`). No output moves.
+
+
 ## 0.94.0 — the slot opened after v0.93.0 was released; advanced from 0.93.1 on 2026-10-13 ahead of Phase 2052, whose change is breaking (RELEASED — tagged v0.94.0 at 90082d3, 2026-10-14)
 
 _Class: **BREAKING** — raised from additive by the riders below, the first of which (Phase 2052) is the change the slot

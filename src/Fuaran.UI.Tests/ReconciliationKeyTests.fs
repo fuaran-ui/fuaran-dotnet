@@ -173,12 +173,12 @@ let private repeatedChildArms =
       "grid cell", "prop.className \"fuaran-grid-cell\""
       "grid header", "prop.className \"fuaran-grid-header\""
       "grid button-group member", "match item.OnClick with"
-      "tab", "prop.role \"tab\""
-      "stepper step", "Css.Class.StepperStep"
       "tree item", "prop.className Css.Class.TreeItem"
       // Phase 2108 — list items and skeleton rows are planned in
       // `ElementPlan.DisplayPlan` and carry their keys in the plan's `Key`, which
       // the one emitter writes as `prop.key`; `ElementPlanTests` asserts the keys.
+      // Phase 2278 — tabs and stepper steps likewise, in `ElementPlan.LayoutPlan`;
+      // the server suite's `ContainerPlanServerTests` asserts their keys.
       "form field", "prop.className Css.Class.FormField"
       // Phase 1648 — the chip's class became `Css.filter (Theme.filterKindClass
       // spec.Kind)`, because this renderer had been emitting a bare

