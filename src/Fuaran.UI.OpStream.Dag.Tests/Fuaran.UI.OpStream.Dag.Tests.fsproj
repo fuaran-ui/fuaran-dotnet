@@ -28,9 +28,12 @@
     <Compile Include="ConformanceTests.fs" />
     <Compile Include="MergeConformanceTests.fs" />
     <Compile Include="ValidatorGateTests.fs" />
+    <Compile Include="MergeEntryPointTests.fs" />
     <Compile Include="OpenCoreInvariantTests.fs" />
     <!-- Phase 267: guest op-stream fork + host-convergence anchor (§4o). -->
     <Compile Include="GuestForkTests.fs" />
+    <!-- Phase 2116: the verified linear-to-DAG lift and its recomputable receipt. -->
+    <Compile Include="DagLiftTests.fs" />
     <!-- Phase 793: DagVerify wired at the sinks' read paths. Go-red proofs —
          each corrupts a real record, the Sqlite ones by UPDATEing the file. -->
     <Compile Include="DagVerifyOnReadTests.fs" />

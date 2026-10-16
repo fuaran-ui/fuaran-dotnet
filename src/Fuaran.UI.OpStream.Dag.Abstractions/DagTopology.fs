@@ -56,42 +56,88 @@ module DagTopology =
     let isAncestor (getParents: string -> string list) (ancestor: string) (descendant: string) : bool =
         (reachable getParents descendant).Contains ancestor
 
-    /// Lowest-common-ancestor of `a` and `b`. Computes the common ancestor set,
-    /// then keeps only its *maximal* (lowest) elements — a common ancestor `c`
-    /// is dominated when some other common ancestor is its descendant. Exactly
-    /// one survivor ⇒ `Unique`; none ⇒ `None`; two-or-more (criss-cross) ⇒
-    /// `Ambiguous`.
+    /// Lowest-common-ancestor of `a` and `b`: the MAXIMAL common ancestors —
+    /// a common ancestor `c` is dominated when some other common ancestor is
+    /// its descendant. Exactly one ⇒ `Unique`; none ⇒ `None`; two-or-more
+    /// (criss-cross) ⇒ `Ambiguous`, sorted.
+    ///
+    /// A two-colour paint down from both heads (Phase 2062). Every node reached
+    /// from `a` carries colour A, from `b` colour B; a node carrying both is a
+    /// common ancestor, so it is a candidate and everything below it is painted
+    /// STALE (an ancestor of a common ancestor is never maximal). The walk stops
+    /// once no entry still queued was queued live, so it visits the divergence
+    /// and the frontier just below the base, not the shared history beneath it.
+    /// It used to build the full ancestor set of every common node, one per
+    /// node, which on a long shared history was quadratic in its length.
+    ///
+    /// Without generation numbers a breadth-first paint can meet a common node
+    /// BELOW another before the higher one, so a candidate may be an ancestor
+    /// of a later one; candidates are reduced to the maximal ones last. A
+    /// maximal common ancestor is always found: every node on a path from
+    /// either head down to it is live (a stale one would make it an ancestor of
+    /// a common node), so both colours reach it.
     let lca (getParents: string -> string list) (a: string) (b: string) : LcaResult =
-        // Memoise ancestor closures for the duration of this lca. The dominance
-        // test below probes reachable(d) for every common node d (inside a filter
-        // over the same set) — O(|common|²) full graph walks, recomputed. One
-        // closure per distinct hash, cached, makes it O(|common|) walks. The
-        // memo is transparent: `reachable` is pure given a stable `getParents`.
-        let cache = Dictionary<string, Set<string>>()
+        let colourA = 1
+        let colourB = 2
+        let stale = 4
+        let flags = Dictionary<string, int>()
+        // FIFO of (hash, flags-at-push); `live` counts entries pushed non-stale
+        // and not yet popped.
+        let queue = ResizeArray<string * int>()
+        let mutable next = 0
+        let mutable live = 0
 
-        let reachableMemo (h: string) : Set<string> =
-            match cache.TryGetValue h with
-            | true, v -> v
-            | false, _ ->
-                let v = reachable getParents h
-                cache[h] <- v
-                v
+        let paint (h: string) (f: int) =
+            let current =
+                match flags.TryGetValue h with
+                | true, v -> v
+                | false, _ -> 0
 
-        let ra = reachableMemo a
-        let rb = reachableMemo b
-        let common = Set.intersect ra rb
+            if current &&& f <> f then
+                let painted = current ||| f
+                flags[h] <- painted
+                queue.Add((h, painted))
 
-        if Set.isEmpty common then
-            LcaResult.None
-        else
-            // c is an LCA iff no *other* common node has c among its proper
-            // ancestors (i.e. c is not an ancestor of another common node).
-            let isDominated (c: string) =
-                common |> Set.exists (fun d -> d <> c && (reachableMemo d).Contains c)
+                if painted &&& stale = 0 then
+                    live <- live + 1
 
-            let maximal = common |> Set.filter (fun c -> not (isDominated c)) |> Set.toList
+        paint a colourA
+        paint b colourB
+        let candidates = ResizeArray<string>()
 
-            match maximal with
-            | [] -> LcaResult.None
-            | [ single ] -> LcaResult.Unique single
-            | many -> LcaResult.Ambiguous(List.sort many)
+        while live > 0 do
+            let h, pushed = queue[next]
+            next <- next + 1
+
+            if pushed &&& stale = 0 then
+                live <- live - 1
+
+            let mutable f = flags[h] &&& (colourA ||| colourB ||| stale)
+
+            if f = (colourA ||| colourB) then
+                // Marked stale on itself too: a node met by both colours is
+                // queued once per colour, and its second entry must not make it
+                // a candidate twice.
+                candidates.Add h
+                f <- f ||| stale
+                flags[h] <- flags[h] ||| stale
+
+            for p in getParents h do
+                paint p f
+
+        // Drop a candidate that is an ancestor of another (met below it first).
+        // Only a criss-cross pays for this; a unique base never does.
+        let maximal =
+            if candidates.Count < 2 then
+                List.ofSeq candidates
+            else
+                let closures = [ for c in candidates -> c, reachable getParents c ]
+
+                candidates
+                |> Seq.filter (fun c -> not (closures |> List.exists (fun (d, rd) -> d <> c && rd.Contains c)))
+                |> List.ofSeq
+
+        match maximal with
+        | [] -> LcaResult.None
+        | [ single ] -> LcaResult.Unique single
+        | many -> LcaResult.Ambiguous(List.sort many)

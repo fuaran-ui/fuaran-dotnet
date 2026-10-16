@@ -8,11 +8,12 @@ module Fuaran.UI.Tests.FragmentRegistryFixture
 //  assert over ONE tree rather than two copies kept in step.
 //
 //  It declares a fragment in every position class `NodeChildren` names: each
-//  kind-held position the registry walk enters (a container's ordered list, a
+//  position the registry walk enters (a container's ordered list, a
 //  `FragmentDecl` body, both `ErrorBoundary` arms, a `Switch` case and its
-//  default), and each position it does NOT enter (`state.onLoading`,
-//  `state.onEmpty`, the envelope `fallback`, a `FragmentRef` slot argument).
-//  Two decls share the name `dup` to pin the last-wins rule on an invalid tree.
+//  default, and — since Phase 2285 — `state.onLoading` and `state.onEmpty`),
+//  and each position it does NOT enter (the envelope `fallback`, a
+//  `FragmentRef` slot argument). Two decls share the name `dup` to pin the
+//  last-wins rule on an invalid tree.
 //
 //  When this tree was written, at the phase's start, the client's and the
 //  server's private walks already produced the same registry over it — the
@@ -56,6 +57,8 @@ let registered: (string * string) list =
       "in-error-boundary-child", "body-in-error-boundary-child"
       "in-error-boundary-fallback", "body-in-error-boundary-fallback"
       "in-modal", "body-in-modal"
+      "in-on-empty", "body-in-on-empty"
+      "in-on-loading", "body-in-on-loading"
       "in-scroll-area", "body-in-scroll-area"
       "in-switch-case", "body-in-switch-case"
       "in-switch-default", "body-in-switch-default"
@@ -63,8 +66,7 @@ let registered: (string * string) list =
       "outer", "outer-body" ]
 
 /// The fragment names declared in positions the walk does not enter.
-let notRegistered: string list =
-    [ "in-on-loading"; "in-on-empty"; "in-envelope-fallback"; "in-slot-argument" ]
+let notRegistered: string list = [ "in-envelope-fallback"; "in-slot-argument" ]
 
 /// The tree.
 let tree: Node<obj> =
@@ -171,3 +173,31 @@ let deep (depth: int) : Node<obj> =
         node <- page (sprintf "level-%d" i) [ node ]
 
     node
+
+// ─── Phase 2285 — the fragment-scope parity document ────────────────────────
+//
+// The same wire document is asserted, byte for byte, by fuaran-ts's renderer
+// suite (`fragmentScopeParity.test.tsx`), so both hosts certify one answer:
+// decls in `state.onLoading` / `state.onEmpty` are registered and resolve; a
+// decl under the envelope `fallback` or in a `FragmentRef` slot argument is
+// not, and its reference renders the unresolved placeholder.
+
+/// The parity document, as wire JSON.
+let parityWire: string =
+    """{"id":"page","kind":{"$type":"Box","children":[{"id":"host","kind":{"$type":"Markdown","text":"HOST"},"state":{"onEmpty":{"id":"d-empty","kind":{"$type":"FragmentDecl","body":{"id":"inner-tpl-empty","kind":{"$type":"Markdown","text":"BODY-tpl-empty"}},"name":"tpl-empty"}},"onLoading":{"id":"d-loading","kind":{"$type":"FragmentDecl","body":{"id":"inner-tpl-loading","kind":{"$type":"Markdown","text":"BODY-tpl-loading"}},"name":"tpl-loading"}}}},{"id":"fb-host","kind":{"$type":"Markdown","text":"FB-HOST"},"fallback":{"id":"d-fallback","kind":{"$type":"FragmentDecl","body":{"id":"inner-tpl-fallback","kind":{"$type":"Markdown","text":"BODY-tpl-fallback"}},"name":"tpl-fallback"}}},{"id":"arg-ref","kind":{"$type":"FragmentRef","args":{"slot":{"$type":"SlotArg","tree":{"id":"d-arg","kind":{"$type":"FragmentDecl","body":{"id":"inner-tpl-arg","kind":{"$type":"Markdown","text":"BODY-tpl-arg"}},"name":"tpl-arg"}}}},"name":"tpl-loading"}},{"id":"ref-loading","kind":{"$type":"FragmentRef","name":"tpl-loading"}},{"id":"ref-empty","kind":{"$type":"FragmentRef","name":"tpl-empty"}},{"id":"ref-fallback","kind":{"$type":"FragmentRef","name":"tpl-fallback"}},{"id":"ref-arg","kind":{"$type":"FragmentRef","name":"tpl-arg"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}"""
+
+/// The fragment names the registry holds for `parityWire`, in name order.
+let parityRegistered: string list = [ "tpl-empty"; "tpl-loading" ]
+
+/// The ids each resolving reference renders its body under.
+let parityExpandedIds: string list =
+    [ "ref-loading.inner-tpl-loading"; "ref-empty.inner-tpl-empty" ]
+
+/// The fragment names whose references render the unresolved placeholder.
+let parityUnresolved: string list = [ "tpl-fallback"; "tpl-arg" ]
+
+/// `parityWire` decoded.
+let parityTree: Node<obj> =
+    match Fuaran.UI.Generated.decodeNode parityWire with
+    | Ok node -> node
+    | Error e -> failwithf "the parity document failed to decode: %A" e
