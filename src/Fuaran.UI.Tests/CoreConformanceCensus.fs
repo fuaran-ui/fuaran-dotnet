@@ -85,6 +85,11 @@ let private containerTest =
 let private diffContainedTest =
     "the Fuaran.UI witness certifies under Core's diffContainedLaws (TreeOpDiff's script)"
 
+/// Phase 1857 — the tier's whole-tree id check over the named node slots the surface walk does
+/// not reach, at `Introspect.keyedWitness`.
+let private keyedChildrenTest =
+    "the tier's whole-tree id check certifies under Core's keyedChildrenLawsAt over the named node slots"
+
 /// The stream-only aggregate's adopter, beside `certifyTest` above: `certifyStream` runs the
 /// reducer laws first and the op-stream laws only if the reducer proved total, so a family folded
 /// into it is reached here and nowhere else in this repo.
@@ -603,9 +608,10 @@ let census: (string * Adoption) list =
       "IncrementalDelta.stateLaws",
       NotUsed
           "the Incremental state's wire codec (encode / decode, attached and detached) — LiveTransformStore keeps its Incremental state in process across primeOn / refreshOn (ServerDriven/LiveTransform.fs) and never encodes, persists or ships it"
+      // Phase 1857 — the obsolete forward of keyedChildrenLawsAt, reached through it (one run
+      // answers for both spellings; see that row).
       "Conformance.keyedChildrenLaws",
-      CarriedBy
-          "unfiled — this tier DOES hold nodes in named slots the conformance walk does not reach, so the family has a subject here. `Introspect.getChildren` (Fuaran.UI.Ops) is what `NodeWitness.Children` is built on, and it answers `None` for ErrorBoundary and for the State envelope; those three subtrees — `fallback`, `state.onEmpty`, `state.onLoading` — are reached only by the separate `nonStructuralSlots` lens. So an id sitting in one of them is invisible to the surface uniqueness walk, which is the defect class this family certifies. Not `NotUsed`: that would assert there is nothing keyed here, and there demonstrably is. Adopting it needs a `KeyedWitness` over those slots — the work is small and named, and it arrived with the 0.30.0 pin raise (fuaran-core#188's release slot)."
+      Adopted(keyedChildrenTest, "Conformance.keyedChildrenLawsAt (the forward's own body)")
       "Conformance.aiSurfaceLaws",
       NotUsed
           "Fuaran.Core.AiSurface — the tier ships its own runtime introspection surface (Fuaran.UI.AiTools) and consumes no Core AI surface"
@@ -690,10 +696,11 @@ let census: (string * Adoption) list =
           "unfiled — reconcileLaws is adopted above at the kit's hash; this form pins the domain's hash, and the tier ships one (SHA-256, as laneFoldLawsWith is instantiated with)"
       "Conformance.keyedApplyLaws",
       CarriedBy
-          "unfiled — the KeyedWitness keyedChildrenLaws names above (ErrorBoundary fallback, state.onEmpty, state.onLoading) is this family's subject too"
-      "Conformance.keyedArbitrationLaws", CarriedBy "unfiled — needs the same KeyedWitness as keyedChildrenLaws above"
+          "unfiled — Introspect.keyedWitness, which keyedChildrenLawsAt is adopted at (the `fallback`, `state.onEmpty` and `state.onLoading` slots among its positions), is this family's subject too"
+      "Conformance.keyedArbitrationLaws",
+      CarriedBy "unfiled — runs at the same Introspect.keyedWitness keyedChildrenLawsAt is adopted at"
       "Conformance.keyedArbitrationLawsWith",
-      CarriedBy "unfiled — needs the same KeyedWitness as keyedChildrenLaws above"
+      CarriedBy "unfiled — runs at the same Introspect.keyedWitness keyedChildrenLawsAt is adopted at"
       "Conformance.checkpointLaws",
       NotUsed
           "Fuaran.Core.OpStream.Dag's lane-DAG checkpoint (Dag.Checkpoint, Core 0.34.0, fuaran-core Phase 288) — the tier checkpoints its DAG through its own DagReplay.replayFromCheckpoint (Fuaran.UI.OpStream.Dag.Merge) and takes no Core DAG checkpoint"
@@ -818,14 +825,22 @@ let census: (string * Adoption) list =
           "Fuaran.Core.Propagation's incremental evaluator seam — the 0.36.0 name of propagationEvaluatorLaws (see that row): nothing in this tier hands Propagation an evaluator"
       "Conformance.referenceLawsAt",
       NotUsed "a Core RefWitness — the 0.36.0 name of referenceLaws (see that row): no project here builds a RefWitness"
+      // Phase 1857 — `Introspect.getChildren` (what `NodeWitness.Children` is built on) answers
+      // nothing for a node's `state` alternatives or an ErrorBoundary, so the `fallback`,
+      // `state.onEmpty` and `state.onLoading` slots are invisible to the surface walk `certify`
+      // runs. The family certifies the tier's whole-tree id check over them, at
+      // `Introspect.keyedWitness`.
       "Conformance.keyedChildrenLawsAt",
-      CarriedBy
-          "unfiled — the 0.36.0 name of keyedChildrenLaws (see that row): the ErrorBoundary fallback and state.onEmpty / state.onLoading slots are this family's subject; adoption is one KeyedWitness over them"
+      Adopted(
+          keyedChildrenTest,
+          "Conformance.keyedChildrenLawsAt — at Introspect.keyedWitness, over the fallback, state.onEmpty and state.onLoading slots the surface walk does not reach"
+      )
       "Conformance.keyedApplyLawsAt",
-      CarriedBy "unfiled — the 0.36.0 name of keyedApplyLaws: needs the same KeyedWitness as keyedChildrenLaws above"
+      CarriedBy
+          "unfiled — the 0.36.0 name of keyedApplyLaws: runs at the same Introspect.keyedWitness keyedChildrenLawsAt is adopted at"
       "Conformance.keyedArbitrationLawsAt",
       CarriedBy
-          "unfiled — the 0.36.0 name of keyedArbitrationLaws: needs the same KeyedWitness as keyedChildrenLaws above"
+          "unfiled — the 0.36.0 name of keyedArbitrationLaws: runs at the same Introspect.keyedWitness keyedChildrenLawsAt is adopted at"
       // Phase 2307 — both in-memory observers run on Core's ObserverWitness, and each suite
       // certifies the witness its observer is built on.
       "Conformance.observerLawsAt", AdoptedAcross observerPorts
@@ -1222,6 +1237,8 @@ let private measuredHere: Set<string> =
           "Conformance.streamLaws"
           "Conformance.opAlgebra"
           "Conformance.containerLaws"
+          "Conformance.keyedChildrenLaws"
+          "Conformance.keyedChildrenLawsAt"
           "Conformance.chainBreakReasonLaws"
           "Conformance.dagBreakReasonLaws"
           "Conformance.hashFnLaws"

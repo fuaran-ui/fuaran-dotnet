@@ -79,14 +79,14 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 | `Conformance.incrementalLaws` | Adopted | — | `incrementalLaws certifies change-driven and op-driven equivalence at this pin` — via `Conformance.incrementalLaws — beside the tier-shaped 'the seven corpus vectors obey the one-scale bound, declined ones included'` |
 | `Conformance.incrementalLawsWith` | Not used | — | DataFrame.evalFrom over ColumnOps.changeOf at a domain's StreamGen<ColumnOp, Table> — the tier's incremental path is Incremental.primeOn / refreshOn over a row TableDelta (ServerDriven/LiveTransform.fs, see IncrementalDelta.laws / lawsWith), and no project here edits a table through a ColumnOp |
 | `Conformance.introducedLaws` | Not used | — | Fuaran.Core.Validator's introduced-findings gate (introduced / verdict / gate under a GatePolicy) — RecipeCertification uses a Core Validator.Registry only as a validity oracle, and DagMerge.mergeGated gates through the tier's own validator, so nothing here calls the Core gate |
-| `Conformance.keyedApplyLaws` | Carried by phase | — | unfiled — the KeyedWitness keyedChildrenLaws names above (ErrorBoundary fallback, state.onEmpty, state.onLoading) is this family's subject too |
-| `Conformance.keyedApplyLawsAt` | Carried by phase | — | unfiled — the 0.36.0 name of keyedApplyLaws: needs the same KeyedWitness as keyedChildrenLaws above |
-| `Conformance.keyedArbitrationLaws` | Carried by phase | — | unfiled — needs the same KeyedWitness as keyedChildrenLaws above |
-| `Conformance.keyedArbitrationLawsAt` | Carried by phase | — | unfiled — the 0.36.0 name of keyedArbitrationLaws: needs the same KeyedWitness as keyedChildrenLaws above |
-| `Conformance.keyedArbitrationLawsWith` | Carried by phase | — | unfiled — needs the same KeyedWitness as keyedChildrenLaws above |
+| `Conformance.keyedApplyLaws` | Carried by phase | — | unfiled — Introspect.keyedWitness, which keyedChildrenLawsAt is adopted at (the `fallback`, `state.onEmpty` and `state.onLoading` slots among its positions), is this family's subject too |
+| `Conformance.keyedApplyLawsAt` | Carried by phase | — | unfiled — the 0.36.0 name of keyedApplyLaws: runs at the same Introspect.keyedWitness keyedChildrenLawsAt is adopted at |
+| `Conformance.keyedArbitrationLaws` | Carried by phase | — | unfiled — runs at the same Introspect.keyedWitness keyedChildrenLawsAt is adopted at |
+| `Conformance.keyedArbitrationLawsAt` | Carried by phase | — | unfiled — the 0.36.0 name of keyedArbitrationLaws: runs at the same Introspect.keyedWitness keyedChildrenLawsAt is adopted at |
+| `Conformance.keyedArbitrationLawsWith` | Carried by phase | — | unfiled — runs at the same Introspect.keyedWitness keyedChildrenLawsAt is adopted at |
 | `Conformance.keyedCaptureLaws` | Not used | — | CapabilityRegistry.dispatchCaptured / dispatchReplayed and the keyed capture journal — no project here dispatches a capability through the capture seam |
-| `Conformance.keyedChildrenLaws` | Carried by phase | — | unfiled — this tier DOES hold nodes in named slots the conformance walk does not reach, so the family has a subject here. `Introspect.getChildren` (Fuaran.UI.Ops) is what `NodeWitness.Children` is built on, and it answers `None` for ErrorBoundary and for the State envelope; those three subtrees — `fallback`, `state.onEmpty`, `state.onLoading` — are reached only by the separate `nonStructuralSlots` lens. So an id sitting in one of them is invisible to the surface uniqueness walk, which is the defect class this family certifies. Not `NotUsed`: that would assert there is nothing keyed here, and there demonstrably is. Adopting it needs a `KeyedWitness` over those slots — the work is small and named, and it arrived with the 0.30.0 pin raise (fuaran-core#188's release slot). |
-| `Conformance.keyedChildrenLawsAt` | Carried by phase | — | unfiled — the 0.36.0 name of keyedChildrenLaws (see that row): the ErrorBoundary fallback and state.onEmpty / state.onLoading slots are this family's subject; adoption is one KeyedWitness over them |
+| `Conformance.keyedChildrenLaws` | Adopted | 600 | `the tier's whole-tree id check certifies under Core's keyedChildrenLawsAt over the named node slots` — via `Conformance.keyedChildrenLawsAt (the forward's own body)` |
+| `Conformance.keyedChildrenLawsAt` | Adopted | 600 | `the tier's whole-tree id check certifies under Core's keyedChildrenLawsAt over the named node slots` — via `Conformance.keyedChildrenLawsAt — at Introspect.keyedWitness, over the fallback, state.onEmpty and state.onLoading slots the surface walk does not reach` |
 | `Conformance.laneLaws` | Not used | — | Fuaran.Core.OpStream.Dag's lane store and whole-DAG order (Dag.loadLanes / totalOrderBy / replayAllBy, fuaran-core Phase 311) — no project here loads lanes or orders a DAG through them |
 | `Conformance.loweringLaws` | Not used | — | Fuaran.Core.Ops.lower (fuaran-core Phase 312) — no project here lowers a tree to ops through Core |
 | `Conformance.memoLaws` | Not used | — | the [<Obsolete>] forward of Conformance.memoLawsAt, removed at 1.0.0 — the tier calls Conformance.memoLawsAt itself (adopted above), never this spelling |
@@ -161,8 +161,8 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 
 | Status | Families |
 |---|---|
-| Adopted | 53 |
-| Carried by phase | 16 |
+| Adopted | 55 |
+| Carried by phase | 14 |
 | Not used | 63 |
 | Sibling host | 1 |
 | **Total** | **133** |

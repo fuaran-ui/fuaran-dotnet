@@ -1114,6 +1114,271 @@ module Columnar =
                       0
                       "at least one non-empty pipeline has a closed walk — the widening's whole subject" ]
 
+// ─── Phase 1857 — id uniqueness across the named node slots ─────────────────
+//
+// `Introspect.nodeWitness.Children` is the ordered child list (`getChildren`), and it answers
+// nothing for a node's `state` alternatives or an ErrorBoundary. So the surface uniqueness walk
+// `certify` runs above never reaches a node the tier holds in a NAMED slot — `state.onEmpty`,
+// `state.onLoading`, the `fallback`s (the node's own and the error boundary's) — and two nodes
+// sharing an id across that boundary read clean to it. Core's `keyedChildrenLawsAt` certifies
+// the tier's whole-tree id check over exactly those positions, run here at the PRODUCTION
+// witnesses (`Introspect.nodeWitness` / `keyedWitness` / `idWitness`), not a test-side copy.
+//
+// Three things make the adoption certify something, and each has its own case: the run is
+// MEASURED (a witness that declares no keyed position passes the family vacuously, BY
+// DECLARATION, and would read as a green count in the census), the domain check refuses the
+// state.onEmpty collision the surface walk is blind to, and the family itself goes red over a
+// check that compares only the surface.
+
+module KeyedChildren =
+
+    open Fuaran.UI.Ops
+
+    let private family = "Conformance.keyedChildrenLawsAt"
+
+    let private md (id: string) : Node<obj> = Fuaran.markdown id "x"
+
+    let private box (id: string) (kids: Node<obj> list) : Node<obj> =
+        Fuaran.dashboard
+            id
+            { Defaults.dashboard<obj> with
+                Children = kids }
+
+    let private canHold (n: Node<obj>) =
+        Introspect.getChildren n.Kind |> Option.isSome
+
+    /// A tree whose nodes carry every named-slot shape the family is about: ordered containers,
+    /// nodes with a `state.onEmpty` and / or `state.onLoading` alternative or its own
+    /// `fallback`, and ErrorBoundaries (`child` and `fallback`, both named). Every id is fresh
+    /// across the whole tree, slots included, so a drawn tree is lawful and the built arms are
+    /// the only collisions the run sees.
+    let private genTree (rng: CoreRng.T) : Node<obj> * CoreRng.T =
+        let mutable counter = 0
+        let mutable r = rng
+
+        let fresh () =
+            counter <- counter + 1
+            sprintf "k%d" counter
+
+        let roll n =
+            let v, r' = CoreRng.intBelow n r
+            r <- r'
+            v
+
+        let dress (node: Node<obj>) =
+            match roll 5 with
+            | 0 -> node
+            | 1 -> node |> Node.onEmpty (md (fresh ()))
+            | 2 -> node |> Node.onLoading (md (fresh ()))
+            | 3 -> node |> Node.onLoading (md (fresh ())) |> Node.onEmpty (md (fresh ()))
+            | _ ->
+                { node with
+                    Fallback = Some(md (fresh ())) }
+
+        let rec build depth =
+            let nid = fresh ()
+
+            match roll (if depth <= 0 then 2 else 3) with
+            | 0 -> dress (md nid)
+            | 1 ->
+                dress (
+                    Fuaran.errorBoundary
+                        nid
+                        { Child = md (fresh ())
+                          Fallback = md (fresh ()) }
+                )
+            | _ -> dress (box nid [ for _ in 1 .. roll 3 -> build (depth - 1) ])
+
+        let rootId = fresh ()
+        let root = box rootId [ for _ in 1 .. 1 + roll 3 -> build 2 ]
+        root, r
+
+    let private genFresh (existing: Set<string>) (rng: CoreRng.T) : Node<obj> * CoreRng.T =
+        let mutable r = rng
+
+        let rec pick () =
+            let v, r' = CoreRng.next r
+            r <- r'
+            let id = sprintf "f%d" (v % 100000)
+            if existing.Contains id then pick () else id
+
+        md (pick ()), r
+
+    let private opGen: Fuaran.Core.OpGen<Node<obj>, NodeId> =
+        { Tree = genTree
+          FreshNode = genFresh
+          CanHold = Some canHold }
+
+    let private seed = 20261017
+    let private iterations = 200
+
+    /// The family at the tier's own node and id witnesses, over `keyw` and `gen`.
+    let private run
+        (keyw: Fuaran.Core.KeyedWitness<Node<obj>, NodeId>)
+        (gen: Fuaran.Core.OpGen<Node<obj>, NodeId>)
+        (n: int)
+        =
+        CoreConf.keyedChildrenLawsAt keyw Introspect.nodeWitness Introspect.idWitness gen seed n
+
+    // Registered at module initialisation (LawCases.fs's header says why). One run answers for
+    // both spellings: the bare name is Core's obsolete forward of this same body.
+    let private keyedChildrenRun =
+        LawCases.adopt [ family; "Conformance.keyedChildrenLaws" ] iterations (run Introspect.keyedWitness opGen)
+
+    let private guardPrefix = "sample adequacy (" + family + "): "
+
+    let private isGuard (r: Fuaran.Core.LawResult) =
+        r.Law.StartsWith(guardPrefix, System.StringComparison.Ordinal)
+
+    /// The adequacy rule, stated as the family states it: the run is evidence only when its ONE
+    /// guard is the built-arm `reached` law and it passed. The vacuous-by-declaration line is a
+    /// PASSING guard law, so `List.forall _.Passed` alone would accept it — that is the reading
+    /// this predicate exists to refuse.
+    let private measured (results: Fuaran.Core.LawResult list) =
+        match results |> List.filter isGuard with
+        | [ guard ] ->
+            guard.Passed
+            && guard.Law.Contains("the sample reached every built arm", System.StringComparison.Ordinal)
+            && not (guard.Law.Contains("BY DECLARATION", System.StringComparison.Ordinal))
+        | _ -> false
+
+    /// The check `certify`'s surface walk stands on: id uniqueness over `Children` alone.
+    let private surfaceOnly: Fuaran.Core.KeyedWitness<Node<obj>, NodeId> =
+        { Introspect.keyedWitness with
+            Surface = "the surface walk alone (Tree.wellFormed over nodeWitness)"
+            IdsUnique =
+                fun n ->
+                    Fuaran.Core.Tree.wellFormed Introspect.nodeWitness Introspect.idWitness n = Fuaran.Core.Tree.Structural }
+
+    /// A host whose only named slots are two `state.onEmpty` alternatives, so every collision the
+    /// family builds over it is an id in `state.onEmpty` and in the ordinary children (or in two
+    /// onEmpty slots) — the go-red shape, exercised by the family itself.
+    let private onEmptyHost: Node<obj> =
+        box
+            "root"
+            [ md "a"
+              md "list" |> Node.onEmpty (md "e1")
+              md "grid" |> Node.onEmpty (md "e2") ]
+
+    let private onEmptyGen: Fuaran.Core.OpGen<Node<obj>, NodeId> =
+        { opGen with
+            Tree = fun r -> onEmptyHost, r }
+
+    let private lawNamed (prefix: string) (results: Fuaran.Core.LawResult list) =
+        match
+            results
+            |> List.filter (fun r -> r.Law.StartsWith(prefix, System.StringComparison.Ordinal))
+        with
+        | [ one ] -> one
+        | other -> failtestf "expected exactly one law starting '%s', found %d" prefix (List.length other)
+
+    [<Tests>]
+    let tests =
+        testList
+            "Phase 1857 — keyed children"
+            [ testCase
+                  "the tier's whole-tree id check certifies under Core's keyedChildrenLawsAt over the named node slots"
+              <| fun _ ->
+                  let results = keyedChildrenRun.Force()
+                  let subject = results |> List.filter (isGuard >> not)
+                  Expect.equal (List.length subject) 3 "the family's three laws ran"
+
+                  for r in results do
+                      Expect.isTrue r.Passed (sprintf "%s: %A" r.Law r.Counterexample)
+
+              testCase "the keyedChildrenLawsAt run is MEASURED, never vacuous by declaration"
+              <| fun _ ->
+                  let results = keyedChildrenRun.Force()
+
+                  Expect.isTrue
+                      (measured results)
+                      (sprintf
+                          "the run is not evidence: %A"
+                          (results |> List.filter isGuard |> List.map (fun r -> r.Law, r.Counterexample)))
+
+                  let cell = LawCases.cell family
+
+                  Expect.isTrue
+                      (fst (System.Int32.TryParse cell) && int cell > 0)
+                      (sprintf "the census Cases cell reads %s, not a count" cell)
+
+                  // The predicate bites, in both of the family's non-evidence states: a witness that
+                  // declares no keyed position (the family PASSES it, by declaration), and one that
+                  // declares positions but gives the kit no way to build into them (the guard reds).
+                  let declaresNone =
+                      { Introspect.keyedWitness with
+                          KeyedChildren = fun _ -> []
+                          PlaceKeyedChild = fun _ _ -> None }
+
+                  let byDeclaration = run declaresNone opGen iterations
+
+                  Expect.isTrue
+                      (byDeclaration |> List.forall _.Passed)
+                      "the family passes a witness that declares nothing — which is why passing is not the test"
+
+                  Expect.isFalse (measured byDeclaration) "vacuous by declaration is refused as evidence"
+
+                  let cannotBuild =
+                      { Introspect.keyedWitness with
+                          PlaceKeyedChild = fun _ _ -> None }
+
+                  Expect.isFalse
+                      (measured (run cannotBuild opGen iterations))
+                      "declared but unbuildable is refused as evidence"
+
+              testCase "an id held in state.onEmpty and in the ordinary children list is refused over the keyed walk"
+              <| fun _ ->
+                  let holder = md "list" |> Node.onEmpty (md "dup")
+                  let fixture = box "root" [ md "dup"; holder ]
+
+                  Expect.equal
+                      (Fuaran.Core.Tree.wellFormed Introspect.nodeWitness Introspect.idWitness fixture)
+                      Fuaran.Core.Tree.Structural
+                      "the surface walk is blind to the onEmpty slot — the gap this phase closes"
+
+                  Expect.equal
+                      (Fuaran.Core.Tree.keyedIds Introspect.nodeWitness Introspect.keyedWitness holder)
+                      [ NodeId "dup" ]
+                      "the KeyedWitness declares state.onEmpty"
+
+                  Expect.equal
+                      (Fuaran.Core.Tree.wellFormedKeyed
+                          Introspect.nodeWitness
+                          Introspect.keyedWitness
+                          Introspect.idWitness
+                          fixture)
+                      (Fuaran.Core.Tree.RepeatedId(NodeId "dup"))
+                      "Core's keyed walk, through the tier's witness, names the repeated id"
+
+                  Expect.isFalse (Introspect.keyedWitness.IdsUnique fixture) "the tier's id check refuses it"
+
+              testCase "the family refuses a surface-only id check across the state.onEmpty boundary"
+              <| fun _ ->
+                  let real = run Introspect.keyedWitness onEmptyGen iterations
+
+                  for r in real do
+                      Expect.isTrue r.Passed (sprintf "%s: %A" r.Law r.Counterexample)
+
+                  Expect.isTrue (measured real) "every built arm was reached over the onEmpty host"
+
+                  let blind = run surfaceOnly onEmptyGen iterations
+
+                  let clash =
+                      lawNamed
+                          "the domain's id check refuses an id held in a keyed position and in the witness surface"
+                          blind
+
+                  Expect.isFalse
+                      clash.Passed
+                      "the family let a surface-only check through with an id in state.onEmpty and in the children"
+
+                  let twice =
+                      lawNamed "the domain's id check refuses an id held in two keyed positions" blind
+
+                  Expect.isFalse
+                      twice.Passed
+                      "the family let a surface-only check through with one id in two onEmpty slots" ]
+
 // ─── Phase 2038 — one answer to what a node's children are ──────────────────
 //
 // The tier supplies its `KeyedWitness` in production (`Introspect.keyedWitness`,
