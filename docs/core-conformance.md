@@ -70,7 +70,7 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 | `Conformance.encoderInjectivityLawsAt` | Adopted | — | `the FastPath memo-key encoder is collision-free (encoderInjectivityLawsAt)` — via `Conformance.encoderInjectivityLawsAt` |
 | `Conformance.footprintLaws` | Adopted | — | `the tier's tree footprints are sound, monotone and deterministic (footprintLaws)` — via `Conformance.footprintLaws` |
 | `Conformance.footprintLawsAt` | Adopted | — | `the SHIPPED footprint projection is sound at the tier's own ops (footprintLawsAt)` — via `Conformance.footprintLawsAt` |
-| `Conformance.freshIdLaws` | Not used | — | Fuaran.Core's FreshIds minting helper (fuaran-core Phase 312) — the tier mints ids through its own FreshIds (Fuaran.UI.Ops.Placement) and calls no Core minting |
+| `Conformance.freshIdLaws` | Adopted | — | `the Fuaran.UI witness certifies under Core's freshIdLaws (the clone verbs' renaming)` — via `Conformance.freshIdLaws` |
 | `Conformance.functionVerifyLaws` | Not used | — | the [<Obsolete>] forward of Conformance.functionVerifyLawsAt, removed at 1.0.0 — the tier calls Conformance.functionVerifyLawsAt itself (adopted above), never this spelling |
 | `Conformance.functionVerifyLawsAt` | Adopted | — | `a sound and a broken FastPath pattern certify under Core's functionVerifyLawsAt` — via `Conformance.functionVerifyLawsAt` |
 | `Conformance.hashFnAdversarialLaws` | Adopted | 2 | `the portable SHA-256 certifies under Core's hashFnLaws (the supply-your-own-crypto contract)` — via `Conformance.hashFnAdversarialLaws` |
@@ -102,7 +102,7 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 | `Conformance.opAlgebra` | Adopted | 3400 | `the Fuaran.UI witness certifies end-to-end via the unified Conformance.certify` — via `Conformance.certify` |
 | `Conformance.packLoadingLaws` | Adopted | — | `content-pack loading certifies under Core's packLoadingLaws` — via `Conformance.packLoadingLaws` |
 | `Conformance.paramLaws` | Adopted | — | `parameterised-query binding certifies under Core's paramLaws` — via `Conformance.paramLaws` |
-| `Conformance.placementLaws` | Not used | — | Fuaran.Core.Ops' TreePlacement algebra (fuaran-core Phase 312) — the tier places children through its own Fuaran.UI.Ops.Placement and calls no Core placement |
+| `Conformance.placementLaws` | Adopted | — | `the Fuaran.UI witness certifies under Core's placementLaws (Placement's verbs)` — via `Conformance.placementLaws` |
 | `Conformance.plannerLaws` | Not used | — | a host pipeline planner — the tier evaluates through Fuaran.Compute.DataFrame.evalPipeline, whose planner is the producer's own, and ships no planner to hold to the as-written fold |
 | `Conformance.policyLaws` | Carried by phase | — | unfiled — self-contained over the kit's registries, as capabilityLaws (adopted above) is; its subject, a policy gate between validation and the body on a Core CapabilityRegistry, sits on the registry Fuaran.UI.AiTools.Capabilities dispatches over, so adoption is one test beside the capabilityLaws test running the family |
 | `Conformance.policyLawsAt` | Not used | — | Fuaran.Core.AiSurface's guarded submit at a domain's GuardedSurfaceWitness — no project in this tier references Fuaran.Core.AiSurface (see aiSurfaceLaws) |
@@ -161,8 +161,8 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 
 | Status | Families |
 |---|---|
-| Adopted | 55 |
+| Adopted | 57 |
 | Carried by phase | 14 |
-| Not used | 63 |
+| Not used | 61 |
 | Sibling host | 1 |
 | **Total** | **133** |
