@@ -42,6 +42,9 @@
     "dag": "covered",
     "decode-policy": "covered",
     "devtools-relay": "covered",
+    "diff/treeDiff": {
+      "pending": "TreeOpDiffEquivalenceTests runs every goldens pair and asserts Apply(Diff(before, after), before) == after, and does not yet compare its own op-scripts with the pinned ones"
+    },
     "elicitation-answer-accept": "covered",
     "elicitation-answer-reject": "covered",
     "elicitation-reject": "covered",

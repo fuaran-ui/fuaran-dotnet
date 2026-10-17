@@ -61,8 +61,20 @@ let private encodeKnownNode (n: Node<obj>) : Fuaran.Core.JVal =
 /// against the host's own `core@1.0`, and either refuse a `Foreign` profile
 /// (`Error (code, path)`) or tolerantly decode + re-render (`Ok bytes`).
 /// Shared by the emitter (law proof) and the corpus round-trip suite.
+///
+/// A `$profile` STRING that does not parse as `<name>@<major>.<minor>` is refused as a Foreign one
+/// is — `FOREIGN_PROFILE` at `$.$profile` (WIRE_FORMAT 15.2, the Phase 1938 ruling) — never as
+/// `INVALID_JSON` at `$`: the bytes are JSON, and what the consumer declines is the profile.
 let negotiateReencode (input: string) : Result<string, string * string> =
+    let malformedProfile =
+        Fuaran.Core.Decode.parse input
+        |> Result.bind (Fuaran.Core.Decode.getProp "$profile")
+        |> Result.bind Fuaran.Core.Decode.asString
+        |> Result.map (Fuaran.Core.Versioning.Profile.tryParse >> Result.isError)
+        |> Result.defaultValue false
+
     match Fuaran.Core.Versioning.parse input with
+    | Error _ when malformedProfile -> Error("FOREIGN_PROFILE", "$.$profile")
     | Error _ -> Error("INVALID_JSON", "$")
     | Ok env ->
         match Fuaran.Core.Versioning.negotiate Fuaran.Core.Versioning.Profile.coreV1 env.Profile with
@@ -171,4 +183,9 @@ let all: EnvelopeFixture list =
       { Id = "envelope-foreign-namespace"
         Enveloped = enveloped knownNode "music@1.0"
         Expect = ForeignRefuse
-        Description = "Foreign (different namespace music@1.0) — hard-refuse (WIRE_FORMAT 15.2)" } ]
+        Description = "Foreign (different namespace music@1.0) — hard-refuse (WIRE_FORMAT 15.2)" }
+      { Id = "envelope-foreign-malformed-profile"
+        Enveloped = enveloped knownNode "core@1"
+        Expect = ForeignRefuse
+        Description =
+          "a $profile that does not parse (core@1, no minor) names no capability set — refused as Foreign, FOREIGN_PROFILE at $.$profile, never INVALID_JSON (WIRE_FORMAT 15.2, Phase 1938)" } ]

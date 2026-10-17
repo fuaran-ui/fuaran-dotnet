@@ -6732,6 +6732,18 @@ let opPatchStyleDefaultToken: TreeOp<obj> =
             Tone = Some ToneVariant.Default }
     )
 
+/// Phase 2302 — `direction: auto` on the patch arm. `auto` is the style record's
+/// omitted default, so no node fixture can carry it; on `StyleDelta` the member is
+/// optional rather than omit-default, so a patch back to `auto` is written and
+/// this is the one document in the corpus that spells the token.
+[<OpFixture "PatchStyle (Phase 2302 direction=auto)">]
+let opPatchStyleDirectionAuto: TreeOp<obj> =
+    TreeOp.PatchStyle(
+        NodeId "metric-1",
+        { StyleDelta.empty with
+            Direction = Some TextDirection.Auto }
+    )
+
 /// Phase 2291 — every member at once, pinning the alphabetical member order
 /// and `direction`'s lower-case token on this arm.
 [<OpFixture "PatchStyle (Phase 2291 all six members)">]
