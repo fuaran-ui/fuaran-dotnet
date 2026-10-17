@@ -40,6 +40,11 @@
     "op": "{\u0022$type\u0022:\u0022PatchStyle\u0022,\u0022style\u0022:{\u0022tone\u0022:\u0022Default\u0022},\u0022target\u0022:\u0022metric-1\u0022}"
   },
   {
+    "name": "op-patchstyle (phase 2302 direction=auto)",
+    "notation": "metric-1: style.direction \u2192 auto",
+    "op": "{\u0022$type\u0022:\u0022PatchStyle\u0022,\u0022style\u0022:{\u0022direction\u0022:\u0022auto\u0022},\u0022target\u0022:\u0022metric-1\u0022}"
+  },
+  {
     "name": "op-removenode",
     "notation": "metric-1: - node",
     "op": "{\u0022$type\u0022:\u0022RemoveNode\u0022,\u0022target\u0022:\u0022metric-1\u0022}"
