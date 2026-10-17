@@ -250,6 +250,11 @@ let private containerResults = CoreConf.containerLaws nodew idw opGen 20260619 2
 let private containerRun =
     LawCases.adopt [ "Conformance.containerLaws" ] 200 (fun _ -> containerResults)
 
+// Phase 2304 — `TreeOpDiff.diff` lowers `Diff.toOpsContainedWith` under this container
+// predicate, so the contained diff's family runs over this witness.
+let private diffContainedResults =
+    CoreConf.diffContainedLaws nodew idw opGen 20260619 200
+
 let private chainBreakReasonResults = CoreConf.chainBreakReasonLaws 20260619 200
 
 let private chainBreakReasonRun =
@@ -373,6 +378,43 @@ let tests =
                       "never reached interior graft"
                       "the ONLY arm the guard may report unreached is the interior graft; any other unreached arm is a generator regression"
               | None -> failtest "a red adequacy law must say which arm it never reached"
+
+          testCase "the Fuaran.UI witness certifies under Core's diffContainedLaws (TreeOpDiff's script)"
+          <| fun _ ->
+              // Phase 2304: `TreeOpDiff.diff` lowers `Diff.toOpsContainedWith` under this
+              // container predicate, so the contained diff's reconstruction, applyability and
+              // refusal laws are the tier's script's. The family's ADEQUACY guard is red for one
+              // arm, by the witness's shape and for the reason `containerLaws`' is: its refused
+              // pair needs an `after` that nests children under a leaf, and this witness's
+              // `withChildren` cannot build one. The substantive laws are asserted green; the
+              // guard is asserted red FOR THAT ARM and no other.
+              let isAdequacy (r: Fuaran.Core.LawResult) =
+                  r.Law.StartsWith("sample adequacy", System.StringComparison.Ordinal)
+
+              let substantive = diffContainedResults |> List.filter (isAdequacy >> not)
+              Expect.isGreaterThan (List.length substantive) 2 "the family's substantive laws ran"
+
+              for r in substantive do
+                  Expect.isTrue r.Passed (sprintf "%s: %A" r.Law r.Counterexample)
+
+              // Every other adequacy arm of the family is reached and green.
+              match diffContainedResults |> List.filter (fun r -> isAdequacy r && not r.Passed) with
+              | [] ->
+                  failtest
+                      "the refused-pair arm has become reachable — the witness now lets a leaf carry children, so assert the refusal law green instead"
+              | [ adequacy ] ->
+                  match adequacy.Counterexample with
+                  | Some text ->
+                      Expect.stringContains
+                          text
+                          "never reached refused"
+                          "the ONLY arm the guard may report unreached is the refused pair"
+                  | None -> failtest "a red adequacy law must say which arm it never reached"
+              | other ->
+                  failtestf
+                      "expected one red adequacy arm, found %d: %A"
+                      (List.length other)
+                      (other |> List.map _.Counterexample)
 
           testCase "the kit's classified chain walkers never mint Unrecognised (chainBreakReasonLaws)"
           <| fun _ ->

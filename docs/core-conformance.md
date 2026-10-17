@@ -44,7 +44,7 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 | `Conformance.captureReplayLaws` | Sibling host | — | fuaran-ts / fuaran-go (fuaran#1482) |
 | `Conformance.casLaws` | Adopted | — | `casLaws certifies over the Fuaran.UI op-stream witness` — via `Conformance.casLaws — beside the store-shaped 'both durable stores refuse a stale-head append with a typed StaleHead naming the actual head' and 'the store-shaped compare-and-append and keyed-append laws hold over both durable stores' (fuaran#1485)` |
 | `Conformance.chainBreakReasonLaws` | Adopted | 1000 | `the kit's classified chain walkers never mint Unrecognised (chainBreakReasonLaws)` — via `Conformance.chainBreakReasonLaws` |
-| `Conformance.changeLaws` | Not used | — | Fuaran.Core.Ops.Diff.changes over an op script — no project here classifies a tree change through Core (see digestLaws) |
+| `Conformance.changeLaws` | Not used | — | `Diff.changes` held to `Diff.toOpsWith`'s UNCONTAINED script under plain `applyAll` — the tier classifies through `Diff.changes` (TreeDiff, Phase 2304) but diffs through `toOpsContainedWith` (TreeOpDiff), and this witness's `withChildren` is a no-op on a leaf, so the uncontained script's insert under a leaf-turned-container is dropped and the family's landing law cannot run here; the classification is held to the contained script over the corpus instead (Fuaran.UI.OpStream.Tests, TreeDiffTests) |
 | `Conformance.checkpointLaws` | Not used | — | Fuaran.Core.OpStream.Dag's lane-DAG checkpoint (Dag.Checkpoint, Core 0.34.0, fuaran-core Phase 288) — the tier checkpoints its DAG through its own DagReplay.replayFromCheckpoint (Fuaran.UI.OpStream.Dag.Merge) and takes no Core DAG checkpoint |
 | `Conformance.codecInjectivityLaws` | Not used | — | op-codec injectivity over an `'Op : equality` witness — `TreeOp<obj>` is obj-erased and has no equality to state distinctness with; the codec round-trips byte-stably against the wire corpus (`JsonDecode.Tests`, fuaran-ts parity), which is the same claim in the form this op type admits |
 | `Conformance.columnarOpLaws` | Adopted | 600 | `the columnar op algebra certifies under Core's columnarOpLaws` — via `Conformance.columnarOpLaws` |
@@ -62,9 +62,9 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 | `Conformance.dagBreakReasonLaws` | Adopted | 800 | `the kit's classified DAG walker never mints Unrecognised (dagBreakReasonLaws)` — via `Conformance.dagBreakReasonLaws` |
 | `Conformance.dagLaws` | Adopted | — | `the UI op-stream witness certifies under Core's dagLaws` — via `Conformance.dagLaws` |
 | `Conformance.deferredLaws` | Adopted | — | `the Deferred value codec certifies under Core's deferredLaws` — via `Conformance.deferredLaws` |
-| `Conformance.diffContainedLaws` | Not used | — | `Diff.toOpsContained` under a `CanHold` — this tier applies structural ops through `applyContained` but derives no contained diff script; `Diff.toOps` is certified through `certify` |
+| `Conformance.diffContainedLaws` | Adopted | — | `the Fuaran.UI witness certifies under Core's diffContainedLaws (TreeOpDiff's script)` — via `Conformance.diffContainedLaws` |
 | `Conformance.diffLaws` | Adopted | 3400 | `the Fuaran.UI witness certifies end-to-end via the unified Conformance.certify` — via `Conformance.certify` |
-| `Conformance.digestLaws` | Not used | — | Fuaran.Core.Ops.Diff's subtree digests and change partition — no project here diffs a tree through Core (WireProfile's Diff is Fuaran.Core.Idl's IDL diff, a different module) |
+| `Conformance.digestLaws` | Not used | — | Fuaran.Core.Ops.Diff's subtree digests and change partition — the tier diffs through `Diff.toOpsContainedWith` and classifies through `Diff.changes` (Phase 2304) but computes no subtree digest (WireProfile's Diff is Fuaran.Core.Idl's IDL diff, a different module) |
 | `Conformance.dirtyPropagationLaws` | Adopted | — | `dirtyPropagationLaws certifies the propagation seam's cone at this pin` — via `Conformance.dirtyPropagationLaws — beside the tier-shaped 'BindingGraph.dirty is sound and minimal on generated binding sets' over the production BindingGraph (Fuaran.UI.Renderer.Core)` |
 | `Conformance.encoderInjectivityLaws` | Not used | — | the [<Obsolete>] forward of Conformance.encoderInjectivityLawsAt, removed at 1.0.0 — the tier calls Conformance.encoderInjectivityLawsAt itself (adopted above), never this spelling |
 | `Conformance.encoderInjectivityLawsAt` | Adopted | — | `the FastPath memo-key encoder is collision-free (encoderInjectivityLawsAt)` — via `Conformance.encoderInjectivityLawsAt` |
@@ -161,8 +161,8 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 
 | Status | Families |
 |---|---|
-| Adopted | 51 |
+| Adopted | 52 |
 | Carried by phase | 17 |
-| Not used | 64 |
+| Not used | 63 |
 | Sibling host | 1 |
 | **Total** | **133** |
