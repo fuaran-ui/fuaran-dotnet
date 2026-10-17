@@ -32,6 +32,10 @@ open Fuaran.UI.Ops.Benchmarks
 //        a 2,001-node tree and a 200-op history, per entry route (the text
 //        entry, the render-then-reparse route a secondary reader takes, and the
 //        `JVal` entry) — Phase 2059.
+//   - `derivability-snapshot [trials]` — (RUN) the share of the tier's
+//        three-way auto-merges Fuaran.Core's footprint refuses although the
+//        fold reaches the same tree in either order, over the merge corpus and
+//        seeded generated triads — Phase 2292.
 //   - (default / BDN args)   — (RUN — deferred) run the BenchmarkDotNet suite
 //        (both the apply and op-stream classes; filter with `--filter *OpStream*`).
 //        Capturing the numbers + refreshing the baseline to `captured` is the
@@ -274,6 +278,33 @@ let main argv =
     | "merge-snapshot" :: path :: _ ->
         MergeRate.writeSnapshot path
         printfn "Wrote merge snapshot: %s" path
+        0
+    // Phase 2292 — the footprint's over-approximation share over the merge
+    // corpus and seeded generated triads; the baseline is in STABILITY.md.
+    | "derivability-snapshot" :: rest ->
+        let trials =
+            rest
+            |> List.tryHead
+            |> Option.bind (fun s ->
+                match Int32.TryParse s with
+                | true, n -> Some n
+                | _ -> None)
+            |> Option.defaultValue 20000
+
+        let corpus = DerivabilitySnapshot.corpusTriads ()
+        let generated = DerivabilitySnapshot.generatedTriads trials
+
+        match corpus with
+        | Some triads -> DerivabilitySnapshot.report "corpus" triads |> List.iter (printfn "%s")
+        | None -> printfn "derivability.corpus NOT RUN: no wire-format corpus beside this repository"
+
+        printfn "derivability.generated.seed = %d" DerivabilitySnapshot.seed
+        printfn "derivability.generated.trials = %d" trials
+        DerivabilitySnapshot.report "generated" generated |> List.iter (printfn "%s")
+
+        DerivabilitySnapshot.report "pooled" (Option.defaultValue [] corpus @ generated)
+        |> List.iter (printfn "%s")
+
         0
     | "validate-snapshot" :: path :: _ ->
         ValidateRate.writeSnapshot path
