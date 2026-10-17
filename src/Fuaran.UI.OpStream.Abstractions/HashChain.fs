@@ -7,14 +7,15 @@ open Fuaran.UI.Ops.Types
 // ============================================================================
 //  Hash-chain primitive — SHA-256 over the canonical encoding.
 //
-//  Portable on BOTH pipelines (Phase 405): the digest routes through
-//  `Fuaran.UI.Hashing.sha256Hex` — the pure, Fable-safe FIPS 180-4 SHA-256 the
-//  language tier has shipped since Phase 164 (BCL-parity-tested) — so
-//  `computeHash` + `Verify.chain` compile under Fable and a browser host can
-//  verify a chain in-session, at parity with the TS host's dependency-free
-//  SHA-256 (`@fuaran-ui/op-stream/src/hashChain.ts`). The pre-405 BCL
-//  (`System.Security.Cryptography`) implementation produced byte-identical
-//  digests, so existing chains verify unchanged.
+//  Portable on BOTH pipelines (Phase 405): the digest is `Fuaran.Core`'s pure,
+//  Fable-safe FIPS 180-4 SHA-256 — the chain hash is
+//  `Fuaran.Core.OpStream.sha256Hash`, since Phase 2309 retired the tier's own
+//  copy — so `computeHash` + `Verify.chain` compile under Fable and a browser
+//  host can verify a chain in-session, at parity with the TS host's
+//  dependency-free SHA-256 (`@fuaran-ui/op-stream/src/hashChain.ts`). The
+//  pre-405 BCL (`System.Security.Cryptography`) implementation and the tier's
+//  Phase-164 copy both produced byte-identical digests, so existing chains
+//  verify unchanged.
 //
 //  Per `Fuaran.Core`'s GP3 ("crypto stays host-side", certified by
 //  `Conformance.hashFnLaws`, fuaran-core#65) this is the host-owned crypto that
@@ -62,10 +63,6 @@ module HashChain =
         { Fuaran.Core.OpStream.canonicalConfig with
             Genesis = genesisPreviousHash }
 
-    /// SHA-256 → 64 lower-case hex characters. Pure managed (Fable-clean);
-    /// byte-identical to the BCL — see `Fuaran.UI.Hashing`.
-    let sha256Hex (payload: string) : string = Fuaran.UI.Hashing.sha256Hex payload
-
     /// The content address of a checkpoint snapshot (Phase 412 — A2). Binds the
     /// snapshot to its **position in the chain**: `previousChainHead` (the chain
     /// head at the checkpoint's op-index) + `sequence` + the canonical tree, in a
@@ -90,7 +87,7 @@ module HashChain =
             + canonicalTree
             + "}"
 
-        sha256Hex (previousChainHead + "|" + payload)
+        Fuaran.Core.OpStream.sha256Hash previousChainHead payload
 
     /// Compute the hash for an op-record. Identical algorithm on every host —
     /// verification re-derives this and compares.

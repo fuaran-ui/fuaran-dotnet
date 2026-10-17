@@ -83,7 +83,50 @@ let rec lowerOp<'Msg> (renderFragment: Node<'Msg> -> string) (newTree: Node<'Msg
     | TreeOp.ReplaceRoot node -> reRender (NodeId node.Id)
     | TreeOp.Batch ops -> ops |> List.collect (lowerOp renderFragment newTree)
 
-/// Lower a `TreeOp` list (e.g. a `TreeOpDiff.diff` result) to the `DomPatch`
-/// list the shim applies, in order.
+/// Lower a `TreeOp` list to the `DomPatch` list the shim applies, in order,
+/// reading every op against the ONE post-apply tree `newTree`. Exact for a
+/// single op, and for a list whose inserts and moves land where they stay and
+/// whose content ops re-render nodes no later op restructures. A whole diff
+/// script is not such a list — `lowerScript` is its lowering.
 let lower<'Msg> (renderFragment: Node<'Msg> -> string) (newTree: Node<'Msg>) (ops: TreeOp<'Msg> list) : DomPatch list =
     ops |> List.collect (lowerOp renderFragment newTree)
+
+/// Lower a whole `TreeOp` script — a `TreeOpDiff.diff` result — applied to
+/// `oldTree`, reading each op against the tree as it stands right AFTER that op
+/// (Phase 2304). The DOM the shim patches is the tree the script has built so
+/// far, so this is the reading under which every patch addresses what the DOM
+/// holds: an insert's or move's landed index is its index at that step (the
+/// append position), not its final index among siblings a later removal has
+/// yet to drop, and a container re-rendered by an early content op renders the
+/// children it holds at that step, which the later structural patches then
+/// rearrange. Core's diff orders a script so that holds by construction —
+/// content of containers first, inserts and moves, removals, reorders, then
+/// content of leaves — which `lower` against the final tree does not
+/// tolerate. An op the apply engine refuses lowers to nothing and leaves the
+/// tree as it was.
+let rec private lowerSteps<'Msg>
+    (renderFragment: Node<'Msg> -> string)
+    (tree: Node<'Msg>)
+    (ops: TreeOp<'Msg> list)
+    : DomPatch list list * Node<'Msg> =
+    // Chunks accumulate newest-first, so a long script stays linear.
+    ops
+    |> List.fold
+        (fun (chunks: DomPatch list list, t: Node<'Msg>) op ->
+            match op with
+            | TreeOp.Batch inner ->
+                let inner', t' = lowerSteps renderFragment t inner
+                inner' @ chunks, t'
+            | _ ->
+                match Fuaran.UI.Ops.Apply.apply op t with
+                | Ok t' -> lowerOp renderFragment t' op :: chunks, t'
+                | Error _ -> chunks, t)
+        ([], tree)
+
+/// `lowerSteps` from `oldTree` — the lowering of a diff script (see above).
+let lowerScript<'Msg>
+    (renderFragment: Node<'Msg> -> string)
+    (oldTree: Node<'Msg>)
+    (ops: TreeOp<'Msg> list)
+    : DomPatch list =
+    lowerSteps renderFragment oldTree ops |> fst |> List.rev |> List.concat

@@ -9,6 +9,10 @@
     <PackageTags>fuaran;op-stream;replay</PackageTags>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Phase 2304: the diff laws compare the script against Core's over the diff witness. -->
+    <InternalsVisibleTo Include="Fuaran.UI.OpStream.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <ItemGroup>

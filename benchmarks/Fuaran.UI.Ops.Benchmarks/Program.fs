@@ -28,10 +28,18 @@ open Fuaran.UI.Ops.Benchmarks
 //   - `tree-diff [iterations]` — (RUN) print mean_us + alloc_b per
 //        `TreeOpDiff.diff` over a 2,001-node tree for each single-edit shape
 //        (identical / one field / one container field / one move) — Phase 2063.
+//   - `core-diff [iterations]` — (RUN) print mean_us + alloc_b + the script's
+//        op count, bytes and relocation families per `TreeOpDiff.diff` over the
+//        corpus pairs and a 10,001-node tree (incl. a relocation-heavy pair) —
+//        Phase 2304.
 //   - `decode-rate [iterations]` — (RUN) print mean_us + alloc_b per decode of
 //        a 2,001-node tree and a 200-op history, per entry route (the text
 //        entry, the render-then-reparse route a secondary reader takes, and the
 //        `JVal` entry) — Phase 2059.
+//   - `derivability-snapshot [trials]` — (RUN) the share of the tier's
+//        three-way auto-merges Fuaran.Core's footprint refuses although the
+//        fold reaches the same tree in either order, over the merge corpus and
+//        seeded generated triads — Phase 2292.
 //   - (default / BDN args)   — (RUN — deferred) run the BenchmarkDotNet suite
 //        (both the apply and op-stream classes; filter with `--filter *OpStream*`).
 //        Capturing the numbers + refreshing the baseline to `captured` is the
@@ -182,6 +190,34 @@ let main argv =
             printfn "treediff.%s.ops = %d" s.Name ops
 
         0
+    | "core-diff" :: rest ->
+        let iterations =
+            rest
+            |> List.tryHead
+            |> Option.bind (fun s ->
+                match Int32.TryParse s with
+                | true, n -> Some n
+                | _ -> None)
+            |> Option.defaultValue 20
+
+        let scenarios, skipped = CoreDiffRate.scenarios ()
+        printfn "corediff.tree.nodes = %d" (CoreDiffRate.nodeCount ())
+        skipped |> Option.iter (printfn "corediff.note = %s")
+
+        for s in scenarios do
+            let meanUs, allocB = CoreDiffRate.measure s iterations
+            let shape = CoreDiffRate.shape s
+            printfn "corediff.%s.pairs = %d" s.Name shape.Pairs
+            printfn "corediff.%s.mean_us = %.1f" s.Name meanUs
+            printfn "corediff.%s.alloc_b = %.0f" s.Name allocB
+            printfn "corediff.%s.ops = %d" s.Name shape.Ops
+            printfn "corediff.%s.bytes = %d" s.Name shape.Bytes
+            printfn "corediff.%s.moves = %d" s.Name shape.Moves
+            printfn "corediff.%s.inserts = %d" s.Name shape.Inserts
+            printfn "corediff.%s.removes = %d" s.Name shape.Removes
+            printfn "corediff.%s.round_trips = %d" s.Name shape.RoundTrips
+
+        0
     | "decode-rate" :: rest ->
         let iterations =
             rest
@@ -274,6 +310,33 @@ let main argv =
     | "merge-snapshot" :: path :: _ ->
         MergeRate.writeSnapshot path
         printfn "Wrote merge snapshot: %s" path
+        0
+    // Phase 2292 — the footprint's over-approximation share over the merge
+    // corpus and seeded generated triads; the baseline is in STABILITY.md.
+    | "derivability-snapshot" :: rest ->
+        let trials =
+            rest
+            |> List.tryHead
+            |> Option.bind (fun s ->
+                match Int32.TryParse s with
+                | true, n -> Some n
+                | _ -> None)
+            |> Option.defaultValue 20000
+
+        let corpus = DerivabilitySnapshot.corpusTriads ()
+        let generated = DerivabilitySnapshot.generatedTriads trials
+
+        match corpus with
+        | Some triads -> DerivabilitySnapshot.report "corpus" triads |> List.iter (printfn "%s")
+        | None -> printfn "derivability.corpus NOT RUN: no wire-format corpus beside this repository"
+
+        printfn "derivability.generated.seed = %d" DerivabilitySnapshot.seed
+        printfn "derivability.generated.trials = %d" trials
+        DerivabilitySnapshot.report "generated" generated |> List.iter (printfn "%s")
+
+        DerivabilitySnapshot.report "pooled" (Option.defaultValue [] corpus @ generated)
+        |> List.iter (printfn "%s")
+
         0
     | "validate-snapshot" :: path :: _ ->
         ValidateRate.writeSnapshot path

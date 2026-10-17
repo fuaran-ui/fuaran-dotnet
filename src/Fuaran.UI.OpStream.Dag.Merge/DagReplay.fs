@@ -128,7 +128,7 @@ module DagReplay =
             match r.OutcomeHash with
             | None -> Ok tree'
             | Some expected ->
-                let actual = CanonicalJson.encodeNode tree' |> HashChain.sha256Hex
+                let actual = CanonicalJson.encodeNode tree' |> Fuaran.Core.Hash.sha256Hex
 
                 if actual = expected then
                     Ok tree'

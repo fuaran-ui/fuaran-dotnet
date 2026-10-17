@@ -25,8 +25,8 @@ module Fuaran.Samples.Catalog.OpStreamInspector
 //  The demo segment exercises three op kinds:
 //
 //   1. RemoveNode 'right'        → Removed entry against id "right"
-//   2. InsertChild 'middle'      → Added entry against id "middle" at dash/1
-//   3. UpdateProp 'left' Text    → PropChanged + TextChanged against "left"
+//   2. InsertChild 'middle'      → Added entry against id "middle"
+//   3. UpdateProp 'left' Text    → Changed entry against id "left"
 //
 //  Hash-chain integrity: pre-computed `Verified` flag on every record so
 //  the inspector's banner state ("Chain verified ✓" vs "Chain integrity
@@ -48,13 +48,16 @@ open Fuaran.UI.Renderer
 // .NET side need to land here too (and the demo data needs to update) —
 // or this page silently misses them.
 
+// Since Phase 2304 the .NET classification is Fuaran.Core's `Diff.ChangeKind`:
+// a same-parent reposition is `Reordered` on the parent, a content change is
+// `Changed`.
 type DemoNodeChangeKind =
-    | Added of parent: string option * position: int
-    | Removed of parent: string option
-    | Moved of fromParent: string option * fromPosition: int * toParent: string option * toPosition: int
+    | Added
+    | Removed
+    | Moved of fromParent: string * toParent: string
     | KindChanged of fromKind: string * toKind: string
-    | PropChanged of fromJson: string * toJson: string
-    | TextChanged of fromText: string * toText: string
+    | Changed
+    | Reordered
 
 type DemoNodeChange =
     { NodeId: string
@@ -128,9 +131,7 @@ let private demoSteps (verifiedChain: bool) : DemoStep list =
             Timestamp = "2026-05-30T07:00:00Z"
             Verified = verifiedChain
             TelemetryLine = "outcome=success durationMs=0.42 streamId=demo userId=operator" }
-        Changes =
-          [ { NodeId = "right"
-              Change = Removed(Some "dash") } ]
+        Changes = [ { NodeId = "right"; Change = Removed } ]
         TreeAfter = afterStep1 }
 
       { Record =
@@ -140,9 +141,7 @@ let private demoSteps (verifiedChain: bool) : DemoStep list =
             Timestamp = "2026-05-30T07:00:01Z"
             Verified = true
             TelemetryLine = "outcome=success durationMs=0.31 streamId=demo userId=operator" }
-        Changes =
-          [ { NodeId = "middle"
-              Change = Added(Some "dash", 1) } ]
+        Changes = [ { NodeId = "middle"; Change = Added } ]
         TreeAfter = afterStep2 }
 
       { Record =
@@ -152,15 +151,7 @@ let private demoSteps (verifiedChain: bool) : DemoStep list =
             Timestamp = "2026-05-30T07:00:02Z"
             Verified = true
             TelemetryLine = "outcome=success durationMs=0.18 streamId=demo userId=operator" }
-        Changes =
-          [ { NodeId = "left"
-              Change =
-                PropChanged(
-                    "…\"text\":{\"$type\":\"Literal\",\"text\":\"Left pane\"}…",
-                    "…\"text\":{\"$type\":\"Literal\",\"text\":\"Left pane (updated)\"}…"
-                ) }
-            { NodeId = "left"
-              Change = TextChanged("Left pane", "Left pane (updated)") } ]
+        Changes = [ { NodeId = "left"; Change = Changed } ]
         TreeAfter = afterStep3 } ]
 
 // ─── Model ─────────────────────────────────────────────────────────────────
@@ -192,27 +183,21 @@ let update (msg: Msg) (model: Model) : Model =
 
 let private changeKindLabel (k: DemoNodeChangeKind) : string =
     match k with
-    | Added(_, _) -> "Added"
-    | Removed _ -> "Removed"
-    | Moved(_, _, _, _) -> "Moved"
+    | Added -> "Added"
+    | Removed -> "Removed"
+    | Moved(_, _) -> "Moved"
     | KindChanged(_, _) -> "KindChanged"
-    | PropChanged(_, _) -> "PropChanged"
-    | TextChanged(_, _) -> "TextChanged"
+    | Changed -> "Changed"
+    | Reordered -> "Reordered"
 
 let private changeDetail (k: DemoNodeChangeKind) : string =
     match k with
-    | Added(parent, position) -> sprintf "parent=%s position=%d" (parent |> Option.defaultValue "<root>") position
-    | Removed parent -> sprintf "parent=%s" (parent |> Option.defaultValue "<root>")
-    | Moved(fromParent, fromPos, toParent, toPos) ->
-        sprintf
-            "from=%s/%d → to=%s/%d"
-            (fromParent |> Option.defaultValue "<root>")
-            fromPos
-            (toParent |> Option.defaultValue "<root>")
-            toPos
+    | Added
+    | Removed
+    | Changed
+    | Reordered -> ""
+    | Moved(fromParent, toParent) -> sprintf "from=%s → to=%s" fromParent toParent
     | KindChanged(fromKind, toKind) -> sprintf "%s → %s" fromKind toKind
-    | PropChanged(fromJson, toJson) -> sprintf "from: %s  to: %s" fromJson toJson
-    | TextChanged(fromText, toText) -> sprintf "\"%s\" → \"%s\"" fromText toText
 
 let private renderTreeAfter (tree: Node<unit>) : ReactElement =
     SampleContext.render Runtime.diagnostic BindingResolver.empty ignore tree

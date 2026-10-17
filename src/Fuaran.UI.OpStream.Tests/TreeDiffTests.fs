@@ -1,6 +1,7 @@
 module Fuaran.UI.OpStream.Tests.TreeDiffTests
 
 open Expecto
+open Fuaran.Core
 open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.Ops
@@ -13,42 +14,24 @@ open Fuaran.UI.OpStream.TestSupport
 //  TreeDiff correctness — per-op-kind classification + per-step replay-diff +
 //  integrity preflight + apply-failure partial-progress.
 //
-//  Pairs with ReplayTests.fs (which exercises Replay.applyTo in
-//  isolation); these tests verify the diff produced by composing apply +
-//  diff matches what each op kind structurally implies.
+//  The classification is Fuaran.Core's `Diff.changes` (Phase 2304), so these
+//  tests read Core's vocabulary: a same-parent reposition is `Reordered` on
+//  the parent, a content change is `Changed`.
 // ============================================================================
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
-
-let private rawId (NodeId raw) = raw
 
 /// F# 10 nullness escape — `box value` lights up as `objnull` and
 /// `PropValue.Native` carries a non-null `obj`. Same shape as the helper in
 /// Fuaran.UI.Ops.Tests/OpsApplyTests.fs.
 let private nn (value: 'T) : obj = box value |> Unchecked.nonNull
 
-let private countByKind (diff: TreeDiff) =
-    let mutable added = 0
-    let mutable removed = 0
-    let mutable moved = 0
-    let mutable kindChanged = 0
-    let mutable propChanged = 0
-    let mutable textChanged = 0
+/// The diff's entries as `(id, kind)` pairs, in the diff's own order.
+let private entries (diff: TreeDiff) : (string * Diff.ChangeKind<NodeId>) list =
+    diff.Changes |> List.map (fun c -> (let (NodeId raw) = c.Id in raw), c.Kind)
 
-    for change in diff.Changes do
-        match change.Change with
-        | NodeChangeKind.Added(_, _) -> added <- added + 1
-        | NodeChangeKind.Removed _ -> removed <- removed + 1
-        | NodeChangeKind.Moved(_, _, _, _) -> moved <- moved + 1
-        | NodeChangeKind.KindChanged(_, _) -> kindChanged <- kindChanged + 1
-        | NodeChangeKind.PropChanged(_, _) -> propChanged <- propChanged + 1
-        | NodeChangeKind.TextChanged(_, _) -> textChanged <- textChanged + 1
-
-    added, removed, moved, kindChanged, propChanged, textChanged
-
-let private hasChangeFor (rawIdNeedle: string) (kindPred: NodeChangeKind -> bool) (diff: TreeDiff) : bool =
-    diff.Changes
-    |> List.exists (fun c -> rawId c.NodeId = rawIdNeedle && kindPred c.Change)
+let private hasChangeFor (rawIdNeedle: string) (kind: Diff.ChangeKind<NodeId>) (diff: TreeDiff) : bool =
+    entries diff |> List.contains (rawIdNeedle, kind)
 
 // ─── Per-op-kind diff classification ─────────────────────────────────────
 
@@ -67,63 +50,42 @@ let tests =
 
               match Apply.apply (TreeOp.RemoveNode(NodeId "right")) before with
               | Ok after ->
-                  let result = TreeDiff.diff before after
-                  let _, removed, _, _, _, _ = countByKind result
-                  Expect.equal removed 1 "Exactly one removal"
-
-                  let isRightRemoved (c: NodeChangeKind) =
-                      match c with
-                      | NodeChangeKind.Removed _ -> true
-                      | _ -> false
-
-                  Expect.isTrue (hasChangeFor "right" isRightRemoved result) "Right node is the removed one"
+                  Expect.equal
+                      (entries (TreeDiff.diff before after))
+                      [ "right", Diff.ChangeKind.Removed ]
+                      "exactly the removed node, nothing about its parent (a child leaving alone is not a reorder)"
               | Error e -> failtestf "Apply failed: %A" e
           }
 
-          test "InsertChild op produces a single Added entry, appended" {
+          test "InsertChild op produces a single Added entry" {
               let before = buildDashboard ()
 
               let newChild: Node<TestMsg> = Fuaran.markdown "middle" "Middle pane"
 
               match Apply.apply (TreeOp.InsertChild(NodeId "dash", newChild)) before with
               | Ok after ->
-                  let result = TreeDiff.diff before after
-                  let added, _, _, _, _, _ = countByKind result
-                  Expect.equal added 1 "Exactly one addition"
-
-                  let isMiddleAdded (c: NodeChangeKind) =
-                      match c with
-                      | NodeChangeKind.Added(Some(NodeId "dash"), 2) -> true
-                      | _ -> false
-
-                  Expect.isTrue
-                      (hasChangeFor "middle" isMiddleAdded result)
-                      "Middle appended under dash — the diff still REPORTS a position, derived from the result"
+                  Expect.equal
+                      (entries (TreeDiff.diff before after))
+                      [ "middle", Diff.ChangeKind.Added ]
+                      "exactly the inserted node"
               | Error e -> failtestf "Apply failed: %A" e
           }
 
-          test "ReorderChildren op produces Moved entries for re-positioned children only" {
+          test "ReorderChildren op produces one Reordered entry, on the parent" {
               let before = buildDashboard ()
               // Swap left ↔ right.
               let op = TreeOp.ReorderChildren(NodeId "dash", [ NodeId "right"; NodeId "left" ])
 
               match Apply.apply op before with
               | Ok after ->
-                  let result = TreeDiff.diff before after
-                  let _, _, moved, _, _, _ = countByKind result
-                  Expect.equal moved 2 "Both children moved"
-
-                  let isMoveTo (toPos: int) (c: NodeChangeKind) =
-                      match c with
-                      | NodeChangeKind.Moved(_, _, Some(NodeId "dash"), p) when p = toPos -> true
-                      | _ -> false
-
-                  Expect.isTrue (hasChangeFor "right" (isMoveTo 0) result) "Right moved to position 0"
-                  Expect.isTrue (hasChangeFor "left" (isMoveTo 1) result) "Left moved to position 1"
+                  Expect.equal
+                      (entries (TreeDiff.diff before after))
+                      [ "dash", Diff.ChangeKind.Reordered ]
+                      "a same-parent reposition is the PARENT's reorder, not a move of each child"
               | Error e -> failtestf "Apply failed: %A" e
           }
 
-          test "MoveNode op produces a Moved entry with from/to parent + position" {
+          test "MoveNode op produces a Moved entry naming both parents" {
               // Build a tree with two layers so MoveNode has somewhere to go.
               let inner: Node<TestMsg> =
                   Fuaran.dashboard
@@ -137,30 +99,19 @@ let tests =
                       { Defaults.dashboard<TestMsg> with
                           Children = [ inner; Fuaran.markdown "side" "Side" ] }
 
-              // Move 'leaf' from 'inner' to 'outer'. The op appends, so it lands
-              // after 'side' — index 2, not the old explicit 1.
               let op = TreeOp.MoveNode(NodeId "leaf", NodeId "outer")
 
               match Apply.apply op outer with
               | Ok after ->
-                  let result = TreeDiff.diff outer after
-                  let _, _, moved, _, _, _ = countByKind result
-                  Expect.isGreaterThanOrEqual moved 1 "At least one move"
-
-                  let isLeafMoveAcrossParents (c: NodeChangeKind) =
-                      match c with
-                      | NodeChangeKind.Moved(Some(NodeId "inner"), 0, Some(NodeId "outer"), 2) -> true
-                      | _ -> false
-
-                  Expect.isTrue
-                      (hasChangeFor "leaf" isLeafMoveAcrossParents result)
-                      "Leaf moved from inner/0 to outer/2 (appended)"
+                  Expect.equal
+                      (entries (TreeDiff.diff outer after))
+                      [ "leaf", Diff.ChangeKind.Moved(NodeId "inner", NodeId "outer") ]
+                      "the leaf moved from inner to outer; an arriving child alone reorders nothing"
               | Error e -> failtestf "Apply failed: %A" e
           }
 
-          test "UpdateProp on Markdown.Text produces PropChanged + TextChanged" {
+          test "UpdateProp on Markdown.Text produces Changed" {
               let before = buildDashboard ()
-              // The 'left' child is a Markdown — rewrite its text via UpdateProp.
               let newTextSource = TextSource.Literal "Left pane (updated)"
 
               let op =
@@ -168,21 +119,14 @@ let tests =
 
               match Apply.apply op before with
               | Ok after ->
-                  let result = TreeDiff.diff before after
-                  let _, _, _, _, propChanged, textChanged = countByKind result
-                  Expect.isGreaterThanOrEqual propChanged 1 "At least one prop change"
-                  Expect.equal textChanged 1 "One text change (Markdown leaf)"
-
-                  let isLeftTextChange (c: NodeChangeKind) =
-                      match c with
-                      | NodeChangeKind.TextChanged("Left pane", "Left pane (updated)") -> true
-                      | _ -> false
-
-                  Expect.isTrue (hasChangeFor "left" isLeftTextChange result) "Left's text delta surfaced"
+                  Expect.equal
+                      (entries (TreeDiff.diff before after))
+                      [ "left", Diff.ChangeKind.Changed ]
+                      "a content change of a survivor is Changed (the old TextChanged / PropChanged pair is one reading)"
               | Error e -> failtestf "Apply failed: %A" e
           }
 
-          test "EditNode op (Markdown → Badge) produces KindChanged" {
+          test "EditNode op (Markdown → Badge) produces KindChanged instead of Changed" {
               let before = buildDashboard ()
 
               let newKind: NodeKind<TestMsg> =
@@ -191,25 +135,128 @@ let tests =
                         Variant = BadgeVariant.Brand }
                   )
 
-              let op = TreeOp.EditNode(NodeId "left", newKind)
-
-              match Apply.apply op before with
+              match Apply.apply (TreeOp.EditNode(NodeId "left", newKind)) before with
               | Ok after ->
-                  let result = TreeDiff.diff before after
-                  let _, _, _, kindChanged, _, _ = countByKind result
-                  Expect.equal kindChanged 1 "One kind change"
-
-                  let isMarkdownToBadge (c: NodeChangeKind) =
-                      match c with
-                      | NodeChangeKind.KindChanged("Markdown", "Badge") -> true
-                      | _ -> false
-
-                  Expect.isTrue (hasChangeFor "left" isMarkdownToBadge result) "Left's kind flipped Markdown→Badge"
+                  Expect.equal
+                      (entries (TreeDiff.diff before after))
+                      [ "left", Diff.ChangeKind.KindChanged("Markdown", "Badge") ]
+                      "Left's kind flipped Markdown→Badge"
               | Error e -> failtestf "Apply failed: %A" e
           }
 
+          test "a moved AND changed survivor carries both entries, in Core's order" {
+              let inner: Node<TestMsg> =
+                  Fuaran.dashboard
+                      "inner"
+                      { Defaults.dashboard<TestMsg> with
+                          Children = [ Fuaran.markdown "leaf" "Leaf" ] }
+
+              let before: Node<TestMsg> =
+                  Fuaran.dashboard
+                      "outer"
+                      { Defaults.dashboard<TestMsg> with
+                          Children = [ inner ] }
+
+              let after: Node<TestMsg> =
+                  Fuaran.dashboard
+                      "outer"
+                      { Defaults.dashboard<TestMsg> with
+                          Children =
+                              [ Fuaran.dashboard "inner" Defaults.dashboard<TestMsg>
+                                Fuaran.markdown "leaf" "Leaf, edited" ] }
+
+              Expect.equal
+                  (entries (TreeDiff.diff before after))
+                  [ "leaf", Diff.ChangeKind.Moved(NodeId "inner", NodeId "outer")
+                    "leaf", Diff.ChangeKind.Changed ]
+                  "Moved then Changed for one id"
+          }
+
+          test "the classification is the projection of the script TreeOpDiff emits" {
+              // Core's D112 over the tier's witnesses: the Added ids are the
+              // inserted ids, the Moved ids the MoveNode targets, the Changed /
+              // KindChanged ids the nodes the script rewrites.
+              let before = buildDashboard ()
+
+              let after: Node<TestMsg> =
+                  Fuaran.dashboard
+                      "dash"
+                      { Defaults.dashboard<TestMsg> with
+                          Children =
+                              [ Fuaran.dashboard
+                                    "group"
+                                    { Defaults.dashboard<TestMsg> with
+                                        Children = [ Fuaran.markdown "right" "Right pane" ] }
+                                Fuaran.markdown "left" "Left pane, edited" ] }
+
+              let changes = entries (TreeDiff.diff before after)
+              let script = TreeOpDiff.diff before after
+
+              let idsOf (pick: Diff.ChangeKind<NodeId> -> bool) =
+                  changes |> List.filter (snd >> pick) |> List.map fst |> Set.ofList
+
+              let inserted =
+                  script
+                  |> List.choose (function
+                      | TreeOp.InsertChild(_, n) -> Some n.Id
+                      | _ -> None)
+                  |> Set.ofList
+
+              let moved =
+                  script
+                  |> List.choose (function
+                      | TreeOp.MoveNode(NodeId t, _) -> Some t
+                      | _ -> None)
+                  |> Set.ofList
+
+              let rewritten =
+                  script
+                  |> List.choose (function
+                      | TreeOp.UpdateProp(NodeId t, _, _)
+                      | TreeOp.EditNode(NodeId t, _) -> Some t
+                      | _ -> None)
+                  |> Set.ofList
+
+              Expect.equal
+                  (idsOf (function
+                      | Diff.ChangeKind.Added -> true
+                      | _ -> false))
+                  inserted
+                  "Added = the inserted ids"
+
+              Expect.equal
+                  (idsOf (function
+                      | Diff.ChangeKind.Moved _ -> true
+                      | _ -> false))
+                  moved
+                  "Moved = the MoveNode targets"
+
+              Expect.equal
+                  (idsOf (function
+                      | Diff.ChangeKind.Changed
+                      | Diff.ChangeKind.KindChanged _ -> true
+                      | _ -> false))
+                  rewritten
+                  "Changed = the rewritten ids"
+          }
+
+          test "two roots with different ids read as the wholesale replace TreeOpDiff emits" {
+              let before: Node<TestMsg> = Fuaran.markdown "a" "A"
+              let after: Node<TestMsg> = Fuaran.markdown "b" "B"
+
+              Expect.equal
+                  (entries (TreeDiff.diff before after))
+                  [ "a", Diff.ChangeKind.Removed; "b", Diff.ChangeKind.Added ]
+                  "every old id removed, every new id added"
+
+              Expect.equal
+                  (TreeOpDiff.diff before after |> List.map CanonicalJson.encodeOp)
+                  [ CanonicalJson.encodeOp (TreeOp.ReplaceRoot after) ]
+                  "the script is ReplaceRoot"
+          }
+
           test "Round-trip — apply a chain of ops then diff(start, end) ⊇ cumulative effect" {
-              // Op sequence: remove 'right', insert 'middle' between 'left' and the gap.
+              // Op sequence: remove 'right', insert 'middle'.
               let start = buildDashboard ()
               let op1 = TreeOp.RemoveNode(NodeId "right"): TreeOp<TestMsg>
 
@@ -219,29 +266,10 @@ let tests =
               | Ok t1 ->
                   match Apply.apply op2 t1 with
                   | Ok t2 ->
-                      let cumulative = TreeDiff.diff start t2
-
-                      Expect.isTrue
-                          (hasChangeFor
-                              "right"
-                              (function
-                              | NodeChangeKind.Removed _ -> true
-                              | _ -> false)
-                              cumulative)
-                          "Cumulative diff records 'right' removed"
-
-                      Expect.isTrue
-                          (hasChangeFor
-                              "middle"
-                              (function
-                              | NodeChangeKind.Added(_, _) -> true
-                              | _ -> false)
-                              cumulative)
-                          "Cumulative diff records 'middle' added"
-
-                      let added, removed, _, _, _, _ = countByKind cumulative
-                      Expect.equal added 1 "One net addition"
-                      Expect.equal removed 1 "One net removal"
+                      Expect.equal
+                          (entries (TreeDiff.diff start t2))
+                          [ "middle", Diff.ChangeKind.Added; "right", Diff.ChangeKind.Removed ]
+                          "one net addition and one net removal, in ascending id order"
                   | Error e -> failtestf "op2 apply failed: %A" e
               | Error e -> failtestf "op1 apply failed: %A" e
           }
@@ -274,24 +302,14 @@ let tests =
                   Expect.equal step1.Record.Sequence 1 "First step is record 1"
 
                   Expect.isTrue
-                      (hasChangeFor
-                          "right"
-                          (function
-                          | NodeChangeKind.Removed _ -> true
-                          | _ -> false)
-                          step1.Diff)
+                      (hasChangeFor "right" Diff.ChangeKind.Removed step1.Diff)
                       "Step 1 diff records 'right' removed"
                   // Second step: 'middle' added.
                   let step2 = steps[1]
                   Expect.equal step2.Record.Sequence 2 "Second step is record 2"
 
                   Expect.isTrue
-                      (hasChangeFor
-                          "middle"
-                          (function
-                          | NodeChangeKind.Added(_, _) -> true
-                          | _ -> false)
-                          step2.Diff)
+                      (hasChangeFor "middle" Diff.ChangeKind.Added step2.Diff)
                       "Step 2 diff records 'middle' added"
               | Error e -> failtestf "Expected Ok, got %A" e
           }

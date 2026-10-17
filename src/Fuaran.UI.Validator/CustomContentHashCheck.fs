@@ -50,8 +50,6 @@ module Fuaran.UI.Validator.CustomContentHashCheck
 // ============================================================================
 
 
-open System.Security.Cryptography
-open System.Text
 open FSharp.Compiler.Syntax
 open Fuaran.UI.PreEmitValidate
 open Fuaran.UI.Validator.Findings
@@ -62,28 +60,18 @@ open Fuaran.UI.Validator.Syntax
 /// `propKeys` is the props *schema* (keys only); `exposedNodeIds` is the
 /// declared interior-id list. Both are sorted internally, so callers need
 /// not pre-sort. Returns lower-case hex SHA-256.
+///
+/// The one definition is `Fuaran.UI.Hashing.customBodyShapeHash` (Phase 2309):
+/// this check used to rebuild the same pre-image and hash it with the BCL, so a
+/// contract-derived hash and a validated hand-set one agreed only while the two
+/// copies did.
 let computeBodyShapeHash
     (moduleId: string)
     (componentId: string)
     (propKeys: string list)
     (exposedNodeIds: string list)
     : string =
-    let canonical =
-        String.concat
-            "\n"
-            [ "fuaran-custom-body-shape:v1"
-              "moduleId=" + moduleId
-              "componentId=" + componentId
-              "props=" + (propKeys |> List.sort |> String.concat ",")
-              "exposed=" + (exposedNodeIds |> List.sort |> String.concat ",") ]
-
-    use sha = SHA256.Create()
-
-    canonical
-    |> Encoding.UTF8.GetBytes
-    |> sha.ComputeHash
-    |> Array.map (fun b -> b.ToString("x2"))
-    |> String.concat ""
+    Fuaran.UI.Hashing.customBodyShapeHash moduleId componentId propKeys exposedNodeIds
 
 /// A parsed, literal `Some { Algorithm = …; Hash = …; Strictness = … }`.
 type private HashLiteral =

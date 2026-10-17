@@ -1,25 +1,31 @@
 namespace Fuaran.UI.Ops
 
 // ============================================================================
-//  TreeOp projections — the op's NAME, the ids it ADDRESSES, and the ids it
-//  TOUCHES, each answered once (Phase 2044).
+//  TreeOp projections — the op's NAME, the ids it ADDRESSES, and the subtrees
+//  it puts INTO the tree, each answered once (Phase 2044).
 //
-//  Many modules need one of these three facts about an op and nothing else,
-//  and each used to carry its own exhaustive match to get it. The copies
-//  diverged: batch acceptance recorded an `InsertChild`'s child id but not the
-//  subtree under it, so an op on a node INSIDE an inserted subtree did not pull
-//  the insert into its dependency closure, and the kept batch failed to apply.
+//  Many modules need one of these facts about an op and nothing else, and
+//  each used to carry its own exhaustive match to get it. The copies diverged:
+//  batch acceptance recorded an `InsertChild`'s child id but not the subtree
+//  under it, so an op on a node INSIDE an inserted subtree did not pull the
+//  insert into its dependency closure, and the kept batch failed to apply.
 //
-//  So the three questions are answered here, and a module that needs only a
-//  name, the addressed ids or the footprint projects from them. A module that
+//  So the questions are answered here, and a module that needs only a name,
+//  the addressed ids or the inserted nodes projects from them. A module that
 //  genuinely TRANSFORMS an op (encodes it, relabels it, applies it) keeps its
 //  own match — the projections are not a visitor.
 //
-//  The inserted-subtree walk reads `NodeChildren`, the tier's one enumeration
-//  of what a node's children are, at its `keyed` reach — every position a node
-//  holds another in, the same surface id uniqueness quantifies over — so an id
-//  introduced under a `Switch` case, a `state.onLoading` alternative or a slot
-//  argument is in the footprint exactly as one in an ordered child list is.
+//  What an op reads and writes is NOT answered here: that is
+//  `Fuaran.UI.Ops.TreeOpFootprint` (Phase 2292), Fuaran.Core's `Footprint`
+//  over the tier's witnesses, in the package that carries the apply engine
+//  and the Core reference. The flat id set this module once returned had no
+//  way to say that a remove or a move writes a parent it cannot name, so a
+//  partial accept read over it could drop a move a later reorder needed.
+//
+//  The nodes an `EditNode` puts in are read through `NodeChildren`, the tier's
+//  one enumeration of what a node's children are, at its `keyed` reach —
+//  every position a node holds another in, the same surface id uniqueness
+//  quantifies over.
 //
 //  FSharp.Core + the tier's own types only, Fable-portable: no IO, no clock,
 //  no reflection.
@@ -56,7 +62,7 @@ module TreeOp =
     /// order, each id once.
     ///
     /// Not the ids it merely mentions: a reorder's `newOrder` and an insert's
-    /// subtree are payload, and are in `footprint` instead.
+    /// subtree are payload (the subtree is `inserted`).
     let rec targets (op: TreeOp<'Msg>) : NodeId list =
         match op with
         | TreeOp.EditNode(id, _)
@@ -71,12 +77,6 @@ module TreeOp =
         | TreeOp.MoveNode(id, newParentId) -> [ id; newParentId ]
         | TreeOp.ReplaceRoot node -> [ NodeId node.Id ]
         | TreeOp.Batch ops -> ops |> List.collect targets |> List.distinct
-
-    /// Every id in `node`'s subtree, `node` included, through every keyed
-    /// position.
-    let rec private subtreeIds (node: Node<'Msg>) (acc: Set<NodeId>) : Set<NodeId> =
-        NodeChildren.children NodeChildren.Reach.keyed node
-        |> List.fold (fun a child -> subtreeIds child a) (Set.add (NodeId node.Id) acc)
 
     /// The nodes a new `NodeKind` holds — what an `EditNode` puts into the tree
     /// below the node it rewrites. Read through an envelope-free carrier, so
@@ -108,7 +108,7 @@ module TreeOp =
     /// NODES, not ids (Phase 2141). The question "does this op add to the
     /// tree" is about what it carries, and an id set cannot answer it: a
     /// payload whose ids repeat collapses to fewer ids than it has nodes, down
-    /// to none beyond the op's own target. `footprint` is this list's ids.
+    /// to none beyond the op's own target.
     let rec inserted (op: TreeOp<'Msg>) : Node<'Msg> list =
         match op with
         | TreeOp.UpdateProp _
@@ -123,19 +123,3 @@ module TreeOp =
         | TreeOp.InsertChild(_, child) -> [ child ]
         | TreeOp.ReplaceRoot node -> [ node ]
         | TreeOp.Batch ops -> ops |> List.collect inserted
-
-    /// Every id the op TOUCHES: its `targets`, every id in a subtree it puts
-    /// into the tree (`inserted`, through every keyed position), and a
-    /// reorder's `newOrder`. Two ops whose footprints are disjoint do not
-    /// depend on each other; an op on a node INSIDE an inserted subtree shares
-    /// an id with the insert.
-    let rec footprint (op: TreeOp<'Msg>) : Set<NodeId> =
-        match op with
-        | TreeOp.Batch ops -> ops |> List.map footprint |> Set.unionMany
-        | _ ->
-            let touched =
-                inserted op |> List.fold (fun a n -> subtreeIds n a) (Set.ofList (targets op))
-
-            match op with
-            | TreeOp.ReorderChildren(_, newOrder) -> Set.union touched (Set.ofList newOrder)
-            | _ -> touched

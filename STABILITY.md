@@ -7825,6 +7825,151 @@ because the first changes it is opened for are breaking: Phase 2304 (the tree di
 takes Core's vocabulary and relocations are emitted as `MoveNode`) and Phase 2309 (three public hash functions are removed; no
 value moves). Pre-1.0 breaking is minor (version cut recorded on the ledger, 2026-10-17)._
 
+### What rides this slot — Phase 2292 (the footprint projection ships, and partial accept reads it)
+
+**Class: BREAKING (one public member removed) + additive (one new module) + a BEHAVIOUR change of
+`BatchAccept`.** It rides the 0.96.0 draft, which is already breaking-class, so no number moves. No wire byte
+and no hash moves.
+
+- **Added: `Fuaran.UI.Ops.TreeOpFootprint`** (package `Fuaran.UI.Ops`): `ofOp : TreeOp<'Msg> -> Footprint` and
+  `ofScript : TreeOp<'Msg> list -> Footprint`, total over the DU. It is the tier's one projection of its op
+  algebra onto Fuaran.Core's `Footprint`, the record `Ops.independent`, `Ops.interference`, `Dag.conflicts` and
+  the lane fold read. The structural five lower to the matching `SkeletonOp` and take Core's
+  `Ops.footprintKeyed` over `Introspect.nodeWitness` / `keyedWitness` / `idWitness`, the keyed walk the apply
+  engine runs. A vertical op (`EditNode`, `UpdateProp`, `ReplaceBinding`, `UpdateStyle`, `PatchStyle`,
+  `UpdateState`) is Core's `UpdateNode` footprint: the node read and content-written, every id of a subtree the
+  op puts in (an `EditNode`'s new kind, an `UpdateState`'s alternatives) read and content-written, and Phase
+  2004's unknown-parent write. `ReplaceRoot`, which the test projections refused with an exception, has a
+  footprint: every id of the new tree read and content-written, the root's child list written, and an
+  unknown-parent write of the root. It is therefore ordered against every non-empty tier op. Fable-portable.
+- **The slots: none, decided.** The projection is at NODE precision. Over the pinned Core (0.36.0) an
+  unknown-parent write collides with every structural or unknown-parent write of the other script, and every
+  non-empty `TreeOp` writes one of the two. So a vertical op is independent of no tier op except an empty
+  `Batch`, whatever slot it declares, and a slot declaration (`kind`, `state`, `style.<field>`) frees no pair.
+  This is measured, not argued only. `Conformance.footprintLawsAt` over a slot-declaring variant of the
+  projection fails its adequacy guard: slot-independent pairs 0, slot-clash pairs 10, seed 20260904, 300
+  iterations. The node-precision projection passes it. A kind edit and a restyle of one node are therefore
+  DEPENDENT, as two edits of different nodes are (Phase 2004). A slot becomes the right address once Core can
+  express "a parent this script cannot name" without that colliding with another in-place rewrite.
+- **Removed (breaking): `TreeOp.footprint`** (package `Fuaran.UI.Ops.Abstractions`, shipped in v0.93.0,
+  v0.94.0 and v0.95.0), with its private `subtreeIds`. It returned a flat `Set<NodeId>` of targets, inserted ids and
+  reorder order. A set of ids cannot say that a remove or a move writes a parent it does not name. **Migration:**
+  call `TreeOpFootprint.ofOp` and read Core's `Footprint`. For the old id set, take
+  `Reads ∪ ContentWrites ∪ StructureWrites ∪ UnknownParentWrites` (strings, not `NodeId`s), which contains every
+  id the old function returned. `TreeOp.kindName`, `targets` and `inserted` are unchanged.
+- **Behaviour change: `BatchAccept.dependencyClosure` closes over `Ops.interference`.** An op is kept when it
+  was selected, or when it is not independent of the union of the kept LATER ops' footprints. It is still one
+  reverse pass: a union is independent of an op only when each part is. It is sound because every dropped op
+  commutes past every later kept op. **What changes for partial accepts:**
+  - The defect closes. For `[MoveNode(a, Q); ReorderChildren(P, [b; c])]` with `a` under `P`, and only the
+    reorder selected, the old flat sets were disjoint. The move was dropped and the kept reorder was refused.
+    The move is now kept, and the same holds for a `RemoveNode a` before the reorder. Pinned in
+    `BatchAndMultiAgentTests.fs`, with both apply orders probed first.
+  - **More ops are kept.** A selected vertical op, or a selected remove or move, keeps EVERY earlier non-empty
+    op, because its unknown-parent write is ordered against all of them. Inserts and reorders under different
+    named parents are still independent and still drop. An `indivisible` batch withdraws in more cases for the
+    same reason.
+- **Arbitration verdicts:** none change for a consumer that already lowered the tier's ops with Phase 2004's
+  vertical term. The keyed walk adds ids held in switch cases, state alternatives and slot arguments, and the
+  vertical arms add the ids their payload puts in. Both only add addresses, so no pair becomes independent.
+- **Certified where a consumer gets it.** `CoreLawSupport.footprintOfTreeOp` and the Fable law harness's
+  `footprintOfEqOp` RE-EXPORT the shipped function; neither test project defines a projection. The function is
+  run under `laneFoldLawsAt` / `laneFoldLawsWith` (.NET and Fable), `concurrencyLawsWith`, and, newly adopted
+  in the Core-conformance census, `footprintLawsAt`, over a generator that draws every op kind the projection
+  has an arm for. The erased-term falsifier is now the shipped function minus the vertical unknown-parent
+  write. `footprintLawsAt`'s soundness law refutes it, as `laneFoldLawsAt` does.
+- **The baseline the next projection change is measured against:** `derivability-snapshot` in
+  `benchmarks/Fuaran.UI.Ops.Benchmarks` (`dotnet run -c Release -- derivability-snapshot`). It reports the
+  share of the tier's three-way auto-merges that Core's footprint refuses although both fold orders reach the
+  UI's merged tree. Under this projection, at 20,000 trials with seed 20261016: **0.8401 generated** (7,808 of
+  9,294 auto-merges, 18,597 triads), **0.7143 over the 13 merge-corpus triads** (5 of 7), 0.8400 pooled. Most
+  of the generated cell is `MoveVsRemove` (4,397), the unknown-parent clause. The same harness with the
+  vertical unknown-parent write erased reads 0.4507. That gap is the measured cost of Phase 2004's soundness
+  term. Earlier figures (40.7%, 19.6%) were taken before Phase 2004 with an unsound vertical arm; they are not
+  this baseline.
+
+### What rides this slot — Phase 2309 (one SHA-256: the tier's copy retires onto Core's)
+
+**One SHA-256: the tier's own implementation retires onto `Fuaran.Core`'s, and no value moves.**
+
+**Class: BREAKING (source).** Three public functions are removed; no persisted hash, chain head, corpus pin or
+wire byte changes.
+
+- **Removed — `Fuaran.UI.Hashing.sha256Hex`** (the tier's pure FIPS 180-4 SHA-256, Phase 164). Call
+  `Fuaran.Core.Hash.sha256Hex`: the same lowercase hex over the same UTF-8 bytes, byte-identical on every input,
+  ill-formed UTF-16 included (a lone or ill-ordered surrogate hashes as U+FFFD, the platform encoder's answer, on
+  both).
+- **Removed — `Fuaran.UI.Hashing.utf8Length`.** Call `Fuaran.Core.Hash.utf8Bytes s |> Array.length`, or
+  `HostLimits.utf8Length`, which stays and now reads Core's encoder.
+- **Removed — `Fuaran.UI.OpStream.Abstractions.HashChain.sha256Hex`** (a pass-through to the first). Call
+  `Fuaran.Core.Hash.sha256Hex`; a chain `HashFn` written as `fun prev payload -> sha256Hex (prev + "|" + payload)`
+  is `Fuaran.Core.OpStream.sha256Hash`, the same function under Core's name.
+- **Unchanged surfaces, rerouted.** `StreamEntry.hashFn` is now `Fuaran.Core.OpStream.sha256Hash` (same value,
+  same type); `HashChain.snapshotHash` / `computeHash`, `Teleport`'s digest, `DocumentDescriptor.ofTree`,
+  `FragmentKey`, the chart provenance stamp, the binding-site keys and every DAG record / merge / retention hash
+  digest through `Fuaran.Core.Hash.sha256Hex`. `Hashing.customBodyShapeHash` stays, and the validator's
+  `CustomContentHashCheck.computeBodyShapeHash` now calls it rather than rebuilding the pre-image over the BCL.
+- **No value moves, and that is asserted.** `src/Fuaran.UI.Tests/CoreHashPinTests.fs` holds digests and hashed
+  artefacts RECORDED from the retired implementation before it was deleted (padding-boundary lengths, ill-formed
+  UTF-16, a stream head, a checkpoint hash, two teleport strings, an attestation digest, a fragment key, two
+  `Custom` hashes) against the code that computes them now. The FIPS 180-4 and BCL cross-check vectors stay, as
+  consumer-side pins of Core's function. The op-stream, DAG, attestation and teleport corpora verify unchanged.
+- **Recorded, not changed:** the `Custom` body-shape pre-image is not injective (comma- and newline-joined fields);
+  replacing it with Core's `Digest.tryOfFields` moves every stored `Custom` hash, so it is a candidate for a
+  later breaking cut (`CRYPTO.md`).
+- **Migration.** Replace each call as above; nothing persisted needs rewriting.
+
+### What rides this slot — Phase 2304 (the tree diff is Core's `Diff`: one algorithm behind merge, undo, lowering and the Program driver)
+
+**Class: BREAKING** — a public type is deleted and replaced, and the scripts a public function emits change
+shape. It must not share 0.95.0; it is recorded here so the cut after the v0.95.0 tag carries it whole.
+Migration: [`docs/migrations/2304-core-diff.md`](docs/migrations/2304-core-diff.md).
+
+- **`Fuaran.UI.OpStream.Replay.TreeDiff` — the classification is Fuaran.Core's `Diff.changes`.** `NodeChangeKind`
+  and `NodeChange` are deleted; `TreeDiff.Changes` is `Fuaran.Core.Diff.Change<NodeId> list`, in Core's canonical
+  order (ascending id, then case order). A same-parent reposition is `Reordered` on the PARENT, never `Moved` on the
+  child; `Moved` carries the two parents and no positions; `PropChanged` and `TextChanged` are one `Changed`;
+  `Added` / `Removed` carry no payload. A root-id change or a repeated id reads as every old id `Removed` and every
+  new id `Added`. `StepDiff`, `StepDiffsError` and `stepDiffs` keep their shapes. `DagCoordinateDiff` in
+  `Fuaran.UI.OpStream.Dag.Inspect` carries the new `TreeDiff` unchanged.
+- **`Fuaran.UI.OpStream.Replay.TreeOpDiff` — the script is Core's `Diff.toOpsContainedWith`, lowered.** Behaviour:
+  a survivor that changed parent is a `MoveNode`, never a remove-and-re-insert (the tier's own diff re-sent it
+  whenever its new parent was new or the root); content changes of containers come first, then inserts and moves,
+  removals, reorders, and content changes of nodes that end as leaves; the `EditNode` floor keeps the children the
+  node holds at that point instead of re-sending its subtree; a changed root id is `[ ReplaceRoot after ]`
+  (formerly an `EditNode` at the old id, which did not round-trip). Unchanged: field-level `UpdateProp` /
+  `ReplaceBinding`, the field-level style edit (Phase 2291), one `InsertChild` per wholly-new region, `diffBatched`.
+  New: `tryDiff : Node<'Msg> -> Node<'Msg> -> Result<TreeOp<'Msg> list, ApplyError>` (Core's `DiffError` under the
+  tier's code, `DuplicateIdInTree` → `DuplicateNodeId`; `diff` answers a refused pair with `[ ReplaceRoot after ]`)
+  and `inverse : TreeOp<'Msg> -> Node<'Msg> -> TreeOp<'Msg> list` (the structural five through `Ops.invert`, every
+  other op the diff back from the post-state). The private `detectMoves` and the remove-append-reorder-recurse
+  walk are deleted.
+- **`Fuaran.UI.ServerDriven.Lowering` — new `lowerScript renderFragment oldTree ops`**, which reads each op against
+  the tree right after it, so a whole diff script lowers to patches that address what the DOM holds. `lower` is
+  unchanged and stays exact for a single op. `Driver`, `Navigation` and `Fuaran.UI.Program`'s two drivers lower
+  through `lowerScript`; the patches a session sees for a relocation are now `MoveNode` (identity kept: focus,
+  scroll and element state survive).
+- **`Fuaran.UI.Program.UiWitness.state.Undo`** is `TreeOpDiff.inverse`: the structural five undo through Core's
+  `Ops.invert` (an insert by its removal, a removal by its re-insert and order), every other op as before.
+- **DAG merge.** A NEW merge node's replay delta (`DagMerge`, `diffBatched`) takes the new script shape, so its
+  hash differs from the one the previous diff would have minted for the same pair; recorded merge nodes replay and
+  verify unchanged (`ReassertPin` reads only field ops and is unaffected).
+
+**Measured** (`dotnet run -c Release -- core-diff 10`, new in `benchmarks/Fuaran.UI.Ops.Benchmarks`, this machine,
+before → after; timings are noisy run to run by about a third): the corpus sweep (522 pairs) 47 → 49-52 ms, 572 → 730
+ops, 500 → 506 pairs round-tripping; on a 10,001-node tree, identical 127 → 178-192 ms and one field 124 → 173-191 ms
+(Core indexes both trees where the tier's walk did not), one move 204 → 179-202 ms; ten stacks regrouped under new
+containers 21 ops either way but 89,918 → 3,578 canonical bytes (10 `RemoveNode` + 10 re-sent subtrees became 10
+`MoveNode`); a thousand leaves scattered across stacks 147 s → 0.19-0.20 s (the tier's move pre-pass folded each move
+through the apply engine).
+
+**Certified by** `Fuaran.UI.OpStream.Tests/TreeOpDiffEquivalenceTests.fs` (every cross-host golden script of
+`diff/goldens.json` byte for byte, the structure Core's op for op, no survivor re-sent, the round-trip law over the
+corpus and 400 generated pairs, the structural undo law), `TreeDiffTests.fs` (Core's vocabulary, and the
+classification as the projection of the emitted script), and `Fuaran.UI.Tests/CoreAdoptionTests.fs` (Core's
+`diffContainedLaws` over the tier's witness; the census row moves from not-used to adopted).
+
+
 ---
 
 ## 0.95.0 — the slot opened after v0.94.0 was released (RELEASED — tagged v0.95.0 at 9e03c87, 2026-10-17)
@@ -8238,6 +8383,7 @@ fixture corpus (permissive, strict and decorated).
   `FragmentRef`, `Mount` are walk control, and the walk is each renderer's own); the leaf markup both emit for
   them is `ElementPlan.StructuralPlan` (`fragmentCycle`, `fragmentUnresolved`, `mountBoundary`,
   `mountPlaceholder`). No output moves.
+
 
 
 ## 0.94.0 — the slot opened after v0.93.0 was released; advanced from 0.93.1 on 2026-10-13 ahead of Phase 2052, whose change is breaking (RELEASED — tagged v0.94.0 at 90082d3, 2026-10-14)
