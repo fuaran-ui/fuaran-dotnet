@@ -7,10 +7,12 @@ open Fuaran.UI.Types
 //
 //  A saved typed tree behaves as a FUNCTION of declared holes: lambda
 //  abstraction over the artifact substrate. This is the spatial-graph
-//  counterpart to the temporal-graph op-stream DAG (Phase 178/179). It proves
-//  the abstraction in the shipped UI tier (the lowest-cost first instance)
-//  before any `Fuaran.Core.Function` extraction (Phase 181, rule-of-three-
-//  gated).
+//  counterpart to the temporal-graph op-stream DAG (Phase 178/179). Over
+//  Fuaran.Core it is one instance of `Fuaran.Core.Function`'s artifact-function
+//  contract: a `FragmentDecl` node is the function an `ArtifactWitness` reads
+//  (the effect audit's, the cross-witness composition's, the memo engine's), and
+//  Core's `apply`, `applyMemo` and `observedEffect` run over it there. This
+//  module keeps the UI-side surface those witnesses read.
 //
 //  A `ParamFragment` declares typed HOLES — value parameters (a name + a value-
 //  space + an optional default) and tree-typed SLOTS (a name + an optional kind
@@ -31,8 +33,9 @@ open Fuaran.UI.Types
 //
 //  FGP 2: `FSharp.Core` + `Fuaran.UI.Types` only — Fable-clean, no renderer dep.
 //  The tree-substituting apply (slot binding, hygienic id namespacing, totality
-//  budget) lives renderer-side; this module owns the type surface + the pure
-//  laws (signature derivation, arg validation, currying, the effect join).
+//  budget) lives renderer-side, and the effect join is `EffectClass`'s, beside
+//  the type in `Fuaran.UI.Types`; this module owns the alias and the pure laws
+//  (signature derivation, arg validation, currying).
 // ============================================================================
 
 // NOTE (Phase 180 wire integration): the hole + effect TYPES (`HoleValueSpace`,

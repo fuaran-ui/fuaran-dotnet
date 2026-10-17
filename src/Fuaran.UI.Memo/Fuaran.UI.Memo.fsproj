@@ -43,6 +43,9 @@
     <ProjectReference Include="..\Fuaran.UI.Renderer\Fuaran.UI.Renderer.fsproj" />
     <ProjectReference Include="..\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
     <ProjectReference Include="..\Fuaran.UI.Telemetry.Abstractions\Fuaran.UI.Telemetry.Abstractions.fsproj" />
+    <!-- Phase 2308 - the admission gate observes a fragment's effect through Core's
+         Function.observedEffect, over the shared UI-to-Core effect and hole projection. -->
+    <ProjectReference Include="..\Fuaran.UI.Core.Function\Fuaran.UI.Core.Function.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />

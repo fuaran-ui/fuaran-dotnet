@@ -217,6 +217,17 @@ let private memoSoundnessTest =
 let private encoderInjectivityTest =
     "the FastPath memo-key encoder is collision-free (encoderInjectivityLawsAt)"
 
+/// Phase 2308 — the memo engine's second port of the two memo families, in `CoreAdoptionTests.fs`
+/// (`MemoGateConformance`), over `Fuaran.UI.Memo.MemoGate.witness` and the canonical encoder the
+/// engine's structural key is built on. The engine gates on Core's predicate over that witness, and
+/// the same module checks its verdict against `applyMemo`'s, so these rows certify the tier's own
+/// memo rather than only the FastPath algebra.
+let private uiMemoTest =
+    "the memo engine's witness and key encoder certify under Core's memoLawsAt"
+
+let private uiMemoSoundnessTest =
+    "an under-declared fragment is never cached under Core's memoSoundnessLawsAt"
+
 /// The attributed / attestation families (fuaran#1480), enrolled from `Fuaran.UI.OpStream.Tests`
 /// beside the persistence families above and over the SAME witness those use — the attestation one
 /// additionally over the tier's own claim minting and ECDSA keyring, adapted to Core's
@@ -403,8 +414,12 @@ let census: (string * Adoption) list =
       // bodies rather than left to be inferred from a green row.
       "Conformance.registryLaws", Adopted(registryTest, "Conformance.registryLaws")
       "Conformance.capabilityLaws", Adopted(capabilityTest, "Conformance.capabilityLaws")
-      "Conformance.memoLawsAt", Adopted(memoTest, "Conformance.memoLawsAt")
-      "Conformance.memoSoundnessLawsAt", Adopted(memoSoundnessTest, "Conformance.memoSoundnessLawsAt")
+      "Conformance.memoLawsAt",
+      AdoptedAcross [ memoTest, "Conformance.memoLawsAt"; uiMemoTest, "Conformance.memoLawsAt" ]
+      "Conformance.memoSoundnessLawsAt",
+      AdoptedAcross
+          [ memoSoundnessTest, "Conformance.memoSoundnessLawsAt"
+            uiMemoSoundnessTest, "Conformance.memoSoundnessLawsAt" ]
       "Conformance.functionVerifyLawsAt", Adopted(functionVerifyTest, "Conformance.functionVerifyLawsAt")
       "Conformance.verifyHonestyLawsAt", Adopted(verifyHonestyTest, "Conformance.verifyHonestyLawsAt")
       "Conformance.compositionLawsAt", Adopted(compositionTest, "Conformance.compositionLawsAt")
@@ -1226,6 +1241,9 @@ let private measuredHere: Set<string> =
           "Conformance.dagBreakReasonLaws"
           "Conformance.hashFnLaws"
           "Conformance.hashFnAdversarialLaws"
+          // Phase 2308 — the memo engine's port (the FastPath port runs in its own process).
+          "Conformance.memoLawsAt"
+          "Conformance.memoSoundnessLawsAt"
           "Conformance.reducer"
           "Conformance.columnarOpLaws"
           "Conformance.columnarOpLawsWith"

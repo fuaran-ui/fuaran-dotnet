@@ -7969,6 +7969,64 @@ corpus and 400 generated pairs, the structural undo law), `TreeDiffTests.fs` (Co
 classification as the projection of the emitted script), and `Fuaran.UI.Tests/CoreAdoptionTests.fs` (Core's
 `diffContainedLaws` over the tier's witness; the census row moves from not-used to adopted).
 
+### What rides this slot — Phase 2308 (the memo gate is Core's `applyMemo`: admission on the effect observed, not the one declared)
+
+**Class: BREAKING** — a BEHAVIOUR change of `Fuaran.UI.Memo`'s admission, two public functions removed and a record
+field added. It rides the 0.96.0 draft, which is already breaking-class, so no number moves. No wire byte, no persisted
+key and no hash moves. Surface guard over the built assemblies against `main` before the change: `Fuaran.UI` breaking
+(one removal), `Fuaran.UI.Memo` breaking (one removal, one record field), `Fuaran.UI.Core.Function` additive (three
+functions), `Fuaran.UI.AiTools` and `Fuaran.UI.Validator.Certification` unchanged.
+
+- **Behaviour change (breaking): the memo admits what Fuaran.Core's `Function.applyMemo` admits.** `Engine.Apply` and
+  `Engine.Reapply` gate on `Fuaran.Core.Memo.isMemoisable` over the effect OBSERVED over the fragment's whole subtree
+  (`Function.observedEffect`) joined with every slot argument's, which is the gate `applyMemo` applies (Core's Phases 53
+  and 307). They no longer gate on the fragment's DECLARED effect. **What changes for a consumer:**
+  - A fragment declared pure and deterministic whose body nests an effecting sub-fragment is no longer served from the
+    store. It is derived on every call, never stored, and reported as a bypass. Before, its second identical
+    application was a cache hit: a stale result for a fragment that reads the network, the clock or the host.
+  - A pure fragment applied with a slot argument that nests an effecting sub-fragment is bypassed the same way.
+  - The walk is the KEYED traversal (`Introspect.keyedWitness` over `nodeWitness`), so a sub-fragment held in a switch
+    case, an error-boundary arm, a state alternative, a fallback or a slot argument counts as well as one in an
+    ordered child list. It is the traversal `FunctionTool.auditFragmentEffect` walks.
+  - The effect gate now runs BEFORE the key. An application it bypasses is never keyed, so a `SharedOrPersisted`
+    engine no longer refuses an effecting application whose encoding carries an unrepresentable-value sentinel. It
+    derives it and bypasses the store, because nothing is written that could be mis-keyed. A memoisable application
+    with such an encoding is refused exactly as before.
+  - The observed effect of a fragment's own subtree is memoised per fragment reference (`Engine.EffectMemo`, bounded at
+    `KeyMemoDefaults.bodyDigestCapacity`), beside the body digest. A cache hit still walks only the slot arguments.
+- **Added: `Fuaran.UI.Memo.MemoGate`.** `witness` is the tier's `ArtifactWitness` for memoisation: a `FragmentDecl` node
+  is the function, its holes and effect are the shared projection's, its `Tree` is the keyed traversal, and its `Bind`
+  is the renderer's `FragmentApply` for one hole (a slot substituted and namespaced by the decl's id; a value closes
+  its hole and never enters the tree). `observed pf slotArgs` is the gated effect, `fragmentEffect` and `joinSlots`
+  are its two halves, `admits` is Core's `Memo.isMemoisable`, and `declNode refId pf` is the decl node the witness
+  applies.
+- **Added: `Fuaran.UI.Memo.Admission`** (`Admitted` | `EffectBypassed of observed` | `Unkeyable of unrepresentable`), and
+  **`Derivation.Admission`** — the derivation says why an application was served, stored or routed around the store.
+  A record field added breaks a full-literal construction of `Derivation` (FS0764). Nothing in this repository builds
+  one outside the engine. `Derivation.StructuralKey` is `None` for an application the effect gate bypassed (it was
+  `Some` of a key that was never used).
+- **Removed (breaking): `Fuaran.UI.FragmentMemo.isCacheable`** and **`Fuaran.UI.Memo.FragmentStore.isStoreEligible`**,
+  the gate on the declared effect. **Migration:** for the old predicate over one declared class, call
+  `Fuaran.Core.Memo.isMemoisable (Fuaran.UI.Core.Function.Projection.toCoreEffect e)`. For the question the engine
+  answers, call `MemoGate.admits (MemoGate.observed pf slotArgs)`.
+- **Added: `Fuaran.UI.Core.Function.Projection.holeAddr`, `holesOf` and `effectOf`** — a decl node's Core holes at
+  their absolute address and its Core effect, in one place. `FunctionTool.uiWitness` and the recipe certification
+  witness read them and their private copies are deleted (behaviour identical). `Fuaran.UI.Memo` now depends on
+  `Fuaran.UI.Core.Function`.
+- **Certified in `Fuaran.UI.Tests`.** `FragmentMemoTests.fs` holds the go-red case: the declared effect alone admits
+  the fixture, the observed effect does not, and two applications are `[Bypass; Bypass]` with nothing stored. Against
+  the gate it replaces, the same two applications read `[Miss; Hit]`. `CoreAdoptionTests.fs` (`MemoGateConformance`)
+  runs `Conformance.memoLawsAt` over `MemoGate.witness` and `CanonicalJson.encodeNode`, the encoder the structural key
+  is built on, and `memoSoundnessLawsAt` over the go-red fixture. The encoder's precondition (Core's Phase 56: an
+  injective encoder) is the Phase 1525 refusal: the canonical encoding is injective only where it carries no
+  sentinel. The suite asserts it over every sample the kit drew. The same module drives the engine over the portable
+  `MemoCacheStore` and Core's `applyMemo` over the witness, across four fragments and two slot sets. Each call must
+  agree on hit, miss or bypass and on the tree, and the store's counters must equal the `MemoCache`'s. A probe that
+  put the declared-effect gate back turned that test red. The census rows for both families now name a second port.
+- **Unchanged:** `FragmentKey` (keys, sentinel test, the `:v2` composition), `StoreReach`, value-only `Reapply`,
+  `BoundedLru`, `BoundedRefMemo`, `InProcessStore`, `MemoCacheStore` and its snapshot, telemetry. A size-bounded
+  `MemoCache` is fuaran-core#490; until it ships the LRU stamps the portable store keeps outside the record stay.
+
 
 ---
 

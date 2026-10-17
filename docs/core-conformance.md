@@ -90,9 +90,9 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 | `Conformance.laneLaws` | Not used | — | Fuaran.Core.OpStream.Dag's lane store and whole-DAG order (Dag.loadLanes / totalOrderBy / replayAllBy, fuaran-core Phase 311) — no project here loads lanes or orders a DAG through them |
 | `Conformance.loweringLaws` | Not used | — | Fuaran.Core.Ops.lower (fuaran-core Phase 312) — no project here lowers a tree to ops through Core |
 | `Conformance.memoLaws` | Not used | — | the [<Obsolete>] forward of Conformance.memoLawsAt, removed at 1.0.0 — the tier calls Conformance.memoLawsAt itself (adopted above), never this spelling |
-| `Conformance.memoLawsAt` | Adopted | — | `FastPath application memoises soundly under Core's memoLawsAt` — via `Conformance.memoLawsAt` |
+| `Conformance.memoLawsAt` | Adopted | 1000 | `FastPath application memoises soundly under Core's memoLawsAt` — via `Conformance.memoLawsAt`<br>`the memo engine's witness and key encoder certify under Core's memoLawsAt` — via `Conformance.memoLawsAt` |
 | `Conformance.memoSoundnessLaws` | Not used | — | the [<Obsolete>] forward of Conformance.memoSoundnessLawsAt, removed at 1.0.0 — the tier calls Conformance.memoSoundnessLawsAt itself (adopted above), never this spelling |
-| `Conformance.memoSoundnessLawsAt` | Adopted | — | `an under-declared FastPath function is never cached (memoSoundnessLawsAt)` — via `Conformance.memoSoundnessLawsAt` |
+| `Conformance.memoSoundnessLawsAt` | Adopted | 40 | `an under-declared FastPath function is never cached (memoSoundnessLawsAt)` — via `Conformance.memoSoundnessLawsAt`<br>`an under-declared fragment is never cached under Core's memoSoundnessLawsAt` — via `Conformance.memoSoundnessLawsAt` |
 | `Conformance.mergeConflictLaws` | Adopted | — | `merge-conflict reporting is symmetric, deterministic and complete (mergeConflictLaws)` — via `Conformance.mergeConflictLaws` |
 | `Conformance.noAttestationVacuityLaws` | Adopted | — | `noAttestationVacuityLaws certifies that the un-attested default proves nothing` — via `Conformance.noAttestationVacuityLaws` |
 | `Conformance.normalizeLaws` | Not used | — | Fuaran.Core.Ops.normalize — Apply.fs delegates only the structural-five APPLY to Core (applyContained); the tier ships no op-script normaliser, so the family's subject has no call site here |

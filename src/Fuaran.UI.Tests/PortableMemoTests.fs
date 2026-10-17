@@ -179,14 +179,14 @@ let tests =
 
               Expect.equal (store :> IFragmentStore<unit>).Count 0 "nothing is ever stored for an effecting fragment"
               Expect.equal (store :> IFragmentStore<unit>).Bypasses 2 "the store's bypass counter increments each call"
-              // The gate is exactly Fuaran.Core's isMemoisable on both axes.
+              // The gate is Fuaran.Core's isMemoisable over the observed effect (Phase 2308).
               Expect.isFalse
-                  (FragmentStore.isStoreEligible (effecting.Effect))
-                  "an effecting fragment is not store-eligible"
+                  (MemoGate.admits (MemoGate.observed effecting (slotArgs "x")))
+                  "an effecting fragment is not admitted"
 
               Expect.isTrue
-                  (FragmentStore.isStoreEligible (fragment.Effect))
-                  "the pure-deterministic fragment is store-eligible"
+                  (MemoGate.admits (MemoGate.observed fragment (slotArgs "x")))
+                  "the pure-deterministic fragment is admitted"
           }
 
           test "replay parity: an op-stream session replayed through the memo store == direct replay (byte-identical)" {

@@ -1344,3 +1344,319 @@ module KeyedEnumeration =
                       adopted
                       "a grandfathered file no longer enumerates children by hand — remove it from the frozen list"
               } ]
+
+// ============================================================================
+//  Phase 2308 — the memo's admission gate is Core's `applyMemo`.
+//
+//  `Fuaran.UI.Memo`'s engine gates an application on `Fuaran.Core.Memo.isMemoisable`
+//  over the effect observed over the fragment's subtree and its slot arguments, over
+//  `MemoGate.witness` — the gate `Fuaran.Core.Function.applyMemo` applies. Three
+//  claims, each checked here rather than stated:
+//
+//   1. Core's memo laws hold over that witness and the encoder the engine's key is
+//      built on (`CanonicalJson.encodeNode`). The encoder's PRECONDITION is stated
+//      and asserted per draw: `applyMemo` needs an injective encoder (Core's Phase
+//      56), and the canonical encoding is injective only where it carries no
+//      unrepresentable-value sentinel — which is exactly the encoding the engine's
+//      Phase 1525 refusal declines to key. So the sentinel refusal IS the law's
+//      precondition, and no drawn node carries a sentinel.
+//   2. Core's memo-soundness law holds over the go-red fixture: a fragment declared
+//      pure that nests a network sub-fragment.
+//   3. The engine, over its portable `MemoCacheStore`, answers every application of
+//      a matrix of fragments and slot arguments exactly as `applyMemo` does over
+//      the witness: the same hit / miss / bypass, the same tree, the same counters.
+// ============================================================================
+
+module MemoGateConformance =
+
+    open Fuaran.UI.Memo
+    open Fuaran.UI.Telemetry.Abstractions
+
+    /// `MemoGate.witness` over the canonical-encoding equality wrapper the kit
+    /// needs (`Node<obj>` carries closures and is not an equality type).
+    let private eqWitness: Fuaran.Core.ArtifactWitness<EqNode, NodeId> =
+        let w = MemoGate.witness<obj>
+
+        let lowerArg (a: Fuaran.Core.Arg<EqNode>) : Fuaran.Core.Arg<Node<obj>> =
+            match a with
+            | Fuaran.Core.ValueArg s -> Fuaran.Core.ValueArg s
+            | Fuaran.Core.SlotArg e -> Fuaran.Core.SlotArg(unwrap e)
+
+        { Tree =
+            { Id = unwrap >> w.Tree.Id
+              KindTag = unwrap >> w.Tree.KindTag
+              Children = unwrap >> w.Tree.Children >> List.map wrap
+              ReplaceChildren = fun e cs -> wrap (w.Tree.ReplaceChildren (unwrap e) (List.map unwrap cs)) }
+          IdW = w.IdW
+          Holes = unwrap >> w.Holes
+          Effect = unwrap >> w.Effect
+          Bind = fun addr a e -> w.Bind addr (lowerArg a) (unwrap e) |> Result.map wrap }
+
+    /// The encoder the engine's structural key is built on.
+    let private encode (e: EqNode) : string = CanonicalJson.encodeNode e.Node
+
+    /// The ref site, which is also the decl's id: `MemoGate.witness` namespaces a
+    /// slot by the decl's id, the engine by the ref site's.
+    let private refId = "card"
+
+    let private md (id: string) (text: string) : Node<obj> = Fuaran.markdown id text
+
+    /// A network-reading sub-fragment, honestly declared.
+    let private ticker: Node<obj> =
+        Fuaran.fragmentDecl
+            "ticker"
+            { Defaults.fragmentDecl<obj> with
+                Name = "ticker"
+                Effect =
+                    { HostEffect = HostEffect.ReadsHost
+                      Determinism = DeterminismSource.Network }
+                Body = md "ticker-text" "price" }
+
+    /// A card: a value hole `alpha` (first in address order, so the kit's
+    /// separator arm runs) and a `content` slot, with `extra` appended to its body.
+    let private card (name: string) (effect: EffectClass) (extra: Node<obj> list) : ParamFragment<obj> =
+        { Defaults.fragmentDecl<obj> with
+            Name = name
+            Effect = effect
+            Holes =
+                [ HoleDecl.Value("alpha", HoleValueSpace.StringLen(1, 40), None)
+                  HoleDecl.Slot("content", None) ]
+            Body =
+                Fuaran.dashboard
+                    "card-root"
+                    { Defaults.dashboard<obj> with
+                        Children = [ md "card-title" "Title"; Fuaran.fragmentRef "content" "content" ] @ extra } }
+
+    let private pureCard = card "card" EffectClass.pureDeterministic []
+
+    let private effectingCard =
+        card
+            "card"
+            { HostEffect = HostEffect.ReadsHost
+              Determinism = DeterminismSource.Clock }
+            []
+
+    /// The go-red fixture: declared pure, nesting the network ticker.
+    let private underDeclaredCard = card "card" EffectClass.pureDeterministic [ ticker ]
+
+    /// The same lie told one level down, in a Switch case — a keyed position.
+    let private underDeclaredInSwitch =
+        card
+            "card"
+            EffectClass.pureDeterministic
+            [ Fuaran.switch
+                  "mode"
+                  { Defaults.switch<obj> with
+                      Cases =
+                          [ { Child = ticker
+                              Match = Some "live"
+                              When = None } ]
+                      Default = md "static" "closed" } ]
+
+    let private fnNode (pf: ParamFragment<obj>) : EqNode = wrap (MemoGate.declNode refId pf)
+
+    let private args (alpha: string) (content: Node<obj>) : Map<string, Fuaran.Core.Arg<EqNode>> =
+        Map.ofList
+            [ refId + ".alpha", Fuaran.Core.ValueArg alpha
+              refId + ".content", Fuaran.Core.SlotArg(wrap content) ]
+
+    let private drawMemo (rng: CoreRng.T) : Fuaran.Core.MemoSample<EqNode> * CoreRng.T =
+        let n, r1 = CoreRng.intBelow 1000 rng
+        let pick, r2 = CoreRng.intBelow 4 r1
+        let text = sprintf "body %d" n
+        let alt = sprintf "body %d" (n + 1)
+
+        // The effecting function, four ways: declared, under-declared in an ordered
+        // child, under-declared in a keyed position, and pure with an effecting
+        // slot argument (the join over the arguments, Core's Phase 307).
+        let effectingFn, effectingContent =
+            match pick with
+            | 0 -> effectingCard, md "body" text
+            | 1 -> underDeclaredCard, md "body" text
+            | 2 -> underDeclaredInSwitch, md "body" text
+            | _ -> pureCard, ticker
+
+        { PureFn = fnNode pureCard
+          Args = args (sprintf "v%d" n) (md "body" text)
+          ArgsAlt = args (sprintf "v%d" n) (md "body" alt)
+          EffectingFn = fnNode effectingFn
+          EffectingArgs = args (sprintf "v%d" n) effectingContent },
+        r2
+
+    /// The precondition of the memo laws over this encoder, asserted rather than
+    /// assumed: no node a draw hands the kit carries an unrepresentable-value
+    /// sentinel, so the canonical encoding is injective over everything keyed.
+    let private sentinelFree (s: Fuaran.Core.MemoSample<EqNode>) : bool =
+        let slots (m: Map<string, Fuaran.Core.Arg<EqNode>>) =
+            m
+            |> Map.toList
+            |> List.choose (fun (_, a) ->
+                match a with
+                | Fuaran.Core.SlotArg e -> Some e
+                | Fuaran.Core.ValueArg _ -> None)
+
+        [ s.PureFn; s.EffectingFn ]
+        @ slots s.Args
+        @ slots s.ArgsAlt
+        @ slots s.EffectingArgs
+        |> List.forall (fun e -> List.isEmpty (FragmentKey.unrepresentableIn "sample" (encode e)))
+
+    /// Every sample the kit drew, and those that broke the precondition — read by
+    /// the test after the run, so the precondition is checked over the kit's own
+    /// draws rather than over a second stream that might differ from them.
+    let private drawn = ResizeArray<Fuaran.Core.MemoSample<EqNode>>()
+
+    let private checkedDraw (rng: CoreRng.T) : Fuaran.Core.MemoSample<EqNode> * CoreRng.T =
+        let s, r = drawMemo rng
+        drawn.Add s
+        s, r
+
+    let private memoSeed = 20261017
+    let private memoIterations = 200
+
+    let private memoResults =
+        LawCases.adopt [ "Conformance.memoLawsAt" ] memoIterations (fun iterations ->
+            CoreConf.memoLawsAt eqWitness encode checkedDraw Fuaran.Core.OpStream.sha256Hash memoSeed iterations)
+
+    let private memoSoundnessResults =
+        LawCases.adopt [ "Conformance.memoSoundnessLawsAt" ] 20 (fun iterations ->
+            CoreConf.memoSoundnessLawsAt
+                eqWitness
+                encode
+                (fnNode underDeclaredCard)
+                (args "v" (md "body" "x"))
+                memoSeed
+                iterations)
+
+    let private assertAllPassed (context: string) (results: Fuaran.Core.LawResult list) =
+        Expect.isNonEmpty results (context + ": the family reported no law")
+
+        let failures = results |> List.filter (fun r -> not r.Passed)
+
+        if not (List.isEmpty failures) then
+            failures
+            |> List.map (fun r -> sprintf "  %s — %A" r.Law r.Counterexample)
+            |> String.concat "\n"
+            |> failtestf "%s failed:\n%s" context
+
+    /// A sink that records the engine's outcome per call.
+    type private Outcomes() =
+        let outcomes = ResizeArray<CacheOutcome>()
+        member _.All = List.ofSeq outcomes
+
+        interface IFuaranTelemetrySink with
+            member _.RecordOpApply _ = ()
+            member _.RecordDeny _ = ()
+            member _.RecordRenderFailure _ = ()
+            member _.RecordProviderCall _ = ()
+            member _.RecordCacheStat t = outcomes.Add t.Outcome
+            member _.RecordValidateOutcome _ = ()
+
+    /// The body of a decl node `applyMemo` returned — what the engine stores.
+    let private bodyOf (e: EqNode) : Node<obj> =
+        match e.Node.Kind with
+        | NodeKind.FragmentDecl spec -> spec.Body
+        | other -> failwithf "applyMemo returned a %A, not the applied decl" other
+
+    [<Tests>]
+    let tests =
+        testList
+            "Phase 2308 — the memo gate is Core's applyMemo"
+            [ test "the memo engine's witness and key encoder certify under Core's memoLawsAt" {
+                  memoResults.Value |> assertAllPassed "memoLawsAt over MemoGate.witness"
+
+                  // The precondition, over exactly the samples the kit drew.
+                  Expect.isNonEmpty drawn "the kit drew no sample, so the precondition was checked over nothing"
+
+                  let broken = drawn |> Seq.filter (sentinelFree >> not) |> Seq.length
+                  Expect.equal broken 0 "every drawn node is sentinel-free, so the encoder is injective over it"
+
+                  // Every effecting variant was drawn, so the bypass arm met each of them.
+                  let effecting =
+                      drawn
+                      |> Seq.map (fun s -> encode s.EffectingFn, encode s.PureFn = encode s.EffectingFn)
+                      |> Seq.distinct
+                      |> Seq.length
+
+                  Expect.equal effecting 4 "all four effecting variants were drawn"
+              }
+
+              test "an under-declared fragment is never cached under Core's memoSoundnessLawsAt" {
+                  memoSoundnessResults.Value
+                  |> assertAllPassed "memoSoundnessLawsAt over the pure-declared card nesting a network ticker"
+              }
+
+              test "the memo engine admits, serves and stores exactly what Core's applyMemo does" {
+                  let fragments =
+                      [ "pure", pureCard
+                        "declared effecting", effectingCard
+                        "pure nesting a network ticker", underDeclaredCard
+                        "pure nesting a network ticker in a Switch case", underDeclaredInSwitch ]
+
+                  let slotSets =
+                      [ "pure slots", md "body" "x", md "body" "y"; "a network slot", ticker, ticker ]
+
+                  for fname, pf in fragments do
+                      for sname, first, second in slotSets do
+                          let context = fname + ", " + sname
+                          let session = [ first; first; second; first ]
+                          let sink = Outcomes()
+                          let store = FragmentStore.portable<obj> ()
+                          let engine = Engine<obj>(store :> IFragmentStore<obj>, sink)
+
+                          let engineTrees =
+                              session
+                              |> List.map (fun content ->
+                                  match
+                                      engine.Apply(
+                                          pf,
+                                          refId,
+                                          Map.ofList [ "alpha", Unchecked.nonNull (box "v") ],
+                                          Map.ofList [ "content", content ]
+                                      )
+                                  with
+                                  | Ok d -> d.Result.Tree
+                                  | Error e -> failtestf "%s: the engine refused: %s" context e)
+
+                          let coreSteps, coreCache =
+                              ((Fuaran.Core.Memo.empty, []), session)
+                              ||> List.fold (fun (cache: Fuaran.Core.MemoCache<EqNode>, acc) content ->
+                                  match
+                                      Fuaran.Core.Function.applyMemo
+                                          eqWitness
+                                          encode
+                                          (args "v" content)
+                                          (fnNode pf)
+                                          cache
+                                  with
+                                  | Ok(tree, cache') ->
+                                      let step =
+                                          if cache'.Hits > cache.Hits then CacheOutcome.Hit
+                                          elif cache'.Misses > cache.Misses then CacheOutcome.Miss
+                                          else CacheOutcome.Bypass
+
+                                      cache', acc @ [ step, bodyOf tree ]
+                                  | Error e -> failtestf "%s: applyMemo refused: %A" context e)
+                              |> fun (cache, steps) -> steps, cache
+
+                          Expect.equal sink.All (coreSteps |> List.map fst) (context + ": hit / miss / bypass per call")
+
+                          List.zip engineTrees (coreSteps |> List.map snd)
+                          |> List.iteri (fun i (mine, core) ->
+                              Expect.equal
+                                  (CanonicalJson.encodeNode mine)
+                                  (CanonicalJson.encodeNode core)
+                                  (sprintf "%s: call %d derives the tree applyMemo derives" context i))
+
+                          let snapshot = store.Snapshot
+
+                          Expect.equal
+                              (snapshot.Hits, snapshot.Misses, snapshot.Bypasses)
+                              (coreCache.Hits, coreCache.Misses, coreCache.Bypasses)
+                              (context + ": the portable store's counters are applyMemo's")
+
+                          Expect.equal
+                              (Map.count snapshot.Entries)
+                              (Map.count coreCache.Entries)
+                              (context + ": the same number of entries is stored")
+              } ]

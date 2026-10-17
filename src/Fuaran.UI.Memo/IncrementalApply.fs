@@ -7,6 +7,9 @@ open Fuaran.UI.FragmentMemo
 open Fuaran.UI.Renderer
 open Fuaran.UI.Telemetry.Abstractions
 
+module Introspect = Fuaran.UI.Ops.Introspect
+module Projection = Fuaran.UI.Core.Function.Projection
+
 // ============================================================================
 //  IncrementalApply — the memoised incremental re-derivation engine (Phase 183).
 //
@@ -42,13 +45,17 @@ open Fuaran.UI.Telemetry.Abstractions
 //     it was avoiding — and a value-only `Reapply` re-hashed the entire tree to
 //     establish that nothing structural had changed.
 //
-//   - THE EFFECT GATE (invariant 3). `FragmentMemo.isCacheable` gates admission:
-//     a pure-deterministic fragment is always cached; an effecting / clock /
-//     random / network fragment BYPASSES the cache entirely (re-derived every
-//     call, never stored), so a host-effecting result is never served stale.
+//   - THE EFFECT GATE (invariant 3) is Fuaran.Core's (Phase 2308). Admission is
+//     `Fuaran.Core.Memo.isMemoisable` over the effect OBSERVED over the
+//     fragment's whole subtree joined with every slot argument's: the gate
+//     `Fuaran.Core.Function.applyMemo` applies, over `MemoGate.witness`. What a
+//     fragment DECLARES does not admit it. A fragment declared pure that nests a
+//     network sub-fragment reads the network, so it BYPASSES the store
+//     (re-derived every call, never stored) and a host-effecting result is never
+//     served stale. The derivation records the verdict (`Admission`).
 //
-//   - THE REPRESENTABILITY GATE (Phase 1525), beside the effect gate and on the
-//     same footing. The key is a hash of a CANONICAL ENCODING, and that encoding
+//   - THE REPRESENTABILITY GATE (Phase 1525), after the effect gate and only for
+//     an application it admits. The key is a hash of a CANONICAL ENCODING, and that encoding
 //     stands a sentinel in for what it cannot represent (`"<closure>"` for a
 //     function-typed payload, `"<opaque>"` for an unrecognised CLR value) — so
 //     two fragments differing only there key identically, and the store serves
@@ -97,21 +104,129 @@ type StoreReach =
     /// to such a store outlives the process that wrote it.
     | SharedOrPersisted
 
+/// The memo's admission gate, which is Fuaran.Core's (Phase 2308).
+///
+/// `Fuaran.Core.Function.applyMemo` admits an application only when
+/// `Fuaran.Core.Memo.isMemoisable` holds of the effect OBSERVED over the
+/// function's whole subtree (`Function.observedEffect`), joined with the observed
+/// effect of every slot argument, which the result contains. The engine keeps its
+/// own derivation record (structural key, value-only `Reapply`, `StoreReach`,
+/// telemetry), so it does not route through `applyMemo` itself: it applies the
+/// same predicate to the same join, over `witness`. The tier's conformance suite
+/// runs Core's memo laws over that witness and checks the engine's verdict
+/// against `applyMemo`'s.
+module MemoGate =
+
+    /// The UI's `ArtifactWitness` for memoisation. A `FragmentDecl` node is the
+    /// function; its holes are the shared projection's (`Projection.holesOf`) and
+    /// its effect the decl's declared class (`Projection.effectOf`).
+    ///
+    /// `Tree` is the KEYED traversal (`Introspect.keyedWitness` over
+    /// `Introspect.nodeWitness`), the one the effect audit walks, so the observed
+    /// effect sees a sub-fragment held in a switch case, an error-boundary arm, a
+    /// state alternative or a slot argument, not only in an ordered child list.
+    ///
+    /// `Bind` is the renderer's `FragmentApply` for one hole. A slot argument is
+    /// substituted for its marker, namespaced by the decl's id (`<declId>.<id>`).
+    /// A value argument never enters the tree (the host seeds it as the
+    /// `<refId>.<hole>` binding), so binding one only closes the hole. Applying a
+    /// decl whose id is the ref site's id therefore yields, as its body, the tree
+    /// `FragmentApply.apply` yields.
+    let witness<'Msg> : Fuaran.Core.ArtifactWitness<Node<'Msg>, NodeId> =
+        let bind (addr: string) (arg: Fuaran.Core.Arg<Node<'Msg>>) (node: Node<'Msg>) : Result<Node<'Msg>, string> =
+            match node.Kind with
+            | NodeKind.FragmentDecl spec ->
+                let prefix = node.Id + "."
+
+                if not (addr.StartsWith prefix) then
+                    Error(sprintf "hole address '%s' is not under fragment decl '%s'" addr node.Id)
+                else
+                    let name = addr.Substring prefix.Length
+                    let residual = spec.Holes |> List.filter (fun h -> HoleDecl.name h <> name)
+
+                    let closed (body: Node<'Msg>) =
+                        { node with
+                            Kind =
+                                NodeKind.FragmentDecl
+                                    { spec with
+                                        Body = body
+                                        Holes = residual } }
+
+                    match spec.Holes |> List.tryFind (fun h -> HoleDecl.name h = name), arg with
+                    | Some(HoleDecl.Slot _ as hole), Fuaran.Core.SlotArg sub ->
+                        FragmentApply.apply { spec with Holes = [ hole ] } node.Id Map.empty (Map.ofList [ name, sub ])
+                        |> Result.map (fun app -> closed app.Tree)
+                    | Some(HoleDecl.Value _ | HoleDecl.Repeat _), Fuaran.Core.ValueArg _ -> Ok(closed spec.Body)
+                    | Some _, _ -> Error(sprintf "hole '%s' bound with the wrong kind of argument" addr)
+                    | None, _ -> Error(sprintf "no open hole '%s' on fragment decl '%s'" name node.Id)
+            | _ -> Error "a fragment binding targets a FragmentDecl node"
+
+        { Tree = Fuaran.Core.Tree.traversal Introspect.nodeWitness Introspect.keyedWitness
+          IdW = Introspect.idWitness
+          Holes = Projection.holesOf
+          Effect = Projection.effectOf
+          Bind = bind }
+
+    /// The fragment as the function node `witness` applies: a `FragmentDecl` at
+    /// the ref site's id.
+    let declNode (refId: string) (pf: ParamFragment<'Msg>) : Node<'Msg> = Fuaran.fragmentDecl refId pf
+
+    /// The effect observed over the fragment's own subtree: its declaration joined
+    /// with every nested decl's (`Function.observedEffect`). Constant for a given
+    /// fragment, which is why the engine memoises it per fragment reference.
+    let fragmentEffect (pf: ParamFragment<'Msg>) : Fuaran.Core.EffectClass =
+        Fuaran.Core.Function.observedEffect witness (declNode pf.Name pf)
+
+    /// A fragment's observed effect joined with the observed effect of every slot
+    /// argument: the effect `applyMemo` gates an application on.
+    let joinSlots (fragment: Fuaran.Core.EffectClass) (slotArgs: Map<string, Node<'Msg>>) : Fuaran.Core.EffectClass =
+        (fragment, slotArgs)
+        ||> Map.fold (fun acc _ sub -> Fuaran.Core.Effect.join acc (Fuaran.Core.Function.observedEffect witness sub))
+
+    /// The effect one application is gated on.
+    let observed (pf: ParamFragment<'Msg>) (slotArgs: Map<string, Node<'Msg>>) : Fuaran.Core.EffectClass =
+        joinSlots (fragmentEffect pf) slotArgs
+
+    /// Whether an application with this observed effect may be served from or
+    /// stored in the memo: Core's predicate, unchanged.
+    let admits (observedEffect: Fuaran.Core.EffectClass) : bool =
+        Fuaran.Core.Memo.isMemoisable observedEffect
+
+/// What the engine's gates decided for one application (Phase 2308), so a
+/// bypass says why it happened.
+[<RequireQualifiedAccess>]
+type Admission =
+    /// Both gates admitted it: it was served from the store, stored, or reused
+    /// incrementally.
+    | Admitted
+    /// Core's memoisability gate refused it. The effect observed over the
+    /// fragment's subtree and its slot arguments (`observed`) is not pure and
+    /// deterministic, whatever the fragment declares. Derived, never stored.
+    | EffectBypassed of observed: Fuaran.Core.EffectClass
+    /// The effect gate admitted it, but its canonical encoding could not be
+    /// content-addressed (Phase 1525) and the engine is `ProcessLocal`, so it was
+    /// derived and never stored. A `SharedOrPersisted` engine refuses it instead.
+    | Unkeyable of unrepresentable: FragmentKey.Unrepresentable list
+
 /// A recorded derivation — the application result plus the keys/args the engine
 /// needs to re-derive incrementally against a later arg-set. `ValueArgs` is
 /// retained for the binding diff.
 type Derivation<'Msg> =
     {
         Result: FragmentApplication<'Msg>
-        /// The content address of (body, refId, slot args) — or `None` when the
-        /// application could not be content-addressed at all (Phase 1525: its
-        /// canonical encoding carried an unrepresentable-value sentinel, so a
-        /// `ProcessLocal` engine derived it and bypassed the store). `None` never
-        /// equals a key, so `Reapply` declines to reuse a tree it cannot prove is
-        /// the same tree — which is the behaviour an option forces and a magic
-        /// string would have left to a comment.
+        /// The content address of (body, refId, slot args), or `None` when the
+        /// application was not keyed: the effect gate bypassed it (Phase 2308), or
+        /// it could not be content-addressed at all (Phase 1525: its canonical
+        /// encoding carried an unrepresentable-value sentinel, so a `ProcessLocal`
+        /// engine derived it and bypassed the store). `None` never equals a key,
+        /// so `Reapply` declines to reuse a tree it cannot prove is the same tree —
+        /// which is the behaviour an option forces and a magic string would have
+        /// left to a comment.
         StructuralKey: string option
         ValueArgs: Map<string, obj>
+        /// Why the application was served, stored or routed around the store
+        /// (Phase 2308).
+        Admission: Admission
     }
 
 /// Defaults for the engine's key machinery (Phase 210).
@@ -184,6 +299,19 @@ type Engine<'Msg>(store: IFragmentStore<'Msg>, reach: StoreReach, sink: IFuaranT
             KeyMemoDefaults.bodyDigestCapacity
         )
 
+    // Phase 2308 — the effect observed over a fragment's own subtree, memoised by
+    // fragment reference beside its digest and for the same reason: it is
+    // constant for a given `ParamFragment` instance, and walking the whole body
+    // on every probe would put back the per-hit whole-tree cost Phase 210 took
+    // out. Only the slot arguments are walked per application.
+    let fragmentEffects =
+        BoundedRefMemo<ParamFragment<'Msg>, Fuaran.Core.EffectClass>(KeyMemoDefaults.bodyDigestCapacity)
+
+    /// The effect one application is gated on (`MemoGate.observed`), with the
+    /// fragment's half served from `fragmentEffects`.
+    let observedEffect (pf: ParamFragment<'Msg>) (slotArgs: Map<string, Node<'Msg>>) : Fuaran.Core.EffectClass =
+        MemoGate.joinSlots (fragmentEffects.GetOrAdd(pf, MemoGate.fragmentEffect)) slotArgs
+
     /// The structural key for one application, with the body half served from
     /// `bodyDigests` and only the ref id + slot args hashed per probe. Identical
     /// in value to `FragmentKey.structural` — the memo changes what it costs, not
@@ -244,6 +372,73 @@ type Engine<'Msg>(store: IFragmentStore<'Msg>, reach: StoreReach, sink: IFuaranT
 
         m, recomputed
 
+    /// Apply under an already-observed effect — the body of `Apply`, shared with
+    /// `Reapply` so the effect is observed once per call.
+    let applyObserved
+        (observed: Fuaran.Core.EffectClass)
+        (pf: ParamFragment<'Msg>)
+        (refId: string)
+        (valueArgs: Map<string, obj>)
+        (slotArgs: Map<string, Node<'Msg>>)
+        : Result<Derivation<'Msg>, string> =
+        // Derive without keying, consulting or populating the store, recording
+        // the bypass and why — the shape the effect gate and the un-keyable case
+        // share.
+        let deriveBypassing (why: Admission) : Result<Derivation<'Msg>, string> =
+            match FragmentApply.apply pf refId valueArgs slotArgs with
+            | Ok app ->
+                store.NoteBypass()
+                emit CacheOutcome.Bypass
+
+                Ok
+                    { Result = app
+                      StructuralKey = None
+                      ValueArgs = valueArgs
+                      Admission = why }
+            | Error e -> Error e
+
+        // Serve / store under a real content address — the shipped path.
+        let keyed (sk: string) : Result<Derivation<'Msg>, string> =
+            match store.TryGet sk with
+            | Some tree ->
+                // Structural HIT — reuse the cached tree; the value bindings are
+                // a pure function of (refId, valueArgs), rebuilt cheaply.
+                emit CacheOutcome.Hit
+
+                Ok
+                    { Result =
+                        { Tree = tree
+                          ValueBindings = bindings refId valueArgs }
+                      StructuralKey = Some sk
+                      ValueArgs = valueArgs
+                      Admission = Admission.Admitted }
+            | None ->
+                match FragmentApply.apply pf refId valueArgs slotArgs with
+                | Ok app ->
+                    store.Set(sk, app.Tree)
+                    emit CacheOutcome.Miss
+
+                    Ok
+                        { Result = app
+                          StructuralKey = Some sk
+                          ValueArgs = valueArgs
+                          Admission = Admission.Admitted }
+                | Error e -> Error e
+
+        if not (MemoGate.admits observed) then
+            // Not memoisable as observed: never key, consult or populate the
+            // store, under either reach, as `applyMemo` never keys a bypass.
+            deriveBypassing (Admission.EffectBypassed observed)
+        else
+            match structuralKey pf refId slotArgs with
+            | Ok sk -> keyed sk
+            | Error unrepresentable ->
+                // Un-keyable. The store is neither consulted nor populated under
+                // EITHER reach; what differs is whether the caller is told.
+                match reach with
+                | StoreReach.ProcessLocal -> deriveBypassing (Admission.Unkeyable unrepresentable)
+                | StoreReach.SharedOrPersisted -> Error(FragmentKey.describeUnrepresentable unrepresentable)
+
     /// The shipped constructor — a process-local bounded LRU store (`capacity`
     /// bounds it), preserving the exact pre-360 behaviour. Additive (GP 11).
     /// Declares `ProcessLocal` on its own authority: the engine builds this store
@@ -297,87 +492,48 @@ type Engine<'Msg>(store: IFragmentStore<'Msg>, reach: StoreReach, sink: IFuaranT
     /// Mutating it directly is not part of the contract.
     member _.KeyMemo = bodyDigests
 
+    /// The fragment-effect memo (Phase 2308): the effect observed over each
+    /// fragment's own subtree, memoised per fragment reference beside
+    /// `KeyMemo`. Exposed for observability on the same footing. Mutating it
+    /// directly is not part of the contract.
+    member _.EffectMemo = fragmentEffects
+
     /// Apply with whole-application memoisation, served from the caller-supplied
-    /// content-addressed store (Phase 360). A pure-deterministic fragment's
-    /// substituted tree is content-keyed (`FragmentKey.structural`) + cached in
-    /// the store (HIT on an identical application, MISS + store otherwise). An
-    /// effecting fragment BYPASSES the store — re-derived every call, never stored
-    /// (the effect gate, Fork 3: `FragmentMemo.isCacheable`, equal to
-    /// `Fuaran.Core.Memo.isMemoisable`). Returns the derivation, or the bare
-    /// apply's error verbatim (validation / totality failures are NOT cached).
+    /// content-addressed store (Phase 360). Admission is Fuaran.Core's gate
+    /// (Phase 2308, `MemoGate`): `Fuaran.Core.Memo.isMemoisable` over the effect
+    /// observed over the fragment's subtree joined with every slot argument's,
+    /// exactly as `Fuaran.Core.Function.applyMemo` gates. An admitted
+    /// application's substituted tree is content-keyed (`FragmentKey.structural`)
+    /// and cached in the store (HIT on an identical application, MISS + store
+    /// otherwise). An application whose observed effect is not pure and
+    /// deterministic BYPASSES the store, re-derived every call and never stored,
+    /// even when the fragment declares itself pure (Fork 3). Returns the
+    /// derivation, whose `Admission` says which, or the bare apply's error
+    /// verbatim (validation / totality failures are NOT cached).
     ///
-    /// A SECOND admission gate sits beside the effect gate (Phase 1525), on the
-    /// same footing and for the same class of reason. Where the canonical
-    /// encoding of the body or of a slot argument carries an
+    /// A SECOND admission gate follows the effect gate (Phase 1525). Where the
+    /// canonical encoding of the body or of a slot argument carries an
     /// unrepresentable-value sentinel, the key does not distinguish this
     /// application from a different one, so serving from the store would serve
     /// the WRONG fragment — the cached subtree carries the first application's
     /// closures. What happens then is `StoreReach`'s to decide: `ProcessLocal`
     /// derives and bypasses the store, `SharedOrPersisted` refuses with a message
-    /// naming what was unrepresentable. Neither ever stores under such a key.
+    /// naming what was unrepresentable. Neither ever stores under such a key. An
+    /// application the effect gate bypasses is never keyed, so it reaches
+    /// neither outcome.
     member _.Apply
         (pf: ParamFragment<'Msg>, refId: string, valueArgs: Map<string, obj>, slotArgs: Map<string, Node<'Msg>>)
         : Result<Derivation<'Msg>, string> =
-        // Derive without consulting or populating the store, recording the
-        // bypass — the shape the effect gate and the un-keyable case share.
-        let deriveBypassing (sk: string option) : Result<Derivation<'Msg>, string> =
-            match FragmentApply.apply pf refId valueArgs slotArgs with
-            | Ok app ->
-                store.NoteBypass()
-                emit CacheOutcome.Bypass
-
-                Ok
-                    { Result = app
-                      StructuralKey = sk
-                      ValueArgs = valueArgs }
-            | Error e -> Error e
-
-        // Serve / store under a real content address — the shipped path.
-        let keyed (sk: string) : Result<Derivation<'Msg>, string> =
-            if not (isCacheable pf.Effect) then
-                // Effecting / non-deterministic — never consult or populate the store.
-                deriveBypassing (Some sk)
-            else
-                match store.TryGet sk with
-                | Some tree ->
-                    // Structural HIT — reuse the cached tree; the value bindings are
-                    // a pure function of (refId, valueArgs), rebuilt cheaply.
-                    emit CacheOutcome.Hit
-
-                    Ok
-                        { Result =
-                            { Tree = tree
-                              ValueBindings = bindings refId valueArgs }
-                          StructuralKey = Some sk
-                          ValueArgs = valueArgs }
-                | None ->
-                    match FragmentApply.apply pf refId valueArgs slotArgs with
-                    | Ok app ->
-                        store.Set(sk, app.Tree)
-                        emit CacheOutcome.Miss
-
-                        Ok
-                            { Result = app
-                              StructuralKey = Some sk
-                              ValueArgs = valueArgs }
-                    | Error e -> Error e
-
-        match structuralKey pf refId slotArgs with
-        | Ok sk -> keyed sk
-        | Error unrepresentable ->
-            // Un-keyable. The store is neither consulted nor populated under
-            // EITHER reach; what differs is whether the caller is told.
-            match reach with
-            | StoreReach.ProcessLocal -> deriveBypassing None
-            | StoreReach.SharedOrPersisted -> Error(FragmentKey.describeUnrepresentable unrepresentable)
+        applyObserved (observedEffect pf slotArgs) pf refId valueArgs slotArgs
 
     /// Incrementally re-derive against a previous derivation. When only value
     /// parameters changed (the structural key is unchanged), the prior tree
     /// object is reused and ONLY the changed hole-address bindings are
     /// recomputed (emits `Incremental recomputed`). When a slot argument changed
-    /// (the structural key differs), falls back to a full `Apply`. An effecting
-    /// fragment always full-re-derives via `Apply` (bypass).
-    member this.Reapply
+    /// (the structural key differs), falls back to a full `Apply`. An application
+    /// the effect gate bypasses (Phase 2308: its OBSERVED effect, slot arguments
+    /// included) always full-re-derives, never reused.
+    member _.Reapply
         (
             prev: Derivation<'Msg>,
             pf: ParamFragment<'Msg>,
@@ -385,8 +541,10 @@ type Engine<'Msg>(store: IFragmentStore<'Msg>, reach: StoreReach, sink: IFuaranT
             newValueArgs: Map<string, obj>,
             newSlotArgs: Map<string, Node<'Msg>>
         ) : Result<Derivation<'Msg>, string> =
-        if not (isCacheable pf.Effect) then
-            this.Apply(pf, refId, newValueArgs, newSlotArgs)
+        let observed = observedEffect pf newSlotArgs
+
+        if not (MemoGate.admits observed) then
+            applyObserved observed pf refId newValueArgs newSlotArgs
         else
             // Phase 210 — the body digest is served from the engine's memo, so a
             // value-only re-derive hashes only the (small) slot-arg portion to
@@ -414,7 +572,8 @@ type Engine<'Msg>(store: IFragmentStore<'Msg>, reach: StoreReach, sink: IFuaranT
                         { prev.Result with
                             ValueBindings = newBindings }
                       StructuralKey = sk
-                      ValueArgs = newValueArgs }
+                      ValueArgs = newValueArgs
+                      Admission = Admission.Admitted }
             else
                 // Slot / structural change — full re-derive (and refresh the cache).
-                this.Apply(pf, refId, newValueArgs, newSlotArgs)
+                applyObserved observed pf refId newValueArgs newSlotArgs
