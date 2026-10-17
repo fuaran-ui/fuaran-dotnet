@@ -149,7 +149,7 @@ let tests =
           }
 
           test "specHash is sha256 over those bytes, and matches its pin" {
-              let recomputed = "sha256:" + Fuaran.UI.Hashing.sha256Hex (specWireJson baseSpec)
+              let recomputed = "sha256:" + Fuaran.Core.Hash.sha256Hex (specWireJson baseSpec)
 
               Expect.equal (specHashOf baseSpec) recomputed "the hash is taken over the canonical spec JSON"
               Expect.equal (specHashOf baseSpec) pinnedSpecHash "the spec hash has not moved"
@@ -185,7 +185,7 @@ let tests =
                     "schema=" + String.Join(",", schemaColumns rows)
                     "rows=" + dataWireJson rows ]
                   |> String.concat "\n"
-                  |> Fuaran.UI.Hashing.sha256Hex
+                  |> Fuaran.Core.Hash.sha256Hex
                   |> fun h -> "sha256:" + h
 
               Expect.equal (dataFingerprintOf (Some rows)) recomputed "the digest is over the tagged schema+content"
@@ -331,7 +331,7 @@ let tests =
                       "a changed embedded spec is observed as changed"
 
                   Expect.notEqual
-                      ("sha256:" + Fuaran.UI.Hashing.sha256Hex recovered.SpecJson)
+                      ("sha256:" + Fuaran.Core.Hash.sha256Hex recovered.SpecJson)
                       recovered.Stamp.SpecHash
                       "and the carried stamp no longer re-derives from the carried spec"
           }

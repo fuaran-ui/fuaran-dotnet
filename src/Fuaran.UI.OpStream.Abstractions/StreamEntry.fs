@@ -491,12 +491,12 @@ module StreamEntry =
 
         tryTopLevelFields encoded |> Result.bind decodeFields
 
-    /// The certified host-side SHA-256 `HashFn` (Phase 405) supplied to Core's
-    /// chain — `sha256(prev | payload)`, mirroring Core's `defaultHash` shape but
-    /// cryptographic. Calls `Fuaran.UI.Hashing` directly (not `HashChain`, which
-    /// compiles after this file) to keep the module order acyclic.
-    let hashFn: Fuaran.Core.HashFn =
-        fun prev payload -> Fuaran.UI.Hashing.sha256Hex (prev + "|" + payload)
+    /// The SHA-256 `HashFn` (Phase 405) supplied to Core's chain —
+    /// `sha256(prev | payload)`, mirroring Core's `defaultHash` shape but
+    /// cryptographic. Since Phase 2309 it IS Core's named chain hash
+    /// (`Fuaran.Core.OpStream.sha256Hash`), byte-for-byte the function this tier
+    /// wrote by hand, so no persisted chain moved.
+    let hashFn: Fuaran.Core.HashFn = Fuaran.Core.OpStream.sha256Hash
 
     let private coreActor (a: Actor) : Fuaran.Core.Actor =
         match a with

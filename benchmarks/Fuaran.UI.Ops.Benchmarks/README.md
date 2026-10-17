@@ -119,6 +119,16 @@ over a 2,001-node tree for four single-edit shapes (none, one field, one contain
 one cross-parent move), with the op count of each diff as a sanity line, so a change to
 the diff can quote before-and-after figures from one command.
 
+`core-diff` (Phase 2304) is not a baseline metric either: it prints the cost of
+`TreeOpDiff.diff` over one sweep of the corpus pairs (`diff/goldens.json` both ways, and
+every node fixture against itself and against its re-rooted neighbour) and over a
+10,001-node tree for five shapes — none, one field, one cross-parent move, ten stacks
+regrouped under new containers (the relocation-heavy pair), and a thousand leaves
+scattered across stacks — beside the script each emits: its op count, its canonical
+bytes, and its moves, inserts and removes counted apart, so the identity-preserving form
+is priced rather than assumed. The corpus sweep is skipped, and says so, without the
+corpus (`FUARAN_WIRE_FIXTURES`).
+
 `decode-rate` (Phase 2059) is not a baseline metric either: it prints the cost of decoding
 that same 2,001-node tree, and a 200-op history, by each route a caller takes — the text
 entry (`decodeNodeObj` / `decodeOp` over the encoded string), the render-then-reparse

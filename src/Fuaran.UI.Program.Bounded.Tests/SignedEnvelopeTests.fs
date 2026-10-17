@@ -190,7 +190,7 @@ let tests =
 
               Expect.equal
                   signed.TreeHash
-                  ("sha256:" + Fuaran.UI.Hashing.sha256Hex (CanonicalJson.encodeNode tree))
+                  ("sha256:" + Fuaran.Core.Hash.sha256Hex (CanonicalJson.encodeNode tree))
                   "sha256 over CanonicalJson.encodeNode"
           }
 

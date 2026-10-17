@@ -716,7 +716,7 @@ let private pipelineKey (pipeline: Fuaran.Compute.Transform list) : string =
     string (List.length pipeline) + "#" + string (hash pipeline)
 
 let liveSiteKey (source: Binding<JVal>) (pipeline: Fuaran.Compute.Transform list) : string =
-    Hashing.sha256Hex (siteChannelOf source + "\n--\n" + pipelineKey pipeline)
+    Fuaran.Core.Hash.sha256Hex (siteChannelOf source + "\n--\n" + pipelineKey pipeline)
 
 /// Fuaran-UI Phase 1761 — the SITE key of one `TransformSource.Data` reader:
 /// the store identity the renderer's `Data` arm keeps an evaluation under.
@@ -740,7 +740,7 @@ let liveSiteKey (source: Binding<JVal>) (pipeline: Fuaran.Compute.Transform list
 /// `data:` prefix is one no live channel's rendering begins with, so a data site
 /// never shares a live site's key.
 let dataSiteKey (source: Fuaran.Core.Table) (pipeline: Fuaran.Compute.Transform list) : string =
-    Hashing.sha256Hex (
+    Fuaran.Core.Hash.sha256Hex (
         "data:"
         + string (hash source.Schema)
         + "/"

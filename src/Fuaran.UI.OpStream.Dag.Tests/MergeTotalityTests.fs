@@ -331,7 +331,7 @@ let tests =
                   // The MERGE is right — the refusal is about what the DAG can
                   // honestly record, so the merged tree is handed back.
                   Expect.equal
-                      (canonical tree |> HashChain.sha256Hex)
+                      (canonical tree |> Fuaran.Core.Hash.sha256Hex)
                       mismatch.OutcomeHash
                       "the mismatch names the hash of the tree the merge produced"
 
@@ -393,7 +393,7 @@ let tests =
               | MergeResult.Merged(record, tree) ->
                   Expect.equal
                       record.OutcomeHash
-                      (Some(canonical tree |> HashChain.sha256Hex))
+                      (Some(canonical tree |> Fuaran.Core.Hash.sha256Hex))
                       "the node commits to the merged tree"
 
                   // The whole point of the mint check: replaying the spine must

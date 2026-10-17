@@ -339,7 +339,7 @@ let coreSw: Fuaran.Core.StreamWitness<EqOp, EqNode, ApplyError> =
 /// on, supplied host-side per Core GP3 and already certified under `Conformance.hashFnLaws` in
 /// `Fuaran.UI.Tests`. The kit defaults to FNV-1a; the families here are run over the real one.
 let uiHashFn: Fuaran.Core.HashFn =
-    fun prev payload -> HashChain.sha256Hex (prev + "|" + payload)
+    fun prev payload -> Fuaran.Core.Hash.sha256Hex (prev + "|" + payload)
 
 /// The state fingerprint the lane fold compares folded states by.
 let hashState (e: EqNode) : string = CanonicalJson.encodeNode e.Node

@@ -204,7 +204,7 @@ module MergeConflict =
     /// Canonical JSON of a REFUSAL envelope: the conflict set as a sorted array of
     /// `{a,b,base,class,facet,nodeId,primacyHeld}` objects (object keys
     /// alphabetical, array entries in `(NodeId, Facet)` order). Byte-stable across
-    /// hosts, so `HashChain.sha256Hex` over it is the cross-host refusal hash —
+    /// hosts, so `Fuaran.Core.Hash.sha256Hex` over it is the cross-host refusal hash —
     /// the determinism artifact for a REFUSED structural merge, the analogue of
     /// the outcome hash for an auto-merge and of `ValidatorGate.encodeVerdict` for
     /// a gated one.

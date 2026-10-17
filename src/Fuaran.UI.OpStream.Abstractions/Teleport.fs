@@ -48,7 +48,7 @@ open Fuaran.UI.Ops.Types
 //  (duplicate / empty NodeId) — state re-seat is keyed on stable identity.
 //
 //  Cross-pipeline determinism (FGP 4 discipline): every stage — canonical
-//  JSON, SHA-256 (`Fuaran.UI.Hashing`), deflate + base64url
+//  JSON, SHA-256 (`Fuaran.Core.Hash`), deflate + base64url
 //  (`Compression.fs`, beside this file) — is the same pure F# on the .NET and Fable
 //  pipelines, so the same bundle produces the same string everywhere.
 // ============================================================================
@@ -208,7 +208,7 @@ module Teleport =
         go [] 0 ops
 
     let private digestOf (coreFields: (string * JVal) list) : string =
-        Hashing.sha256Hex (DigestPreimageTag + Canon.render (JObj coreFields))
+        Fuaran.Core.Hash.sha256Hex (DigestPreimageTag + Canon.render (JObj coreFields))
 
     /// Encode `bundle` as a teleport string: canonical envelope → deflate →
     /// base64url, prefixed `FT1.`. Deterministic — the same bundle produces

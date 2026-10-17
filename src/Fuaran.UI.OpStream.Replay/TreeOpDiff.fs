@@ -7,86 +7,86 @@ open Fuaran.UI.Ops.Introspect
 open Fuaran.UI.OpStream.Abstractions
 
 // ============================================================================
-//  TreeOpDiff — the **TreeOp-emitting** tree diff (Phase 152, Track A).
+//  TreeOpDiff — the **TreeOp-emitting** tree diff (Phase 152; on Fuaran.Core's
+//  `Diff` since Phase 2304).
 //
 //  The inverse of `Apply.apply`: given two `Node<'Msg>` snapshots, produce a
 //  `TreeOp<'Msg> list` that, folded through the apply engine against the old
-//  tree, reconstructs the new one. This is the genuinely-missing primitive
-//  the server-driven tier (Phase 152) and the closed-loop orchestrator need —
-//  distinct from `TreeDiff` (this file's neighbour), which emits *descriptive*
-//  `NodeChange` records for an inspector, not *applyable* ops.
+//  tree, reconstructs the new one. The server-driven step, the Program driver,
+//  the DAG merge's replay delta and the undo witness all read it.
 //
 //  **Round-trip contract (the acceptance test):**
 //    fold Apply.apply a (diff a b)  ≡  b   (canonical-JSON equality)
 //  Closure-safe equality is canonical-JSON equality (closures render as the
-//  `"<closure>"` sentinel), the same surface `TreeDiff` / `CanonicalJson`
-//  already trust — NOT F# structural equality (which a closure-bearing kind
-//  doesn't support).
+//  `"<closure>"` sentinel) — NOT F# structural equality, which a
+//  closure-bearing kind does not support.
 //
-//  **Coarse-but-correct floor (this file).** Per Phase 152 Track A, ship the
-//  trivially-correct floor first; per-kind *field-level* minimisation
-//  (`UpdateProp` / `ReplaceBinding` instead of a wholesale `EditNode`) is the
-//  follow-on optimisation over this floor. The floor:
-//    - same container kind + identical own-content (kind fields + state +
-//      style, children excluded) → recurse into children only (minimal
-//      structural ops: remove / insert / reorder + recurse common).
-//    - otherwise (leaf content change, kind-discriminator change, or a
-//      container whose own content changed) → wholesale node replace:
-//      `EditNode(id, b.Kind)` (brings b's kind incl. its whole subtree) +
-//      `UpdateState(id, b.State)` + the style edit (EditNode preserves
-//      Id/State/Style, so state is set explicitly and style by the fields that
-//      moved). Coarse (may resend an unchanged subtree / re-set an unchanged
-//      state) but unconditionally correct. The refinement trims to minimal
-//      patches.
+//  **The diff is Core's (Phase 2304).** This file holds no diff algorithm of
+//  its own. The SCRIPT is `Fuaran.Core.Diff.toOpsContainedWith` over the
+//  tier's witnesses (`Introspect.nodeWitness` / `idWitness`), the canonical
+//  node encoder over each node's childless shell, and the apply engine's own
+//  container predicate (a kind holds children iff `getChildren` answers). So
+//  Core's `Diff` theorems are the UI script's: a survivor that changed parent
+//  is relocated by `MoveNode` — never removed and re-sent — removals come
+//  last, and the order is applyable by construction (D103's placement rule:
+//  a node that becomes or stays a container is rewritten first, a node that
+//  becomes a leaf last, once its children have left).
+//
+//  What is genuinely the tier's is the LOWERING of that script onto `TreeOp`:
+//    - `InsertChild` / `MoveNode` / `RemoveNode` / `ReorderChildren` map one
+//      to one. Core inserts an added region top-down as childless shells; a
+//      region with no survivor below it is emitted as ONE `InsertChild`
+//      carrying the whole new subtree, which is what those shell inserts
+//      build (each appends under its after-parent in after-order, and none of
+//      those parents needs a reorder), in one op.
+//    - `UpdateNode` (a survivor whose own content changed) has no `TreeOp`
+//      spelling, so it lowers to the vertical ops: field-level `UpdateProp` /
+//      `ReplaceBinding` where they reproduce the kind (propose-then-verify,
+//      below), else the `EditNode` floor — carrying the children the node
+//      HOLDS at that point of the script, which is what Core's `UpdateNode`
+//      keeps — then `UpdateState` when the state moved, and the style edit.
 //    - a style change is ALWAYS field-level (Phase 2291): `PatchStyle` naming
 //      the fields that moved, and the whole-record `UpdateStyle` only when
 //      every one of them did (`styleEdit` below).
+//
+//  Core's refusals are the tier's by name (`tryDiff`): a tree that carries an
+//  id twice is `DuplicateNodeId`, the apply engine's name for the same defect.
+//  Two roots with different ids are NOT a refusal here: `ReplaceRoot` is the
+//  one op that may swap the root id, and it is what every conformant host's
+//  diff emits for that pair (the corpus `diff/goldens.json`).
 //
 //  **Closure-blindness (documented limitation, inherited).** A changed
 //  `Action` / `Binding` closure that renders identically emits **no** op —
 //  closures are the `"<closure>"` sentinel in the canonical shell, so two
 //  nodes differing only in closure identity compare equal. Correct for the
-//  DOM (identical markup); the orchestrator consumer that cares about closure
-//  identity must know this boundary.
+//  DOM (identical markup); a consumer that cares about closure identity must
+//  know this boundary.
 //
 //  **Node-trait vocabulary gap (documented limitation).** The canonical wire
 //  surface is id + kind + state + style + **accessibility** + **tooltip**, but
 //  the `TreeOp` vocabulary has **no op for either trait** (only
-//  EditNode/UpdateState/UpdateStyle/PatchStyle + structural ops, and `EditNode` replaces
-//  `Kind` alone). So a change to either is **not expressible** and does not
-//  round-trip: an accessibility-only edit diffs to NO ops at all, and a
+//  EditNode/UpdateState/UpdateStyle/PatchStyle + structural ops, and `EditNode`
+//  replaces `Kind` alone). So a change to either is **not expressible** and does
+//  not round-trip: an accessibility-only edit diffs to NO ops at all, and a
 //  tooltip-only edit falls to the `EditNode` floor, which reinstates the kind
-//  and leaves the trait as it was. This is acceptable for the server-driven use
-//  case — both traits are author-structural and stable across a re-render (they
-//  are not `Model`-driven) — but it is a real gap, and `ReplaceRoot` is the only
-//  op that closes it, wholesale.
+//  and leaves the trait as it was. Both traits are author-structural and stable
+//  across a re-render, so the server-driven use case is unaffected — but it is a
+//  real gap, and `ReplaceRoot` is the only op that closes it, wholesale.
 //
 //  **What is NOT acceptable is a caller that cannot tell.** Phase 1526: the DAG
 //  merge takes this diff as the replay delta of a merge node that commits, by
-//  hash, to the merged tree — and `TreeMerge` merges both traits as facets of
-//  their own, so a merge that took the other branch's accessibility minted a
-//  node whose delta reached a different tree, silently, at every layer. The mint
-//  now REPLAYS its own delta and refuses the node
-//  (`Fuaran.UI.OpStream.Dag.Merge.DagMerge.buildMergeRecord`), and `DagReplay`
-//  reports the same mismatch on a node an older engine already wrote. Both live
-//  with the caller, not here: this function's contract is to be honest about
-//  what it can express, and it is a consumer's business whether a gap in that
-//  expressiveness is fatal to what the consumer is doing. Closing the gap
-//  outright means new `TreeOp` cases, which is a wire event under WIRE_FORMAT
-//  §11 (encoder, decoder, corpus and every conformant host in one change-set).
+//  hash, to the merged tree, so the mint REPLAYS its own delta and refuses the
+//  node on a mismatch (`Fuaran.UI.OpStream.Dag.Merge.DagMerge.buildMergeRecord`),
+//  and `DagReplay` reports the same mismatch on a node an older engine already
+//  wrote. Closing the gap outright means new `TreeOp` cases, which is a wire
+//  event under WIRE_FORMAT §11.
 //
 //  (`Motion` / `ExtraAttributes` are omitted from the canonical surface
 //  entirely, so they are invisible to the round-trip — no gap there.)
 //
-//  **Precondition.** `diff a b` assumes `a.Id = b.Id` (a re-render of the same
-//  tree — no `TreeOp` changes a node's Id). Differing root ids cannot be
-//  expressed; the function returns a best-effort wholesale replace at a's id
-//  and the precondition is the caller's to honour.
-//
-//  FGP 2: FSharp.Core + Fuaran.UI + Fuaran.UI.Ops + OpStream.Abstractions
-//  only (CanonicalJson for the closure-safe shell) — Fable-clean, no renderer
-//  dep. Built adjacent to `TreeDiff` to share its indexing + shell-encode
-//  posture (Phase 152 Key files).
+//  FGP 2: FSharp.Core + Fuaran.Core + Fuaran.UI + Fuaran.UI.Ops +
+//  OpStream.Abstractions only (CanonicalJson for the closure-safe shell) —
+//  Fable-clean, no renderer dep.
 // ============================================================================
 
 module TreeOpDiff =
@@ -119,40 +119,11 @@ module TreeOpDiff =
     let private stateOf<'Msg> (n: Node<'Msg>) : StateBehaviour<'Msg> =
         n.State |> Option.defaultValue Fuaran.UI.Defaults.stateBehaviour
 
-    let private childrenOf<'Msg> (node: Node<'Msg>) : Node<'Msg> list =
-        getChildren node.Kind |> Option.defaultValue []
-
-    /// Safe cross-parent moves: ids present in **both** trees whose parent
-    /// changed, where the new parent exists in `a` and the move introduces no
-    /// cycle (`id` is not an ancestor of its new parent in `a`). Returns
-    /// `(movedId, newParentId)`. Reparentings to a newly-inserted parent or to
-    /// the root fall through to the remove+insert path (still correct, just not
-    /// identity-preserving). Emitting `MoveNode` for the safe set preserves the
-    /// moved node's DOM identity (focus / scroll / element state) — the
-    /// server-driven tier's "unchanged nodes keep identity" goal.
-    ///
-    /// Both trees are indexed once through `NodeIndex` (the index `TreeDiff`
-    /// builds), and the cycle check climbs `a`'s parent chain from the new
-    /// parent — O(depth) per moved id, where a subtree search per id was
-    /// quadratic on a wide tree (Phase 2063).
-    let private detectMoves<'Msg> (a: Node<'Msg>) (b: Node<'Msg>) : (NodeId * NodeId) list =
-        let idxA = NodeIndex.build a
-        let idxB = NodeIndex.build b
-
-        [ for KeyValue(id, locB) in idxB do
-              match Map.tryFind id idxA, locB.Parent with
-              | Some locA, Some(NodeId newParentRaw as newParent) when
-                  locA.Parent <> locB.Parent
-                  && Map.containsKey newParentRaw idxA
-                  && not (NodeIndex.isAncestorOrSelf idxA id newParentRaw)
-                  ->
-                  yield (NodeId id, newParent)
-              | _ -> () ]
 
     // ── Own-content comparison (Phase 2063) ─────────────────────────────────
     //
     // Every comparison below is canonical-JSON equality over CHILDLESS shells
-    // (`NodeIndex.encodeShell`), and `diffNode` encodes each node's shell ONCE,
+    // (`NodeIndex.encodeShell`), and `lowerUpdate` encodes each node's shell ONCE,
     // passing `b`'s shell down to the predicates that compare against it. Two
     // facts make that equivalent to the whole-node encodings it replaced:
     //   • a node's canonical JSON is an object whose members are its fields, so
@@ -181,10 +152,10 @@ module TreeOpDiff =
     /// `true` when the node's `State` block changed. Substituting `b`'s
     /// childless kind, style and accessibility into `a` leaves state, id and
     /// tooltip as the only members that can differ from `b`'s shell; both call
-    /// sites in `diffNode` have already established the tooltip is equal — one
+    /// sites in `lowerUpdate` have already established the tooltip is equal — one
     /// because `kindChanged` is `false`, the other because the field-level
     /// patch passed `tryFieldLevel`'s verify, which is `kindChanged` over the
-    /// patched node and no field op sets a tooltip — and `diffNode` is only
+    /// patched node and no field op sets a tooltip — and `lowerUpdate` is only
     /// reached for equal ids. So the comparison isolates `State`, whether or
     /// not the kind changed. Closure-safe via canonical JSON; `shellB` is
     /// `NodeIndex.encodeShell b`.
@@ -668,139 +639,158 @@ module TreeOpDiff =
             else
                 None
 
-    /// Diff two nodes known to share a NodeId (the root, or a child matched by
-    /// id during recursion). Each side's childless shell is encoded once here
-    /// and handed to every own-content comparison (Phase 2063); equal shells
-    /// mean no kind, state, style, accessibility or tooltip drift, so an
-    /// unchanged node costs two encodes and nothing more.
-    let rec private diffNode<'Msg> (a: Node<'Msg>) (b: Node<'Msg>) : TreeOp<'Msg> list =
-        let id = NodeId a.Id
-        let shellA = NodeIndex.encodeShell a
-        let shellB = NodeIndex.encodeShell b
-        let ownContentEqual = shellA = shellB
 
-        if not ownContentEqual && kindChanged a b shellB then
-            match tryFieldLevel a shellA b shellB with
+    // ── The lowering of Core's script (Phase 2304) ─────────────────────────
+
+    /// A kind holds children in the script iff it holds a free list
+    /// (`NodeIndex.holdsList`): every container the structural ops can grow and
+    /// shrink, so the script is placed for the engine that will run it.
+    let private canHold<'Msg> (n: Node<'Msg>) : bool = NodeIndex.holdsList n
+
+    /// The ops a content change of one survivor lowers to — Core's `UpdateNode`
+    /// spelt in the tier's vertical ops. `before` is the survivor in the old tree;
+    /// `after` its counterpart in the new. Core places a node that is a container
+    /// in `after` BEFORE every structural op, where it still holds `before`'s
+    /// children, and a node that is a leaf in `after` AFTER them, where it holds
+    /// none — so the `EditNode` floor carries `before`'s children in the first
+    /// case and the leaf kind alone in the second, and keeps, as `UpdateNode`
+    /// does, exactly the children the tree holds when it runs.
+    let private lowerUpdate<'Msg> (before: Node<'Msg>) (after: Node<'Msg>) : TreeOp<'Msg> list =
+        let id = NodeId after.Id
+        let shellA = NodeIndex.encodeShell before
+        let shellB = NodeIndex.encodeShell after
+
+        if kindChanged before after shellB then
+            match tryFieldLevel before shellA after shellB with
             | Some fieldOps ->
                 // Granular field-level patch reproduced the kind own-fields — no
-                // wholesale EditNode. State / style + children are handled
-                // separately (UpdateProp brings neither). Style compares via the
-                // materialised records so `None` ≡ the default record (the two
-                // spellings canonical-encode identically — no spurious op).
+                // wholesale EditNode. Style compares via the materialised records
+                // so `None` ≡ the default record (no spurious op).
                 [ yield! fieldOps
-                  yield! styleEdit id (styleOf a) (styleOf b)
-                  if stateChanged a b shellB then
-                      TreeOp.UpdateState(id, stateOf b)
-                  yield! childrenDiff id (childrenOf a) (childrenOf b) ]
+                  yield! styleEdit id (styleOf before) (styleOf after)
+                  if stateChanged before after shellB then
+                      TreeOp.UpdateState(id, stateOf after) ]
             | None ->
-                // Floor: wholesale node replace — EditNode brings b's kind incl.
-                // its whole subtree; UpdateState brings b's state, and the style
-                // edit brings whichever style fields moved (EditNode preserves
-                // the old state·style, so an unmoved style needs no op).
-                [ TreeOp.EditNode(id, b.Kind)
-                  TreeOp.UpdateState(id, stateOf b)
-                  yield! styleEdit id (styleOf a) (styleOf b) ]
-        else
-            // Kind shape identical → no wholesale swap. Emit granular state /
-            // style ops only when they actually drifted, and recurse into
-            // children (a no-op for a leaf or identical children). This keeps a
-            // style-toggle / loading-state change / deep child edit to a
-            // minimal patch instead of re-sending the kind + subtree.
-            [ yield! styleEdit id (styleOf a) (styleOf b)
-              if not ownContentEqual && stateChanged a b shellB then
-                  TreeOp.UpdateState(id, stateOf b)
-              yield! childrenDiff id (childrenOf a) (childrenOf b) ]
+                // Floor: the new kind, holding the children the node holds here.
+                // EditNode preserves the old state·style, so the state is set
+                // explicitly and the style by the fields that moved.
+                let held =
+                    if canHold after then
+                        withChildren after.Kind (NodeIndex.children before)
+                        |> Option.defaultValue after.Kind
+                    else
+                        after.Kind
 
-    /// Diff a parent's children lists (the parent already matched by id, own
-    /// content equal). Sequence: remove a-only ids → append b-only subtrees →
-    /// reorder to b's order → recurse into common children. Each step is
-    /// id-addressed or append-at-tail, so the composition reconstructs b's
-    /// children exactly (in b's order, each child equal to b's).
-    and private childrenDiff<'Msg>
-        (parentId: NodeId)
-        (aKids: Node<'Msg> list)
-        (bKids: Node<'Msg> list)
+                [ TreeOp.EditNode(id, held)
+                  TreeOp.UpdateState(id, stateOf after)
+                  yield! styleEdit id (styleOf before) (styleOf after) ]
+        else
+            // Kind shape identical: only the state and/or style moved (or a trait
+            // no op expresses — see the preamble), each emitted only if it drifted.
+            [ yield! styleEdit id (styleOf before) (styleOf after)
+              if stateChanged before after shellB then
+                  TreeOp.UpdateState(id, stateOf after) ]
+
+    /// The ids of a subtree as the diff reads it (the node and every free-list
+    /// descendant, `NodeIndex.children`) — the ids Core's index keys, so the ids
+    /// a survivor test reads.
+    let rec private structuralIds<'Msg> (acc: Set<string>) (n: Node<'Msg>) : Set<string> =
+        NodeIndex.children n |> List.fold structuralIds (Set.add n.Id acc)
+
+    /// Lower Core's script onto `TreeOp`, in Core's order. `beforeById` and
+    /// `afterById` index the two trees (the diff witness's positions — Core's
+    /// index), built only when an op needs one;
+    /// an added region with no survivor below it is one `InsertChild` of the
+    /// whole new subtree, and the shell inserts of its descendants are dropped.
+    let private lowerScript<'Msg>
+        (beforeById: Lazy<Map<string, Node<'Msg>>>)
+        (afterById: Lazy<Map<string, Node<'Msg>>>)
+        (script: SkeletonOp<Node<'Msg>, NodeId> list)
         : TreeOp<'Msg> list =
-        let aIdSet = aKids |> List.map _.Id |> Set.ofList
-        let bIdSet = bKids |> List.map _.Id |> Set.ofList
+        let survives (id: string) = Map.containsKey id beforeById.Value
+        let mutable covered = Set.empty<string>
 
-        // 1. Remove children whose id is gone in b.
-        let removes =
-            aKids
-            |> List.filter (fun n -> not (bIdSet.Contains n.Id))
-            |> List.map (fun n -> TreeOp.RemoveNode(NodeId n.Id))
+        [ for op in script do
+              match op with
+              | SkeletonOp.InsertChild(parent, shell) ->
+                  if not (covered.Contains shell.Id) then
+                      match Map.tryFind shell.Id afterById.Value with
+                      | Some whole ->
+                          let region = structuralIds Set.empty whole
 
-        // After removals, the surviving children are the common ids in a-order.
-        let commonAOrder =
-            aKids |> List.filter (fun n -> bIdSet.Contains n.Id) |> List.map _.Id
+                          if region |> Set.exists survives then
+                              TreeOp.InsertChild(parent, shell)
+                          else
+                              covered <- Set.union covered region
+                              TreeOp.InsertChild(parent, whole)
+                      | None -> TreeOp.InsertChild(parent, shell)
+              | SkeletonOp.RemoveNode target -> TreeOp.RemoveNode target
+              | SkeletonOp.MoveNode(target, newParent) -> TreeOp.MoveNode(target, newParent)
+              | SkeletonOp.ReorderChildren(parent, order) -> TreeOp.ReorderChildren(parent, order)
+              | SkeletonOp.UpdateNode after ->
+                  match Map.tryFind after.Id beforeById.Value with
+                  | Some before -> yield! lowerUpdate before after
+                  // Unreachable: Core updates survivors only.
+                  | None -> ()
+              // Unreachable: the diff emits a flat script.
+              | SkeletonOp.Batch _ -> () ]
 
-        // 2. Insert b-only subtrees, appended at the growing tail.
-        let bOnly = bKids |> List.filter (fun n -> not (aIdSet.Contains n.Id))
+    /// Index a tree by id over its structural positions (Core's index).
+    let private byId<'Msg> (root: Node<'Msg>) : Map<string, Node<'Msg>> =
+        Tree.preorder NodeIndex.witness<'Msg> root
+        |> List.fold (fun (m: Map<string, Node<'Msg>>) n -> Map.add n.Id n m) Map.empty
 
-        let inserts = bOnly |> List.map (fun child -> TreeOp.InsertChild(parentId, child))
+    /// Core's refusal, under the tier's own name for the same defect.
+    let private refusal (e: Diff.DiffError<NodeId>) : ApplyError =
+        let raw (NodeId s) = s
 
-        // 3. Reorder to b's exact order, if the post-insert order differs.
-        let resultingOrder = commonAOrder @ (bOnly |> List.map _.Id)
-        let targetOrder = bKids |> List.map _.Id
+        match e with
+        | Diff.DuplicateIdInTree id ->
+            { Code = ApplyErrorCode.DuplicateNodeId
+              Message =
+                $"The tree carries node id '{raw id}' more than once, so no id-addressed script reaches it (Fuaran.Core DiffError.DuplicateIdInTree)."
+              Hint = ApplyHint.empty }
+        | Diff.TargetNotAContainer(target, kindTag) ->
+            { Code = ApplyErrorCode.ChildlessKind
+              Message =
+                $"Node '{raw target}' ({kindTag}) holds children in the new tree but its kind cannot (Fuaran.Core DiffError.TargetNotAContainer)."
+              Hint =
+                { ApplyHint.empty with
+                    NodeKind = Some kindTag } }
+        | Diff.IllegalChildInTree(child, childKind, parent, parentKind, _) ->
+            { Code = ApplyErrorCode.KindMismatch
+              Message =
+                $"Node '{raw child}' ({childKind}) sits under '{raw parent}' ({parentKind}), which may not hold it (Fuaran.Core DiffError.IllegalChildInTree)."
+              Hint = ApplyHint.empty }
+        | Diff.RootIdMismatch(before, after) ->
+            // `tryDiff` answers this pair with `ReplaceRoot` before Core is asked.
+            { Code = ApplyErrorCode.KindMismatch
+              Message =
+                $"The roots carry different ids ('{raw before}', '{raw after}') (Fuaran.Core DiffError.RootIdMismatch)."
+              Hint = ApplyHint.empty }
 
-        let reorders =
-            if resultingOrder <> targetOrder then
-                [ TreeOp.ReorderChildren(parentId, bKids |> List.map (fun n -> NodeId n.Id)) ]
-            else
-                []
-
-        // 4. Recurse into children present in both (content drift). Id-addressed,
-        //    so order-independent of the reorder above.
-        let recurse =
-            bKids
-            |> List.collect (fun bChild ->
-                match aKids |> List.tryFind (fun aChild -> aChild.Id = bChild.Id) with
-                | Some aChild -> diffNode aChild bChild
-                | None -> [])
-
-        removes @ inserts @ reorders @ recurse
-
-    /// Diff `a` → `b` into an applyable `TreeOp` list. Folding the result
-    /// through `Apply.apply` against `a` reconstructs `b` (canonical equality).
-    /// Precondition: `a.Id = b.Id`.
-    ///
-    /// Cross-parent moves are handled by a **correct-by-construction pre-pass**:
-    /// safe moves are emitted as `MoveNode`s (which append; the move-free diff's
-    /// `ReorderChildren` fixes the final position — this diff already worked that
-    /// way, using position 0 as a placeholder, so losing the ordinal changed
-    /// nothing about its strategy) against an intermediate tree, then the
-    /// existing move-free diff
-    /// runs `intermediate → b`. Both segments round-trip, so the whole does.
-    let diff<'Msg> (a: Node<'Msg>) (b: Node<'Msg>) : TreeOp<'Msg> list =
+    /// Diff `a` → `b` into an applyable `TreeOp` list, or Core's refusal under
+    /// the tier's name for it. Folding an `Ok` script through `Apply.apply`
+    /// against `a` reconstructs `b` (canonical equality, up to the traits no op
+    /// expresses — see the preamble). Two roots with different ids diff to
+    /// `[ ReplaceRoot b ]`, the one op that may change the root id.
+    let tryDiff<'Msg> (a: Node<'Msg>) (b: Node<'Msg>) : Result<TreeOp<'Msg> list, ApplyError> =
         if a.Id <> b.Id then
-            // No TreeOp changes a node's Id — different roots are not
-            // expressible. Best-effort wholesale replace at a's id (the
-            // precondition is the caller's to honour).
-            [ TreeOp.EditNode(NodeId a.Id, b.Kind)
-              TreeOp.UpdateState(NodeId a.Id, stateOf b)
-              yield! styleEdit (NodeId a.Id) (styleOf a) (styleOf b) ]
+            Ok [ TreeOp.ReplaceRoot b ]
         else
-            match detectMoves a b with
-            | [] -> diffNode a b
-            | moves ->
-                let moveOps =
-                    moves |> List.map (fun (id, newParent) -> TreeOp.MoveNode(id, newParent))
+            match Diff.toOpsContainedWith canHold CanonicalJson.encodeNode NodeIndex.witness<'Msg> idWitness a b with
+            | Ok [] -> Ok []
+            | Ok script -> Ok(lowerScript (lazy (byId a)) (lazy (byId b)) script)
+            | Error e -> Error(refusal e)
 
-                // Fold the moves through the apply engine to get the post-move
-                // intermediate, then diff the (now move-free) remainder. A move
-                // that somehow fails to apply is simply left for the move-free
-                // diff to express as remove+insert — no infinite loop, still
-                // correct.
-                let intermediate =
-                    moveOps
-                    |> List.fold
-                        (fun (t: Node<'Msg>) op ->
-                            match Fuaran.UI.Ops.Apply.apply op t with
-                            | Ok t' -> t'
-                            | Error _ -> t)
-                        a
-
-                moveOps @ diffNode intermediate b
+    /// Diff `a` → `b` into an applyable `TreeOp` list (`tryDiff`). A pair Core
+    /// refuses — a tree carrying an id twice, which no id-addressed script can
+    /// reach — diffs to the wholesale `[ ReplaceRoot b ]`, which reaches any
+    /// `b`; a caller that must know the difference calls `tryDiff`.
+    let diff<'Msg> (a: Node<'Msg>) (b: Node<'Msg>) : TreeOp<'Msg> list =
+        match tryDiff a b with
+        | Ok ops -> ops
+        | Error _ -> [ TreeOp.ReplaceRoot b ]
 
     /// Diff `a` → `b` as a single atomic unit: wraps the op list in `Batch`
     /// when there are ≥2 ops (one interaction = one atomic patch, per Phase
@@ -810,3 +800,62 @@ module TreeOpDiff =
         | []
         | [ _ ] as ops -> ops
         | many -> [ TreeOp.Batch many ]
+
+    // ── Undo (Phase 2304) ──────────────────────────────────────────────────
+
+    /// The op as a Core skeleton op, when it is one of the structural five
+    /// (`InsertChild` / `RemoveNode` / `MoveNode` / `ReorderChildren`, and a
+    /// `Batch` of them); `None` for a vertical op or a batch holding one.
+    let rec private toSkeleton<'Msg> (op: TreeOp<'Msg>) : SkeletonOp<Node<'Msg>, NodeId> option =
+        match op with
+        | TreeOp.InsertChild(parent, child) -> Some(SkeletonOp.InsertChild(parent, child))
+        | TreeOp.RemoveNode target -> Some(SkeletonOp.RemoveNode target)
+        | TreeOp.MoveNode(target, newParent) -> Some(SkeletonOp.MoveNode(target, newParent))
+        | TreeOp.ReorderChildren(parent, order) -> Some(SkeletonOp.ReorderChildren(parent, order))
+        | TreeOp.Batch inner ->
+            let mapped = inner |> List.choose toSkeleton
+
+            if List.length mapped = List.length inner then
+                Some(SkeletonOp.Batch mapped)
+            else
+                None
+        | _ -> None
+
+    /// A structural inverse back on `TreeOp`. Core's inverse of a structural op
+    /// is structural; an `UpdateNode` cannot arise, and answers `None`.
+    let rec private ofSkeleton<'Msg> (op: SkeletonOp<Node<'Msg>, NodeId>) : TreeOp<'Msg> option =
+        match op with
+        | SkeletonOp.InsertChild(parent, child) -> Some(TreeOp.InsertChild(parent, child))
+        | SkeletonOp.RemoveNode target -> Some(TreeOp.RemoveNode target)
+        | SkeletonOp.MoveNode(target, newParent) -> Some(TreeOp.MoveNode(target, newParent))
+        | SkeletonOp.ReorderChildren(parent, order) -> Some(TreeOp.ReorderChildren(parent, order))
+        | SkeletonOp.Batch inner ->
+            let mapped = inner |> List.choose ofSkeleton
+
+            if List.length mapped = List.length inner then
+                Some(TreeOp.Batch mapped)
+            else
+                None
+        | SkeletonOp.UpdateNode _ -> None
+
+    /// The ops that undo `op` against the tree it was applied to (`pre`): for
+    /// the structural five, Core's `Ops.invert` over the tier's witnesses, whose
+    /// law is `apply (invert op pre) (apply op pre) = pre`; for a vertical op —
+    /// and a structural one Core cannot address, such as a node held at a
+    /// non-structural position, which the tier's engine reaches and Core's
+    /// structural witness does not — the diff from the post-state back to
+    /// `pre`. An op the apply engine refuses has no post-state and answers `[]`.
+    let inverse<'Msg> (op: TreeOp<'Msg>) (pre: Node<'Msg>) : TreeOp<'Msg> list =
+        match Fuaran.UI.Ops.Apply.apply op pre with
+        | Error _ -> []
+        | Ok post ->
+            let viaCore =
+                toSkeleton op
+                |> Option.bind (fun skeleton ->
+                    match Ops.invert nodeWitness<_> idWitness skeleton pre with
+                    | Ok inv -> ofSkeleton inv
+                    | Error _ -> None)
+
+            match viaCore with
+            | Some inv -> [ inv ]
+            | None -> diff post pre

@@ -19,7 +19,8 @@ module Fuaran.UI.Tests.CorePredicateTests
 //    walks they cover.
 //  * Chart X class: `QueryBinding` classes X by chart kind, and FUARAN087 is
 //    the rule it has to agree with.
-//  * UTF-8: one encoder in `Hashing`, which the byte-length meter reads too.
+//  * UTF-8: one encoder, Core's (`Fuaran.Core.Hash.utf8Bytes`, since Phase
+//    2309), which the hash and the byte-length meter both read.
 //    It matches the BCL on ill-formed UTF-16.
 //  * Extra-attribute keys: `ExtraAttributeKey.isAllowed`, read by the smart
 //    constructor, the build-time check and the renderer floor alike.
@@ -273,17 +274,17 @@ let private bclSha256 (s: string) : string =
 let private utf8Tests =
     testList
         "UTF-8"
-        [ test "Hashing.sha256Hex matches the BCL on ill-formed UTF-16" {
+        [ test "Fuaran.Core.Hash.sha256Hex matches the BCL on ill-formed UTF-16" {
               for name, s in utf16Cases do
-                  Expect.equal (Hashing.sha256Hex s) (bclSha256 s) (sprintf "digest of %s" name)
+                  Expect.equal (Fuaran.Core.Hash.sha256Hex s) (bclSha256 s) (sprintf "digest of %s" name)
           }
 
           test "the byte-length meter and the hash count the same bytes" {
               for name, s in utf16Cases do
                   Expect.equal
-                      (Hashing.utf8Length s)
+                      (Fuaran.Core.Hash.utf8Bytes s).Length
                       (Encoding.UTF8.GetByteCount s)
-                      (sprintf "Hashing length of %s" name)
+                      (sprintf "Core encoder length of %s" name)
 
                   Expect.equal
                       (HostLimits.utf8Length s)
@@ -294,7 +295,19 @@ let private utf8Tests =
           test "census: one UTF-8 encoder" {
               Expect.isFalse
                   ((source "ui/HostLimits.fs").Contains("0xDBFF", StringComparison.Ordinal))
-                  "HostLimits reads Hashing's encoder rather than decoding surrogates itself"
+                  "HostLimits reads Core's encoder rather than decoding surrogates itself"
+
+              // Phase 2309: the tier's own encoder and SHA-256 retired onto Core's. A copy
+              // growing back would agree with Core on the day it was written.
+              let hashing = source "ui/Hashing.fs"
+
+              Expect.isFalse
+                  (hashing.Contains("0xDBFF", StringComparison.Ordinal))
+                  "Hashing holds no UTF-8 encoder of its own"
+
+              Expect.isFalse
+                  (hashing.Contains("0x428a2f98", StringComparison.OrdinalIgnoreCase))
+                  "Hashing holds no SHA-256 of its own (the first round constant is its signature)"
           } ]
 
 // ─── Extra-attribute keys ────────────────────────────────────────────────────

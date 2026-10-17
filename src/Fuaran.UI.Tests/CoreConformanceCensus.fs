@@ -81,6 +81,10 @@ let private certifyTest =
 let private containerTest =
     "the Fuaran.UI container predicate certifies under Core's containerLaws"
 
+/// Phase 2304 — `TreeOpDiff.diff` is Core's contained diff, certified under its own family.
+let private diffContainedTest =
+    "the Fuaran.UI witness certifies under Core's diffContainedLaws (TreeOpDiff's script)"
+
 /// The stream-only aggregate's adopter, beside `certifyTest` above: `certifyStream` runs the
 /// reducer laws first and the op-stream laws only if the reducer proved total, so a family folded
 /// into it is reached here and nowhere else in this repo.
@@ -294,11 +298,9 @@ let census: (string * Adoption) list =
       // witness's `withChildren` refuses by design, so that arm is unreachable and the adequacy
       // guard is red for it alone.
       "Conformance.containerLaws", Adopted(containerTest, "Conformance.containerLaws")
-      // The container-aware twin of `Diff.toOps` has no call site here: the tier diffs through
-      // `certify`'s `diffLaws` and applies through `applyContained`, but derives no contained script.
-      "Conformance.diffContainedLaws",
-      NotUsed
-          "`Diff.toOpsContained` under a `CanHold` — this tier applies structural ops through `applyContained` but derives no contained diff script; `Diff.toOps` is certified through `certify`"
+      // Phase 2304 — `TreeOpDiff.diff` lowers `Diff.toOpsContainedWith` under the tier's container
+      // predicate, so the container-aware diff's laws are this tier's script's.
+      "Conformance.diffContainedLaws", Adopted(diffContainedTest, "Conformance.diffContainedLaws")
       // The two classified break walkers are self-contained over the kit's own walkers, and this
       // tier is the CONSUMER of their classification: `HashChain.ofChainBreak` projects
       // `ChainBreak.Reason` (typed since Core 0.23.0 — the Phase 1525 ask, landed) onto
@@ -723,10 +725,15 @@ let census: (string * Adoption) list =
       // where it does not, the row names the mechanism the tier does not use.
       "Conformance.digestLaws",
       NotUsed
-          "Fuaran.Core.Ops.Diff's subtree digests and change partition — no project here diffs a tree through Core (WireProfile's Diff is Fuaran.Core.Idl's IDL diff, a different module)"
+          "Fuaran.Core.Ops.Diff's subtree digests and change partition — the tier diffs through `Diff.toOpsContainedWith` and classifies through `Diff.changes` (Phase 2304) but computes no subtree digest (WireProfile's Diff is Fuaran.Core.Idl's IDL diff, a different module)"
+      // Phase 2304 — `TreeDiff.diff` IS `Diff.changes`, but this family holds the classification to
+      // the UNCONTAINED `toOpsWith` script under plain `applyAll`, which this tier does not emit and
+      // its witness cannot run (a survivor that turns from leaf to container takes its inserts before
+      // the witness can give it children). The classification is held to the CONTAINED script the
+      // tier does emit, over the corpus, in `Fuaran.UI.OpStream.Tests` (TreeDiffTests).
       "Conformance.changeLaws",
       NotUsed
-          "Fuaran.Core.Ops.Diff.changes over an op script — no project here classifies a tree change through Core (see digestLaws)"
+          "`Diff.changes` held to `Diff.toOpsWith`'s UNCONTAINED script under plain `applyAll` — the tier classifies through `Diff.changes` (TreeDiff, Phase 2304) but diffs through `toOpsContainedWith` (TreeOpDiff), and this witness's `withChildren` is a no-op on a leaf, so the uncontained script's insert under a leaf-turned-container is dropped and the family's landing law cannot run here; the classification is held to the contained script over the corpus instead (Fuaran.UI.OpStream.Tests, TreeDiffTests)"
       "Conformance.introducedLaws",
       NotUsed
           "Fuaran.Core.Validator's introduced-findings gate (introduced / verdict / gate under a GatePolicy) — RecipeCertification uses a Core Validator.Registry only as a validity oracle, and DagMerge.mergeGated gates through the tier's own validator, so nothing here calls the Core gate"

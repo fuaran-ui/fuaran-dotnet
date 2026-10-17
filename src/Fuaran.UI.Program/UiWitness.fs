@@ -934,19 +934,16 @@ let state: StateWitness<Node<obj>, TreeOp<obj>> =
       // binding in the tree.
       Substitute = fun _ _ op -> op
       Placeholders = fun _ -> []
-      // Every tree op has an EXACT inverse through the tier's own diff
-      // (Phase 1977): apply the op to the pre-state and diff the result back
-      // to the pre-state, which answers the ops that restore it — the same
+      // Every tree op has an EXACT inverse (Phase 1977), computed against the
+      // pre-state by `TreeOpDiff.inverse` (Phase 2304): the structural five
+      // through Fuaran.Core's `Ops.invert` over the tier's witnesses, whose law
+      // is `apply (invert op pre) (apply op pre) = pre`, and every vertical op
+      // as the diff from the post-state back to the pre-state — the same
       // `TreeOpDiff.diff` the driver emits its patches with. A list, which is
       // why the member answers one. An op the apply engine refuses has no
-      // post-state to diff from and answers nothing; the plan never records
-      // such an op, because the refusal halted it.
-      Undo =
-        fun op ->
-            UndoClass.Inverse(fun pre ->
-                match Fuaran.UI.Ops.Apply.apply op pre with
-                | Ok post -> TreeOpDiff.diff post pre
-                | Error _ -> []) }
+      // post-state and answers nothing; the plan never records such an op,
+      // because the refusal halted it.
+      Undo = fun op -> UndoClass.Inverse(TreeOpDiff.inverse op) }
 
 // ─── the effect witness ─────────────────────────────────────────────────────
 

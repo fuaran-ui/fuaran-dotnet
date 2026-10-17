@@ -223,7 +223,9 @@ type BoundedConnection(connId: string, initial: BoundedSession, channel: IFuaran
                     let newResolved = Resolve.resolveTree session.Store newBase
                     let ops = TreeOpDiff.diff session.Resolved newResolved
                     session.Services.OnApply ops
-                    let patches = Lowering.lower session.Services.RenderFragment newResolved ops
+
+                    let patches =
+                        Lowering.lowerScript session.Services.RenderFragment session.Resolved ops
 
                     session <-
                         { session with

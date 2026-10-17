@@ -22,7 +22,12 @@ open Fuaran.UI.OpStream.Abstractions
 //  pre-2063 BEHAVIOUR: a later phase that deliberately changes what the diff
 //  emits changes this oracle in the same commit, and says so.
 //
-//  Phase 2291 is the first such phase: a style change is emitted field-level
+//  Since Phase 2304 the production diff is Fuaran.Core's `Diff`, and this copy
+//  is no longer a byte oracle: it is the tier's PREVIOUS algorithm, kept as the
+//  baseline of the round-trip no-regression law (`TreeOpDiffEquivalenceTests`):
+//  Core's script must round-trip every pair this one did.
+//
+//  Phase 2291 was the first phase to change what it emits: a style change is emitted field-level
 //  (`PatchStyle`, whole-record `UpdateStyle` only when every field moved, and
 //  no style op on the floor when the style did not move). The four style sites
 //  below call the production `TreeOpDiff.styleEdit` so the two diffs cannot
