@@ -50,7 +50,7 @@
     </Content>
     <!-- Phase 2042 - the sources CorePredicateTests' census reads: each predicate has
          one definition, and a copy growing back would agree on the day it was written. -->
-    <Content Include="..\Fuaran.UI\DeadOnDecode.fs;..\Fuaran.UI\AffordanceInertness.fs;..\Fuaran.UI\BindingWalk.fs;..\Fuaran.UI\HostLimits.fs;..\Fuaran.UI\Fuaran.fs">
+    <Content Include="..\Fuaran.UI\DeadOnDecode.fs;..\Fuaran.UI\AffordanceInertness.fs;..\Fuaran.UI\BindingWalk.fs;..\Fuaran.UI\HostLimits.fs;..\Fuaran.UI\Fuaran.fs;..\Fuaran.UI\Hashing.fs">
       <Link>predicate-sources\ui\%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -478,6 +478,9 @@
     <!-- Phase 2055 — one form-field constructor per control and one Box builder. -->
     <Compile Include="AuthoringControlTests.fs" />
     <Compile Include="FactsWalkTests.fs" />
+    <!-- Phase 2309 - the SHA-256 retirement moved no value: digests and hashed artefacts recorded
+         from the tier's own implementation before it was deleted, held against Core's. -->
+    <Compile Include="CoreHashPinTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

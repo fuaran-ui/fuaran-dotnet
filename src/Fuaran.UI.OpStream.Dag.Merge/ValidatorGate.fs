@@ -178,7 +178,7 @@ module ValidatorGate =
     /// Canonical JSON of a gated-merge VERDICT: the introduced-defect set as a
     /// sorted array of `{code,facet,message,nodeId}` objects (object keys
     /// alphabetical, array entries in `(NodeId,Facet,Code)` order). Byte-stable
-    /// across hosts, so `HashChain.sha256Hex` over it is the cross-host verdict
+    /// across hosts, so `Fuaran.Core.Hash.sha256Hex` over it is the cross-host verdict
     /// hash — the determinism artifact for a refused validator-gated merge.
     let encodeVerdict (defects: MergeDefect list) : string =
         let sb = StringBuilder()

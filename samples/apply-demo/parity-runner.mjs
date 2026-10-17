@@ -30,7 +30,7 @@
 //  Exits non-zero on any divergence or an empty golden.
 // ============================================================================
 
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -80,15 +80,23 @@ if (failures > 0) {
 console.log("apply-parity Fable lane: PASS");
 
 // ============================================================================
-//  Hash-digest parity lane (Phase 405). `HashChain.sha256Hex` routes through
-//  the pure Fable-safe SHA-256; assert the Fable-compiled digest reproduces
+//  Hash-digest parity lane (Phase 405). The chain digests through Core's pure
+//  Fable-safe SHA-256 (`Fuaran.Core.Hash.sha256Hex` — the tier's own copy
+//  retired onto it in Phase 2309); assert the Fable-compiled digest reproduces
 //  the FIPS 180-4 vectors + a multi-byte UTF-8 case, proving the browser
 //  pipeline computes the same chain bytes the .NET suite pins (its
 //  HashChainTests carry the same vectors + BCL parity).
 // ============================================================================
 
-const hashChainModule = join(here, "output", "src", "Fuaran.UI.OpStream.Abstractions", "HashChain.js");
-const { HashChain_sha256Hex } = await import(pathToFileURL(hashChainModule).href);
+// Fable writes each transpiled package to `fable_modules/<id>.<version>/`; the
+// version follows the pin, so the directory is found rather than named.
+const fableModules = join(here, "output", "fable_modules");
+const coreTreeDir = readdirSync(fableModules).find((d) => /^Fuaran\.Core\.Tree\.\d/.test(d));
+if (!coreTreeDir) {
+  console.error(`no Fuaran.Core.Tree package under ${fableModules} — was the Fable build run?`);
+  process.exit(1);
+}
+const { Hash_sha256Hex } = await import(pathToFileURL(join(fableModules, coreTreeDir, "Hash.js")).href);
 
 const shaVectors = [
   ["", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"],
@@ -106,7 +114,7 @@ let shaFailures = 0;
 
 for (const [input, pinned] of shaVectors) {
   const expected = pinned ?? createHash("sha256").update(input, "utf8").digest("hex");
-  const got = HashChain_sha256Hex(input);
+  const got = Hash_sha256Hex(input);
   if (got === expected) {
     console.log(`OK   sha256 ${JSON.stringify(input.slice(0, 24))}`);
   } else {

@@ -4742,7 +4742,7 @@ let dataWireJson (rows: Row seq) : string =
 
 /// The stamp's spec leg — `sha256:<hex>` over `specWireJson`.
 let specHashOf<'Msg> (spec: ChartSpec<'Msg>) : string =
-    "sha256:" + Fuaran.UI.Hashing.sha256Hex (specWireJson spec)
+    "sha256:" + Fuaran.Core.Hash.sha256Hex (specWireJson spec)
 
 /// The Ordinal-sorted union of column names across a row feed — the schema half
 /// of the data fingerprint. A UNION rather than the first row's keys, because a
@@ -4770,7 +4770,7 @@ let dataFingerprintOf (rows: Row seq option) : string =
           "schema=" + String.concat "," (schemaColumns materialised)
           "rows=" + dataWireJson materialised ]
         |> String.concat "\n"
-        |> Fuaran.UI.Hashing.sha256Hex
+        |> Fuaran.Core.Hash.sha256Hex
         |> fun h -> "sha256:" + h
 
 /// Derive the provenance stamp. Pure and total: no clock, no counter, no host

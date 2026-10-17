@@ -175,7 +175,7 @@ module DagWire =
     /// were minted under — so an existing store keeps comparing against the
     /// bytes it already holds.
     let contentFingerprint<'Msg> (encodeOp: TreeOp<'Msg> -> string) (record: DagOpRecord<'Msg>) : string =
-        HashChain.sha256Hex (encodeRecord encodeOp { record with Tombstoned = false })
+        Fuaran.Core.Hash.sha256Hex (encodeRecord encodeOp { record with Tombstoned = false })
 
     // ── Decode ────────────────────────────────────────────────────────────
     //

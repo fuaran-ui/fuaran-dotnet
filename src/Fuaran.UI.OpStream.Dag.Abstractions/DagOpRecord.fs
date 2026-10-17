@@ -114,7 +114,7 @@ module DagOpRecord =
         parents |> List.sortWith (fun a b -> String.CompareOrdinal(a, b))
 
     // ─── Content-address pre-image (Phase 408) ────────────────────────────────
-    // Portable on BOTH pipelines: the digest routes through `HashChain.sha256Hex`
+    // Portable on BOTH pipelines: the digest routes through `Fuaran.Core.Hash.sha256Hex`
     // — the pure, Fable-safe FIPS 180-4 SHA-256 the language tier ships since
     // Phase 405 — and the pre-image uses only `StringBuilder` / `CultureInfo` /
     // `DateTimeOffset.ToUnixTimeSeconds` / `CanonicalJson.encodeOp` / `StreamEntry`,
@@ -220,13 +220,13 @@ module DagOpRecord =
             + provenanceJson timestamp actor promptId resultEnvelope
             + "}"
 
-        HashChain.sha256Hex payload
+        Fuaran.Core.Hash.sha256Hex payload
 
     /// Content address for a MERGE node: folds in the canonical OUTCOME tree
     /// hash under a `"merge"` tag, NOT the op-path (M1: two hosts agree iff they
     /// reach the same tree — the sovereign DAG identity semantic). Provenance is
     /// folded in as for an ordinary node (Phase 408). `outcomeHash` is
-    /// `CanonicalJson.encodeNode merged |> HashChain.sha256Hex`.
+    /// `CanonicalJson.encodeNode merged |> Fuaran.Core.Hash.sha256Hex`.
     let computeMergeHash
         (parents: string list)
         (outcomeHash: string)
@@ -243,7 +243,7 @@ module DagOpRecord =
             + provenanceJson timestamp actor promptId resultEnvelope
             + "}"
 
-        HashChain.sha256Hex payload
+        Fuaran.Core.Hash.sha256Hex payload
 
     /// Recompute the stored content address of `record` — picks the op-hash or
     /// the merge-hash rule by whether `OutcomeHash` is populated. Used by

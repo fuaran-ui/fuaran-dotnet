@@ -85,7 +85,7 @@ module DagCheckpoint =
     /// content-addressed node standing in for `(previousChainHead, sequence)`
     /// (a DAG has no global sequence; the node hash IS the position).
     let snapshotHash (atHash: string) (canonicalTree: string) : string =
-        HashChain.sha256Hex (atHash + "|" + "{\"snapshot\":true,\"tree\":" + canonicalTree + "}")
+        Fuaran.Core.Hash.sha256Hex (atHash + "|" + "{\"snapshot\":true,\"tree\":" + canonicalTree + "}")
 
     /// Materialise a checkpoint for `snapshot` — the tree AT DAG node `atHash`
     /// (its op already applied) — with the position-bound `SnapshotHash`

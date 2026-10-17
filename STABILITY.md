@@ -7824,6 +7824,37 @@ _Class: **breaking**. `v0.94.0` was tagged and published at `90082d3` on 2026-10
 because the first change it is opened for, Phase 2058 (public module paths move), is breaking; a draft advances to the
 class of its highest rider, and pre-1.0 breaking is minor (version cut recorded on the ledger, 2026-10-14)._
 
+### What rides this slot — Phase 2309 (re-slotted by the driver to the breaking cut after v0.95.0)
+
+**One SHA-256: the tier's own implementation retires onto `Fuaran.Core`'s, and no value moves.**
+
+**Class: BREAKING (source).** Three public functions are removed; no persisted hash, chain head, corpus pin or
+wire byte changes.
+
+- **Removed — `Fuaran.UI.Hashing.sha256Hex`** (the tier's pure FIPS 180-4 SHA-256, Phase 164). Call
+  `Fuaran.Core.Hash.sha256Hex`: the same lowercase hex over the same UTF-8 bytes, byte-identical on every input,
+  ill-formed UTF-16 included (a lone or ill-ordered surrogate hashes as U+FFFD, the platform encoder's answer, on
+  both).
+- **Removed — `Fuaran.UI.Hashing.utf8Length`.** Call `Fuaran.Core.Hash.utf8Bytes s |> Array.length`, or
+  `HostLimits.utf8Length`, which stays and now reads Core's encoder.
+- **Removed — `Fuaran.UI.OpStream.Abstractions.HashChain.sha256Hex`** (a pass-through to the first). Call
+  `Fuaran.Core.Hash.sha256Hex`; a chain `HashFn` written as `fun prev payload -> sha256Hex (prev + "|" + payload)`
+  is `Fuaran.Core.OpStream.sha256Hash`, the same function under Core's name.
+- **Unchanged surfaces, rerouted.** `StreamEntry.hashFn` is now `Fuaran.Core.OpStream.sha256Hash` (same value,
+  same type); `HashChain.snapshotHash` / `computeHash`, `Teleport`'s digest, `DocumentDescriptor.ofTree`,
+  `FragmentKey`, the chart provenance stamp, the binding-site keys and every DAG record / merge / retention hash
+  digest through `Fuaran.Core.Hash.sha256Hex`. `Hashing.customBodyShapeHash` stays, and the validator's
+  `CustomContentHashCheck.computeBodyShapeHash` now calls it rather than rebuilding the pre-image over the BCL.
+- **No value moves, and that is asserted.** `src/Fuaran.UI.Tests/CoreHashPinTests.fs` holds digests and hashed
+  artefacts RECORDED from the retired implementation before it was deleted (padding-boundary lengths, ill-formed
+  UTF-16, a stream head, a checkpoint hash, two teleport strings, an attestation digest, a fragment key, two
+  `Custom` hashes) against the code that computes them now. The FIPS 180-4 and BCL cross-check vectors stay, as
+  consumer-side pins of Core's function. The op-stream, DAG, attestation and teleport corpora verify unchanged.
+- **Recorded, not changed:** the `Custom` body-shape pre-image is not injective (comma- and newline-joined fields);
+  replacing it with Core's `Digest.tryOfFields` moves every stored `Custom` hash, so it is a candidate for a
+  later breaking cut (`CRYPTO.md`).
+- **Migration.** Replace each call as above; nothing persisted needs rewriting.
+
 ### What rides this slot — Phase 2307 (both in-memory observers run on Core's `ObserverWitness`)
 
 **Class: additive (surface guard: "contract grew", one member per package, nothing removed or retyped) + a

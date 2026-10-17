@@ -324,7 +324,7 @@ let emit (root: string) : unit =
 
     for (id, description, baseT, a, b) in fixtures do
         let merged = mergedOf baseT a b
-        let outcomeHash = CanonicalJson.encodeNode merged |> HashChain.sha256Hex
+        let outcomeHash = CanonicalJson.encodeNode merged |> Fuaran.Core.Hash.sha256Hex
         File.WriteAllText(Path.Combine(dir, id + ".base.json"), CanonicalJson.encodeNode baseT)
         File.WriteAllText(Path.Combine(dir, id + ".a.json"), CanonicalJson.encodeNode a)
         File.WriteAllText(Path.Combine(dir, id + ".b.json"), CanonicalJson.encodeNode b)
@@ -346,7 +346,7 @@ let emit (root: string) : unit =
     // (the introduced-defect set canonically encoded) + its hash.
     for (id, description, baseT, a, b) in gatedFixtures do
         let verdictJson = verdictOf baseT a b |> ValidatorGate.encodeVerdict
-        let verdictHash = verdictJson |> HashChain.sha256Hex
+        let verdictHash = verdictJson |> Fuaran.Core.Hash.sha256Hex
         File.WriteAllText(Path.Combine(dir, id + ".base.json"), CanonicalJson.encodeNode baseT)
         File.WriteAllText(Path.Combine(dir, id + ".a.json"), CanonicalJson.encodeNode a)
         File.WriteAllText(Path.Combine(dir, id + ".b.json"), CanonicalJson.encodeNode b)
@@ -376,7 +376,7 @@ let emit (root: string) : unit =
 
     for (id, description, baseT, a, b) in refusalFixtures do
         let envelopeJson = envelopeOf baseT a b |> MergeConflict.encodeEnvelope
-        let envelopeHash = envelopeJson |> HashChain.sha256Hex
+        let envelopeHash = envelopeJson |> Fuaran.Core.Hash.sha256Hex
         File.WriteAllText(Path.Combine(dir, id + ".base.json"), CanonicalJson.encodeNode baseT)
         File.WriteAllText(Path.Combine(dir, id + ".a.json"), CanonicalJson.encodeNode a)
         File.WriteAllText(Path.Combine(dir, id + ".b.json"), CanonicalJson.encodeNode b)
@@ -401,14 +401,14 @@ let emit (root: string) : unit =
 
     for (rid, rdesc, tid, tdesc, baseT, ra, rb, ta, tb) in totalityPairs do
         let envelopeJson = envelopeOf baseT ra rb |> MergeConflict.encodeEnvelope
-        let envelopeHash = envelopeJson |> HashChain.sha256Hex
+        let envelopeHash = envelopeJson |> Fuaran.Core.Hash.sha256Hex
         File.WriteAllText(Path.Combine(dir, rid + ".base.json"), CanonicalJson.encodeNode baseT)
         File.WriteAllText(Path.Combine(dir, rid + ".a.json"), CanonicalJson.encodeNode ra)
         File.WriteAllText(Path.Combine(dir, rid + ".b.json"), CanonicalJson.encodeNode rb)
         File.WriteAllText(Path.Combine(dir, rid + ".envelope.json"), envelopeJson)
 
         let twinMerged = mergedOf baseT ta tb
-        let twinHash = CanonicalJson.encodeNode twinMerged |> HashChain.sha256Hex
+        let twinHash = CanonicalJson.encodeNode twinMerged |> Fuaran.Core.Hash.sha256Hex
         File.WriteAllText(Path.Combine(dir, tid + ".base.json"), CanonicalJson.encodeNode baseT)
         File.WriteAllText(Path.Combine(dir, tid + ".a.json"), CanonicalJson.encodeNode ta)
         File.WriteAllText(Path.Combine(dir, tid + ".b.json"), CanonicalJson.encodeNode tb)

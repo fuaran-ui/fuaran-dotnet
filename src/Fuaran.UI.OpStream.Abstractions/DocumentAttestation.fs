@@ -95,7 +95,8 @@ module DocumentDescriptor =
     let documentVersion = 1
 
     /// The digest of an already-canonical document encoding.
-    let digestOfCanonical (canonicalJson: string) : string = Hashing.sha256Hex canonicalJson
+    let digestOfCanonical (canonicalJson: string) : string =
+        Fuaran.Core.Hash.sha256Hex canonicalJson
 
     /// Describe a tree: canonical-encode it and digest those bytes.
     let ofTree (algorithm: string) (tree: Node<'Msg>) : DocumentDescriptor =

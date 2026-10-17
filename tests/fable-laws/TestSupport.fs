@@ -246,7 +246,7 @@ let coreSw: Fuaran.Core.StreamWitness<EqOp, EqNode, ApplyError> =
 
 /// The tier's shipped hash — the pure Fable-safe SHA-256 the op-stream's chain runs on.
 let uiHashFn: Fuaran.Core.HashFn =
-    fun prev payload -> HashChain.sha256Hex (prev + "|" + payload)
+    fun prev payload -> Fuaran.Core.Hash.sha256Hex (prev + "|" + payload)
 
 /// The state fingerprint the lane fold compares folded states by.
 let hashState (e: EqNode) : string = CanonicalJson.encodeNode e.Node
