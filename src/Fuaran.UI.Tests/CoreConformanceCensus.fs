@@ -90,6 +90,14 @@ let private diffContainedTest =
 let private keyedChildrenTest =
     "the tier's whole-tree id check certifies under Core's keyedChildrenLawsAt over the named node slots"
 
+/// Phase 2306 — `Placement`'s verbs are Core's `TreePlacement`, certified under its own family.
+let private placementTest =
+    "the Fuaran.UI witness certifies under Core's placementLaws (Placement's verbs)"
+
+/// Phase 2306 — the clone verbs rename through Core's `FreshIds`, certified under its own family.
+let private freshIdTest =
+    "the Fuaran.UI witness certifies under Core's freshIdLaws (the clone verbs' renaming)"
+
 /// The stream-only aggregate's adopter, beside `certifyTest` above: `certifyStream` runs the
 /// reducer laws first and the op-stream laws only if the reducer proved total, so a family folded
 /// into it is reached here and nowhere else in this repo.
@@ -725,14 +733,10 @@ let census: (string * Adoption) list =
       "Conformance.laneLaws",
       NotUsed
           "Fuaran.Core.OpStream.Dag's lane store and whole-DAG order (Dag.loadLanes / totalOrderBy / replayAllBy, fuaran-core Phase 311) — no project here loads lanes or orders a DAG through them"
-      "Conformance.placementLaws",
-      NotUsed
-          "Fuaran.Core.Ops' TreePlacement algebra (fuaran-core Phase 312) — the tier places children through its own Fuaran.UI.Ops.Placement and calls no Core placement"
+      "Conformance.placementLaws", Adopted(placementTest, "Conformance.placementLaws")
       "Conformance.loweringLaws",
       NotUsed "Fuaran.Core.Ops.lower (fuaran-core Phase 312) — no project here lowers a tree to ops through Core"
-      "Conformance.freshIdLaws",
-      NotUsed
-          "Fuaran.Core's FreshIds minting helper (fuaran-core Phase 312) — the tier mints ids through its own FreshIds (Fuaran.UI.Ops.Placement) and calls no Core minting"
+      "Conformance.freshIdLaws", Adopted(freshIdTest, "Conformance.freshIdLaws")
       "Conformance.referenceLaws",
       NotUsed "a Core RefWitness — the tier declares no Core reference seam (no project here builds a RefWitness)"
       "Conformance.witnessSurfaceLaws",

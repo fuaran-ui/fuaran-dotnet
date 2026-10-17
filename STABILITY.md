@@ -8027,6 +8027,75 @@ functions), `Fuaran.UI.AiTools` and `Fuaran.UI.Validator.Certification` unchange
   `BoundedLru`, `BoundedRefMemo`, `InProcessStore`, `MemoCacheStore` and its snapshot, telemetry. A size-bounded
   `MemoCache` is fuaran-core#490; until it ships the LRU stamps the portable store keeps outside the record stay.
 
+### What rides this slot — Phase 2306 (placement is Core's `TreePlacement`: the verdicts are the engine's dry run, and a same-parent move is a reorder)
+
+**Class: BREAKING (source) + a BEHAVIOUR change of the ops two verbs emit.** It rides the 0.96.0 draft, which is
+already breaking-class, so no number moves. No wire byte, op kind or hash moves: every op the verbs emit is one the
+vocabulary already had. The public surface of `Fuaran.UI.Ops.Placement` changes by removal (the `Placement` union, the `FreshIds` type and module, seven `PlaceError` cases), by
+reshaping (`UnknownAnchor`, three return types), by addition (`Refused`, `IndexOutOfRange`, `Anchor.Index`), so
+the class is breaking whatever else rides beside it.
+
+`Fuaran.UI.Ops.Placement` is now Fuaran.Core's placement algebra (`TreePlacement`, fuaran-core Phase 312) over the
+tier's witnesses. Each verb asks the engine for its verdict — the keyed dry run `Ops.canApplyContainedKeyed` under
+the apply engine's container predicate, over the whole tree — then applies the tier's own keyed-position rule (a
+structural op cannot vacate or cross a keyed position; it descends into one exactly as `Apply` does), then lowers
+through `TreePlacement.placeContained` / `moveContained` at that scope. The hand-written pre-checks that mirrored the
+engine (absent node, childless destination, move into itself or its own subtree) are deleted; there is no mirror
+left to fall out of step.
+
+- **`Target.Placement` is Core's `Anchor<NodeId>`.** The tier's own `Placement` union is deleted. **Migration:**
+  `Placement.Last` / `First` / `Before id` / `After id` → `Anchor.Last` / `First` / `Before id` / `After id`
+  (`open Fuaran.Core`, or `Fuaran.Core.Anchor.…`); the record keeps its two field names. New: `Anchor.Index i`, a
+  position among the destination's children OTHER than the node placed, `0` (first) to their count (last)
+  inclusive, bounds-checked by Core.
+- **`PlaceError` is Core's three cases plus the tier's two.** **Migration**, case by case:
+  - `ParentNotFound p` → `Refused(Rejection.UnknownNode(p, addressable))`
+  - `ChildlessKind p` → `Refused(Rejection.NotAContainer(p, kindTag))`
+  - `NodeNotFound n` → `Refused(Rejection.UnknownNode(n, addressable))`
+  - `DuplicateId n` → `Refused(Rejection.DuplicateId n)`
+  - `MoveIntoSelf n` → `Refused(Rejection.WouldNestUnderSelf(n, NestRelation.Self))`
+  - `MoveIntoDescendant(n, _)` → `Refused(Rejection.WouldNestUnderSelf(n, NestRelation.Descendant))`; a move of the
+    root is `Refused Rejection.CannotRemoveRoot`
+  - `UnknownAnchor a` → `UnknownAnchor(parent, a, siblings)` (Core's case: the destination, the anchor, and the
+    children it could have named)
+  - `NudgeOutOfRange(n, delta)` → `IndexOutOfRange(parent, index, count)` (`index` is the position the nudge asked
+    for, `count` the parent's other children: `index < 0` is already first, `index > count` already last)
+  - `PositionNotStructural(n, slot)` and `CannotNudgeRoot n` — unchanged, the tier's own (Core's `KeyedPosition`
+    names the holder, not the slot label; fuaran-core#492).
+
+  `Refused` carries the engine's rejection unchanged, so `Rejection.explain` / `Rejection.code` read it directly.
+- **A same-parent move is a reorder (behaviour).** `moveOp` returns `Result<TreeOp<'Msg> option, PlaceError>`: a
+  move within the node's own parent is a bare `ReorderChildren` (it was `Batch [MoveNode; ReorderChildren]`), and
+  `None` when the node is already where the target puts it. A reorder footprints the parent alone, where a move
+  also writes the node and an unknown parent (`TreeOpFootprint`, Phase 2292), so the same-parent form serialises
+  against fewer concurrent edits. It agrees with what `TreeOpDiff` emits for the same edit (Phase 2304). A move to
+  another parent is unchanged: a bare `MoveNode` when it lands last, else `Batch [MoveNode; ReorderChildren]`.
+  **Migration:** match `Ok(Some op)` / `Ok None` (an empty commit) where `Ok op` was matched.
+- **`nudgeOp` is Core's move to `Anchor.Index (index + delta)` (behaviour).** It returns
+  `Result<TreeOp<'Msg> option, PlaceError>`: a bare `ReorderChildren`, `None` for a zero delta. For `delta = ±1` the
+  order is the one the old swap produced. For `|delta| > 1` the node SHIFTS that many places and every other sibling
+  keeps its order (`[a; b; c]`, `a` by `+2` → `[b; c; a]`; the old swap gave `[c; b; a]`).
+- **`canPlace` answers `Result<unit, PlaceError>`** — `moveOp`'s verdict. It answered the destination's post-move
+  order (Phase 2064) only so `moveOp` could reuse it; `moveOp` no longer computes one.
+- **The clone verbs rename through Core's `FreshIds.repairDuplicates`** over the keyed walk (`Tree.traversal`), so
+  an id held in a keyed position is renamed with the rest, as before. The tier's `FreshIds` type and module are
+  deleted. **Migration:** a strategy is Core's shape, `NodeId -> Set<string> -> NodeId`;
+  `FreshIds.derived` → `FreshIds.derived Introspect.idWitness` (same `<id>-copy`, `-copy-2`, … spelling, same ids);
+  `FreshIds.sequential prefix` → `FreshIds.sequential Introspect.idWitness prefix` (no hidden counter: the first free
+  `<prefix>-n` against the tree, so two clones minted from one strategy value against the same tree mint the same
+  ids, and against a tree that already holds the first clone, the next ones). New: an id the INCOMING subtree
+  repeats within itself is renamed too (its later occurrence), where it used to be passed through to the engine's
+  duplicate-id refusal. `duplicateOp` of an absent source is `Refused(Rejection.UnknownNode …)`, and a source held
+  in a keyed position is now reached.
+- **Unchanged:** `placeOp` (its emitted ops), `duplicateOp` / `pasteOp` (their emitted ops, for an incoming subtree
+  with unique ids), `reorderOp`, and every keyed-position answer (a node below a position moves, nudges and takes
+  inserts within it; a node at one, or a crossing, is `PositionNotStructural`).
+
+**Certified by** `Fuaran.UI.Ops.Tests/PlacementTests.fs` (every verb against the real apply engine: no false permit,
+every `Refused` the engine's refusal of the bare op, every anchor refusal honest, a same-parent move a bare reorder or
+nothing — over 400 generated trees per verb, `Index` anchors included) and `Fuaran.UI.Tests/CoreAdoptionTests.fs`
+(Core's `placementLaws` and `freshIdLaws` over the tier's witness; both census rows move from not-used to adopted).
+
 
 ---
 

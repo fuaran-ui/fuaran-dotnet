@@ -43,10 +43,10 @@
          the corpus manifest's reject columns. -->
     <Compile Include="CustomCardJson.fs" />
     <Compile Include="Apply.fs" />
-    <!-- Placement algebra — pure op construction over the existing TreeOp
-         vocabulary (no new op kinds, no wire change); pre-checks mirror the
-         apply engine's rejections. Compiled after Introspect.fs (uses the
-         traversal + structural lenses); independent of Apply.fs. -->
+    <!-- Placement — Fuaran.Core's TreePlacement over the tier's witnesses (no
+         new op kinds, no wire change); every verdict is the engine's own dry
+         run (Phase 2306). Compiled after Introspect.fs (uses the witnesses +
+         the keyed-position lens); independent of Apply.fs. -->
     <Compile Include="Placement.fs" />
     <Compile Include="ErrorRender.fs" />
     <!-- Streaming / progressive partial-tree decode + apply (Phase 104).

@@ -1,31 +1,35 @@
 module Fuaran.UI.Tests.PlacementTests
 
 // ============================================================================
-//  Placement algebra acceptance + property set.
+//  Placement acceptance + property set.
 //
-//  Two obligations, stated as properties over generated trees and checked
-//  against the REAL apply engine (never a re-derivation of its logic):
+//  The verbs are Fuaran.Core's `TreePlacement` over this tier's witnesses
+//  (Phase 2306), so two obligations are stated as properties over generated
+//  trees and checked against the REAL apply engine (never a re-derivation of
+//  its logic):
 //
-//   (1) No false permit — every op a helper emits is accepted by the apply
-//       engine, and the applied tree exhibits the placement's declared order
-//       (the moved/inserted node sits exactly where the `Placement` said,
-//       with the other siblings' order preserved).
+//   (1) No false permit — every op a verb emits is accepted by the apply
+//       engine, and the applied tree exhibits the anchor's declared position
+//       (the moved/inserted node sits exactly where the `Anchor` said, with
+//       the other siblings' order preserved). A move within one parent emits
+//       a bare `ReorderChildren`, or nothing when the node is already there.
 //
-//   (2) No false refuse — every helper rejection corresponds to an apply-side
-//       rejection of the op the helper would otherwise have emitted (or, for
-//       `UnknownAnchor`, to the `OrderingMismatch` refusal of the only op that
-//       could have honoured the anchor).
+//   (2) No false refuse — every `Refused` carries the engine's own rejection
+//       for the op the verb would otherwise have emitted, and the anchor
+//       refusals (`UnknownAnchor` / `IndexOutOfRange`) name an anchor that
+//       genuinely names no position.
 //
 //  The clone verbs add the tree-wide id obligations: a duplicate never
 //  collides with any id in the target tree (including ids held in
 //  non-structural positions), the clone is structurally equal to its source
-//  modulo ids, and a paste preserves non-colliding ids while remapping
+//  modulo ids, and a paste preserves non-colliding ids while renaming
 //  colliding ones.
 // ============================================================================
 
 open Expecto
 open FsCheck
 open FsCheck.FSharp
+open Fuaran.Core
 open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.Ops
@@ -70,10 +74,29 @@ let private refusedAs (op: TreeOp<obj>) (root: Node<obj>) : ApplyErrorCode =
 
 /// `TreeOp` carries closures and has no structural equality, so a helper
 /// verdict is matched by its refusal alone.
-let private expectRefusal (result: Result<TreeOp<obj>, PlaceError>) (expected: PlaceError) (message: string) =
+let private expectRefusal (result: Result<'T, PlaceError>) (expected: PlaceError) (message: string) =
     match result with
     | Error e -> Expect.equal e expected message
     | Ok _ -> failtestf "expected the refusal %A, got Ok (%s)" expected message
+
+/// A refusal carrying the engine's own rejection, matched by `expected` (an
+/// `UnknownNode` rejection enumerates every addressable id, so it is matched
+/// rather than spelt out).
+let private expectRefused (result: Result<'T, PlaceError>) (expected: Rejection<NodeId> -> bool) (message: string) =
+    match result with
+    | Error(PlaceError.Refused r) when expected r -> ()
+    | Error e -> failtestf "expected an engine refusal (%s), got %A" message e
+    | Ok _ -> failtestf "expected an engine refusal, got Ok (%s)" message
+
+let private unknownNode (id: string) (r: Rejection<NodeId>) =
+    match r with
+    | Rejection.UnknownNode(NodeId n, _) -> n = id
+    | _ -> false
+
+let private notAContainer (id: string) (r: Rejection<NodeId>) =
+    match r with
+    | Rejection.NotAContainer(NodeId n, _) -> n = id
+    | _ -> false
 
 let private rawIds (root: Node<obj>) : string list =
     Introspect.allNodeIds root |> List.map (fun (NodeId s) -> s)
@@ -94,9 +117,11 @@ let private insertedChild (op: TreeOp<obj>) : Node<obj> =
     | TreeOp.Batch [ TreeOp.InsertChild(_, c); _ ] -> c
     | other -> failtestf "expected a placed insert, got %A" other
 
-let private at (parentId: string) (placement: Placement) : Target =
+let private at (parentId: string) (placement: Anchor<NodeId>) : Target =
     { ParentId = NodeId parentId
       Placement = placement }
+
+let private ids (raw: string list) : NodeId list = raw |> List.map NodeId
 
 // ─── Unit tests: placeOp ─────────────────────────────────────────────────────
 
@@ -107,7 +132,7 @@ let placeOpTests =
         [ test "Last emits a bare InsertChild and appends" {
               let t = fixture ()
 
-              match Placement.placeOp t (leaf "x") (at "left" Placement.Last) with
+              match Placement.placeOp t (leaf "x") (at "left" Anchor.Last) with
               | Ok(TreeOp.InsertChild _ as op) ->
                   Expect.equal (childIdsIn (applied op t) "left") [ "a"; "b"; "c"; "x" ] "appended last"
               | other -> failtestf "expected a bare InsertChild, got %A" other
@@ -116,7 +141,7 @@ let placeOpTests =
           test "First emits Batch [insert; reorder] and lands first" {
               let t = fixture ()
 
-              match Placement.placeOp t (leaf "x") (at "left" Placement.First) with
+              match Placement.placeOp t (leaf "x") (at "left" Anchor.First) with
               | Ok(TreeOp.Batch [ TreeOp.InsertChild _; TreeOp.ReorderChildren _ ] as op) ->
                   Expect.equal (childIdsIn (applied op t) "left") [ "x"; "a"; "b"; "c" ] "prepended"
               | other -> failtestf "expected Batch [InsertChild; ReorderChildren], got %A" other
@@ -125,7 +150,7 @@ let placeOpTests =
           test "First into an empty container stays a bare InsertChild" {
               let t = fixture ()
 
-              match Placement.placeOp t (leaf "x") (at "empty" Placement.First) with
+              match Placement.placeOp t (leaf "x") (at "empty" Anchor.First) with
               | Ok(TreeOp.InsertChild _ as op) -> Expect.equal (childIdsIn (applied op t) "empty") [ "x" ] "sole child"
               | other -> failtestf "expected a bare InsertChild, got %A" other
           }
@@ -133,7 +158,7 @@ let placeOpTests =
           test "Before an interior sibling lands immediately before it" {
               let t = fixture ()
 
-              match Placement.placeOp t (leaf "x") (at "left" (Placement.Before(NodeId "b"))) with
+              match Placement.placeOp t (leaf "x") (at "left" (Anchor.Before(NodeId "b"))) with
               | Ok op -> Expect.equal (childIdsIn (applied op t) "left") [ "a"; "x"; "b"; "c" ] "before b"
               | Error e -> failtestf "expected Ok, got %A" e
           }
@@ -141,19 +166,46 @@ let placeOpTests =
           test "After the last sibling stays a bare InsertChild" {
               let t = fixture ()
 
-              match Placement.placeOp t (leaf "x") (at "left" (Placement.After(NodeId "c"))) with
+              match Placement.placeOp t (leaf "x") (at "left" (Anchor.After(NodeId "c"))) with
               | Ok(TreeOp.InsertChild _ as op) ->
                   Expect.equal (childIdsIn (applied op t) "left") [ "a"; "b"; "c"; "x" ] "after c = append"
               | other -> failtestf "expected a bare InsertChild, got %A" other
           }
 
-          test "absent parent is refused as the apply engine would refuse it" {
+          // Phase 2306 — the anchor Core's placement has and the tier's own did not.
+          test "an Index anchor lands at that position, and the count itself is last" {
+              let t = fixture ()
+
+              match Placement.placeOp t (leaf "x") (at "left" (Anchor.Index 1)) with
+              | Ok op -> Expect.equal (childIdsIn (applied op t) "left") [ "a"; "x"; "b"; "c" ] "index 1"
+              | Error e -> failtestf "expected Ok, got %A" e
+
+              match Placement.placeOp t (leaf "x") (at "left" (Anchor.Index 3)) with
+              | Ok(TreeOp.InsertChild _) -> ()
+              | other -> failtestf "index = count is last, a bare InsertChild; got %A" other
+          }
+
+          test "an Index past the end is refused by Core, naming the count" {
               let t = fixture ()
 
               expectRefusal
-                  (Placement.placeOp t (leaf "x") (at "ghost" Placement.Last))
-                  (PlaceError.ParentNotFound(NodeId "ghost"))
-                  "helper refusal"
+                  (Placement.placeOp t (leaf "x") (at "left" (Anchor.Index 4)))
+                  (PlaceError.IndexOutOfRange(NodeId "left", 4, 3))
+                  "index 4 among three siblings"
+
+              expectRefusal
+                  (Placement.placeOp t (leaf "x") (at "left" (Anchor.Index -1)))
+                  (PlaceError.IndexOutOfRange(NodeId "left", -1, 3))
+                  "a negative index"
+          }
+
+          test "absent parent is refused with the engine's own rejection" {
+              let t = fixture ()
+
+              expectRefused
+                  (Placement.placeOp t (leaf "x") (at "ghost" Anchor.Last))
+                  (unknownNode "ghost")
+                  "unknown parent"
 
               Expect.equal
                   (refusedAs (TreeOp.InsertChild(NodeId "ghost", leaf "x")) t)
@@ -161,13 +213,13 @@ let placeOpTests =
                   "apply-side twin"
           }
 
-          test "childless parent is refused as the apply engine would refuse it" {
+          test "childless parent is refused with the engine's own rejection" {
               let t = fixture ()
 
-              expectRefusal
-                  (Placement.placeOp t (leaf "x") (at "solo" Placement.Last))
-                  (PlaceError.ChildlessKind(NodeId "solo"))
-                  "helper refusal"
+              expectRefused
+                  (Placement.placeOp t (leaf "x") (at "solo" Anchor.Last))
+                  (notAContainer "solo")
+                  "a leaf holds no children"
 
               Expect.equal
                   (refusedAs (TreeOp.InsertChild(NodeId "solo", leaf "x")) t)
@@ -175,12 +227,12 @@ let placeOpTests =
                   "apply-side twin"
           }
 
-          test "duplicate id is refused as the apply engine would refuse it" {
+          test "duplicate id is refused with the engine's own rejection" {
               let t = fixture ()
 
               expectRefusal
-                  (Placement.placeOp t (leaf "a") (at "right" Placement.Last))
-                  (PlaceError.DuplicateId(NodeId "a"))
+                  (Placement.placeOp t (leaf "a") (at "right" Anchor.Last))
+                  (PlaceError.Refused(Rejection.DuplicateId(NodeId "a")))
                   "helper refusal"
 
               Expect.equal
@@ -189,13 +241,13 @@ let placeOpTests =
                   "apply-side twin"
           }
 
-          test "an anchor that is not a destination child is refused, matching the reorder's OrderingMismatch" {
+          test "an anchor that is not a destination child is refused, naming the children that are" {
               let t = fixture ()
 
               // "d" exists in the tree but is not a child of "left".
               expectRefusal
-                  (Placement.placeOp t (leaf "x") (at "left" (Placement.Before(NodeId "d"))))
-                  (PlaceError.UnknownAnchor(NodeId "d"))
+                  (Placement.placeOp t (leaf "x") (at "left" (Anchor.Before(NodeId "d"))))
+                  (PlaceError.UnknownAnchor(NodeId "left", NodeId "d", ids [ "a"; "b"; "c" ]))
                   "helper refusal"
 
               // The only op that could honour the anchor names it in a reorder,
@@ -217,29 +269,52 @@ let moveOpTests =
         [ test "cross-parent Last emits a bare MoveNode" {
               let t = fixture ()
 
-              match Placement.moveOp t (NodeId "a") (at "right" Placement.Last) with
-              | Ok(TreeOp.MoveNode _ as op) ->
+              match Placement.moveOp t (NodeId "a") (at "right" Anchor.Last) with
+              | Ok(Some(TreeOp.MoveNode _ as op)) ->
                   let updated = applied op t
                   Expect.equal (childIdsIn updated "right") [ "d"; "a" ] "moved in"
                   Expect.equal (childIdsIn updated "left") [ "b"; "c" ] "moved out"
               | other -> failtestf "expected a bare MoveNode, got %A" other
           }
 
-          test "same-parent re-placement emits Batch [move; reorder]" {
+          test "cross-parent anywhere but last emits Batch [move; reorder]" {
               let t = fixture ()
 
-              match Placement.moveOp t (NodeId "c") (at "left" (Placement.Before(NodeId "a"))) with
-              | Ok(TreeOp.Batch [ TreeOp.MoveNode _; TreeOp.ReorderChildren _ ] as op) ->
-                  Expect.equal (childIdsIn (applied op t) "left") [ "c"; "a"; "b" ] "c to the head"
+              match Placement.moveOp t (NodeId "a") (at "right" Anchor.First) with
+              | Ok(Some(TreeOp.Batch [ TreeOp.MoveNode _; TreeOp.ReorderChildren _ ] as op)) ->
+                  Expect.equal (childIdsIn (applied op t) "right") [ "a"; "d" ] "a to the head of right"
               | other -> failtestf "expected Batch [MoveNode; ReorderChildren], got %A" other
           }
 
-          test "move into itself is refused as the apply engine would refuse it" {
+          // Phase 2306 — the shape change this phase exists for. The tier used to
+          // emit `Batch [MoveNode; ReorderChildren]` here; a reorder footprints the
+          // parent alone, where a move also writes the node and an unknown parent.
+          test "same-parent re-placement emits a bare ReorderChildren" {
+              let t = fixture ()
+
+              match Placement.moveOp t (NodeId "c") (at "left" (Anchor.Before(NodeId "a"))) with
+              | Ok(Some(TreeOp.ReorderChildren(parent, order) as op)) ->
+                  Expect.equal parent (NodeId "left") "the parent it stays in"
+                  Expect.equal order (ids [ "c"; "a"; "b" ]) "the whole order, by id"
+                  Expect.equal (childIdsIn (applied op t) "left") [ "c"; "a"; "b" ] "c to the head"
+              | other -> failtestf "expected a bare ReorderChildren, got %A" other
+          }
+
+          test "a same-parent move to where the node already is emits nothing" {
+              let t = fixture ()
+
+              for anchor in [ Anchor.Last; Anchor.After(NodeId "b"); Anchor.Index 2 ] do
+                  match Placement.moveOp t (NodeId "c") (at "left" anchor) with
+                  | Ok None -> ()
+                  | other -> failtestf "%A: expected no op for a node already in place, got %A" anchor other
+          }
+
+          test "move into itself is refused with the engine's own rejection" {
               let t = fixture ()
 
               expectRefusal
-                  (Placement.moveOp t (NodeId "left") (at "left" Placement.Last))
-                  (PlaceError.MoveIntoSelf(NodeId "left"))
+                  (Placement.moveOp t (NodeId "left") (at "left" Anchor.Last))
+                  (PlaceError.Refused(Rejection.WouldNestUnderSelf(NodeId "left", NestRelation.Self)))
                   "helper refusal"
 
               Expect.equal
@@ -248,12 +323,26 @@ let moveOpTests =
                   "apply-side twin"
           }
 
-          test "move into a descendant is refused as the apply engine would refuse it" {
+          test "move into a descendant is refused with the engine's own rejection" {
+              let t = container "root" [ container "outer" [ container "inner" [] ] ]
+
+              expectRefusal
+                  (Placement.moveOp t (NodeId "outer") (at "inner" Anchor.Last))
+                  (PlaceError.Refused(Rejection.WouldNestUnderSelf(NodeId "outer", NestRelation.Descendant)))
+                  "helper refusal"
+
+              Expect.equal
+                  (refusedAs (TreeOp.MoveNode(NodeId "outer", NodeId "inner")) t)
+                  ApplyErrorCode.KindMismatch
+                  "apply-side twin"
+          }
+
+          test "moving the root is refused with the engine's own rejection" {
               let t = fixture ()
 
               expectRefusal
-                  (Placement.moveOp t (NodeId "root") (at "left" Placement.Last))
-                  (PlaceError.MoveIntoDescendant(NodeId "root", NodeId "left"))
+                  (Placement.moveOp t (NodeId "root") (at "left" Anchor.Last))
+                  (PlaceError.Refused Rejection.CannotRemoveRoot)
                   "helper refusal"
 
               Expect.equal
@@ -262,13 +351,13 @@ let moveOpTests =
                   "apply-side twin"
           }
 
-          test "absent node is refused as the apply engine would refuse it" {
+          test "absent node is refused with the engine's own rejection" {
               let t = fixture ()
 
-              expectRefusal
-                  (Placement.moveOp t (NodeId "ghost") (at "left" Placement.Last))
-                  (PlaceError.NodeNotFound(NodeId "ghost"))
-                  "helper refusal"
+              expectRefused
+                  (Placement.moveOp t (NodeId "ghost") (at "left" Anchor.Last))
+                  (unknownNode "ghost")
+                  "unknown node"
 
               Expect.equal
                   (refusedAs (TreeOp.MoveNode(NodeId "ghost", NodeId "left")) t)
@@ -276,13 +365,13 @@ let moveOpTests =
                   "apply-side twin"
           }
 
-          test "childless destination is refused as the apply engine would refuse it" {
+          test "childless destination is refused with the engine's own rejection" {
               let t = fixture ()
 
-              expectRefusal
-                  (Placement.moveOp t (NodeId "a") (at "solo" Placement.Last))
-                  (PlaceError.ChildlessKind(NodeId "solo"))
-                  "helper refusal"
+              expectRefused
+                  (Placement.moveOp t (NodeId "a") (at "solo" Anchor.Last))
+                  (notAContainer "solo")
+                  "a leaf holds no children"
 
               Expect.equal
                   (refusedAs (TreeOp.MoveNode(NodeId "a", NodeId "solo")) t)
@@ -294,26 +383,21 @@ let moveOpTests =
               let t = fixture ()
 
               expectRefusal
-                  (Placement.moveOp t (NodeId "a") (at "right" (Placement.After(NodeId "a"))))
-                  (PlaceError.UnknownAnchor(NodeId "a"))
+                  (Placement.moveOp t (NodeId "a") (at "right" (Anchor.After(NodeId "a"))))
+                  (PlaceError.UnknownAnchor(NodeId "right", NodeId "a", ids [ "d" ]))
                   "the moved node is not among its own destination siblings"
           }
 
-          // Phase 1666 — this test's SUBJECT is unchanged (a node at a keyed
-          // position is still not movable) and its expected CODE moved, because
-          // the engine's answer moved. It used to say `NodeNotFound` for a node
-          // `findNode` reaches and `UpdateProp` edits, which sends a caller to
-          // look for a node that is right there; it now names the position whose
-          // arity the op would change. This list's whole contract is that the
-          // helper's refusal is a pre-statement of the engine's, so when the
-          // engine's answer improves this is where the helper follows it —
-          // amending the assertion, never widening it to accept either code.
+          // Phase 1666 — a node at a keyed position is not movable, and the
+          // refusal names the position whose arity the op would change. The
+          // keyed engine names the HOLDER (`KeyedPosition`); the slot label is
+          // this tier's, derived from its own lens (fuaran-core#492).
           test "a node AT a non-structural position is not movable — refused as the engine refuses it" {
               let t =
                   container "root" [ Node.onLoading (leaf "ph") (leaf "m"); container "box" [] ]
 
               expectRefusal
-                  (Placement.moveOp t (NodeId "ph") (at "box" Placement.Last))
+                  (Placement.moveOp t (NodeId "ph") (at "box" Anchor.Last))
                   (PlaceError.PositionNotStructural(NodeId "ph", "state.onLoading"))
                   "helper refusal"
 
@@ -323,19 +407,19 @@ let moveOpTests =
                   "apply-side twin"
           }
 
-          // Phase 1666 — the three answers `canPlace` now draws apart, each
-          // paired with its apply-side twin. The pairing is the point: a helper
-          // that refuses what the engine permits greys out a legal drop, and one
-          // that permits what the engine refuses emits an op that fails after
-          // the user has committed to the gesture. Both were live the moment the
-          // engine learnt to descend.
+          // Phase 1666 — the three answers drawn apart, each paired with its
+          // apply-side twin. The pairing is the point: a helper that refuses
+          // what the engine permits greys out a legal drop, and one that
+          // permits what the engine refuses emits an op that fails after the
+          // user has committed to the gesture.
           test "a node BELOW a non-structural position moves WITHIN it — helper and engine agree" {
               let t =
                   container "root" [ Node.onLoading (container "panel" [ leaf "p1"; container "inner" [] ]) (leaf "m") ]
 
-              match Placement.moveOp t (NodeId "p1") (at "inner" Placement.Last) with
+              match Placement.moveOp t (NodeId "p1") (at "inner" Anchor.Last) with
               | Error e -> failtestf "a legal move below a keyed position was greyed out: %A" e
-              | Ok op ->
+              | Ok None -> failtest "a cross-parent move cannot be a no-op"
+              | Ok(Some op) ->
                   match Apply.apply op t with
                   | Error err -> failtestf "the helper emitted an op the engine refused: %A %s" err.Code err.Message
                   | Ok updated ->
@@ -348,6 +432,22 @@ let moveOpTests =
                       | None -> failtest "the destination went missing"
           }
 
+          test "a same-parent move below a non-structural position is a bare reorder the engine accepts" {
+              let t =
+                  container "root" [ Node.onLoading (container "panel" [ leaf "p1"; leaf "p2" ]) (leaf "m") ]
+
+              match Placement.moveOp t (NodeId "p2") (at "panel" Anchor.First) with
+              | Ok(Some(TreeOp.ReorderChildren _ as op)) ->
+                  match Introspect.findNode (NodeId "panel") (applied op t) with
+                  | Some panel ->
+                      Expect.equal
+                          (Introspect.getChildren panel.Kind |> Option.defaultValue [] |> List.map _.Id)
+                          [ "p2"; "p1" ]
+                          "reordered inside the position"
+                  | None -> failtest "the position lost its node"
+              | other -> failtestf "expected a bare ReorderChildren, got %A" other
+          }
+
           test "a move OUT of a non-structural position is refused as the engine refuses it" {
               let t =
                   container
@@ -356,7 +456,7 @@ let moveOpTests =
                         container "box" [] ]
 
               expectRefusal
-                  (Placement.moveOp t (NodeId "p1") (at "box" Placement.Last))
+                  (Placement.moveOp t (NodeId "p1") (at "box" Anchor.Last))
                   (PlaceError.PositionNotStructural(NodeId "p1", "state.onLoading"))
                   "helper refusal — the op would cross the position"
 
@@ -365,16 +465,16 @@ let moveOpTests =
               | other -> failtestf "apply-side twin: expected PositionNotStructural, got %A" other
           }
 
-          test "an absent node is still NodeNotFound, not swept into the position refusal" {
-              // The narrowing has to stay narrow: `NodeNotFound` is absence and
-              // only absence now, so the two answers must remain tellable apart.
+          test "an absent node is still absence, not swept into the position refusal" {
+              // The two answers must remain tellable apart: absence is the
+              // engine's `UnknownNode`, never the position refusal.
               let t =
                   container "root" [ Node.onLoading (leaf "ph") (leaf "m"); container "box" [] ]
 
-              expectRefusal
-                  (Placement.moveOp t (NodeId "nowhere") (at "box" Placement.Last))
-                  (PlaceError.NodeNotFound(NodeId "nowhere"))
-                  "helper refusal"
+              expectRefused
+                  (Placement.moveOp t (NodeId "nowhere") (at "box" Anchor.Last))
+                  (unknownNode "nowhere")
+                  "unknown node"
 
               Expect.equal
                   (refusedAs (TreeOp.MoveNode(NodeId "nowhere", NodeId "box")) t)
@@ -386,11 +486,10 @@ let moveOpTests =
               let t =
                   container "root" [ Node.onLoading (container "panel" [ leaf "p1"; leaf "p2" ]) (leaf "m") ]
 
-              // `Introspect.findParent` cannot see `panel`, so this was a false
-              // refuse the moment the engine learnt to descend.
               match Placement.nudgeOp t (NodeId "p2") -1 with
               | Error e -> failtestf "a legal nudge below a keyed position was refused: %A" e
-              | Ok op ->
+              | Ok None -> failtest "a one-place nudge cannot be a no-op"
+              | Ok(Some op) ->
                   match Apply.apply op t with
                   | Error err -> failtestf "the helper emitted a nudge the engine refused: %A %s" err.Code err.Message
                   | Ok updated ->
@@ -408,26 +507,23 @@ let moveOpTests =
                   "the position's own node has no sibling list to nudge among"
           }
 
-          test "canPlace agrees with moveOp on the legal drop" {
+          test "canPlace is moveOp's verdict" {
               let t = fixture ()
 
               Expect.equal
-                  (Placement.canPlace t (NodeId "a") (at "right" (Placement.Before(NodeId "d"))))
-                  (Ok [ NodeId "a"; NodeId "d" ])
-                  "legal drop, answered with the destination's post-move order"
-          }
+                  (Placement.canPlace t (NodeId "a") (at "right" (Anchor.Before(NodeId "d"))))
+                  (Ok())
+                  "legal drop"
 
-          test "canPlace answers the order moveOp states" {
-              // Phase 2064 — the pre-check computed the order and discarded it;
-              // moveOp computed it again. The order is now canPlace's answer.
-              let t = fixture ()
-              let target = at "left" (Placement.Before(NodeId "a"))
+              Expect.equal
+                  (Placement.canPlace t (NodeId "c") (at "left" Anchor.Last))
+                  (Ok())
+                  "a drop where the node already is is legal — and emits nothing"
 
-              match Placement.canPlace t (NodeId "c") target, Placement.moveOp t (NodeId "c") target with
-              | Ok order, Ok(TreeOp.Batch [ TreeOp.MoveNode _; TreeOp.ReorderChildren(_, stated) ]) ->
-                  Expect.equal order [ NodeId "c"; NodeId "a"; NodeId "b" ] "the post-move order"
-                  Expect.equal stated order "moveOp states exactly canPlace's order"
-              | c, m -> failtestf "expected an order and a Batch [move; reorder], got %A / %A" c m
+              expectRefused
+                  (Placement.canPlace t (NodeId "a") (at "solo" Anchor.Last))
+                  (notAContainer "solo")
+                  "illegal drop"
           } ]
 
 // ─── Unit tests: reorderOp ───────────────────────────────────────────────────
@@ -497,6 +593,7 @@ let reorderOpTests =
               | None -> failtest "the helper drops only the IDENTITY order, never a wrong one"
           } ]
 
+
 // ─── Unit tests: nudgeOp ─────────────────────────────────────────────────────
 
 [<Tests>]
@@ -507,17 +604,28 @@ let nudgeOpTests =
               let t = fixture ()
 
               match Placement.nudgeOp t (NodeId "b") -1 with
-              | Ok(TreeOp.ReorderChildren _ as op) ->
+              | Ok(Some(TreeOp.ReorderChildren _ as op)) ->
                   Expect.equal (childIdsIn (applied op t) "left") [ "b"; "a"; "c" ] "b up"
               | other -> failtestf "expected ReorderChildren, got %A" other
           }
 
-          test "+2 swaps across the list" {
+          // Phase 2306 — a nudge is Core's move to `Index (index + delta)`, so a
+          // delta of two SHIFTS the node two places; it used to swap it with the
+          // sibling two places away ([c; b; a]).
+          test "+2 shifts the node two places — a move, not a swap" {
               let t = fixture ()
 
               match Placement.nudgeOp t (NodeId "a") 2 with
-              | Ok op -> Expect.equal (childIdsIn (applied op t) "left") [ "c"; "b"; "a" ] "a and c swapped"
-              | Error e -> failtestf "expected Ok, got %A" e
+              | Ok(Some op) -> Expect.equal (childIdsIn (applied op t) "left") [ "b"; "c"; "a" ] "a shifted to the end"
+              | other -> failtestf "expected Ok Some, got %A" other
+          }
+
+          test "a zero nudge emits nothing" {
+              let t = fixture ()
+
+              match Placement.nudgeOp t (NodeId "b") 0 with
+              | Ok None -> ()
+              | other -> failtestf "expected no op, got %A" other
           }
 
           test "the first sibling cannot move up" {
@@ -525,7 +633,7 @@ let nudgeOpTests =
 
               expectRefusal
                   (Placement.nudgeOp t (NodeId "a") -1)
-                  (PlaceError.NudgeOutOfRange(NodeId "a", -1))
+                  (PlaceError.IndexOutOfRange(NodeId "left", -1, 2))
                   "already first"
           }
 
@@ -534,7 +642,7 @@ let nudgeOpTests =
 
               expectRefusal
                   (Placement.nudgeOp t (NodeId "c") 1)
-                  (PlaceError.NudgeOutOfRange(NodeId "c", 1))
+                  (PlaceError.IndexOutOfRange(NodeId "left", 3, 2))
                   "already last"
           }
 
@@ -544,10 +652,10 @@ let nudgeOpTests =
               expectRefusal (Placement.nudgeOp t (NodeId "root") 1) (PlaceError.CannotNudgeRoot(NodeId "root")) "root"
           }
 
-          test "an absent node is refused" {
+          test "an absent node is refused with the engine's own rejection" {
               let t = fixture ()
 
-              expectRefusal (Placement.nudgeOp t (NodeId "ghost") 1) (PlaceError.NodeNotFound(NodeId "ghost")) "ghost"
+              expectRefused (Placement.nudgeOp t (NodeId "ghost") 1) (unknownNode "ghost") "ghost"
           } ]
 
 // ─── Unit tests: duplicateOp / pasteOp ──────────────────────────────────────
@@ -559,7 +667,7 @@ let cloneVerbTests =
         [ test "duplicate places a fresh-id clone beside its source" {
               let t = fixture ()
 
-              match Placement.duplicateOp t (NodeId "left") (at "root" (Placement.After(NodeId "left"))) with
+              match Placement.duplicateOp t (NodeId "left") (at "root" (Anchor.After(NodeId "left"))) with
               | Ok op ->
                   let updated = applied op t
 
@@ -571,7 +679,7 @@ let cloneVerbTests =
                   Expect.equal
                       (childIdsIn updated "left-copy")
                       [ "a-copy"; "b-copy"; "c-copy" ]
-                      "interior ids remapped by the default derived strategy"
+                      "interior ids renamed by Core's derived strategy"
 
                   Expect.isTrue (allDistinct updated) "no id collides anywhere in the tree"
               | Error e -> failtestf "expected Ok, got %A" e
@@ -580,7 +688,7 @@ let cloneVerbTests =
           test "duplicate is structurally equal to its source modulo ids" {
               let t = fixture ()
 
-              match Placement.duplicateOp t (NodeId "left") (at "right" Placement.Last) with
+              match Placement.duplicateOp t (NodeId "left") (at "right" Anchor.Last) with
               | Ok op ->
                   let source =
                       Introspect.findNode (NodeId "left") t
@@ -594,7 +702,11 @@ let cloneVerbTests =
               let t = fixture ()
 
               match
-                  Placement.duplicateOpWith (FreshIds.sequential "dup") t (NodeId "left") (at "root" Placement.Last)
+                  Placement.duplicateOpWith
+                      (FreshIds.sequential Introspect.idWitness "dup")
+                      t
+                      (NodeId "left")
+                      (at "root" Anchor.Last)
               with
               | Ok op ->
                   let updated = applied op t
@@ -607,40 +719,49 @@ let cloneVerbTests =
               | Error e -> failtestf "expected Ok, got %A" e
           }
 
-          test "duplicate remaps ids held in non-structural positions too" {
+          test "duplicate renames ids held in non-structural positions too" {
               // `ph` lives in a State slot — invisible to the structural child
               // lists, but inside the tree-wide id-uniqueness contract.
               let t = container "root" [ Node.onLoading (leaf "ph") (leaf "m") ]
 
-              match Placement.duplicateOp t (NodeId "m") (at "root" Placement.Last) with
+              match Placement.duplicateOp t (NodeId "m") (at "root" Anchor.Last) with
               | Ok op ->
                   let updated = applied op t
-                  Expect.isTrue (allDistinct updated) "the State-slot id was remapped, not smuggled"
+                  Expect.isTrue (allDistinct updated) "the State-slot id was renamed, not smuggled"
                   Expect.contains (rawIds updated) "ph-copy" "the placeholder clone carries a fresh id"
               | Error e -> failtestf "expected Ok, got %A" e
           }
 
-          test "duplicate of an absent source is refused" {
+          test "duplicate reaches a source held in a non-structural position" {
+              let t = container "root" [ Node.onLoading (leaf "ph") (leaf "m") ]
+
+              match Placement.duplicateOp t (NodeId "ph") (at "root" Anchor.Last) with
+              | Ok op ->
+                  Expect.equal (childIdsIn (applied op t) "root") [ "m"; "ph-copy" ] "the copy lands on the spine"
+              | Error e -> failtestf "expected Ok, got %A" e
+          }
+
+          test "duplicate of an absent source is refused with the engine's rejection" {
               let t = fixture ()
 
-              expectRefusal
-                  (Placement.duplicateOp t (NodeId "ghost") (at "root" Placement.Last))
-                  (PlaceError.NodeNotFound(NodeId "ghost"))
+              expectRefused
+                  (Placement.duplicateOp t (NodeId "ghost") (at "root" Anchor.Last))
+                  (unknownNode "ghost")
                   "ghost"
           }
 
-          test "paste remaps colliding ids and preserves the rest" {
+          test "paste renames colliding ids and preserves the rest" {
               let t = fixture ()
 
               // Lifted from a different tree: "left" and "a" collide with the
               // target; "z" does not.
               let foreign = container "left" [ leaf "a"; leaf "z" ]
 
-              match Placement.pasteOp t foreign (at "right" Placement.Last) with
+              match Placement.pasteOp t foreign (at "right" Anchor.Last) with
               | Ok op ->
                   let updated = applied op t
                   Expect.equal (childIdsIn updated "right") [ "d"; "left-copy" ] "pasted under right"
-                  Expect.equal (childIdsIn updated "left-copy") [ "a-copy"; "z" ] "collisions remapped, z preserved"
+                  Expect.equal (childIdsIn updated "left-copy") [ "a-copy"; "z" ] "collisions renamed, z preserved"
                   Expect.isTrue (allDistinct updated) "no id collides anywhere in the tree"
               | Error e -> failtestf "expected Ok, got %A" e
           }
@@ -649,11 +770,25 @@ let cloneVerbTests =
               let t = fixture ()
               let foreign = container "p" [ leaf "q" ]
 
-              match Placement.pasteOp t foreign (at "empty" Placement.Last) with
+              match Placement.pasteOp t foreign (at "empty" Anchor.Last) with
               | Ok op ->
                   let updated = applied op t
                   Expect.equal (childIdsIn updated "empty") [ "p" ] "pasted"
                   Expect.equal (childIdsIn updated "p") [ "q" ] "interior id untouched"
+              | Error e -> failtestf "expected Ok, got %A" e
+          }
+
+          // Core's `repairDuplicates` also repairs an id the subtree repeats
+          // within itself — the later occurrence is renamed.
+          test "paste renames an id the incoming subtree repeats within itself" {
+              let t = fixture ()
+              let foreign = container "p" [ leaf "q"; leaf "q" ]
+
+              match Placement.pasteOp t foreign (at "empty" Anchor.Last) with
+              | Ok op ->
+                  let updated = applied op t
+                  Expect.equal (childIdsIn updated "p") [ "q"; "q-copy" ] "the second q renamed"
+                  Expect.isTrue (allDistinct updated) "no id collides anywhere in the tree"
               | Error e -> failtestf "expected Ok, got %A" e
           } ]
 
@@ -662,7 +797,8 @@ let cloneVerbTests =
 // Generated trees are Box containers over Markdown leaves with sequential
 // preorder ids (`n1`, `n2`, …) under a fixed `root` container; parents,
 // anchors, and moved nodes are drawn from the tree's OWN ids plus a `ghost`,
-// so both the legal and every illegal class is generated.
+// and indices from just outside the range on either side, so both the legal
+// and every illegal class is generated.
 
 type private Shape =
     | SLeaf
@@ -705,10 +841,11 @@ let private genTarget (t: Node<obj>) : Gen<Target> =
 
         let! placement =
             Gen.oneof
-                [ Gen.constant Placement.Last
-                  Gen.constant Placement.First
-                  Gen.map Placement.Before (genPick t)
-                  Gen.map Placement.After (genPick t) ]
+                [ Gen.constant Anchor.Last
+                  Gen.constant Anchor.First
+                  Gen.map Anchor.Before (genPick t)
+                  Gen.map Anchor.After (genPick t)
+                  Gen.map Anchor.Index (Gen.choose (-1, 5)) ]
 
         return
             { ParentId = parent
@@ -721,7 +858,7 @@ let private childNodeIds (root: Node<obj>) (parentId: NodeId) : NodeId list =
     |> Option.defaultValue []
     |> List.map (fun c -> NodeId c.Id)
 
-/// The moved/inserted node sits exactly where the placement declared, and the
+/// The moved/inserted node sits exactly where the anchor declared, and the
 /// other siblings keep their relative order.
 let private declaredOrderHolds (before: Node<obj>) (after: Node<obj>) (moved: NodeId) (target: Target) : bool =
     let ids = childNodeIds after target.ParentId
@@ -736,94 +873,110 @@ let private declaredOrderHolds (before: Node<obj>) (after: Node<obj>) (moved: No
 
         othersAfter = othersBefore
         && (match target.Placement with
-            | Placement.Last -> idx = List.length ids - 1
-            | Placement.First -> idx = 0
-            | Placement.Before a -> idx + 1 < List.length ids && ids[idx + 1] = a
-            | Placement.After a -> idx > 0 && ids[idx - 1] = a)
+            | Anchor.Last -> idx = List.length ids - 1
+            | Anchor.First -> idx = 0
+            | Anchor.Before a -> idx + 1 < List.length ids && ids[idx + 1] = a
+            | Anchor.After a -> idx > 0 && ids[idx - 1] = a
+            | Anchor.Index i -> idx = i)
 
-/// The anchor is genuinely not among the destination's post-op children
-/// (excluding the moved node itself, which is never its own anchor).
-let private anchorNotASibling (t: Node<obj>) (parentId: NodeId) (moved: NodeId) (anchor: NodeId) : bool =
-    let siblings = childNodeIds t parentId |> List.filter (fun id -> id <> moved)
-    not (List.contains anchor siblings)
+/// The destination's children other than `moved` — what an anchor positions among.
+let private othersIn (t: Node<obj>) (parentId: NodeId) (moved: NodeId) : NodeId list =
+    childNodeIds t parentId |> List.filter (fun id -> id <> moved)
 
-let private anchorOf (p: Placement) : NodeId option =
-    match p with
-    | Placement.Before a
-    | Placement.After a -> Some a
-    | _ -> None
+/// An anchor refusal is honest: it names the destination, the anchor the
+/// target stated, and an anchor that genuinely names no position.
+let private anchorRefusalHonest (t: Node<obj>) (moved: NodeId) (target: Target) (error: PlaceError) : bool =
+    let others = othersIn t target.ParentId moved
+
+    match error, target.Placement with
+    | PlaceError.UnknownAnchor(p, a, siblings), (Anchor.Before stated | Anchor.After stated) ->
+        p = target.ParentId
+        && a = stated
+        && siblings = others
+        && not (List.contains a others)
+    | PlaceError.IndexOutOfRange(p, i, count), Anchor.Index stated ->
+        p = target.ParentId
+        && i = stated
+        && count = List.length others
+        && (i < 0 || i > count)
+    | _ -> false
 
 let private placeCorresponds (t: Node<obj>) (target: Target) : bool =
     let fresh = leaf "fresh-child"
+    let insert = TreeOp.InsertChild(target.ParentId, fresh)
 
     match Placement.placeOp t fresh target with
     | Ok op ->
         match Apply.apply op t with
         | Error _ -> false
         | Ok updated -> declaredOrderHolds t updated (NodeId "fresh-child") target
-    | Error(PlaceError.ParentNotFound p) ->
-        p = target.ParentId
-        && refusedAs (TreeOp.InsertChild(target.ParentId, fresh)) t = ApplyErrorCode.ParentNotFound
-    | Error(PlaceError.ChildlessKind p) ->
-        p = target.ParentId
-        && refusedAs (TreeOp.InsertChild(target.ParentId, fresh)) t = ApplyErrorCode.ChildlessKind
-    | Error(PlaceError.UnknownAnchor a) ->
-        anchorOf target.Placement = Some a
-        && anchorNotASibling t target.ParentId (NodeId "fresh-child") a
-    | Error _ -> false
+    // The engine's own refusal of the bare insert.
+    | Error(PlaceError.Refused _) -> Apply.apply insert t |> Result.isError
+    | Error e ->
+        Apply.apply insert t |> Result.isOk
+        && anchorRefusalHonest t (NodeId "fresh-child") target e
 
 let private moveCorresponds (t: Node<obj>) (moved: NodeId) (target: Target) : bool =
     let naive = TreeOp.MoveNode(moved, target.ParentId)
 
+    let sameParent =
+        match Introspect.findParent moved t with
+        | Some(p, _) -> NodeId p.Id = target.ParentId
+        | None -> false
+
     match Placement.moveOp t moved target with
-    | Ok op ->
-        match Apply.apply op t with
-        | Error _ -> false
-        | Ok updated ->
-            declaredOrderHolds t updated moved target
-            && (match Introspect.findParent moved updated with
-                | Some(p, _) -> NodeId p.Id = target.ParentId
-                | None -> false)
-    | Error(PlaceError.NodeNotFound _)
-    | Error(PlaceError.MoveIntoSelf _)
-    | Error(PlaceError.MoveIntoDescendant _)
-    | Error(PlaceError.ParentNotFound _)
-    | Error(PlaceError.ChildlessKind _) ->
-        // Every one of these classes is a refusal of the bare MoveNode itself.
-        Apply.apply naive t |> Result.isError
-    | Error(PlaceError.UnknownAnchor a) ->
-        anchorOf target.Placement = Some a
-        && anchorNotASibling t target.ParentId moved a
-    | Error _ -> false
+    | Ok None ->
+        // Nothing to do: the node is already in that parent, at that position.
+        sameParent && declaredOrderHolds t t moved target
+    | Ok(Some op) ->
+        // A same-parent move is a bare reorder — the minimal op.
+        let minimal =
+            not sameParent
+            || (match op with
+                | TreeOp.ReorderChildren _ -> true
+                | _ -> false)
+
+        minimal
+        && (match Apply.apply op t with
+            | Error _ -> false
+            | Ok updated ->
+                declaredOrderHolds t updated moved target
+                && (match Introspect.findParent moved updated with
+                    | Some(p, _) -> NodeId p.Id = target.ParentId
+                    | None -> false))
+    // Every engine refusal is a refusal of the bare MoveNode itself.
+    | Error(PlaceError.Refused _) -> Apply.apply naive t |> Result.isError
+    | Error e -> Apply.apply naive t |> Result.isOk && anchorRefusalHonest t moved target e
 
 let private canPlaceAgreesWithMoveOp (t: Node<obj>) (moved: NodeId) (target: Target) : bool =
     match Placement.canPlace t moved target, Placement.moveOp t moved target with
-    | Ok _, Ok _ -> true
+    | Ok(), Ok _ -> true
     | Error a, Error b -> a = b
     | _ -> false
 
 let private nudgeCorresponds (t: Node<obj>) (node: NodeId) (delta: int) : bool =
     match Placement.nudgeOp t node delta with
-    | Ok op ->
+    | Ok None -> delta = 0 && Introspect.findParent node t |> Option.isSome
+    | Ok(Some op) ->
         match Introspect.findParent node t, Apply.apply op t with
         | Some(parent, idx), Ok updated ->
             let before = childNodeIds t (NodeId parent.Id)
             let after = childNodeIds updated (NodeId parent.Id)
-
-            after = (before
-                     |> List.mapi (fun i id ->
-                         if i = idx then before[idx + delta]
-                         elif i = idx + delta then before[idx]
-                         else id))
+            // The node shifted `delta` places; every other sibling kept its order.
+            after = List.insertAt (idx + delta) node (before |> List.filter (fun id -> id <> node))
         | _ -> false
     | Error(PlaceError.CannotNudgeRoot n) -> n = node && NodeId t.Id = node
-    | Error(PlaceError.NodeNotFound _) -> NodeId t.Id <> node && Introspect.findParent node t |> Option.isNone
-    | Error(PlaceError.NudgeOutOfRange _) ->
+    | Error(PlaceError.Refused(Rejection.UnknownNode(n, _))) -> n = node && Introspect.findNode node t |> Option.isNone
+    | Error(PlaceError.IndexOutOfRange(p, i, count)) ->
         match Introspect.findParent node t with
         | None -> false
         | Some(parent, idx) ->
             let len = childNodeIds t (NodeId parent.Id) |> List.length
-            idx + delta < 0 || idx + delta >= len
+
+            p = NodeId parent.Id
+            && i = idx + delta
+            && count = len - 1
+            && (i < 0 || i > count)
     | Error _ -> false
 
 let private duplicateCorresponds (t: Node<obj>) (source: NodeId) (target: Target) : bool =
@@ -844,17 +997,15 @@ let private duplicateCorresponds (t: Node<obj>) (source: NodeId) (target: Target
                 | TreeOp.InsertChild(_, clone)
                 | TreeOp.Batch [ TreeOp.InsertChild(_, clone); _ ] -> kindShape clone = kindShape sourceNode
                 | _ -> false)
-    | Error(PlaceError.NodeNotFound n) -> n = source && Introspect.findNode source t |> Option.isNone
-    | Error(PlaceError.ParentNotFound p) -> p = target.ParentId && Introspect.findNode p t |> Option.isNone
-    | Error(PlaceError.ChildlessKind p) ->
-        (Introspect.findNode p t
-         |> Option.map (fun n -> Introspect.getChildren n.Kind |> Option.isNone)
-         |> Option.defaultValue false)
-    | Error(PlaceError.UnknownAnchor a) ->
-        // The clone's fresh root id is never its own anchor, so exclusion is moot.
-        anchorOf target.Placement = Some a
-        && anchorNotASibling t target.ParentId (NodeId "«none»") a
-    | Error _ -> false
+    | Error(PlaceError.Refused(Rejection.UnknownNode(n, _))) when n = source ->
+        Introspect.findNode source t |> Option.isNone
+    // The clone's insert refused: an absent or childless destination.
+    | Error(PlaceError.Refused _) ->
+        Introspect.findNode target.ParentId t
+        |> Option.map (fun n -> Introspect.getChildren n.Kind |> Option.isNone)
+        |> Option.defaultValue true
+    // The clone's fresh root id is never its own anchor, so exclusion is moot.
+    | Error e -> anchorRefusalHonest t (NodeId "«none»") target e
 
 let private pasteCorresponds (tA: Node<obj>) (tB: Node<obj>) (source: NodeId) (target: Target) : bool =
     match Introspect.findNode source tA with
@@ -873,13 +1024,11 @@ let private pasteCorresponds (tA: Node<obj>) (tB: Node<obj>) (source: NodeId) (t
 
                 List.length ids = List.length (List.distinct ids)
                 && (preserved |> List.forall (fun id -> List.contains id ids))
-        | Error(PlaceError.ParentNotFound p) -> Introspect.findNode p tB |> Option.isNone
-        | Error(PlaceError.ChildlessKind p) ->
-            (Introspect.findNode p tB
-             |> Option.map (fun n -> Introspect.getChildren n.Kind |> Option.isNone)
-             |> Option.defaultValue false)
-        | Error(PlaceError.UnknownAnchor a) -> anchorOf target.Placement = Some a
-        | Error _ -> false
+        | Error(PlaceError.Refused _) ->
+            Introspect.findNode target.ParentId tB
+            |> Option.map (fun n -> Introspect.getChildren n.Kind |> Option.isNone)
+            |> Option.defaultValue true
+        | Error e -> anchorRefusalHonest tB (NodeId "«none»") target e
 
 let private config = Config.QuickThrowOnFailure.WithMaxTest(400)
 
@@ -887,7 +1036,7 @@ let private config = Config.QuickThrowOnFailure.WithMaxTest(400)
 let propertyTests =
     testList
         "Placement properties"
-        [ testCase "placeOp: emitted ops apply to the declared order; refusals mirror the apply engine" (fun () ->
+        [ testCase "placeOp: emitted ops apply to the declared position; refusals are the engine's" (fun () ->
               let scenarios =
                   gen {
                       let! t = genTree
@@ -897,7 +1046,7 @@ let propertyTests =
 
               Check.One(config, Prop.forAll (Arb.fromGen scenarios) (fun (t, target) -> placeCorresponds t target)))
 
-          testCase "moveOp: emitted ops apply to the declared order; refusals mirror the apply engine" (fun () ->
+          testCase "moveOp: emitted ops apply to the declared position, minimally; refusals are the engine's" (fun () ->
               let scenarios =
                   gen {
                       let! t = genTree
@@ -926,7 +1075,7 @@ let propertyTests =
                       canPlaceAgreesWithMoveOp t moved target)
               ))
 
-          testCase "nudgeOp: the swap lands where declared; refusals are honest" (fun () ->
+          testCase "nudgeOp: the shift lands where declared; refusals are honest" (fun () ->
               let scenarios =
                   gen {
                       let! t = genTree
@@ -954,7 +1103,7 @@ let propertyTests =
                   Prop.forAll (Arb.fromGen scenarios) (fun (t, source, target) -> duplicateCorresponds t source target)
               ))
 
-          testCase "pasteOp: colliding ids remap, non-colliding ids survive, no duplicates" (fun () ->
+          testCase "pasteOp: colliding ids rename, non-colliding ids survive, no duplicates" (fun () ->
               let scenarios =
                   gen {
                       let! tA = genTree

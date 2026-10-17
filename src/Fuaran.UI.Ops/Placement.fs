@@ -1,363 +1,275 @@
 namespace Fuaran.UI.Ops
 
 // ============================================================================
-//  Placement algebra — placed insert / move / nudge, and the clone verbs
-//  (duplicate / paste) built on top of them.
+//  Placement — placed insert / move / nudge, and the clone verbs (duplicate /
+//  paste) built on top of them, as Fuaran.Core's `TreePlacement` over this
+//  tier's witnesses (Phase 2306).
 //
 //  The op vocabulary is deliberately positionless: `InsertChild` and `MoveNode`
 //  append, and an explicit order is stated only by `ReorderChildren` naming
 //  every sibling id (an id is checkable; an ordinal is not). Placing a node
 //  anywhere but last is therefore `Batch [InsertChild|MoveNode;
-//  ReorderChildren]` — correct, but it leaves every consumer deriving the full
-//  sibling permutation itself. This module ships that derivation once, purely
-//  additively: every helper emits ops built from the existing vocabulary
-//  (`InsertChild` / `MoveNode` / `RemoveNode` / `ReorderChildren` / `Batch`),
-//  so the wire format, the apply engine, and the node contract are untouched —
-//  and the reorder leg is dropped whenever appending already yields the wanted
-//  order, keeping the common case a single bare op.
+//  ReorderChildren]`, and deriving that permutation is Core's placement algebra
+//  (fuaran-core Phase 312): an `Anchor` (`First` / `Last` / `Before` / `After` /
+//  `Index`) lowers to the bare op when appending already lands the node there,
+//  to the batch otherwise, and — for a node moved within its own parent — to a
+//  bare `ReorderChildren`, or to nothing when it is already in place. A reorder
+//  footprints the parent alone, where a move also writes the node and an
+//  unknown parent, so the same-parent form serialises against fewer concurrent
+//  edits.
 //
-//  Pre-checks mirror the apply engine's own rejections (childless kind,
-//  move-into-self, move-into-descendant, duplicate id) so an editor can grey
-//  out an illegal drop without a dry-run apply — with one deliberate
-//  tightening: an anchor that is not among the destination's post-op children
-//  is REFUSED (`UnknownAnchor`) rather than silently appended. The only op
-//  that could honour such an anchor would be a `ReorderChildren` naming it,
-//  which the apply engine refuses as `OrderingMismatch`; saying so before
-//  emission is friendlier than a rejection after it.
+//  No verdict here is a mirror of the apply engine. Each verb asks the engine:
 //
-//  The clone verbs wrap `Fuaran.Core.Tree.subtree` + `remapIds` (whose doc
-//  comment names exactly this use: rewrite a copied subtree's ids to a fresh,
-//  collision-free set before `InsertChild`). The remap runs over the WHOLE
-//  traversal surface — `Introspect.descendantNodes` / `replaceDescendantNodes`,
-//  not just the structural child lists — because the id-uniqueness contract is
-//  tree-wide, and a clone that kept an old id inside a Switch case or an
-//  ErrorBoundary slot would smuggle a duplicate past it.
+//   1. the engine's own dry run of the op over the whole tree, at the keyed
+//      reach `Apply` runs at (`Ops.canApplyContainedKeyed` under the tier's
+//      container predicate) — absence, a duplicate id anywhere in the tree or
+//      the graft, a childless destination, a move into itself or its own
+//      subtree. Its rejection is carried unchanged as `PlaceError.Refused`;
+//   2. the keyed-position rule, which is this tier's and not Core's: a
+//      structural op cannot vacate a keyed position or cross one
+//      (`PositionNotStructural`, labelled with the slot — Core names the holder
+//      but not the label, fuaran-core#492). It descends into a position exactly
+//      as `Apply` does, one level per turn, so the scope Core lowers against is
+//      the subtree the engine will run the op against;
+//   3. Core's `TreePlacement.…Contained` over that scope, which resolves the
+//      anchor (`UnknownAnchor` / `IndexOutOfRange`, Core's cases) and emits
+//      the script.
+//
+//  The clone verbs rename through Core's `FreshIds.repairDuplicates` over the
+//  keyed walk (`Tree.traversal`), so an id held in a Switch case or an
+//  ErrorBoundary slot is renamed with the rest — the id-uniqueness contract is
+//  tree-wide.
 // ============================================================================
 
-open System.Collections.Generic
 open Fuaran.Core
 open Fuaran.UI.Types
 open Fuaran.UI.Ops.Types
 
 // ─── Placement vocabulary ────────────────────────────────────────────────────
 
-/// Where a node should sit among its destination siblings, stated the only way
-/// the op vocabulary allows: by naming an existing sibling, or an end.
-[<RequireQualifiedAccess>]
-type Placement =
-    /// Append — what `InsertChild` / `MoveNode` do on their own.
-    | Last
-    /// Prepend — before every current sibling.
-    | First
-    /// Immediately before the named sibling.
-    | Before of anchor: NodeId
-    /// Immediately after the named sibling.
-    | After of anchor: NodeId
-
-/// A structural destination: which parent, and where among its children.
+/// A structural destination: which parent, and where among its children —
+/// stated as Core's `Anchor` (Phase 2306: it was a four-case `Placement` of the
+/// tier's own; `Anchor` is the same four plus `Index`, a position among the
+/// destination's children other than the node placed, `0` first to their count
+/// last).
 type Target =
     { ParentId: NodeId
-      Placement: Placement }
+      Placement: Anchor<NodeId> }
 
-/// Why a placement could not become an op. Each case is a pre-statement of the
-/// apply-time refusal the emitted op would have met, so a helper rejection and
-/// an apply rejection agree — no false permit, no false refuse.
+/// Why a placement could not become an op: Core's `PlaceError` cases, plus the
+/// two answers that belong to this tier rather than to the placement algebra.
 [<RequireQualifiedAccess>]
 type PlaceError =
-    /// The destination parent is not in the tree (apply: `ParentNotFound`).
-    | ParentNotFound of parentId: NodeId
-    /// The destination parent's kind has no `Children` field (apply:
-    /// `ChildlessKind`).
-    | ChildlessKind of parentId: NodeId
-    /// The node to move / nudge / duplicate is not in the tree at all (apply:
-    /// `NodeNotFound`).
-    ///
-    /// Phase 1666 NARROWED this case. It used to cover a node held in — or
-    /// below — a keyed position as well, because the apply engine refused those
-    /// as `NodeNotFound` too. The engine no longer does: it descends into a
-    /// keyed position to reach a node below one, and names the position when it
-    /// refuses. This case is absence, and only absence.
-    | NodeNotFound of nodeId: NodeId
+    /// The engine's dry run refuses the op the placement lowers to — an unknown
+    /// node or parent, a duplicate id, a childless destination, a move of the
+    /// root or under itself. The rejection is the engine's own, unchanged.
+    | Refused of rejection: Rejection<NodeId>
+    /// The anchor names no child of `parent` other than the node being placed;
+    /// `siblings` are the ids that are, in order.
+    | UnknownAnchor of parent: NodeId * anchor: NodeId * siblings: NodeId list
+    /// The index is outside `0 .. count`, where `count` is the number of
+    /// `parent`'s children other than the node being placed.
+    | IndexOutOfRange of parent: NodeId * index: int * count: int
     /// The op would change the ARITY of a keyed position, or cross one (apply:
     /// `PositionNotStructural`). Carries the node addressed and the position's
     /// slot label in the §3.3 spelling (`Switch.cases[0].child`).
     ///
     /// Three shapes reach it, and they are one fact seen from three sides: the
-    /// node IS the position's own node, so removing or moving it would leave
-    /// the position empty; the node sits below one position and the destination
-    /// below another; or one of the two sits below a position and the other on
-    /// the structural spine. A single write through an arity-preserving lens
-    /// cannot express any of them, and inventing a two-write form would be a
-    /// wire decision rather than an engine one.
-    ///
-    /// Reaching THROUGH a position is not an error at all — a node below one
-    /// moves, nudges and takes inserts normally, WITHIN that position's subtree.
+    /// node IS the position's own node, so moving it would leave the position
+    /// empty; the node sits below one position and the destination below
+    /// another; or one of the two sits below a position and the other on the
+    /// structural spine. Reaching THROUGH a position is not an error at all — a
+    /// node below one moves, nudges and takes inserts normally, WITHIN that
+    /// position's subtree.
     | PositionNotStructural of nodeId: NodeId * slot: string
-    /// The placement anchor is not among the destination's post-op children.
-    /// The only op that could honour it — a `ReorderChildren` naming it — is
-    /// refused by the apply engine as `OrderingMismatch`.
-    | UnknownAnchor of anchor: NodeId
-    /// The subtree being inserted carries an id already present in the tree
-    /// (apply: `DuplicateNodeId`).
-    | DuplicateId of nodeId: NodeId
-    /// The node would become its own parent (apply: `KindMismatch`).
-    | MoveIntoSelf of nodeId: NodeId
-    /// The destination sits inside the node's own subtree — a cycle (apply:
-    /// `KindMismatch`).
-    | MoveIntoDescendant of nodeId: NodeId * parentId: NodeId
     /// The root has no siblings to nudge among.
     | CannotNudgeRoot of nodeId: NodeId
-    /// The nudge would leave the sibling range (already first / already last).
-    | NudgeOutOfRange of nodeId: NodeId * delta: int
-
-// ─── Fresh-id strategy (the clone verbs' id-minting seam) ────────────────────
-
-/// How the clone verbs mint replacement ids: given the id being replaced and a
-/// predicate over every id already claimed (the whole target tree, the whole
-/// incoming subtree, and ids minted earlier in the same remap), return an id
-/// the predicate refuses. Injectable so a host with its own id discipline can
-/// supply it; `FreshIds.derived` is the default.
-type FreshIds = string -> (string -> bool) -> string
-
-[<RequireQualifiedAccess>]
-module FreshIds =
-    /// The default: `<oldId>-copy`, then `<oldId>-copy-2`, `-copy-3`, … — the
-    /// first candidate not already taken. Deterministic (derived from the id
-    /// it replaces, no ambient state) and collision-free by probing — the same
-    /// derive-and-probe convention the tree's other id-minting surfaces use.
-    let derived: FreshIds =
-        fun oldId taken ->
-            let rec probe (n: int) =
-                let candidate =
-                    if n = 1 then
-                        oldId + "-copy"
-                    else
-                        oldId + "-copy-" + string n
-
-                if taken candidate then probe (n + 1) else candidate
-
-            probe 1
-
-    /// Sequential ids under a fixed prefix (`<prefix>-1`, `-2`, …) — the
-    /// deterministic-replay option: the minted sequence depends only on the
-    /// prefix and the order of requests, never on the ids being replaced.
-    /// Each call to `sequential` starts its own counter.
-    let sequential (prefix: string) : FreshIds =
-        let counter = ref 0
-
-        fun _ taken ->
-            let rec probe () =
-                counter.Value <- counter.Value + 1
-                let candidate = prefix + "-" + string counter.Value
-                if taken candidate then probe () else candidate
-
-            probe ()
 
 // ─── The verbs ───────────────────────────────────────────────────────────────
 
 [<RequireQualifiedAccess>]
 module Placement =
 
-    let private idw: IdWitness<NodeId> =
-        { ToString = fun (NodeId s) -> s
-          OfString = NodeId
-          Equals = (=) }
+    /// The tier's container predicate — the one `Apply` runs the structural
+    /// legs under: a Layout holds children, a leaf does not.
+    let private canHold (n: Node<'Msg>) =
+        Introspect.getChildren n.Kind |> Option.isSome
 
-    /// The whole-traversal-surface witness: children are `descendantNodes`
-    /// (structural children plus the non-structural slots), so the clone
-    /// verbs' subtree extraction and id-remap reach every node the tree-wide
-    /// duplicate-id contract covers — not just the structural surface.
-    let private traversalWitness () : NodeWitness<Node<'Msg>, NodeId> =
-        { Id = fun n -> NodeId n.Id
-          KindTag = fun n -> Introspect.kindName n.Kind
-          Children = Introspect.descendantNodes
-          ReplaceChildren = fun n cs -> Introspect.replaceDescendantNodes n cs }
+    /// The keyed walk: structural children plus every keyed position, so a
+    /// clone's subtree lookup and rename reach every node the tree-wide
+    /// duplicate-id contract covers.
+    let private traversal<'Msg> : NodeWitness<Node<'Msg>, NodeId> =
+        Tree.traversal Introspect.nodeWitness Introspect.keyedWitness
 
-    /// The destination's current child ids, or the mirrored apply-side refusal
-    /// (absent parent / childless kind).
-    let private containerChildren (root: Node<'Msg>) (parentId: NodeId) : Result<NodeId list, PlaceError> =
-        match Introspect.findNode parentId root with
-        | None -> Error(PlaceError.ParentNotFound parentId)
-        | Some parent ->
-            match Introspect.getChildren parent.Kind with
-            | None -> Error(PlaceError.ChildlessKind parentId)
-            | Some children -> Ok(children |> List.map (fun c -> NodeId c.Id))
+    let private ofCore (error: Fuaran.Core.PlaceError<NodeId>) : PlaceError =
+        match error with
+        | Fuaran.Core.PlaceError.Refused rejection -> PlaceError.Refused rejection
+        | Fuaran.Core.PlaceError.UnknownAnchor(parent, anchor, siblings) ->
+            PlaceError.UnknownAnchor(parent, anchor, siblings)
+        | Fuaran.Core.PlaceError.IndexOutOfRange(parent, index, count) ->
+            PlaceError.IndexOutOfRange(parent, index, count)
 
-    /// Place `moved` within `order` (which already contains it) per
-    /// `placement`. An anchor that is not in the list is refused — the honest
-    /// alternative (silently appending) would emit an op that does not honour
-    /// the caller's stated intent.
-    let private reposition
-        (order: NodeId list)
-        (moved: NodeId)
-        (placement: Placement)
-        : Result<NodeId list, PlaceError> =
-        let rest = order |> List.filter (fun id -> id <> moved)
+    /// A skeleton op as the tier's op. `TreePlacement` lowers to the structural
+    /// ops alone (its module note), so `UpdateNode` cannot arise and answers
+    /// `None`.
+    let rec private ofSkeleton (op: SkeletonOp<Node<'Msg>, NodeId>) : TreeOp<'Msg> option =
+        match op with
+        | SkeletonOp.InsertChild(parent, child) -> Some(TreeOp.InsertChild(parent, child))
+        | SkeletonOp.RemoveNode target -> Some(TreeOp.RemoveNode target)
+        | SkeletonOp.MoveNode(target, newParent) -> Some(TreeOp.MoveNode(target, newParent))
+        | SkeletonOp.ReorderChildren(parent, order) -> Some(TreeOp.ReorderChildren(parent, order))
+        | SkeletonOp.Batch inner -> Some(TreeOp.Batch(inner |> List.choose ofSkeleton))
+        | SkeletonOp.UpdateNode _ -> None
 
-        let anchored (anchor: NodeId) (offset: int) =
-            match rest |> List.tryFindIndex (fun id -> id = anchor) with
-            | None -> Error(PlaceError.UnknownAnchor anchor)
-            | Some i ->
-                let at = i + offset
-                Ok((rest |> List.truncate at) @ [ moved ] @ (rest |> List.skip at))
+    /// A placement script as ONE op: `None` for the empty script (a node already
+    /// where it was asked to go), the op itself for a one-op script.
+    let private ofScript (script: SkeletonOp<Node<'Msg>, NodeId> list) : TreeOp<'Msg> option =
+        match script |> List.choose ofSkeleton with
+        | [] -> None
+        | [ op ] -> Some op
+        | ops -> Some(TreeOp.Batch ops)
 
-        match placement with
-        | Placement.Last -> Ok(rest @ [ moved ])
-        | Placement.First -> Ok(moved :: rest)
-        | Placement.Before anchor -> anchored anchor 0
-        | Placement.After anchor -> anchored anchor 1
+    /// The engine's dry run of `op` over the whole tree, at the keyed reach the
+    /// apply engine runs at. A node held AT a keyed position, which the keyed
+    /// engine refuses as `KeyedPosition` (naming the holder), is reported with
+    /// its slot label.
+    let private dryRun (op: SkeletonOp<Node<'Msg>, NodeId>) (root: Node<'Msg>) : Result<unit, PlaceError> =
+        match
+            Fuaran.Core.Ops.canApplyContainedKeyed
+                Introspect.keyedWitness
+                canHold
+                Introspect.nodeWitness
+                Introspect.idWitness
+                op
+                root
+        with
+        | Ok() -> Ok()
+        | Error(Rejection.KeyedPosition(target, _) as rejection) ->
+            match Introspect.nonStructuralAncestor target root with
+            | Some(_, slot, _, true) -> Error(PlaceError.PositionNotStructural(target, slot))
+            | _ -> Error(PlaceError.Refused rejection)
+        | Error rejection -> Error(PlaceError.Refused rejection)
 
-    /// The keyed position `nodeId` sits AT or BELOW, as `(holder, slot, isAt)`,
-    /// or `None` when it is reachable through `Children` from the root
-    /// (Phase 1666).
-    ///
-    /// Reads `Introspect.nonStructuralAncestor` — the same lens the apply engine
-    /// classifies with — so the helper cannot drift from the engine by having
-    /// its own idea of where the positions are. `None` here does NOT distinguish
-    /// a spine node from an absent one; `Introspect.findNode` answers that, and
-    /// every caller below asks it first.
-    let private keyedPosition (nodeId: NodeId) (root: Node<'Msg>) : (NodeId * string * bool) option =
-        Introspect.nonStructuralAncestor nodeId root
-        |> Option.map (fun (holder, slot, _, isAt) -> holder, slot, isAt)
+    /// The subtree a structural op addressing `addressed` runs against — the
+    /// descent `Apply` performs (Phase 1666), one keyed position per turn — or
+    /// the keyed-position refusal. `vacated` is the node the op detaches, which
+    /// may not BE a position's own node. Reads `Introspect.nonStructuralAncestor`,
+    /// the lens the apply engine classifies with, so this cannot drift from the
+    /// engine by having its own idea of where the positions are.
+    let rec private scopeOf
+        (addressed: NodeId list)
+        (vacated: NodeId option)
+        (root: Node<'Msg>)
+        : Result<Node<'Msg>, PlaceError> =
+        let located =
+            addressed |> List.map (fun id -> id, Introspect.nonStructuralAncestor id root)
 
-    /// The position IDENTITY, for the crossing test: two nodes may take part in
-    /// one structural op iff they answer the same value here.
-    let private positionKey (position: (NodeId * string * bool) option) : (NodeId * string) option =
-        position |> Option.map (fun (holder, slot, _) -> holder, slot)
+        match located |> List.choose (fun (id, at) -> at |> Option.map (fun a -> id, a)) with
+        | [] -> Ok root
+        | (_, (_, firstSlot, _, _)) :: _ as inside ->
+            let positions =
+                inside
+                |> List.map (fun (_, (holder, slot, _, _)) -> holder, slot)
+                |> List.distinct
 
-    /// Whether `moved` may legally take up residence at `target` — the
-    /// pre-check an editor uses to grey out an illegal drop without a dry-run
-    /// apply. Mirrors the apply engine's rejections: absent node, move into
-    /// itself, move into its own descendant (a cycle), absent or childless
-    /// destination, unknown anchor.
-    ///
-    /// A legal placement answers the destination's child order AFTER the move —
-    /// the order `moveOp` states (Phase 2064: it used to compute this and
-    /// discard it, and `moveOp` computed it again).
-    let canPlace (root: Node<'Msg>) (moved: NodeId) (target: Target) : Result<NodeId list, PlaceError> =
-        // Phase 1666 — the three answers the engine now gives, in its order:
-        // absence first (nothing else is meaningful about a node that is not
-        // there), then the ARITY guard, then the CROSSING guard.
-        let movedPosition = keyedPosition moved root
-        let destPosition = keyedPosition target.ParentId root
+            // Reported at the first addressed node — the moved one, where the
+            // op moves one — and at the first position met on the way.
+            let refuse slot =
+                Error(PlaceError.PositionNotStructural(List.head addressed, slot))
 
-        // The op crosses a keyed position — between two of them, or between
-        // one and the structural spine. Reported at the position the MOVED
-        // node is in where there is one, since that is the side the caller
-        // addressed; otherwise at the destination's.
-        let crossedSlot =
-            if positionKey movedPosition = positionKey destPosition then
-                None
+            if List.length positions > 1 || List.length inside <> List.length located then
+                refuse firstSlot
             else
-                movedPosition
-                |> Option.orElse destPosition
-                |> Option.map (fun (_, slot, _) -> slot)
+                match inside |> List.tryFind (fun (id, (_, _, _, isAt)) -> isAt && Some id = vacated) with
+                | Some(id, (_, slot, _, _)) -> Error(PlaceError.PositionNotStructural(id, slot))
+                | None ->
+                    let _, (_, _, sub, _) = List.head inside
+                    scopeOf addressed vacated sub
 
-        if Introspect.findNode moved root |> Option.isNone then
-            Error(PlaceError.NodeNotFound moved)
-        elif movedPosition |> Option.exists (fun (_, _, isAt) -> isAt) then
-            let _, slot, _ = Option.get movedPosition
-            Error(PlaceError.PositionNotStructural(moved, slot))
-        else
-            match crossedSlot with
-            | Some slot -> Error(PlaceError.PositionNotStructural(moved, slot))
-            | None ->
-                if target.ParentId = moved then
-                    Error(PlaceError.MoveIntoSelf moved)
-                elif Introspect.isAncestorOf moved target.ParentId root then
-                    Error(PlaceError.MoveIntoDescendant(moved, target.ParentId))
-                else
-                    containerChildren root target.ParentId
-                    |> Result.bind (fun siblings -> reposition siblings moved target.Placement)
+    /// The verdict, then the script: the engine's dry run of `op`, the
+    /// keyed-position rule, then Core's lowering at the scope the engine will
+    /// run the op against.
+    let private lower
+        (op: SkeletonOp<Node<'Msg>, NodeId>)
+        (addressed: NodeId list)
+        (vacated: NodeId option)
+        (lowerAt: Node<'Msg> -> Result<SkeletonOp<Node<'Msg>, NodeId> list, Fuaran.Core.PlaceError<NodeId>>)
+        (root: Node<'Msg>)
+        : Result<TreeOp<'Msg> option, PlaceError> =
+        dryRun op root
+        |> Result.bind (fun () -> scopeOf addressed vacated root)
+        |> Result.bind (fun scope -> lowerAt scope |> Result.mapError ofCore)
+        |> Result.map ofScript
 
-    /// The op an insertion becomes. `InsertChild` appends, so the wanted order
-    /// is computed over the post-insert membership and stated by
-    /// `ReorderChildren` naming every sibling id; the reorder leg is dropped
-    /// when appending already produces that order.
+    /// The op an insertion becomes: Core's `placeContained` — a bare
+    /// `InsertChild` when the child lands last, else `Batch [InsertChild;
+    /// ReorderChildren]`.
     let placeOp (root: Node<'Msg>) (child: Node<'Msg>) (target: Target) : Result<TreeOp<'Msg>, PlaceError> =
-        containerChildren root target.ParentId
-        |> Result.bind (fun siblings ->
-            // Core's keyed graft check — the one the apply path refuses with —
-            // so a collision held in a keyed position on either side is caught
-            // here exactly as `apply` would catch it.
-            match
-                Fuaran.Core.Tree.graftWellFormedKeyed
-                    Introspect.nodeWitness
-                    Introspect.keyedWitness
-                    Introspect.idWitness
-                    child
-                    root
-            with
-            | Fuaran.Core.Tree.RepeatedId dup -> Error(PlaceError.DuplicateId dup)
-            | Fuaran.Core.Tree.Structural ->
-                let childId = NodeId child.Id
-                let appended = siblings @ [ childId ]
+        lower
+            (SkeletonOp.InsertChild(target.ParentId, child))
+            [ target.ParentId ]
+            None
+            (TreePlacement.placeContained
+                canHold
+                Introspect.nodeWitness
+                Introspect.idWitness
+                target.ParentId
+                target.Placement
+                child)
+            root
+        |> Result.map (
+            // `place` always lowers to one op; the insert itself is the floor.
+            Option.defaultValue (TreeOp.InsertChild(target.ParentId, child))
+        )
 
-                reposition appended childId target.Placement
-                |> Result.map (fun wanted ->
-                    let insert = TreeOp.InsertChild(target.ParentId, child)
+    /// The op a move becomes: Core's `moveContained`. To another parent, a bare
+    /// `MoveNode` when the node lands last, else `Batch [MoveNode;
+    /// ReorderChildren]`; within its own parent, a bare `ReorderChildren` —
+    /// or `None` when the node is already where `target` puts it, since an
+    /// op that changes nothing would read in the op-stream as an edit that
+    /// happened.
+    let moveOp (root: Node<'Msg>) (moved: NodeId) (target: Target) : Result<TreeOp<'Msg> option, PlaceError> =
+        lower
+            (SkeletonOp.MoveNode(moved, target.ParentId))
+            [ moved; target.ParentId ]
+            (Some moved)
+            (TreePlacement.moveContained
+                canHold
+                Introspect.nodeWitness
+                Introspect.idWitness
+                moved
+                target.ParentId
+                target.Placement)
+            root
 
-                    if wanted = appended then
-                        insert
-                    else
-                        TreeOp.Batch [ insert; TreeOp.ReorderChildren(target.ParentId, wanted) ]))
+    /// Whether `moved` may legally take up residence at `target` — the verdict
+    /// `moveOp` reaches, which an editor uses to grey out an illegal drop.
+    let canPlace (root: Node<'Msg>) (moved: NodeId) (target: Target) : Result<unit, PlaceError> =
+        moveOp root moved target |> Result.map ignore
 
-    /// The op a move becomes. `MoveNode` appends under the new parent, and the
-    /// node may already be one of that parent's children (a re-placement
-    /// within one parent), so the post-move membership is the siblings WITHOUT
-    /// it plus it. The wanted order is `canPlace`'s answer.
-    let moveOp (root: Node<'Msg>) (moved: NodeId) (target: Target) : Result<TreeOp<'Msg>, PlaceError> =
-        canPlace root moved target
-        |> Result.map (fun wanted ->
-            // `wanted` is the siblings without `moved`, in their order, with
-            // `moved` placed among them — so dropping it recovers the rest.
-            let appended = (wanted |> List.filter (fun id -> id <> moved)) @ [ moved ]
-            let move = TreeOp.MoveNode(moved, target.ParentId)
-
-            if wanted = appended then
-                move
-            else
-                TreeOp.Batch [ move; TreeOp.ReorderChildren(target.ParentId, wanted) ])
-
-    /// The op a keyboard move-up (`-1`) / move-down (`+1`) becomes: the node
-    /// swapped with the sibling `delta` positions away, stated as the FULL
-    /// sibling id order (which is what `ReorderChildren` requires — a partial
-    /// list is refused by the apply engine, and rightly, since a partial order
-    /// is not one).
-    let nudgeOp (root: Node<'Msg>) (nodeId: NodeId) (delta: int) : Result<TreeOp<'Msg>, PlaceError> =
+    /// The op a keyboard move-up (`-1`) / move-down (`+1`) becomes: Core's move
+    /// within the node's own parent to `Anchor.Index (index + delta)` — so a
+    /// bare `ReorderChildren`, `None` for a zero delta, and `IndexOutOfRange`
+    /// past either end. A delta of more than one SHIFTS the node that many
+    /// places (it is a move), it does not swap it with the sibling there.
+    let nudgeOp (root: Node<'Msg>) (nodeId: NodeId) (delta: int) : Result<TreeOp<'Msg> option, PlaceError> =
         if NodeId root.Id = nodeId then
             Error(PlaceError.CannotNudgeRoot nodeId)
         else
-            // Phase 1666 — the parent search runs at the KEYED reach, not the
-            // structural spine `Introspect.findParent` walks: a container held
-            // inside a keyed position is a legal nudge target
-            // now that the engine descends into one, and a node that IS a
-            // position's own node has no sibling list to nudge among, which is
-            // a different answer from absence.
+            // The parent search runs at the KEYED reach: a container held inside a
+            // keyed position is a legal nudge target (Phase 1666).
             match Introspect.findParentWithin Fuaran.UI.NodeChildren.Reach.keyed nodeId root with
-            | None ->
-                match keyedPosition nodeId root with
-                | Some(_, slot, true) -> Error(PlaceError.PositionNotStructural(nodeId, slot))
-                | _ -> Error(PlaceError.NodeNotFound nodeId)
             | Some(parent, index) ->
-                let ids =
-                    Introspect.getChildren parent.Kind
-                    |> Option.defaultValue []
-                    |> List.map (fun c -> NodeId c.Id)
-
-                let swapWith = index + delta
-
-                if swapWith < 0 || swapWith >= List.length ids then
-                    Error(PlaceError.NudgeOutOfRange(nodeId, delta))
-                else
-                    let reordered =
-                        ids
-                        |> List.mapi (fun i id ->
-                            if i = index then ids[swapWith]
-                            elif i = swapWith then ids[index]
-                            else id)
-
-                    Ok(TreeOp.ReorderChildren(NodeId parent.Id, reordered))
+                moveOp
+                    root
+                    nodeId
+                    { ParentId = NodeId parent.Id
+                      Placement = Anchor.Index(index + delta) }
+            | None ->
+                // No structural parent: the node is absent, or it IS a keyed
+                // position's own node. The engine's dry run of vacating it says
+                // which, by name.
+                dryRun (SkeletonOp.RemoveNode nodeId) root |> Result.map (fun () -> None)
 
     /// The op an ORDER-LEVEL reorder becomes: an arbitrary whole permutation of
     /// a parent's children, stated as one bare `ReorderChildren` — or `None`
@@ -396,76 +308,63 @@ module Placement =
 
     // ─── Clone verbs ─────────────────────────────────────────────────────────
 
-    /// Rewrite every id in `incoming` that collides with an id in `targetRoot`
-    /// to a fresh, collision-free one (via `Fuaran.Core.Tree.remapIds` over the
-    /// whole-traversal-surface witness). Ids with no collision are preserved —
-    /// a pasted subtree keeps its identity where it can; a subtree duplicated
-    /// within its own tree remaps every id, since every one collides.
-    let private remapForInsert (freshIds: FreshIds) (targetRoot: Node<'Msg>) (incoming: Node<'Msg>) : Node<'Msg> =
-        let existing = HashSet<string>()
+    /// Rename every id of `incoming` that `targetRoot` already holds, or that
+    /// `incoming` repeats, through Core's `FreshIds.repairDuplicates` over the
+    /// keyed walk; every other id is kept.
+    let private repairFor
+        (mint: NodeId -> Set<string> -> NodeId)
+        (targetRoot: Node<'Msg>)
+        (incoming: Node<'Msg>)
+        : Node<'Msg> =
+        let taken =
+            Tree.ids traversal targetRoot
+            |> List.map Introspect.idWitness.ToString
+            |> Set.ofList
 
-        for (NodeId s) in Introspect.allNodeIds targetRoot do
-            existing.Add s |> ignore
-
-        // Fresh ids must also dodge the incoming subtree's own ids (a minted id
-        // colliding with a not-yet-visited incoming node would re-introduce the
-        // duplicate the remap exists to remove) and each other.
-        let taken = HashSet<string>(existing)
-
-        for (NodeId s) in Introspect.allNodeIds incoming do
-            taken.Add s |> ignore
-
-        let rename =
-            Introspect.allNodeIds incoming
-            |> List.choose (fun (NodeId oldId) ->
-                if existing.Contains oldId then
-                    let fresh = freshIds oldId (fun candidate -> taken.Contains candidate)
-                    taken.Add fresh |> ignore
-                    Some(oldId, fresh)
-                else
-                    None)
-            |> Map.ofList
-
-        if Map.isEmpty rename then
+        FreshIds.repairDuplicates
+            traversal
+            Introspect.idWitness
+            (fun (NodeId fresh) n -> { n with Id = fresh })
+            mint
+            taken
             incoming
-        else
-            Tree.remapIds
-                (traversalWitness ())
-                (fun (NodeId fresh) n -> { n with Id = fresh })
-                (fun (NodeId oldId) -> NodeId(rename |> Map.tryFind oldId |> Option.defaultValue oldId))
-                incoming
+        |> fst
 
-    /// Duplicate the subtree rooted at `source` and place the clone at
-    /// `target`, minting replacement ids with `freshIds`. The emitted op is an
-    /// ordinary placed insert — the clone is a fresh subtree, so the standard
-    /// apply gate (including the tree-wide duplicate-id check) accepts it
-    /// unchanged.
+    /// Duplicate the subtree rooted at `source` and place the copy at `target`,
+    /// minting replacement ids with `mint` (`FreshIds.derived
+    /// Introspect.idWitness`, `FreshIds.sequential Introspect.idWitness prefix`,
+    /// or a host's own strategy of that shape).
+    ///
+    /// These are `TreePlacement.cloneContained`'s own two steps — rename against
+    /// the tree's ids, then place — run at the keyed reach: Core's form looks the
+    /// source up and collects the taken ids over the structural witness, which
+    /// cannot see a node held in a keyed position.
     let duplicateOpWith
-        (freshIds: FreshIds)
+        (mint: NodeId -> Set<string> -> NodeId)
         (root: Node<'Msg>)
         (source: NodeId)
         (target: Target)
         : Result<TreeOp<'Msg>, PlaceError> =
-        match Tree.subtree (traversalWitness ()) idw source root with
-        | None -> Error(PlaceError.NodeNotFound source)
-        | Some sub -> placeOp root (remapForInsert freshIds root sub) target
+        match Tree.subtree traversal Introspect.idWitness source root with
+        | None -> Error(PlaceError.Refused(Rejection.UnknownNode(source, Tree.ids traversal root)))
+        | Some sub -> placeOp root (repairFor mint root sub) target
 
-    /// `duplicateOpWith` under the default derived-suffix id strategy.
+    /// `duplicateOpWith` under Core's derived-suffix strategy (`<id>-copy`,
+    /// `<id>-copy-2`, …).
     let duplicateOp (root: Node<'Msg>) (source: NodeId) (target: Target) : Result<TreeOp<'Msg>, PlaceError> =
-        duplicateOpWith FreshIds.derived root source target
+        duplicateOpWith (FreshIds.derived Introspect.idWitness) root source target
 
-    /// Place a subtree lifted from a DIFFERENT tree into `targetRoot`,
-    /// remapping any id that collides with one already present (ids with no
-    /// collision are preserved). The incoming subtree's ids must be unique
-    /// within itself — a subtree extracted from any well-formed tree is.
+    /// Place a subtree lifted from a DIFFERENT tree into `targetRoot`, renaming
+    /// any id that collides with one already present or that the subtree
+    /// repeats; every other id is kept.
     let pasteOpWith
-        (freshIds: FreshIds)
+        (mint: NodeId -> Set<string> -> NodeId)
         (targetRoot: Node<'Msg>)
         (incoming: Node<'Msg>)
         (target: Target)
         : Result<TreeOp<'Msg>, PlaceError> =
-        placeOp targetRoot (remapForInsert freshIds targetRoot incoming) target
+        placeOp targetRoot (repairFor mint targetRoot incoming) target
 
-    /// `pasteOpWith` under the default derived-suffix id strategy.
+    /// `pasteOpWith` under Core's derived-suffix strategy.
     let pasteOp (targetRoot: Node<'Msg>) (incoming: Node<'Msg>) (target: Target) : Result<TreeOp<'Msg>, PlaceError> =
-        pasteOpWith FreshIds.derived targetRoot incoming target
+        pasteOpWith (FreshIds.derived Introspect.idWitness) targetRoot incoming target
