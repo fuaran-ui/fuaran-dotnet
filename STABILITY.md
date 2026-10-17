@@ -7822,7 +7822,7 @@ document that declares no ceiling is exactly the control it was.
 
 _Class: **breaking**. `v0.95.0` was tagged and published at `9e03c87` on 2026-10-17. The slot opens at the minor number
 because the first changes it is opened for are breaking: Phase 2304 (the tree diff becomes Core's `Diff`; `TreeDiff.ChangeKind`
-takes Core's vocabulary and relocations are emitted as `MoveNode`) and Phase 2309 (two public hash functions are removed; no
+takes Core's vocabulary and relocations are emitted as `MoveNode`) and Phase 2309 (three public hash functions are removed; no
 value moves). Pre-1.0 breaking is minor (version cut recorded on the ledger, 2026-10-17)._
 
 ---
