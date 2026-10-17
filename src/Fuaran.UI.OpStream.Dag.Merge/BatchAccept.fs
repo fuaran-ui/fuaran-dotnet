@@ -8,10 +8,11 @@ open Fuaran.UI.Ops.Types
 //  BatchAccept — batch-aware partial accept (Phase 179).
 //
 //  A conflicted `Batch` is not accepted op-by-op arbitrarily: partial-accept
-//  takes a **dependency-closed subset**, never an incoherent one. Each op's
-//  dependency on an earlier op is structural — they reference a shared node, or
-//  the later op targets a node the earlier op inserted. The closure of a chosen
-//  index set pulls in every earlier op it transitively depends on.
+//  takes a **dependency-closed subset**, never an incoherent one. An op depends
+//  on an earlier op when their footprints interfere under Fuaran.Core's
+//  `Ops.interference` (Phase 2292) — the verdict arbitration and the DAG fold
+//  read, so the three cannot disagree about which ops are ordered. The closure
+//  of a chosen index set pulls in every earlier op it transitively depends on.
 //
 //  The precedence lattice is **validity > primacy pins > batch atomicity >
 //  convenience**: a `Secondary`-declared `indivisible` batch may *withdraw*
@@ -31,27 +32,39 @@ type BatchPartiallyAccepted =
 module BatchAccept =
 
     /// The dependency-closed superset of `selected` indices: an op depends on an
-    /// EARLIER op when their footprints share a node — they address one, or the
-    /// later op addresses a node anywhere in a subtree the earlier op put into
-    /// the tree (`TreeOp.footprint`, Phase 2044).
+    /// EARLIER op when the two INTERFERE — `Fuaran.Core.Ops.interference` over
+    /// their footprints (`TreeOpFootprint.ofOp`, Phase 2292) names a clause they
+    /// fail. That covers a shared address (an op on a node anywhere in a subtree
+    /// an earlier op put in, Phase 2044) and the clause an address set cannot
+    /// see: a remove or a move writes a parent it cannot name, so it is ordered
+    /// against a later op that writes structure anywhere. A kept
+    /// `ReorderChildren` of `P` therefore keeps an earlier `MoveNode` of a child
+    /// of `P` (or a `RemoveNode` of one), without which the reorder no longer
+    /// names `P`'s children and is refused.
+    ///
+    /// Sound because every dropped op is independent of every LATER kept op, so
+    /// it commutes past them to the end of the batch, where dropping it leaves
+    /// a prefix of a batch that applied.
     ///
     /// One pass over the list in REVERSE. Every dependency points backwards, so
     /// by the time op `i` is reached every op that could need it has already
-    /// been decided; `i` is kept iff it was selected or its footprint meets the
-    /// union of the kept later ops' footprints. That union is the whole state —
-    /// no pairwise intersection is recomputed, and no fixpoint is iterated.
+    /// been decided; `i` is kept iff it was selected or it interferes with the
+    /// union of the kept later ops' footprints, which is exact because a union
+    /// is independent of an op only when each part is. That union is the whole
+    /// state — no pairwise interference is recomputed, and no fixpoint is
+    /// iterated.
     let dependencyClosure<'Msg> (ops: TreeOp<'Msg> list) (selected: Set<int>) : Set<int> =
-        let footprints = ops |> List.map TreeOp.footprint |> List.toArray
+        let footprints = ops |> List.map TreeOpFootprint.ofOp |> List.toArray
 
         let _, closed =
             Array.foldBack
-                (fun (i, footprint: Set<NodeId>) (needed: Set<NodeId>, kept: Set<int>) ->
-                    if Set.contains i selected || not (Set.isEmpty (Set.intersect footprint needed)) then
-                        Set.union needed footprint, Set.add i kept
+                (fun (i, footprint: Fuaran.Core.Footprint) (needed: Fuaran.Core.Footprint, kept: Set<int>) ->
+                    if Set.contains i selected || not (Fuaran.Core.Ops.independent footprint needed) then
+                        Fuaran.Core.Footprint.union needed footprint, Set.add i kept
                     else
                         needed, kept)
                 (Array.indexed footprints)
-                (Set.empty, Set.empty)
+                (Fuaran.Core.Footprint.empty, Set.empty)
 
         // An index outside the list depends on nothing and is returned as given.
         Set.union closed selected

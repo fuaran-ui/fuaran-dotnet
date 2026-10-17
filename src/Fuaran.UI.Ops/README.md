@@ -7,6 +7,7 @@ Fuaran tree-op apply engine — the conversation-as-source-of-truth substrate. I
 - `Fuaran.UI.Ops.Types` — `TreeOp<'Msg>` DU (`EditNode` / `UpdateProp` / `ReplaceBinding` / `UpdateStyle` / `UpdateState` / `InsertChild` / `RemoveNode` / `MoveNode` / `ReorderChildren` / `Batch`), `ApplyError`, `ApplyHint`, `ApplyErrorCode`.
 - `Fuaran.UI.Ops.Apply` — `apply : TreeOp<'Msg> -> Node<'Msg> -> Result<Node<'Msg>, ApplyError>`. `Batch` is all-or-nothing — the first failing op aborts the batch and the tree is returned to its pre-batch state, with the error carrying the inner-op index.
 - `Fuaran.UI.Ops.Introspect` — reflection-free shape helpers consumed by error rendering (kind name lookup, available-field enumeration per `NodeKind`, `nodes_with_<field>_field` tree search). Fable-compatible.
+- `Fuaran.UI.Ops.TreeOpFootprint` — `ofOp` / `ofScript`: what an op reads and writes, as Fuaran.Core's `Footprint`, total over `TreeOp`. Two scripts whose footprints `Fuaran.Core.Ops.independent` calls independent commute under `apply`; arbitration, partial batch accept and the DAG fold read it. Fable-compatible.
 - `Fuaran.UI.Ops.ErrorRender` — turns an `(op, error)` pair into the §4d JSON shape (flat `code` / `message` / `hint.available_fields` / `hint.nodes_with_<field>_field` / `hint.suggestion`). Consumers (downstream AI consumers) parse this to drive AI retries.
 - `Fuaran.UI.Ops.OpNotation` — a read-only, human-readable projection of ops and op batches. See below.
 

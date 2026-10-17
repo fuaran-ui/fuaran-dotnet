@@ -125,8 +125,9 @@ let private laneFoldTest =
 
 /// The FABLE port of that family (fuaran#1488). It runs in `tests/fable-laws`, the repo's Fable
 /// law harness, over the same reducer / op codec / footprint projection the .NET run uses —
-/// `TestSupport.fs` there copies them from `CoreLawSupport.fs` verbatim, so the two ports certify
-/// one witness on two pipelines rather than two witnesses. It is not an Expecto case (Expecto does
+/// `TestSupport.fs` there copies the reducer and codec from `CoreLawSupport.fs` verbatim, and both
+/// re-export the shipped projection (`Fuaran.UI.Ops.TreeOpFootprint`, Phase 2292), so the two ports
+/// certify one witness on two pipelines rather than two witnesses. It is not an Expecto case (Expecto does
 /// not transpile); the harness prints this name as its family label, so the census row, the code
 /// and the gate log all name one thing.
 let private laneFoldFableTest =
@@ -137,6 +138,10 @@ let private laneFoldWithTest =
 
 let private footprintTest =
     "the tier's tree footprints are sound, monotone and deterministic (footprintLaws)"
+
+/// `footprintLaws`' domain-witness form (Phase 2292), over the SHIPPED `TreeOp` projection.
+let private footprintAtTest =
+    "the SHIPPED footprint projection is sound at the tier's own ops (footprintLawsAt)"
 
 let private mergeConflictTest =
     "merge-conflict reporting is symmetric, deterministic and complete (mergeConflictLaws)"
@@ -675,9 +680,9 @@ let census: (string * Adoption) list =
       "Conformance.containmentLaws",
       CarriedBy
           "unfiled — Fuaran.UI.Ops.Apply delegates the structural-five apply to Core's applyContained under the tier's container predicate (containerLaws above), so containment at the tier's own NodeWitness / OpGen has a subject here; adoption runs it at the witnesses CoreAdoptionTests already builds"
-      "Conformance.footprintLawsAt",
-      CarriedBy
-          "unfiled — the tier projects its TreeOp onto Core's Footprint (Fuaran.UI.OpStream.Dag.Tests' footprintOfTreeOp, certified by footprintLaws and laneFoldLaws above); this form certifies a footprint at a domain's own ops and StreamWitness, which that projection is"
+      // Phase 2292 — the tier's TreeOp projection is shipped (`Fuaran.UI.Ops.TreeOpFootprint`), and
+      // this form certifies it at the tier's own reducer and ops.
+      "Conformance.footprintLawsAt", Adopted(footprintAtTest, "Conformance.footprintLawsAt")
       "Conformance.reconcileLawsWith",
       CarriedBy
           "unfiled — reconcileLaws is adopted above at the kit's hash; this form pins the domain's hash, and the tier ships one (SHA-256, as laneFoldLawsWith is instantiated with)"
