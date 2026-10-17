@@ -118,7 +118,7 @@ let private attempt (write: unit -> unit) : Outcome =
 let private actor = Actor.Human "tester"
 
 /// The hash of nothing any store holds — the predecessor of a dangling record.
-let private nowhere = HashChain.sha256Hex "a predecessor no store holds"
+let private nowhere = Fuaran.Core.Hash.sha256Hex "a predecessor no store holds"
 
 // ─── The linear shape ───────────────────────────────────────────────────────
 

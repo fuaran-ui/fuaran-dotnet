@@ -26,23 +26,24 @@ let tests =
           }
 
           // ─── Phase 405 — the portable digest at the chain seam ─────────────
-          // `HashChain.sha256Hex` routes through the pure Fable-safe SHA-256
-          // (Fuaran.UI.Hashing); these pin FIPS 180-4 vectors + BCL parity AT
-          // THIS SEAM so a future re-route cannot silently change chain bytes.
+          // The chain digests through Core's pure Fable-safe SHA-256
+          // (`Fuaran.Core.Hash.sha256Hex`, Phase 2309); these pin FIPS 180-4 vectors
+          // + BCL parity AT THIS SEAM, as consumer-side pins of Core's function, so
+          // a future re-route cannot silently change chain bytes.
 
           test "sha256Hex matches the FIPS 180-4 vectors (empty / abc / two-block)" {
               Expect.equal
-                  (HashChain.sha256Hex "")
+                  (Fuaran.Core.Hash.sha256Hex "")
                   "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
                   "empty-string vector"
 
               Expect.equal
-                  (HashChain.sha256Hex "abc")
+                  (Fuaran.Core.Hash.sha256Hex "abc")
                   "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
                   "'abc' vector"
 
               Expect.equal
-                  (HashChain.sha256Hex "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")
+                  (Fuaran.Core.Hash.sha256Hex "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")
                   "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"
                   "two-block vector"
           }
@@ -66,7 +67,7 @@ let tests =
                     HashChain.genesisPreviousHash + "{\"op\":\"RemoveNode\"}1" ]
 
               for input in corpus do
-                  Expect.equal (HashChain.sha256Hex input) (bclSha256 input) (sprintf "BCL parity for %A" input)
+                  Expect.equal (Fuaran.Core.Hash.sha256Hex input) (bclSha256 input) (sprintf "BCL parity for %A" input)
           }
 
           test "computeHash produces 64 lower-case hex characters" {

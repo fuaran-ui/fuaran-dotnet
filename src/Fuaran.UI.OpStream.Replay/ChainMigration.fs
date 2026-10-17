@@ -30,7 +30,7 @@ open Fuaran.UI.OpStream.Abstractions
 /// of `prev ++ encodeOp ++ sequence ++ unixSeconds ++ Actor.encode`, undelimited,
 /// with `PromptId` / `ResultEnvelope` EXCLUDED (the provenance hole 406 closes).
 let legacyChainHash (previousHash: string) (record: OpRecord<'Msg>) : string =
-    HashChain.sha256Hex (
+    Fuaran.Core.Hash.sha256Hex (
         previousHash
         + CanonicalJson.encodeOp record.Op
         + record.Sequence.ToString(CultureInfo.InvariantCulture)

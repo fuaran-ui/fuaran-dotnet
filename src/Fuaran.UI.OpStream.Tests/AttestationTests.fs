@@ -92,7 +92,7 @@ let tests =
                   Expect.equal canonical (e.GetProperty("canonical").GetString()) "descriptor canonical bytes"
 
                   Expect.equal
-                      (Fuaran.UI.Hashing.sha256Hex canonical)
+                      (Fuaran.Core.Hash.sha256Hex canonical)
                       (e.GetProperty("sha256").GetString())
                       "descriptor sha256"
 
@@ -109,7 +109,7 @@ let tests =
                   Expect.equal canonical (e.GetProperty("canonical").GetString()) "claim canonical bytes"
 
                   Expect.equal
-                      (Fuaran.UI.Hashing.sha256Hex canonical)
+                      (Fuaran.Core.Hash.sha256Hex canonical)
                       (e.GetProperty("sha256").GetString())
                       "claim sha256"
 

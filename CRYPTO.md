@@ -1,21 +1,49 @@
 # Cryptography posture
 
-Fuaran ships **one** hash primitive: a dependency-free SHA-256 in
-[`Fuaran.UI.Hashing`](src/Fuaran.UI/Hashing.fs). This document states what it is, what it is for, and —
-for a reviewer who reasonably asks "why hand-roll SHA-256?" — why it is a single pure-F#
-implementation rather than the .NET BCL.
+Fuaran ships **one** hash primitive, and it is `Fuaran.Core`'s: the dependency-free SHA-256
+`Fuaran.Core.Hash.sha256Hex` (with `Hash.utf8Bytes`, the UTF-8 encoder it hashes through, and
+`Fuaran.Core.OpStream.sha256Hash`, the same digest as an op-stream chain `HashFn`). This tier holds no
+SHA-256 of its own. This document states what the primitive is, what it is for, and — for a reviewer
+who reasonably asks "why hand-roll SHA-256?" — why it is a single pure-F# implementation rather than
+the .NET BCL.
+
+Until Phase 2309 the tier carried its own copy in `Fuaran.UI.Hashing`, written (Phase 164) before Core
+had one. Two copies of one primitive had already drifted once — the tier's UTF-8 encoder took the
+four-byte path for an unpaired high surrogate until Phase 2042, after Core had fixed the same defect —
+so the copy was retired and every call site now reads Core's. The swap moved no value: Core's function
+is byte-identical to the retired one on every input, ill-formed UTF-16 included, so no persisted chain
+head, DAG record, checkpoint, teleport string, attestation digest, fragment key or `Custom` hash moved.
+`Fuaran.UI.Hashing` keeps only the tier's own composition, `customBodyShapeHash` (below).
 
 ## What it is
 
-A straight FIPS 180-4 SHA-256 over the UTF-8 bytes of a string, returning lowercase hex. It is
-verified two independent ways in CI:
+A straight FIPS 180-4 SHA-256 over the UTF-8 bytes of a string, returning lowercase hex. Core certifies
+it on both pipelines; this tier pins it again, consumer-side, so a Core change that moved a digest fails
+here before it moves a stored hash:
 
 - **Against the published NIST / FIPS 180-4 known-answer vectors** (`""`, `"abc"`, the two multi-block
   examples, and the one-million-`a` vector) — the gold-standard proof it *is* SHA-256.
 - **Byte-for-byte against `System.Security.Cryptography.SHA256`** over a Unicode/emoji/multi-block
-  corpus — the proof our bytes equal the platform's on .NET.
+  corpus and over ill-formed UTF-16 (lone and ill-ordered surrogates, which the platform encodes as
+  U+FFFD) — the proof our bytes equal the platform's on .NET.
+- **Against digests recorded from the retired implementation** — padding-boundary lengths, ill-formed
+  UTF-16, and one of each hashed artefact (a stream head, a checkpoint snapshot hash, two teleport
+  strings, a document-attestation digest, a fragment memo key, two `Custom` body-shape hashes).
 
-Both live in `Fuaran.UI.Tests` (`CustomContractTests.fs`).
+They live in `Fuaran.UI.Tests` (`CustomContractTests.fs`, `CorePredicateTests.fs`,
+`CoreHashPinTests.fs`) and at the chain seam in `Fuaran.UI.OpStream.Tests` (`HashChainTests.fs`).
+
+## The `Custom` body-shape pre-image is not injective (a breaking-cut candidate)
+
+`Fuaran.UI.Hashing.customBodyShapeHash` — the one definition the validator's FUARAN062 check calls too —
+digests a pre-image that joins its fields with `\n` and the prop keys and exposed ids with `,`. That
+join is **not injective**: a prop key or exposed id containing a comma, or an id containing a newline,
+can spell the same pre-image as a different declaration, so two different shapes can share a hash. It
+is kept byte-for-byte because every stored `Custom` content hash was taken over it, and changing it
+moves them all. The replacement is `Fuaran.Core`'s `Digest.tryOfFields` over the injective
+`Hash.canonicalFields` encoding (which also refuses ill-formed UTF-16 rather than hashing a
+replacement). It is a candidate for the next breaking cut, decided there, under a new pre-image tag so a
+hash taken under one encoding can never be read as the other.
 
 ## What it is for — and NOT for
 
@@ -280,7 +308,9 @@ code paths that must agree bit-for-bit on the one primitive whose divergence sil
 cross-host verification. Keeping a **single** implementation — the pure one, proven `== BCL` and `==
 NIST` — removes that divergence surface entirely. The cost (a hand-rolled hash) is bounded and pinned
 by the vectors above; the benefit (one provably-correct primitive on every host) is exactly what a
-cross-host integrity chain needs.
+cross-host integrity chain needs. The same argument is why there is one implementation across Core
+and this tier rather than one each (Phase 2309): a correctness fix lands once, and the parity vectors
+on both sides prove it everywhere.
 
 The pure implementation restricts itself to `uint32` arithmetic (no `uint64`, no `BigInt`) so it
 transpiles identically under Fable; it is therefore correct for any input under 512 MB, which covers

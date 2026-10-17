@@ -151,7 +151,7 @@ let private replaceField (name: string) (value: JVal) (fields: (string * JVal) l
 // *consistent* digest for structurally-invalid envelopes, so the structural
 // error surfaces rather than DigestMismatch.
 let private forgeDigest (coreFields: (string * JVal) list) : string =
-    Fuaran.UI.Hashing.sha256Hex ("fuaran-teleport:v1|" + Canon.render (JObj coreFields))
+    Fuaran.Core.Hash.sha256Hex ("fuaran-teleport:v1|" + Canon.render (JObj coreFields))
 
 [<Tests>]
 let tests =
@@ -387,8 +387,7 @@ let tests =
               // Incompressible padding (a SHA-256 chain) — a repetitive pad
               // would deflate straight back under the budget.
               let pad =
-                  [ for i in 1..128 -> Fuaran.UI.Hashing.sha256Hex (string i) ]
-                  |> String.concat ""
+                  [ for i in 1..128 -> Fuaran.Core.Hash.sha256Hex (string i) ] |> String.concat ""
 
               let padded =
                   { exemplarBundle () with

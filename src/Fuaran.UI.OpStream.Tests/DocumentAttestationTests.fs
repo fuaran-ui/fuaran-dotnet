@@ -122,7 +122,7 @@ let tests =
                   Expect.equal canonical (e.GetProperty("canonical").GetString()) "claim pre-image bytes"
 
                   Expect.equal
-                      (Hashing.sha256Hex canonical)
+                      (Fuaran.Core.Hash.sha256Hex canonical)
                       (e.GetProperty("sha256").GetString())
                       "claim pre-image sha256"
 

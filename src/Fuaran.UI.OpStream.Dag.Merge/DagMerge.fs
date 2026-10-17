@@ -282,7 +282,7 @@ module DagMerge =
         match Apply.apply deltaOp treeA with
         | Error e ->
             Error
-                { OutcomeHash = HashChain.sha256Hex mergedJson
+                { OutcomeHash = Fuaran.Core.Hash.sha256Hex mergedJson
                   ReplayedHash = None
                   ApplyError = Some e }
         | Ok replayed ->
@@ -290,11 +290,11 @@ module DagMerge =
 
             if replayedJson <> mergedJson then
                 Error
-                    { OutcomeHash = HashChain.sha256Hex mergedJson
-                      ReplayedHash = Some(HashChain.sha256Hex replayedJson)
+                    { OutcomeHash = Fuaran.Core.Hash.sha256Hex mergedJson
+                      ReplayedHash = Some(Fuaran.Core.Hash.sha256Hex replayedJson)
                       ApplyError = None }
             else
-                let outcomeHash = HashChain.sha256Hex mergedJson
+                let outcomeHash = Fuaran.Core.Hash.sha256Hex mergedJson
 
                 Ok(
                     DagOpRecord.createMerge

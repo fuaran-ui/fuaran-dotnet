@@ -11,7 +11,7 @@ open Fuaran.UI.OpStream.Abstractions
 //
 //  Reuses the op-stream's canonical-JSON encoder (`CanonicalJson.encodeNode`)
 //  for the fragment body + slot-argument subtrees, then the Fable-safe SHA-256
-//  (`Hashing.sha256Hex`) over the assembled canonical string — the SAME digest
+//  (`Fuaran.Core.Hash.sha256Hex`) over the assembled canonical string — the SAME digest
 //  the op-stream hash-chain produces server-side. No second content hash is
 //  invented; the key is a deterministic function of the canonical wire shape, so
 //  two structurally-identical applications hash identically across machines and
@@ -110,7 +110,7 @@ let describeUnrepresentable (us: Unrepresentable list) : string =
 /// Canonical token for a boxed value argument. Self-describing by CLR shape so
 /// `i:3` (int) and `s:3` (string) never collide. Mirrors the `CanonicalJson`
 /// `encodeScalar` vocabulary (Int / Float / Bool / Str) — key material only, all
-/// of which feeds the single `Hashing.sha256Hex`.
+/// of which feeds the single `Fuaran.Core.Hash.sha256Hex`.
 let private scalarToken (v: obj) : string =
     match v with
     | :? int as n -> "i:" + string n
@@ -136,7 +136,9 @@ let private scalarToken (v: obj) : string =
 /// Name is folded in here rather than at the composition step so that two
 /// differently-named declarations sharing one body object still key apart.
 let bodyDigest (pf: ParamFragment<'Msg>) : string =
-    Hashing.sha256Hex (sprintf "fuaran-fragment-body:v1\nname=%s\nbody=%s" pf.Name (CanonicalJson.encodeNode pf.Body))
+    Fuaran.Core.Hash.sha256Hex (
+        sprintf "fuaran-fragment-body:v1\nname=%s\nbody=%s" pf.Name (CanonicalJson.encodeNode pf.Body)
+    )
 
 /// `bodyDigest`, refused when the body's canonical encoding could not represent
 /// part of it (Phase 1525). The `Ok` value is byte-identical to `bodyDigest`'s —
@@ -147,7 +149,7 @@ let tryBodyDigest (pf: ParamFragment<'Msg>) : Result<string, Unrepresentable lis
     let canonical = CanonicalJson.encodeNode pf.Body
 
     match unrepresentableIn "body" canonical with
-    | [] -> Ok(Hashing.sha256Hex (sprintf "fuaran-fragment-body:v1\nname=%s\nbody=%s" pf.Name canonical))
+    | [] -> Ok(Fuaran.Core.Hash.sha256Hex (sprintf "fuaran-fragment-body:v1\nname=%s\nbody=%s" pf.Name canonical))
     | us -> Error us
 
 /// The STRUCTURAL key composed from a PRECOMPUTED body digest — a content hash
@@ -174,7 +176,7 @@ let structuralOf (body: string) (refId: string) (slotArgs: Map<string, Node<'Msg
         |> List.map (fun (k, v) -> k + "=" + CanonicalJson.encodeNode v)
         |> String.concat "|"
 
-    Hashing.sha256Hex (sprintf "fuaran-fragment-apply:v2\nbody=%s\nrefId=%s\nslots=%s" body refId slots)
+    Fuaran.Core.Hash.sha256Hex (sprintf "fuaran-fragment-apply:v2\nbody=%s\nrefId=%s\nslots=%s" body refId slots)
 
 /// `structuralOf`, refused when a SLOT ARGUMENT's canonical encoding could not
 /// represent part of it (Phase 1525). The `Ok` value is byte-identical to
@@ -204,7 +206,11 @@ let tryStructuralOf
     | [] ->
         let slots = encoded |> List.map (fun (k, e) -> k + "=" + e) |> String.concat "|"
 
-        Ok(Hashing.sha256Hex (sprintf "fuaran-fragment-apply:v2\nbody=%s\nrefId=%s\nslots=%s" body refId slots))
+        Ok(
+            Fuaran.Core.Hash.sha256Hex (
+                sprintf "fuaran-fragment-apply:v2\nbody=%s\nrefId=%s\nslots=%s" body refId slots
+            )
+        )
     | us -> Error us
 
 /// The STRUCTURAL key — a content hash of the fragment body + ref id + slot-

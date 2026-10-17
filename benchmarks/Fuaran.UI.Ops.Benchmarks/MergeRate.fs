@@ -83,7 +83,7 @@ let recordAuthor (r: DagOpRecord<Msg>) : MergeAuthor =
 
 let private now = stamp 9_000_000L
 
-let private sha (s: string) = HashChain.sha256Hex s
+let private sha (s: string) = Fuaran.Core.Hash.sha256Hex s
 
 let private treeHash (t: Node<Msg>) = CanonicalJson.encodeNode t |> sha
 

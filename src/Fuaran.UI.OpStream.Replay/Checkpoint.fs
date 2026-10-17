@@ -40,7 +40,7 @@ open Fuaran.UI.OpStream.Abstractions
 //
 //  ── FGP 2 / FGP 5 / FGP 6 (post-405 fence) ─────────────────────────────────
 //  SHA-256 no longer sits behind a `#if !FABLE_COMPILER` guard: since Phase 405
-//  `HashChain` routes through the pure, Fable-safe `Fuaran.UI.Hashing.sha256Hex`
+//  `HashChain` routes through the pure, Fable-safe `Fuaran.Core.Hash.sha256Hex`
 //  and compiles on both pipelines. This module is .NET-only for a different and
 //  still-true reason — the whole Replay package is server-side by design, the
 //  apply engine being the part that ships on both. The op stream stays the
@@ -81,7 +81,7 @@ module Checkpoint =
     /// Materialise a checkpoint for `tree` at the sink's current latest
     /// sequence. The caller has already applied ops `1..LatestSequence`
     /// to produce `tree`. Computes `SnapshotHash` (via
-    /// `HashChain.sha256Hex (CanonicalJson.encodeNode tree)`) and
+    /// `Fuaran.Core.Hash.sha256Hex (CanonicalJson.encodeNode tree)`) and
     /// `PreviousChainHead` (the latest op's `Hash`, or
     /// `HashChain.genesisPreviousHash` for an empty stream), then
     /// persists via `sink.AppendCheckpoint`.

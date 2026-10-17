@@ -6,9 +6,10 @@ module Fuaran.UI.Tests.CustomContract
 //  A `CustomContract<'Props>` is defined once; from it the consumer gets the
 //  typed node constructor (`Custom.node`), client + server registration, and a
 //  content hash DERIVED from the declared shape. These tests pin the pure half
-//  (no DOM): the Fable-safe SHA-256 vs the BCL oracle, the body-shape hash vs
-//  the validator's canonical string, hash-derivation stability/sensitivity, the
-//  typed constructor's stamping, and the encode→decode round-trip + failure.
+//  (no DOM): Core's Fable-safe SHA-256 (the tier's digest since Phase 2309) vs
+//  the BCL oracle, the body-shape hash vs the validator's canonical string,
+//  hash-derivation stability/sensitivity, the typed constructor's stamping, and
+//  the encode→decode round-trip + failure.
 //
 //  The client `RegisterContract` Ok path is pinned via the registry contract
 //  (registration + recorded hash + Some-on-valid-payload). The decode-FAILURE
@@ -44,7 +45,7 @@ let private sample = { Points = "0,1 2,3"; Label = "trend" }
 let private contract =
     CustomContract.create "sample" "sparkline" encode decode sample [ NodeId "spark-line" ] HashStrictness.StrictReplay
 
-/// BCL reference SHA-256 (lowercase hex) — the oracle the Fable-safe pure
+/// BCL reference SHA-256 (lowercase hex) — the oracle Core's Fable-safe pure
 /// implementation must match byte-for-byte.
 let private bclSha256 (s: string) : string =
     use sha = System.Security.Cryptography.SHA256.Create()
@@ -72,12 +73,16 @@ let tests =
                     "emoji 😀 surrogate-pair" ]
 
               for input in corpus do
-                  Expect.equal (Hashing.sha256Hex input) (bclSha256 input) (sprintf "sha256 parity for %A" input)
+                  Expect.equal
+                      (Fuaran.Core.Hash.sha256Hex input)
+                      (bclSha256 input)
+                      (sprintf "sha256 parity for %A" input)
           }
 
           // ── NIST CAVP / FIPS 180-4 known-answer vectors ─────────────────────
           // The published standard vectors — the gold-standard proof the
-          // dependency-free implementation IS SHA-256, independent of the BCL
+          // dependency-free implementation (Core's, a consumer-side pin since
+          // Phase 2309) IS SHA-256, independent of the BCL
           // (which the corpus test above already cross-checks). These are the
           // canonical FIPS 180-2/4 examples + the NIST empty / one-block cases.
           test "sha256Hex reproduces the NIST FIPS 180-4 known-answer vectors" {
@@ -94,7 +99,7 @@ let tests =
 
               for (input, expected) in vectors do
                   Expect.equal
-                      (Hashing.sha256Hex input)
+                      (Fuaran.Core.Hash.sha256Hex input)
                       expected
                       (sprintf "NIST vector for a %d-char input" input.Length)
           }

@@ -268,7 +268,7 @@ let private dagBreakReasonRun =
 /// The portable SHA-256, hoisted so both hashFn* runs below and the testCase asserting on them
 /// share one function value.
 let private sha256HashFn: Fuaran.Core.HashFn =
-    fun prev payload -> Fuaran.UI.OpStream.Abstractions.HashChain.sha256Hex (prev + "|" + payload)
+    fun prev payload -> Fuaran.Core.Hash.sha256Hex (prev + "|" + payload)
 
 let private hashLawGen: Fuaran.Core.StreamGen<TreeOp<obj>, EqNode> =
     { State0 = baseTree

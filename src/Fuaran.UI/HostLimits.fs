@@ -315,9 +315,10 @@ module HostLimits =
         | _ -> None
 
     /// The UTF-8 byte length of `s`, as `Encoding.UTF8.GetByteCount` reports it.
-    /// Phase 2042: this reads the tier's one encoder (`Hashing.utf8Length`), so
-    /// the byte budget and the content hash count the same bytes.
-    let utf8Length (s: string) : int = Hashing.utf8Length s
+    /// Phase 2042: this reads the one encoder the content hash reads — since
+    /// Phase 2309 Core's (`Fuaran.Core.Hash.utf8Bytes`) — so the byte budget and
+    /// the content hash count the same bytes.
+    let utf8Length (s: string) : int = (Fuaran.Core.Hash.utf8Bytes s).Length
 
     /// The tree's serialized size: the UTF-8 length of the generated canonical
     /// encoder's output.
