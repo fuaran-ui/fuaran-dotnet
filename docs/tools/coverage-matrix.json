@@ -224,6 +224,7 @@
     "op-patchstyle": [299,381,462,782,783],
     "op-patchstyle (phase 2291 all six members)": [299,376,382,435,440,448,460,779,780,781,782,783,784],
     "op-patchstyle (phase 2291 tone=default is an edit, not an omission)": [299,459,782],
+    "op-patchstyle (phase 2302 direction=auto)": [299,446,779],
     "op-removenode": [300],
     "op-reorderchildren": [301],
     "op-replacebinding": [77,302,542],
