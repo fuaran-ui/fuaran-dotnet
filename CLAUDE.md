@@ -95,6 +95,8 @@ dotnet run --project Build.fsproj -- CssCheck      # fail on any tier copy that 
 dotnet run --project Build.fsproj -- RendererWeb      # re-sync the embedded browser-renderer assets
 dotnet run --project Build.fsproj -- RendererWebCheck # fail when the embedded copy is stale (in `Check`)
 dotnet run --project Build.fsproj -- FableCheck       # the Fable stage: client-tier portability + the law harness (in `Check`)
+dotnet run --project Build.fsproj -- ChangeSet        # the WIRE_FORMAT §11 change-set as one command: regenerate, emit, re-sync,
+                                                      #   certify every roster host; --dry-run prints the plan, --legs narrows (PARTIAL)
 ```
 
 ## Gate lanes

@@ -641,6 +641,11 @@ let private runSuiteCaptured (label: string) (args: string list) workingDir =
     if result.ExitCode <> 0 then
         failwithf "%s FAILED (exit %d)" label result.ExitCode
 
+/// Phase 2301 — `--dry-run` / `--legs` for the `ChangeSet` target, split out of the arguments in
+/// `main` before FAKE parses them.
+let mutable private changeSetOptions: ChangeSet.Options =
+    { DryRun = false; Legs = None }
+
 let private init (args: string array) =
     args
     |> Array.toList
@@ -914,6 +919,15 @@ let private registerTargets (args: string array) =
         |> ignore
 
     Target.create "FableCheck" (fun _ -> fableCheck ())
+
+    // Phase 2301 — the WIRE_FORMAT.md §11 change-set as one command: regenerate, emit, re-sync,
+    // certify every roster host, report. Standalone: it depends on no other target, and no gate
+    // target depends on it. The stages and their reasons are `build/ChangeSet.fs`.
+    Target.create "ChangeSet" (fun _ ->
+        match ChangeSet.run repoRoot corpusRootPath changeSetOptions with
+        | 0 -> ()
+        | 3 -> failwith "ChangeSet: PARTIAL (narrowed with --legs) — never a green"
+        | _ -> failwith "ChangeSet: RED — the stage report above names the stage")
 
     Target.create "All" ignore
 
@@ -1229,7 +1243,10 @@ let private registerTargets (args: string array) =
     "Test" ?=> "CssCheck" |> ignore
 
 [<EntryPoint>]
-let main args =
+let main argv =
+    // The ChangeSet target's own flags are taken out first: FAKE refuses options it does not know.
+    let opts, args = ChangeSet.splitArgs argv
+    changeSetOptions <- opts
     init args
     registerTargets args
 

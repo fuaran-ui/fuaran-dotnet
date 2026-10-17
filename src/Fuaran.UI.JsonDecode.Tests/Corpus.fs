@@ -208,6 +208,38 @@ let private preservedRows (outputDir: string) (authoredKinds: Set<string>) : Man
             |> List.ofSeq
         | _ -> []
 
+/// Phase 2301 (absorbing 1883) — the reference tier version this emitter writes as a NEW row's
+/// `since`: the `Fuaran.UI` release line (`<Version>` in `Directory.Build.props`), read from the
+/// assembly the fixtures are encoded by. WIRE_FORMAT §11.3 states what the grade means.
+let currentTierVersion: string =
+    let v = typedefof<Fuaran.UI.Types.Node<_>>.Assembly.GetName().Version
+
+    match v with
+    | null -> failwith "the Fuaran.UI assembly carries no version - `since` cannot be stamped"
+    | (v: Version) -> sprintf "%d.%d.%d" v.Major v.Minor v.Build
+
+/// The `since` every row of the existing manifest at `outputDir` already carries, by
+/// `(kind, id)`. A row keeps the version that first specified it across every later emit; only
+/// a row this emit adds for the first time takes `currentTierVersion`.
+let private priorSince (outputDir: string) : Map<string * string, string> =
+    let path = Path.Combine(outputDir, "manifest.json")
+
+    if not (File.Exists path) then
+        Map.empty
+    else
+        use doc = JsonDocument.Parse(File.ReadAllText path, wireJsonOptions)
+
+        match doc.RootElement.TryGetProperty "fixtures" with
+        | true, fixtures when fixtures.ValueKind = JsonValueKind.Array ->
+            fixtures.EnumerateArray()
+            |> Seq.choose (fun row ->
+                match row.TryGetProperty "kind", row.TryGetProperty "id", row.TryGetProperty "since" with
+                | (true, k), (true, i), (true, s) when s.ValueKind = JsonValueKind.String ->
+                    Some((string (k.GetString()), string (i.GetString())), string (s.GetString()))
+                | _ -> None)
+            |> Map.ofSeq
+        | _ -> Map.empty
+
 let private writeManifest
     (outputDir: string)
     (kinds: string list)
@@ -216,6 +248,7 @@ let private writeManifest
     (entries: FixtureEntry list)
     : unit =
     let authoredKinds = entries |> List.map (fun e -> e.Kind) |> Set.ofList
+    let since = priorSince outputDir
 
     let sorted =
         (entries |> List.map Authored) @ preservedRows outputDir authoredKinds
@@ -412,6 +445,9 @@ let private writeManifest
             w.WriteStartObject()
             w.WriteString("id", e.Id)
             w.WriteString("kind", e.Kind)
+
+            w.WriteString("since", Map.tryFind (e.Kind, e.Id) since |> Option.defaultValue currentTierVersion)
+
             w.WriteString("decoder", e.Decoder)
             w.WriteString("inputFile", e.InputFile)
             e.ExpectedFile |> Option.iter (fun f -> w.WriteString("expectedFile", f))

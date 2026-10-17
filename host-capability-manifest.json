@@ -1,0 +1,78 @@
+{
+  "$manifest": "fuaran.host-capability/1",
+  "host": "fuaran",
+  "hostVersion": "0.95.0",
+  "corpusAuthority": null,
+  "generator": "declared by hand: corpusFamilies is checked against the corpus family set by the corpus repository's change-set roster (conformance/change-set.mjs, WIRE_FORMAT.md 11.3); no token generator yet",
+  "families": {
+    "caseFields": {
+      "covered": false,
+      "reason": "the reference host has no generator deriving construct tokens from its type model yet, so it makes no claim in this family (27.1)"
+    },
+    "hostedCases": {
+      "covered": false,
+      "reason": "the reference host has no generator deriving construct tokens from its type model yet, so it makes no claim in this family (27.1)"
+    },
+    "kindFields": {
+      "covered": false,
+      "reason": "the reference host has no generator deriving construct tokens from its type model yet, so it makes no claim in this family (27.1)"
+    },
+    "kinds": {
+      "covered": false,
+      "reason": "the reference host has no generator deriving construct tokens from its type model yet, so it makes no claim in this family (27.1)"
+    },
+    "recordFields": {
+      "covered": false,
+      "reason": "the reference host has no generator deriving construct tokens from its type model yet, so it makes no claim in this family (27.1)"
+    },
+    "unionCases": {
+      "covered": false,
+      "reason": "the reference host has no generator deriving construct tokens from its type model yet, so it makes no claim in this family (27.1)"
+    }
+  },
+  "corpusFamilies": {
+    "apply/duplicateIdsApply": "covered",
+    "apply/limitsApply": "covered",
+    "apply/skeletonApply": {
+      "pending": "the reference apply engine's suite does not yet run the skeleton-apply vectors"
+    },
+    "apply/styleNormaliseApply": "covered",
+    "contract-card-reject": "covered",
+    "contract-card-round-trip": "covered",
+    "dag": "covered",
+    "decode-policy": "covered",
+    "devtools-relay": "covered",
+    "elicitation-answer-accept": "covered",
+    "elicitation-answer-reject": "covered",
+    "elicitation-reject": "covered",
+    "elicitation-round-trip": "covered",
+    "envelope-reject": "covered",
+    "envelope-round-trip": "covered",
+    "laws/capabilityLaws": "covered",
+    "laws/dataframeParity": {
+      "pending": "the reference host consumes Fuaran.Core and Fuaran.Compute as packages and certifies only the capabilityLaws vectors against its pin; this family's vectors are produced and certified in their producing repository, not by this suite yet"
+    },
+    "laws/decimal": {
+      "pending": "the reference host consumes Fuaran.Core and Fuaran.Compute as packages and certifies only the capabilityLaws vectors against its pin; this family's vectors are produced and certified in their producing repository, not by this suite yet"
+    },
+    "laws/fieldLaws": {
+      "pending": "the reference host consumes Fuaran.Core and Fuaran.Compute as packages and certifies only the capabilityLaws vectors against its pin; this family's vectors are produced and certified in their producing repository, not by this suite yet"
+    },
+    "laws/transformLaws": {
+      "pending": "the reference host consumes Fuaran.Core and Fuaran.Compute as packages and certifies only the capabilityLaws vectors against its pin; this family's vectors are produced and certified in their producing repository, not by this suite yet"
+    },
+    "lenient-accept": "covered",
+    "lowers-to": "covered",
+    "merge-conformance": "covered",
+    "node-round-trip": "covered",
+    "op-round-trip": "covered",
+    "reject": "covered",
+    "repair": "covered",
+    "sanitization": "covered",
+    "stored-emissions": "covered",
+    "style-observer": "covered",
+    "teleport-decode": "covered",
+    "teleport-reject": "covered"
+  },
+  "tokens": []
+}
