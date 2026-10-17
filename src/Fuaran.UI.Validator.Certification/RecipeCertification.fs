@@ -221,9 +221,6 @@ let private parseArg (space: HoleValueSpace) (raw: string) : Scalar =
     | HoleValueSpace.Enum _
     | HoleValueSpace.AnyString -> Scalar.Str raw
 
-/// The absolute lexical address of a fragment-decl hole: `<declId>.<holeName>`.
-let private holeAddr (declId: string) (holeName: string) : string = declId + "." + holeName
-
 /// Build the certification witness for a fragment decl node, closing over the
 /// recipe's `materialize`. `Holes` projects the decl's value / repeat holes at
 /// their absolute address; `Effect` reads the decl's declared class; `Bind`
@@ -233,34 +230,14 @@ let private holeAddr (declId: string) (holeName: string) : string = declId + "."
 /// is not a value-space to enumerate) — they are held as the fragment's fixed
 /// body; certification varies only the value / repeat holes.
 let private certifyWitness<'Msg> (materialize: Materialize<'Msg>) : Fuaran.Core.ArtifactWitness<Node<'Msg>, NodeId> =
+    // The shared projection's holes (Phase 2308), less the slots this witness
+    // does not certify; its effect is the shared projection's unchanged.
     let holesOf (node: Node<'Msg>) : Fuaran.Core.HoleDecl list =
-        match node.Kind with
-        | NodeKind.FragmentDecl spec ->
-            let declId = node.Id
-
-            spec.Holes
-            |> List.choose (fun h ->
-                match h with
-                | HoleDecl.Value(n, space, _) ->
-                    Some
-                        { Addr = holeAddr declId n
-                          Name = n
-                          Kind = Fuaran.Core.ValueHole(Projection.toCoreSpace space) }
-                | HoleDecl.Repeat(n, space) ->
-                    Some
-                        { Addr = holeAddr declId n
-                          Name = n
-                          Kind = Fuaran.Core.RepeatHole(Projection.toCoreSpace space) }
-                | HoleDecl.Slot _ -> None)
-        | _ -> []
-
-    let effectOf (node: Node<'Msg>) : Fuaran.Core.EffectClass =
-        match node.Kind with
-        | NodeKind.FragmentDecl spec ->
-            // Phase 1670 — `Effect` is an omit-at-default slot, so the
-            // degenerate value is already in it and there is nothing to default.
-            Projection.toCoreEffect spec.Effect
-        | _ -> Fuaran.Core.Effect.pureDeterministic
+        Projection.holesOf node
+        |> List.filter (fun h ->
+            match h.Kind with
+            | Fuaran.Core.SlotHole _ -> false
+            | _ -> true)
 
     // Record hole@addr := value into the decl's matching hole default.
     let bind (addr: string) (arg: Fuaran.Core.Arg<Node<'Msg>>) (node: Node<'Msg>) : Result<Node<'Msg>, string> =
@@ -321,7 +298,7 @@ let private certifyWitness<'Msg> (materialize: Materialize<'Msg>) : Fuaran.Core.
           OfString = NodeId
           Equals = (=) }
       Holes = holesOf
-      Effect = effectOf
+      Effect = Projection.effectOf
       Bind = bind }
 
 // ─── The public entry point ──────────────────────────────────────────────────
