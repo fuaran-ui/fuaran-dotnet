@@ -21,8 +21,11 @@ let tests =
         "Dag.BatchAndMultiAgent"
         [ test "dependency closure pulls in earlier ops a selected op depends on" {
               // op0 inserts "x" under dash; op1 restyles "x"; op2 restyles "left".
-              // Selecting op1 must pull in op0 (op1 targets the node op0 created);
-              // op2 is independent.
+              // Selecting op1 must pull in op0 (op1 targets the node op0 created).
+              // Selecting op2 pulls in BOTH (Phase 2292): a restyle carries an
+              // unknown-parent write (Phase 2004), which Core's `Ops.interference`
+              // orders against every op that writes structure or a parent it
+              // cannot name — every non-empty tier op.
               let ops =
                   [ TreeOp.InsertChild(dashboardId, Fuaran.markdown "x" "X")
                     TreeOp.UpdateStyle(
@@ -40,7 +43,7 @@ let tests =
               Expect.equal closure (Set.ofList [ 0; 1 ]) "op1 pulls in its dependency op0"
 
               let closure2 = BatchAccept.dependencyClosure ops (Set.ofList [ 2 ])
-              Expect.equal closure2 (Set.ofList [ 2 ]) "op2 is independent"
+              Expect.equal closure2 (Set.ofList [ 0; 1; 2 ]) "a vertical op is ordered after every earlier op"
           }
 
           test "an op on a node INSIDE an inserted subtree pulls the insert in (Phase 2044)" {
@@ -72,7 +75,8 @@ let tests =
 
           test "the closure is transitive across a chain, in one reverse pass (Phase 2044)" {
               // op2 needs op1 (both address "x"); op1 needs op0 (op0 inserts "x").
-              // op3 is independent.
+              // op3, a restyle elsewhere, closes over all three (Phase 2292): it
+              // carries an unknown-parent write, as the move does.
               let ops =
                   [ TreeOp.InsertChild(dashboardId, Fuaran.markdown "x" "X")
                     TreeOp.UpdateStyle(NodeId "x", Defaults.style)
@@ -86,9 +90,51 @@ let tests =
 
               Expect.equal
                   (BatchAccept.dependencyClosure ops (Set.ofList [ 3 ]))
-                  (Set.ofList [ 3 ])
-                  "an independent op stays alone"
+                  (Set.ofList [ 0; 1; 2; 3 ])
+                  "a vertical op closes over every earlier op"
           }
+
+          test "an op independent under Core stays alone (Phase 2292)" {
+              // Two inserts under different NAMED parents: neither reads what the other
+              // writes, and neither writes a parent it cannot name.
+              let ops =
+                  [ TreeOp.InsertChild(NodeId "p", Fuaran.markdown "x" "X")
+                    TreeOp.InsertChild(NodeId "q", Fuaran.markdown "y" "Y") ]
+
+              Expect.equal (BatchAccept.dependencyClosure ops (Set.ofList [ 1 ])) (Set.ofList [ 1 ]) "alone"
+          }
+
+          // Phase 2292 — the closure is Core's `Ops.interference`, so the unknown-parent
+          // write of a move or a remove orders it before a later reorder of its source
+          // parent. Over the flat id sets the closure used to read, `[a]` and `[P; b; c]`
+          // are disjoint, the move was dropped, and the kept reorder no longer named P's
+          // children.
+          let reorderBase () =
+              container
+                  "root"
+                  [ container "P" [ Fuaran.markdown "a" "A"; Fuaran.markdown "b" "B"; Fuaran.markdown "c" "C" ]
+                    container "Q" [] ]
+
+          let reorder = TreeOp.ReorderChildren(NodeId "P", [ NodeId "c"; NodeId "b" ])
+
+          for name, first in
+              [ "move", TreeOp.MoveNode(NodeId "a", NodeId "Q")
+                "remove", TreeOp.RemoveNode(NodeId "a") ] do
+              test $"a partial accept of a reorder keeps the earlier {name} it needs" {
+                  let ops = [ first; reorder ]
+
+                  // Probed both ways first: the batch applies, and the reorder alone is refused.
+                  Expect.isOk (Fuaran.UI.Ops.Apply.apply (TreeOp.Batch ops) (reorderBase ())) "the whole batch applies"
+
+                  Expect.isError
+                      (Fuaran.UI.Ops.Apply.apply reorder (reorderBase ()))
+                      $"the reorder alone is refused — P still holds a without the {name}"
+
+                  let kept, evt = BatchAccept.partialAccept ops (Set.ofList [ 1 ]) false
+                  Expect.equal evt.Kept [ 0; 1 ] $"the {name} is kept with the reorder"
+                  Expect.equal evt.Dropped [] "nothing is dropped"
+                  Expect.isOk (Fuaran.UI.Ops.Apply.apply (TreeOp.Batch kept) (reorderBase ())) "the kept batch applies"
+              }
 
           test "partial accept keeps a dependency-closed subset; emits Kept/Dropped" {
               let ops =

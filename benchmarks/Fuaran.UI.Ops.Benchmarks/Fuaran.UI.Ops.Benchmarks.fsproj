@@ -27,6 +27,7 @@
     <Compile Include="DecodeRate.fs" />
     <Compile Include="ValidateRate.fs" />
     <Compile Include="MergeRate.fs" />
+    <Compile Include="DerivabilitySnapshot.fs" />
     <Compile Include="Capture.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
@@ -53,5 +54,7 @@
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" />
     <PackageReference Include="FSharp.Core" />
+    <!-- Phase 2292: `Dag.conflicts`, the fold verdict `derivability-snapshot` classifies by. -->
+    <PackageReference Include="Fuaran.Core.OpStream.Dag" />
   </ItemGroup>
 </Project>

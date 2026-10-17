@@ -238,32 +238,20 @@ let opGen: Fuaran.Core.OpGen<EqNode, NodeId> =
 //  the tier's own footprint projection over its own op algebra
 // ---------------------------------------------------------------------------
 //
-//  `Fuaran.Core.Ops.footprint` is defined over `SkeletonOp`, the four structural
-//  cases. `Fuaran.UI`'s `TreeOp` is wider: the structural five (which the runtime
-//  apply already delegates to Core, Phase 379) plus a per-kind vertical
-//  (`UpdateProp` / `EditNode` / `UpdateStyle` / `UpdateState` / `ReplaceBinding`)
-//  Core never sees. Multi-writer reconciliation needs an address set for EVERY
-//  op the tier can emit, so this is the tier's projection: structural ops
-//  delegate to Core's, and a vertical op carries Core's `UpdateNode` footprint —
-//  a read and a content write of the node it rewrites, AND an unknown-parent
-//  write of it (Phase 2004).
+//  RE-EXPORTED, not defined (Phase 2292). The projection is shipped:
+//  `Fuaran.UI.Ops.TreeOpFootprint.ofOp`, total over `TreeOp`, the structural five
+//  through Core's keyed `Ops.footprintKeyed` and a vertical op as Core's
+//  `UpdateNode` footprint with its unknown-parent write (Phase 2004). Every law
+//  family below that takes a footprint is instantiated with THIS binding, so the
+//  confluence, footprint and fold claims are made about the function a consumer
+//  of `Fuaran.UI.Ops` actually gets, not about a test copy of it.
 //
-//  That third term is required, not cautious, for the reason Core's Phase 250
-//  gives for `UpdateNode`: a vertical op rewrites a node under a parent, and a
-//  chain of ancestors, the op cannot name, so an edit of `n` and a concurrent
-//  `RemoveNode` of an ancestor of `n` share no address and yet do not commute —
-//  the edit applies in one order and is refused in the other, because the
-//  removal took `n` with it. Only the unknown-parent clause of
-//  `Ops.independent` sees that pair, and it sees an `EditNode` of an ancestor
-//  the same way (the swapped kind drops the old children). The cost is the one
-//  Core's update pays: a vertical op is independent only of a structure-free
-//  script, every other `TreeOp` writes structure, and so two vertical edits of
-//  different nodes are reported dependent — ordered rather than merged.
-//  `CoreDagLawTests` pins the pair and its erased-term falsifier.
-//
-//  It is not asserted — `Conformance.concurrencyLawsWith` is instantiated with it
-//  in `CoreDagLawTests.fs`, so the confluence claim is made about THIS function
-//  rather than about Core's.
+//  The unknown-parent term costs what Core's update pays: a vertical op is
+//  independent only of a structure-free script, every other `TreeOp` writes
+//  structure, and so two vertical edits — of different nodes, or of different
+//  fields of one node — are reported dependent, ordered rather than merged.
+//  `CoreDagLawTests` pins the ancestor-removal pair, its erased-term falsifier,
+//  and the verdicts the shipped projection gives.
 
 let private emptyFp: Fuaran.Core.Footprint = Fuaran.Core.Footprint.empty
 
@@ -273,48 +261,25 @@ let private unionFp: Fuaran.Core.Footprint -> Fuaran.Core.Footprint -> Fuaran.Co
 let private skeletonFp (op: Fuaran.Core.SkeletonOp<EqNode, NodeId>) : Fuaran.Core.Footprint =
     Fuaran.Core.Ops.footprint nodew idw [ op ]
 
-/// A vertical op rewrites one node in place, under a parent it cannot name: Core's `UpdateNode`
-/// footprint over the unkeyed engine — `Reads{id}`, `ContentWrites{id}`, `UnknownParentWrites{id}`.
-let private verticalWrite (NodeId raw) : Fuaran.Core.Footprint =
-    { Fuaran.Core.Footprint.contentEdit raw with
-        UnknownParentWrites = Set.singleton raw }
-
-/// The address set of one `TreeOp`. Total over the DU. `ReplaceRoot` is the one case with no
-/// honest finite address set — it rewrites the whole tree, so declaring anything for it would
-/// let the reconciler call it independent of an op it certainly interferes with. It is
-/// therefore outside this projection's vocabulary and outside every generator here, and
-/// reaching it fails loudly rather than returning a footprint that would understate it.
-let rec footprintOfTreeOp (op: TreeOp<obj>) : Fuaran.Core.Footprint =
-    match op with
-    | TreeOp.InsertChild(parent, child) -> skeletonFp (Fuaran.Core.SkeletonOp.InsertChild(parent, wrap child))
-    | TreeOp.RemoveNode target -> skeletonFp (Fuaran.Core.SkeletonOp.RemoveNode target)
-    | TreeOp.MoveNode(target, newParent) -> skeletonFp (Fuaran.Core.SkeletonOp.MoveNode(target, newParent))
-    | TreeOp.ReorderChildren(parent, order) -> skeletonFp (Fuaran.Core.SkeletonOp.ReorderChildren(parent, order))
-    | TreeOp.EditNode(id, _)
-    | TreeOp.UpdateProp(id, _, _)
-    | TreeOp.ReplaceBinding(id, _, _)
-    | TreeOp.UpdateStyle(id, _)
-    // Phase 2291: node-content precision here; the slot-precise `slotEdit id "style.<field>"` is Phase 2292's.
-    | TreeOp.PatchStyle(id, _)
-    | TreeOp.UpdateState(id, _) -> verticalWrite id
-    | TreeOp.Batch inner -> inner |> List.fold (fun acc o -> unionFp acc (footprintOfTreeOp o)) emptyFp
-    | TreeOp.ReplaceRoot _ ->
-        failwith
-            "footprintOfTreeOp: ReplaceRoot rewrites the whole tree and has no finite address set — it is outside this projection's vocabulary, and no generator here emits it"
+/// The tier's shipped footprint projection.
+let footprintOfTreeOp (op: TreeOp<obj>) : Fuaran.Core.Footprint = Fuaran.UI.Ops.TreeOpFootprint.ofOp op
 
 let footprintOfEqOp (e: EqOp) : Fuaran.Core.Footprint = footprintOfTreeOp e.Op
 
-/// Phase 2004's erased-term falsifier: the projection with the vertical arm's unknown-parent write
-/// taken out — the arm as it stood before Phase 2004. No law runs over it except to show that it
-/// goes red: a projection the families accept with this term erased would mean they cannot see
-/// the pair the term exists for.
+/// Phase 2004's erased-term falsifier: the shipped projection with the vertical arms' unknown-parent
+/// write taken out and nothing else changed. No law runs over it except to show that it goes red: a
+/// projection the families accept with this term erased would mean they cannot see the pair the
+/// term exists for.
 let rec footprintErasingVerticalTerm (op: TreeOp<obj>) : Fuaran.Core.Footprint =
     match op with
-    | TreeOp.EditNode(NodeId raw, _)
-    | TreeOp.UpdateProp(NodeId raw, _, _)
-    | TreeOp.ReplaceBinding(NodeId raw, _, _)
-    | TreeOp.UpdateStyle(NodeId raw, _)
-    | TreeOp.UpdateState(NodeId raw, _) -> Fuaran.Core.Footprint.contentEdit raw
+    | TreeOp.EditNode _
+    | TreeOp.UpdateProp _
+    | TreeOp.ReplaceBinding _
+    | TreeOp.UpdateStyle _
+    | TreeOp.PatchStyle _
+    | TreeOp.UpdateState _ ->
+        { footprintOfTreeOp op with
+            UnknownParentWrites = Set.empty }
     | TreeOp.Batch inner ->
         inner
         |> List.fold (fun acc o -> unionFp acc (footprintErasingVerticalTerm o)) emptyFp
@@ -334,7 +299,7 @@ let rec private skeletonToTreeOp (op: Fuaran.Core.SkeletonOp<EqNode, NodeId>) : 
     // Core 0.32.0's in-place op (Phase 1874 raise). It has no image in the tier's algebra: the
     // nearest case, `EditNode`, swaps the node's whole `Kind` — children included — where
     // `UpdateNode` keeps the children the tree holds. Mapping it there would put a different
-    // op's footprint under the law, so, like `ReplaceRoot` above, it is outside this
+    // op's footprint under the law, so it is outside this
     // projection's vocabulary. Core's generator draws one from Core 0.33.0 (fuaran-core Phase
     // 297: `genOp` draws every op kind), so `uiFootprintOfSkeleton` below answers it with Core's
     // own footprint rather than reaching here; inside a `Batch` (which Core fills with structural
@@ -488,6 +453,55 @@ let laneGen: Fuaran.Core.LaneGen<EqOp, EqNode> =
                       ops |> List.map wrapOp ]
 
             lanes, r }
+
+// ---- the footprint generator (footprintLawsAt) ----------------------------
+
+/// One tier op off `laneBase` and whatever the ops before it left (Phase 2292), for
+/// `Conformance.footprintLawsAt`, which threads single draws through the reducer and pairs the
+/// scripts. Every op kind the projection has an arm for, weighted towards the two classes its
+/// adequacy guard demands: inserts under the four containers (3 in 10), the pairs of which under
+/// different parents are the INDEPENDENT class; and vertical edits of a leaf (4 in 10, all six
+/// kinds, a field-level restyle included), removals of a container and moves of a leaf (1 in 10
+/// each), which interfere with everything non-empty. A reorder of the root closes the set, and a
+/// draw the reducer refuses (a removal or move of a node an earlier draw took away) is counted by
+/// the kit, not hidden.
+let private genFootprintOp (rng: CoreRng.T) : EqOp * CoreRng.T =
+    let shape, r1 = CoreRng.intBelow 10 rng
+    let k, r2 = CoreRng.intBelow 3 r1
+    let e, r3 = CoreRng.intBelow 6 r2
+
+    let op, r =
+        match shape with
+        | 0
+        | 1
+        | 2 ->
+            let p, r4 = CoreRng.intBelow 4 r3
+            let v, r5 = CoreRng.next r4
+            TreeOp.InsertChild(laneParents[p], unwrap (mkLeaf (sprintf "f%d" (v % 1000)))), r5
+        | 3
+        | 4
+        | 5
+        | 6 ->
+            let edit =
+                if e = 5 then
+                    TreeOp.PatchStyle(
+                        laneLeaves[k],
+                        { StyleDelta.empty with
+                            Tone = Some tones[k] }
+                    )
+                else
+                    verticalOps laneLeaves[k] |> List.item e |> snd
+
+            edit, r3
+        | 7 -> TreeOp.RemoveNode laneAncestors[k], r3
+        | 8 -> TreeOp.MoveNode(laneLeaves[k], laneParents[e % 4]), r3
+        | _ -> TreeOp.ReorderChildren(NodeId "root", [ NodeId "b"; NodeId "a" ]), r3
+
+    wrapOp op, r
+
+let footprintGen: Fuaran.Core.StreamGen<EqOp, EqNode> =
+    { State0 = laneBase
+      Op = genFootprintOp }
 
 // ---------------------------------------------------------------------------
 //  reporting

@@ -358,6 +358,18 @@ let tests =
               CoreConf.footprintLaws nodew idw opGen encodeNode seed 100
               |> assertAllPassed "footprintLaws over the Fuaran.UI tree witness"
 
+          testCase "the SHIPPED footprint projection is sound at the tier's own ops (footprintLawsAt)"
+          <| fun _ ->
+              // Phase 2292. `footprintLaws` above is Core's skeleton family and takes no projection;
+              // this is its domain-witness form, run over `TreeOpFootprint.ofOp` (through
+              // `footprintOfEqOp`), the tier's reducer and a generator that draws every op kind the
+              // projection has an arm for. An independent pair must commute under `Apply.apply`,
+              // and the adequacy guard demands both an independent and an interfering pair. The
+              // projection declares no slot access, so the kit's slot arms are vacuous by
+              // declaration, and say so.
+              CoreConf.footprintLawsAt coreSw footprintOfEqOp hashState footprintGen seed 300
+              |> assertAllPassed "footprintLawsAt over the shipped TreeOp footprint"
+
           testCase "merge-conflict reporting is symmetric, deterministic and complete (mergeConflictLaws)"
           <| fun _ ->
               CoreConf.mergeConflictLaws nodew idw opGen seed 100

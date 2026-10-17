@@ -9,6 +9,9 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Introspect.fs" />
+    <!-- Phase 2292: the one footprint projection of TreeOp, over the witnesses
+         Introspect declares. -->
+    <Compile Include="TreeOpFootprint.fs" />
     <!-- Structural decoder mirroring
          Fuaran.UI.OpStream.Abstractions.CanonicalJson.encodeNode / encodeOp.
          Lives here (rather than in Fuaran.UI) because TreeOp lives in
