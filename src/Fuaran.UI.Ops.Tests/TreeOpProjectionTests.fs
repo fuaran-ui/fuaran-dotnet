@@ -1,13 +1,16 @@
 module Fuaran.UI.Tests.TreeOpProjection
 
 // ============================================================================
-//  Phase 2044 — `TreeOp.kindName`, `TreeOp.targets` and `TreeOp.footprint`.
+//  Phase 2044 — `TreeOp.kindName`, `TreeOp.targets`, `TreeOp.inserted`, and
+//  the footprint, which is `TreeOpFootprint.ofOp` since Phase 2292.
 //
-//  The three projections every module that needs only an op's name, its
-//  addressed ids or the ids it touches reads instead of carrying its own match.
-//  The footprint is the one whose divergence was a defect: it must reach every
-//  id an op puts into the tree, through every keyed position, not only the id
-//  of the node it names.
+//  The projections every module that needs only an op's name, its addressed
+//  ids or the ids it touches reads instead of carrying its own match. The
+//  footprint is the one whose divergence was a defect: it must reach every id
+//  an op puts into the tree, through every keyed position, not only the id of
+//  the node it names. `touched` reads the shipped Core footprint as the id set
+//  it addresses, so these facts are asserted about the projection a consumer
+//  gets.
 // ============================================================================
 
 open Expecto
@@ -25,6 +28,13 @@ let private leaf (id: string) : Node<Msg> = Fuaran.markdown id $"body of {id}"
 let private rootIds (nodes: Node<Msg> list) : string list = nodes |> List.map _.Id
 
 let private ids (raw: string list) : Set<NodeId> = raw |> List.map NodeId |> Set.ofList
+
+/// Every id the op's shipped footprint names, in any of its four node sets.
+let private touched (op: TreeOp<Msg>) : Set<NodeId> =
+    let f = TreeOpFootprint.ofOp op
+
+    Set.unionMany [ f.Reads; f.ContentWrites; f.StructureWrites; f.UnknownParentWrites ]
+    |> Set.map NodeId
 
 /// A subtree holding a node in an ordered list, a `Switch` case, a `Switch`
 /// default, an `ErrorBoundary` fallback and a `state.onEmpty` alternative.
@@ -109,7 +119,7 @@ let tests =
           test "the footprint contains the targets for every case" {
               for (op, _, addressed) in everyCase do
                   Expect.isTrue
-                      (Set.isSubset (Set.ofList addressed) (TreeOp.footprint op))
+                      (Set.isSubset (Set.ofList addressed) (touched op))
                       (sprintf "footprint ⊇ targets for %A" op)
           }
 
@@ -126,23 +136,23 @@ let tests =
                     TreeOp.MoveNode(NodeId "k", NodeId "p") ]
 
               for op in ops do
-                  Expect.equal (TreeOp.footprint op) (Set.ofList (TreeOp.targets op)) (sprintf "%A" op)
+                  Expect.equal (touched op) (Set.ofList (TreeOp.targets op)) (sprintf "%A" op)
           }
 
           test "an insert's footprint reaches every id of its subtree, through every keyed position" {
               Expect.equal
-                  (TreeOp.footprint (TreeOp.InsertChild(NodeId "p", deepSubtree)))
+                  (touched (TreeOp.InsertChild(NodeId "p", deepSubtree)))
                   (ids ("p" :: deepIds))
                   "parent plus the whole inserted subtree"
           }
 
           test "a replacement root's footprint is its whole tree" {
-              Expect.equal (TreeOp.footprint (TreeOp.ReplaceRoot deepSubtree)) (ids deepIds) "the whole new tree"
+              Expect.equal (touched (TreeOp.ReplaceRoot deepSubtree)) (ids deepIds) "the whole new tree"
           }
 
           test "an EditNode's footprint reaches the nodes its new kind holds" {
               Expect.equal
-                  (TreeOp.footprint (TreeOp.EditNode(NodeId "k", deepSubtree.Kind)))
+                  (touched (TreeOp.EditNode(NodeId "k", deepSubtree.Kind)))
                   (ids ("k" :: List.tail deepIds))
                   "the edited id plus everything the new kind holds"
           }
@@ -154,25 +164,99 @@ let tests =
                     OnError = None }
 
               Expect.equal
-                  (TreeOp.footprint (TreeOp.UpdateState(NodeId "k", state)))
+                  (touched (TreeOp.UpdateState(NodeId "k", state)))
                   (ids ("k" :: "loading" :: deepIds))
                   "the addressed id plus both alternatives' subtrees"
           }
 
           test "a reorder's footprint includes its newOrder" {
               Expect.equal
-                  (TreeOp.footprint (TreeOp.ReorderChildren(NodeId "p", [ NodeId "b"; NodeId "a" ])))
+                  (touched (TreeOp.ReorderChildren(NodeId "p", [ NodeId "b"; NodeId "a" ])))
                   (ids [ "p"; "a"; "b" ])
                   "parent plus the permuted children"
           }
 
           test "a batch's footprint is the union of its members'" {
               Expect.equal
-                  (TreeOp.footprint (
-                      TreeOp.Batch [ TreeOp.InsertChild(NodeId "p", leaf "c"); TreeOp.RemoveNode(NodeId "k") ]
-                  ))
+                  (touched (TreeOp.Batch [ TreeOp.InsertChild(NodeId "p", leaf "c"); TreeOp.RemoveNode(NodeId "k") ]))
                   (ids [ "p"; "c"; "k" ])
                   "members unioned"
+          }
+
+          // Phase 2292 — the shipped projection's verdicts.
+          test "a vertical op is Core's UpdateNode footprint of its node, with no slot" {
+              let vertical: TreeOp<Msg> list =
+                  [ TreeOp.EditNode(NodeId "k", (leaf "x").Kind)
+                    TreeOp.UpdateProp(NodeId "k", "Label", PropValue.Native(nn "y"))
+                    TreeOp.ReplaceBinding(NodeId "k", "Source", Binding.Static(Some(nn 2.0)))
+                    TreeOp.UpdateStyle(NodeId "k", Defaults.style)
+                    TreeOp.PatchStyle(
+                        NodeId "k",
+                        { StyleDelta.empty with
+                            Tone = Some ToneVariant.Brand }
+                    )
+                    TreeOp.UpdateState(NodeId "k", Defaults.stateBehaviour<Msg>) ]
+
+              let expected =
+                  { Fuaran.Core.Footprint.contentEdit "k" with
+                      UnknownParentWrites = Set.singleton "k" }
+
+              for op in vertical do
+                  Expect.equal (TreeOpFootprint.ofOp op) expected (sprintf "%A" op)
+          }
+
+          test "a vertical op is independent of no non-empty tier op, and of the empty batch" {
+              // Phase 2004's unknown-parent write collides with every structural or unknown-parent
+              // write, and every non-empty TreeOp makes one. So a field-level restyle of `q` is
+              // ordered against every case — a kind edit or another restyle of `q` included — and
+              // only the empty batch commutes with it. Red the day the pinned Core frees a pair.
+              let restyle =
+                  TreeOpFootprint.ofOp (
+                      TreeOp.PatchStyle(
+                          NodeId "q",
+                          { StyleDelta.empty with
+                              Voice = Some FontVoice.Display }
+                      )
+                  )
+
+              let sameNode: TreeOp<Msg> list =
+                  [ TreeOp.EditNode(NodeId "q", (leaf "x").Kind)
+                    TreeOp.PatchStyle(
+                        NodeId "q",
+                        { StyleDelta.empty with
+                            Tone = Some ToneVariant.Brand }
+                    ) ]
+
+              for op in (everyCase |> List.map (fun (op, _, _) -> op)) @ sameNode do
+                  Expect.isFalse
+                      (Fuaran.Core.Ops.independent restyle (TreeOpFootprint.ofOp op))
+                      (sprintf "a restyle of q is ordered against %A" op)
+
+              Expect.isTrue
+                  (Fuaran.Core.Ops.independent restyle (TreeOpFootprint.ofOp (TreeOp.Batch [])))
+                  "the empty batch writes nothing"
+          }
+
+          test "ReplaceRoot has a footprint, ordered against every non-empty tier op" {
+              let replace = TreeOpFootprint.ofOp (TreeOp.ReplaceRoot deepSubtree)
+
+              for op, _, _ in everyCase do
+                  Expect.isFalse
+                      (Fuaran.Core.Ops.independent replace (TreeOpFootprint.ofOp op))
+                      (sprintf "ReplaceRoot is ordered against %A" op)
+
+              Expect.isTrue
+                  (Fuaran.Core.Ops.independent replace (TreeOpFootprint.ofOp (TreeOp.Batch [])))
+                  "the empty batch writes nothing"
+          }
+
+          test "two inserts under different named parents are independent" {
+              // The fold class the tier keeps: neither writes a parent it cannot name.
+              Expect.isTrue
+                  (Fuaran.Core.Ops.independent
+                      (TreeOpFootprint.ofOp (TreeOp.InsertChild(NodeId "p", leaf "c")))
+                      (TreeOpFootprint.ofOp (TreeOp.InsertChild(NodeId "r", leaf "d"))))
+                  "disjoint parents, disjoint ids"
           }
 
           // Phase 2141 — `inserted`, the nodes an op puts in.
@@ -229,7 +313,7 @@ let tests =
                           Children = [ leaf "x" ] }
 
               let op = TreeOp.ReplaceRoot twice
-              Expect.equal (TreeOp.footprint op) (ids [ "x" ]) "the id set collapses to the target"
+              Expect.equal (touched op) (ids [ "x" ]) "the id set collapses to the target"
               Expect.equal (rootIds (TreeOp.inserted op)) [ "x" ] "the node list keeps its one root"
 
               Expect.equal

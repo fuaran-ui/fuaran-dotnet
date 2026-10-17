@@ -30,7 +30,6 @@ open Fuaran.UI.Ops.Types
 open Fuaran.UI.OpStream.Abstractions
 
 module UiApply = Fuaran.UI.Ops.Apply
-module Introspect = Fuaran.UI.Ops.Introspect
 module JsonDecode = Fuaran.UI.Ops.JsonDecode
 module CoreRng = Fuaran.Core.ConfRng
 
@@ -68,48 +67,6 @@ type EqOp =
 let wrap (n: Node<obj>) : EqNode = { Node = n }
 let unwrap (e: EqNode) : Node<obj> = e.Node
 let wrapOp (o: TreeOp<obj>) : EqOp = { Op = o }
-
-// ---------------------------------------------------------------------------
-//  the Core witnesses over Fuaran.UI's tree
-// ---------------------------------------------------------------------------
-
-let idw: Fuaran.Core.IdWitness<NodeId> =
-    { ToString = fun (NodeId s) -> s
-      OfString = NodeId
-      Equals = (=) }
-
-/// A coarse, top-level kind tag — stable under `ReplaceChildren`. Copied from
-/// `CoreLawSupport.kindTag`; the ports must tag identically or they are certifying two
-/// different witnesses.
-let kindTag (k: NodeKind<obj>) : string =
-    match k with
-    | NodeKind.Custom _ -> "Custom"
-    | NodeKind.ErrorBoundary _ -> "ErrorBoundary"
-    | NodeKind.Switch _ -> "Switch"
-    | NodeKind.FragmentDecl _ -> "FragmentDecl"
-    | NodeKind.FragmentRef _ -> "FragmentRef"
-    | NodeKind.Mount _ -> "Mount"
-    | k ->
-        match Kind.category k with
-        | NodeCategory.Layout -> "Layout"
-        | NodeCategory.Display -> "Display"
-        | NodeCategory.Input -> "Input"
-        | NodeCategory.Visualisation -> "Visualisation"
-        | NodeCategory.Structural -> "Structural"
-
-let nodew: Fuaran.Core.NodeWitness<EqNode, NodeId> =
-    { Id = fun e -> NodeId e.Node.Id
-      KindTag = fun e -> kindTag e.Node.Kind
-      Children = fun e -> Introspect.getChildren e.Node.Kind |> Option.defaultValue [] |> List.map wrap
-      ReplaceChildren =
-        fun e cs ->
-            match Introspect.withChildren e.Node.Kind (cs |> List.map unwrap) with
-            | Some k -> wrap { e.Node with Kind = k }
-            | None -> e }
-
-/// The per-node content encoder the content-hash laws key on. The canonical wire encoding is
-/// injective over the node space, which is that function's stated precondition.
-let encodeNode (e: EqNode) : string = CanonicalJson.encodeNode e.Node
 
 // ---------------------------------------------------------------------------
 //  node builders — data-only, so the canonical encoding is faithful
@@ -183,51 +140,16 @@ let verticalOps (NodeId target) : (string * TreeOp<obj>) list =
 //  the tier's own footprint projection over its own op algebra
 // ---------------------------------------------------------------------------
 //
-//  Copied from `CoreLawSupport.footprintOfTreeOp` — the address set of one `TreeOp`, total over
-//  the DU: the structural five delegate to `Fuaran.Core.Ops.footprint`, and a vertical op carries
-//  Core's `UpdateNode` footprint: a read, a content write and an unknown-parent write of the node it
-//  rewrites (Phase 2004 — without the third term an edit and a concurrent removal of the edited
-//  node's ancestor read as independent and do not commute).
+//  RE-EXPORTED, as `CoreLawSupport` re-exports it (Phase 2292): the projection is the shipped
+//  `Fuaran.UI.Ops.TreeOpFootprint.ofOp`, which this project already transpiles with the rest of
+//  `Fuaran.UI.Ops`. Both ports therefore certify the one function a consumer gets, under both
+//  pipelines, and there is no copy here to drift from it.
 //
 //  It is not asserted directly. `FoldConfluence.laneFoldLawsAt` is instantiated with it below, so
 //  the fold-confluence claim is made about THIS function.
 
-let private emptyFp: Fuaran.Core.Footprint = Fuaran.Core.Footprint.empty
-
-let private unionFp: Fuaran.Core.Footprint -> Fuaran.Core.Footprint -> Fuaran.Core.Footprint =
-    Fuaran.Core.Footprint.union
-
-let private skeletonFp (op: Fuaran.Core.SkeletonOp<EqNode, NodeId>) : Fuaran.Core.Footprint =
-    Fuaran.Core.Ops.footprint nodew idw [ op ]
-
-/// A vertical op rewrites one node in place, under a parent it cannot name: Core's `UpdateNode`
-/// footprint over the unkeyed engine — `Reads{id}`, `ContentWrites{id}`, `UnknownParentWrites{id}`.
-let private verticalWrite (NodeId raw) : Fuaran.Core.Footprint =
-    { Fuaran.Core.Footprint.contentEdit raw with
-        UnknownParentWrites = Set.singleton raw }
-
-/// `ReplaceRoot` is the one case with no honest finite address set — it rewrites the whole tree,
-/// so declaring anything for it would let the reconciler call it independent of an op it certainly
-/// interferes with. Outside this projection's vocabulary and outside every generator here.
-let rec footprintOfTreeOp (op: TreeOp<obj>) : Fuaran.Core.Footprint =
-    match op with
-    | TreeOp.InsertChild(parent, child) -> skeletonFp (Fuaran.Core.SkeletonOp.InsertChild(parent, wrap child))
-    | TreeOp.RemoveNode target -> skeletonFp (Fuaran.Core.SkeletonOp.RemoveNode target)
-    | TreeOp.MoveNode(target, newParent) -> skeletonFp (Fuaran.Core.SkeletonOp.MoveNode(target, newParent))
-    | TreeOp.ReorderChildren(parent, order) -> skeletonFp (Fuaran.Core.SkeletonOp.ReorderChildren(parent, order))
-    | TreeOp.EditNode(id, _)
-    | TreeOp.UpdateProp(id, _, _)
-    | TreeOp.ReplaceBinding(id, _, _)
-    | TreeOp.UpdateStyle(id, _)
-    // Phase 2291: node-content precision here; the slot-precise `slotEdit id "style.<field>"` is Phase 2292's.
-    | TreeOp.PatchStyle(id, _)
-    | TreeOp.UpdateState(id, _) -> verticalWrite id
-    | TreeOp.Batch inner -> inner |> List.fold (fun acc o -> unionFp acc (footprintOfTreeOp o)) emptyFp
-    | TreeOp.ReplaceRoot _ ->
-        failwith
-            "footprintOfTreeOp: ReplaceRoot rewrites the whole tree and has no finite address set — it is outside this projection's vocabulary, and no generator here emits it"
-
-let footprintOfEqOp (e: EqOp) : Fuaran.Core.Footprint = footprintOfTreeOp e.Op
+/// The tier's shipped footprint projection.
+let footprintOfEqOp (e: EqOp) : Fuaran.Core.Footprint = Fuaran.UI.Ops.TreeOpFootprint.ofOp e.Op
 
 // ---------------------------------------------------------------------------
 //  the stream witness (laneFoldLawsAt)

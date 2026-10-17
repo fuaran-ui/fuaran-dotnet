@@ -69,7 +69,7 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 | `Conformance.encoderInjectivityLaws` | Not used | — | the [<Obsolete>] forward of Conformance.encoderInjectivityLawsAt, removed at 1.0.0 — the tier calls Conformance.encoderInjectivityLawsAt itself (adopted above), never this spelling |
 | `Conformance.encoderInjectivityLawsAt` | Adopted | — | `the FastPath memo-key encoder is collision-free (encoderInjectivityLawsAt)` — via `Conformance.encoderInjectivityLawsAt` |
 | `Conformance.footprintLaws` | Adopted | — | `the tier's tree footprints are sound, monotone and deterministic (footprintLaws)` — via `Conformance.footprintLaws` |
-| `Conformance.footprintLawsAt` | Carried by phase | — | unfiled — the tier projects its TreeOp onto Core's Footprint (Fuaran.UI.OpStream.Dag.Tests' footprintOfTreeOp, certified by footprintLaws and laneFoldLaws above); this form certifies a footprint at a domain's own ops and StreamWitness, which that projection is |
+| `Conformance.footprintLawsAt` | Adopted | — | `the SHIPPED footprint projection is sound at the tier's own ops (footprintLawsAt)` — via `Conformance.footprintLawsAt` |
 | `Conformance.freshIdLaws` | Not used | — | Fuaran.Core's FreshIds minting helper (fuaran-core Phase 312) — the tier mints ids through its own FreshIds (Fuaran.UI.Ops.Placement) and calls no Core minting |
 | `Conformance.functionVerifyLaws` | Not used | — | the [<Obsolete>] forward of Conformance.functionVerifyLawsAt, removed at 1.0.0 — the tier calls Conformance.functionVerifyLawsAt itself (adopted above), never this spelling |
 | `Conformance.functionVerifyLawsAt` | Adopted | — | `a sound and a broken FastPath pattern certify under Core's functionVerifyLawsAt` — via `Conformance.functionVerifyLawsAt` |
@@ -161,8 +161,8 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 
 | Status | Families |
 |---|---|
-| Adopted | 51 |
-| Carried by phase | 17 |
+| Adopted | 52 |
+| Carried by phase | 16 |
 | Not used | 64 |
 | Sibling host | 1 |
 | **Total** | **133** |
