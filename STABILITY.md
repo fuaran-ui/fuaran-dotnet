@@ -7969,6 +7969,133 @@ corpus and 400 generated pairs, the structural undo law), `TreeDiffTests.fs` (Co
 classification as the projection of the emitted script), and `Fuaran.UI.Tests/CoreAdoptionTests.fs` (Core's
 `diffContainedLaws` over the tier's witness; the census row moves from not-used to adopted).
 
+### What rides this slot — Phase 2308 (the memo gate is Core's `applyMemo`: admission on the effect observed, not the one declared)
+
+**Class: BREAKING** — a BEHAVIOUR change of `Fuaran.UI.Memo`'s admission, two public functions removed and a record
+field added. It rides the 0.96.0 draft, which is already breaking-class, so no number moves. No wire byte, no persisted
+key and no hash moves. Surface guard over the built assemblies against `main` before the change: `Fuaran.UI` breaking
+(one removal), `Fuaran.UI.Memo` breaking (one removal, one record field), `Fuaran.UI.Core.Function` additive (three
+functions), `Fuaran.UI.AiTools` and `Fuaran.UI.Validator.Certification` unchanged.
+
+- **Behaviour change (breaking): the memo admits what Fuaran.Core's `Function.applyMemo` admits.** `Engine.Apply` and
+  `Engine.Reapply` gate on `Fuaran.Core.Memo.isMemoisable` over the effect OBSERVED over the fragment's whole subtree
+  (`Function.observedEffect`) joined with every slot argument's, which is the gate `applyMemo` applies (Core's Phases 53
+  and 307). They no longer gate on the fragment's DECLARED effect. **What changes for a consumer:**
+  - A fragment declared pure and deterministic whose body nests an effecting sub-fragment is no longer served from the
+    store. It is derived on every call, never stored, and reported as a bypass. Before, its second identical
+    application was a cache hit: a stale result for a fragment that reads the network, the clock or the host.
+  - A pure fragment applied with a slot argument that nests an effecting sub-fragment is bypassed the same way.
+  - The walk is the KEYED traversal (`Introspect.keyedWitness` over `nodeWitness`), so a sub-fragment held in a switch
+    case, an error-boundary arm, a state alternative, a fallback or a slot argument counts as well as one in an
+    ordered child list. It is the traversal `FunctionTool.auditFragmentEffect` walks.
+  - The effect gate now runs BEFORE the key. An application it bypasses is never keyed, so a `SharedOrPersisted`
+    engine no longer refuses an effecting application whose encoding carries an unrepresentable-value sentinel. It
+    derives it and bypasses the store, because nothing is written that could be mis-keyed. A memoisable application
+    with such an encoding is refused exactly as before.
+  - The observed effect of a fragment's own subtree is memoised per fragment reference (`Engine.EffectMemo`, bounded at
+    `KeyMemoDefaults.bodyDigestCapacity`), beside the body digest. A cache hit still walks only the slot arguments.
+- **Added: `Fuaran.UI.Memo.MemoGate`.** `witness` is the tier's `ArtifactWitness` for memoisation: a `FragmentDecl` node
+  is the function, its holes and effect are the shared projection's, its `Tree` is the keyed traversal, and its `Bind`
+  is the renderer's `FragmentApply` for one hole (a slot substituted and namespaced by the decl's id; a value closes
+  its hole and never enters the tree). `observed pf slotArgs` is the gated effect, `fragmentEffect` and `joinSlots`
+  are its two halves, `admits` is Core's `Memo.isMemoisable`, and `declNode refId pf` is the decl node the witness
+  applies.
+- **Added: `Fuaran.UI.Memo.Admission`** (`Admitted` | `EffectBypassed of observed` | `Unkeyable of unrepresentable`), and
+  **`Derivation.Admission`** — the derivation says why an application was served, stored or routed around the store.
+  A record field added breaks a full-literal construction of `Derivation` (FS0764). Nothing in this repository builds
+  one outside the engine. `Derivation.StructuralKey` is `None` for an application the effect gate bypassed (it was
+  `Some` of a key that was never used).
+- **Removed (breaking): `Fuaran.UI.FragmentMemo.isCacheable`** and **`Fuaran.UI.Memo.FragmentStore.isStoreEligible`**,
+  the gate on the declared effect. **Migration:** for the old predicate over one declared class, call
+  `Fuaran.Core.Memo.isMemoisable (Fuaran.UI.Core.Function.Projection.toCoreEffect e)`. For the question the engine
+  answers, call `MemoGate.admits (MemoGate.observed pf slotArgs)`.
+- **Added: `Fuaran.UI.Core.Function.Projection.holeAddr`, `holesOf` and `effectOf`** — a decl node's Core holes at
+  their absolute address and its Core effect, in one place. `FunctionTool.uiWitness` and the recipe certification
+  witness read them and their private copies are deleted (behaviour identical). `Fuaran.UI.Memo` now depends on
+  `Fuaran.UI.Core.Function`.
+- **Certified in `Fuaran.UI.Tests`.** `FragmentMemoTests.fs` holds the go-red case: the declared effect alone admits
+  the fixture, the observed effect does not, and two applications are `[Bypass; Bypass]` with nothing stored. Against
+  the gate it replaces, the same two applications read `[Miss; Hit]`. `CoreAdoptionTests.fs` (`MemoGateConformance`)
+  runs `Conformance.memoLawsAt` over `MemoGate.witness` and `CanonicalJson.encodeNode`, the encoder the structural key
+  is built on, and `memoSoundnessLawsAt` over the go-red fixture. The encoder's precondition (Core's Phase 56: an
+  injective encoder) is the Phase 1525 refusal: the canonical encoding is injective only where it carries no
+  sentinel. The suite asserts it over every sample the kit drew. The same module drives the engine over the portable
+  `MemoCacheStore` and Core's `applyMemo` over the witness, across four fragments and two slot sets. Each call must
+  agree on hit, miss or bypass and on the tree, and the store's counters must equal the `MemoCache`'s. A probe that
+  put the declared-effect gate back turned that test red. The census rows for both families now name a second port.
+- **Unchanged:** `FragmentKey` (keys, sentinel test, the `:v2` composition), `StoreReach`, value-only `Reapply`,
+  `BoundedLru`, `BoundedRefMemo`, `InProcessStore`, `MemoCacheStore` and its snapshot, telemetry. A size-bounded
+  `MemoCache` is fuaran-core#490; until it ships the LRU stamps the portable store keeps outside the record stay.
+
+### What rides this slot — Phase 2306 (placement is Core's `TreePlacement`: the verdicts are the engine's dry run, and a same-parent move is a reorder)
+
+**Class: BREAKING (source) + a BEHAVIOUR change of the ops two verbs emit.** It rides the 0.96.0 draft, which is
+already breaking-class, so no number moves. No wire byte, op kind or hash moves: every op the verbs emit is one the
+vocabulary already had. The public surface of `Fuaran.UI.Ops.Placement` changes by removal (the `Placement` union, the `FreshIds` type and module, seven `PlaceError` cases), by
+reshaping (`UnknownAnchor`, three return types), by addition (`Refused`, `IndexOutOfRange`, `Anchor.Index`), so
+the class is breaking whatever else rides beside it.
+
+`Fuaran.UI.Ops.Placement` is now Fuaran.Core's placement algebra (`TreePlacement`, fuaran-core Phase 312) over the
+tier's witnesses. Each verb asks the engine for its verdict — the keyed dry run `Ops.canApplyContainedKeyed` under
+the apply engine's container predicate, over the whole tree — then applies the tier's own keyed-position rule (a
+structural op cannot vacate or cross a keyed position; it descends into one exactly as `Apply` does), then lowers
+through `TreePlacement.placeContained` / `moveContained` at that scope. The hand-written pre-checks that mirrored the
+engine (absent node, childless destination, move into itself or its own subtree) are deleted; there is no mirror
+left to fall out of step.
+
+- **`Target.Placement` is Core's `Anchor<NodeId>`.** The tier's own `Placement` union is deleted. **Migration:**
+  `Placement.Last` / `First` / `Before id` / `After id` → `Anchor.Last` / `First` / `Before id` / `After id`
+  (`open Fuaran.Core`, or `Fuaran.Core.Anchor.…`); the record keeps its two field names. New: `Anchor.Index i`, a
+  position among the destination's children OTHER than the node placed, `0` (first) to their count (last)
+  inclusive, bounds-checked by Core.
+- **`PlaceError` is Core's three cases plus the tier's two.** **Migration**, case by case:
+  - `ParentNotFound p` → `Refused(Rejection.UnknownNode(p, addressable))`
+  - `ChildlessKind p` → `Refused(Rejection.NotAContainer(p, kindTag))`
+  - `NodeNotFound n` → `Refused(Rejection.UnknownNode(n, addressable))`
+  - `DuplicateId n` → `Refused(Rejection.DuplicateId n)`
+  - `MoveIntoSelf n` → `Refused(Rejection.WouldNestUnderSelf(n, NestRelation.Self))`
+  - `MoveIntoDescendant(n, _)` → `Refused(Rejection.WouldNestUnderSelf(n, NestRelation.Descendant))`; a move of the
+    root is `Refused Rejection.CannotRemoveRoot`
+  - `UnknownAnchor a` → `UnknownAnchor(parent, a, siblings)` (Core's case: the destination, the anchor, and the
+    children it could have named)
+  - `NudgeOutOfRange(n, delta)` → `IndexOutOfRange(parent, index, count)` (`index` is the position the nudge asked
+    for, `count` the parent's other children: `index < 0` is already first, `index > count` already last)
+  - `PositionNotStructural(n, slot)` and `CannotNudgeRoot n` — unchanged, the tier's own (Core's `KeyedPosition`
+    names the holder, not the slot label; fuaran-core#492).
+
+  `Refused` carries the engine's rejection unchanged, so `Rejection.explain` / `Rejection.code` read it directly.
+- **A same-parent move is a reorder (behaviour).** `moveOp` returns `Result<TreeOp<'Msg> option, PlaceError>`: a
+  move within the node's own parent is a bare `ReorderChildren` (it was `Batch [MoveNode; ReorderChildren]`), and
+  `None` when the node is already where the target puts it. A reorder footprints the parent alone, where a move
+  also writes the node and an unknown parent (`TreeOpFootprint`, Phase 2292), so the same-parent form serialises
+  against fewer concurrent edits. It agrees with what `TreeOpDiff` emits for the same edit (Phase 2304). A move to
+  another parent is unchanged: a bare `MoveNode` when it lands last, else `Batch [MoveNode; ReorderChildren]`.
+  **Migration:** match `Ok(Some op)` / `Ok None` (an empty commit) where `Ok op` was matched.
+- **`nudgeOp` is Core's move to `Anchor.Index (index + delta)` (behaviour).** It returns
+  `Result<TreeOp<'Msg> option, PlaceError>`: a bare `ReorderChildren`, `None` for a zero delta. For `delta = ±1` the
+  order is the one the old swap produced. For `|delta| > 1` the node SHIFTS that many places and every other sibling
+  keeps its order (`[a; b; c]`, `a` by `+2` → `[b; c; a]`; the old swap gave `[c; b; a]`).
+- **`canPlace` answers `Result<unit, PlaceError>`** — `moveOp`'s verdict. It answered the destination's post-move
+  order (Phase 2064) only so `moveOp` could reuse it; `moveOp` no longer computes one.
+- **The clone verbs rename through Core's `FreshIds.repairDuplicates`** over the keyed walk (`Tree.traversal`), so
+  an id held in a keyed position is renamed with the rest, as before. The tier's `FreshIds` type and module are
+  deleted. **Migration:** a strategy is Core's shape, `NodeId -> Set<string> -> NodeId`;
+  `FreshIds.derived` → `FreshIds.derived Introspect.idWitness` (same `<id>-copy`, `-copy-2`, … spelling, same ids);
+  `FreshIds.sequential prefix` → `FreshIds.sequential Introspect.idWitness prefix` (no hidden counter: the first free
+  `<prefix>-n` against the tree, so two clones minted from one strategy value against the same tree mint the same
+  ids, and against a tree that already holds the first clone, the next ones). New: an id the INCOMING subtree
+  repeats within itself is renamed too (its later occurrence), where it used to be passed through to the engine's
+  duplicate-id refusal. `duplicateOp` of an absent source is `Refused(Rejection.UnknownNode …)`, and a source held
+  in a keyed position is now reached.
+- **Unchanged:** `placeOp` (its emitted ops), `duplicateOp` / `pasteOp` (their emitted ops, for an incoming subtree
+  with unique ids), `reorderOp`, and every keyed-position answer (a node below a position moves, nudges and takes
+  inserts within it; a node at one, or a crossing, is `PositionNotStructural`).
+
+**Certified by** `Fuaran.UI.Ops.Tests/PlacementTests.fs` (every verb against the real apply engine: no false permit,
+every `Refused` the engine's refusal of the bare op, every anchor refusal honest, a same-parent move a bare reorder or
+nothing — over 400 generated trees per verb, `Index` anchors included) and `Fuaran.UI.Tests/CoreAdoptionTests.fs`
+(Core's `placementLaws` and `freshIdLaws` over the tier's witness; both census rows move from not-used to adopted).
+
 
 ---
 

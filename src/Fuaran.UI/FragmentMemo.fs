@@ -4,50 +4,41 @@ open System.Collections.Generic
 open Fuaran.UI.Types
 
 // ============================================================================
-//  FragmentMemo — the generic, Fable-clean memo core (Phase 183).
+//  FragmentMemo — the tier's two memo bounds (Phase 183, Phase 210).
 //
-//  The reusable, dependency-free building blocks of the incremental
-//  re-derivation engine:
+//  What the memo engine (`Fuaran.UI.Memo`) needs beside Fuaran.Core's
+//  `Function` contract, and nothing Core already provides:
 //
-//   1. `isCacheable` — the EFFECT-CLASS CACHE GATE (invariant 3). Only a pure +
-//      deterministic effect class is memoisable; an effecting / clock / random /
-//      network-sourced result must be re-derived every time, never served stale
-//      from a cache. This is the admission decision the wiring engine consults
-//      before touching the cache.
+//   1. `BoundedLru` — a size-bounded least-recently-used cache over string keys,
+//      with hit/miss counters. The engine's default in-process store holds
+//      substituted trees here; the bound keeps a long authoring session from
+//      growing the cache without limit. Core's `MemoCache` is an unbounded
+//      record, so the bound is the tier's until Core carries one
+//      (fuaran-core#490).
 //
-//   2. `BoundedLru` — a size-bounded least-recently-used cache over string keys,
-//      with hit/miss counters. The engine stores substituted trees here; the
-//      bound keeps a long authoring session from growing the cache without
-//      limit.
-//
-//   3. `BoundedRefMemo` — a size-bounded memo keyed by REFERENCE IDENTITY
+//   2. `BoundedRefMemo` — a size-bounded memo keyed by REFERENCE IDENTITY
 //      (Phase 210), for the derived value of an immutable object that cannot be
 //      looked up by content without recomputing the very thing being memoised.
-//      The engine memoises each fragment body's content digest here, so a cache
-//      probe no longer re-encodes + re-hashes the whole body just to build its
-//      key.
+//      The engine memoises each fragment body's content digest and its observed
+//      effect here, so a cache probe neither re-encodes and re-hashes the whole
+//      body to build its key nor re-walks it to gate it.
 //
-//  Both live here (in `Fuaran.UI`, `FSharp.Core` + `Fuaran.UI.Types` only) so
-//  they are Fable-clean and reusable — the same gate + bound will lift onto the
-//  generic `Fuaran.Core.Function` contract when Phase 181's rule-of-three gate
-//  trips. The CanonicalJson-keyed wiring + the `FragmentApply` call + the
-//  telemetry emission live one tier up (`Fuaran.UI.Fragment.Memo`), which can
-//  reference the renderer + op-stream + telemetry packages this one cannot.
+//  The admission gate is not here. It is Core's: `Fuaran.Core.Memo.isMemoisable`
+//  over the effect `Fuaran.Core.Function.observedEffect` observes over the
+//  fragment and its slot arguments, applied by the engine's `MemoGate` exactly as
+//  `Function.applyMemo` applies it (Phase 2308). The predicate that gated on the
+//  fragment's DECLARED effect is deleted.
+//
+//  Both bounds live here (in `Fuaran.UI`, `FSharp.Core` + `Fuaran.UI.Types`
+//  only) so they are Fable-clean. The keyed wiring, the `FragmentApply` call and
+//  the telemetry emission live one tier up (`Fuaran.UI.Memo`), which can
+//  reference the renderer, op-stream and telemetry packages this one cannot.
 //
 //  THREADING: `BoundedLru` is single-threaded by contract (no `lock` —
 //  `lock` is not Fable-portable). The browser authoring loop is single-
 //  threaded, so that is the default. A server host sharing one cache across
 //  threads serialises access externally.
 // ============================================================================
-
-/// The cache-admission gate (invariant 3): `true` only when the fragment's
-/// effect class is pure AND deterministic — the single shape whose output is a
-/// total function of its inputs and is therefore safe to memoise. Equivalent to
-/// `e = EffectClass.pureDeterministic`, written as an explicit predicate so the
-/// gate reads at the call site.
-let isCacheable (e: EffectClass) : bool =
-    e.HostEffect = HostEffect.Pure
-    && e.Determinism = DeterminismSource.Deterministic
 
 /// One cache slot: the value plus a monotonic access stamp for recency.
 type private LruEntry<'V> =
@@ -149,7 +140,7 @@ type private RefEntry<'K, 'V> =
       mutable Stamp: int64 }
 
 /// A size-bounded memo keyed by REFERENCE IDENTITY rather than by value — the
-/// third memo building block (Phase 210), beside `isCacheable` and `BoundedLru`.
+/// second memo building block (Phase 210), beside `BoundedLru`.
 ///
 /// It exists for the case where the key is an immutable object whose derived
 /// value is expensive and constant for that object's lifetime, and where hashing

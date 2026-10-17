@@ -70,7 +70,7 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 | `Conformance.encoderInjectivityLawsAt` | Adopted | — | `the FastPath memo-key encoder is collision-free (encoderInjectivityLawsAt)` — via `Conformance.encoderInjectivityLawsAt` |
 | `Conformance.footprintLaws` | Adopted | — | `the tier's tree footprints are sound, monotone and deterministic (footprintLaws)` — via `Conformance.footprintLaws` |
 | `Conformance.footprintLawsAt` | Adopted | — | `the SHIPPED footprint projection is sound at the tier's own ops (footprintLawsAt)` — via `Conformance.footprintLawsAt` |
-| `Conformance.freshIdLaws` | Not used | — | Fuaran.Core's FreshIds minting helper (fuaran-core Phase 312) — the tier mints ids through its own FreshIds (Fuaran.UI.Ops.Placement) and calls no Core minting |
+| `Conformance.freshIdLaws` | Adopted | — | `the Fuaran.UI witness certifies under Core's freshIdLaws (the clone verbs' renaming)` — via `Conformance.freshIdLaws` |
 | `Conformance.functionVerifyLaws` | Not used | — | the [<Obsolete>] forward of Conformance.functionVerifyLawsAt, removed at 1.0.0 — the tier calls Conformance.functionVerifyLawsAt itself (adopted above), never this spelling |
 | `Conformance.functionVerifyLawsAt` | Adopted | — | `a sound and a broken FastPath pattern certify under Core's functionVerifyLawsAt` — via `Conformance.functionVerifyLawsAt` |
 | `Conformance.hashFnAdversarialLaws` | Adopted | 2 | `the portable SHA-256 certifies under Core's hashFnLaws (the supply-your-own-crypto contract)` — via `Conformance.hashFnAdversarialLaws` |
@@ -79,20 +79,20 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 | `Conformance.incrementalLaws` | Adopted | — | `incrementalLaws certifies change-driven and op-driven equivalence at this pin` — via `Conformance.incrementalLaws — beside the tier-shaped 'the seven corpus vectors obey the one-scale bound, declined ones included'` |
 | `Conformance.incrementalLawsWith` | Not used | — | DataFrame.evalFrom over ColumnOps.changeOf at a domain's StreamGen<ColumnOp, Table> — the tier's incremental path is Incremental.primeOn / refreshOn over a row TableDelta (ServerDriven/LiveTransform.fs, see IncrementalDelta.laws / lawsWith), and no project here edits a table through a ColumnOp |
 | `Conformance.introducedLaws` | Not used | — | Fuaran.Core.Validator's introduced-findings gate (introduced / verdict / gate under a GatePolicy) — RecipeCertification uses a Core Validator.Registry only as a validity oracle, and DagMerge.mergeGated gates through the tier's own validator, so nothing here calls the Core gate |
-| `Conformance.keyedApplyLaws` | Carried by phase | — | unfiled — the KeyedWitness keyedChildrenLaws names above (ErrorBoundary fallback, state.onEmpty, state.onLoading) is this family's subject too |
-| `Conformance.keyedApplyLawsAt` | Carried by phase | — | unfiled — the 0.36.0 name of keyedApplyLaws: needs the same KeyedWitness as keyedChildrenLaws above |
-| `Conformance.keyedArbitrationLaws` | Carried by phase | — | unfiled — needs the same KeyedWitness as keyedChildrenLaws above |
-| `Conformance.keyedArbitrationLawsAt` | Carried by phase | — | unfiled — the 0.36.0 name of keyedArbitrationLaws: needs the same KeyedWitness as keyedChildrenLaws above |
-| `Conformance.keyedArbitrationLawsWith` | Carried by phase | — | unfiled — needs the same KeyedWitness as keyedChildrenLaws above |
+| `Conformance.keyedApplyLaws` | Carried by phase | — | unfiled — Introspect.keyedWitness, which keyedChildrenLawsAt is adopted at (the `fallback`, `state.onEmpty` and `state.onLoading` slots among its positions), is this family's subject too |
+| `Conformance.keyedApplyLawsAt` | Carried by phase | — | unfiled — the 0.36.0 name of keyedApplyLaws: runs at the same Introspect.keyedWitness keyedChildrenLawsAt is adopted at |
+| `Conformance.keyedArbitrationLaws` | Carried by phase | — | unfiled — runs at the same Introspect.keyedWitness keyedChildrenLawsAt is adopted at |
+| `Conformance.keyedArbitrationLawsAt` | Carried by phase | — | unfiled — the 0.36.0 name of keyedArbitrationLaws: runs at the same Introspect.keyedWitness keyedChildrenLawsAt is adopted at |
+| `Conformance.keyedArbitrationLawsWith` | Carried by phase | — | unfiled — runs at the same Introspect.keyedWitness keyedChildrenLawsAt is adopted at |
 | `Conformance.keyedCaptureLaws` | Not used | — | CapabilityRegistry.dispatchCaptured / dispatchReplayed and the keyed capture journal — no project here dispatches a capability through the capture seam |
-| `Conformance.keyedChildrenLaws` | Carried by phase | — | unfiled — this tier DOES hold nodes in named slots the conformance walk does not reach, so the family has a subject here. `Introspect.getChildren` (Fuaran.UI.Ops) is what `NodeWitness.Children` is built on, and it answers `None` for ErrorBoundary and for the State envelope; those three subtrees — `fallback`, `state.onEmpty`, `state.onLoading` — are reached only by the separate `nonStructuralSlots` lens. So an id sitting in one of them is invisible to the surface uniqueness walk, which is the defect class this family certifies. Not `NotUsed`: that would assert there is nothing keyed here, and there demonstrably is. Adopting it needs a `KeyedWitness` over those slots — the work is small and named, and it arrived with the 0.30.0 pin raise (fuaran-core#188's release slot). |
-| `Conformance.keyedChildrenLawsAt` | Carried by phase | — | unfiled — the 0.36.0 name of keyedChildrenLaws (see that row): the ErrorBoundary fallback and state.onEmpty / state.onLoading slots are this family's subject; adoption is one KeyedWitness over them |
+| `Conformance.keyedChildrenLaws` | Adopted | 600 | `the tier's whole-tree id check certifies under Core's keyedChildrenLawsAt over the named node slots` — via `Conformance.keyedChildrenLawsAt (the forward's own body)` |
+| `Conformance.keyedChildrenLawsAt` | Adopted | 600 | `the tier's whole-tree id check certifies under Core's keyedChildrenLawsAt over the named node slots` — via `Conformance.keyedChildrenLawsAt — at Introspect.keyedWitness, over the fallback, state.onEmpty and state.onLoading slots the surface walk does not reach` |
 | `Conformance.laneLaws` | Not used | — | Fuaran.Core.OpStream.Dag's lane store and whole-DAG order (Dag.loadLanes / totalOrderBy / replayAllBy, fuaran-core Phase 311) — no project here loads lanes or orders a DAG through them |
 | `Conformance.loweringLaws` | Not used | — | Fuaran.Core.Ops.lower (fuaran-core Phase 312) — no project here lowers a tree to ops through Core |
 | `Conformance.memoLaws` | Not used | — | the [<Obsolete>] forward of Conformance.memoLawsAt, removed at 1.0.0 — the tier calls Conformance.memoLawsAt itself (adopted above), never this spelling |
-| `Conformance.memoLawsAt` | Adopted | — | `FastPath application memoises soundly under Core's memoLawsAt` — via `Conformance.memoLawsAt` |
+| `Conformance.memoLawsAt` | Adopted | 1000 | `FastPath application memoises soundly under Core's memoLawsAt` — via `Conformance.memoLawsAt`<br>`the memo engine's witness and key encoder certify under Core's memoLawsAt` — via `Conformance.memoLawsAt` |
 | `Conformance.memoSoundnessLaws` | Not used | — | the [<Obsolete>] forward of Conformance.memoSoundnessLawsAt, removed at 1.0.0 — the tier calls Conformance.memoSoundnessLawsAt itself (adopted above), never this spelling |
-| `Conformance.memoSoundnessLawsAt` | Adopted | — | `an under-declared FastPath function is never cached (memoSoundnessLawsAt)` — via `Conformance.memoSoundnessLawsAt` |
+| `Conformance.memoSoundnessLawsAt` | Adopted | 40 | `an under-declared FastPath function is never cached (memoSoundnessLawsAt)` — via `Conformance.memoSoundnessLawsAt`<br>`an under-declared fragment is never cached under Core's memoSoundnessLawsAt` — via `Conformance.memoSoundnessLawsAt` |
 | `Conformance.mergeConflictLaws` | Adopted | — | `merge-conflict reporting is symmetric, deterministic and complete (mergeConflictLaws)` — via `Conformance.mergeConflictLaws` |
 | `Conformance.noAttestationVacuityLaws` | Adopted | — | `noAttestationVacuityLaws certifies that the un-attested default proves nothing` — via `Conformance.noAttestationVacuityLaws` |
 | `Conformance.normalizeLaws` | Not used | — | Fuaran.Core.Ops.normalize — Apply.fs delegates only the structural-five APPLY to Core (applyContained); the tier ships no op-script normaliser, so the family's subject has no call site here |
@@ -102,7 +102,7 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 | `Conformance.opAlgebra` | Adopted | 3400 | `the Fuaran.UI witness certifies end-to-end via the unified Conformance.certify` — via `Conformance.certify` |
 | `Conformance.packLoadingLaws` | Adopted | — | `content-pack loading certifies under Core's packLoadingLaws` — via `Conformance.packLoadingLaws` |
 | `Conformance.paramLaws` | Adopted | — | `parameterised-query binding certifies under Core's paramLaws` — via `Conformance.paramLaws` |
-| `Conformance.placementLaws` | Not used | — | Fuaran.Core.Ops' TreePlacement algebra (fuaran-core Phase 312) — the tier places children through its own Fuaran.UI.Ops.Placement and calls no Core placement |
+| `Conformance.placementLaws` | Adopted | — | `the Fuaran.UI witness certifies under Core's placementLaws (Placement's verbs)` — via `Conformance.placementLaws` |
 | `Conformance.plannerLaws` | Not used | — | a host pipeline planner — the tier evaluates through Fuaran.Compute.DataFrame.evalPipeline, whose planner is the producer's own, and ships no planner to hold to the as-written fold |
 | `Conformance.policyLaws` | Carried by phase | — | unfiled — self-contained over the kit's registries, as capabilityLaws (adopted above) is; its subject, a policy gate between validation and the body on a Core CapabilityRegistry, sits on the registry Fuaran.UI.AiTools.Capabilities dispatches over, so adoption is one test beside the capabilityLaws test running the family |
 | `Conformance.policyLawsAt` | Not used | — | Fuaran.Core.AiSurface's guarded submit at a domain's GuardedSurfaceWitness — no project in this tier references Fuaran.Core.AiSurface (see aiSurfaceLaws) |
@@ -161,8 +161,8 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 
 | Status | Families |
 |---|---|
-| Adopted | 53 |
-| Carried by phase | 16 |
-| Not used | 63 |
+| Adopted | 57 |
+| Carried by phase | 14 |
+| Not used | 61 |
 | Sibling host | 1 |
 | **Total** | **133** |

@@ -37,11 +37,13 @@ open Fuaran.UI.OpStream.Abstractions
 //      the same result tree served without re-derivation, a hit "all the way
 //      down". This is the concrete adoption of `fuaran-core#49`.
 //
-//  THE EFFECT GATE rides on the ENGINE (`FragmentMemo.isCacheable`, the two-axis
-//  pure-&-deterministic predicate — identical to `Fuaran.Core.Memo.isMemoisable`):
-//  a non-memoisable fragment never touches the store (never served, never
-//  stored), so an impure / non-deterministic result is never cached (Fork 3).
-//  A store's `Bypasses` counter records those the engine routed AROUND it.
+//  THE EFFECT GATE rides on the ENGINE and is Fuaran.Core's (Phase 2308,
+//  `MemoGate`): `Fuaran.Core.Memo.isMemoisable` over the effect observed over the
+//  fragment's subtree and its slot arguments, as `Function.applyMemo` gates. A
+//  non-memoisable application never touches the store (never served, never
+//  stored), so an impure / non-deterministic result is never cached (Fork 3),
+//  whatever the fragment declares. A store's `Bypasses` counter records those the
+//  engine routed AROUND it, the counter `MemoCache.Bypasses` is.
 // ============================================================================
 
 /// A caller-supplied, content-addressed store for substituted fragment subtrees
@@ -214,7 +216,7 @@ type MemoCacheStore<'Msg>(initial: Fuaran.Core.MemoCache<Node<'Msg>>, capacity: 
         /// `Count`, the honest answer while the store was unbounded.
         member _.Capacity = capacity
 
-/// Helpers for building the default / portable stores and for the effect gate.
+/// Helpers for building the default / portable stores.
 module FragmentStore =
 
     /// The default in-process store over a bounded LRU (the pre-360 behaviour).
@@ -234,10 +236,3 @@ module FragmentStore =
     /// cross-machine restore path.
     let fromSnapshot<'Msg> (c: Fuaran.Core.MemoCache<Node<'Msg>>) : MemoCacheStore<'Msg> =
         MemoCacheStore<'Msg>.FromCache c
-
-    /// The effect gate (Fork 3) — a fragment is store-eligible only when its
-    /// declared effect is pure AND deterministic. Identical to
-    /// `Fuaran.Core.Memo.isMemoisable` on the two axes; delegates to the shipped
-    /// `FragmentMemo.isCacheable`, the single admission predicate. An impure /
-    /// non-deterministic fragment is bypassed — never served, never stored.
-    let isStoreEligible (e: EffectClass) : bool = isCacheable e

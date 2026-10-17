@@ -85,6 +85,19 @@ let private containerTest =
 let private diffContainedTest =
     "the Fuaran.UI witness certifies under Core's diffContainedLaws (TreeOpDiff's script)"
 
+/// Phase 1857 — the tier's whole-tree id check over the named node slots the surface walk does
+/// not reach, at `Introspect.keyedWitness`.
+let private keyedChildrenTest =
+    "the tier's whole-tree id check certifies under Core's keyedChildrenLawsAt over the named node slots"
+
+/// Phase 2306 — `Placement`'s verbs are Core's `TreePlacement`, certified under its own family.
+let private placementTest =
+    "the Fuaran.UI witness certifies under Core's placementLaws (Placement's verbs)"
+
+/// Phase 2306 — the clone verbs rename through Core's `FreshIds`, certified under its own family.
+let private freshIdTest =
+    "the Fuaran.UI witness certifies under Core's freshIdLaws (the clone verbs' renaming)"
+
 /// The stream-only aggregate's adopter, beside `certifyTest` above: `certifyStream` runs the
 /// reducer laws first and the op-stream laws only if the reducer proved total, so a family folded
 /// into it is reached here and nowhere else in this repo.
@@ -216,6 +229,17 @@ let private memoSoundnessTest =
 
 let private encoderInjectivityTest =
     "the FastPath memo-key encoder is collision-free (encoderInjectivityLawsAt)"
+
+/// Phase 2308 — the memo engine's second port of the two memo families, in `CoreAdoptionTests.fs`
+/// (`MemoGateConformance`), over `Fuaran.UI.Memo.MemoGate.witness` and the canonical encoder the
+/// engine's structural key is built on. The engine gates on Core's predicate over that witness, and
+/// the same module checks its verdict against `applyMemo`'s, so these rows certify the tier's own
+/// memo rather than only the FastPath algebra.
+let private uiMemoTest =
+    "the memo engine's witness and key encoder certify under Core's memoLawsAt"
+
+let private uiMemoSoundnessTest =
+    "an under-declared fragment is never cached under Core's memoSoundnessLawsAt"
 
 /// The attributed / attestation families (fuaran#1480), enrolled from `Fuaran.UI.OpStream.Tests`
 /// beside the persistence families above and over the SAME witness those use — the attestation one
@@ -403,8 +427,12 @@ let census: (string * Adoption) list =
       // bodies rather than left to be inferred from a green row.
       "Conformance.registryLaws", Adopted(registryTest, "Conformance.registryLaws")
       "Conformance.capabilityLaws", Adopted(capabilityTest, "Conformance.capabilityLaws")
-      "Conformance.memoLawsAt", Adopted(memoTest, "Conformance.memoLawsAt")
-      "Conformance.memoSoundnessLawsAt", Adopted(memoSoundnessTest, "Conformance.memoSoundnessLawsAt")
+      "Conformance.memoLawsAt",
+      AdoptedAcross [ memoTest, "Conformance.memoLawsAt"; uiMemoTest, "Conformance.memoLawsAt" ]
+      "Conformance.memoSoundnessLawsAt",
+      AdoptedAcross
+          [ memoSoundnessTest, "Conformance.memoSoundnessLawsAt"
+            uiMemoSoundnessTest, "Conformance.memoSoundnessLawsAt" ]
       "Conformance.functionVerifyLawsAt", Adopted(functionVerifyTest, "Conformance.functionVerifyLawsAt")
       "Conformance.verifyHonestyLawsAt", Adopted(verifyHonestyTest, "Conformance.verifyHonestyLawsAt")
       "Conformance.compositionLawsAt", Adopted(compositionTest, "Conformance.compositionLawsAt")
@@ -603,9 +631,10 @@ let census: (string * Adoption) list =
       "IncrementalDelta.stateLaws",
       NotUsed
           "the Incremental state's wire codec (encode / decode, attached and detached) — LiveTransformStore keeps its Incremental state in process across primeOn / refreshOn (ServerDriven/LiveTransform.fs) and never encodes, persists or ships it"
+      // Phase 1857 — the obsolete forward of keyedChildrenLawsAt, reached through it (one run
+      // answers for both spellings; see that row).
       "Conformance.keyedChildrenLaws",
-      CarriedBy
-          "unfiled — this tier DOES hold nodes in named slots the conformance walk does not reach, so the family has a subject here. `Introspect.getChildren` (Fuaran.UI.Ops) is what `NodeWitness.Children` is built on, and it answers `None` for ErrorBoundary and for the State envelope; those three subtrees — `fallback`, `state.onEmpty`, `state.onLoading` — are reached only by the separate `nonStructuralSlots` lens. So an id sitting in one of them is invisible to the surface uniqueness walk, which is the defect class this family certifies. Not `NotUsed`: that would assert there is nothing keyed here, and there demonstrably is. Adopting it needs a `KeyedWitness` over those slots — the work is small and named, and it arrived with the 0.30.0 pin raise (fuaran-core#188's release slot)."
+      Adopted(keyedChildrenTest, "Conformance.keyedChildrenLawsAt (the forward's own body)")
       "Conformance.aiSurfaceLaws",
       NotUsed
           "Fuaran.Core.AiSurface — the tier ships its own runtime introspection surface (Fuaran.UI.AiTools) and consumes no Core AI surface"
@@ -690,10 +719,11 @@ let census: (string * Adoption) list =
           "unfiled — reconcileLaws is adopted above at the kit's hash; this form pins the domain's hash, and the tier ships one (SHA-256, as laneFoldLawsWith is instantiated with)"
       "Conformance.keyedApplyLaws",
       CarriedBy
-          "unfiled — the KeyedWitness keyedChildrenLaws names above (ErrorBoundary fallback, state.onEmpty, state.onLoading) is this family's subject too"
-      "Conformance.keyedArbitrationLaws", CarriedBy "unfiled — needs the same KeyedWitness as keyedChildrenLaws above"
+          "unfiled — Introspect.keyedWitness, which keyedChildrenLawsAt is adopted at (the `fallback`, `state.onEmpty` and `state.onLoading` slots among its positions), is this family's subject too"
+      "Conformance.keyedArbitrationLaws",
+      CarriedBy "unfiled — runs at the same Introspect.keyedWitness keyedChildrenLawsAt is adopted at"
       "Conformance.keyedArbitrationLawsWith",
-      CarriedBy "unfiled — needs the same KeyedWitness as keyedChildrenLaws above"
+      CarriedBy "unfiled — runs at the same Introspect.keyedWitness keyedChildrenLawsAt is adopted at"
       "Conformance.checkpointLaws",
       NotUsed
           "Fuaran.Core.OpStream.Dag's lane-DAG checkpoint (Dag.Checkpoint, Core 0.34.0, fuaran-core Phase 288) — the tier checkpoints its DAG through its own DagReplay.replayFromCheckpoint (Fuaran.UI.OpStream.Dag.Merge) and takes no Core DAG checkpoint"
@@ -703,14 +733,10 @@ let census: (string * Adoption) list =
       "Conformance.laneLaws",
       NotUsed
           "Fuaran.Core.OpStream.Dag's lane store and whole-DAG order (Dag.loadLanes / totalOrderBy / replayAllBy, fuaran-core Phase 311) — no project here loads lanes or orders a DAG through them"
-      "Conformance.placementLaws",
-      NotUsed
-          "Fuaran.Core.Ops' TreePlacement algebra (fuaran-core Phase 312) — the tier places children through its own Fuaran.UI.Ops.Placement and calls no Core placement"
+      "Conformance.placementLaws", Adopted(placementTest, "Conformance.placementLaws")
       "Conformance.loweringLaws",
       NotUsed "Fuaran.Core.Ops.lower (fuaran-core Phase 312) — no project here lowers a tree to ops through Core"
-      "Conformance.freshIdLaws",
-      NotUsed
-          "Fuaran.Core's FreshIds minting helper (fuaran-core Phase 312) — the tier mints ids through its own FreshIds (Fuaran.UI.Ops.Placement) and calls no Core minting"
+      "Conformance.freshIdLaws", Adopted(freshIdTest, "Conformance.freshIdLaws")
       "Conformance.referenceLaws",
       NotUsed "a Core RefWitness — the tier declares no Core reference seam (no project here builds a RefWitness)"
       "Conformance.witnessSurfaceLaws",
@@ -818,14 +844,22 @@ let census: (string * Adoption) list =
           "Fuaran.Core.Propagation's incremental evaluator seam — the 0.36.0 name of propagationEvaluatorLaws (see that row): nothing in this tier hands Propagation an evaluator"
       "Conformance.referenceLawsAt",
       NotUsed "a Core RefWitness — the 0.36.0 name of referenceLaws (see that row): no project here builds a RefWitness"
+      // Phase 1857 — `Introspect.getChildren` (what `NodeWitness.Children` is built on) answers
+      // nothing for a node's `state` alternatives or an ErrorBoundary, so the `fallback`,
+      // `state.onEmpty` and `state.onLoading` slots are invisible to the surface walk `certify`
+      // runs. The family certifies the tier's whole-tree id check over them, at
+      // `Introspect.keyedWitness`.
       "Conformance.keyedChildrenLawsAt",
-      CarriedBy
-          "unfiled — the 0.36.0 name of keyedChildrenLaws (see that row): the ErrorBoundary fallback and state.onEmpty / state.onLoading slots are this family's subject; adoption is one KeyedWitness over them"
+      Adopted(
+          keyedChildrenTest,
+          "Conformance.keyedChildrenLawsAt — at Introspect.keyedWitness, over the fallback, state.onEmpty and state.onLoading slots the surface walk does not reach"
+      )
       "Conformance.keyedApplyLawsAt",
-      CarriedBy "unfiled — the 0.36.0 name of keyedApplyLaws: needs the same KeyedWitness as keyedChildrenLaws above"
+      CarriedBy
+          "unfiled — the 0.36.0 name of keyedApplyLaws: runs at the same Introspect.keyedWitness keyedChildrenLawsAt is adopted at"
       "Conformance.keyedArbitrationLawsAt",
       CarriedBy
-          "unfiled — the 0.36.0 name of keyedArbitrationLaws: needs the same KeyedWitness as keyedChildrenLaws above"
+          "unfiled — the 0.36.0 name of keyedArbitrationLaws: runs at the same Introspect.keyedWitness keyedChildrenLawsAt is adopted at"
       // Phase 2307 — both in-memory observers run on Core's ObserverWitness, and each suite
       // certifies the witness its observer is built on.
       "Conformance.observerLawsAt", AdoptedAcross observerPorts
@@ -1222,10 +1256,15 @@ let private measuredHere: Set<string> =
           "Conformance.streamLaws"
           "Conformance.opAlgebra"
           "Conformance.containerLaws"
+          "Conformance.keyedChildrenLaws"
+          "Conformance.keyedChildrenLawsAt"
           "Conformance.chainBreakReasonLaws"
           "Conformance.dagBreakReasonLaws"
           "Conformance.hashFnLaws"
           "Conformance.hashFnAdversarialLaws"
+          // Phase 2308 — the memo engine's port (the FastPath port runs in its own process).
+          "Conformance.memoLawsAt"
+          "Conformance.memoSoundnessLawsAt"
           "Conformance.reducer"
           "Conformance.columnarOpLaws"
           "Conformance.columnarOpLawsWith"

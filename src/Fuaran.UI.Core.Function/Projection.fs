@@ -30,3 +30,37 @@ let toCoreEffect (e: EffectClass) : Fuaran.Core.EffectClass =
         | DeterminismSource.Clock -> Fuaran.Core.Effect.clock
         | DeterminismSource.Random -> Fuaran.Core.Effect.random
         | DeterminismSource.Network -> Fuaran.Core.Effect.network }
+
+/// The absolute lexical address of a fragment-decl hole: `<declId>.<holeName>`. Binding is by
+/// address, never by a bare name (hygiene).
+let holeAddr (declId: string) (holeName: string) : string = declId + "." + holeName
+
+/// A fragment-decl node's declared holes as the Core function model reads them, each at its
+/// absolute address (`holeAddr`). Every other node declares none. The one definition the tier's
+/// `ArtifactWitness`es read (Phase 2308).
+let holesOf (node: Node<'Msg>) : Fuaran.Core.HoleDecl list =
+    match node.Kind with
+    | NodeKind.FragmentDecl spec ->
+        spec.Holes
+        |> List.map (fun h ->
+            let name = HoleDecl.name h
+
+            let kind =
+                match h with
+                | HoleDecl.Value(_, space, _) -> Fuaran.Core.ValueHole(toCoreSpace space)
+                | HoleDecl.Slot(_, constraintOpt) -> Fuaran.Core.SlotHole constraintOpt
+                | HoleDecl.Repeat(_, space) -> Fuaran.Core.RepeatHole(toCoreSpace space)
+
+            ({ Addr = holeAddr node.Id name
+               Name = name
+               Kind = kind }
+            : Fuaran.Core.HoleDecl))
+    | _ -> []
+
+/// A node's declared effect as the Core function model reads it: a fragment decl's declared
+/// class, and pure and deterministic for every other node, which declares no effect surface.
+/// `Fuaran.Core.Function.observedEffect` joins this over a subtree (Phase 2308).
+let effectOf (node: Node<'Msg>) : Fuaran.Core.EffectClass =
+    match node.Kind with
+    | NodeKind.FragmentDecl spec -> toCoreEffect spec.Effect
+    | _ -> Fuaran.Core.Effect.pureDeterministic

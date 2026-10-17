@@ -124,6 +124,30 @@ let private capturedLabel (node: Node<unit>) : string =
         | Some(Binding.Computed f) -> f (v (box 0))
         | other -> failtestf "expected a Computed label, got %A" other
 
+/// A sub-fragment that reads the network — a live ticker. Its OWN declaration
+/// is honest; what matters is that it sits inside a fragment that is not.
+let private networkTicker: Node<unit> =
+    Fuaran.fragmentDecl
+        "ticker"
+        { Defaults.fragmentDecl with
+            Name = "ticker"
+            Effect =
+                { HostEffect = HostEffect.ReadsHost
+                  Determinism = DeterminismSource.Network }
+            Body = Fuaran.markdown "ticker-text" "price" }
+
+/// The Phase 2308 fixture: `fragment`'s shape, DECLARED pure and deterministic,
+/// whose body nests `networkTicker`. The declaration under-states what the
+/// fragment composes, so a cached tree would serve a stale price.
+let private pureNestingNetwork: ParamFragment<unit> =
+    { fragment with
+        Name = "card-with-ticker"
+        Body =
+            Fuaran.dashboard
+                "ticker-card-root"
+                { Defaults.dashboard<unit> with
+                    Children = [ fragment.Body; networkTicker ] } }
+
 let private slotArgs (text: string) : Map<string, Node<unit>> =
     Map.ofList [ "content", Fuaran.markdown "body" text ]
 
@@ -622,4 +646,136 @@ let tests =
               Expect.isTrue
                   (System.Object.ReferenceEquals(d0.Result.Tree, d1.Result.Tree))
                   "served from the store, not re-derived"
+          }
+
+          test "GO-RED (Phase 2308): a fragment declared pure nesting a network sub-fragment is bypassed, and says why" {
+              // The half the deleted gate read. The DECLARATION is pure and
+              // deterministic, so a gate on the declared effect admits the
+              // fragment: before Phase 2308 the engine served the second apply
+              // below from the store ([Miss; Hit]) — a cached price.
+              Expect.isTrue
+                  (Fuaran.Core.Memo.isMemoisable (
+                      Fuaran.UI.Core.Function.Projection.toCoreEffect pureNestingNetwork.Effect
+                  ))
+                  "the declaration alone admits it (the deleted gate's verdict)"
+
+              // The half Core reads: the effect OBSERVED over the subtree.
+              let observed = MemoGate.observed pureNestingNetwork (slotArgs "x")
+
+              Expect.isTrue
+                  (Set.contains Fuaran.Core.NetworkFactor observed.Determinism)
+                  "the observed effect carries the nested ticker's network read"
+
+              Expect.isFalse (MemoGate.admits observed) "Core's gate refuses the observed effect"
+
+              let sink = CaptureSink()
+              let engine = Engine<unit>(64, sink)
+
+              let d1 =
+                  engine.Apply(pureNestingNetwork, "ref1", valueArgs "Hello" 3, slotArgs "x")
+                  |> ok "first apply"
+
+              let d2 =
+                  engine.Apply(pureNestingNetwork, "ref1", valueArgs "Hello" 3, slotArgs "x")
+                  |> ok "second apply"
+
+              Expect.equal
+                  (sink.Stats |> List.map (fun s -> s.Outcome))
+                  [ CacheOutcome.Bypass; CacheOutcome.Bypass ]
+                  "an application whose subtree reads the network bypasses the store on every call"
+
+              Expect.equal engine.Cache.Count 0 "nothing is stored for it"
+
+              for d in [ d1; d2 ] do
+                  Expect.equal d.Admission (Admission.EffectBypassed observed) "the derivation says why it bypassed"
+                  Expect.isNone d.StructuralKey "a bypassed application is never keyed"
+
+              Expect.isFalse
+                  (System.Object.ReferenceEquals(d1.Result.Tree, d2.Result.Tree))
+                  "the second apply re-derived the tree rather than serving the first"
+          }
+
+          test "an effecting SLOT argument bypasses a pure fragment (the gate joins the slot arguments)" {
+              let sink = CaptureSink()
+              let engine = Engine<unit>(64, sink)
+              let tickerSlot = Map.ofList [ "content", networkTicker ]
+
+              let d =
+                  engine.Apply(fragment, "ref1", valueArgs "Hello" 3, tickerSlot)
+                  |> ok "apply with a network slot argument"
+
+              match d.Admission with
+              | Admission.EffectBypassed observed ->
+                  Expect.isTrue
+                      (Set.contains Fuaran.Core.NetworkFactor observed.Determinism)
+                      "the slot argument's network read is in the gated effect"
+              | other -> failtestf "a network slot argument must bypass the store, got %A" other
+
+              Expect.equal engine.Cache.Count 0 "nothing is stored for it"
+
+              let admitted =
+                  engine.Apply(fragment, "ref1", valueArgs "Hello" 3, slotArgs "x")
+                  |> ok "apply with a pure slot argument"
+
+              Expect.equal
+                  admitted.Admission
+                  Admission.Admitted
+                  "the same fragment with a pure slot argument is admitted"
+          }
+
+          test "a network sub-fragment held in a Switch case is observed too (the keyed traversal)" {
+              let inSwitch: ParamFragment<unit> =
+                  { fragment with
+                      Name = "card-with-switch"
+                      Body =
+                          Fuaran.dashboard
+                              "switch-card-root"
+                              { Defaults.dashboard<unit> with
+                                  Children =
+                                      [ fragment.Body
+                                        Fuaran.switch
+                                            "mode"
+                                            { Defaults.switch<unit> with
+                                                Cases =
+                                                    [ { Child = networkTicker
+                                                        Match = Some "live"
+                                                        When = None } ]
+                                                Default = Fuaran.markdown "static" "closed" } ] } }
+
+              let engine = Engine<unit>(64, CaptureSink())
+
+              let d =
+                  engine.Apply(inSwitch, "ref1", valueArgs "Hello" 3, slotArgs "x") |> ok "apply"
+
+              match d.Admission with
+              | Admission.EffectBypassed _ -> ()
+              | other -> failtestf "a network case child must bypass the store, got %A" other
+          }
+
+          test "an application the effect gate bypasses is never reused incrementally" {
+              let sink = CaptureSink()
+              let engine = Engine<unit>(64, sink)
+
+              let d0 =
+                  engine.Apply(pureNestingNetwork, "ref1", valueArgs "Hello" 3, slotArgs "x")
+                  |> ok "initial"
+
+              let d1 =
+                  engine.Reapply(d0, pureNestingNetwork, "ref1", valueArgs "Hello" 7, slotArgs "x")
+                  |> ok "value-only reapply"
+
+              Expect.equal sink.Last.Outcome CacheOutcome.Bypass "a value-only edit still re-derives it"
+              Expect.equal d1.Result.ValueBindings["ref1.count"] (v (box 7)) "with the new value bound"
+          }
+
+          test "the observed fragment effect is memoised per fragment reference" {
+              let engine = Engine<unit>(64, CaptureSink())
+
+              for title in [ "a"; "b"; "c" ] do
+                  engine.Apply(fragment, "ref1", valueArgs title 3, slotArgs "x")
+                  |> ok "apply"
+                  |> ignore
+
+              Expect.equal engine.EffectMemo.Misses 1 "the body is walked once"
+              Expect.equal engine.EffectMemo.Hits 2 "and served from the memo on every later probe"
           } ]

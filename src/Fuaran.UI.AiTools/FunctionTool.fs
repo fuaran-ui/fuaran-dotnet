@@ -54,40 +54,18 @@ module Projection = Fuaran.UI.Core.Function.Projection
 let private rawId (NodeId s) : string = s
 
 /// The absolute lexical address of a fragment-decl hole: `<declId>.<holeName>`
-/// (hygiene — binding is by address, never a bare name).
-let holeAddr (declId: string) (holeName: string) : string = declId + "." + holeName
+/// (hygiene — binding is by address, never a bare name). The shared projection's
+/// definition, which the witness below reads its holes through.
+let holeAddr (declId: string) (holeName: string) : string = Projection.holeAddr declId holeName
 
 // ─── The UI outer witness ────────────────────────────────────────────────────
 
-/// The declared holes of a fragment-decl node, each at its absolute lexical
-/// address. A non-decl node declares no holes (an empty list) — the witness is
-/// total over any `Node<'Msg>`, but only a `FragmentDecl` carries holes to bind.
-let private declHoles (node: Node<'Msg>) : Fuaran.Core.HoleDecl list =
-    match node.Kind with
-    | NodeKind.FragmentDecl spec ->
-        let declId = node.Id
-
-        spec.Holes
-        |> List.map (fun h ->
-            let name = HoleDecl.name h
-
-            let kind =
-                match h with
-                | HoleDecl.Value(_, space, _) -> Fuaran.Core.ValueHole(Projection.toCoreSpace space)
-                | HoleDecl.Slot(_, constraintOpt) -> Fuaran.Core.SlotHole constraintOpt
-                | HoleDecl.Repeat(_, space) -> Fuaran.Core.RepeatHole(Projection.toCoreSpace space)
-
-            { Addr = holeAddr declId name
-              Name = name
-              Kind = kind })
-    | _ -> []
-
-/// The declared effect class of a fragment-decl node (pure-deterministic for a
-/// non-decl node — it declares no effect surface).
-let private declEffect (node: Node<'Msg>) : Fuaran.Core.EffectClass =
-    match node.Kind with
-    | NodeKind.FragmentDecl spec -> Projection.toCoreEffect spec.Effect
-    | _ -> Fuaran.Core.Effect.pureDeterministic
+// The witness's `Holes` and `Effect` are the shared projection's
+// (`Projection.holesOf` / `Projection.effectOf`, Phase 2308): every declared hole at
+// its absolute address, and a decl's declared class (pure-deterministic for a
+// non-decl node, which declares no effect surface). The memo engine's witness
+// reads the same two, so the audit below and the memo's admission gate observe
+// one effect.
 
 // ── the hygienic slot substitution (the renderer's FragmentApply logic, over
 //    the same lens: the tier's one enumeration at the `fragmentScope` reach) ──
@@ -187,8 +165,8 @@ let uiWitness<'Msg> : Fuaran.Core.ArtifactWitness<Node<'Msg>, NodeId> =
         { ToString = rawId
           OfString = NodeId
           Equals = (=) }
-      Holes = declHoles
-      Effect = declEffect
+      Holes = Projection.holesOf
+      Effect = Projection.effectOf
       Bind = declBind }
 
 // ─── The cross-domain composition surface ────────────────────────────────────

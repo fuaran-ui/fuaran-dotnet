@@ -255,6 +255,21 @@ let private containerRun =
 let private diffContainedResults =
     CoreConf.diffContainedLaws nodew idw opGen 20260619 200
 
+// Phase 2306 — `Placement`'s verbs are Core's `TreePlacement.…Contained` under this container
+// predicate, and its clone verbs rename through `FreshIds.repairDuplicates` under
+// `FreshIds.derived`, so both families run over this witness.
+let private placementResults = CoreConf.placementLaws nodew idw opGen 20260619 200
+
+let private freshIdResults =
+    CoreConf.freshIdLaws
+        nodew
+        idw
+        opGen
+        (fun (NodeId fresh) e -> wrap { e.Node with Id = fresh })
+        (Fuaran.Core.FreshIds.derived idw)
+        20260619
+        200
+
 let private chainBreakReasonResults = CoreConf.chainBreakReasonLaws 20260619 200
 
 let private chainBreakReasonRun =
@@ -415,6 +430,25 @@ let tests =
                       "expected one red adequacy arm, found %d: %A"
                       (List.length other)
                       (other |> List.map _.Counterexample)
+
+          testCase "the Fuaran.UI witness certifies under Core's placementLaws (Placement's verbs)"
+          <| fun _ ->
+              // Phase 2306: `Placement.placeOp` / `moveOp` / `nudgeOp` lower through
+              // `TreePlacement.placeContained` / `moveContained` under this container predicate, so
+              // the landing, bare-op and refusal-by-name laws are the tier's verbs' laws.
+              Expect.isGreaterThan (List.length placementResults) 2 "the family's laws ran"
+
+              for r in placementResults do
+                  Expect.isTrue r.Passed (sprintf "%s: %A" r.Law r.Counterexample)
+
+          testCase "the Fuaran.UI witness certifies under Core's freshIdLaws (the clone verbs' renaming)"
+          <| fun _ ->
+              // Phase 2306: `Placement.duplicateOp` / `pasteOp` rename through
+              // `FreshIds.repairDuplicates` under `FreshIds.derived`, the strategy certified here.
+              Expect.isGreaterThan (List.length freshIdResults) 2 "the family's laws ran"
+
+              for r in freshIdResults do
+                  Expect.isTrue r.Passed (sprintf "%s: %A" r.Law r.Counterexample)
 
           testCase "the kit's classified chain walkers never mint Unrecognised (chainBreakReasonLaws)"
           <| fun _ ->
@@ -1114,6 +1148,271 @@ module Columnar =
                       0
                       "at least one non-empty pipeline has a closed walk — the widening's whole subject" ]
 
+// ─── Phase 1857 — id uniqueness across the named node slots ─────────────────
+//
+// `Introspect.nodeWitness.Children` is the ordered child list (`getChildren`), and it answers
+// nothing for a node's `state` alternatives or an ErrorBoundary. So the surface uniqueness walk
+// `certify` runs above never reaches a node the tier holds in a NAMED slot — `state.onEmpty`,
+// `state.onLoading`, the `fallback`s (the node's own and the error boundary's) — and two nodes
+// sharing an id across that boundary read clean to it. Core's `keyedChildrenLawsAt` certifies
+// the tier's whole-tree id check over exactly those positions, run here at the PRODUCTION
+// witnesses (`Introspect.nodeWitness` / `keyedWitness` / `idWitness`), not a test-side copy.
+//
+// Three things make the adoption certify something, and each has its own case: the run is
+// MEASURED (a witness that declares no keyed position passes the family vacuously, BY
+// DECLARATION, and would read as a green count in the census), the domain check refuses the
+// state.onEmpty collision the surface walk is blind to, and the family itself goes red over a
+// check that compares only the surface.
+
+module KeyedChildren =
+
+    open Fuaran.UI.Ops
+
+    let private family = "Conformance.keyedChildrenLawsAt"
+
+    let private md (id: string) : Node<obj> = Fuaran.markdown id "x"
+
+    let private box (id: string) (kids: Node<obj> list) : Node<obj> =
+        Fuaran.dashboard
+            id
+            { Defaults.dashboard<obj> with
+                Children = kids }
+
+    let private canHold (n: Node<obj>) =
+        Introspect.getChildren n.Kind |> Option.isSome
+
+    /// A tree whose nodes carry every named-slot shape the family is about: ordered containers,
+    /// nodes with a `state.onEmpty` and / or `state.onLoading` alternative or its own
+    /// `fallback`, and ErrorBoundaries (`child` and `fallback`, both named). Every id is fresh
+    /// across the whole tree, slots included, so a drawn tree is lawful and the built arms are
+    /// the only collisions the run sees.
+    let private genTree (rng: CoreRng.T) : Node<obj> * CoreRng.T =
+        let mutable counter = 0
+        let mutable r = rng
+
+        let fresh () =
+            counter <- counter + 1
+            sprintf "k%d" counter
+
+        let roll n =
+            let v, r' = CoreRng.intBelow n r
+            r <- r'
+            v
+
+        let dress (node: Node<obj>) =
+            match roll 5 with
+            | 0 -> node
+            | 1 -> node |> Node.onEmpty (md (fresh ()))
+            | 2 -> node |> Node.onLoading (md (fresh ()))
+            | 3 -> node |> Node.onLoading (md (fresh ())) |> Node.onEmpty (md (fresh ()))
+            | _ ->
+                { node with
+                    Fallback = Some(md (fresh ())) }
+
+        let rec build depth =
+            let nid = fresh ()
+
+            match roll (if depth <= 0 then 2 else 3) with
+            | 0 -> dress (md nid)
+            | 1 ->
+                dress (
+                    Fuaran.errorBoundary
+                        nid
+                        { Child = md (fresh ())
+                          Fallback = md (fresh ()) }
+                )
+            | _ -> dress (box nid [ for _ in 1 .. roll 3 -> build (depth - 1) ])
+
+        let rootId = fresh ()
+        let root = box rootId [ for _ in 1 .. 1 + roll 3 -> build 2 ]
+        root, r
+
+    let private genFresh (existing: Set<string>) (rng: CoreRng.T) : Node<obj> * CoreRng.T =
+        let mutable r = rng
+
+        let rec pick () =
+            let v, r' = CoreRng.next r
+            r <- r'
+            let id = sprintf "f%d" (v % 100000)
+            if existing.Contains id then pick () else id
+
+        md (pick ()), r
+
+    let private opGen: Fuaran.Core.OpGen<Node<obj>, NodeId> =
+        { Tree = genTree
+          FreshNode = genFresh
+          CanHold = Some canHold }
+
+    let private seed = 20261017
+    let private iterations = 200
+
+    /// The family at the tier's own node and id witnesses, over `keyw` and `gen`.
+    let private run
+        (keyw: Fuaran.Core.KeyedWitness<Node<obj>, NodeId>)
+        (gen: Fuaran.Core.OpGen<Node<obj>, NodeId>)
+        (n: int)
+        =
+        CoreConf.keyedChildrenLawsAt keyw Introspect.nodeWitness Introspect.idWitness gen seed n
+
+    // Registered at module initialisation (LawCases.fs's header says why). One run answers for
+    // both spellings: the bare name is Core's obsolete forward of this same body.
+    let private keyedChildrenRun =
+        LawCases.adopt [ family; "Conformance.keyedChildrenLaws" ] iterations (run Introspect.keyedWitness opGen)
+
+    let private guardPrefix = "sample adequacy (" + family + "): "
+
+    let private isGuard (r: Fuaran.Core.LawResult) =
+        r.Law.StartsWith(guardPrefix, System.StringComparison.Ordinal)
+
+    /// The adequacy rule, stated as the family states it: the run is evidence only when its ONE
+    /// guard is the built-arm `reached` law and it passed. The vacuous-by-declaration line is a
+    /// PASSING guard law, so `List.forall _.Passed` alone would accept it — that is the reading
+    /// this predicate exists to refuse.
+    let private measured (results: Fuaran.Core.LawResult list) =
+        match results |> List.filter isGuard with
+        | [ guard ] ->
+            guard.Passed
+            && guard.Law.Contains("the sample reached every built arm", System.StringComparison.Ordinal)
+            && not (guard.Law.Contains("BY DECLARATION", System.StringComparison.Ordinal))
+        | _ -> false
+
+    /// The check `certify`'s surface walk stands on: id uniqueness over `Children` alone.
+    let private surfaceOnly: Fuaran.Core.KeyedWitness<Node<obj>, NodeId> =
+        { Introspect.keyedWitness with
+            Surface = "the surface walk alone (Tree.wellFormed over nodeWitness)"
+            IdsUnique =
+                fun n ->
+                    Fuaran.Core.Tree.wellFormed Introspect.nodeWitness Introspect.idWitness n = Fuaran.Core.Tree.Structural }
+
+    /// A host whose only named slots are two `state.onEmpty` alternatives, so every collision the
+    /// family builds over it is an id in `state.onEmpty` and in the ordinary children (or in two
+    /// onEmpty slots) — the go-red shape, exercised by the family itself.
+    let private onEmptyHost: Node<obj> =
+        box
+            "root"
+            [ md "a"
+              md "list" |> Node.onEmpty (md "e1")
+              md "grid" |> Node.onEmpty (md "e2") ]
+
+    let private onEmptyGen: Fuaran.Core.OpGen<Node<obj>, NodeId> =
+        { opGen with
+            Tree = fun r -> onEmptyHost, r }
+
+    let private lawNamed (prefix: string) (results: Fuaran.Core.LawResult list) =
+        match
+            results
+            |> List.filter (fun r -> r.Law.StartsWith(prefix, System.StringComparison.Ordinal))
+        with
+        | [ one ] -> one
+        | other -> failtestf "expected exactly one law starting '%s', found %d" prefix (List.length other)
+
+    [<Tests>]
+    let tests =
+        testList
+            "Phase 1857 — keyed children"
+            [ testCase
+                  "the tier's whole-tree id check certifies under Core's keyedChildrenLawsAt over the named node slots"
+              <| fun _ ->
+                  let results = keyedChildrenRun.Force()
+                  let subject = results |> List.filter (isGuard >> not)
+                  Expect.equal (List.length subject) 3 "the family's three laws ran"
+
+                  for r in results do
+                      Expect.isTrue r.Passed (sprintf "%s: %A" r.Law r.Counterexample)
+
+              testCase "the keyedChildrenLawsAt run is MEASURED, never vacuous by declaration"
+              <| fun _ ->
+                  let results = keyedChildrenRun.Force()
+
+                  Expect.isTrue
+                      (measured results)
+                      (sprintf
+                          "the run is not evidence: %A"
+                          (results |> List.filter isGuard |> List.map (fun r -> r.Law, r.Counterexample)))
+
+                  let cell = LawCases.cell family
+
+                  Expect.isTrue
+                      (fst (System.Int32.TryParse cell) && int cell > 0)
+                      (sprintf "the census Cases cell reads %s, not a count" cell)
+
+                  // The predicate bites, in both of the family's non-evidence states: a witness that
+                  // declares no keyed position (the family PASSES it, by declaration), and one that
+                  // declares positions but gives the kit no way to build into them (the guard reds).
+                  let declaresNone =
+                      { Introspect.keyedWitness with
+                          KeyedChildren = fun _ -> []
+                          PlaceKeyedChild = fun _ _ -> None }
+
+                  let byDeclaration = run declaresNone opGen iterations
+
+                  Expect.isTrue
+                      (byDeclaration |> List.forall _.Passed)
+                      "the family passes a witness that declares nothing — which is why passing is not the test"
+
+                  Expect.isFalse (measured byDeclaration) "vacuous by declaration is refused as evidence"
+
+                  let cannotBuild =
+                      { Introspect.keyedWitness with
+                          PlaceKeyedChild = fun _ _ -> None }
+
+                  Expect.isFalse
+                      (measured (run cannotBuild opGen iterations))
+                      "declared but unbuildable is refused as evidence"
+
+              testCase "an id held in state.onEmpty and in the ordinary children list is refused over the keyed walk"
+              <| fun _ ->
+                  let holder = md "list" |> Node.onEmpty (md "dup")
+                  let fixture = box "root" [ md "dup"; holder ]
+
+                  Expect.equal
+                      (Fuaran.Core.Tree.wellFormed Introspect.nodeWitness Introspect.idWitness fixture)
+                      Fuaran.Core.Tree.Structural
+                      "the surface walk is blind to the onEmpty slot — the gap this phase closes"
+
+                  Expect.equal
+                      (Fuaran.Core.Tree.keyedIds Introspect.nodeWitness Introspect.keyedWitness holder)
+                      [ NodeId "dup" ]
+                      "the KeyedWitness declares state.onEmpty"
+
+                  Expect.equal
+                      (Fuaran.Core.Tree.wellFormedKeyed
+                          Introspect.nodeWitness
+                          Introspect.keyedWitness
+                          Introspect.idWitness
+                          fixture)
+                      (Fuaran.Core.Tree.RepeatedId(NodeId "dup"))
+                      "Core's keyed walk, through the tier's witness, names the repeated id"
+
+                  Expect.isFalse (Introspect.keyedWitness.IdsUnique fixture) "the tier's id check refuses it"
+
+              testCase "the family refuses a surface-only id check across the state.onEmpty boundary"
+              <| fun _ ->
+                  let real = run Introspect.keyedWitness onEmptyGen iterations
+
+                  for r in real do
+                      Expect.isTrue r.Passed (sprintf "%s: %A" r.Law r.Counterexample)
+
+                  Expect.isTrue (measured real) "every built arm was reached over the onEmpty host"
+
+                  let blind = run surfaceOnly onEmptyGen iterations
+
+                  let clash =
+                      lawNamed
+                          "the domain's id check refuses an id held in a keyed position and in the witness surface"
+                          blind
+
+                  Expect.isFalse
+                      clash.Passed
+                      "the family let a surface-only check through with an id in state.onEmpty and in the children"
+
+                  let twice =
+                      lawNamed "the domain's id check refuses an id held in two keyed positions" blind
+
+                  Expect.isFalse
+                      twice.Passed
+                      "the family let a surface-only check through with one id in two onEmpty slots" ]
+
 // ─── Phase 2038 — one answer to what a node's children are ──────────────────
 //
 // The tier supplies its `KeyedWitness` in production (`Introspect.keyedWitness`,
@@ -1253,9 +1552,9 @@ module KeyedEnumeration =
                           host
                           (switchOf (md "existing") (md "d"))
                           { ParentId = NodeId "root"
-                            Placement = Placement.Last }
+                            Placement = Fuaran.Core.Anchor.Last }
                   with
-                  | Error(PlaceError.DuplicateId(NodeId "existing")) -> ()
+                  | Error(PlaceError.Refused(Fuaran.Core.Rejection.DuplicateId(NodeId "existing"))) -> ()
                   | other -> failtestf "expected DuplicateId existing, got %A" other
               }
 
@@ -1343,4 +1642,320 @@ module KeyedEnumeration =
                   Expect.isEmpty
                       adopted
                       "a grandfathered file no longer enumerates children by hand — remove it from the frozen list"
+              } ]
+
+// ============================================================================
+//  Phase 2308 — the memo's admission gate is Core's `applyMemo`.
+//
+//  `Fuaran.UI.Memo`'s engine gates an application on `Fuaran.Core.Memo.isMemoisable`
+//  over the effect observed over the fragment's subtree and its slot arguments, over
+//  `MemoGate.witness` — the gate `Fuaran.Core.Function.applyMemo` applies. Three
+//  claims, each checked here rather than stated:
+//
+//   1. Core's memo laws hold over that witness and the encoder the engine's key is
+//      built on (`CanonicalJson.encodeNode`). The encoder's PRECONDITION is stated
+//      and asserted per draw: `applyMemo` needs an injective encoder (Core's Phase
+//      56), and the canonical encoding is injective only where it carries no
+//      unrepresentable-value sentinel — which is exactly the encoding the engine's
+//      Phase 1525 refusal declines to key. So the sentinel refusal IS the law's
+//      precondition, and no drawn node carries a sentinel.
+//   2. Core's memo-soundness law holds over the go-red fixture: a fragment declared
+//      pure that nests a network sub-fragment.
+//   3. The engine, over its portable `MemoCacheStore`, answers every application of
+//      a matrix of fragments and slot arguments exactly as `applyMemo` does over
+//      the witness: the same hit / miss / bypass, the same tree, the same counters.
+// ============================================================================
+
+module MemoGateConformance =
+
+    open Fuaran.UI.Memo
+    open Fuaran.UI.Telemetry.Abstractions
+
+    /// `MemoGate.witness` over the canonical-encoding equality wrapper the kit
+    /// needs (`Node<obj>` carries closures and is not an equality type).
+    let private eqWitness: Fuaran.Core.ArtifactWitness<EqNode, NodeId> =
+        let w = MemoGate.witness<obj>
+
+        let lowerArg (a: Fuaran.Core.Arg<EqNode>) : Fuaran.Core.Arg<Node<obj>> =
+            match a with
+            | Fuaran.Core.ValueArg s -> Fuaran.Core.ValueArg s
+            | Fuaran.Core.SlotArg e -> Fuaran.Core.SlotArg(unwrap e)
+
+        { Tree =
+            { Id = unwrap >> w.Tree.Id
+              KindTag = unwrap >> w.Tree.KindTag
+              Children = unwrap >> w.Tree.Children >> List.map wrap
+              ReplaceChildren = fun e cs -> wrap (w.Tree.ReplaceChildren (unwrap e) (List.map unwrap cs)) }
+          IdW = w.IdW
+          Holes = unwrap >> w.Holes
+          Effect = unwrap >> w.Effect
+          Bind = fun addr a e -> w.Bind addr (lowerArg a) (unwrap e) |> Result.map wrap }
+
+    /// The encoder the engine's structural key is built on.
+    let private encode (e: EqNode) : string = CanonicalJson.encodeNode e.Node
+
+    /// The ref site, which is also the decl's id: `MemoGate.witness` namespaces a
+    /// slot by the decl's id, the engine by the ref site's.
+    let private refId = "card"
+
+    let private md (id: string) (text: string) : Node<obj> = Fuaran.markdown id text
+
+    /// A network-reading sub-fragment, honestly declared.
+    let private ticker: Node<obj> =
+        Fuaran.fragmentDecl
+            "ticker"
+            { Defaults.fragmentDecl<obj> with
+                Name = "ticker"
+                Effect =
+                    { HostEffect = HostEffect.ReadsHost
+                      Determinism = DeterminismSource.Network }
+                Body = md "ticker-text" "price" }
+
+    /// A card: a value hole `alpha` (first in address order, so the kit's
+    /// separator arm runs) and a `content` slot, with `extra` appended to its body.
+    let private card (name: string) (effect: EffectClass) (extra: Node<obj> list) : ParamFragment<obj> =
+        { Defaults.fragmentDecl<obj> with
+            Name = name
+            Effect = effect
+            Holes =
+                [ HoleDecl.Value("alpha", HoleValueSpace.StringLen(1, 40), None)
+                  HoleDecl.Slot("content", None) ]
+            Body =
+                Fuaran.dashboard
+                    "card-root"
+                    { Defaults.dashboard<obj> with
+                        Children = [ md "card-title" "Title"; Fuaran.fragmentRef "content" "content" ] @ extra } }
+
+    let private pureCard = card "card" EffectClass.pureDeterministic []
+
+    let private effectingCard =
+        card
+            "card"
+            { HostEffect = HostEffect.ReadsHost
+              Determinism = DeterminismSource.Clock }
+            []
+
+    /// The go-red fixture: declared pure, nesting the network ticker.
+    let private underDeclaredCard = card "card" EffectClass.pureDeterministic [ ticker ]
+
+    /// The same lie told one level down, in a Switch case — a keyed position.
+    let private underDeclaredInSwitch =
+        card
+            "card"
+            EffectClass.pureDeterministic
+            [ Fuaran.switch
+                  "mode"
+                  { Defaults.switch<obj> with
+                      Cases =
+                          [ { Child = ticker
+                              Match = Some "live"
+                              When = None } ]
+                      Default = md "static" "closed" } ]
+
+    let private fnNode (pf: ParamFragment<obj>) : EqNode = wrap (MemoGate.declNode refId pf)
+
+    let private args (alpha: string) (content: Node<obj>) : Map<string, Fuaran.Core.Arg<EqNode>> =
+        Map.ofList
+            [ refId + ".alpha", Fuaran.Core.ValueArg alpha
+              refId + ".content", Fuaran.Core.SlotArg(wrap content) ]
+
+    let private drawMemo (rng: CoreRng.T) : Fuaran.Core.MemoSample<EqNode> * CoreRng.T =
+        let n, r1 = CoreRng.intBelow 1000 rng
+        let pick, r2 = CoreRng.intBelow 4 r1
+        let text = sprintf "body %d" n
+        let alt = sprintf "body %d" (n + 1)
+
+        // The effecting function, four ways: declared, under-declared in an ordered
+        // child, under-declared in a keyed position, and pure with an effecting
+        // slot argument (the join over the arguments, Core's Phase 307).
+        let effectingFn, effectingContent =
+            match pick with
+            | 0 -> effectingCard, md "body" text
+            | 1 -> underDeclaredCard, md "body" text
+            | 2 -> underDeclaredInSwitch, md "body" text
+            | _ -> pureCard, ticker
+
+        { PureFn = fnNode pureCard
+          Args = args (sprintf "v%d" n) (md "body" text)
+          ArgsAlt = args (sprintf "v%d" n) (md "body" alt)
+          EffectingFn = fnNode effectingFn
+          EffectingArgs = args (sprintf "v%d" n) effectingContent },
+        r2
+
+    /// The precondition of the memo laws over this encoder, asserted rather than
+    /// assumed: no node a draw hands the kit carries an unrepresentable-value
+    /// sentinel, so the canonical encoding is injective over everything keyed.
+    let private sentinelFree (s: Fuaran.Core.MemoSample<EqNode>) : bool =
+        let slots (m: Map<string, Fuaran.Core.Arg<EqNode>>) =
+            m
+            |> Map.toList
+            |> List.choose (fun (_, a) ->
+                match a with
+                | Fuaran.Core.SlotArg e -> Some e
+                | Fuaran.Core.ValueArg _ -> None)
+
+        [ s.PureFn; s.EffectingFn ]
+        @ slots s.Args
+        @ slots s.ArgsAlt
+        @ slots s.EffectingArgs
+        |> List.forall (fun e -> List.isEmpty (FragmentKey.unrepresentableIn "sample" (encode e)))
+
+    /// Every sample the kit drew, and those that broke the precondition — read by
+    /// the test after the run, so the precondition is checked over the kit's own
+    /// draws rather than over a second stream that might differ from them.
+    let private drawn = ResizeArray<Fuaran.Core.MemoSample<EqNode>>()
+
+    let private checkedDraw (rng: CoreRng.T) : Fuaran.Core.MemoSample<EqNode> * CoreRng.T =
+        let s, r = drawMemo rng
+        drawn.Add s
+        s, r
+
+    let private memoSeed = 20261017
+    let private memoIterations = 200
+
+    let private memoResults =
+        LawCases.adopt [ "Conformance.memoLawsAt" ] memoIterations (fun iterations ->
+            CoreConf.memoLawsAt eqWitness encode checkedDraw Fuaran.Core.OpStream.sha256Hash memoSeed iterations)
+
+    let private memoSoundnessResults =
+        LawCases.adopt [ "Conformance.memoSoundnessLawsAt" ] 20 (fun iterations ->
+            CoreConf.memoSoundnessLawsAt
+                eqWitness
+                encode
+                (fnNode underDeclaredCard)
+                (args "v" (md "body" "x"))
+                memoSeed
+                iterations)
+
+    let private assertAllPassed (context: string) (results: Fuaran.Core.LawResult list) =
+        Expect.isNonEmpty results (context + ": the family reported no law")
+
+        let failures = results |> List.filter (fun r -> not r.Passed)
+
+        if not (List.isEmpty failures) then
+            failures
+            |> List.map (fun r -> sprintf "  %s — %A" r.Law r.Counterexample)
+            |> String.concat "\n"
+            |> failtestf "%s failed:\n%s" context
+
+    /// A sink that records the engine's outcome per call.
+    type private Outcomes() =
+        let outcomes = ResizeArray<CacheOutcome>()
+        member _.All = List.ofSeq outcomes
+
+        interface IFuaranTelemetrySink with
+            member _.RecordOpApply _ = ()
+            member _.RecordDeny _ = ()
+            member _.RecordRenderFailure _ = ()
+            member _.RecordProviderCall _ = ()
+            member _.RecordCacheStat t = outcomes.Add t.Outcome
+            member _.RecordValidateOutcome _ = ()
+
+    /// The body of a decl node `applyMemo` returned — what the engine stores.
+    let private bodyOf (e: EqNode) : Node<obj> =
+        match e.Node.Kind with
+        | NodeKind.FragmentDecl spec -> spec.Body
+        | other -> failwithf "applyMemo returned a %A, not the applied decl" other
+
+    [<Tests>]
+    let tests =
+        testList
+            "Phase 2308 — the memo gate is Core's applyMemo"
+            [ test "the memo engine's witness and key encoder certify under Core's memoLawsAt" {
+                  memoResults.Value |> assertAllPassed "memoLawsAt over MemoGate.witness"
+
+                  // The precondition, over exactly the samples the kit drew.
+                  Expect.isNonEmpty drawn "the kit drew no sample, so the precondition was checked over nothing"
+
+                  let broken = drawn |> Seq.filter (sentinelFree >> not) |> Seq.length
+                  Expect.equal broken 0 "every drawn node is sentinel-free, so the encoder is injective over it"
+
+                  // Every effecting variant was drawn, so the bypass arm met each of them.
+                  let effecting =
+                      drawn
+                      |> Seq.map (fun s -> encode s.EffectingFn, encode s.PureFn = encode s.EffectingFn)
+                      |> Seq.distinct
+                      |> Seq.length
+
+                  Expect.equal effecting 4 "all four effecting variants were drawn"
+              }
+
+              test "an under-declared fragment is never cached under Core's memoSoundnessLawsAt" {
+                  memoSoundnessResults.Value
+                  |> assertAllPassed "memoSoundnessLawsAt over the pure-declared card nesting a network ticker"
+              }
+
+              test "the memo engine admits, serves and stores exactly what Core's applyMemo does" {
+                  let fragments =
+                      [ "pure", pureCard
+                        "declared effecting", effectingCard
+                        "pure nesting a network ticker", underDeclaredCard
+                        "pure nesting a network ticker in a Switch case", underDeclaredInSwitch ]
+
+                  let slotSets =
+                      [ "pure slots", md "body" "x", md "body" "y"; "a network slot", ticker, ticker ]
+
+                  for fname, pf in fragments do
+                      for sname, first, second in slotSets do
+                          let context = fname + ", " + sname
+                          let session = [ first; first; second; first ]
+                          let sink = Outcomes()
+                          let store = FragmentStore.portable<obj> ()
+                          let engine = Engine<obj>(store :> IFragmentStore<obj>, sink)
+
+                          let engineTrees =
+                              session
+                              |> List.map (fun content ->
+                                  match
+                                      engine.Apply(
+                                          pf,
+                                          refId,
+                                          Map.ofList [ "alpha", Unchecked.nonNull (box "v") ],
+                                          Map.ofList [ "content", content ]
+                                      )
+                                  with
+                                  | Ok d -> d.Result.Tree
+                                  | Error e -> failtestf "%s: the engine refused: %s" context e)
+
+                          let coreSteps, coreCache =
+                              ((Fuaran.Core.Memo.empty, []), session)
+                              ||> List.fold (fun (cache: Fuaran.Core.MemoCache<EqNode>, acc) content ->
+                                  match
+                                      Fuaran.Core.Function.applyMemo
+                                          eqWitness
+                                          encode
+                                          (args "v" content)
+                                          (fnNode pf)
+                                          cache
+                                  with
+                                  | Ok(tree, cache') ->
+                                      let step =
+                                          if cache'.Hits > cache.Hits then CacheOutcome.Hit
+                                          elif cache'.Misses > cache.Misses then CacheOutcome.Miss
+                                          else CacheOutcome.Bypass
+
+                                      cache', acc @ [ step, bodyOf tree ]
+                                  | Error e -> failtestf "%s: applyMemo refused: %A" context e)
+                              |> fun (cache, steps) -> steps, cache
+
+                          Expect.equal sink.All (coreSteps |> List.map fst) (context + ": hit / miss / bypass per call")
+
+                          List.zip engineTrees (coreSteps |> List.map snd)
+                          |> List.iteri (fun i (mine, core) ->
+                              Expect.equal
+                                  (CanonicalJson.encodeNode mine)
+                                  (CanonicalJson.encodeNode core)
+                                  (sprintf "%s: call %d derives the tree applyMemo derives" context i))
+
+                          let snapshot = store.Snapshot
+
+                          Expect.equal
+                              (snapshot.Hits, snapshot.Misses, snapshot.Bypasses)
+                              (coreCache.Hits, coreCache.Misses, coreCache.Bypasses)
+                              (context + ": the portable store's counters are applyMemo's")
+
+                          Expect.equal
+                              (Map.count snapshot.Entries)
+                              (Map.count coreCache.Entries)
+                              (context + ": the same number of entries is stored")
               } ]

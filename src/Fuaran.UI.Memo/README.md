@@ -9,8 +9,12 @@ artifact-function `apply` (`FragmentApply.apply`).
 - **Incremental re-derivation.** A value-parameter change reuses the structural
   tree (reference-identical) and recomputes only the affected hole-addressed
   (`<refId>.<holeName>`) bindings; disjoint changes don't invalidate each other.
-- **Effect gate.** Only pure-deterministic fragments are cached; effecting /
-  clock / random / network fragments bypass the cache and re-derive every call.
+- **Effect gate.** Fuaran.Core's: an application is cached only when the effect
+  observed over the fragment's whole subtree and its slot arguments is pure and
+  deterministic (`Fuaran.Core.Memo.isMemoisable`, as `Function.applyMemo`
+  gates). An effecting / clock / random / network application bypasses the cache
+  and re-derives every call, including a fragment declared pure that nests an
+  effecting sub-fragment. `Derivation.Admission` says which.
 - **Replay-as-reapplication.** An op-stream replay resolves through the cache to
   a byte-identical tree.
 - **Observability.** Every call emits a `CacheStatTelemetry` (hit / miss /
