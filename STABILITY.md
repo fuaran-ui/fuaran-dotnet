@@ -7825,6 +7825,69 @@ because the first changes it is opened for are breaking: Phase 2304 (the tree di
 takes Core's vocabulary and relocations are emitted as `MoveNode`) and Phase 2309 (two public hash functions are removed; no
 value moves). Pre-1.0 breaking is minor (version cut recorded on the ledger, 2026-10-17)._
 
+### What rides this slot — Phase 2292 (the footprint projection ships, and partial accept reads it)
+
+**Class: BREAKING (one public member removed) + additive (one new module) + a BEHAVIOUR change of
+`BatchAccept`.** It rides the 0.96.0 draft, which is already breaking-class, so no number moves. No wire byte
+and no hash moves.
+
+- **Added: `Fuaran.UI.Ops.TreeOpFootprint`** (package `Fuaran.UI.Ops`): `ofOp : TreeOp<'Msg> -> Footprint` and
+  `ofScript : TreeOp<'Msg> list -> Footprint`, total over the DU. It is the tier's one projection of its op
+  algebra onto Fuaran.Core's `Footprint`, the record `Ops.independent`, `Ops.interference`, `Dag.conflicts` and
+  the lane fold read. The structural five lower to the matching `SkeletonOp` and take Core's
+  `Ops.footprintKeyed` over `Introspect.nodeWitness` / `keyedWitness` / `idWitness`, the keyed walk the apply
+  engine runs. A vertical op (`EditNode`, `UpdateProp`, `ReplaceBinding`, `UpdateStyle`, `PatchStyle`,
+  `UpdateState`) is Core's `UpdateNode` footprint: the node read and content-written, every id of a subtree the
+  op puts in (an `EditNode`'s new kind, an `UpdateState`'s alternatives) read and content-written, and Phase
+  2004's unknown-parent write. `ReplaceRoot`, which the test projections refused with an exception, has a
+  footprint: every id of the new tree read and content-written, the root's child list written, and an
+  unknown-parent write of the root. It is therefore ordered against every non-empty tier op. Fable-portable.
+- **The slots: none, decided.** The projection is at NODE precision. Over the pinned Core (0.36.0) an
+  unknown-parent write collides with every structural or unknown-parent write of the other script, and every
+  non-empty `TreeOp` writes one of the two. So a vertical op is independent of no tier op except an empty
+  `Batch`, whatever slot it declares, and a slot declaration (`kind`, `state`, `style.<field>`) frees no pair.
+  This is measured, not argued only. `Conformance.footprintLawsAt` over a slot-declaring variant of the
+  projection fails its adequacy guard: slot-independent pairs 0, slot-clash pairs 10, seed 20260904, 300
+  iterations. The node-precision projection passes it. A kind edit and a restyle of one node are therefore
+  DEPENDENT, as two edits of different nodes are (Phase 2004). A slot becomes the right address once Core can
+  express "a parent this script cannot name" without that colliding with another in-place rewrite.
+- **Removed (breaking): `TreeOp.footprint`** (package `Fuaran.UI.Ops.Abstractions`, shipped in v0.93.0,
+  v0.94.0 and v0.95.0), with its private `subtreeIds`. It returned a flat `Set<NodeId>` of targets, inserted ids and
+  reorder order. A set of ids cannot say that a remove or a move writes a parent it does not name. **Migration:**
+  call `TreeOpFootprint.ofOp` and read Core's `Footprint`. For the old id set, take
+  `Reads ∪ ContentWrites ∪ StructureWrites ∪ UnknownParentWrites` (strings, not `NodeId`s), which contains every
+  id the old function returned. `TreeOp.kindName`, `targets` and `inserted` are unchanged.
+- **Behaviour change: `BatchAccept.dependencyClosure` closes over `Ops.interference`.** An op is kept when it
+  was selected, or when it is not independent of the union of the kept LATER ops' footprints. It is still one
+  reverse pass: a union is independent of an op only when each part is. It is sound because every dropped op
+  commutes past every later kept op. **What changes for partial accepts:**
+  - The defect closes. For `[MoveNode(a, Q); ReorderChildren(P, [b; c])]` with `a` under `P`, and only the
+    reorder selected, the old flat sets were disjoint. The move was dropped and the kept reorder was refused.
+    The move is now kept, and the same holds for a `RemoveNode a` before the reorder. Pinned in
+    `BatchAndMultiAgentTests.fs`, with both apply orders probed first.
+  - **More ops are kept.** A selected vertical op, or a selected remove or move, keeps EVERY earlier non-empty
+    op, because its unknown-parent write is ordered against all of them. Inserts and reorders under different
+    named parents are still independent and still drop. An `indivisible` batch withdraws in more cases for the
+    same reason.
+- **Arbitration verdicts:** none change for a consumer that already lowered the tier's ops with Phase 2004's
+  vertical term. The keyed walk adds ids held in switch cases, state alternatives and slot arguments, and the
+  vertical arms add the ids their payload puts in. Both only add addresses, so no pair becomes independent.
+- **Certified where a consumer gets it.** `CoreLawSupport.footprintOfTreeOp` and the Fable law harness's
+  `footprintOfEqOp` RE-EXPORT the shipped function; neither test project defines a projection. The function is
+  run under `laneFoldLawsAt` / `laneFoldLawsWith` (.NET and Fable), `concurrencyLawsWith`, and, newly adopted
+  in the Core-conformance census, `footprintLawsAt`, over a generator that draws every op kind the projection
+  has an arm for. The erased-term falsifier is now the shipped function minus the vertical unknown-parent
+  write. `footprintLawsAt`'s soundness law refutes it, as `laneFoldLawsAt` does.
+- **The baseline the next projection change is measured against:** `derivability-snapshot` in
+  `benchmarks/Fuaran.UI.Ops.Benchmarks` (`dotnet run -c Release -- derivability-snapshot`). It reports the
+  share of the tier's three-way auto-merges that Core's footprint refuses although both fold orders reach the
+  UI's merged tree. Under this projection, at 20,000 trials with seed 20261016: **0.8401 generated** (7,808 of
+  9,294 auto-merges, 18,597 triads), **0.7143 over the 13 merge-corpus triads** (5 of 7), 0.8400 pooled. Most
+  of the generated cell is `MoveVsRemove` (4,397), the unknown-parent clause. The same harness with the
+  vertical unknown-parent write erased reads 0.4507. That gap is the measured cost of Phase 2004's soundness
+  term. Earlier figures (40.7%, 19.6%) were taken before Phase 2004 with an unsound vertical arm; they are not
+  this baseline.
+
 ---
 
 ## 0.95.0 — the slot opened after v0.94.0 was released (RELEASED — tagged v0.95.0 at 9e03c87, 2026-10-17)
@@ -8176,69 +8239,6 @@ applies in one order and is refused in the other, because the removal took `n` w
   editing side's author of that cell is the branch tip, because a vertical op names only its own node's
   cells. So a `Primary` edit discarded with the subtree is reported unpinned when the tip is `Secondary`.
   This is recorded in `DagPrimacy`'s header and is not changed here: naming the ancestors needs the tree.
-
-### What rides this slot — Phase 2292 (the footprint projection ships, and partial accept reads it)
-
-**Class: BREAKING (one public member removed) + additive (one new module) + a BEHAVIOUR change of
-`BatchAccept`.** It rides the 0.95.0 draft, which is already breaking-class, so no number moves. No wire byte
-and no hash moves.
-
-- **Added: `Fuaran.UI.Ops.TreeOpFootprint`** (package `Fuaran.UI.Ops`): `ofOp : TreeOp<'Msg> -> Footprint` and
-  `ofScript : TreeOp<'Msg> list -> Footprint`, total over the DU. It is the tier's one projection of its op
-  algebra onto Fuaran.Core's `Footprint`, the record `Ops.independent`, `Ops.interference`, `Dag.conflicts` and
-  the lane fold read. The structural five lower to the matching `SkeletonOp` and take Core's
-  `Ops.footprintKeyed` over `Introspect.nodeWitness` / `keyedWitness` / `idWitness`, the keyed walk the apply
-  engine runs. A vertical op (`EditNode`, `UpdateProp`, `ReplaceBinding`, `UpdateStyle`, `PatchStyle`,
-  `UpdateState`) is Core's `UpdateNode` footprint: the node read and content-written, every id of a subtree the
-  op puts in (an `EditNode`'s new kind, an `UpdateState`'s alternatives) read and content-written, and Phase
-  2004's unknown-parent write. `ReplaceRoot`, which the test projections refused with an exception, has a
-  footprint: every id of the new tree read and content-written, the root's child list written, and an
-  unknown-parent write of the root. It is therefore ordered against every non-empty tier op. Fable-portable.
-- **The slots: none, decided.** The projection is at NODE precision. Over the pinned Core (0.36.0) an
-  unknown-parent write collides with every structural or unknown-parent write of the other script, and every
-  non-empty `TreeOp` writes one of the two. So a vertical op is independent of no tier op except an empty
-  `Batch`, whatever slot it declares, and a slot declaration (`kind`, `state`, `style.<field>`) frees no pair.
-  This is measured, not argued only. `Conformance.footprintLawsAt` over a slot-declaring variant of the
-  projection fails its adequacy guard: slot-independent pairs 0, slot-clash pairs 10, seed 20260904, 300
-  iterations. The node-precision projection passes it. A kind edit and a restyle of one node are therefore
-  DEPENDENT, as two edits of different nodes are (Phase 2004). A slot becomes the right address once Core can
-  express "a parent this script cannot name" without that colliding with another in-place rewrite.
-- **Removed (breaking): `TreeOp.footprint`** (package `Fuaran.UI.Ops.Abstractions`, shipped in v0.93.0 and
-  v0.94.0), with its private `subtreeIds`. It returned a flat `Set<NodeId>` of targets, inserted ids and
-  reorder order. A set of ids cannot say that a remove or a move writes a parent it does not name. **Migration:**
-  call `TreeOpFootprint.ofOp` and read Core's `Footprint`. For the old id set, take
-  `Reads ∪ ContentWrites ∪ StructureWrites ∪ UnknownParentWrites` (strings, not `NodeId`s), which contains every
-  id the old function returned. `TreeOp.kindName`, `targets` and `inserted` are unchanged.
-- **Behaviour change: `BatchAccept.dependencyClosure` closes over `Ops.interference`.** An op is kept when it
-  was selected, or when it is not independent of the union of the kept LATER ops' footprints. It is still one
-  reverse pass: a union is independent of an op only when each part is. It is sound because every dropped op
-  commutes past every later kept op. **What changes for partial accepts:**
-  - The defect closes. For `[MoveNode(a, Q); ReorderChildren(P, [b; c])]` with `a` under `P`, and only the
-    reorder selected, the old flat sets were disjoint. The move was dropped and the kept reorder was refused.
-    The move is now kept, and the same holds for a `RemoveNode a` before the reorder. Pinned in
-    `BatchAndMultiAgentTests.fs`, with both apply orders probed first.
-  - **More ops are kept.** A selected vertical op, or a selected remove or move, keeps EVERY earlier non-empty
-    op, because its unknown-parent write is ordered against all of them. Inserts and reorders under different
-    named parents are still independent and still drop. An `indivisible` batch withdraws in more cases for the
-    same reason.
-- **Arbitration verdicts:** none change for a consumer that already lowered the tier's ops with Phase 2004's
-  vertical term. The keyed walk adds ids held in switch cases, state alternatives and slot arguments, and the
-  vertical arms add the ids their payload puts in. Both only add addresses, so no pair becomes independent.
-- **Certified where a consumer gets it.** `CoreLawSupport.footprintOfTreeOp` and the Fable law harness's
-  `footprintOfEqOp` RE-EXPORT the shipped function; neither test project defines a projection. The function is
-  run under `laneFoldLawsAt` / `laneFoldLawsWith` (.NET and Fable), `concurrencyLawsWith`, and, newly adopted
-  in the Core-conformance census, `footprintLawsAt`, over a generator that draws every op kind the projection
-  has an arm for. The erased-term falsifier is now the shipped function minus the vertical unknown-parent
-  write. `footprintLawsAt`'s soundness law refutes it, as `laneFoldLawsAt` does.
-- **The baseline the next projection change is measured against:** `derivability-snapshot` in
-  `benchmarks/Fuaran.UI.Ops.Benchmarks` (`dotnet run -c Release -- derivability-snapshot`). It reports the
-  share of the tier's three-way auto-merges that Core's footprint refuses although both fold orders reach the
-  UI's merged tree. Under this projection, at 20,000 trials with seed 20261016: **0.8401 generated** (7,808 of
-  9,294 auto-merges, 18,597 triads), **0.7143 over the 13 merge-corpus triads** (5 of 7), 0.8400 pooled. Most
-  of the generated cell is `MoveVsRemove` (4,397), the unknown-parent clause. The same harness with the
-  vertical unknown-parent write erased reads 0.4507. That gap is the measured cost of Phase 2004's soundness
-  term. Earlier figures (40.7%, 19.6%) were taken before Phase 2004 with an unsound vertical arm; they are not
-  this baseline.
 
 ### What rides this slot — Phase 2285 (a state arm is fragment scope, as on every host)
 
