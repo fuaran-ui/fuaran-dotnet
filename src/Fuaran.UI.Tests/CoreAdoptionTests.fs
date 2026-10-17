@@ -255,6 +255,21 @@ let private containerRun =
 let private diffContainedResults =
     CoreConf.diffContainedLaws nodew idw opGen 20260619 200
 
+// Phase 2306 — `Placement`'s verbs are Core's `TreePlacement.…Contained` under this container
+// predicate, and its clone verbs rename through `FreshIds.repairDuplicates` under
+// `FreshIds.derived`, so both families run over this witness.
+let private placementResults = CoreConf.placementLaws nodew idw opGen 20260619 200
+
+let private freshIdResults =
+    CoreConf.freshIdLaws
+        nodew
+        idw
+        opGen
+        (fun (NodeId fresh) e -> wrap { e.Node with Id = fresh })
+        (Fuaran.Core.FreshIds.derived idw)
+        20260619
+        200
+
 let private chainBreakReasonResults = CoreConf.chainBreakReasonLaws 20260619 200
 
 let private chainBreakReasonRun =
@@ -415,6 +430,25 @@ let tests =
                       "expected one red adequacy arm, found %d: %A"
                       (List.length other)
                       (other |> List.map _.Counterexample)
+
+          testCase "the Fuaran.UI witness certifies under Core's placementLaws (Placement's verbs)"
+          <| fun _ ->
+              // Phase 2306: `Placement.placeOp` / `moveOp` / `nudgeOp` lower through
+              // `TreePlacement.placeContained` / `moveContained` under this container predicate, so
+              // the landing, bare-op and refusal-by-name laws are the tier's verbs' laws.
+              Expect.isGreaterThan (List.length placementResults) 2 "the family's laws ran"
+
+              for r in placementResults do
+                  Expect.isTrue r.Passed (sprintf "%s: %A" r.Law r.Counterexample)
+
+          testCase "the Fuaran.UI witness certifies under Core's freshIdLaws (the clone verbs' renaming)"
+          <| fun _ ->
+              // Phase 2306: `Placement.duplicateOp` / `pasteOp` rename through
+              // `FreshIds.repairDuplicates` under `FreshIds.derived`, the strategy certified here.
+              Expect.isGreaterThan (List.length freshIdResults) 2 "the family's laws ran"
+
+              for r in freshIdResults do
+                  Expect.isTrue r.Passed (sprintf "%s: %A" r.Law r.Counterexample)
 
           testCase "the kit's classified chain walkers never mint Unrecognised (chainBreakReasonLaws)"
           <| fun _ ->
@@ -1253,9 +1287,9 @@ module KeyedEnumeration =
                           host
                           (switchOf (md "existing") (md "d"))
                           { ParentId = NodeId "root"
-                            Placement = Placement.Last }
+                            Placement = Fuaran.Core.Anchor.Last }
                   with
-                  | Error(PlaceError.DuplicateId(NodeId "existing")) -> ()
+                  | Error(PlaceError.Refused(Fuaran.Core.Rejection.DuplicateId(NodeId "existing"))) -> ()
                   | other -> failtestf "expected DuplicateId existing, got %A" other
               }
 
