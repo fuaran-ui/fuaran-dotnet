@@ -8231,6 +8231,56 @@ fixture corpus (permissive, strict and decorated).
   `mountPlaceholder`). No output moves.
 
 
+### What rides this slot — Phase 2304 (re-slotted by the driver to the breaking cut after v0.95.0)
+
+**Class: BREAKING** — a public type is deleted and replaced, and the scripts a public function emits change
+shape. It must not share 0.95.0; it is recorded here so the cut after the v0.95.0 tag carries it whole.
+Migration: [`docs/migrations/2304-core-diff.md`](docs/migrations/2304-core-diff.md).
+
+- **`Fuaran.UI.OpStream.Replay.TreeDiff` — the classification is Fuaran.Core's `Diff.changes`.** `NodeChangeKind`
+  and `NodeChange` are deleted; `TreeDiff.Changes` is `Fuaran.Core.Diff.Change<NodeId> list`, in Core's canonical
+  order (ascending id, then case order). A same-parent reposition is `Reordered` on the PARENT, never `Moved` on the
+  child; `Moved` carries the two parents and no positions; `PropChanged` and `TextChanged` are one `Changed`;
+  `Added` / `Removed` carry no payload. A root-id change or a repeated id reads as every old id `Removed` and every
+  new id `Added`. `StepDiff`, `StepDiffsError` and `stepDiffs` keep their shapes. `DagCoordinateDiff` in
+  `Fuaran.UI.OpStream.Dag.Inspect` carries the new `TreeDiff` unchanged.
+- **`Fuaran.UI.OpStream.Replay.TreeOpDiff` — the script is Core's `Diff.toOpsContainedWith`, lowered.** Behaviour:
+  a survivor that changed parent is a `MoveNode`, never a remove-and-re-insert (the tier's own diff re-sent it
+  whenever its new parent was new or the root); content changes of containers come first, then inserts and moves,
+  removals, reorders, and content changes of nodes that end as leaves; the `EditNode` floor keeps the children the
+  node holds at that point instead of re-sending its subtree; a changed root id is `[ ReplaceRoot after ]`
+  (formerly an `EditNode` at the old id, which did not round-trip). Unchanged: field-level `UpdateProp` /
+  `ReplaceBinding`, the field-level style edit (Phase 2291), one `InsertChild` per wholly-new region, `diffBatched`.
+  New: `tryDiff : Node<'Msg> -> Node<'Msg> -> Result<TreeOp<'Msg> list, ApplyError>` (Core's `DiffError` under the
+  tier's code, `DuplicateIdInTree` → `DuplicateNodeId`; `diff` answers a refused pair with `[ ReplaceRoot after ]`)
+  and `inverse : TreeOp<'Msg> -> Node<'Msg> -> TreeOp<'Msg> list` (the structural five through `Ops.invert`, every
+  other op the diff back from the post-state). The private `detectMoves` and the remove-append-reorder-recurse
+  walk are deleted.
+- **`Fuaran.UI.ServerDriven.Lowering` — new `lowerScript renderFragment oldTree ops`**, which reads each op against
+  the tree right after it, so a whole diff script lowers to patches that address what the DOM holds. `lower` is
+  unchanged and stays exact for a single op. `Driver`, `Navigation` and `Fuaran.UI.Program`'s two drivers lower
+  through `lowerScript`; the patches a session sees for a relocation are now `MoveNode` (identity kept: focus,
+  scroll and element state survive).
+- **`Fuaran.UI.Program.UiWitness.state.Undo`** is `TreeOpDiff.inverse`: the structural five undo through Core's
+  `Ops.invert` (an insert by its removal, a removal by its re-insert and order), every other op as before.
+- **DAG merge.** A NEW merge node's replay delta (`DagMerge`, `diffBatched`) takes the new script shape, so its
+  hash differs from the one the previous diff would have minted for the same pair; recorded merge nodes replay and
+  verify unchanged (`ReassertPin` reads only field ops and is unaffected).
+
+**Measured** (`dotnet run -c Release -- core-diff 10`, new in `benchmarks/Fuaran.UI.Ops.Benchmarks`, this machine,
+before → after; timings are noisy run to run by about a third): the corpus sweep (522 pairs) 47 → 49-52 ms, 572 → 730
+ops, 500 → 506 pairs round-tripping; on a 10,001-node tree, identical 127 → 178-192 ms and one field 124 → 173-191 ms
+(Core indexes both trees where the tier's walk did not), one move 204 → 179-202 ms; ten stacks regrouped under new
+containers 21 ops either way but 89,918 → 3,578 canonical bytes (10 `RemoveNode` + 10 re-sent subtrees became 10
+`MoveNode`); a thousand leaves scattered across stacks 147 s → 0.19-0.20 s (the tier's move pre-pass folded each move
+through the apply engine).
+
+**Certified by** `Fuaran.UI.OpStream.Tests/TreeOpDiffEquivalenceTests.fs` (every cross-host golden script of
+`diff/goldens.json` byte for byte, the structure Core's op for op, no survivor re-sent, the round-trip law over the
+corpus and 400 generated pairs, the structural undo law), `TreeDiffTests.fs` (Core's vocabulary, and the
+classification as the projection of the emitted script), and `Fuaran.UI.Tests/CoreAdoptionTests.fs` (Core's
+`diffContainedLaws` over the tier's witness; the census row moves from not-used to adopted).
+
 ## 0.94.0 — the slot opened after v0.93.0 was released; advanced from 0.93.1 on 2026-10-13 ahead of Phase 2052, whose change is breaking (RELEASED — tagged v0.94.0 at 90082d3, 2026-10-14)
 
 _Class: **BREAKING** — raised from additive by the riders below, the first of which (Phase 2052) is the change the slot

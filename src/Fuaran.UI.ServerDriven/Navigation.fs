@@ -90,7 +90,7 @@ let resolveNav
     match resolver route with
     | Some routeTree ->
         let ops = TreeOpDiff.diff currentTree routeTree
-        let patches = Lowering.lower renderFragment routeTree ops
+        let patches = Lowering.lowerScript renderFragment currentTree ops
         let effects = if pushState then [ ClientEffect.PushState route ] else []
         InPlace(routeTree, ops, patches, effects)
     | None -> FullReload route

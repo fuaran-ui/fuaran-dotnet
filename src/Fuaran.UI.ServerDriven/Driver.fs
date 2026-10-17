@@ -14,7 +14,7 @@ open Fuaran.UI.ServerDriven.Validation
 //  and runs the *server-side* Elmish loop: an inbound `LiveEvent` is validated
 //  (G1, `Validation.validate`), its resolved `Action` interpreted, `update` run,
 //  the tree re-rendered, diffed (`TreeOpDiff.diff`), and lowered
-//  (`Lowering.lower`) to the `DomPatch` list the shim applies — plus the
+//  (`Lowering.lowerScript`) to the `DomPatch` list the shim applies — plus the
 //  `ClientEffect` list for the inherently-browser arms.
 //
 //  ── The server-closure win ────────────────────────────────────────────────
@@ -402,7 +402,7 @@ let applyResolvedActionsWithSubmitBody
     let newTree = session.View newModel
     let ops = TreeOpDiff.diff session.Tree newTree
     session.Services.OnApply ops
-    let patches = Lowering.lower session.Services.RenderFragment newTree ops
+    let patches = Lowering.lowerScript session.Services.RenderFragment session.Tree ops
 
     { session with
         Model = newModel

@@ -1,5 +1,6 @@
 namespace Fuaran.UI.OpStream.Replay
 
+open Fuaran.Core
 open Fuaran.UI.Types
 open Fuaran.UI.Ops
 open Fuaran.UI.Ops.Types
@@ -7,111 +8,59 @@ open Fuaran.UI.Ops.Introspect
 open Fuaran.UI.OpStream.Abstractions
 
 // ============================================================================
-//  TreeDiff — structural diff over two `Node<'Msg>` snapshots, keyed by
-//  NodeId.
+//  TreeDiff — the per-id change classification between two `Node<'Msg>`
+//  snapshots, keyed by NodeId.
 //
 //  Closes the situational-awareness loop opened by the op-stream
-//  (hash-chained truth) and per-op telemetry events.
-//  The op stream tells you what was applied; the
-//  telemetry tells you what each op cost; the layout observer tells you
-//  what rendered. What's missing is what *changed*. TreeDiff is the
-//  primitive: given two snapshots, classify every node by NodeId into
-//  Added / Removed / Moved / KindChanged / PropChanged / TextChanged.
+//  (hash-chained truth) and per-op telemetry events. The op stream tells you
+//  what was applied; the telemetry tells you what each op cost; the layout
+//  observer tells you what rendered. What's missing is what *changed*.
+//
+//  **A projection of the one diff (Phase 2304).** The classification is
+//  Fuaran.Core's `Diff.changes` over the tier's witnesses and the canonical
+//  node encoder — the same witnesses and encoder `TreeOpDiff` hands Core's
+//  `Diff.toOpsContainedWith` — and its vocabulary is Core's `Diff.ChangeKind`,
+//  with no second definition here. Core holds the two to each other
+//  (`Conformance.changeLaws`, its D112): the `Added` ids are the script's
+//  insert grafts, the `Moved` ids its `MoveNode` targets, the `KindChanged`
+//  and `Changed` ids its content updates, and every reordered parent is
+//  `Reordered`. So:
+//
+//   - `Added` / `Removed` — the id is in one tree only.
+//   - `Moved(fromParent, toParent)` — a survivor whose PARENT changed. A
+//     change of position under one parent is not a move of the child; it is a
+//     `Reordered` entry on the PARENT.
+//   - `KindChanged(fromKind, toKind)` — the kind tag changed (reported instead
+//     of `Changed`, which it subsumes).
+//   - `Changed` — the survivor's own content (its childless canonical shell)
+//     changed. Closure-bearing slots render as the `"<closure>"` sentinel, so
+//     two nodes differing only in closure identity are equal.
+//   - `Reordered` — the children both trees place under this node stand in a
+//     different relative order.
+//
+//  One id may carry several entries (`Moved` and `Changed` together). Entries
+//  are in Core's canonical order: ascending id, then the declaration order
+//  above. Two snapshots whose roots carry different ids — or a tree carrying
+//  an id twice — have no id-addressed diff; `TreeOpDiff` answers them with
+//  `ReplaceRoot`, and this classification reads that script: every id of the
+//  old tree `Removed`, every id of the new one `Added`.
 //
 //  Pairs with `Replay.applyTo`: the per-step replay-diff (`stepDiffs`)
 //  drives a start snapshot through an OpRecord sequence and surfaces the
 //  diff between the tree before and after each applied op. Hash-chain
 //  integrity is verified up front (via `HashChain.Verify.chain`) so a
 //  forked / corrupt segment surfaces an explicit IntegrityError instead
-//  of producing a diff against a broken replay.
-//
-//  Design choices:
-//
-//   1. Node identity is `NodeId` — the same key the apply engine uses for
-//      structural ops. A node "moved" if its parent or position changed;
-//      "added" if its id is new; "removed" if its old id has no successor.
-//      No fuzzy matching across renames — by design, since renamed nodes
-//      are structurally a Remove + Add per the §4g uniqueness contract.
-//
-//   2. Shell comparison uses `CanonicalJson.encodeNode` on a children-
-//      stripped clone. Two nodes whose shells differ at the JSON level
-//      are PropChanged. Closure-bearing slots (`Action`, `Binding.Query`
-//      accessors) render as the `"<closure>"` sentinel — two nodes
-//      differing only in closure identity are treated as equal. This is
-//      the same v1 limitation declared in `CanonicalJson.fs`'s preamble.
-//
-//   3. `TextChanged` is a narrow specialisation of `PropChanged` for
-//      `Heading` / `Markdown` whose only structural change is the
-//      `TextSource.Literal` text. It surfaces a `fromText` / `toText`
-//      pair so the inspector can show the actual character delta.
-//      Anything else with a text change routes through `PropChanged`
-//      with the children-stripped JSON shells.
-//
-//   4. `Moved` and `PropChanged` are NOT mutually exclusive — a node
-//      that was both reparented AND had a prop change emits two
-//      `NodeChange` entries with the same NodeId. Callers that want a
-//      flat "what happened to id X" rollup can group by NodeId.
-//
-//   5. The integrity verifier (`HashChain.Verify.chain`) is .NET-only
-//      (`SHA256` lives behind a `#if !FABLE_COMPILER` guard). The diff
-//      module itself is Fable-clean; the `stepDiffs` overload that does
-//      NOT take an integrity check is exposed for browser-side consumers
-//      that have verified the chain on the server.
-//
-//  FGP 2: depends on FSharp.Core + Fuaran.UI + Fuaran.UI.Ops +
-//  Fuaran.UI.OpStream.Abstractions only. No reference to the
-//  orchestration-private tier — the diff is a public-tier capability
-//  the eventual OSS spin keeps.
+//  of producing a diff against a broken replay. The integrity verifier is
+//  .NET-only; the classification itself is Fable-clean.
 //
 //  FGP 5: TreeDiff is a *consumer* of the op stream. It does not emit
 //  new op-stream records or telemetry events — the stream stays the
 //  source of truth and the diff is a derived view of it.
 // ============================================================================
 
-/// Per-node classification. Multiple changes per NodeId are permitted —
-/// `Moved` + `PropChanged` is the common compound case for a node that
-/// was both reparented and had its content updated within the same op
-/// segment.
-[<RequireQualifiedAccess>]
-type NodeChangeKind =
-    /// The node's id was not in the old snapshot. `parent` is `None` when
-    /// the added node IS the root of the new snapshot; `position` is its
-    /// index in its new parent's `Children` (or `0` for a new root).
-    | Added of parent: NodeId option * position: int
-    /// The node's id was in the old snapshot but not in the new. `parent`
-    /// names the old parent (or `None` if the removed node was the root).
-    | Removed of parent: NodeId option
-    /// The node's id is present in both snapshots but its `(parent,
-    /// position)` differs. Reparented + reindexed both surface as `Moved`.
-    | Moved of fromParent: NodeId option * fromPosition: int * toParent: NodeId option * toPosition: int
-    /// The node's NodeKind discriminator changed (e.g. Heading → Markdown,
-    /// or Layout.Stack → Layout.Grid). Reported via the structural
-    /// `kindName` from `Fuaran.UI.Ops.Introspect`. PropChanged on the
-    /// same id is suppressed when KindChanged fires — a wholesale kind
-    /// swap subsumes per-prop drift.
-    | KindChanged of fromKind: string * toKind: string
-    /// The node's children-stripped canonical-JSON shell changed but its
-    /// NodeKind discriminator stayed the same. `fromJson` / `toJson` are
-    /// the shell encodings (closure payloads as `"<closure>"`).
-    | PropChanged of fromJson: string * toJson: string
-    /// Narrow specialisation: the node is a `Heading` or `Markdown`
-    /// whose `Text` literal changed. Reported in addition to the
-    /// `PropChanged` shell drift so the inspector can show a character-
-    /// level text delta without re-parsing the JSON shell.
-    | TextChanged of fromText: string * toText: string
-
-/// One classification result entry. `NodeId` is the addressed node;
-/// `Change` is the per-id kind. A single NodeId can appear in multiple
-/// entries of one `TreeDiff` (see `NodeChangeKind` notes).
-type NodeChange =
-    { NodeId: NodeId
-      Change: NodeChangeKind }
-
-/// The full diff between two snapshots. Entries are in stable order:
-/// Added / Removed / Moved / KindChanged / PropChanged / TextChanged
-/// groups concatenated, each group internally sorted by NodeId for
-/// determinism (helps the inspector's snapshot tests).
-type TreeDiff = { Changes: NodeChange list }
+/// The classification between two snapshots: Core's `Diff.Change` entries, in
+/// Core's canonical order.
+type TreeDiff = { Changes: Diff.Change<NodeId> list }
 
 /// One step in a per-step replay-diff. `Record` is the op that was
 /// applied; `Diff` is the diff between the tree-before and tree-after
@@ -140,64 +89,10 @@ type StepDiffsError<'Msg> =
     /// `ReplayError`.
     | ReplayFailed of completedSteps: StepDiff<'Msg> list * failedAt: int * replayError: ReplayError
 
-/// The node index and childless-shell encoding the two diff engines share
-/// (Phase 2063): `TreeDiff` (descriptive `NodeChange` records) and `TreeOpDiff`
-/// (applyable `TreeOp`s) each used to carry a private copy of both.
+/// The childless-shell encoding the classification and `TreeOpDiff` share
+/// (Phase 2063): the canonical encoding of a node with its children emptied,
+/// which is the content Core's `Diff` compares.
 module internal NodeIndex =
-
-    /// Per-node location entry: where the node sits in its tree (parent +
-    /// 0-based position) plus the node itself. Root nodes have `Parent =
-    /// None` and `Position = 0`.
-    type Location<'Msg> =
-        { Parent: NodeId option
-          Position: int
-          Node: Node<'Msg> }
-
-    /// Walk a tree producing `(rawIdString, Location)` pairs. Uses the
-    /// unwrapped string id form so the resulting Map keys are orderable for
-    /// deterministic Map-merging without an `NodeId` IComparer. An id that
-    /// occurs twice keeps its LAST location in walk order.
-    let build<'Msg> (root: Node<'Msg>) : Map<string, Location<'Msg>> =
-        let rec walk
-            (acc: Map<string, Location<'Msg>>)
-            (parent: NodeId option)
-            (position: int)
-            (node: Node<'Msg>)
-            : Map<string, Location<'Msg>> =
-            let acc' =
-                acc
-                |> Map.add
-                    node.Id
-                    { Parent = parent
-                      Position = position
-                      Node = node }
-
-            match getChildren node.Kind with
-            | None -> acc'
-            | Some children ->
-                children
-                |> List.indexed
-                |> List.fold (fun a (i, child) -> walk a (Some(NodeId node.Id)) i child) acc'
-
-        walk Map.empty None 0 root
-
-    /// `true` when `ancestor` is `node` itself or one of its ancestors in the
-    /// indexed tree — a parent-chain walk, O(depth), where a subtree search is
-    /// O(subtree). Agrees with `Introspect.isAncestorOf` on a tree whose ids
-    /// are unique; the walk is bounded by the index size, so an index built
-    /// over duplicated ids (whose parent links can loop) still terminates.
-    let isAncestorOrSelf<'Msg> (index: Map<string, Location<'Msg>>) (ancestor: string) (node: string) : bool =
-        let rec climb (current: string) (budget: int) =
-            if current = ancestor then
-                true
-            elif budget <= 0 then
-                false
-            else
-                match Map.tryFind current index with
-                | Some { Parent = Some(NodeId parent) } -> climb parent (budget - 1)
-                | _ -> false
-
-        Map.containsKey ancestor index && climb node index.Count
 
     /// Produce a children-stripped clone of `node` so the canonical-JSON
     /// shell encoding compares ONLY this node's own props — drift in
@@ -214,129 +109,68 @@ module internal NodeIndex =
     let encodeShell<'Msg> (node: Node<'Msg>) : string =
         CanonicalJson.encodeNode (stripChildren node)
 
+    /// `true` for a kind whose children are a FREE ordered list — one it can
+    /// hold at any length, empty included. That is every container but
+    /// `FragmentDecl`, whose one-element list is its `body`: the structural ops
+    /// address it, but no list script reaches a new body, because swapping it
+    /// passes through a two-child or a childless state the kind cannot hold.
+    let holdsList<'Msg> (node: Node<'Msg>) : bool =
+        withChildren node.Kind [] |> Option.isSome
+
+    /// A node's children as the diff reads them: its free list, or none — so a
+    /// `FragmentDecl`'s body is part of its own content (its shell) and a
+    /// change below it rewrites the declaration whole, as it always has.
+    let children<'Msg> (node: Node<'Msg>) : Node<'Msg> list =
+        if holdsList node then
+            getChildren node.Kind |> Option.defaultValue []
+        else
+            []
+
+    /// The witness the diff hands Fuaran.Core: the tier's structural witness
+    /// with `children` above in place of the raw ordered list.
+    let witness<'Msg> : NodeWitness<Node<'Msg>, NodeId> =
+        { nodeWitness<'Msg> with
+            Children = children }
+
 module TreeDiff =
 
-    // The tree index and the shell encoding are `NodeIndex`'s, shared with
-    // `TreeOpDiff` (Phase 2063).
+    /// The reading of a wholesale `ReplaceRoot`: every id of `oldTree`
+    /// removed, every id of `nextTree` added, in Core's canonical order.
+    let private replaced<'Msg> (oldTree: Node<'Msg>) (nextTree: Node<'Msg>) : TreeDiff =
+        let ids (root: Node<'Msg>) =
+            Tree.preorder NodeIndex.witness<'Msg> root |> List.map _.Id |> List.distinct
 
-    // ─── Internal: text-source extraction ────────────────────────────────
+        let rank (k: Diff.ChangeKind<NodeId>) =
+            match k with
+            | Diff.ChangeKind.Added -> 0
+            | _ -> 1
 
-    /// Extract the literal-text payload from a `TextSource`. Returns
-    /// `None` for `Bound` / `I18n` — those route through PropChanged
-    /// since their resolved text isn't known at diff time.
-    let private literalText (ts: TextSource) : string option =
-        match ts with
-        | TextSource.Literal raw -> Some raw
-        | TextSource.Bound _ -> None
-        | TextSource.I18n(_, _) -> None
+        let entries =
+            [ for id in ids nextTree ->
+                  ({ Id = NodeId id
+                     Kind = Diff.ChangeKind.Added }
+                  : Diff.Change<NodeId>)
+              for id in ids oldTree ->
+                  ({ Id = NodeId id
+                     Kind = Diff.ChangeKind.Removed }
+                  : Diff.Change<NodeId>) ]
 
-    /// When both old and new are Heading / Markdown with `Literal` text,
-    /// return the `(fromText, toText)` pair if it changed; else `None`.
-    let private textChange<'Msg> (oldNode: Node<'Msg>) (newNode: Node<'Msg>) : (string * string) option =
-        let extract (n: Node<'Msg>) : string option =
-            match n.Kind with
-            | NodeKind.Heading(s) -> literalText s.Text
-            | NodeKind.Markdown(s) -> literalText s.Text
-            | _ -> None
+        { Changes =
+            entries
+            |> List.sortWith (fun x y ->
+                let (NodeId rx), (NodeId ry) = x.Id, y.Id
 
-        match extract oldNode, extract newNode with
-        | Some a, Some b when a <> b -> Some(a, b)
-        | _ -> None
+                match System.String.CompareOrdinal(rx, ry) with
+                | 0 -> compare (rank x.Kind) (rank y.Kind)
+                | c -> c) }
 
-    // ─── Public surface ──────────────────────────────────────────────────
-
-    /// Compute the structural diff between two `Node<'Msg>` snapshots.
-    /// `oldTree` is the pre-state; `nextTree` is the post-state.
-    /// Returned `TreeDiff.Changes` is deterministic in entry order:
-    /// Added → Removed → Moved → KindChanged → PropChanged →
-    /// TextChanged groups, each internally sorted by raw NodeId string.
+    /// The per-id classification between two `Node<'Msg>` snapshots —
+    /// `oldTree` the pre-state, `nextTree` the post-state — as Core's
+    /// `Diff.changes` reads it (see the preamble).
     let diff<'Msg> (oldTree: Node<'Msg>) (nextTree: Node<'Msg>) : TreeDiff =
-        let oldIndex = NodeIndex.build oldTree
-        let newIndex = NodeIndex.build nextTree
-
-        let mutable addedAcc: NodeChange list = []
-        let mutable removedAcc: NodeChange list = []
-        let mutable movedAcc: NodeChange list = []
-        let mutable kindChangedAcc: NodeChange list = []
-        let mutable propChangedAcc: NodeChange list = []
-        let mutable textChangedAcc: NodeChange list = []
-
-        for KeyValue(rawId, newLoc) in newIndex do
-            match Map.tryFind rawId oldIndex with
-            | None ->
-                addedAcc <-
-                    { NodeId = NodeId rawId
-                      Change = NodeChangeKind.Added(newLoc.Parent, newLoc.Position) }
-                    :: addedAcc
-            | Some oldLoc ->
-                let oldKindName = kindName oldLoc.Node.Kind
-                let newKindName = kindName newLoc.Node.Kind
-
-                if oldKindName <> newKindName then
-                    // Wholesale kind swap — suppress per-prop drift; the
-                    // shell will differ by construction. Still surface Move
-                    // separately if structurally relocated.
-                    kindChangedAcc <-
-                        { NodeId = NodeId rawId
-                          Change = NodeChangeKind.KindChanged(oldKindName, newKindName) }
-                        :: kindChangedAcc
-
-                    if oldLoc.Parent <> newLoc.Parent || oldLoc.Position <> newLoc.Position then
-                        movedAcc <-
-                            { NodeId = NodeId rawId
-                              Change =
-                                NodeChangeKind.Moved(oldLoc.Parent, oldLoc.Position, newLoc.Parent, newLoc.Position) }
-                            :: movedAcc
-                else
-                    // Same kind discriminator — shell compare for prop drift,
-                    // location compare for move, narrow text-change check.
-                    let oldShell = NodeIndex.encodeShell oldLoc.Node
-                    let newShell = NodeIndex.encodeShell newLoc.Node
-
-                    if oldShell <> newShell then
-                        propChangedAcc <-
-                            { NodeId = NodeId rawId
-                              Change = NodeChangeKind.PropChanged(oldShell, newShell) }
-                            :: propChangedAcc
-
-                        match textChange oldLoc.Node newLoc.Node with
-                        | Some(fromText, toText) ->
-                            textChangedAcc <-
-                                { NodeId = NodeId rawId
-                                  Change = NodeChangeKind.TextChanged(fromText, toText) }
-                                :: textChangedAcc
-                        | None -> ()
-
-                    if oldLoc.Parent <> newLoc.Parent || oldLoc.Position <> newLoc.Position then
-                        movedAcc <-
-                            { NodeId = NodeId rawId
-                              Change =
-                                NodeChangeKind.Moved(oldLoc.Parent, oldLoc.Position, newLoc.Parent, newLoc.Position) }
-                            :: movedAcc
-
-        for KeyValue(rawId, oldLoc) in oldIndex do
-            if not (Map.containsKey rawId newIndex) then
-                removedAcc <-
-                    { NodeId = NodeId rawId
-                      Change = NodeChangeKind.Removed oldLoc.Parent }
-                    :: removedAcc
-
-        let sortByRawId (xs: NodeChange list) : NodeChange list =
-            xs
-            |> List.sortWith (fun a b ->
-                let (NodeId ra) = a.NodeId
-                let (NodeId rb) = b.NodeId
-                System.String.CompareOrdinal(ra, rb))
-
-        let ordered =
-            (sortByRawId addedAcc)
-            @ (sortByRawId removedAcc)
-            @ (sortByRawId movedAcc)
-            @ (sortByRawId kindChangedAcc)
-            @ (sortByRawId propChangedAcc)
-            @ (sortByRawId textChangedAcc)
-
-        { Changes = ordered }
+        match Diff.changes CanonicalJson.encodeNode NodeIndex.witness<'Msg> idWitness oldTree nextTree with
+        | Ok changes -> { Changes = changes }
+        | Error _ -> replaced oldTree nextTree
 
 // ─── Per-step replay-diff ────────────────────────────────────────────
 

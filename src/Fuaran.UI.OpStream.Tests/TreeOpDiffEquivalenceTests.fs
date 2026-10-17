@@ -1,24 +1,23 @@
 module Fuaran.UI.OpStream.Tests.TreeOpDiffEquivalenceTests
 
-// ─── Phase 2063: the diff encodes each node once, and emits the same bytes ───
+// ─── Phase 2304: the diff is Core's `Diff`, and the corpus says so ──────────
 //
-// Phase 2063 changed what `TreeOpDiff.diff` COSTS — one childless-shell encode
-// per node instead of whole-subtree encodes per candidate field, structural
-// comparison for closure-free injective fields, a shared node index for the
-// move pre-pass — and nothing about what it EMITS. This suite holds it to that:
-// over the wire corpus it runs the shipped diff and the pre-2063 oracle
-// (`TreeOpDiffPre2063`, a verbatim copy) on the same pairs and asserts the
-// canonical encodings of the two op lists are byte-identical, and that each
-// list still round-trips through the apply engine.
+// `TreeOpDiff.diff` is Fuaran.Core's `Diff.toOpsContainedWith` over the tier's
+// witnesses, lowered onto `TreeOp`. This suite holds it to that over the wire
+// corpus: every cross-host golden script of `diff/goldens.json` is emitted byte
+// for byte; the structural half of every script is Core's, op for op; no
+// script re-sends a node the old tree holds (a relocation is a `MoveNode`);
+// and the round-trip law holds on every pair the tier's previous diff
+// (`TreeOpDiffPre2063`, kept as the regression baseline) round-tripped.
 //
 // The pairs: every node fixture against itself, against every other fixture of
 // the same root kind (re-rooted at its id), and against its cyclic neighbour of
 // any kind; every node fixture against each `ops/` fixture that applies to it,
-// in both directions; every `diff/goldens.json` before/after pair, in both
-// directions; and a synthetic tree built from the corpus's leaves with
-// cross-parent moves, a container move, and a move the cycle check must refuse.
-// A coverage assertion keeps the law from being vacuous: the run must reach
-// every op family the diff can emit.
+// in both directions; one-field mutations of every fixture, both directions;
+// every `diff/goldens.json` before/after pair, in both directions; and a
+// synthetic tree built from the corpus's leaves with cross-parent moves, a
+// container move, and a nest inversion. A coverage assertion keeps the laws
+// from being vacuous: the run must reach every op family the diff can emit.
 
 open System.IO
 open System.Text.Json
@@ -40,7 +39,7 @@ let private requireCorpus () : string =
     | Some root -> root
     | None ->
         skiptest
-            "wire-format-fixtures/ not found walking up from the test assembly — the Phase 2063 equivalence law runs over the corpus (set FUARAN_WIRE_FIXTURES in a worktree)"
+            "wire-format-fixtures/ not found walking up from the test assembly — the Phase 2304 diff laws run over the corpus (set FUARAN_WIRE_FIXTURES in a worktree)"
 
 let private decodeNodeOrFail (what: string) (json: string) : Node<obj> =
     match JsonDecode.decodeNode json with
@@ -124,8 +123,8 @@ let private syntheticTrees (leaves: Node<obj> list) : (string * Node<obj> * Node
     let leafMove = tree c0' c1 c2 c3' true
     // g1 leaves g0 for the root (a container move with its subtree).
     let containerMove = tree c0 c1 c2 c3 false
-    // g0 moves UNDER g1 while g1 moves to the root: the cycle check must refuse
-    // g0's move (g0 is g1's ancestor in `a`) and admit g1's.
+    // g0 moves UNDER g1 while g1 moves to the root (g0 is g1's ancestor in
+    // `a`, so the two moves are applyable only with g1's first).
     let cycle =
         let g0Node = group "g0" c0
 
@@ -133,7 +132,7 @@ let private syntheticTrees (leaves: Node<obj> list) : (string * Node<obj> * Node
 
     [ "synthetic/leaf-move", a, leafMove
       "synthetic/container-move", a, containerMove
-      "synthetic/cycle-refused", a, cycle
+      "synthetic/nest-inversion", a, cycle
       "synthetic/identical", a, a ]
 
 /// The closed enum vocabularies (`enum-tokens.json`): token → the other
@@ -316,79 +315,360 @@ let private roundTrips (a: Node<obj>) (b: Node<obj>) (ops: TreeOp<obj> list) : b
     | Some t -> CanonicalJson.encodeNode t = CanonicalJson.encodeNode b
     | None -> false
 
+let rec private flatten (op: TreeOp<obj>) : TreeOp<obj> list =
+    match op with
+    | TreeOp.Batch inner -> inner |> List.collect flatten
+    | other -> [ other ]
+
+/// The golden scripts of the cross-host section of `diff/goldens.json`, each
+/// op re-encoded canonically from the corpus bytes.
+let private goldenScripts () : (string * Node<obj> * Node<obj> * string list) list =
+    let root = requireCorpus ()
+
+    use doc =
+        JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "diff", "goldens.json")))
+
+    [ for entry in doc.RootElement.GetProperty("goldens").EnumerateArray() do
+          let id = entry.GetProperty("id").GetString() |> nonNull
+
+          let node (field: string) =
+              decodeNodeOrFail $"diff/{id}.{field}" (entry.GetProperty(field).GetRawText())
+
+          let ops =
+              [ for op in entry.GetProperty("ops").EnumerateArray() ->
+                    match JsonDecode.decodeOp (op.GetRawText()) with
+                    | Ok decoded -> CanonicalJson.encodeOp decoded
+                    | Error e -> failtestf "diff/%s ops do not decode: %A" id e ]
+
+          yield id, node "before", node "after", ops ]
+
+/// The structural half of a script: every op but the inserts and the content
+/// ops, as canonical bytes, in order.
+// ─── generated pairs ────────────────────────────────────────────────────────
+
+/// A drawn tree of boxes and leaves, and a drawn edit of it: survivors moved
+/// across parents (into new boxes too), removed regions, new regions, reorders,
+/// text edits, and kind swaps in both directions between leaf and container —
+/// so a survivor can become a container that receives moved and new children,
+/// or a leaf whose children leave first. Ids are unique per tree.
+let private generatedPairs (seed: int) (count: int) : (string * Node<obj> * Node<obj>) list =
+    let rng = System.Random(seed)
+    let leaf (id: string) (text: string) : Node<obj> = Fuaran.markdown id text
+
+    let box (id: string) (kids: Node<obj> list) : Node<obj> =
+        Fuaran.stack id { Defaults.stack with Children = kids }
+
+    let rec draw (prefix: string) (depth: int) : Node<obj> =
+        if depth = 0 || rng.Next 3 = 0 then
+            leaf prefix $"text {prefix}"
+        else
+            box prefix [ for i in 0 .. rng.Next 4 -> draw $"{prefix}.{i}" (depth - 1) ]
+
+    let kids (n: Node<obj>) =
+        Introspect.getChildren n.Kind |> Option.defaultValue []
+
+    let rec flat (n: Node<obj>) : Node<obj> list = n :: (kids n |> List.collect flat)
+
+    /// Rebuild `after` from `before`'s nodes: every non-root node is kept, dropped,
+    /// or re-homed under a drawn container; then each container's list is drawn
+    /// in a new order, a few new nodes join, and some nodes change content.
+    let edit (before: Node<obj>) (round: int) : Node<obj> =
+        let nodes = flat before |> List.tail
+        let mutable fresh = 0
+
+        let newId () =
+            fresh <- fresh + 1
+            $"new{round}.{fresh}"
+
+        // Drawn shape of the new tree: a parent for every kept node, by id.
+        let kept = nodes |> List.filter (fun _ -> rng.Next 6 <> 0)
+
+        let containers =
+            before.Id :: (kept |> List.filter (fun n -> rng.Next 3 = 0) |> List.map _.Id)
+            |> Array.ofList
+
+        // A node never lands under itself or its own new descendant: place each
+        // kept node under a container drawn from those placed before it.
+        let placed = System.Collections.Generic.List<string * string>()
+        let order = kept |> List.sortBy (fun _ -> rng.Next())
+        let homes = System.Collections.Generic.Dictionary<string, string>()
+        let seen = System.Collections.Generic.HashSet<string>([ before.Id ])
+
+        for n in order do
+            let candidates = containers |> Array.filter seen.Contains
+            let home = candidates.[rng.Next candidates.Length]
+            homes.[n.Id] <- home
+            placed.Add((n.Id, home))
+            seen.Add n.Id |> ignore
+
+        let byId = nodes |> List.map (fun n -> n.Id, n) |> Map.ofList
+        let isContainer (id: string) = Array.contains id containers
+
+        let rec build (id: string) : Node<obj> =
+            let under =
+                [ for KeyValue(child, home) in homes do
+                      if home = id then
+                          yield child ]
+                |> List.sortBy (fun _ -> rng.Next())
+                |> List.map build
+
+            let extra =
+                [ for _ in 1 .. (if rng.Next 4 = 0 then 1 + rng.Next 2 else 0) -> draw (newId ()) 1 ]
+
+            let content =
+                match Map.tryFind id byId with
+                | Some _ when rng.Next 5 = 0 -> $"edited {id}"
+                | _ -> $"text {id}"
+
+            if id = before.Id then box id (under @ extra)
+            elif isContainer id then box id (under @ extra)
+            else leaf id content
+
+        build before.Id
+
+    [ for i in 1..count do
+          let before = box "root" [ for j in 0 .. rng.Next 5 -> draw $"r{j}" 3 ]
+          yield $"generated/{seed}/{i}", before, edit before i ]
+
+let private relocations (ops: TreeOp<obj> list) : string list =
+    ops
+    |> List.collect flatten
+    |> List.filter (function
+        | TreeOp.MoveNode _
+        | TreeOp.RemoveNode _
+        | TreeOp.ReorderChildren _ -> true
+        | _ -> false)
+    |> List.map CanonicalJson.encodeOp
+
 [<Tests>]
 let tests =
     testList
-        "TreeOpDiff encodes each node once (Phase 2063)"
-        [ test "the shipped diff and the pre-2063 oracle emit byte-identical op lists over the corpus" {
+        "TreeOpDiff is Core's Diff, lowered (Phase 2304)"
+        [ test "the diff emits every cross-host golden script byte for byte" {
+              // `diff/goldens.json` pins the scripts every conformant host's diff
+              // emits for these pairs; the style entries (Phase 2314) are the
+              // field-level style edit's contract on every host.
+              let scripts = goldenScripts ()
+              Expect.isGreaterThan (List.length scripts) 9 "the cross-host section is present"
+
+              for id, before, after, expected in scripts do
+                  Expect.equal
+                      (TreeOpDiff.diff before after |> List.map CanonicalJson.encodeOp)
+                      expected
+                      $"diff/{id}: the emitted script is the golden script"
+          }
+
+          test "the structural script is Core's toOpsContainedWith, op for op" {
+              // The lowering adds nothing structural and drops nothing: every
+              // move, removal and reorder is the one Core's diff emits over the
+              // tier's witness, in Core's order.
+              let mutable compared = 0
+
+              let mismatches =
+                  [ for label, a, b in corpusPairs () do
+                        if a.Id = b.Id then
+                            match
+                                Fuaran.Core.Diff.toOpsContainedWith
+                                    NodeIndex.holdsList
+                                    CanonicalJson.encodeNode
+                                    NodeIndex.witness<obj>
+                                    Introspect.idWitness
+                                    a
+                                    b
+                            with
+                            | Ok script ->
+                                compared <- compared + 1
+
+                                let core =
+                                    script
+                                    |> List.choose (function
+                                        | Fuaran.Core.SkeletonOp.MoveNode(t, p) ->
+                                            Some(CanonicalJson.encodeOp (TreeOp.MoveNode(t, p)))
+                                        | Fuaran.Core.SkeletonOp.RemoveNode t ->
+                                            Some(CanonicalJson.encodeOp (TreeOp.RemoveNode t))
+                                        | Fuaran.Core.SkeletonOp.ReorderChildren(p, o) ->
+                                            Some(CanonicalJson.encodeOp (TreeOp.ReorderChildren(p, o)))
+                                        | _ -> None)
+
+                                if relocations (TreeOpDiff.diff a b) <> core then
+                                    yield label
+                            | Error _ -> () ]
+
+              Expect.isEmpty mismatches $"every pair's structure is Core's ({List.length mismatches} differ)"
+              Expect.isGreaterThan compared 500 $"at least 500 pairs compared ({compared})"
+          }
+
+          test "a relocation is a MoveNode: no script re-sends a node the old tree holds" {
+              // The identity-preserving property Core's diff carries: a survivor
+              // is moved, never removed and inserted again, so no `InsertChild`
+              // payload carries an id of the old tree.
+              let resent =
+                  [ for label, a, b in corpusPairs () do
+                        if a.Id = b.Id then
+                            let held = Introspect.allNodeIds a |> Set.ofList
+
+                            let inserted =
+                                TreeOpDiff.diff a b
+                                |> List.collect flatten
+                                |> List.collect (function
+                                    | TreeOp.InsertChild(_, child) -> Introspect.allNodeIds child
+                                    | _ -> [])
+
+                            if inserted |> List.exists held.Contains then
+                                yield label ]
+
+              Expect.isEmpty resent (sprintf "no pair re-sends a survivor: %A" (List.truncate 20 resent))
+          }
+
+          test "the applicability law over generated pairs: every script lands on its after tree, moving every survivor" {
+              // The law Core proves for `toOpsContainedWith`, instantiated over the tier's
+              // witnesses and its lowering, on drawn pairs the corpus does not hold: survivors
+              // re-homed under new and changed containers, leaves becoming containers and
+              // back, removed regions whose survivors leave first.
+              let pairs = generatedPairs 20262304 400
+
+              let failures =
+                  [ for label, a, b in pairs do
+                        let ops = TreeOpDiff.diff a b
+                        let held = Introspect.allNodeIds a |> Set.ofList
+
+                        let resent =
+                            ops
+                            |> List.collect flatten
+                            |> List.exists (function
+                                | TreeOp.InsertChild(_, child) ->
+                                    Introspect.allNodeIds child |> List.exists held.Contains
+                                | _ -> false)
+
+                        if not (roundTrips a b ops) || resent then
+                            yield label ]
+
+              Expect.isEmpty failures (sprintf "every generated pair: %A" (List.truncate 20 failures))
+
+              let moves =
+                  pairs
+                  |> List.sumBy (fun (_, a, b) ->
+                      TreeOpDiff.diff a b
+                      |> List.filter (function
+                          | TreeOp.MoveNode _ -> true
+                          | _ -> false)
+                      |> List.length)
+
+              Expect.isGreaterThan moves 400 $"the pairs relocate survivors ({moves} moves)"
+          }
+
+          test "the round-trip law holds over every pair the tier's previous diff round-tripped" {
+              // `diff` cannot express an accessibility edit and some re-rooted
+              // pairs collide ids; the law is that Core's script lost no
+              // round-trip the tier's own algorithm had.
+              let mutable trips = 0
+
+              let regressions =
+                  [ for label, a, b in corpusPairs () do
+                        let shipped = roundTrips a b (TreeOpDiff.diff a b)
+
+                        if shipped then
+                            trips <- trips + 1
+
+                        if roundTrips a b (TreeOpDiffPre2063.diff a b) && not shipped then
+                            yield label ]
+
+              Expect.isEmpty regressions (sprintf "no pair regresses: %A" (List.truncate 20 regressions))
+              Expect.isGreaterThan trips 10000 $"the law is not vacuous ({trips} pairs round-trip)"
+          }
+
+          test "the corpus reaches every op family the diff emits" {
               let pairs = corpusPairs ()
               let mutable families = Set.empty
               let mutable nonEmpty = 0
 
-              let mismatches =
-                  [ for label, a, b in pairs do
-                        let shipped = TreeOpDiff.diff a b
-                        let oracle = TreeOpDiffPre2063.diff a b
-                        families <- shipped |> List.map opFamily |> Set.ofList |> Set.union families
+              for _, a, b in pairs do
+                  let ops = TreeOpDiff.diff a b
+                  families <- ops |> List.map opFamily |> Set.ofList |> Set.union families
 
-                        if not shipped.IsEmpty then
-                            nonEmpty <- nonEmpty + 1
+                  if not ops.IsEmpty then
+                      nonEmpty <- nonEmpty + 1
 
-                        if encodeOps shipped <> encodeOps oracle then
-                            yield label ]
-
-              Expect.isEmpty
-                  mismatches
-                  $"every pair diffs to the same bytes as the pre-2063 oracle ({List.length mismatches} of {List.length pairs} differ)"
-
-              // Not vacuous: the corpus reaches every op family the diff emits.
               for family in
                   [ "UpdateProp"
                     "ReplaceBinding"
                     "EditNode"
                     "UpdateState"
                     // Phase 2291 - a style change is field-level; the whole-record
-                    // `UpdateStyle` is emitted only when all six fields move, which
-                    // no corpus pair does, and is pinned by `TreeOpDiffTests`.
+                    // `UpdateStyle` only when all six fields move, which the
+                    // `style-all-fields` golden pins (Phase 2314).
                     "PatchStyle"
+                    "UpdateStyle"
                     "InsertChild"
                     "RemoveNode"
                     "ReorderChildren"
-                    "MoveNode" ] do
-                  Expect.isTrue
-                      (families.Contains family)
-                      $"the equivalence run reached a {family} op (families seen: {families})"
+                    "MoveNode"
+                    // A changed root id: the cross-host goldens' `ReplaceRoot`.
+                    "ReplaceRoot" ] do
+                  Expect.isTrue (families.Contains family) $"the run reached a {family} op (families seen: {families})"
 
               Expect.isGreaterThan nonEmpty 500 $"at least 500 pairs carry a change ({nonEmpty} of {List.length pairs})"
           }
 
-          test "the round-trip law holds over the same pairs where the oracle's did" {
-              // `diff` cannot express an accessibility edit and some re-rooted
-              // pairs collide ids; the law is that 2063 lost no round-trip the
-              // oracle had — not that every pair round-trips.
-              let regressions =
-                  [ for label, a, b in corpusPairs () do
-                        if
-                            roundTrips a b (TreeOpDiffPre2063.diff a b)
-                            && not (roundTrips a b (TreeOpDiff.diff a b))
-                        then
-                            yield label ]
-
-              Expect.isEmpty regressions "no pair that round-tripped before Phase 2063 fails to round-trip after it"
-          }
-
-          test "the cycle check admits the safe move and refuses the cyclic one" {
+          test "a nest inversion is two moves, each applyable in turn" {
+              // `g0` moves UNDER `g1` while `g1` leaves `g0` for the root. The
+              // tier's own diff could only move `g1` and re-sent `g0`; Core moves
+              // `g1` out first, so `g0`'s move no longer nests it under itself.
               let leaves = nodeFixtures () |> List.map snd |> List.filter isLeaf
 
               let _, a, b =
                   syntheticTrees leaves
-                  |> List.find (fun (l, _, _) -> l = "synthetic/cycle-refused")
+                  |> List.find (fun (l, _, _) -> l = "synthetic/nest-inversion")
+
+              let ops = TreeOpDiff.diff a b
 
               let moves =
-                  TreeOpDiff.diff a b
+                  ops
                   |> List.choose (function
                       | TreeOp.MoveNode(NodeId id, NodeId parent) -> Some(id, parent)
                       | _ -> None)
 
-              Expect.equal moves [ "g1", "root" ] "g1 moves to the root; g0's move under its own descendant is refused"
+              Expect.equal moves [ "g1", "root"; "g0", "g1" ] "g1 moves to the root, then g0 under g1"
+              Expect.isTrue (roundTrips a b ops) "and the script lands on the new tree"
+          }
+
+          test "the structural five undo through Core's Ops.invert: apply (inverse op pre) (apply op pre) = pre" {
+              let isStructural =
+                  function
+                  | TreeOp.InsertChild _
+                  | TreeOp.RemoveNode _
+                  | TreeOp.MoveNode _
+                  | TreeOp.ReorderChildren _ -> true
+                  | _ -> false
+
+              let mutable undone = 0
+
+              let failures =
+                  [ for name, n in nodeFixtures () do
+                        for opName, op in opFixtures () do
+                            if isStructural op then
+                                match Apply.apply op n with
+                                | Ok post ->
+                                    undone <- undone + 1
+
+                                    if not (roundTrips post n (TreeOpDiff.inverse op n)) then
+                                        yield $"{name}+{opName}"
+                                | Error _ -> () ]
+
+              Expect.isEmpty failures (sprintf "every structural op is undone: %A" (List.truncate 20 failures))
+              Expect.isGreaterThan undone 0 $"the law is not vacuous ({undone} structural ops undone)"
+
+              // The inverse is Core's, not a diff back: removing a child that is not
+              // last restores it by Core's one `Batch` of the re-insert and the order.
+              let tree =
+                  Fuaran.stack
+                      "s"
+                      { Defaults.stack with
+                          Children = [ Fuaran.markdown "x" "X"; Fuaran.markdown "y" "Y" ] }
+
+              match TreeOpDiff.inverse (TreeOp.RemoveNode(NodeId "x")) tree with
+              | [ TreeOp.Batch [ TreeOp.InsertChild(NodeId "s", restored); TreeOp.ReorderChildren(NodeId "s", order) ] ] ->
+                  Expect.equal restored.Id "x" "the removed subtree is re-inserted"
+                  Expect.equal order [ NodeId "x"; NodeId "y" ] "and put back where it stood"
+              | other -> failtestf "expected Core's Batch inverse, got %A" (other |> List.map CanonicalJson.encodeOp)
           } ]

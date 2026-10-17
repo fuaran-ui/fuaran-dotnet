@@ -29,7 +29,7 @@ open Fuaran.UI.Program
 //      → re-resolve the FIXED base tree's bindings against the new store
 //        (`Resolve.resolveTree`)
 //      → diff old-resolved → new-resolved (`TreeOpDiff.diff`)
-//      → lower to DomPatches (`Lowering.lower`) + ship the client effects.
+//      → lower to DomPatches (`Lowering.lowerScript`) + ship the client effects.
 //
 //  The interpreter and the re-resolution pass are placement-neutral (they sit
 //  beside this file); only the transport half — validate, diff, lower, budget —
@@ -422,7 +422,9 @@ let step (session: BoundedSession) (ev: LiveEvent) : BoundedSession * BoundedSte
                 let newResolved = Resolve.resolveTree outcome.Store session.BaseTree
                 let ops = TreeOpDiff.diff session.Resolved newResolved
                 session.Services.OnApply ops
-                let patches = Lowering.lower session.Services.RenderFragment newResolved ops
+
+                let patches =
+                    Lowering.lowerScript session.Services.RenderFragment session.Resolved ops
 
                 { session with
                     Store = ConfirmRoundTrip.put (standing @ ConfirmRoundTrip.asked outcome.Effects) outcome.Store
