@@ -96,7 +96,7 @@ if (!coreTreeDir) {
   console.error(`no Fuaran.Core.Tree package under ${fableModules} — was the Fable build run?`);
   process.exit(1);
 }
-const { Hash_sha256Hex } = await import(pathToFileURL(join(fableModules, coreTreeDir, "Hash.js")).href);
+const { Hash_sha256Hex } = await import(pathToFileURL(join(fableModules, coreTreeDir, "Hash.fs.js")).href);
 
 const shaVectors = [
   ["", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"],
