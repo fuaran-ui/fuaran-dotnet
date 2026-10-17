@@ -7825,15 +7825,7 @@ because the first changes it is opened for are breaking: Phase 2304 (the tree di
 takes Core's vocabulary and relocations are emitted as `MoveNode`) and Phase 2309 (two public hash functions are removed; no
 value moves). Pre-1.0 breaking is minor (version cut recorded on the ledger, 2026-10-17)._
 
----
-
-## 0.95.0 — the slot opened after v0.94.0 was released (RELEASED — tagged v0.95.0 at 9e03c87, 2026-10-17)
-
-_Class: **breaking**. `v0.94.0` was tagged and published at `90082d3` on 2026-10-14. The slot opens at the minor number
-because the first change it is opened for, Phase 2058 (public module paths move), is breaking; a draft advances to the
-class of its highest rider, and pre-1.0 breaking is minor (version cut recorded on the ledger, 2026-10-14)._
-
-### What rides this slot — Phase 2309 (re-slotted by the driver to the breaking cut after v0.95.0)
+### What rides this slot — Phase 2309 (one SHA-256: the tier's copy retires onto Core's)
 
 **One SHA-256: the tier's own implementation retires onto `Fuaran.Core`'s, and no value moves.**
 
@@ -7863,6 +7855,14 @@ wire byte changes.
   replacing it with Core's `Digest.tryOfFields` moves every stored `Custom` hash, so it is a candidate for a
   later breaking cut (`CRYPTO.md`).
 - **Migration.** Replace each call as above; nothing persisted needs rewriting.
+
+---
+
+## 0.95.0 — the slot opened after v0.94.0 was released (RELEASED — tagged v0.95.0 at 9e03c87, 2026-10-17)
+
+_Class: **breaking**. `v0.94.0` was tagged and published at `90082d3` on 2026-10-14. The slot opens at the minor number
+because the first change it is opened for, Phase 2058 (public module paths move), is breaking; a draft advances to the
+class of its highest rider, and pre-1.0 breaking is minor (version cut recorded on the ledger, 2026-10-14)._
 
 ### What rides this slot — Phase 2307 (both in-memory observers run on Core's `ObserverWitness`)
 
