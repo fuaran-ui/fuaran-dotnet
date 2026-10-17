@@ -10,7 +10,7 @@ consequence.
 
 ---
 
-## 2026-10-16 — D19: the decoder does not yet parse through Core's limited parse; two conditions remain, and row 7 is provisionally Core's answer
+## 2026-10-16 — D19: the decoder does not yet parse through Core's limited parse; two conditions remain, and row 7 is Core's answer
 
 **Decided.** Phase 2286 set out to route `JsonDecode.tryParse` through `Json.parseWithLimits` (Fuaran.Core.Wire
 0.38.1, fuaran-core#465) with `WireLimits`' values and delete the private parser. It does not, and D16 stands until
@@ -47,15 +47,15 @@ prerequisite in its own right.
    waits on a re-scoped Phase 2226 (column, `Field`, timestamp unit), on a Program release built on Core 0.37 or
    later, and on the Compute pin moving with it. Because every project shares one pin, it lands as one change.
 
-**Row 7, provisional.** `WIRE_FORMAT.md` §20.2 row 7 (an overflowing exponent such as `1e999`) currently requires
-an accept. The direction recorded here, pending the operator's confirmation, is to amend it to Core's answer:
-`INVALID_JSON`, because Core's value model has no non-finite float. This is the conforming direction, since a
+**Row 7, confirmed (operator, 2026-10-16).** `WIRE_FORMAT.md` §20.2 row 7 (an overflowing exponent such as `1e999`)
+currently requires an accept. It is amended to Core's answer: `INVALID_JSON`, because Core's value model has no
+non-finite float. This is the conforming direction, since a
 non-finite literal reaches no conformant encoder. The amendment is NOT made to the specification by this entry. All
 five hosts accept today, and nothing in this phase changes their parsers, so the text would make every host
 non-conformant at once. It lands with the parse move, in the same change-set as each host's leg. Core also refuses
 an integer past 2^53 written in a layout that is not a double's canonical one (for example `9007199254740993`,
-`MalformedNumber`), where this host reads it. That divergence is outside §20.2's rows, and the same ruling must
-cover it before the move.
+`MalformedNumber`), where this host reads it. That divergence is outside §20.2's rows; the same ruling covers it,
+and it is amended in the same change-set as row 7.
 
 **Measured before the move**, as the baseline the move is held to. Command:
 `dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- decode-rate 50`, one run at `fe90c4f`.
