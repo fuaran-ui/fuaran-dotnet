@@ -8,6 +8,8 @@
 // from the vocabulary (Phase 2241, EnumMap.Generated.cs beside this file), one arm
 // per vocabulary case — so a case added to the vocabulary and missing here fails the
 // compile there, naming this declaration. Add the case here; never edit the seam.
+// A value outside the declared cases (a cast integer) has no arm: the seam throws
+// ArgumentOutOfRangeException rather than choosing a case for it (Phase 1930).
 
 /// <summary>Semantic tone — maps to the F# <c>ToneVariant</c>.</summary>
 public enum Tone

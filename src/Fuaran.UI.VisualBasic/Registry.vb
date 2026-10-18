@@ -18,7 +18,7 @@ Friend Module CoreMapping
         d("Stack") = Function(el) Csharp.Fuaran.Stack(
             New Csharp.StackOptions With {
                 .Id = Attr(el, "id"),
-                .Orientation = AsEnum(Of Csharp.Orientation)(Attr(el, "orientation"), Csharp.Orientation.Vertical),
+                .Orientation = AsEnum(Of Csharp.Orientation)(el, "orientation", Csharp.Orientation.Vertical),
                 .Wrap = AttrBool(el, "wrap"),
                 .Children = Kids(el)})
 
@@ -41,9 +41,9 @@ Friend Module CoreMapping
         d("Box") = Function(el) Csharp.Fuaran.Box(
             New Csharp.BoxOptions With {
                 .Id = Attr(el, "id"),
-                .Layout = AsEnum(Of Csharp.BoxLayoutMode)(Attr(el, "layout"), Csharp.BoxLayoutMode.Flex),
-                .Role = AsEnum(Of Csharp.BoxRoleKind)(Attr(el, "role"), Csharp.BoxRoleKind.Group),
-                .Orientation = AsEnum(Of Csharp.Orientation)(Attr(el, "orientation"), Csharp.Orientation.Vertical),
+                .Layout = AsEnum(Of Csharp.BoxLayoutMode)(el, "layout", Csharp.BoxLayoutMode.Flex),
+                .Role = AsEnum(Of Csharp.BoxRoleKind)(el, "role", Csharp.BoxRoleKind.Group),
+                .Orientation = AsEnum(Of Csharp.Orientation)(el, "orientation", Csharp.Orientation.Vertical),
                 .Wrap = AttrBool(el, "wrap"),
                 .Cols = AttrInt(el, "cols", 12),
                 .Heading = OptText(el, "heading"),
@@ -62,17 +62,17 @@ Friend Module CoreMapping
                 .Label = AsText(Attr(el, "label")),
                 .Value = AsDoubleBinding(Attr(el, "value")),
                 .Format = ReadFormat(el),
-                .Tone = AsEnum(Of Csharp.Tone)(Attr(el, "tone"), Csharp.Tone.Default),
+                .Tone = AsEnum(Of Csharp.Tone)(el, "tone", Csharp.Tone.Default),
                 .Trend = OptDoubleBinding(el, "trend"),
                 .TrendPolarity = AsEnum(Of Csharp.TrendPolarity)(
-                    Attr(el, "trend-polarity"), Csharp.TrendPolarity.HigherIsBetter)})
+                    el, "trend-polarity", Csharp.TrendPolarity.HigherIsBetter)})
 
         d("Heading") = Function(el) Csharp.Fuaran.Heading(
             New Csharp.HeadingOptions With {
                 .Id = Attr(el, "id"),
                 .Text = AsText(Attr(el, "text")),
                 .Level = AttrInt(el, "level", 2),
-                .Variant = AsEnum(Of Csharp.HeadingVariant)(Attr(el, "variant"), Csharp.HeadingVariant.Standard)})
+                .Variant = AsEnum(Of Csharp.HeadingVariant)(el, "variant", Csharp.HeadingVariant.Standard)})
 
         d("Markdown") = Function(el) Csharp.Fuaran.Markdown(
             New Csharp.MarkdownOptions With {.Id = Attr(el, "id"), .Text = AsText(MarkdownText(el))})
@@ -82,7 +82,7 @@ Friend Module CoreMapping
             New Csharp.ButtonOptions With {
                 .Id = Attr(el, "id"),
                 .Label = AsText(Attr(el, "label")),
-                .Variant = AsEnum(Of Csharp.ButtonVariant)(Attr(el, "variant"), Csharp.ButtonVariant.Secondary)})
+                .Variant = AsEnum(Of Csharp.ButtonVariant)(el, "variant", Csharp.ButtonVariant.Secondary)})
     End Sub
 
     ''' <summary>Markdown source is either a `text` attribute or the element's inner text.</summary>

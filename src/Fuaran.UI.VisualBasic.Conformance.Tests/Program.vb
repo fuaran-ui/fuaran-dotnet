@@ -72,6 +72,10 @@ Module Program
         '    slot suites, ahead of the corpus pass for the reason above. ─────────
         StateBinding.Run(h)
 
+        ' ── Enum attributes fail closed (Phase 1930): a number, a comma-joined
+        '    list or an undeclared name is refused, never parsed to a value. ───
+        EnumRefusal.Run(h)
+
         ' ── Full corpus conformance + authoring parity (Phase 312). ─────────────
         Conformance.Run(h)
         Authoring.Run(h)

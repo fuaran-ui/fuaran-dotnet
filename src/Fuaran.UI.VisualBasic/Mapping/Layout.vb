@@ -21,7 +21,7 @@ Friend Module LayoutMapping
         d("Tabs") = Function(el) Csharp.Fuaran.Tabs(
             New Csharp.TabsOptions With {
                 .Id = Attr(el, "id"),
-                .Orientation = AsEnum(Of Csharp.Orientation)(Attr(el, "orientation"), Csharp.Orientation.Horizontal),
+                .Orientation = AsEnum(Of Csharp.Orientation)(el, "orientation", Csharp.Orientation.Horizontal),
                 .ActiveIndex = OptIntBinding(el, "active-index"),
                 .Children = Kids(el)})
 
@@ -50,14 +50,14 @@ Friend Module LayoutMapping
                 .Open = OptBoolBinding(el, "open"),
                 .Heading = OptText(el, "heading"),
                 .Dismissable = AttrBool(el, "dismissable", True),
-                .Modality = AsEnum(Of Csharp.Modality)(Attr(el, "modality"), Csharp.Modality.Modal),
+                .Modality = AsEnum(Of Csharp.Modality)(el, "modality", Csharp.Modality.Modal),
                 .Anchor = Attr(el, "anchor"),
                 .Children = Kids(el)})
 
         d("ScrollArea") = Function(el) Csharp.Fuaran.ScrollArea(
             New Csharp.ScrollAreaOptions With {
                 .Id = Attr(el, "id"),
-                .Orientation = AsEnum(Of Csharp.ScrollOrientation)(Attr(el, "orientation"), Csharp.ScrollOrientation.Vertical),
+                .Orientation = AsEnum(Of Csharp.ScrollOrientation)(el, "orientation", Csharp.ScrollOrientation.Vertical),
                 .MaxHeight = OptIntAttr(el, "max-height"),
                 .MaxWidth = OptIntAttr(el, "max-width"),
                 .Children = Kids(el)})

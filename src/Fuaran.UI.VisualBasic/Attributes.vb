@@ -14,7 +14,8 @@ Imports Csharp = Fuaran.UI.CSharp
 '   * text slots read a string literal, a "$"-bound query, or a "$state." slot;
 '   * the format-* family (format-currency / format-number / format-percent /
 '     format-date-time) maps to the bounded CellFormat vocabulary;
-'   * enums parse by name (case-insensitive) to the C# facade enums.
+'   * enums parse by declared NAME only (case-insensitive) to the C# facade enums;
+'     a number, a comma-joined list or an undeclared name is refused (Phase 1930).
 '
 ' All conversions route through the Wave 45 C# facade value types (Text / Binding /
 ' CellFormat), so no FSharp.Core type is ever named here.
@@ -136,12 +137,32 @@ Friend Module Attributes
         Return Double.Parse(v, CultureInfo.InvariantCulture)
     End Function
 
-    ''' <summary>Parse a facade enum by name (case-insensitive); a bad value is an authoring error.</summary>
-    Friend Function AsEnum(Of T As Structure)(value As String, dflt As T) As T
+    ''' <summary>
+    ''' Parse one facade enum NAME (case-insensitive, surrounding blanks ignored).
+    ''' Phase 1930 — this is deliberately not <c>[Enum].TryParse</c>, which also
+    ''' accepts a numeric string, a comma-joined list (OR-ing the values) and an
+    ''' undefined number: <c>permissions="0"</c> parsed to <c>AllowScripts</c> and
+    ''' <c>"AllowSameOrigin,AllowForms"</c> to <c>AllowFullscreen</c>. Only a declared
+    ''' name maps; anything else is an authoring error naming the attribute and the
+    ''' accepted names.
+    ''' </summary>
+    Friend Function EnumName(Of T As Structure)(raw As String, attribute As String) As T
+        Dim token = If(raw, "").Trim()
+        Dim names = [Enum].GetNames(GetType(T))
+        Dim hit = names.FirstOrDefault(Function(n) String.Equals(n, token, StringComparison.OrdinalIgnoreCase))
+        If hit Is Nothing Then
+            Throw New FuaranXmlException(
+                $"{attribute}=""{raw}"" is not a declared {GetType(T).Name} name. Accepted names: {String.Join(", ", names)}.")
+        End If
+        Return CType([Enum].Parse(GetType(T), hit), T)
+    End Function
+
+    ''' <summary>A facade enum attribute: absent or empty yields <paramref name="dflt"/>;
+    ''' anything else must be a declared name (<see cref="EnumName"/>).</summary>
+    Friend Function AsEnum(Of T As Structure)(el As XElement, name As String, dflt As T) As T
+        Dim value = Attr(el, name)
         If String.IsNullOrEmpty(value) Then Return dflt
-        Dim result As T = Nothing
-        If [Enum].TryParse(Of T)(value, ignoreCase:=True, result) Then Return result
-        Throw New FuaranXmlException($"'{value}' is not a valid {GetType(T).Name} value.")
+        Return EnumName(Of T)(value, name)
     End Function
 
     ''' <summary>
@@ -152,10 +173,7 @@ Friend Module Attributes
     ''' </summary>
     Friend Function OptEnum(Of T As Structure)(el As XElement, name As String) As T?
         If Not HasAttr(el, name) Then Return Nothing
-        Dim raw = Attr(el, name)
-        Dim result As T = Nothing
-        If [Enum].TryParse(Of T)(raw, ignoreCase:=True, result) Then Return result
-        Throw New FuaranXmlException($"'{raw}' is not a valid {GetType(T).Name} value.")
+        Return EnumName(Of T)(Attr(el, name), name)
     End Function
 
     ''' <summary>Read the bounded cell-format from the format-* attribute family.</summary>
@@ -217,7 +235,7 @@ Friend Module Attributes
         If Not col.HasValue Then Return Nothing
         Return New Csharp.DefaultSort With {
             .Column = col.Value,
-            .Direction = AsEnum(Of Csharp.SortDirection)(Attr(el, "default-sort-direction"), Csharp.SortDirection.Asc)}
+            .Direction = AsEnum(Of Csharp.SortDirection)(el, "default-sort-direction", Csharp.SortDirection.Asc)}
     End Function
 
     ''' <summary>
@@ -230,7 +248,7 @@ Friend Module Attributes
         If HasAttr(el, "rule-compare-field") Then
             compare = Csharp.CompareRule.AgainstField(
                 Attr(el, "rule-compare-field"),
-                AsEnum(Of Csharp.CompareOp)(Attr(el, "rule-compare-op"), Csharp.CompareOp.Eq))
+                AsEnum(Of Csharp.CompareOp)(el, "rule-compare-op", Csharp.CompareOp.Eq))
         End If
 
         Dim rule = New Csharp.FieldRule With {

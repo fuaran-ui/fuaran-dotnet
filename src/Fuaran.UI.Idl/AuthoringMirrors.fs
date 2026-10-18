@@ -355,8 +355,6 @@ let csharpEnumMap (idl: Idl) : Result<string, string list> =
         [ for m in csharpEnums do
               match enums.TryFind m.Idl with
               | None -> yield sprintf "C# enum %s mirrors %s, which is not an IDL enum" m.CSharp m.Idl
-              | Some e when not (List.contains m.Fallback e.Cases) ->
-                  yield sprintf "C# enum %s falls back to %s, which is not a case of %s" m.CSharp m.Fallback m.Idl
               | Some _ -> ()
           for (n, c) in csharpEnums |> List.countBy _.CSharp do
               if c > 1 then
@@ -367,12 +365,14 @@ let csharpEnumMap (idl: Idl) : Result<string, string list> =
     else
         let lines =
             [ yield! generatedBanner "The C# veneer's enum translation seam."
+              yield "using System;"
               yield "using FsGen = Fuaran.UI.Generated;"
               yield ""
               yield "namespace Fuaran.UI.CSharp;"
               yield ""
               yield "/// <summary>The single translation seam between the C# enums and the F# DUs: one arm per"
-              yield "/// vocabulary case, so a case the C# declaration lacks fails the compile here.</summary>"
+              yield "/// vocabulary case, so a case the C# declaration lacks fails the compile here. A value"
+              yield "/// outside the declared cases (a cast integer) throws: there is no fallback case.</summary>"
               yield "internal static class EnumMap"
               yield "{"
               for i, m in List.indexed csharpEnums do
@@ -388,7 +388,13 @@ let csharpEnumMap (idl: Idl) : Result<string, string list> =
                   for c in e.Cases do
                       yield sprintf "            %s.%s => FsGen.%s.%s," m.CSharp c m.Idl c
 
-                  yield sprintf "            _ => FsGen.%s.%s," m.Idl m.Fallback
+                  // Phase 1930 — no fallback case: a value outside the declared
+                  // cases is an authoring error, never a silently chosen case.
+                  yield
+                      sprintf
+                          "            _ => throw new ArgumentOutOfRangeException(nameof(v), v, \"not a declared %s case\"),"
+                          m.CSharp
+
                   yield "        };"
               yield "}" ]
 
