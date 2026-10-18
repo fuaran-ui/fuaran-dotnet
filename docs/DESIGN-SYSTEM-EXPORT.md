@@ -117,3 +117,70 @@ a consumer.
 
 The suite also proves each check can fail: removing a kind from the sweep, binding a role named
 `#ff0000`, and rewriting a card's marker group each produce the named finding.
+
+## The design-provider seam
+
+The bundle is what a design tool composes FROM. The seam is how the tool is driven and what it
+hands back, and it is specified as data so that every tool is held to the same contract.
+`Fuaran.UI.Design.Seam` carries it: FSharp.Core and `Fuaran.Core.Wire` only, Fable-portable, and
+referenced by this package. The normative text is `DESIGN_SEAM.md` in the wire-format corpus, with
+the `design/` fixture family beside it.
+
+Two boundaries define it. **The provider never sees a Fuaran UI tree**: it receives a bundle and
+a brief and returns screens. **The lowering never sees the provider**: it reads a result, whoever
+produced it.
+
+### The records
+
+| Record | What it carries |
+|---|---|
+| `DesignSystemRef` | The bundle a provider holds: `providerId`, optional `projectId`, the bundle's `bundleHash` (its `ContentHash`) and `idlVersion` (its `IdlVersion`) |
+| `DesignBrief` | The module's name and optional purpose; its data shapes (name, type, cardinality `One` / `Optional` / `Many`); the user tasks; the interactions; the viewports (name, width) and optional density (`Compact` / `Standard` / `Spacious`); the fragments it may use; the `DesignSystemRef` |
+| `DesignRequest` | The brief's hash, the reference, a state (`Manual`, `Pending`, `Ready`) and an optional provider handle |
+| `DesignResult` | The screens as named files (path, media type, hash), optional per-screen component inventories naming the bundle's cards, the reference, and the result's content hash |
+
+The interactions are a closed vocabulary, because each must lower to a construct the language has:
+`Filter` to a filter binding written by a `Filters` node, `Select` to a selection binding, `Drill`
+to a navigation carrying the selected key, `Compare` to a selection over several items read by a
+second view, `Export` to the invocation of a host capability, `Navigate` to a navigation. A brief
+asking for anything else is refused when it is read.
+
+Every hash is `sha256:` and 64 lowercase hex digits. A brief's hash is over its canonical bytes
+(`SeamCodec.encodeBrief`); a result's content hash is over one `<path> <hash>\n` line per file in
+ordinal path order, the rule the bundle's own content hash uses.
+
+### The provider contract
+
+```fsharp
+type IDesignProvider =
+    abstract ProviderId: string
+    abstract PublishDesignSystem: bundleDirectory: string * bundleHash: string -> Async<Result<DesignSystemRef, string>>
+    abstract RequestDesign: brief: DesignBrief -> Async<Result<DesignRequest, string>>
+    abstract FetchDesign: request: DesignRequest -> Async<Result<DesignResult option, string>>
+```
+
+A provider receives a written bundle and answers with the reference designs are made against;
+receives a brief and answers with the request it holds; and, asked for a request's design, answers
+with the result, or `None` while the design is not ready. A `Manual` request is one the person
+designs interactively, and the result is retrieved from the tool's declared export. This repository
+declares the interface and implements it nowhere.
+
+A result answers its request only when both name the same `bundleHash` (`SeamCodec.checkExchange`).
+`DesignResult.unknownComponents` names any annotated component that is not a card of a given
+bundle.
+
+### How a provider is certified
+
+`SeamCodec` writes canonical bytes and reads strictly on the records (a missing or unknown member,
+a value outside a vocabulary, a malformed hash are each refused with a code and a path) and
+leniently on annotations (an unknown member of an annotation is evidence, and is ignored).
+
+A provider is certified by the corpus, not by resembling another provider:
+
+1. every document it produces decodes, and re-encodes byte-identically, through `SeamCodec`; and
+2. a reader of its output passes the `design/` family: each `design-seam-round-trip` vector
+   re-encodes to its expected bytes and each `design-seam-reject` vector refuses with exactly its
+   code at exactly its path (`SeamCodec.reencode decoder text` is the entry point the corpus names).
+
+`src/Fuaran.UI.Design.Tests` runs both legs on this host, and the family is written by
+`--emit-corpus`, which proves every vector before writing it.

@@ -36,6 +36,9 @@
     <Compile Include="Bundle.fs" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Phase 2295: the design-provider seam's records, split into their own Fable-portable
+         package so that this .NET-only one can carry them to its consumers. -->
+    <ProjectReference Include="..\Fuaran.UI.Design.Seam\Fuaran.UI.Design.Seam.fsproj" />
     <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
     <ProjectReference Include="..\Fuaran.UI.Fragments\Fuaran.UI.Fragments.fsproj" />
     <ProjectReference Include="..\Fuaran.UI.ThemeManifest\Fuaran.UI.ThemeManifest.fsproj" />

@@ -50,7 +50,14 @@ let corpusDirName = "wire-format-fixtures"
 /// report the corpus's own tooling as about to be deleted, which is the
 /// opposite of true.
 let wholesaleDirectories =
-    [ "nodes"; "ops"; "reject"; "lenient"; "envelope"; "elicitation"; "cards" ]
+    [ "nodes"
+      "ops"
+      "reject"
+      "lenient"
+      "envelope"
+      "elicitation"
+      "cards"
+      DesignSeamFixtures.directory ]
 
 /// `JsonDocument` options that admit exactly what the wire format's SYNTACTIC
 /// bound admits (`WireLimits.MaxJsonDepth`).
@@ -384,6 +391,10 @@ let private writeManifest
         + "tokens are LEGAL, not a defect. A host may satisfy this by yielding tokens from its walk in "
         + "that order or by ordering the palette at the attribution site — the attribution is the "
         + "contract, the mechanism is not — and the budget-same-valued-tokens-* vectors pin it. "
+        + "design-seam-round-trip / design-seam-reject fixtures (DESIGN_SEAM.md): the design-provider "
+        + "seam's records; decode with the decoder-named entry point (design-system-ref, design-brief, "
+        + "design-request, design-result, design-exchange), then either re-encode byte-equal to "
+        + "expectedFile or assert the structured refusal (expectedErrorCode exactly at expectedPath). "
         + "See WIRE_FORMAT.md at this corpus root."
     )
 
@@ -796,6 +807,93 @@ let emit (outputDir: string) : unit =
                   ExpectedPath = Some path
                   Decoder = cf.Decoder
                   Description = cf.Description }
+
+    // Phase 2295 — the design-provider seam family (DESIGN_SEAM.md). Its own
+    // directory and kinds: the records are not nodes, and a provider is
+    // certified by these vectors alone. Same emitter-proves-the-law discipline
+    // as the card family above.
+    let designDir = Path.Combine(outputDir, DesignSeamFixtures.directory)
+
+    let designRel (id: string) =
+        DesignSeamFixtures.directory + "/" + id + ".json"
+
+    let designReencode (v: DesignSeamFixtures.DesignVector) =
+        match Fuaran.UI.Design.SeamCodec.reencode v.Decoder v.Wire with
+        | Some r -> r
+        | None -> failwithf "design fixture '%s' names decoder '%s', which the codec does not have" v.Id v.Decoder
+
+    for v in DesignSeamFixtures.roundTrips do
+        File.WriteAllText(Path.Combine(designDir, v.Id + ".json"), v.Wire)
+
+        match designReencode v with
+        | Ok reencoded when reencoded = v.Wire -> ()
+        | Ok other ->
+            failwithf "design fixture '%s' violates the round-trip law:\n  in  → %s\n  out → %s" v.Id v.Wire other
+        | Error e ->
+            failwithf "design fixture '%s' expected a round-trip but decode refused (%s at %s)" v.Id e.Message e.Path
+
+        entries.Add
+            { Id = v.Id
+              Kind = "design-seam-round-trip"
+              InputFile = designRel v.Id
+              ExpectedFile = Some(designRel v.Id)
+              ExpectedErrorCode = None
+              ExpectedPath = None
+              Decoder = v.Decoder
+              Description = v.Description }
+
+    let lenient, lenientExpected = DesignSeamFixtures.lenientAnnotation
+    File.WriteAllText(Path.Combine(designDir, lenient.Id + ".json"), lenient.Wire)
+
+    match designReencode lenient with
+    | Ok reencoded when
+        reencoded = File.ReadAllText(Path.Combine(designDir, lenientExpected + ".json"))
+        && reencoded <> lenient.Wire
+        ->
+        ()
+    | Ok other ->
+        failwithf "design fixture '%s' did not normalise to '%s':\n  out → %s" lenient.Id lenientExpected other
+    | Error e ->
+        failwithf "design fixture '%s' expected leniency but decode refused (%s at %s)" lenient.Id e.Message e.Path
+
+    entries.Add
+        { Id = lenient.Id
+          Kind = "design-seam-round-trip"
+          InputFile = designRel lenient.Id
+          ExpectedFile = Some(designRel lenientExpected)
+          ExpectedErrorCode = None
+          ExpectedPath = None
+          Decoder = lenient.Decoder
+          Description = lenient.Description }
+
+    for v in DesignSeamFixtures.rejects do
+        File.WriteAllText(Path.Combine(designDir, v.Id + ".json"), v.Wire)
+
+        match v.Expect with
+        | DesignSeamFixtures.RoundTrip ->
+            failwithf "design fixture '%s' is in the reject list but expects a round-trip" v.Id
+        | DesignSeamFixtures.Refuse(code, path) ->
+            match designReencode v with
+            | Error e when Fuaran.UI.Design.SeamCodec.SeamErrorCode.name e.Code = code && e.Path = path -> ()
+            | Error e ->
+                failwithf
+                    "design fixture '%s' expected %s at %s, got %s at %s"
+                    v.Id
+                    code
+                    path
+                    (Fuaran.UI.Design.SeamCodec.SeamErrorCode.name e.Code)
+                    e.Path
+            | Ok _ -> failwithf "design fixture '%s' expected a refusal but decode accepted it" v.Id
+
+            entries.Add
+                { Id = v.Id
+                  Kind = "design-seam-reject"
+                  InputFile = designRel v.Id
+                  ExpectedFile = None
+                  ExpectedErrorCode = Some code
+                  ExpectedPath = Some path
+                  Decoder = v.Decoder
+                  Description = v.Description }
 
     for rf in RejectFixtures.all do
         let rel = "reject/" + rf.Id + ".json"

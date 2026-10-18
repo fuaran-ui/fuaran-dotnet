@@ -133,8 +133,8 @@
     },
     {
       "project": "src/Fuaran.UI.Design.Tests/Fuaran.UI.Design.Tests.fsproj",
-      "lane": "pure",
-      "note": "Phase 2294 — the design-system bundle's contract over the default, Dark and High-Contrast themes: a card per IDL kind and per stdlib fragment, roles never literal colours, every card opening with its group marker, a stable content hash; with the go-red probes (a kind removed from the sweep, a hex-named Colors token, a foreign marker group). In memory only."
+      "requiresCorpus": true,
+      "note": "Phase 2294 — the design-system bundle's contract over the default, Dark and High-Contrast themes: a card per IDL kind and per stdlib fragment, roles never literal colours, every card opening with its group marker, a stable content hash; with the go-red probes (a kind removed from the sweep, a hex-named Colors token, a foreign marker group). Phase 2295 — the design-provider seam: the records' round-trip, canonical-bytes and refusal laws, a hand-written one-screen result checked against the bundle's cards, and the corpus's design/ family (every vector certifies; the family on disk is exactly the manifest's). Corpus-reading since 2295, so it left the pure lane."
     },
     {
       "project": "src/Fuaran.UI.Idl.Tests/Fuaran.UI.Idl.Tests.fsproj",

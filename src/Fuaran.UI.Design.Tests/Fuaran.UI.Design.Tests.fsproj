@@ -14,7 +14,11 @@
     <Compile Include="..\..\samples\themes\HighContrast.fs">
       <Link>SampleThemes\HighContrast.fs</Link>
     </Compile>
+    <Compile Include="..\..\tests\corpus-root\CorpusRoot.fs" Link="CorpusRoot.fs" />
     <Compile Include="BundleTests.fs" />
+    <!-- Phase 2295 - the design-provider seam: its laws, then the corpus family. -->
+    <Compile Include="SeamTests.fs" />
+    <Compile Include="SeamCorpusTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
