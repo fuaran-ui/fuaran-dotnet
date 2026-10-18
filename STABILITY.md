@@ -7852,6 +7852,25 @@ recorded as `docs/DECISIONS.md` D20 and `WIRE_FORMAT.md` §5 "The two encode ref
   `Local` when it is the machine's wall clock), or carry a `DateTimeOffset`. Carry an `int64` that can leave ±2^53 as a
   string. Neither value had a faithful encoding before; the refusal makes the existing loss visible.
 
+### What rides this slot — Phase 2295 (the design-provider seam's records and their fixture family)
+
+**Class: additive (one new package, one new corpus family).** It rides the 0.97.0 draft, already breaking-class, so no
+number moves. No shipped byte moves.
+
+- **Added: package `Fuaran.UI.Design.Seam`** (FSharp.Core + `Fuaran.Core.Wire`, Fable-portable: it ships its sources under
+  `fable/` and the Fable stage compiles it). Namespace `Fuaran.UI.Design`: the records `DesignSystemRef`, `DesignBrief`
+  (with `DataShape`, `Viewport`), `DesignRequest`, `DesignResult` (with `DesignScreen`, `DesignFile`,
+  `ScreenAnnotation`); the closed unions `Interaction`, `Cardinality`, `Density`, `RequestState`; `DesignHash.isWellFormed`;
+  `DesignResult.unknownComponents`; and the `IDesignProvider` interface (`ProviderId`, `PublishDesignSystem`,
+  `RequestDesign`, `FetchDesign`), declared and implemented nowhere in this repository. Module `SeamCodec`: `encodeRef`,
+  `encodeBrief`, `encodeRequest`, `encodeResult`, `encodeExchange`, the matching decoders, `checkExchange`, `decoders`,
+  `reencode`, the `SeamError` record and the `SeamErrorCode` union with `SeamErrorCode.name`.
+- **`Fuaran.UI.Design` now references `Fuaran.UI.Design.Seam`.** The records live in their own package rather than in
+  `Fuaran.UI.Design` because that package renders and is .NET-only; a consumer of `Fuaran.UI.Design` reaches the records
+  transitively. Nothing in `Fuaran.UI.Design`'s own surface changes.
+- **Added: the `design-seam-round-trip` / `design-seam-reject` corpus families** (`wire-format-fixtures/design/`,
+  normative text `DESIGN_SEAM.md`), written by `--emit-corpus` and certified by `Fuaran.UI.Design.Tests`.
+
 ### What rides this slot — Phase 2226 (the tier moves onto Fuaran.Core 0.38.1's typed column)
 
 **Class: BREAKING (source), for consumers that name the substrate's types through this tier.** It rides the 0.97.0

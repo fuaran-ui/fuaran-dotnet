@@ -55,6 +55,7 @@ Cross-repo development conventions (port allocation, launcher patterns, formatti
 | `Fuaran.UI.FastPath` | Signature-searchable pattern bank — deterministic, server-free structural retrieval over the artifact-function registry. Fable-clean |
 | `Fuaran.UI.Memo` | Effect-aware memoisation over fragment apply — a value-parameter change recomputes only the affected hole-addressed bindings |
 | `Fuaran.UI.Design` | The language as a design-system bundle — a preview card per IDL kind, stdlib fragment and theme scale, rendered by `Renderer.Server` under a `Theme`, beside a DTCG manifest and a content-hashed bundle manifest; colours offered as roles, never values. .NET-only (it renders). First published at 0.95.0 (Phase 2294); see `docs/DESIGN-SYSTEM-EXPORT.md` |
+| `Fuaran.UI.Design.Seam` | The design-provider seam — the records a design tool and the language exchange (`DesignSystemRef`, `DesignBrief`, `DesignRequest`, `DesignResult`), their canonical codec and the `IDesignProvider` interface; certified by the corpus's `design/` family (`DESIGN_SEAM.md`). FSharp.Core + `Fuaran.Core.Wire`; Fable-portable. First published at 0.97.0 (Phase 2295) |
 
 All packs land in `../local-nuget-feed/` for local downstream consumption.
 

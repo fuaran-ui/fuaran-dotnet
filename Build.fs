@@ -206,6 +206,9 @@ let private packableProjects =
       // and theme scale, rendered by Renderer.Server under a Theme, beside a DTCG manifest.
       // .NET-only (it renders). The `fuaran` tool project-references it, so it packs ahead
       // of the tool, after every package it references.
+      // Phase 2295 — the design-provider seam's records, codec and provider interface,
+      // Fable-portable (ships fable/ sources). Fuaran.UI.Design references it, so it packs first.
+      "Fuaran.UI.Design.Seam"
       "Fuaran.UI.Design"
       // The typed F#/.NET client over the generation endpoint (Phase 220) and the
       // `fuaran` dotnet tool built on it (Phase 224). Both were marked

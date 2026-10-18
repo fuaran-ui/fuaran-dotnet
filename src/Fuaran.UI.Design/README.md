@@ -70,4 +70,12 @@ exports of one theme with one brand print the same hash.
 See [`docs/DESIGN-SYSTEM-EXPORT.md`](https://github.com/fuaran-ui/fuaran-dotnet/blob/main/docs/DESIGN-SYSTEM-EXPORT.md)
 for the card contract and how a consumer reads the bundle.
 
+## The design-provider seam
+
+A design tool sits behind the seam in `Fuaran.UI.Design.Seam`, which this package references:
+the records a tool and the language exchange (`DesignSystemRef`, `DesignBrief`, `DesignRequest`,
+`DesignResult`), their codec and the `IDesignProvider` interface. A reference names a bundle by
+its `ContentHash` and `IdlVersion`; a result's component inventory names cards of that bundle.
+They live in their own package because they are Fable-portable and this one is not.
+
 .NET only: it renders through the server renderer. Apache-2.0 licensed.
