@@ -35,6 +35,10 @@
          emission site. FSharp.Core only; depends on nothing. -->
     <Compile Include="EmissionGrammar.fs" />
     <Compile Include="StateKeyPolicy.fs" />
+    <!-- Phase 1960: the row-source codec this tier owns (WIRE_FORMAT §5 "Row payloads"),
+         ahead of Generated.fs, whose DataGrid / Chart `source` slot encodes and decodes
+         through it. Depends only on Fuaran.Core's JVal. -->
+    <Compile Include="RowCodec.fs" />
     <Compile Include="Generated.fs" />
     <Compile Include="Types.fs" />
     <!-- Phase 2038: the ONE enumeration of what a node's children are, by reach.

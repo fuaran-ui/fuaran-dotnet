@@ -4628,7 +4628,7 @@ let lowerSparkline (spec: SparklineSpec) (series: float list) : DrawingSpec =
 //
 //   `dataFingerprint`  SHA-256 over a tagged canonical document carrying BOTH
 //                      the schema (the Ordinal-sorted union of column names) and
-//                      the content (`RowCodec.encodeRows` under `Canon.render`).
+//                      the content (`Fuaran.UI.RowCodec.encodeRows` under `Canon.render`).
 //                      Two legs rather than one because they fail differently: a
 //                      renamed column with identical values, and identical
 //                      columns with changed values, are both changes a reader
@@ -4728,17 +4728,11 @@ type ChartProvenance =
 let specWireJson<'Msg> (spec: ChartSpec<'Msg>) : string =
     Fuaran.Core.Canon.render (Fuaran.UI.Generated.encodeNodeKindJson (NodeKind.Chart spec))
 
-// Fuaran.Core 0.33.0 marks `RowCodec` obsolete until the UI tier hosts a row codec of its
-// own; a chart's row feed is still `RowCodec`'s wire (`Generated.fs` carries `source`
-// through it), so the stamp and the provenance document keep the same bytes and the
-// directive is scoped to the two sites that read it.
-#nowarn "44"
-
-/// The canonical wire JSON of a typed row feed (`RowCodec.encodeRows`).
+/// The canonical wire JSON of a typed row feed (`Fuaran.UI.RowCodec.encodeRows`, the same
+/// bytes `Generated.fs` writes for `source`). Raises `Fuaran.UI.RowCodec.RowCellRefused` on a cell the
+/// codec refuses: such a feed has no wire, so it has no stamp either.
 let dataWireJson (rows: Row seq) : string =
-    Fuaran.Core.Canon.render (Fuaran.Core.RowCodec.encodeRows rows)
-
-#warnon "44"
+    Fuaran.Core.Canon.render (Fuaran.UI.RowCodec.encodeRows rows)
 
 /// The stamp's spec leg — `sha256:<hex>` over `specWireJson`.
 let specHashOf<'Msg> (spec: ChartSpec<'Msg>) : string =
@@ -4780,9 +4774,6 @@ let stampOf<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq option) : ChartStamp =
       DataFingerprint = dataFingerprintOf rows
       LoweringVersion = loweringVersion }
 
-// See `dataWireJson`: the `data` member is the row feed's `RowCodec` wire.
-#nowarn "44"
-
 /// The canonical-JSON provenance document embedded in a self-describing SVG, or
 /// `None` under `ChartProvenance.Off`.
 let provenanceDocument<'Msg> (provenance: ChartProvenance) (spec: ChartSpec<'Msg>) (rows: Row seq) : string option =
@@ -4798,13 +4789,11 @@ let provenanceDocument<'Msg> (provenance: ChartProvenance) (spec: ChartSpec<'Msg
               Option.Some("dataFingerprint", Fuaran.Core.JVal.JStr stamp.DataFingerprint)
               Option.Some("loweringVersion", Fuaran.Core.JVal.JStr stamp.LoweringVersion)
               (match provenance with
-               | ChartProvenance.SpecAndData -> Option.Some("data", Fuaran.Core.RowCodec.encodeRows materialised)
+               | ChartProvenance.SpecAndData -> Option.Some("data", Fuaran.UI.RowCodec.encodeRows materialised)
                | _ -> Option.None) ]
             |> List.choose id
 
         Option.Some(Fuaran.Core.Canon.render (Fuaran.Core.Canon.typed provenanceDocumentType fields))
-
-#warnon "44"
 
 /// What a self-describing chart SVG recovers to.
 type RecoveredChart =

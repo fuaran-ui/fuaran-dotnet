@@ -2757,7 +2757,7 @@ let inputKinds: IdlKind list =
 // TS)`), the erased `ColumnErased` record holding a `CellKindErased` union + a
 // `ColumnWidth` union, and closure-projection fields (`rowKey` / column `value`).
 // `DataGrid.source` / `Chart.source` carry TYPED rows on the wire (fuaran#665 —
-// `Fuaran.Core.Row seq`, rendered by Core's `RowCodec`; the `"<opaque>"` sentinel
+// `Fuaran.Core.Row seq`, rendered by this tier's `RowCodec`; the `"<opaque>"` sentinel
 // is decode-accepted read-compat only), `Map.source` a typed `MapMarker` list; a
 // `Binding.Transform`'s `source` / `pipeline` are HOSTED slots rendered by Core's
 // `ColumnCodec` / `DataFrameCodec` under the same `Canon` discipline (the Phase
@@ -2886,7 +2886,7 @@ let visKinds: IdlKind list =
             opt "rowTotal" (bindingOf TInt)
             // The row feed is HOSTED `Fuaran.Core.Row seq` (fuaran#665 — typed rows):
             // a Static/State rows payload IS wire-representable (a JSON array of row
-            // objects, scalar cells, rendered by Core's `RowCodec` under the `Canon`
+            // objects, scalar cells, rendered by this tier's `RowCodec` under the `Canon`
             // discipline), and decode accepts the legacy `"<opaque>"` sentinel
             // indefinitely (read-compat → the empty feed).
             req
@@ -2894,8 +2894,8 @@ let visKinds: IdlKind list =
                 (bindingOf (
                     THosted
                         { FSharp = "Fuaran.Core.Row seq"
-                          Encode = "Fuaran.Core.RowCodec.encodeRows"
-                          Decode = "Fuaran.Core.RowCodec.decodeRows"
+                          Encode = "Fuaran.UI.RowCodec.encodeRows"
+                          Decode = "Fuaran.UI.RowCodec.decodeRows"
                           Wire = None
                           Format = None }
                 ))
@@ -2913,8 +2913,8 @@ let visKinds: IdlKind list =
                 (bindingOf (
                     THosted
                         { FSharp = "Fuaran.Core.Row seq"
-                          Encode = "Fuaran.Core.RowCodec.encodeRows"
-                          Decode = "Fuaran.Core.RowCodec.decodeRows"
+                          Encode = "Fuaran.UI.RowCodec.encodeRows"
+                          Decode = "Fuaran.UI.RowCodec.decodeRows"
                           Wire = None
                           Format = None }
                 ))

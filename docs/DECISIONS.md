@@ -10,6 +10,64 @@ consequence.
 
 ---
 
+## 2026-10-18 — D20: the row feed's codec is this tier's, and it refuses its two hazards at encode
+
+**Decided (operator, 2026-10-18).** The grid / chart row feed is written and read by `Fuaran.UI.RowCodec`, which this
+tier owns, and no longer by Fuaran.Core's row codec, which Core 0.37.0 removed. The move keeps every byte except two, and
+those two are refused rather than carried:
+
+1. **A `DateTime` of `Unspecified` kind is refused at encode.** Its Unix seconds are not a property of the value. The
+   retired codec chose them through `ToUniversalTime()`, which reads the ENCODING machine's time zone, so one value
+   encoded to different seconds on two servers.
+2. **An `int64` outside ±2^53 is refused at encode.** Every integer in [−2^53, 2^53] is exactly a double, so its bytes
+   are exact. Past either bound the retired codec widened it to the nearest double, which is a different number, and no
+   reader can tell. This follows D19's ruling that a JSON integer past 2^53 is not a number a conformant reader admits
+   (Core's `INVALID_JSON`): this is its encode-side twin, and the reader side still moves with the parse, as D19 says.
+
+The refusal is typed, `RowCellRefusal { Row; Key; Hazard }`, and names the cell: the row's position in the feed and the
+cell's key. `tryEncodeRows` returns it as a value. `encodeRows` raises it as `RowCellRefused`, because its callers are the
+generated layer's encoders, which are total over every other value. **No new cell kind is minted.** The class is BREAKING
+for exactly those two inputs (`STABILITY.md`, 0.97.0), and the wire rule is `WIRE_FORMAT.md` §5 "The two encode refusals",
+with the hand-authored `row-encode/` corpus family carrying the vectors: each refusal beside an admitted boundary twin
+(±2^53 itself, a UTC date-time), so a host that refuses too much fails as surely as one that refuses too little.
+
+**Every codec host adopts it in the same change-set**, each in the encoder its node encode actually takes, and each
+says per vector what its authoring surface cannot hold:
+
+- TypeScript: the 64-bit integer is a `bigint` cell, admitted in range as an integer and refused past it. It used to fall
+  to the `"<opaque>"` sentinel, against rule 11. A `Date` always names an instant, so the unspecified date-time is
+  unrepresentable there;
+- Python: an `int` cell past ±2^53 and a naive `datetime` are refused. An aware `datetime` encodes as Unix seconds, where
+  it used to raise a plain `TypeError` (rule 11 lists it);
+- Go: an `Int` cell past ±2^53 is refused. The wire model holds no date value, so the date-time vectors are
+  unrepresentable there;
+- Rust: a row cell's only number is a double and there is no date value, so neither hazard can reach the encoder. The
+  family is declared not applicable, with that reason.
+
+**Measured, not assumed.** Before the tier stopped referencing the retired codec, a differential ran both over every
+row-source payload in the corpus (58 payloads, none differing) and over a native-cell matrix covering every rule-11 arm,
+both hazards' in-range neighbours and the residual sentinel. The matrix's bytes, recorded from the retired codec, are
+pinned in `RowCodecTests.fs`, so the identity outlives the codec it was measured against.
+
+**Rejected.**
+- *Read an `Unspecified` value as UTC.* That is a stated rule rather than a machine's zone, but it is still a guess. A
+  wall-clock value an author meant as local time would encode silently wrong on every machine instead of on some, and
+  the encoder cannot tell which the author meant.
+- *Carry a large `int64` losslessly* as a canonical integer string with a declared cell kind. That mints a cell kind
+  every host would have to read, to serve a value a string cell already carries without one.
+- *Refuse at decode as well.* A wire integer past 2^53 is the parser's business. D19 already ruled it and deferred it to
+  the parse move, because no host's parser answers it today. Doing it at the row cell alone would need the literal's
+  text, which only the parser has.
+
+**Consequence.** No file in this repository references `Fuaran.Core.RowCodec`, and the two `#nowarn "44"` suppressions
+added for it in `BindingWalk.fs` and `Charts.fs` are gone. The raise to Core 0.37.0 or later no longer meets the row codec.
+It still meets the `Fuaran.Core.Row` alias, which the same Core release removed, and the other classes D19 lists. Those
+belong to the cohort raise, Phase 2226.
+
+Roadmap: [Phase 1960](../../roadmap/phases/1960-the-ui-tier-hosts-its-own-row-codec.md).
+
+---
+
 ## 2026-10-16 — D19: the decoder does not yet parse through Core's limited parse; two conditions remain, and row 7 is Core's answer
 
 **Decided.** Phase 2286 set out to route `JsonDecode.tryParse` through `Json.parseWithLimits` (Fuaran.Core.Wire

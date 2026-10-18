@@ -7820,8 +7820,37 @@ document that declares no ceiling is exactly the control it was.
 
 ## 0.97.0 — the slot opened after v0.96.0 was released (DRAFT — untagged)
 
-_Class: set by its first rider. `v0.96.0` was tagged and published at `9045b5f` on 2026-10-18 (version cut recorded on the
-ledger, 2026-10-18)._
+_Class: **breaking**, set by its first rider, Phase 1960. `v0.96.0` was tagged and published at `9045b5f` on 2026-10-18
+(version cut recorded on the ledger, 2026-10-18). The slot already sits at the minor number, which is where a pre-1.0 breaking
+change goes, so the number does not move._
+
+### What rides this slot — Phase 1960 (the row-source codec is this tier's, and refuses its two hazards)
+
+**Class: BREAKING (wire bytes, for two inputs) + additive (one new module).** Decided by the operator on 2026-10-18 and
+recorded as `docs/DECISIONS.md` D20 and `WIRE_FORMAT.md` §5 "The two encode refusals".
+
+- **Added: `Fuaran.UI.RowCodec`** (package `Fuaran.UI`): `encodeRows`, `tryEncodeRows`, `decodeRows`, `opaqueSentinel`,
+  `exactIntegerLimit`, the `RowCellRefusal` record (`Row`, `Key`, `Hazard`) with `RowCellRefusal.code` / `describe`, the
+  `RowCellHazard` union (`UnspecifiedDateTime`, `InexactInteger of int64`) and the `RowCellRefused` exception. It is the
+  codec `DataGrid.source` and `Chart.source` are written and read through: the IDL's hosted surface for both slots now
+  names it, so the generated layer calls it and a regeneration keeps it. Fable-portable. The tier references Fuaran.Core's
+  retired row codec nowhere, and the two `FS0044` suppressions that hid that reference (`BindingWalk.fs`, `Charts.fs`)
+  are gone.
+- **BREAKING (wire): two inputs are refused at encode instead of written.** A row cell holding a `DateTime` of
+  `Unspecified` kind, or an `int64` outside ±2^53, makes `encodeRows` raise `RowCellRefused` naming the row's position and
+  the cell's key (`tryEncodeRows` returns it as a value). Every encode that writes a row feed therefore raises for such a
+  feed: a node's wire (`Generated.encodeNodeKindJson` and everything over it), and `Fuaran.UI.Charts`'s `dataWireJson`,
+  `dataFingerprintOf`, `stampOf` and `provenanceDocument`. The retired codec wrote bytes for both: seconds read through the
+  encoding machine's time zone, and the nearest double, a different number. A feed carrying either hazard is the only
+  input whose behaviour changes.
+- **Nothing else moves.** Outside the two hazards the bytes are identical, proved differentially against the retired codec
+  over every row-source payload in the wire corpus (58, none differing) and a native-cell matrix of every rule-11 arm, both
+  hazards' in-range neighbours and the residual sentinel. The matrix's bytes are pinned in `RowCodecTests.fs`. Decode is
+  unchanged, including the legacy `"<opaque>"` sentinel's read-compat. The binding walk's row-to-table normalisation reads
+  a refused feed as having no table, which is how it already read a ragged one.
+- **Migration.** Give an `Unspecified` `DateTime` its `Kind` (`DateTime.SpecifyKind(t, DateTimeKind.Utc)` when it is UTC,
+  `Local` when it is the machine's wall clock), or carry a `DateTimeOffset`. Carry an `int64` that can leave ±2^53 as a
+  string. Neither value had a faithful encoding before; the refusal makes the existing loss visible.
 
 ---
 

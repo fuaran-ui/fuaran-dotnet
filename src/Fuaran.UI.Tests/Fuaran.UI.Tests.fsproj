@@ -481,6 +481,9 @@
     <!-- Phase 2309 - the SHA-256 retirement moved no value: digests and hashed artefacts recorded
          from the tier's own implementation before it was deleted, held against Core's. -->
     <Compile Include="CoreHashPinTests.fs" />
+    <!-- Phase 1960 - the row-source codec this tier owns: byte identity with the retired codec outside
+         the two hazards, the two refusals, and the corpus row-encode vectors. -->
+    <Compile Include="RowCodecTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

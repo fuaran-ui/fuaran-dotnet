@@ -633,20 +633,16 @@ let isEmptySeed (fingerprint: objnull) : bool =
 /// Phase 1075 — normalise a ROW-MAJOR feed (a grid / chart `source`) to the
 /// canonical columnar `Table`, through the same path a live Transform source
 /// takes. `None` when the rows do not decode as a table (a ragged row set —
-/// Core's schema inference is deliberately loud rather than patching).
-// Fuaran.Core 0.33.0 marks `RowCodec` obsolete until the UI tier hosts a row codec of
-// its own; the row feed's wire is still `RowCodec`'s (`Generated.fs` reads and writes
-// `source` through it), so this normalisation keeps the same bytes and the directive is
-// scoped to it.
-#nowarn "44"
-
+/// Core's schema inference is deliberately loud rather than patching), and when a cell
+/// is one the row codec refuses (Phase 1960): such a feed has no wire, so no table.
 let private tableOfRows (rows: Fuaran.Core.Row seq) : Fuaran.Core.Table option =
-    match HostPrelude.TransformLive.initialSource (Fuaran.Core.RowCodec.encodeRows rows) with
-    | Ok(Fuaran.Core.Embedded t) -> Some t
-    | Ok(Fuaran.Core.Ref _)
+    match Fuaran.UI.RowCodec.tryEncodeRows rows with
     | Error _ -> None
-
-#warnon "44"
+    | Ok wire ->
+        match HostPrelude.TransformLive.initialSource wire with
+        | Ok(Fuaran.Core.Embedded t) -> Some t
+        | Ok(Fuaran.Core.Ref _)
+        | Error _ -> None
 
 // ─── the live-Transform SITE key (Phase 1586) ────────────────────────────────
 
