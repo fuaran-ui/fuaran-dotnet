@@ -92,9 +92,15 @@ let private switchProjection: Gen.KindProjection =
         Some
             """let mkSwitch (id: string) (cases: SwitchCase<'Msg> list) (``default``: Node<'Msg>) (stateKey: string) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Switch { Cases = cases; Default = ``default``; On = Binding.State(stateKey, None); AutoAdvanceMs = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }"""
-      // Core 0.37.0 (fuaran-core Phase 403): a projection may carry its own message map. None: this
-      // vocabulary requests no derived `MapMsg` (see `derivations` below).
-      MapMsg = None
+      // Core 0.37.0 (fuaran-core Phase 403): a projection carries its own message map, because the
+      // generator cannot construct the projected record. Phase 2188 supplies it, so the derived
+      // `mapMsg` (see `derivations` below) covers `Switch` with the rest: the cases and the default
+      // branch are trees and map through the derived mappers; `On` is a `Binding`, which carries no
+      // message, and `AutoAdvanceMs` is an integer, so both copy across.
+      MapMsg =
+        Some
+            """and private mapMsgSwitchSpec<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: SwitchSpec<'Msg>) : SwitchSpec<'Msg2> =
+    ({ Cases = List.map (fun __x -> mapMsgSwitchCase f __x) v.Cases; Default = mapMsg f v.Default; On = v.On; AutoAdvanceMs = v.AutoAdvanceMs }: SwitchSpec<'Msg2>)"""
       // The projected record's fields at their HOST shapes (fuaran-core Phase 403), in the IDL's
       // order, so `StructuralAccess` reads `SwitchSpec` as it exists: `on` is the REQUIRED merged
       // binding, and the wire's compact `stateKey` has no field here.
@@ -1046,15 +1052,18 @@ let rec canonicaliseVector (v: IdlValue) : IdlValue =
 /// mechanically from the vocabulary and that the tier's consumers would
 /// otherwise write by hand. Each request names what it replaces.
 ///
-/// One request is deliberately ABSENT, because the generator refuses it for
-/// this vocabulary rather than because nothing wants it: `MapMsg` (the
-/// `Switch` kind is a host projection whose record the generator cannot
-/// construct, and `switchProjection` supplies no `MapMsg` member of its own —
-/// `NodeMap.mapMsg` stays hand-written until it does). A second, `SlotsOf "Binding"`, is absent because
-/// its emission does not compile here: it reads the `Switch` projection's fields
-/// from the IDL (an optional `on`) rather than from the projected record (a
-/// required `On`), so the enumerator waits on the generator honouring a host
-/// projection.
+/// Phase 2188 adds `MapMsg`, which 2039 had to leave out: it reads the `Switch`
+/// kind, a host projection, and is honoured since fuaran-core#403 because
+/// `switchProjection` declares its own `MapMsg` member.
+///
+/// One request is still ABSENT: `SlotsOf "Binding"`. Since fuaran-core#403 the
+/// generator reads `Switch` through its `RecordFields` and the emission is right,
+/// but it does not compile in this tier, which builds with nullness checking on.
+/// A slot enumerator over a generic union boxes each value into a `let ofKind`
+/// that carries no type annotation, so the list is inferred at `objnull`, and
+/// appending it under the declared `(string * obj) list` result is FS3261. The
+/// fix is the generator's (annotate `ofKind` with the result's element type);
+/// the request waits for a Core release that carries it.
 let derivations: Gen.Derivation list =
     [
       // `wireTag` / `allWireTags` / `children` / `withChildren`, with
@@ -1079,4 +1088,8 @@ let derivations: Gen.Derivation list =
       // `onChange: JVal -> Action`, so both project to one type; the walks that
       // read a field's binding or ask whether a handler is present read these
       // instead of matching fifteen cases each.
-      Gen.Derivation.Projections("FormFieldKind", [ "value"; "onChange" ]) ]
+      Gen.Derivation.Projections("FormFieldKind", [ "value"; "onChange" ])
+      // Phase 2188 — `mapMsg`, the tree with its message type rewritten. It
+      // replaces the hand-written structural map `NodeMap` carried, so a new
+      // kind or field cannot leave the map behind.
+      Gen.Derivation.MapMsg ]

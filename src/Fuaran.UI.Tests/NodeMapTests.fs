@@ -214,3 +214,58 @@ let nodeMapTests =
                   | other -> failtestf "expected Dispatch, got %A" other
               | other -> failtestf "expected a Button, got %A" other
           } ]
+
+// ============================================================================
+//  Phase 2188 — the generated message map agrees with the hand-written one.
+//
+//  `Generated.mapMsg` is derived from the vocabulary (`Gen.Derivation.MapMsg`);
+//  `NodeMap.mapMsg` was written by hand. Over every node fixture in the shared
+//  corpus, both relabel the decoded tree and the two results encode to the same
+//  bytes, which are the fixture's own bytes: the relabel moves no wire byte.
+// ============================================================================
+
+/// Every `nodes/*.json` fixture as (file name, trimmed contents).
+let private nodeFixtures () : (string * string) list =
+    match Fuaran.Tests.CorpusRoot.tryFind () with
+    | None -> []
+    | Some root ->
+        let dir = System.IO.Path.Combine(root, "nodes")
+
+        let fileName (p: string) =
+            System.IO.Path.GetFileName p |> Option.ofObj |> Option.defaultValue p
+
+        System.IO.Directory.GetFiles(dir, "*.json")
+        |> Array.toList
+        |> List.sortBy fileName
+        |> List.map (fun p -> fileName p, (System.IO.File.ReadAllText p).Trim())
+
+[<Tests>]
+let generatedMapAgreementTests =
+    testList
+        "Phase2188.NodeMap.generatedAgreesWithHandWritten"
+        [ test "over the node corpus, both maps encode to the fixture's bytes" {
+              let fixtures = nodeFixtures ()
+
+              if List.isEmpty fixtures then
+                  skiptest "wire-format-fixtures/nodes not found"
+
+              let relabel (o: obj) = string o
+
+              let disagreements =
+                  fixtures
+                  |> List.choose (fun (name, json) ->
+                      match Generated.decodeNode json with
+                      | Error _ -> Some(name, "the fixture did not decode")
+                      | Ok node ->
+                          let viaHand = Generated.encodeNode (NodeMap.mapMsg relabel node)
+                          let viaGenerated = Generated.encodeNode (Generated.mapMsg relabel node)
+
+                          if viaHand <> viaGenerated then
+                              Some(name, "the two maps differ")
+                          elif viaGenerated <> json then
+                              Some(name, "the map moved a wire byte")
+                          else
+                              None)
+
+              Expect.equal disagreements [] "the generated map agrees with the hand-written one"
+          } ]

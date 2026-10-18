@@ -4722,6 +4722,198 @@ let mkToast (id: string) (message: TextSource) (``open``: Binding<bool>) : Node<
 let mkTree (id: string) (items: TreeItem list) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Tree { ExpandedStateKey = None; Items = items; OnSelect = None; SelectionStateKey = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
+/// The tree with its message type rewritten through `f`, every structure rebuilt.
+let rec mapMsg<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (n: Node<'Msg>) : Node<'Msg2> =
+    ({ Id = n.Id; Kind = mapMsgNodeKind f n.Kind; Accessibility = n.Accessibility; ExtraAttributes = n.ExtraAttributes; Fallback = Option.map (fun __o -> mapMsg f __o) n.Fallback; Motion = n.Motion; State = Option.map (fun __o -> mapMsgStateBehaviour f __o) n.State; Style = n.Style; Tooltip = n.Tooltip; Visible = n.Visible }: Node<'Msg2>)
+
+and private mapMsgNodeKind<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (k: NodeKind<'Msg>) : NodeKind<'Msg2> =
+    match k with
+    | NodeKind.Badge s -> NodeKind.Badge s
+    | NodeKind.Box s -> NodeKind.Box(mapMsgBoxSpec f s)
+    | NodeKind.Button s -> NodeKind.Button(mapMsgButtonSpec f s)
+    | NodeKind.Callout s -> NodeKind.Callout s
+    | NodeKind.Chart s -> NodeKind.Chart(mapMsgChartSpec f s)
+    | NodeKind.CodeBlock s -> NodeKind.CodeBlock s
+    | NodeKind.Custom s -> NodeKind.Custom s
+    | NodeKind.DataGrid s -> NodeKind.DataGrid(mapMsgDataGridSpec f s)
+    | NodeKind.Disclosure s -> NodeKind.Disclosure(mapMsgDisclosureSpec f s)
+    | NodeKind.Drawing s -> NodeKind.Drawing s
+    | NodeKind.Embed s -> NodeKind.Embed s
+    | NodeKind.ErrorBoundary s -> NodeKind.ErrorBoundary(mapMsgErrorBoundarySpec f s)
+    | NodeKind.Fact s -> NodeKind.Fact s
+    | NodeKind.FileUpload s -> NodeKind.FileUpload(mapMsgFileUploadSpec f s)
+    | NodeKind.Filters s -> NodeKind.Filters(mapMsgFiltersSpec f s)
+    | NodeKind.Form s -> NodeKind.Form(mapMsgFormSpec f s)
+    | NodeKind.FragmentDecl s -> NodeKind.FragmentDecl(mapMsgFragmentDeclSpec f s)
+    | NodeKind.FragmentRef s -> NodeKind.FragmentRef(mapMsgFragmentRefSpec f s)
+    | NodeKind.Heading s -> NodeKind.Heading s
+    | NodeKind.Icon s -> NodeKind.Icon s
+    | NodeKind.Image s -> NodeKind.Image s
+    | NodeKind.LabelValueRow s -> NodeKind.LabelValueRow s
+    | NodeKind.Link s -> NodeKind.Link s
+    | NodeKind.List s -> NodeKind.List s
+    | NodeKind.Map s -> NodeKind.Map(mapMsgMapSpec f s)
+    | NodeKind.Markdown s -> NodeKind.Markdown s
+    | NodeKind.Math s -> NodeKind.Math s
+    | NodeKind.Media s -> NodeKind.Media s
+    | NodeKind.Metric s -> NodeKind.Metric s
+    | NodeKind.Modal s -> NodeKind.Modal(mapMsgModalSpec f s)
+    | NodeKind.Mount s -> NodeKind.Mount(mapMsgMountSpec f s)
+    | NodeKind.Progress s -> NodeKind.Progress s
+    | NodeKind.ScrollArea s -> NodeKind.ScrollArea(mapMsgScrollAreaSpec f s)
+    | NodeKind.Select s -> NodeKind.Select(mapMsgSelectSpec f s)
+    | NodeKind.Skeleton s -> NodeKind.Skeleton s
+    | NodeKind.Sparkline s -> NodeKind.Sparkline s
+    | NodeKind.SplitPanel s -> NodeKind.SplitPanel(mapMsgSplitPanelSpec f s)
+    | NodeKind.Stepper s -> NodeKind.Stepper(mapMsgStepperSpec f s)
+    | NodeKind.SummaryList s -> NodeKind.SummaryList(mapMsgSummaryListSpec f s)
+    | NodeKind.Switch s -> NodeKind.Switch(mapMsgSwitchSpec f s)
+    | NodeKind.Tabs s -> NodeKind.Tabs(mapMsgTabsSpec f s)
+    | NodeKind.Toast s -> NodeKind.Toast s
+    | NodeKind.Tree s -> NodeKind.Tree(mapMsgTreeSpec f s)
+
+and private mapMsgButtonGroupItem<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: ButtonGroupItem<'Msg>) : ButtonGroupItem<'Msg2> =
+    ({ Label = v.Label; OnClick = Option.map (fun __o -> (fun __a0 -> mapMsgAction f ((__o) __a0))) v.OnClick }: ButtonGroupItem<'Msg2>)
+
+and private mapMsgColumnErased<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: ColumnErased<'Msg>) : ColumnErased<'Msg2> =
+    ({ Field = v.Field; Sortable = v.Sortable; Editable = v.Editable; Format = v.Format; Kind = mapMsgCellKindErased f v.Kind; Label = v.Label; Value = v.Value; Width = v.Width }: ColumnErased<'Msg2>)
+
+and private mapMsgFilterSpec<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: FilterSpec<'Msg>) : FilterSpec<'Msg2> =
+    ({ Kind = mapMsgFormFieldKind f v.Kind; Label = v.Label; Name = v.Name }: FilterSpec<'Msg2>)
+
+and private mapMsgFormField<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: FormField<'Msg>) : FormField<'Msg2> =
+    ({ Id = v.Id; Kind = mapMsgFormFieldKind f v.Kind; Label = v.Label; Required = v.Required; Help = v.Help; Rule = v.Rule }: FormField<'Msg2>)
+
+and private mapMsgStateBehaviour<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: StateBehaviour<'Msg>) : StateBehaviour<'Msg2> =
+    ({ OnEmpty = Option.map (fun __o -> mapMsg f __o) v.OnEmpty; OnError = Option.map (fun __o -> (fun __a0 -> mapMsg f ((__o) __a0))) v.OnError; OnLoading = Option.map (fun __o -> mapMsg f __o) v.OnLoading }: StateBehaviour<'Msg2>)
+
+and private mapMsgSwitchCase<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: SwitchCase<'Msg>) : SwitchCase<'Msg2> =
+    ({ Child = mapMsg f v.Child; Match = v.Match; When = v.When }: SwitchCase<'Msg2>)
+
+and private mapMsgBoxSpec<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: BoxSpec<'Msg>) : BoxSpec<'Msg2> =
+    ({ Children = List.map (fun __x0 -> mapMsg f __x0) v.Children; Heading = v.Heading; Layout = v.Layout; Role = v.Role; KeepTogether = v.KeepTogether; BreakBefore = v.BreakBefore }: BoxSpec<'Msg2>)
+
+and private mapMsgButtonSpec<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: ButtonSpec<'Msg>) : ButtonSpec<'Msg2> =
+    ({ Label = v.Label; OnClick = mapMsgAction f v.OnClick; Variant = v.Variant; Icon = v.Icon; Tooltip = v.Tooltip; Disabled = v.Disabled }: ButtonSpec<'Msg2>)
+
+and private mapMsgChartSpec<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: ChartSpec<'Msg>) : ChartSpec<'Msg2> =
+    ({ Kind = v.Kind; Source = v.Source; Stacked = v.Stacked; XField = v.XField; YFields = v.YFields; Title = v.Title; ValueFormat = v.ValueFormat; XTitle = v.XTitle; YTitle = v.YTitle; Subtitle = v.Subtitle; LegendPosition = v.LegendPosition; DataLabels = v.DataLabels; XScale = v.XScale; Annotations = v.Annotations; OnPointClick = Option.map (fun __o -> (fun __a0 -> mapMsgAction f ((__o) __a0))) v.OnPointClick }: ChartSpec<'Msg2>)
+
+and private mapMsgDataGridSpec<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: DataGridSpec<'Msg>) : DataGridSpec<'Msg2> =
+    ({ Columns = List.map (fun __x0 -> mapMsgColumnErased f __x0) v.Columns; Editable = v.Editable; RowKey = v.RowKey; RowKeyField = v.RowKeyField; SortStateKey = v.SortStateKey; PageSize = v.PageSize; PageStateKey = v.PageStateKey; DefaultSort = v.DefaultSort; EditStateKey = v.EditStateKey; Reorderable = v.Reorderable; TransferInKey = v.TransferInKey; TransferOutKey = v.TransferOutKey; KeepRowsTogether = v.KeepRowsTogether; RepeatHeader = v.RepeatHeader; Exportable = v.Exportable; WindowStateKey = v.WindowStateKey; RowTotal = v.RowTotal; Source = v.Source; StaticRows = v.StaticRows; OnRowClick = Option.map (fun __o -> (fun __a0 -> mapMsgAction f ((__o) __a0))) v.OnRowClick }: DataGridSpec<'Msg2>)
+
+and private mapMsgDisclosureSpec<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: DisclosureSpec<'Msg>) : DisclosureSpec<'Msg2> =
+    ({ Children = List.map (fun __x0 -> mapMsg f __x0) v.Children; DefaultOpen = v.DefaultOpen; Heading = v.Heading; OnToggle = Option.map (fun __o -> (fun __a0 -> mapMsgAction f ((__o) __a0))) v.OnToggle; Open = v.Open }: DisclosureSpec<'Msg2>)
+
+and private mapMsgErrorBoundarySpec<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: ErrorBoundarySpec<'Msg>) : ErrorBoundarySpec<'Msg2> =
+    ({ Child = mapMsg f v.Child; Fallback = mapMsg f v.Fallback }: ErrorBoundarySpec<'Msg2>)
+
+and private mapMsgFileUploadSpec<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: FileUploadSpec<'Msg>) : FileUploadSpec<'Msg2> =
+    ({ Accept = v.Accept; Label = v.Label; Multiple = v.Multiple; OnSelect = Option.map (fun __o -> (fun __a0 -> mapMsgAction f ((__o) __a0))) v.OnSelect; Disabled = v.Disabled; AcceptPaste = v.AcceptPaste; DropTarget = v.DropTarget; Capture = v.Capture; Destination = v.Destination; MaxBytes = v.MaxBytes; MaxFiles = v.MaxFiles }: FileUploadSpec<'Msg2>)
+
+and private mapMsgFiltersSpec<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: FiltersSpec<'Msg>) : FiltersSpec<'Msg2> =
+    ({ Items = List.map (fun __x0 -> mapMsgFilterSpec f __x0) v.Items }: FiltersSpec<'Msg2>)
+
+and private mapMsgFormSpec<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: FormSpec<'Msg>) : FormSpec<'Msg2> =
+    ({ Fields = List.map (fun __x0 -> mapMsgFormField f __x0) v.Fields; OnSubmit = mapMsgAction f v.OnSubmit; SubmitLabel = v.SubmitLabel; Disabled = v.Disabled }: FormSpec<'Msg2>)
+
+and private mapMsgFragmentDeclSpec<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: FragmentDeclSpec<'Msg>) : FragmentDeclSpec<'Msg2> =
+    ({ Body = mapMsg f v.Body; Name = v.Name; Holes = v.Holes; Effect = v.Effect }: FragmentDeclSpec<'Msg2>)
+
+and private mapMsgFragmentRefSpec<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: FragmentRefSpec<'Msg>) : FragmentRefSpec<'Msg2> =
+    ({ Name = v.Name; Args = Option.map (fun __o -> Map.map (fun _ __x0 -> mapMsgFragmentArg f __x0) __o) v.Args }: FragmentRefSpec<'Msg2>)
+
+and private mapMsgMapSpec<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: MapSpec<'Msg>) : MapSpec<'Msg2> =
+    ({ CentreLatitude = v.CentreLatitude; CentreLongitude = v.CentreLongitude; Source = v.Source; Zoom = v.Zoom; OnMarkerClick = Option.map (fun __o -> (fun __a0 -> mapMsgAction f ((__o) __a0))) v.OnMarkerClick }: MapSpec<'Msg2>)
+
+and private mapMsgModalSpec<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: ModalSpec<'Msg>) : ModalSpec<'Msg2> =
+    ({ Children = List.map (fun __x0 -> mapMsg f __x0) v.Children; Dismissable = v.Dismissable; OnDismiss = Option.map (fun __o -> mapMsgAction f __o) v.OnDismiss; Open = v.Open; Heading = v.Heading; Modality = v.Modality; Anchor = v.Anchor }: ModalSpec<'Msg2>)
+
+and private mapMsgMountSpec<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: MountSpec<'Msg>) : MountSpec<'Msg2> =
+    ({ Capabilities = v.Capabilities; Channel = v.Channel; Inputs = Option.map (fun __o -> Map.map (fun _ __x0 -> mapMsgFragmentArg f __x0) __o) v.Inputs; OnBubble = Option.map (fun __o -> (fun __a0 -> mapMsgAction f ((__o) __a0))) v.OnBubble; ScopeId = v.ScopeId }: MountSpec<'Msg2>)
+
+and private mapMsgScrollAreaSpec<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: ScrollAreaSpec<'Msg>) : ScrollAreaSpec<'Msg2> =
+    ({ Children = List.map (fun __x0 -> mapMsg f __x0) v.Children; Orientation = v.Orientation; MaxHeight = v.MaxHeight; MaxWidth = v.MaxWidth }: ScrollAreaSpec<'Msg2>)
+
+and private mapMsgSelectSpec<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: SelectSpec<'Msg>) : SelectSpec<'Msg2> =
+    ({ Label = v.Label; OnChange = Option.map (fun __o -> (fun __a0 -> mapMsgAction f ((__o) __a0))) v.OnChange; OnChangeMulti = Option.map (fun __o -> (fun __a0 -> mapMsgAction f ((__o) __a0))) v.OnChangeMulti; Source = v.Source; Value = v.Value; Placeholder = v.Placeholder; Disabled = v.Disabled; Multiple = v.Multiple; Values = v.Values }: SelectSpec<'Msg2>)
+
+and private mapMsgSplitPanelSpec<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: SplitPanelSpec<'Msg>) : SplitPanelSpec<'Msg2> =
+    ({ Children = List.map (fun __x0 -> mapMsg f __x0) v.Children; Weight = v.Weight }: SplitPanelSpec<'Msg2>)
+
+and private mapMsgStepperSpec<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: StepperSpec<'Msg>) : StepperSpec<'Msg2> =
+    ({ ActiveStep = v.ActiveStep; Children = List.map (fun __x0 -> mapMsg f __x0) v.Children; OnSelect = Option.map (fun __o -> (fun __a0 -> mapMsgAction f ((__o) __a0))) v.OnSelect }: StepperSpec<'Msg2>)
+
+and private mapMsgSummaryListSpec<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: SummaryListSpec<'Msg>) : SummaryListSpec<'Msg2> =
+    ({ Children = List.map (fun __x0 -> mapMsg f __x0) v.Children; Heading = v.Heading }: SummaryListSpec<'Msg2>)
+
+and private mapMsgSwitchSpec<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: SwitchSpec<'Msg>) : SwitchSpec<'Msg2> =
+    ({ Cases = List.map (fun __x -> mapMsgSwitchCase f __x) v.Cases; Default = mapMsg f v.Default; On = v.On; AutoAdvanceMs = v.AutoAdvanceMs }: SwitchSpec<'Msg2>)
+
+and private mapMsgTabsSpec<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: TabsSpec<'Msg>) : TabsSpec<'Msg2> =
+    ({ ActiveIndex = v.ActiveIndex; Children = List.map (fun __x0 -> mapMsg f __x0) v.Children; Orientation = v.Orientation; OnSelect = Option.map (fun __o -> (fun __a0 -> mapMsgAction f ((__o) __a0))) v.OnSelect; OnSelectTag = Option.map (fun __o -> (fun __a0 -> mapMsgAction f ((__o) __a0))) v.OnSelectTag; TabHeaders = v.TabHeaders; TabTags = v.TabTags; ActiveTag = v.ActiveTag }: TabsSpec<'Msg2>)
+
+and private mapMsgTreeSpec<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: TreeSpec<'Msg>) : TreeSpec<'Msg2> =
+    ({ ExpandedStateKey = v.ExpandedStateKey; Items = v.Items; OnSelect = Option.map (fun __o -> (fun __a0 -> mapMsgAction f ((__o) __a0))) v.OnSelect; SelectionStateKey = v.SelectionStateKey }: TreeSpec<'Msg2>)
+
+and private mapMsgAction<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: Action<'Msg>) : Action<'Msg2> =
+    match v with
+    | Action.Chain(__f0) -> Action.Chain(List.map (fun __x0 -> mapMsgAction f __x0) __f0)
+    | Action.WriteToClipboard(__f0) -> Action.WriteToClipboard(__f0)
+    | Action.Dispatch(__f0) -> Action.Dispatch(f (__f0))
+    | Action.Invoke(__f0, __f1) -> Action.Invoke(__f0, __f1)
+    | Action.ReadFileBody(__f0, __f1, __f2, __f3) -> Action.ReadFileBody(__f0, __f1, __f2, Option.map (fun __o -> (fun __a0 -> f ((__o) __a0))) __f3)
+    | Action.Call(__f0, __f1, __f2) -> Action.Call(__f0, Option.map (fun __o -> (fun __a0 -> f ((__o) __a0))) __f1, __f2)
+    | Action.Navigate(__f0, __f1) -> Action.Navigate(__f0, __f1)
+    | Action.CommitLocal(__f0) -> Action.CommitLocal(__f0)
+    | Action.Notify(__f0, __f1) -> Action.Notify(__f0, __f1)
+    | Action.SetState(__f0, __f1, __f2) -> Action.SetState(__f0, __f1, __f2)
+    | Action.AiTool(__f0, __f1) -> Action.AiTool(__f0, __f1)
+    | Action.Print -> Action.Print
+    | Action.Confirm(__f0, __f1, __f2) -> Action.Confirm(__f0, mapMsgAction f __f1, Option.map (fun __o -> mapMsgAction f __o) __f2)
+    | Action.Focus(__f0) -> Action.Focus(__f0)
+
+and private mapMsgCellKindErased<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: CellKindErased<'Msg>) : CellKindErased<'Msg2> =
+    match v with
+    | CellKindErased.Text -> CellKindErased.Text
+    | CellKindErased.Numeric -> CellKindErased.Numeric
+    | CellKindErased.Date -> CellKindErased.Date
+    | CellKindErased.Editable(__f0) -> CellKindErased.Editable(Option.map (fun __o -> (fun __a0 -> mapMsgAction f ((__o) __a0))) __f0)
+    | CellKindErased.Checkbox(__f0, __f1) -> CellKindErased.Checkbox(__f0, Option.map (fun __o -> (fun __a0 -> mapMsgAction f ((__o) __a0))) __f1)
+    | CellKindErased.Button(__f0, __f1) -> CellKindErased.Button(__f0, Option.map (fun __o -> (fun __a0 -> mapMsgAction f ((__o) __a0))) __f1)
+    | CellKindErased.ButtonGroup(__f0) -> CellKindErased.ButtonGroup(List.map (fun __x0 -> mapMsgButtonGroupItem f __x0) __f0)
+    | CellKindErased.Link(__f0, __f1) -> CellKindErased.Link(__f0, __f1)
+    | CellKindErased.Pill(__f0, __f1) -> CellKindErased.Pill(__f0, __f1)
+    | CellKindErased.TonedPill(__f0, __f1, __f2) -> CellKindErased.TonedPill(__f0, __f1, __f2)
+    | CellKindErased.Progress(__f0, __f1) -> CellKindErased.Progress(__f0, __f1)
+    | CellKindErased.Custom(__f0) -> CellKindErased.Custom((fun __a0 -> mapMsg f ((__f0) __a0)))
+
+and private mapMsgFormFieldKind<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: FormFieldKind<'Msg>) : FormFieldKind<'Msg2> =
+    match v with
+    | FormFieldKind.Text(__f0, __f1) -> FormFieldKind.Text(__f0, Option.map (fun __o -> (fun __a0 -> mapMsgAction f ((__o) __a0))) __f1)
+    | FormFieldKind.Number(__f0, __f1) -> FormFieldKind.Number(__f0, Option.map (fun __o -> (fun __a0 -> mapMsgAction f ((__o) __a0))) __f1)
+    | FormFieldKind.Checkbox(__f0, __f1) -> FormFieldKind.Checkbox(__f0, Option.map (fun __o -> (fun __a0 -> mapMsgAction f ((__o) __a0))) __f1)
+    | FormFieldKind.Toggle(__f0, __f1) -> FormFieldKind.Toggle(__f0, Option.map (fun __o -> (fun __a0 -> mapMsgAction f ((__o) __a0))) __f1)
+    | FormFieldKind.Choice(__f0, __f1, __f2) -> FormFieldKind.Choice(__f0, __f1, Option.map (fun __o -> (fun __a0 -> mapMsgAction f ((__o) __a0))) __f2)
+    | FormFieldKind.TextArea(__f0, __f1, __f2) -> FormFieldKind.TextArea(__f0, Option.map (fun __o -> (fun __a0 -> mapMsgAction f ((__o) __a0))) __f1, __f2)
+    | FormFieldKind.RangedNumber(__f0, __f1, __f2, __f3, __f4) -> FormFieldKind.RangedNumber(__f0, Option.map (fun __o -> (fun __a0 -> mapMsgAction f ((__o) __a0))) __f1, __f2, __f3, __f4)
+    | FormFieldKind.Range(__f0, __f1, __f2, __f3, __f4) -> FormFieldKind.Range(__f0, Option.map (fun __o -> (fun __a0 -> mapMsgAction f ((__o) __a0))) __f1, __f2, __f3, __f4)
+    | FormFieldKind.SegmentedChoice(__f0, __f1, __f2, __f3) -> FormFieldKind.SegmentedChoice(__f0, __f1, Option.map (fun __o -> (fun __a0 -> mapMsgAction f ((__o) __a0))) __f2, __f3)
+    | FormFieldKind.DateTime(__f0, __f1, __f2, __f3, __f4, __f5) -> FormFieldKind.DateTime(__f0, Option.map (fun __o -> (fun __a0 -> mapMsgAction f ((__o) __a0))) __f1, __f2, __f3, __f4, __f5)
+    | FormFieldKind.DateTimeRange(__f0, __f1, __f2, __f3, __f4, __f5) -> FormFieldKind.DateTimeRange(__f0, Option.map (fun __o -> (fun __a0 -> mapMsgAction f ((__o) __a0))) __f1, __f2, __f3, __f4, __f5)
+    | FormFieldKind.Combobox(__f0, __f1, __f2, __f3) -> FormFieldKind.Combobox(__f0, Option.map (fun __o -> (fun __a0 -> mapMsgAction f ((__o) __a0))) __f1, __f2, __f3)
+    | FormFieldKind.Rating(__f0, __f1, __f2, __f3) -> FormFieldKind.Rating(__f0, __f1, Option.map (fun __o -> (fun __a0 -> mapMsgAction f ((__o) __a0))) __f2, __f3)
+    | FormFieldKind.Color(__f0, __f1) -> FormFieldKind.Color(Option.map (fun __o -> (fun __a0 -> mapMsgAction f ((__o) __a0))) __f0, __f1)
+    | FormFieldKind.Tokens(__f0, __f1, __f2, __f3) -> FormFieldKind.Tokens(__f0, Option.map (fun __o -> (fun __a0 -> mapMsgAction f ((__o) __a0))) __f1, __f2, __f3)
+
+and private mapMsgFragmentArg<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: FragmentArg<'Msg>) : FragmentArg<'Msg2> =
+    match v with
+    | FragmentArg.Int(__f0) -> FragmentArg.Int(__f0)
+    | FragmentArg.Float(__f0) -> FragmentArg.Float(__f0)
+    | FragmentArg.Bool(__f0) -> FragmentArg.Bool(__f0)
+    | FragmentArg.Str(__f0) -> FragmentArg.Str(__f0)
+    | FragmentArg.SlotArg(__f0) -> FragmentArg.SlotArg(mapMsg f __f0)
+
 /// `Accessibility` with every field at the value a caller need not pass.
 let defaultAccessibility: Accessibility =
     { DescribedBy = None; Hidden = None; Label = None; LabelledBy = None; LiveRegion = None; Role = None; Speak = None }
