@@ -69,7 +69,7 @@ let private column (kind: CellKindErased<Msg>) : ColumnErased<Msg> =
         Label = "Col"
         Kind = kind }
 
-let private chartNode (id: string) (onPointClick: (Fuaran.Core.Row -> Action<Msg>) option) : Node<Msg> =
+let private chartNode (id: string) (onPointClick: (Map<string, obj> -> Action<Msg>) option) : Node<Msg> =
     node
         id
         (NodeKind.Chart(

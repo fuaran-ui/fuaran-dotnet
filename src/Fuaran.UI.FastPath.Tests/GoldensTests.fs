@@ -94,12 +94,19 @@ module GoldensTests =
     /// A host-neutral hole object → the Core `SigEntry` — HONOURING `required`
     /// (the whole reason this bypasses `FastPath.bank`).
     let private sigEntryOf (h: JsonElement) : SigEntry =
+        let space (kind: string) =
+            match tryEl h "space" with
+            | Some s -> spaceOf s
+            | None -> failwithf "goldens: a '%s' hole carries no space" kind
+
         { Addr = reqStr h "addr"
           Name = reqStr h "name"
-          Kind = reqStr h "kind"
-          Space = tryEl h "space" |> Option.map spaceOf
-          Slot = tryEl h "slot" |> Option.map asStr
-          Action = None
+          Kind =
+            match reqStr h "kind" with
+            | "value" -> ValueHole(space "value")
+            | "repeat" -> RepeatHole(space "repeat")
+            | "slot" -> SlotHole(tryEl h "slot" |> Option.map asStr)
+            | other -> failwithf "goldens: unknown hole kind '%s'" other
           Required = h.GetProperty("required").GetBoolean() }
 
     /// A host-neutral query hole → the FastPath `HoleDecl` used to build a `Query`.

@@ -151,14 +151,14 @@ let private textOf (t: TextSource) : string =
 
 /// Hostile strings in every author-supplied slot: the escaping the invariance
 /// claim rests on is only exercised by a fixture that actually needs it.
-let private rows: Fuaran.Core.Row list =
+let private rows: Map<string, obj> list =
     [ Map.ofList [ "quarter", box "Q1 <script>alert(1)</script>"; "revenue", box 120.0 ]
       Map.ofList [ "quarter", box "Q2 & \"co\" <meta http-equiv=refresh>"; "revenue", box 90.5 ] ]
 
 let private chartSpec: ChartSpec<obj> =
     { Defaults.chart with
         Kind = ChartKind.Bar
-        Source = Binding.Static(Some(rows :> Fuaran.Core.Row seq))
+        Source = Binding.Static(Some(rows :> Map<string, obj> seq))
         XField = "quarter"
         YFields = [ "revenue" ]
         Title = Some(TextSource.Literal "Revenue & \"growth\" <link rel=stylesheet> '") }

@@ -1,4 +1,4 @@
-// AUTO-GENERATED from the IDL by Fuaran.Core.Idl.Gen 0.36.0. Do not edit by hand.
+// AUTO-GENERATED from the IDL by Fuaran.Core.Idl.Gen 0.38.1. Do not edit by hand.
 module Fuaran.UI.Generated
 #nowarn "44" // this layer implements every declared member, including deprecated ones
 
@@ -594,15 +594,15 @@ and [<RequireQualifiedAccess>] CellKindErased<'Msg> =
     | Text
     | Numeric
     | Date
-    | Editable of onEdit: (Fuaran.Core.Row * Fuaran.UI.HostPrelude.CellValue -> Action<'Msg>) option
-    | Checkbox of get: (Fuaran.Core.Row -> bool) * onToggle: (Fuaran.Core.Row * bool -> Action<'Msg>) option
-    | Button of label: TextSource * onClick: (Fuaran.Core.Row -> Action<'Msg>) option
+    | Editable of onEdit: (Map<string, obj> * Fuaran.UI.HostPrelude.CellValue -> Action<'Msg>) option
+    | Checkbox of get: (Map<string, obj> -> bool) * onToggle: (Map<string, obj> * bool -> Action<'Msg>) option
+    | Button of label: TextSource * onClick: (Map<string, obj> -> Action<'Msg>) option
     | ButtonGroup of buttons: ButtonGroupItem<'Msg> list
-    | Link of hrefFn: (Fuaran.Core.Row -> string) * labelFn: (Fuaran.Core.Row -> TextSource)
-    | Pill of labelFn: (Fuaran.Core.Row -> TextSource) * toneFn: (Fuaran.Core.Row -> ToneVariant)
+    | Link of hrefFn: (Map<string, obj> -> string) * labelFn: (Map<string, obj> -> TextSource)
+    | Pill of labelFn: (Map<string, obj> -> TextSource) * toneFn: (Map<string, obj> -> ToneVariant)
     | TonedPill of field: string * map: Map<string, ToneVariant> * ``default``: ToneVariant
-    | Progress of fractionFn: (Fuaran.Core.Row -> float) * labelFn: (Fuaran.Core.Row -> TextSource) option
-    | Custom of fn: ((Fuaran.Core.Row -> JVal) -> Node<'Msg>)
+    | Progress of fractionFn: (Map<string, obj> -> float) * labelFn: (Map<string, obj> -> TextSource) option
+    | Custom of fn: ((Map<string, obj> -> JVal) -> Node<'Msg>)
 
 and [<RequireQualifiedAccess>] ChartAnnotation =
     | ReferenceLine of value: float * label: TextSource option
@@ -726,7 +726,7 @@ and Accessibility =
 and ButtonGroupItem<'Msg> =
     {
       Label: TextSource
-      OnClick: (Fuaran.Core.Row -> Action<'Msg>) option
+      OnClick: (Map<string, obj> -> Action<'Msg>) option
     }
 
 and ColumnErased<'Msg> =
@@ -750,7 +750,7 @@ and ColumnErased<'Msg> =
       Format: CellFormat
       Kind: CellKindErased<'Msg>
       Label: string
-      Value: (Fuaran.Core.Row -> Fuaran.UI.HostPrelude.CellValue) option
+      Value: (Map<string, obj> -> Fuaran.UI.HostPrelude.CellValue) option
       Width: ColumnWidth
     }
 
@@ -1010,7 +1010,7 @@ and CalloutSpec =
 and ChartSpec<'Msg> =
     {
       Kind: ChartKind
-      Source: Binding<Fuaran.Core.Row seq>
+      Source: Binding<Map<string, obj> seq>
       Stacked: bool
       XField: string
       YFields: string list
@@ -1078,7 +1078,7 @@ and ChartSpec<'Msg> =
       // rows came from.
       XScale: ChartXScale option
       Annotations: ChartAnnotation list option
-      OnPointClick: (Fuaran.Core.Row -> Action<'Msg>) option
+      OnPointClick: (Map<string, obj> -> Action<'Msg>) option
     }
 
 // Display
@@ -1106,7 +1106,7 @@ and DataGridSpec<'Msg> =
     {
       Columns: ColumnErased<'Msg> list
       Editable: bool
-      RowKey: (Fuaran.Core.Row -> string) option
+      RowKey: (Map<string, obj> -> string) option
       RowKeyField: string option
       // Phase 818 — the grid-sort header affordance for a DATA-BOUND grid:
       // names the State key carrying the sort descriptor
@@ -1238,9 +1238,9 @@ and DataGridSpec<'Msg> =
       // value that is not an integer >= 0 is no declared total. Omitted on the
       // wire when absent.
       RowTotal: Binding<int> option
-      Source: Binding<Fuaran.Core.Row seq>
+      Source: Binding<Map<string, obj> seq>
       StaticRows: StaticRows option
-      OnRowClick: (Fuaran.Core.Row -> Action<'Msg>) option
+      OnRowClick: (Map<string, obj> -> Action<'Msg>) option
     }
 
 // Layout
@@ -3339,15 +3339,15 @@ and private decCellKindErased (j: JVal) : Result<CellKindErased<obj>, DecodeErro
         | "Numeric" -> Ok CellKindErased.Numeric
         | "Date" -> Ok CellKindErased.Date
         | "Editable" ->
-            dOpt "onEdit" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: Fuaran.Core.Row * Fuaran.UI.HostPrelude.CellValue) -> Action.Chain []))) |> Result.bind (fun onEdit ->
+            dOpt "onEdit" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: Map<string, obj> * Fuaran.UI.HostPrelude.CellValue) -> Action.Chain []))) |> Result.bind (fun onEdit ->
             Ok(CellKindErased.Editable(onEdit)))
         | "Checkbox" ->
             dReq "get" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun _ -> false))) |> Result.bind (fun get ->
-            dOpt "onToggle" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: Fuaran.Core.Row * bool) -> Action.Chain []))) |> Result.bind (fun onToggle ->
+            dOpt "onToggle" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: Map<string, obj> * bool) -> Action.Chain []))) |> Result.bind (fun onToggle ->
             Ok(CellKindErased.Checkbox(get, onToggle))))
         | "Button" ->
             dReq "label" __fs decTextSource |> Result.bind (fun label ->
-            dOpt "onClick" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: Fuaran.Core.Row) -> Action.Chain []))) |> Result.bind (fun onClick ->
+            dOpt "onClick" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: Map<string, obj>) -> Action.Chain []))) |> Result.bind (fun onClick ->
             Ok(CellKindErased.Button(label, onClick))))
         | "ButtonGroup" ->
             dReq "buttons" __fs (dList decButtonGroupItem) |> Result.bind (fun buttons ->
@@ -3814,7 +3814,7 @@ and private decAccessibility (j: JVal) : Result<Accessibility, DecodeError> =
 and private decButtonGroupItem (j: JVal) : Result<ButtonGroupItem<obj>, DecodeError> =
     dObj j |> Result.bind (fun __fs ->
     dReq "label" __fs decTextSource |> Result.bind (fun label ->
-    dOpt "onClick" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: Fuaran.Core.Row) -> Action.Chain []))) |> Result.bind (fun onClick ->
+    dOpt "onClick" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: Map<string, obj>) -> Action.Chain []))) |> Result.bind (fun onClick ->
     Ok { Label = label; OnClick = onClick })))
 
 and private decColumnErased (j: JVal) : Result<ColumnErased<obj>, DecodeError> =
@@ -4066,7 +4066,7 @@ and private decChartSpec (j: JVal) : Result<ChartSpec<obj>, DecodeError> =
     dOpt "dataLabels" __fs decChartDataLabels |> Result.bind (fun dataLabels ->
     dOpt "xScale" __fs decChartXScale |> Result.bind (fun xScale ->
     dOpt "annotations" __fs (dList decChartAnnotation) |> Result.bind (fun annotations ->
-    dOpt "onPointClick" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: Fuaran.Core.Row) -> Action.Chain []))) |> Result.bind (fun onPointClick ->
+    dOpt "onPointClick" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: Map<string, obj>) -> Action.Chain []))) |> Result.bind (fun onPointClick ->
     Ok { Kind = kind; Source = source; Stacked = stacked; XField = xField; YFields = yFields; Title = title; ValueFormat = valueFormat; XTitle = xTitle; YTitle = yTitle; Subtitle = subtitle; LegendPosition = legendPosition; DataLabels = dataLabels; XScale = xScale; Annotations = annotations; OnPointClick = onPointClick }))))))))))))))))
 
 and private decCodeBlockSpec (j: JVal) : Result<CodeBlockSpec, DecodeError> =
@@ -4108,7 +4108,7 @@ and private decDataGridSpec (j: JVal) : Result<DataGridSpec<obj>, DecodeError> =
     dOpt "rowTotal" __fs (decBinding dInt) |> Result.bind (fun rowTotal ->
     dReq "source" __fs (decBinding (fun (__j: JVal) -> dHosted ((Fuaran.UI.RowCodec.decodeRows) __j))) |> Result.bind (fun source ->
     dOpt "staticRows" __fs decStaticRows |> Result.bind (fun staticRows ->
-    dOpt "onRowClick" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: Fuaran.Core.Row) -> Action.Chain []))) |> Result.bind (fun onRowClick ->
+    dOpt "onRowClick" __fs (fun (__j: JVal) -> dSentinel "<closure>" __j |> Result.map (fun () -> (fun (_: Map<string, obj>) -> Action.Chain []))) |> Result.bind (fun onRowClick ->
     Ok { Columns = columns; Editable = editable; RowKey = rowKey; RowKeyField = rowKeyField; SortStateKey = sortStateKey; PageSize = pageSize; PageStateKey = pageStateKey; DefaultSort = defaultSort; EditStateKey = editStateKey; Reorderable = reorderable; TransferInKey = transferInKey; TransferOutKey = transferOutKey; KeepRowsTogether = keepRowsTogether; RepeatHeader = repeatHeader; Exportable = exportable; WindowStateKey = windowStateKey; RowTotal = rowTotal; Source = source; StaticRows = staticRows; OnRowClick = onRowClick })))))))))))))))))))))
 
 and private decDisclosureSpec (j: JVal) : Result<DisclosureSpec<obj>, DecodeError> =
@@ -4587,7 +4587,7 @@ let nodeWitness: NodeWitness<Node<'Msg>, string> =
       ReplaceChildren = fun n kids -> withChildren kids n }
 
 // Validator scaffold — register domain RuleFamilies into `reg`; rule content stays domain-side.
-let runValidator (reg: Validator.Registry<Node<'Msg>, string>) (root: Node<'Msg>) : Defect<string> list =
+let runValidator (reg: Validator.RuleRegistry<Node<'Msg>, string>) (root: Node<'Msg>) : Defect<string> list =
     Validator.runAll nodeWitness reg root
 
 // Smart constructors — required-without-default fields are parameters; IDL-declared
@@ -4605,7 +4605,7 @@ let mkButton (id: string) (label: TextSource) (onClick: Action<'Msg>) (variant: 
 let mkCallout (id: string) (body: TextSource) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Callout { Body = body; Dismissable = false; Tone = ToneVariant.Default; Heading = None; Icon = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
-let mkChart (id: string) (kind: ChartKind) (source: Binding<Fuaran.Core.Row seq>) (xField: string) (yFields: string list) : Node<'Msg> =
+let mkChart (id: string) (kind: ChartKind) (source: Binding<Map<string, obj> seq>) (xField: string) (yFields: string list) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Chart { Kind = kind; Source = source; Stacked = false; XField = xField; YFields = yFields; Title = None; ValueFormat = None; XTitle = None; YTitle = None; Subtitle = None; LegendPosition = None; DataLabels = None; XScale = None; Annotations = None; OnPointClick = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkCodeBlock (id: string) (code: string) (copyable: bool) (highlightLines: int list) (language: string) (lineNumbers: bool) : Node<'Msg> =
@@ -4614,7 +4614,7 @@ let mkCodeBlock (id: string) (code: string) (copyable: bool) (highlightLines: in
 let mkCustom (id: string) (moduleId: string) (componentId: string) (props: Map<string, JVal>) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Custom { ModuleId = moduleId; ComponentId = componentId; Props = props; ContentHash = None; ExposedNodeIds = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
-let mkDataGrid (id: string) (columns: ColumnErased<'Msg> list) (source: Binding<Fuaran.Core.Row seq>) : Node<'Msg> =
+let mkDataGrid (id: string) (columns: ColumnErased<'Msg> list) (source: Binding<Map<string, obj> seq>) : Node<'Msg> =
     { Id = id; Kind = NodeKind.DataGrid { Columns = columns; Editable = false; RowKey = None; RowKeyField = None; SortStateKey = None; PageSize = None; PageStateKey = None; DefaultSort = None; EditStateKey = None; Reorderable = false; TransferInKey = None; TransferOutKey = None; KeepRowsTogether = false; RepeatHeader = false; Exportable = false; WindowStateKey = None; RowTotal = None; Source = source; StaticRows = None; OnRowClick = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }
 
 let mkDisclosure (id: string) (children: Node<'Msg> list) (defaultOpen: bool) (heading: TextSource) (``open``: Binding<bool>) : Node<'Msg> =

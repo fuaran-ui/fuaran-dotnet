@@ -17,10 +17,7 @@ let private mkCap (id: string) (det: Fuaran.Core.DeterminismSource) : Fuaran.Cor
           Holes =
             [ { Addr = "x"
                 Name = "x"
-                Kind = "value"
-                Space = Some(Fuaran.Core.IntRange(0, 10))
-                Slot = None
-                Action = None
+                Kind = Fuaran.Core.ValueHole(Fuaran.Core.IntRange(0, 10))
                 Required = true } ]
           Effect =
             { Host = Fuaran.Core.ReadsHost

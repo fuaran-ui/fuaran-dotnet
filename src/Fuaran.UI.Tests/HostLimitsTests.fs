@@ -60,7 +60,7 @@ let private gridWithStaticRows (id: string) (rows: int) : Node<Msg> =
 
 /// A grid whose source is a host-inlined `Binding.Static` table of `rows` rows.
 let private gridWithStaticSource (id: string) (rows: int) : Node<Msg> =
-    let table: Fuaran.Core.Row seq =
+    let table: Map<string, obj> seq =
         [ for i in 1..rows -> Map.ofList [ "n", box i |> Unchecked.nonNull ] ]
         |> Seq.ofList
 

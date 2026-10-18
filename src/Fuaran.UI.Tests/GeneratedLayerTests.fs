@@ -786,11 +786,12 @@ let generatedLayerTests =
                     "reject-fieldrule-length-unordered.json"
                     "reject-formfield-near-miss-validation.json"
                     "reject-image-srcset-nonpositive-width.json"
-                    // §20.2 rows 1 and 5 — the substrate parser's divergence,
-                    // declared per §20.1 rule 2 (rows 3's leading zero and 6
-                    // closed at the Core 0.34.0 pin; see the note above).
-                    "reject-json-duplicate-key.json"
-                    "reject-json-raw-control-char.json"
+                    // §20.2 rows 1 and 5 (a repeated member, a raw control
+                    // character) left this list at the Core 0.38.1 pin (Phase
+                    // 2226): Core's parser refuses both itself (fuaran-core
+                    // Phase 462 and its raw-control-character rule), so the
+                    // structural decoder refuses them before any policy runs —
+                    // as rows 3's leading zero and 6 closed at the 0.34.0 pin.
                     // Fuaran-UI Phase 1662 — §21.8's node bound on the PIPELINE
                     // surface. The `reject-limit-node-depth` class on the
                     // expression axis: a COUNT over a recursive structure,
@@ -1180,9 +1181,9 @@ let decoderSubstrateTests =
 //  refused (aliases — the policy's work). So the substrate is close enough to
 //  layer on, once it compiles here.
 //
-//  The test goes RED when the blocker clears — the collecting section stops
-//  naming `decT`, or starts binding it — which is the signal to re-open the
-//  layering (2040.t3/t4) on this evidence.
+//  The test went RED when the blocker cleared — the collecting section started
+//  binding `decT` — which was the signal to re-open the layering (2040.t3/t4)
+//  on this evidence.
 //
 //  Phase 2255 (2026-10-17) re-checked the blocker and found it cleared in Core
 //  but not here. fuaran-core#460 shipped (Core commit 3cbed31): the collecting
@@ -1194,6 +1195,12 @@ let decoderSubstrateTests =
 //  raise lands; the raise turns it red, and the red is fuaran#2255's start
 //  signal. Do not raise the pin to make it red, and do not delete it to land
 //  the layering: replace it with the layering's parity tests (2255's last task).
+//
+//  Phase 2226 (2026-10-18) raised the pin to Core 0.38.1 and the test went red
+//  exactly as designed. It now pins the CLEARED state: the placeholder still
+//  names `decT` and the collecting decoders bind it, so fuaran#2255 can start;
+//  a Core that stopped binding it would red here again. 2255 still replaces
+//  this test with the layering's parity tests.
 // ============================================================================
 
 [<Tests>]
@@ -1228,7 +1235,7 @@ let collectingDerivationTests =
                   "identityParse (decT"
                   "the Local.parse placeholder no longer names `decT` inside the collecting decoders — re-open the layering (the pin now carries fuaran-core#460, Core >= 0.38.1)"
 
-              Expect.isFalse
-                  (collecting.Contains "(decT:" || collecting.Contains "let decT")
-                  "a collecting decoder now binds `decT` — the emission may compile here; re-open the layering (the pin now carries fuaran-core#460, Core >= 0.38.1)"
+              Expect.isTrue
+                  (collecting.Contains "let decT")
+                  "the collecting decoders no longer bind `decT` (fuaran-core#460's binding, Core >= 0.38.1) — the placeholder is unbound again, so the layering fuaran#2255 builds does not compile"
           } ]

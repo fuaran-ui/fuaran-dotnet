@@ -3802,28 +3802,22 @@ let gridTonedPill: Node<obj> =
     let source =
         Fuaran.Core.Embedded
             { Schema =
-                [ "id", Fuaran.Core.StringType
-                  "carrier", Fuaran.Core.StringType
-                  "status", Fuaran.Core.StringType ]
+                [ Fuaran.Core.Field.create "id" Fuaran.Core.StringType
+                  Fuaran.Core.Field.create "carrier" Fuaran.Core.StringType
+                  Fuaran.Core.Field.create "status" Fuaran.Core.StringType ]
               Columns =
-                [ Fuaran.Core.Column.create
+                [ Fuaran.Core.Column.ofStrs
                       "id"
-                      Fuaran.Core.StringType
-                      [ Fuaran.Core.Str "SHP-1001"
-                        Fuaran.Core.Str "SHP-1002"
-                        Fuaran.Core.Str "SHP-1003" ]
-                  Fuaran.Core.Column.create
+                      (Fuaran.Core.Vector.ofList [ "SHP-1001"; "SHP-1002"; "SHP-1003" ])
+                      Fuaran.Core.AllValid
+                  Fuaran.Core.Column.ofStrs
                       "carrier"
-                      Fuaran.Core.StringType
-                      [ Fuaran.Core.Str "Northwind"
-                        Fuaran.Core.Str "Meridian"
-                        Fuaran.Core.Str "Northwind" ]
-                  Fuaran.Core.Column.create
+                      (Fuaran.Core.Vector.ofList [ "Northwind"; "Meridian"; "Northwind" ])
+                      Fuaran.Core.AllValid
+                  Fuaran.Core.Column.ofStrs
                       "status"
-                      Fuaran.Core.StringType
-                      [ Fuaran.Core.Str "On time"
-                        Fuaran.Core.Str "Delayed"
-                        Fuaran.Core.Str "Cancelled" ] ] }
+                      (Fuaran.Core.Vector.ofList [ "On time"; "Delayed"; "Cancelled" ])
+                      Fuaran.Core.AllValid ] }
 
     let declarative (label: string) (field: string) (kind: CellKindErased<obj>) : ColumnErased<obj> =
         { Defaults.columnErased with
@@ -4323,16 +4317,18 @@ let chartStateRows: Node<obj> =
 let gridTransform: Node<obj> =
     let source =
         Fuaran.Core.Embedded
-            { Schema = [ "dept", Fuaran.Core.StringType; "amount", Fuaran.Core.IntType ]
+            { Schema =
+                [ Fuaran.Core.Field.create "dept" Fuaran.Core.StringType
+                  Fuaran.Core.Field.create "amount" Fuaran.Core.IntType ]
               Columns =
-                [ Fuaran.Core.Column.create
+                [ Fuaran.Core.Column.ofStrs
                       "dept"
-                      Fuaran.Core.StringType
-                      [ Fuaran.Core.Str "eng"; Fuaran.Core.Str "eng"; Fuaran.Core.Str "sales" ]
-                  Fuaran.Core.Column.create
+                      (Fuaran.Core.Vector.ofList [ "eng"; "eng"; "sales" ])
+                      Fuaran.Core.AllValid
+                  Fuaran.Core.Column.ofInts
                       "amount"
-                      Fuaran.Core.IntType
-                      [ Fuaran.Core.Int 100; Fuaran.Core.Int 120; Fuaran.Core.Null ] ] }
+                      (Fuaran.Core.Vector.ofList [ 100; 120; 0 ])
+                      (Fuaran.Core.Validity.ofList [ true; true; false ]) ] }
 
     let pipeline: Fuaran.Compute.Transform list =
         [ Fuaran.Compute.Filter(
@@ -4367,13 +4363,12 @@ let gridTransform: Node<obj> =
 let gridTransformParam: Node<obj> =
     let source =
         Fuaran.Core.Embedded
-            { Schema = [ "dept", Fuaran.Core.StringType; "amount", Fuaran.Core.IntType ]
+            { Schema =
+                [ Fuaran.Core.Field.create "dept" Fuaran.Core.StringType
+                  Fuaran.Core.Field.create "amount" Fuaran.Core.IntType ]
               Columns =
-                [ Fuaran.Core.Column.create
-                      "dept"
-                      Fuaran.Core.StringType
-                      [ Fuaran.Core.Str "eng"; Fuaran.Core.Str "sales" ]
-                  Fuaran.Core.Column.create "amount" Fuaran.Core.IntType [ Fuaran.Core.Int 100; Fuaran.Core.Int 90 ] ] }
+                [ Fuaran.Core.Column.ofStrs "dept" (Fuaran.Core.Vector.ofList [ "eng"; "sales" ]) Fuaran.Core.AllValid
+                  Fuaran.Core.Column.ofInts "amount" (Fuaran.Core.Vector.ofList [ 100; 90 ]) Fuaran.Core.AllValid ] }
 
     let pipeline: Fuaran.Compute.Transform list =
         [ Fuaran.Compute.Filter(
@@ -4424,13 +4419,12 @@ let gridTransformParam: Node<obj> =
 let transformUndeclaredParam: Node<obj> =
     let source =
         Fuaran.Core.Embedded
-            { Schema = [ "dept", Fuaran.Core.StringType; "amount", Fuaran.Core.IntType ]
+            { Schema =
+                [ Fuaran.Core.Field.create "dept" Fuaran.Core.StringType
+                  Fuaran.Core.Field.create "amount" Fuaran.Core.IntType ]
               Columns =
-                [ Fuaran.Core.Column.create
-                      "dept"
-                      Fuaran.Core.StringType
-                      [ Fuaran.Core.Str "eng"; Fuaran.Core.Str "sales" ]
-                  Fuaran.Core.Column.create "amount" Fuaran.Core.IntType [ Fuaran.Core.Int 100; Fuaran.Core.Int 90 ] ] }
+                [ Fuaran.Core.Column.ofStrs "dept" (Fuaran.Core.Vector.ofList [ "eng"; "sales" ]) Fuaran.Core.AllValid
+                  Fuaran.Core.Column.ofInts "amount" (Fuaran.Core.Vector.ofList [ 100; 90 ]) Fuaran.Core.AllValid ] }
 
     let pipeline: Fuaran.Compute.Transform list =
         [ Fuaran.Compute.Filter(
@@ -4457,16 +4451,15 @@ let transformUndeclaredParam: Node<obj> =
 let multiselectChipListParam: Node<obj> =
     let source =
         Fuaran.Core.Embedded
-            { Schema = [ "dept", Fuaran.Core.StringType; "amount", Fuaran.Core.IntType ]
+            { Schema =
+                [ Fuaran.Core.Field.create "dept" Fuaran.Core.StringType
+                  Fuaran.Core.Field.create "amount" Fuaran.Core.IntType ]
               Columns =
-                [ Fuaran.Core.Column.create
+                [ Fuaran.Core.Column.ofStrs
                       "dept"
-                      Fuaran.Core.StringType
-                      [ Fuaran.Core.Str "eng"; Fuaran.Core.Str "sales"; Fuaran.Core.Str "ops" ]
-                  Fuaran.Core.Column.create
-                      "amount"
-                      Fuaran.Core.IntType
-                      [ Fuaran.Core.Int 100; Fuaran.Core.Int 90; Fuaran.Core.Int 70 ] ] }
+                      (Fuaran.Core.Vector.ofList [ "eng"; "sales"; "ops" ])
+                      Fuaran.Core.AllValid
+                  Fuaran.Core.Column.ofInts "amount" (Fuaran.Core.Vector.ofList [ 100; 90; 70 ]) Fuaran.Core.AllValid ] }
 
     let fieldCol (label: string) (field: string) : ColumnErased<obj> =
         { Defaults.columnErased with
@@ -4525,10 +4518,12 @@ let multiselectChipListParam: Node<obj> =
 let gridFieldNamed: Node<obj> =
     let source =
         Fuaran.Core.Embedded
-            { Schema = [ "dept", Fuaran.Core.StringType; "amount", Fuaran.Core.IntType ]
+            { Schema =
+                [ Fuaran.Core.Field.create "dept" Fuaran.Core.StringType
+                  Fuaran.Core.Field.create "amount" Fuaran.Core.IntType ]
               Columns =
-                [ Fuaran.Core.Column.create "dept" Fuaran.Core.StringType [ Fuaran.Core.Str "eng" ]
-                  Fuaran.Core.Column.create "amount" Fuaran.Core.IntType [ Fuaran.Core.Int 100 ] ] }
+                [ Fuaran.Core.Column.ofStrs "dept" (Fuaran.Core.Vector.ofList [ "eng" ]) Fuaran.Core.AllValid
+                  Fuaran.Core.Column.ofInts "amount" (Fuaran.Core.Vector.ofList [ 100 ]) Fuaran.Core.AllValid ] }
 
     let fieldCol (label: string) (field: string) : ColumnErased<obj> =
         { Defaults.columnErased with
@@ -4558,16 +4553,18 @@ let gridFieldNamed: Node<obj> =
 let masterDetailPreselected: Node<obj> =
     let source =
         Fuaran.Core.Embedded
-            { Schema = [ "id", Fuaran.Core.StringType; "priority", Fuaran.Core.StringType ]
+            { Schema =
+                [ Fuaran.Core.Field.create "id" Fuaran.Core.StringType
+                  Fuaran.Core.Field.create "priority" Fuaran.Core.StringType ]
               Columns =
-                [ Fuaran.Core.Column.create
+                [ Fuaran.Core.Column.ofStrs
                       "id"
-                      Fuaran.Core.StringType
-                      [ Fuaran.Core.Str "TCK-2041"; Fuaran.Core.Str "TCK-2042" ]
-                  Fuaran.Core.Column.create
+                      (Fuaran.Core.Vector.ofList [ "TCK-2041"; "TCK-2042" ])
+                      Fuaran.Core.AllValid
+                  Fuaran.Core.Column.ofStrs
                       "priority"
-                      Fuaran.Core.StringType
-                      [ Fuaran.Core.Str "high"; Fuaran.Core.Str "low" ] ] }
+                      (Fuaran.Core.Vector.ofList [ "high"; "low" ])
+                      Fuaran.Core.AllValid ] }
 
     let fieldCol (label: string) (field: string) : ColumnErased<obj> =
         { Defaults.columnErased with
@@ -4679,22 +4676,22 @@ let masterDetailMultiField: Node<obj> =
     let source =
         Fuaran.Core.Embedded
             { Schema =
-                [ "id", Fuaran.Core.StringType
-                  "priority", Fuaran.Core.StringType
-                  "assignee", Fuaran.Core.StringType ]
+                [ Fuaran.Core.Field.create "id" Fuaran.Core.StringType
+                  Fuaran.Core.Field.create "priority" Fuaran.Core.StringType
+                  Fuaran.Core.Field.create "assignee" Fuaran.Core.StringType ]
               Columns =
-                [ Fuaran.Core.Column.create
+                [ Fuaran.Core.Column.ofStrs
                       "id"
-                      Fuaran.Core.StringType
-                      [ Fuaran.Core.Str "TCK-2041"; Fuaran.Core.Str "TCK-2042" ]
-                  Fuaran.Core.Column.create
+                      (Fuaran.Core.Vector.ofList [ "TCK-2041"; "TCK-2042" ])
+                      Fuaran.Core.AllValid
+                  Fuaran.Core.Column.ofStrs
                       "priority"
-                      Fuaran.Core.StringType
-                      [ Fuaran.Core.Str "high"; Fuaran.Core.Str "low" ]
-                  Fuaran.Core.Column.create
+                      (Fuaran.Core.Vector.ofList [ "high"; "low" ])
+                      Fuaran.Core.AllValid
+                  Fuaran.Core.Column.ofStrs
                       "assignee"
-                      Fuaran.Core.StringType
-                      [ Fuaran.Core.Str "R. Okafor"; Fuaran.Core.Str "M. Lindqvist" ] ] }
+                      (Fuaran.Core.Vector.ofList [ "R. Okafor"; "M. Lindqvist" ])
+                      Fuaran.Core.AllValid ] }
 
     let fieldCol (label: string) (field: string) : ColumnErased<obj> =
         { Defaults.columnErased with
@@ -4816,26 +4813,23 @@ let masterDetailPreselectedSecondRow: Node<obj> =
     let source =
         Fuaran.Core.Embedded
             { Schema =
-                [ "id", Fuaran.Core.StringType
-                  "priority", Fuaran.Core.StringType
-                  "note", Fuaran.Core.StringType ]
+                [ Fuaran.Core.Field.create "id" Fuaran.Core.StringType
+                  Fuaran.Core.Field.create "priority" Fuaran.Core.StringType
+                  Fuaran.Core.Field.create "note" Fuaran.Core.StringType ]
               Columns =
-                [ Fuaran.Core.Column.create
+                [ Fuaran.Core.Column.ofStrs
                       "id"
-                      Fuaran.Core.StringType
-                      [ Fuaran.Core.Str "TCK-2041"
-                        Fuaran.Core.Str "TCK-2042"
-                        Fuaran.Core.Str "TCK-2043" ]
-                  Fuaran.Core.Column.create
+                      (Fuaran.Core.Vector.ofList [ "TCK-2041"; "TCK-2042"; "TCK-2043" ])
+                      Fuaran.Core.AllValid
+                  Fuaran.Core.Column.ofStrs
                       "priority"
-                      Fuaran.Core.StringType
-                      [ Fuaran.Core.Str "high"; Fuaran.Core.Str "medium"; Fuaran.Core.Str "low" ]
-                  Fuaran.Core.Column.create
+                      (Fuaran.Core.Vector.ofList [ "high"; "medium"; "low" ])
+                      Fuaran.Core.AllValid
+                  Fuaran.Core.Column.ofStrs
                       "note"
-                      Fuaran.Core.StringType
-                      [ Fuaran.Core.Str "Payment gateway timeout"
-                        Fuaran.Core.Str "Search index stale"
-                        Fuaran.Core.Str "Avatar upload fails" ] ] }
+                      (Fuaran.Core.Vector.ofList
+                          [ "Payment gateway timeout"; "Search index stale"; "Avatar upload fails" ])
+                      Fuaran.Core.AllValid ] }
 
     let fieldCol (label: string) (field: string) : ColumnErased<obj> =
         { Defaults.columnErased with
@@ -4972,16 +4966,18 @@ let masterDetailPreselectedSecondRow: Node<obj> =
 let nowEnvironmentBinding: Node<obj> =
     let source =
         Fuaran.Core.Embedded
-            { Schema = [ "id", Fuaran.Core.StringType; "due", Fuaran.Core.StringType ]
+            { Schema =
+                [ Fuaran.Core.Field.create "id" Fuaran.Core.StringType
+                  Fuaran.Core.Field.create "due" Fuaran.Core.StringType ]
               Columns =
-                [ Fuaran.Core.Column.create
+                [ Fuaran.Core.Column.ofStrs
                       "id"
-                      Fuaran.Core.StringType
-                      [ Fuaran.Core.Str "INV-1001"; Fuaran.Core.Str "INV-1002" ]
-                  Fuaran.Core.Column.create
+                      (Fuaran.Core.Vector.ofList [ "INV-1001"; "INV-1002" ])
+                      Fuaran.Core.AllValid
+                  Fuaran.Core.Column.ofStrs
                       "due"
-                      Fuaran.Core.StringType
-                      [ Fuaran.Core.Str "2026-07-01"; Fuaran.Core.Str "2026-07-28" ] ] }
+                      (Fuaran.Core.Vector.ofList [ "2026-07-01"; "2026-07-28" ])
+                      Fuaran.Core.AllValid ] }
 
     let fieldCol (label: string) (field: string) : ColumnErased<obj> =
         { Defaults.columnErased with
@@ -5051,10 +5047,12 @@ let nowEnvironmentBinding: Node<obj> =
 let nowGrain: Node<obj> =
     let source =
         Fuaran.Core.Embedded
-            { Schema = [ "id", Fuaran.Core.StringType; "due", Fuaran.Core.StringType ]
+            { Schema =
+                [ Fuaran.Core.Field.create "id" Fuaran.Core.StringType
+                  Fuaran.Core.Field.create "due" Fuaran.Core.StringType ]
               Columns =
-                [ Fuaran.Core.Column.create "id" Fuaran.Core.StringType [ Fuaran.Core.Str "INV-2001" ]
-                  Fuaran.Core.Column.create "due" Fuaran.Core.StringType [ Fuaran.Core.Str "2026-07-01" ] ] }
+                [ Fuaran.Core.Column.ofStrs "id" (Fuaran.Core.Vector.ofList [ "INV-2001" ]) Fuaran.Core.AllValid
+                  Fuaran.Core.Column.ofStrs "due" (Fuaran.Core.Vector.ofList [ "2026-07-01" ]) Fuaran.Core.AllValid ] }
 
     let fieldCol (label: string) (field: string) : ColumnErased<obj> =
         { Defaults.columnErased with
@@ -5397,28 +5395,25 @@ let scalarTransformComposition: Node<obj> =
     let source =
         Fuaran.Core.Embedded
             { Schema =
-                [ "id", Fuaran.Core.StringType
-                  "alert", Fuaran.Core.StringType
-                  "severity", Fuaran.Core.StringType ]
+                [ Fuaran.Core.Field.create "id" Fuaran.Core.StringType
+                  Fuaran.Core.Field.create "alert" Fuaran.Core.StringType
+                  Fuaran.Core.Field.create "severity" Fuaran.Core.StringType ]
               Columns =
-                [ Fuaran.Core.Column.create
+                [ Fuaran.Core.Column.ofStrs
                       "id"
-                      Fuaran.Core.StringType
-                      [ Fuaran.Core.Str "TCK-2041"
-                        Fuaran.Core.Str "TCK-2042"
-                        Fuaran.Core.Str "TCK-2043" ]
-                  Fuaran.Core.Column.create
+                      (Fuaran.Core.Vector.ofList [ "TCK-2041"; "TCK-2042"; "TCK-2043" ])
+                      Fuaran.Core.AllValid
+                  Fuaran.Core.Column.ofStrs
                       "alert"
-                      Fuaran.Core.StringType
-                      [ Fuaran.Core.Str "TCK-2041 breaches SLA in 2 hours"
-                        Fuaran.Core.Str "TCK-2042 breaches SLA in 5 hours"
-                        Fuaran.Core.Str "TCK-2043 breaches SLA in 9 hours" ]
-                  Fuaran.Core.Column.create
+                      (Fuaran.Core.Vector.ofList
+                          [ "TCK-2041 breaches SLA in 2 hours"
+                            "TCK-2042 breaches SLA in 5 hours"
+                            "TCK-2043 breaches SLA in 9 hours" ])
+                      Fuaran.Core.AllValid
+                  Fuaran.Core.Column.ofStrs
                       "severity"
-                      Fuaran.Core.StringType
-                      [ Fuaran.Core.Str "critical"
-                        Fuaran.Core.Str "high"
-                        Fuaran.Core.Str "critical" ] ] }
+                      (Fuaran.Core.Vector.ofList [ "critical"; "high"; "critical" ])
+                      Fuaran.Core.AllValid ] }
 
     node
         "scalar-transform-composition"
@@ -5519,27 +5514,18 @@ let filterableStaticDashboard: Node<obj> =
     let source =
         Fuaran.Core.Embedded
             { Schema =
-                [ "region", Fuaran.Core.StringType
-                  "genre", Fuaran.Core.StringType
-                  "month", Fuaran.Core.StringType
-                  "retention", Fuaran.Core.FloatType ]
+                [ Fuaran.Core.Field.create "region" Fuaran.Core.StringType
+                  Fuaran.Core.Field.create "genre" Fuaran.Core.StringType
+                  Fuaran.Core.Field.create "month" Fuaran.Core.StringType
+                  Fuaran.Core.Field.create "retention" Fuaran.Core.FloatType ]
               Columns =
-                [ Fuaran.Core.Column.create
-                      "region"
-                      Fuaran.Core.StringType
-                      [ Fuaran.Core.Str "emea"; Fuaran.Core.Str "amer" ]
-                  Fuaran.Core.Column.create
-                      "genre"
-                      Fuaran.Core.StringType
-                      [ Fuaran.Core.Str "drama"; Fuaran.Core.Str "docs" ]
-                  Fuaran.Core.Column.create
-                      "month"
-                      Fuaran.Core.StringType
-                      [ Fuaran.Core.Str "jan"; Fuaran.Core.Str "jan" ]
-                  Fuaran.Core.Column.create
+                [ Fuaran.Core.Column.ofStrs "region" (Fuaran.Core.Vector.ofList [ "emea"; "amer" ]) Fuaran.Core.AllValid
+                  Fuaran.Core.Column.ofStrs "genre" (Fuaran.Core.Vector.ofList [ "drama"; "docs" ]) Fuaran.Core.AllValid
+                  Fuaran.Core.Column.ofStrs "month" (Fuaran.Core.Vector.ofList [ "jan"; "jan" ]) Fuaran.Core.AllValid
+                  Fuaran.Core.Column.ofFloats
                       "retention"
-                      Fuaran.Core.FloatType
-                      [ Fuaran.Core.Float 0.62; Fuaran.Core.Float 0.55 ] ] }
+                      (Fuaran.Core.Vector.ofList [ 0.62; 0.55 ])
+                      Fuaran.Core.AllValid ] }
 
     // Both consumers share the same wiring; a fresh Binding per consumer.
     let filteredSource () =
@@ -5654,19 +5640,13 @@ let filterableStaticDashboard: Node<obj> =
 let private filterEdgeTable =
     Fuaran.Core.Embedded
         { Schema =
-            [ "region", Fuaran.Core.StringType
-              "genre", Fuaran.Core.StringType
-              "amount", Fuaran.Core.IntType ]
+            [ Fuaran.Core.Field.create "region" Fuaran.Core.StringType
+              Fuaran.Core.Field.create "genre" Fuaran.Core.StringType
+              Fuaran.Core.Field.create "amount" Fuaran.Core.IntType ]
           Columns =
-            [ Fuaran.Core.Column.create
-                  "region"
-                  Fuaran.Core.StringType
-                  [ Fuaran.Core.Str "emea"; Fuaran.Core.Str "amer" ]
-              Fuaran.Core.Column.create
-                  "genre"
-                  Fuaran.Core.StringType
-                  [ Fuaran.Core.Str "drama"; Fuaran.Core.Str "docs" ]
-              Fuaran.Core.Column.create "amount" Fuaran.Core.IntType [ Fuaran.Core.Int 100; Fuaran.Core.Int 90 ] ] }
+            [ Fuaran.Core.Column.ofStrs "region" (Fuaran.Core.Vector.ofList [ "emea"; "amer" ]) Fuaran.Core.AllValid
+              Fuaran.Core.Column.ofStrs "genre" (Fuaran.Core.Vector.ofList [ "drama"; "docs" ]) Fuaran.Core.AllValid
+              Fuaran.Core.Column.ofInts "amount" (Fuaran.Core.Vector.ofList [ 100; 90 ]) Fuaran.Core.AllValid ] }
 
 /// A declarative chip (the 423 shape): it declares `name` and reads its own
 /// `$filters.<name>` slot. A self-read is a DECLARATION rather than a
@@ -6037,16 +6017,15 @@ let errorBoundary: Node<obj> =
 let switchOnSelection: Node<obj> =
     let source =
         Fuaran.Core.Embedded
-            { Schema = [ "id", Fuaran.Core.StringType; "status", Fuaran.Core.StringType ]
+            { Schema =
+                [ Fuaran.Core.Field.create "id" Fuaran.Core.StringType
+                  Fuaran.Core.Field.create "status" Fuaran.Core.StringType ]
               Columns =
-                [ Fuaran.Core.Column.create
-                      "id"
-                      Fuaran.Core.StringType
-                      [ Fuaran.Core.Str "WARD-A"; Fuaran.Core.Str "WARD-B" ]
-                  Fuaran.Core.Column.create
+                [ Fuaran.Core.Column.ofStrs "id" (Fuaran.Core.Vector.ofList [ "WARD-A"; "WARD-B" ]) Fuaran.Core.AllValid
+                  Fuaran.Core.Column.ofStrs
                       "status"
-                      Fuaran.Core.StringType
-                      [ Fuaran.Core.Str "steady"; Fuaran.Core.Str "critical" ] ] }
+                      (Fuaran.Core.Vector.ofList [ "steady"; "critical" ])
+                      Fuaran.Core.AllValid ] }
 
     let fieldCol (label: string) (field: string) : ColumnErased<obj> =
         { Defaults.columnErased with
@@ -6193,15 +6172,9 @@ let switchAutoAdvance: Node<obj> =
 let switchOnTransformScalar: Node<obj> =
     let source =
         Fuaran.Core.Embedded
-            { Schema = [ "id", Fuaran.Core.StringType ]
+            { Schema = [ Fuaran.Core.Field.create "id" Fuaran.Core.StringType ]
               Columns =
-                [ Fuaran.Core.Column.create
-                      "id"
-                      Fuaran.Core.StringType
-                      [ Fuaran.Core.Str "a"
-                        Fuaran.Core.Str "b"
-                        Fuaran.Core.Str "c"
-                        Fuaran.Core.Str "d" ] ] }
+                [ Fuaran.Core.Column.ofStrs "id" (Fuaran.Core.Vector.ofList [ "a"; "b"; "c"; "d" ]) Fuaran.Core.AllValid ] }
 
     node
         "switch-on-transform-scalar"
@@ -7124,10 +7097,10 @@ let badgeTransformLive: Node<obj> =
 /// reference host and not the other.
 [<NodeFixture "Visualisation/Grid + Display/Badge (Phase 1075 — the seeded shared source: one declared table, two readers)">]
 let sharedSourceSeededPair: Node<obj> =
-    let rows: Fuaran.Core.Row seq =
+    let rows: Map<string, obj> seq =
         Seq.ofList
-            [ (Map.ofList [ "team", Unchecked.nonNull (box "Ops") ]: Fuaran.Core.Row)
-              (Map.ofList [ "team", Unchecked.nonNull (box "Research") ]: Fuaran.Core.Row) ]
+            [ (Map.ofList [ "team", Unchecked.nonNull (box "Ops") ]: Map<string, obj>)
+              (Map.ofList [ "team", Unchecked.nonNull (box "Research") ]: Map<string, obj>) ]
 
     let grid =
         node
@@ -7807,12 +7780,12 @@ let a11yImageDecorative: Node<obj> =
 let a11yWrapperTransformLabel: Node<obj> =
     let source =
         Fuaran.Core.Embedded
-            { Schema = [ "severity", Fuaran.Core.StringType ]
+            { Schema = [ Fuaran.Core.Field.create "severity" Fuaran.Core.StringType ]
               Columns =
-                [ Fuaran.Core.Column.create
+                [ Fuaran.Core.Column.ofStrs
                       "severity"
-                      Fuaran.Core.StringType
-                      [ Fuaran.Core.Str "high"; Fuaran.Core.Str "high"; Fuaran.Core.Str "low" ] ] }
+                      (Fuaran.Core.Vector.ofList [ "high"; "high"; "low" ])
+                      Fuaran.Core.AllValid ] }
 
     node
         "a11y-wrapper-transform-label"
@@ -8087,16 +8060,15 @@ let stateAbsentDefault: Node<obj> =
 
 let private bindingCheckSourceOf (last: int) : Fuaran.Core.DataSource =
     Fuaran.Core.Embedded
-        { Schema = [ "dept", Fuaran.Core.StringType; "amount", Fuaran.Core.IntType ]
+        { Schema =
+            [ Fuaran.Core.Field.create "dept" Fuaran.Core.StringType
+              Fuaran.Core.Field.create "amount" Fuaran.Core.IntType ]
           Columns =
-            [ Fuaran.Core.Column.create
+            [ Fuaran.Core.Column.ofStrs
                   "dept"
-                  Fuaran.Core.StringType
-                  [ Fuaran.Core.Str "eng"; Fuaran.Core.Str "eng"; Fuaran.Core.Str "sales" ]
-              Fuaran.Core.Column.create
-                  "amount"
-                  Fuaran.Core.IntType
-                  [ Fuaran.Core.Int 100; Fuaran.Core.Int 120; Fuaran.Core.Int last ] ] }
+                  (Fuaran.Core.Vector.ofList [ "eng"; "eng"; "sales" ])
+                  Fuaran.Core.AllValid
+              Fuaran.Core.Column.ofInts "amount" (Fuaran.Core.Vector.ofList [ 100; 120; last ]) Fuaran.Core.AllValid ] }
 
 /// `groupBy dept, sum(amount) as total` — produces exactly `dept:string, total:int`.
 let private bindingCheckPipeline: Fuaran.Compute.Transform list =

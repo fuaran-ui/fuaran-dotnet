@@ -2701,6 +2701,9 @@ let private scanExpr (expr: Fuaran.Compute.ColExpr) : struct (int * bool) =
                 walk r
             | Fuaran.Compute.Not x
             | Fuaran.Compute.Cast(_, x)
+            // A unit conversion (Fuaran.Compute 0.40.0): its operand is the one child, and the target
+            // unit is a declaration, not a node.
+            | Fuaran.Compute.Convert(x, _)
             | Fuaran.Compute.IsNull x -> walk x
             | Fuaran.Compute.Coalesce xs
             | Fuaran.Compute.ApplyFn(_, xs) -> List.iter walk xs
@@ -10547,9 +10550,9 @@ module BehindReader =
 
     /// A node payload's `kind.$type` discriminator, off the parsed Core value.
     let private nodeTagOf (jv: JVal) : Result<string, string> =
-        Decode.getProp "kind" jv
-        |> Result.bind (Decode.getProp "$type")
-        |> Result.bind Decode.asString
+        Decoder.describing (Decoder.field "kind" Decoder.json) jv
+        |> Result.bind (Decoder.describing (Decoder.field "$type" Decoder.json))
+        |> Result.bind (Decoder.describing Decoder.str)
 
     let private decodeKnownWith (policy: DecodePolicy) (jv: JVal) : Result<Node<obj>, string> =
         match decodeNodeCoreJVal policy jv with
@@ -10575,7 +10578,7 @@ module BehindReader =
         (policy: DecodePolicy)
         (u: Versioning.UnknownKind)
         : Result<Node<obj> option, DecodeError> =
-        match Decode.getProp "fallback" u.Payload with
+        match Decoder.describing (Decoder.field "fallback" Decoder.json) u.Payload with
         | Error _ -> Ok None
         | Ok fb -> decodeNodeCoreJVal policy fb |> Result.map Some
 

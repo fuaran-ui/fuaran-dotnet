@@ -1553,31 +1553,31 @@ let private cellKindErased =
           { Tag = "Editable"
             // `(Row * CellValue) -> Action<'Msg>`; `CellValue` is a host-prelude DU
             // (stage 4b) — the typed edit payload survives the swap. Row closures
-            // take `Fuaran.Core.Row` since fuaran#665 (the rows slot is typed, so
+            // take `Map<string, obj>` since fuaran#665 (the rows slot is typed, so
             // the accessors' argument is the name-addressable row, not `obj`).
             Fields =
-              [ opt "onEdit" (handlerOf "Fuaran.Core.Row * Fuaran.UI.HostPrelude.CellValue" "[unknown, unknown]") ]
+              [ opt "onEdit" (handlerOf "Map<string, obj> * Fuaran.UI.HostPrelude.CellValue" "[unknown, unknown]") ]
             Annotations = Annotations.Empty }
           { Tag = "Checkbox"
             Fields =
-              [ req "get" (projOf "Fuaran.Core.Row" "bool" "(row: unknown) => boolean" "(fun _ -> false)")
-                opt "onToggle" (handlerOf "Fuaran.Core.Row * bool" "[unknown, boolean]") ]
+              [ req "get" (projOf "Map<string, obj>" "bool" "(row: unknown) => boolean" "(fun _ -> false)")
+                opt "onToggle" (handlerOf "Map<string, obj> * bool" "[unknown, boolean]") ]
             Annotations = Annotations.Empty }
           { Tag = "Button"
             Fields =
               [ req "label" (TUnion("TextSource", []))
-                opt "onClick" (handlerOf "Fuaran.Core.Row" "unknown") ]
+                opt "onClick" (handlerOf "Map<string, obj>" "unknown") ]
             Annotations = Annotations.Empty }
           { Tag = "ButtonGroup"
             Fields = [ req "buttons" (TList(TRecord "ButtonGroupItem")) ]
             Annotations = Annotations.Empty }
           { Tag = "Link"
             Fields =
-              [ req "hrefFn" (projOf "Fuaran.Core.Row" "string" "(row: unknown) => string" "(fun _ -> \"\")")
+              [ req "hrefFn" (projOf "Map<string, obj>" "string" "(row: unknown) => string" "(fun _ -> \"\")")
                 req
                     "labelFn"
                     (projOf
-                        "Fuaran.Core.Row"
+                        "Map<string, obj>"
                         "TextSource"
                         "(row: unknown) => TextSource"
                         "(fun _ -> TextSource.Literal \"\")") ]
@@ -1587,14 +1587,14 @@ let private cellKindErased =
               [ req
                     "labelFn"
                     (projOf
-                        "Fuaran.Core.Row"
+                        "Map<string, obj>"
                         "TextSource"
                         "(row: unknown) => TextSource"
                         "(fun _ -> TextSource.Literal \"\")")
                 req
                     "toneFn"
                     (projOf
-                        "Fuaran.Core.Row"
+                        "Map<string, obj>"
                         "ToneVariant"
                         "(row: unknown) => ToneVariant"
                         "(fun _ -> ToneVariant.Default)") ]
@@ -1617,7 +1617,7 @@ let private cellKindErased =
             Annotations = Annotations.Empty }
           { Tag = "Progress"
             Fields =
-              [ req "fractionFn" (projOf "Fuaran.Core.Row" "float" "(row: unknown) => number" "(fun _ -> 0.0)")
+              [ req "fractionFn" (projOf "Map<string, obj>" "float" "(row: unknown) => number" "(fun _ -> 0.0)")
                 // The hand-written tier's label is genuinely optional (a progress
                 // cell with no label) — `opt`, stage 4b. The hand encoder emitted
                 // an unconditional sentinel; omit-when-None is the honest form and
@@ -1625,7 +1625,7 @@ let private cellKindErased =
                 opt
                     "labelFn"
                     (projOf
-                        "Fuaran.Core.Row"
+                        "Map<string, obj>"
                         "TextSource"
                         "(row: unknown) => TextSource"
                         "(fun _ -> TextSource.Literal \"\")") ]
@@ -1636,7 +1636,7 @@ let private cellKindErased =
               [ req
                     "fn"
                     (fn
-                        "(Fuaran.Core.Row -> JVal) -> Node<'Msg>"
+                        "(Map<string, obj> -> JVal) -> Node<'Msg>"
                         "(proj: (row: unknown) => unknown) => Node"
                         "(fun _ -> Unchecked.defaultof<Node<obj>>)") ]
             Annotations = Annotations.Empty } ] }
@@ -1898,11 +1898,11 @@ let private columnErasedRecord =
           req "label" TStr
           // `Row -> CellValue`; `CellValue` is a host DU declared in the host
           // prelude (stage 4b) — the typed cell surface survives the swap; the
-          // row argument is typed `Fuaran.Core.Row` since fuaran#665.
+          // row argument is typed `Map<string, obj>` since fuaran#665.
           opt
               "value"
               (projOf
-                  "Fuaran.Core.Row"
+                  "Map<string, obj>"
                   "Fuaran.UI.HostPrelude.CellValue"
                   "(row: unknown) => unknown"
                   "(fun _ -> Fuaran.UI.HostPrelude.CellValue.Empty)")
@@ -1913,7 +1913,7 @@ let private buttonGroupItemRecord =
     { Name = "ButtonGroupItem"
       Fields =
         [ req "label" (TUnion("TextSource", []))
-          opt "onClick" (handlerOf "Fuaran.Core.Row" "unknown") ] }
+          opt "onClick" (handlerOf "Map<string, obj>" "unknown") ] }
 
 /// A `Custom` node's content-identity envelope (`strictness` is a bare-string DU).
 let private contentHashRecord =
@@ -2757,7 +2757,7 @@ let inputKinds: IdlKind list =
 // TS)`), the erased `ColumnErased` record holding a `CellKindErased` union + a
 // `ColumnWidth` union, and closure-projection fields (`rowKey` / column `value`).
 // `DataGrid.source` / `Chart.source` carry TYPED rows on the wire (fuaran#665 —
-// `Fuaran.Core.Row seq`, rendered by this tier's `RowCodec`; the `"<opaque>"` sentinel
+// `Map<string, obj> seq`, rendered by this tier's `RowCodec`; the `"<opaque>"` sentinel
 // is decode-accepted read-compat only), `Map.source` a typed `MapMarker` list; a
 // `Binding.Transform`'s `source` / `pipeline` are HOSTED slots rendered by Core's
 // `ColumnCodec` / `DataFrameCodec` under the same `Canon` discipline (the Phase
@@ -2774,7 +2774,7 @@ let visKinds: IdlKind list =
         Fields =
           [ req "columns" (TList(TRecord "ColumnErased"))
             omit "editable" TBool (VBool false)
-            opt "rowKey" (projOf "Fuaran.Core.Row" "string" "(row: unknown) => string" "(fun _ -> \"\")")
+            opt "rowKey" (projOf "Map<string, obj>" "string" "(row: unknown) => string" "(fun _ -> \"\")")
             opt "rowKeyField" TStr
             // Phase 818 — the grid-sort header affordance for a DATA-BOUND grid:
             // the State key carrying the sort descriptor
@@ -2884,7 +2884,7 @@ let visKinds: IdlKind list =
             // present, so a grid declaring neither is byte-identical to before.
             opt "windowStateKey" TStr
             opt "rowTotal" (bindingOf TInt)
-            // The row feed is HOSTED `Fuaran.Core.Row seq` (fuaran#665 — typed rows):
+            // The row feed is HOSTED `Map<string, obj> seq` (fuaran#665 — typed rows):
             // a Static/State rows payload IS wire-representable (a JSON array of row
             // objects, scalar cells, rendered by this tier's `RowCodec` under the `Canon`
             // discipline), and decode accepts the legacy `"<opaque>"` sentinel
@@ -2893,26 +2893,26 @@ let visKinds: IdlKind list =
                 "source"
                 (bindingOf (
                     THosted
-                        { FSharp = "Fuaran.Core.Row seq"
+                        { FSharp = "Map<string, obj> seq"
                           Encode = "Fuaran.UI.RowCodec.encodeRows"
                           Decode = "Fuaran.UI.RowCodec.decodeRows"
                           Wire = None
                           Format = None }
                 ))
             opt "staticRows" (TRecord "StaticRows")
-            opt "onRowClick" (handlerOf "Fuaran.Core.Row" "unknown") ] }
+            opt "onRowClick" (handlerOf "Map<string, obj>" "unknown") ] }
       { Tag = "Chart"
         Category = "Visualisation"
         Annotations = Annotations.Empty
         Fields =
           [ req "kind" (TEnum "ChartKind")
-            // The row feed is HOSTED `Fuaran.Core.Row seq` (fuaran#665 — typed rows,
+            // The row feed is HOSTED `Map<string, obj> seq` (fuaran#665 — typed rows,
             // same `RowCodec` + read-compat sentinel acceptance as `DataGrid.source`).
             req
                 "source"
                 (bindingOf (
                     THosted
-                        { FSharp = "Fuaran.Core.Row seq"
+                        { FSharp = "Map<string, obj> seq"
                           Encode = "Fuaran.UI.RowCodec.encodeRows"
                           Decode = "Fuaran.UI.RowCodec.decodeRows"
                           Wire = None
@@ -2951,7 +2951,7 @@ let visKinds: IdlKind list =
             // the same closed union. Absent OMITS on the wire, so every
             // pre-1490 fixture is byte-unchanged.
             opt "annotations" (TList(TUnion("ChartAnnotation", [])))
-            opt "onPointClick" (handlerOf "Fuaran.Core.Row" "unknown") ] }
+            opt "onPointClick" (handlerOf "Map<string, obj>" "unknown") ] }
       { Tag = "Map"
         Category = "Visualisation"
         Annotations = Annotations.Empty

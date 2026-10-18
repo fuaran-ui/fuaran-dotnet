@@ -433,7 +433,7 @@ module CoreLawSupport =
     //  the domain validator — the tier's OWN egress gate, as a Core registry
     // -----------------------------------------------------------------------
 
-    /// `verifyFunction` drives a domain `Validator.Registry` as its validity
+    /// `verifyFunction` drives a domain `Validator.RuleRegistry` as its validity
     /// oracle. The tier's oracle already exists and is not invented here: it is
     /// `PreEmitValidate.validate`, the FGP-7 egress check
     /// `FastPath.tryInstantiate` runs before a built tree leaves the bank. Each

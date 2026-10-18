@@ -263,7 +263,7 @@ let sharedSourceSeedingTests =
               let tree = decode (pairJson [ gridJson; badgeJson ])
 
               let hostRows: obj =
-                  box (Seq.ofList [ (Map.ofList [ "team", Unchecked.nonNull (box "Ops") ]: Fuaran.Core.Row) ])
+                  box (Seq.ofList [ (Map.ofList [ "team", Unchecked.nonNull (box "Ops") ]: Map<string, obj>) ])
 
               let seeded = BindingWalk.stateSeeds tree
               let hostWins = seeded |> Map.add "members" hostRows

@@ -28,15 +28,17 @@ let private metricBoundTo (id: string) (col: string) : Node<obj> =
 
 /// A two-column result with one row: revenue (Float) + category (String).
 let private salesTable: Table =
-    { Schema = [ "revenue", FloatType; "category", StringType ]
+    { Schema = [ Field.create "revenue" FloatType; Field.create "category" StringType ]
       Columns =
-        [ Column.create "revenue" FloatType [ Float 42.0 ]
-          Column.create "category" StringType [ Str "books" ] ] }
+        [ Column.ofFloats "revenue" (Vector.ofList [ 42.0 ]) AllValid
+          Column.ofStrs "category" (Vector.ofList [ "books" ]) AllValid ] }
 
 /// The same schema with ZERO rows — the privacy-mode shape (no row data).
 let private salesSchemaOnly: Table =
-    { Schema = [ "revenue", FloatType; "category", StringType ]
-      Columns = [ Column.create "revenue" FloatType []; Column.create "category" StringType [] ] }
+    { Schema = [ Field.create "revenue" FloatType; Field.create "category" StringType ]
+      Columns =
+        [ Column.ofFloats "revenue" (Vector.ofList []) AllValid
+          Column.ofStrs "category" (Vector.ofList []) AllValid ] }
 
 let private aRequest = QueryRequest.Dialect "select revenue, category from sales"
 
@@ -96,7 +98,7 @@ let private privacyTests =
 
                   Expect.equal
                       (QueryResolution.schema resolution)
-                      [ "revenue", FloatType; "category", StringType ]
+                      [ Field.create "revenue" FloatType; Field.create "category" StringType ]
                       "but the schema is present to type the UI"
               | Error e -> failtestf "expected Ok, got %A" e
 

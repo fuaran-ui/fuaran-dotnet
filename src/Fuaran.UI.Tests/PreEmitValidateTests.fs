@@ -182,7 +182,7 @@ let private seedingGrid (id: string) (key: string) : Node<Msg> =
                 Source =
                     Binding.State(
                         key,
-                        Some(Seq.ofList [ (Map.ofList [ "team", Unchecked.nonNull (box 1) ]: Fuaran.Core.Row) ])
+                        Some(Seq.ofList [ (Map.ofList [ "team", Unchecked.nonNull (box 1) ]: Map<string, obj>) ])
                     )
                 RowKeyField = Some "id"
                 Columns =
@@ -204,7 +204,7 @@ let private seedingGrid (id: string) (key: string) : Node<Msg> =
 /// A grid sourced from an ARBITRARY row feed — the parametrised twin of
 /// `seedingGrid`, so a fixture can put the SAME data on a grid row-major and on
 /// a Transform columnar and assert the two do not read as a disagreement.
-let private gridWithSource (id: string) (source: Binding<Fuaran.Core.Row seq>) : Node<Msg> =
+let private gridWithSource (id: string) (source: Binding<Map<string, obj> seq>) : Node<Msg> =
     match (seedingGrid id "unused").Kind with
     | NodeKind.DataGrid spec ->
         { Id = id
@@ -221,10 +221,10 @@ let private gridWithSource (id: string) (source: Binding<Fuaran.Core.Row seq>) :
 
 /// `memberRows` as the typed ROW-MAJOR feed a grid's `source` carries — the
 /// same two rows, spelled the way the other slot cannot spell them.
-let private memberRowsTyped: Fuaran.Core.Row seq =
+let private memberRowsTyped: Map<string, obj> seq =
     Seq.ofList
-        [ (Map.ofList [ "team", Unchecked.nonNull (box "Ops") ]: Fuaran.Core.Row)
-          (Map.ofList [ "team", Unchecked.nonNull (box "Ops") ]: Fuaran.Core.Row) ]
+        [ (Map.ofList [ "team", Unchecked.nonNull (box "Ops") ]: Map<string, obj>)
+          (Map.ofList [ "team", Unchecked.nonNull (box "Ops") ]: Map<string, obj>) ]
 
 /// `memberRows` as the canonical columnar `DataSource` a Transform's `Data`
 /// arm carries.
@@ -348,7 +348,7 @@ let private sortGrid
 let private editGrid
     (gridEditable: bool)
     (editStateKey: string option)
-    (source: Binding<Fuaran.Core.Row seq>)
+    (source: Binding<Map<string, obj> seq>)
     (columns: (string * bool option) list)
     : Node<Msg> =
     { Id = "edited"
@@ -383,7 +383,7 @@ let private editGrid
 let private pagedGrid
     (pageSize: int option)
     (pageStateKey: string option)
-    (source: Binding<Fuaran.Core.Row seq>)
+    (source: Binding<Map<string, obj> seq>)
     : Node<Msg> =
     { Id = "paged"
       Kind =
@@ -753,7 +753,7 @@ let private exportColumn: ColumnErased<Msg> =
 
 /// A source a grid genuinely has: a `State` binding seeded with one row.
 let private exportSource: Binding<Row seq> =
-    Binding.State("rows", Some(Seq.ofList [ (Map.ofList [ "team", Unchecked.nonNull (box 1) ]: Fuaran.Core.Row) ]))
+    Binding.State("rows", Some(Seq.ofList [ (Map.ofList [ "team", Unchecked.nonNull (box 1) ]: Map<string, obj>) ]))
 
 /// The not-provided sentinel a default-constructed spec carries — the one row
 /// source shape that is statically certain to yield nothing, ever.
@@ -1613,8 +1613,8 @@ let tests =
           test "a chart field absent from an embedded table's schema fires ChartFieldUngrounded" {
               let table: Fuaran.Core.Table =
                   { Schema =
-                      [ "quarter", Fuaran.Core.ColumnType.StringType
-                        "revenue", Fuaran.Core.ColumnType.FloatType ]
+                      [ Fuaran.Core.Field.create "quarter" Fuaran.Core.ColumnType.StringType
+                        Fuaran.Core.Field.create "revenue" Fuaran.Core.ColumnType.FloatType ]
                     Columns = [] }
 
               let chart: Node<Msg> =
@@ -1639,8 +1639,8 @@ let tests =
           test "a grounded chart over an embedded table passes; a derived column grounds the chart that plots it" {
               let table: Fuaran.Core.Table =
                   { Schema =
-                      [ "quarter", Fuaran.Core.ColumnType.StringType
-                        "revenue", Fuaran.Core.ColumnType.FloatType ]
+                      [ Fuaran.Core.Field.create "quarter" Fuaran.Core.ColumnType.StringType
+                        Fuaran.Core.Field.create "revenue" Fuaran.Core.ColumnType.FloatType ]
                     Columns = [] }
 
               let grounded: Node<Msg> =
@@ -1690,8 +1690,8 @@ let tests =
           test "a derived column's DECIDED type is judged: a temporal x-axis over an int derive is refused" {
               let table: Fuaran.Core.Table =
                   { Schema =
-                      [ "quarter", Fuaran.Core.ColumnType.StringType
-                        "units", Fuaran.Core.ColumnType.IntType ]
+                      [ Fuaran.Core.Field.create "quarter" Fuaran.Core.ColumnType.StringType
+                        Fuaran.Core.Field.create "units" Fuaran.Core.ColumnType.IntType ]
                     Columns = [] }
 
               let source =
@@ -1751,8 +1751,8 @@ let tests =
           test "FUARAN086: a chart plotting a column the pipeline renames away is refused, naming the produced columns" {
               let table: Fuaran.Core.Table =
                   { Schema =
-                      [ "quarter", Fuaran.Core.ColumnType.StringType
-                        "revenue", Fuaran.Core.ColumnType.FloatType ]
+                      [ Fuaran.Core.Field.create "quarter" Fuaran.Core.ColumnType.StringType
+                        Fuaran.Core.Field.create "revenue" Fuaran.Core.ColumnType.FloatType ]
                     Columns = [] }
 
               // `project` closes the set to exactly its output names, so
@@ -1845,8 +1845,8 @@ let tests =
           test "a string-typed y-field and a string-typed scatter x fire ChartFieldTypeMismatch" {
               let table: Fuaran.Core.Table =
                   { Schema =
-                      [ "name", Fuaran.Core.ColumnType.StringType
-                        "score", Fuaran.Core.ColumnType.FloatType ]
+                      [ Fuaran.Core.Field.create "name" Fuaran.Core.ColumnType.StringType
+                        Fuaran.Core.Field.create "score" Fuaran.Core.ColumnType.FloatType ]
                     Columns = [] }
 
               let badY: Node<Msg> =
@@ -1925,8 +1925,8 @@ let tests =
           test "FUARAN097: a temporal x-axis over a non-date column is REFUSED, not coerced" {
               let table: Fuaran.Core.Table =
                   { Schema =
-                      [ "quarter", Fuaran.Core.ColumnType.StringType
-                        "revenue", Fuaran.Core.ColumnType.FloatType ]
+                      [ Fuaran.Core.Field.create "quarter" Fuaran.Core.ColumnType.StringType
+                        Fuaran.Core.Field.create "revenue" Fuaran.Core.ColumnType.FloatType ]
                     Columns = [] }
 
               let bad: Node<Msg> =
@@ -1974,8 +1974,8 @@ let tests =
                                   TransformSource.Data(
                                       Fuaran.Core.DataSource.Embedded
                                           { Schema =
-                                              [ "stamp", Fuaran.Core.ColumnType.IntType
-                                                "revenue", Fuaran.Core.ColumnType.FloatType ]
+                                              [ Fuaran.Core.Field.create "stamp" Fuaran.Core.ColumnType.IntType
+                                                Fuaran.Core.Field.create "revenue" Fuaran.Core.ColumnType.FloatType ]
                                             Columns = [] }
                                   ),
                                   [],
@@ -2273,7 +2273,9 @@ let tests =
                               Binding.Transform(
                                   TransformSource.Data(
                                       Fuaran.Core.DataSource.Embedded
-                                          { Schema = [ "day", t; "sessions", Fuaran.Core.ColumnType.FloatType ]
+                                          { Schema =
+                                              [ Fuaran.Core.Field.create "day" t
+                                                Fuaran.Core.Field.create "sessions" Fuaran.Core.ColumnType.FloatType ]
                                             Columns = [] }
                                   ),
                                   [],
@@ -2286,7 +2288,9 @@ let tests =
               // BOTH date-ish types pass: a timestamp's time-of-day is discarded
               // by the lowering, which is a documented narrowing rather than a
               // type mismatch.
-              for t in [ Fuaran.Core.ColumnType.DateType; Fuaran.Core.ColumnType.TimestampType ] do
+              for t in
+                  [ Fuaran.Core.ColumnType.DateType
+                    Fuaran.Core.ColumnType.TimestampType Fuaran.Core.TimeUnit.Seconds ] do
                   match PreEmitValidate.validate (dated t) with
                   | Ok() -> ()
                   | Error defects -> failtestf "Expected Ok for a %A x column, got: %A" t defects
@@ -2305,8 +2309,8 @@ let tests =
                                   TransformSource.Data(
                                       Fuaran.Core.DataSource.Embedded
                                           { Schema =
-                                              [ "day", Fuaran.Core.ColumnType.DateType
-                                                "latency", Fuaran.Core.ColumnType.FloatType ]
+                                              [ Fuaran.Core.Field.create "day" Fuaran.Core.ColumnType.DateType
+                                                Fuaran.Core.Field.create "latency" Fuaran.Core.ColumnType.FloatType ]
                                             Columns = [] }
                                   ),
                                   [],

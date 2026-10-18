@@ -33,8 +33,8 @@ let private defaults = Budget.defaults
 
 /// An `n`-row single-column table — the shape the evaluator counts rows over.
 let private tableOf (n: int) : Table =
-    { Schema = [ "v", IntType ]
-      Columns = [ Column.create "v" IntType [ for i in 1..n -> Int i ] ] }
+    { Schema = [ Field.create "v" IntType ]
+      Columns = [ Column.ofInts "v" (Vector.init n (fun i -> i + 1)) AllValid ] }
 
 /// An `n`-step pipeline of no-op sorts. Every step is legal and cheap, so what
 /// a refusal measures is the DECLARATION, not the evaluator's opinion of it.

@@ -635,7 +635,7 @@ let isEmptySeed (fingerprint: objnull) : bool =
 /// takes. `None` when the rows do not decode as a table (a ragged row set —
 /// Core's schema inference is deliberately loud rather than patching), and when a cell
 /// is one the row codec refuses (Phase 1960): such a feed has no wire, so no table.
-let private tableOfRows (rows: Fuaran.Core.Row seq) : Fuaran.Core.Table option =
+let private tableOfRows (rows: Map<string, obj> seq) : Fuaran.Core.Table option =
     match Fuaran.UI.RowCodec.tryEncodeRows rows with
     | Error _ -> None
     | Ok wire ->
@@ -937,7 +937,7 @@ let private usesOfTextOpt (text: TextSource option) : BindingUse list =
 ///
 /// The seed VALUE is untouched: the store must receive the `Row seq` the grid
 /// itself resolves, not a re-encoding of it.
-let private rowFeedUses (binding: Binding<Fuaran.Core.Row seq>) : BindingUse list =
+let private rowFeedUses (binding: Binding<Map<string, obj> seq>) : BindingUse list =
     let table =
         match binding with
         | Binding.State(_, Some rows)

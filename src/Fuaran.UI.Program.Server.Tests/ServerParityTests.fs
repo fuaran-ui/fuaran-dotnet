@@ -133,11 +133,8 @@ let private openServices =
 /// reads, rather than only in a unit test of the handler.
 let private refreshHandler: Handler =
     let rows: Fuaran.Core.Table =
-        { Schema = [ "n", Fuaran.Core.IntType ]
-          Columns =
-            [ { Name = "n"
-                Type = Fuaran.Core.IntType
-                Cells = [ Fuaran.Core.Int 1; Fuaran.Core.Int 2; Fuaran.Core.Int 3 ] } ] }
+        { Schema = [ Fuaran.Core.Field.create "n" Fuaran.Core.IntType ]
+          Columns = [ Fuaran.Core.Column.ofInts "n" (Fuaran.Core.Vector.ofList [ 1; 2; 3 ]) Fuaran.Core.AllValid ] }
 
     { Name = "refresh"
       Stages =

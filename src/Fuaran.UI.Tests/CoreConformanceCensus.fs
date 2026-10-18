@@ -524,7 +524,7 @@ let census: (string * Adoption) list =
       //
       // What the tier actually carries, since the phase text assumed otherwise:
       // there is no columnar op-algebra call site here at all and no Core columnar
-      // validator registration — and the one production `Column.create` authoring
+      // validator registration — and the one production column authoring (typed builders)
       // surface is `RetrievalSource.Hit.toTable`. (The schema walk was the third
       // such absence until Phase 1486 gave FUARAN114 and FUARAN086 a call site in
       // `PreEmitValidate.fs`; the row below still enrols the LAW, which is about
@@ -577,7 +577,7 @@ let census: (string * Adoption) list =
       // takes the second witness from its CALLER and memoises nothing. `Fuaran.UI.Memo` adopts the
       // applyMemo cache MODEL, not the operator, so there is no cross-witness-composed function
       // here to hand the memo half.
-      "Conformance.compositionPilot",
+      "Conformance.compositionPilotAt",
       NotUsed
           "Fuaran.Core.Function's applyMemo over a cross-witness composeAcross — the tier supplies one ArtifactWitness and no memoised cross-witness composition, so the pilot has no second witness or memo key to run against"
 
@@ -608,14 +608,14 @@ let census: (string * Adoption) list =
       // Arrived with the 0.31.0 pin raise (Phase 1860). Its subject is an ADOPTER's evaluator — the
       // `EvaluatorWitness` a domain hands `Propagation.eval` / `evalFrom` — and nothing here hands
       // one, so there is no such evaluator to certify.
-      "Conformance.propagationEvaluatorLaws",
+      "Conformance.propagationEvaluatorLawsAt",
       NotUsed
           "Fuaran.Core.Propagation's incremental evaluator seam (Propagation.eval / evalFrom) — Renderer.Core's BindingGraph references Fuaran.Core.Propagation for the dirty set only and hands it no evaluator; the tier's reactivity runs on its own stores (see propagationEvalLaws)"
       // Arrived with the 0.32.0 pin raise (Phase 1874): the prior-aware evaluator form
       // (`Propagation.evalWith` / `evalFromWith`). No subject here, for the reason the row above gives.
       "Conformance.propagationEvaluatorLawsWith",
       NotUsed
-          "Fuaran.Core.Propagation's prior-aware evaluator seam (Propagation.evalWith / evalFromWith) — nothing in this tier hands Propagation an evaluator (see propagationEvaluatorLaws)"
+          "Fuaran.Core.Propagation's prior-aware evaluator seam (Propagation.evalWith / evalFromWith) — nothing in this tier hands Propagation an evaluator (see propagationEvaluatorLawsAt)"
       // Arrived with the 0.32.0 pin raise (Phase 1874), in Fuaran.Core.DataFrame.Conformance. Its
       // subject is `DataFrame.evalFrom` driven by `ColumnOps.changeOf` over a domain's table-edit
       // stream. The tier's incremental path is a different seam — `Incremental.primeOn` /
@@ -631,20 +631,16 @@ let census: (string * Adoption) list =
       "IncrementalDelta.stateLaws",
       NotUsed
           "the Incremental state's wire codec (encode / decode, attached and detached) — LiveTransformStore keeps its Incremental state in process across primeOn / refreshOn (ServerDriven/LiveTransform.fs) and never encodes, persists or ships it"
-      // Phase 1857 — the obsolete forward of keyedChildrenLawsAt, reached through it (one run
-      // answers for both spellings; see that row).
-      "Conformance.keyedChildrenLaws",
-      Adopted(keyedChildrenTest, "Conformance.keyedChildrenLawsAt (the forward's own body)")
-      "Conformance.aiSurfaceLaws",
+      "Conformance.aiSurfaceLawsAt",
       NotUsed
           "Fuaran.Core.AiSurface — the tier ships its own runtime introspection surface (Fuaran.UI.AiTools) and consumes no Core AI surface"
       // Arrived with the 0.32.0 pin raise (Phase 1874): the 0.31.0 form of `aiSurfaceLaws`, the kit
       // rolling the policy. 0.32.0 changed `aiSurfaceLaws`' VERDICT (it now runs the domain's own
       // `Decide`); neither form has a subject here, for the reason the row above gives.
-      "Conformance.aiSurfaceLawsUnderKitPolicy",
+      "Conformance.aiSurfaceKitPolicyLawsAt",
       NotUsed
-          "Fuaran.Core.AiSurface's proposal plumbing — no project in this tier references Fuaran.Core.AiSurface or submits an op through its Decide (see aiSurfaceLaws)"
-      "Conformance.projectionLaws",
+          "Fuaran.Core.AiSurface's proposal plumbing — no project in this tier references Fuaran.Core.AiSurface or submits an op through its Decide (see aiSurfaceLawsAt)"
+      "Conformance.projectionLawsAt",
       NotUsed "Fuaran.Core.Projection — the tier renders a tree; it maintains no Core projection over an op stream"
       "Conformance.queryLaws",
       NotUsed
@@ -652,10 +648,10 @@ let census: (string * Adoption) list =
       "Conformance.capabilityPipelineLaws",
       NotUsed "Fuaran.Core.Function's CapabilityPipeline — the tier composes no capability pipeline"
       // ---- the witness-taking forms Core 0.32.0 added (fuaran-core#246), arriving with Phase 1874 ----
-      "Conformance.queryLawsWith",
+      "Conformance.queryLawsAt",
       NotUsed
           "Fuaran.Core.Query's registry seam at a domain's QuerySeamWitness — no project here references the Core query registry or dispatches through QueryRegistry.dispatch (see queryLaws)"
-      "Conformance.capabilityPipelineLawsWith",
+      "Conformance.capabilityPipelineLawsAt",
       NotUsed
           "Fuaran.Core.Function's CapabilityPipeline at a domain's CapabilityPipelineWitness — the tier composes no capability pipeline"
       // Not `NotUsed`: this family's subject EXISTS here. `Fuaran.UI.AiTools.Capabilities` is a host
@@ -666,7 +662,7 @@ let census: (string * Adoption) list =
       // this path. Adopting it needs a `CapabilitySeamWitness` whose `Dispatch` is that path, built in
       // the AiTools test project, which references no conformance kit today — a separate adoption,
       // not a consequence of the pin, so it is enrolled by name here rather than silently absent.
-      "Conformance.capabilityLawsWith",
+      "Conformance.capabilityLawsAt",
       CarriedBy
           "unfiled — Fuaran.UI.AiTools.Capabilities (validate, then makeInvoker's host body) is a host dispatch path over a Core CapabilityRegistry, the subject this family certifies; adoption is one CapabilitySeamWitness whose Dispatch is that path, in Fuaran.UI.AiTools.Tests"
       "Conformance.capabilityPipelineIncrementalLaws",
@@ -690,24 +686,6 @@ let census: (string * Adoption) list =
       // Classified at the raise, not adopted in it. Where the family's subject exists here the row
       // is `CarriedBy` and names the witness an adoption would supply; where it does not, the row
       // names the mechanism the tier does not use, so the next reader can check it.
-      //
-      // The four `…At` forms are Core 0.33.0's renaming of the domain-witness forms (fuaran-core
-      // Phase 297); the `…With` spellings above are its obsolete forwards for that draft and are
-      // classified the same way.
-      "Conformance.aiSurfaceLawsAt",
-      NotUsed
-          "Fuaran.Core.AiSurface at a domain's AiSurfaceWitness — no project in this tier references Fuaran.Core.AiSurface (see aiSurfaceLaws)"
-      "Conformance.capabilityLawsAt",
-      CarriedBy
-          "unfiled — the 0.33.0 name of capabilityLawsWith (see that row): Fuaran.UI.AiTools.Capabilities is a host dispatch path over a Core CapabilityRegistry; adoption is one CapabilitySeamWitness whose Dispatch is that path, in Fuaran.UI.AiTools.Tests"
-      "Conformance.capabilityPipelineLawsAt",
-      NotUsed
-          "Fuaran.Core.Function's CapabilityPipeline at a domain's witness — the tier composes no capability pipeline"
-      "Conformance.queryLawsAt",
-      NotUsed
-          "Fuaran.Core.Query's registry seam at a domain's QuerySeamWitness — no project here references the Core query registry (see queryLaws)"
-      // Phase 2307 — the obsolete forward of observerLawsAt, reached through it.
-      "Conformance.observerLaws", AdoptedAcross observerPorts
       "Conformance.containmentLaws",
       CarriedBy
           "unfiled — Fuaran.UI.Ops.Apply delegates the structural-five apply to Core's applyContained under the tier's container predicate (containerLaws above), so containment at the tier's own NodeWitness / OpGen has a subject here; adoption runs it at the witnesses CoreAdoptionTests already builds"
@@ -717,10 +695,10 @@ let census: (string * Adoption) list =
       "Conformance.reconcileLawsWith",
       CarriedBy
           "unfiled — reconcileLaws is adopted above at the kit's hash; this form pins the domain's hash, and the tier ships one (SHA-256, as laneFoldLawsWith is instantiated with)"
-      "Conformance.keyedApplyLaws",
+      "Conformance.keyedApplyLawsAt",
       CarriedBy
           "unfiled — Introspect.keyedWitness, which keyedChildrenLawsAt is adopted at (the `fallback`, `state.onEmpty` and `state.onLoading` slots among its positions), is this family's subject too"
-      "Conformance.keyedArbitrationLaws",
+      "Conformance.keyedArbitrationLawsAt",
       CarriedBy "unfiled — runs at the same Introspect.keyedWitness keyedChildrenLawsAt is adopted at"
       "Conformance.keyedArbitrationLawsWith",
       CarriedBy "unfiled — runs at the same Introspect.keyedWitness keyedChildrenLawsAt is adopted at"
@@ -737,7 +715,7 @@ let census: (string * Adoption) list =
       "Conformance.loweringLaws",
       NotUsed "Fuaran.Core.Ops.lower (fuaran-core Phase 312) — no project here lowers a tree to ops through Core"
       "Conformance.freshIdLaws", Adopted(freshIdTest, "Conformance.freshIdLaws")
-      "Conformance.referenceLaws",
+      "Conformance.referenceLawsAt",
       NotUsed "a Core RefWitness — the tier declares no Core reference seam (no project here builds a RefWitness)"
       "Conformance.witnessSurfaceLaws",
       NotUsed
@@ -762,7 +740,7 @@ let census: (string * Adoption) list =
           "`Diff.changes` held to `Diff.toOpsWith`'s UNCONTAINED script under plain `applyAll` — the tier classifies through `Diff.changes` (TreeDiff, Phase 2304) but diffs through `toOpsContainedWith` (TreeOpDiff), and this witness's `withChildren` is a no-op on a leaf, so the uncontained script's insert under a leaf-turned-container is dropped and the family's landing law cannot run here; the classification is held to the contained script over the corpus instead (Fuaran.UI.OpStream.Tests, TreeDiffTests)"
       "Conformance.introducedLaws",
       NotUsed
-          "Fuaran.Core.Validator's introduced-findings gate (introduced / verdict / gate under a GatePolicy) — RecipeCertification uses a Core Validator.Registry only as a validity oracle, and DagMerge.mergeGated gates through the tier's own validator, so nothing here calls the Core gate"
+          "Fuaran.Core.Validator's introduced-findings gate (introduced / verdict / gate under a GatePolicy) — RecipeCertification uses a Core Validator.RuleRegistry only as a validity oracle, and DagMerge.mergeGated gates through the tier's own validator, so nothing here calls the Core gate"
       "Conformance.writeGateLaws",
       NotUsed "Fuaran.Core.Ops.WriteGate — no project here gates an op through a Core WriteGate or calls applyGated"
       "Conformance.policyLaws",
@@ -770,11 +748,11 @@ let census: (string * Adoption) list =
           "unfiled — self-contained over the kit's registries, as capabilityLaws (adopted above) is; its subject, a policy gate between validation and the body on a Core CapabilityRegistry, sits on the registry Fuaran.UI.AiTools.Capabilities dispatches over, so adoption is one test beside the capabilityLaws test running the family"
       "Conformance.policyLawsAt",
       NotUsed
-          "Fuaran.Core.AiSurface's guarded submit at a domain's GuardedSurfaceWitness — no project in this tier references Fuaran.Core.AiSurface (see aiSurfaceLaws)"
+          "Fuaran.Core.AiSurface's guarded submit at a domain's GuardedSurfaceWitness — no project in this tier references Fuaran.Core.AiSurface (see aiSurfaceLawsAt)"
       "Conformance.keyedCaptureLaws",
       NotUsed
           "CapabilityRegistry.dispatchCaptured / dispatchReplayed and the keyed capture journal — no project here dispatches a capability through the capture seam"
-      "Conformance.sanitizeLaws",
+      "Conformance.sanitizeLawsAt",
       CarriedBy
           "unfiled — Fuaran.UI.Renderer's Sanitize is this host's copy of the sanitisation floor the family holds every host to (Fuaran.Core.Idl.Sanitize is the reference witness); adoption is one SanitizeWitness over the tier's sanitiser"
       "Conformance.streamConfigLaws",
@@ -799,51 +777,11 @@ let census: (string * Adoption) list =
       "EncodingProfileVectors.storedCodecLaws",
       NotUsed
           "a persisted corpus of canonical texts written through a Core Codec<'T> under a declared EncodingProfile — no project here declares an EncodingProfile or keys a store on a Core codec's canonical text (see EncodingProfileVectors.laws)"
-      // ---- the families the 0.36.0 pin raise brings (Core 0.36.0) ----
-      // Core Phase 390 gives every witness-taking family an `…At` spelling and keeps the bare name
-      // as an `[<Obsolete>]` forward, removed at 1.0.0, under its own roster id. Where the tier
-      // ADOPTS the family, its tests move to the `…At` name (the adopted rows above are re-keyed),
-      // and the forward's row says the tier does not call it. Where it does not, the `…At` row is
-      // classified exactly as the bare row above it is — the rule the 0.34.0 raise applied to the
-      // `…With` forwards.
-      "Conformance.compositionLaws",
-      NotUsed
-          "the [<Obsolete>] forward of Conformance.compositionLawsAt, removed at 1.0.0 — the tier calls Conformance.compositionLawsAt itself (adopted above), never this spelling"
-      "Conformance.functionVerifyLaws",
-      NotUsed
-          "the [<Obsolete>] forward of Conformance.functionVerifyLawsAt, removed at 1.0.0 — the tier calls Conformance.functionVerifyLawsAt itself (adopted above), never this spelling"
-      "Conformance.verifyHonestyLaws",
-      NotUsed
-          "the [<Obsolete>] forward of Conformance.verifyHonestyLawsAt, removed at 1.0.0 — the tier calls Conformance.verifyHonestyLawsAt itself (adopted above), never this spelling"
-      "Conformance.memoLaws",
-      NotUsed
-          "the [<Obsolete>] forward of Conformance.memoLawsAt, removed at 1.0.0 — the tier calls Conformance.memoLawsAt itself (adopted above), never this spelling"
-      "Conformance.memoSoundnessLaws",
-      NotUsed
-          "the [<Obsolete>] forward of Conformance.memoSoundnessLawsAt, removed at 1.0.0 — the tier calls Conformance.memoSoundnessLawsAt itself (adopted above), never this spelling"
-      "Conformance.encoderInjectivityLaws",
-      NotUsed
-          "the [<Obsolete>] forward of Conformance.encoderInjectivityLawsAt, removed at 1.0.0 — the tier calls Conformance.encoderInjectivityLawsAt itself (adopted above), never this spelling"
-      "Conformance.attestationLaws",
-      NotUsed
-          "the [<Obsolete>] forward of Conformance.attestationLawsAt, removed at 1.0.0 — the tier calls Conformance.attestationLawsAt itself (adopted above), never this spelling"
-      "FoldConfluence.laneFoldLaws",
-      NotUsed
-          "the [<Obsolete>] forward of FoldConfluence.laneFoldLawsAt, removed at 1.0.0 — both ports (the .NET suite and the Fable law harness) call FoldConfluence.laneFoldLawsAt itself (adopted above), never this spelling"
-      "Conformance.compositionPilotAt",
-      NotUsed
-          "Fuaran.Core.Function's applyMemo over a cross-witness composeAcross — the 0.36.0 name of compositionPilot (see that row): the tier supplies one ArtifactWitness and no memoised cross-witness composition"
-      "Conformance.aiSurfaceKitPolicyLawsAt",
-      NotUsed
-          "Fuaran.Core.AiSurface's proposal plumbing under the kit's policy — the 0.36.0 name of aiSurfaceLawsUnderKitPolicy (see that row): no project in this tier references Fuaran.Core.AiSurface"
-      "Conformance.projectionLawsAt",
-      NotUsed
-          "Fuaran.Core.Projection — the 0.36.0 name of projectionLaws (see that row): the tier maintains no Core projection over an op stream"
-      "Conformance.propagationEvaluatorLawsAt",
-      NotUsed
-          "Fuaran.Core.Propagation's incremental evaluator seam — the 0.36.0 name of propagationEvaluatorLaws (see that row): nothing in this tier hands Propagation an evaluator"
-      "Conformance.referenceLawsAt",
-      NotUsed "a Core RefWitness — the 0.36.0 name of referenceLaws (see that row): no project here builds a RefWitness"
+      // ---- the families the 0.36.0 pin raise brought (Core 0.36.0) ----
+      // Core Phase 390 gave every witness-taking family an `…At` spelling and kept the bare name
+      // as an `[<Obsolete>]` forward; Core 0.37.0 removed the forwards, and Phase 2226 raised the
+      // pin past it. Each family now has ONE row, under its `…At` name: the rows below, and the
+      // rows above that once carried the bare name and were renamed in place, reasons unchanged.
       // Phase 1857 — `Introspect.getChildren` (what `NodeWitness.Children` is built on) answers
       // nothing for a node's `state` alternatives or an ErrorBoundary, so the `fallback`,
       // `state.onEmpty` and `state.onLoading` slots are invisible to the surface walk `certify`
@@ -854,18 +792,9 @@ let census: (string * Adoption) list =
           keyedChildrenTest,
           "Conformance.keyedChildrenLawsAt — at Introspect.keyedWitness, over the fallback, state.onEmpty and state.onLoading slots the surface walk does not reach"
       )
-      "Conformance.keyedApplyLawsAt",
-      CarriedBy
-          "unfiled — the 0.36.0 name of keyedApplyLaws: runs at the same Introspect.keyedWitness keyedChildrenLawsAt is adopted at"
-      "Conformance.keyedArbitrationLawsAt",
-      CarriedBy
-          "unfiled — the 0.36.0 name of keyedArbitrationLaws: runs at the same Introspect.keyedWitness keyedChildrenLawsAt is adopted at"
       // Phase 2307 — both in-memory observers run on Core's ObserverWitness, and each suite
       // certifies the witness its observer is built on.
       "Conformance.observerLawsAt", AdoptedAcross observerPorts
-      "Conformance.sanitizeLawsAt",
-      CarriedBy
-          "unfiled — the 0.36.0 name of sanitizeLaws (see that row): Fuaran.UI.Renderer's Sanitize is this host's copy of the sanitisation floor; adoption is one SanitizeWitness over the tier's sanitiser"
       // The vector families' caller-supplied forms (Core Phase 390): the same laws over a vector set
       // the caller hands them. Classified as their fixed-table forms are.
       "WireNullTolerance.lawsWith",
@@ -887,6 +816,24 @@ let census: (string * Adoption) list =
       "ParityVectors.lawsWith",
       NotUsed
           "the parity table's row laws at a caller's rows — the tier renders no parity rows of its own (see ParityVectors.laws)"
+      // ---- the families the 0.38.1 pin raise brings (Core 0.37.0, Phase 2226) ----
+      // The typed column's storage laws (Phases 417, 418, 431) and the Codec blocks' premises (Phase
+      // 442). The tier builds columns only through Core's typed builders and `ofCells`, reads them
+      // through `Column.cell` / `try…`, and never borrows or adopts a vector's storage, so none of
+      // them has a tier implementation to hand. `tests/core-fable` RUNS `columnOwnershipLaws` and its
+      // two Fable go-reds on Core's behalf (census-exempt, as the parity rows above say).
+      "Conformance.columnVectorLaws",
+      NotUsed
+          "Core's own Vector / Column storage and its readers — the tier has no vector implementation of its own; it builds columns through Core's typed builders and ofCells and reads them through Column.cell / try…"
+      "Conformance.columnOwnershipLaws",
+      NotUsed
+          "a pipeline that borrows (Vector.Unsafe.borrow) or adopts (Vector.adopt) column storage — no project here does either; tests/core-fable runs the family and its two Fable go-reds on Core's behalf"
+      "Conformance.columnOwnershipLawsWith",
+      NotUsed
+          "the ownership law over a caller's own column draw — no project here borrows or adopts column storage (see columnOwnershipLaws)"
+      "Conformance.codecLaws",
+      NotUsed
+          "the premises a domain owes the Codec blocks for a Core Codec<'T> it builds — no project here builds a Core Codec<'T>; the tier's wire codecs are its generated layer and hand encoders, certified by the wire-format conformance corpus"
       // ---- the compute kit's families from its own ids (Fuaran.Compute 0.36.0 / 0.37.0) ----
       "Conformance.plannerLaws",
       NotUsed
@@ -1256,7 +1203,6 @@ let private measuredHere: Set<string> =
           "Conformance.streamLaws"
           "Conformance.opAlgebra"
           "Conformance.containerLaws"
-          "Conformance.keyedChildrenLaws"
           "Conformance.keyedChildrenLawsAt"
           "Conformance.chainBreakReasonLaws"
           "Conformance.dagBreakReasonLaws"

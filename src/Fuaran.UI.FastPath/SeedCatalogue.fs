@@ -110,17 +110,14 @@ module SeedCatalogue =
 
     // ── ComputeLayer sample: an embedded table + a real transform pipeline ───
     let private salesTable: Table =
-        { Schema = [ "region", StringType; "revenue", FloatType; "units", IntType ]
+        { Schema =
+            [ Field.create "region" StringType
+              Field.create "revenue" FloatType
+              Field.create "units" IntType ]
           Columns =
-            [ { Name = "region"
-                Type = StringType
-                Cells = [ Cell.Str "North"; Cell.Str "South"; Cell.Str "East" ] }
-              { Name = "revenue"
-                Type = FloatType
-                Cells = [ Cell.Float 4800.0; Cell.Float 9100.0; Cell.Float 3600.0 ] }
-              { Name = "units"
-                Type = IntType
-                Cells = [ Cell.Int 120; Cell.Int 140; Cell.Int 90 ] } ] }
+            [ Column.ofStrs "region" (Vector.ofList [ "North"; "South"; "East" ]) AllValid
+              Column.ofFloats "revenue" (Vector.ofList [ 4800.0; 9100.0; 3600.0 ]) AllValid
+              Column.ofInts "units" (Vector.ofList [ 120; 140; 90 ]) AllValid ] }
 
     /// Group by region, sum revenue — a real serialisable pipeline, evaluated
     /// client-side by the consumer's `Fuaran.Compute.DataFrame` evaluator.

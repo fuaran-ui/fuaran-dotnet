@@ -37,11 +37,11 @@ open Fuaran.Core
 /// `DateTime`). A retrieval dashboard binds these exactly as a relational one
 /// binds SQL columns, through the same Phase 323 thread.
 let hitSchema: Schema =
-    [ "score", FloatType
-      "title", StringType
-      "snippet", StringType
-      "sourceId", StringType
-      "date", DateType ]
+    [ Field.create "score" FloatType
+      Field.create "title" StringType
+      Field.create "snippet" StringType
+      Field.create "sourceId" StringType
+      Field.create "date" DateType ]
 
 /// One ranked retrieval hit (the row shape behind `hitSchema`).
 type Hit =
@@ -62,14 +62,24 @@ module Hit =
     /// as a relational query result. The table's `Schema` is `hitSchema`, so
     /// `QuerySource.checkDashboard hitSchema dashboard` / `QueryBinding.check`
     /// type a retrieval dashboard with no retrieval-specific code path.
-    let toTable (hits: Hit list) : Table =
-        { Schema = hitSchema
-          Columns =
-            [ Column.create "score" FloatType (hits |> List.map (fun h -> Float h.Score))
-              Column.create "title" StringType (hits |> List.map (fun h -> Str h.Title))
-              Column.create "snippet" StringType (hits |> List.map (fun h -> Str h.Snippet))
-              Column.create "sourceId" StringType (hits |> List.map (fun h -> Str h.SourceId))
-              Column.create "date" DateType (hits |> List.map (fun h -> Date h.Date)) ] }
+    ///
+    /// A date column holds days (Core 0.37.0's typed column), so a hit whose `Date` is not a
+    /// canonical `YYYY-MM-DD` naming a day that exists has no column to live in: it is refused
+    /// here, as the `ColumnError` naming the `date` column, where the cell-list column used to
+    /// carry it until `Table.validate` refused it at the codec.
+    let toTable (hits: Hit list) : Result<Table, ColumnError> =
+        let strs (name: string) (field: Hit -> string) =
+            Column.ofStrs name (hits |> List.map field |> Vector.ofList) AllValid
+
+        Column.ofCells "date" DateType (hits |> List.map (fun h -> Date h.Date))
+        |> Result.map (fun date ->
+            { Schema = hitSchema
+              Columns =
+                [ Column.ofFloats "score" (hits |> List.map _.Score |> Vector.ofList) AllValid
+                  strs "title" _.Title
+                  strs "snippet" _.Snippet
+                  strs "sourceId" _.SourceId
+                  date ] })
 
 /// A retrieval request: the natural-language query + how many hits to return +
 /// optional metadata filters (`(field, value)` equality constraints the host
@@ -128,7 +138,10 @@ module InMemoryRetrievalSource =
                 async {
                     match resolve request with
                     | Error e -> return Error e
-                    | Ok hits -> return Ok(Hit.toTable hits)
+                    | Ok hits ->
+                        return
+                            Hit.toTable hits
+                            |> Result.mapError (fun e -> RetrievalError.RetrievalFailed(ColumnCodec.errorString e))
                 } }
 
     /// A source that returns the same fixed ranked hits (honouring `TopK` by

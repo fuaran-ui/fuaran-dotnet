@@ -68,19 +68,16 @@ module FastPath =
     /// can provide — and it is the shape the shared cross-host
     /// `function-registry` goldens certify, so it stays total.
     let private sigEntryOf (h: HoleDecl) : SigEntry =
-        let kindStr, space, slot, action, required =
+        let required =
             match h.Kind with
-            | ValueHole s -> "value", Some s, None, None, true
-            | SlotHole c -> "slot", None, c, None, true
-            | RepeatHole s -> "repeat", Some s, None, None, false
-            | ActionHole e -> "action", None, None, Some e, false
+            | ValueHole _
+            | SlotHole _ -> true
+            | RepeatHole _
+            | ActionHole _ -> false
 
         { Addr = h.Addr
           Name = h.Name
-          Kind = kindStr
-          Space = space
-          Slot = slot
-          Action = action
+          Kind = h.Kind
           Required = required }
 
     /// True for a hole this tier's builder can actually be given a value for.

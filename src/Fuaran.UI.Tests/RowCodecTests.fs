@@ -231,7 +231,7 @@ let tests =
 
           testCase "the generated structural codec refuses through the row codec"
           <| fun () ->
-              let feed: Fuaran.Core.Row seq =
+              let feed: Map<string, obj> seq =
                   [ row [ "at", o (DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Unspecified)) ] ]
 
               let chart: ChartSpec<unit> =

@@ -36,11 +36,8 @@ let private jstr (s: string) = Fuaran.Core.JStr s
 
 /// A three-row embedded table — enough for a pipeline to visibly narrow.
 let private rows: Fuaran.Core.Table =
-    { Schema = [ "n", Fuaran.Core.IntType ]
-      Columns =
-        [ { Name = "n"
-            Type = Fuaran.Core.IntType
-            Cells = [ Fuaran.Core.Int 1; Fuaran.Core.Int 2; Fuaran.Core.Int 3 ] } ] }
+    { Schema = [ Fuaran.Core.Field.create "n" Fuaran.Core.IntType ]
+      Columns = [ Fuaran.Core.Column.ofInts "n" (Fuaran.Core.Vector.ofList [ 1; 2; 3 ]) Fuaran.Core.AllValid ] }
 
 let private boundMarkdown (id: string) (key: string) (dflt: string) : Node<obj> =
     let n = Fuaran.markdown id "placeholder"
@@ -268,7 +265,7 @@ let tests =
                   match value with
                   | :? Fuaran.Core.Table as table ->
                       Expect.equal
-                          (table.Columns |> List.map (fun c -> List.length c.Cells))
+                          (table.Columns |> List.map Fuaran.Core.Column.length)
                           [ 2 ]
                           "the pipeline ran — three rows in, the declared limit out"
                   | other -> failtestf "the query slot holds %A rather than a table" other

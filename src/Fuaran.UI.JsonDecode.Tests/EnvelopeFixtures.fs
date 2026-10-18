@@ -41,9 +41,9 @@ let private isKnownKind (t: string) : bool =
 
 /// Read a node payload's `kind.$type` discriminator off the parsed Core JVal.
 let private nodeTagOf (jv: Fuaran.Core.JVal) : Result<string, string> =
-    Fuaran.Core.Decode.getProp "kind" jv
-    |> Result.bind (Fuaran.Core.Decode.getProp "$type")
-    |> Result.bind Fuaran.Core.Decode.asString
+    Fuaran.Core.Decoder.describing (Fuaran.Core.Decoder.field "kind" Fuaran.Core.Decoder.json) jv
+    |> Result.bind (Fuaran.Core.Decoder.describing (Fuaran.Core.Decoder.field "$type" Fuaran.Core.Decoder.json))
+    |> Result.bind (Fuaran.Core.Decoder.describing Fuaran.Core.Decoder.str)
 
 /// Decode a known payload JVal through the UI decoder (over its canonical bytes).
 let private decodeKnownNode (jv: Fuaran.Core.JVal) : Result<Node<obj>, string> =
@@ -68,8 +68,8 @@ let private encodeKnownNode (n: Node<obj>) : Fuaran.Core.JVal =
 let negotiateReencode (input: string) : Result<string, string * string> =
     let malformedProfile =
         Fuaran.Core.Decode.parse input
-        |> Result.bind (Fuaran.Core.Decode.getProp "$profile")
-        |> Result.bind Fuaran.Core.Decode.asString
+        |> Result.bind (Fuaran.Core.Decoder.describing (Fuaran.Core.Decoder.field "$profile" Fuaran.Core.Decoder.json))
+        |> Result.bind (Fuaran.Core.Decoder.describing Fuaran.Core.Decoder.str)
         |> Result.map (Fuaran.Core.Versioning.Profile.tryParse >> Result.isError)
         |> Result.defaultValue false
 

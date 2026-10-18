@@ -80,11 +80,11 @@ let ruleTests =
 /// The grid's own row-key resolution, in the shape `Render` builds it: the
 /// closure override wins, else the declared field projects, else there is no
 /// identity at all.
-let private rowKeyOf (rowKeyField: string option) : (Row -> string) option =
+let private rowKeyOf (rowKeyField: string option) : (Map<string, obj> -> string) option =
     rowKeyField
-    |> Option.map (fun field -> fun (row: Row) -> BindingResolver.projectRowFieldString row field)
+    |> Option.map (fun field -> fun (row: Map<string, obj>) -> BindingResolver.projectRowFieldString row field)
 
-let private row (id: string) (name: string) : Row =
+let private row (id: string) (name: string) : Map<string, obj> =
     Map.ofList [ "id", (box id |> Unchecked.nonNull); "name", (box name |> Unchecked.nonNull) ]
 
 [<Tests>]
@@ -103,7 +103,7 @@ let resortTests =
 
               let keyOf = rowKeyOf (Some "id")
 
-              let keysOf (rows: Row list) =
+              let keysOf (rows: Map<string, obj> list) =
                   rows
                   |> List.mapi (fun i r -> Render.reconciliationKey (keyOf |> Option.map (fun k -> k r)) i)
 
@@ -123,7 +123,7 @@ let resortTests =
               // The go-red twin: WITHOUT a key contract the identity is the
               // position, so the first row before the sort and the first row
               // after it are "the same" — which is precisely the defect.
-              let positional (rows: Row list) =
+              let positional (rows: Map<string, obj> list) =
                   rows |> List.mapi (fun i _ -> Render.reconciliationKey None i)
 
               Expect.equal

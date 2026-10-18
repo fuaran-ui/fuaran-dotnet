@@ -7852,6 +7852,31 @@ recorded as `docs/DECISIONS.md` D20 and `WIRE_FORMAT.md` §5 "The two encode ref
   `Local` when it is the machine's wall clock), or carry a `DateTimeOffset`. Carry an `int64` that can leave ±2^53 as a
   string. Neither value had a faithful encoding before; the refusal makes the existing loss visible.
 
+### What rides this slot — Phase 2226 (the tier moves onto Fuaran.Core 0.38.1's typed column)
+
+**Class: BREAKING (source), for consumers that name the substrate's types through this tier.** It rides the 0.97.0
+draft, which Phase 1960 already made breaking-class, so no number moves. The substrate pins move together:
+`Fuaran.Core.*` 0.36.0 -> 0.38.1 (ending the recorded `cohort-lag(0.38.1)` hold), `Fuaran.Compute.*` 0.38.1 -> 0.40.0 and
+`Fuaran.Program.*` 0.9.0 -> 0.10.0, the first release of each built on that Core. No wire byte this tier writes moves.
+
+- **What a consumer meets is Core 0.37.0, through this tier** (Core's `docs/migrations/0.37.0-typed-column.md` and
+  `0.37.0.md` are the edit list): a `Column` holds typed vectors (`Column.ofInts` / `ofStrs` / … or `ofCells`;
+  `Cells` and `Column.create` are gone), a `Schema` is a `Field list`, `TimestampType` carries its `TimeUnit`, and
+  `Validator.Registry` is `Validator.RuleRegistry`.
+- **`Fuaran.UI.Row` is `Map<string, obj>`** (it aliased `Fuaran.Core.Row`, which Core removed). The representation is
+  unchanged; the generated layer and the IDL's hosted F# signatures spell the map type.
+- **`RetrievalSource.Hit.toTable` returns `Result<Table, ColumnError>`** (was `Table`): a date column holds days, so a
+  hit whose `Date` is not a canonical `YYYY-MM-DD` naming a day is refused there, naming the `date` column, where the
+  cell-list column used to carry it until `Table.validate` refused it at the codec. `InMemoryRetrievalSource` reports
+  the refusal as `RetrievalError.RetrievalFailed`. `hitSchema` is a `Field list`.
+- **`RecipeCertification.uiValidityRegistry`** is a `Validator.RuleRegistry<Node<'Msg>, NodeId>`.
+- **Behaviour through the substrate:** Core's reader refuses a repeated object member (fuaran-core Phase 462), so
+  `SchemaForm.deriveWireFromText` refuses such a schema as `schema-not-json` rather than `duplicate-field-id`
+  (the schema-to-form parity table is re-certified in fuaran-ts with the same case); a capability's slot hole carries
+  its constraint and no space (fuaran-core Phase 409), so a slot argument outside its `slotKind` is `ArgOutOfSpace`.
+- **Migration.** Follow Core's two notes for any substrate type you name; spell `Row` as `Map<string, obj>` where you
+  named Core's alias; match `Hit.toTable`'s `Result`.
+
 ---
 
 ## 0.96.0 — the slot opened after v0.95.0 was released (RELEASED — tagged v0.96.0 at 9045b5f, 2026-10-18)

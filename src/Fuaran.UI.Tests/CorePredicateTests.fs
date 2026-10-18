@@ -168,14 +168,14 @@ let private queryChart (kind: ChartKind) (xScale: ChartXScale option) : Node<Msg
                 YFields = [ "y" ] })
 
 let private xMismatch (kind: ChartKind) (xScale: ChartXScale option) (xType: ColumnType) : bool =
-    QueryBinding.check [ "x", xType; "y", FloatType ] (queryChart kind xScale)
+    QueryBinding.check [ Field.create "x" xType; Field.create "y" FloatType ] (queryChart kind xScale)
     |> List.exists (fun d -> d.Code = QueryBinding.TypeMismatchCode && d.Column = "x")
 
 /// FUARAN087 / FUARAN097 on the x field, over an embedded table that has the
 /// same two columns.
 let private xRefusedByValidator (kind: ChartKind) (xScale: ChartXScale option) (xType: ColumnType) : bool =
     let table: Table =
-        { Schema = [ "x", xType; "y", FloatType ]
+        { Schema = [ Field.create "x" xType; Field.create "y" FloatType ]
           Columns = [] }
 
     let tree =

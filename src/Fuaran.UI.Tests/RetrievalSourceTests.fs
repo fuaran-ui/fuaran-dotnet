@@ -58,9 +58,23 @@ let private projectionTests =
         "hit → canonical retrieval Table"
         [ testCase "toTable yields the canonical hitSchema and preserves rank order"
           <| fun _ ->
-              let table = Hit.toTable hits
-              Expect.equal table.Schema hitSchema "schema is the canonical retrieval contract"
-              Expect.equal (Table.rowCount table) 2 "both hits projected"
+              match Hit.toTable hits with
+              | Ok table ->
+                  Expect.equal table.Schema hitSchema "schema is the canonical retrieval contract"
+                  Expect.equal (Table.rowCount table) 2 "both hits projected"
+              | Error e -> failtestf "expected Ok, got %A" e
+
+          testCase "a hit whose date is not a canonical day is refused, naming the date column"
+          <| fun _ ->
+              // A date column holds days (Core 0.37.0), so text that names no day has no
+              // column to live in: the projection refuses it rather than dropping the hit's date.
+              let bad =
+                  [ { List.head hits with
+                        Date = "2026-02-30" } ]
+
+              match Hit.toTable bad with
+              | Ok _ -> failtest "a date naming no day must not project"
+              | Error e -> Expect.stringContains (ColumnCodec.errorString e) "date" "the refusal names the date column"
 
           testCase "the seam returns the canonical Table and honours TopK"
           <| fun _ ->

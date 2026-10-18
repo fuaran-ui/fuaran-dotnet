@@ -208,7 +208,7 @@ let tests =
           // weights a data-bearing node by the data it carries.
 
           test "G2 (Phase 790): a data-bearing node is priced by its payload, not as one node" {
-              let rows: Fuaran.Core.Row seq =
+              let rows: Map<string, obj> seq =
                   Seq.ofList [ for i in 1..200 -> Map.ofList [ "x", o (sprintf "c%d" i); "y", o (float i) ] ]
 
               let chart: Node<obj> =

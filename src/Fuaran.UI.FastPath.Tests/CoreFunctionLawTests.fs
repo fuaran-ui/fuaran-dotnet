@@ -83,10 +83,20 @@ module CoreFunctionLawTests =
         | Ok c -> c
         | Error e -> failwithf "the key fixture did not decode: %s" e
 
-    /// A declaration carrying an explicit `"slotTree"` space (fuaran-core#229): a slot whose space
-    /// disagrees with its constraint, and a value hole ranging over trees of one kind. The TS and Go
-    /// ports pin these exact bytes.
+    /// A declaration carrying an explicit `"slotTree"` space (fuaran-core#229): a slot hole, and a
+    /// value hole ranging over trees of one kind. From Core 0.37.0 (fuaran-core Phase 409) a slot
+    /// entry carries its constraint and NO space, so this is the kit's canonical form; the TS and Go
+    /// ports pinned the pre-0.37.0 form below, which still reads, to this.
     let private slotTreeDecl =
+        "{\"$type\":\"capability\",\"determinism\":\"random\",\"id\":\"cap-tree\",\"placement\":{\"$type\":\"server\"},"
+        + "\"signature\":{\"effect\":{\"determinism\":\"random\",\"host\":\"readsHost\"},\"holes\":["
+        + "{\"addr\":\"body\",\"kind\":\"slot\",\"name\":\"body\",\"required\":true,\"slotKind\":\"Layout\"},"
+        + "{\"addr\":\"chart\",\"kind\":\"value\",\"name\":\"chart\",\"required\":false,\"space\":{\"$type\":\"slotTree\",\"slotKind\":\"Chart\"}}"
+        + "],\"name\":\"tree\"}}"
+
+    /// The same declaration as it was pinned before Core 0.37.0: the slot entry also wrote a
+    /// `slotTree` space, which a slot hole no longer holds. It reads, and re-encodes to `slotTreeDecl`.
+    let private slotTreeDeclBefore037 =
         "{\"$type\":\"capability\",\"determinism\":\"random\",\"id\":\"cap-tree\",\"placement\":{\"$type\":\"server\"},"
         + "\"signature\":{\"effect\":{\"determinism\":\"random\",\"host\":\"readsHost\"},\"holes\":["
         + "{\"addr\":\"body\",\"kind\":\"slot\",\"name\":\"body\",\"required\":true,\"slotKind\":\"Layout\",\"space\":{\"$type\":\"slotTree\"}},"
@@ -335,7 +345,7 @@ module CoreFunctionLawTests =
                       "only the hole the builder can receive reaches the registered signature"
 
                   Expect.isEmpty
-                      (holes |> List.filter (fun h -> h.Kind = "slot"))
+                      (holes |> List.filter (fun h -> HoleKind.tag h.Kind = "slot"))
                       "no signature entry advertises a slot"
 
                   // And the consequence that is the whole point. A caller
@@ -544,6 +554,14 @@ module CoreFunctionLawTests =
                           slotTreeDecl
                           "the pinned declaration is the kit's own canonical encoding"
 
+                      match CapabilityCodec.decode slotTreeDeclBefore037 with
+                      | Ok before ->
+                          Expect.equal
+                              (CapabilityCodec.encode before)
+                              slotTreeDecl
+                              "the pre-0.37.0 form reads, and re-encodes without the slot's space"
+                      | Error e -> failtestf "the kit refused the pre-0.37.0 slotTree declaration: %s" e
+
                       let verdict args =
                           match Capability.validateArgs cap args with
                           | Ok() -> "accept"
@@ -551,10 +569,14 @@ module CoreFunctionLawTests =
                           | Error(ArgOutOfSpace _) -> "ArgOutOfSpace"
                           | Error e -> sprintf "%A" e
 
-                      [ [ "body", "{\"kind\":\"Text\"}" ], "accept"
+                      // From Core 0.37.0 the slot entry IS its constraint (no space overrides it), so a
+                      // `Text` body is out of the `Layout` slot; before it, the explicit `slotTree` space
+                      // admitted any tree there.
+                      [ [ "body", "{\"kind\":\"Layout\"}" ], "accept"
+                        [ "body", "{\"kind\":\"Text\"}" ], "ArgOutOfSpace"
                         [ "body", "13" ], "UninvocableArg"
-                        [ "body", "{\"kind\":\"Text\"}"; "chart", "{\"kind\":\"Chart\"}" ], "accept"
-                        [ "body", "{\"kind\":\"Text\"}"; "chart", "{\"kind\":\"Text\"}" ], "ArgOutOfSpace"
+                        [ "body", "{\"kind\":\"Layout\"}"; "chart", "{\"kind\":\"Chart\"}" ], "accept"
+                        [ "body", "{\"kind\":\"Layout\"}"; "chart", "{\"kind\":\"Text\"}" ], "ArgOutOfSpace"
                         [ "body", "{\"kind\":" ], "UninvocableArg"
                         [ "body", "{\"kind\":1}" ], "UninvocableArg" ]
                       |> List.iter (fun (args, want) -> Expect.equal (verdict args) want (sprintf "%A" args))

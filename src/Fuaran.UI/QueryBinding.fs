@@ -99,10 +99,10 @@ let compatible (col: ColumnType) (sink: BindingSinkClass) : bool =
     | IntType, BindingSinkClass.Numeric -> true
     | FloatType, BindingSinkClass.Numeric -> true
     | DateType, BindingSinkClass.Temporal -> true
-    | TimestampType, BindingSinkClass.Temporal -> true
+    | TimestampType _, BindingSinkClass.Temporal -> true
     | StringType, BindingSinkClass.Categorical -> true
     | DateType, BindingSinkClass.Categorical -> true
-    | TimestampType, BindingSinkClass.Categorical -> true
+    | TimestampType _, BindingSinkClass.Categorical -> true
     | BoolType, BindingSinkClass.Boolean -> true
     | _ -> false
 
@@ -296,11 +296,11 @@ let queryBoundRefs (node: Node<'Msg>) : QueryBoundRef list =
 
 // ─── The check ───────────────────────────────────────────────────────────────
 
-let private columnNames (schema: Schema) : string list = schema |> List.map fst
+let private columnNames (schema: Schema) : string list = schema |> List.map _.Name
 
 let private mismatchDefect (schema: Schema) (colType: ColumnType) (r: QueryBoundRef) : Defect =
     let compatibleCols =
-        schema |> List.filter (fun (_, t) -> compatible t r.Sink) |> List.map fst
+        schema |> List.filter (fun f -> compatible f.Type r.Sink) |> List.map _.Name
 
     let suggestion =
         match compatibleCols with
@@ -351,16 +351,16 @@ let private absentDefect (schema: Schema) (r: QueryBoundRef) : Defect =
 /// defect surfaces so the AI repairs the whole tree in one turn).
 ///
 /// SCHEMA-ONLY (no-rows) TYPING. The check reads only the schema's
-/// `(name, ColumnType)` pairs — never any row data — so it types a complete
+/// fields (`Name`, `Type`) — never any row data — so it types a complete
 /// dashboard against a schema with **zero rows** (the privacy-mode path,
 /// Phase 324). A schema-only fetch is sufficient to prove the UI contract.
 let check (schema: Schema) (node: Node<'Msg>) : Defect list =
     queryBoundRefs node
     |> List.choose (fun r ->
-        match schema |> List.tryFind (fun (name, _) -> name = r.Column) with
+        match schema |> List.tryFind (fun f -> f.Name = r.Column) with
         | None -> Some(absentDefect schema r)
-        | Some(_, colType) ->
-            if compatible colType r.Sink then
+        | Some f ->
+            if compatible f.Type r.Sink then
                 None
             else
-                Some(mismatchDefect schema colType r))
+                Some(mismatchDefect schema f.Type r))

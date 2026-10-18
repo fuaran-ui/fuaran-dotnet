@@ -101,7 +101,7 @@ let private tableOf (j: JVal) : Schema * Cell list list =
         j
         |> field "columns"
         |> asArr
-        |> List.map (fun c -> asStr (field "name" c), columnTypeOf (asStr (field "type" c)))
+        |> List.map (fun c -> Field.create (asStr (field "name" c)) (columnTypeOf (asStr (field "type" c))))
 
     let rows =
         j
@@ -115,7 +115,10 @@ let private toTable (schema: Schema, rows: Cell list list) : Table =
     { Schema = schema
       Columns =
         schema
-        |> List.mapi (fun i (name, ty) -> Column.create name ty (rows |> List.map (fun r -> List.item i r))) }
+        |> List.mapi (fun i f ->
+            match Column.ofCells f.Name f.Type (rows |> List.map (fun r -> List.item i r)) with
+            | Ok c -> c
+            | Error e -> failwithf "§12.7 reader: column %s holds a cell its type cannot: %A" f.Name e) }
 
 let private sortDirOf (s: string) : SortDir =
     match s with
@@ -237,7 +240,7 @@ let private keyText (c: Cell) : string =
 
 let private applyEdits (schema: Schema) (rows: Cell list list) (edits: Edits) : Cell list list =
     let columnIndex name =
-        match schema |> List.tryFindIndex (fun (n, _) -> n = name) with
+        match schema |> List.tryFindIndex (fun f -> f.Name = name) with
         | Some i -> i
         | None -> failwithf "§12.7 reader: no column \"%s\"" name
 
@@ -364,9 +367,13 @@ let private ok (r: Result<'a, string>) : 'a =
     | Error e -> failwithf "the seam refused: %s" e
 
 let private expectSameTable (context: string) (expected: Table) (actual: Table) =
-    Expect.equal (List.map fst actual.Schema) (List.map fst expected.Schema) (context + ": column names")
+    Expect.equal (Table.columnNames actual) (Table.columnNames expected) (context + ": column names")
     Expect.equal actual.Schema expected.Schema (context + ": schema")
-    Expect.equal (actual.Columns |> List.map _.Cells) (expected.Columns |> List.map _.Cells) (context + ": cells")
+
+    Expect.equal
+        (actual.Columns |> List.map Column.toCells)
+        (expected.Columns |> List.map Column.toCells)
+        (context + ": cells")
 
 [<Tests>]
 let tests =

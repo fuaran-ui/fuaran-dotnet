@@ -188,7 +188,7 @@ let tests =
               let jsonl = Fuaran.Core.OpStream.toJsonl witness coreRecords
 
               match Fuaran.Core.OpStream.fromJsonl witness jsonl with
-              | Error e -> failtestf "Core.fromJsonl failed: %s" e
+              | Error e -> failtestf "Core.fromJsonl failed: %s" (Fuaran.Core.StreamLoadFault.toString e)
               | Ok back ->
                   // `TreeOp<obj>` carries closures, so `StreamEntry` has no
                   // structural equality — compare the canonical encodings, which

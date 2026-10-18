@@ -65,7 +65,7 @@ let tests =
           test "Phase 818 — SetState.valueFrom derives the write from the store at dispatch time" {
               // The selected row's `id` field becomes the written value — the
               // derived state write, evaluated against the BoundedStore itself.
-              let selectedRow: Fuaran.Core.Row = Map.ofList [ "id", o "ORD-17"; "total", o 42.5 ]
+              let selectedRow: Map<string, obj> = Map.ofList [ "id", o "ORD-17"; "total", o 42.5 ]
 
               let s1 =
                   { store0 with

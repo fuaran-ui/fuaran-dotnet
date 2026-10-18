@@ -91,7 +91,25 @@ let private switchProjection: Gen.KindProjection =
       Mk =
         Some
             """let mkSwitch (id: string) (cases: SwitchCase<'Msg> list) (``default``: Node<'Msg>) (stateKey: string) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Switch { Cases = cases; Default = ``default``; On = Binding.State(stateKey, None); AutoAdvanceMs = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }""" }
+    { Id = id; Kind = NodeKind.Switch { Cases = cases; Default = ``default``; On = Binding.State(stateKey, None); AutoAdvanceMs = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }"""
+      // Core 0.37.0 (fuaran-core Phase 403): a projection may carry its own message map. None: this
+      // vocabulary requests no derived `MapMsg` (see `derivations` below).
+      MapMsg = None
+      // The projected record's fields at their HOST shapes (fuaran-core Phase 403), in the IDL's
+      // order, so `StructuralAccess` reads `SwitchSpec` as it exists: `on` is the REQUIRED merged
+      // binding, and the wire's compact `stateKey` has no field here.
+      RecordFields =
+        let field name t opt =
+            { Name = name
+              Type = t
+              Opt = opt
+              Annotations = Annotations.Empty }
+
+        Some
+            [ field "autoAdvanceMs" TInt Optional
+              field "cases" (TList(TRecord "SwitchCase")) Required
+              field "default" TNode Required
+              field "on" (TUnion("Binding", [ TStr ])) Required ] }
 
 /// The declared support for `Gen.fsharpModuleWith` — see the module doc above.
 let support: Gen.GenSupport =
@@ -1031,8 +1049,8 @@ let rec canonicaliseVector (v: IdlValue) : IdlValue =
 /// One request is deliberately ABSENT, because the generator refuses it for
 /// this vocabulary rather than because nothing wants it: `MapMsg` (the
 /// `Switch` kind is a host projection whose record the generator cannot
-/// construct, and a projection carries no map member — `NodeMap.mapMsg` stays
-/// hand-written until it can). A second, `SlotsOf "Binding"`, is absent because
+/// construct, and `switchProjection` supplies no `MapMsg` member of its own —
+/// `NodeMap.mapMsg` stays hand-written until it does). A second, `SlotsOf "Binding"`, is absent because
 /// its emission does not compile here: it reads the `Switch` projection's fields
 /// from the IDL (an optional `on`) rather than from the projected record (a
 /// required `On`), so the enumerator waits on the generator honouring a host

@@ -592,7 +592,7 @@ let grid<'row, 'Msg> : GridSpecOf<'row, 'Msg> =
 /// the closure override (`None` here, where the typed seed must hold a closure)
 /// and `StaticRows` is the static-table payload the typed facade does not carry.
 let dataGrid<'Msg> : DataGridSpec<'Msg> =
-    { Source = noBinding<Fuaran.Core.Row seq>
+    { Source = noBinding<Map<string, obj> seq>
       RowKey = Option.None
       RowKeyField = Option.None
       Columns = []

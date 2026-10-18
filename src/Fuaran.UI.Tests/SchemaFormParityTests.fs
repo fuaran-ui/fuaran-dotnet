@@ -27,12 +27,14 @@ open Fuaran.Core
 open Fuaran.UI
 open Fuaran.UI.SchemaForm
 
-/// The SHA-256 of the copy — the fuaran-ts table as of its Phase 1914 commit
-/// (7fbcfb2). Re-certifying the table there means re-copying it here and
-/// updating this pin in the same change.
+/// The SHA-256 of the copy — the fuaran-ts table as re-certified by Phase 2226,
+/// when the reference reader (Fuaran.Core 0.37.0) began refusing a repeated
+/// member name and `text-duplicate-keys-are-kept` became
+/// `text-duplicate-keys-are-refused`. Re-certifying the table there means
+/// re-copying it here and updating this pin in the same change.
 [<Literal>]
 let private FixtureSha256 =
-    "2b8cf78663df397575ceed896c3c0f230ee0b91089ac21880b662a5c8045d303"
+    "559d522a6992aec8d4aa3cf2d5895b9ba8bc17d67edb58c097817ab303c7948c"
 
 /// The table's case count at that commit. A table that silently lost cases
 /// would otherwise pass every remaining one.

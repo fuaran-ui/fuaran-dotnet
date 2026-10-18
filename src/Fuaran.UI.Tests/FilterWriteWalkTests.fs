@@ -108,7 +108,7 @@ let private editableGridSource () =
     Fuaran.grid
         "grid"
         id
-        { Defaults.grid<Fuaran.Core.Row, Msg> with
+        { Defaults.grid<Map<string, obj>, Msg> with
             Editable = true
             Source = Binding.Filter("rows", None) }
 
@@ -273,7 +273,7 @@ let tests =
                         Fuaran.grid
                             "dept-grid"
                             id
-                            { Defaults.grid<Fuaran.Core.Row, Msg> with
+                            { Defaults.grid<Map<string, obj>, Msg> with
                                 Source =
                                     Binding.Transform(
                                         TransformSource.Data(Fuaran.Core.DataSource.Embedded emptyTable),

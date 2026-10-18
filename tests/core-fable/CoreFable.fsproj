@@ -38,14 +38,9 @@
     (`$([MSBuild]::VersionGreaterThanOrEquals('$(CoreFableEffectiveCore)', '<version>'))`), and
     Program.fs writes the new spelling under it. When the pin reaches that version, the constant and
     the old-pin arm it guards are deleted together. CORE_0_36 (Core Phases 398 and 390) was retired when
-    the pin was raised to 0.36.0.
-    CORE_0_37: Core 0.37.0 makes a schema entry a `Field` (fuaran-core#423) and a column a typed vector
-    built by its type's constructor (fuaran-core#444). It is defined for the Core 0.37.0 candidate and
-    for the compute 0.39.0 candidate, which builds on it (Phase 2246).
+    the pin was raised to 0.36.0, and CORE_0_37 (a schema entry a `Field`, fuaran-core#423; a column a
+    typed vector, fuaran-core#444) when it was raised to 0.38.1 (Phase 2226). None is defined today.
   -->
-  <PropertyGroup Condition="'$(CoreFableEffectiveCore)' != '' And $([MSBuild]::VersionGreaterThanOrEquals('$(CoreFableEffectiveCore)', '0.37.0'))">
-    <DefineConstants>$(DefineConstants);CORE_0_37</DefineConstants>
-  </PropertyGroup>
   <!--
     `CoreFableSkipCompute=true` is set by the script for a Core-only cut, and only then: the compute
     packages ship from their own producer from 0.33.0 and pin an older Core until this Core release is
@@ -88,17 +83,7 @@
     <PackageReference Include="Fuaran.Core.Observer" />
     <!-- From Core 0.35.2 (Phase 382); unconditional since Phase 2039 raised this repository's pin to carry it. -->
     <PackageReference Include="Fuaran.Core.ContentAddress" />
-  </ItemGroup>
-  <!--
-    `Fuaran.Core.Unit` ships from Core 0.37.0 (Phase 426), and this repository pins an earlier Core, so the
-    package has no pin here yet. It is referenced only in a cut-time run whose candidate carries it; the pin
-    raise that reaches 0.37.0 makes the reference unconditional and moves the pin into the root
-    Directory.Packages.props (the Fuaran.Core.ContentAddress precedent at 0.35.2).
-  -->
-  <PropertyGroup Condition="'$(FuaranCoreVersion)' != '' And $([MSBuild]::VersionGreaterThanOrEquals('$(FuaranCoreVersion)', '0.37.0'))">
-    <CoreFableUnit>true</CoreFableUnit>
-  </PropertyGroup>
-  <ItemGroup Condition="'$(CoreFableUnit)' == 'true'">
-    <PackageReference Include="Fuaran.Core.Unit" CandidateFrom="0.37.0" />
+    <!-- From Core 0.37.0 (Phase 426); unconditional since Phase 2226 raised this repository's pin to carry it. -->
+    <PackageReference Include="Fuaran.Core.Unit" />
   </ItemGroup>
 </Project>

@@ -37,14 +37,14 @@ open Fuaran.UI.Charts
 /// category strings straight into the emitted markup, and the provenance
 /// document carries them a second time, so the escaping leg needs a fixture that
 /// actually exercises it rather than a tidy one.
-let private rows: Fuaran.Core.Row list =
+let private rows: Map<string, obj> list =
     [ Map.ofList [ "quarter", box "Q1 <b>"; "revenue", box 120.0 ]
       Map.ofList [ "quarter", box "Q2 & \"co\""; "revenue", box 90.5 ] ]
 
 let private baseSpec: ChartSpec<obj> =
     { Defaults.chart with
         Kind = ChartKind.Bar
-        Source = Binding.Static(Some(rows :> Fuaran.Core.Row seq))
+        Source = Binding.Static(Some(rows :> Map<string, obj> seq))
         XField = "quarter"
         YFields = [ "revenue" ]
         Title = Some(TextSource.Literal "Revenue & \"growth\" <q> ]]> '") }
@@ -60,7 +60,7 @@ let private textOf (t: TextSource) : string =
     | TextSource.Literal s -> s
     | _ -> "?"
 
-let private emit (provenance: ChartProvenance) (spec: ChartSpec<obj>) (feed: Fuaran.Core.Row list) : string =
+let private emit (provenance: ChartProvenance) (spec: ChartSpec<obj>) (feed: Map<string, obj> list) : string =
     renderSvgWith provenance BindingResolver.empty textOf spec feed
 
 /// The metadata element's body as it sits in the markup — ESCAPED, before any

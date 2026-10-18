@@ -36,28 +36,23 @@ open Fuaran.UI.Program.Server
 
 // ─── fixtures ────────────────────────────────────────────────────────
 
-let private col (name: string) (ty: Fuaran.Core.ColumnType) (cells: Fuaran.Core.Cell list) : Fuaran.Core.Column =
-    { Name = name
-      Type = ty
-      Cells = cells }
-
 /// Three orders, three columns — enough for a pipeline to visibly narrow.
 let private orders: Fuaran.Core.Table =
     { Schema =
-        [ "id", Fuaran.Core.IntType
-          "total", Fuaran.Core.FloatType
-          "region", Fuaran.Core.StringType ]
+        [ Fuaran.Core.Field.create "id" Fuaran.Core.IntType
+          Fuaran.Core.Field.create "total" Fuaran.Core.FloatType
+          Fuaran.Core.Field.create "region" Fuaran.Core.StringType ]
       Columns =
-        [ col "id" Fuaran.Core.IntType [ Fuaran.Core.Int 1; Fuaran.Core.Int 2; Fuaran.Core.Int 3 ]
-          col "total" Fuaran.Core.FloatType [ Fuaran.Core.Float 10.0; Fuaran.Core.Float 20.0; Fuaran.Core.Float 30.0 ]
-          col "region" Fuaran.Core.StringType [ Fuaran.Core.Str "n"; Fuaran.Core.Str "s"; Fuaran.Core.Str "n" ] ] }
+        [ Fuaran.Core.Column.ofInts "id" (Fuaran.Core.Vector.ofList [ 1; 2; 3 ]) Fuaran.Core.AllValid
+          Fuaran.Core.Column.ofFloats "total" (Fuaran.Core.Vector.ofList [ 10.0; 20.0; 30.0 ]) Fuaran.Core.AllValid
+          Fuaran.Core.Column.ofStrs "region" (Fuaran.Core.Vector.ofList [ "n"; "s"; "n" ]) Fuaran.Core.AllValid ] }
 
 let private ordersSchema: Fuaran.Core.Schema = orders.Schema
 
 let private embedded = Fuaran.Core.DataSource.Embedded orders
 
-let private querySlot (name: string) : Binding<Fuaran.Core.Row seq> =
-    Binding.Query(name, (fun (value: obj) -> unbox<Fuaran.Core.Row seq> value), None)
+let private querySlot (name: string) : Binding<Map<string, obj> seq> =
+    Binding.Query(name, (fun (value: obj) -> unbox<Map<string, obj> seq> value), None)
 
 let private gridColumn (field: string option) : ColumnErased<obj> =
     { Defaults.columnErased with
@@ -269,10 +264,12 @@ let private derivationTests =
 
           test "a Join renames a colliding right column exactly as the evaluator does" {
               let right: Fuaran.Core.Table =
-                  { Schema = [ "id", Fuaran.Core.IntType; "name", Fuaran.Core.StringType ]
+                  { Schema =
+                      [ Fuaran.Core.Field.create "id" Fuaran.Core.IntType
+                        Fuaran.Core.Field.create "name" Fuaran.Core.StringType ]
                     Columns =
-                      [ col "id" Fuaran.Core.IntType [ Fuaran.Core.Int 1 ]
-                        col "name" Fuaran.Core.StringType [ Fuaran.Core.Str "a" ] ] }
+                      [ Fuaran.Core.Column.ofInts "id" (Fuaran.Core.Vector.ofList [ 1 ]) Fuaran.Core.AllValid
+                        Fuaran.Core.Column.ofStrs "name" (Fuaran.Core.Vector.ofList [ "a" ]) Fuaran.Core.AllValid ] }
 
               let knowledge =
                   Schema.ofPipeline
@@ -473,13 +470,13 @@ let private refusalTests =
           test "a Union whose sides disagree is refused before it runs" {
               let reordered: Fuaran.Core.Table =
                   { Schema =
-                      [ "total", Fuaran.Core.FloatType
-                        "id", Fuaran.Core.IntType
-                        "region", Fuaran.Core.StringType ]
+                      [ Fuaran.Core.Field.create "total" Fuaran.Core.FloatType
+                        Fuaran.Core.Field.create "id" Fuaran.Core.IntType
+                        Fuaran.Core.Field.create "region" Fuaran.Core.StringType ]
                     Columns =
-                      [ col "total" Fuaran.Core.FloatType [ Fuaran.Core.Float 1.0 ]
-                        col "id" Fuaran.Core.IntType [ Fuaran.Core.Int 9 ]
-                        col "region" Fuaran.Core.StringType [ Fuaran.Core.Str "n" ] ] }
+                      [ Fuaran.Core.Column.ofFloats "total" (Fuaran.Core.Vector.ofList [ 1.0 ]) Fuaran.Core.AllValid
+                        Fuaran.Core.Column.ofInts "id" (Fuaran.Core.Vector.ofList [ 9 ]) Fuaran.Core.AllValid
+                        Fuaran.Core.Column.ofStrs "region" (Fuaran.Core.Vector.ofList [ "n" ]) Fuaran.Core.AllValid ] }
 
               let tree = page [ Fuaran.markdown "text" "no reader" ]
 

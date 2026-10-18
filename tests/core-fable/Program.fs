@@ -16,11 +16,10 @@ module CoreFable.Program
 // candidate alike were retired when the pin was raised to 0.34.0, so a cut-time run against an older
 // Core line is no longer a supported mode.
 //
-// The program is written for Fuaran.Core 0.36.0, the pin: the `CORE_0_36` arms that let it compile
-// against the 0.35.2 pin and the 0.36.0 candidate alike were retired when the pin was raised to
-// 0.36.0. A later candidate that breaks a spelling touched here gets a version constant in
-// `CoreFable.fsproj` (keyed off `CoreFableEffectiveCore`) the same way; `CORE_0_37` is the one defined
-// today, and the `field` / `strColumn` / `intColumn` helpers below hold its arms.
+// The program is written for Fuaran.Core 0.38.1, the pin: the `CORE_0_37` arms that let it compile
+// against the 0.36.0 pin and the 0.37.0 candidate alike were retired when the pin was raised to
+// 0.38.1 (Phase 2226). A later candidate that breaks a spelling touched here gets a version constant
+// in `CoreFable.fsproj` (keyed off `CoreFableEffectiveCore`) the same way; none is defined today.
 //
 // With `CORE_PARITY` defined (see `core-fable.ps1`), the program is also the VALUE leg: `--vectors`
 // prints `Fuaran.Core.ParityVectors.lines ()` — the cross-pipeline table the conformance kit ships
@@ -97,31 +96,23 @@ let private functionTouch =
 // Column + DataFrame — the cell-type probe + the Phase-55 float cell-string.
 let private columnTouch = Cell.typeOf (Int 1)
 
-// A schema entry, spelled once for every table and declaration below. Core 0.37.0 (fuaran-core#423)
-// makes it a `Field`; the pin's is a name and a type.
-let private field (name: string) (ty: ColumnType) =
-#if CORE_0_37
-    Field.create name ty
-#else
-    name, ty
-#endif
+// Unit (Phase 426, Core 0.37.0) — the unit-of-measure parser, its rendering, and a conversion
+// factor, so the package's whole public path reaches the Fable compiler. Unconditional since Phase
+// 2226 raised the pin to 0.38.1.
+let private unitTouch =
+    match Unit.parse "km/h", Unit.parse "m/s" with
+    | Ok kmh, Ok ms -> sprintf "%s/%A" (Unit.render kmh) (Unit.conversionFactor kmh ms |> Result.isOk)
+    | Error e, _
+    | _, Error e -> sprintf "unit:error:%A" e
 
 #if CORE_FABLE_COMPUTE
-// A column, spelled once for every compute table below. Core 0.37.0 (fuaran-core#444) makes a column
-// a typed vector built by its type's constructor; the pin's is built from cells of a declared type.
+// A column, spelled once for every compute table below: a typed vector built by its type's
+// constructor (Core 0.37.0, fuaran-core#444).
 let private strColumn (name: string) (values: string list) =
-#if CORE_0_37
     Column.ofStrs name (Vector.ofList values) AllValid
-#else
-    Column.create name StringType (List.map Str values)
-#endif
 
 let private intColumn (name: string) (values: int list) =
-#if CORE_0_37
     Column.ofInts name (Vector.ofList values) AllValid
-#else
-    Column.create name IntType (List.map Int values)
-#endif
 
 let private dataFrameTouch = DataFrame.cellString (Float 1.5)
 
@@ -147,7 +138,7 @@ let private incrementalTouch =
     let idw = RowIdentity.byColumn "id"
 
     let t: Table =
-        { Schema = [ field "id" StringType; field "a" IntType ]
+        { Schema = [ Field.create "id" StringType; Field.create "a" IntType ]
           Columns = [ strColumn "id" [ "r0"; "r1" ]; intColumn "a" [ 1; 2 ] ] }
 
     // The sort is deliberately part of the touched pipeline (Phase 115): the merge path is the
@@ -159,7 +150,7 @@ let private incrementalTouch =
     let declared = Incremental.isIncremental (Incremental.plan pipeline)
 
     let ordering =
-        DataFrame.rowCompareBy [ field "a" IntType ] [ "a", Asc ] [ Int 1 ] [ Int 2 ]
+        DataFrame.rowCompareBy [ Field.create "a" IntType ] [ "a", Asc ] [ Int 1 ] [ Int 2 ]
 
     match Incremental.primeOn idw pipeline t with
     | Ok primed ->
@@ -176,7 +167,7 @@ let private incrementalTouch =
 // that binds a page size or names `now` reaches all three.
 let private slotAndClockTouch =
     let t: Table =
-        { Schema = [ field "a" IntType ]
+        { Schema = [ Field.create "a" IntType ]
           Columns = [ intColumn "a" [ 3; 1; 2 ] ] }
 
     // A param at both slot kinds, resolved through the SAME env an expression param reads.
@@ -233,7 +224,7 @@ let private queryTouch =
     let q: Query =
         { Id = "q"
           Params = []
-          ResultSchema = [ field "n" IntType ]
+          ResultSchema = [ Field.create "n" IntType ]
           Effect =
             { Host = ReadsHost
               Determinism = networkDeterminism }
@@ -547,7 +538,7 @@ let private constructThenEncodeTouch =
 #if CORE_FABLE_COMPUTE
 let private columnOpsTouch =
     let t: Table =
-        { Schema = [ field "id" StringType; field "amount" IntType ]
+        { Schema = [ Field.create "id" StringType; Field.create "amount" IntType ]
           Columns = [ strColumn "id" [ "r0" ]; intColumn "amount" [ 1 ] ] }
 
     let op = SetCell("amount", 0, Int 2)
@@ -604,11 +595,88 @@ let private contentAddressTouch =
     | Ok d -> "content-address:" + d.Hex
     | Error e -> "content-address:error:" + e
 
+// The column ownership contract (Phase 424's deferred Fable-smoke task, carried by Phase 2226): RUN,
+// not only compiled, because what it certifies is a property of the transpiled storage. Under Fable a
+// `Vector<bool>` is a packed `Uint8ClampedArray` (Phase 431), so a borrowed bool element is the number
+// `1` or `0`: the reads below take it as a CONDITION, as the contract says, and render every read
+// through `%b`, so a packed read that leaked a number would print differently on the two pipelines.
+// `Conformance.columnOwnershipLaws` (Phase 418) runs green over those reads, and goes red, naming the
+// right column and part, for the two writes Phase 431 hand-checked under Fable: a write through a
+// borrowed bool VALUES vector, and a write one past a view's MASK into its neighbour's. A verdict that
+// is not the expected one raises, which fails the run on .NET and under node alike; each verdict is
+// also printed as a `VEC` line, so the runner byte-compares the two pipelines' accounts of it.
+let private ownershipLines () : string list =
+    let sampleColumn (name: string) (columns: Column list) =
+        columns |> List.find (fun c -> c.Name = name)
+
+    let boolReads (columns: Column list) : string =
+        match Column.tryBools (sampleColumn "b" columns) with
+        | Some xs ->
+            let lent = Vector.Unsafe.borrow xs
+
+            // The borrowed element chooses between two strings. `if a[i] then true else false` is NOT
+            // a read as a condition under Fable: the compiler folds it to `a[i]`, which is the packed
+            // number, and the parity leg printed `1` where .NET printed `true` until it was written so.
+            [ for i in 0 .. xs.Length - 1 ->
+                  let viaBorrow = if lent.Array[lent.Offset + i] then "T" else "F"
+                  let viaCell = Column.cell i (sampleColumn "b" columns) = Bool xs[i]
+                  sprintf "%b%s%b" xs[i] viaBorrow viaCell ]
+            |> String.concat ","
+        | None -> failwith "core-fable: the ownership sample has no bool column b"
+
+    let mutable lastReads = ""
+
+    let readEverything (columns: Column list) =
+        for c in columns do
+            for i in 0 .. Column.length c - 1 do
+                Column.cell i c |> ignore
+
+        lastReads <- boolReads columns
+
+    let flipBoolValue (columns: Column list) =
+        match Column.tryBools (sampleColumn "b" columns) with
+        | Some xs ->
+            let lent = Vector.Unsafe.borrow xs
+            lent.Array[lent.Offset] <- not lent.Array[lent.Offset]
+        | None -> failwith "core-fable: the ownership sample has no bool column b"
+
+    let maskOverrun (columns: Column list) =
+        match Column.validity (sampleColumn "f" columns) with
+        | Mask m ->
+            let lent = Vector.Unsafe.borrow m
+            let next = lent.Offset + lent.Length
+            lent.Array[next] <- not lent.Array[next]
+        | AllValid -> failwith "core-fable: the ownership sample holds f's mask as a Mask whatever the draw"
+
+    let green = Conformance.columnOwnershipLaws readEverything 4242 50
+
+    match green |> List.filter (fun r -> not r.Passed) with
+    | [] -> ()
+    | failed -> failwithf "core-fable: the ownership law is red over reads alone: %A" failed
+
+    let redNaming (label: string) (operation: Column list -> unit) (expected: string) (absent: string) =
+        match
+            Conformance.columnOwnershipLaws operation 4242 20
+            |> List.filter (fun r -> not r.Passed)
+        with
+        | [ { Counterexample = Some cx } ] when cx.Contains expected && not (cx.Contains absent) ->
+            sprintf "VEC column-ownership %s red %s" label expected
+        | other -> failwithf "core-fable: the %s go-red did not name %s alone: %A" label expected other
+
+    [ sprintf "VEC column-ownership reads green %d %s" (List.length green) lastReads
+      redNaming "bool-borrow-write" flipBoolValue "column 3 \"b\" (bool): the bytes of its values moved" "validity mask"
+      redNaming
+          "mask-overrun"
+          maskOverrun
+          "column 2 \"g\" (float): the bytes of its validity mask moved"
+          "column 1 \"f\"" ]
+
 /// The value leg. Defined only when the restored `Fuaran.Core.Conformance` ships the table — the
-/// runner reads that off the restore rather than off a version number, and says so either way.
+/// runner reads that off the restore rather than off a version number, and says so either way. The
+/// ownership lines ride it, so the two pipelines' verdicts are byte-compared with the table's.
 let private emitVectors () =
 #if CORE_PARITY
-    ParityVectors.lines () |> List.iter (printfn "%s")
+    ParityVectors.lines () @ ownershipLines () |> List.iter (printfn "%s")
     true
 #else
     false
@@ -654,7 +722,8 @@ let main argv =
           sampleAdequacyTouch
           constructThenEncodeTouch
           observerTouch
-          contentAddressTouch ]
+          contentAddressTouch
+          unitTouch ]
         @ computeTouches
         |> List.iter (printfn "%s")
 

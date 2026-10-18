@@ -686,7 +686,7 @@ let bindingSlotConsistencyTests =
               let pipeline: Fuaran.Compute.Transform list =
                   [ Fuaran.Compute.Transform.Project [ "n", "n" ] ]
 
-              let source: Binding<Fuaran.Core.Row seq> =
+              let source: Binding<Map<string, obj> seq> =
                   Binding.Transform(
                       TransformSource.Live(
                           Binding.State("rows", None),

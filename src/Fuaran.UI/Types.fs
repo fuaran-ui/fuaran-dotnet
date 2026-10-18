@@ -1884,10 +1884,11 @@ and DefaultSort = Generated.DefaultSort
 and SortDirection = Generated.SortDirection
 
 /// A single grid / chart / table row — the *open* name→value map the wire
-/// carries (fuaran#665, Core's `Fuaran.Core.Row`). Cells are boxed scalars;
+/// carries (fuaran#665; Core's `Fuaran.Core.Row` alias until Core 0.37.0 removed it).
+/// Cells are boxed scalars;
 /// the decoded path and `Binding.Transform` resolution have always produced
 /// exactly this shape, so naming it moves signatures, not representations.
-and Row = Fuaran.Core.Row
+and Row = Map<string, obj>
 
 /// Typed author-facing facade for GridSpec. Smart-ctor `Fuaran.grid` projects
 /// the `'row` source through its required `toRow: 'row -> Row` argument and

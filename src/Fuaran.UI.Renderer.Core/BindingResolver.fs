@@ -777,27 +777,22 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
             let names = Fuaran.Core.Table.columnNames result
             let rowCount = Fuaran.Core.Table.rowCount result
 
-            // Phase 1761 — each column's cells read ONCE, as an array, rather than
-            // one index at a time through `Column.cell i`, which walks the cell
-            // list from its head on every call: the rows cost O(rows² × columns),
-            // and a store that now hands back a 2,000-row table without evaluating
-            // it left this conversion as nearly all of the render's time. The
-            // answer is the same cell for every (row, column): the lookup is the
-            // same `tryColumn` by name, and a short or absent column reads `Null`
-            // past its end exactly as the total `Column.cell` does.
-            let columns =
-                names
-                |> List.map (fun n ->
-                    n,
-                    Fuaran.Core.Table.tryColumn n result
-                    |> Option.map (fun c -> List.toArray c.Cells)
-                    |> Option.defaultValue [||])
+            // Each column is looked up ONCE by name, and each cell read through
+            // `Column.cell`, which is O(1) over the typed vectors (Core 0.37.0) and
+            // answers `Null` for an absent row and past a short column's end, so
+            // the rows cost O(rows × columns). (Phase 1761 read each cell list into
+            // an array first, because `cell` used to walk the list from its head.)
+            let columns = names |> List.map (fun n -> n, Fuaran.Core.Table.tryColumn n result)
 
             let rows: Row list =
                 [ for i in 0 .. rowCount - 1 ->
                       columns
-                      |> List.map (fun (n, cells) ->
-                          let cell = if i < cells.Length then cells[i] else Fuaran.Core.Null
+                      |> List.map (fun (n, column) ->
+                          let cell =
+                              match column with
+                              | Some c -> Fuaran.Core.Column.cell i c
+                              | None -> Fuaran.Core.Null
+
                           n, cellToObj cell)
                       |> Map.ofList ]
 
@@ -1129,11 +1124,8 @@ and private evalExprCell
     (parameters: TransformParam list)
     : Result<Fuaran.Core.Cell, string> =
     let unitFrame: Fuaran.Core.Table =
-        { Schema = [ "__unit", Fuaran.Core.BoolType ]
-          Columns =
-            [ { Name = "__unit"
-                Type = Fuaran.Core.BoolType
-                Cells = [ Fuaran.Core.Bool true ] } ] }
+        { Schema = [ Fuaran.Core.Field.create "__unit" Fuaran.Core.BoolType ]
+          Columns = [ Fuaran.Core.Column.ofBools "__unit" (Fuaran.Core.Vector.ofList [ true ]) Fuaran.Core.AllValid ] }
 
     let pipeline =
         [ Fuaran.Compute.Derive("__value", expr)

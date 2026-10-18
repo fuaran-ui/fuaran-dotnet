@@ -87,7 +87,7 @@ let wireRoundTrips =
                           { Fuaran.UI.Defaults.dataGrid with
                               Source =
                                   Binding.Static(
-                                      Some(Seq.ofList [ (Map.ofList [ "lastSeen", box -3 ]: Fuaran.Core.Row) ])
+                                      Some(Seq.ofList [ (Map.ofList [ "lastSeen", box -3 ]: Map<string, obj>) ])
                                   )
                               RowKeyField = Some "lastSeen"
                               Columns = [ col ] }

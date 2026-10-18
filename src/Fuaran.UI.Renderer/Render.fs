@@ -2355,7 +2355,7 @@ let chartPointClick<'Msg>
 ///
 /// Client-only by construction — SSR renders the handle, but no event ever
 /// fires there.
-let mutable private gridDragSource: GridTransfer.Lifted<Fuaran.Core.Row> option =
+let mutable private gridDragSource: GridTransfer.Lifted<Map<string, obj>> option =
     None
 
 /// Phase 1123 — write a live-region line for one grid's transfer status.

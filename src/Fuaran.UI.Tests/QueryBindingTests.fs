@@ -65,7 +65,11 @@ let private relationTests =
           testCase "temporal sink accepts date / timestamp only"
           <| fun _ ->
               Expect.isTrue (compatible DateType BindingSinkClass.Temporal) "date → temporal"
-              Expect.isTrue (compatible TimestampType BindingSinkClass.Temporal) "timestamp → temporal"
+
+              Expect.isTrue
+                  (compatible (TimestampType TimeUnit.Seconds) BindingSinkClass.Temporal)
+                  "timestamp → temporal"
+
               Expect.isFalse (compatible StringType BindingSinkClass.Temporal) "string ✗ temporal"
               Expect.isFalse (compatible FloatType BindingSinkClass.Temporal) "float ✗ temporal"
 
@@ -73,7 +77,11 @@ let private relationTests =
           <| fun _ ->
               Expect.isTrue (compatible StringType BindingSinkClass.Categorical) "string → categorical"
               Expect.isTrue (compatible DateType BindingSinkClass.Categorical) "date → categorical (label)"
-              Expect.isTrue (compatible TimestampType BindingSinkClass.Categorical) "timestamp → categorical (label)"
+
+              Expect.isTrue
+                  (compatible (TimestampType TimeUnit.Seconds) BindingSinkClass.Categorical)
+                  "timestamp → categorical (label)"
+
               Expect.isFalse (compatible FloatType BindingSinkClass.Categorical) "float ✗ categorical"
               Expect.isFalse (compatible BoolType BindingSinkClass.Categorical) "bool ✗ categorical"
 
@@ -85,7 +93,9 @@ let private relationTests =
 
           testCase "default-deny — every ColumnType × sink pairing not allowed is false"
           <| fun _ ->
-              // Exactly 8 of the 6×4 = 24 pairings are compatible; the rest deny.
+              // Exactly 14 of the 10×4 = 40 pairings are compatible; the rest deny. Since Core 0.37.0 a
+              // timestamp type carries its unit and `ColumnType.all` names all four, so the timestamp's
+              // two pairings (temporal, categorical) count once per unit: 8 + 3×2.
               let allPairs =
                   [ for t in ColumnType.all do
                         for s in
@@ -94,7 +104,8 @@ let private relationTests =
                               BindingSinkClass.Categorical
                               BindingSinkClass.Boolean ] -> compatible t s ]
 
-              Expect.equal (allPairs |> List.filter id |> List.length) 8 "exactly 8 compatible pairings"
+              Expect.equal (List.length ColumnType.all) 10 "ten column types, the timestamp at four units"
+              Expect.equal (allPairs |> List.filter id |> List.length) 14 "exactly 14 compatible pairings"
 
           testCase "compatibleColumnTypes is derived from compatible (one source of truth)"
           <| fun _ ->
@@ -112,7 +123,9 @@ let private positiveTests =
         "positive (schema types the UI clean)"
         [ testCase "a currency Float column bound to a Metric passes"
           <| fun _ ->
-              let schema: Schema = [ "revenue", FloatType; "region", StringType ]
+              let schema: Schema =
+                  [ Field.create "revenue" FloatType; Field.create "region" StringType ]
+
               let tree = metricBoundTo "m1" "revenue"
               Expect.equal (check schema tree) [] "no defect — float → numeric Metric"
 
@@ -121,10 +134,10 @@ let private positiveTests =
               // A schema is purely (name, ColumnType) pairs — no rows. A whole
               // dashboard (metrics + sparkline + chart) types against it.
               let schema: Schema =
-                  [ "revenue", FloatType
-                    "units", IntType
-                    "month", DateType
-                    "category", StringType ]
+                  [ Field.create "revenue" FloatType
+                    Field.create "units" IntType
+                    Field.create "month" DateType
+                    Field.create "category" StringType ]
 
               let tree =
                   dashboard
@@ -143,7 +156,9 @@ let private negativeTests =
         "negative (typed defects before render)"
         [ testCase "a String column bound into a numeric Metric is FUARAN066 with recovery"
           <| fun _ ->
-              let schema: Schema = [ "category", StringType; "revenue", FloatType ]
+              let schema: Schema =
+                  [ Field.create "category" StringType; Field.create "revenue" FloatType ]
+
               let tree = metricBoundTo "m1" "category"
 
               match check schema tree with
@@ -161,7 +176,9 @@ let private negativeTests =
           testCase "a String column bound to a chart Y-series is FUARAN066"
           <| fun _ ->
               let schema: Schema =
-                  [ "month", DateType; "category", StringType; "revenue", FloatType ]
+                  [ Field.create "month" DateType
+                    Field.create "category" StringType
+                    Field.create "revenue" FloatType ]
 
               // XField month (date → categorical axis: ok); YField category
               // (string → numeric series: reject).
@@ -177,7 +194,7 @@ let private negativeTests =
 
           testCase "a binding to a column ABSENT from the schema is FUARAN067 (default-deny)"
           <| fun _ ->
-              let schema: Schema = [ "revenue", FloatType ]
+              let schema: Schema = [ Field.create "revenue" FloatType ]
               let tree = metricBoundTo "m1" "profit"
 
               match check schema tree with
@@ -197,7 +214,7 @@ let private negativeTests =
 
           testCase "a temporal column bound into a numeric Metric is rejected"
           <| fun _ ->
-              let schema: Schema = [ "month", DateType ]
+              let schema: Schema = [ Field.create "month" DateType ]
               let tree = metricBoundTo "m1" "month"
               let defects = check schema tree
               Expect.equal (List.length defects) 1 "date ✗ numeric Metric"
@@ -232,7 +249,7 @@ let private walkTests =
 
           testCase "nested children are walked (defect found under a Dashboard)"
           <| fun _ ->
-              let schema: Schema = [ "revenue", FloatType ]
+              let schema: Schema = [ Field.create "revenue" FloatType ]
               let tree = dashboard "dash" [ dashboard "inner" [ metricBoundTo "m1" "missing" ] ]
               Expect.equal (List.length (check schema tree)) 1 "the deep Metric's bad binding surfaces" ]
 

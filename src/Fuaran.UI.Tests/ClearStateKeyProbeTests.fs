@@ -62,7 +62,7 @@ let private listParamDoc =
 /// grid's rows binding. A decode or validate failure fails the test: the
 /// evidence is only evidence if the document is one a host would actually
 /// accept, which is why this probe does not construct the tree in F#.
-let private decodedRowsBinding (json: string) : Binding<Fuaran.Core.Row seq> =
+let private decodedRowsBinding (json: string) : Binding<Map<string, obj> seq> =
     match Fuaran.UI.Generated.decodeNode json with
     | Error e -> failtestf "the probe document did not decode: %s" (Fuaran.Core.DecodeError.describe e)
     | Ok node ->
@@ -73,7 +73,7 @@ let private decodedRowsBinding (json: string) : Binding<Fuaran.Core.Row seq> =
             | Fuaran.UI.Generated.NodeKind.DataGrid spec -> spec.Source
             | other -> failtestf "expected a DataGrid, got %A" other
 
-let private rowCount (binding: Binding<Fuaran.Core.Row seq>) (sources: BindingResolver.BindingSources) : int =
+let private rowCount (binding: Binding<Map<string, obj> seq>) (sources: BindingResolver.BindingSources) : int =
     match BindingResolver.resolve sources binding with
     | BindingResolver.Resolved rows -> Seq.length rows
     | other -> failtestf "expected Resolved, got %A" other

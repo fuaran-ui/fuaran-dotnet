@@ -1308,14 +1308,14 @@ let ssrParityTests =
           // the `contains` would fail), and that the payload it splices is the
           // shared emitter's bytes VERBATIM.
           test "chart provenance — the SSR payload is the shared emitter's bytes verbatim, option ON (Phase 643)" {
-              let rows: Fuaran.Core.Row list =
+              let rows: Map<string, obj> list =
                   [ Map.ofList [ "quarter", box "Q1 & <b>"; "revenue", box 120.0 ]
                     Map.ofList [ "quarter", box "Q2"; "revenue", box 90.5 ] ]
 
               let spec: ChartSpec<obj> =
                   { Defaults.chart with
                       Kind = ChartKind.Bar
-                      Source = Binding.Static(Some(rows :> Fuaran.Core.Row seq))
+                      Source = Binding.Static(Some(rows :> Map<string, obj> seq))
                       XField = "quarter"
                       YFields = [ "revenue" ]
                       Title = Some(TextSource.Literal "Revenue & \"growth\"") }

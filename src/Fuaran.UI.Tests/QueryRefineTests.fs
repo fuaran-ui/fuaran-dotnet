@@ -28,10 +28,10 @@ let private metricBoundTo (id: string) (col: string) : Node<obj> =
 
 /// revenue (Float) + category (String), three rows.
 let private salesTable: Table =
-    { Schema = [ "revenue", FloatType; "category", StringType ]
+    { Schema = [ Field.create "revenue" FloatType; Field.create "category" StringType ]
       Columns =
-        [ Column.create "revenue" FloatType [ Float 30.0; Float 10.0; Float 50.0 ]
-          Column.create "category" StringType [ Str "books"; Str "toys"; Str "games" ] ] }
+        [ Column.ofFloats "revenue" (Vector.ofList [ 30.0; 10.0; 50.0 ]) AllValid
+          Column.ofStrs "category" (Vector.ofList [ "books"; "toys"; "games" ]) AllValid ] }
 
 let private run (a: Async<'T>) : 'T = Async.RunSynchronously a
 

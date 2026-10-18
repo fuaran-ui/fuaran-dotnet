@@ -24,28 +24,22 @@ let private nn (v: 'T) : obj = box v |> Unchecked.nonNull
 let private table =
     Fuaran.Core.Embedded
         { Schema =
-            [ "id", Fuaran.Core.StringType
-              "alert", Fuaran.Core.StringType
-              "severity", Fuaran.Core.StringType ]
+            [ Fuaran.Core.Field.create "id" Fuaran.Core.StringType
+              Fuaran.Core.Field.create "alert" Fuaran.Core.StringType
+              Fuaran.Core.Field.create "severity" Fuaran.Core.StringType ]
           Columns =
-            [ Fuaran.Core.Column.create
+            [ Fuaran.Core.Column.ofStrs
                   "id"
-                  Fuaran.Core.StringType
-                  [ Fuaran.Core.Str "TCK-2041"
-                    Fuaran.Core.Str "TCK-2042"
-                    Fuaran.Core.Str "TCK-2043" ]
-              Fuaran.Core.Column.create
+                  (Fuaran.Core.Vector.ofList [ "TCK-2041"; "TCK-2042"; "TCK-2043" ])
+                  Fuaran.Core.AllValid
+              Fuaran.Core.Column.ofStrs
                   "alert"
-                  Fuaran.Core.StringType
-                  [ Fuaran.Core.Str "alert-2041"
-                    Fuaran.Core.Str "alert-2042"
-                    Fuaran.Core.Str "alert-2043" ]
-              Fuaran.Core.Column.create
+                  (Fuaran.Core.Vector.ofList [ "alert-2041"; "alert-2042"; "alert-2043" ])
+                  Fuaran.Core.AllValid
+              Fuaran.Core.Column.ofStrs
                   "severity"
-                  Fuaran.Core.StringType
-                  [ Fuaran.Core.Str "critical"
-                    Fuaran.Core.Str "high"
-                    Fuaran.Core.Str "critical" ] ] }
+                  (Fuaran.Core.Vector.ofList [ "critical"; "high"; "critical" ])
+                  Fuaran.Core.AllValid ] }
 
 /// The r42 composition, canonicalised: Selection-fed param → filter → project
 /// one column → limit 1. The Selection carries the Phase-632 `field`

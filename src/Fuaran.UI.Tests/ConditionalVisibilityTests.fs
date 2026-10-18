@@ -73,15 +73,9 @@ let private leaf (id: string) : Node<obj> =
 let private countLabelTransform (threshold: int) : Binding<'T> =
     let source =
         Fuaran.Core.Embedded
-            { Schema = [ "id", Fuaran.Core.StringType ]
+            { Schema = [ Fuaran.Core.Field.create "id" Fuaran.Core.StringType ]
               Columns =
-                [ Fuaran.Core.Column.create
-                      "id"
-                      Fuaran.Core.StringType
-                      [ Fuaran.Core.Str "a"
-                        Fuaran.Core.Str "b"
-                        Fuaran.Core.Str "c"
-                        Fuaran.Core.Str "d" ] ] }
+                [ Fuaran.Core.Column.ofStrs "id" (Fuaran.Core.Vector.ofList [ "a"; "b"; "c"; "d" ]) Fuaran.Core.AllValid ] }
 
     Binding.Transform(
         TransformSource.Data source,
@@ -114,8 +108,8 @@ let private countLabelTransform (threshold: int) : Binding<'T> =
 let private labelInBoolSlot: Binding<bool> =
     let source =
         Fuaran.Core.Embedded
-            { Schema = [ "id", Fuaran.Core.StringType ]
-              Columns = [ Fuaran.Core.Column.create "id" Fuaran.Core.StringType [ Fuaran.Core.Str "a" ] ] }
+            { Schema = [ Fuaran.Core.Field.create "id" Fuaran.Core.StringType ]
+              Columns = [ Fuaran.Core.Column.ofStrs "id" (Fuaran.Core.Vector.ofList [ "a" ]) Fuaran.Core.AllValid ] }
 
     Binding.Transform(
         TransformSource.Data source,
@@ -136,15 +130,9 @@ let private unfurnishedQuery: Binding<bool> =
 let private countExceedsTransform (threshold: int) : Binding<bool> =
     let source =
         Fuaran.Core.Embedded
-            { Schema = [ "id", Fuaran.Core.StringType ]
+            { Schema = [ Fuaran.Core.Field.create "id" Fuaran.Core.StringType ]
               Columns =
-                [ Fuaran.Core.Column.create
-                      "id"
-                      Fuaran.Core.StringType
-                      [ Fuaran.Core.Str "a"
-                        Fuaran.Core.Str "b"
-                        Fuaran.Core.Str "c"
-                        Fuaran.Core.Str "d" ] ] }
+                [ Fuaran.Core.Column.ofStrs "id" (Fuaran.Core.Vector.ofList [ "a"; "b"; "c"; "d" ]) Fuaran.Core.AllValid ] }
 
     Binding.Transform(
         TransformSource.Data source,

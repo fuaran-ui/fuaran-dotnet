@@ -129,12 +129,12 @@ let tests =
               let overThreshold (threshold: int) : Binding<bool> =
                   let source =
                       Fuaran.Core.Embedded
-                          { Schema = [ "id", Fuaran.Core.StringType ]
+                          { Schema = [ Fuaran.Core.Field.create "id" Fuaran.Core.StringType ]
                             Columns =
-                              [ Fuaran.Core.Column.create
+                              [ Fuaran.Core.Column.ofStrs
                                     "id"
-                                    Fuaran.Core.StringType
-                                    [ Fuaran.Core.Str "a"; Fuaran.Core.Str "b"; Fuaran.Core.Str "c" ] ] }
+                                    (Fuaran.Core.Vector.ofList [ "a"; "b"; "c" ])
+                                    Fuaran.Core.AllValid ] }
 
                   Binding.Transform(
                       TransformSource.Data source,
@@ -173,15 +173,12 @@ let tests =
               // contains-check on the case alone.
               let source =
                   Fuaran.Core.Embedded
-                      { Schema = [ "id", Fuaran.Core.StringType ]
+                      { Schema = [ Fuaran.Core.Field.create "id" Fuaran.Core.StringType ]
                         Columns =
-                          [ Fuaran.Core.Column.create
+                          [ Fuaran.Core.Column.ofStrs
                                 "id"
-                                Fuaran.Core.StringType
-                                [ Fuaran.Core.Str "a"
-                                  Fuaran.Core.Str "b"
-                                  Fuaran.Core.Str "c"
-                                  Fuaran.Core.Str "d" ] ] }
+                                (Fuaran.Core.Vector.ofList [ "a"; "b"; "c"; "d" ])
+                                Fuaran.Core.AllValid ] }
 
               let selector: Binding<string> =
                   Binding.Transform(

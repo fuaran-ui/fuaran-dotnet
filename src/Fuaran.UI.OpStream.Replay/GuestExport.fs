@@ -202,6 +202,7 @@ module OpRecordWire =
         (jsonl: string)
         : Result<OpRecord<'Msg> list, string> =
         Fuaran.Core.OpStream.fromJsonl (StreamEntry.coreWitnessWith decodeOp) jsonl
+        |> Result.mapError Fuaran.Core.StreamLoadFault.toString
         |> Result.map (List.map (StreamEntry.ofCoreRecord streamId))
 
     /// Decode one canonical Core record line back to a domain `OpRecord`.

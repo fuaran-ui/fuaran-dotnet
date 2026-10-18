@@ -43,8 +43,8 @@ let private declarativeChip (name: string) : Node<Msg> =
 
 let private embeddedSource =
     Fuaran.Core.Embedded
-        { Schema = [ "dept", Fuaran.Core.StringType ]
-          Columns = [ Fuaran.Core.Column.create "dept" Fuaran.Core.StringType [ Fuaran.Core.Str "eng" ] ] }
+        { Schema = [ Fuaran.Core.Field.create "dept" Fuaran.Core.StringType ]
+          Columns = [ Fuaran.Core.Column.ofStrs "dept" (Fuaran.Core.Vector.ofList [ "eng" ]) Fuaran.Core.AllValid ] }
 
 let private paramPipeline: Fuaran.Compute.Transform list =
     [ Fuaran.Compute.Filter(

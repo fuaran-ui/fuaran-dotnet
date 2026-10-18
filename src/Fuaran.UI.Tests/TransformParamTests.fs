@@ -19,16 +19,15 @@ let private nn (v: 'T) : obj = box v |> Unchecked.nonNull
 
 let private table =
     Fuaran.Core.Embedded
-        { Schema = [ "dept", Fuaran.Core.StringType; "amount", Fuaran.Core.IntType ]
+        { Schema =
+            [ Fuaran.Core.Field.create "dept" Fuaran.Core.StringType
+              Fuaran.Core.Field.create "amount" Fuaran.Core.IntType ]
           Columns =
-            [ Fuaran.Core.Column.create
+            [ Fuaran.Core.Column.ofStrs
                   "dept"
-                  Fuaran.Core.StringType
-                  [ Fuaran.Core.Str "eng"; Fuaran.Core.Str "eng"; Fuaran.Core.Str "sales" ]
-              Fuaran.Core.Column.create
-                  "amount"
-                  Fuaran.Core.IntType
-                  [ Fuaran.Core.Int 100; Fuaran.Core.Int 120; Fuaran.Core.Int 90 ] ] }
+                  (Fuaran.Core.Vector.ofList [ "eng"; "eng"; "sales" ])
+                  Fuaran.Core.AllValid
+              Fuaran.Core.Column.ofInts "amount" (Fuaran.Core.Vector.ofList [ 100; 120; 90 ]) Fuaran.Core.AllValid ] }
 
 let private pipeline: Fuaran.Compute.Transform list =
     [ Fuaran.Compute.Filter(

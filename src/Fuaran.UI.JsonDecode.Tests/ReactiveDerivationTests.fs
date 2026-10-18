@@ -535,7 +535,7 @@ let gridPaginationTests =
           }
 
           test "sourceHostPagesOn keys off the page key specifically" {
-              let q (deps: string list option) : Binding<Fuaran.Core.Row seq> =
+              let q (deps: string list option) : Binding<Map<string, obj> seq> =
                   Binding.Query("members", (fun (_: obj) -> Seq.empty), deps)
 
               Expect.isTrue

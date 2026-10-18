@@ -183,9 +183,9 @@ let private nn (v: 'T) : obj = box v |> Unchecked.nonNull
 /// The table the scalar-Transform pins aggregate over.
 let private salesTable =
     Fuaran.Core.Embedded
-        { Schema = [ "amount", Fuaran.Core.FloatType ]
+        { Schema = [ Fuaran.Core.Field.create "amount" Fuaran.Core.FloatType ]
           Columns =
-            [ Fuaran.Core.Column.create "amount" Fuaran.Core.FloatType [ Fuaran.Core.Float 40.0; Fuaran.Core.Float 2.0 ] ] }
+            [ Fuaran.Core.Column.ofFloats "amount" (Fuaran.Core.Vector.ofList [ 40.0; 2.0 ]) Fuaran.Core.AllValid ] }
 
 let private contextWith (sources: Fuaran.UI.BindingSources) = { emptyContext with Sources = sources }
 

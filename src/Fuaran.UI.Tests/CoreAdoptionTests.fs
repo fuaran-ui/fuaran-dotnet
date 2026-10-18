@@ -529,7 +529,7 @@ let tests =
                       match CoreStream.replay coreSw baseTree restored with
                       | Ok rs -> Expect.equal rs coreState "portable JSONL round-trip replays identically"
                       | Error e -> failtestf "round-trip replay failed: %A" e
-                  | Error e -> failtestf "fromJsonl failed: %s" e
+                  | Error e -> failtestf "fromJsonl failed: %s" (Fuaran.Core.StreamLoadFault.toString e)
               | Ok _, Error e -> failtestf "Fuaran.UI replay failed: %A" e
               | Error e, _ -> failtestf "Core append failed: %A" e
 
@@ -636,7 +636,7 @@ let tests =
 //  DIRECTLY, using Core's public `Column` / `DataFrame` / `SchemaWalk` surfaces
 //  rather than a wrapper pretending the law took the tier's input:
 //
-//   * `columnarOpLaws` — the tier's one production `Column.create` authoring
+//   * `columnarOpLaws` — the tier's one production column authoring (typed builders)
 //     surface is `RetrievalSource.Hit.toTable`. The op algebra the family
 //     certifies (`Fuaran.Core.Column.Ops`) has NO call site in this tier at
 //     all — nothing here edits a table through a table-edit op — so what is
@@ -692,7 +692,7 @@ module Columnar =
     // -----------------------------------------------------------------------
 
     /// A seed-replayable sample of retrieval hits — the input to the tier's one
-    /// production `Column.create` authoring surface.
+    /// production column authoring surface (typed builders).
     let private genHits (n: int) (rng: CoreRng.T) : Fuaran.UI.RetrievalSource.Hit list * CoreRng.T =
         let mutable r = rng
 
@@ -715,13 +715,16 @@ module Columnar =
     /// over. Deliberately wider than the one-column fixture the shipped
     /// FUARAN114 tests use, so a pipeline can drop columns as well as add them.
     let private deptTable: Table =
-        { Schema = [ "dept", StringType; "headcount", IntType; "spend", FloatType ]
+        { Schema =
+            [ Field.create "dept" StringType
+              Field.create "headcount" IntType
+              Field.create "spend" FloatType ]
           Columns =
-            [ Column.create "dept" StringType [ Str "eng"; Str "ops"; Str "eng" ]
-              Column.create "headcount" IntType [ Int 12; Int 3; Int 7 ]
-              Column.create "spend" FloatType [ Float 100.0; Float 25.5; Float 60.25 ] ] }
+            [ Column.ofStrs "dept" (Vector.ofList [ "eng"; "ops"; "eng" ]) AllValid
+              Column.ofInts "headcount" (Vector.ofList [ 12; 3; 7 ]) AllValid
+              Column.ofFloats "spend" (Vector.ofList [ 100.0; 25.5; 60.25 ]) AllValid ] }
 
-    let private deptNames = deptTable.Schema |> List.map fst
+    let private deptNames = deptTable.Schema |> List.map _.Name
 
     /// A `DataGrid` naming `columnFields` as its column fields and `rowKeyField`
     /// as its row key, reading `source`. The same shape the shipped FUARAN114
@@ -918,7 +921,10 @@ module Columnar =
                       let hits, r2 = genHits (n + 1) r1
                       rng <- r2
 
-                      let table = Fuaran.UI.RetrievalSource.Hit.toTable hits
+                      let table =
+                          match Fuaran.UI.RetrievalSource.Hit.toTable hits with
+                          | Ok t -> t
+                          | Error e -> failtestf "iteration %d: the generated hits were refused: %A" i e
 
                       Expect.equal
                           (Table.validate table)
@@ -973,7 +979,10 @@ module Columnar =
                       let hits, r2 = genHits (n + 1) r1
                       rng <- r2
 
-                      let table = Fuaran.UI.RetrievalSource.Hit.toTable hits
+                      let table =
+                          match Fuaran.UI.RetrievalSource.Hit.toTable hits with
+                          | Ok t -> t
+                          | Error e -> failtestf "iteration %d: the generated hits were refused: %A" i e
 
                       let scoreCol =
                           match Table.tryColumn "score" table with
@@ -1110,7 +1119,7 @@ module Columnar =
                       | Error e -> failtestf "%s: the tier's refinement evaluator rejected the pipeline (%A)" name e
                       | Ok(refined, _) ->
                           let derived = SchemaWalk.ofPipeline deptTable.Schema pipeline
-                          let actual = refined.Schema |> List.map fst
+                          let actual = refined.Schema |> List.map _.Name
 
                           if SchemaWalk.isClosed derived then
                               closedNonEmpty <- closedNonEmpty + 1
@@ -1254,10 +1263,10 @@ module KeyedChildren =
         =
         CoreConf.keyedChildrenLawsAt keyw Introspect.nodeWitness Introspect.idWitness gen seed n
 
-    // Registered at module initialisation (LawCases.fs's header says why). One run answers for
-    // both spellings: the bare name is Core's obsolete forward of this same body.
+    // Registered at module initialisation (LawCases.fs's header says why). The bare name, Core's
+    // obsolete forward of this body, left Core at 0.37.0 (Phase 2226), so the run answers for one.
     let private keyedChildrenRun =
-        LawCases.adopt [ family; "Conformance.keyedChildrenLaws" ] iterations (run Introspect.keyedWitness opGen)
+        LawCases.adopt [ family ] iterations (run Introspect.keyedWitness opGen)
 
     let private guardPrefix = "sample adequacy (" + family + "): "
 

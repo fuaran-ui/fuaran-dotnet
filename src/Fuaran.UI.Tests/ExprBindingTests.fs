@@ -313,11 +313,9 @@ let oneAlgebra =
               let viaExpr = text srcs e (Some ps)
 
               let oneRow: Fuaran.Core.Table =
-                  { Schema = [ "__unit", Fuaran.Core.BoolType ]
+                  { Schema = [ Fuaran.Core.Field.create "__unit" Fuaran.Core.BoolType ]
                     Columns =
-                      [ { Name = "__unit"
-                          Type = Fuaran.Core.BoolType
-                          Cells = [ Fuaran.Core.Bool true ] } ] }
+                      [ Fuaran.Core.Column.ofBools "__unit" (Fuaran.Core.Vector.ofList [ true ]) Fuaran.Core.AllValid ] }
 
               let viaTransform =
                   BindingResolver.resolveScalarText

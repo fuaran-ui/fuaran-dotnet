@@ -5173,7 +5173,7 @@ module private ChartRules =
                  let dated (t: ColumnType) : bool =
                      match t with
                      | ColumnType.DateType
-                     | ColumnType.TimestampType -> true
+                     | ColumnType.TimestampType _ -> true
                      | _ -> false
 
                  if not (SchemaWalk.has spec.XField produced) then

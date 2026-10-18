@@ -789,6 +789,54 @@
       "encoder": "and private encSwitchSpec<'Msg> (s: SwitchSpec<'Msg>) : JVal =\u000a    Canon.typed \"Switch\" ([ Some(\"cases\", JArr(List.map encSwitchCase s.Cases)); Some(\"default\", encNode s.Default); (match s.On with | Binding.State (key, None) -> Some(\"stateKey\", JStr key) | on -> Some(\"on\", (encBinding JStr) on)); (s.AutoAdvanceMs |> Option.map (fun v -> \"autoAdvanceMs\", JInt v)) ] |> List.choose id)",
       "kind": "Switch",
       "mk": "let mkSwitch (id: string) (cases: SwitchCase<'Msg> list) (``default``: Node<'Msg>) (stateKey: string) : Node<'Msg> =\u000a    { Id = id; Kind = NodeKind.Switch { Cases = cases; Default = ``default``; On = Binding.State(stateKey, None); AutoAdvanceMs = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }",
+      "recordFields": [
+        {
+          "name": "autoAdvanceMs",
+          "optionality": {
+            "$type": "optional"
+          },
+          "type": {
+            "$type": "int"
+          }
+        },
+        {
+          "name": "cases",
+          "optionality": {
+            "$type": "required"
+          },
+          "type": {
+            "$type": "list",
+            "of": {
+              "$type": "record",
+              "name": "SwitchCase"
+            }
+          }
+        },
+        {
+          "name": "default",
+          "optionality": {
+            "$type": "required"
+          },
+          "type": {
+            "$type": "node"
+          }
+        },
+        {
+          "name": "on",
+          "optionality": {
+            "$type": "required"
+          },
+          "type": {
+            "$type": "union",
+            "args": [
+              {
+                "$type": "str"
+              }
+            ],
+            "name": "Binding"
+          }
+        }
+      ],
       "specDecl": "SwitchSpec<'Msg> =\u000a    {\u000a      Cases: SwitchCase<'Msg> list\u000a      Default: Node<'Msg>\u000a      // Phase 768 — the branch SELECTOR is any Binding, not only a StateStore\u000a      // key: `on: {\"$type\":\"Selection\",…}` lets the branch follow the clicked\u000a      // row with no writer at all, which is what closes 032/c6 (the failing\u000a      // emissions wired a Switch to a stateKey nothing emittable could write).\u000a      // The state form keeps its compact spelling on the wire — see the\u000a      // encoder's collapse rule.\u000a      On: Binding<string>\u000a      // Fuaran-UI Phase 1122 — the timed-advance interval, in milliseconds.\u000a      // `None` is the only spelling of \"does not advance\": the renderer starts\u000a      // no timer, and a switch authored before this release is unchanged in the\u000a      // type, on the wire and on the screen.\u000a      //\u000a      // A duration rather than a flag, because \"advances\" with no interval is\u000a      // not renderable and two hosts inventing a period is the divergence the\u000a      // corpus exists to prevent. Non-positive values are refused at decode\u000a      // rather than read as \"off\" — absence already means off.\u000a      AutoAdvanceMs: int option\u000a    }"
     }
   ],

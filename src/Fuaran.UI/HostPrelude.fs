@@ -330,14 +330,14 @@ module RowProjection =
 
     /// Project a named field off a `Row` to a `CellValue`; a missing key is
     /// `CellValue.Empty`.
-    let value (row: Row) (field: string) : CellValue =
+    let value (row: Map<string, obj>) (field: string) : CellValue =
         match Map.tryFind field row with
         | Some v -> ofObj v
         | None -> CellValue.Empty
 
     /// Project a named field off a `Row` to a string. Empty string when the
     /// field is missing (the caller may fall back to the row index).
-    let string_ (row: Row) (field: string) : string =
+    let string_ (row: Map<string, obj>) (field: string) : string =
         match value row field with
         | CellValue.Text s -> s
         | CellValue.Numeric f -> string f

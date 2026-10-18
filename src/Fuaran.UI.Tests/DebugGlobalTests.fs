@@ -207,8 +207,9 @@ let tests =
               // nothing short of the walk finds it.
               let source =
                   Fuaran.Core.Embedded
-                      { Schema = [ "dept", Fuaran.Core.StringType ]
-                        Columns = [ Fuaran.Core.Column.create "dept" Fuaran.Core.StringType [ Fuaran.Core.Str "eng" ] ] }
+                      { Schema = [ Fuaran.Core.Field.create "dept" Fuaran.Core.StringType ]
+                        Columns =
+                          [ Fuaran.Core.Column.ofStrs "dept" (Fuaran.Core.Vector.ofList [ "eng" ]) Fuaran.Core.AllValid ] }
 
               let pipeline: Fuaran.Compute.Transform list =
                   [ Fuaran.Compute.Filter(

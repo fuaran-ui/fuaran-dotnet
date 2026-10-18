@@ -104,14 +104,16 @@ let private rowBound = 12
 let private identityColumn = "id"
 
 let private schema: Schema =
-    [ identityColumn, StringType; "a", IntType; "b", IntType ]
+    [ Field.create identityColumn StringType
+      Field.create "a" IntType
+      Field.create "b" IntType ]
 
 let private tableOf (rows: (string * int * int) list) : Table =
     { Schema = schema
       Columns =
-        [ Column.create identityColumn StringType (rows |> List.map (fun (k, _, _) -> Str k))
-          Column.create "a" IntType (rows |> List.map (fun (_, a, _) -> Int a))
-          Column.create "b" IntType (rows |> List.map (fun (_, _, b) -> Int b)) ] }
+        [ Column.ofStrs identityColumn (rows |> List.map (fun (k, _, _) -> k) |> Vector.ofList) AllValid
+          Column.ofInts "a" (rows |> List.map (fun (_, a, _) -> a) |> Vector.ofList) AllValid
+          Column.ofInts "b" (rows |> List.map (fun (_, _, b) -> b) |> Vector.ofList) AllValid ] }
 
 /// The pipeline classes, chosen so every branch the seam takes is reachable and each is reachable
 /// for a STATED reason rather than by luck of the draw. The adequacy assertions below name the
@@ -281,9 +283,13 @@ let private fullOver (c: Case) : LiveTransformEvaluation =
     |> ok (cite c "full evaluation")
 
 let private sameTable (context: string) (expected: Table) (actual: Table) =
-    Expect.equal (List.map fst actual.Schema) (List.map fst expected.Schema) (context + ": column names")
+    Expect.equal (Table.columnNames actual) (Table.columnNames expected) (context + ": column names")
     Expect.equal actual.Schema expected.Schema (context + ": schema")
-    Expect.equal (actual.Columns |> List.map _.Cells) (expected.Columns |> List.map _.Cells) (context + ": cells")
+
+    Expect.equal
+        (actual.Columns |> List.map Column.toCells)
+        (expected.Columns |> List.map Column.toCells)
+        (context + ": cells")
 
 let private isRestricted (f: RecomputeFootprint) =
     match f.Recompute with

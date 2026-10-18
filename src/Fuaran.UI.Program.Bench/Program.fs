@@ -25,17 +25,14 @@ open Fuaran.Program.Server
 open Fuaran.UI.Program.Server
 
 let private table (rows: int) : Table =
-    { Schema = [ "n", IntType; "g", StringType; "x", FloatType ]
+    { Schema =
+        [ Field.create "n" IntType
+          Field.create "g" StringType
+          Field.create "x" FloatType ]
       Columns =
-        [ { Name = "n"
-            Type = IntType
-            Cells = [ for i in 0 .. rows - 1 -> Int i ] }
-          { Name = "g"
-            Type = StringType
-            Cells = [ for i in 0 .. rows - 1 -> Str(sprintf "g%d" (i % 17)) ] }
-          { Name = "x"
-            Type = FloatType
-            Cells = [ for i in 0 .. rows - 1 -> Float(float ((i * 7919) % 1000) / 10.0) ] } ] }
+        [ Column.ofInts "n" (Vector.init rows id) AllValid
+          Column.ofStrs "g" (Vector.init rows (fun i -> sprintf "g%d" (i % 17))) AllValid
+          Column.ofFloats "x" (Vector.init rows (fun i -> float ((i * 7919) % 1000) / 10.0)) AllValid ] }
 
 /// Filter half the rows away, derive a column, sort on it, keep the top 100.
 let private pipeline (rows: int) : Transform list =

@@ -18,7 +18,7 @@ module Fuaran.UI.Validator.RecipeCertification
 //  How the pieces fit:
 //
 //   1. THE ORACLE — `uiValidityRegistry`. `verifyFunction` demands a
-//      `Fuaran.Core.Validator.Registry<'Node,'Id>` as its VALIDITY ORACLE. We
+//      `Fuaran.Core.Validator.RuleRegistry<'Node,'Id>` as its VALIDITY ORACLE. We
 //      bridge the shipped runtime rule family (`Fuaran.UI.PreEmitValidate`,
 //      which walks a `Node<'Msg>` and surfaces the tree-shape invariants —
 //      duplicate/empty ids, the tabs 1:1 header/child + tag rules) INTO a Core
@@ -125,14 +125,14 @@ module Projection = Fuaran.UI.Core.Function.Projection
 
 let private rawId (NodeId s) : string = s
 
-// ─── The validity ORACLE — PreEmitValidate as a Core Validator.Registry ─────
+// ─── The validity ORACLE — PreEmitValidate as a Core Validator.RuleRegistry ─────
 
-/// The UI validity oracle as a `Fuaran.Core.Validator.Registry<Node<'Msg>,
+/// The UI validity oracle as a `Fuaran.Core.Validator.RuleRegistry<Node<'Msg>,
 /// NodeId>`: one rule family that runs the shipped `PreEmitValidate` tree walk
 /// over the emitted tree and lowers each `PreEmitDefect` into a Core `Defect`.
 /// This is the oracle `verifyFunction` drives — the same rule bodies that gate
 /// a single emitted tree, now the per-binding validity check.
-let uiValidityRegistry<'Msg> : Fuaran.Core.Validator.Registry<Node<'Msg>, NodeId> =
+let uiValidityRegistry<'Msg> : Fuaran.Core.Validator.RuleRegistry<Node<'Msg>, NodeId> =
     let family: Fuaran.Core.RuleFamily<Node<'Msg>, NodeId> =
         { Id = "Fuaran.UI.PreEmitValidate"
           Run =
@@ -387,7 +387,7 @@ let certifyFragment<'Msg>
     // The oracle rule family must materialise the fully-bound decl before
     // validating — wrap `uiValidityRegistry`'s family so it swaps the (bound)
     // decl node for its emitted tree first.
-    let materialisingRegistry: Fuaran.Core.Validator.Registry<Node<'Msg>, NodeId> =
+    let materialisingRegistry: Fuaran.Core.Validator.RuleRegistry<Node<'Msg>, NodeId> =
         let inner = uiValidityRegistry<'Msg>
 
         let wrap (fam: Fuaran.Core.RuleFamily<Node<'Msg>, NodeId>) : Fuaran.Core.RuleFamily<Node<'Msg>, NodeId> =

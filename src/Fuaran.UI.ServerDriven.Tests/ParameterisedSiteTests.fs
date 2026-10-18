@@ -125,13 +125,15 @@ let private tableOf (rows: int) (r: Rng) : Table =
 
     let types = (stringChips |> List.map (fun _ -> StringType)) @ [ FloatType ]
 
-    { Schema = List.zip names types
+    let schema = List.map2 Field.create names types
+
+    { Schema = schema
       Columns =
-        List.zip names types
-        |> List.mapi (fun i (name, ty) ->
-            { Name = name
-              Type = ty
-              Cells = cells |> List.map (fun row -> row[i]) }) }
+        schema
+        |> List.mapi (fun i f ->
+            match Column.ofCells f.Name f.Type (cells |> List.map (fun row -> row[i])) with
+            | Ok c -> c
+            | Error e -> failwithf "the drawn table's column %s holds a cell its type cannot: %A" f.Name e) }
 
 /// The step that reads one chip.
 let private readStep (chip: string) : Transform =
