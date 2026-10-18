@@ -216,12 +216,14 @@ let nodeMapTests =
           } ]
 
 // ============================================================================
-//  Phase 2188 — the generated message map agrees with the hand-written one.
+//  Phase 2188 — the message map is the generated one.
 //
-//  `Generated.mapMsg` is derived from the vocabulary (`Gen.Derivation.MapMsg`);
-//  `NodeMap.mapMsg` was written by hand. Over every node fixture in the shared
-//  corpus, both relabel the decoded tree and the two results encode to the same
-//  bytes, which are the fixture's own bytes: the relabel moves no wire byte.
+//  `Generated.mapMsg` is derived from the vocabulary (`Gen.Derivation.MapMsg`).
+//  Before the hand-written map it replaced was deleted, a test relabelled every
+//  node fixture through both and held the two encodings equal (the commit that
+//  generated the map). What stays is the property that test rested on: over the
+//  shared corpus the relabel moves no wire byte. `NodeMap.mapKind` and
+//  `NodeMap.mapState` relabel one part of a node through the same map.
 // ============================================================================
 
 /// Every `nodes/*.json` fixture as (file name, trimmed contents).
@@ -240,10 +242,10 @@ let private nodeFixtures () : (string * string) list =
         |> List.map (fun p -> fileName p, (System.IO.File.ReadAllText p).Trim())
 
 [<Tests>]
-let generatedMapAgreementTests =
+let generatedMapTests =
     testList
-        "Phase2188.NodeMap.generatedAgreesWithHandWritten"
-        [ test "over the node corpus, both maps encode to the fixture's bytes" {
+        "Phase2188.NodeMap.generated"
+        [ test "over the node corpus, the relabel moves no wire byte" {
               let fixtures = nodeFixtures ()
 
               if List.isEmpty fixtures then
@@ -251,21 +253,51 @@ let generatedMapAgreementTests =
 
               let relabel (o: obj) = string o
 
-              let disagreements =
+              let moved =
                   fixtures
                   |> List.choose (fun (name, json) ->
                       match Generated.decodeNode json with
                       | Error _ -> Some(name, "the fixture did not decode")
-                      | Ok node ->
-                          let viaHand = Generated.encodeNode (NodeMap.mapMsg relabel node)
-                          let viaGenerated = Generated.encodeNode (Generated.mapMsg relabel node)
+                      | Ok node when Generated.encodeNode (Node.mapMsg relabel node) <> json ->
+                          Some(name, "the map moved a wire byte")
+                      | Ok _ -> None)
 
-                          if viaHand <> viaGenerated then
-                              Some(name, "the two maps differ")
-                          elif viaGenerated <> json then
-                              Some(name, "the map moved a wire byte")
-                          else
-                              None)
+              Expect.equal moved [] "the relabel is invisible on the wire"
+          }
 
-              Expect.equal disagreements [] "the generated map agrees with the hand-written one"
+          test "mapKind relabels a kind's handlers" {
+              match NodeMap.mapKind string (buttonWith "b" (Action.Dispatch 7)).Kind with
+              | NodeKind.Button spec ->
+                  match spec.OnClick with
+                  | Action.Dispatch s -> Expect.equal s "7" "Dispatch payload is f-applied"
+                  | other -> failtestf "expected Dispatch, got %A" other
+              | other -> failtestf "expected a Button, got %A" other
+          }
+
+          test "mapState relabels the trees a state behaviour renders" {
+              let state: StateBehaviour<int> =
+                  { OnLoading = Some(buttonWith "loading" (Action.Dispatch 1))
+                    OnEmpty = None
+                    OnError = Some(fun _ -> buttonWith "error" (Action.Dispatch 2)) }
+
+              let mapped = NodeMap.mapState string state
+
+              let dispatched (node: Node<string> option) =
+                  match node |> Option.map (fun n -> n.Kind) with
+                  | Some(NodeKind.Button spec) ->
+                      match spec.OnClick with
+                      | Action.Dispatch s -> Some s
+                      | _ -> None
+                  | _ -> None
+
+              Expect.equal (dispatched mapped.OnLoading) (Some "1") "OnLoading is relabelled"
+              Expect.isNone mapped.OnEmpty "an absent branch stays absent"
+
+              let payload: Fuaran.UI.HostPrelude.ErrorPayload =
+                  { Kind = Fuaran.UI.HostPrelude.ErrorKind.Server
+                    Message = "boom"
+                    CorrelationId = "c" }
+
+              let rendered = mapped.OnError |> Option.map (fun render -> render payload)
+              Expect.equal (dispatched rendered) (Some "2") "OnError's tree is relabelled"
           } ]

@@ -7818,6 +7818,37 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
+## 0.98.0 — the slot opened after v0.97.0 was released (DRAFT — untagged)
+
+_Class: **breaking**, set by its first rider, Phase 2188. `v0.97.0` was released on 2026-10-18. The slot already sits at the
+minor number, which is where a pre-1.0 breaking change goes, so the number does not move._
+
+### What rides this slot — Phase 2188 (the message map is generated)
+
+**Class: BREAKING (fourteen public functions removed) + additive (one generated function).** No wire byte moves.
+
+- **Added: `Generated.mapMsg`** (package `Fuaran.UI`), `('Msg -> 'Msg2) -> Node<'Msg> -> Node<'Msg2>`, derived from the
+  vocabulary by `Gen.Derivation.MapMsg`. The `Switch` kind is a host projection, so its declared support now supplies its
+  own map member (fuaran-core Phase 403), and the generator covers it with every other kind. A kind, field or action case
+  added to the vocabulary is mapped by regeneration rather than by a hand edit that can be forgotten.
+- **Unchanged: `Node.mapMsg`, `NodeMap.mapMsg`, `NodeMap.mapKind`, `NodeMap.mapState`.** Same names and signatures; each now
+  runs the generated map. A test held the generated map's output equal to the hand-written map's, byte for byte, over every
+  node fixture in the shared corpus before the hand-written one was deleted.
+- **BREAKING: removed from `Fuaran.UI.NodeMap`:** `mapAction`, `mapFragmentArg`, `mapButtonSpec`, `mapSelectSpec`,
+  `mapFormSpec`, `mapFormField`, `mapFormFieldKind`, `mapFilterSpec`, `mapFileUploadSpec`, `mapGridSpec`,
+  `mapColumnErased`, `mapCellKindErased`, `mapChartSpec` and `mapMapSpec`. They were the hand-written map's per-declaration
+  parts; the generated layer keeps its own private. **Migration:** relabel the node that holds the value with
+  `Node.mapMsg` and read the part back.
+- **Not generated yet: the binding-slot enumerator (`SlotsOf "Binding"`).** The generator emits it correctly, but the code
+  does not compile in this tier, which builds with nullness checking on (FS3261), so it is not requested. The reason is
+  recorded beside the derivations in `src/Fuaran.UI.Idl/Support.fs`.
+
+**No kind is added, merged or retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s admission gates are not
+engaged. **No escape hatch is created or widened**: the map rewrites message types only, and adds no seam, registry or
+default.
+
+---
+
 ## 0.97.0 — the slot opened after v0.96.0 was released (DRAFT — untagged)
 
 _Class: **breaking**, set by its first rider, Phase 1960. `v0.96.0` was tagged and published at `9045b5f` on 2026-10-18
