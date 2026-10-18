@@ -4,12 +4,14 @@
 //     src/Fuaran.UI.Idl/AuthoringMirrors.fs. Do not edit: regenerate with
 //     FUARAN_REGEN=1 dotnet run --project src/Fuaran.UI.Idl.Tests
 // </auto-generated>
+using System;
 using FsGen = Fuaran.UI.Generated;
 
 namespace Fuaran.UI.CSharp;
 
 /// <summary>The single translation seam between the C# enums and the F# DUs: one arm per
-/// vocabulary case, so a case the C# declaration lacks fails the compile here.</summary>
+/// vocabulary case, so a case the C# declaration lacks fails the compile here. A value
+/// outside the declared cases (a cast integer) throws: there is no fallback case.</summary>
 internal static class EnumMap
 {
     internal static FsGen.ToneVariant ToFs(this Tone v) =>
@@ -22,7 +24,7 @@ internal static class EnumMap
             Tone.Warning => FsGen.ToneVariant.Warning,
             Tone.Critical => FsGen.ToneVariant.Critical,
             Tone.Info => FsGen.ToneVariant.Info,
-            _ => FsGen.ToneVariant.Default,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared Tone case"),
         };
 
     internal static FsGen.StyleWeight ToFs(this Weight v) =>
@@ -31,7 +33,7 @@ internal static class EnumMap
             Weight.Compact => FsGen.StyleWeight.Compact,
             Weight.Standard => FsGen.StyleWeight.Standard,
             Weight.Spacious => FsGen.StyleWeight.Spacious,
-            _ => FsGen.StyleWeight.Standard,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared Weight case"),
         };
 
     internal static FsGen.Emphasis ToFs(this Emphasis v) =>
@@ -40,7 +42,7 @@ internal static class EnumMap
             Emphasis.Quiet => FsGen.Emphasis.Quiet,
             Emphasis.Normal => FsGen.Emphasis.Normal,
             Emphasis.Loud => FsGen.Emphasis.Loud,
-            _ => FsGen.Emphasis.Normal,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared Emphasis case"),
         };
 
     internal static FsGen.ButtonVariant ToFs(this ButtonVariant v) =>
@@ -50,7 +52,7 @@ internal static class EnumMap
             ButtonVariant.Secondary => FsGen.ButtonVariant.Secondary,
             ButtonVariant.Tertiary => FsGen.ButtonVariant.Tertiary,
             ButtonVariant.Destructive => FsGen.ButtonVariant.Destructive,
-            _ => FsGen.ButtonVariant.Secondary,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared ButtonVariant case"),
         };
 
     internal static FsGen.BadgeVariant ToFs(this BadgeVariant v) =>
@@ -62,7 +64,7 @@ internal static class EnumMap
             BadgeVariant.Warning => FsGen.BadgeVariant.Warning,
             BadgeVariant.Critical => FsGen.BadgeVariant.Critical,
             BadgeVariant.Info => FsGen.BadgeVariant.Info,
-            _ => FsGen.BadgeVariant.Neutral,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared BadgeVariant case"),
         };
 
     internal static FsGen.TextDirection ToFs(this TextDirection v) =>
@@ -71,7 +73,7 @@ internal static class EnumMap
             TextDirection.Auto => FsGen.TextDirection.Auto,
             TextDirection.Ltr => FsGen.TextDirection.Ltr,
             TextDirection.Rtl => FsGen.TextDirection.Rtl,
-            _ => FsGen.TextDirection.Auto,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared TextDirection case"),
         };
 
     internal static FsGen.Orientation ToFs(this Orientation v) =>
@@ -79,7 +81,7 @@ internal static class EnumMap
         {
             Orientation.Vertical => FsGen.Orientation.Vertical,
             Orientation.Horizontal => FsGen.Orientation.Horizontal,
-            _ => FsGen.Orientation.Vertical,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared Orientation case"),
         };
 
     internal static FsGen.HeadingVariant ToFs(this HeadingVariant v) =>
@@ -89,7 +91,7 @@ internal static class EnumMap
             HeadingVariant.Eyebrow => FsGen.HeadingVariant.Eyebrow,
             HeadingVariant.Caption => FsGen.HeadingVariant.Caption,
             HeadingVariant.Lead => FsGen.HeadingVariant.Lead,
-            _ => FsGen.HeadingVariant.Standard,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared HeadingVariant case"),
         };
 
     internal static FsGen.ImageVariant ToFs(this ImageVariant v) =>
@@ -98,7 +100,7 @@ internal static class EnumMap
             ImageVariant.Default => FsGen.ImageVariant.Default,
             ImageVariant.Avatar => FsGen.ImageVariant.Avatar,
             ImageVariant.Rounded => FsGen.ImageVariant.Rounded,
-            _ => FsGen.ImageVariant.Default,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared ImageVariant case"),
         };
 
     internal static FsGen.ImageFit ToFs(this ImageFit v) =>
@@ -107,7 +109,7 @@ internal static class EnumMap
             ImageFit.Natural => FsGen.ImageFit.Natural,
             ImageFit.Cover => FsGen.ImageFit.Cover,
             ImageFit.Contain => FsGen.ImageFit.Contain,
-            _ => FsGen.ImageFit.Natural,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared ImageFit case"),
         };
 
     internal static FsGen.ImageAspect ToFs(this ImageAspect v) =>
@@ -118,7 +120,7 @@ internal static class EnumMap
             ImageAspect.FourThree => FsGen.ImageAspect.FourThree,
             ImageAspect.ThreeTwo => FsGen.ImageAspect.ThreeTwo,
             ImageAspect.SixteenNine => FsGen.ImageAspect.SixteenNine,
-            _ => FsGen.ImageAspect.Natural,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared ImageAspect case"),
         };
 
     internal static FsGen.ImageLoading ToFs(this ImageLoading v) =>
@@ -126,7 +128,7 @@ internal static class EnumMap
         {
             ImageLoading.Eager => FsGen.ImageLoading.Eager,
             ImageLoading.Lazy => FsGen.ImageLoading.Lazy,
-            _ => FsGen.ImageLoading.Eager,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared ImageLoading case"),
         };
 
     internal static FsGen.TrackKind ToFs(this TrackKind v) =>
@@ -136,7 +138,7 @@ internal static class EnumMap
             TrackKind.Captions => FsGen.TrackKind.Captions,
             TrackKind.Descriptions => FsGen.TrackKind.Descriptions,
             TrackKind.Chapters => FsGen.TrackKind.Chapters,
-            _ => FsGen.TrackKind.Captions,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared TrackKind case"),
         };
 
     internal static FsGen.EmbedPermission ToFs(this EmbedPermission v) =>
@@ -146,7 +148,7 @@ internal static class EnumMap
             EmbedPermission.AllowSameOrigin => FsGen.EmbedPermission.AllowSameOrigin,
             EmbedPermission.AllowForms => FsGen.EmbedPermission.AllowForms,
             EmbedPermission.AllowFullscreen => FsGen.EmbedPermission.AllowFullscreen,
-            _ => FsGen.EmbedPermission.AllowScripts,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared EmbedPermission case"),
         };
 
     internal static FsGen.ScrollOrientation ToFs(this ScrollOrientation v) =>
@@ -155,7 +157,7 @@ internal static class EnumMap
             ScrollOrientation.Vertical => FsGen.ScrollOrientation.Vertical,
             ScrollOrientation.Horizontal => FsGen.ScrollOrientation.Horizontal,
             ScrollOrientation.Both => FsGen.ScrollOrientation.Both,
-            _ => FsGen.ScrollOrientation.Vertical,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared ScrollOrientation case"),
         };
 
     internal static FsGen.ModalityKind ToFs(this Modality v) =>
@@ -163,7 +165,7 @@ internal static class EnumMap
         {
             Modality.Modal => FsGen.ModalityKind.Modal,
             Modality.Popover => FsGen.ModalityKind.Popover,
-            _ => FsGen.ModalityKind.Modal,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared Modality case"),
         };
 
     internal static FsGen.CaptureSource ToFs(this CaptureSource v) =>
@@ -171,7 +173,7 @@ internal static class EnumMap
         {
             CaptureSource.Camera => FsGen.CaptureSource.Camera,
             CaptureSource.Microphone => FsGen.CaptureSource.Microphone,
-            _ => FsGen.CaptureSource.Camera,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared CaptureSource case"),
         };
 
     internal static FsGen.NavigateTarget ToFs(this NavigateTarget v) =>
@@ -179,7 +181,7 @@ internal static class EnumMap
         {
             NavigateTarget.Self => FsGen.NavigateTarget.Self,
             NavigateTarget.Blank => FsGen.NavigateTarget.Blank,
-            _ => FsGen.NavigateTarget.Self,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared NavigateTarget case"),
         };
 
     internal static FsGen.MathDisplay ToFs(this MathDisplay v) =>
@@ -187,7 +189,7 @@ internal static class EnumMap
         {
             MathDisplay.Inline => FsGen.MathDisplay.Inline,
             MathDisplay.Block => FsGen.MathDisplay.Block,
-            _ => FsGen.MathDisplay.Block,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared MathDisplay case"),
         };
 
     internal static FsGen.IconSize ToFs(this IconSize v) =>
@@ -196,7 +198,7 @@ internal static class EnumMap
             IconSize.Small => FsGen.IconSize.Small,
             IconSize.Medium => FsGen.IconSize.Medium,
             IconSize.Large => FsGen.IconSize.Large,
-            _ => FsGen.IconSize.Medium,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared IconSize case"),
         };
 
     internal static FsGen.TrendPolarity ToFs(this TrendPolarity v) =>
@@ -204,7 +206,7 @@ internal static class EnumMap
         {
             TrendPolarity.HigherIsBetter => FsGen.TrendPolarity.HigherIsBetter,
             TrendPolarity.LowerIsBetter => FsGen.TrendPolarity.LowerIsBetter,
-            _ => FsGen.TrendPolarity.HigherIsBetter,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared TrendPolarity case"),
         };
 
     internal static FsGen.SortDirection ToFs(this SortDirection v) =>
@@ -212,7 +214,7 @@ internal static class EnumMap
         {
             SortDirection.Asc => FsGen.SortDirection.Asc,
             SortDirection.Desc => FsGen.SortDirection.Desc,
-            _ => FsGen.SortDirection.Asc,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared SortDirection case"),
         };
 
     internal static FsGen.TextFormat ToFs(this TextFormat v) =>
@@ -221,7 +223,7 @@ internal static class EnumMap
             TextFormat.Email => FsGen.TextFormat.Email,
             TextFormat.Url => FsGen.TextFormat.Url,
             TextFormat.Tel => FsGen.TextFormat.Tel,
-            _ => FsGen.TextFormat.Email,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared TextFormat case"),
         };
 
     internal static FsGen.CompareOp ToFs(this CompareOp v) =>
@@ -233,7 +235,7 @@ internal static class EnumMap
             CompareOp.Lte => FsGen.CompareOp.Lte,
             CompareOp.Gt => FsGen.CompareOp.Gt,
             CompareOp.Gte => FsGen.CompareOp.Gte,
-            _ => FsGen.CompareOp.Eq,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared CompareOp case"),
         };
 
     internal static FsGen.DateStyle ToFs(this DateStyle v) =>
@@ -243,7 +245,7 @@ internal static class EnumMap
             DateStyle.Medium => FsGen.DateStyle.Medium,
             DateStyle.Long => FsGen.DateStyle.Long,
             DateStyle.Full => FsGen.DateStyle.Full,
-            _ => FsGen.DateStyle.Medium,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared DateStyle case"),
         };
 
     internal static FsGen.TimeStyle ToFs(this TimeStyle v) =>
@@ -253,7 +255,7 @@ internal static class EnumMap
             TimeStyle.Medium => FsGen.TimeStyle.Medium,
             TimeStyle.Long => FsGen.TimeStyle.Long,
             TimeStyle.Full => FsGen.TimeStyle.Full,
-            _ => FsGen.TimeStyle.Short,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared TimeStyle case"),
         };
 
     internal static FsGen.RelativeTimeUnit ToFs(this RelativeTimeUnit v) =>
@@ -266,7 +268,7 @@ internal static class EnumMap
             RelativeTimeUnit.Week => FsGen.RelativeTimeUnit.Week,
             RelativeTimeUnit.Month => FsGen.RelativeTimeUnit.Month,
             RelativeTimeUnit.Year => FsGen.RelativeTimeUnit.Year,
-            _ => FsGen.RelativeTimeUnit.Day,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared RelativeTimeUnit case"),
         };
 
     internal static FsGen.ChartKind ToFs(this ChartKind v) =>
@@ -278,7 +280,7 @@ internal static class EnumMap
             ChartKind.Pie => FsGen.ChartKind.Pie,
             ChartKind.Scatter => FsGen.ChartKind.Scatter,
             ChartKind.Heatmap => FsGen.ChartKind.Heatmap,
-            _ => FsGen.ChartKind.Line,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared ChartKind case"),
         };
 
     internal static FsGen.ChartLegendPosition ToFs(this ChartLegendPosition v) =>
@@ -288,7 +290,7 @@ internal static class EnumMap
             ChartLegendPosition.Right => FsGen.ChartLegendPosition.Right,
             ChartLegendPosition.Bottom => FsGen.ChartLegendPosition.Bottom,
             ChartLegendPosition.None => FsGen.ChartLegendPosition.None,
-            _ => FsGen.ChartLegendPosition.Right,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared ChartLegendPosition case"),
         };
 
     internal static FsGen.ChartDataLabels ToFs(this ChartDataLabels v) =>
@@ -296,7 +298,7 @@ internal static class EnumMap
         {
             ChartDataLabels.Off => FsGen.ChartDataLabels.Off,
             ChartDataLabels.Ends => FsGen.ChartDataLabels.Ends,
-            _ => FsGen.ChartDataLabels.Off,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared ChartDataLabels case"),
         };
 
     internal static FsGen.ChartXScale ToFs(this ChartXScale v) =>
@@ -304,7 +306,7 @@ internal static class EnumMap
         {
             ChartXScale.Category => FsGen.ChartXScale.Category,
             ChartXScale.Temporal => FsGen.ChartXScale.Temporal,
-            _ => FsGen.ChartXScale.Category,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared ChartXScale case"),
         };
 
     internal static FsGen.TimeGrain ToFs(this TimeGrain v) =>
@@ -314,7 +316,7 @@ internal static class EnumMap
             TimeGrain.Minute => FsGen.TimeGrain.Minute,
             TimeGrain.Hour => FsGen.TimeGrain.Hour,
             TimeGrain.Day => FsGen.TimeGrain.Day,
-            _ => FsGen.TimeGrain.Second,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared TimeGrain case"),
         };
 
     internal static FsGen.DurationUnit ToFs(this DurationUnit v) =>
@@ -323,7 +325,7 @@ internal static class EnumMap
             DurationUnit.Seconds => FsGen.DurationUnit.Seconds,
             DurationUnit.Minutes => FsGen.DurationUnit.Minutes,
             DurationUnit.Hours => FsGen.DurationUnit.Hours,
-            _ => FsGen.DurationUnit.Seconds,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared DurationUnit case"),
         };
 
     internal static FsGen.DurationStyle ToFs(this DurationStyle v) =>
@@ -332,7 +334,7 @@ internal static class EnumMap
             DurationStyle.Compact => FsGen.DurationStyle.Compact,
             DurationStyle.Clock => FsGen.DurationStyle.Clock,
             DurationStyle.Long => FsGen.DurationStyle.Long,
-            _ => FsGen.DurationStyle.Compact,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared DurationStyle case"),
         };
 
     internal static FsGen.FileReadEncoding ToFs(this FileEncoding v) =>
@@ -341,6 +343,6 @@ internal static class EnumMap
             FileEncoding.Text => FsGen.FileReadEncoding.Text,
             FileEncoding.Base64 => FsGen.FileReadEncoding.Base64,
             FileEncoding.DataUrl => FsGen.FileReadEncoding.DataUrl,
-            _ => FsGen.FileReadEncoding.Text,
+            _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared FileEncoding case"),
         };
 }

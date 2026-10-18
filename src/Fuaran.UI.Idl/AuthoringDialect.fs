@@ -327,54 +327,48 @@ let notChildAuthorable: (string * string) list =
 /// has no slot for; its case list is the IDL's host case list (pinned by the
 /// conformance suite's `EnumTokenPin`). What is generated is the `ToFs`
 /// translation seam, one arm per IDL case, so a case added to the IDL fails the
-/// C# compile at the declaration it is missing from instead of mapping silently
-/// to the fallback. `Fallback` is the case an out-of-range value maps to — the
-/// arm the hand-kept seam always ended in, kept so the regeneration changes no
-/// behaviour.
-type CSharpEnumMirror =
-    { CSharp: string
-      Idl: string
-      Fallback: string }
+/// C# compile at the declaration it is missing from instead of mapping silently.
+/// An out-of-range value (a cast integer, a combined value) has no arm and
+/// THROWS: Phase 1930 removed the per-enum fallback case, which made
+/// `(EmbedPermission)99` author `AllowScripts`.
+type CSharpEnumMirror = { CSharp: string; Idl: string }
 
-let private mirror cs idl fallback =
-    { CSharp = cs
-      Idl = idl
-      Fallback = fallback }
+let private mirror cs idl = { CSharp = cs; Idl = idl }
 
 /// The C# veneer's enum mirrors.
 let csharpEnums: CSharpEnumMirror list =
-    [ mirror "Tone" "ToneVariant" "Default"
-      mirror "Weight" "StyleWeight" "Standard"
-      mirror "Emphasis" "Emphasis" "Normal"
-      mirror "ButtonVariant" "ButtonVariant" "Secondary"
-      mirror "BadgeVariant" "BadgeVariant" "Neutral"
-      mirror "TextDirection" "TextDirection" "Auto"
-      mirror "Orientation" "Orientation" "Vertical"
-      mirror "HeadingVariant" "HeadingVariant" "Standard"
-      mirror "ImageVariant" "ImageVariant" "Default"
-      mirror "ImageFit" "ImageFit" "Natural"
-      mirror "ImageAspect" "ImageAspect" "Natural"
-      mirror "ImageLoading" "ImageLoading" "Eager"
-      mirror "TrackKind" "TrackKind" "Captions"
-      mirror "EmbedPermission" "EmbedPermission" "AllowScripts"
-      mirror "ScrollOrientation" "ScrollOrientation" "Vertical"
-      mirror "Modality" "ModalityKind" "Modal"
-      mirror "CaptureSource" "CaptureSource" "Camera"
-      mirror "NavigateTarget" "NavigateTarget" "Self"
-      mirror "MathDisplay" "MathDisplay" "Block"
-      mirror "IconSize" "IconSize" "Medium"
-      mirror "TrendPolarity" "TrendPolarity" "HigherIsBetter"
-      mirror "SortDirection" "SortDirection" "Asc"
-      mirror "TextFormat" "TextFormat" "Email"
-      mirror "CompareOp" "CompareOp" "Eq"
-      mirror "DateStyle" "DateStyle" "Medium"
-      mirror "TimeStyle" "TimeStyle" "Short"
-      mirror "RelativeTimeUnit" "RelativeTimeUnit" "Day"
-      mirror "ChartKind" "ChartKind" "Line"
-      mirror "ChartLegendPosition" "ChartLegendPosition" "Right"
-      mirror "ChartDataLabels" "ChartDataLabels" "Off"
-      mirror "ChartXScale" "ChartXScale" "Category"
-      mirror "TimeGrain" "TimeGrain" "Second"
-      mirror "DurationUnit" "DurationUnit" "Seconds"
-      mirror "DurationStyle" "DurationStyle" "Compact"
-      mirror "FileEncoding" "FileReadEncoding" "Text" ]
+    [ mirror "Tone" "ToneVariant"
+      mirror "Weight" "StyleWeight"
+      mirror "Emphasis" "Emphasis"
+      mirror "ButtonVariant" "ButtonVariant"
+      mirror "BadgeVariant" "BadgeVariant"
+      mirror "TextDirection" "TextDirection"
+      mirror "Orientation" "Orientation"
+      mirror "HeadingVariant" "HeadingVariant"
+      mirror "ImageVariant" "ImageVariant"
+      mirror "ImageFit" "ImageFit"
+      mirror "ImageAspect" "ImageAspect"
+      mirror "ImageLoading" "ImageLoading"
+      mirror "TrackKind" "TrackKind"
+      mirror "EmbedPermission" "EmbedPermission"
+      mirror "ScrollOrientation" "ScrollOrientation"
+      mirror "Modality" "ModalityKind"
+      mirror "CaptureSource" "CaptureSource"
+      mirror "NavigateTarget" "NavigateTarget"
+      mirror "MathDisplay" "MathDisplay"
+      mirror "IconSize" "IconSize"
+      mirror "TrendPolarity" "TrendPolarity"
+      mirror "SortDirection" "SortDirection"
+      mirror "TextFormat" "TextFormat"
+      mirror "CompareOp" "CompareOp"
+      mirror "DateStyle" "DateStyle"
+      mirror "TimeStyle" "TimeStyle"
+      mirror "RelativeTimeUnit" "RelativeTimeUnit"
+      mirror "ChartKind" "ChartKind"
+      mirror "ChartLegendPosition" "ChartLegendPosition"
+      mirror "ChartDataLabels" "ChartDataLabels"
+      mirror "ChartXScale" "ChartXScale"
+      mirror "TimeGrain" "TimeGrain"
+      mirror "DurationUnit" "DurationUnit"
+      mirror "DurationStyle" "DurationStyle"
+      mirror "FileEncoding" "FileReadEncoding" ]
