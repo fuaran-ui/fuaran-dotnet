@@ -7818,7 +7818,14 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.96.0 — the slot opened after v0.95.0 was released (DRAFT — untagged)
+## 0.97.0 — the slot opened after v0.96.0 was released (DRAFT — untagged)
+
+_Class: set by its first rider. `v0.96.0` was tagged and published at `9045b5f` on 2026-10-18 (version cut recorded on the
+ledger, 2026-10-18)._
+
+---
+
+## 0.96.0 — the slot opened after v0.95.0 was released (RELEASED — tagged v0.96.0 at 9045b5f, 2026-10-18)
 
 _Class: **breaking**. `v0.95.0` was tagged and published at `9e03c87` on 2026-10-17. The slot opens at the minor number
 because the first changes it is opened for are breaking: Phase 2304 (the tree diff becomes Core's `Diff`; `TreeDiff.ChangeKind`
