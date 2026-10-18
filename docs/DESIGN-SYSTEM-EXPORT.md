@@ -49,9 +49,10 @@ A card is a self-contained HTML document:
 1. **The first line is the marker** `<!-- @dsCard group="<Group>" -->`, the group one of `Type`,
    `Colors`, `Spacing`, `Components`, `Fragments`. A consumer can classify a card from that line
    alone.
-2. The head links `fuaran-reference.css` from the bundle root and inlines the theme's `:root`
-   custom-property block (`Theme.toCss`), then any manifest bridge and brand stylesheet, in that
-   cascade order.
+2. The head cascades in this order: a link to `fuaran-reference.css` at the bundle root; a
+   `<style>` with the theme's `:root` custom-property block (`Theme.toCss`) and any manifest
+   bridge; a `<style>` with the card's own layout scaffolding, which sets no `font-family`; and,
+   when a brand is given, the brand stylesheet in a `<style>` of its own, last (Phase 2339).
 3. The body is rendered by `Fuaran.UI.Renderer.Server`: the same class vocabulary and markup a
    Fuaran host serves.
 
@@ -87,10 +88,12 @@ its role bindings become the Colors roles, and its tokens are bridged into every
 literal values (`ThemeBridge.emitCss`), over the default theme. Tones the manifest does not bind
 are resolved from the theme.
 
-`--brand <css>` cascades a stylesheet of custom properties (typically `--fuaran-tone-*`) after the
-theme in every card, and folds it into the role values, so the Colors card and
-`theme.tokens.json` show the branded resolution. A brand stylesheet may not contain `</`; it is
-inlined into a `<style>` element.
+`--brand <css>` cascades a stylesheet after the theme and the card scaffolding in every card, and
+folds its custom properties (typically `--fuaran-tone-*`) into the role values, so the Colors card
+and `theme.tokens.json` show the branded resolution. Because it comes last, its rules win at equal
+specificity, so a brand can set the typeface with `:root { font-family: … }`. Because it is alone
+in its `<style>` element, it may begin with `@import` to load a web font. A brand stylesheet may
+not contain `</`; it is inlined into a `<style>` element.
 
 ## How a consumer reads it
 

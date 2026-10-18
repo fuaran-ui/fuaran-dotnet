@@ -439,7 +439,17 @@ let private enc (s: string) : string = WebUtility.HtmlEncode s
 let marker (group: CardGroup) : string =
     $"<!-- @dsCard group=\"{CardGroup.label group}\" -->"
 
-let private cardDocument (group: CardGroup) (title: string) (depth: int) (styles: string) (body: string) : string =
+/// What a card's head carries beside the reference stylesheet: the theme's `:root`
+/// block with any manifest bridge, and the brand stylesheet (empty when none).
+type private CardStyles = { Theme: string; Brand: string }
+
+/// The head cascades in the order the card contract states: reference stylesheet,
+/// theme and bridge, the card's own scaffolding, then the brand in a `<style>` of its
+/// own. Last, so its rules win at equal specificity; alone, so an `@import` at its
+/// start is the first statement of its stylesheet, which is the only place CSS
+/// honours one. The scaffolding sets no `font-family`, leaving the reference
+/// stylesheet's (or the brand's) typeface in charge.
+let private cardDocument (group: CardGroup) (title: string) (depth: int) (styles: CardStyles) (body: string) : string =
     let up = String.replicate depth "../"
 
     String.concat
@@ -451,9 +461,9 @@ let private cardDocument (group: CardGroup) (title: string) (depth: int) (styles
           "<meta charset=\"utf-8\">"
           $"<title>{enc title}</title>"
           $"<link rel=\"stylesheet\" href=\"{up}fuaran-reference.css\">"
-          $"<style>\n{styles}\n</style>"
+          $"<style>\n{styles.Theme}\n</style>"
           "<style>"
-          "body { margin: 0; padding: var(--fuaran-space-lg, 24px); font-family: system-ui, sans-serif;"
+          "body { margin: 0; padding: var(--fuaran-space-lg, 24px);"
           "  background: var(--fuaran-tone-default-bg); color: var(--fuaran-tone-default-fg); }"
           ".ds-note { max-width: 72ch; margin-bottom: var(--fuaran-space-lg, 24px); }"
           ".ds-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));"
@@ -467,6 +477,8 @@ let private cardDocument (group: CardGroup) (title: string) (depth: int) (styles
           ".ds-swatch { display: inline-block; width: 48px; height: 24px; vertical-align: middle;"
           "  border: 1px solid var(--fuaran-tone-subdued-border); }"
           "</style>"
+          if styles.Brand.Trim() <> "" then
+              $"<style>\n{styles.Brand}\n</style>"
           "</head>"
           "<body>"
           body
@@ -496,7 +508,7 @@ let private listOrNone (items: string list) =
     else
         String.concat ", " items
 
-let private componentCard (styles: string) (kind: IdlKind) (specimens: Specimen list) : Card =
+let private componentCard (styles: CardStyles) (kind: IdlKind) (specimens: Specimen list) : Card =
     let purpose = specimens |> List.map _.Hint |> List.distinct |> String.concat " "
     let required = kind.Fields |> List.filter _.Required |> List.map _.Name
 
@@ -550,7 +562,7 @@ let private holeLine (h: HoleDecl) : string =
         $"{name}: slot{c} (required)"
     | HoleDecl.Repeat(name, _) -> $"{name}: repeat count (required)"
 
-let private fragmentCard (styles: string) (fragment: StdlibFragment<unit>) : Card =
+let private fragmentCard (styles: CardStyles) (fragment: StdlibFragment<unit>) : Card =
     let holes =
         match fragment.Decl.Kind with
         | NodeKind.FragmentDecl spec -> spec.Holes |> List.map holeLine
@@ -614,7 +626,7 @@ let private fragmentCard (styles: string) (fragment: StdlibFragment<unit>) : Car
 let private tokenRows (vars: (string * string) list) (prefixes: string list) =
     vars |> List.filter (fun (name, _) -> prefixes |> List.exists name.StartsWith)
 
-let private typeCard (styles: string) (theme: Theme) : Card =
+let private typeCard (styles: CardStyles) (theme: Theme) : Card =
     let vars = Theme.toCssVariables theme
 
     let rows =
@@ -659,7 +671,7 @@ let private typeCard (styles: string) (theme: Theme) : Card =
       Path = "cards/type/type.html"
       Html = cardDocument CardGroup.Type "Type" 2 styles body }
 
-let private spacingCard (styles: string) (theme: Theme) : Card =
+let private spacingCard (styles: CardStyles) (theme: Theme) : Card =
     let vars = Theme.toCssVariables theme
 
     let rows =
@@ -717,7 +729,7 @@ let private toneCss (role: string) : string option =
     |> List.tryFind (fun t -> ManifestRole.toneToString t = role)
     |> Option.map (fun t -> (Matrix.toneLabel t).ToLowerInvariant())
 
-let private colorsCard (styles: string) (roles: ColorRole list) : Card =
+let private colorsCard (styles: CardStyles) (roles: ColorRole list) : Card =
     let rows =
         roles
         |> List.map (fun r ->
@@ -822,7 +834,8 @@ let contentHashOf (files: BundleFile list) : string =
 /// Build the bundle for `theme`. `manifest`, when given, supplies the role bindings
 /// and is bridged (literal values) into every card after the theme; without one, the
 /// roles are projected from the theme's own tone variables. A brand stylesheet in
-/// `options.Brand` cascades after both and is folded into the role values.
+/// `options.Brand` cascades after both and the card scaffolding, in its own `<style>`
+/// (so it may begin with `@import`), and is folded into the role values.
 let build (theme: Theme) (manifest: ThemeManifest option) (options: BundleOptions) : Bundle =
     let brand = options.Brand |> Option.defaultValue ""
 
@@ -839,12 +852,15 @@ let build (theme: Theme) (manifest: ThemeManifest option) (options: BundleOption
                 .Css
         | None -> ""
 
-    let styles =
-        [ Theme.toCss theme; bridgeCss; brand ]
+    let themeCss =
+        [ Theme.toCss theme; bridgeCss ]
         |> List.filter (fun s -> s.Trim() <> "")
         |> String.concat "\n"
 
-    let projected = Project.projectFromFuaranToneVars styles
+    let styles = { Theme = themeCss; Brand = brand }
+
+    // The role values resolve through the whole cascade, brand last.
+    let projected = Project.projectFromFuaranToneVars (themeCss + "\n" + brand)
 
     let dtcg = manifest |> Option.defaultValue projected
 

@@ -7871,6 +7871,18 @@ number moves. No shipped byte moves.
 - **Added: the `design-seam-round-trip` / `design-seam-reject` corpus families** (`wire-format-fixtures/design/`,
   normative text `DESIGN_SEAM.md`), written by `--emit-corpus` and certified by `Fuaran.UI.Design.Tests`.
 
+### What rides this slot — Phase 2339 (the design bundle's brand stylesheet cascades last)
+
+**Class: additive.** No public signature moves; it rides the 0.97.0 draft. Every design-system card's `<head>` changes
+shape, so every bundle's content hash moves; bundle bytes are not a stable contract.
+
+- **Changed: the card cascade.** The brand stylesheet now sits in its own `<style>` element, last in the head, after the
+  card scaffolding. Before, it shared the theme's `<style>` and the scaffolding's `body { font-family: system-ui }` came
+  after it, so a brand's typeface never reached a card, and an `@import` in a brand stylesheet was dropped as not at the
+  start of its stylesheet. The scaffolding no longer sets `font-family`.
+- **Migration.** None required. A brand stylesheet that used a specificity workaround (`html body { … }`) still works and
+  can drop it.
+
 ### What rides this slot — Phase 2226 (the tier moves onto Fuaran.Core 0.38.1's typed column)
 
 **Class: BREAKING (source), for consumers that name the substrate's types through this tier.** It rides the 0.97.0

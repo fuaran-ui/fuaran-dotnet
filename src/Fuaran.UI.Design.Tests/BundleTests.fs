@@ -194,6 +194,43 @@ let contract =
               Expect.equal brand.Reference (Some "#123456") "the brand value is the role's reference"
           }
 
+          // Phase 2339 — the brand cascades last, in a <style> of its own.
+          test "the brand is the head's last style element, its @import first in it" {
+              let brandCss =
+                  "@import url(\"https://fonts.example/brand.css\");\n:root { font-family: \"Brand Sans\", serif; }"
+
+              let branded =
+                  Bundle.build
+                      Defaults.theme
+                      None
+                      { defaults () with
+                          Brand = Some brandCss }
+
+              Expect.isEmpty (Bundle.check branded) "a branded bundle satisfies the contract"
+
+              for c in branded.Cards do
+                  let head = c.Html.Substring(0, c.Html.IndexOf "</head>")
+                  let lastStyle = head.LastIndexOf "<style>"
+
+                  Expect.equal
+                      (head.Substring lastStyle)
+                      $"<style>\n{brandCss}\n</style>\n"
+                      $"{c.Path}: the brand is the last style element, verbatim, @import first"
+
+                  Expect.isFalse
+                      (head.Substring(0, lastStyle).Contains "font-family")
+                      $"{c.Path}: nothing before the brand sets a font-family"
+          }
+
+          test "an unbranded card carries no empty brand style element" {
+              let plain = Bundle.build Defaults.theme None (defaults ())
+
+              for c in plain.Cards do
+                  let head = c.Html.Substring(0, c.Html.IndexOf "</head>")
+                  let styles = head.Split("<style>").Length - 1
+                  Expect.equal styles 2 $"{c.Path}: theme and scaffolding only"
+          }
+
           test "a brand stylesheet that could close the style element is refused" {
               Expect.throws
                   (fun () ->

@@ -35,6 +35,9 @@ fuaran design-system export --theme default --out ./design-system
 fuaran design-system export --theme theme.manifest.json --brand brand.css --out ./design-system
 ```
 
+The brand stylesheet is placed last in every card, in a `<style>` element of its own, so it can set the
+typeface (`:root { font-family: … }`) and begin with an `@import` that loads a web font.
+
 ## The bundle
 
 ```
