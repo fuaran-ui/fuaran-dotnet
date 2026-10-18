@@ -1001,6 +1001,13 @@ let emit (outputDir: string) : unit =
     // claim. `--emit-render-text <dir>` writes only this file.
     RenderTextArtifact.write outputDir
 
+    // Co-emit the number-FORMATTING family (Phase 1941): (value, CellFormat) →
+    // text, proved against the shared formatter through the reference decoder.
+    // A self-enumerated family in its own directory, so it is outside
+    // `wholesaleDirectories` and this emit rewrites only its one file.
+    // `--emit-formatting [<dir>]` writes only it.
+    FormattingArtifact.write outputDir |> ignore
+
     // The canonical NodeKind enumeration is the set of true wire `kind.$type`
     // discriminators over the node round-trip fixtures — extracted from the
     // *encoded* bytes, NOT `Kind.name` (which is a display tag that diverges from

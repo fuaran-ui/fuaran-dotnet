@@ -1647,10 +1647,10 @@ $lawsOut = Join-Path $PSScriptRoot 'output'
 # A NEW LAW ADDS ITS PREFIX HERE IN THE SAME CHANGE-SET AS ITS LINES. There is no derivation that
 # would make that automatic without parsing the harness's source, and a pattern derived from the
 # output would admit whatever either leg happened to print.
-$lineShape = '^(MERGE|MERGELAW|MERGEFINDING|MERGEFAIL|ADEQUACY|KIT|KITFAIL|DEFLATE|DEFLATEFAIL|SELECTIONFIELD|DATESENTINEL|DAGCHECKPOINT|TOTAL) '
+$lineShape = '^(MERGE|MERGELAW|MERGEFINDING|MERGEFAIL|ADEQUACY|KIT|KITFAIL|DEFLATE|DEFLATEFAIL|SELECTIONFIELD|DATESENTINEL|DAGCHECKPOINT|NUMBERFORMAT|TOTAL) '
 
 if (-not $SkipLaws) {
-    Write-Stage 'laws — TreeMerge.merge3Way + FoldConfluence.laneFoldLaws + Deflate.inflate, .NET vs Node'
+    Write-Stage 'laws — TreeMerge.merge3Way + FoldConfluence.laneFoldLaws + Deflate.inflate + Formatting.formatNumber, .NET vs Node'
 
     # The laws stage is one addressed subject rather than two: its record stands for the whole
     # green — both legs run, byte-identical, zero violations — so honouring it skips exactly the

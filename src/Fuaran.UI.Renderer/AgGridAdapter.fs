@@ -124,53 +124,6 @@ let private ensureModulesRegistered () =
         moduleRegistry?registerModules ([| allCommunityModule |])
         modulesRegistered <- true
 
-// ─── Formatting helpers ─────────────────────────────────────────────
-//
-// Duplicates `Render.fs`'s private `formatNumber` / `renderCellValue` so the
-// adapter doesn't reach into the renderer's private surface. The shapes
-// must stay in lockstep — keep these aligned with the originals during
-// any future format change.
-
-let private formatNumber (format: CellFormat) (value: float) : string =
-    match format with
-    | CellFormat.None -> string value
-    | CellFormat.Number(Some decimals) -> sprintf "%.*f" decimals value
-    | CellFormat.Number None ->
-        if value = floor value then
-            sprintf "%.0f" value
-        else
-            sprintf "%g" value
-    | CellFormat.Currency code -> sprintf "%s %.2f" code value
-    | CellFormat.Percent(Some decimals) -> sprintf "%.*f%%" decimals (value * 100.0)
-    | CellFormat.Percent None -> sprintf "%.1f%%" (value * 100.0)
-    | CellFormat.SignificantDigits digits -> sprintf "%.*g" digits value
-    | CellFormat.DateTime _ -> string value
-    // Phase 819 — shared Renderer.Core helpers, keeping the adapter in
-    // lockstep with `Render.fs`'s formatNumber (see the note above).
-    | CellFormat.Duration(unit, style) -> Formatting.formatDuration unit style value
-    | CellFormat.RelativeTime unit -> Formatting.formatRelativeEnglish unit value
-    | CellFormat.Custom f -> f (CellValue.Numeric value)
-
-let private renderCellValue (format: CellFormat) (value: CellValue) : string =
-    match format with
-    | CellFormat.Custom f -> f value
-    | _ ->
-        match value with
-        | CellValue.Numeric n -> formatNumber format n
-        | CellValue.Text s -> s
-        | CellValue.Bool b -> if b then "true" else "false"
-        | CellValue.Date d ->
-            match format with
-            | CellFormat.DateTime fmt -> d.ToString(fmt)
-            | _ -> d.ToString("yyyy-MM-dd")
-        | CellValue.Empty -> ""
-
-let private textOf (text: TextSource) : string =
-    match text with
-    | TextSource.Literal s -> s
-    | TextSource.Bound _ -> ""
-    | TextSource.I18n(key, _) -> sprintf "[i18n:%s]" key
-
 // Deterministic correlation id (Phase 138) — seeded from the binding error
 // message so the same failing grid renders byte-identical output (cache-
 // stable + SSR/hydration-parity-safe), matching the core renderer's posture.
@@ -229,6 +182,11 @@ let private buildColumnDef<'Msg>
     // `VisualisationContext` so this adapter's `Link` cell gates identically to
     // the first-party simple table's.
     (egressPolicy: Sanitize.EgressPolicy)
+    // Phase 1941 — the host sources a label `TextSource` resolves against, so a
+    // `Bound` or `I18n` label reads exactly what the first-party table's does
+    // (`BindingResolver.resolveTextSource`), rather than this adapter's own
+    // empty / `[i18n:key]` placeholders.
+    (sources: BindingResolver.BindingSources)
     // Phase 1611 — this column's DECLARED dispositions, decided in
     // [AgGridPlan.fs](AgGridPlan.fs) rather than here. `sortable` was boxed
     // `true` on every column before this phase, so a column that declared
@@ -278,7 +236,7 @@ let private buildColumnDef<'Msg>
             | CellValue.Empty -> null
 
     let valueFormatter (p: obj) : string =
-        renderCellValue col.Format (cellValueOf p)
+        Formatting.formatCellValue col.Format (cellValueOf p)
 
     let baseProps: (string * obj) list =
         [ // A stable, index-derived column id. AG derives one from `field`
@@ -365,7 +323,7 @@ let private buildColumnDef<'Msg>
             [ "cellRenderer", box cellRenderer ]
 
         | CellKindErased.Button(label, onClick) ->
-            let labelText = textOf label
+            let labelText = BindingResolver.resolveTextSource sources label
 
             let cellRenderer (p: obj) : ReactElement =
                 let row: Row = p?data
@@ -392,7 +350,7 @@ let private buildColumnDef<'Msg>
                           [ for item in buttons ->
                                 Html.button
                                     [ prop.className "fuaran-grid-cell-button"
-                                      prop.text (textOf item.Label)
+                                      prop.text (BindingResolver.resolveTextSource sources item.Label)
                                       prop.onClick (fun e ->
                                           e.stopPropagation ()
 
@@ -418,7 +376,7 @@ let private buildColumnDef<'Msg>
                 Html.a (
                     [ prop.className "fuaran-grid-cell-link"
                       prop.href safeHref
-                      prop.text (textOf (labelFn row)) ]
+                      prop.text (BindingResolver.resolveTextSource sources (labelFn row)) ]
                     @ (egressAttrs |> List.map (fun (k, v) -> prop.custom (k, v)))
                 )
 
@@ -430,7 +388,7 @@ let private buildColumnDef<'Msg>
 
                 Html.span
                     [ prop.className (sprintf "fuaran-grid-cell-pill fuaran-pill-%s" (Theme.toneVar (toneFn row)))
-                      prop.text (textOf (labelFn row)) ]
+                      prop.text (BindingResolver.resolveTextSource sources (labelFn row)) ]
 
             [ "cellRenderer", box cellRenderer ]
 
@@ -460,7 +418,7 @@ let private buildColumnDef<'Msg>
                                 [ prop.className "fuaran-grid-cell-progress-fill"
                                   prop.style [ style.width (length.percent (f * 100.0)) ] ]
                             match labelFn with
-                            | Some l -> Html.span [ prop.text (textOf (l row)) ]
+                            | Some l -> Html.span [ prop.text (BindingResolver.resolveTextSource sources (l row)) ]
                             | None -> Html.none ] ]
 
             [ "cellRenderer", box cellRenderer ]
@@ -621,6 +579,7 @@ let renderGridWithReady<'Msg>
                         context.RunAction
                         context.RecurseRender
                         context.EgressPolicy
+                        context.Sources
                         (string index)
                         (List.item index plan.ColumnSortable)
                         initialSort

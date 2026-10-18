@@ -44,7 +44,7 @@ let tests =
 
           test "Currency uses the resolved currency symbol in the .NET fallback" {
               let s = Formatting.format "en-GB" (Format.Currency "GBP") 1234.5
-              Expect.equal s "£1,234.50" "GBP symbol resolved via RegionInfo + locale pattern"
+              Expect.equal s "£1,234.50" "GBP symbol from the curated table + locale pattern"
           }
 
           test "Currency symbol + placement follow the locale pattern (de-DE/EUR)" {
@@ -61,6 +61,18 @@ let tests =
               // server-side regression the RegionInfo-only path exhibited.
               let s = Formatting.format "en-US" (Format.Currency "USD") 1234.5
               Expect.equal s "$1,234.50" "USD symbol + en-US pattern"
+          }
+
+          // Phase 1941 — one symbol table and one fallback for the whole tier: a
+          // code the table does not list renders as the code, on every platform,
+          // exactly as the chart axis renders it. The RegionInfo scan that used
+          // to answer here was platform- and enumeration-order-dependent.
+          test "An unlisted currency renders its ISO code, never a scanned symbol" {
+              Expect.equal (Formatting.currencySymbol "MYR") "MYR" "unlisted code falls back to itself"
+              Expect.equal (Formatting.currencySymbol "EUR") "€" "listed code reads the table"
+
+              let s = Formatting.format "en-US" (Format.Currency "MYR") 1234.5
+              Expect.stringContains s "MYR" "the code is the symbol"
           }
 
           test "Percent reads the source as a ratio and appends a percent sign" {

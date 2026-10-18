@@ -143,22 +143,17 @@ let resolvedText (corpusRoot: string) (v: RenderTextFixtures.Vector) : string =
     match slot with
     | TextSlot text -> Fuaran.UI.Renderer.BindingResolver.resolveTextSource sources text
     | NumericSlot binding ->
-        // The em-dash is the ONE branch of the numeric projection this emitter can
-        // produce, and that is deliberate rather than an omission. The
-        // resolved-number branch is `formatNumber`, which each renderer holds its
-        // own copy of (`Fuaran.UI.Renderer.Server`'s is `internal`, and the Fable
-        // client's is a mirror of it) — there is no shared projection in
-        // `Renderer.Core` for this project to call, and manufacturing a third copy
-        // here would be a fourth thing to keep in step, silently, for as long as it
-        // agreed. So a vector that needs a RESOLVED numeric text fails loudly and
-        // names the remedy, exactly as `tryFindNode` fails on an id its walk cannot
-        // reach: the honest signal to share the projection is a vector that needs
-        // it, not this comment.
+        // The em-dash is the ONE branch of the numeric projection this family
+        // pins. The resolved-number branch is `Formatting.formatNumber`, shared by
+        // both renderers since Phase 2108, and its texts are the `formatting`
+        // family's (Phase 1941), which pins them value by value with no fixture
+        // in between. So a vector that needs a RESOLVED numeric text fails loudly
+        // here and names that family.
         match Fuaran.UI.Renderer.BindingResolver.resolveScalarFloat sources binding with
         | Fuaran.UI.Renderer.BindingResolver.NotResolved -> "—"
         | other ->
             failwithf
-                "render-text vector '%s': the numeric slot '%s' resolved to %A, and this emitter can only prove the UNRESOLVED branch (the em-dash). The resolved-number branch is each renderer's own `formatNumber`; share it into Renderer.Core before authoring a vector that needs it."
+                "render-text vector '%s': the numeric slot '%s' resolved to %A, and this family pins only the UNRESOLVED branch (the em-dash). Resolved numeric text is the `formatting` family's (formatting/manifest.json)."
                 v.Id
                 v.Slot
                 other

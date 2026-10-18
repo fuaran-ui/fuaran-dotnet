@@ -96,6 +96,14 @@ let main _ =
     for line in Laws.checkpointLines checkpointCases do
         printfn "%s" line
 
+    // ---- law 7: the CellFormat projection, byte-identical on both pipelines ----
+    // Phase 1941. The server writes a figure and the browser re-renders it; the
+    // runner's line comparison of the two outputs is the parity check.
+    let numberFormatCases = Laws.numberFormatCases seed 400
+
+    for line in Laws.numberFormatLines numberFormatCases do
+        printfn "%s" line
+
     let violations =
         Laws.mergeViolations mergeVerdict
         + laneFailures
@@ -104,6 +112,7 @@ let main _ =
         + Laws.selectionFieldViolations selectionCases
         + Laws.dateSentinelViolations dateCases
         + Laws.checkpointViolations checkpointCases
+        + Laws.numberFormatViolations numberFormatCases
 
     printfn "TOTAL violations=%d" violations
 

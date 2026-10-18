@@ -59,6 +59,11 @@
          beside schema.json and render-fidelity.json. -->
     <Compile Include="RenderTextFixtures.fs" />
     <Compile Include="RenderTextArtifact.fs" />
+    <!-- Phase 1941 — the number-FORMATTING family (`formatting/manifest.json`):
+         the authored (value, CellFormat, expected text) vectors and the writer
+         that PROVES each one through the reference decoder and formatter. Must
+         precede Corpus.fs, which co-emits it. -->
+    <Compile Include="FormattingArtifact.fs" />
     <Compile Include="Corpus.fs" />
     <!-- Phase 699 — WIRE_FORMAT.md's mechanical tables as marker-block
          projections over idl.json (Phase 696) + manifest.json, with the
@@ -117,6 +122,9 @@
          go-red property proven against a perturbed expectation, and the
          stale-artefact guard. -->
     <Compile Include="RenderTextTests.fs" />
+    <!-- Phase 1941 — the reference host's leg of the formatting family: the
+         stale-artefact guard and every committed vector read back. -->
+    <Compile Include="FormattingTests.fs" />
     <!-- Phase 101 — generative / property-based wire-format fuzzer:
          FsCheck generators (Generators.fs) + idempotence + DU-arm coverage
          properties (IdempotenceProperties.fs). -->

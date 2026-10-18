@@ -13,8 +13,8 @@ module Fuaran.UI.Renderer.Formatting
 //     fallback. It approximates the browser output — `CultureInfo`-driven
 //     grouping + fraction digits for numbers/percent, a culture date format
 //     for dates, and the locale's currency pattern with the requested ISO
-//     code's symbol resolved from a curated ISO-4217 table (with a `RegionInfo`
-//     scan for the long tail) — but does NOT match `Intl`
+//     code's symbol resolved from a curated ISO-4217 table (the code itself
+//     past it) — but does NOT match `Intl`
 //     byte-for-byte (currency fraction digits follow the locale not the
 //     currency, so JPY keeps 2 digits; relative-time is English-only;
 //     date-style mapping is coarse). The fallback exists so
@@ -409,33 +409,288 @@ let formatRelativeEnglish (unit: RelativeTimeUnit) (value: float) : string =
         else
             sprintf "in %d %s" magnitude plural
 
+/// ISO-4217 code → symbol for the common currencies, the ONE table both the
+/// locale-aware .NET `format` fallback below and the chart value axis read
+/// (Phase 1941; each held a copy, and their fallbacks disagreed). Pinned rather
+/// than read from `RegionInfo`, which is platform- and enumeration-order-
+/// dependent: `RegionInfo.CurrencySymbol` is the glyph under Windows NLS and the
+/// bare ISO code for some cultures under Linux/ICU, so EUR rendered "€" on one
+/// server and "EUR" on another.
+let private knownCurrencySymbols: Map<string, string> =
+    Map
+        [ "EUR", "€"
+          "USD", "$"
+          "GBP", "£"
+          "JPY", "¥"
+          "CNY", "¥"
+          "CHF", "CHF"
+          "AUD", "$"
+          "CAD", "$"
+          "NZD", "$"
+          "HKD", "$"
+          "SGD", "$"
+          "INR", "₹"
+          "KRW", "₩"
+          "BRL", "R$"
+          "RUB", "₽"
+          "ZAR", "R"
+          "SEK", "kr"
+          "NOK", "kr"
+          "DKK", "kr"
+          "PLN", "zł"
+          "CZK", "Kč"
+          "HUF", "Ft"
+          "TRY", "₺"
+          "MXN", "$"
+          "THB", "฿"
+          "ILS", "₪" ]
+
+/// The symbol of an ISO-4217 code: the table's glyph, else the code itself —
+/// deterministic on every platform, never a wrong symbol, and what `Intl` itself
+/// writes for a code it has no symbol for.
+let currencySymbol (isoCode: string) : string =
+    match Map.tryFind isoCode knownCurrencySymbols with
+    | Some sym -> sym
+    | None -> isoCode
+
+// ─── JavaScript number text (Phase 1941) ────────────────────────────────────
+//
+// The `CellFormat` projection is the text the HYDRATING bundle produces, so the
+// three JavaScript number spellings it is written in are the contract, and both
+// pipelines produce them exactly:
+//
+//   - `jsNumberText`  — `String(x)`: the shortest round-trip digits, positional
+//     from 1e-6 up to (not including) 1e21 and exponential (`1e+21`, `1.5e-7`)
+//     outside that, `-0` spelled `0`, `NaN` / `Infinity` / `-Infinity`;
+//   - `jsToFixed`     — `x.toFixed(d)`: the exact binary value rounded to `d`
+//     places with a tie going to the larger magnitude, `String(x)` from 1e21 up;
+//   - `jsSignificant` — `Number(x.toPrecision(d)).toString()`: `d` significant
+//     digits by the same rounding, then spelled by `String(x)` — so `1234` at 3
+//     is `1230` and never `1.23E+03`.
+//
+// Fable emits the JavaScript itself. The .NET pipeline cannot lean on the BCL:
+// every `ToString` overload that takes no provider reads the CURRENT culture (a
+// de-DE host wrote `1,50` where the bundle hydrated `1.50`), `"G<n>"` and `%g`
+// switch to exponent form far below 1e21, and `"F<n>"` / `"E<n>"` round an exact
+// tie to EVEN where JavaScript rounds it away from zero (`(0.125).toFixed(2)` is
+// `0.13`; .NET's `"F2"` gives `0.12`). So it rounds the double's exact value as
+// a ratio of integers, and takes only the shortest round-trip digits (`"R"`,
+// invariant) from the BCL, which agree with `String(x)` digit for digit.
+//
+// Precision is clamped to JavaScript's own domain (`toFixed` 0–100,
+// `toPrecision` 1–100), where JavaScript throws a RangeError instead; no wire
+// value outside it is pinned by the corpus.
+
+let private fixedDigits (digits: int) : int = max 0 (min 100 digits)
+
+let private precisionDigits (digits: int) : int = max 1 (min 100 digits)
+
+#if FABLE_COMPILER
+
+[<Fable.Core.Emit("String($0)")>]
+let private jsNumberText (value: float) : string = Fable.Core.Util.jsNative
+
+[<Fable.Core.Emit("$1.toFixed($0)")>]
+let private jsToFixed (digits: int) (value: float) : string = Fable.Core.Util.jsNative
+
+[<Fable.Core.Emit("Number($1.toPrecision($0)).toString()")>]
+let private jsSignificant (digits: int) (value: float) : string = Fable.Core.Util.jsNative
+
+#else
+
+let private invariant = System.Globalization.CultureInfo.InvariantCulture
+
+let private jsNumberText (value: float) : string =
+    if System.Double.IsNaN value then
+        "NaN"
+    elif System.Double.IsPositiveInfinity value then
+        "Infinity"
+    elif System.Double.IsNegativeInfinity value then
+        "-Infinity"
+    elif value = 0.0 then
+        "0"
+    else
+        // The shortest round-trip digits and their decimal exponent, read off
+        // the invariant `"R"` spelling (`1234567.5`, `1E+21`, `1.234E-06`).
+        let r = value.ToString("R", invariant)
+        let negative = r.StartsWith "-"
+        let body = if negative then r.Substring 1 else r
+
+        let mantissa, exponent =
+            match body.IndexOf 'E' with
+            | -1 -> body, 0
+            | i -> body.Substring(0, i), System.Int32.Parse(body.Substring(i + 1), invariant)
+
+        let intPart, fracPart =
+            match mantissa.IndexOf '.' with
+            | -1 -> mantissa, ""
+            | i -> mantissa.Substring(0, i), mantissa.Substring(i + 1)
+
+        let all = intPart + fracPart
+        let leadingZeros = all.Length - all.TrimStart('0').Length
+        let digits = all.TrimStart('0').TrimEnd('0')
+        // ECMA-262 Number::toString: the value is 0.<digits> × 10^n.
+        let k = digits.Length
+        let n = intPart.Length + exponent - leadingZeros
+
+        let text =
+            if k <= n && n <= 21 then
+                digits + System.String('0', n - k)
+            elif 0 < n && n <= 21 then
+                digits.Substring(0, n) + "." + digits.Substring n
+            elif -6 < n && n <= 0 then
+                "0." + System.String('0', -n) + digits
+            else
+                let e = n - 1
+
+                let lead =
+                    if k = 1 then
+                        digits
+                    else
+                        digits.Substring(0, 1) + "." + digits.Substring 1
+
+                lead + "e" + (if e < 0 then "-" else "+") + string (abs e)
+
+        if negative then "-" + text else text
+
+/// |value| as an exact ratio of integers (finite `value`).
+let private exactRatio (value: float) : System.Numerics.BigInteger * System.Numerics.BigInteger =
+    let bits = System.BitConverter.DoubleToInt64Bits(abs value)
+    let biased = int ((bits >>> 52) &&& 0x7FFL)
+    let fraction = bits &&& 0xFFFFFFFFFFFFFL
+
+    let mantissa, exp2 =
+        if biased = 0 then
+            fraction, -1074
+        else
+            fraction ||| 0x10000000000000L, biased - 1075
+
+    let two = System.Numerics.BigInteger 2
+
+    if exp2 >= 0 then
+        System.Numerics.BigInteger mantissa * System.Numerics.BigInteger.Pow(two, exp2), System.Numerics.BigInteger.One
+    else
+        System.Numerics.BigInteger mantissa, System.Numerics.BigInteger.Pow(two, -exp2)
+
+/// `num / den` rounded to an integer, a tie going up (both non-negative).
+let private roundHalfUp (num: System.Numerics.BigInteger) (den: System.Numerics.BigInteger) =
+    let q = System.Numerics.BigInteger.Divide(num, den)
+
+    if (num - q * den) * System.Numerics.BigInteger 2 >= den then
+        q + System.Numerics.BigInteger.One
+    else
+        q
+
+let private pow10 (n: int) =
+    System.Numerics.BigInteger.Pow(System.Numerics.BigInteger 10, n)
+
+let private jsToFixed (digits: int) (value: float) : string =
+    if System.Double.IsNaN value || System.Double.IsInfinity value || abs value >= 1e21 then
+        jsNumberText value
+    else
+        let num, den = exactRatio value
+        let scaled = (roundHalfUp (num * pow10 digits) den).ToString(invariant)
+
+        let body =
+            if digits = 0 then
+                scaled
+            else
+                let padded = scaled.PadLeft(digits + 1, '0')
+
+                padded.Substring(0, padded.Length - digits)
+                + "."
+                + padded.Substring(padded.Length - digits)
+
+        // `toFixed` signs a negative operand whatever it rounds to (-0.001 →
+        // "-0.00"), and never signs -0, which is not less than zero.
+        if value < 0.0 then "-" + body else body
+
+let private jsSignificant (digits: int) (value: float) : string =
+    if System.Double.IsNaN value || System.Double.IsInfinity value || value = 0.0 then
+        jsNumberText value
+    else
+        let num, den = exactRatio value
+
+        // e = floor(log10 |value|), exactly: the float estimate, corrected
+        // against the exact ratio.
+        let atLeast (k: int) =
+            if k >= 0 then
+                num >= den * pow10 k
+            else
+                num * pow10 -k >= den
+
+        let mutable e = int (floor (log10 (abs value)))
+
+        while not (atLeast e) do
+            e <- e - 1
+
+        while atLeast (e + 1) do
+            e <- e + 1
+
+        let shift = e - digits + 1
+
+        let n =
+            if shift >= 0 then
+                roundHalfUp num (den * pow10 shift)
+            else
+                roundHalfUp (num * pow10 -shift) den
+
+        let rounded =
+            System.Double.Parse(
+                n.ToString(invariant) + "E" + string shift,
+                System.Globalization.NumberStyles.Float,
+                invariant
+            )
+
+        jsNumberText (if value < 0.0 then -rounded else rounded)
+
+#endif
+
 /// The `CellFormat` projection of a number — a Metric / LabelValueRow value, a
-/// Metric trend, a grid cell (Phase 2108: one definition, where each renderer
-/// used to carry a byte-identical copy). Locale-independent, so SSR, CSR and
-/// the grid adapter read one figure.
-///
-/// Precision-from-arg `sprintf` (`"%.*f"`) is unsupported by Fable's printf, so
-/// precision rides `ToString("F<n>")` / `ToString("G<n>")`, which round-trip on
-/// both pipelines; the "is whole?" test is `floor` because
-/// `System.Double.IsInteger` is outside Fable's surface (NaN fails it by IEEE
-/// 754, so no separate guard).
+/// Metric trend, a grid cell. ONE definition (Phase 2108 collapsed the client
+/// and server copies onto it; Phase 1941 the AG Grid adapter's), culture-
+/// invariant, and byte-identical to the hydrating bundle's `formatNumber` on
+/// every arm. The corpus's `formatting` family pins it on every host.
 let formatNumber (format: CellFormat) (value: float) : string =
     match format with
-    | CellFormat.None -> string value
-    | CellFormat.Number(Some decimals) -> value.ToString("F" + string decimals)
+    | CellFormat.None -> jsNumberText value
+    | CellFormat.Number(Some decimals) -> jsToFixed (fixedDigits decimals) value
     | CellFormat.Number None ->
-        if value = floor value then
-            sprintf "%.0f" value
+        // `Number.isInteger(x) ? x.toFixed(0) : String(x)`.
+        if not (System.Double.IsInfinity value) && value = floor value then
+            jsToFixed 0 value
         else
-            sprintf "%g" value
-    | CellFormat.Currency code -> sprintf "%s %.2f" code value
-    | CellFormat.Percent(Some decimals) -> (value * 100.0).ToString("F" + string decimals) + "%"
-    | CellFormat.Percent None -> sprintf "%.1f%%" (value * 100.0)
-    | CellFormat.SignificantDigits digits -> value.ToString("G" + string digits)
-    | CellFormat.DateTime _ -> string value
+            jsNumberText value
+    | CellFormat.Currency code -> code + " " + jsToFixed 2 value
+    | CellFormat.Percent(Some decimals) -> jsToFixed (fixedDigits decimals) (value * 100.0) + "%"
+    | CellFormat.Percent None -> jsToFixed 1 (value * 100.0) + "%"
+    | CellFormat.SignificantDigits digits -> jsSignificant (precisionDigits digits) value
+    | CellFormat.DateTime _ -> jsNumberText value
     | CellFormat.Duration(unit, style) -> formatDuration unit style value
     | CellFormat.RelativeTime unit -> formatRelativeEnglish unit value
     | CellFormat.Custom f -> f (CellValue.Numeric value)
+
+/// A grid cell's text — `formatNumber` for a number, the cell's own spelling
+/// otherwise. One definition for the first-party table and the AG Grid
+/// adapter (Phase 1941; each held a copy). A date reads its `DateTime` pattern,
+/// else ISO `yyyy-MM-dd`, invariantly on the .NET pipeline.
+let formatCellValue (format: CellFormat) (value: CellValue) : string =
+    match format, value with
+    | CellFormat.Custom f, _ -> f value
+    | _, CellValue.Numeric n -> formatNumber format n
+    | _, CellValue.Text s -> s
+    | _, CellValue.Bool b -> if b then "true" else "false"
+    | _, CellValue.Date d ->
+        let pattern =
+            match format with
+            | CellFormat.DateTime fmt -> fmt
+            | _ -> "yyyy-MM-dd"
+#if FABLE_COMPILER
+        d.ToString pattern
+#else
+        d.ToString(pattern, System.Globalization.CultureInfo.InvariantCulture)
+#endif
+    | _, CellValue.Empty -> ""
 
 #if FABLE_COMPILER
 
@@ -525,69 +780,6 @@ let private numberPattern (decimals: int option) : string =
     | Some d -> "#,##0." + String('0', d)
     | None -> "#,##0.###"
 
-/// Authoritative ISO-4217 → symbol for the common currencies. Consulted
-/// before the `RegionInfo` scan below, because that scan is both
-/// platform-dependent and enumeration-order-dependent: `RegionInfo.CurrencySymbol`
-/// returns the glyph under Windows NLS but the bare ISO code for some cultures
-/// under Linux/ICU, and the fold keeps whichever culture is enumerated last for
-/// each code — so e.g. EUR resolved to "€" on Windows but "EUR" on Linux (where
-/// the server renderer runs). Pinning the common codes makes server-side SSR
-/// render the same glyph the browser `Intl` path emits. Codes outside this table
-/// fall back to the scan, then to the code itself.
-let private knownCurrencySymbols: Map<string, string> =
-    Map
-        [ "EUR", "€"
-          "USD", "$"
-          "GBP", "£"
-          "JPY", "¥"
-          "CNY", "¥"
-          "CHF", "CHF"
-          "AUD", "$"
-          "CAD", "$"
-          "NZD", "$"
-          "HKD", "$"
-          "SGD", "$"
-          "INR", "₹"
-          "KRW", "₩"
-          "BRL", "R$"
-          "RUB", "₽"
-          "ZAR", "R"
-          "SEK", "kr"
-          "NOK", "kr"
-          "DKK", "kr"
-          "PLN", "zł"
-          "CZK", "Kč"
-          "HUF", "Ft"
-          "TRY", "₺"
-          "MXN", "$"
-          "THB", "฿"
-          "ILS", "₪" ]
-
-/// ISO-4217 code → currency symbol for codes outside `knownCurrencySymbols`,
-/// derived once by scanning every specific culture's `RegionInfo`
-/// (`ISOCurrencySymbol` → `CurrencySymbol`). Cached lazily — the scan touches
-/// ~hundreds of cultures, so it runs at most once per process. An unknown code
-/// falls back to the code itself.
-let private currencySymbols: Lazy<Map<string, string>> =
-    lazy
-        (CultureInfo.GetCultures CultureTypes.SpecificCultures
-         |> Array.fold
-             (fun acc culture ->
-                 try
-                     let region = RegionInfo culture.Name
-                     Map.add region.ISOCurrencySymbol region.CurrencySymbol acc
-                 with _ ->
-                     acc)
-             Map.empty)
-
-let private currencySymbol (isoCode: string) : string =
-    match Map.tryFind isoCode knownCurrencySymbols with
-    | Some sym -> sym
-    | None ->
-        match Map.tryFind isoCode currencySymbols.Value with
-        | Some sym -> sym
-        | None -> isoCode
-
 /// Format `value` per the bounded `Format` intent + resolved `localeTag`.
 /// Documented .NET fallback — see the module header for the parity caveats.
 let format (localeTag: string) (fmt: Format) (value: float) : string =
@@ -598,8 +790,8 @@ let format (localeTag: string) (fmt: Format) (value: float) : string =
     | Format.Currency isoCode ->
         // Format with the locale's currency pattern (symbol placement,
         // grouping, decimal digits) but substitute the requested currency's
-        // symbol — resolved from the curated ISO-4217 table (RegionInfo scan
-        // for the long tail; see `currencySymbol`). The fraction-
+        // symbol — resolved from the curated ISO-4217 table, the code itself
+        // past it (see `currencySymbol`). The fraction-
         // digit count still follows the locale, not the currency (so e.g. JPY
         // keeps the locale's 2 digits rather than CLDR's 0) — a documented
         // approximation; the browser Intl path is exact.

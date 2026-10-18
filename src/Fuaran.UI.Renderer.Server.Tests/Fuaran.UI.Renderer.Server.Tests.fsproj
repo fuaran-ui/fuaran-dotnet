@@ -29,6 +29,8 @@
     <!-- ScalarSsrParityTests certifies the Phase 629/632 scalar-resolution path
          on SSR against the wire-format corpus fixtures that exercise it. -->
     <Compile Include="ScalarSsrParityTests.fs" />
+    <!-- Phase 1941 — the CellFormat projection is culture-invariant under SSR and email. -->
+    <Compile Include="CellNumberFormatSsrTests.fs" />
     <Compile Include="ConditionalVisibilitySsrTests.fs" />
     <!-- A11yCorpusParityTests drives the Phase 951 placement rule from the
          Phase 955 corpus family rather than from hand-built nodes: the shared

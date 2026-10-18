@@ -4948,7 +4948,7 @@ and private renderGrid
                             | Some field -> BindingResolver.projectRowFieldValue row field
                             | None -> CellValue.Empty
 
-                    renderCellValue col.Format value
+                    Formatting.formatCellValue col.Format value
 
                 // Phase 1909 — an action column (Button / ButtonGroup) carries
                 // no data, so the file carries no column for it, even where a
@@ -5874,7 +5874,7 @@ and private renderGrid
                                         | Some field -> BindingResolver.projectRowFieldValue row field
                                         | None -> CellValue.Empty
 
-                                renderCellValue col.Format value
+                                Formatting.formatCellValue col.Format value
 
                             // Phase 1909 — an action column carries no data, so
                             // the file carries no column for it (the AG-Grid
@@ -5977,7 +5977,7 @@ and private renderGridCell
                 Html.input
                     [ prop.className "fuaran-grid-cell-editable"
                       prop.type'.text
-                      prop.value (renderCellValue CellFormat.None value)
+                      prop.value (Formatting.formatCellValue CellFormat.None value)
                       prop.onChange (fun (v: string) ->
                           match System.Double.TryParse v with
                           | true, f -> commitCell (CellValue.Numeric f)
@@ -5987,7 +5987,7 @@ and private renderGridCell
                 let current =
                     match value with
                     | CellValue.Text s -> s
-                    | other -> renderCellValue CellFormat.None other
+                    | other -> Formatting.formatCellValue CellFormat.None other
 
                 Html.input
                     [ prop.className "fuaran-grid-cell-editable"
@@ -5995,7 +5995,7 @@ and private renderGridCell
                       prop.value current
                       prop.onChange (fun (v: string) -> commitCell (CellValue.Text v))
                       yield! pasteProps ]
-        | None -> Html.span [ prop.text (renderCellValue col.Format value) ]
+        | None -> Html.span [ prop.text (Formatting.formatCellValue col.Format value) ]
     // Phase 1126 — the `Editable` cell kind carries NO paste handler,
     // deliberately. Its commit is an author closure per cell, so a block would
     // have to be applied one `runAction` at a time and the author's own handler
@@ -6024,7 +6024,7 @@ and private renderGridCell
                   prop.type'.text
                   prop.value s
                   prop.onChange (fun (v: string) -> runEdit (CellValue.Text v)) ]
-        | _ -> Html.span [ prop.text (renderCellValue col.Format value) ]
+        | _ -> Html.span [ prop.text (Formatting.formatCellValue col.Format value) ]
     | CellKindErased.Checkbox(getValue, onToggle) ->
         let current = getValue row
 
@@ -6415,22 +6415,6 @@ and private renderMap
                                                       match spec.OnMarkerClick with
                                                       | Some f -> runAction ctx (f marker)
                                                       | None -> ()) ] ] ] ] ]
-
-// ─── Formatters ────────────────────────────────────────────────────────────
-
-and private renderCellValue (format: CellFormat) (value: CellValue) : string =
-    match format with
-    | CellFormat.Custom f -> f value
-    | _ ->
-        match value with
-        | CellValue.Numeric n -> Formatting.formatNumber format n
-        | CellValue.Text s -> s
-        | CellValue.Bool b -> if b then "true" else "false"
-        | CellValue.Date d ->
-            match format with
-            | CellFormat.DateTime fmt -> d.ToString(fmt)
-            | _ -> d.ToString("yyyy-MM-dd")
-        | CellValue.Empty -> ""
 
 // ─── Public entry point ────────────────────────────────────────────────────
 

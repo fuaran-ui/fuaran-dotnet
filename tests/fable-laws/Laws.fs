@@ -994,3 +994,93 @@ let checkpointLines (cases: CheckpointCase list) : string list =
 
 let checkpointViolations (cases: CheckpointCase list) : int =
     cases |> List.filter (fun c -> not c.Passed) |> List.length
+
+// ── Law 7: the CellFormat projection, on both pipelines ──────────────────────
+//
+//  Phase 1941. `Formatting.formatNumber` is the text a server-rendered figure
+//  carries AND the text the browser re-renders it as, so the two pipelines must
+//  agree byte for byte. The Fable arm IS JavaScript (`String`, `toFixed`,
+//  `toPrecision`, emitted directly); the .NET arm is an exact-rational
+//  re-implementation of them. This law prints every formatted text, so the
+//  runner's line-by-line comparison of the two outputs is the parity check, and
+//  it also holds the awkward values to their known JavaScript answers.
+//
+//  The sweep's values are PARSED from decimal text rather than computed, because
+//  a correctly-rounded parse gives the same double on both runtimes while a
+//  power-of-ten multiply need not.
+
+type NumberFormatCase =
+    { Name: string
+      Passed: bool
+      Outcome: string }
+
+let private numberFormatCase (name: string) (format: CellFormat) (value: float) (expected: string) =
+    let actual = Formatting.formatNumber format value
+
+    { Name = name
+      Passed = actual = expected
+      Outcome = actual }
+
+/// The formats the sweep runs each value through.
+let private sweepFormats: (string * CellFormat) list =
+    [ "none", CellFormat.None
+      "number", CellFormat.Number None
+      "fixed0", CellFormat.Number(Some 0)
+      "fixed2", CellFormat.Number(Some 2)
+      "fixed7", CellFormat.Number(Some 7)
+      "percent", CellFormat.Percent None
+      "sig1", CellFormat.SignificantDigits 1
+      "sig3", CellFormat.SignificantDigits 3
+      "sig17", CellFormat.SignificantDigits 17 ]
+
+let numberFormatCases (seed: int) (values: int) : NumberFormatCase list =
+    let known =
+        [ numberFormatCase "sig3-1234" (CellFormat.SignificantDigits 3) 1234.0 "1230"
+          numberFormatCase "number-1234567.5" (CellFormat.Number None) 1234567.5 "1234567.5"
+          numberFormatCase "none-small" CellFormat.None 0.000001234 "0.000001234"
+          numberFormatCase "none-negative-zero" CellFormat.None -0.0 "0"
+          numberFormatCase "none-1e21" CellFormat.None 1e21 "1e+21"
+          numberFormatCase "fixed2-tie" (CellFormat.Number(Some 2)) 0.125 "0.13"
+          numberFormatCase "fixed2-negative-to-zero" (CellFormat.Number(Some 2)) -0.001 "-0.00"
+          numberFormatCase "percent0-tie" (CellFormat.Percent(Some 0)) 0.005 "1%"
+          numberFormatCase "none-nan" CellFormat.None nan "NaN"
+          numberFormatCase "fixed2-infinity" (CellFormat.Number(Some 2)) -infinity "-Infinity" ]
+
+    PortableRng.reseed seed
+
+    // The sweep's texts are folded into one digest line rather than printed, so
+    // the log stays readable; the runner compares the digest line like any
+    // other, and a single differing character on either pipeline moves it.
+    // `% 1000003` after a multiply by 31 stays far inside both runtimes' exact
+    // integer range.
+    let mutable digest = 0
+    let mutable count = 0
+
+    for _ in 1..values do
+        let sign = if PortableRng.below 2 = 0 then "" else "-"
+        let digits = string (PortableRng.below 1000000)
+        let exponent = PortableRng.below 50 - 28
+        let value = float (sign + digits + "e" + string exponent)
+
+        for (_, format) in sweepFormats do
+            for c in Formatting.formatNumber format value + "|" do
+                digest <- (digest * 31 + int c) % 1000003
+
+            count <- count + 1
+
+    known
+    @ [ { Name = "sweep-texts=" + string count + "-digest"
+          Passed = true
+          Outcome = string digest } ]
+
+let numberFormatLines (cases: NumberFormatCase list) : string list =
+    let failures = cases |> List.filter (fun c -> not c.Passed)
+
+    ("NUMBERFORMAT cases="
+     + string (List.length cases)
+     + " failed="
+     + string (List.length failures))
+    :: (cases |> List.map (fun c -> "NUMBERFORMAT " + c.Name + " " + c.Outcome))
+
+let numberFormatViolations (cases: NumberFormatCase list) : int =
+    cases |> List.filter (fun c -> not c.Passed) |> List.length

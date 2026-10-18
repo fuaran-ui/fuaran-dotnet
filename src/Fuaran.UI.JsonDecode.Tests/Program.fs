@@ -120,6 +120,20 @@ let main argv =
         RenderTextArtifact.write dir
         printfn "Emitted %s to %s" RenderTextArtifact.fileName dir
         0
+    // Phase 1941 — write ONLY the number-formatting family into a corpus
+    // directory:
+    //   dotnet run --project src/Fuaran.UI.JsonDecode.Tests -- --emit-formatting [<dir>]
+    // `--emit-corpus` co-emits it; this is the vector-only change. The writer
+    // proves every vector against the reference formatter, so it cannot publish
+    // a claim the reference host does not meet.
+    | "--emit-formatting" :: rest ->
+        let dir =
+            match rest with
+            | d :: _ -> d
+            | [] -> Fuaran.Tests.CorpusRoot.find ()
+
+        printfn "Emitted %s" (FormattingArtifact.write dir)
+        0
     // Phase 101 cross-host fuzz-sample exchange. `--emit-fuzz-samples <dir>
     // <count>` writes F#-canonical generated samples; `--check-fuzz-samples
     // <dir> [host]` validates the <host>-canonical samples that host's emitter

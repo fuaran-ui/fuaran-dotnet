@@ -1121,49 +1121,12 @@ let private renderFixed (dps: int) (v: float) : string =
 
         if v < 0.0 && units > 0.0 then "-" + body else body
 
-/// ISO-4217 code → symbol, the invariant table (a superset of the codes the
-/// locale-aware `Formatting` module curates). An unlisted code renders as the
-/// code itself — deterministic, and never a wrong symbol.
-let private currencySymbols: Map<string, string> =
-    Map
-        [ "EUR", "€"
-          "USD", "$"
-          "GBP", "£"
-          "JPY", "¥"
-          "CNY", "¥"
-          "CHF", "CHF"
-          "AUD", "$"
-          "CAD", "$"
-          "NZD", "$"
-          "HKD", "$"
-          "SGD", "$"
-          "INR", "₹"
-          "KRW", "₩"
-          "BRL", "R$"
-          "RUB", "₽"
-          "ZAR", "R"
-          "SEK", "kr"
-          "NOK", "kr"
-          "DKK", "kr"
-          "PLN", "zł"
-          "CZK", "Kč"
-          "HUF", "Ft"
-          "TRY", "₺"
-          "MXN", "$"
-          "THB", "฿"
-          "ILS", "₪" ]
-
-let private currencySymbol (iso: string) : string =
-    match Map.tryFind iso currencySymbols with
-    | Some s -> s
-    | None -> iso
-
 /// The unit symbol a `Format` contributes to an axis-unit label — the currency
 /// symbol, or `""` for every other arm (a percentage's unit is already the `%`
 /// on each tick).
 let private formatUnitSymbol (fmt: Format option) : string =
     match fmt with
-    | Some(Format.Currency iso) -> currencySymbol iso
+    | Some(Format.Currency iso) -> Formatting.currencySymbol iso
     | _ -> ""
 
 /// The ×100 a `Format.Percent` applies to BOTH the value and the step (so the
@@ -1193,7 +1156,7 @@ let private formatValue (fmt: Format option) (divisor: float) (dropSymbol: bool)
     match fmt with
     | Some(Format.Percent _) -> body + "%"
     | Some(Format.Currency iso) when not dropSymbol ->
-        let sym = currencySymbol iso
+        let sym = Formatting.currencySymbol iso
 
         if body.StartsWith "-" then
             "-" + sym + body.Substring 1
