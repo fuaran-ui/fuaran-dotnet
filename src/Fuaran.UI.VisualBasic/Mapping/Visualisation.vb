@@ -16,7 +16,7 @@ Friend Module VisualisationMapping
             New Csharp.ChartOptions With {
                 .Id = Attr(el, "id"),
                 .Source = OptRowSeqBinding(el, "source"),
-                .Kind = AsEnum(Of Csharp.ChartKind)(Attr(el, "kind"), Csharp.ChartKind.Line),
+                .Kind = AsEnum(Of Csharp.ChartKind)(el, "kind", Csharp.ChartKind.Line),
                 .XField = If(HasAttr(el, "x-field"), Attr(el, "x-field"), ""),
                 .YFields = PipeList(Attr(el, "y-fields")),
                 .Title = OptText(el, "title"),
@@ -265,14 +265,14 @@ Friend Module VisualisationMapping
         If tones.Count > 0 Then
             Dim map = New Dictionary(Of String, Csharp.Tone)()
             For Each t In tones
-                map(Attr(t, "value")) = AsEnum(Of Csharp.Tone)(Attr(t, "tone"), Csharp.Tone.Default)
+                map(Attr(t, "value")) = AsEnum(Of Csharp.Tone)(t, "tone", Csharp.Tone.Default)
             Next
 
             ' `field` defaults to the column's own field — the overwhelmingly common case
             ' is "tone this column by its own value"; `tone-field` overrides for the rarer
             ' "tone this column by a DIFFERENT row property".
             Dim field = If(HasAttr(c, "tone-field"), Attr(c, "tone-field"), Attr(c, "field"))
-            Dim dflt = AsEnum(Of Csharp.Tone)(Attr(c, "default-tone"), Csharp.Tone.Default)
+            Dim dflt = AsEnum(Of Csharp.Tone)(c, "default-tone", Csharp.Tone.Default)
             col = col.WithTonedPill(field, map, dflt)
         End If
 
