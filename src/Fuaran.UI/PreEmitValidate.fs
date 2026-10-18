@@ -1644,6 +1644,18 @@ type PreEmitDefect =
     ///
     /// Carries the grid node's id, the column label and the declared field.
     | ActionColumnField of nodeId: string * columnLabel: string * field: string
+    /// **FUARAN164 (Warning)**. A multi-select `Select` (`Multiple = Some true`)
+    /// carries a `Value` (Phase 1962). A multi-select's selection is `Values`;
+    /// it never reads `Value`, and the canonical wire carries none (WIRE_FORMAT
+    /// §3.2). The encoder writes what the record holds, so this tree emits a
+    /// `value` every conformant decoder accepts and then DROPS — the binding
+    /// does nothing. The usual cause is a record literal built from
+    /// `Defaults.select` (a single-select, whose `Value` is the empty `Static`)
+    /// with `Multiple = Some true` set; `Fuaran.multiSelect` and `Fuaran.select`
+    /// clear it. Fix: set `Value = None`, or build through either constructor.
+    ///
+    /// Carries the Select node's id.
+    | MultiSelectValueIgnored of nodeId: string
 
     /// **FUARAN137 (Error)**. A chart annotation whose value is NON-FINITE —
     /// NaN, or either infinity (Phase 1490, §4l).
@@ -2821,6 +2833,13 @@ module DefectCodes =
               Severity.Warning,
               "grid '{nodeId}' column '{columnLabel}' is an action column (Button / ButtonGroup cell) and declares field '{field}' — an action cell draws its own label and hands the whole row to its handler, so the field is never displayed, and sort and export ignore it; drop the field: an action column carries none (Phase 1909)",
               "Phase 1909"
+          )
+          row (
+              "MultiSelectValueIgnored",
+              "FUARAN164",
+              Severity.Warning,
+              "multi-select '{nodeId}' carries a `value` — a multi-select's selection is `values`, it never reads `value`, and every conformant decoder drops one; set Value = None, or build it with Fuaran.multiSelect (Phase 1962)",
+              "Phase 1962"
           ) ]
 
     let private byVariant: Map<string, DefectCodeRow> =
@@ -3424,6 +3443,7 @@ let private describeArgs (d: PreEmitDefect) : string * (string * string) list =
           "schemaColumns", (String.concat ", " schemaColumns) ]
     | PreEmitDefect.ActionColumnField(nodeId, columnLabel, field) ->
         "ActionColumnField", [ "nodeId", nodeId; "columnLabel", columnLabel; "field", field ]
+    | PreEmitDefect.MultiSelectValueIgnored nodeId -> "MultiSelectValueIgnored", [ "nodeId", nodeId ]
 
 /// Render a defect as its stable (code, severity, message) triple — the ONE
 /// projection every consumer shares (the .NET validator oracle, certification
@@ -4823,6 +4843,11 @@ module private FormRules =
         let defects = ctx.Defects
         let nodeIdStr = n.Id
 
+        // FUARAN164 (Phase 1962) — a multi-select never reads `Value`; every
+        // conformant decoder drops the one this record would emit.
+        if spec.Multiple = Some true && spec.Value.IsSome then
+            defects.Add(PreEmitDefect.MultiSelectValueIgnored nodeIdStr)
+
         if spec.Multiple = Some true then
             let valuesLive =
                 match spec.Values with
@@ -4831,7 +4856,7 @@ module private FormRules =
 
             if spec.OnChangeMulti.IsNone && not valuesLive then
                 defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Select(multiple)"))
-        elif spec.OnChange.IsNone && not (isWriteBackTarget spec.Value) then
+        elif spec.OnChange.IsNone && not (spec.Value |> Option.exists isWriteBackTarget) then
             defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Select"))
 
     let filters (ctx: WalkContext) (n: Node<'Msg>) (spec: FiltersSpec<'Msg>) : unit =

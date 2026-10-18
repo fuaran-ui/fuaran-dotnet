@@ -9,9 +9,11 @@ module Fuaran.UI.JsonDecode.Tests.ImpliedNodeCloseRecovery
 //  (2026-08-15); the 36 stored malformed emissions live under
 //  `recovery-fixtures/` VERBATIM (code fences stripped — the exact bytes the
 //  decode gate received) and are the acceptance suite: 36/36 must recover,
-//  34/36 must decode clean, and the two residuals must be the named
-//  MISSING_FIELD defects (independent of this class — they would have
-//  surfaced on a well-formed emission anyway).
+//  35/36 must decode clean, and the one residual must be the named
+//  MISSING_FIELD defect (independent of this class — it would have surfaced
+//  on a well-formed emission anyway). A second residual, `emission-22`'s
+//  Heading without `variant`, decodes clean since Phase 2300 declared the
+//  field's default: the omission is the canonical spelling now.
 //
 //  The suite also PINS the wrong fix: auto-close at EOF repairs NONE of the
 //  mid-document cells (the owed brace sits mid-document, so the `]` after it
@@ -42,12 +44,10 @@ let private fixtureDir = Path.Combine(AppContext.BaseDirectory, "recovery-fixtur
 let private fixtureFiles () =
     Directory.GetFiles(fixtureDir, "emission-*.txt") |> Array.sort
 
-/// The two residual cells: MISSING_FIELD defects unrelated to the nesting
-/// class, named by the measurement record.
+/// The residual cell: a MISSING_FIELD defect unrelated to the nesting class,
+/// named by the measurement record.
 let private expectedResiduals =
-    Map.ofList
-        [ "emission-06.txt", ("$.kind.children[0].kind.children[5].kind.stateKey", "stateKey")
-          "emission-22.txt", ("$.kind.children[1].kind.children[0].kind.variant", "variant") ]
+    Map.ofList [ "emission-06.txt", ("$.kind.children[0].kind.children[5].kind.stateKey", "stateKey") ]
 
 /// The one EOF-class cell (the root node left open at document end) — the only
 /// fixture the naive EOF-append could ever repair, and the one whose recovery
@@ -92,7 +92,7 @@ let tests =
     <| testList
         "Fuaran.UI.Ops.JsonDecode — implied-node-close recovery (fuaran#850)"
         [ test
-              "the stored-emission re-gate — 36/36 recover, 34/36 decode clean, residuals are the two named MISSING_FIELDs" {
+              "the stored-emission re-gate — 36/36 recover, 35/36 decode clean, the residual is the named MISSING_FIELD" {
               let files = fixtureFiles ()
               Expect.equal files.Length 36 "the stored-emission fixture set is complete"
 
@@ -154,7 +154,7 @@ let tests =
                   | Error e, None ->
                       failtestf "%s: expected clean decode; got %s at %s: %s" name e.Code e.Path e.Message
 
-              Expect.equal clean 34 "34 of 36 decode clean through the canonical decoder"
+              Expect.equal clean 35 "35 of 36 decode clean through the canonical decoder"
 
               Expect.equal recovered 36 "every one of the 36 recoveries is reported — 36/36 recover"
           }

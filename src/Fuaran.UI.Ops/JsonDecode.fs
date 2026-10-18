@@ -1837,6 +1837,22 @@ let private requireArray (path: string) (j: Json) : Result<Json list, DecodeErro
 
 let private tryField (fields: Map<string, Json>) (key: string) : Json option = Map.tryFind key fields
 
+/// Phase 2300 — the declared-default rule (WIRE_FORMAT.md §3.6): a field the
+/// IDL declares `omitDefault` is ABSENT from the canonical form at its default,
+/// and a present explicit default keeps decoding (the lenient half). One
+/// helper, applied at every such field in place of the `requireField` the rule
+/// retired, so the policy decoder's tolerance of absence is the IDL's
+/// declaration and not a per-kind accident.
+let private fieldOrDefault
+    (fields: Map<string, Json>)
+    (key: string)
+    (dflt: 'T)
+    (dec: Json -> Result<'T, DecodeError>)
+    : Result<'T, DecodeError> =
+    match tryField fields key with
+    | None -> Ok dflt
+    | Some v -> dec v
+
 let private requireField
     (path: string)
     (fields: Map<string, Json>)
@@ -4414,8 +4430,7 @@ let private decodeHeadingSpec (path: string) (j: Json) : Result<HeadingSpec, Dec
             |> Result.bind (decodeTextSource (path + ".text"))
 
         let variantR =
-            requireField path fields "variant" "HeadingVariant"
-            |> Result.bind (decodeHeadingVariant (path + ".variant"))
+            fieldOrDefault fields "variant" HeadingVariant.Standard (decodeHeadingVariant (path + ".variant"))
 
         match levelR, textR, variantR with
         | Ok level, Ok text, Ok variant ->
@@ -4546,8 +4561,7 @@ let private decodeBadgeSpec (path: string) (j: Json) : Result<BadgeSpec, DecodeE
             |> Result.bind (decodeTextSource (path + ".label"))
 
         let variantR =
-            requireField path fields "variant" "BadgeVariant"
-            |> Result.bind (decodeBadgeVariant (path + ".variant"))
+            fieldOrDefault fields "variant" BadgeVariant.Neutral (decodeBadgeVariant (path + ".variant"))
 
         match labelR, variantR with
         | Ok label, Ok variant -> Ok { Label = label; Variant = variant }
@@ -4567,8 +4581,7 @@ let private decodeLinkSpec (path: string) (j: Json) : Result<LinkSpec, DecodeErr
             |> Result.bind (decodeTextSource (path + ".label"))
 
         let downloadR =
-            requireField path fields "download" "download bool"
-            |> Result.bind (requireBool (path + ".download"))
+            fieldOrDefault fields "download" false (requireBool (path + ".download"))
 
         let relR =
             match tryField fields "rel" with
@@ -4657,8 +4670,7 @@ let private decodeImageSpec (path: string) (j: Json) : Result<ImageSpec, DecodeE
             |> Result.bind (decodeTextSource (path + ".alt"))
 
         let variantR =
-            requireField path fields "variant" "ImageVariant"
-            |> Result.bind (decodeImageVariant (path + ".variant"))
+            fieldOrDefault fields "variant" ImageVariant.Default (decodeImageVariant (path + ".variant"))
 
         // Phase 1077 — the presentation slots, omitted-when-default (the
         // Phase 460 discipline). Absent restores today's behaviour exactly,
@@ -5122,8 +5134,7 @@ let private decodeListSpec (path: string) (j: Json) : Result<ListSpec, DecodeErr
                 |> traverse (fun (i, it) -> decodeTextSource (sprintf "%s.items[%d]" path i) it))
 
         let orderedR =
-            requireField path fields "ordered" "ordered bool"
-            |> Result.bind (requireBool (path + ".ordered"))
+            fieldOrDefault fields "ordered" false (requireBool (path + ".ordered"))
 
         match itemsR, orderedR with
         | Ok items, Ok ordered -> Ok { Items = items; Ordered = ordered }
@@ -5178,16 +5189,15 @@ let private decodeCodeBlockSpec (path: string) (j: Json) : Result<CodeBlockSpec,
             |> Result.bind (requireString (path + ".language"))
 
         let lineNumbersR =
-            requireField path fields "lineNumbers" "lineNumbers bool"
-            |> Result.bind (requireBool (path + ".lineNumbers"))
+            fieldOrDefault fields "lineNumbers" false (requireBool (path + ".lineNumbers"))
 
+        // Phase 2300 — `copyable` omits when TRUE (a code block is copyable
+        // unless it says otherwise; `Defaults.codeBlock`).
         let copyableR =
-            requireField path fields "copyable" "copyable bool"
-            |> Result.bind (requireBool (path + ".copyable"))
+            fieldOrDefault fields "copyable" true (requireBool (path + ".copyable"))
 
         let highlightLinesR =
-            requireField path fields "highlightLines" "highlightLines int array"
-            |> Result.bind (requireArray (path + ".highlightLines"))
+            fieldOrDefault fields "highlightLines" [] (requireArray (path + ".highlightLines"))
             |> Result.bind (fun items ->
                 items
                 |> List.mapi (fun i it -> i, it)
@@ -6223,14 +6233,9 @@ let private decodeFormFieldKind
                 valueOr decodeBindingChoiceValue Fuaran.UI.Defaults.ControlValueDefaults.choice "Binding<string> value"
 
             let orientationR =
-                // Lenient AI-ingest omitted-when-default (WIRE_FORMAT.md §3.6
-                // family): absent `orientation` restores the language default
-                // `Horizontal` (Defaults.fs) — the universal segmented-control
-                // prior; observed omitted in eval emission data. Decode-only:
-                // the encoder still always emits it.
-                match tryField fields "orientation" with
-                | None -> Ok Orientation.Horizontal
-                | Some oJ -> decodeOrientation (path + ".orientation") oJ
+                // Omit-at-default `Horizontal` (WIRE_FORMAT.md §3.6) — declared
+                // in the IDL since Phase 2300, so the encoder omits it too.
+                fieldOrDefault fields "orientation" Orientation.Horizontal (decodeOrientation (path + ".orientation"))
 
             match optionsR, valueR, orientationR with
             | Ok options, Ok value, Ok orientation ->
@@ -6546,8 +6551,7 @@ let private decodeFormField (path: string) (j: Json) : Result<FormField<obj>, De
             |> Result.bind (decodeTextSource (path + ".label"))
 
         let requiredR =
-            requireField path fields "required" "required bool"
-            |> Result.bind (requireBool (path + ".required"))
+            fieldOrDefault fields "required" false (requireBool (path + ".required"))
 
         let helpR =
             match tryField fields "help" with
@@ -6671,8 +6675,7 @@ let private decodeButtonSpec (path: string) (j: Json) : Result<ButtonSpec<obj>, 
             |> Result.bind (decodeAction (path + ".onClick"))
 
         let variantR =
-            requireField path fields "variant" "ButtonVariant"
-            |> Result.bind (decodeButtonVariant (path + ".variant"))
+            fieldOrDefault fields "variant" ButtonVariant.Secondary (decodeButtonVariant (path + ".variant"))
 
         let iconR =
             match tryField fields "icon" with
@@ -6714,10 +6717,6 @@ let private decodeSelectSpec (path: string) (j: Json) : Result<SelectSpec<obj>, 
             requireFieldAliased path fields "source" [ "options"; "data" ] "Binding<SelectOption list>"
             |> Result.bind (decodeBindingSelectOptions (path + ".source"))
 
-        let valueR =
-            requireField path fields "value" "Binding<string>"
-            |> Result.bind (decodeBindingChoiceValue (path + ".value"))
-
         let placeholderR =
             match tryField fields "placeholder" with
             | None -> Ok None
@@ -6734,6 +6733,34 @@ let private decodeSelectSpec (path: string) (j: Json) : Result<SelectSpec<obj>, 
             match tryField fields "multiple" with
             | None -> Ok Option.None
             | Some v -> requireBool (path + ".multiple") v |> Result.map Some
+
+        // Phase 1962 — `value` is the SINGLE-select binding (WIRE_FORMAT §3.2).
+        // A single-select requires it. A multi-select carries `values` and no
+        // `value`: one that still carries a `value` — the empty-`Static`
+        // placeholder every pre-1962 multi-select carried, or a binding a model
+        // wrote beside its `values` — is a §16 lenient accept that normalises to
+        // the absent slot, because a multi-select never reads it. The `value` is
+        // still decoded first, so a MALFORMED one refuses exactly as before. The
+        // pre-emit validator names a constructed multi-select carrying one
+        // (FUARAN164). An unreadable `multiple` is its own defect, so the
+        // presence rule is not applied on top of it.
+        let valueR =
+            let decodeValue v =
+                decodeBindingChoiceValue (path + ".value") v
+
+            match multipleR with
+            | Ok(Some true) ->
+                match tryField fields "value" with
+                | None -> Ok Option.None
+                | Some v -> decodeValue v |> Result.map (fun _ -> Option.None)
+            | Ok _ ->
+                requireField path fields "value" "Binding<string>"
+                |> Result.bind decodeValue
+                |> Result.map Some
+            | Error _ ->
+                match tryField fields "value" with
+                | None -> Ok Option.None
+                | Some v -> decodeValue v |> Result.map Some
 
         let valuesR =
             match tryField fields "values" with
@@ -6787,8 +6814,7 @@ let private decodeFileUploadSpec (path: string) (j: Json) : Result<FileUploadSpe
             |> Result.bind (decodeTextSource (path + ".label"))
 
         let multipleR =
-            requireField path fields "multiple" "multiple bool"
-            |> Result.bind (requireBool (path + ".multiple"))
+            fieldOrDefault fields "multiple" false (requireBool (path + ".multiple"))
 
         let disabledR =
             match tryField fields "disabled" with
@@ -8355,9 +8381,7 @@ and private decodeLayoutKind (w: Walk) (path: string) (j: Json) : Result<NodeKin
                                     requireField lpath lfields "direction" "Orientation"
                                     |> Result.bind (decodeOrientation (lpath + ".direction"))
 
-                                let wrapR =
-                                    requireField lpath lfields "wrap" "wrap bool"
-                                    |> Result.bind (requireBool (lpath + ".wrap"))
+                                let wrapR = fieldOrDefault lfields "wrap" false (requireBool (lpath + ".wrap"))
 
                                 let gapR =
                                     match tryField lfields "gap" with
@@ -8592,8 +8616,11 @@ and private decodeLayoutKind (w: Walk) (path: string) (j: Json) : Result<NodeKin
                 let childrenR = decodeChildren w specPath specFields
 
                 let activeR =
-                    requireField specPath specFields "activeStep" "Binding<int> activeStep"
-                    |> Result.bind (decodeBindingInt (specPath + ".activeStep"))
+                    fieldOrDefault
+                        specFields
+                        "activeStep"
+                        (Binding.Static(Some 0))
+                        (decodeBindingInt (specPath + ".activeStep"))
 
                 // `onSelect` is a closure → a present sentinel reconstructs
                 // a no-op `Some` (re-encodes to the same sentinel; behaviour
@@ -8684,8 +8711,9 @@ and private decodeLayoutKind (w: Walk) (path: string) (j: Json) : Result<NodeKin
                     |> Result.bind (decodeBindingBool (specPath + ".open"))
 
                 let dismissableR =
-                    requireField specPath specFields "dismissable" "dismissable bool"
-                    |> Result.bind (requireBool (specPath + ".dismissable"))
+                    // Phase 2300 — omit-at-default `true`: a modal is dismissable
+                    // unless it says otherwise (every corpus modal carried `true`).
+                    fieldOrDefault specFields "dismissable" true (requireBool (specPath + ".dismissable"))
 
                 let onDismissR =
                     match tryField specFields "onDismiss" with

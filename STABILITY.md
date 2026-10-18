@@ -7908,6 +7908,55 @@ draft, which Phase 1960 already made breaking-class, so no number moves. The sub
 - **Migration.** Follow Core's two notes for any substrate type you name; spell `Row` as `Map<string, obj>` where you
   named Core's alias; match `Hit.toTable`'s `Result`.
 
+### What rides this slot — Phase 1962 (a multi-select `Select` carries `values` and no placeholder `value`)
+
+**Class: BREAKING (source: one record field becomes an option; wire: one input refused, one normalised).** It rides
+the 0.97.0 draft, already breaking-class, so no number moves. Normative text: `WIRE_FORMAT.md` §3.6 "`Select`
+multi-select (the `value` rule)".
+
+- **Changed: `SelectSpec.Value` is an `option`.** A single-select carries `Some value` (the unselected control is still
+  `Static None`, Phase 677); a multi-select carries `Values` and `Value = None`. The IDL row is `opt "value"`, so the
+  generated encoder writes `value` only when present — a multi-select's wire no longer carries a placeholder
+  `"value":{"$type":"Static"}`. `Fuaran.multiSelect` builds the shape; `Defaults.select` is unchanged for single-select.
+  `BindingWalk`, `DeadOnDecode`, the schema generator (`SchemaGen.selectValueRule`) and the UI witness read the option.
+- **Changed: the decoder's `value` rule.** A single-select document without `value` is refused, `MISSING_FIELD` at
+  `$.kind.value` (`reject/reject-1962-select-missing-value.json`); a multi-select document carrying `value` is read and
+  the `value` dropped (`lenient/lenient-1962-multiselect-value-dropped*.json`); a malformed `multiple` leaves `value`
+  decoded if present and not demanded.
+- **Changed: `Select.multiple` is an ordinary optional field, emitted as authored.** An explicit `"multiple":false` is
+  kept on the wire (`nodes/select-multiple-false.json`); it is not omit-at-default.
+- **Added: `FUARAN164` (`MultiSelectValueIgnored`, Warning)** — a multi-select whose spec carries a `Value`; the
+  pre-emit validator names the node and the remedy. `docs/ERROR_CODES.md` and the defect vocabulary are regenerated.
+- **Changed: `FileUpload.onSelect` and `Stepper.onSelect` are optional closures**, written only when present (the IDL
+  rows are `opt`), which is what the 1962 fixtures exercise; the authoring records are unchanged.
+- **Migration.** Read `spec.Value` as an option; construct a multi-select with `Fuaran.multiSelect` (or `Value = None`,
+  `Values = Some …`). A consumer pinning a multi-select's bytes re-pins without the placeholder `value`.
+
+### What rides this slot — Phase 2300, rule 1 (a field holding its declared default is omitted, on every kind)
+
+**Class: BREAKING (wire bytes: fifteen fields leave the canonical form when at their default).** It rides the 0.97.0
+draft, already breaking-class, so no number moves. Rules 2 and 3 of Phase 2300 and its renames are Phase 2340 and are
+NOT here. Normative text: `WIRE_FORMAT.md` §3.1 (omit-at-default) and the generated field tables.
+
+- **Changed: fifteen IDL rows move from `req` to `omit`**, each at its authoring default (`Defaults.fs`): `Flex.wrap`,
+  `Link.download`, `List.ordered`, `CodeBlock.lineNumbers`, `FormField.required`, `FileUpload.multiple` (all `false`);
+  `CodeBlock.copyable` and `Modal.dismissable` (`true`); `CodeBlock.highlightLines` (`[]`); `Heading.variant`
+  (`Standard`), `Image.variant` (`Default`), `Badge.variant` (`Neutral`), `Button.variant` (`Secondary`),
+  `SegmentedChoice.orientation` (`Horizontal`); `Stepper.activeStep` (`Static 0`, the `Tabs.activeIndex` shape). The
+  generated encoder omits each at that value; `JsonDecode.fieldOrDefault` restores it on absence and every explicit
+  form is still read (`lenient/lenient-2300-declared-default-{booleans,enums,bindings}.json`). The schema generator no
+  longer lists them as required. The corpus, the spec's generated tables, `idl.json`, `support.json`, the VB / C#
+  mirrors, the F* vocabulary, the prompt packs, the op-notation and apply-parity goldens, and the driver-semantics
+  scenarios in the program specification are regenerated.
+- **Consequences inside this repository, each re-pinned deliberately.** The K7 envelope's tree hash moved (its button's
+  default variant left the wire) and was re-signed over the same tree (`PreCutEnvelopeTests.fs`, header). Over-close
+  recovery `emission-00` becomes ambiguous (a second repair now decodes clean) and is relabelled REFUSE; implied-close
+  `emission-22` now decodes clean. The schema-to-form parity table and the fuzz floor are re-certified.
+- **Nothing refuses more.** Every pre-2300 document decodes to the same tree; only the bytes a conformant encoder writes
+  are shorter. No constructor parameter moves.
+- **Migration.** None for authors. A consumer that pins canonical bytes or a content hash over a tree carrying one of
+  the fifteen at its default re-pins once.
+
 ---
 
 ## 0.96.0 — the slot opened after v0.95.0 was released (RELEASED — tagged v0.96.0 at 9045b5f, 2026-10-18)
@@ -10106,6 +10155,12 @@ consumer that names a compute type (`Transform`, `ColExpr`, `DataFrame`, `Increm
 `Fuaran.Compute` beside `Fuaran.Core`, or spells it `Fuaran.Compute.<name>`. Two compute changes reach
 this tier's surface: `ColExpr` gains `Quotient` and `Rounded` (the producer's decimal arithmetic, its
 0.36.0), which the expression-size walk now descends into; and a derived column is typed by its expression rather than its first cell (its 0.37.0), which no test here pinned.
+
+- **Phase 1962 amendment — an explicit `"multiple":false` round-trips as written** (operator ruling
+  2026-10-01). `multiple` is emitted as authored, never omit-at-default; this host already kept it
+  (`Multiple = Some false`), but no fixture said so, and two hosts dropped it unseen. The corpus gains
+  `nodes/select-multiple-false.json`, generated from `Fixtures.selectMultipleFalse`. No surface change
+  here: the slot's class is unchanged.
 
 ## 0.89.0 — the slot Phase 1961 opens: the repair catalogue's version 2, `wrong-type-close` (DRAFT — untagged; superseded by 0.90.0 before release)
 

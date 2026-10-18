@@ -39,6 +39,18 @@
 /// version-8 pin reported `Unreadable` drift, and the envelope below was signed
 /// afresh by the 0.9.0 code over the SAME tree with a new key whose private half
 /// was never kept. The tree hash is still the pre-cut value.
+///
+/// fuaran#2300 is the first move of a different kind: not the document's version
+/// but the TREE's canonical bytes. Rule 1 of that phase omits a field holding its
+/// declared default from the canonical form, and this tree's button carries
+/// `variant = Secondary`, the declared default, so `"variant":"Secondary"` left
+/// its wire and the content address moved with it — the hash below is the one the
+/// 0.97.0 code computes over the SAME tree, and the envelope was signed afresh
+/// over it with a new key whose private half was never kept. What the first test
+/// pins is therefore no longer "the pre-cut value" but the address of these
+/// canonical bytes under Core's hash; the falsifier it guards (the two hashes
+/// disagreeing over one byte string) is unchanged, and the old address is in this
+/// file's history should the ruling ever be read back.
 module Fuaran.UI.Program.Bounded.Tests.PreCutEnvelopeTests
 
 open System
@@ -63,33 +75,34 @@ let private tree: Node<obj> =
                       { Defaults.button<obj> with
                           OnClick = Action.Navigate(TextSource.Literal "/next", NavigateTarget.Self) } ] }
 
-/// The tree hash the pre-cut code computed, with the UI tier's hash.
+/// The tree's content address under the fuaran#2300 canonical form (the pre-2300
+/// address was `sha256:2d221262…6a542`; see the header).
 [<Literal>]
 let private PreCutTreeHash =
-    "sha256:2d221262c858f3488cb0a61e17e3e5472fc17399fb057c2332c0f42a9a16a542"
+    "sha256:fd89e42469a02b9f0dc8cf4c29fd2267d24f0b82426e9268ac907d3eedaf4e87"
 
-/// The signer's PUBLIC key (SubjectPublicKeyInfo, P-256), as the fuaran#2203
+/// The signer's PUBLIC key (SubjectPublicKeyInfo, P-256), as the fuaran#2300
 /// re-pin exported it. The private half was never kept.
 [<Literal>]
 let private PublicKey =
-    "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEvXHCPUUJnrvHs8RweXnanz/KS7dg8ZrCNcUmf4sVkG65L/+rC/X2iMKLtqJXjU9O7/OfCs0vkc7Dd1rnv0Kl3w=="
+    "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEVDVdnUzhW7W3QjKqKwVek+3Du6VGlQ2hBtylwERsrlwTlMvcA1iruJtnQWmBYnB89Xgl+0yZ5uUsZ1ppo1wCVg=="
 
-/// The signed envelope, byte for byte: the pre-cut tree hash, the version-11
-/// demanded document, and the fuaran#2203 signature over the two.
+/// The signed envelope, byte for byte: the tree hash above, the version-11
+/// demanded document, and the fuaran#2300 signature over the two.
 [<Literal>]
 let private PreCutEnvelope =
-    """{"kind":"signed-demanded","version":1,"treeHash":"sha256:2d221262c858f3488cb0a61e17e3e5472fc17399fb057c2332c0f42a9a16a542","envelope":"{\"kind\":\"demanded\",\"version\":11,\"effects\":[\"Navigate\"],\"hostCalls\":[],\"stateNamespaces\":[],\"opaqueHandlers\":[],\"iterations\":[],\"opaqueLeaves\":[],\"values\":[],\"server\":null}","keyId":"k7-2203","signature":"rI36/dtLcxlHgsCEubk/VueI2AjhvQTA+o2vAmnEomFebDsjQYz5G/zByazEdN++jIXlh3TREAYRIVs9Xf+AjQ=="}"""
+    """{"kind":"signed-demanded","version":1,"treeHash":"sha256:fd89e42469a02b9f0dc8cf4c29fd2267d24f0b82426e9268ac907d3eedaf4e87","envelope":"{\"kind\":\"demanded\",\"version\":11,\"effects\":[\"Navigate\"],\"hostCalls\":[],\"stateNamespaces\":[],\"opaqueHandlers\":[],\"iterations\":[],\"opaqueLeaves\":[],\"values\":[],\"server\":null}","keyId":"k7-2300","signature":"RHQuiSm+cfIYcu3jpc9Y3Ydc5irZuGpoRi39dSW3gRD1cHNsSgBzTigxr4AKpCeCIB4IiYuOzvY4chqZa9dA/g=="}"""
 
 let private publicEntry () : KeyDirectoryEntry =
     let key = ECDsa.Create()
     key.ImportSubjectPublicKeyInfo(Convert.FromBase64String PublicKey) |> ignore
-    EcdsaP256.keyEntry "k7-2203" key
+    EcdsaP256.keyEntry "k7-2300" key
 
 [<Tests>]
 let tests =
     testList
         "K7 — an envelope signed before the hash swap still verifies after it"
-        [ test "Core's tree hash is the pre-cut hash, byte for byte" {
+        [ test "Core's tree hash is the pinned address of the tree's canonical bytes, byte for byte" {
               Expect.equal (SignedEnvelope.treeHash tree) PreCutTreeHash "the content address is unchanged"
           }
 

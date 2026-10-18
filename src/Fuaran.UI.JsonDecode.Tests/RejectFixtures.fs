@@ -2010,6 +2010,19 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "a Binding.Local carrying BOTH an `onCommit` closure sentinel and a declared `commitTo` key. The SetState value/valueFrom law, applied to the buffer's flush: exactly one commit destination. A decoding host can honour only the declared one — the closure is `\"<closure>\"` and nothing more — so admitting the pair would make the same bytes commit to two different places depending on who read them (Fuaran-UI Phase 1538)" }
+      // ─── Phase 1962 — the single/multi `value` rule ─────────────────────
+      //
+      // `value` is the SINGLE-select binding. A single-select without one is
+      // refused as it always was. (A multi-select carrying one is the lenient
+      // side's concern: `lenient-1962-multiselect-value-dropped`.)
+      { Id = "reject-1962-select-missing-value"
+        Json =
+          """{"id":"x","kind":{"$type":"Select","label":"Region","source":{"$type":"Static","value":[{"label":"UK","value":"uk"}]}}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.value"
+        IsOp = false
+        Description =
+          "a single-select (`multiple` absent) with no `value`. `value` is the single-select binding and is required there; only a multi-select omits it (WIRE_FORMAT §3.2, Phase 1962)" }
       { Id = "reject-limit-json-depth-at-max"
         Json =
           String.replicate Fuaran.UI.WireLimits.MaxJsonDepth "["

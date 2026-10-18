@@ -70,7 +70,7 @@
      - Mount: expressible, but outside the proof vocabulary — it adds r_guest_channel, u_fragment_arg to the mutual family (see `FStarTarget.proofKinds`)
      - Select: expressible, but outside the proof vocabulary — it adds r_select_option, u_binding__l_r_select_option, u_binding__l_str to the mutual family (see `FStarTarget.proofKinds`)
      - Sparkline: expressible, but outside the proof vocabulary — it adds u_binding__l_flt to the mutual family (see `FStarTarget.proofKinds`)
-     - Stepper: expressible, but outside the proof vocabulary — it adds u_binding__int to the mutual family (see `FStarTarget.proofKinds`)
+     - Stepper: the F* proof model cannot express a declared default the opaque numeric model cannot spell: VInt 0 (at kind Stepper.activeStep)
      - Switch: expressible, but outside the proof vocabulary — it adds r_switch_case to the mutual family (see `FStarTarget.proofKinds`)
      - Tabs: the F* proof model cannot express a declared default the opaque numeric model cannot spell: VInt 0 (at kind Tabs.activeIndex)
      - Tree: expressible, but outside the proof vocabulary — it adds r_tree_item to the mutual family (see `FStarTarget.proofKinds`)
@@ -764,6 +764,18 @@ let sfx_vkind__Callout__tone (#num #flt: eqtype) (e: option (jval num flt)) (res
   match e with | None -> rest | Some v -> ("tone", v) :: rest
 
 [@@"opaque_to_smt"]
+let sfx_vkind__CodeBlock__copyable (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("copyable", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__CodeBlock__highlight_lines (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("highlightLines", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__CodeBlock__line_numbers (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("lineNumbers", v) :: rest
+
+[@@"opaque_to_smt"]
 let sfx_vkind__Embed__aspect_ratio (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
   match e with | None -> rest | Some v -> ("aspectRatio", v) :: rest
 
@@ -816,6 +828,10 @@ let sfx_vkind__FileUpload__max_files (#num #flt: eqtype) (e: option (jval num fl
   match e with | None -> rest | Some v -> ("maxFiles", v) :: rest
 
 [@@"opaque_to_smt"]
+let sfx_vkind__FileUpload__multiple (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("multiple", v) :: rest
+
+[@@"opaque_to_smt"]
 let sfx_vkind__FileUpload__on_select (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
   match e with | None -> rest | Some v -> ("onSelect", v) :: rest
 
@@ -830,6 +846,10 @@ let sfx_vkind__Icon__size (#num #flt: eqtype) (e: option (jval num flt)) (rest: 
 [@@"opaque_to_smt"]
 let sfx_vkind__Icon__tone (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
   match e with | None -> rest | Some v -> ("tone", v) :: rest
+
+[@@"opaque_to_smt"]
+let sfx_vkind__Link__download (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
+  match e with | None -> rest | Some v -> ("download", v) :: rest
 
 [@@"opaque_to_smt"]
 let sfx_vkind__Link__protection (#num #flt: eqtype) (e: option (jval num flt)) (rest: list (string & jval num flt)) : Tot (list (string & jval num flt)) =
@@ -1044,6 +1064,14 @@ let rd_vkind__Callout__tone (#num #flt: eqtype) (el: jval num flt) : Tot (outcom
   (match get_prop "tone" el with | Error _ -> Ok C__e_tone_variant__Default | Ok v -> (match dec_e_tone_variant v with | Error e -> Error e | Ok w -> Ok w))
 
 [@@"opaque_to_smt"]
+let rd_vkind__CodeBlock__copyable (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (bool)) =
+  (match get_prop "copyable" el with | Error _ -> Ok true | Ok v -> (match as_bool v with | Error e -> Error e | Ok w -> Ok w))
+
+[@@"opaque_to_smt"]
+let rd_vkind__CodeBlock__line_numbers (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (bool)) =
+  (match get_prop "lineNumbers" el with | Error _ -> Ok false | Ok v -> (match as_bool v with | Error e -> Error e | Ok w -> Ok w))
+
+[@@"opaque_to_smt"]
 let rd_vkind__Embed__aspect_ratio (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (e_image_aspect)) =
   (match get_prop "aspectRatio" el with | Error _ -> Ok C__e_image_aspect__Natural | Ok v -> (match dec_e_image_aspect v with | Error e -> Error e | Ok w -> Ok w))
 
@@ -1084,6 +1112,10 @@ let rd_vkind__FileUpload__max_files (#num #flt: eqtype) (el: jval num flt) : Tot
   (match get_prop "maxFiles" el with | Error _ -> Ok None | Ok v -> (match as_int v with | Error e -> Error e | Ok w -> Ok (Some w)))
 
 [@@"opaque_to_smt"]
+let rd_vkind__FileUpload__multiple (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (bool)) =
+  (match get_prop "multiple" el with | Error _ -> Ok false | Ok v -> (match as_bool v with | Error e -> Error e | Ok w -> Ok w))
+
+[@@"opaque_to_smt"]
 let rd_vkind__FileUpload__on_select (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (unit))) =
   (match get_prop "onSelect" el with | Error _ -> Ok None | Ok v -> (let _ = v in let w = () in Ok (Some w)))
 
@@ -1098,6 +1130,10 @@ let rd_vkind__Icon__size (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (
 [@@"opaque_to_smt"]
 let rd_vkind__Icon__tone (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (e_tone_variant)) =
   (match get_prop "tone" el with | Error _ -> Ok C__e_tone_variant__Default | Ok v -> (match dec_e_tone_variant v with | Error e -> Error e | Ok w -> Ok w))
+
+[@@"opaque_to_smt"]
+let rd_vkind__Link__download (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (bool)) =
+  (match get_prop "download" el with | Error _ -> Ok false | Ok v -> (match as_bool v with | Error e -> Error e | Ok w -> Ok w))
 
 [@@"opaque_to_smt"]
 let rd_vkind__Link__protection (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (option (e_link_protection))) =
@@ -1259,11 +1295,11 @@ let rec enc_node (#num #flt: eqtype) (x: node num flt) : Tot (jval num flt) (dec
 and enc_vkind (#num #flt: eqtype) (x: vkind num flt) : Tot (jval num flt) (decreases x) =
   match x with
   | C__vkind__Badge f0 f1 ->
-    JObj (("$type", JStr "Badge") :: ("label", enc_u_text_source f0) :: ("variant", enc_e_badge_variant f1) :: [])
+    JObj (("$type", JStr "Badge") :: ("label", enc_u_text_source f0) :: (if f1 = C__e_badge_variant__Neutral then [] else ("variant", enc_e_badge_variant f1) :: []))
   | C__vkind__Callout f0 f1 f2 f3 f4 ->
     JObj ((let s3 = sfx_vkind__Callout__tone #num #flt (enc_dflt_e_tone_variant #num #flt (C__e_tone_variant__Default) f4) ([]) in let s2 = sfx_vkind__Callout__icon #num #flt (enc_opt_str #num #flt f3) (s3) in let s1 = sfx_vkind__Callout__heading #num #flt (enc_opt_u_text_source #num #flt f2) (s2) in let s0 = sfx_vkind__Callout__dismissable #num #flt (enc_dflt_bool #num #flt (false) f1) (s1) in ("$type", JStr "Callout") :: ("body", enc_u_text_source f0) :: s0))
   | C__vkind__CodeBlock f0 f1 f2 f3 f4 ->
-    JObj (("$type", JStr "CodeBlock") :: ("code", JStr f0) :: ("copyable", JBool f1) :: ("highlightLines", JArr (enc_items_l_int f2)) :: ("language", JStr f3) :: ("lineNumbers", JBool f4) :: [])
+    JObj ((let s2 = sfx_vkind__CodeBlock__line_numbers #num #flt (enc_dflt_bool #num #flt (false) f4) ([]) in let s1 = sfx_vkind__CodeBlock__highlight_lines #num #flt (enc_dflt_l_int #num #flt ([]) f2 (JArr (enc_items_l_int f2))) (("language", JStr f3) :: s2) in let s0 = sfx_vkind__CodeBlock__copyable #num #flt (enc_dflt_bool #num #flt (true) f1) (s1) in ("$type", JStr "CodeBlock") :: ("code", JStr f0) :: s0))
   | C__vkind__Disclosure f0 f1 f2 f3 f4 ->
     JObj (("$type", JStr "Disclosure") :: ("children", JArr (enc_items_l_node f0)) :: ("defaultOpen", JBool f1) :: ("heading", enc_u_text_source f2) :: (match f3 with | None -> ("open", enc_u_binding__bool f4) :: [] | Some w -> ("onToggle", JStr "<closure>") :: ("open", enc_u_binding__bool f4) :: []))
   | C__vkind__Embed f0 f1 f2 f3 ->
@@ -1273,15 +1309,15 @@ and enc_vkind (#num #flt: eqtype) (x: vkind num flt) : Tot (jval num flt) (decre
   | C__vkind__Fact f0 f1 f2 f3 f4 f5 ->
     JObj ((let s3 = sfx_vkind__Fact__tone #num #flt (enc_dflt_e_tone_variant #num #flt (C__e_tone_variant__Default) f4) (("value", enc_u_text_source f5) :: []) in let s2 = sfx_vkind__Fact__icon #num #flt (enc_opt_str #num #flt f2) (("label", enc_u_text_source f3) :: s3) in let s1 = sfx_vkind__Fact__help #num #flt (enc_opt_u_text_source #num #flt f1) (s2) in let s0 = sfx_vkind__Fact__emphasis #num #flt (enc_dflt_bool #num #flt (false) f0) (s1) in ("$type", JStr "Fact") :: s0))
   | C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 ->
-    JObj ((let s7 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (("multiple", JBool f9) :: s7) in let s5 = sfx_vkind__FileUpload__max_bytes #num #flt (enc_opt_int #num #flt f7) (s6) in let s4 = sfx_vkind__FileUpload__drop_target #num #flt (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5) in let s3 = sfx_vkind__FileUpload__disabled #num #flt (enc_opt_u_binding__bool #num #flt f4) (s4) in let s2 = sfx_vkind__FileUpload__destination #num #flt (enc_opt_str #num #flt f3) (s3) in let s1 = sfx_vkind__FileUpload__capture #num #flt (enc_opt_e_capture_source #num #flt f2) (s2) in let s0 = sfx_vkind__FileUpload__accept_paste #num #flt (enc_dflt_bool #num #flt (false) f1) (s1) in ("$type", JStr "FileUpload") :: ("accept", JArr (enc_items_l_str f0)) :: s0))
+    JObj ((let s8 = sfx_vkind__FileUpload__on_select #num #flt (enc_opt_closure #num #flt f10) ([]) in let s7 = sfx_vkind__FileUpload__multiple #num #flt (enc_dflt_bool #num #flt (false) f9) (s8) in let s6 = sfx_vkind__FileUpload__max_files #num #flt (enc_opt_int #num #flt f8) (s7) in let s5 = sfx_vkind__FileUpload__max_bytes #num #flt (enc_opt_int #num #flt f7) (s6) in let s4 = sfx_vkind__FileUpload__drop_target #num #flt (enc_dflt_bool #num #flt (false) f5) (("label", enc_u_text_source f6) :: s5) in let s3 = sfx_vkind__FileUpload__disabled #num #flt (enc_opt_u_binding__bool #num #flt f4) (s4) in let s2 = sfx_vkind__FileUpload__destination #num #flt (enc_opt_str #num #flt f3) (s3) in let s1 = sfx_vkind__FileUpload__capture #num #flt (enc_opt_e_capture_source #num #flt f2) (s2) in let s0 = sfx_vkind__FileUpload__accept_paste #num #flt (enc_dflt_bool #num #flt (false) f1) (s1) in ("$type", JStr "FileUpload") :: ("accept", JArr (enc_items_l_str f0)) :: s0))
   | C__vkind__Heading f0 f1 f2 ->
-    JObj (("$type", JStr "Heading") :: ("level", JInt f0) :: ("text", enc_u_text_source f1) :: ("variant", enc_e_heading_variant f2) :: [])
+    JObj (("$type", JStr "Heading") :: ("level", JInt f0) :: ("text", enc_u_text_source f1) :: (if f2 = C__e_heading_variant__Standard then [] else ("variant", enc_e_heading_variant f2) :: []))
   | C__vkind__Icon f0 f1 f2 f3 ->
     JObj ((let s2 = sfx_vkind__Icon__tone #num #flt (enc_dflt_e_tone_variant #num #flt (C__e_tone_variant__Default) f3) ([]) in let s1 = sfx_vkind__Icon__size #num #flt (enc_dflt_e_icon_size #num #flt (C__e_icon_size__Medium) f2) (s2) in let s0 = sfx_vkind__Icon__label #num #flt (enc_opt_str #num #flt f1) (s1) in ("$type", JStr "Icon") :: ("icon", JStr f0) :: s0))
   | C__vkind__Link f0 f1 f2 f3 f4 f5 ->
-    JObj ((let s2 = sfx_vkind__Link__target #num #flt (enc_opt_str #num #flt f5) ([]) in let s1 = sfx_vkind__Link__rel #num #flt (enc_opt_str #num #flt f4) (s2) in let s0 = sfx_vkind__Link__protection #num #flt (enc_opt_e_link_protection #num #flt f3) (s1) in ("$type", JStr "Link") :: ("download", JBool f0) :: ("href", enc_u_binding__str f1) :: ("label", enc_u_text_source f2) :: s0))
+    JObj ((let s3 = sfx_vkind__Link__target #num #flt (enc_opt_str #num #flt f5) ([]) in let s2 = sfx_vkind__Link__rel #num #flt (enc_opt_str #num #flt f4) (s3) in let s1 = sfx_vkind__Link__protection #num #flt (enc_opt_e_link_protection #num #flt f3) (s2) in let s0 = sfx_vkind__Link__download #num #flt (enc_dflt_bool #num #flt (false) f0) (("href", enc_u_binding__str f1) :: ("label", enc_u_text_source f2) :: s1) in ("$type", JStr "Link") :: s0))
   | C__vkind__List f0 f1 ->
-    JObj (("$type", JStr "List") :: ("items", JArr (enc_items_l_u_text_source f0)) :: ("ordered", JBool f1) :: [])
+    JObj (("$type", JStr "List") :: ("items", JArr (enc_items_l_u_text_source f0)) :: (if f1 = false then [] else ("ordered", JBool f1) :: []))
   | C__vkind__Markdown f0 ->
     JObj (("$type", JStr "Markdown") :: ("text", enc_u_text_source f0) :: [])
   | C__vkind__Math f0 f1 ->
@@ -1555,6 +1591,9 @@ and enc_opt_str (#num #flt: eqtype) (o: option (string)) : Tot (option (jval num
 and enc_dflt_e_tone_variant (#num #flt: eqtype) (d: e_tone_variant) (v: e_tone_variant) : Tot (option (jval num flt)) (decreases v) =
   if v = d then None else Some (enc_e_tone_variant v)
 
+and enc_dflt_l_int (#num #flt: eqtype) (d: list (num)) (v: list (num)) (e: jval num flt) : Tot (option (jval num flt)) (decreases v) =
+  if v = d then None else Some e
+
 and enc_dflt_e_image_aspect (#num #flt: eqtype) (d: e_image_aspect) (v: e_image_aspect) : Tot (option (jval num flt)) (decreases v) =
   if v = d then None else Some (enc_e_image_aspect v)
 
@@ -1639,7 +1678,7 @@ and dec_vkind (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (vkind num f
   | Ok tag ->
     if tag = "Badge" then
       let o0 : outcome (u_text_source num flt) = (match get_prop "label" el with | Error e -> Error e | Ok v -> (match dec_u_text_source v with | Error e -> Error e | Ok w -> Ok w)) in
-      let o1 : outcome (e_badge_variant) = (match get_prop "variant" el with | Error e -> Error e | Ok v -> (match dec_e_badge_variant v with | Error e -> Error e | Ok w -> Ok w)) in
+      let o1 : outcome (e_badge_variant) = (match get_prop "variant" el with | Error _ -> Ok C__e_badge_variant__Neutral | Ok v -> (match dec_e_badge_variant v with | Error e -> Error e | Ok w -> Ok w)) in
       (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> Ok (C__vkind__Badge f0 f1)))
     else
     if tag = "Callout" then
@@ -1652,10 +1691,10 @@ and dec_vkind (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (vkind num f
     else
     if tag = "CodeBlock" then
       let o0 : outcome (string) = (match get_prop "code" el with | Error e -> Error e | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok w)) in
-      let o1 : outcome (bool) = (match get_prop "copyable" el with | Error e -> Error e | Ok v -> (match as_bool v with | Error e -> Error e | Ok w -> Ok w)) in
-      let o2 : outcome (list (num)) = (match get_prop "highlightLines" el with | Error e -> Error e | Ok v -> (match v with | JArr ys -> (match dec_items_l_int [] ys with | Error e -> Error e | Ok w -> Ok w) | other -> Error ("expected array, got " ^ kind_name other))) in
+      let o1 : outcome (bool) = rd_vkind__CodeBlock__copyable #num #flt el in
+      let o2 : outcome (list (num)) = (match get_prop "highlightLines" el with | Error _ -> Ok [] | Ok v -> (match v with | JArr ys -> (match dec_items_l_int [] ys with | Error e -> Error e | Ok w -> Ok w) | other -> Error ("expected array, got " ^ kind_name other))) in
       let o3 : outcome (string) = (match get_prop "language" el with | Error e -> Error e | Ok v -> (match as_string v with | Error e -> Error e | Ok w -> Ok w)) in
-      let o4 : outcome (bool) = (match get_prop "lineNumbers" el with | Error e -> Error e | Ok v -> (match as_bool v with | Error e -> Error e | Ok w -> Ok w)) in
+      let o4 : outcome (bool) = rd_vkind__CodeBlock__line_numbers #num #flt el in
       (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> (match o2 with | Error e -> Error e | Ok f2 -> (match o3 with | Error e -> Error e | Ok f3 -> (match o4 with | Error e -> Error e | Ok f4 -> Ok (C__vkind__CodeBlock f0 f1 f2 f3 f4))))))
     else
     if tag = "Disclosure" then
@@ -1697,14 +1736,14 @@ and dec_vkind (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (vkind num f
       let o6 : outcome (u_text_source num flt) = (match get_prop "label" el with | Error e -> Error e | Ok v -> (match dec_u_text_source v with | Error e -> Error e | Ok w -> Ok w)) in
       let o7 : outcome (option (num)) = rd_vkind__FileUpload__max_bytes #num #flt el in
       let o8 : outcome (option (num)) = rd_vkind__FileUpload__max_files #num #flt el in
-      let o9 : outcome (bool) = (match get_prop "multiple" el with | Error e -> Error e | Ok v -> (match as_bool v with | Error e -> Error e | Ok w -> Ok w)) in
+      let o9 : outcome (bool) = rd_vkind__FileUpload__multiple #num #flt el in
       let o10 : outcome (option (unit)) = rd_vkind__FileUpload__on_select #num #flt el in
       (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> (match o2 with | Error e -> Error e | Ok f2 -> (match o3 with | Error e -> Error e | Ok f3 -> (match o4 with | Error e -> Error e | Ok f4 -> (match o5 with | Error e -> Error e | Ok f5 -> (match o6 with | Error e -> Error e | Ok f6 -> (match o7 with | Error e -> Error e | Ok f7 -> (match o8 with | Error e -> Error e | Ok f8 -> (match o9 with | Error e -> Error e | Ok f9 -> (match o10 with | Error e -> Error e | Ok f10 -> Ok (C__vkind__FileUpload f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10))))))))))))
     else
     if tag = "Heading" then
       let o0 : outcome (num) = (match get_prop "level" el with | Error e -> Error e | Ok v -> (match as_int v with | Error e -> Error e | Ok w -> Ok w)) in
       let o1 : outcome (u_text_source num flt) = (match get_prop "text" el with | Error e -> Error e | Ok v -> (match dec_u_text_source v with | Error e -> Error e | Ok w -> Ok w)) in
-      let o2 : outcome (e_heading_variant) = (match get_prop "variant" el with | Error e -> Error e | Ok v -> (match dec_e_heading_variant v with | Error e -> Error e | Ok w -> Ok w)) in
+      let o2 : outcome (e_heading_variant) = (match get_prop "variant" el with | Error _ -> Ok C__e_heading_variant__Standard | Ok v -> (match dec_e_heading_variant v with | Error e -> Error e | Ok w -> Ok w)) in
       (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> (match o2 with | Error e -> Error e | Ok f2 -> Ok (C__vkind__Heading f0 f1 f2))))
     else
     if tag = "Icon" then
@@ -1715,7 +1754,7 @@ and dec_vkind (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (vkind num f
       (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> (match o2 with | Error e -> Error e | Ok f2 -> (match o3 with | Error e -> Error e | Ok f3 -> Ok (C__vkind__Icon f0 f1 f2 f3)))))
     else
     if tag = "Link" then
-      let o0 : outcome (bool) = (match get_prop "download" el with | Error e -> Error e | Ok v -> (match as_bool v with | Error e -> Error e | Ok w -> Ok w)) in
+      let o0 : outcome (bool) = rd_vkind__Link__download #num #flt el in
       let o1 : outcome (u_binding__str num flt) = (match get_prop "href" el with | Error e -> Error e | Ok v -> (match dec_u_binding__str v with | Error e -> Error e | Ok w -> Ok w)) in
       let o2 : outcome (u_text_source num flt) = (match get_prop "label" el with | Error e -> Error e | Ok v -> (match dec_u_text_source v with | Error e -> Error e | Ok w -> Ok w)) in
       let o3 : outcome (option (e_link_protection)) = rd_vkind__Link__protection #num #flt el in
@@ -1725,7 +1764,7 @@ and dec_vkind (#num #flt: eqtype) (el: jval num flt) : Tot (outcome (vkind num f
     else
     if tag = "List" then
       let o0 : outcome (list (u_text_source num flt)) = (match get_prop "items" el with | Error e -> Error e | Ok v -> (match v with | JArr ys -> (match dec_items_l_u_text_source [] ys with | Error e -> Error e | Ok w -> Ok w) | other -> Error ("expected array, got " ^ kind_name other))) in
-      let o1 : outcome (bool) = (match get_prop "ordered" el with | Error e -> Error e | Ok v -> (match as_bool v with | Error e -> Error e | Ok w -> Ok w)) in
+      let o1 : outcome (bool) = (match get_prop "ordered" el with | Error _ -> Ok false | Ok v -> (match as_bool v with | Error e -> Error e | Ok w -> Ok w)) in
       (match o0 with | Error e -> Error e | Ok f0 -> (match o1 with | Error e -> Error e | Ok f1 -> Ok (C__vkind__List f0 f1)))
     else
     if tag = "Markdown" then

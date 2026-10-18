@@ -71,16 +71,17 @@ that brings a new object of its own is named in the emitted header with what it 
 
 The twenty-three kinds outside it are of **two different sorts, and the header tells them apart**:
 
-- **One is a genuine boundary.** `Tabs` is refused by the target outright: `Tabs.activeIndex` is a
+- **Two are a genuine boundary.** `Tabs` and, since Phase 2300, `Stepper` are refused by the target
+  outright: `Tabs.activeIndex` and `Stepper.activeStep` are each a
   `Binding<int>` omitted at the declared default `Static { value = 0 }`, the model's numeric carriers
   are **opaque** (`num` / `flt`, as in `WireDecode`), and an opaque carrier has no literal to spell
   that default's inner `VInt 0` with — which is the refusal the emitted header prints verbatim. The
   Core-side ask is to give the target a way to model a declared numeric default against an opaque
   carrier.
   **It is deliberately NOT closed from this side**: the alternative — declaring a renderable default
-  on `Tabs.activeIndex` — would change a wire-visible omit-at-default value to make a proof
-  convenient, which is the tail wagging the dog.
-- **Twenty-two are held out by a cost control**, each named with the declared types it would add.
+  on `Tabs.activeIndex` or `Stepper.activeStep` — would change a wire-visible omit-at-default value to
+  make a proof convenient, which is the tail wagging the dog.
+- **Twenty-one are held out by a cost control**, each named with the declared types it would add.
 
 ### The exhaustive set was the instruction, and it is REFUTED
 

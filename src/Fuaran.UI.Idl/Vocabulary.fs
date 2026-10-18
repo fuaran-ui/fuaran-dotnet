@@ -1115,7 +1115,12 @@ let private boxLayout =
           // on BOTH layout cases — no corpus fixture carries it; found by the
           // stage-3 swap reading the hand-written encoder.
           { Tag = "Flex"
-            Fields = [ req "direction" (TEnum "Orientation"); req "wrap" TBool; opt "gap" TInt ]
+            // Phase 2300 — `wrap` omits at its declared default `false` (the
+            // declared-default rule, WIRE_FORMAT §3.6).
+            Fields =
+              [ req "direction" (TEnum "Orientation")
+                omit "wrap" TBool (VBool false)
+                opt "gap" TInt ]
             Annotations = Annotations.Empty }
           { Tag = "Grid"
             Fields = [ req "cols" TInt; opt "templateColumns" TStr; opt "gap" TInt ]
@@ -1225,7 +1230,7 @@ let private formFieldKind =
               [ req "options" (TUnion("Binding", [ TList(TRecord "SelectOption") ]))
                 opt "value" (fieldValue TStr "dStr" "JStr")
                 opt "onChange" (fieldChange "string | null")
-                req "orientation" (TEnum "Orientation") ]
+                omit "orientation" (TEnum "Orientation") (VEnum "Horizontal") ]
             Annotations = Annotations.Empty }
           // Phase 1811 — `DateTime` (was `Date`): the field already accepted a
           // date, a time of day or a date-time via `variant`; the name now says
@@ -1832,7 +1837,7 @@ let private formFieldRecord =
         [ req "id" TStr
           req "kind" (TUnion("FormFieldKind", []))
           req "label" (TUnion("TextSource", []))
-          req "required" TBool
+          omit "required" TBool (VBool false)
           opt "help" (TUnion("TextSource", []))
           opt "rule" (TRecord "FieldRule") ] }
 
@@ -2157,11 +2162,18 @@ let displayKinds: IdlKind list =
     [ { Tag = "Heading"
         Category = "Display"
         Annotations = Annotations.Empty
-        Fields = [ req "level" TInt; req "text" TS; req "variant" (TEnum "HeadingVariant") ] }
+        // Phase 2300 — the declared-default rule (WIRE_FORMAT §3.6): every
+        // `variant` whose authoring default is one of its cases omits at that
+        // case. The declared default IS the `Defaults.fs` value, so a
+        // default-authored node and an absent member mean the same thing.
+        Fields =
+          [ req "level" TInt
+            req "text" TS
+            omit "variant" (TEnum "HeadingVariant") (VEnum "Standard") ] }
       { Tag = "Badge"
         Category = "Display"
         Annotations = Annotations.Empty
-        Fields = [ req "label" TS; req "variant" (TEnum "BadgeVariant") ] }
+        Fields = [ req "label" TS; omit "variant" (TEnum "BadgeVariant") (VEnum "Neutral") ] }
       { Tag = "Markdown"
         Category = "Display"
         Annotations = Annotations.Empty
@@ -2189,7 +2201,7 @@ let displayKinds: IdlKind list =
       { Tag = "List"
         Category = "Display"
         Annotations = Annotations.Empty
-        Fields = [ req "items" (TList TS); req "ordered" TBool ] }
+        Fields = [ req "items" (TList TS); omit "ordered" TBool (VBool false) ] }
       // Phase 1120 — the recursive-disclosure kind, admitted on the SEMANTICS
       // ground. It sits here beside `List`, in the Display family, because the
       // family line is drawn on whether a kind bears `Node` children: `Tree`
@@ -2248,7 +2260,7 @@ let displayKinds: IdlKind list =
         Fields =
           [ req "alt" TS
             req "src" (bindingOf TStr)
-            req "variant" (TEnum "ImageVariant")
+            omit "variant" (TEnum "ImageVariant") (VEnum "Default")
             omit "fit" (TEnum "ImageFit") (VEnum "Natural")
             omit "aspectRatio" (TEnum "ImageAspect") (VEnum "Natural")
             omit "loading" (TEnum "ImageLoading") (VEnum "Eager")
@@ -2360,7 +2372,7 @@ let displayKinds: IdlKind list =
         Fields =
           [ req "href" (bindingOf TStr)
             req "label" TS
-            req "download" TBool
+            omit "download" TBool (VBool false)
             opt "rel" TStr
             opt "target" TStr
             // Phase 812 — the anti-scraper render strategy. Omitted when absent.
@@ -2439,11 +2451,16 @@ let displayKinds: IdlKind list =
         Category = "Display"
         Annotations = Annotations.Empty
         Fields =
+          // Phase 2300 — the three flags omit at their declared defaults. NOTE
+          // the polarity of `copyable`: it omits when TRUE, because a code block
+          // is copyable unless it says otherwise (`Defaults.codeBlock`), the
+          // `Toast.dismissable` posture; `lineNumbers` and `highlightLines`
+          // omit at `false` / `[]`.
           [ req "code" TStr
-            req "copyable" TBool
-            req "highlightLines" (TList TInt)
+            omit "copyable" TBool (VBool true)
+            omit "highlightLines" (TList TInt) (VList [])
             req "language" TStr
-            req "lineNumbers" TBool ] }
+            omit "lineNumbers" TBool (VBool false) ] }
       // Phase 679 — `Toast`. NOTE the polarity: `dismissable` omits when TRUE
       // (a toast defaults dismissable), the opposite of `Callout`'s, which omits
       // when false. Same field name, same type, inverted default.
@@ -2540,7 +2557,9 @@ let layoutKinds: IdlKind list =
         // declaration the tier's validator reports, not a decode refusal).
         Fields =
           [ req "children" (TList TNode)
-            req "dismissable" TBool
+            // Phase 2300 — omits when TRUE: a modal is dismissable unless it says
+            // otherwise (`Defaults.modal`; every corpus modal carried `true`).
+            omit "dismissable" TBool (VBool true)
             opt "onDismiss" (TUnion("Action", []))
             req "open" (bindingOf TBool)
             opt "heading" TS
@@ -2595,7 +2614,9 @@ let layoutKinds: IdlKind list =
         Category = "Layout"
         Annotations = Annotations.Empty
         Fields =
-          [ req "activeStep" (bindingOf TInt)
+          // Phase 2300 — `activeStep` omits at `Static{value=0}`, the
+          // `Tabs.activeIndex` precedent.
+          [ omit "activeStep" (bindingOf TInt) (VUnion("Static", [ "value", VInt 0 ]))
             req "children" (TList TNode)
             opt "onSelect" (handlerOf "int" "number") ] } ]
 
@@ -2615,7 +2636,7 @@ let inputKinds: IdlKind list =
         Fields =
           [ req "label" (TUnion("TextSource", []))
             req "onClick" (TUnion("Action", []))
-            req "variant" (TEnum "ButtonVariant")
+            omit "variant" (TEnum "ButtonVariant") (VEnum "Secondary")
             opt "icon" TStr
             // WIRE_FORMAT.md §10.1 — `ButtonSpec.Tooltip` is typed surface but
             // NOT wire vocabulary: never emitted, restored to `None` on decode.
@@ -2638,7 +2659,16 @@ let inputKinds: IdlKind list =
             // byte-diff found it silently dropped.
             opt "onChangeMulti" (handlerOf "string list" "string[]")
             req "source" (bindingOf (TList(TRecord "SelectOption")))
-            req "value" (bindingOf TStr)
+            // Phase 1962 — `value` is the SINGLE-select binding: required when
+            // `multiple` is not `true`, absent when it is (a multi-select carries
+            // `values`). The IDL's per-field optionality cannot say "required
+            // unless a sibling is true", so the slot is `opt` here and the rule is
+            // enforced where a field's siblings are visible: the decoder (absent on
+            // a single-select is MISSING_FIELD; a `value` on a multi-select is a
+            // lenient accept that normalises away) and the `select` / `multiSelect`
+            // constructors, with FUARAN164 naming a constructed multi-select that
+            // still carries one. WIRE_FORMAT §3.2.
+            opt "value" (bindingOf TStr)
             opt "placeholder" (TUnion("TextSource", []))
             opt "disabled" (bindingOf TBool)
             opt "multiple" TBool
@@ -2649,7 +2679,7 @@ let inputKinds: IdlKind list =
         Fields =
           [ req "accept" (TList TStr)
             req "label" (TUnion("TextSource", []))
-            req "multiple" TBool
+            omit "multiple" TBool (VBool false)
             // The handler arg is the hosted browser-file metadata record (prelude
             // type; closure args never serialise, so no codec is needed).
             opt "onSelect" (handlerOf "Fuaran.UI.HostPrelude.FileSelection list" "unknown[]")

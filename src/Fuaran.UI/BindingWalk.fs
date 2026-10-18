@@ -1911,12 +1911,12 @@ let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts =
             recordText inUses readerId fu.Label
             recordBindingOpt inUses readerId fu.Disabled
         | NodeKind.Select s ->
-            noteWriteBackOf readerId s.Value
+            s.Value |> Option.iter (noteWriteBackOf readerId)
             s.Values |> Option.iter (noteWriteBackOf readerId)
             noteOpaqueIf (s.OnChange.IsSome || s.OnChangeMulti.IsSome)
             recordText inUses readerId s.Label
             recordBinding inUses readerId s.Source
-            recordBinding inUses readerId s.Value
+            recordBindingOpt inUses readerId s.Value
             recordBindingOpt inUses readerId s.Values
             recordTextOpt inUses readerId s.Placeholder
             recordBindingOpt inUses readerId s.Disabled

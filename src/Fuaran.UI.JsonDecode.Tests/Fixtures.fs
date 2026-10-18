@@ -3082,7 +3082,7 @@ let select: Node<obj> =
             { Defaults.select with
                 Label = TextSource.Literal "Region"
                 Source = Binding.Static(Some [ { Value = "uk"; Label = "UK" } ])
-                Value = Binding.Static(Some "uk")
+                Value = Some(Binding.Static(Some "uk"))
                 // `Some` (Phase 426) — keeps `"onChange":"<closure>"` on the
                 // wire, byte-identical to the pre-426 corpus.
                 OnChange = Some(fun _ -> placeholderChain)
@@ -3092,6 +3092,24 @@ let select: Node<obj> =
                 // Phase 291: single-select — Multiple/Values/OnChangeMulti
                 // omitted on the wire (the degenerate case stays byte-stable).
                 Multiple = None }
+        ))
+        None
+
+/// Phase 1962 — an explicitly authored `"multiple":false`. `multiple` is an
+/// ordinary optional field emitted as authored, NOT omit-at-default: `Some false`
+/// decodes as single-select (so it carries `value`, not `values`) and re-encodes
+/// with the key kept. Without this vector a host that drops the key read green.
+[<NodeFixture "Input/Select (Phase 1962 — an explicit multiple:false, emitted as authored)">]
+let selectMultipleFalse: Node<obj> =
+    node
+        "select-multiple-false"
+        (NodeKind.Select(
+            { Defaults.select with
+                Label = TextSource.Literal "Size"
+                Source = Binding.Static(Some [ { Value = "s"; Label = "Small" }; { Value = "l"; Label = "Large" } ])
+                Value = Some(Binding.Static(Some "s"))
+                OnChange = Some(fun _ -> placeholderChain)
+                Multiple = Some false }
         ))
         None
 
@@ -3110,6 +3128,7 @@ let multiSelect: Node<obj> =
                 Label = TextSource.Literal "Tags"
                 Source = Binding.Static(Some [ { Value = "red"; Label = "Red" }; { Value = "green"; Label = "Green" } ])
                 OnChange = Some(fun _ -> placeholderChain)
+                Value = None
                 Multiple = Some true
                 Values = Some(Binding.Static(Some [ "red"; "green" ])) }
         ))
@@ -3604,7 +3623,7 @@ let controlsDeclarative: Node<obj> =
                 { Defaults.select with
                     Label = TextSource.Literal "Region"
                     Source = Binding.Static(Some [ { Value = "uk"; Label = "UK" } ])
-                    Value = Binding.State("region", None)
+                    Value = Some(Binding.State("region", None))
                     Placeholder = Some(TextSource.Literal "Choose one") }
             ))
             None
@@ -3656,6 +3675,7 @@ let multiSelectClosure: Node<obj> =
                     Label = TextSource.Literal "Tags"
                     Source = Binding.Static(Some [ { Value = "red"; Label = "Red" } ])
                     OnChange = Some(fun _ -> placeholderChain)
+                    Value = None
                     Multiple = Some true
                     Values = Some(Binding.Static(Some [ "red" ]))
                     OnChangeMulti = Some(fun _ -> placeholderChain) }
@@ -4486,6 +4506,7 @@ let multiselectChipListParam: Node<obj> =
                                                 { Value = "sales"; Label = "Sales" }
                                                 { Value = "ops"; Label = "Operations" } ]
                                       )
+                                  Value = None
                                   Multiple = Some true
                                   Values = Some(Binding.Filter("depts", None)) }
                           ))
@@ -8021,7 +8042,7 @@ let stateAbsentDefault: Node<obj> =
                 { Defaults.select with
                     Label = TextSource.Literal "Region"
                     Source = Binding.State("regionOptions", None)
-                    Value = Binding.State("region", Some "uk") }
+                    Value = Some(Binding.State("region", Some "uk")) }
             ))
             None
 
@@ -8314,7 +8335,7 @@ let boxChain (boxes: int) : string =
         + id
         + "\",\"kind\":{\"$type\":\"Box\",\"children\":["
         + children
-        + "],\"layout\":{\"$type\":\"Flex\",\"direction\":\"Vertical\",\"wrap\":false},\"role\":\"Group\"}}"
+        + "],\"layout\":{\"$type\":\"Flex\",\"direction\":\"Vertical\"},\"role\":\"Group\"}}"
 
     let mutable acc = box "leaf" ""
 

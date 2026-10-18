@@ -2096,6 +2096,37 @@ let private leniencyFamilies: LeniencyFamily list =
           + "from lenient-null-static-options below, which normalises to a typed empty and is "
           + "never-taught for that reason; the two are different rules at different positions and do not "
           + "share a family. The initialValue alias takes the same arm, so one fixture pins both." }
+      { Name = "A multi-select's value, which it never reads (Phase 1962)"
+        Class = AlreadyCanonical
+        FixtureIds = [ "lenient-1962-multiselect-value-dropped" ]
+        Evidence =
+          "JUDGEMENT: the canonical multi-select carries `values` and NO `value`, and the leniency "
+          + "accepts a `value` beside `\"multiple\":true` - the empty-Static placeholder every pre-1962 "
+          + "multi-select carried, or a binding a model wrote there - and drops it. Δ bytes is negative "
+          + "on the accepted side, so there is nothing to teach beyond the canonical Select rule the "
+          + "catalogue already states. Loss-free and total on its domain BECAUSE a multi-select never "
+          + "read `value`: no renderer, write-back or derivation consulted it once `multiple` was true, "
+          + "so dropping it changes nothing a reader can observe. A MALFORMED value is outside the "
+          + "domain and still refuses as a malformed binding." }
+      { Name = "Declared defaults written explicitly (the omitted form IS canonical) — Phase 2300"
+        Class = AlreadyCanonical
+        FixtureIds =
+          [ "lenient-2300-declared-default-booleans"
+            "lenient-2300-declared-default-enums"
+            "lenient-2300-declared-default-bindings" ]
+        Evidence =
+          "JUDGEMENT: the §3.6 declared-default rule, applied by Phase 2300 to the fifteen fields of the "
+          + "Phase 1963 list that were `required` until then. The canonical form is the ABSENT key; the "
+          + "leniency accepts the field written explicitly at its declared default (`\"wrap\":false`, "
+          + "`\"variant\":\"Standard\"`, `\"activeStep\":{\"$type\":\"Static\",\"value\":0}`, "
+          + "`\"dismissable\":true` on a modal, `\"copyable\":true` on a code block, …) and re-encodes "
+          + "without it. Δ bytes is negative on the accepted side, so there is nothing to teach beyond "
+          + "the rule the catalogue states once. TOTAL + LOSS-FREE by construction: every slot is "
+          + "declared `omitDefault` in the IDL, and the declared default is the authoring default, so "
+          + "absence and the explicit default denote the same value and the normalisation cannot lose "
+          + "one — the same judgement as the FragmentDecl family above, at fifteen more slots. One "
+          + "vector per family (booleans and the empty list, enum cases, a binding initial value) "
+          + "because the three value shapes exercise three arms of the generated omit test." }
       { Name = "Tagged Static at an I18n argument slot (Phase 1661)"
         Class = AlreadyCanonical
         FixtureIds = [ "lenient-1661-i18n-arg-tagged-static" ]

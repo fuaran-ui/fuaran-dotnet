@@ -17,16 +17,21 @@ module Fuaran.UI.JsonDecode.Tests.OverCloseUniqueness
 //  received). Each was labelled by exhaustive enumeration of the minimal
 //  deletion repairs, decoded through the canonical decoder, and then INSPECTED:
 //
-//    - 14 admit exactly one clean repair. Their labelled intended tree is
+//    - 13 admit exactly one clean repair. Their labelled intended tree is
 //      committed beside them as `intended-NN.txt` — the repaired document,
 //      hand-verified to be the tree the emission evidently meant. The gate must
 //      recover each and reproduce that tree EXACTLY (canonical re-encode
 //      equality, not merely "some tree decoded").
-//    - 14 admit two to five repairs that EACH decode clean. Their correct
+//    - 15 admit two to five repairs that EACH decode clean. Their correct
 //      repair is unknowable by construction — the candidates share a node
 //      skeleton and differ only in silent field ownership — so they are
 //      labelled REFUSE. A gate that picks one of them is the defect, not the
 //      feature, and zero wrong acceptances is the gate rather than the target.
+//      (`emission-00` joined this set under Phase 2300's declared-default rule:
+//      `Badge.variant` stopped being required, so the deletion that strands
+//      `"variant":"Info"` outside the badge decodes clean too, and the cell
+//      is no longer unique. A rule that makes a field optional makes an
+//      over-close that moves it unknowable; the gate refuses rather than guesses.)
 //
 //  THE WRONG FIX IS PINNED the way Phase 850 pinned EOF-close. On the
 //  five-way-ambiguous cell `emission-14`, the leftmost legal deletion decodes
@@ -96,7 +101,7 @@ let tests =
     testSequenced
     <| testList
         "Fuaran.UI.Ops.JsonDecode — uniqueness-gated over-close recovery (fuaran#855)"
-        [ test "the labelled set — 14 unambiguous recover to their labelled tree, 14 ambiguous refuse" {
+        [ test "the labelled set — 13 unambiguous recover to their labelled tree, 15 ambiguous refuse" {
               let files = emissionFiles ()
               Expect.equal files.Length 28 "the labelled set is complete"
 
@@ -140,14 +145,14 @@ let tests =
                       expectRefused (sprintf "%s (labelled ambiguous)" name) text
                       refused <- refused + 1
 
-              Expect.equal recovered 14 "14 of the 28 admit exactly one clean repair and are recovered"
-              Expect.equal refused 14 "14 of the 28 admit two or more and are refused"
+              Expect.equal recovered 13 "13 of the 28 admit exactly one clean repair and are recovered"
+              Expect.equal refused 15 "15 of the 28 admit two or more and are refused"
 
               // Both directions are reported, under distinct ids. A refused cell
               // that vanished from the accounting would be the demand signal
               // this class exists to generate, silently dropped.
-              Expect.equal recoveryEvents 14 "every recovery is reported"
-              Expect.equal refusalEvents 14 "every refusal is reported"
+              Expect.equal recoveryEvents 13 "every recovery is reported"
+              Expect.equal refusalEvents 15 "every refusal is reported"
           }
 
           test "the decode outcome returns the reliance events of THIS document" {

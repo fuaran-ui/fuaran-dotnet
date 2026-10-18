@@ -182,7 +182,7 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
                 nodeId
                 "SelectSpec.onChange"
                 s.OnChange.IsSome
-                (BindingWalk.isWriteBackTarget s.Value)
+                (s.Value |> Option.exists BindingWalk.isWriteBackTarget)
                 "$state (value)"
 
             handler

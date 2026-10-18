@@ -34,7 +34,7 @@ let private decodeOk (label: string) (json: string) =
 /// spelled `%s`.
 let private badgeWith (source: string) =
     sprintf
-        """{"id":"count-badge","kind":{"$type":"Badge","label":{"$type":"Bound","binding":{"$type":"Transform","pipeline":[],"source":%s}},"variant":"Neutral"}}"""
+        """{"id":"count-badge","kind":{"$type":"Badge","label":{"$type":"Bound","binding":{"$type":"Transform","pipeline":[],"source":%s}}}}"""
         source
 
 let private canonicalColumnar =
@@ -76,7 +76,7 @@ let tests =
 
               let badgeWithPipeline (source: string) =
                   sprintf
-                      """{"id":"count-badge","kind":{"$type":"Badge","label":{"$type":"Bound","binding":{"$type":"Transform","pipeline":%s,"source":%s}},"variant":"Neutral"}}"""
+                      """{"id":"count-badge","kind":{"$type":"Badge","label":{"$type":"Bound","binding":{"$type":"Transform","pipeline":%s,"source":%s}}}}"""
                       pipeline
                       source
 

@@ -77,7 +77,7 @@ The build-time validator's findings carry `FUARAN###` codes (e.g. `FUARAN050` `S
 **Two families share this band, and only one of them is the build-time walker.** The paragraph
 above describes the walker, which reads F# *source* — but the larger family by far is the
 **pre-emit validator**, which reads a *tree* just before it goes on the wire and raises the whole
-`FUARAN047`–`FUARAN163` range. A code you have in hand belongs to whichever family reported it, and
+`FUARAN047`–`FUARAN164` range. A code you have in hand belongs to whichever family reported it, and
 the two are enumerated in different places, though since Phase 2052 both are entries of one registry in one
 file (`PreEmitValidate.DefectCodes.table` and `PreEmitValidate.FindingCodes`): the pre-emit family's codes, severities and message
 shapes are published as data in the conformance corpus's `validator/defect-vocabulary.json`
@@ -1051,6 +1051,14 @@ the tree rooted at '{nodeId}' encodes to {measured} bytes; this host allows {lim
 
 ```text
 grid '{nodeId}' column '{columnLabel}' is an action column (Button / ButtonGroup cell) and declares field '{field}' — an action cell draws its own label and hands the whole row to its handler, so the field is never displayed, and sort and export ignore it; drop the field: an action column carries none (Phase 1909)
+```
+
+#### `FUARAN164` — Warning
+
+`MultiSelectValueIgnored` (Phase 1962)
+
+```text
+multi-select '{nodeId}' carries a `value` — a multi-select's selection is `values`, it never reads `value`, and every conformant decoder drops one; set Value = None, or build it with Fuaran.multiSelect (Phase 1962)
 ```
 
 <!-- END GENERATED: PreEmitValidate.DefectCodes.toMarkdown -->

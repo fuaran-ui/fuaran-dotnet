@@ -48,7 +48,7 @@ let private rowMajor =
 
 let private badgeWith (source: string) =
     sprintf
-        """{"id":"count-badge","kind":{"$type":"Badge","label":{"$type":"Bound","binding":{"$type":"Transform","pipeline":[{"$type":"groupBy","aggs":[{"fn":"count","name":"n","of":"medication"}],"keys":[]}],"source":%s}},"variant":"Neutral"}}"""
+        """{"id":"count-badge","kind":{"$type":"Badge","label":{"$type":"Bound","binding":{"$type":"Transform","pipeline":[{"$type":"groupBy","aggs":[{"fn":"count","name":"n","of":"medication"}],"keys":[]}],"source":%s}}}}"""
         source
 
 let private labelBinding (n: Node<obj>) : Binding<string> =

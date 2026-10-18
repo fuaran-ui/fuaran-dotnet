@@ -727,7 +727,7 @@ let resolveOwnFields (sources: BindingSources) (node: Node<obj>) : Node<obj> =
                 { s with
                     Label = resolveText sources s.Label
                     Source = substB sources s.Source
-                    Value = substB sources s.Value
+                    Value = substBOpt sources s.Value
                     Placeholder = resolveTextOpt sources s.Placeholder }
 
         | NodeKind.Tabs s ->

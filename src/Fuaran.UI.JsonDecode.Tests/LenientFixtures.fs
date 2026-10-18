@@ -1,4 +1,4 @@
-﻿module Fuaran.UI.JsonDecode.Tests.LenientFixtures
+module Fuaran.UI.JsonDecode.Tests.LenientFixtures
 
 // ============================================================================
 //  Lenient-ingest fixture corpus (data form) — WIRE_FORMAT §16.
@@ -335,7 +335,7 @@ let all: LenientFixture list =
         LenientJson =
           """{"id":"len-grid","kind":{"$type":"Box","children":[{"id":"len-flexrow","kind":{"$type":"Box","children":[],"layout":{"$type":"Flex","direction":"row","wrap":false},"role":"Group"}}],"layout":{"$type":"Grid","columns":2},"role":"Group"}}"""
         VerboseJson =
-          """{"id":"len-grid","kind":{"$type":"Box","children":[{"id":"len-flexrow","kind":{"$type":"Box","children":[],"layout":{"$type":"Flex","direction":"Horizontal","wrap":false},"role":"Group"}}],"layout":{"$type":"Grid","cols":2},"role":"Group"}}"""
+          """{"id":"len-grid","kind":{"$type":"Box","children":[{"id":"len-flexrow","kind":{"$type":"Box","children":[],"layout":{"$type":"Flex","direction":"Horizontal"},"role":"Group"}}],"layout":{"$type":"Grid","cols":2},"role":"Group"}}"""
         Description =
           "Web-prior aliases — Grid `columns`→`cols` (CSS/Tailwind prior) + Flex direction `row`→`Horizontal` (CSS flex-direction prior)" }
 
@@ -343,7 +343,7 @@ let all: LenientFixture list =
         LenientJson =
           """{"id":"len-card","kind":{"$type":"Box","children":[{"id":"len-kpi","kind":{"$type":"Metric","label":{"$type":"Literal","text":"Revenue"},"value":{"$type":"Static","value":1234.5}}},{"id":"len-hd","kind":{"$type":"Heading","level":3,"text":{"$type":"Literal","text":"Detail"},"variant":"Default"}},{"id":"len-bg","kind":{"$type":"Badge","label":{"$type":"Literal","text":"OK"},"variant":"Default"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Card","title":{"$type":"Literal","text":"KPIs"}}}"""
         VerboseJson =
-          """{"id":"len-card","kind":{"$type":"Box","children":[{"id":"len-kpi","kind":{"$type":"Metric","label":{"$type":"Literal","text":"Revenue"},"value":{"$type":"Static","value":1234.5}}},{"id":"len-hd","kind":{"$type":"Heading","level":3,"text":{"$type":"Literal","text":"Detail"},"variant":"Standard"}},{"id":"len-bg","kind":{"$type":"Badge","label":{"$type":"Literal","text":"OK"},"variant":"Neutral"}}],"heading":{"$type":"Literal","text":"KPIs"},"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Card"}}"""
+          """{"id":"len-card","kind":{"$type":"Box","children":[{"id":"len-kpi","kind":{"$type":"Metric","label":{"$type":"Literal","text":"Revenue"},"value":{"$type":"Static","value":1234.5}}},{"id":"len-hd","kind":{"$type":"Heading","level":3,"text":{"$type":"Literal","text":"Detail"},"variant":"Standard"}},{"id":"len-bg","kind":{"$type":"Badge","label":{"$type":"Literal","text":"OK"},"variant":"Neutral"}}],"heading":{"$type":"Literal","text":"KPIs"},"layout":{"$type":"Flex","direction":"Vertical"},"role":"Card"}}"""
         Description =
           "Web-prior aliases — Box `title`→`heading` (the universal card/modal prior), Metric scalar `value` (0.2.0 canonical; the KPI-card prior IS canon now), HeadingVariant/BadgeVariant `Default`→identity case" }
 
@@ -520,7 +520,7 @@ let all: LenientFixture list =
         LenientJson =
           """{"id":"len-emph","kind":{"$type":"Box","children":[{"id":"len-emph-row","kind":{"$type":"LabelValueRow","emphasis":"Strong","label":"Total","value":{"$type":"Static","value":42}},"style":{"emphasis":true}},{"id":"len-emph-fact","kind":{"$type":"Fact","emphasis":"Loud","label":"Status","value":"Open"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}"""
         VerboseJson =
-          """{"id":"len-emph","kind":{"$type":"Box","children":[{"id":"len-emph-row","kind":{"$type":"LabelValueRow","emphasis":true,"label":"Total","value":{"$type":"Static","value":42}},"style":{"emphasis":"Loud"}},{"id":"len-emph-fact","kind":{"$type":"Fact","emphasis":true,"label":"Status","value":"Open"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}"""
+          """{"id":"len-emph","kind":{"$type":"Box","children":[{"id":"len-emph-row","kind":{"$type":"LabelValueRow","emphasis":true,"label":"Total","value":{"$type":"Static","value":42}},"style":{"emphasis":"Loud"}},{"id":"len-emph-fact","kind":{"$type":"Fact","emphasis":true,"label":"Status","value":"Open"}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}"""
         Description =
           "2026-07-19 collision sweep — `emphasis` cross-vocabulary coercion, both directions: the style enum + Phase-460 aliases in the Fact/LabelValueRow BOOL slots (Loud/Strong/Bold ⇒ true, Normal/Quiet/Subtle/Muted ⇒ false) and a bool in the style-enum slot (true ⇒ Loud). One-to-one; the encoder still emits the canonical types." }
 
@@ -648,7 +648,7 @@ let all: LenientFixture list =
         LenientJson =
           """{"id":"master-detail-preselected","kind":{"$type":"Box","children":[{"id":"ticket-grid","kind":{"$type":"DataGrid","columns":[{"field":"id","kind":{"$type":"Text"},"label":"Ticket"},{"field":"priority","kind":{"$type":"Text"},"label":"Priority"}],"rowKeyField":"id","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"id":["TCK-2041","TCK-2042"],"priority":["high","low"]}}}}},{"id":"ticket-detail","kind":{"$type":"Box","children":[{"id":"detail-ticket","kind":{"$type":"Fact","emphasis":true,"label":"Selected ticket","value":{"$type":"Bound","binding":{"$type":"Selection","defaultValue":"TCK-2041","field":"id","nodeId":"ticket-grid"}}}}],"heading":"Ticket detail","layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Card"}},{"id":"related-grid","kind":{"$type":"DataGrid","columns":[{"field":"id","kind":{"$type":"Text"},"label":"Ticket"},{"field":"priority","kind":{"$type":"Text"},"label":"Priority"}],"rowKeyField":"id","source":{"$type":"Transform","params":[{"from":{"$type":"Selection","defaultValue":"TCK-2041","field":"id","nodeId":"ticket-grid"},"name":"ticketId"}],"pipeline":[{"$type":"filter","pred":{"$type":"binary","left":{"$type":"col","name":"id"},"op":"eq","right":{"$type":"param","name":"ticketId"}}}],"source":{"columns":{"id":["TCK-2041","TCK-2042"],"priority":["high","low"]}}}}}],"layout":{"$type":"Auto"},"role":"Dashboard"}}"""
         VerboseJson =
-          """{"id":"master-detail-preselected","kind":{"$type":"Box","children":[{"id":"ticket-grid","kind":{"$type":"DataGrid","columns":[{"field":"id","kind":{"$type":"Text"},"label":"Ticket"},{"field":"priority","kind":{"$type":"Text"},"label":"Priority"}],"rowKeyField":"id","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"id":{"validity":[true,true],"values":["TCK-2041","TCK-2042"]},"priority":{"validity":[true,true],"values":["high","low"]}},"schema":[{"name":"id","type":"string"},{"name":"priority","type":"string"}]}}}},{"id":"ticket-detail","kind":{"$type":"Box","children":[{"id":"detail-ticket","kind":{"$type":"Fact","emphasis":true,"label":"Selected ticket","value":{"$type":"Bound","binding":{"$type":"Selection","defaultValue":"TCK-2041","field":"id","nodeId":"ticket-grid"}}}}],"heading":"Ticket detail","layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Card"}},{"id":"related-grid","kind":{"$type":"DataGrid","columns":[{"field":"id","kind":{"$type":"Text"},"label":"Ticket"},{"field":"priority","kind":{"$type":"Text"},"label":"Priority"}],"rowKeyField":"id","source":{"$type":"Transform","params":[{"from":{"$type":"Selection","defaultValue":"TCK-2041","field":"id","nodeId":"ticket-grid"},"name":"ticketId"}],"pipeline":[{"$type":"filter","pred":{"$type":"binary","left":{"$type":"col","name":"id"},"op":"eq","right":{"$type":"param","name":"ticketId"}}}],"source":{"columns":{"id":{"validity":[true,true],"values":["TCK-2041","TCK-2042"]},"priority":{"validity":[true,true],"values":["high","low"]}},"schema":[{"name":"id","type":"string"},{"name":"priority","type":"string"}]}}}}],"layout":{"$type":"Auto"},"role":"Dashboard"}}"""
+          """{"id":"master-detail-preselected","kind":{"$type":"Box","children":[{"id":"ticket-grid","kind":{"$type":"DataGrid","columns":[{"field":"id","kind":{"$type":"Text"},"label":"Ticket"},{"field":"priority","kind":{"$type":"Text"},"label":"Priority"}],"rowKeyField":"id","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"id":{"validity":[true,true],"values":["TCK-2041","TCK-2042"]},"priority":{"validity":[true,true],"values":["high","low"]}},"schema":[{"name":"id","type":"string"},{"name":"priority","type":"string"}]}}}},{"id":"ticket-detail","kind":{"$type":"Box","children":[{"id":"detail-ticket","kind":{"$type":"Fact","emphasis":true,"label":"Selected ticket","value":{"$type":"Bound","binding":{"$type":"Selection","defaultValue":"TCK-2041","field":"id","nodeId":"ticket-grid"}}}}],"heading":"Ticket detail","layout":{"$type":"Flex","direction":"Vertical"},"role":"Card"}},{"id":"related-grid","kind":{"$type":"DataGrid","columns":[{"field":"id","kind":{"$type":"Text"},"label":"Ticket"},{"field":"priority","kind":{"$type":"Text"},"label":"Priority"}],"rowKeyField":"id","source":{"$type":"Transform","params":[{"from":{"$type":"Selection","defaultValue":"TCK-2041","field":"id","nodeId":"ticket-grid"},"name":"ticketId"}],"pipeline":[{"$type":"filter","pred":{"$type":"binary","left":{"$type":"col","name":"id"},"op":"eq","right":{"$type":"param","name":"ticketId"}}}],"source":{"columns":{"id":{"validity":[true,true],"values":["TCK-2041","TCK-2042"]},"priority":{"validity":[true,true],"values":["high","low"]}},"schema":[{"name":"id","type":"string"},{"name":"priority","type":"string"}]}}}}],"layout":{"$type":"Auto"},"role":"Dashboard"}}"""
         Description =
           "Phase 719 — the compact authoring twin of `master-detail-preselected`: all-valid columns as bare arrays (Core#88) and the inferable schema omitted; the canonical envelope stays the encoder's output. The pack teaches this form by example — the exemplar/prose contradiction measurably taught the envelope (claude-opus 81% envelope share, 2026-07-28 census)." }
 
@@ -845,7 +845,7 @@ let all: LenientFixture list =
         LenientJson =
           """{"id":"len-1656","kind":{"$type":"Box","children":[{"id":"len-1656-select","kind":{"$type":"Select","label":"Region","source":{"$type":"State","defaultValue":null,"key":"regionOptions"},"value":{"$type":"State","defaultValue":"uk","key":"region"}}},{"id":"len-1656-spark","kind":{"$type":"Sparkline","source":{"$type":"State","initialValue":null,"key":"series"}}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}"""
         VerboseJson =
-          """{"id":"len-1656","kind":{"$type":"Box","children":[{"id":"len-1656-select","kind":{"$type":"Select","label":"Region","source":{"$type":"State","key":"regionOptions"},"value":{"$type":"State","defaultValue":"uk","key":"region"}}},{"id":"len-1656-spark","kind":{"$type":"Sparkline","source":{"$type":"State","key":"series"}}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}"""
+          """{"id":"len-1656","kind":{"$type":"Box","children":[{"id":"len-1656-select","kind":{"$type":"Select","label":"Region","source":{"$type":"State","key":"regionOptions"},"value":{"$type":"State","defaultValue":"uk","key":"region"}}},{"id":"len-1656-spark","kind":{"$type":"Sparkline","source":{"$type":"State","key":"series"}}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}"""
         Description =
           "§5 — a `null` State.defaultValue is the null SPELLING OF ABSENCE and normalises to the omitted key, not to the slot's typed empty. The `initialValue` alias carrying null takes the same arm. The typed-empty read-compat belongs to `Static.value` (`lenient-null-static-options`); at a collection slot a declared `[]` is a claim the seeding rule reads, and normalising absence into it fabricates one (Phase 1656)" }
 
@@ -910,6 +910,63 @@ let all: LenientFixture list =
           """{"id":"len-1670-frag","kind":{"$type":"FragmentDecl","body":{"id":"len-1670-frag-body","kind":{"$type":"Markdown","text":"Template body"}},"name":"card-template"}}"""
         Description =
           "Parameterised fragments — a `FragmentDecl` carrying the REDUNDANT pure-deterministic `effect` and an empty `holes` list is decode-accepted and re-encodes with both keys OMITTED. Neither slot is optional-with-a-convention any more: both are omit-at-default on every conformant host, so the redundant form is input-only (Phase 1670)" }
+
+      // ─── Phase 1962 — a multi-select's `value` is dropped ───────────────
+      //
+      // Until Phase 1962 the type model required `value` on every `Select`, so
+      // every multi-select carried a meaningless empty `Static` beside its real
+      // `values` binding, and models that followed the type wrote a REAL binding
+      // there too (measured: 14 of the 16 stored emissions carrying both). The
+      // canonical multi-select now carries `values` and no `value`; any `value`
+      // beside `"multiple":true` stays decode-accepted, so every stored document
+      // (eval results, saved sessions, op-streams) still reads, and normalises
+      // to the clean form. Three spellings ride, one per child, so a host that
+      // matched only one fails the others: the bare `{"$type":"Static"}` the
+      // encoder wrote, the `"value":null` form the pre-429 encoder wrote, and a
+      // State binding of the kind models emit.
+      { Id = "lenient-1962-multiselect-value-dropped"
+        LenientJson =
+          """{"id":"len-1962","kind":{"$type":"Box","children":[{"id":"len-1962-tags","kind":{"$type":"Select","label":"Tags","multiple":true,"source":{"$type":"Static","value":[{"label":"Red","value":"red"},{"label":"Green","value":"green"}]},"value":{"$type":"Static"},"values":{"$type":"State","key":"tags"}}},{"id":"len-1962-depts","kind":{"$type":"Select","label":"Departments","multiple":true,"source":{"$type":"Static","value":[{"label":"Sales","value":"sales"}]},"value":{"$type":"Static","value":null},"values":{"$type":"Filter","name":"depts"}}},{"id":"len-1962-cats","kind":{"$type":"Select","label":"Categories","multiple":true,"source":{"$type":"Static","value":[{"label":"Auth","value":"Auth"}]},"value":{"$type":"State","defaultValue":"Auth","key":"category-primary"},"values":{"$type":"State","key":"categories"}}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}"""
+        VerboseJson =
+          """{"id":"len-1962","kind":{"$type":"Box","children":[{"id":"len-1962-tags","kind":{"$type":"Select","label":"Tags","multiple":true,"source":{"$type":"Static","value":[{"label":"Red","value":"red"},{"label":"Green","value":"green"}]},"values":{"$type":"State","key":"tags"}}},{"id":"len-1962-depts","kind":{"$type":"Select","label":"Departments","multiple":true,"source":{"$type":"Static","value":[{"label":"Sales","value":"sales"}]},"values":{"$type":"Filter","name":"depts"}}},{"id":"len-1962-cats","kind":{"$type":"Select","label":"Categories","multiple":true,"source":{"$type":"Static","value":[{"label":"Auth","value":"Auth"}]},"values":{"$type":"State","key":"categories"}}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}"""
+        Description =
+          "§3.2 — a multi-select (`\"multiple\":true`) carrying a `value` beside its `values` decodes and re-encodes WITHOUT `value`: a multi-select carries `values` and no `value`, and never reads one. Three spellings, one per child: the empty-`Static` placeholder every pre-1962 multi-select carried (bare, and with `\"value\":null`) and a real State binding of the kind models wrote beside `values`. A malformed `value` still refuses as a malformed binding (Phase 1962)" }
+
+      // ─── Phase 2300 — the declared-default rule, one vector per field family ──
+      //
+      // §3.6's rule is one sentence: a field with a declared default is ABSENT
+      // from the canonical form at that default, on every kind, and a document
+      // carrying the default explicitly decodes to the same value and
+      // re-encodes without it. Phase 2300 declared the default of the fifteen
+      // fields of the Phase 1963 list that were `required` until then; the
+      // declared default is the authoring default (`Defaults.fs`), which is why
+      // `Modal.dismissable` and `CodeBlock.copyable` omit when TRUE. One vector
+      // per family — booleans and the empty list, enum cases, and binding
+      // initial values — pins the explicit-default spelling every stored
+      // document carries.
+      { Id = "lenient-2300-declared-default-booleans"
+        LenientJson =
+          """{"id":"len-2300-bool","kind":{"$type":"Box","children":[{"id":"len-2300-link","kind":{"$type":"Link","download":false,"href":{"$type":"Static","value":"/about"},"label":"About us"}},{"id":"len-2300-list","kind":{"$type":"List","items":["First"],"ordered":false}},{"id":"len-2300-code","kind":{"$type":"CodeBlock","code":"let x = 1","copyable":true,"highlightLines":[],"language":"fsharp","lineNumbers":false}},{"id":"len-2300-upload","kind":{"$type":"FileUpload","accept":[".csv"],"label":"Upload CSV","multiple":false}},{"id":"len-2300-form","kind":{"$type":"Form","fields":[{"id":"guest-name","kind":{"$type":"Text"},"label":"Name","required":false}],"onSubmit":{"$type":"Chain","ops":[]},"submitLabel":"Book"}},{"id":"len-2300-modal","kind":{"$type":"Modal","children":[{"id":"len-2300-md","kind":{"$type":"Markdown","text":"Updated hourly."}}],"dismissable":true,"heading":"Confirm","open":{"$type":"Static","value":false}}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}"""
+        VerboseJson =
+          """{"id":"len-2300-bool","kind":{"$type":"Box","children":[{"id":"len-2300-link","kind":{"$type":"Link","href":{"$type":"Static","value":"/about"},"label":"About us"}},{"id":"len-2300-list","kind":{"$type":"List","items":["First"]}},{"id":"len-2300-code","kind":{"$type":"CodeBlock","code":"let x = 1","language":"fsharp"}},{"id":"len-2300-upload","kind":{"$type":"FileUpload","accept":[".csv"],"label":"Upload CSV"}},{"id":"len-2300-form","kind":{"$type":"Form","fields":[{"id":"guest-name","kind":{"$type":"Text"},"label":"Name"}],"onSubmit":{"$type":"Chain","ops":[]},"submitLabel":"Book"}},{"id":"len-2300-modal","kind":{"$type":"Modal","children":[{"id":"len-2300-md","kind":{"$type":"Markdown","text":"Updated hourly."}}],"heading":"Confirm","open":{"$type":"Static","value":false}}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}"""
+        Description =
+          "§3.6 — the declared-default rule over the boolean and list fields Phase 2300 declared: `Flex.wrap`, `Link.download`, `List.ordered`, `CodeBlock.lineNumbers` / `highlightLines`, `FileUpload.multiple`, `FormField.required` (each `false` / `[]`), and the two that omit when TRUE — `CodeBlock.copyable` (a code block is copyable unless it says otherwise) and `Modal.dismissable` (an overlay is dismissable unless it says otherwise, the `Toast` polarity). Each written explicitly at its default decodes to the same tree and re-encodes WITHOUT the member; the same field at the non-default value is unchanged (Phase 2300)" }
+
+      { Id = "lenient-2300-declared-default-enums"
+        LenientJson =
+          """{"id":"len-2300-enum","kind":{"$type":"Box","children":[{"id":"len-2300-heading","kind":{"$type":"Heading","level":2,"text":"Channel performance","variant":"Standard"}},{"id":"len-2300-badge","kind":{"$type":"Badge","label":"Beta","variant":"Neutral"}},{"id":"len-2300-button","kind":{"$type":"Button","label":"Save","onClick":{"$type":"Chain","ops":[]},"variant":"Secondary"}},{"id":"len-2300-image","kind":{"$type":"Image","alt":"Logo","src":{"$type":"Static","value":"/logo.png"},"variant":"Default"}},{"id":"len-2300-filters","kind":{"$type":"Filters","items":[{"kind":{"$type":"SegmentedChoice","options":{"$type":"Static","value":[{"label":"Low","value":"low"},{"label":"High","value":"high"}]},"orientation":"Horizontal"},"label":"Tier","name":"tier"}]}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}"""
+        VerboseJson =
+          """{"id":"len-2300-enum","kind":{"$type":"Box","children":[{"id":"len-2300-heading","kind":{"$type":"Heading","level":2,"text":"Channel performance"}},{"id":"len-2300-badge","kind":{"$type":"Badge","label":"Beta"}},{"id":"len-2300-button","kind":{"$type":"Button","label":"Save","onClick":{"$type":"Chain","ops":[]}}},{"id":"len-2300-image","kind":{"$type":"Image","alt":"Logo","src":{"$type":"Static","value":"/logo.png"}}},{"id":"len-2300-filters","kind":{"$type":"Filters","items":[{"kind":{"$type":"SegmentedChoice","options":{"$type":"Static","value":[{"label":"Low","value":"low"},{"label":"High","value":"high"}]}},"label":"Tier","name":"tier"}]}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}"""
+        Description =
+          "§3.6 — the declared-default rule over the enum-valued fields Phase 2300 declared: `Heading.variant` (`Standard`), `Badge.variant` (`Neutral`), `Button.variant` (`Secondary`), `Image.variant` (`Default`) and `SegmentedChoice.orientation` (`Horizontal`, which the decoder restored on absence since Phase 460 while the encoder still emitted it). Each written explicitly at its default re-encodes WITHOUT the member (Phase 2300)" }
+
+      { Id = "lenient-2300-declared-default-bindings"
+        LenientJson =
+          """{"id":"len-2300-binding","kind":{"$type":"Stepper","activeStep":{"$type":"Static","value":0},"children":[{"id":"len-2300-s1","kind":{"$type":"Markdown","text":"One"}},{"id":"len-2300-s2","kind":{"$type":"Markdown","text":"Two"}}]}}"""
+        VerboseJson =
+          """{"id":"len-2300-binding","kind":{"$type":"Stepper","children":[{"id":"len-2300-s1","kind":{"$type":"Markdown","text":"One"}},{"id":"len-2300-s2","kind":{"$type":"Markdown","text":"Two"}}]}}"""
+        Description =
+          "§3.6 — the declared-default rule over a binding-valued initial slot: `Stepper.activeStep` omits at `Static{value=0}` (the `Tabs.activeIndex` precedent). Written explicitly at its default it re-encodes WITHOUT the member; a State-bound `activeStep` is not a default and is kept (Phase 2300)" }
 
       // ─── Phase 1670 — the `FragmentRef` twin, and why it is NOT here ───────
       //

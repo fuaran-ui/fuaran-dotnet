@@ -34,7 +34,7 @@ open Fuaran.UI.SchemaForm
 /// re-copying it here and updating this pin in the same change.
 [<Literal>]
 let private FixtureSha256 =
-    "559d522a6992aec8d4aa3cf2d5895b9ba8bc17d67edb58c097817ab303c7948c"
+    "230c81d9b8ce2938f15a3655c21f32c6d17452390055335e98be96f1a00f99c0"
 
 /// The table's case count at that commit. A table that silently lost cases
 /// would otherwise pass every remaining one.

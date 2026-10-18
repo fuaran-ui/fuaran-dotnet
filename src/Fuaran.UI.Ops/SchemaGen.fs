@@ -258,6 +258,25 @@ let private forbidding (names: string list) (r: J) : J =
         )
     | _ -> r
 
+/// Phase 1962 — the single/multi `value` rule on `SelectSpec`, a relation
+/// between two sibling keys that Draft 2020-12 states with `if`/`else`. A
+/// single-select (`multiple` absent or `false`) REQUIRES `value`. A multi-select
+/// (`"multiple":true`) carries its selection in `values`; a `value` beside it is
+/// a §16 lenient accept the decoder normalises away (it is still a
+/// `Binding_str_choice`, so a malformed one fails here as it does there).
+let private selectValueRule (r: J) : J =
+    match r with
+    | JObj fields ->
+        JObj(
+            fields
+            @ [ "if",
+                JObj
+                    [ "properties", JObj [ "multiple", JObj [ "const", JBool true ] ]
+                      "required", JArr [ JStr "multiple" ] ]
+                "else", JObj [ "required", JArr [ JStr "value" ] ] ]
+        )
+    | _ -> r
+
 /// One `$type`-discriminated DU branch (WIRE_FORMAT.md §3). `$type` is pinned
 /// by `const`, so an unrecognised discriminator matches no branch.
 let private duCase (disc: string) (required: string list) (props: (string * J) list) : J =
@@ -950,7 +969,7 @@ let private defs: (string * J) list =
                   "step", number ]
             duCase
                 "SegmentedChoice"
-                [ "options"; "orientation" ]
+                [ "options" ]
                 [ "onChange", closure
                   "options", binding "list_SelectOption"
                   "orientation", ref "Orientation"
@@ -1081,17 +1100,17 @@ let private defs: (string * J) list =
             "subtext", ref "TextSource" ]
 
       "HeadingSpec",
-      record
-          [ "level"; "text"; "variant" ]
-          [ "level", integer; "text", ref "TextSource"; "variant", ref "HeadingVariant" ]
+      // Phase 2300 — the declared-default rule: `variant` (and every other field
+      // the IDL declares `omitDefault`) leaves `required` and stays in `props`.
+      record [ "level"; "text" ] [ "level", integer; "text", ref "TextSource"; "variant", ref "HeadingVariant" ]
 
       "MarkdownSpec", record [ "text" ] [ "text", ref "TextSource" ]
 
-      "BadgeSpec", record [ "label"; "variant" ] [ "label", ref "TextSource"; "variant", ref "BadgeVariant" ]
+      "BadgeSpec", record [ "label" ] [ "label", ref "TextSource"; "variant", ref "BadgeVariant" ]
 
       "LinkSpec",
       record
-          [ "download"; "href"; "label" ]
+          [ "href"; "label" ]
           [ "href", binding "str"
             "label", ref "TextSource"
             "download", boolean
@@ -1110,7 +1129,7 @@ let private defs: (string * J) list =
       // Phase 1079 — `expandable` is omitted-when-`false`, a fourth reason and
       // the plainest: the identity of a bool declaration is not declaring it.
       record
-          [ "alt"; "src"; "variant" ]
+          [ "alt"; "src" ]
           [ "alt", ref "TextSource"
             "aspectRatio", ref "ImageAspect"
             "caption", ref "TextSource"
@@ -1224,7 +1243,7 @@ let private defs: (string * J) list =
             "onSelect", closure
             "selectionStateKey", str ]
 
-      "ListSpec", record [ "items"; "ordered" ] [ "items", arrayOf (ref "TextSource"); "ordered", boolean ]
+      "ListSpec", record [ "items" ] [ "items", arrayOf (ref "TextSource"); "ordered", boolean ]
 
 
       "ToastSpec",
@@ -1238,7 +1257,7 @@ let private defs: (string * J) list =
 
       "CodeBlockSpec",
       record
-          [ "code"; "copyable"; "highlightLines"; "language"; "lineNumbers" ]
+          [ "code"; "language" ]
           [ "code", str
             "copyable", boolean
             "highlightLines", arrayOf integer
@@ -1477,7 +1496,7 @@ let private defs: (string * J) list =
       forbidding
           [ "validation"; "constraints"; "validate" ]
           (record
-              [ "id"; "kind"; "label"; "required" ]
+              [ "id"; "kind"; "label" ]
               [ "id", str
                 "kind", ref "FormFieldKind"
                 "label", ref "TextSource"
@@ -1498,7 +1517,7 @@ let private defs: (string * J) list =
 
       "ButtonSpec",
       record
-          [ "label"; "onClick"; "variant" ]
+          [ "label"; "onClick" ]
           [ "label", ref "TextSource"
             "onClick", ref "Action"
             "variant", ref "ButtonVariant"
@@ -1511,7 +1530,7 @@ let private defs: (string * J) list =
           // default) — omitted for a declarative select; `onChangeMulti` is the
           // multi-select handler's own sentinel key (Phase 426; previously the
           // handler was never encoded).
-          [ "label"; "source"; "value" ]
+          [ "label"; "source" ]
           [ "label", ref "TextSource"
             "onChange", closure
             "source", binding "list_SelectOption"
@@ -1523,12 +1542,13 @@ let private defs: (string * J) list =
             "multiple", boolean
             "values", binding "list_str"
             "onChangeMulti", closure ]
+      |> selectValueRule
 
       "FileUploadSpec",
       record
           // `onSelect` leaves `required` (Phase 1568) — IDL-`opt`, decoder
           // `tryField`: a declarative upload with no host continuation is legal.
-          [ "accept"; "label"; "multiple" ]
+          [ "accept"; "label" ]
           [ "accept", arrayOf str
             "label", ref "TextSource"
             "multiple", boolean
@@ -1798,7 +1818,7 @@ let private defs: (string * J) list =
             "keepTogether", boolean
             "breakBefore", boolean ]
 
-      "FlexLayout", record [ "direction"; "wrap" ] [ "direction", ref "Orientation"; "gap", integer; "wrap", boolean ]
+      "FlexLayout", record [ "direction" ] [ "direction", ref "Orientation"; "gap", integer; "wrap", boolean ]
 
       "GridTemplate", record [ "cols" ] [ "cols", integer; "gap", integer; "templateColumns", str ]
 
@@ -1842,7 +1862,7 @@ let private defs: (string * J) list =
 
       "StepperSpec",
       record
-          [ "activeStep"; "children" ]
+          [ "children" ]
           [ "activeStep", binding "int"
             "children", arrayOf (ref "Node")
             // `onSelect` is now carried; optional in the schema to match the
@@ -1873,7 +1893,7 @@ let private defs: (string * J) list =
           // Phase 1119 — `modality` omits at `Modal` and `anchor` is optional, so
           // neither joins the required set; a pre-1119 document validates against
           // this schema unchanged.
-          [ "children"; "dismissable"; "open" ]
+          [ "children"; "open" ]
           [ "children", arrayOf (ref "Node")
             "dismissable", boolean
             "onDismiss", ref "Action"

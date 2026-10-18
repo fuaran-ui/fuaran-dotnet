@@ -484,6 +484,8 @@
     <!-- Phase 1960 - the row-source codec this tier owns: byte identity with the retired codec outside
          the two hazards, the two refusals, and the corpus row-encode vectors. -->
     <Compile Include="RowCodecTests.fs" />
+    <!-- Phase 1962 - a multi-select Select carries values and no value: the constructor rule, the lenient drop, FUARAN164. -->
+    <Compile Include="SelectValueRuleTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
