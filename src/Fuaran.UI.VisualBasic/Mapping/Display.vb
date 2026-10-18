@@ -11,7 +11,7 @@ Friend Module DisplayMapping
             New Csharp.BadgeOptions With {
                 .Id = Attr(el, "id"),
                 .Label = AsText(Attr(el, "label")),
-                .Variant = AsEnum(Of Csharp.BadgeVariant)(Attr(el, "variant"), Csharp.BadgeVariant.Neutral)})
+                .Variant = AsEnum(Of Csharp.BadgeVariant)(el, "variant", Csharp.BadgeVariant.Neutral)})
 
         d("Sparkline") = Function(el) Csharp.Fuaran.Sparkline(
             New Csharp.SparklineOptions With {.Id = Attr(el, "id"), .Source = OptDoubleSeqBinding(el, "source")})
@@ -23,7 +23,7 @@ Friend Module DisplayMapping
                 .Id = Attr(el, "id"),
                 .Body = AsText(Attr(el, "body")),
                 .Heading = OptText(el, "heading"),
-                .Tone = AsEnum(Of Csharp.Tone)(Attr(el, "tone"), Csharp.Tone.Info),
+                .Tone = AsEnum(Of Csharp.Tone)(el, "tone", Csharp.Tone.Info),
                 .Icon = OptStr(el, "icon"),
                 .Dismissable = AttrBool(el, "dismissable")})
 
@@ -34,7 +34,7 @@ Friend Module DisplayMapping
                 .Label = OptText(el, "label"),
                 .Caveat = OptText(el, "caveat"),
                 .Indeterminate = AttrBool(el, "indeterminate"),
-                .Tone = AsEnum(Of Csharp.Tone)(Attr(el, "tone"), Csharp.Tone.Default)})
+                .Tone = AsEnum(Of Csharp.Tone)(el, "tone", Csharp.Tone.Default)})
 
         d("Skeleton") = Function(el) Csharp.Fuaran.Skeleton(
             New Csharp.SkeletonOptions With {.Id = Attr(el, "id"), .Rows = AttrInt(el, "rows", 3)})
@@ -43,8 +43,8 @@ Friend Module DisplayMapping
             New Csharp.IconOptions With {
                 .Id = Attr(el, "id"),
                 .Icon = Attr(el, "icon"),
-                .Size = AsEnum(Of Csharp.IconSize)(Attr(el, "size"), Csharp.IconSize.Medium),
-                .Tone = AsEnum(Of Csharp.Tone)(Attr(el, "tone"), Csharp.Tone.Default),
+                .Size = AsEnum(Of Csharp.IconSize)(el, "size", Csharp.IconSize.Medium),
+                .Tone = AsEnum(Of Csharp.Tone)(el, "tone", Csharp.Tone.Default),
                 .Label = Attr(el, "label")})
 
         d("LabelValueRow") = Function(el) Csharp.Fuaran.LabelValueRow(
@@ -63,7 +63,7 @@ Friend Module DisplayMapping
                 .Label = AsText(Attr(el, "label")),
                 .Value = AsText(Attr(el, "value")),
                 .Icon = OptStr(el, "icon"),
-                .Tone = AsEnum(Of Csharp.Tone)(Attr(el, "tone"), Csharp.Tone.Default),
+                .Tone = AsEnum(Of Csharp.Tone)(el, "tone", Csharp.Tone.Default),
                 .Emphasis = AttrBool(el, "emphasis"),
                 .Help = OptText(el, "help")})
 
@@ -81,10 +81,10 @@ Friend Module DisplayMapping
                 .Id = Attr(el, "id"),
                 .Src = AsStringBinding(Attr(el, "src")),
                 .Alt = AsText(Attr(el, "alt")),
-                .Variant = AsEnum(Of Csharp.ImageVariant)(Attr(el, "variant"), Csharp.ImageVariant.Default),
-                .Fit = AsEnum(Of Csharp.ImageFit)(Attr(el, "fit"), Csharp.ImageFit.Natural),
-                .AspectRatio = AsEnum(Of Csharp.ImageAspect)(Attr(el, "aspect-ratio"), Csharp.ImageAspect.Natural),
-                .Loading = AsEnum(Of Csharp.ImageLoading)(Attr(el, "loading"), Csharp.ImageLoading.Eager),
+                .Variant = AsEnum(Of Csharp.ImageVariant)(el, "variant", Csharp.ImageVariant.Default),
+                .Fit = AsEnum(Of Csharp.ImageFit)(el, "fit", Csharp.ImageFit.Natural),
+                .AspectRatio = AsEnum(Of Csharp.ImageAspect)(el, "aspect-ratio", Csharp.ImageAspect.Natural),
+                .Loading = AsEnum(Of Csharp.ImageLoading)(el, "loading", Csharp.ImageLoading.Eager),
                 .Caption = OptText(el, "caption"),
                 .Expandable = AttrBool(el, "expandable"),
                 .SrcSet = ChildElements(el, "Source").
@@ -135,7 +135,7 @@ Friend Module DisplayMapping
                 .Id = Attr(el, "id"),
                 .Src = AsStringBinding(Attr(el, "src")),
                 .Title = AsText(Attr(el, "title")),
-                .AspectRatio = AsEnum(Of Csharp.ImageAspect)(Attr(el, "aspect-ratio"), Csharp.ImageAspect.Natural),
+                .AspectRatio = AsEnum(Of Csharp.ImageAspect)(el, "aspect-ratio", Csharp.ImageAspect.Natural),
                 .Permissions = EmbedPermissions(el)})
 
         ' Phase 1120 - the tree. Its rows are <TreeItem> children, RECURSIVELY:
@@ -159,14 +159,14 @@ Friend Module DisplayMapping
         d("Divider") = Function(el) Csharp.Fuaran.Divider(
             New Csharp.DividerOptions With {
                 .Id = Attr(el, "id"),
-                .Orientation = AsEnum(Of Csharp.Orientation)(Attr(el, "orientation"), Csharp.Orientation.Horizontal),
+                .Orientation = AsEnum(Of Csharp.Orientation)(el, "orientation", Csharp.Orientation.Horizontal),
                 .Label = OptText(el, "label")})
 
         d("Toast") = Function(el) Csharp.Fuaran.Toast(
             New Csharp.ToastOptions With {
                 .Id = Attr(el, "id"),
                 .Message = AsText(Attr(el, "message")),
-                .Tone = AsEnum(Of Csharp.Tone)(Attr(el, "tone"), Csharp.Tone.Info),
+                .Tone = AsEnum(Of Csharp.Tone)(el, "tone", Csharp.Tone.Info),
                 .Open = OptBoolBinding(el, "open"),
                 .Dismissable = AttrBool(el, "dismissable", True)})
 
@@ -182,7 +182,7 @@ Friend Module DisplayMapping
             New Csharp.MathOptions With {
                 .Id = Attr(el, "id"),
                 .Source = If(HasAttr(el, "source"), Attr(el, "source"), el.Value),
-                .Display = AsEnum(Of Csharp.MathDisplay)(Attr(el, "display"), Csharp.MathDisplay.Block)})
+                .Display = AsEnum(Of Csharp.MathDisplay)(el, "display", Csharp.MathDisplay.Block)})
 
         ' Phase 524 — Drawing. The closed Shape DU is not expressed via flat XML
         ' attributes at this veneer tier; the element authors the viewBox + an
@@ -198,28 +198,20 @@ Friend Module DisplayMapping
                 .Description = OptText(el, "description")})
     End Sub
 
-    ''' <summary>Phase 1110 — the &lt;Track&gt; children of a &lt;Media&gt;, in AUTHORED
-    ''' order. Unlike an &lt;Image&gt;'s &lt;Source&gt; children, whose order the renderers
-    ''' normalise, the order written here is the order a reader sees in the user
-    ''' agent's track menu, so the translator preserves it exactly.
-    '''
-    ''' &lt;c&gt;srclang&lt;/c&gt; is spelled all-lowercase, matching the HTML attribute rather
-    ''' than the wire's camelCase &lt;c&gt;srcLang&lt;/c&gt;: this dialect is authored by people
-    ''' who know the element, and the analyzer's attribute table carries the same
-    ''' spelling.&lt;/summary&gt;
     ''' <summary>Phase 1111 - the pipe-separated permissions attribute of an
     ''' &lt;Embed&gt;, lowered onto the closed enum.
     '''
-    ''' Blank tokens are dropped BEFORE the enum parse rather than after, and the
-    ''' ordering is load-bearing rather than tidy: AsEnum returns its DEFAULT on an
-    ''' empty string, so a stray double separator would otherwise GRANT a permission
-    ''' the author never wrote. With the filter first the default is unreachable and
-    ''' every surviving token either names a relaxation or throws.</summary>
+    ''' Blank tokens are dropped BEFORE the parse, so a stray double separator is
+    ''' not read as a permission. Every surviving token goes through
+    ''' <c>EnumName</c>, which has no default to fall back to: since Phase 1930 a
+    ''' number (<c>"0"</c>, <c>"9"</c>), a comma-joined pair or an undeclared name
+    ''' is an authoring error, so no spelling other than the literal
+    ''' <c>AllowScripts</c> can grant script.</summary>
     Private Function EmbedPermissions(el As XElement) As IReadOnlyList(Of Csharp.EmbedPermission)
         Return PipeList(Attr(el, "permissions")).
             Select(Function(p) p.Trim()).
             Where(Function(p) p.Length > 0).
-            Select(Function(p) AsEnum(Of Csharp.EmbedPermission)(p, Csharp.EmbedPermission.AllowScripts)).
+            Select(Function(p) EnumName(Of Csharp.EmbedPermission)(p, "permissions")).
             ToList()
     End Function
 
@@ -240,10 +232,19 @@ Friend Module DisplayMapping
             ToList()
     End Function
 
+    ''' <summary>Phase 1110 — the &lt;Track&gt; children of a &lt;Media&gt;, in AUTHORED
+    ''' order. Unlike an &lt;Image&gt;'s &lt;Source&gt; children, whose order the renderers
+    ''' normalise, the order written here is the order a reader sees in the user
+    ''' agent's track menu, so the translator preserves it exactly.
+    '''
+    ''' <c>srclang</c> is spelled all-lowercase, matching the HTML attribute rather
+    ''' than the wire's camelCase <c>srcLang</c>: this dialect is authored by people
+    ''' who know the element, and the analyzer's attribute table carries the same
+    ''' spelling.</summary>
     Private Function MediaTracks(el As XElement) As IReadOnlyList(Of Csharp.TrackEntry)
         Return ChildElements(el, "Track").
             Select(Function(c) New Csharp.TrackEntry(
-                AsEnum(Of Csharp.TrackKind)(Attr(c, "kind"), Csharp.TrackKind.Captions),
+                AsEnum(Of Csharp.TrackKind)(c, "kind", Csharp.TrackKind.Captions),
                 AsStringBinding(Attr(c, "src")),
                 Attr(c, "srclang"),
                 AsText(Attr(c, "label")),

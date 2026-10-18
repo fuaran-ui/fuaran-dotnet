@@ -7818,6 +7818,45 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
+## 0.98.0 — the slot opened after v0.97.0 was released (DRAFT — untagged)
+
+_`v0.97.0` was tagged at `0d6a626` on 2026-10-18 and the slot was opened on the ledger the same day. Additive changes
+ride it; a change of a higher class advances it._
+
+### What rides this slot — Phase 1930 (the authoring veneers fail closed on enums)
+
+**Class: additive (no public signature moves) + a BEHAVIOUR tightening on input that was already invalid.** Packages
+`Fuaran.UI.CSharp` and `Fuaran.UI.VisualBasic`. No wire byte moves and the vocabulary does not change.
+
+- **C#: a value outside an enum's declared cases now throws.** Every generated `EnumMap.ToFs` switch ended in a
+  `_ =>` arm returning a fallback case, so a cast integer authored a case nobody wrote. On `EmbedPermission` that case
+  was `AllowScripts`, which meant `(EmbedPermission)99` gave script permission to an embedded frame. The arm now throws
+  `ArgumentOutOfRangeException` when the node is built. The generator no longer has a fallback case to emit
+  (`AuthoringDialect.CSharpEnumMirror` loses its `Fallback` field; `Fuaran.UI.Idl` is not published).
+- **VB: an enum attribute accepts only a declared name.** The readers used `[Enum].TryParse`, which also accepts a
+  numeric string, a comma-joined list (combining the values) and an undefined number. So `permissions="0"` was
+  `AllowScripts`, `"AllowSameOrigin,AllowForms"` was `AllowFullscreen` (1|2) and `tone="7"` reached the C# seam as an
+  undefined value. A declared name is still matched case-insensitively and with surrounding blanks ignored. Anything
+  else is a `FuaranXmlException` that names the attribute and lists the accepted names, for example
+  `permissions="9" is not a declared EmbedPermission name. Accepted names: AllowScripts, AllowSameOrigin, AllowForms, AllowFullscreen.`
+
+**What a consumer does.** Nothing, unless the code authors an enum from an integer or from a string that is not a
+declared name. Such code used to get a substituted case without any error. It now refuses at authoring time, and the
+fix is to write the name.
+
+**What is NOT closed.** `EmbedPermission.AllowScripts` is the enum's zero value, so `default(EmbedPermission)` and
+`(EmbedPermission)0` are `AllowScripts` in C#, and nothing can tell them apart from the literal name. Closing that path
+means changing a public constant. It is recorded as an open decision and is not part of this slot.
+
+**Certified by** the C# conformance suite's `EnumTokenPin`, which has two legs that do not need the corpus. A
+source-reading pin fails if any `ToFs` body carries a `_ =>` arm that returns a value; it includes a negative control.
+A reflective sweep hands every `ToFs` the value `99`, expects a refusal, and checks that every declared case still maps.
+Both legs go red on the previous seam (4 failures). The VB conformance suite's `EnumRefusal` covers `permissions` set
+to `"0"`, `"9"`, comma-joined pairs and a near-miss name, plus `tone="7"`, a comma-joined tone and an optional
+`capture="0"`, and checks that every declared name still maps.
+
+---
+
 ## 0.97.0 — the slot opened after v0.96.0 was released (DRAFT — untagged)
 
 _Class: **breaking**, set by its first rider, Phase 1960. `v0.96.0` was tagged and published at `9045b5f` on 2026-10-18
