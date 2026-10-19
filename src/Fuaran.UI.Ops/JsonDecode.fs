@@ -190,13 +190,18 @@ type DecodeError =
 /// chains that stop at the first defect and expose one whole-node entry, so a
 /// layer above them could keep the sentences and the aliases but not the §29
 /// list, nor the first entry of it on every document. The generator now emits
-/// defect-collecting, per-spec decoders on request (fuaran-core#377), but
-/// requested against this vocabulary the emission does not compile (Phase 2127:
-/// the `Binding.Local.parse` placeholder names the short-circuiting decoder's
-/// `decT`, which the collecting decoder does not bind), so the layering still
-/// waits on the generator binding it (fuaran-core#460). The tests pinning both
-/// facts are in `GeneratedLayerTests`
-/// ("structural substrate", "collecting derivation").
+/// defect-collecting, per-spec decoders on request (fuaran-core#377), and since
+/// the Core pin carries fuaran-core#460 they compile against this vocabulary.
+/// They are still not a substrate this module can layer on (Phase 2255): each
+/// public collecting entry takes only the value, and decodes every type nested
+/// in it (child nodes, text sources, bindings, actions) through the generator's
+/// own private decoders. Delegating one family's structure would therefore
+/// decode every subtree beneath it with none of this module's policy (aliases,
+/// the null reading, the §3.6 unwrap, the relational checks, the sentences),
+/// so the layering waits on the generator opening its collecting decoders at
+/// the types a host overrides. The tests pinning these facts are in
+/// `GeneratedLayerTests` ("structural substrate", "collecting derivation",
+/// "collecting decoders are closed").
 //
 // Under Fable the slot is a plain static: a JS host runs one decode at a time on
 // its one thread, so a plain static IS per-thread there (Phase 2064 checked it).

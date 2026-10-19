@@ -1198,36 +1198,44 @@ let decoderSubstrateTests =
 //  Phase 2226 (2026-10-18) raised the pin to Core 0.38.1 and the test went red
 //  exactly as designed. It now pins the CLEARED state: the placeholder still
 //  names `decT` and the collecting decoders bind it, so fuaran#2255 can start;
-//  a Core that stopped binding it would red here again. 2255 still replaces
-//  this test with the layering's parity tests.
+//  a Core that stopped binding it would red here again.
+//
+//  Phase 2255 (2026-10-19) started and found the layering blocked one step
+//  further (the list below this one), so this test is KEPT: the binding it pins
+//  is still a precondition of any layering. It is replaced by parity tests when
+//  the layered decoder exists, not before.
 // ============================================================================
+
+/// The generated module with `extra` requested beside the vocabulary's own
+/// derivations, emitted in-process from the vocabulary: what `Generated.fs`
+/// would become if the request were made, without making it.
+let private emitWith (extra: Fuaran.Core.Idl.Gen.Derivation list) : string =
+    let idl = Fuaran.Core.Idl.Artifact.canonicalise Fuaran.UI.Vocabulary.uiIdl
+
+    match
+        Fuaran.Core.Idl.Gen.fsharpModuleDerived
+            Fuaran.UI.VocabularySupport.support
+            (Fuaran.UI.VocabularySupport.derivations @ extra)
+            "Fuaran.UI.Generated"
+            idl
+            (idl.Kinds |> List.map _.Tag)
+    with
+    | Ok text -> text
+    | Error e -> failtestf "the generator refused %A for this vocabulary: %A" extra e
+
+/// The collecting section of the module emitted with `SpecDecoders` requested.
+let private collectingSection () : string =
+    let emitted = emitWith [ Fuaran.Core.Idl.Gen.Derivation.SpecDecoders ]
+    let at = emitted.IndexOf "COLLECTING DECODERS"
+    Expect.isGreaterThan at 0 "the collecting section is emitted when SpecDecoders is requested"
+    emitted.Substring at
 
 [<Tests>]
 let collectingDerivationTests =
     testList
         "the collecting derivation against this vocabulary (Phase 2127)"
         [ test "the collecting decoders name a short-circuiting local the vocabulary's placeholder needs" {
-              let idl = Fuaran.Core.Idl.Artifact.canonicalise Fuaran.UI.Vocabulary.uiIdl
-
-              let emitted =
-                  match
-                      Fuaran.Core.Idl.Gen.fsharpModuleDerived
-                          Fuaran.UI.VocabularySupport.support
-                          (Fuaran.UI.VocabularySupport.derivations
-                           @ [ Fuaran.Core.Idl.Gen.Derivation.SpecDecoders ])
-                          "Fuaran.UI.Generated"
-                          idl
-                          (idl.Kinds |> List.map _.Tag)
-                  with
-                  | Ok text -> text
-                  | Error e -> failtestf "the generator refused the collecting derivation for this vocabulary: %A" e
-
-              let marker = "COLLECTING DECODERS"
-              let at = emitted.IndexOf marker
-
-              Expect.isGreaterThan at 0 "the collecting section is emitted when SpecDecoders is requested"
-
-              let collecting = emitted.Substring at
+              let collecting = collectingSection ()
 
               Expect.stringContains
                   collecting
@@ -1237,4 +1245,104 @@ let collectingDerivationTests =
               Expect.isTrue
                   (collecting.Contains "let decT")
                   "the collecting decoders no longer bind `decT` (fuaran-core#460's binding, Core >= 0.38.1) — the placeholder is unbound again, so the layering fuaran#2255 builds does not compile"
+          } ]
+
+// ============================================================================
+//  Phase 2255 — the collecting decoders are CLOSED over the types a host
+//  overrides, so the layering the phase was cut for cannot start.
+//
+//  With fuaran-core#460 in the pin, the collecting derivation compiles here
+//  unpatched (requested, regenerated and built on 2026-10-19; `idl.json`
+//  unchanged). Measured then over the corpus's node-decoder fixtures,
+//  `Generated.decodeNodeAll` against `JsonDecode.decodeNodeObjWithDefects`:
+//  `nodes/` 249 of 249 decode to the same canonical bytes; `lenient/` 40 of 83
+//  agree and 43 are refused (aliases and readings that are policy); `reject/`
+//  109 of 166 give the same path list, 1 the same head, 1 the same set in
+//  another order, 16 a different head, and 39 are ACCEPTED (relational and
+//  value checks, limits, near-miss sets). The substrate is close.
+//
+//  It is not layerable, and the reason is the shape of the emission rather than
+//  any count. A public collecting entry (`decode<Spec>All`) takes the value and
+//  nothing else, and decodes every type nested in it through the generator's
+//  own PRIVATE decoders: a container's children through `colNode`, a text
+//  through `colTextSource`, a handler through `colAction`, a binding through
+//  `colBinding`. So the hand decoder cannot delegate one family's structure:
+//  every subtree beneath that family would be decoded with none of the policy
+//  (aliases, the null reading, the §3.6 unwrap, the relational checks, the
+//  sentences), and 24 of the 100 divergences above sit in a NESTED node, where
+//  no family-level wrapper can reach them. A pre-pass that rewrote the
+//  document first would have to know each position's type to apply a
+//  position-dependent rule, which is a second structural decoder.
+//
+//  The remedy is the generator's: collecting decoders open at the types a host
+//  overrides (a host-supplied decoder at each position of an overridden type,
+//  as the TypeScript host's table-driven decoder takes one override entry per
+//  member). These tests go RED when the emission changes shape at either
+//  point, which is the signal to re-open the layering (fuaran#2255's deferred
+//  tasks) on the measurement above.
+// ============================================================================
+
+[<Tests>]
+let closedCollectingDecoderTests =
+    testList
+        "the collecting decoders are closed over the types a host overrides (Phase 2255)"
+        [ test "every public collecting entry takes the value and nothing else" {
+              let entries =
+                  (collectingSection ()).Split '\n'
+                  |> Array.filter (fun line -> line.StartsWith "let decode" && line.Contains "All (")
+                  |> List.ofArray
+
+              Expect.isGreaterThan entries.Length 40 "the per-spec collecting entries are emitted"
+
+              let widened =
+                  entries
+                  |> List.filter (fun line ->
+                      // One parameter, the value, then the return annotation or the body.
+                      not (
+                          System.Text.RegularExpressions.Regex.IsMatch(
+                              line,
+                              @"^let decode\w+All \((j: JVal|s: string)\) [:=]"
+                          )
+                      ))
+
+              Expect.isEmpty
+                  widened
+                  (sprintf
+                      "a public collecting entry now takes more than the value, so the generator may accept a host decoder at nested positions: re-open the layering (fuaran#2255): %A"
+                      widened)
+          }
+
+          test "a container's collecting decoder reads its nested types through the generator's private decoders" {
+              let collecting = collectingSection ()
+
+              for closed in
+                  [ "and private colNode (j: JVal)"
+                    "and private colTextSource (j: JVal)"
+                    "and private colAction (j: JVal)"
+                    "and private colBinding<'T> (colT: JVal -> Result<'T, DecodeError list>) (j: JVal)"
+                    "let __c0 = cReq \"children\" __fs (cList colNode)" ] do
+                  Expect.stringContains
+                      collecting
+                      closed
+                      "the collecting decoders no longer reach this nested type through a private decoder of their own, so a host may now supply its policy there: re-open the layering (fuaran#2255)"
+          }
+
+          // The AiTools binding-slot table waits on the same generator, for a
+          // different request: `SlotsOf "Binding"` (see `VocabularySupport.derivations`)
+          // still emits an unannotated `ofKind`, which this tier's nullness
+          // checking refuses (FS3261), at the pinned Core 0.38.1 as at Core's
+          // main on 2026-10-19. When the emission changes, request it, build,
+          // and read the slot table from `slotsOfBinding`.
+          test "the binding-slot enumeration is still emitted with an unannotated ofKind" {
+              let emitted = emitWith [ Fuaran.Core.Idl.Gen.Derivation.SlotsOf "Binding" ]
+
+              let at =
+                  emitted.IndexOf "let slotsOfBinding (n: Node<'Msg>) : (string * obj) list ="
+
+              Expect.isGreaterThan at 0 "the binding-slot enumeration is emitted when SlotsOf is requested"
+
+              Expect.stringContains
+                  (emitted.Substring at)
+                  "\n    let ofKind =\n"
+                  "the generator changed the binding-slot enumeration: request SlotsOf \"Binding\", build with nullness checking on, and read the AiTools slot table from slotsOfBinding (fuaran#2255's deferred task)"
           } ]
