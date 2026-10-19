@@ -7822,7 +7822,9 @@ document that declares no ceiling is exactly the control it was.
 
 _`v0.97.0` was tagged at `0d6a626` on 2026-10-18 and the slot was opened on the ledger the same day. Class: **breaking**,
 set by Phase 2188; Phase 1930 rode it first as additive. The slot already sits at the minor number, which is where a pre-1.0
-breaking change goes, so the number does not move._
+breaking change goes, so the number does not move. The operator ruled on 2026-10-19 that 0.98.0 ships as a breaking
+minor with the `NodeMap` removal below, rather than restoring the mappers and deferring their removal to the announced
+breaking cut._
 
 ### What rides this slot — Phase 1930 (the authoring veneers fail closed on enums)
 
