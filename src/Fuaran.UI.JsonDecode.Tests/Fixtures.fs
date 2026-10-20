@@ -8390,30 +8390,56 @@ let boxChain (boxes: int) : string =
     acc
 
 /// Phase 2328 — a tree exactly `boxes` nodes deep whose deep path runs through a
-/// node a KIND holds in a named arm rather than through an ordered child list:
-/// the root is a `Switch` (`arm = "switch-case"`, the deep chain is its only
-/// case's child) or an `ErrorBoundary` (`arm = "errorboundary-fallback"`, the deep
-/// chain is its fallback), and the other arm holds one Markdown leaf. The chain
-/// below the root is `boxChain (boxes - 1)`, so the node depth is `boxes`. A §21
-/// depth walk (and an island walk) that descends only ordered child lists never
-/// sees the deep path (fuaran#2297, the reference's kind-held reach).
+/// node a KIND holds in a named arm rather than through an ordered child list.
+/// The root is a `Box` holding one `Switch` (`arm = "switch-case"`, the deep
+/// chain is its only case's child) or one `ErrorBoundary`
+/// (`arm = "errorboundary-fallback"`, the deep chain is its fallback); the other
+/// arm holds one Markdown leaf, and the chain below the arm is
+/// `boxChain (boxes - 2)`, so the node depth is `boxes`. A §21 depth walk (and an
+/// island walk) that descends only ordered child lists never sees the deep path
+/// (fuaran#2297, the reference's kind-held reach). The root is a `Box` so the
+/// tree is not a leaf: a leaf fixture is a building block other suites nest
+/// inside a deeper synthetic tree, and this one is already at the bound.
+///
+/// Every id is prefixed by the arm's (`sw-` / `eb-`), so neither tree shares a
+/// node id with `limit-node-depth-at-max` or with each other: a corpus pair or a
+/// synthetic tree built from several fixtures must not read one fixture's nodes
+/// as another's survivors.
 let armDepthChain (arm: string) (boxes: int) : string =
-    let deep = boxChain (boxes - 1)
-    let leaf = """{"id":"other","kind":{"$type":"Markdown","text":"Other arm"}}"""
+    let prefixed (p: string) =
+        (boxChain (boxes - 2))
+            .Replace("\"id\":\"n", "\"id\":\"" + p + "-n")
+            .Replace("\"id\":\"leaf\"", "\"id\":\"" + p + "-leaf\"")
+
+    let other (p: string) =
+        "{\"id\":\""
+        + p
+        + "-other\",\"kind\":{\"$type\":\"Markdown\",\"text\":\"Other arm\"}}"
+
+    let root (p: string) (held: string) =
+        "{\"id\":\""
+        + p
+        + "-root\",\"kind\":{\"$type\":\"Box\",\"children\":["
+        + held
+        + "],\"layout\":{\"$type\":\"Flex\",\"direction\":\"Vertical\"},\"role\":\"Group\"}}"
 
     match arm with
     | "switch-case" ->
-        "{\"id\":\"sw\",\"kind\":{\"$type\":\"Switch\",\"cases\":[{\"child\":"
-        + deep
-        + ",\"match\":\"a\"}],\"default\":"
-        + leaf
-        + ",\"stateKey\":\"view\"}}"
+        root
+            "sw"
+            ("{\"id\":\"sw\",\"kind\":{\"$type\":\"Switch\",\"cases\":[{\"child\":"
+             + prefixed "sw"
+             + ",\"match\":\"a\"}],\"default\":"
+             + other "sw"
+             + ",\"stateKey\":\"view\"}}")
     | "errorboundary-fallback" ->
-        "{\"id\":\"eb\",\"kind\":{\"$type\":\"ErrorBoundary\",\"child\":"
-        + leaf
-        + ",\"fallback\":"
-        + deep
-        + "}}"
+        root
+            "eb"
+            ("{\"id\":\"eb\",\"kind\":{\"$type\":\"ErrorBoundary\",\"child\":"
+             + other "eb"
+             + ",\"fallback\":"
+             + prefixed "eb"
+             + "}}")
     | unknown -> invalidArg (nameof arm) (sprintf "armDepthChain: no arm %s" unknown)
 
 /// Phase 1120 — `rows` levels of nested `TreeItem`, inside ONE `Tree` node.
