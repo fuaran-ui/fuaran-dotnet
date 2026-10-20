@@ -8524,4 +8524,11 @@ let storedNodes: (string * string * string) list =
       armDepthChain "switch-case" Fuaran.UI.WireLimits.MaxDepth
       "limit-node-depth-at-max-errorboundary-fallback",
       "§21 max node depth through an ErrorBoundary fallback — a tree at EXACTLY the limit (24 levels) whose deep path is the fallback. Rule 1: every conformant host MUST decode this. Its past-the-bound twin is `reject-limit-node-depth-errorboundary-fallback`",
-      armDepthChain "errorboundary-fallback" Fuaran.UI.WireLimits.MaxDepth ]
+      armDepthChain "errorboundary-fallback" Fuaran.UI.WireLimits.MaxDepth
+      // Phase 2328 — prototype-safe wire keys (fuaran#1931): the names a
+      // JavaScript object inherits, used as open-map keys, a state key, a row
+      // field and plain text. A host that reads a wire map through an object's
+      // prototype chain, or writes one onto it, decodes a different document.
+      "proto-safe-keys",
+      "Prototype-safe wire keys (fuaran#1931) — `__proto__`, `constructor` and `toString` as a TonedPill map's keys, a state key, a row field and its key field, and a column label. Every host must round-trip the document byte for byte: the keys are data, never members of the host's own object model",
+      """{"id":"proto-safe-keys","kind":{"$type":"DataGrid","columns":[{"field":"constructor","kind":{"$type":"TonedPill","field":"constructor","map":{"__proto__":"Info","constructor":"Success","toString":"Warning"}},"label":"__proto__"}],"rowKeyField":"constructor","source":{"$type":"State","defaultValue":[{"constructor":"__proto__"}],"key":"__proto__"}}}""" ]
