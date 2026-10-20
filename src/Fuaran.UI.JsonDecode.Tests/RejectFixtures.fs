@@ -751,6 +751,220 @@ let all: RejectFixture list =
         ExpectedPath = "$.kind.channel.direction"
         IsOp = false
         Description = "Mount ChannelDirection value 'Sideways' (§4o)" }
+      { Id = "reject-mount-direction-inonly"
+        Json =
+          """{"id":"x","kind":{"$type":"Mount","scopeId":"g","channel":{"direction":"InOnly"},"capabilities":[],"onBubble":"<closure>"},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""
+        ExpectedCode = DecodeErrorCode.UNKNOWN_DU_CASE
+        ExpectedPath = "$.kind.channel.direction"
+        IsOp = false
+        Description =
+          "Mount ChannelDirection value 'InOnly' (§4o) — a near-miss of the closed set (OutOnly, TwoWay) that one host once admitted (fuaran#2299)" }
+      { Id = "reject-2296-errorboundary-missing-child"
+        Json =
+          """{"id":"boundary-1","kind":{"$type":"ErrorBoundary","fallback":{"id":"boundary-fallback","kind":{"$type":"Callout","body":"Fallback rendered","heading":"Couldn't render","tone":"Warning"}}}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.child"
+        IsOp = false
+        Description =
+          "the IDL-required `ErrorBoundary.child` absent from an otherwise canonical document (`boundary-1` less that member): MISSING_FIELD at the member's own path. One of the members a hand decoder once never checked (fuaran#2296)" }
+      { Id = "reject-2296-errorboundary-missing-fallback"
+        Json =
+          """{"id":"boundary-1","kind":{"$type":"ErrorBoundary","child":{"id":"boundary-child","kind":{"$type":"Markdown","text":"Child body"}}}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.fallback"
+        IsOp = false
+        Description =
+          "the IDL-required `ErrorBoundary.fallback` absent from an otherwise canonical document (`boundary-1` less that member): MISSING_FIELD at the member's own path. One of the members a hand decoder once never checked (fuaran#2296)" }
+      { Id = "reject-2296-disclosure-missing-heading"
+        Json =
+          """{"id":"discl-1","kind":{"$type":"Disclosure","children":[{"id":"markdown-1","kind":{"$type":"Markdown","text":"Updated hourly."}}],"defaultOpen":true,"open":{"$type":"Static","value":false}}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.heading"
+        IsOp = false
+        Description =
+          "the IDL-required `Disclosure.heading` absent from an otherwise canonical document (`discl-1` less that member): MISSING_FIELD at the member's own path. One of the members a hand decoder once never checked (fuaran#2296)" }
+      { Id = "reject-2296-map-missing-centrelatitude"
+        Json =
+          """{"id":"map-1","kind":{"$type":"Map","centreLongitude":-0.12,"source":{"$type":"Static","value":[{"label":"London","latitude":51.5,"longitude":-0.12}]},"zoom":6}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.centreLatitude"
+        IsOp = false
+        Description =
+          "the IDL-required `Map.centreLatitude` absent from an otherwise canonical document (`map-1` less that member): MISSING_FIELD at the member's own path. One of the members a hand decoder once never checked (fuaran#2296)" }
+      { Id = "reject-2296-map-missing-centrelongitude"
+        Json =
+          """{"id":"map-1","kind":{"$type":"Map","centreLatitude":51.5,"source":{"$type":"Static","value":[{"label":"London","latitude":51.5,"longitude":-0.12}]},"zoom":6}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.centreLongitude"
+        IsOp = false
+        Description =
+          "the IDL-required `Map.centreLongitude` absent from an otherwise canonical document (`map-1` less that member): MISSING_FIELD at the member's own path. One of the members a hand decoder once never checked (fuaran#2296)" }
+      { Id = "reject-2296-map-missing-zoom"
+        Json =
+          """{"id":"map-1","kind":{"$type":"Map","centreLatitude":51.5,"centreLongitude":-0.12,"source":{"$type":"Static","value":[{"label":"London","latitude":51.5,"longitude":-0.12}]}}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.zoom"
+        IsOp = false
+        Description =
+          "the IDL-required `Map.zoom` absent from an otherwise canonical document (`map-1` less that member): MISSING_FIELD at the member's own path. One of the members a hand decoder once never checked (fuaran#2296)" }
+      { Id = "reject-2296-splitpanel-missing-weight"
+        Json =
+          """{"id":"split-1","kind":{"$type":"SplitPanel","children":[{"id":"metric-1","kind":{"$type":"Metric","format":{"$type":"Currency","code":"GBP"},"icon":"trending-up","label":"Revenue","subtext":"vs last month","tone":"Brand","trend":{"$type":"Static","value":0.07},"trendFormat":{"$type":"Percent","decimals":1},"value":{"$type":"Static","value":1234.5}}},{"id":"markdown-1","kind":{"$type":"Markdown","text":"Updated hourly."}}]}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.weight"
+        IsOp = false
+        Description =
+          "the IDL-required `SplitPanel.weight` absent from an otherwise canonical document (`split-1` less that member): MISSING_FIELD at the member's own path. One of the members a hand decoder once never checked (fuaran#2296)" }
+      { Id = "reject-2296-navigate-missing-route"
+        Json =
+          """{"id":"action-navigate-target","kind":{"$type":"Button","label":"Read the documentation","onClick":{"$type":"Navigate","target":"Blank"}}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.onClick.route"
+        IsOp = false
+        Description =
+          "the IDL-required `Navigate.route` absent from an otherwise canonical document (`action-navigate-target` less that member): MISSING_FIELD at the member's own path. One of the members a hand decoder once never checked (fuaran#2296)" }
+      { Id = "reject-2296-focus-missing-nodeid"
+        Json =
+          """{"id":"action-focus","kind":{"$type":"Button","label":"Clear search","onClick":{"$type":"Chain","ops":[{"$type":"SetState","key":"search","value":""},{"$type":"Focus"}]}}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.onClick.ops[1].nodeId"
+        IsOp = false
+        Description =
+          "the IDL-required `Focus.nodeId` absent from an otherwise canonical document (`action-focus` less that member): MISSING_FIELD at the member's own path. One of the members a hand decoder once never checked (fuaran#2296)" }
+      { Id = "reject-2296-notify-missing-channel"
+        Json =
+          """{"id":"button-print","kind":{"$type":"Button","label":"Print this invoice","onClick":{"$type":"Chain","ops":[{"$type":"Print"},{"$type":"Notify","payload":"invoice"}]}}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.onClick.ops[1].channel"
+        IsOp = false
+        Description =
+          "the IDL-required `Notify.channel` absent from an otherwise canonical document (`button-print` less that member): MISSING_FIELD at the member's own path. One of the members a hand decoder once never checked (fuaran#2296)" }
+      { Id = "reject-2296-notify-missing-payload"
+        Json =
+          """{"id":"button-print","kind":{"$type":"Button","label":"Print this invoice","onClick":{"$type":"Chain","ops":[{"$type":"Print"},{"$type":"Notify","channel":"printed"}]}}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.onClick.ops[1].payload"
+        IsOp = false
+        Description =
+          "the IDL-required `Notify.payload` absent from an otherwise canonical document (`button-print` less that member): MISSING_FIELD at the member's own path. One of the members a hand decoder once never checked (fuaran#2296)" }
+      { Id = "reject-2296-aitool-missing-toolname"
+        Json =
+          """{"id":"btn-json-payloads","kind":{"$type":"Button","label":"Fire the JSON-payload actions","onClick":{"$type":"Chain","ops":[{"$type":"Notify","channel":"audit.channel","payload":{"alpha":1,"escapes":"quote\" back\\slash \u0001 astral-😀","float-whole":2,"nested":[{"a":1e-07,"b":true},[0,3],{},[]],"zeta":"last key authored first"}},{"$type":"SetState","key":"draft","value":{"alpha":1,"escapes":"quote\" back\\slash \u0001 astral-😀","float-whole":2,"nested":[{"a":1e-07,"b":true},[0,3],{},[]],"zeta":"last key authored first"}},{"$type":"AiTool","args":{"alpha":1,"escapes":"quote\" back\\slash \u0001 astral-😀","float-whole":2,"nested":[{"a":1e-07,"b":true},[0,3],{},[]],"zeta":"last key authored first"}}]},"variant":"Primary"}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.onClick.ops[2].toolName"
+        IsOp = false
+        Description =
+          "the IDL-required `AiTool.toolName` absent from an otherwise canonical document (`btn-json-payloads` less that member): MISSING_FIELD at the member's own path. One of the members a hand decoder once never checked (fuaran#2296)" }
+      { Id = "reject-2296-aitool-missing-args"
+        Json =
+          """{"id":"btn-json-payloads","kind":{"$type":"Button","label":"Fire the JSON-payload actions","onClick":{"$type":"Chain","ops":[{"$type":"Notify","channel":"audit.channel","payload":{"alpha":1,"escapes":"quote\" back\\slash \u0001 astral-😀","float-whole":2,"nested":[{"a":1e-07,"b":true},[0,3],{},[]],"zeta":"last key authored first"}},{"$type":"SetState","key":"draft","value":{"alpha":1,"escapes":"quote\" back\\slash \u0001 astral-😀","float-whole":2,"nested":[{"a":1e-07,"b":true},[0,3],{},[]],"zeta":"last key authored first"}},{"$type":"AiTool","toolName":"summarise"}]},"variant":"Primary"}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.onClick.ops[2].args"
+        IsOp = false
+        Description =
+          "the IDL-required `AiTool.args` absent from an otherwise canonical document (`btn-json-payloads` less that member): MISSING_FIELD at the member's own path. One of the members a hand decoder once never checked (fuaran#2296)" }
+      { Id = "reject-2296-call-missing-endpoint"
+        Json =
+          """{"id":"action-confirm","kind":{"$type":"Button","label":"Delete","onClick":{"$type":"Confirm","onConfirm":{"$type":"Call","into":{"$type":"State","key":"delete-result"}},"prompt":{"$type":"Bound","binding":{"$type":"Selection","field":"reference","nodeId":"orders-grid"}}}}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.onClick.onConfirm.endpoint"
+        IsOp = false
+        Description =
+          "the IDL-required `Call.endpoint` absent from an otherwise canonical document (`action-confirm` less that member): MISSING_FIELD at the member's own path. One of the members a hand decoder once never checked (fuaran#2296)" }
+      { Id = "reject-2296-readfilebody-missing-fileref"
+        Json =
+          """{"id":"btn-read-workbook","kind":{"$type":"Button","label":"Load workbook","onClick":{"$type":"ReadFileBody","encoding":"Base64","onRead":"<closure>"},"variant":"Primary"}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.onClick.fileRef"
+        IsOp = false
+        Description =
+          "the IDL-required `ReadFileBody.fileRef` absent from an otherwise canonical document (`btn-read-workbook` less that member): MISSING_FIELD at the member's own path. One of the members a hand decoder once never checked (fuaran#2296)" }
+      { Id = "reject-2296-readfilebody-missing-encoding"
+        Json =
+          """{"id":"btn-read-workbook","kind":{"$type":"Button","label":"Load workbook","onClick":{"$type":"ReadFileBody","fileRef":"workbook-upload:0","onRead":"<closure>"},"variant":"Primary"}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.onClick.encoding"
+        IsOp = false
+        Description =
+          "the IDL-required `ReadFileBody.encoding` absent from an otherwise canonical document (`btn-read-workbook` less that member): MISSING_FIELD at the member's own path. One of the members a hand decoder once never checked (fuaran#2296)" }
+      { Id = "reject-2296-invoke-missing-capabilityid"
+        Json =
+          """{"id":"btn-invoke","kind":{"$type":"Button","label":"Run model","onClick":{"$type":"Invoke","args":[{"addr":"rows","value":"all"}]},"variant":"Primary"}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.onClick.capabilityId"
+        IsOp = false
+        Description =
+          "the IDL-required `Invoke.capabilityId` absent from an otherwise canonical document (`btn-invoke` less that member): MISSING_FIELD at the member's own path. One of the members a hand decoder once never checked (fuaran#2296)" }
+      { Id = "reject-2296-invoke-missing-args"
+        Json =
+          """{"id":"btn-invoke","kind":{"$type":"Button","label":"Run model","onClick":{"$type":"Invoke","capabilityId":"model.score"},"variant":"Primary"}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.onClick.args"
+        IsOp = false
+        Description =
+          "the IDL-required `Invoke.args` absent from an otherwise canonical document (`btn-invoke` less that member): MISSING_FIELD at the member's own path. One of the members a hand decoder once never checked (fuaran#2296)" }
+      { Id = "reject-2296-local-missing-initialfrom"
+        Json =
+          """{"id":"form-local-1","kind":{"$type":"Form","fields":[{"id":"salary-input","kind":{"$type":"Text","onChange":"<closure>","value":{"$type":"Local","flushOn":{"$type":"OnBlur"},"format":"<closure>","onCommit":"<closure>","parse":"<closure>"}},"label":"Salary"}],"onSubmit":{"$type":"Chain","ops":[]},"submitLabel":"Save"}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.fields[0].kind.value.initialFrom"
+        IsOp = false
+        Description =
+          "the IDL-required `Local.initialFrom` absent from an otherwise canonical document (`form-local-1` less that member): MISSING_FIELD at the member's own path. One of the members a hand decoder once never checked (fuaran#2296)" }
+      { Id = "reject-2296-format-missing-source"
+        Json =
+          """{"id":"format-since","kind":{"$type":"Box","children":[{"id":"since-auto","kind":{"$type":"Markdown","text":{"$type":"Bound","binding":{"$type":"Format","format":{"$type":"Since"},"locale":{"$type":"Ambient"}}}}},{"id":"since-declared-hour","kind":{"$type":"Markdown","text":{"$type":"Bound","binding":{"$type":"Format","format":{"$type":"Since","unit":"Hour"},"locale":{"$type":"Explicit","tag":"en-GB"},"source":{"$type":"Static","value":1700000000}}}}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.children[0].kind.text.binding.source"
+        IsOp = false
+        Description =
+          "the IDL-required `Format.source` absent from an otherwise canonical document (`format-since` less that member): MISSING_FIELD at the member's own path. One of the members a hand decoder once never checked (fuaran#2296)" }
+      { Id = "reject-2296-format-missing-format"
+        Json =
+          """{"id":"format-since","kind":{"$type":"Box","children":[{"id":"since-auto","kind":{"$type":"Markdown","text":{"$type":"Bound","binding":{"$type":"Format","locale":{"$type":"Ambient"},"source":{"$type":"Static","value":1700000000}}}}},{"id":"since-declared-hour","kind":{"$type":"Markdown","text":{"$type":"Bound","binding":{"$type":"Format","format":{"$type":"Since","unit":"Hour"},"locale":{"$type":"Explicit","tag":"en-GB"},"source":{"$type":"Static","value":1700000000}}}}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.children[0].kind.text.binding.format"
+        IsOp = false
+        Description =
+          "the IDL-required `Format.format` absent from an otherwise canonical document (`format-since` less that member): MISSING_FIELD at the member's own path. One of the members a hand decoder once never checked (fuaran#2296)" }
+      { Id = "reject-2296-format-missing-locale"
+        Json =
+          """{"id":"format-since","kind":{"$type":"Box","children":[{"id":"since-auto","kind":{"$type":"Markdown","text":{"$type":"Bound","binding":{"$type":"Format","format":{"$type":"Since"},"source":{"$type":"Static","value":1700000000}}}}},{"id":"since-declared-hour","kind":{"$type":"Markdown","text":{"$type":"Bound","binding":{"$type":"Format","format":{"$type":"Since","unit":"Hour"},"locale":{"$type":"Explicit","tag":"en-GB"},"source":{"$type":"Static","value":1700000000}}}}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.children[0].kind.text.binding.locale"
+        IsOp = false
+        Description =
+          "the IDL-required `Format.locale` absent from an otherwise canonical document (`format-since` less that member): MISSING_FIELD at the member's own path. One of the members a hand decoder once never checked (fuaran#2296)" }
+      { Id = "reject-2296-i18n-missing-key"
+        Json =
+          """{"id":"text-i18n-bound-arg-1","kind":{"$type":"Markdown","text":{"$type":"I18n","args":{"count":{"$type":"State","key":"cartCount"}}}}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.text.key"
+        IsOp = false
+        Description =
+          "the IDL-required `I18n.key` absent from an otherwise canonical document (`text-i18n-bound-arg-1` less that member): MISSING_FIELD at the member's own path. One of the members a hand decoder once never checked (fuaran#2296)" }
+      { Id = "reject-modal-modality-blocking"
+        Json =
+          """{"id":"popover-open-1","kind":{"$type":"Modal","children":[{"id":"markdown-1","kind":{"$type":"Markdown","text":"Updated hourly."}}],"modality":"Blocking","open":{"$type":"Static","value":true}}}"""
+        ExpectedCode = DecodeErrorCode.UNKNOWN_DU_CASE
+        ExpectedPath = "$.kind.modality"
+        IsOp = false
+        Description =
+          "a Modal `modality` of `\"Blocking\"` — the token one host once invented for the `Modal` modality and accepted while refusing the real one (fuaran#2296). The closed pair is `Modal | Popover`; the path is the bare slot, as for `reject-modal-modality-unknown`" }
+      { Id = "reject-limit-node-depth-switch-case"
+        Json = Fixtures.armDepthChain "switch-case" (Fuaran.UI.WireLimits.MaxDepth + 1)
+        ExpectedCode = DecodeErrorCode.LIMIT_EXCEEDED
+        ExpectedPath = "$"
+        IsOp = false
+        Description =
+          "§21 max node depth through a Switch case — one level past the limit (25), the deep path being the only case's child. A depth walk that counts only ordered child lists never sees it (fuaran#2297)" }
+      { Id = "reject-limit-node-depth-errorboundary-fallback"
+        Json = Fixtures.armDepthChain "errorboundary-fallback" (Fuaran.UI.WireLimits.MaxDepth + 1)
+        ExpectedCode = DecodeErrorCode.LIMIT_EXCEEDED
+        ExpectedPath = "$"
+        IsOp = false
+        Description =
+          "§21 max node depth through an ErrorBoundary fallback — one level past the limit (25), the deep path being the fallback. A depth walk that counts only ordered child lists never sees it (fuaran#2297)" }
       { Id = "reject-unknown-drawing-shape"
         Json =
           """{"id":"x","kind":{"$type":"Drawing","shapes":[{"$type":"Blob","style":{}}],"style":{},"viewBox":{"height":100,"minX":0,"minY":0,"width":100}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""

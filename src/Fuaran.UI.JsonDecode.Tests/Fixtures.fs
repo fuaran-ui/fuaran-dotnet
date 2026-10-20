@@ -1718,6 +1718,20 @@ let stepper: Node<obj> =
         ))
         None
 
+/// Phase 2328 — `Stepper.onSelect` is OPTIONAL in the IDL: a stepper with no
+/// select handler carries no `onSelect` member (fuaran#2298, #2315).
+[<NodeFixture "Layout/Stepper (Phase 2328 — onSelect OMITTED)">]
+let stepperNoSelect: Node<obj> =
+    node
+        "stepper-no-onselect"
+        (NodeKind.Stepper(
+            { Defaults.stepper with
+                ActiveStep = Binding.Static(Some 1)
+                Children = [ markdown; withId "markdown-2" markdown ]
+                OnSelect = None }
+        ))
+        None
+
 [<NodeFixture "Layout/SummaryList">]
 let summaryList: Node<obj> =
     node
@@ -2925,6 +2939,20 @@ let fileUpload: Node<obj> =
                 OnSelect = Some(fun _ -> placeholderChain)
                 // Phase 130: bound disabled-state corpus coverage.
                 Disabled = Some(Binding.State("uploadBusy", Some false)) }
+        ))
+        None
+
+/// Phase 2328 — `FileUpload.onSelect` is OPTIONAL in the IDL: an upload with no
+/// select handler carries no `onSelect` member (fuaran#2298, #2315).
+[<NodeFixture "Input/FileUpload (Phase 2328 — onSelect OMITTED)">]
+let fileUploadNoSelect: Node<obj> =
+    node
+        "upload-no-onselect"
+        (NodeKind.FileUpload(
+            { Defaults.fileUpload with
+                Label = TextSource.Literal "Upload CSV"
+                Accept = [ ".csv"; "text/csv" ]
+                OnSelect = None }
         ))
         None
 
@@ -6601,6 +6629,23 @@ let mountMinimal: Node<obj> =
               Capabilities = [] })
         None
 
+/// Phase 2328 — `onBubble` is OPTIONAL in the IDL, so a Mount with no bubble
+/// handler carries no `onBubble` member at all. A host that always writes the
+/// sentinel emits a second form for one meaning (fuaran#2298, #2315).
+[<NodeFixture "Mount (§4o — onBubble OMITTED: no bubble handler declared)">]
+let mountNoBubble: Node<obj> =
+    node
+        "mount-no-onbubble"
+        (NodeKind.Mount
+            { ScopeId = "guest-sidebar"
+              Inputs = None
+              Channel =
+                { Direction = ChannelDirection.OutOnly
+                  MessageShape = None }
+              OnBubble = None
+              Capabilities = [] })
+        None
+
 [<NodeFixture "Mount (§4o — capabilities + TwoWay message shape + value/slot inputs)">]
 let mountFull: Node<obj> =
     node
@@ -8344,6 +8389,33 @@ let boxChain (boxes: int) : string =
 
     acc
 
+/// Phase 2328 — a tree exactly `boxes` nodes deep whose deep path runs through a
+/// node a KIND holds in a named arm rather than through an ordered child list:
+/// the root is a `Switch` (`arm = "switch-case"`, the deep chain is its only
+/// case's child) or an `ErrorBoundary` (`arm = "errorboundary-fallback"`, the deep
+/// chain is its fallback), and the other arm holds one Markdown leaf. The chain
+/// below the root is `boxChain (boxes - 1)`, so the node depth is `boxes`. A §21
+/// depth walk (and an island walk) that descends only ordered child lists never
+/// sees the deep path (fuaran#2297, the reference's kind-held reach).
+let armDepthChain (arm: string) (boxes: int) : string =
+    let deep = boxChain (boxes - 1)
+    let leaf = """{"id":"other","kind":{"$type":"Markdown","text":"Other arm"}}"""
+
+    match arm with
+    | "switch-case" ->
+        "{\"id\":\"sw\",\"kind\":{\"$type\":\"Switch\",\"cases\":[{\"child\":"
+        + deep
+        + ",\"match\":\"a\"}],\"default\":"
+        + leaf
+        + ",\"stateKey\":\"view\"}}"
+    | "errorboundary-fallback" ->
+        "{\"id\":\"eb\",\"kind\":{\"$type\":\"ErrorBoundary\",\"child\":"
+        + leaf
+        + ",\"fallback\":"
+        + deep
+        + "}}"
+    | unknown -> invalidArg (nameof arm) (sprintf "armDepthChain: no arm %s" unknown)
+
 /// Phase 1120 — `rows` levels of nested `TreeItem`, inside ONE `Tree` node.
 ///
 /// The point of the shape: it consumes exactly ONE level of node depth however
@@ -8445,4 +8517,11 @@ let storedNodes: (string * string * string) list =
       // non-conformance rather than caution.
       "limit-skeleton-rows-at-max",
       "§21.9 max skeleton rows — a Skeleton at EXACTLY the limit (10 000 rows). Rule 1: every conformant host MUST decode this. Its past-the-bound twin is `reject-limit-skeleton-rows`",
-      sprintf """{"id":"s","kind":{"$type":"Skeleton","rows":%d}}""" Fuaran.UI.WireLimits.MaxSkeletonRows ]
+      sprintf """{"id":"s","kind":{"$type":"Skeleton","rows":%d}}""" Fuaran.UI.WireLimits.MaxSkeletonRows
+      // Phase 2328 — the depth bound counted through a kind-held arm (fuaran#2297).
+      "limit-node-depth-at-max-switch-case",
+      "§21 max node depth through a Switch case — a tree at EXACTLY the limit (24 levels) whose deep path is the only case's child. Rule 1: every conformant host MUST decode this. Its past-the-bound twin is `reject-limit-node-depth-switch-case`",
+      armDepthChain "switch-case" Fuaran.UI.WireLimits.MaxDepth
+      "limit-node-depth-at-max-errorboundary-fallback",
+      "§21 max node depth through an ErrorBoundary fallback — a tree at EXACTLY the limit (24 levels) whose deep path is the fallback. Rule 1: every conformant host MUST decode this. Its past-the-bound twin is `reject-limit-node-depth-errorboundary-fallback`",
+      armDepthChain "errorboundary-fallback" Fuaran.UI.WireLimits.MaxDepth ]

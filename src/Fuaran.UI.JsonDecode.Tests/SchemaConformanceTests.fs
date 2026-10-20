@@ -154,6 +154,8 @@ let private schemaInexpressibleRejects: Set<string> =
           // refuse is one the DECODER no longer refuses either.
           "reject-fieldrule-length-unordered"
           "reject-limit-node-depth"
+          "reject-limit-node-depth-switch-case"
+          "reject-limit-node-depth-errorboundary-fallback"
           "reject-limit-op-depth"
           "reject-limit-tree-item-depth"
 

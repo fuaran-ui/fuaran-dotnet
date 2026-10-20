@@ -324,6 +324,36 @@ let all: LenientFixture list =
         Description =
           "Phase 1536 — an explicit `target: \"Self\"` normalises away; `Self` is omitted at default, so the canonical form carries no `target` member at all" }
 
+      // Phase 2328 — the cases one host's hand decoder got wrong (fuaran#2296),
+      // each a decision the model already makes.
+      { Id = "lenient-2296-navigate-url-alias-target-self"
+        LenientJson =
+          """{"id":"len-nav-url","kind":{"$type":"Button","label":{"$type":"Literal","text":"Home"},"onClick":{"$type":"Navigate","target":"Self","url":"/"},"variant":"Primary"}}"""
+        VerboseJson =
+          """{"id":"len-nav-url","kind":{"$type":"Button","label":{"$type":"Literal","text":"Home"},"onClick":{"$type":"Navigate","route":"/"},"variant":"Primary"}}"""
+        Description =
+          "fuaran#2296 — an ALIASED Navigate (`url`→`route`) still takes the full decoding arm: the route is read as a TextSource and the explicit `target: \"Self\"` normalises away" }
+      { Id = "lenient-2296-navigate-to-alias"
+        LenientJson =
+          """{"id":"len-nav-to","kind":{"$type":"Button","label":{"$type":"Literal","text":"Browse"},"onClick":{"$type":"Navigate","target":"Blank","to":"/jobs"},"variant":"Primary"}}"""
+        VerboseJson =
+          """{"id":"len-nav-to","kind":{"$type":"Button","label":{"$type":"Literal","text":"Browse"},"onClick":{"$type":"Navigate","route":"/jobs","target":"Blank"},"variant":"Primary"}}"""
+        Description = "fuaran#2296 — the `to` alias of Navigate's `route`, beside a non-default `target` that is kept" }
+      { Id = "lenient-2296-modal-modality-explicit"
+        LenientJson =
+          """{"id":"len-modal","kind":{"$type":"Modal","children":[],"dismissable":true,"modality":"Modal","open":{"$type":"Static","value":false}}}"""
+        VerboseJson =
+          """{"id":"len-modal","kind":{"$type":"Modal","children":[],"dismissable":true,"open":{"$type":"Static","value":false}}}"""
+        Description =
+          "fuaran#2296 — an explicit `modality: \"Modal\"` is the default modality's real token: accepted, and omitted at default in the canonical form (one host refused it and accepted an invented `Blocking`)" }
+      { Id = "lenient-2296-datagrid-reorderable-false"
+        LenientJson =
+          """{"id":"len-grid","kind":{"$type":"DataGrid","columns":[{"field":"task","kind":{"$type":"Text"},"label":"Task"}],"reorderable":false,"rowKeyField":"task","source":{"$type":"State","defaultValue":[{"task":"Design"}],"key":"tasks"}}}"""
+        VerboseJson =
+          """{"id":"len-grid","kind":{"$type":"DataGrid","columns":[{"field":"task","kind":{"$type":"Text"},"label":"Task"}],"rowKeyField":"task","source":{"$type":"State","defaultValue":[{"task":"Design"}],"key":"tasks"}}}"""
+        Description =
+          "fuaran#2296 — an explicit `reorderable: false` is the default and normalises away; a host passing the member through structurally re-emits a second canonical form" }
+
       { Id = "lenient-alias-call-url"
         LenientJson =
           """{"id":"len-url","kind":{"$type":"Button","label":{"$type":"Literal","text":"Refresh"},"onClick":{"$type":"Call","url":"/api/refresh"},"variant":"Primary"}}"""
