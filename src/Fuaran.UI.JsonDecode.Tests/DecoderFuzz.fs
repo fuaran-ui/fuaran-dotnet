@@ -18,10 +18,16 @@ module Fuaran.UI.JsonDecode.Tests.DecoderFuzz
 //
 //   1. Totality      — `decode` returns `Ok tree` or a typed `DecodeError`.
 //                      An escaping exception is a counterexample.
-//   2. Termination   — it returns inside a time budget. A soft breach is a
-//                      counterexample; a hard breach is a genuine hang and the
-//                      watchdog kills the process rather than letting a CI job
-//                      time out with nothing to show for it.
+//   2. Termination   — it returns inside a WORK budget: the units the
+//                      decoder's own parser scanned (`JsonDecode.DecodeWork`,
+//                      Phase 2328), proportional to the input. The count is the
+//                      same on every machine, so the verdict is too — a stopwatch
+//                      verdict measured the scheduler as much as the decoder
+//                      (Phase 1837). The wall-clock time is still read, and is
+//                      ADVISORY only: reported in the summary, never a verdict.
+//                      A decode that never returns at all is a genuine hang, and
+//                      the watchdog kills the process rather than letting a CI
+//                      job time out with nothing to show for it.
 //   3. Bounded work  — allocation stays inside a budget proportional to the
 //                      input. This is the guard against adversarial nesting or
 //                      width amplifying a small payload into a large heap; it
@@ -149,8 +155,9 @@ type Verdict =
     | Clean
     /// Invariant 1 broken — an exception escaped the decode path.
     | Escaped of kind: string * message: string
-    /// Invariant 2 broken — the decode returned, but past the soft time budget.
-    | TimedOut of ms: float
+    /// Invariant 2 broken — the decode returned, but its parser scanned more
+    /// units than the work budget admits for an input this size.
+    | OverWorked of units: int64 * budget: int64
     /// Invariant 3 broken — allocation past the budget for an input this size.
     | OverAllocated of bytes: int64 * budget: int64
     /// Invariant 4 broken — the decoder's own canonical output is refused.
@@ -176,7 +183,7 @@ let verdictClass (v: Verdict) : string =
     | Rejected _
     | Clean -> "held"
     | Escaped(kind, _) -> "escaped-" + kind
-    | TimedOut _ -> "timeout"
+    | OverWorked _ -> "overworked"
     | OverAllocated _ -> "overallocated"
     | CanonicalRefused _ -> "canonical-refused"
     | FixedPointBroken _ -> "fixed-point-broken"
@@ -186,7 +193,8 @@ let describeVerdict (v: Verdict) : string =
     | Rejected code -> "rejected " + code
     | Clean -> "accepted; canonical form is a fixed point"
     | Escaped(kind, message) -> sprintf "EXCEPTION ESCAPED: %s — %s" kind message
-    | TimedOut ms -> sprintf "TIME BUDGET EXCEEDED: decode returned only after %.0f ms" ms
+    | OverWorked(units, budget) ->
+        sprintf "WORK BUDGET EXCEEDED: the decode's parser scanned %d units, budget %d" units budget
     | OverAllocated(bytes, budget) -> sprintf "ALLOCATION BUDGET EXCEEDED: %d bytes allocated, budget %d" bytes budget
     | CanonicalRefused code -> sprintf "CANONICAL FORM REFUSED: the decoder's own output re-decodes as %s" code
     | FixedPointBroken(a, b) ->
@@ -196,12 +204,17 @@ let describeVerdict (v: Verdict) : string =
 
 type Budgets =
     {
-        /// Past this, a decode that DID return is reported as a counterexample,
-        /// once `LoadScale` has been applied: the figure is what an idle machine
-        /// may take, not what a busy one must.
-        SoftTimeMs: float
+        /// Work floor for an ORDINARY input, in parser units
+        /// (`DecodeWork.Units`): below this no input is judged over-worked
+        /// however small it was. Covers a subject's fixed re-decodes.
+        WorkFloorUnits: int64
+        /// Parser units allowed per input character, above the floor, for an
+        /// ordinary input.
+        WorkPerChar: int64
         /// Past this the decode has not returned at all, and the watchdog kills
-        /// the process — the only way to turn a genuine hang into a report.
+        /// the process — the only way to turn a genuine hang into a report. A
+        /// wall-clock figure, and the one place a clock decides anything: a
+        /// decode that never returns has no work count to judge.
         HardTimeMs: float
         /// Allocation floor for an ORDINARY input: below this, no input is
         /// judged over-budget however small it was. Covers the fixed per-decode
@@ -216,16 +229,6 @@ type Budgets =
         /// the invariant, which is the failure mode this whole harness exists
         /// to avoid.
         OverCloseFloorBytes: int64
-        /// Milliseconds on a monotonic clock. A parameter so the go-red self-test
-        /// can run the harness on a clock that never advances and so measure no
-        /// machine at all; the shipped value is the real one.
-        Clock: unit -> float
-        /// Multiplier (>= 1) on `SoftTimeMs`, asked ONLY when a decode has already
-        /// run past the unscaled figure. The shipped value is how much slower this
-        /// machine is right now than when it was quiet, measured on a reference
-        /// decode in this process, so contention that slows the decode slows the
-        /// yardstick it is judged against.
-        LoadScale: unit -> float
     }
 
 /// The shipped budgets, set from measurement rather than from taste.
@@ -248,47 +251,26 @@ type Budgets =
 /// at much finer resolution by the dedicated profile test, and both tiers'
 /// observed maxima are reported in every run, so raising this number could never
 /// be a way to make the finding go away.
-let private realClockMs () : float =
-    float (Stopwatch.GetTimestamp()) * 1000.0 / float Stopwatch.Frequency
-
-/// The cost, in milliseconds, of one reference decode: a small fixed document
-/// through the real node subject. Its fastest of `reps` is taken, because the
-/// fastest repetition is the one the scheduler left alone.
-let private referenceDecodeMs (reps: int) : float =
-    let document =
-        """{"id":"r","kind":{"$type":"Box","children":[],"layout":{"$type":"Auto"},"role":"Group"}}"""
-
-    let mutable fastest = Double.MaxValue
-
-    for _ in 1..reps do
-        let t = realClockMs ()
-        nodeSubject.Run document |> ignore
-        fastest <- min fastest (realClockMs () - t)
-
-    fastest
-
-/// The quietest the reference decode has ever been seen to run, process-wide. It
-/// is measured once warm at start-up and only ever lowered afterwards, so a
-/// process that STARTS under load still converges on the idle figure as soon as
-/// one quiet moment is observed.
-let mutable private quietestReferenceMs =
-    referenceDecodeMs 50 |> ignore // warm the JIT, discard
-    referenceDecodeMs 300
-
-/// How many times slower than quiet this machine is right now (>= 1).
-let machineLoadScale () : float =
-    let now = referenceDecodeMs 30
-    quietestReferenceMs <- min quietestReferenceMs now
-    max 1.0 (now / quietestReferenceMs)
-
+///
+/// The WORK tier (Phase 2328) is a floor plus a per-character rate in parser
+/// units (`JsonDecode.DecodeWork.Units`), read off the decoder rather than a
+/// clock. A subject decodes the input and then re-decodes its canonical form, so
+/// an input costs about one scan of itself plus one of its canonical text:
+/// measured 2026-10-20, the peak is 2.4 units per character at the gate seed (5 000
+/// iterations over both entry points) and 3.0 over the 250 000-iteration long run at
+/// seed 779, and 32 leaves an order of magnitude over it, so a breach means the
+/// decoder started re-parsing, not that a document was large. The floor covers a
+/// short input whose canonical form is longer than itself. The work tier has ONE
+/// rate: the strict entry points the fuzz drives never run the over-close
+/// recovery gate (WIRE_FORMAT §28.1), so an over-closed input parses once, like
+/// any other (peak 1.0 per character).
 let defaultBudgets =
-    { SoftTimeMs = 3000.0
+    { WorkFloorUnits = 4096L
+      WorkPerChar = 32L
       HardTimeMs = 60000.0
       AllocFloorBytes = 16L * 1024L * 1024L
       AllocPerChar = 512L
-      OverCloseFloorBytes = 512L * 1024L * 1024L
-      Clock = realClockMs
-      LoadScale = machineLoadScale }
+      OverCloseFloorBytes = 512L * 1024L * 1024L }
 
 /// Is this document OVER-CLOSED — does some prefix carry more structural
 /// closers than openers, ignoring brackets inside strings?
@@ -350,6 +332,10 @@ let isOverClosed (text: string) : bool =
 
     over
 
+/// The work budget for one input, in parser units.
+let workBudgetFor (b: Budgets) (input: string) : int64 =
+    max b.WorkFloorUnits (b.WorkPerChar * int64 input.Length)
+
 let allocBudgetFor (b: Budgets) (input: string) : int64 =
     if isOverClosed input then
         max b.OverCloseFloorBytes (b.AllocPerChar * int64 input.Length)
@@ -357,25 +343,6 @@ let allocBudgetFor (b: Budgets) (input: string) : int64 =
         max b.AllocFloorBytes (b.AllocPerChar * int64 input.Length)
 
 // ─── The measured check ─────────────────────────────────────────────────────
-
-/// Is a decode that took `elapsedMs` genuinely slow? Only past the soft budget
-/// scaled by the load measured now, and only if running the same input AGAIN is
-/// slow too: a scheduler stall that froze this one decode does not repeat, while
-/// an input that costs too much does, every time. Neither check is paid unless
-/// the first, unscaled comparison already failed.
-let private isSlow (subject: Subject) (budgets: Budgets) (input: string) (elapsedMs: float) : bool =
-    elapsedMs > budgets.SoftTimeMs
-    && (let limit = budgets.SoftTimeMs * budgets.LoadScale()
-
-        elapsedMs > limit
-        && (let startedMs = budgets.Clock()
-
-            try
-                subject.Run input |> ignore
-            with _ ->
-                ()
-
-            budgets.Clock() - startedMs > limit))
 
 /// Run one input through one subject and judge it against all four invariants.
 /// Every exception is caught HERE and nowhere else, which is what makes "no
@@ -385,39 +352,46 @@ let private isSlow (subject: Subject) (budgets: Budgets) (input: string) (elapse
 /// process down without unwinding. That is a stated boundary rather than a gap:
 /// the process dying IS the red gate, and the deterministic seed plus the
 /// iteration counter reproduce the input that did it.
-let check (subject: Subject) (budgets: Budgets) (input: string) : Verdict =
+let checkMeasured (subject: Subject) (budgets: Budgets) (input: string) : Verdict * JsonDecode.DecodeWork =
     let before = GC.GetAllocatedBytesForCurrentThread()
-    let startedMs = budgets.Clock()
 
-    let outcome =
-        try
-            Ok(subject.Run input)
-        with ex ->
-            Error(ex.GetType().Name, ex.Message)
+    let outcome, work =
+        JsonDecode.DecodeWork.measure (fun () ->
+            try
+                Ok(subject.Run input)
+            with ex ->
+                Error(ex.GetType().Name, ex.Message))
 
-    let elapsedMs = budgets.Clock() - startedMs
     let allocated = GC.GetAllocatedBytesForCurrentThread() - before
     let budget = allocBudgetFor budgets input
+    let workBudget = workBudgetFor budgets input
 
-    match outcome with
-    | Error(kind, message) -> Escaped(kind, message)
-    | Ok result ->
-        // Order matters: an input that both ran long AND over-allocated is
-        // reported as the time breach, because that is the one an operator has
-        // to act on first.
-        if isSlow subject budgets input elapsedMs then
-            TimedOut elapsedMs
-        elif allocated > budget then
-            OverAllocated(allocated, budget)
-        else
-            match result with
-            | Refused code -> Rejected code
-            | Accepted(_, Error code) -> CanonicalRefused code
-            | Accepted(first, Ok second) ->
-                if String.Equals(first, second, StringComparison.Ordinal) then
-                    Clean
-                else
-                    FixedPointBroken(first, second)
+    let verdict =
+        match outcome with
+        | Error(kind, message) -> Escaped(kind, message)
+        | Ok result ->
+            // Order matters: an input that both over-worked AND over-allocated is
+            // reported as the work breach, because that is the one an operator
+            // has to act on first.
+            if work.Units > workBudget then
+                OverWorked(work.Units, workBudget)
+            elif allocated > budget then
+                OverAllocated(allocated, budget)
+            else
+                match result with
+                | Refused code -> Rejected code
+                | Accepted(_, Error code) -> CanonicalRefused code
+                | Accepted(first, Ok second) ->
+                    if String.Equals(first, second, StringComparison.Ordinal) then
+                        Clean
+                    else
+                        FixedPointBroken(first, second)
+
+    verdict, work
+
+/// `checkMeasured`'s verdict alone — what the minimiser holds steady.
+let check (subject: Subject) (budgets: Budgets) (input: string) : Verdict =
+    checkMeasured subject budgets input |> fst
 
 // ─── Corpus seeds + vocabulary ──────────────────────────────────────────────
 
@@ -1070,6 +1044,20 @@ let reproDir () : string =
     Directory.CreateDirectory dir |> ignore
     dir
 
+/// `s` as one JSON string literal, every unit outside printable ASCII (and `"`
+/// and `\`) escaped as `\uXXXX`, so a lone surrogate is written as its own unit.
+let jsonEscaped (s: string) : string =
+    let sb = StringBuilder(s.Length + 2)
+    sb.Append '"' |> ignore
+
+    for ch in s do
+        if ch = '"' || ch = '\\' || ch < ' ' || ch > '~' then
+            sb.Append("\\u").Append((int ch).ToString("x4")) |> ignore
+        else
+            sb.Append ch |> ignore
+
+    sb.Append('"').ToString()
+
 /// Persist a minimised repro plus the metadata needed to act on it, into a
 /// caller-supplied directory. Returns the payload path so the failing test can
 /// name it.
@@ -1089,8 +1077,16 @@ let persistTo (dir: string) (c: Counterexample) : string =
             |> Array.map (fun ch -> if Char.IsLetterOrDigit ch then ch else '-')
         )
 
+    // Phase 2328 (1837) — the payload is written so it always survives its
+    // reporter. A fuzz input is any UTF-16 string, lone surrogates included, and
+    // a UTF-8 file cannot hold one: `.input.txt` is the UTF-8 text with the
+    // REPLACEMENT CHARACTER for each lone surrogate (never a throw), and
+    // `.input.json` is the payload as one JSON string literal with every unit
+    // outside printable ASCII `\uXXXX`-escaped — the form the corpus's reject
+    // fixtures use — so the exact units survive whatever the payload holds.
     let payloadPath = Path.Combine(dir, safe + ".input.txt")
-    File.WriteAllText(payloadPath, c.Minimised)
+    File.WriteAllBytes(payloadPath, UTF8Encoding(false, false).GetBytes c.Minimised)
+    File.WriteAllText(Path.Combine(dir, safe + ".input.json"), jsonEscaped c.Minimised + "\n")
 
     let replay =
         sprintf
@@ -1113,8 +1109,9 @@ let persistTo (dir: string) (c: Counterexample) : string =
               sprintf "- Verdict: %s" (describeVerdict c.Verdict)
               sprintf "- Length: %d chars original, %d minimised" c.Original.Length c.Minimised.Length
               ""
-              "The minimised input is beside this file as `.input.txt`. Replay the"
-              "generating stream with:"
+              "The minimised input is beside this file as `.input.txt` (UTF-8; a lone"
+              "surrogate written as U+FFFD) and, exactly, as the JSON string literal in"
+              "`.input.json`. Replay the generating stream with:"
               ""
               replay
               ""
@@ -1196,6 +1193,13 @@ type RunStats =
         OverClosedInputs: int
         MaxOverCloseAllocBytes: int64
         MaxOverCloseAllocRatio: float
+        /// The work tier's peaks (Phase 2328), parser units per input character,
+        /// reported per tier for the reason the allocation peaks are.
+        MaxOrdinaryWorkRatio: float
+        MaxOverCloseWorkRatio: float
+        /// The most values one decode parsed, and the deepest nesting any reached.
+        MaxSteps: int64
+        MaxNesting: int
         ElapsedSeconds: float
         Seed: uint64
         Counterexamples: Counterexample list
@@ -1216,6 +1220,10 @@ let private emptyStats (seed: uint64) =
       OverClosedInputs = 0
       MaxOverCloseAllocBytes = 0L
       MaxOverCloseAllocRatio = 0.0
+      MaxOrdinaryWorkRatio = 0.0
+      MaxOverCloseWorkRatio = 0.0
+      MaxSteps = 0L
+      MaxNesting = 0
       ElapsedSeconds = 0.0
       Seed = seed
       Counterexamples = [] }
@@ -1247,8 +1255,8 @@ let run
     let currentIter = ref 0
 
     // JIT warm-up. Without it the very first decode carries the cost of jitting
-    // the whole decode stack and can breach a time budget the decoder had
-    // nothing to do with — a false counterexample, and the most confusing kind.
+    // the whole decode stack, which the ADVISORY wall-clock peak would report as
+    // the decoder's (the work verdict cannot see it).
     //
     // It warms the REAL entry points, never `subjects`. Warming through the
     // caller's subjects spends a self-test mutant's firing budget on inputs
@@ -1280,7 +1288,7 @@ let run
                 let before = GC.GetAllocatedBytesForCurrentThread()
                 let stepClock = Stopwatch.StartNew()
                 watchdog.Enter()
-                let verdict = check subject budgets g.Payload
+                let verdict, work = checkMeasured subject budgets g.Payload
                 watchdog.Leave()
                 stepClock.Stop()
                 let allocated = GC.GetAllocatedBytesForCurrentThread() - before
@@ -1296,19 +1304,29 @@ let run
                         Inputs = stats.Inputs + 1
                         MaxDecodeMs = max stats.MaxDecodeMs stepClock.Elapsed.TotalMilliseconds
                         MaxAllocBytes = max stats.MaxAllocBytes allocated
-                        MaxAllocRatio = max stats.MaxAllocRatio ratio }
+                        MaxAllocRatio = max stats.MaxAllocRatio ratio
+                        MaxSteps = max stats.MaxSteps work.Steps
+                        MaxNesting = max stats.MaxNesting work.MaxNesting }
+
+                let workRatio =
+                    if g.Payload.Length = 0 then
+                        0.0
+                    else
+                        float work.Units / float g.Payload.Length
 
                 stats <-
                     if isOverClosed g.Payload then
                         { stats with
                             OverClosedInputs = stats.OverClosedInputs + 1
                             MaxOverCloseAllocBytes = max stats.MaxOverCloseAllocBytes allocated
-                            MaxOverCloseAllocRatio = max stats.MaxOverCloseAllocRatio ratio }
+                            MaxOverCloseAllocRatio = max stats.MaxOverCloseAllocRatio ratio
+                            MaxOverCloseWorkRatio = max stats.MaxOverCloseWorkRatio workRatio }
                     else
                         { stats with
                             OrdinaryInputs = stats.OrdinaryInputs + 1
                             MaxOrdinaryAllocBytes = max stats.MaxOrdinaryAllocBytes allocated
-                            MaxOrdinaryAllocRatio = max stats.MaxOrdinaryAllocRatio ratio }
+                            MaxOrdinaryAllocRatio = max stats.MaxOrdinaryAllocRatio ratio
+                            MaxOrdinaryWorkRatio = max stats.MaxOrdinaryWorkRatio workRatio }
 
                 match verdict with
                 | Rejected code ->
@@ -1355,7 +1373,7 @@ let run
         Counterexamples = List.rev stats.Counterexamples }
 
 /// A one-line human summary, shared by the gate test and the long-run CLI.
-let summarise (stats: RunStats) : string =
+let summarise (budgets: Budgets) (stats: RunStats) : string =
     let codes =
         stats.RejectCodes
         |> Map.toList
@@ -1364,7 +1382,8 @@ let summarise (stats: RunStats) : string =
         |> String.concat " "
 
     sprintf
-        "%d inputs (%d iterations x %d entry points) in %.1f s — accepted %d, refused [%s], %d counterexamples; max decode %.0f ms; ordinary alloc peak %d bytes (%.0f x) over %d inputs; over-closed alloc peak %d bytes (%.0f x) over %d inputs"
+        "seed %d: %d inputs (%d iterations x %d entry points) in %.1f s — accepted %d, refused [%s], %d counterexamples; WORK BOUND (the verdict): parser units <= max(%d, %d per char) — peaks %.1f (ordinary) and %.1f (over-closed) units per char, %d values, nesting %d; ordinary alloc peak %d bytes (%.0f x) over %d inputs; over-closed alloc peak %d bytes (%.0f x) over %d inputs; wall-clock (advisory, never a verdict): slowest decode %.0f ms"
+        stats.Seed
         stats.Inputs
         stats.Iterations
         (if stats.Iterations = 0 then
@@ -1375,13 +1394,19 @@ let summarise (stats: RunStats) : string =
         stats.Accepted
         codes
         (List.length stats.Counterexamples)
-        stats.MaxDecodeMs
+        budgets.WorkFloorUnits
+        budgets.WorkPerChar
+        stats.MaxOrdinaryWorkRatio
+        stats.MaxOverCloseWorkRatio
+        stats.MaxSteps
+        stats.MaxNesting
         stats.MaxOrdinaryAllocBytes
         stats.MaxOrdinaryAllocRatio
         stats.OrdinaryInputs
         stats.MaxOverCloseAllocBytes
         stats.MaxOverCloseAllocRatio
         stats.OverClosedInputs
+        stats.MaxDecodeMs
 
 /// Replay a generated stream over `[fromIter, toIter]`, printing what each input
 /// was and what each entry point did with it. The investigative counterpart to

@@ -29,10 +29,13 @@ four invariants:
 
 1. **Totality** — the call returns `Ok tree` or a typed `DecodeError`.
    Any escaping exception is a counterexample.
-2. **Termination** — it returns inside a time budget. A soft breach is
-   recorded as a counterexample; a hard breach is a genuine hang, and a
-   watchdog terminates the process with a diagnosis rather than leaving a
-   job to time out with nothing to show.
+2. **Termination** — it returns inside a WORK budget: the units the
+   decoder's own parser scanned (`JsonDecode.DecodeWork`), a floor plus a
+   rate per input character. A breach is a counterexample, and the same
+   on every machine; the wall-clock time is reported and is advisory only.
+   A decode that never returns is a genuine hang, and a watchdog
+   terminates the process with a diagnosis rather than leaving a job to
+   time out with nothing to show.
 3. **Bounded work** — allocation stays inside a budget proportional to the
    input, which is what makes adversarial nesting and width visible as
    *super-linear* blow-up rather than as a slow test.
@@ -103,35 +106,36 @@ discrimination rather than indiscriminate alarm.
 
 | | |
 |---|---|
-| Run at | 2026-08-18 10:52:32 UTC |
+| Run at | 2026-10-20 16:26:45 UTC |
 | Seed | `779` |
 | Iterations | 250,000 |
 | Inputs decoded | 500,000 (each iteration feeds both entry points) |
-| Corpus payloads used as seeds | 259 |
+| Corpus payloads used as seeds | 587 |
 | Max generated payload | 2,097,152 chars |
-| Wall clock | 213.8 s |
+| Wall clock | 489.5 s |
 | **Escapes, hangs, budget breaches** | **0** |
 
 Outcome distribution:
 
 | Outcome | Count |
 |---|---|
-| accepted (canonical form is a fixed point) | 12,099 |
-| `INVALID_JSON` | 291,242 |
-| `MISSING_FIELD` | 96,275 |
-| `WRONG_TYPE` | 72,916 |
-| `LIMIT_EXCEEDED` | 12,047 |
-| `WRONG_NODE_KIND` | 8,428 |
-| `UNKNOWN_DU_CASE` | 6,677 |
-| `EMPTY_NODE_ID` | 316 |
+| accepted (canonical form is a fixed point) | 4,652 |
+| `INVALID_JSON` | 361,434 |
+| `MISSING_FIELD` | 57,367 |
+| `WRONG_TYPE` | 54,487 |
+| `LIMIT_EXCEEDED` | 12,446 |
+| `WRONG_NODE_KIND` | 6,025 |
+| `UNKNOWN_DU_CASE` | 3,491 |
+| `EMPTY_NODE_ID` | 98 |
 
 Observed maxima, and the budgets they are measured against:
 
 | | Observed | Budget |
 |---|---|---|
-| Slowest single decode | 397 ms | 3000 ms soft, 60000 ms hard |
-| Largest allocation, ordinary input (411,296 inputs) | 55.0 MiB; peak amplification 2,296 x | 16.0 MiB floor, then 512 bytes per input char |
-| Largest allocation, over-closed input (88,704 inputs) | 289.0 MiB; peak amplification 86,307 x | 512.0 MiB |
+| Most parser work, per input char (ordinary / over-closed) — the termination verdict | 3.0 / 1.0 units | 4096 units floor, then 32 per char |
+| Slowest single decode — advisory, never a verdict | 793 ms | 60000 ms hard (the hang watchdog) |
+| Largest allocation, ordinary input (410,438 inputs) | 104.2 MiB; peak amplification 1,912 x | 16.0 MiB floor, then 512 bytes per input char |
+| Largest allocation, over-closed input (89,562 inputs) | 0.6 MiB; peak amplification 1,640 x | 512.0 MiB |
 
 In each allocation row the byte maximum and the amplification maximum are
 **independent** maxima over the run, not two readings of one input: the

@@ -176,7 +176,7 @@ let main argv =
                 iterations
                 true
 
-        printfn "decoder fuzz (seed %d): %s" seed (DecoderFuzz.summarise stats)
+        printfn "decoder fuzz: %s" (DecoderFuzz.summarise DecoderFuzz.defaultBudgets stats)
 
         for c in stats.Counterexamples do
             let path = DecoderFuzz.persist c

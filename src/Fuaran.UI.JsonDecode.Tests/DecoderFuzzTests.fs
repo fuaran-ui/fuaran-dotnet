@@ -39,6 +39,7 @@ module Fuaran.UI.JsonDecode.Tests.DecoderFuzzTests
 open System
 open System.IO
 open Expecto
+open Fuaran.UI.Ops
 open Fuaran.UI.Testing
 
 /// The gate seed is FIXED, not clock-derived. A gate whose input set changes
@@ -75,26 +76,11 @@ let private mutant
             else
                 DecoderFuzz.nodeSubject.Run input }
 
-/// Budgets for the self-test: the harness runs on a clock that never advances,
-/// so no decode can be judged slow and the self-test measures no machine at all.
-/// A time verdict out of a run under these budgets could only come from the
-/// harness itself, which is what makes every other class's verdict trustworthy
-/// on a loaded machine. The one test that needs elapsed time uses
-/// `slowProbeBudgets`. The hard budget stays high, so the watchdog never fires
-/// during a deliberate soft breach and kills the test host.
-let private selfTestBudgets =
-    { DecoderFuzz.defaultBudgets with
-        Clock = fun () -> 0.0
-        LoadScale = fun () -> 1.0 }
-
-/// Budgets for the SLOW mutant alone: the real clock, a 100 ms soft budget and no
-/// load scaling. The mutant sleeps 250 ms, so a busy machine can only make it
-/// slower and the verdict can only be the more certain; the load that would
-/// misclassify some OTHER probe cannot make this one miss.
-let private slowProbeBudgets =
-    { DecoderFuzz.defaultBudgets with
-        SoftTimeMs = 100.0
-        LoadScale = fun () -> 1.0 }
+/// Budgets for the self-test: the shipped ones. Since Phase 2328 no verdict reads
+/// a clock — termination is judged on the decoder's own work count — so the
+/// self-test needs no frozen clock to measure no machine: every verdict out of it
+/// is the same on a loaded host as on a quiet one.
+let private selfTestBudgets = DecoderFuzz.defaultBudgets
 
 let private selfTestConfig =
     { DecoderFuzz.boundedConfig with
@@ -163,13 +149,37 @@ let goRedSelfTest =
                   expectCaught broken 400 "escaped-InvalidOperationException"
               }
 
-              test "invariant 2 (termination): a decode past the soft time budget is caught" {
+              test "invariant 2 (termination): a decode past the WORK budget is caught" {
+                  // Phase 2328 re-pins this to the work bound (1837): the mutant
+                  // re-parses its input far more often than any decode does, so its
+                  // parser-unit count breaches the per-character rate on every
+                  // machine alike — a load that slows the host changes nothing
+                  // here. Each firing parses its input enough times to clear the
+                  // floor as well as the rate, whatever its length.
                   let broken =
-                      mutant "slow-decoder" 3 (fun s -> s.Length > 2) (fun input ->
-                          System.Threading.Thread.Sleep 250
+                      mutant "overworking-decoder" 3 (fun s -> s.Length > 2) (fun input ->
+                          let enough =
+                              DecoderFuzz.workBudgetFor selfTestBudgets input / int64 input.Length + 1L
+
+                          for _ in 1L .. enough do
+                              JsonDecode.decodeNodeObj input |> ignore
+
                           DecoderFuzz.nodeSubject.Run input)
 
-                  expectCaughtWith slowProbeBudgets broken 400 "timeout"
+                  expectCaught broken 400 "overworked"
+              }
+
+              test "invariant 2's verdict reads no clock: a decode that only SLEEPS is not over-worked" {
+                  // The other half of the re-pin: wall-clock time is advisory. A
+                  // decode that takes long without doing work is not a work breach,
+                  // so a scheduler stall can never redden the run (1837's defect).
+                  let sleepy =
+                      mutant "sleeping-decoder" 2 (fun s -> s.Length > 2) (fun input ->
+                          System.Threading.Thread.Sleep 50
+                          DecoderFuzz.nodeSubject.Run input)
+
+                  let classes, _ = classesFromWith selfTestBudgets sleepy 40
+                  Expect.isFalse (List.contains "overworked" classes) (sprintf "a sleep is not work; saw %A" classes)
               }
 
               test "invariant 3 (bounded work): an allocation blow-up is caught" {
@@ -225,10 +235,8 @@ let goRedSelfTest =
                   let stats =
                       DecoderFuzz.run [ DecoderFuzz.nodeSubject ] selfTestBudgets selfTestConfig gateSeed 400 false
 
-                  // No time verdict can occur here: `selfTestBudgets` runs the harness
-                  // on a clock that never advances. The time invariant is asserted
-                  // where it means something, against the real decoder on the real
-                  // clock: the bounded run below, under `defaultBudgets`.
+                  // Every verdict here is a count — work, allocation, codes — so the
+                  // inverse pin is the same on any machine (Phase 2328).
                   let findings =
                       stats.Counterexamples
                       |> List.map (fun c -> DecoderFuzz.describeVerdict c.Verdict)
@@ -297,6 +305,45 @@ let harnessMechanics =
                       Directory.Delete(dir, true)
           }
 
+          test "a counterexample carrying a lone surrogate is persisted, exactly (1837)" {
+              // A fuzz input is any UTF-16 string, and a lone surrogate is the
+              // one a UTF-8 file cannot hold: the writer must neither throw nor
+              // lose the case. `.input.txt` carries U+FFFD in its place; the JSON
+              // string literal in `.input.json` carries the exact unit.
+              let dir =
+                  Path.Combine(Path.GetTempPath(), "fuaran-fuzz-surrogate-" + Guid.NewGuid().ToString("N"))
+
+              try
+                  let payload = "{\"id\":\"a" + string (char 0xD800) + "\"}"
+
+                  let c: DecoderFuzz.Counterexample =
+                      { Subject = "decodeNodeObj"
+                        Iteration = 3
+                        Seed = 11UL
+                        ConfigName = "bounded"
+                        Origin = "mutation:lone-surrogate"
+                        Verdict = DecoderFuzz.Escaped("ArgumentException", "lone surrogate")
+                        Original = payload
+                        Minimised = payload }
+
+                  let payloadPath = DecoderFuzz.persistTo dir c
+
+                  Expect.equal
+                      (File.ReadAllBytes payloadPath)
+                      (Array.append
+                          (Text.Encoding.ASCII.GetBytes "{\"id\":\"a")
+                          (Array.append [| 0xEFuy; 0xBFuy; 0xBDuy |] (Text.Encoding.ASCII.GetBytes "\"}")))
+                      "the UTF-8 payload holds the replacement character where the lone surrogate was"
+
+                  Expect.equal
+                      (File.ReadAllText(payloadPath.Replace(".input.txt", ".input.json")))
+                      "\"{\\u0022id\\u0022:\\u0022a\\ud800\\u0022}\"\n"
+                      "the JSON literal holds the exact unit"
+              finally
+                  if Directory.Exists dir then
+                      Directory.Delete(dir, true)
+          }
+
           test "the PRNG is deterministic in its seed" {
               // The replay contract. If this ever fails, every persisted repro's
               // replay line is a lie.
@@ -332,7 +379,7 @@ let boundedRun =
         "Fuaran.UI.Ops.JsonDecode — decoder robustness fuzz, bounded run (Phase 779)"
         [ test "no hostile input escapes the refusal contract" {
               let stats = boundedStats.Value
-              printfn "── decoder fuzz (seed %d): %s ──" gateSeed (DecoderFuzz.summarise stats)
+              printfn "── decoder fuzz: %s ──" (DecoderFuzz.summarise DecoderFuzz.defaultBudgets stats)
 
               match stats.Counterexamples with
               | [] -> ()

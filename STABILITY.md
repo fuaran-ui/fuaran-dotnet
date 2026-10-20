@@ -7882,6 +7882,22 @@ to `"0"`, `"9"`, comma-joined pairs and a near-miss name, plus `tone="7"`, a com
 engaged. **No escape hatch is created or widened**: the map rewrites message types only, and adds no seam, registry or
 default.
 
+### What rides this slot — Phase 2328 (the decoder reports the work it did)
+
+**Class: additive (one record and one module, no signature moves).** Package `Fuaran.UI.Ops`. No wire byte moves and no
+decode outcome changes.
+
+- **Added: `JsonDecode.DecodeWork`**, the record `{ Steps; Units; MaxNesting; Parses }`, and
+  **`JsonDecode.DecodeWork.measure`** `(unit -> 'a) -> 'a * DecodeWork`: run a function with the decoder's work meter on,
+  and read back how many JSON values its decodes parsed, how many UTF-16 units they handed the parser, the deepest nesting
+  a value was read at, and how many documents were parsed. The meter is off unless `measure` installs it (one per thread,
+  as the §29 defect sink is), and an unmetered decode pays one null test per parse.
+- **Why:** a count is a verdict two machines agree on and a stopwatch is not. The decoder robustness fuzz now judges
+  termination by this meter, with wall-clock time an advisory line only (Phase 1837's acceptance, carried here).
+
+**What a consumer does.** Nothing. A host that wants a deterministic bound on decode cost (an admission budget, a fuzz
+leg of its own) can read it.
+
 ---
 
 ## 0.97.0 — the slot opened after v0.96.0 was released (DRAFT — untagged)

@@ -84,10 +84,13 @@ let render (stats: DecoderFuzz.RunStats) (cfg: DecoderFuzz.Config) (budgets: Dec
     line ""
     line "1. **Totality** — the call returns `Ok tree` or a typed `DecodeError`."
     line "   Any escaping exception is a counterexample."
-    line "2. **Termination** — it returns inside a time budget. A soft breach is"
-    line "   recorded as a counterexample; a hard breach is a genuine hang, and a"
-    line "   watchdog terminates the process with a diagnosis rather than leaving a"
-    line "   job to time out with nothing to show."
+    line "2. **Termination** — it returns inside a WORK budget: the units the"
+    line "   decoder's own parser scanned (`JsonDecode.DecodeWork`), a floor plus a"
+    line "   rate per input character. A breach is a counterexample, and the same"
+    line "   on every machine; the wall-clock time is reported and is advisory only."
+    line "   A decode that never returns is a genuine hang, and a watchdog"
+    line "   terminates the process with a diagnosis rather than leaving a job to"
+    line "   time out with nothing to show."
     line "3. **Bounded work** — allocation stays inside a budget proportional to the"
     line "   input, which is what makes adversarial nesting and width visible as"
     line "   *super-linear* blow-up rather than as a slow test."
@@ -188,9 +191,17 @@ let render (stats: DecoderFuzz.RunStats) (cfg: DecoderFuzz.Config) (budgets: Dec
 
     line (
         sprintf
-            "| Slowest single decode | %s ms | %s ms soft, %s ms hard |"
+            "| Most parser work, per input char (ordinary / over-closed) — the termination verdict | %s / %s units | %d units floor, then %d per char |"
+            (stats.MaxOrdinaryWorkRatio.ToString("F1", CultureInfo.InvariantCulture))
+            (stats.MaxOverCloseWorkRatio.ToString("F1", CultureInfo.InvariantCulture))
+            budgets.WorkFloorUnits
+            budgets.WorkPerChar
+    )
+
+    line (
+        sprintf
+            "| Slowest single decode — advisory, never a verdict | %s ms | %s ms hard (the hang watchdog) |"
             (stats.MaxDecodeMs.ToString("F0", CultureInfo.InvariantCulture))
-            (budgets.SoftTimeMs.ToString("F0", CultureInfo.InvariantCulture))
             (budgets.HardTimeMs.ToString("F0", CultureInfo.InvariantCulture))
     )
 

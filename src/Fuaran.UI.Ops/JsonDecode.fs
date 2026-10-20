@@ -245,6 +245,84 @@ module DecodeError =
     let render (error: DecodeError) : string =
         sprintf "%s at '%s': %s" error.Code error.Path error.Message
 
+// ─── The work meter (Phase 2328) ─────────────────────────────────────────
+//
+// What one decode COST, read off the parser rather than off a clock. A
+// wall-clock reading of a decode measures the machine as much as the decoder: a
+// slow-but-correct refusal on a loaded host and a genuinely runaway one look the
+// same on a stopwatch. The parser's own counts do not: the same input parses the
+// same values, scans the same units and reaches the same depth on every machine,
+// so a bound stated over them is a verdict two machines agree on. The decoder
+// fuzz bounds each input by this meter (its time reading is advisory only).
+//
+// The meter is OFF unless a caller asks: `DecodeWork.measure` installs a counter
+// for the duration of one call, and each parse adds its own totals to it once,
+// at its end, so an unmetered decode pays one null test per parse and nothing per
+// value. Same per-thread slot as the defect sink above, for the same reason.
+
+/// The work the decodes inside one `DecodeWork.measure` call did, summed over
+/// every parse they ran — a recovery gate that re-parses candidate documents adds
+/// each candidate's parse.
+type DecodeWork =
+    {
+        /// JSON values the parser read (every object, array, string, number,
+        /// literal and member value).
+        Steps: int64
+        /// UTF-16 units handed to the parser — the document's length, once per
+        /// parse.
+        Units: int64
+        /// The deepest composite nesting at which any parse read a value (the
+        /// number of `{` and `[` enclosing it, WIRE_FORMAT §21.1's count).
+        MaxNesting: int
+        /// How many documents were parsed.
+        Parses: int
+    }
+
+[<AllowNullLiteral>]
+type private WorkCounter() =
+    member val Steps = 0L with get, set
+    member val Units = 0L with get, set
+    member val MaxNesting = 0 with get, set
+    member val Parses = 0 with get, set
+
+#if FABLE_COMPILER
+type private WorkMeter() =
+    static let mutable current: WorkCounter = null
+
+    static member Current
+        with get () = current
+        and set (v: WorkCounter) = current <- v
+#else
+type private WorkMeter =
+    [<System.ThreadStatic; DefaultValue>]
+    static val mutable private current: WorkCounter
+
+    static member Current
+        with get () = WorkMeter.current
+        and set (v: WorkCounter) = WorkMeter.current <- v
+#endif
+
+module DecodeWork =
+    /// Run `f` with the meter on and return its result with the work every
+    /// decode inside it did. A nested `measure` meters its own call only, and
+    /// the outer one resumes afterwards without the inner call's work.
+    let measure (f: unit -> 'a) : 'a * DecodeWork =
+        let outer = WorkMeter.Current
+        let counter = WorkCounter()
+        WorkMeter.Current <- counter
+
+        let result =
+            try
+                f ()
+            finally
+                WorkMeter.Current <- outer
+
+        result,
+        { Steps = counter.Steps
+          Units = counter.Units
+          MaxNesting = counter.MaxNesting
+          Parses = counter.Parses }
+
 // ─── JSON AST + parser ───────────────────────────────────────────────────
 //
 // Why this decoder parses with its own parser into its own AST, rather than
@@ -317,6 +395,10 @@ type private ParseState =
         /// Unicode code points appended to the string under construction, a
         /// surrogate pair counting once (WIRE_FORMAT §21.6).
         mutable CodePoints: int
+        /// Values `parseValue` has read (the work meter's `Steps`, Phase 2328).
+        mutable Steps: int64
+        /// The deepest `Depth` `parseValue` has been entered at.
+        mutable MaxDepth: int
     }
 
 /// Record a resource-limit breach and produce the message. The `Breach` flag is
@@ -616,6 +698,11 @@ let private depthLimitMessage: string =
     sprintf "JSON nesting deeper than the wire limit MaxJsonDepth = %d" Fuaran.UI.WireLimits.MaxJsonDepth
 
 let rec private parseValue (s: ParseState) : Result<Json, string> =
+    s.Steps <- s.Steps + 1L
+
+    if s.Depth > s.MaxDepth then
+        s.MaxDepth <- s.Depth
+
     skipWs s
 
     match peek s with
@@ -884,6 +971,18 @@ let private documentBytes (input: string) : int =
 /// `WireLimits` bound was hit (the `ParseState.Breach` flag) and `INVALID_JSON`
 /// for every ordinary syntax failure — the two are different repairs, and only
 /// one of them means "the input was structurally hostile rather than malformed".
+/// Add one parse's totals to the work meter, when one is on (Phase 2328).
+let private meterParse (units: int) (steps: int64) (maxDepth: int) : unit =
+    let counter = WorkMeter.Current
+
+    if not (isNull counter) then
+        counter.Parses <- counter.Parses + 1
+        counter.Units <- counter.Units + int64 units
+        counter.Steps <- counter.Steps + steps
+
+        if maxDepth > counter.MaxNesting then
+            counter.MaxNesting <- maxDepth
+
 let private tryParse (input: string) : Result<Json, DecodeErrorCode * string> =
     if isNull input then
         Error(DecodeErrorCode.INVALID_JSON, "input is null")
@@ -894,6 +993,8 @@ let private tryParse (input: string) : Result<Json, DecodeErrorCode * string> =
         // them and is a hundred gigabytes), so until this bound nothing refused
         // a document for its size. One comparison, so deferring it would buy
         // nothing and pay the allocation it exists to refuse.
+        meterParse input.Length 0L 0
+
         Error(
             DecodeErrorCode.LIMIT_EXCEEDED,
             sprintf
@@ -908,7 +1009,9 @@ let private tryParse (input: string) : Result<Json, DecodeErrorCode * string> =
               Depth = 0
               Breach = false
               PendingHigh = false
-              CodePoints = 0 }
+              CodePoints = 0
+              Steps = 0L
+              MaxDepth = 0 }
 
         skipWs state
 
@@ -934,6 +1037,8 @@ let private tryParse (input: string) : Result<Json, DecodeErrorCode * string> =
                         )
                     else
                         Ok j
+
+        meterParse input.Length state.Steps state.MaxDepth
 
         match outcome with
         | Ok j -> Ok j
