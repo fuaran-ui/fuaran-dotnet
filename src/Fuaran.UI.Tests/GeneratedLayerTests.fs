@@ -571,6 +571,9 @@ let generatedLayerTests =
               //    it. (Its sibling `reject-limit-json-depth*` fixtures stay
               //    on the structural side — they exceed the JSON reader's own
               //    depth ceiling, so the parse itself fails.)
+              //    Its two Phase 2328 twins, whose deep path runs through a
+              //    Switch case and an ErrorBoundary fallback, are the same
+              //    global bound and land beside it.
               //  - the three `FieldRule` fixtures (Phase 864) land here for
               //    reasons ALREADY on this list, which is the interesting part:
               //    the rule slot minted no new class of policy defect. An
@@ -803,6 +806,8 @@ let generatedLayerTests =
                     "reject-limit-expr-nodes-derive.json"
                     "reject-limit-expr-nodes-filter.json"
                     "reject-limit-expr-nodes-transform-bypass.json"
+                    "reject-limit-node-depth-errorboundary-fallback.json"
+                    "reject-limit-node-depth-switch-case.json"
                     "reject-limit-node-depth.json"
                     // Fuaran-UI Phase 1666 — §21.9's row ceiling, and it lands
                     // beside the two depth bounds for the same reason: §21 is
