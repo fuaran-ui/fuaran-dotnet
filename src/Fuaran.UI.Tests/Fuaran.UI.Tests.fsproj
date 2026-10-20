@@ -316,6 +316,9 @@
          inputs and queries, queries read filters), so Propagation.sort finds no cycle over
          any tree; pinned over every corpus node fixture, with go-red probes. -->
     <Compile Include="BindingCycleTests.fs" />
+    <!-- Phase 2328 - laws/propagation-laws.json (Core's emission, copied into the corpus) read back
+         through the pinned Fuaran.Core.Propagation: the emitter is never its own only reader. -->
+    <Compile Include="PropagationLawVectorTests.fs" />
     <Compile Include="MathEnhanceTests.fs" />
     <Compile Include="MathMlTests.fs" />
     <Compile Include="CodeHighlightTests.fs" />

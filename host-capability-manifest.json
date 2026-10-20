@@ -37,6 +37,7 @@
       "pending": "the reference apply engine's suite does not yet run the skeleton-apply vectors"
     },
     "apply/styleNormaliseApply": "covered",
+    "chain": "covered",
     "contract-card-reject": "covered",
     "contract-card-round-trip": "covered",
     "dag": "covered",
@@ -64,6 +65,7 @@
     "laws/fieldLaws": {
       "pending": "the reference host consumes Fuaran.Core and Fuaran.Compute as packages and certifies only the capabilityLaws vectors against its pin; this family's vectors are produced and certified in their producing repository, not by this suite yet"
     },
+    "laws/propagationLaws": "covered",
     "laws/transformLaws": {
       "pending": "the reference host consumes Fuaran.Core and Fuaran.Compute as packages and certifies only the capabilityLaws vectors against its pin; this family's vectors are produced and certified in their producing repository, not by this suite yet"
     },
