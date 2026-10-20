@@ -1932,6 +1932,11 @@ let private leniencyFamilies: LeniencyFamily list =
             "lenient-alias-grid-columns-row"
             "lenient-alias-navigate-href"
             "lenient-alias-select-options-query-deps"
+            // Phase 2328 — the `to` and `url` aliases of Navigate's `route`, the second
+            // beside an explicit `target: "Self"` that normalises away as the
+            // Phase 1536 family states.
+            "lenient-2296-navigate-to-alias"
+            "lenient-2296-navigate-url-alias-target-self"
             "lenient-tonedpill-tonemap-alias" ]
         Evidence =
           "Total (same concept, same semantics, §3.6 table; canonical wins when both present) but "
@@ -2113,7 +2118,11 @@ let private leniencyFamilies: LeniencyFamily list =
         FixtureIds =
           [ "lenient-2300-declared-default-booleans"
             "lenient-2300-declared-default-enums"
-            "lenient-2300-declared-default-bindings" ]
+            "lenient-2300-declared-default-bindings"
+            // Phase 2328 — two more slots of the same judgement: DataGrid
+            // `reorderable: false` and Modal `modality: "Modal"`.
+            "lenient-2296-datagrid-reorderable-false"
+            "lenient-2296-modal-modality-explicit" ]
         Evidence =
           "JUDGEMENT: the §3.6 declared-default rule, applied by Phase 2300 to the fifteen fields of the "
           + "Phase 1963 list that were `required` until then. The canonical form is the ABSENT key; the "
