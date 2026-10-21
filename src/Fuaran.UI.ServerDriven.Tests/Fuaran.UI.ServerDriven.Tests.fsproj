@@ -11,6 +11,7 @@
     <Compile Include="ValidationTests.fs" />
     <Compile Include="DriverTests.fs" />
     <Compile Include="ChannelTests.fs" />
+    <Compile Include="AsyncSeamTests.fs" />
     <Compile Include="FrameWireTests.fs" />
     <Compile Include="DurabilityTests.fs" />
     <Compile Include="FormValidationTests.fs" />

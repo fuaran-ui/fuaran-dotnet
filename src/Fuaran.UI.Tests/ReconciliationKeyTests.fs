@@ -172,27 +172,16 @@ let private repeatedChildArms =
     [ "grid row", "gridRowSelected (runAction ctx) parentNodeId spec row)"
       "grid cell", "prop.className \"fuaran-grid-cell\""
       "grid header", "prop.className \"fuaran-grid-header\""
-      "grid button-group member", "match item.OnClick with"
-      "tree item", "prop.className Css.Class.TreeItem"
       // Phase 2108 — list items and skeleton rows are planned in
       // `ElementPlan.DisplayPlan` and carry their keys in the plan's `Key`, which
       // the one emitter writes as `prop.key`; `ElementPlanTests` asserts the keys.
       // Phase 2278 — tabs and stepper steps likewise, in `ElementPlan.LayoutPlan`;
       // the server suite's `ContainerPlanServerTests` asserts their keys.
-      "form field", "prop.className Css.Class.FormField"
-      // Phase 1648 — the chip's class became `Css.filter (Theme.filterKindClass
-      // spec.Kind)`, because this renderer had been emitting a bare
-      // `fuaran-filter` where the server emits the kind suffix too. The anchor
-      // moves with it; the MISSING ANCHOR report is what caught the rename,
-      // which is the whole reason it is reported as loudly as a missing key.
-      "filter chip", "Css.filter (Theme.filterKindClass spec.Kind)"
-      "segmented option", "prop.className Css.Class.SegmentedOption"
-      "segmented row", "prop.className Css.Class.SegmentedRow"
-      "select option", "prop.text option.Label"
-      "static table header", "prop.className Css.Class.TableHeader"
-      "static table row", "prop.className Css.Class.TableRow"
-      "static table cell", "prop.className Css.Class.TableCell"
-      "map marker", "prop.className \"fuaran-map-marker\"" ]
+      // Phase 2290 — tree items, form fields, filter chips, segmented options and
+      // rows, select options, static-table headers, rows and cells, and map
+      // markers likewise, in `ElementPlan.InputPlan` / `VisPlan`; the server
+      // suite's `InputVisPlanServerTests` asserts their keys.
+      "grid button-group member", "match item.OnClick with" ]
 
 /// Does `line` carry `anchor` as a whole token? Phase 2070 moved the classes
 /// both renderers emit into `Css.Class.*` constants, and an identifier anchor

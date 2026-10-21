@@ -7929,6 +7929,131 @@ leg of its own) can read it.
 **What a consumer does.** Nothing for a registry that carries no policy. A host that put a gate on its registry
 expecting it to apply to agent calls now has it applied; a host that relied on the gate being ignored should remove the
 gate rather than the check.
+### What rides this slot — Phase 2170 (the server-driven session seams can await)
+
+**Class: additive (new types, functions and members; no signature moves, no record gains a field).** Packages
+`Fuaran.UI.ServerDriven`, `Fuaran.UI.ServerDriven.AspNetCore` and `Fuaran.UI.ServerDriven.WebSocket`. No wire byte moves.
+
+- **Added: an update that returns awaited effects.** `Driver.EffectfulUpdate<'Model, 'Msg>`
+  (`'Msg -> 'Model -> 'Model * Async<'Msg option> list`), `Driver.EffectOutbox<'Msg>` and `Driver.initWithEffects`, which
+  adapts the effect-returning update onto the unchanged synchronous `LiveSession.Update` and returns the session with its
+  outbox. `LiveConnection.EnableEffects(outbox, onFault, ?cancellationToken)` turns on a per-connection runner that awaits
+  the effects one at a time, in the order returned, OFF the session loop; a `Some msg` an effect yields is applied as a
+  step of its own and its patches pushed. A step whose update throws runs none of the effects it returned, and a faulting
+  effect is reported to `onFault` while the runner moves on.
+- **Added: a session factory that awaits.** `Driver.AsyncSessionFactory<'Model, 'Msg>`
+  (`unit -> Async<LiveSession<'Model, 'Msg> * EffectOutbox<'Msg> option>`) and `AsyncSessionFactory.start`, which awaits a
+  factory without holding the caller past the connection's end. `Endpoints.mapFuaranLiveAsync` with
+  `Endpoints.defaultAsyncConfig` (SSE+POST) and `Endpoints.mapFuaranLiveWebSocketAsync` with
+  `Endpoints.defaultWsAsyncConfig` (WebSocket) await it before the connection exists — the WebSocket handler before it
+  accepts the socket — and run an outbox the factory hands back, bound to the request's lifetime. A factory that never
+  answers holds only its own request.
+- **Unchanged: `Driver.init`, `LiveSession`, `LiveAppConfig`, `LiveWsConfig`, `mapFuaranLive`, `mapFuaranLiveWebSocket`.**
+  `LiveConnection.Handle` now serialises its step with the effect runner's fed-back steps under one monitor; a
+  connection without effects behaves as before. One ordering moved on the synchronous WebSocket path: `MakeSession` is
+  now called before the socket is accepted rather than after, so a factory that throws fails the upgrade request instead
+  of an accepted socket.
+- **Fable posture: .NET-only.** Every async form sits under `#if !FABLE_COMPILER`: the runner relies on thread-pool
+  concurrency and a monitor, which mean nothing on a single-threaded JavaScript host, and this driver is server-side by
+  design. The package's Fable-compiled surface is unchanged.
+
+**What a consumer does.** Nothing. A host whose session state lives behind an asynchronous store maps with the async
+form, reads that state in its factory, and returns its writes as effects from the update instead of blocking or keeping
+a hand-built in-memory mirror.
+### What rides this slot — Phase 2290 (the input and visualisation kinds are element plans)
+
+**Class: ADDITIVE (new `Fuaran.UI.Renderer.Core` surface) + SSR behaviour changes.** No public entry point of either
+renderer changes, and no wire byte moves.
+
+- **New in `Fuaran.UI.Renderer.ElementPlan`:** four `Prop` cases for controlled values: `Value`, `Values`,
+  `Checked` and `Selected`. The client emits each as React's own controlled prop. The server emits what the document can
+  show: `value` on an input, the escaped text content of a `<textarea>`, and `selected="selected"` on the chosen
+  `<option>` of a `<select>`. There are thirteen new `Attach` points: `FormSubmit`, `TreeKeyDown`, `TreeLabelClick`,
+  `ChartPointClick`, `ButtonClick`, `SelectChange`, `FieldChange`, `SegmentSelect`, `SegmentKeyDown`, `SegmentRadio`,
+  `FileSelect`, `GridExport` and `MarkerClick`. Two new modules:
+  - `InputPlan`: `button`, `select`, `segmentedChoice`, `ruleAttrs`, `fieldControl`, `formField`, `filterControl`,
+    `filter`, `filters`, `fileUploadChildren`, `fileUpload`, `form`.
+  - `VisPlan`: `TreeRow`, `TreeState`, `treeState`, `tree`, `loweredChart`, `exportLabel`, `exportButton`, `staticGrid`,
+    `gridPlaceholder`, `stateSlot`, `chartPlaceholder`, `chart`, `map`.
+- **Both renderers emit every input and visualisation arm from these plans.** `renderFormField`, `renderFilterSpec` and
+  `renderSegmentedChoiceCore` are no longer defined in both files (2108.t5). The client binds its handlers at the named
+  points; the server serves the same markup inert.
+- **The WIDGET controls are named by-nature arms on the client**, beside Phase 2278's six structural arms: the Combobox,
+  Tokens and writable Rating controls (field and filter chip), a `Binding.Local` Text / Number / RangedNumber field, the
+  FileUpload drop zone and stream shell, the bound DataGrid, and a Chart a host `VisAdapter` draws. Each is a stateful
+  React component the client renders in place of the plan's no-script FLOOR. The floor is what the server serves, and
+  it is now defined once in `ElementPlan`.
+- **Where the two arms differed, the driver ruled one behaviour** (Phase 2290 rulings, numbered as filed):
+  - (R1) `Button` follows the served attribute order. `data-fuaran-commit` (Action.CommitLocal) is now written on the
+    client too, and is inert there. The unwired-action class and default title stay a CLIENT-ONLY runtime decoration,
+    applied by the client emitter. **SSR unchanged.**
+  - (R2) A single-select `Select` marks its chosen `<option selected="selected">`. The `value` attribute that HTML
+    ignores is no longer written on the `<select>`. **Server HTML moves.**
+  - (R3) A multi-select serves every chosen option `selected` and no placeholder option (the client's option set).
+    **Server HTML moves.**
+  - (R4) A `Form` field is `div.fuaran-form-field > label.fuaran-form-label[for=id]` ("Label *" when required), then the
+    control, then the help. This is the client's and the TS SSR host's shape. Every control carries both `id` (the
+    field id) and `data-fuaran-field` (the server-driven shim's marker). **Server HTML moves on every form.** The shim
+    keys only on the `data-*` markers, so nothing it reads moves.
+  - (R5) Per-kind control attributes follow the client's:
+    - RangedNumber carries `min` / `max` / `step`, a TextArea `rows`, a DateTime `min` / `max` / `step`.
+    - A Checkbox serves its checked state.
+    - A Color input is classed `fuaran-form-input fuaran-color-input`.
+    - The Range field is two number inputs (the server wrote an `<input type="range" value="">`).
+    - A DateTimeRange's ends are classed `fuaran-form-input fuaran-form-date fuaran-field-range-min/max` and carry `id`
+      and `required`.
+    - Refinement: a declared rule's constraint attributes (`pattern`, `minlength`, `maxlength`,
+      `data-fuaran-field-compare`) ride every plain control on both tiers, so a served date field keeps its compare
+      declaration and the client gains it.
+    - **Server HTML moves.**
+  - (R6) The widget floors above. **No bytes move.**
+  - (R7) The shim markers (`data-filter-name`, `data-filter-value`, `data-fuaran-field` on a segmented container) are
+    written on the client too. **Client output only.**
+  - (R8) A TextArea filter chip is a `<textarea rows>` on both tiers (the server wrote a text input). **Server HTML
+    moves.**
+  - (R9) A Choice filter chip marks its chosen option, as (R2). **Server HTML moves.**
+  - (R10) An `Exportable` static DataGrid serves its `fuaran-grid-exportable` wrapper and an inert "Export CSV" button.
+    `GridExport.scopeLabel` delegates to `ElementPlan.VisPlan.exportLabel`, one definition. **Server HTML moves.**
+  - (R11) A Chart placeholder is the served one on both tiers: `fuaran-chart fuaran-chart-ssr-placeholder`,
+    `data-fuaran-ssr-placeholder`, `data-fuaran-row-count` and "[Chart: N rows — hydrates client-side]". **Client
+    output only.**
+  - (R12) A `Map` is one plan: its state slots, the served placeholder, and the marker list (one `li` per marker, the
+    click an attachment point). **Server HTML moves** when markers resolve or a state slot fires.
+  - (R13) A `FileUpload` serves `multiple` and `disabled`. The declared-gesture, destination and ceiling read-markers
+    ride the client's plain picker too. **Server HTML moves.**
+  - (R14) A Choice field marks its chosen option on the server and drives React `value` on the client. **No bytes
+    move.**
+  - (R15) **A correctness fix.** The server wrote `required="false"` on an optional Combobox, Tokens or Choice field.
+    `required` is a presence attribute, so the field was REQUIRED for a no-script reader. `required` is now present
+    only when the field is required (`required="true"`), on every control. Swept: no other server boolean could
+    serialise "false" (`disabled` was always guarded, `multiple` is written empty, `checked` only when on). **Server
+    HTML moves.**
+  - (R16) A `<textarea>` serves its bound value as escaped text content. The `value` attribute HTML ignores is gone.
+    **Server HTML moves.**
+  - (R17) React's reconciliation key no longer leaks into served HTML as a literal `key="N"` attribute (the rating
+    star row). **Server HTML moves.**
+  - (R18) A vertical segmented choice labels its radios with `for=` (the server wrote React's `htmlFor=`, which is
+    not an HTML attribute). Swept: no other React prop name reaches served HTML; `tabIndex` and `viewBox` remain, both
+    valid (HTML attribute names are case-insensitive, and `viewBox` is SVG's own). **Server HTML moves.**
+  Over the node fixture corpus, rendered permissive, strict and decorated, the SSR output is otherwise byte-identical.
+  The moved fixtures are listed in the phase outcome against these numbers.
+- **`Theme.vocabularyFingerprint` moves to `fv1:7107ead40c2f7960`** (from `fv1:5da0294509d8be2b`), as a consequence of
+  (R4) and (R12): `fuaran-form-field-label` and `fuaran-map-placeholder` are no longer emitted by either renderer. No
+  class enters and no rule moves — the reference sheet still styles both old names — so a sheet stamped with either
+  value renders the same page. The canonical sheet and the embedded renderer's fingerprint sidecar are restamped; the
+  tier copies re-stamp with `Build.fsproj -- Css`. A host pinning the old value refuses the new sheet until it re-pins.
+- **Retired from the renderer files** (all private): the server's `renderFormField`, `renderFilterSpec`,
+  `renderSegmentedChoiceCore` and `Emit.attrs`; the client's `renderSegmentedChoiceCore` and `renderTable`. The
+  client's `renderFormField` and `renderFilterSpec` now hold only the widget arms.
+
+**What a consumer does.** Nothing, unless it selects on the served form markup. A stylesheet or script written against
+`label.fuaran-form-field` / `.fuaran-form-field-label` moves to `div.fuaran-form-field` / `.fuaran-form-label` (the
+client has always emitted these). The reference CSS already styles both.
+
+**What Phase 2110 will then touch in the plan.** `InputPlan.fieldControl` and `filterControl` match on `FormFieldKind`
+and resolve `Binding.Local` floors. The client's widget arms in `renderFormField` match `Binding.Local` directly.
+`VisPlan.staticGrid` and `gridPlaceholder` read `DataGridSpec`. The reshape lands in those three places, and in the
+client's `renderGrid`.
 
 ---
 

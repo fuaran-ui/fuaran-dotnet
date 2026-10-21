@@ -89,6 +89,7 @@
     <Compile Include="ElementPlanServerTests.fs" />
     <!-- Phase 2278 — the container kinds' plans: attachment points and inert served markup. -->
     <Compile Include="ContainerPlanServerTests.fs" />
+    <Compile Include="InputVisPlanServerTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
