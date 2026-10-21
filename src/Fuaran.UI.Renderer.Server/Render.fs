@@ -371,71 +371,7 @@ and private renderKind
     | NodeKind.Embed spec ->
         Emit.plan (ElementPlan.MediaPlan.embed (planContext walk ctx parentNodeId) spec semanticAttrs)
     | NodeKind.Tree spec ->
-        let expandedKeyNamed = spec.ExpandedStateKey.IsSome
-        let expanded = BindingResolver.readExpandedItems ctx.Sources spec.ExpandedStateKey
-        let selected = BindingResolver.readSelectedItem ctx.Sources spec.SelectionStateKey
-
-        let focusable =
-            TreeModel.focusableTreeItem expandedKeyNamed expanded selected spec.Items
-
-        let rec renderItems (level: int) (items: TreeItem list) : ReactElement list =
-            let setSize = List.length items
-
-            items
-            |> List.mapi (fun i item ->
-                let isOpen = TreeModel.treeItemExpanded expandedKeyNamed expanded item
-                let hasChildren = not (List.isEmpty item.Children)
-                let label = renderText ctx item.Label
-
-                Html.li (
-                    [ prop.className Css.Class.TreeItem
-                      prop.role "treeitem"
-                      // The accessible name is stated rather than computed from
-                      // contents, and that is deliberate: a treeitem OWNS its
-                      // child group, so a name derived from its subtree would
-                      // read the whole branch out as the row's own name. The
-                      // string is byte-identical to the visible label, so
-                      // "label in name" holds.
-                      prop.custom ("aria-label", label)
-                      prop.custom ("aria-level", string level)
-                      prop.custom ("aria-setsize", string setSize)
-                      prop.custom ("aria-posinset", string (i + 1))
-                      prop.custom ("data-fuaran-tree-item", item.Id)
-                      prop.tabIndex (if Some item.Id = focusable then 0 else -1) ]
-                    // `aria-expanded` is emitted ONLY on a row that has
-                    // children. On a leaf the attribute would assert a
-                    // collapsed subtree that does not exist, and assistive
-                    // technology announces such a row as closed — which is a
-                    // reader being told there is more when there is not.
-                    @ (if hasChildren then
-                           [ prop.custom ("aria-expanded", (if isOpen then "true" else "false")) ]
-                       else
-                           [])
-                    // `aria-selected` likewise appears only where a selection
-                    // key is named. Emitting `false` on every row of a tree
-                    // that has no selection at all would declare a selectable
-                    // widget with nothing selected, rather than a tree that
-                    // does not select.
-                    @ (match spec.SelectionStateKey with
-                       | Some _ ->
-                           [ prop.custom ("aria-selected", (if Some item.Id = selected then "true" else "false")) ]
-                       | None -> [])
-                    @ [ prop.children (
-                            [ Html.span [ prop.className Css.Class.TreeLabel; prop.text label ] ]
-                            @ (if isOpen then
-                                   [ Html.ul
-                                         [ prop.className Css.Class.TreeGroup
-                                           prop.role "group"
-                                           prop.children (renderItems (level + 1) item.Children) ] ]
-                               else
-                                   [])
-                        ) ]
-                ))
-
-        Html.ul
-            [ prop.className Css.Class.Tree
-              prop.role "tree"
-              prop.children (renderItems 1 spec.Items) ]
+        Emit.plan (ElementPlan.VisPlan.tree ctx.Sources spec (ElementPlan.VisPlan.treeState ctx.Sources spec))
     | NodeKind.List spec -> Emit.plan (ElementPlan.DisplayPlan.list ctx.Sources spec)
     | NodeKind.Toast spec -> Emit.plan (ElementPlan.DisplayPlan.toast ctx.Sources spec)
     | NodeKind.CodeBlock spec -> Emit.plan (ElementPlan.DisplayPlan.codeBlock spec)
@@ -646,126 +582,23 @@ and private renderKind
         )
     // -- Vis --
     | NodeKind.DataGrid spec ->
-        // Phase 1473 — the grid's own two declarations, on the same shared
-        // helper the client renderer uses. They ride BOTH legs: the static
-        // table, where the rows and the header row group are real elements the
-        // print rules reach, and the hydration placeholder, so the declaration
-        // is not silently dropped on the bound path.
-        let gridBrk = Theme.gridPrintBreakClasses spec.KeepRowsTogether spec.RepeatHeader
-
+        // Phase 393 — a static grid is the semantic table; a bound grid is the
+        // client's, and this tier serves its hydration placeholder (by nature).
         match spec.StaticRows with
-        | Some sr ->
-            // Phase 393 — static read-only mode: SSR renders the full semantic <table> statically
-            // (byte-identical to the retired Table), NOT a hydration placeholder.
-            let headerCells =
-                [ for h in sr.Headers -> Html.th [ prop.className Css.Class.TableHeader; prop.text (renderText ctx h) ] ]
-
-            let bodyRows =
-                [ for row in sr.Rows ->
-                      Html.tr
-                          [ prop.className Css.Class.TableRow
-                            prop.children
-                                [ for cell in row ->
-                                      Html.td [ prop.className Css.Class.TableCell; prop.text (renderText ctx cell) ] ] ] ]
-
-            Html.table
-                [ prop.className (Css.Class.Table + gridBrk)
-                  // Phase 801 — the declared sort intent, surfaced as data attributes so the
-                  // reference table enhancement honours it without re-parsing wire. Emitted
-                  // ONLY when declared: an undeclared table's SSR bytes are unchanged.
-                  match sr.Sortable with
-                  | Some sortable -> prop.custom ("data-fuaran-sortable", if sortable then "true" else "false")
-                  | None -> ()
-                  match sr.DefaultSort with
-                  | Some ds ->
-                      prop.custom ("data-fuaran-sort-column", string ds.Column)
-
-                      prop.custom (
-                          "data-fuaran-sort-direction",
-                          match ds.Direction with
-                          | SortDirection.Asc -> "asc"
-                          | SortDirection.Desc -> "desc"
-                      )
-                  | None -> ()
-                  prop.children [ Html.thead [ Html.tr headerCells ]; Html.tbody bodyRows ] ]
-        | None ->
-            // Client-library grid. SSR emits a deterministic placeholder carrying a
-            // row-count data attribute for later hydration (never a blank).
-            let rowCount =
-                BindingResolver.tryResolve ctx.Sources spec.Source
-                |> Option.map Seq.length
-                |> Option.defaultValue 0
-
-            Html.div
-                [ prop.className ("fuaran-grid fuaran-grid-ssr-placeholder" + gridBrk)
-                  prop.custom ("data-fuaran-ssr-placeholder", "DataGrid")
-                  prop.custom ("data-fuaran-row-count", string rowCount)
-                  prop.text (sprintf "[Grid: %d rows — hydrates client-side]" rowCount) ]
+        | Some sr -> Emit.plan (ElementPlan.VisPlan.staticGrid ctx.Sources spec sr)
+        | None -> Emit.plan (ElementPlan.VisPlan.gridPlaceholder ctx.Sources spec)
     | NodeKind.Chart spec ->
-        let resolution = BindingResolver.resolve<Row seq> ctx.Sources spec.Source
-
-        // Phase 2041 — the state slots, as the client's chart arm reads them:
-        // an unresolved source with `OnLoading` wired renders the loading node,
-        // an errored source with `OnError` wired renders the node it builds
-        // from a `BindingResolution` payload whose correlation id is the
-        // client's (a hash of the chart's node id). Otherwise the chart body.
-        match resolution, (state |> Option.bind _.OnLoading), (state |> Option.bind _.OnError) with
-        | BindingResolver.NotResolved, Some loadingNode, _ -> renderNode (Walk.deeper walk) ctx loadingNode
-        | BindingResolver.Errored msg, _, Some errorFn ->
-            renderNode
-                (Walk.deeper walk)
-                ctx
-                (errorFn
-                    { Kind = ErrorKind.BindingResolution
-                      Message = msg
-                      CorrelationId = Ids.deterministicCorrelationId parentNodeId })
-        | _ ->
-            match resolution, spec.Kind with
-            | BindingResolver.Resolved rows, kind when Fuaran.UI.Charts.isLowered kind ->
-                // Phase 526 — the SSR renders the SAME first-party lowered Drawing
-                // SVG the client does (static geometry ⇒ no client-hydration
-                // placeholder for a lowered kind; SSR ↔ CSR byte-parity via the
-                // shared lowering + Drawing builder). The lowered-kind set is
-                // `Charts.isLowered` — one source of truth with the client branch.
-                //
-                // Phase 643 — the emission goes through `Charts.renderSvg`, the
-                // single entry point the CLIENT arm also calls, so the provenance
-                // scope threads through both tiers identically by construction
-                // rather than by two call sites kept in step. The host-installed
-                // scope ships `Off`, so these SSR bytes are unchanged.
-                Html.div
-                    [ prop.dangerouslySetInnerHTML (Fuaran.UI.Charts.renderSvg ctx.Sources (renderText ctx) spec rows) ]
-            | resolution, _ ->
-                // Unresolved data, or a not-yet-lowered kind (Heatmap): the
-                // client-hydration placeholder.
-                let rowCount =
-                    match resolution with
-                    | BindingResolver.Resolved seq -> Seq.length seq
-                    | _ -> 0
-
-                Html.div
-                    [ prop.className "fuaran-chart fuaran-chart-ssr-placeholder"
-                      prop.custom ("data-fuaran-ssr-placeholder", "Chart")
-                      prop.custom ("data-fuaran-row-count", string rowCount)
-                      prop.children
-                          [ match spec.Title with
-                            | Some title ->
-                                Html.div [ prop.className Css.Class.ChartTitle; prop.text (renderText ctx title) ]
-                            | None -> Html.none
-                            Html.div
-                                [ prop.className Css.Class.ChartPlaceholder
-                                  prop.text (sprintf "[Chart: %d rows — hydrates client-side]" rowCount) ] ] ]
-    | NodeKind.Map spec ->
-        let markerCount =
-            BindingResolver.tryResolve ctx.Sources spec.Source
-            |> Option.map Seq.length
-            |> Option.defaultValue 0
-
-        Html.div
-            [ prop.className "fuaran-map fuaran-map-ssr-placeholder"
-              prop.custom ("data-fuaran-ssr-placeholder", "Map")
-              prop.custom ("data-fuaran-marker-count", string markerCount)
-              prop.text (sprintf "[Map: %d markers — hydrates client-side]" markerCount) ]
+        // Phase 526 / 643 — the lowered kinds draw the shared Drawing SVG through
+        // `Charts.renderSvg`, the one entry point the client also calls.
+        Emit.plan (
+            ElementPlan.VisPlan.chart
+                (planContext walk ctx parentNodeId)
+                state
+                spec
+                (Fuaran.UI.Charts.isLowered spec.Kind)
+                (Fuaran.UI.Charts.renderSvg ctx.Sources (renderText ctx) spec)
+        )
+    | NodeKind.Map spec -> Emit.plan (ElementPlan.VisPlan.map (planContext walk ctx parentNodeId) state spec)
     | NodeKind.ErrorBoundary spec ->
         // Phase 2041 — the client's boundary, same semantics. The child renders
         // with the per-node guard suspended, so a throw anywhere in it (a host

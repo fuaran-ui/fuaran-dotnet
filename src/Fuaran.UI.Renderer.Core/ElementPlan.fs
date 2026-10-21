@@ -733,6 +733,27 @@ module Attach =
     [<Literal>]
     let ModalOverlay = "modal-overlay"
 
+    /// A key went down on a tree row; key = the item id (Phase 2290).
+    [<Literal>]
+    let TreeKeyDown = "tree-keydown"
+
+    /// A tree row's label was clicked; key = the item id (Phase 2290).
+    [<Literal>]
+    let TreeLabelClick = "tree-label-click"
+
+    /// A click inside a lowered chart, delegated to its marks; key = ""
+    /// (Phase 2290).
+    [<Literal>]
+    let ChartPointClick = "chart-point-click"
+
+    /// A grid's export button was activated; key = "" (Phase 2290).
+    [<Literal>]
+    let GridExport = "grid-export"
+
+    /// A map marker was clicked; key = its index (Phase 2290).
+    [<Literal>]
+    let MarkerClick = "marker-click"
+
     /// Every attachment point a plan declares, in document order, with its
     /// key — what the attachment-point pins compare.
     let rec points (p: Plan<'E>) : (string * string) list =
@@ -1461,6 +1482,328 @@ module MediaPlan =
 /// tracking, host renderer registries, guest loaders), and the walk is each
 /// renderer's own, so they stay renderer-side by nature (Phase 2278 ruling).
 /// The leaf markup both tiers emit for them is planned here.
+/// The visualisation kinds (Phase 2290).
+[<RequireQualifiedAccess>]
+module VisPlan =
+
+    /// One `Tree` row, resolved: what the client's keyboard and click
+    /// handlers need, keyed by the item id.
+    type TreeRow = { HasChildren: bool; IsOpen: bool }
+
+    /// The `Tree` model both tiers read: the open set, the selection, the one
+    /// focusable row, and each row's state by item id.
+    type TreeState =
+        { ExpandedKeyNamed: bool
+          Expanded: Set<string>
+          Selected: string option
+          Rows: Map<string, TreeRow> }
+
+    let treeState (sources: BindingResolver.BindingSources) (spec: TreeSpec<'Msg>) : TreeState =
+        let expandedKeyNamed = spec.ExpandedStateKey.IsSome
+        let expanded = BindingResolver.readExpandedItems sources spec.ExpandedStateKey
+
+        let rec rows (items: TreeItem list) : (string * TreeRow) list =
+            items
+            |> List.collect (fun item ->
+                (item.Id,
+                 { HasChildren = not (List.isEmpty item.Children)
+                   IsOpen = TreeModel.treeItemExpanded expandedKeyNamed expanded item })
+                :: rows item.Children)
+
+        { ExpandedKeyNamed = expandedKeyNamed
+          Expanded = expanded
+          Selected = BindingResolver.readSelectedItem sources spec.SelectionStateKey
+          Rows = Map.ofList (rows spec.Items) }
+
+    /// The WAI-ARIA tree: rows state their accessible name (a treeitem owns
+    /// its group, so a computed name would read the whole branch),
+    /// `aria-expanded` only on a row with children, `aria-selected` only when
+    /// a selection key is named, one roving tab stop. The client attaches the
+    /// row's keyboard model at `Attach.TreeKeyDown` and the label click at
+    /// `Attach.TreeLabelClick`, both keyed by the item id.
+    let tree (sources: BindingResolver.BindingSources) (spec: TreeSpec<'Msg>) (state: TreeState) : Plan<'E> =
+        let focusable =
+            TreeModel.focusableTreeItem state.ExpandedKeyNamed state.Expanded state.Selected spec.Items
+
+        let rec items (level: int) (rows: TreeItem list) : Plan<'E> list =
+            let setSize = List.length rows
+
+            rows
+            |> List.mapi (fun i item ->
+                let row =
+                    { HasChildren = not (List.isEmpty item.Children)
+                      IsOpen = TreeModel.treeItemExpanded state.ExpandedKeyNamed state.Expanded item }
+
+                let label = BindingResolver.resolveTextSource sources item.Label
+
+                Plan.Element
+                    { Tag = "li"
+                      // The item's declared id: expansion and selection key on it.
+                      Key = Some(reconciliationKey (Some item.Id) i)
+                      Props =
+                        [ Prop.Attr("class", Css.Class.TreeItem)
+                          Prop.Attr("role", "treeitem")
+                          Prop.Attr("aria-label", label)
+                          Prop.Attr("aria-level", string level)
+                          Prop.Attr("aria-setsize", string setSize)
+                          Prop.Attr("aria-posinset", string (i + 1))
+                          Prop.Attr("data-fuaran-tree-item", item.Id)
+                          Prop.Attr("tabIndex", (if Some item.Id = focusable then "0" else "-1"))
+                          Prop.Behaviour(Attach.TreeKeyDown, item.Id)
+                          if row.HasChildren then
+                              Prop.Attr("aria-expanded", (if row.IsOpen then "true" else "false"))
+                          match spec.SelectionStateKey with
+                          | Some _ ->
+                              Prop.Attr("aria-selected", (if Some item.Id = state.Selected then "true" else "false"))
+                          | None -> () ]
+                      Content =
+                        Content.Children
+                            [ Plan.element
+                                  "span"
+                                  [ Prop.Attr("class", Css.Class.TreeLabel)
+                                    Prop.Behaviour(Attach.TreeLabelClick, item.Id) ]
+                                  (Content.Text label)
+                              if row.IsOpen then
+                                  Plan.element
+                                      "ul"
+                                      [ Prop.Attr("class", Css.Class.TreeGroup); Prop.Attr("role", "group") ]
+                                      (Content.Children(items (level + 1) item.Children)) ] })
+
+        Plan.element
+            "ul"
+            [ Prop.Attr("class", Css.Class.Tree); Prop.Attr("role", "tree") ]
+            (Content.Children(items 1 spec.Items))
+
+    /// A chart whose kind is lowered and whose rows resolved: the shared
+    /// Drawing SVG (`Charts.renderSvg` is called by the renderer, which owns
+    /// the text resolver) in a container the client delegates point clicks
+    /// from (`Attach.ChartPointClick`).
+    let loweredChart (svg: string) : Plan<'E> =
+        Plan.element "div" [ Prop.Behaviour(Attach.ChartPointClick, "") ] (Content.InnerHtml svg)
+
+    /// The export control's accessible name (Phase 1125): it states the scope
+    /// and the count the control can deliver — the whole grid, or the page a
+    /// host-paged grid holds.
+    let exportLabel (page: bool) (rows: int) : string =
+        match page, rows with
+        | false, 1 -> "Export 1 row as CSV"
+        | false, n -> "Export " + string n + " rows as CSV"
+        | true, 1 -> "Export this page (1 row) as CSV"
+        | true, n -> "Export this page (" + string n + " rows) as CSV"
+
+    /// The grid's export button: the scope in its accessible name and title;
+    /// activation is `Attach.GridExport` (inert on the server, R10).
+    let exportButton (accessibleName: string) : Plan<'E> =
+        Plan.element
+            "button"
+            [ Prop.Attr("class", "fuaran-grid-export")
+              Prop.Attr("type", "button")
+              Prop.Attr("aria-label", accessibleName)
+              Prop.Attr("title", accessibleName)
+              Prop.Behaviour(Attach.GridExport, "") ]
+            (Content.Text "Export CSV")
+
+    /// Phase 393 — a static read-only `DataGrid` is the semantic `<table>`;
+    /// Phase 801's declared sort intent rides as data attributes (only when
+    /// declared); Phase 1473's print-break classes ride the table. An
+    /// `Exportable` grid sits beside its export button (Phase 1125, R10).
+    let staticGrid (sources: BindingResolver.BindingSources) (spec: DataGridSpec<'Msg>) (sr: StaticRows) : Plan<'E> =
+        let text = BindingResolver.resolveTextSource sources
+
+        let keyed (tag: string) (className: string) (index: int) (content: Content<'E>) : Plan<'E> =
+            Plan.Element
+                { Tag = tag
+                  // A static table's rows are literals in document order.
+                  Key = Some(reconciliationKey None index)
+                  Props = [ Prop.Attr("class", className) ]
+                  Content = content }
+
+        let table =
+            Plan.element
+                "table"
+                [ Prop.Attr(
+                      "class",
+                      Css.Class.Table
+                      + Theme.gridPrintBreakClasses spec.KeepRowsTogether spec.RepeatHeader
+                  )
+                  match sr.Sortable with
+                  | Some sortable -> Prop.Attr("data-fuaran-sortable", (if sortable then "true" else "false"))
+                  | None -> ()
+                  match sr.DefaultSort with
+                  | Some ds ->
+                      Prop.Attr("data-fuaran-sort-column", string ds.Column)
+
+                      Prop.Attr(
+                          "data-fuaran-sort-direction",
+                          (match ds.Direction with
+                           | SortDirection.Asc -> "asc"
+                           | SortDirection.Desc -> "desc")
+                      )
+                  | None -> () ]
+                (Content.Children
+                    [ Plan.element
+                          "thead"
+                          []
+                          (Content.Children
+                              [ Plan.element
+                                    "tr"
+                                    []
+                                    (Content.Children(
+                                        sr.Headers
+                                        |> List.mapi (fun i h ->
+                                            keyed "th" Css.Class.TableHeader i (Content.Text(text h)))
+                                    )) ])
+                      Plan.element
+                          "tbody"
+                          []
+                          (Content.Children(
+                              sr.Rows
+                              |> List.mapi (fun i row ->
+                                  keyed
+                                      "tr"
+                                      Css.Class.TableRow
+                                      i
+                                      (Content.Children(
+                                          row
+                                          |> List.mapi (fun j cell ->
+                                              keyed "td" Css.Class.TableCell j (Content.Text(text cell)))
+                                      )))
+                          )) ])
+
+        if spec.Exportable then
+            Plan.classChildren
+                "div"
+                "fuaran-grid-exportable"
+                [ table; exportButton (exportLabel false (List.length sr.Rows)) ]
+        else
+            table
+
+    /// The bound grid's no-script floor: a deterministic hydration placeholder
+    /// with the row count (never a blank). The client renders its grid in its
+    /// place, by nature.
+    let gridPlaceholder (sources: BindingResolver.BindingSources) (spec: DataGridSpec<'Msg>) : Plan<'E> =
+        let rowCount =
+            BindingResolver.tryResolve sources spec.Source
+            |> Option.map Seq.length
+            |> Option.defaultValue 0
+
+        Plan.element
+            "div"
+            [ Prop.Attr(
+                  "class",
+                  "fuaran-grid fuaran-grid-ssr-placeholder"
+                  + Theme.gridPrintBreakClasses spec.KeepRowsTogether spec.RepeatHeader
+              )
+              Prop.Attr("data-fuaran-ssr-placeholder", "DataGrid")
+              Prop.Attr("data-fuaran-row-count", string rowCount) ]
+            (Content.Text(sprintf "[Grid: %d rows — hydrates client-side]" rowCount))
+
+    /// Phase 2041 — a visualisation's state slots: an unresolved source with
+    /// `OnLoading` renders the loading node; an errored one with `OnError` the
+    /// node it builds, whose correlation id hashes the node id. `None` — render
+    /// the body.
+    let stateSlot
+        (pc: PlanContext<'Msg, 'E>)
+        (state: StateBehaviour<'Msg> option)
+        (resolution: BindingResolver.Resolution<'T>)
+        : Plan<'E> option =
+        match resolution, (state |> Option.bind _.OnLoading), (state |> Option.bind _.OnError) with
+        | BindingResolver.NotResolved, Some loadingNode, _ -> Some(pc.Child loadingNode)
+        | BindingResolver.Errored msg, _, Some errorFn ->
+            Some(
+                pc.Child(
+                    errorFn
+                        { Kind = ErrorKind.BindingResolution
+                          Message = msg
+                          CorrelationId = Ids.deterministicCorrelationId pc.NodeId }
+                )
+            )
+        | _ -> None
+
+    /// A chart that cannot draw yet — unresolved data, or a kind whose
+    /// lowering has not shipped: the labelled placeholder with the row count
+    /// (R11: the served markup on both tiers).
+    let chartPlaceholder (sources: BindingResolver.BindingSources) (spec: ChartSpec<'Msg>) (rowCount: int) : Plan<'E> =
+        Plan.element
+            "div"
+            [ Prop.Attr("class", "fuaran-chart fuaran-chart-ssr-placeholder")
+              Prop.Attr("data-fuaran-ssr-placeholder", "Chart")
+              Prop.Attr("data-fuaran-row-count", string rowCount) ]
+            (Content.Children
+                [ spec.Title
+                  |> Plan.ofOption (fun title ->
+                      Plan.classText "div" Css.Class.ChartTitle (BindingResolver.resolveTextSource sources title))
+                  Plan.classText
+                      "div"
+                      Css.Class.ChartPlaceholder
+                      (sprintf "[Chart: %d rows — hydrates client-side]" rowCount) ])
+
+    /// A `Chart`: its state slots, else — when the kind is `lowered` (`Charts.isLowered`) — the Drawing SVG
+    /// (`svg` is the renderer's `Charts.renderSvg`, the one entry point both tiers call),
+    /// else the placeholder.
+    let chart
+        (pc: PlanContext<'Msg, 'E>)
+        (state: StateBehaviour<'Msg> option)
+        (spec: ChartSpec<'Msg>)
+        (lowered: bool)
+        (svg: Row list -> string)
+        : Plan<'E> =
+        let resolution = BindingResolver.resolve<Row seq> pc.Sources spec.Source
+
+        match stateSlot pc state resolution with
+        | Some slot -> slot
+        | None ->
+            match resolution with
+            | BindingResolver.Resolved rows when lowered -> loweredChart (svg (List.ofSeq rows))
+            | BindingResolver.Resolved rows -> chartPlaceholder pc.Sources spec (Seq.length rows)
+            | _ -> chartPlaceholder pc.Sources spec 0
+
+    /// A `Map` (R12): its state slots, else the placeholder with the marker
+    /// count and, when markers resolve, the marker list; a marker's click is
+    /// `Attach.MarkerClick` (key = its index).
+    let map (pc: PlanContext<'Msg, 'E>) (state: StateBehaviour<'Msg> option) (spec: MapSpec<'Msg>) : Plan<'E> =
+        let resolution = BindingResolver.resolve<MapMarker list> pc.Sources spec.Source
+
+        match stateSlot pc state resolution with
+        | Some slot -> slot
+        | None ->
+            let markers =
+                match resolution with
+                | BindingResolver.Resolved markers -> markers
+                | _ -> []
+
+            let caption = sprintf "[Map: %d markers — hydrates client-side]" markers.Length
+
+            Plan.element
+                "div"
+                [ Prop.Attr("class", "fuaran-map fuaran-map-ssr-placeholder")
+                  Prop.Attr("data-fuaran-ssr-placeholder", "Map")
+                  Prop.Attr("data-fuaran-marker-count", string markers.Length) ]
+                (if markers.IsEmpty then
+                     Content.Text caption
+                 else
+                     Content.Children
+                         [ Plan.TextNode caption
+                           Plan.classChildren
+                               "ul"
+                               "fuaran-map-marker-list"
+                               (markers
+                                |> List.mapi (fun i marker ->
+                                    Plan.Element
+                                        { Tag = "li"
+                                          Key = Some(reconciliationKey (Some marker.Label) i)
+                                          Props =
+                                            [ Prop.Attr("class", "fuaran-map-marker")
+                                              Prop.Behaviour(Attach.MarkerClick, string i) ]
+                                          Content =
+                                            Content.Text(
+                                                sprintf
+                                                    "%s @ (%.4f, %.4f)"
+                                                    marker.Label
+                                                    marker.Latitude
+                                                    marker.Longitude
+                                            ) })) ])
+
 [<RequireQualifiedAccess>]
 module StructuralPlan =
 

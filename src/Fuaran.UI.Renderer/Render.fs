@@ -2688,13 +2688,11 @@ let rec private renderKind
     | NodeKind.Media spec -> Emit.plan (ElementPlan.MediaPlan.media (planContext ctx parentNodeId) spec semanticAttrs)
     | NodeKind.Embed spec -> Emit.plan (ElementPlan.MediaPlan.embed (planContext ctx parentNodeId) spec semanticAttrs)
     | NodeKind.Tree spec ->
-        let expandedKeyNamed = spec.ExpandedStateKey.IsSome
-        let expanded = BindingResolver.readExpandedItems ctx.Sources spec.ExpandedStateKey
-        let selected = BindingResolver.readSelectedItem ctx.Sources spec.SelectionStateKey
-
-        let focusable =
-            TreeModel.focusableTreeItem expandedKeyNamed expanded selected spec.Items
-
+        // Phase 2290 — the markup is `ElementPlan.VisPlan.tree`, shared with the
+        // server; this arm binds the row keyboard model and the label click.
+        let treeState = ElementPlan.VisPlan.treeState ctx.Sources spec
+        let expandedKeyNamed = treeState.ExpandedKeyNamed
+        let expanded = treeState.Expanded
         // Write the open set back. The WHOLE set is written rather than a
         // per-row flag, because the specification fixes one shape for this slot
         // (an array of ids) and a host reading it must never have to reconcile
@@ -2795,113 +2793,65 @@ let rec private renderKind
                 |> Option.iter (fun (r: Browser.Types.HTMLElement) -> r.focus ())
             | None -> ()
 
-        let rec renderItems (level: int) (items: TreeItem list) : ReactElement list =
-            let setSize = List.length items
 
-            items
-            |> List.mapi (fun i item ->
-                let isOpen = TreeModel.treeItemExpanded expandedKeyNamed expanded item
-                let hasChildren = not (List.isEmpty item.Children)
-                let label = BindingResolver.resolveTextSource ctx.Sources item.Label
+        let rowOf (itemId: string) : ElementPlan.VisPlan.TreeRow =
+            treeState.Rows
+            |> Map.tryFind itemId
+            |> Option.defaultValue { HasChildren = false; IsOpen = false }
 
-                let onKey (e: Browser.Types.KeyboardEvent) =
-                    let el = e.currentTarget :?> Browser.Types.HTMLElement
-                    let mutable handled = true
+        let onKey (itemId: string) (e: Browser.Types.KeyboardEvent) =
+            let row = rowOf itemId
+            let el = e.currentTarget :?> Browser.Types.HTMLElement
+            let mutable handled = true
 
-                    match e.key with
-                    | "ArrowDown" -> moveBy el 1
-                    | "ArrowUp" -> moveBy el -1
-                    // The APG's two-press semantics, and the reason Right is not
-                    // simply "go to the first child": on a CLOSED parent the
-                    // first press OPENS and stays put, so the reader sees what
-                    // they revealed before being moved into it. A leaf does
-                    // nothing at all rather than swallowing the key.
-                    | "ArrowRight" ->
-                        if hasChildren && not isOpen then toggle item.Id true
-                        elif hasChildren && isOpen then moveBy el 1
-                        else handled <- false
-                    // The mirror: an OPEN row closes, anything else walks up to
-                    // its parent. This is the movement a composition cannot
-                    // offer at all — the parent of a `Disclosure` is not a
-                    // focusable thing.
-                    | "ArrowLeft" ->
-                        if hasChildren && isOpen then
-                            toggle item.Id false
-                        else
-                            moveToParent el
-                    | "Home" -> moveToEdge el false
-                    | "End" -> moveToEdge el true
-                    | "Enter"
-                    | " " -> select item.Id
-                    | _ -> handled <- false
+            match e.key with
+            | "ArrowDown" -> moveBy el 1
+            | "ArrowUp" -> moveBy el -1
+            // The APG's two-press semantics, and the reason Right is not
+            // simply "go to the first child": on a CLOSED parent the first
+            // press OPENS and stays put, so the reader sees what they revealed
+            // before being moved into it. A leaf does nothing at all rather
+            // than swallowing the key.
+            | "ArrowRight" ->
+                if row.HasChildren && not row.IsOpen then toggle itemId true
+                elif row.HasChildren && row.IsOpen then moveBy el 1
+                else handled <- false
+            // The mirror: an OPEN row closes, anything else walks up to its
+            // parent. This is the movement a composition cannot offer at all —
+            // the parent of a `Disclosure` is not a focusable thing.
+            | "ArrowLeft" ->
+                if row.HasChildren && row.IsOpen then
+                    toggle itemId false
+                else
+                    moveToParent el
+            | "Home" -> moveToEdge el false
+            | "End" -> moveToEdge el true
+            | "Enter"
+            | " " -> select itemId
+            | _ -> handled <- false
 
-                    if handled then
-                        e.preventDefault ()
-                        e.stopPropagation ()
+            if handled then
+                e.preventDefault ()
+                e.stopPropagation ()
 
-                Html.li (
-                    [ // The item's declared id — the same token `data-fuaran-tree-item`,
-                      // the expansion state and the selection all key on, so a
-                      // branch that opens above this row does not hand its
-                      // expansion to the row that took its position.
-                      prop.key (reconciliationKey (Some item.Id) i)
-                      prop.className Css.Class.TreeItem
-                      prop.role "treeitem"
-                      // Stated rather than computed from contents: a treeitem
-                      // OWNS its child group, so a name derived from the subtree
-                      // would read the whole branch out as this row's own name.
-                      // The string is byte-identical to the visible label.
-                      prop.custom ("aria-label", label)
-                      prop.custom ("aria-level", string level)
-                      prop.custom ("aria-setsize", string setSize)
-                      prop.custom ("aria-posinset", string (i + 1))
-                      prop.custom ("data-fuaran-tree-item", item.Id)
-                      prop.tabIndex (if Some item.Id = focusable then 0 else -1)
-                      prop.onKeyDown onKey ]
-                    // Only on a row that HAS children. On a leaf the attribute
-                    // would assert a collapsed subtree that does not exist, and
-                    // a reader would be told there is more when there is not.
-                    @ (if hasChildren then
-                           [ prop.custom ("aria-expanded", (if isOpen then "true" else "false")) ]
-                       else
-                           [])
-                    // Only where a selection key is named: `false` on every row
-                    // of a tree that never selects would declare a selectable
-                    // widget with nothing selected, rather than a tree that does
-                    // not select.
-                    @ (match spec.SelectionStateKey with
-                       | Some _ ->
-                           [ prop.custom ("aria-selected", (if Some item.Id = selected then "true" else "false")) ]
-                       | None -> [])
-                    @ [ prop.children (
-                            [ Html.span
-                                  [ prop.className Css.Class.TreeLabel
-                                    // The click lands on the LABEL, not the row,
-                                    // so clicking inside an open branch acts on
-                                    // the row clicked rather than on every
-                                    // ancestor containing it.
-                                    prop.onClick (fun e ->
-                                        e.stopPropagation ()
+        Emit.planWith
+            (fun point itemId ->
+                match point with
+                | ElementPlan.Attach.TreeKeyDown -> [ prop.onKeyDown (onKey itemId) ]
+                // The click lands on the LABEL, not the row, so clicking inside
+                // an open branch acts on the row clicked rather than on every
+                // ancestor containing it.
+                | ElementPlan.Attach.TreeLabelClick ->
+                    [ prop.onClick (fun e ->
+                          e.stopPropagation ()
+                          let row = rowOf itemId
 
-                                        if hasChildren && expandedKeyNamed then
-                                            toggle item.Id (not isOpen)
+                          if row.HasChildren && expandedKeyNamed then
+                              toggle itemId (not row.IsOpen)
 
-                                        select item.Id)
-                                    prop.text label ] ]
-                            @ (if isOpen then
-                                   [ Html.ul
-                                         [ prop.className Css.Class.TreeGroup
-                                           prop.role "group"
-                                           prop.children (renderItems (level + 1) item.Children) ] ]
-                               else
-                                   [])
-                        ) ]
-                ))
-
-        Html.ul
-            [ prop.className Css.Class.Tree
-              prop.role "tree"
-              prop.children (renderItems 1 spec.Items) ]
+                          select itemId) ]
+                | _ -> [])
+            (ElementPlan.VisPlan.tree ctx.Sources spec treeState)
     | NodeKind.List spec -> Emit.plan (ElementPlan.DisplayPlan.list ctx.Sources spec)
     | NodeKind.Toast spec -> Emit.plan (ElementPlan.DisplayPlan.toast ctx.Sources spec)
     | NodeKind.CodeBlock spec -> Emit.plan (ElementPlan.DisplayPlan.codeBlock spec)
@@ -2918,40 +2868,18 @@ let rec private renderKind
         // retired Table); a data-bound grid takes the ordinary grid path.
         match spec.StaticRows with
         | Some sr ->
-            // Annotated: `Headers` / `Rows` also label the generated
-            // `StaticRows` record, so the literal needs the target type pinned.
-            let tableSpec: TableSpec<'Msg> =
-                { Headers = sr.Headers
-                  Rows = sr.Rows
-                  OnRowClick = None
-                  // Phase 801 — the declared sort intent rides through to the
-                  // rendered `<table>` as data attributes.
-                  Sortable = sr.Sortable
-                  DefaultSort = sr.DefaultSort }
+            // Phase 2290 — the table (and, when `Exportable`, its export button —
+            // ruling R10) is `ElementPlan.VisPlan.staticGrid`, shared with the
+            // server. Phase 1125 — a static grid holds its rows IN THE TREE, so
+            // the scope is never a page; what is exported is the resolved cell
+            // TEXT, exactly what the table shows.
+            let project () =
+                (sr.Headers |> List.map (BindingResolver.resolveTextSource ctx.Sources)),
+                (sr.Rows |> List.map (List.map (BindingResolver.resolveTextSource ctx.Sources)))
 
-            // Phase 1473 — the print-break declarations follow the STATIC leg too:
-            // the grid renders as a semantic table here, so its rows and header
-            // row group are exactly the boundaries the declarations name.
-            let table =
-                renderTable ctx (Theme.gridPrintBreakClasses spec.KeepRowsTogether spec.RepeatHeader) tableSpec
-
-            // Phase 1125 — the export affordance follows the STATIC leg too, and
-            // this is the clearest case it has: a static grid holds its rows IN
-            // THE TREE, so the client cannot fail to hold them and the scope is
-            // never a page. What is exported is the resolved cell TEXT, which on
-            // this leg is exactly what `renderTable` puts in the cells.
-            if not spec.Exportable then
-                table
-            else
-                let project () =
-                    (sr.Headers |> List.map (BindingResolver.resolveTextSource ctx.Sources)),
-                    (sr.Rows |> List.map (List.map (BindingResolver.resolveTextSource ctx.Sources)))
-
-                Html.div
-                    [ prop.className "fuaran-grid-exportable"
-                      prop.children
-                          [ table
-                            gridExportControl ctx parentNodeId (GridExport.Scope.WholeGrid(List.length sr.Rows)) project ] ]
+            Emit.planWith
+                (gridExportAttach ctx parentNodeId project)
+                (ElementPlan.VisPlan.staticGrid ctx.Sources spec sr)
         | None -> renderGrid ctx parentNodeId state spec
     | NodeKind.Chart spec -> renderChart ctx parentNodeId state spec
     | NodeKind.Map spec -> renderMap ctx parentNodeId state spec
@@ -6137,107 +6065,42 @@ and private renderChart
     match ctx.VisAdapter.RenderChart(spec, visCtx) with
     | Some rendered -> rendered
     | None ->
+        // Phase 2290 — the state slots, the lowered Drawing SVG and the
+        // placeholder (ruling R11) are `ElementPlan.VisPlan.chart`, shared with
+        // the server. Phase 933 — the POINT-SELECTION DEFAULT: one handler on
+        // the container maps `event.target` back to a datum through Phase 642's
+        // `data-fuaran-mark` (the SVG is a raw string, so there is no per-mark
+        // element to attach to); an `OnPointClick` of `None` publishes the
+        // clicked datum under the chart's own node id. POINT SELECTION ONLY —
+        // 866 left zoom and brush out.
+        let drawn: Row list ref = ref []
 
-        let resolution = BindingResolver.resolve<Row seq> ctx.Sources spec.Source
+        let svg (rows: Row list) : string =
+            drawn.Value <- rows
+            Fuaran.UI.Charts.renderSvg ctx.Sources (BindingResolver.resolveTextSource ctx.Sources) spec rows
 
-        match resolution, state.OnLoading, state.OnError with
-        | BindingResolver.NotResolved, Some loadingNode, _ -> render ctx loadingNode
-        | BindingResolver.Errored msg, _, Some errorFn ->
-            render
-                ctx
-                (errorFn
-                    { Kind = ErrorKind.BindingResolution
-                      Message = msg
-                      CorrelationId = correlationId parentNodeId })
-        | _ ->
-            match resolution, spec.Kind with
-            | BindingResolver.Resolved rows, kind when Fuaran.UI.Charts.isLowered kind ->
-                // Phase 526 — first-party render: lower the semantic Chart to a
-                // Drawing and emit it as inline SVG (Phase 525). No third-party
-                // charting dependency; renders identically SSR + CSR (the same
-                // lowering + Drawing builder). The lowered-kind set is
-                // `Charts.isLowered` — the single source of truth (636/637/638
-                // arms included), so this branch never drifts from the engine.
-                // Phase 933 — the POINT-SELECTION DEFAULT: Phase 427's write
-                // default, extended from `DataGrid` to `Chart` exactly as the
-                // affordance charter (866) admitted census #22 — as a REDIRECT,
-                // with no new wire vocabulary at all. A chart whose
-                // `OnPointClick` is `None` publishes the clicked datum under its
-                // OWN `NodeId`, so no key is declared anywhere; every
-                // `Binding.Selection` reader of this chart then re-renders with
-                // the row, and crossfilter falls out of 818's read rule rather
-                // than being wired.
-                //
-                // Why the click is DELEGATED rather than per-point: this branch
-                // emits the lowered Drawing as a raw SVG string, so there is no
-                // per-mark React element to attach to. One handler on the
-                // container maps `event.target` back to a datum through Phase
-                // 642's `data-fuaran-mark`, which has been in the emitted markup
-                // since 642 — so nothing about the rendered SVG changes here,
-                // and no golden moves.
-                //
-                // Scope, deliberately: POINT SELECTION ONLY. 866 dispositioned
-                // chart ZOOM and BRUSH separately and left both OUT; neither is
-                // reachable from this handler and neither should be added under
-                // this heading.
-                let pointRows = List.ofSeq rows
-
-                Html.div
+        Emit.planWith
+            (fun point _ ->
+                match point with
+                | ElementPlan.Attach.ChartPointClick ->
                     [ prop.onClick (fun (ev: Browser.Types.MouseEvent) ->
                           let clicked = ev.target :?> Browser.Types.Element
                           // Chrome (axes, gridlines, labels, the legend) carries
-                          // no mark, so a click on it resolves to nothing and
-                          // this is a no-op — the chart is not one big button.
+                          // no mark, so a click on it is a no-op.
                           match clicked.closest "[data-fuaran-mark]" with
                           | None -> ()
                           | Some marked ->
                               let markId = marked.getAttribute "data-fuaran-mark"
 
                               if not (isNull markId) then
-                                  chartPointClick (runAction ctx) parentNodeId spec pointRows markId)
-                      // Phase 643 — the emission goes through
-                      // `Charts.renderSvg`, the single entry point the SERVER
-                      // arm also calls, so the provenance scope threads through
-                      // both tiers identically by construction rather than by
-                      // two call sites kept in step. The host-installed scope
-                      // ships `Off`, so these client bytes are unchanged.
-                      prop.dangerouslySetInnerHTML (
-                          TrustedTypes.html (
-                              Fuaran.UI.Charts.renderSvg
-                                  ctx.Sources
-                                  (BindingResolver.resolveTextSource ctx.Sources)
-                                  spec
-                                  pointRows
-                          )
-                      ) ]
-            | _ ->
-                // Unresolved data, or a chart kind whose lowering rule has not
-                // shipped yet (Heatmap): a labelled placeholder + row count so
-                // the chart slot stays visible.
-                let rowCount =
-                    match resolution with
-                    | BindingResolver.Resolved seq -> Seq.length seq
-                    | _ -> 0
-
-                Html.div
-                    [ prop.className "fuaran-chart"
-                      prop.children
-                          [ match spec.Title with
-                            | Some title ->
-                                Html.div
-                                    [ prop.className Css.Class.ChartTitle
-                                      prop.text (BindingResolver.resolveTextSource ctx.Sources title) ]
-                            | None -> Html.none
-                            Html.div
-                                [ prop.className Css.Class.ChartPlaceholder
-                                  prop.text (
-                                      sprintf
-                                          "[Chart placeholder: %A — %d rows × {%s} → {%s}. Wire AgChartAdapter for live rendering.]"
-                                          spec.Kind
-                                          rowCount
-                                          spec.XField
-                                          (String.concat ", " spec.YFields)
-                                  ) ] ] ]
+                                  chartPointClick (runAction ctx) parentNodeId spec drawn.Value markId) ]
+                | _ -> [])
+            (ElementPlan.VisPlan.chart
+                (planContext ctx parentNodeId)
+                (Some state)
+                spec
+                (Fuaran.UI.Charts.isLowered spec.Kind)
+                svg)
 
 /// Hand a CSV document to the reader (Phase 1125).
 ///
@@ -6267,6 +6130,22 @@ and private deliverDownload (url: string) (suggestedName: string) : unit =
     ignore suggestedName
 #endif
 
+and private gridExportAttach
+    (ctx: RenderContext<'Msg>)
+    (nodeId: string)
+    (project: unit -> string list * string list list)
+    : Emit.Attach =
+    fun point _ ->
+        match point with
+        | ElementPlan.Attach.GridExport ->
+            [ prop.onClick (fun _ ->
+                  applyDispatchGateOutcome ctx.Runtime (Runtime.ActionDescriptor.Export nodeId) (fun () ->
+                      let headers, rows = project ()
+                      let csv = GridExport.document headers rows
+                      deliverDownload (GridExport.dataUrl csv) (GridExport.filename nodeId))
+                  |> ignore) ]
+        | _ -> []
+
 /// The grid's export control (Phase 1125).
 ///
 /// RENDERER-OWNED, which is the whole of the grid-behaviour rule and the reason
@@ -6282,83 +6161,15 @@ and private deliverDownload (url: string) (suggestedName: string) : unit =
 /// The gate is consulted at ACTIVATION, not at render: refusing to draw the
 /// control would tell the reader nothing, and drawing one that silently does
 /// nothing is the fake-affordance shape. A denied export warns through the same
-/// diagnostic channel every other refusal uses.
+/// diagnostic channel every other refusal uses. Phase 2290 — the button is
+/// `ElementPlan.VisPlan.exportButton`, the one the static grid's plan carries.
 and private gridExportControl
     (ctx: RenderContext<'Msg>)
     (nodeId: string)
     (scope: GridExport.Scope)
     (project: unit -> string list * string list list)
     : ReactElement =
-    let accessibleName = GridExport.scopeLabel scope
-
-    let performExport () =
-        applyDispatchGateOutcome ctx.Runtime (Runtime.ActionDescriptor.Export nodeId) (fun () ->
-            let headers, rows = project ()
-            let csv = GridExport.document headers rows
-            deliverDownload (GridExport.dataUrl csv) (GridExport.filename nodeId))
-        |> ignore
-
-    Html.button
-        [ prop.className "fuaran-grid-export"
-          prop.type' "button"
-          // The visible label is short because it sits beside a grid; the
-          // accessible name carries the scope and the count, so a reader who
-          // cannot see the grid is told what the file will contain rather than
-          // being handed a page and told it was the grid.
-          prop.custom ("aria-label", accessibleName)
-          prop.title accessibleName
-          prop.onClick (fun _ -> performExport ())
-          prop.text "Export CSV" ]
-
-and private renderTable (ctx: RenderContext<'Msg>) (printBreak: string) (spec: TableSpec<'Msg>) : ReactElement =
-    let headerCells =
-        [ for (headerIndex, h) in List.indexed spec.Headers ->
-              Html.th
-                  [ prop.key (reconciliationKey None headerIndex)
-                    prop.className Css.Class.TableHeader
-                    prop.text (BindingResolver.resolveTextSource ctx.Sources h) ] ]
-
-    let bodyRows =
-        [ for (i, row) in List.indexed spec.Rows ->
-              Html.tr
-                  [ // A static table's rows are literals in document order and
-                    // nothing re-orders them, so position is the identity.
-                    prop.key (reconciliationKey None i)
-                    prop.className Css.Class.TableRow
-                    if spec.OnRowClick.IsSome then
-                        prop.onClick (fun _ ->
-                            match spec.OnRowClick with
-                            | Some f -> runAction ctx (f i)
-                            | None -> ())
-                    prop.children
-                        [ for (cellIndex, cell) in List.indexed row ->
-                              Html.td
-                                  [ prop.key (reconciliationKey None cellIndex)
-                                    prop.className Css.Class.TableCell
-                                    prop.text (BindingResolver.resolveTextSource ctx.Sources cell) ] ] ] ]
-
-    Html.table
-        [ prop.className (Css.Class.Table + printBreak)
-          // Phase 801 — the declared sort intent, surfaced as data attributes so a
-          // progressive-enhancement script honours it without re-parsing the wire.
-          // Emitted ONLY when declared: an undeclared table's markup is unchanged.
-          match spec.Sortable with
-          | Some sortable -> prop.custom ("data-fuaran-sortable", if sortable then "true" else "false")
-          | None -> ()
-          match spec.DefaultSort with
-          | Some ds ->
-              prop.custom ("data-fuaran-sort-column", string ds.Column)
-
-              prop.custom (
-                  "data-fuaran-sort-direction",
-                  match ds.Direction with
-                  | SortDirection.Asc -> "asc"
-                  | SortDirection.Desc -> "desc"
-              )
-          | None -> ()
-          prop.children
-              [ Html.thead [ Html.tr [ prop.children headerCells ] ]
-                Html.tbody [ prop.children bodyRows ] ] ]
+    Emit.planWith (gridExportAttach ctx nodeId project) (ElementPlan.VisPlan.exportButton (GridExport.scopeLabel scope))
 
 and private renderMap
     (ctx: RenderContext<'Msg>)
@@ -6366,60 +6177,20 @@ and private renderMap
     (state: StateBehaviour<'Msg>)
     (spec: MapSpec<'Msg>)
     : ReactElement =
-    // Session 3b: labelled placeholder + the marker count so the demo
-    // shows the slot is reaching live data. Real Leaflet integration
-    // requires a host-provided npm dep — out of Fuaran's standalone-posture
-    // scope, so it's adapter-shaped like AG Charts.
-    let resolution = BindingResolver.resolve<MapMarker list> ctx.Sources spec.Source
-
-    match resolution, state.OnLoading, state.OnError with
-    | BindingResolver.NotResolved, Some loadingNode, _ -> render ctx loadingNode
-    | BindingResolver.Errored msg, _, Some errorFn ->
-        render
-            ctx
-            (errorFn
-                { Kind = ErrorKind.BindingResolution
-                  Message = msg
-                  CorrelationId = correlationId parentNodeId })
-    | _ ->
-        let markers =
-            match resolution with
-            | BindingResolver.Resolved seq -> Seq.toList seq
-            | _ -> []
-
-        Html.div
-            [ prop.className "fuaran-map"
-              prop.children
-                  [ Html.div
-                        [ prop.className "fuaran-map-placeholder"
-                          prop.text (
-                              sprintf
-                                  "[Map placeholder: %d markers around (%.4f, %.4f) zoom %d. Wire a Leaflet adapter for live rendering.]"
-                                  markers.Length
-                                  spec.CentreLatitude
-                                  spec.CentreLongitude
-                                  spec.Zoom
-                          ) ]
-                    if not markers.IsEmpty then
-                        Html.ul
-                            [ prop.className "fuaran-map-marker-list"
-                              prop.children
-                                  [ for (markerIndex, marker) in List.indexed markers ->
-                                        Html.li
-                                            [ prop.key (reconciliationKey (Some marker.Label) markerIndex)
-                                              prop.className "fuaran-map-marker"
-                                              prop.text (
-                                                  sprintf
-                                                      "%s @ (%.4f, %.4f)"
-                                                      marker.Label
-                                                      marker.Latitude
-                                                      marker.Longitude
-                                              )
-                                              if spec.OnMarkerClick.IsSome then
-                                                  prop.onClick (fun _ ->
-                                                      match spec.OnMarkerClick with
-                                                      | Some f -> runAction ctx (f marker)
-                                                      | None -> ()) ] ] ] ] ]
+    // Phase 2290 — the state slots, the placeholder and the marker list are
+    // `ElementPlan.VisPlan.map` (ruling R12), shared with the server; a
+    // marker's click is bound here when `OnMarkerClick` is wired. Real map
+    // rendering needs a host-provided library — adapter-shaped, like charts.
+    Emit.planWith
+        (fun point key ->
+            match point, spec.OnMarkerClick with
+            | ElementPlan.Attach.MarkerClick, Some onMarkerClick ->
+                [ prop.onClick (fun _ ->
+                      BindingResolver.tryResolve ctx.Sources spec.Source
+                      |> Option.bind (List.tryItem (int key))
+                      |> Option.iter (fun marker -> runAction ctx (onMarkerClick marker))) ]
+            | _ -> [])
+        (ElementPlan.VisPlan.map (planContext ctx parentNodeId) (Some state) spec)
 
 // ─── Public entry point ────────────────────────────────────────────────────
 

@@ -173,7 +173,6 @@ let private repeatedChildArms =
       "grid cell", "prop.className \"fuaran-grid-cell\""
       "grid header", "prop.className \"fuaran-grid-header\""
       "grid button-group member", "match item.OnClick with"
-      "tree item", "prop.className Css.Class.TreeItem"
       // Phase 2108 — list items and skeleton rows are planned in
       // `ElementPlan.DisplayPlan` and carry their keys in the plan's `Key`, which
       // the one emitter writes as `prop.key`; `ElementPlanTests` asserts the keys.
@@ -188,11 +187,10 @@ let private repeatedChildArms =
       "filter chip", "Css.filter (Theme.filterKindClass spec.Kind)"
       "segmented option", "prop.className Css.Class.SegmentedOption"
       "segmented row", "prop.className Css.Class.SegmentedRow"
-      "select option", "prop.text option.Label"
-      "static table header", "prop.className Css.Class.TableHeader"
-      "static table row", "prop.className Css.Class.TableRow"
-      "static table cell", "prop.className Css.Class.TableCell"
-      "map marker", "prop.className \"fuaran-map-marker\"" ]
+      // Phase 2290 — tree items, static-table headers, rows and cells, and map
+      // markers are planned in `ElementPlan.VisPlan` and carry their keys in the
+      // plan's `Key`; the server suite asserts them.
+      "select option", "prop.text option.Label" ]
 
 /// Does `line` carry `anchor` as a whole token? Phase 2070 moved the classes
 /// both renderers emit into `Css.Class.*` constants, and an identifier anchor
