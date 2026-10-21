@@ -218,6 +218,106 @@ let init
       View = view
       Services = services }
 
+#if !FABLE_COMPILER
+// ─── Phase 2170 — an update that returns awaited effects ────────────────────
+//
+// `Update` stays `'Msg -> 'Model -> 'Model`: the synchronous form is the session
+// record's contract and every existing host constructs it. An update that needs
+// asynchronous work (an async store read or write) is written in the
+// effect-returning shape below and adapted onto that contract by
+// `initWithEffects`: the model change is applied synchronously as before, and
+// the effects are collected into an `EffectOutbox` the connection drains AFTER
+// the step and awaits OFF the session loop (`LiveConnection.EnableEffects`).
+//
+// .NET-only, deliberately: the awaiting relies on thread-pool concurrency and a
+// monitor serialising the connection, neither of which means anything on a
+// single-threaded JavaScript host, and this driver is server-side by design (the
+// Fable-compiled surface of this package is its wire vocabulary).
+
+/// An update that may return effects to await. Each effect runs after the step
+/// that returned it, in list order and after every effect returned by an earlier
+/// step; a `Some msg` result is folded back through the session as a step of its
+/// own, whose patches are pushed like any other frame.
+type EffectfulUpdate<'Model, 'Msg> = 'Msg -> 'Model -> 'Model * Async<'Msg option> list
+
+/// The effects an effectful session's update has returned and the connection
+/// has not yet taken. Filled by the update `initWithEffects` builds; drained by
+/// `LiveConnection` once its effect runner is enabled.
+[<Sealed>]
+type EffectOutbox<'Msg>() =
+    let pending = ResizeArray<Async<'Msg option>>()
+    let gate = obj ()
+
+    member internal _.Add(effects: Async<'Msg option> list) =
+        if not (List.isEmpty effects) then
+            lock gate (fun () -> pending.AddRange effects)
+
+    /// Take every pending effect, oldest first, leaving the outbox empty.
+    member internal _.Take() : Async<'Msg option> list =
+        lock gate (fun () ->
+            let taken = List.ofSeq pending
+            pending.Clear()
+            taken)
+
+    /// Drop every pending effect: the step that returned them did not happen
+    /// (its update threw), so its effects must not run either.
+    member internal _.Discard() = lock gate pending.Clear
+
+    /// How many effects are waiting to be taken.
+    member _.Pending: int = lock gate (fun () -> pending.Count)
+
+/// `init` for an effect-returning update: the session's synchronous `Update`
+/// applies the model change and posts the returned effects to the outbox, which
+/// is handed back beside the session for `LiveConnection.EnableEffects`.
+let initWithEffects
+    (services: DriverServices<'Msg>)
+    (update: EffectfulUpdate<'Model, 'Msg>)
+    (view: 'Model -> Node<'Msg>)
+    (model: 'Model)
+    : LiveSession<'Model, 'Msg> * EffectOutbox<'Msg> =
+    let outbox = EffectOutbox<'Msg>()
+
+    let syncUpdate msg m =
+        let next, effects = update msg m
+        outbox.Add effects
+        next
+
+    init services syncUpdate view model, outbox
+
+/// Phase 2170 — a session factory that awaits: the async overload of the
+/// transports' synchronous `MakeSession`. It answers the session, and the
+/// `EffectOutbox` when the session was built by `initWithEffects` (`None` for a
+/// session whose update returns no effects), so the transport that opens the
+/// connection can run its effects bound to the connection's lifetime.
+type AsyncSessionFactory<'Model, 'Msg> = unit -> Async<LiveSession<'Model, 'Msg> * EffectOutbox<'Msg> option>
+
+module AsyncSessionFactory =
+    /// Start the factory and await it without holding the caller past `aborted`:
+    /// `None` when `aborted` fires before the factory answers. Awaiting blocks no
+    /// thread, and a factory that never answers holds only the connection that
+    /// is waiting for it, and only until that connection's lifetime ends. A
+    /// factory that throws faults the returned task.
+    let start
+        (aborted: System.Threading.CancellationToken)
+        (factory: AsyncSessionFactory<'Model, 'Msg>)
+        : System.Threading.Tasks.Task<(LiveSession<'Model, 'Msg> * EffectOutbox<'Msg> option) option> =
+        task {
+            let made = Async.StartAsTask(factory (), cancellationToken = aborted)
+
+            let! winner =
+                System.Threading.Tasks.Task.WhenAny(
+                    made :> System.Threading.Tasks.Task,
+                    System.Threading.Tasks.Task.Delay(System.Threading.Timeout.Infinite, aborted)
+                )
+
+            if obj.ReferenceEquals(winner, made) then
+                let! session = made
+                return Some session
+            else
+                return None
+        }
+#endif
+
 // Phase 1152 — `Action.Dispatch` is marked in-process-only by the IDL
 // annotation, which renders as `[<Obsolete(…, false)>]`: FS0044 at every
 // mention, and an error here under `TreatWarningsAsErrors`. Scoped off for the
@@ -375,6 +475,28 @@ let rec private interpret
 
 #warnon "44"
 
+/// Fold already-produced messages through `update`, re-render, diff old→new,
+/// emit the ops (FGP 5) and lower to patches, carrying `effects` through to the
+/// step output. The tail every apply path shares: `applyResolvedActionsWithSubmitBody`
+/// below and (Phase 2170) a message an awaited effect fed back to the connection.
+let internal applyMessages
+    (session: LiveSession<'Model, 'Msg>)
+    (msgs: 'Msg list)
+    (effects: ClientEffect list)
+    : LiveSession<'Model, 'Msg> * StepOutput =
+    let newModel = msgs |> List.fold (fun m msg -> session.Update msg m) session.Model
+    let newTree = session.View newModel
+    let ops = TreeOpDiff.diff session.Tree newTree
+    session.Services.OnApply ops
+    let patches = Lowering.lowerScript session.Services.RenderFragment session.Tree ops
+
+    { session with
+        Model = newModel
+        Tree = newTree },
+    { Patches = patches
+      Effects = effects
+      Rejected = None }
+
 /// Apply a list of already-resolved, already-gated `Action`s to the session in
 /// one step, each paired with the Phase 820 submit body to thread to any
 /// `Action.Call` inside it (`None` ⇒ the pre-820 behaviour): interpret each
@@ -398,18 +520,7 @@ let applyResolvedActionsWithSubmitBody
                 ms @ m2, es @ e2)
             ([], [])
 
-    let newModel = msgs |> List.fold (fun m msg -> session.Update msg m) session.Model
-    let newTree = session.View newModel
-    let ops = TreeOpDiff.diff session.Tree newTree
-    session.Services.OnApply ops
-    let patches = Lowering.lowerScript session.Services.RenderFragment session.Tree ops
-
-    { session with
-        Model = newModel
-        Tree = newTree },
-    { Patches = patches
-      Effects = effects
-      Rejected = None }
+    applyMessages session msgs effects
 
 /// `applyResolvedActionsWithSubmitBody` with no submit body on any action —
 /// the ordinary (non-form-submit) shape, byte-identical to the pre-820 fold.

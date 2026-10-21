@@ -5,6 +5,7 @@ open Fuaran.UI.ServerDriven.Validation
 open Fuaran.UI.ServerDriven.Driver
 #if !FABLE_COMPILER
 open System
+open System.Threading
 open Fuaran.UI.Ops.Types
 open Fuaran.UI.OpStream.Abstractions
 #endif
@@ -153,7 +154,19 @@ type LiveConnection<'Model, 'Msg>
     let mutable durCheckpointEvery = 0
     let mutable durUserId = "server-driven"
     let mutable durClock: unit -> DateTimeOffset = fun () -> DateTimeOffset.UtcNow
+
+    // Phase 2170 — the awaited-effect runner. Off (None) until `EnableEffects`,
+    // so a connection whose session was built by `Driver.init` behaves exactly as
+    // before. One runner per connection, awaiting one effect at a time.
+    let mutable effectRunner: (EffectOutbox<'Msg> * MailboxProcessor<Async<'Msg option>>) option =
+        None
 #endif
+
+    // Phase 2170 — serialises every mutation of this connection's session. An
+    // inbound event and a message fed back by an awaited effect arrive on
+    // different threads; each takes this gate for the synchronous step only, and
+    // no effect is ever awaited while it is held.
+    let gate = obj ()
 
     do
         channel.Receive(fun ev ->
@@ -218,6 +231,37 @@ type LiveConnection<'Model, 'Msg>
     /// effect. The channel's inbound handler routes here; hosts that pump events
     /// directly call it too.
     member this.Handle(ev: LiveEvent) =
+        lock gate (fun () ->
+#if !FABLE_COMPILER
+            try
+                this.Step ev
+            with _ ->
+                // The step did not happen, so neither do the effects its update
+                // returned before it threw.
+                this.DiscardEffects()
+                reraise ()
+
+            this.RunPendingEffects()
+#else
+            this.Step ev
+#endif
+        )
+
+    /// Push a frame for a non-rejected step's output when it produced any
+    /// patch / effect, advancing the op sequence.
+    member private _.EmitFrame(out: StepOutput) =
+        if not (List.isEmpty out.Patches && List.isEmpty out.Effects) then
+            seq <- seq + 1
+
+            let frame =
+                { Seq = seq
+                  Patches = out.Patches
+                  Effects = out.Effects }
+
+            bufferFrame frame
+            channel.Push frame
+
+    member private this.Step(ev: LiveEvent) =
         // The base step is the form buffer-flush protocol (Phase 152 form policy)
         // layered over `Driver.step`: it flushes buffered `Binding.Local` fields
         // on submit / `CommitLocal`, and — when form validation is enabled
@@ -254,17 +298,7 @@ type LiveConnection<'Model, 'Msg>
             // with interaction telemetry off. (The structured error frame back
             // to the client is the documented follow-on.)
             session.Services.OnReject reason
-        | None ->
-            if not (List.isEmpty out.Patches && List.isEmpty out.Effects) then
-                seq <- seq + 1
-
-                let frame =
-                    { Seq = seq
-                      Patches = out.Patches
-                      Effects = out.Effects }
-
-                bufferFrame frame
-                channel.Push frame
+        | None -> this.EmitFrame out
 #if !FABLE_COMPILER
         // The applied ops were journaled inside the wrapped `OnApply` (so the
         // chain advances exactly with `update`); the checkpoint snapshots the
@@ -367,4 +401,71 @@ type LiveConnection<'Model, 'Msg>
 
         bufferFrame frame
         channel.Push frame
+
+    /// Phase 2170 — turn on the awaited-effect runner for a session built by
+    /// `Driver.initWithEffects`, passing the outbox it returned. After every step
+    /// the effects its update returned are handed to a per-connection runner that
+    /// awaits them ONE AT A TIME, in order, off the session loop: `Handle` returns
+    /// as soon as the synchronous step has, and an effect that never completes
+    /// stalls only this connection's later effects — never its inbound events,
+    /// never another connection. A `Some msg` an effect yields is applied as a
+    /// step of its own and its patches pushed as a frame. An effect that throws
+    /// (or a fed-back step that throws) is reported to `onFault` and the runner
+    /// moves on. `cancellationToken` (the connection's lifetime — e.g. the request
+    /// abort token) stops the runner; cancellation of an in-flight effect is
+    /// cooperative. Effects returned before this call run once it is made. Call
+    /// once per connection, right after construction (the async transport maps
+    /// do this for you when the factory hands them an outbox).
+    member this.EnableEffects(outbox: EffectOutbox<'Msg>, onFault: exn -> unit, ?cancellationToken: CancellationToken) =
+        let runner =
+            MailboxProcessor<Async<'Msg option>>
+                .Start(
+                    (fun inbox ->
+                        let rec loop () =
+                            async {
+                                let! effect = inbox.Receive()
+
+                                try
+                                    match! effect with
+                                    | Some msg -> this.Feed msg
+                                    | None -> ()
+                                with ex ->
+                                    onFault ex
+
+                                return! loop ()
+                            }
+
+                        loop ()),
+                    defaultArg cancellationToken CancellationToken.None
+                )
+
+        lock gate (fun () ->
+            effectRunner <- Some(outbox, runner)
+            this.RunPendingEffects())
+
+    /// Apply a message an awaited effect yielded, under the session gate.
+    member private this.Feed(msg: 'Msg) =
+        lock gate (fun () ->
+            try
+                let s2, out = applyMessages session [ msg ] []
+                session <- s2
+                this.EmitFrame out
+                this.MaybeCheckpoint()
+            with _ ->
+                this.DiscardEffects()
+                reraise ()
+
+            this.RunPendingEffects())
+
+    member private _.RunPendingEffects() =
+        match effectRunner with
+        | Some(outbox, runner) ->
+            for effect in outbox.Take() do
+                runner.Post effect
+        | None -> ()
+
+    member private _.DiscardEffects() =
+        match effectRunner with
+        | Some(outbox, _) -> outbox.Discard()
+        | None -> ()
 #endif

@@ -7898,6 +7898,39 @@ decode outcome changes.
 **What a consumer does.** Nothing. A host that wants a deterministic bound on decode cost (an admission budget, a fuzz
 leg of its own) can read it.
 
+
+### What rides this slot — Phase 2170 (the server-driven session seams can await)
+
+**Class: additive (new types, functions and members; no signature moves, no record gains a field).** Packages
+`Fuaran.UI.ServerDriven`, `Fuaran.UI.ServerDriven.AspNetCore` and `Fuaran.UI.ServerDriven.WebSocket`. No wire byte moves.
+
+- **Added: an update that returns awaited effects.** `Driver.EffectfulUpdate<'Model, 'Msg>`
+  (`'Msg -> 'Model -> 'Model * Async<'Msg option> list`), `Driver.EffectOutbox<'Msg>` and `Driver.initWithEffects`, which
+  adapts the effect-returning update onto the unchanged synchronous `LiveSession.Update` and returns the session with its
+  outbox. `LiveConnection.EnableEffects(outbox, onFault, ?cancellationToken)` turns on a per-connection runner that awaits
+  the effects one at a time, in the order returned, OFF the session loop; a `Some msg` an effect yields is applied as a
+  step of its own and its patches pushed. A step whose update throws runs none of the effects it returned, and a faulting
+  effect is reported to `onFault` while the runner moves on.
+- **Added: a session factory that awaits.** `Driver.AsyncSessionFactory<'Model, 'Msg>`
+  (`unit -> Async<LiveSession<'Model, 'Msg> * EffectOutbox<'Msg> option>`) and `AsyncSessionFactory.start`, which awaits a
+  factory without holding the caller past the connection's end. `Endpoints.mapFuaranLiveAsync` with
+  `Endpoints.defaultAsyncConfig` (SSE+POST) and `Endpoints.mapFuaranLiveWebSocketAsync` with
+  `Endpoints.defaultWsAsyncConfig` (WebSocket) await it before the connection exists — the WebSocket handler before it
+  accepts the socket — and run an outbox the factory hands back, bound to the request's lifetime. A factory that never
+  answers holds only its own request.
+- **Unchanged: `Driver.init`, `LiveSession`, `LiveAppConfig`, `LiveWsConfig`, `mapFuaranLive`, `mapFuaranLiveWebSocket`.**
+  `LiveConnection.Handle` now serialises its step with the effect runner's fed-back steps under one monitor; a
+  connection without effects behaves as before. One ordering moved on the synchronous WebSocket path: `MakeSession` is
+  now called before the socket is accepted rather than after, so a factory that throws fails the upgrade request instead
+  of an accepted socket.
+- **Fable posture: .NET-only.** Every async form sits under `#if !FABLE_COMPILER`: the runner relies on thread-pool
+  concurrency and a monitor, which mean nothing on a single-threaded JavaScript host, and this driver is server-side by
+  design. The package's Fable-compiled surface is unchanged.
+
+**What a consumer does.** Nothing. A host whose session state lives behind an asynchronous store maps with the async
+form, reads that state in its factory, and returns its writes as effects from the update instead of blocking or keeping
+a hand-built in-memory mirror.
+
 ---
 
 ## 0.97.0 — the slot opened after v0.96.0 was released (RELEASED — tagged v0.97.0 at 0d6a626, 2026-10-18)
