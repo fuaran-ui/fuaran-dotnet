@@ -4,6 +4,7 @@ open System
 open System.IO
 open System.Net.WebSockets
 open System.Text
+open System.Threading
 open System.Threading.Tasks
 open Microsoft.AspNetCore.Http
 open Microsoft.AspNetCore.Routing
@@ -91,6 +92,15 @@ let defaultWsConfig (makeSession: unit -> LiveSession<'Model, 'Msg>) : LiveWsCon
       MaxMessageBytes = LiveLimits.defaultMaxInboundBytes
       MakeSession = makeSession }
 
+/// Phase 2170 — `defaultWsConfig` for a host that maps with
+/// `mapFuaranLiveWebSocketAsync`. Every default is `defaultWsConfig`'s;
+/// `MakeSession` is never called on that path (the async map takes its own
+/// factory), and refuses loudly if a synchronous map is handed this config.
+let defaultWsAsyncConfig<'Model, 'Msg> () : LiveWsConfig<'Model, 'Msg> =
+    defaultWsConfig (fun () ->
+        invalidOp
+            "this LiveWsConfig was built by defaultWsAsyncConfig: map it with mapFuaranLiveWebSocketAsync, which awaits its own session factory")
+
 /// Mint a principal-bound connection token and set it as the correlation cookie
 /// (Phase 787). The cookie is hardened exactly as the SSE backend hardens its
 /// own: HttpOnly (no script access), Secure (HTTPS only), SameSite=Strict.
@@ -117,15 +127,31 @@ let private tokenHandler (config: LiveWsConfig<'Model, 'Msg>) (ctx: HttpContext)
     }
     :> Task
 
-/// Run one accepted socket: the send pump + receive loop over a fresh session,
-/// under the `connId` the verified token bound to this principal (Phase 787).
-let private runSocket (config: LiveWsConfig<'Model, 'Msg>) (ctx: HttpContext) (connId: string) : Task =
+/// Run one accepted socket: the send pump + receive loop over an opened
+/// session, under the `connId` the verified token bound to this principal
+/// (Phase 787). When the session's update returns awaited effects, the
+/// connection runs them bound to the request's lifetime (Phase 2170).
+let private serveSocket
+    (config: LiveWsConfig<'Model, 'Msg>)
+    (ctx: HttpContext)
+    (connId: string)
+    (session: LiveSession<'Model, 'Msg>)
+    (outbox: EffectOutbox<'Msg> option)
+    : Task =
     task {
         let! ws = ctx.WebSockets.AcceptWebSocketAsync()
         let channel = WsChannel()
-        let session = config.MakeSession()
         let conn = LiveConnection(connId, session, channel)
         let token = ctx.RequestAborted
+
+        match outbox with
+        | Some effects ->
+            conn.EnableEffects(
+                effects,
+                (fun ex -> eprintfn "[Fuaran] WebSocket live effect failed on conn %s: %s" connId ex.Message),
+                token
+            )
+        | None -> ()
 
         let sendPump =
             task {
@@ -230,7 +256,28 @@ let private runSocket (config: LiveWsConfig<'Model, 'Msg>) (ctx: HttpContext) (c
     }
     :> Task
 
-let private handle (config: LiveWsConfig<'Model, 'Msg>) (ctx: HttpContext) : Task =
+/// Phase 2170 — the session is opened (`openSession`, which may await) BEFORE the
+/// socket is accepted: a factory that never answers then holds an un-upgraded
+/// request that ends with its client, never an accepted socket with no session
+/// behind it.
+let private runSocket
+    (config: LiveWsConfig<'Model, 'Msg>)
+    (openSession: CancellationToken -> Task<(LiveSession<'Model, 'Msg> * EffectOutbox<'Msg> option) option>)
+    (ctx: HttpContext)
+    (connId: string)
+    : Task =
+    task {
+        match! openSession ctx.RequestAborted with
+        | None -> () // the client went away before its session existed
+        | Some(session, outbox) -> do! serveSocket config ctx connId session outbox
+    }
+    :> Task
+
+let private handle
+    (config: LiveWsConfig<'Model, 'Msg>)
+    (openSession: CancellationToken -> Task<(LiveSession<'Model, 'Msg> * EffectOutbox<'Msg> option) option>)
+    (ctx: HttpContext)
+    : Task =
     task {
         if not ctx.WebSockets.IsWebSocketRequest then
             ctx.Response.StatusCode <- 400
@@ -259,7 +306,7 @@ let private handle (config: LiveWsConfig<'Model, 'Msg>) (ctx: HttpContext) : Tas
 
             match boundConnId with
             | None -> ctx.Response.StatusCode <- 401 // Unauthorized — unbound / forged connId
-            | Some connId -> do! runSocket config ctx connId
+            | Some connId -> do! runSocket config openSession ctx connId
     }
     :> Task
 
@@ -273,4 +320,29 @@ let private handle (config: LiveWsConfig<'Model, 'Msg>) (ctx: HttpContext) : Tas
 let mapFuaranLiveWebSocket (app: IEndpointRouteBuilder) (config: LiveWsConfig<'Model, 'Msg>) : unit =
     app.MapGet(config.TokenPath, RequestDelegate(tokenHandler config)) |> ignore
 
-    app.MapGet(config.Path, RequestDelegate(handle config)) |> ignore
+    let openSession _ =
+        Task.FromResult(Some(config.MakeSession(), None))
+
+    app.MapGet(config.Path, RequestDelegate(handle config openSession)) |> ignore
+
+/// Phase 2170 — `mapFuaranLiveWebSocket` for a session factory that awaits.
+/// Identical endpoints and token binding; the difference is that the upgrade
+/// handler AWAITS `makeSession` before the socket is accepted, without blocking
+/// a thread, so a host whose session state lives behind an async store reads it
+/// in the factory. A factory returning an `EffectOutbox` (a session built by
+/// `Driver.initWithEffects`) has its update's effects awaited in order, bound to
+/// the request's lifetime. A factory that never answers holds only its own
+/// request. `config.MakeSession` is not called (`defaultWsAsyncConfig` builds a
+/// config for this map).
+let mapFuaranLiveWebSocketAsync
+    (app: IEndpointRouteBuilder)
+    (config: LiveWsConfig<'Model, 'Msg>)
+    (makeSession: AsyncSessionFactory<'Model, 'Msg>)
+    : unit =
+    app.MapGet(config.TokenPath, RequestDelegate(tokenHandler config)) |> ignore
+
+    app.MapGet(
+        config.Path,
+        RequestDelegate(handle config (fun aborted -> AsyncSessionFactory.start aborted makeSession))
+    )
+    |> ignore

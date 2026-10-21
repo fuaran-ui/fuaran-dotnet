@@ -2,6 +2,7 @@ module Fuaran.UI.ServerDriven.AspNetCore.Endpoints
 
 open System
 open System.IO
+open System.Threading
 open System.Threading.Tasks
 open Microsoft.AspNetCore.Http
 open Microsoft.AspNetCore.Routing
@@ -102,10 +103,23 @@ let defaultConfig (makeSession: unit -> LiveSession<'Model, 'Msg>) : LiveAppConf
       MakeSession = makeSession
       ConfigureConnection = fun _ _ -> () }
 
-let private streamHandler
+/// Phase 2170 — `defaultConfig` for a host that maps with `mapFuaranLiveAsync`.
+/// Every default is `defaultConfig`'s; `MakeSession` is never called on that
+/// path (the async map takes its own factory), and refuses loudly if a
+/// synchronous map is handed this config by mistake.
+let defaultAsyncConfig<'Model, 'Msg> () : LiveAppConfig<'Model, 'Msg> =
+    defaultConfig (fun () ->
+        invalidOp
+            "this LiveAppConfig was built by defaultAsyncConfig: map it with mapFuaranLiveAsync, which awaits its own session factory")
+
+/// One live SSE stream over an opened session (and its effect outbox, when the
+/// session's update returns awaited effects).
+let private serveStream
     (config: LiveAppConfig<'Model, 'Msg>)
     (registry: ConnectionRegistry)
     (ctx: HttpContext)
+    (made: LiveSession<'Model, 'Msg>)
+    (outbox: EffectOutbox<'Msg> option)
     : Task =
     task {
         // Bind the connId to the request principal (Phase 211): the cookie value
@@ -152,8 +166,16 @@ let private streamHandler
                 fun reason ->
                     eprintfn "[Fuaran] live event rejected on conn %s: %s" connId (RejectReason.describe reason)
 
+        // Phase 2170 — an awaited effect that faults is reported, never lost.
+        let logEffectFault =
+            match ctx.RequestServices.GetService typeof<ILoggerFactory> with
+            | :? ILoggerFactory as lf ->
+                let logger = lf.CreateLogger "Fuaran.UI.ServerDriven"
+
+                fun (ex: exn) -> logger.LogError(ex, "Fuaran live effect failed on conn {ConnId}", connId)
+            | _ -> fun ex -> eprintfn "[Fuaran] live effect failed on conn %s: %s" connId ex.Message
+
         let session =
-            let made = config.MakeSession()
             let hostOnReject = made.Services.OnReject
 
             { made with
@@ -165,6 +187,11 @@ let private streamHandler
                                 hostOnReject reason } }
 
         let conn = LiveConnection(connId, session, channel)
+
+        match outbox with
+        | Some effects -> conn.EnableEffects(effects, logEffectFault, ctx.RequestAborted)
+        | None -> ()
+
         // Host opt-in seams (form validation / routing / durability / telemetry),
         // applied before the connection sees its first event. The resolved
         // principal is threaded in (Phase 211) so the host can attribute the
@@ -214,6 +241,22 @@ let private streamHandler
 
         registry.Remove connId
         (channel :> IFuaranLiveChannel).Close()
+    }
+    :> Task
+
+let private streamHandler
+    (config: LiveAppConfig<'Model, 'Msg>)
+    (openSession: CancellationToken -> Task<(LiveSession<'Model, 'Msg> * EffectOutbox<'Msg> option) option>)
+    (registry: ConnectionRegistry)
+    (ctx: HttpContext)
+    : Task =
+    task {
+        // Phase 2170 — the factory is awaited FIRST, before anything is written
+        // to the response, so a factory that never answers leaves a request that
+        // ends with its client rather than a half-open stream.
+        match! openSession ctx.RequestAborted with
+        | None -> () // the client went away before its session existed
+        | Some(made, outbox) -> do! serveStream config registry ctx made outbox
     }
     :> Task
 
@@ -272,7 +315,38 @@ let private eventHandler
 let mapFuaranLive (app: IEndpointRouteBuilder) (config: LiveAppConfig<'Model, 'Msg>) : ConnectionRegistry =
     let registry = ConnectionRegistry()
 
-    app.MapGet(config.StreamPath, RequestDelegate(streamHandler config registry))
+    let openSession _ =
+        Task.FromResult(Some(config.MakeSession(), None))
+
+    app.MapGet(config.StreamPath, RequestDelegate(streamHandler config openSession registry))
+    |> ignore
+
+    app.MapPost(config.EventPath, RequestDelegate(eventHandler config registry))
+    |> ignore
+
+    registry
+
+/// Phase 2170 — `mapFuaranLive` for a session factory that awaits. Identical
+/// endpoints, token binding, reject sink and connection hook; the difference is
+/// that the stream handler AWAITS `makeSession` before the connection exists,
+/// without blocking a thread, so a host whose session state lives behind an
+/// async store reads it in the factory rather than ahead of the request. When
+/// the factory returns an `EffectOutbox` (a session built by
+/// `Driver.initWithEffects`), the connection runs the update's awaited effects
+/// in order, bound to the request's lifetime, with faults logged. A factory that
+/// never answers holds only its own request. `config.MakeSession` is not called
+/// (`defaultAsyncConfig` builds a config for this map).
+let mapFuaranLiveAsync
+    (app: IEndpointRouteBuilder)
+    (config: LiveAppConfig<'Model, 'Msg>)
+    (makeSession: AsyncSessionFactory<'Model, 'Msg>)
+    : ConnectionRegistry =
+    let registry = ConnectionRegistry()
+
+    app.MapGet(
+        config.StreamPath,
+        RequestDelegate(streamHandler config (fun aborted -> AsyncSessionFactory.start aborted makeSession) registry)
+    )
     |> ignore
 
     app.MapPost(config.EventPath, RequestDelegate(eventHandler config registry))

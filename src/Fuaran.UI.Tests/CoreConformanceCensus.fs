@@ -241,6 +241,15 @@ let private uiMemoTest =
 let private uiMemoSoundnessTest =
     "an under-declared fragment is never cached under Core's memoSoundnessLawsAt"
 
+/// Phase 2311 - the capability invoker's dispatch and the registry's policy gate, in
+/// `Fuaran.UI.AiTools.Tests/CapabilitiesTests.fs`: `Capabilities.invoke` is the `Dispatch` of a
+/// `CapabilitySeamWitness`, and the policy family runs beside it.
+let private capabilitySeamTest =
+    "the capability invoker's dispatch certifies under Core's capabilityLawsAt (Capabilities.invoke)"
+
+let private policyTest =
+    "the registry's policy gate certifies under Core's policyLaws"
+
 /// The attributed / attestation families (fuaran#1480), enrolled from `Fuaran.UI.OpStream.Tests`
 /// beside the persistence families above and over the SAME witness those use — the attestation one
 /// additionally over the tier's own claim minting and ECDSA keyring, adapted to Core's
@@ -654,17 +663,11 @@ let census: (string * Adoption) list =
       "Conformance.capabilityPipelineLawsAt",
       NotUsed
           "Fuaran.Core.Function's CapabilityPipeline at a domain's CapabilityPipelineWitness — the tier composes no capability pipeline"
-      // Not `NotUsed`: this family's subject EXISTS here. `Fuaran.UI.AiTools.Capabilities` is a host
-      // dispatch path over a Core `CapabilityRegistry` — `validate` resolves and arg-checks the call,
-      // then `makeInvoker` runs the host body — which is exactly the shape the family certifies (a
-      // refusal precedes the body; the host refuses what the registry refuses, with the registry's
-      // error). The self-contained `capabilityLaws` row above certifies the kit's registry, never
-      // this path. Adopting it needs a `CapabilitySeamWitness` whose `Dispatch` is that path, built in
-      // the AiTools test project, which references no conformance kit today — a separate adoption,
-      // not a consequence of the pin, so it is enrolled by name here rather than silently absent.
-      "Conformance.capabilityLawsAt",
-      CarriedBy
-          "unfiled — Fuaran.UI.AiTools.Capabilities (validate, then makeInvoker's host body) is a host dispatch path over a Core CapabilityRegistry, the subject this family certifies; adoption is one CapabilitySeamWitness whose Dispatch is that path, in Fuaran.UI.AiTools.Tests"
+      // Phase 2311: `Fuaran.UI.AiTools.Capabilities.invoke` is the host dispatch path over a Core
+      // `CapabilityRegistry` (`makeInvoker` runs through it), and it IS the `Dispatch` of a
+      // `CapabilitySeamWitness` built in the AiTools test project. The self-contained
+      // `capabilityLaws` row above certifies the kit's registry; this one certifies the tier's path.
+      "Conformance.capabilityLawsAt", Adopted(capabilitySeamTest, "Conformance.capabilityLawsAt")
       "Conformance.capabilityPipelineIncrementalLaws",
       NotUsed "Fuaran.Core.Function's CapabilityPipeline — the tier composes no capability pipeline"
       "Conformance.normalizeLaws",
@@ -743,9 +746,10 @@ let census: (string * Adoption) list =
           "Fuaran.Core.Validator's introduced-findings gate (introduced / verdict / gate under a GatePolicy) — RecipeCertification uses a Core Validator.RuleRegistry only as a validity oracle, and DagMerge.mergeGated gates through the tier's own validator, so nothing here calls the Core gate"
       "Conformance.writeGateLaws",
       NotUsed "Fuaran.Core.Ops.WriteGate — no project here gates an op through a Core WriteGate or calls applyGated"
-      "Conformance.policyLaws",
-      CarriedBy
-          "unfiled — self-contained over the kit's registries, as capabilityLaws (adopted above) is; its subject, a policy gate between validation and the body on a Core CapabilityRegistry, sits on the registry Fuaran.UI.AiTools.Capabilities dispatches over, so adoption is one test beside the capabilityLaws test running the family"
+      // Phase 2311: self-contained over the kit's registries, as `capabilityLaws` is - it certifies the
+      // pinned gate. The registry `makeInvoker` dispatches over is that registry, and the same project
+      // asserts directly that a denying or approval-parking policy stops a call before the host body.
+      "Conformance.policyLaws", Adopted(policyTest, "Conformance.policyLaws")
       "Conformance.policyLawsAt",
       NotUsed
           "Fuaran.Core.AiSurface's guarded submit at a domain's GuardedSurfaceWitness — no project in this tier references Fuaran.Core.AiSurface (see aiSurfaceLawsAt)"
@@ -1268,7 +1272,7 @@ let render (rows: (string * Adoption) list) : string =
     line "adopts it. `—` marks a row nothing in THIS test project's process ran: `NotUsed` /"
     line "`SiblingHost` / `CarriedBy` rows, and — today — every `Adopted` row whose test lives in one"
     line "of this repo's OTHER test projects (`Fuaran.UI.OpStream.Tests`, `.OpStream.Dag.Tests`,"
-    line "`.ServerDriven.Tests`, `.FastPath.Tests`), which this run never executes and so cannot"
+    line "`.ServerDriven.Tests`, `.FastPath.Tests`, `.AiTools.Tests`), which this run never executes and so cannot"
     line "count without inventing a figure. Measuring those is a named follow-on, not a silent gap:"
     line "see the `measuredHere` set in `CoreConformanceCensus.fs`."
     line ""

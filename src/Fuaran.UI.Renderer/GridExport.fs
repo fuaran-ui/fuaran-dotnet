@@ -238,12 +238,13 @@ let scope (hostPages: bool) (resolvedRowCount: int) : Scope =
 /// The control's accessible name. It states the scope rather than leaving the
 /// reader to infer it, and it states the count it can actually deliver rather
 /// than a total the tree cannot substantiate.
+///
+/// Phase 2290 — the strings are `ElementPlan.VisPlan.exportLabel`, one
+/// definition the server's inert export button reads too.
 let scopeLabel (s: Scope) : string =
     match s with
-    | Scope.WholeGrid 1 -> "Export 1 row as CSV"
-    | Scope.WholeGrid n -> "Export " + string n + " rows as CSV"
-    | Scope.ClientPage 1 -> "Export this page (1 row) as CSV"
-    | Scope.ClientPage n -> "Export this page (" + string n + " rows) as CSV"
+    | Scope.WholeGrid n -> ElementPlan.VisPlan.exportLabel false n
+    | Scope.ClientPage n -> ElementPlan.VisPlan.exportLabel true n
 
 /// The suggested filename, derived from the grid's own identity.
 ///

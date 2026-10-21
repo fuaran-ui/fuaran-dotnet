@@ -46,5 +46,7 @@
   <ItemGroup>
     <PackageReference Include="Expecto" />
     <PackageReference Include="FSharp.Core" />
+    <!-- Phase 2311: the Core conformance kit (test-only - CapabilitiesTests.fs runs the capability-seam and policy families over the UI registry). -->
+    <PackageReference Include="Fuaran.Core.Conformance" />
   </ItemGroup>
 </Project>

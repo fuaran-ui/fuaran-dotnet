@@ -188,9 +188,14 @@ let tests =
           // cannot read a different checkout's sources than the ones this build
           // compiled).
           test "census: neither renderer holds a write-back predicate of its own" {
-              for tier in [ "client"; "server" ] do
-                  let path =
-                      Path.Combine(AppContext.BaseDirectory, "renderer-sources", tier, "Render.fs")
+              // Phase 2290 — the server's rating floor is the shared plan's
+              // (`ElementPlan.InputPlan`), so the call the server used to make
+              // is the plan's; the server file holds neither.
+              for tier, file, calls in
+                  [ "client", "Render.fs", true
+                    "server", "Render.fs", false
+                    "core", "ElementPlan.fs", true ] do
+                  let path = Path.Combine(AppContext.BaseDirectory, "renderer-sources", tier, file)
 
                   if not (File.Exists path) then
                       failwithf
@@ -219,8 +224,9 @@ let tests =
                           "the %s renderer declares a write-back predicate of its own — call BindingWalk.isWriteBackTarget, the one definition"
                           tier)
 
-                  Expect.stringContains
-                      source
-                      "Fuaran.UI.BindingWalk.isWriteBackTarget"
-                      (sprintf "the %s renderer asks the one definition (the census found no call to scan)" tier)
+                  if calls then
+                      Expect.stringContains
+                          source
+                          "Fuaran.UI.BindingWalk.isWriteBackTarget"
+                          (sprintf "the %s renderer asks the one definition (the census found no call to scan)" tier)
           } ]

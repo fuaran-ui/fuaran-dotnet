@@ -161,7 +161,16 @@ let vocabularyFingerprintMarker = "fuaran-vocabulary-fingerprint:"
 // A sheet pinned to the old value would render that placeholder as a bare text
 // run, which is exactly the unstyled-diagnostic class the placeholder rule
 // exists to prevent.
-let vocabularyFingerprint = "fv1:5da0294509d8be2b"
+// Phase 2290 (the visualisation family) moved this, and only by REMOVING:
+// `fuaran-map-placeholder` (the client's map text div) left the vocabulary when
+// the Map became one plan whose placeholder is the map's own element on both
+// tiers. No class entered and no rule moved: the reference sheet still styles
+// the old name, so a sheet stamped with either value renders the same page.
+// Phase 2290 (the input family) moved it again, again only by removing:
+// `fuaran-form-field-label` (the server's field-label span) left with the
+// served field wrapper the driver ruled away; a field's label is
+// `fuaran-form-label` on both tiers. The sheet still styles the old name.
+let vocabularyFingerprint = "fv1:7107ead40c2f7960"
 
 /// parity: format a float invariantly across both pipelines. The .NET branch
 /// pins InvariantCulture so a comma-decimal locale can't corrupt the CSS/JSON;
