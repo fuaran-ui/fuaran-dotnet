@@ -166,7 +166,11 @@ let vocabularyFingerprintMarker = "fuaran-vocabulary-fingerprint:"
 // the Map became one plan whose placeholder is the map's own element on both
 // tiers. No class entered and no rule moved: the reference sheet still styles
 // the old name, so a sheet stamped with either value renders the same page.
-let vocabularyFingerprint = "fv1:e7f552674987fd7f"
+// Phase 2290 (the input family) moved it again, again only by removing:
+// `fuaran-form-field-label` (the server's field-label span) left with the
+// served field wrapper the driver ruled away; a field's label is
+// `fuaran-form-label` on both tiers. The sheet still styles the old name.
+let vocabularyFingerprint = "fv1:7107ead40c2f7960"
 
 /// parity: format a float invariantly across both pipelines. The .NET branch
 /// pins InvariantCulture so a comma-decimal locale can't corrupt the CSS/JSON;

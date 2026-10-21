@@ -505,13 +505,17 @@ let tests =
 
                   i
 
-              let regionStart = indexOf "and private renderFormField"
-              let regionEnd = indexOf "and private renderSegmentedChoiceCore"
+              // Phase 2290 — the field and chip handlers moved into the attach
+              // functions that precede the two render functions
+              // (`segmentAttach`, `fieldAttach`, `filterAttach`); the region
+              // spans them all, up to `renderFilters`.
+              let regionStart = indexOf "and private segmentAttach"
+              let regionEnd = indexOf "and private renderFilters"
 
               Expect.isLessThan
                   regionStart
                   regionEnd
-                  "renderFormField must still precede renderSegmentedChoiceCore for the region to be well-formed"
+                  "segmentAttach must still precede renderFilters for the region to be well-formed"
 
               let region = source.Substring(regionStart, regionEnd - regionStart)
 

@@ -54,6 +54,22 @@ type Prop =
     /// properties, so the plan carries no handler type. The server emitter
     /// writes nothing for it: every affordance it serves is inert.
     | Behaviour of point: string * key: string
+    /// A control's current value (Phase 2290). The client writes React's
+    /// controlled `value`; the server writes what the document can show — the
+    /// `value` attribute on an input, the escaped text content of a
+    /// `<textarea>`, and nothing on a `<select>`, whose selection rides its
+    /// options (`Selected`), because HTML ignores a `value` attribute on both.
+    | Value of string
+    /// A multi-select's current values: React's controlled `value` array on
+    /// the client; nothing on the server, where the options carry `Selected`.
+    | Values of string list
+    /// A checkable control's state: React's controlled `checked` on the
+    /// client; on the server the `checked` attribute in `served` spelling,
+    /// only when on.
+    | Checked of on: bool * served: string
+    /// An `<option>` that is chosen: `selected="selected"` on the server;
+    /// nothing on the client, where the `<select>`'s `Value` decides.
+    | Selected
 
 /// What a planned element contains.
 [<RequireQualifiedAccess>]
@@ -733,6 +749,10 @@ module Attach =
     [<Literal>]
     let ModalOverlay = "modal-overlay"
 
+    /// A form was submitted; key = "" (Phase 2290).
+    [<Literal>]
+    let FormSubmit = "form-submit"
+
     /// A key went down on a tree row; key = the item id (Phase 2290).
     [<Literal>]
     let TreeKeyDown = "tree-keydown"
@@ -745,6 +765,35 @@ module Attach =
     /// (Phase 2290).
     [<Literal>]
     let ChartPointClick = "chart-point-click"
+
+    /// A button was activated; key = "" (Phase 2290).
+    [<Literal>]
+    let ButtonClick = "button-click"
+
+    /// A `Select`'s choice changed; key = "" (Phase 2290).
+    [<Literal>]
+    let SelectChange = "select-change"
+
+    /// A form-field or filter control changed; key = "", or "min" / "max"
+    /// for the two ends of a range (Phase 2290).
+    [<Literal>]
+    let FieldChange = "field-change"
+
+    /// A segmented option was activated; key = its value (Phase 2290).
+    [<Literal>]
+    let SegmentSelect = "segment-select"
+
+    /// A key went down on a segmented radiogroup; key = "" (Phase 2290).
+    [<Literal>]
+    let SegmentKeyDown = "segment-keydown"
+
+    /// A vertical segmented radio changed; key = its value (Phase 2290).
+    [<Literal>]
+    let SegmentRadio = "segment-radio"
+
+    /// Files were chosen in an upload; key = "" (Phase 2290).
+    [<Literal>]
+    let FileSelect = "file-select"
 
     /// A grid's export button was activated; key = "" (Phase 2290).
     [<Literal>]
@@ -1482,6 +1531,901 @@ module MediaPlan =
 /// tracking, host renderer registries, guest loaders), and the walk is each
 /// renderer's own, so they stay renderer-side by nature (Phase 2278 ruling).
 /// The leaf markup both tiers emit for them is planned here.
+/// The input kinds (Phase 2290). Each control is ONE plan both renderers
+/// emit: the client binds its handlers at the named attachment points, the
+/// server serves it inert. The kinds whose client form is a stateful
+/// component (the combobox, the token field, a writable rating, a
+/// `Binding.Local` buffer, the upload drop zone and stream shell) have a
+/// static FLOOR here — what a document without script can honour — which the
+/// server emits; the client renders its component in their place, by nature.
+[<RequireQualifiedAccess>]
+module InputPlan =
+
+    let private optionPlan (value: string) (label: string) (selected: bool) : Plan<'E> =
+        Plan.Element
+            { Tag = "option"
+              Key = Some value
+              Props =
+                [ Prop.Attr("value", value)
+                  if selected then
+                      Prop.Selected ]
+              Content = Content.Text label }
+
+    /// A `<datalist>` of suggestions: the user agent's own popup.
+    let private datalist (listId: string) (options: SelectOption list) : Plan<'E> =
+        Plan.element
+            "datalist"
+            [ Prop.Attr("id", listId) ]
+            (Content.Children
+                [ for option in options ->
+                      Plan.element "option" [ Prop.Attr("value", option.Value) ] (Content.Text option.Label) ])
+
+    let private resolvesTrue (sources: BindingResolver.BindingSources) (binding: Binding<bool> option) : bool =
+        binding
+        |> Option.bind (BindingResolver.tryResolve sources)
+        |> Option.defaultValue false
+
+    /// A string slot's choice: null / empty is no selection.
+    let private chosen (sources: BindingResolver.BindingSources) (binding: Binding<string>) : string option =
+        BindingResolver.tryResolve sources binding
+        |> Option.bind (fun s -> if isNull s || s = "" then None else Some s)
+
+    let private dateInputType (variant: DateTimeVariant) : string =
+        match variant with
+        | DateTimeVariant.Date -> "date"
+        | DateTimeVariant.Time -> "time"
+        | DateTimeVariant.DateTime -> "datetime-local"
+
+    /// `min` / `max` / `step` on a date control, each when declared.
+    let private bounds (mn: string option) (mx: string option) (st: float option) : Prop list =
+        [ match mn with
+          | Some m -> Prop.Attr("min", m)
+          | None -> ()
+          match mx with
+          | Some m -> Prop.Attr("max", m)
+          | None -> ()
+          match st with
+          | Some s -> Prop.Attr("step", string s)
+          | None -> () ]
+
+    /// Phase 864 — a declared rule projected onto the platform's own
+    /// constraint attributes, so the browser enforces it. `pattern` only where
+    /// HTML has it (never on a `<textarea>`); `compare` has no HTML equivalent
+    /// and rides as a visible declaration, never claimed as coverage.
+    let ruleAttrs (withPattern: bool) (rule: FieldRule option) : Prop list =
+        match rule with
+        | None -> []
+        | Some r ->
+            [ if withPattern then
+                  match r.Pattern with
+                  | Some p -> Prop.Attr("pattern", p)
+                  | None -> ()
+              match r.MinLength with
+              | Some n -> Prop.Attr("minlength", string n)
+              | None -> ()
+              match r.MaxLength with
+              | Some n -> Prop.Attr("maxlength", string n)
+              | None -> ()
+              match r.Compare with
+              | Some c -> Prop.Attr("data-fuaran-field-compare", FieldRules.compareDeclaration c)
+              | None -> () ]
+
+    /// A `Button`: the variant class, the label (beside the icon hook when
+    /// declared), the author tooltip, `data-fuaran-commit` for an explicit
+    /// per-field flush (the server-driven shim's "Apply" boundary, Phase 152;
+    /// inert on the client), the node's a11y projection, `disabled`. The click
+    /// is `Attach.ButtonClick`. The client's unwired-action cue is a runtime
+    /// decoration its emitter applies (Phase 2290 ruling R1), not plan.
+    let button
+        (sources: BindingResolver.BindingSources)
+        (spec: ButtonSpec<'Msg>)
+        (semanticAttrs: (string * string) list)
+        : Plan<'E> =
+        let label = BindingResolver.resolveTextSource sources spec.Label
+
+        Plan.element
+            "button"
+            [ Prop.Attr("class", Css.button (Css.buttonVariant spec.Variant))
+              match spec.Tooltip with
+              | Some t -> Prop.Attr("title", BindingResolver.resolveTextSource sources t)
+              | None -> ()
+              match spec.OnClick with
+              | Action.CommitLocal fieldId -> Prop.Attr("data-fuaran-commit", fieldId)
+              | _ -> ()
+              yield! Plan.attrs semanticAttrs
+              if resolvesTrue sources spec.Disabled then
+                  Prop.Flag "disabled"
+              Prop.Behaviour(Attach.ButtonClick, "") ]
+            (match spec.Icon with
+             | Some icon -> Content.Children [ DisplayPlan.iconHook Css.Class.ButtonIcon icon; Plan.TextNode label ]
+             | None -> Content.Text label)
+
+    /// A `Select`. Single: the placeholder (when declared) and the options,
+    /// the chosen one `Selected`; multi (Phase 291): `multiple`, the options
+    /// alone, every chosen one `Selected`. The change is `Attach.SelectChange`.
+    let select (sources: BindingResolver.BindingSources) (spec: SelectSpec<'Msg>) : Plan<'E> =
+        let options = BindingResolver.resolveOptions sources spec.Source
+
+        let controlProps, items =
+            if spec.Multiple = Some true then
+                let values =
+                    spec.Values
+                    |> Option.bind (BindingResolver.tryResolve sources)
+                    |> Option.defaultValue []
+
+                [ Prop.Flag "multiple"; Prop.Values values ],
+                [ for o in options -> optionPlan o.Value o.Label (List.contains o.Value values) ]
+            else
+                // Phase 1962 — a single-select carries one `Value`.
+                let selected = spec.Value |> Option.bind (chosen sources)
+
+                [ Prop.Value(selected |> Option.defaultValue "") ],
+                (match spec.Placeholder with
+                 | Some placeholder ->
+                     [ Plan.element
+                           "option"
+                           [ Prop.Attr("value", "") ]
+                           (Content.Text(BindingResolver.resolveTextSource sources placeholder)) ]
+                 | None -> [])
+                @ [ for o in options -> optionPlan o.Value o.Label (selected = Some o.Value) ]
+
+        Plan.classChildren
+            "label"
+            Css.Class.Select
+            [ Plan.classText "span" Css.Class.SelectLabel (BindingResolver.resolveTextSource sources spec.Label)
+              Plan.element
+                  "select"
+                  ([ Prop.Attr("class", Css.Class.SelectControl) ]
+                   @ controlProps
+                   @ [ if resolvesTrue sources spec.Disabled then
+                           Prop.Flag "disabled"
+                       Prop.Behaviour(Attach.SelectChange, "") ])
+                  (Content.Children items) ]
+
+    /// The segmented control / radio group both callers share — a form field
+    /// (id namespace = the field id, container marker `data-fuaran-field`) and
+    /// a filter chip (the filter name, `data-filter-name`, with
+    /// `data-filter-value` per option). Horizontal: a `radiogroup` of `radio`
+    /// buttons, roving tab stop, `Attach.SegmentSelect` per option (key = its
+    /// value) and `Attach.SegmentKeyDown` on the group. Vertical: a fieldset
+    /// of native radios (`Attach.SegmentRadio`, key = the value).
+    let segmentedChoice
+        (sources: BindingResolver.BindingSources)
+        (idNamespace: string)
+        (containerAttr: string)
+        (optionAttr: string option)
+        (options: Binding<SelectOption list>)
+        (value: Binding<string>)
+        (orientation: Orientation)
+        : Plan<'E> =
+        let opts = BindingResolver.resolveOptions sources options
+        let current = chosen sources value
+        let optionId (index: int) : string = Ids.optionId idNamespace index
+
+        match orientation with
+        | Orientation.Horizontal ->
+            let activeIndex =
+                match current with
+                | Some v -> opts |> List.tryFindIndex (fun o -> o.Value = v) |> Option.defaultValue -1
+                | None -> -1
+
+            let optionButton (index: int) (option: SelectOption) : Plan<'E> =
+                let isActive = index = activeIndex
+
+                Plan.Element
+                    { Tag = "button"
+                      Key = Some(reconciliationKey (Some option.Value) index)
+                      Props =
+                        [ Prop.Attr("class", Css.Class.SegmentedOption)
+                          Prop.Attr("type", "button")
+                          Prop.Attr("id", optionId index)
+                          Prop.Attr("aria-checked", (if isActive then "true" else "false"))
+                          Prop.Attr("role", "radio")
+                          Prop.Attr(
+                              "tabIndex",
+                              (if isActive || (activeIndex < 0 && index = 0) then
+                                   "0"
+                               else
+                                   "-1")
+                          )
+                          match optionAttr with
+                          | Some attr -> Prop.Attr(attr, option.Value)
+                          | None -> ()
+                          Prop.Behaviour(Attach.SegmentSelect, option.Value) ]
+                      Content = Content.Text option.Label }
+
+            Plan.element
+                "div"
+                [ Prop.Attr("class", Css.Class.SegmentedHorizontal)
+                  Prop.Attr("id", idNamespace)
+                  Prop.Attr("role", "radiogroup")
+                  Prop.Attr("aria-orientation", "horizontal")
+                  Prop.Attr(containerAttr, idNamespace)
+                  Prop.Behaviour(Attach.SegmentKeyDown, "") ]
+                (Content.Children(opts |> List.mapi optionButton))
+        | Orientation.Vertical ->
+            let optionRow (index: int) (option: SelectOption) : Plan<'E> =
+                let inputId = optionId index
+
+                Plan.Element
+                    { Tag = "div"
+                      Key = Some(reconciliationKey (Some option.Value) index)
+                      Props = [ Prop.Attr("class", Css.Class.SegmentedRow) ]
+                      Content =
+                        Content.Children
+                            [ Plan.element
+                                  "input"
+                                  [ Prop.Attr("type", "radio")
+                                    Prop.Attr("id", inputId)
+                                    Prop.Attr("name", idNamespace)
+                                    Prop.Attr("value", option.Value)
+                                    Prop.Checked((current = Some option.Value), "")
+                                    Prop.Behaviour(Attach.SegmentRadio, option.Value) ]
+                                  Content.Empty
+                              Plan.element "label" [ Prop.Attr("for", inputId) ] (Content.Text option.Label) ] }
+
+            Plan.element
+                "fieldset"
+                [ Prop.Attr("class", Css.Class.SegmentedVertical)
+                  Prop.Attr("aria-orientation", "vertical")
+                  Prop.Attr(containerAttr, idNamespace) ]
+                (Content.Children(
+                    Plan.classText "legend" Css.Class.SegmentedLegend idNamespace
+                    :: (opts |> List.mapi optionRow)
+                ))
+
+    /// Phase 1130 — the rating floor. A rating nothing can write is the
+    /// `role="img"` star row; a writable one floors on native radios (keyboard
+    /// adjustable, submitted with the form) beside the star row, with the exact
+    /// figure as `data-fuaran-rating-value` (a recorded limit, not coverage).
+    /// Served only: the client renders `RatingControl` in its place, and the
+    /// CSS tier scan (`CssCoverageTests`) cuts this function from the client's
+    /// view of the file at its declaration and the next doc comment below.
+    let private ratingFloor
+        (className: string)
+        (lead: Prop list)
+        (name: string)
+        (allowHalf: bool)
+        (max: int)
+        (shown: float)
+        (writable: bool)
+        : Plan<'E> =
+        let starRow =
+            RatingModel.fills max shown
+            |> List.mapi (fun index fill ->
+                Plan.Element
+                    { Tag = "span"
+                      Key = Some(string index)
+                      Props =
+                        [ Prop.Attr("class", "fuaran-rating-star " + RatingModel.fillClass fill)
+                          Prop.Attr("aria-hidden", "true") ]
+                      Content = Content.Empty })
+
+        if not writable then
+            Plan.element
+                "span"
+                ([ Prop.Attr("class", className + " fuaran-rating-static")
+                   Prop.Attr("role", "img")
+                   Prop.Attr("aria-label", RatingModel.valueText max shown) ]
+                 @ lead)
+                (Content.Children starRow)
+        else
+            let positions = int (System.Math.Round(float max / RatingModel.step allowHalf))
+
+            let choices =
+                [ for i in 1..positions do
+                      let target = RatingModel.snap allowHalf max (float i * RatingModel.step allowHalf)
+
+                      Plan.classChildren
+                          "label"
+                          "fuaran-rating-choice"
+                          [ Plan.element
+                                "input"
+                                [ Prop.Attr("type", "radio")
+                                  Prop.Attr("name", name)
+                                  Prop.Attr("value", string target)
+                                  Prop.Checked(abs (target - shown) < 1e-9, "true") ]
+                                Content.Empty
+                            Plan.classText "span" "fuaran-rating-choice-label" (RatingModel.valueText max target) ] ]
+
+            Plan.element
+                "span"
+                ([ Prop.Attr("class", className + " fuaran-rating-choices") ]
+                 @ lead
+                 @ [ Prop.Attr("data-fuaran-rating-value", RatingModel.valueText max shown) ])
+                (Content.Children(starRow @ choices))
+
+    /// The control of one `Form` field (Phase 2290 rulings R4/R5/R15/R16).
+    /// A declared rule's constraint attributes ride every plain control
+    /// (Phase 864; the R5 refinement keeps the served projection).
+    /// Every control carries the field id (the label's `for`, the client
+    /// gate's lookup) AND `data-fuaran-field` (the server-driven shim's
+    /// per-field buffer marker, Phase 152); `required` is present only when
+    /// the field is required. Each change is `Attach.FieldChange` (key "" —
+    /// or "min" / "max" for the two ends of a range). The combobox, token,
+    /// rating and `Binding.Local` controls are their no-script floors here;
+    /// the client renders its own component for those.
+    let fieldControl (sources: BindingResolver.BindingSources) (field: FormField<'Msg>) : Plan<'E> =
+        let ident = [ Prop.Attr("id", field.Id); Prop.Attr("data-fuaran-field", field.Id) ]
+
+        let required = if field.Required then [ Prop.Flag "required" ] else []
+        let change key = Prop.Behaviour(Attach.FieldChange, key)
+
+        let input (className: string) (inputType: string) (rest: Prop list) : Plan<'E> =
+            Plan.element
+                "input"
+                ([ Prop.Attr("class", className) ]
+                 @ ident
+                 @ [ Prop.Attr("type", inputType) ]
+                 @ rest)
+                Content.Empty
+
+        let state (fallback: Binding<'T>) (binding: Binding<'T> option) : Binding<'T> =
+            binding |> Option.defaultValue fallback
+
+        let auto (value: 'T) : Binding<'T> = Binding.State(field.Id, Some value)
+
+        match field.Kind with
+        | FormFieldKind.Text(FieldView.Text v, _) ->
+            // Phase 864 — a declared `format` retypes the control so the
+            // browser enforces it; absent, it stays `text`.
+            let t = FieldRules.textInputType field.Rule
+            let v = v |> state (auto Fuaran.UI.Defaults.ControlValueDefaults.text)
+
+            input
+                (Css.formControl t)
+                t
+                (required
+                 @ [ Prop.Value(BindingResolver.tryResolve sources v |> Option.defaultValue "") ]
+                 @ ruleAttrs true field.Rule
+                 @ [ change "" ])
+        | FormFieldKind.Number(FieldView.Number v, _) ->
+            let v = v |> state (auto Fuaran.UI.Defaults.ControlValueDefaults.number)
+
+            input
+                "fuaran-form-input"
+                "number"
+                (required
+                 @ [ Prop.Value(BindingResolver.tryResolve sources v |> Option.defaultValue 0.0 |> string) ]
+                 @ ruleAttrs true field.Rule
+                 @ [ change "" ])
+        | FormFieldKind.RangedNumber(FieldView.Number v, _, mn, mx, st) ->
+            let v = v |> state (auto Fuaran.UI.Defaults.ControlValueDefaults.number)
+
+            input
+                "fuaran-form-input"
+                "number"
+                (required
+                 @ [ Prop.Value(BindingResolver.tryResolve sources v |> Option.defaultValue 0.0 |> string) ]
+                 @ bounds (mn |> Option.map string) (mx |> Option.map string) st
+                 @ ruleAttrs true field.Rule
+                 @ [ change "" ])
+        | FormFieldKind.Checkbox(FieldView.Bool v, _) ->
+            let v = v |> state (auto Fuaran.UI.Defaults.ControlValueDefaults.checkbox)
+            let current = BindingResolver.tryResolve sources v |> Option.defaultValue false
+
+            input
+                "fuaran-form-checkbox"
+                "checkbox"
+                ([ Prop.Checked(current, "checked") ] @ ruleAttrs true field.Rule @ [ change "" ])
+        // Phase 766 / 1605 — the switch: a native checkbox with `role="switch"`
+        // and a RESOLVED `aria-checked`, so first paint announces it rightly.
+        | FormFieldKind.Toggle(FieldView.Bool v, _) ->
+            let v = v |> state (auto Fuaran.UI.Defaults.ControlValueDefaults.checkbox)
+            let current = BindingResolver.tryResolve sources v |> Option.defaultValue false
+
+            input
+                (Css.formControl "toggle")
+                "checkbox"
+                [ Prop.Attr("role", "switch")
+                  Prop.Attr("aria-checked", (if current then "true" else "false"))
+                  Prop.Checked(current, "checked")
+                  change "" ]
+        // Phase 1648 — a `<select>` with the leading `—` option that makes "no
+        // selection" selectable rather than merely initial.
+        | FormFieldKind.Choice(options, FieldView.Text v, _) ->
+            let v =
+                v
+                |> state (Binding.State(field.Id, Fuaran.UI.Defaults.ControlValueDefaults.choice))
+
+            let current = chosen sources v
+
+            Plan.element
+                "select"
+                ([ Prop.Attr("class", Css.formControl "select") ]
+                 @ ident
+                 @ required
+                 @ [ Prop.Value(current |> Option.defaultValue ""); change "" ])
+                (Content.Children(
+                    Plan.element
+                        "option"
+                        [ Prop.Attr("value", "")
+                          if current.IsNone then
+                              Prop.Selected ]
+                        (Content.Text "—")
+                    :: [ for o in BindingResolver.resolveOptions sources options ->
+                             optionPlan o.Value o.Label (current = Some o.Value) ]
+                ))
+        // The dual-thumb numeric range: two number inputs over one `RangePair`;
+        // the FROM end carries the field's identity.
+        | FormFieldKind.Range(FieldView.Range v, _, _, _, _) ->
+            let v = v |> state (auto Fuaran.UI.Defaults.ControlValueDefaults.range)
+
+            let current: RangePair =
+                BindingResolver.tryResolve sources v
+                |> Option.defaultValue { Min = 0.0; Max = 0.0 }
+
+            Plan.classChildren
+                "span"
+                Css.Class.FieldRange
+                [ input
+                      "fuaran-field-range-min"
+                      "number"
+                      ([ Prop.Value(string current.Min) ]
+                       @ ruleAttrs true field.Rule
+                       @ [ change "min" ])
+                  Plan.classText "span" Css.Class.FieldRangeSep "–"
+                  Plan.element
+                      "input"
+                      [ Prop.Attr("class", "fuaran-field-range-max")
+                        Prop.Attr("type", "number")
+                        Prop.Value(string current.Max)
+                        change "max" ]
+                      Content.Empty ]
+        | FormFieldKind.TextArea(FieldView.Text v, _, rows) ->
+            let v = v |> state (auto Fuaran.UI.Defaults.ControlValueDefaults.text)
+
+            Plan.element
+                "textarea"
+                ([ Prop.Attr("class", "fuaran-form-textarea") ]
+                 @ ident
+                 @ required
+                 @ [ Prop.Attr("rows", string rows)
+                     Prop.Value(BindingResolver.tryResolve sources v |> Option.defaultValue "") ]
+                 @ ruleAttrs false field.Rule
+                 @ [ change "" ])
+                Content.Empty
+        // Phase 1113 — the combobox FLOOR: a native `<input list>` over a
+        // `<datalist>` IS a combobox to the user agent. No hand-written ARIA
+        // (a static `aria-expanded` would replace the native semantics with a
+        // claim the markup cannot keep). RECORDED KNOWN LIMIT: `allowFreeText =
+        // false` is not enforceable by a datalist; it rides as
+        // `data-fuaran-combobox-constrained`, enforced by the server re-check.
+        | FormFieldKind.Combobox(allowFreeText, _, options, FieldView.Text v) ->
+            let v =
+                v
+                |> state (Binding.State(field.Id, Fuaran.UI.Defaults.ControlValueDefaults.combobox))
+
+            let listId = field.Id + "-options"
+
+            Plan.classChildren
+                "span"
+                "fuaran-combobox"
+                [ input
+                      Css.Class.FormFieldControlComboboxInput
+                      "text"
+                      ([ Prop.Attr("list", listId)
+                         Prop.Attr("autocomplete", "off")
+                         Prop.Attr("data-fuaran-combobox-constrained", (if allowFreeText then "false" else "true")) ]
+                       @ required
+                       // Phase 1648 — the null collapse: a default-less State
+                       // resolves `null`.
+                       @ [ Prop.Value(
+                               BindingResolver.tryResolve sources v
+                               |> Option.bind (fun s -> if isNull s then None else Some s)
+                               |> Option.defaultValue ""
+                           ) ])
+                  datalist listId (BindingResolver.resolveOptions sources options) ]
+        | FormFieldKind.Rating(allowHalf, max, FieldView.OnNumber onChange, FieldView.Number v) ->
+            let v = v |> state (auto Fuaran.UI.Defaults.ControlValueDefaults.rating)
+
+            let shown =
+                BindingResolver.tryResolve sources v
+                |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.rating
+                |> RatingModel.clamp max
+
+            ratingFloor
+                "fuaran-form-field-control fuaran-rating"
+                ident
+                field.Id
+                allowHalf
+                max
+                shown
+                (onChange.IsSome || Fuaran.UI.BindingWalk.isWriteBackTarget v)
+        // Phase 1130 — the platform's colour picker; a value it could not hold
+        // falls back to the unset black rather than a colour the tree did not
+        // choose.
+        | FormFieldKind.Color(_, FieldView.Text v) ->
+            let v = v |> state (auto Fuaran.UI.Defaults.ControlValueDefaults.color)
+
+            input
+                "fuaran-form-input fuaran-color-input"
+                "color"
+                (required
+                 @ [ Prop.Value(
+                         BindingResolver.tryResolve sources v
+                         |> Option.filter Fuaran.UI.HostPrelude.HexColor.isValid
+                         |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.color
+                     ) ]
+                 @ ruleAttrs true field.Rule
+                 @ [ change "" ])
+        // Phase 1121 — the token FLOOR: one text input carrying the tokens
+        // comma-separated (a reader can edit it, and it submits), with a
+        // `<datalist>` when a suggestion source is declared. RECORDED KNOWN
+        // LIMITS: a token containing a comma re-parses as two; `allowFreeText =
+        // false` rides as `data-fuaran-tokens-constrained`, never enforced here.
+        | FormFieldKind.Tokens(allowFreeText, _, suggestions, FieldView.Tokens v) ->
+            let v = v |> state (auto Fuaran.UI.Defaults.ControlValueDefaults.tokens)
+            let listId = field.Id + "-suggestions"
+            let opts = suggestions |> Option.map (BindingResolver.resolveOptions sources)
+
+            Plan.classChildren
+                "span"
+                "fuaran-tokens"
+                [ input
+                      Css.Class.FormFieldControlTokensInput
+                      "text"
+                      ([ if Option.isSome opts then
+                             Prop.Attr("list", listId)
+                         Prop.Attr("autocomplete", "off")
+                         Prop.Attr("data-fuaran-tokens-constrained", (if allowFreeText then "false" else "true")) ]
+                       @ required
+                       @ [ Prop.Value(
+                               BindingResolver.tryResolve sources v
+                               |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.tokens
+                               |> TokensModel.toCommaSeparated
+                           ) ])
+                  opts |> Plan.ofOption (datalist listId) ]
+        | FormFieldKind.SegmentedChoice(options, FieldView.Text v, _, orientation) ->
+            let v =
+                v
+                |> state (Binding.State(field.Id, Fuaran.UI.Defaults.ControlValueDefaults.choice))
+
+            segmentedChoice sources field.Id "data-fuaran-field" None options v orientation
+        // Phase 288 — the native date / time / datetime control.
+        | FormFieldKind.DateTime(FieldView.Text v, _, variant, mn, mx, st) ->
+            let v = v |> state (auto Fuaran.UI.Defaults.ControlValueDefaults.dateTime)
+            let t = dateInputType variant
+
+            input
+                (Css.formControl t)
+                t
+                (required
+                 @ [ Prop.Value(BindingResolver.tryResolve sources v |> Option.defaultValue "") ]
+                 @ bounds mn mx st
+                 @ ruleAttrs true field.Rule
+                 @ [ change "" ])
+        // Phase 725 — the date range: two native controls over one pair,
+        // sharing the bounds; the FROM end carries the field's identity.
+        | FormFieldKind.DateTimeRange(FieldView.DateRange v, _, variant, mn, mx, st) ->
+            let v = v |> state (auto Fuaran.UI.Defaults.ControlValueDefaults.dateTimeRange)
+            let t = dateInputType variant
+
+            let current: DateTimeRangePair =
+                BindingResolver.tryResolve sources v
+                |> Option.defaultValue { From = ""; To = "" }
+
+            Plan.classChildren
+                "span"
+                Css.Class.FieldRange
+                [ input
+                      "fuaran-form-input fuaran-form-date fuaran-field-range-min"
+                      t
+                      (required @ [ Prop.Value current.From ] @ bounds mn mx st @ [ change "min" ])
+                  Plan.classText "span" Css.Class.FieldRangeSep "–"
+                  Plan.element
+                      "input"
+                      ([ Prop.Attr("class", "fuaran-form-input fuaran-form-date fuaran-field-range-max")
+                         Prop.Attr("type", t) ]
+                       @ required
+                       @ [ Prop.Value current.To ]
+                       @ bounds mn mx st
+                       @ [ change "max" ])
+                      Content.Empty ]
+
+    /// One `Form` field: the label (`for` the control; " *" when required),
+    /// the control, the help text. Keyed by the field id, so a re-ordered form
+    /// moves each field's uncommitted buffer with it.
+    let formField (sources: BindingResolver.BindingSources) (field: FormField<'Msg>) (control: Plan<'E>) : Plan<'E> =
+        let label = BindingResolver.resolveTextSource sources field.Label
+
+        Plan.Element
+            { Tag = "div"
+              Key = Some field.Id
+              Props = [ Prop.Attr("class", Css.Class.FormField) ]
+              Content =
+                Content.Children
+                    [ Plan.element
+                          "label"
+                          [ Prop.Attr("class", "fuaran-form-label"); Prop.Attr("for", field.Id) ]
+                          (Content.Text(if field.Required then label + " *" else label))
+                      control
+                      field.Help
+                      |> Plan.ofOption (fun help ->
+                          Plan.classText "div" Css.Class.FormHelp (BindingResolver.resolveTextSource sources help)) ] }
+
+    /// The control of one `Filters` chip. Every control carries
+    /// `data-filter-name` (the server-driven shim's name-addressed round
+    /// trip; inert on the client), its change is `Attach.FieldChange`, and the
+    /// combobox, token and rating chips are their floors here as in
+    /// `fieldControl`. A chip's declarative write always has somewhere to go
+    /// (`$filters.<name>`), so a filter rating floors as the writable shape.
+    let filterControl (sources: BindingResolver.BindingSources) (spec: FilterSpec<'Msg>) : Plan<'E> =
+        let marker = Prop.Attr("data-filter-name", spec.Name)
+        let change key = Prop.Behaviour(Attach.FieldChange, key)
+        let labelText = BindingResolver.resolveTextSource sources spec.Label
+
+        let auto (binding: Binding<'T> option) : Binding<'T> =
+            binding |> Option.defaultValue (Binding.Filter(spec.Name, None))
+
+        let input (props: Prop list) : Plan<'E> =
+            Plan.element "input" props Content.Empty
+
+        match spec.Kind with
+        | FormFieldKind.Text(FieldView.Text v, _) ->
+            input
+                [ Prop.Attr("class", Css.Class.FilterInput)
+                  Prop.Attr("type", "text")
+                  Prop.Attr("placeholder", labelText)
+                  Prop.Value(BindingResolver.tryResolve sources (auto v) |> Option.defaultValue "")
+                  marker
+                  change "" ]
+        | FormFieldKind.TextArea(FieldView.Text v, _, rows) ->
+            Plan.element
+                "textarea"
+                [ Prop.Attr("class", Css.Class.FilterInput)
+                  Prop.Attr("rows", string rows)
+                  Prop.Value(BindingResolver.tryResolve sources (auto v) |> Option.defaultValue "")
+                  marker
+                  change "" ]
+                Content.Empty
+        | FormFieldKind.Number(FieldView.Number v, _)
+        | FormFieldKind.RangedNumber(FieldView.Number v, _, _, _, _) ->
+            input
+                [ Prop.Attr("class", Css.Class.FilterInput)
+                  Prop.Attr("type", "number")
+                  Prop.Value(BindingResolver.tryResolve sources (auto v) |> Option.defaultValue 0.0 |> string)
+                  marker
+                  change "" ]
+        | FormFieldKind.Checkbox(FieldView.Bool v, _) ->
+            input
+                [ Prop.Attr("class", Css.Class.FilterCheckbox)
+                  Prop.Attr("type", "checkbox")
+                  marker
+                  Prop.Checked(BindingResolver.tryResolve sources (auto v) |> Option.defaultValue false, "checked")
+                  change "" ]
+        // Phase 766 — the switch semantics must be in the served HTML too.
+        | FormFieldKind.Toggle(FieldView.Bool v, _) ->
+            let current =
+                BindingResolver.tryResolve sources (auto v) |> Option.defaultValue false
+
+            input
+                [ Prop.Attr("class", Css.Class.FilterToggle)
+                  Prop.Attr("type", "checkbox")
+                  Prop.Attr("role", "switch")
+                  Prop.Attr("aria-checked", (if current then "true" else "false"))
+                  marker
+                  Prop.Checked(current, "checked")
+                  change "" ]
+        | FormFieldKind.DateTime(FieldView.Text v, _, _, _, _, _) ->
+            input
+                [ Prop.Attr("class", Css.Class.FilterInput)
+                  Prop.Attr("type", "date")
+                  Prop.Value(BindingResolver.tryResolve sources (auto v) |> Option.defaultValue "")
+                  marker
+                  change "" ]
+        | FormFieldKind.Choice(options, FieldView.Text v, _) ->
+            let current = chosen sources (auto v)
+
+            Plan.element
+                "select"
+                [ Prop.Attr("class", Css.Class.FilterSelect)
+                  Prop.Value(current |> Option.defaultValue "")
+                  marker
+                  change "" ]
+                (Content.Children(
+                    Plan.element "option" [ Prop.Attr("value", "") ] (Content.Text "—")
+                    :: [ for o in BindingResolver.resolveOptions sources options ->
+                             optionPlan o.Value o.Label (current = Some o.Value) ]
+                ))
+        | FormFieldKind.Range(FieldView.Range v, _, _, _, _) ->
+            let current: RangePair =
+                BindingResolver.tryResolve sources (auto v)
+                |> Option.defaultValue { Min = 0.0; Max = 0.0 }
+
+            Plan.element
+                "span"
+                [ Prop.Attr("class", Css.Class.FilterRange); marker ]
+                (Content.Children
+                    [ input
+                          [ Prop.Attr("class", Css.Class.FilterRangeMin)
+                            Prop.Attr("type", "number")
+                            Prop.Value(string current.Min)
+                            change "min" ]
+                      Plan.classText "span" Css.Class.FilterRangeSep "–"
+                      input
+                          [ Prop.Attr("class", Css.Class.FilterRangeMax)
+                            Prop.Attr("type", "number")
+                            Prop.Value(string current.Max)
+                            change "max" ] ])
+        | FormFieldKind.DateTimeRange(FieldView.DateRange v, _, variant, mn, mx, st) ->
+            let t = dateInputType variant
+
+            let current: DateTimeRangePair =
+                BindingResolver.tryResolve sources (auto v)
+                |> Option.defaultValue { From = ""; To = "" }
+
+            Plan.element
+                "span"
+                [ Prop.Attr("class", Css.Class.FilterRange); marker ]
+                (Content.Children
+                    [ input (
+                          [ Prop.Attr("class", Css.Class.FilterInputFilterRangeMin)
+                            Prop.Attr("type", t)
+                            Prop.Value current.From ]
+                          @ bounds mn mx st
+                          @ [ change "min" ]
+                      )
+                      Plan.classText "span" Css.Class.FilterRangeSep "–"
+                      input (
+                          [ Prop.Attr("class", Css.Class.FilterInputFilterRangeMax)
+                            Prop.Attr("type", t)
+                            Prop.Value current.To ]
+                          @ bounds mn mx st
+                          @ [ change "max" ]
+                      ) ])
+        | FormFieldKind.SegmentedChoice(options, FieldView.Text v, _, orientation) ->
+            segmentedChoice sources spec.Name "data-filter-name" (Some "data-filter-value") options (auto v) orientation
+        // Phase 1113 — the form field's floor, chip-addressed.
+        | FormFieldKind.Combobox(allowFreeText, _, options, FieldView.Text v) ->
+            let listId = spec.Name + "-filter-options"
+
+            Plan.classChildren
+                "span"
+                "fuaran-combobox"
+                [ input
+                      [ Prop.Attr("class", Css.Class.FilterInputComboboxInput)
+                        Prop.Attr("type", "text")
+                        Prop.Attr("list", listId)
+                        Prop.Attr("autocomplete", "off")
+                        Prop.Attr("data-fuaran-combobox-constrained", (if allowFreeText then "false" else "true"))
+                        Prop.Attr("placeholder", labelText)
+                        Prop.Value(BindingResolver.tryResolve sources (auto v) |> Option.defaultValue "")
+                        marker ]
+                  datalist listId (BindingResolver.resolveOptions sources options) ]
+        | FormFieldKind.Rating(allowHalf, max, _, FieldView.Number v) ->
+            let shown =
+                BindingResolver.tryResolve sources (auto v)
+                |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.rating
+                |> RatingModel.clamp max
+
+            ratingFloor "fuaran-rating" [ marker ] spec.Name allowHalf max shown true
+        | FormFieldKind.Color(_, FieldView.Text v) ->
+            input
+                [ Prop.Attr("class", Css.Class.FilterInputColorInput)
+                  Prop.Attr("type", "color")
+                  Prop.Value(
+                      BindingResolver.tryResolve sources (auto v)
+                      |> Option.filter Fuaran.UI.HostPrelude.HexColor.isValid
+                      |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.color
+                  )
+                  marker
+                  change "" ]
+        // Phase 1121 — the token chip's floor is the field floor's.
+        | FormFieldKind.Tokens(allowFreeText, _, suggestions, FieldView.Tokens v) ->
+            let listId = spec.Name + "-suggestions"
+            let opts = suggestions |> Option.map (BindingResolver.resolveOptions sources)
+
+            Plan.classChildren
+                "span"
+                "fuaran-tokens"
+                [ input
+                      [ Prop.Attr("class", "fuaran-filter-input fuaran-tokens-input")
+                        Prop.Attr("type", "text")
+                        if Option.isSome opts then
+                            Prop.Attr("list", listId)
+                        Prop.Attr("autocomplete", "off")
+                        Prop.Attr("data-fuaran-tokens-constrained", (if allowFreeText then "false" else "true"))
+                        Prop.Value(
+                            BindingResolver.tryResolve sources (auto v)
+                            |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.tokens
+                            |> TokensModel.toCommaSeparated
+                        )
+                        marker ]
+                  opts |> Plan.ofOption (datalist listId) ]
+
+    /// One `Filters` chip: the kind-suffixed class (`Theme.filterKindClass`),
+    /// the label, the control; keyed by the filter's name.
+    let filter (sources: BindingResolver.BindingSources) (spec: FilterSpec<'Msg>) (control: Plan<'E>) : Plan<'E> =
+        Plan.Element
+            { Tag = "label"
+              Key = Some spec.Name
+              Props = [ Prop.Attr("class", Css.filter (Theme.filterKindClass spec.Kind)) ]
+              Content =
+                Content.Children
+                    [ Plan.classText "span" Css.Class.FilterLabel (BindingResolver.resolveTextSource sources spec.Label)
+                      control ] }
+
+    /// A `Filters` row of chips.
+    let filters (chips: Plan<'E> list) : Plan<'E> =
+        Plan.classChildren "div" Css.Class.Filters chips
+
+    /// A `FileUpload`'s label text and file input: `multiple` and `disabled`
+    /// when declared (R13), the `accept` filter, and Phase 1116's `capture`
+    /// (whose floor fully holds: the user agent reads it off the markup). The
+    /// selection is `Attach.FileSelect`.
+    let fileUploadChildren (sources: BindingResolver.BindingSources) (spec: FileUploadSpec<'Msg>) : Plan<'E> list =
+        [ Plan.classText "span" Css.Class.FileUploadLabel (BindingResolver.resolveTextSource sources spec.Label)
+          Plan.element
+              "input"
+              [ Prop.Attr("class", Css.Class.FileUploadInput)
+                Prop.Attr("type", "file")
+                if spec.Multiple then
+                    Prop.Flag "multiple"
+                if resolvesTrue sources spec.Disabled then
+                    Prop.Flag "disabled"
+                if not (List.isEmpty spec.Accept) then
+                    Prop.Attr("accept", String.concat "," spec.Accept)
+                match spec.Capture with
+                | Some source -> Prop.Attr("capture", Fuaran.UI.MediaCapture.keyword source)
+                | None -> ()
+                Prop.Behaviour(Attach.FileSelect, "") ]
+              Content.Empty ]
+
+    /// A `FileUpload` as the plain picker. Phase 1115 / 1117 / 1548 — a
+    /// declared gesture, destination or ceiling rides as a READ marker (never
+    /// the destination id, never the ceiling's value): each needs script, so
+    /// the static floor is the picker and the marker records only that the
+    /// declaration was read.
+    let fileUpload (sources: BindingResolver.BindingSources) (spec: FileUploadSpec<'Msg>) : Plan<'E> =
+        Plan.element
+            "label"
+            [ Prop.Attr("class", Css.Class.FileUpload)
+              if spec.DropTarget then
+                  Prop.Attr("data-fuaran-upload-drop", "declared")
+              if spec.AcceptPaste then
+                  Prop.Attr("data-fuaran-upload-paste", "declared")
+              if spec.Destination.IsSome then
+                  Prop.Attr("data-fuaran-upload-destination", "declared")
+              if spec.MaxBytes.IsSome then
+                  Prop.Attr("data-fuaran-upload-max-bytes", "declared")
+              if spec.MaxFiles.IsSome then
+                  Prop.Attr("data-fuaran-upload-max-files", "declared") ]
+            (Content.Children(fileUploadChildren sources spec))
+
+
+    /// A `Form`: the fields (each renderer's own field arm, as `Plan.Host`),
+    /// then the submit button; a bound `Disabled` wraps both in a fieldset so
+    /// one resolved `disabled` cascades natively. The client attaches the
+    /// submit handler at `Attach.FormSubmit`.
+    let form (pc: PlanContext<'Msg, 'E>) (spec: FormSpec<'Msg>) (fields: Plan<'E> list) : Plan<'E> =
+        let submit =
+            Plan.element
+                "button"
+                [ Prop.Attr("class", Css.Class.FormSubmit); Prop.Attr("type", "submit") ]
+                (Content.Text(BindingResolver.resolveTextSource pc.Sources spec.SubmitLabel))
+
+        let body = fields @ [ submit ]
+
+        let children =
+            match spec.Disabled with
+            | Some disabled ->
+                let isDisabled =
+                    BindingResolver.tryResolve pc.Sources disabled |> Option.defaultValue false
+
+                [ Plan.element
+                      "fieldset"
+                      [ Prop.Attr("class", Css.Class.FormFieldset)
+                        if isDisabled then
+                            Prop.Flag "disabled" ]
+                      (Content.Children body) ]
+            | None -> body
+
+        Plan.element
+            "form"
+            [ Prop.Attr("class", Css.Class.Form); Prop.Behaviour(Attach.FormSubmit, "") ]
+            (Content.Children children)
+
 /// The visualisation kinds (Phase 2290).
 [<RequireQualifiedAccess>]
 module VisPlan =
