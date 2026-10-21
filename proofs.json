@@ -18,7 +18,7 @@
       "evidence": {
         "theorem": "rt_node",
         "model": "proofs/VocabularyProofs.fst",
-        "prover": "proofs/fstar-pin.json"
+        "prover": "kit:fstar-pin.json"
       }
     },
     {
@@ -29,7 +29,7 @@
       "evidence": {
         "theorem": "dec_node_total",
         "model": "proofs/VocabularyProofs.fst",
-        "prover": "proofs/fstar-pin.json"
+        "prover": "kit:fstar-pin.json"
       }
     },
     {
@@ -40,7 +40,7 @@
       "evidence": {
         "theorem": "dec_node",
         "model": "proofs/Vocabulary.fst",
-        "prover": "proofs/fstar-pin.json"
+        "prover": "kit:fstar-pin.json"
       }
     },
     {
@@ -50,8 +50,8 @@
       "phase": "fuaran#1754",
       "evidence": {
         "theorem": "decode_total",
-        "model": "proofs/WireDecode.fst",
-        "prover": "proofs/fstar-pin.json"
+        "model": "kit:models/WireDecode.fst",
+        "prover": "kit:fstar-pin.json"
       }
     },
     {
@@ -61,8 +61,8 @@
       "phase": "fuaran#1754",
       "evidence": {
         "theorem": "decode_node_wf",
-        "model": "proofs/WireDecode.fst",
-        "prover": "proofs/fstar-pin.json"
+        "model": "kit:models/WireDecode.fst",
+        "prover": "kit:fstar-pin.json"
       }
     },
     {
@@ -95,7 +95,7 @@
       "evidence": {
         "document": "proofs/README.md",
         "budgets": "proofs/modules.json",
-        "prover": "proofs/fstar-pin.json"
+        "prover": "kit:fstar-pin.json"
       }
     },
     {

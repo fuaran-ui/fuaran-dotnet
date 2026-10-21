@@ -16,7 +16,10 @@ pwsh ./proofs/check.ps1 -Runs 3    # the kit's full reproducibility claim; most 
 pwsh ./proofs/check.ps1 -SkipOracleHost   # leave the host families to the ordinary gate
 ```
 
-The first run downloads the pinned prover (~200 MB, hash-verified against `fstar-pin.json`) into
+Every run first resolves the pinned proof kit (`proofs-kit.json`: a release asset of the kit's
+repository, hash-verified before anything runs, unpacked into the gitignored `proofs/.kit/`; offline,
+`-KitAsset <file>` names a locally built one and is verified the same way). The first run then downloads
+the prover the kit pins (~200 MB, hash-verified against the asset's `fstar-pin.json`) into
 `proofs/.fstar/`, which is gitignored. `$env:FSTAR_HOME` pointing at a matching release is used
 instead when it is set.
 
@@ -54,10 +57,10 @@ The list is longer than the claim, which is the honest shape for a proof tier.
   clause, and a theorem relating a definition to a second rendering of itself is true and empty. A
   characterisation worth the name needs a schema-shaped predicate stated independently, which is a
   model-sized artefact of its own and is not in this phase.
-- **It is not a second proof engine and not a second pin.** The engine
-  (`proofs/kit/check-proof-leg.ps1`), the prover pin, the runtime shims and `WireDecode.fst` are
-  **copies** of the kit's, declared in this repository's `copies.json`, so the estate's copy
-  registry names a copy that has drifted before anybody meets a red gate they did not cause.
+- **It is not a second proof engine and not a second pin.** The engine, the prover pin and
+  `WireDecode.fst` (with the shared `Twin.fst` it opens) are the kit's, run and opened READ-ONLY from
+  the kit's release asset that `proofs-kit.json` pins by sha256 — none of them is a copy, so none can
+  drift; this repository moves to a newer kit by moving the pin.
 - **Nothing generated here ships in a package.** No `Fuaran.UI.*` assembly gains code, no build
   gains a generation step, and nothing at runtime reads any of it.
 
@@ -133,11 +136,12 @@ single declared type each.
   and should expect it to take most of an afternoon.
 - **The cache is per invocation** (`proofs/obj/cache-<pid>`), created and removed by the leg, so a
   second run in the same worktree cannot quietly falsify "cold cache".
-- **Each module is measured against a budget and a FLOOR** declared in `modules.json`. An overshoot
-  is a warning: prover time varies by machine and by load, so a budget is a smoke detector.
-  An **undershoot fails the leg on the spot**, because a module that verified faster than it can
-  possibly verify has not told you it is fast — it has told you the measuring apparatus is broken,
-  and everything measured after it shares that apparatus. `-NoFloor` is the deliberate opt-out.
+- **Each module is measured against a budget and a CACHED-READ THRESHOLD** declared in
+  `modules.json`. An overshoot is a warning: prover time varies by machine and by load, so a budget
+  is a smoke detector. A module whose recorded fastest cold check is long but which verifies under
+  the threshold **fails the leg on the spot** as a probable cached read, because a module that
+  verified faster than it can possibly verify has not told you it is fast — it has told you the
+  measuring apparatus is broken, and everything measured after it shares that apparatus.
 - **`VocabularyProofs` is the leg's whole cost**, by two orders of magnitude. Read its number first.
 
 ### What it costs, measured
@@ -211,28 +215,23 @@ therefore `$proofOnly` in `check.ps1`.
 
 The exemption is narrow and it is not a hole: what an extraction diff buys for an extracted model —
 *the artefact is the model, byte for byte* — the generated pair gets from the **generation diff**
-one level further up, and `WireDecode` gets from `copies.json`.
+one level further up, and `WireDecode` gets from the kit asset, whose sha256 the pin verifies.
 
-`proofs/oracle/Prims.fs`, `proofs/oracle/FStar_Pervasives_Native.fs` and
-`proofs/kit/templates/oracle.fsproj.template` are carried and declared anyway. That is a **decision,
-not residue**: they are the kit's runtime floor, they GROW as models reach further into F\*'s
-library, and a copy of them goes stale by the source moving rather than by anyone editing the copy.
-Declared, the estate sweep keeps them current for nothing; undeclared, the day a model with
-production code beside it lands here they would be a year behind and the first extraction would fail
-for a reason nobody could attribute.
+No runtime floor and no oracle project are carried. They used to be, declared as copies so they
+would be current the day a model with production code beside it landed; since the kit is a pinned
+asset, the floor and the oracle template are IN the asset, current by construction, and that day's
+work is to write them out of it (`-Extract` writes the floor beside the oracle project the leg then
+holds to the asset).
 
 ## The files
 
 | File | What it is |
 |---|---|
-| `check.ps1` | The caller: this repository's three declarations — the models, the extraction exemption, the host families. The engine is `kit/check-proof-leg.ps1`. |
-| `kit/` | The proof kit, copied by declaration. `check-proof-leg.ps1` is the engine; `templates/` are the shapes this repository's own files were cut from, kept verbatim so their drift is named — **except `templates/proofs.json`, which is deliberately NOT carried**, see below. |
-| `fstar-pin.json` | The pinned prover release and its hash. A **copy** — the pin is one number in the kit's repository. |
-| `WireDecode.fst` | The decode-combinator model the generated model opens. A **copy**. |
+| `check.ps1` | The caller: this repository's three declarations — the models, the extraction exemption, the host families — and the kit resolution below them. The engine is `kit/check-proof-leg.ps1` in the asset. |
+| `proofs-kit.json` | The kit pin: the release asset of the kit's repository this leg runs, and its sha256. The asset carries the engine, the templates, the prover pin and the models opened here (`Twin`, `WireDecode`). |
 | `Vocabulary.fst` | **GENERATED** from `src/Fuaran.UI.Idl/idl.json`: the vocabulary's types, its discriminated encoder, its tag-dispatch decoder. |
 | `VocabularyProofs.fst` | **GENERATED** from the same walk: the round trip and totality over `Vocabulary`. |
-| `modules.json` | What the leg costs, per module: the budget (a smoke detector) and the floor (a gate), with the seeding rule for each. |
-| `oracle/` | The kit's two runtime shims. Unused today — see "What is not here". |
+| `modules.json` | What the leg costs, per module: the budget (a smoke detector), with its seeding rule, and the one cached-read threshold (a gate). |
 | `program/` | The program models' leg (fuaran#2012): copied models, their copied extractions and runtime floor (`program/oracle/`, an oracle project), and `program/modules.json`. |
 | `../proofs.json` | The claims ladder. Checked against this tree by `Proofs.Ladder`. |
 

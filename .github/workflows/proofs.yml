@@ -17,10 +17,10 @@ name: Proof leg
 # theorem here, because the models are GENERATED from that one file and the rest of the leg is
 # the prover, the pin and the ladder.
 #
-# THE CACHE KEY HASHES THE PIN FILE, and that is the whole mechanism by which a prover bump
-# reaches CI with no second edit: `proofs/fstar-pin.json` moves, the key changes, the next run
-# downloads the new release. The pin itself is ONE number in the kit's repository; this
-# repository's copy is declared in `copies.json`, so the estate sweep names it when it is behind.
+# THE CACHE KEY HASHES THE KIT PIN, and that is the whole mechanism by which a kit or prover bump
+# reaches CI with no second edit: `proofs/proofs-kit.json` moves, the key changes, the next run
+# downloads what the new kit pins. The prover pin rides inside the kit's release asset, so the kit
+# version determines the prover.
 #
 # It DEPLOYS NOTHING — no publish, no artefact upload, no environment — so a branch push reaches
 # no deploy job here, and there is none to reach. Keep it that way.
@@ -47,7 +47,7 @@ permissions:
 
 jobs:
   proofs:
-    # The pinned release is the Windows one (see `proofs/fstar-pin.json`'s shape); on another
+    # The pinned release is the Windows one (see the kit asset's `fstar-pin.json`); on another
     # runner set FSTAR_HOME to a matching release and the pin's version check still applies.
     runs-on: windows-latest
     steps:
@@ -59,7 +59,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: proofs/.fstar
-          key: fstar-${{ runner.os }}-${{ hashFiles('proofs/fstar-pin.json') }}
+          key: fstar-${{ runner.os }}-${{ hashFiles('proofs/proofs-kit.json') }}
       # NU1301: nuget.config declares a `local` folder source three levels above this repo for
       # inner-loop iteration. It does not exist on the runner, and NuGet hard-errors on a missing
       # folder source rather than treating it as empty — so mint it, as `ci.yml` does. The leg's

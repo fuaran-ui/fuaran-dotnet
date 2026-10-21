@@ -361,12 +361,27 @@ let ladderTests =
                               r.Id
                               model)
 
+                      // A KIT model (`kit:models/<Model>.fst`) is opened read-only from the pinned proof-kit
+                      // asset and is not in this tree: its text is read from the verified asset when the
+                      // leg's host step names it (FUARAN_PROOFS_KIT_DIR, set by proofs/check.ps1), and the
+                      // roster clause above is what holds the row everywhere else.
                       let text =
-                          read (Path.Combine(repoRoot, model.Replace("/", string Path.DirectorySeparatorChar)))
+                          if model.StartsWith "kit:" then
+                              match Environment.GetEnvironmentVariable "FUARAN_PROOFS_KIT_DIR" with
+                              | null
+                              | "" -> None
+                              | kit -> Some(read (Path.Combine(kit, model.Substring 4)))
+                          else
+                              Some(
+                                  read (Path.Combine(repoRoot, model.Replace("/", string Path.DirectorySeparatorChar)))
+                              )
 
-                      Expect.isTrue
-                          (Regex.IsMatch(text, @"(?m)^(let rec|and|let|val) " + Regex.Escape theorem + @"\b"))
-                          (sprintf "proofs.json row '%s' names theorem %s, absent from %s" r.Id theorem model))
+                      match text with
+                      | Some text ->
+                          Expect.isTrue
+                              (Regex.IsMatch(text, @"(?m)^(let rec|and|let|val) " + Regex.Escape theorem + @"\b"))
+                              (sprintf "proofs.json row '%s' names theorem %s, absent from %s" r.Id theorem model)
+                      | None -> ())
 
           testCase "every module the leg checks carries at least one row" (fun _ ->
               let rows = ladderRows ()
