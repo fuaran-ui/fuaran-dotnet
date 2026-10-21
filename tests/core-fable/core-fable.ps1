@@ -80,9 +80,10 @@
   compile against an older line were retired with the pin raise.
 
   MEMBERSHIP IS CHECKED, NOT REMEMBERED. The Core packages this gate is responsible for are derived
-  — from this repository's own `Fuaran.Core.*` pins by default, and from the candidate's packages
-  in a cut-time run — and each must be referenced by `CoreFable.fsproj` or listed in
-  `exclusions.json` beside it with a reason and the deciding phase (those entries mirror
+  — from this repository's own `Fuaran.Core.*` pins by default (the root `Directory.Packages.props`
+  and the one beside this script, which pins a Core package the root file does not yet), and from
+  the candidate's packages in a cut-time run — and each must be referenced by `CoreFable.fsproj` or
+  listed in `exclusions.json` beside it with a reason and the deciding phase (those entries mirror
   Fuaran.Core's own `fable-exclusions.json`). A Core package that is neither fails by name.
 
   RUN IT STANDALONE from anywhere:  pwsh ./tests/core-fable/core-fable.ps1
@@ -205,8 +206,9 @@ foreach ($name in $touchedEnv) { $savedEnv[$name] = [Environment]::GetEnvironmen
 [Environment]::SetEnvironmentVariable('CoreFableSkipCompute', $null)
 [Environment]::SetEnvironmentVariable('CoreFableEffectiveCore', $null)
 
-$pinsFile = Join-Path $repoRoot 'Directory.Packages.props'
-$pinsText = Get-Content -Raw $pinsFile
+# The pins are the root file's and this directory's own: the latter pins a Core package that first
+# ships past the root file's Core line (see its header), and a member is a member wherever it is pinned.
+$pinsText = (Get-Content -Raw (Join-Path $repoRoot 'Directory.Packages.props')) + "`n" + (Get-Content -Raw (Join-Path $PSScriptRoot 'Directory.Packages.props'))
 # A pin may name a version property (`Version="$(FuaranCoreComputeVersion)"`, the second producer's
 # pin), so the file's own property values are read first and substituted. A pin naming a property
 # the file does not define fails rather than being read as a version.
@@ -219,7 +221,7 @@ foreach ($m in [regex]::Matches($pinsText, '<PackageVersion\s+Include="(Fuaran\.
     $ref = [regex]::Match($version, '^\$\((\w+)\)$')
     if ($ref.Success) {
         $propName = $ref.Groups[1].Value
-        if (-not $pinProps.ContainsKey($propName)) { Fail "the pin for $id names the property $propName, which Directory.Packages.props does not define" }
+        if (-not $pinProps.ContainsKey($propName)) { Fail "the pin for $id names the property $propName, which no Directory.Packages.props defines" }
         $version = $pinProps[$propName]
     }
     $pins[$id] = $version
@@ -473,7 +475,14 @@ try {
     if ($notEmitted.Count -gt 0) { Fail ("referenced but not transpiled: " + ($notEmitted -join ', ')) }
 
     $computeNote = if ($skipCompute) { 'compute packages skipped' } else { "compute packages at $computeResolvedText" }
-    Write-Host "  compile: green — $($compiled.Count) Fuaran.Core packages transpiled at $resolvedText ($computeNote)" -ForegroundColor Green
+    # A Core package pinned off the spine (this directory's Directory.Packages.props) is named with its
+    # own version, so the line does not claim it was transpiled at the spine's.
+    $offSpine = @(if (-not $coreOverride) {
+            $compiled | Where-Object { $_ -notin $ComputeOwned -and $pins[$_] -and $pins[$_] -ne $resolvedText } |
+                ForEach-Object { "$_ at $($pins[$_])" }
+        })
+    $offSpineNote = if ($offSpine.Count -gt 0) { "; off the spine: $($offSpine -join ', ')" } else { '' }
+    Write-Host "  compile: green — $($compiled.Count) Fuaran.Core packages transpiled at $resolvedText ($computeNote$offSpineNote)" -ForegroundColor Green
 
     # ── The parity leg ──────────────────────────────────────────────────────
 

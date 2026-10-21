@@ -85,5 +85,8 @@
     <PackageReference Include="Fuaran.Core.ContentAddress" />
     <!-- From Core 0.37.0 (Phase 426); unconditional since Phase 2226 raised this repository's pin to carry it. -->
     <PackageReference Include="Fuaran.Core.Unit" />
+    <!-- From Core 0.40.0 (fuaran-core Phase 552, Core D205), pinned ahead of the spine in this
+         directory's Directory.Packages.props (Phase 2382). -->
+    <PackageReference Include="Fuaran.Core.Relation" />
   </ItemGroup>
 </Project>

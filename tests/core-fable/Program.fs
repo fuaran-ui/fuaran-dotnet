@@ -332,6 +332,45 @@ let private propagationTouch =
         (Set.count touched)
         recomputed
 
+// Relation (Core 0.40.0, fuaran-core Phase 552, Core D205; Phase 2382) — the graph questions'
+// one home, which `Propagation` delegates to from 0.40.0. Every public question is asked of one
+// prepared relation, so the whole package reaches the Fable compiler: the prepared form (`ofMap`,
+// `nodes`, `successors`, `toMap`, `inverse`), the pass (`components`, `cycles`, `cyclesAmong`,
+// `sort`), and the closures (`reachable`, `terminals`, both over a cycle and over a chain end). RUN,
+// not only compiled: the answers are rendered by hand (never `%A`, whose layout is the pipeline's)
+// and ride the value leg as one `VEC relation` line, so the two pipelines' answers are byte-compared.
+// Pinned ahead of the spine in this directory's `Directory.Packages.props`.
+let private relationTouch =
+    let r =
+        Map.ofList [ "a", [ "b" ]; "b", [ "c"; "a" ]; "c", [ "d" ]; "x", [ "x" ] ]
+        |> Relation.ofMap
+
+    let nodes (ns: string seq) = String.concat "," ns
+
+    let groups (gs: string list list) =
+        gs |> List.map nodes |> String.concat "|"
+
+    let ends (node: string) =
+        match Relation.terminals r node with
+        | Some found -> nodes found
+        | None -> "cycle"
+
+    let topo = Relation.sort r
+
+    String.concat
+        " "
+        [ "nodes=" + nodes (Relation.nodes r)
+          "succ(b)=" + nodes (Relation.successors r "b")
+          "components=" + groups (Relation.components r)
+          "cycles=" + groups (Relation.cycles r)
+          "cyclesAmong=" + nodes (Relation.cyclesAmong r)
+          "order=" + nodes topo.Order
+          "topoCycles=" + groups topo.Cycles
+          "upstream(d)=" + nodes (Relation.reachable (Relation.inverse r) [ "d" ])
+          "ends(c)=" + ends "c"
+          "ends(a)=" + ends "a"
+          "keys=" + nodes (Relation.toMap r |> Map.keys) ]
+
 // AiSurface (Phase 59) — catalogue + fast-path resolve + the proposal lifecycle over an
 // inline witness: the whole surface must be Fable-clean.
 let private aiSurfaceTouch =
@@ -673,10 +712,13 @@ let private ownershipLines () : string list =
 
 /// The value leg. Defined only when the restored `Fuaran.Core.Conformance` ships the table — the
 /// runner reads that off the restore rather than off a version number, and says so either way. The
-/// ownership lines ride it, so the two pipelines' verdicts are byte-compared with the table's.
+/// ownership lines and the relation line ride it, so the two pipelines' answers are byte-compared
+/// with the table's.
 let private emitVectors () =
 #if CORE_PARITY
-    ParityVectors.lines () @ ownershipLines () |> List.iter (printfn "%s")
+    ParityVectors.lines () @ ownershipLines () @ [ "VEC relation " + relationTouch ]
+    |> List.iter (printfn "%s")
+
     true
 #else
     false
@@ -716,6 +758,7 @@ let main argv =
           (sprintf "%A" (List.length conformanceTouch))
           projectionTouch
           propagationTouch
+          relationTouch
           aiSurfaceTouch
           idlTouch
           foldConfluenceTouch
