@@ -346,6 +346,57 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "a sort key carrying BOTH `column` (canonical since 0.28.0) and `col` (its decode alias) — refused as ambiguous, on the same rule as the project step beside it. The two name different columns here, so accepting either would silently sort by a column the author may not have meant" }
+      // Phase 2206 — a timestamp column carries its unit (WIRE_FORMAT §3.6.25), and its text is
+      // read strictly: a fraction finer than the unit, a padded fraction, an instant outside
+      // 0000..9999 and a unit tag no host knows are each refused at the source.
+      { Id = "reject-transform-timestamp-fractional-second"
+        Json =
+          """{"id":"reject-transform-timestamp-fractional-second","kind":{"$type":"DataGrid","columns":[],"rowKey":"<closure>","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"t":{"validity":[true],"values":["2025-07-08T18:40:00.5Z"]}},"schema":[{"name":"t","type":"timestamp"}]}}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.source.source"
+        IsOp = false
+        Description =
+          "Phase 2206 — a `timestamp` (seconds) column holds whole seconds only: a fractional instant is refused, the same rule as every finer unit (WIRE_FORMAT §3.6.25)" }
+      { Id = "reject-transform-timestamp-ms-finer-fraction"
+        Json =
+          """{"id":"reject-transform-timestamp-ms-finer-fraction","kind":{"$type":"DataGrid","columns":[],"rowKey":"<closure>","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"t":{"validity":[true],"values":["2025-07-08T18:40:00.1234Z"]}},"schema":[{"name":"t","type":"timestamp_ms"}]}}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.source.source"
+        IsOp = false
+        Description =
+          "Phase 2206 — a `timestamp_ms` value whose fraction needs microseconds: a fraction finer than the column's unit is refused, never rounded (WIRE_FORMAT §3.6.25)" }
+      { Id = "reject-transform-timestamp-us-finer-fraction"
+        Json =
+          """{"id":"reject-transform-timestamp-us-finer-fraction","kind":{"$type":"DataGrid","columns":[],"rowKey":"<closure>","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"t":{"validity":[true],"values":["2025-07-08T18:40:00.1234567Z"]}},"schema":[{"name":"t","type":"timestamp_us"}]}}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.source.source"
+        IsOp = false
+        Description =
+          "Phase 2206 — a `timestamp_us` value whose fraction needs nanoseconds: a fraction finer than the column's unit is refused, never rounded (WIRE_FORMAT §3.6.25)" }
+      { Id = "reject-transform-timestamp-ms-padded-fraction"
+        Json =
+          """{"id":"reject-transform-timestamp-ms-padded-fraction","kind":{"$type":"DataGrid","columns":[],"rowKey":"<closure>","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"t":{"validity":[true],"values":["2025-07-08T18:40:00.500Z"]}},"schema":[{"name":"t","type":"timestamp_ms"}]}}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.source.source"
+        IsOp = false
+        Description =
+          "Phase 2206 — `.500` is not the canonical text of half a second (a fraction carries no trailing zero), so it is refused in every unit rather than normalised: one instant has one text (WIRE_FORMAT §3.6.25)" }
+      { Id = "reject-transform-timestamp-ms-epoch-before-0000"
+        Json =
+          """{"id":"reject-transform-timestamp-ms-epoch-before-0000","kind":{"$type":"DataGrid","columns":[],"rowKey":"<closure>","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"t":{"validity":[true],"values":[-62167219200001]}},"schema":[{"name":"t","type":"timestamp_ms"}]}}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.source.source"
+        IsOp = false
+        Description =
+          "Phase 2206 — an epoch number one millisecond before 0000-01-01T00:00:00Z names an instant the canonical text cannot spell, refused in every unit (WIRE_FORMAT §3.6.25)" }
+      { Id = "reject-transform-timestamp-unknown-unit"
+        Json =
+          """{"id":"reject-transform-timestamp-unknown-unit","kind":{"$type":"DataGrid","columns":[],"rowKey":"<closure>","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"t":{"validity":[true],"values":["2025-07-08T18:40:00Z"]}},"schema":[{"name":"t","type":"timestamp_ps"}]}}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.source.source"
+        IsOp = false
+        Description =
+          "Phase 2206 — a timestamp unit tag no host knows (`timestamp_ps`) is an unknown column type, refused by name rather than read as the nearest unit (WIRE_FORMAT §3.6.25)" }
       // Phase 1080 — `srcSet: null` is REFUSED, and this is the fixture that
       // makes the missing-list-field decode class a wire law rather than each
       // host's reading. An ABSENT `srcSet` is the empty list; a PRESENT `null`
