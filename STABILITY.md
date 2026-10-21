@@ -7898,6 +7898,34 @@ decode outcome changes.
 **What a consumer does.** Nothing. A host that wants a deterministic bound on decode cost (an admission budget, a fuzz
 leg of its own) can read it.
 
+
+### What rides this slot — Phase 2311 (the capability invoker dispatches through the registry, so the policy gate runs)
+
+**Class: behaviour change, additive surface (no signature moves).** Package `Fuaran.UI.AiTools`. No wire byte moves.
+
+- **Changed: `Capabilities.makeInvoker` now dispatches through `CapabilityRegistry.dispatch`.** It used to resolve and
+  arg-check the call itself and then run the host body, so a registry carrying a policy (`withGate`) was never
+  consulted: a capability a gate denied, or parked for approval, still ran. Now the registry's whole admission runs
+  first, in its order: the id resolves, the arguments validate, then the gates decide; the host body runs only past
+  all of that, and every `onDenied` observer hears a refusal. The signature is unchanged.
+  - **A registry with no gate behaves as before** for every admitted call: the same body runs with the same arguments
+    and a body `Deferred.Error` still surfaces its own message.
+  - **A registry with a `Deny` gate** now answers `Deferred.Error` carrying `InvokeError.describe`'s sentence for
+    `PolicyRefused` (naming the gate, its reason and any alternatives); the body does not run.
+  - **A registry with a `NeedsApproval` gate** now answers `Deferred.Error` with the `ApprovalRequired` sentence; the
+    body does not run. It is the typed refusal, never a silent run.
+- **Changed: the text of a refusal.** An unknown id or an ill-typed argument used to read `capability invocation
+  rejected: %A` over the union case; it now reads `InvokeError.describe`'s sentence, which names what would be accepted.
+  A host that matched on the old text should match the `Deferred.Error` shape or call `Capabilities.invoke`.
+- **Added: `Capabilities.invoke`** `registry -> id -> args -> body -> Result<Fuaran.Core.Deferred<obj>, InvokeError>`,
+  the typed form of the same path (refusals stay `InvokeError` values, a body failure is `BodyFailed`). It is the
+  `Dispatch` of a `CapabilitySeamWitness`, which is how the tier now runs Core's `capabilityLawsAt`; `policyLaws` runs
+  beside it. `Capabilities.validate` and `discover` are unchanged.
+
+**What a consumer does.** Nothing for a registry that carries no policy. A host that put a gate on its registry
+expecting it to apply to agent calls now has it applied; a host that relied on the gate being ignored should remove the
+gate rather than the check.
+
 ---
 
 ## 0.97.0 — the slot opened after v0.96.0 was released (RELEASED — tagged v0.97.0 at 0d6a626, 2026-10-18)

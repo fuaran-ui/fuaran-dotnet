@@ -12,10 +12,14 @@ module Fuaran.UI.AiTools.Capabilities
 //  is the thin host-side glue that (1) surfaces the registry for discovery and
 //  (2) builds the renderer's `BindingResolver.CapabilityInvoker` from a registry
 //  + a host-body resolver, mapping the outcome to the `Deferred` async envelope
-//  that renders through the existing `StateBehaviour` surface.
+//  that renders through the existing `StateBehaviour` surface. Phase 2311: the invoker
+//  dispatches through the registry's own `dispatch`, so its policy gate runs.
 // ============================================================================
 
 open Fuaran.UI.Types
+
+/// Core's settled/pending/failed envelope, qualified: `Failed` alone also names a resolver fault.
+type private CoreDeferred = Fuaran.Core.Deferred<obj>
 
 /// Enumerate the registry for discovery: each capability's id paired with the JSON-Schema
 /// projection of its `Signature` (the typed args an agent may pass), in the registry's stable id
@@ -44,10 +48,31 @@ let validate
         )
     | Some cap -> Fuaran.Core.Capability.validateArgs cap args |> Result.map (fun () -> cap)
 
+/// The host's invocation path: dispatch through the registry's own `CapabilityRegistry.dispatch`, so
+/// the registry's whole admission runs before the body does — the id resolves (default-deny), the
+/// arguments validate, and then the registry's POLICY gates decide (a `Deny` is `PolicyRefused`, a
+/// `NeedsApproval` is `ApprovalRequired`, and either reaches every `onDenied` observer). The
+/// host `body` runs only past all of that, and its `Deferred` is settled by the registry (a body
+/// failure is the typed `BodyFailed`). This is the path the `capabilityLawsAt` family certifies
+/// (`CapabilitySeamWitness.Dispatch`), kept as the one function `makeInvoker` and the witness share.
+let invoke
+    (registry: Fuaran.Core.CapabilityRegistry)
+    (capabilityId: string)
+    (args: (string * string) list)
+    (body: Fuaran.Core.Capability -> (string * string) list -> Deferred<obj>)
+    : Result<Fuaran.Core.Deferred<obj>, Fuaran.Core.InvokeError> =
+    Fuaran.Core.CapabilityRegistry.dispatch registry capabilityId args (fun cap () ->
+        match body cap args with
+        | Deferred.Pending -> CoreDeferred.Pending
+        | Deferred.Ready v -> CoreDeferred.Ready v
+        | Deferred.Error m -> CoreDeferred.Failed m)
+
 /// Build a `BindingResolver.CapabilityInvoker`-shaped function (`id -> args -> Deferred<obj>`) from
-/// the registry + a host-body resolver. Validates the invocation (a mismatch → `Deferred.Error`,
-/// rendered via the node's `onError`), then runs the host body and maps its result to `Deferred`
-/// (`Ready` → the value, `Error` → `onError`). A non-`Deterministic` capability's realized value
+/// the registry + a host-body resolver. The call goes through `invoke`, so a refusal — an unknown id,
+/// an ill-typed argument, or the registry's policy denying or parking it — is a `Deferred.Error`
+/// carrying `InvokeError.describe`'s sentence (rendered via the node's `onError`) and the body never
+/// runs; otherwise the host body's result maps to `Deferred` (`Ready` → the value, `Error` → the
+/// body's own message → `onError`). A non-`Deterministic` capability's realized value
 /// should be journaled by the host through the Phase-27 `OpStream.captureEffect` seam keyed by
 /// `Fuaran.Core.Capability.invocationKey` (so the invocation replays exactly — `capabilityLaws`
 /// certifies this); a genuinely-async host returns `Deferred.Pending` from its own body resolver
@@ -57,9 +82,12 @@ let makeInvoker
     (body: Fuaran.Core.Capability -> (string * string) list -> Deferred<obj>)
     : string -> (string * string) list -> Deferred<obj> =
     fun capabilityId args ->
-        match validate registry capabilityId args with
-        | Error e -> Deferred.Error(sprintf "capability invocation rejected: %A" e)
-        | Ok cap -> body cap args
+        match invoke registry capabilityId args body with
+        | Ok(CoreDeferred.Ready v) -> Deferred.Ready v
+        | Ok CoreDeferred.Pending -> Deferred.Pending
+        | Ok(CoreDeferred.Failed m)
+        | Error(Fuaran.Core.BodyFailed m) -> Deferred.Error m
+        | Error e -> Deferred.Error(Fuaran.Core.InvokeError.describe e)
 
 /// The host's active EMISSION budget as a capability report (Phase 1817), so a model can ASK how much
 /// tree this host takes before it emits, rather than learn it by refusal.
