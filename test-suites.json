@@ -97,8 +97,7 @@
       "note": "Phase 158 QW6 — the golden TreeOp -> DomPatch lowering corpus. Also runnable on its own via the `DomPatchCorpus` target."
     },
     {
-      "project": "src/Fuaran.UI.ServerDriven.AspNetCore.Tests/Fuaran.UI.ServerDriven.AspNetCore.Tests.fsproj",
-      "lane": "pure"
+      "project": "src/Fuaran.UI.ServerDriven.AspNetCore.Tests/Fuaran.UI.ServerDriven.AspNetCore.Tests.fsproj"
     },
     {
       "project": "src/Fuaran.UI.ServerDriven.WebSocket.Tests/Fuaran.UI.ServerDriven.WebSocket.Tests.fsproj",

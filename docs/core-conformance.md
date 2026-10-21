@@ -17,7 +17,7 @@ than a defect — `Conformance.containerLaws` reads this way by design, per the 
 adopts it. `—` marks a row nothing in THIS test project's process ran: `NotUsed` /
 `SiblingHost` / `CarriedBy` rows, and — today — every `Adopted` row whose test lives in one
 of this repo's OTHER test projects (`Fuaran.UI.OpStream.Tests`, `.OpStream.Dag.Tests`,
-`.ServerDriven.Tests`, `.FastPath.Tests`), which this run never executes and so cannot
+`.ServerDriven.Tests`, `.FastPath.Tests`, `.AiTools.Tests`), which this run never executes and so cannot
 count without inventing a figure. Measuring those is a named follow-on, not a silent gap:
 see the `measuredHere` set in `CoreConformanceCensus.fs`.
 
@@ -32,7 +32,7 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 | `Conformance.attributedLaws` | Adopted | — | `attributedLaws certifies over the Fuaran.UI op-stream witness` — via `Conformance.attributedLaws` |
 | `Conformance.canonicalFloatLaws` | Not used | — | Wire.Canon.canonicalFloat — the tier's canonical-JSON encoder carries its own Fable-safe float formatter (CanonicalJson.formatFiniteDouble), and this family is self-contained over Core's encoder rather than taking a host one; cross-host float parity here is gated by the wire-format conformance corpus, a multi-host oracle it cannot replace |
 | `Conformance.capabilityLaws` | Adopted | — | `the invocable-capability contract certifies under Core's capabilityLaws` — via `Conformance.capabilityLaws` |
-| `Conformance.capabilityLawsAt` | Carried by phase | — | unfiled — Fuaran.UI.AiTools.Capabilities (validate, then makeInvoker's host body) is a host dispatch path over a Core CapabilityRegistry, the subject this family certifies; adoption is one CapabilitySeamWitness whose Dispatch is that path, in Fuaran.UI.AiTools.Tests |
+| `Conformance.capabilityLawsAt` | Adopted | — | `the capability invoker's dispatch certifies under Core's capabilityLawsAt (Capabilities.invoke)` — via `Conformance.capabilityLawsAt` |
 | `Conformance.capabilityPipelineIncrementalLaws` | Not used | — | Fuaran.Core.Function's CapabilityPipeline — the tier composes no capability pipeline |
 | `Conformance.capabilityPipelineLaws` | Not used | — | Fuaran.Core.Function's CapabilityPipeline — the tier composes no capability pipeline |
 | `Conformance.capabilityPipelineLawsAt` | Not used | — | Fuaran.Core.Function's CapabilityPipeline at a domain's CapabilityPipelineWitness — the tier composes no capability pipeline |
@@ -93,7 +93,7 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 | `Conformance.paramLaws` | Adopted | — | `parameterised-query binding certifies under Core's paramLaws` — via `Conformance.paramLaws` |
 | `Conformance.placementLaws` | Adopted | — | `the Fuaran.UI witness certifies under Core's placementLaws (Placement's verbs)` — via `Conformance.placementLaws` |
 | `Conformance.plannerLaws` | Not used | — | a host pipeline planner — the tier evaluates through Fuaran.Compute.DataFrame.evalPipeline, whose planner is the producer's own, and ships no planner to hold to the as-written fold |
-| `Conformance.policyLaws` | Carried by phase | — | unfiled — self-contained over the kit's registries, as capabilityLaws (adopted above) is; its subject, a policy gate between validation and the body on a Core CapabilityRegistry, sits on the registry Fuaran.UI.AiTools.Capabilities dispatches over, so adoption is one test beside the capabilityLaws test running the family |
+| `Conformance.policyLaws` | Adopted | — | `the registry's policy gate certifies under Core's policyLaws` — via `Conformance.policyLaws` |
 | `Conformance.policyLawsAt` | Not used | — | Fuaran.Core.AiSurface's guarded submit at a domain's GuardedSurfaceWitness — no project in this tier references Fuaran.Core.AiSurface (see aiSurfaceLawsAt) |
 | `Conformance.projectionLawsAt` | Not used | — | Fuaran.Core.Projection — the tier renders a tree; it maintains no Core projection over an op stream |
 | `Conformance.propagationEvalLaws` | Not used | — | Fuaran.Core.Propagation's evaluator — the tier's reactivity runs on its own store and subscription channels (StateStore / FilterStore / SelectionStore / QueryStore) and never evaluates a Core propagation graph; BindingGraph asks Propagation only for the dirty set (dirtyFromChangedIds) |
@@ -143,8 +143,8 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 
 | Status | Families |
 |---|---|
-| Adopted | 55 |
-| Carried by phase | 10 |
+| Adopted | 57 |
+| Carried by phase | 8 |
 | Not used | 49 |
 | Sibling host | 1 |
 | **Total** | **115** |

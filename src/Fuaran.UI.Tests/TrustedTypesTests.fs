@@ -198,10 +198,12 @@ let tests =
                     // the floor from 7 to 5: the Markdown, Drawing, Sparkline,
                     // CodeBlock and Math arms now plan their markup as
                     // `Content.InnerHtml`, and ONE sink — the plan emitter's —
-                    // mints every one of them.
+                    // mints every one of them. Phase 2290 took it from 5 to 4:
+                    // the lowered Chart's container is `VisPlan.loweredChart`,
+                    // minted by the same emitter sink.
                     Expect.isGreaterThanOrEqual
                         clientSinks.Length
-                        5
+                        4
                         "the client renderer's raw-HTML sink count; a sudden drop means the scan stopped matching, not that the sinks went away"
 
                     let files = clientSinks |> List.map _.File |> List.distinct |> List.sort

@@ -8,6 +8,7 @@
   <ItemGroup>
     <Compile Include="WsTests.fs" />
     <Compile Include="TransportParityTests.fs" />
+    <Compile Include="AsyncFactoryTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

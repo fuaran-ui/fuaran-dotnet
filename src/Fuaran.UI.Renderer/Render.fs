@@ -262,6 +262,11 @@ module private Emit =
         | "tabindex"
         | "tabIndex" -> prop.tabIndex (int value)
         | "srcset" -> prop.custom ("srcSet", value)
+        // Phase 2290 — the form-control attributes, in React's spelling.
+        | "for" -> prop.htmlFor value
+        | "minlength" -> prop.minLength (int value)
+        | "maxlength" -> prop.maxLength (int value)
+        | "rows" -> prop.rows (int value)
         | _ -> prop.custom (name, value)
 
     /// A present boolean attribute as React's boolean property — never as an
@@ -275,6 +280,8 @@ module private Emit =
         | "loop" -> prop.loop true
         | "autoplay" -> prop.autoPlay true
         | "muted" -> prop.muted true
+        | "required" -> prop.required true
+        | "multiple" -> prop.multiple true
         | _ -> prop.custom (name, true)
 
     /// Attribute pairs as properties.
@@ -295,6 +302,12 @@ module private Emit =
               ) ]
         | ElementPlan.Prop.Flag name -> [ flag name ]
         | ElementPlan.Prop.Behaviour(point, key) -> attach point key
+        // Phase 2290 — controlled values are React's own props; an option's
+        // `Selected` is the server's spelling of what `value` already says.
+        | ElementPlan.Prop.Value value -> [ prop.value value ]
+        | ElementPlan.Prop.Values values -> [ prop.value (List.toArray values) ]
+        | ElementPlan.Prop.Checked(on, _) -> [ prop.isChecked on ]
+        | ElementPlan.Prop.Selected -> []
 
     let private unbound: Attach = fun _ _ -> []
 
@@ -2525,6 +2538,15 @@ let private renderGridWindowViewport (props: GridWindowViewportProps) : ReactEle
 /// expansion with cycle tracking, host renderer registries, guest loaders),
 /// and the walk is each renderer's own; the leaf markup they emit is
 /// `ElementPlan.StructuralPlan`.
+///
+/// Phase 2290 — the input and visualisation kinds are planned too
+/// (`ElementPlan.InputPlan` / `VisPlan`). Their WIDGET controls are this
+/// renderer's named by-nature arms: the Combobox, Tokens and writable Rating
+/// controls (field and filter chip), a `Binding.Local` Text / Number /
+/// RangedNumber field, the FileUpload drop zone and stream shell, the bound
+/// DataGrid (`renderGrid`), and a Chart a host VisAdapter draws. Each is a
+/// stateful React component rendered in place of the plan's no-script FLOOR,
+/// which is what the server serves.
 let rec private renderKind
     (ctx: RenderContext<'Msg>)
     (parentNodeId: string)
@@ -2688,13 +2710,11 @@ let rec private renderKind
     | NodeKind.Media spec -> Emit.plan (ElementPlan.MediaPlan.media (planContext ctx parentNodeId) spec semanticAttrs)
     | NodeKind.Embed spec -> Emit.plan (ElementPlan.MediaPlan.embed (planContext ctx parentNodeId) spec semanticAttrs)
     | NodeKind.Tree spec ->
-        let expandedKeyNamed = spec.ExpandedStateKey.IsSome
-        let expanded = BindingResolver.readExpandedItems ctx.Sources spec.ExpandedStateKey
-        let selected = BindingResolver.readSelectedItem ctx.Sources spec.SelectionStateKey
-
-        let focusable =
-            TreeModel.focusableTreeItem expandedKeyNamed expanded selected spec.Items
-
+        // Phase 2290 — the markup is `ElementPlan.VisPlan.tree`, shared with the
+        // server; this arm binds the row keyboard model and the label click.
+        let treeState = ElementPlan.VisPlan.treeState ctx.Sources spec
+        let expandedKeyNamed = treeState.ExpandedKeyNamed
+        let expanded = treeState.Expanded
         // Write the open set back. The WHOLE set is written rather than a
         // per-row flag, because the specification fixes one shape for this slot
         // (an array of ids) and a host reading it must never have to reconcile
@@ -2795,113 +2815,65 @@ let rec private renderKind
                 |> Option.iter (fun (r: Browser.Types.HTMLElement) -> r.focus ())
             | None -> ()
 
-        let rec renderItems (level: int) (items: TreeItem list) : ReactElement list =
-            let setSize = List.length items
 
-            items
-            |> List.mapi (fun i item ->
-                let isOpen = TreeModel.treeItemExpanded expandedKeyNamed expanded item
-                let hasChildren = not (List.isEmpty item.Children)
-                let label = BindingResolver.resolveTextSource ctx.Sources item.Label
+        let rowOf (itemId: string) : ElementPlan.VisPlan.TreeRow =
+            treeState.Rows
+            |> Map.tryFind itemId
+            |> Option.defaultValue { HasChildren = false; IsOpen = false }
 
-                let onKey (e: Browser.Types.KeyboardEvent) =
-                    let el = e.currentTarget :?> Browser.Types.HTMLElement
-                    let mutable handled = true
+        let onKey (itemId: string) (e: Browser.Types.KeyboardEvent) =
+            let row = rowOf itemId
+            let el = e.currentTarget :?> Browser.Types.HTMLElement
+            let mutable handled = true
 
-                    match e.key with
-                    | "ArrowDown" -> moveBy el 1
-                    | "ArrowUp" -> moveBy el -1
-                    // The APG's two-press semantics, and the reason Right is not
-                    // simply "go to the first child": on a CLOSED parent the
-                    // first press OPENS and stays put, so the reader sees what
-                    // they revealed before being moved into it. A leaf does
-                    // nothing at all rather than swallowing the key.
-                    | "ArrowRight" ->
-                        if hasChildren && not isOpen then toggle item.Id true
-                        elif hasChildren && isOpen then moveBy el 1
-                        else handled <- false
-                    // The mirror: an OPEN row closes, anything else walks up to
-                    // its parent. This is the movement a composition cannot
-                    // offer at all — the parent of a `Disclosure` is not a
-                    // focusable thing.
-                    | "ArrowLeft" ->
-                        if hasChildren && isOpen then
-                            toggle item.Id false
-                        else
-                            moveToParent el
-                    | "Home" -> moveToEdge el false
-                    | "End" -> moveToEdge el true
-                    | "Enter"
-                    | " " -> select item.Id
-                    | _ -> handled <- false
+            match e.key with
+            | "ArrowDown" -> moveBy el 1
+            | "ArrowUp" -> moveBy el -1
+            // The APG's two-press semantics, and the reason Right is not
+            // simply "go to the first child": on a CLOSED parent the first
+            // press OPENS and stays put, so the reader sees what they revealed
+            // before being moved into it. A leaf does nothing at all rather
+            // than swallowing the key.
+            | "ArrowRight" ->
+                if row.HasChildren && not row.IsOpen then toggle itemId true
+                elif row.HasChildren && row.IsOpen then moveBy el 1
+                else handled <- false
+            // The mirror: an OPEN row closes, anything else walks up to its
+            // parent. This is the movement a composition cannot offer at all —
+            // the parent of a `Disclosure` is not a focusable thing.
+            | "ArrowLeft" ->
+                if row.HasChildren && row.IsOpen then
+                    toggle itemId false
+                else
+                    moveToParent el
+            | "Home" -> moveToEdge el false
+            | "End" -> moveToEdge el true
+            | "Enter"
+            | " " -> select itemId
+            | _ -> handled <- false
 
-                    if handled then
-                        e.preventDefault ()
-                        e.stopPropagation ()
+            if handled then
+                e.preventDefault ()
+                e.stopPropagation ()
 
-                Html.li (
-                    [ // The item's declared id — the same token `data-fuaran-tree-item`,
-                      // the expansion state and the selection all key on, so a
-                      // branch that opens above this row does not hand its
-                      // expansion to the row that took its position.
-                      prop.key (reconciliationKey (Some item.Id) i)
-                      prop.className Css.Class.TreeItem
-                      prop.role "treeitem"
-                      // Stated rather than computed from contents: a treeitem
-                      // OWNS its child group, so a name derived from the subtree
-                      // would read the whole branch out as this row's own name.
-                      // The string is byte-identical to the visible label.
-                      prop.custom ("aria-label", label)
-                      prop.custom ("aria-level", string level)
-                      prop.custom ("aria-setsize", string setSize)
-                      prop.custom ("aria-posinset", string (i + 1))
-                      prop.custom ("data-fuaran-tree-item", item.Id)
-                      prop.tabIndex (if Some item.Id = focusable then 0 else -1)
-                      prop.onKeyDown onKey ]
-                    // Only on a row that HAS children. On a leaf the attribute
-                    // would assert a collapsed subtree that does not exist, and
-                    // a reader would be told there is more when there is not.
-                    @ (if hasChildren then
-                           [ prop.custom ("aria-expanded", (if isOpen then "true" else "false")) ]
-                       else
-                           [])
-                    // Only where a selection key is named: `false` on every row
-                    // of a tree that never selects would declare a selectable
-                    // widget with nothing selected, rather than a tree that does
-                    // not select.
-                    @ (match spec.SelectionStateKey with
-                       | Some _ ->
-                           [ prop.custom ("aria-selected", (if Some item.Id = selected then "true" else "false")) ]
-                       | None -> [])
-                    @ [ prop.children (
-                            [ Html.span
-                                  [ prop.className Css.Class.TreeLabel
-                                    // The click lands on the LABEL, not the row,
-                                    // so clicking inside an open branch acts on
-                                    // the row clicked rather than on every
-                                    // ancestor containing it.
-                                    prop.onClick (fun e ->
-                                        e.stopPropagation ()
+        Emit.planWith
+            (fun point itemId ->
+                match point with
+                | ElementPlan.Attach.TreeKeyDown -> [ prop.onKeyDown (onKey itemId) ]
+                // The click lands on the LABEL, not the row, so clicking inside
+                // an open branch acts on the row clicked rather than on every
+                // ancestor containing it.
+                | ElementPlan.Attach.TreeLabelClick ->
+                    [ prop.onClick (fun e ->
+                          e.stopPropagation ()
+                          let row = rowOf itemId
 
-                                        if hasChildren && expandedKeyNamed then
-                                            toggle item.Id (not isOpen)
+                          if row.HasChildren && expandedKeyNamed then
+                              toggle itemId (not row.IsOpen)
 
-                                        select item.Id)
-                                    prop.text label ] ]
-                            @ (if isOpen then
-                                   [ Html.ul
-                                         [ prop.className Css.Class.TreeGroup
-                                           prop.role "group"
-                                           prop.children (renderItems (level + 1) item.Children) ] ]
-                               else
-                                   [])
-                        ) ]
-                ))
-
-        Html.ul
-            [ prop.className Css.Class.Tree
-              prop.role "tree"
-              prop.children (renderItems 1 spec.Items) ]
+                          select itemId) ]
+                | _ -> [])
+            (ElementPlan.VisPlan.tree ctx.Sources spec treeState)
     | NodeKind.List spec -> Emit.plan (ElementPlan.DisplayPlan.list ctx.Sources spec)
     | NodeKind.Toast spec -> Emit.plan (ElementPlan.DisplayPlan.toast ctx.Sources spec)
     | NodeKind.CodeBlock spec -> Emit.plan (ElementPlan.DisplayPlan.codeBlock spec)
@@ -2909,7 +2881,7 @@ let rec private renderKind
     // -- Input --
     | NodeKind.Button spec -> renderButton ctx spec semanticAttrs
     | NodeKind.Select spec -> renderSelect ctx spec
-    | NodeKind.Form spec -> renderForm ctx spec
+    | NodeKind.Form spec -> renderForm ctx parentNodeId spec
     | NodeKind.Filters spec -> renderFilters ctx spec.Items
     | NodeKind.FileUpload spec -> renderFileUpload ctx parentNodeId spec
     // -- Vis --
@@ -2918,40 +2890,18 @@ let rec private renderKind
         // retired Table); a data-bound grid takes the ordinary grid path.
         match spec.StaticRows with
         | Some sr ->
-            // Annotated: `Headers` / `Rows` also label the generated
-            // `StaticRows` record, so the literal needs the target type pinned.
-            let tableSpec: TableSpec<'Msg> =
-                { Headers = sr.Headers
-                  Rows = sr.Rows
-                  OnRowClick = None
-                  // Phase 801 — the declared sort intent rides through to the
-                  // rendered `<table>` as data attributes.
-                  Sortable = sr.Sortable
-                  DefaultSort = sr.DefaultSort }
+            // Phase 2290 — the table (and, when `Exportable`, its export button —
+            // ruling R10) is `ElementPlan.VisPlan.staticGrid`, shared with the
+            // server. Phase 1125 — a static grid holds its rows IN THE TREE, so
+            // the scope is never a page; what is exported is the resolved cell
+            // TEXT, exactly what the table shows.
+            let project () =
+                (sr.Headers |> List.map (BindingResolver.resolveTextSource ctx.Sources)),
+                (sr.Rows |> List.map (List.map (BindingResolver.resolveTextSource ctx.Sources)))
 
-            // Phase 1473 — the print-break declarations follow the STATIC leg too:
-            // the grid renders as a semantic table here, so its rows and header
-            // row group are exactly the boundaries the declarations name.
-            let table =
-                renderTable ctx (Theme.gridPrintBreakClasses spec.KeepRowsTogether spec.RepeatHeader) tableSpec
-
-            // Phase 1125 — the export affordance follows the STATIC leg too, and
-            // this is the clearest case it has: a static grid holds its rows IN
-            // THE TREE, so the client cannot fail to hold them and the scope is
-            // never a page. What is exported is the resolved cell TEXT, which on
-            // this leg is exactly what `renderTable` puts in the cells.
-            if not spec.Exportable then
-                table
-            else
-                let project () =
-                    (sr.Headers |> List.map (BindingResolver.resolveTextSource ctx.Sources)),
-                    (sr.Rows |> List.map (List.map (BindingResolver.resolveTextSource ctx.Sources)))
-
-                Html.div
-                    [ prop.className "fuaran-grid-exportable"
-                      prop.children
-                          [ table
-                            gridExportControl ctx parentNodeId (GridExport.Scope.WholeGrid(List.length sr.Rows)) project ] ]
+            Emit.planWith
+                (gridExportAttach ctx parentNodeId project)
+                (ElementPlan.VisPlan.staticGrid ctx.Sources spec sr)
         | None -> renderGrid ctx parentNodeId state spec
     | NodeKind.Chart spec -> renderChart ctx parentNodeId state spec
     | NodeKind.Map spec -> renderMap ctx parentNodeId state spec
@@ -3454,571 +3404,414 @@ and private renderButton
     // Phase 951 — the node's a11y projection, emitted on the `<button>` itself.
     (semanticAttrs: (string * string) list)
     : ReactElement =
-    let unwired = containsUnwiredAction spec.OnClick
+    // Phase 2290 — the markup is `ElementPlan.InputPlan.button`, shared with
+    // the server. The UNWIRED cue (ruling R1) is this renderer's runtime
+    // decoration, applied here and never served: a button whose action reaches
+    // Call / Notify / Navigate / SetState / AiTool / Invoke takes the unwired
+    // class, and — unless the author's tooltip already speaks — a title naming
+    // the substrate it routes through. It helps the operator see which buttons
+    // rely on substrate vs pure Elmish; dispatching still works.
+    let plan = ElementPlan.InputPlan.button ctx.Sources spec semanticAttrs
 
-    // Once a runtime is supplied the "unwired" hint is just a UI cue —
-    // dispatching to the runtime still works — but it helps the
-    // operator see which buttons rely on substrate vs pure Elmish.
-    let variantClass = Css.buttonVariant spec.Variant
+    let decorated =
+        match plan with
+        | ElementPlan.Plan.Element element when containsUnwiredAction spec.OnClick ->
+            let unwiredClass = Css.buttonUnwired (Css.buttonVariant spec.Variant)
 
-    let className =
-        if unwired then
-            Css.buttonUnwired variantClass
-        else
-            Css.button variantClass
+            let hasTitle =
+                element.Props
+                |> List.exists (function
+                    | ElementPlan.Prop.Attr("title", _) -> true
+                    | _ -> false)
 
-    // Worked-example follow-on:
-    // ButtonSpec.Tooltip wins over the unwired-action hint. Author-
-    // supplied tooltips are explicit; the unwired hint is best-effort
-    // operator UX. If both fire, the explicit Tooltip is more useful.
-    let tooltipText =
-        match spec.Tooltip with
-        | Some text -> Some(BindingResolver.resolveTextSource ctx.Sources text)
-        | None when unwired ->
-            Some
-                "This action routes through the IFuaranRuntime substrate (Action.Call/Notify/Navigate/SetState/AiTool)."
-        | None -> None
+            ElementPlan.Plan.Element
+                { element with
+                    Props =
+                        (element.Props
+                         |> List.map (function
+                             | ElementPlan.Prop.Attr("class", _) -> ElementPlan.Prop.Attr("class", unwiredClass)
+                             | p -> p))
+                        @ (if hasTitle then
+                               []
+                           else
+                               [ ElementPlan.Prop.Attr(
+                                     "title",
+                                     "This action routes through the IFuaranRuntime substrate (Action.Call/Notify/Navigate/SetState/AiTool)."
+                                 ) ]) }
+        | other -> other
 
-    // Optional bound disabled-state: emit the HTML `disabled` attribute
-    // when the binding resolves `true`. An absent binding (or one that
-    // can't resolve) leaves the button enabled — the v1 default.
-    let isDisabled =
-        spec.Disabled
-        |> Option.bind (BindingResolver.tryResolve ctx.Sources)
-        |> Option.defaultValue false
-
-    Html.button (
-        [ prop.className className
-          // The uniform icon hook: an icon-bearing button wraps its label as a
-          // text node beside the hook; an icon-less button keeps the plain
-          // `prop.text` shape (markup unchanged for existing trees).
-          match spec.Icon with
-          | Some icon ->
-              prop.children
-                  [ Emit.plan (ElementPlan.DisplayPlan.iconHook Css.Class.ButtonIcon icon)
-                    Html.text (BindingResolver.resolveTextSource ctx.Sources spec.Label) ]
-          | None -> prop.text (BindingResolver.resolveTextSource ctx.Sources spec.Label)
-          match tooltipText with
-          | Some t -> prop.title t
-          | None -> ()
-          if isDisabled then
-              prop.disabled true
-          prop.onClick (fun _ -> runAction ctx spec.OnClick) ]
-        @ Emit.attrs semanticAttrs
-    )
+    Emit.planWith
+        (fun point _ ->
+            match point with
+            | ElementPlan.Attach.ButtonClick -> [ prop.onClick (fun _ -> runAction ctx spec.OnClick) ]
+            | _ -> [])
+        decorated
 
 and private renderSelect (ctx: RenderContext<'Msg>) (spec: SelectSpec<'Msg>) : ReactElement =
-    let options = BindingResolver.resolveOptions ctx.Sources spec.Source
-
-    // `Value` is `Binding<string>` since the swap — a null/empty
-    // resolution is no-selection (the same projection as
-    // `renderSegmentedChoiceCore`).
-    // Phase 1962 — absent on a multi-select, which renders through its own
-    // path; a single-select always carries one.
-    let selected =
-        spec.Value
-        |> Option.bind (BindingResolver.tryResolve ctx.Sources)
-        |> Option.bind (fun s -> if isNull s || s = "" then None else Some s)
-
-    let placeholderItem =
-        match spec.Placeholder with
-        | Some placeholder ->
-            [ Html.option
-                  [ prop.value ""
-                    prop.text (BindingResolver.resolveTextSource ctx.Sources placeholder) ] ]
-        | None -> []
-
-    let optionItems =
-        [ for option in options ->
-              Html.option [ prop.key option.Value; prop.value option.Value; prop.text option.Label ] ]
-
-    // Phase 130: optional bound disabled-state — emit the HTML `disabled`
-    // attribute on the `<select>` when the binding resolves `true`.
-    let isDisabled =
-        spec.Disabled
-        |> Option.bind (BindingResolver.tryResolve ctx.Sources)
-        |> Option.defaultValue false
-
-    let control =
-        // `Multiple` is `bool option` since the swap — absent means single-select.
+    // Phase 2290 — the markup is `ElementPlan.InputPlan.select`, shared with
+    // the server (rulings R2 / R3); this binds the change.
+    let onChange: IReactProperty list =
         if spec.Multiple = Some true then
-            // Phase 291 — `<select multiple>`. The selection is the resolved
-            // `Values` list; `onChange` reads every selected option and fires
+            // Phase 291 — `onChange` reads every selected option and fires
             // `OnChangeMulti` with the value list. Phase 426: an omitted
-            // handler writes the list back to a writable `Values` binding
-            // (the write-back default); no `Values` binding ⇒ no write.
-            let selectedValues =
-                spec.Values
-                |> Option.bind (BindingResolver.tryResolve ctx.Sources)
-                |> Option.defaultValue []
+            // handler writes the list back to a writable `Values` binding.
+            [ prop.custom (
+                  "onChange",
+                  System.Func<Browser.Types.Event, unit>(fun (e: Browser.Types.Event) ->
+                      let target = e.target :?> Browser.Types.HTMLSelectElement
+                      let opts = target.selectedOptions
 
-            Html.select
-                [ prop.className Css.Class.SelectControl
-                  prop.multiple true
-                  prop.value (selectedValues |> List.toArray)
-                  if isDisabled then
-                      prop.disabled true
-                  prop.custom (
-                      "onChange",
-                      System.Func<Browser.Types.Event, unit>(fun (e: Browser.Types.Event) ->
-                          let target = e.target :?> Browser.Types.HTMLSelectElement
-                          let opts = target.selectedOptions
+                      let chosen =
+                          [ for i in 0 .. opts.length - 1 -> (opts[i] :?> Browser.Types.HTMLOptionElement).value ]
 
-                          let chosen =
-                              [ for i in 0 .. opts.length - 1 -> (opts[i] :?> Browser.Types.HTMLOptionElement).value ]
-
-                          match spec.OnChangeMulti, spec.Values with
-                          | Some onChangeMulti, _ -> runAction ctx (onChangeMulti chosen)
-                          | None, Some values -> writeBackTo ctx values (Some(box chosen))
-                          | None, None -> ())
-                  )
-                  prop.children optionItems ]
+                      match spec.OnChangeMulti, spec.Values with
+                      | Some onChangeMulti, _ -> runAction ctx (onChangeMulti chosen)
+                      | None, Some values -> writeBackTo ctx values (Some(box chosen))
+                      | None, None -> ())
+              ) ]
         else
-            Html.select
-                [ prop.className Css.Class.SelectControl
-                  prop.value (selected |> Option.defaultValue "")
-                  if isDisabled then
-                      prop.disabled true
-                  prop.onChange (fun (v: string) ->
-                      // Phase 426: the closure wins; an omitted handler writes
-                      // the chosen option back to a writable `Value` binding
-                      // (a cleared choice clears the slot).
-                      let chosen = if v = "" then None else Some v
+            [ prop.onChange (fun (v: string) ->
+                  // Phase 426: the closure wins; an omitted handler writes the
+                  // chosen option back to a writable `Value` binding (a cleared
+                  // choice clears the slot).
+                  let chosen = if v = "" then None else Some v
 
-                      match spec.OnChange with
-                      | Some onChange -> runAction ctx (onChange chosen)
-                      | None ->
-                          spec.Value
-                          |> Option.iter (fun value -> writeBackTo ctx value (chosen |> Option.map box)))
-                  prop.children (placeholderItem @ optionItems) ]
+                  match spec.OnChange with
+                  | Some onChange -> runAction ctx (onChange chosen)
+                  | None ->
+                      spec.Value
+                      |> Option.iter (fun value -> writeBackTo ctx value (chosen |> Option.map box))) ]
 
-    Html.label
-        [ prop.className Css.Class.Select
-          prop.children
-              [ Html.span
-                    [ prop.className Css.Class.SelectLabel
-                      prop.text (BindingResolver.resolveTextSource ctx.Sources spec.Label) ]
-                control ] ]
+    Emit.planWith
+        (fun point _ ->
+            match point with
+            | ElementPlan.Attach.SelectChange -> onChange
+            | _ -> [])
+        (ElementPlan.InputPlan.select ctx.Sources spec)
 
-and private renderForm (ctx: RenderContext<'Msg>) (spec: FormSpec<'Msg>) : ReactElement =
-    let fieldNodes = [ for field in spec.Fields -> renderFormField ctx field ]
+and private renderForm (ctx: RenderContext<'Msg>) (nodeId: string) (spec: FormSpec<'Msg>) : ReactElement =
+    // Phase 2290 — the markup (fields, submit, the Phase 130 disabled fieldset)
+    // is `ElementPlan.InputPlan.form`, shared with the server; this binds the
+    // submit handler.
+    let onSubmit (e: Browser.Types.Event) : unit =
+        e.preventDefault ()
+        // Notify every Local-bound input whose FlushOn =
+        // OnSubmit so each buffer drains through its OnCommit
+        // BEFORE the form's typed OnSubmit fires. Order matters
+        // because the typed OnSubmit may dispatch a network call
+        // that reads the just-committed values.
+        //
+        // Dispatched on THIS form (the event's currentTarget) rather
+        // than on the window, so the broadcast reaches this form's own
+        // inputs and no longer drains every `OnSubmit` Local input on
+        // the page — a search box in a header included.
+        LocalBindings.dispatchFormCommit (unbox<Browser.Types.Element> e.currentTarget)
+        // Phase 820 — submit-payload semantics: the form's current
+        // field values (read exactly as this renderer's own controls
+        // read them — see `SubmitPayload.harvestFields`) ride the
+        // OnSubmit's `Notify` payloads under a "fields" key. A `Call`
+        // has no payload slot on `IFuaranRuntime.Call(endpoint,
+        // onResult)` — the client Call substrate is host-owned — so on
+        // this tier the submit body reaches only the arms with a
+        // payload slot; the server-driven tier delivers the Call body
+        // through its `InterpretSubmitCall` seam (SERVER_DRIVEN.md).
+        let fields = SubmitPayload.harvestFields ctx.Sources spec.Fields
 
-    let submitNode =
-        Html.button
-            [ prop.className Css.Class.FormSubmit
-              prop.type'.submit
-              prop.text (BindingResolver.resolveTextSource ctx.Sources spec.SubmitLabel) ]
+        // Phase 864 — the declared-rule submit GATE. A rendering host
+        // MUST NOT run the form's action while a declared rule is unmet,
+        // and MUST make visible which field is unmet. The gate runs over
+        // exactly the values the submit would have carried, so what is
+        // checked and what would have been sent cannot diverge.
+        //
+        // The submit button is deliberately NOT disabled: disabling it
+        // removes the gesture that reveals WHICH field is unmet, which is
+        // the second half of the obligation. Native HTML makes the same
+        // choice for its own constraint attributes — and note those run
+        // even earlier, before this event is dispatched at all, so an
+        // unmet `pattern` / `type` is already blocked by the browser.
+        let values = Map.ofList fields
 
-    // Phase 130: optional bound form-level disabled-state. When the slot is
-    // present, wrap the fields + submit in a `<fieldset>` so a single
-    // resolved `disabled` cascades to every descendant control (native HTML).
-    // When the slot is absent (`None`), render the body directly — unchanged
-    // DOM for the common case. Parity-locked with the TS `@fuaran-ui/renderer`
-    // `renderForm` (the `fuaran-form-fieldset` wrapper).
-    let body = fieldNodes @ [ submitNode ]
+        let unmet =
+            spec.Fields
+            |> List.choose (fun f ->
+                FieldRules.unmet (BindingResolver.resolveTextSource ctx.Sources) values f
+                |> Option.map (fun m -> f.Id, m))
 
-    let formChildren =
-        match spec.Disabled with
-        | Some disabled ->
-            let isDisabled =
-                BindingResolver.tryResolve ctx.Sources disabled |> Option.defaultValue false
+        FieldRules.markUnmet unmet [ for f in spec.Fields -> f.Id ]
 
-            [ Html.fieldSet
-                  [ prop.className Css.Class.FormFieldset
-                    if isDisabled then
-                        prop.disabled true
-                    prop.children body ] ]
-        | None -> body
+        match unmet with
+        | [] -> runAction ctx (SubmitPayload.attachToAction fields spec.OnSubmit)
+        | _ -> ()
 
-    Html.form
-        [ prop.className Css.Class.Form
-          prop.onSubmit (fun (e: Browser.Types.Event) ->
-              e.preventDefault ()
-              // Notify every Local-bound input whose FlushOn =
-              // OnSubmit so each buffer drains through its OnCommit
-              // BEFORE the form's typed OnSubmit fires. Order matters
-              // because the typed OnSubmit may dispatch a network call
-              // that reads the just-committed values.
-              //
-              // Dispatched on THIS form (the event's currentTarget) rather
-              // than on the window, so the broadcast reaches this form's own
-              // inputs and no longer drains every `OnSubmit` Local input on
-              // the page — a search box in a header included.
-              LocalBindings.dispatchFormCommit (unbox<Browser.Types.Element> e.currentTarget)
-              // Phase 820 — submit-payload semantics: the form's current
-              // field values (read exactly as this renderer's own controls
-              // read them — see `SubmitPayload.harvestFields`) ride the
-              // OnSubmit's `Notify` payloads under a "fields" key. A `Call`
-              // has no payload slot on `IFuaranRuntime.Call(endpoint,
-              // onResult)` — the client Call substrate is host-owned — so on
-              // this tier the submit body reaches only the arms with a
-              // payload slot; the server-driven tier delivers the Call body
-              // through its `InterpretSubmitCall` seam (SERVER_DRIVEN.md).
-              let fields = SubmitPayload.harvestFields ctx.Sources spec.Fields
+    Emit.planWith
+        (fun point _ ->
+            match point with
+            | ElementPlan.Attach.FormSubmit -> [ prop.onSubmit onSubmit ]
+            | _ -> [])
+        (ElementPlan.InputPlan.form
+            (planContext ctx nodeId)
+            spec
+            [ for field in spec.Fields -> ElementPlan.Plan.Host(renderFormField ctx field) ])
 
-              // Phase 864 — the declared-rule submit GATE. A rendering host
-              // MUST NOT run the form's action while a declared rule is unmet,
-              // and MUST make visible which field is unmet. The gate runs over
-              // exactly the values the submit would have carried, so what is
-              // checked and what would have been sent cannot diverge.
-              //
-              // The submit button is deliberately NOT disabled: disabling it
-              // removes the gesture that reveals WHICH field is unmet, which is
-              // the second half of the obligation. Native HTML makes the same
-              // choice for its own constraint attributes — and note those run
-              // even earlier, before this event is dispatched at all, so an
-              // unmet `pattern` / `type` is already blocked by the browser.
-              let values = Map.ofList fields
+/// Phase 2290 — the handlers a segmented control binds (`InputPlan.segmentedChoice`):
+/// a click per option, the WAI-ARIA radiogroup keyboard walk (arrows cycle
+/// with wrap-around, Home / End), and the vertical radios' change.
+/// `handleChange` is a side-effecting change handler (Phase 423), not an
+/// `Action` factory: the form-field caller dispatches through `runAction`,
+/// a declarative chip writes the FilterStore.
+and private segmentAttach
+    (ctx: RenderContext<'Msg>)
+    (options: Binding<SelectOption list>)
+    (value: Binding<string>)
+    (handleChange: string option -> unit)
+    : Emit.Attach =
+    let opts = BindingResolver.resolveOptions ctx.Sources options
 
-              let unmet =
-                  spec.Fields
-                  |> List.choose (fun f ->
-                      FieldRules.unmet (BindingResolver.resolveTextSource ctx.Sources) values f
-                      |> Option.map (fun m -> f.Id, m))
+    let activeIndex =
+        BindingResolver.tryResolve ctx.Sources value
+        |> Option.bind (fun s -> if isNull s || s = "" then None else Some s)
+        |> Option.bind (fun v -> opts |> List.tryFindIndex (fun o -> o.Value = v))
+        |> Option.defaultValue -1
 
-              FieldRules.markUnmet unmet [ for f in spec.Fields -> f.Id ]
+    let cycle (delta: int) : unit =
+        if not (List.isEmpty opts) then
+            let count = List.length opts
 
-              match unmet with
-              | [] -> runAction ctx (SubmitPayload.attachToAction fields spec.OnSubmit)
-              | _ -> ())
-          prop.children formChildren ]
+            let nextIndex =
+                // No selection yet — entering with ArrowRight picks the first,
+                // ArrowLeft the last; otherwise wrap-around both ways.
+                if activeIndex < 0 then
+                    (if delta > 0 then 0 else count - 1)
+                else
+                    ((activeIndex + delta) % count + count) % count
 
+            handleChange (Some (List.item nextIndex opts).Value)
+
+    let onKeyDown (e: Browser.Types.KeyboardEvent) : unit =
+        match e.key with
+        | "ArrowRight"
+        | "ArrowDown" ->
+            e.preventDefault ()
+            cycle 1
+        | "ArrowLeft"
+        | "ArrowUp" ->
+            e.preventDefault ()
+            cycle -1
+        | "Home" ->
+            e.preventDefault ()
+
+            opts
+            |> List.tryHead
+            |> Option.iter (fun first -> handleChange (Some first.Value))
+        | "End" ->
+            e.preventDefault ()
+            opts |> List.tryLast |> Option.iter (fun last -> handleChange (Some last.Value))
+        | _ -> ()
+
+    fun point key ->
+        match point with
+        | ElementPlan.Attach.SegmentSelect -> [ prop.onClick (fun _ -> handleChange (Some key)) ]
+        | ElementPlan.Attach.SegmentKeyDown -> [ prop.onKeyDown onKeyDown ]
+        | ElementPlan.Attach.SegmentRadio ->
+            [ prop.onChange (fun (checked': bool) ->
+                  if checked' then
+                      handleChange (Some key)) ]
+        | _ -> []
+
+/// Phase 2290 — the change handlers a planned form-field control binds
+/// (`InputPlan.fieldControl`). Phase 426 — a `Some` handler dispatches (the
+/// closure wins); a `None` handler writes the typed change back to the field's
+/// own value binding (see `writeBackTo`), a cleared choice clearing the slot.
+/// Phase 596 — an absent value slot is the auto-bind form, the binding the
+/// decoder used to synthesise. Phase 1141 — the module-level `fieldChange` and
+/// the pair seams, never a local copy.
+and private fieldAttach (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) : Emit.Attach =
+    let onChange (handler: IReactProperty) : Emit.Attach =
+        fun point _ ->
+            if point = ElementPlan.Attach.FieldChange then
+                [ handler ]
+            else
+                []
+
+    let auto (value: 'T) : Binding<'T> = Binding.State(field.Id, Some value)
+
+    match field.Kind with
+    | FormFieldKind.Text(FieldView.Text value, FieldView.OnText handler)
+    | FormFieldKind.TextArea(FieldView.Text value, FieldView.OnText handler, _)
+    | FormFieldKind.Color(FieldView.OnText handler, FieldView.Text value) ->
+        let value =
+            value
+            |> Option.defaultValue (
+                match field.Kind with
+                | FormFieldKind.Color _ -> auto Fuaran.UI.Defaults.ControlValueDefaults.color
+                | _ -> auto Fuaran.UI.Defaults.ControlValueDefaults.text
+            )
+
+        onChange (prop.onChange (fun (v: string) -> fieldChange ctx handler value (Some(box v)) v))
+    | FormFieldKind.Number(FieldView.Number value, FieldView.OnNumber handler)
+    | FormFieldKind.RangedNumber(FieldView.Number value, FieldView.OnNumber handler, _, _, _) ->
+        let value =
+            value
+            |> Option.defaultValue (auto Fuaran.UI.Defaults.ControlValueDefaults.number)
+
+        onChange (prop.onChange (fun (v: float) -> fieldChange ctx handler value (Some(box v)) v))
+    | FormFieldKind.Checkbox(FieldView.Bool value, FieldView.OnBool handler)
+    | FormFieldKind.Toggle(FieldView.Bool value, FieldView.OnBool handler) ->
+        let value =
+            value
+            |> Option.defaultValue (auto Fuaran.UI.Defaults.ControlValueDefaults.checkbox)
+
+        onChange (prop.onChange (fun (b: bool) -> fieldChange ctx handler value (Some(box b)) b))
+    | FormFieldKind.Choice(_, FieldView.Text value, FieldView.OnChoice handler) ->
+        let value =
+            value
+            |> Option.defaultValue (Binding.State(field.Id, Fuaran.UI.Defaults.ControlValueDefaults.choice))
+
+        onChange (
+            prop.onChange (fun (v: string) ->
+                let chosen = if v = "" then None else Some v
+                fieldChange ctx handler value (chosen |> Option.map box) chosen)
+        )
+    | FormFieldKind.DateTime(FieldView.Text value, FieldView.OnChoice handler, _, _, _, _) ->
+        let value =
+            value
+            |> Option.defaultValue (auto Fuaran.UI.Defaults.ControlValueDefaults.dateTime)
+
+        // The Date onChange takes `string option` since the swap — an input
+        // change always carries a value; the store write-back keeps the raw string.
+        onChange (prop.onChange (fun (v: string) -> fieldChange ctx handler value (Some(box v)) (Some v)))
+    | FormFieldKind.Range(FieldView.Range value, FieldView.OnRange handler, _, _, _) ->
+        let value =
+            value
+            |> Option.defaultValue (auto Fuaran.UI.Defaults.ControlValueDefaults.range)
+
+        let current: RangePair =
+            BindingResolver.tryResolve ctx.Sources value
+            |> Option.defaultValue { Min = 0.0; Max = 0.0 }
+
+        let onMin, onMax = rangeInputHandlers ctx handler value current
+
+        fun point key ->
+            match point, key with
+            | ElementPlan.Attach.FieldChange, "min" -> [ prop.onChange onMin ]
+            | ElementPlan.Attach.FieldChange, "max" -> [ prop.onChange onMax ]
+            | _ -> []
+    | FormFieldKind.DateTimeRange(FieldView.DateRange value, FieldView.OnDateRange handler, _, _, _, _) ->
+        let value =
+            value
+            |> Option.defaultValue (auto Fuaran.UI.Defaults.ControlValueDefaults.dateTimeRange)
+
+        let current: DateTimeRangePair =
+            BindingResolver.tryResolve ctx.Sources value
+            |> Option.defaultValue { From = ""; To = "" }
+
+        let onFrom, onTo = dateRangeInputHandlers ctx handler value current
+
+        fun point key ->
+            match point, key with
+            | ElementPlan.Attach.FieldChange, "min" -> [ prop.onChange onFrom ]
+            | ElementPlan.Attach.FieldChange, "max" -> [ prop.onChange onTo ]
+            | _ -> []
+    | FormFieldKind.SegmentedChoice(options, FieldView.Text value, FieldView.OnChoice handler, _) ->
+        let value =
+            value
+            |> Option.defaultValue (Binding.State(field.Id, Fuaran.UI.Defaults.ControlValueDefaults.choice))
+
+        segmentAttach ctx options value (fun chosen -> fieldChange ctx handler value (chosen |> Option.map box) chosen)
+    // The widget kinds render their own component and bind nothing here.
+    | _ -> fun _ _ -> []
+
+/// One `Form` field. Phase 2290 — the label, the help and every plain
+/// control are `ElementPlan.InputPlan` (rulings R4 / R5 / R15 / R16), shared
+/// with the server. The WIDGET controls are this renderer's by nature: a
+/// stateful component in place of the plan's no-script floor — the
+/// `Binding.Local` buffers, the combobox, the rating and the token field.
 and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) : ReactElement =
     let labelText = BindingResolver.resolveTextSource ctx.Sources field.Label
-
-    let labelWithRequired = if field.Required then labelText + " *" else labelText
-
     let (NodeId fieldNodeId) = NodeId field.Id
 
-    // Phase 426 — the control write-back default. A `Some` handler dispatches
-    // exactly as before (the closure wins); a `None` handler writes the typed
-    // change back to the field's own value binding when that binding is
-    // directly `Binding.State` / `Binding.Filter` (see `writeBackTo`). A
-    // cleared choice clears the slot rather than writing an empty value.
-    //
-    // Phase 1141 — this was a LOCAL `handle` with the module-level
-    // `pairFieldChange`'s body, i.e. a second copy of the same dispatch that no
-    // test could reach. The sites below call the module-level `fieldChange`
-    // directly; do not reintroduce a local wrapper.
-
-    // Phase 596 — the value slots are `Binding<_> option` since the swap. An
-    // absent (`None`) slot is the auto-bind form: substitute exactly the
-    // binding the decoder used to synthesise — `Binding.State(field.Id,
-    // <typed placeholder from Defaults.ControlValueDefaults>)` — so the
-    // write-back default machinery and resolution behave identically.
     let control =
         match field.Kind with
-        | FormFieldKind.Text(FieldView.Text value, FieldView.OnText onChange) ->
-            let value =
-                value
-                |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.text))
+        | FormFieldKind.Text(FieldView.Text(Some(Binding.Local(flushOn,
+                                                               format,
+                                                               initialFrom,
+                                                               onCommit,
+                                                               parse,
+                                                               _,
+                                                               commitTo))),
+                             _) ->
+            // Phase 864 RECORDED KNOWN LIMIT — `localTextInput` carries no
+            // attribute-passthrough slot, so a declared rule's constraint
+            // ATTRIBUTES are not projected onto this control: `format` /
+            // `minLength` / `maxLength` lose per-keystroke enforcement but are
+            // still gated at submit; `pattern` is enforced only by the
+            // server-side re-check. Closing it needs an attribute slot on
+            // `localTextInput`.
+            LocalBindings.localTextInput
+                {| nodeId = fieldNodeId
+                   fieldId = field.Id
+                   className = "fuaran-form-input"
+                   required = field.Required
+                   externalValue = BindingResolver.tryResolve ctx.Sources initialFrom |> Option.defaultValue ""
+                   flushOn = flushOn
+                   formatter = format
+                   parser = parse
+                   commit =
+                    fun (parsed: string) ->
+                        // An absent onCommit commits nothing THROUGH THE
+                        // CLOSURE — `commitTo` is the wire-carried alternative
+                        // (Fuaran-UI Phase 1538).
+                        onCommit
+                        |> Option.iter (fun oc -> runAction ctx (unbox<Action<'Msg>> (oc parsed)))
 
-            match value with
-            | Binding.Local(flushOn, format, initialFrom, onCommit, parse, _, commitTo) ->
-                // Local-bound text field — render via the
-                // function-component shape that maintains the per-NodeId
-                // React.useState buffer and initialFrom re-sync invariant.
-                let external =
-                    BindingResolver.tryResolve ctx.Sources initialFrom |> Option.defaultValue ""
+                        commitLocalTo ctx commitTo (box parsed) |}
+        | FormFieldKind.Number(FieldView.Number(Some(Binding.Local(flushOn,
+                                                                   format,
+                                                                   initialFrom,
+                                                                   onCommit,
+                                                                   parse,
+                                                                   _,
+                                                                   commitTo))),
+                               _)
+        | FormFieldKind.RangedNumber(FieldView.Number(Some(Binding.Local(flushOn,
+                                                                         format,
+                                                                         initialFrom,
+                                                                         onCommit,
+                                                                         parse,
+                                                                         _,
+                                                                         commitTo))),
+                                     _,
+                                     _,
+                                     _,
+                                     _) ->
+            // `type=text` + `inputMode=numeric`, so the consumer-side formatter
+            // (thousands separators etc.) survives.
+            let constraints: NumberFieldConstraints =
+                match field.Kind with
+                | FormFieldKind.RangedNumber(_, _, min, max, step) -> { Min = min; Max = max; Step = step }
+                | _ -> Fuaran.UI.Defaults.numberFieldConstraints
 
-                let commit (parsed: string) : unit =
-                    // onCommit returns an obj-erased Action; unbox back to the
-                    // typed Action<'Msg> the smart-ctor wrapped. An absent
-                    // onCommit (possible on the generated shape) commits nothing
-                    // THROUGH THE CLOSURE — `commitTo` is the wire-carried
-                    // alternative, and it is why a decoded buffer is no longer
-                    // inert (Fuaran-UI Phase 1538).
-                    onCommit
-                    |> Option.iter (fun oc -> runAction ctx (unbox<Action<'Msg>> (oc parsed)))
+            LocalBindings.localNumberInput
+                {| nodeId = fieldNodeId
+                   fieldId = field.Id
+                   className = "fuaran-form-input"
+                   required = field.Required
+                   externalValue = BindingResolver.tryResolve ctx.Sources initialFrom |> Option.defaultValue 0.0
+                   flushOn = flushOn
+                   formatter = format
+                   parser = parse
+                   commit =
+                    fun (parsed: float) ->
+                        onCommit
+                        |> Option.iter (fun oc -> runAction ctx (unbox<Action<'Msg>> (oc parsed)))
 
-                    commitLocalTo ctx commitTo (box parsed)
-
-                // Phase 864 RECORDED KNOWN LIMIT — the Local-bound text field
-                // renders through `LocalBindings.localTextInput`, whose
-                // parameter record carries no attribute-passthrough slot, so a
-                // declared rule's constraint ATTRIBUTES are not projected onto
-                // this control. Two consequences, stated separately because
-                // they are not equally severe:
-                //   • `format` / `minLength` / `maxLength` lose the browser's
-                //     per-keystroke enforcement but ARE still gated at submit —
-                //     the harvest resolves a Local field's value like any
-                //     other, so the "MUST NOT submit" half holds.
-                //   • `pattern` is gated by NEITHER: the attribute is absent
-                //     here, and the gate deliberately does not evaluate regex
-                //     on this tier (see the `FieldRules` header). A `pattern`
-                //     rule on a Local-bound text field is therefore enforced
-                //     only by the server-side re-check
-                //     (`Fuaran.UI.ServerDriven.FormValidation`), which is the
-                //     non-bypassable floor in any case — but this tier does not
-                //     meet its own obligation for that one combination, and
-                //     saying so is better than implying coverage.
-                // Closing it needs an attribute slot on `localTextInput`.
-                LocalBindings.localTextInput
-                    {| nodeId = fieldNodeId
-                       fieldId = field.Id
-                       className = "fuaran-form-input"
-                       required = field.Required
-                       externalValue = external
-                       flushOn = flushOn
-                       formatter = format
-                       parser = parse
-                       commit = commit |}
-            | _ ->
-                let current = BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue ""
-
-                // Phase 864 — `format` retypes the control (`email` / `url` /
-                // `tel`) and `pattern` / `minLength` / `maxLength` ride the
-                // platform's own attributes, so the BROWSER enforces them. An
-                // absent rule leaves `type=text` and emits nothing, so a form
-                // authored before 864 renders byte-identically.
-                Html.input (
-                    [ prop.className "fuaran-form-input"
-                      prop.type' (Fuaran.UI.Renderer.FieldRules.textInputType field.Rule)
-                      prop.id field.Id
-                      prop.required field.Required
-                      prop.value current
-                      prop.onChange (fun (v: string) -> fieldChange ctx onChange value (Some(box v)) v) ]
-                    @ FieldRules.constraintAttrs true field.Rule
-                )
-        | FormFieldKind.Number(FieldView.Number value, FieldView.OnNumber onChange) ->
-            let value =
-                value
-                |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.number))
-
-            match value with
-            | Binding.Local(flushOn, format, initialFrom, onCommit, parse, _, commitTo) ->
-                // Local-bound number field — see the Text-side
-                // mirror above. The renderer uses `type=text` +
-                // `inputMode=numeric` so the consumer-side formatter
-                // (thousands separators etc.) survives.
-                let external =
-                    BindingResolver.tryResolve ctx.Sources initialFrom |> Option.defaultValue 0.0
-
-                let commit (parsed: float) : unit =
-                    onCommit
-                    |> Option.iter (fun oc -> runAction ctx (unbox<Action<'Msg>> (oc parsed)))
-
-                    commitLocalTo ctx commitTo (box parsed)
-
-                LocalBindings.localNumberInput
-                    {| nodeId = fieldNodeId
-                       fieldId = field.Id
-                       className = "fuaran-form-input"
-                       required = field.Required
-                       externalValue = external
-                       flushOn = flushOn
-                       formatter = format
-                       parser = parse
-                       commit = commit
-                       // `FormFieldKind.Number` carries no
-                       // constraints, so the existing arm renders byte-
-                       // identically by passing the all-None default.
-                       constraints = Fuaran.UI.Defaults.numberFieldConstraints |}
-            | _ ->
-                let current =
-                    BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue 0.0
-
-                Html.input
-                    [ prop.className "fuaran-form-input"
-                      prop.type'.number
-                      prop.id field.Id
-                      prop.required field.Required
-                      prop.value current
-                      prop.onChange (fun (v: float) -> fieldChange ctx onChange value (Some(box v)) v) ]
-        | FormFieldKind.Checkbox(FieldView.Bool value, FieldView.OnBool onToggle) ->
-            let value =
-                value
-                |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.checkbox))
-
-            let current =
-                BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue false
-
-            Html.input
-                [ prop.className "fuaran-form-checkbox"
-                  prop.type'.checkbox
-                  prop.id field.Id
-                  prop.isChecked current
-                  prop.onChange (fun (b: bool) -> fieldChange ctx onToggle value (Some(box b)) b) ]
-        // Phase 766 — the toggle/switch affordance. Same DATA as Checkbox (a
-        // boolean, the same write-back path); different PRESENTATION and, the
-        // part that matters, a different a11y contract: `role="switch"` with
-        // `aria-checked`, which is what a screen reader announces as "on/off"
-        // rather than "checked". Built on a native checkbox input so keyboard
-        // operation (Space) and focus come for free — an ARIA role on a
-        // non-interactive element would have to reimplement both, and that is
-        // the usual way a hand-rolled switch becomes unusable.
-        | FormFieldKind.Toggle(FieldView.Bool value, FieldView.OnBool onToggle) ->
-            let value =
-                value
-                |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.checkbox))
-
-            let current =
-                BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue false
-
-            Html.input
-                [ prop.className "fuaran-form-toggle"
-                  prop.type'.checkbox
-                  prop.role "switch"
-                  prop.ariaChecked current
-                  prop.id field.Id
-                  prop.isChecked current
-                  prop.onChange (fun (b: bool) -> fieldChange ctx onToggle value (Some(box b)) b) ]
-        | FormFieldKind.Choice(options, FieldView.Text value, FieldView.OnChoice onChange) ->
-            let value =
-                value
-                |> Option.defaultValue (Binding.State(field.Id, Fuaran.UI.Defaults.ControlValueDefaults.choice))
-
-            let opts = BindingResolver.resolveOptions ctx.Sources options
-
-            // The choice value is `Binding<string>` since the swap ("no
-            // selection" was `Binding<string option>`): a null/empty
-            // resolution — e.g. the default-less auto-bind State resolving
-            // `Unchecked.defaultof<string>` — is no-selection, so the
-            // placeholder still renders.
-            let current =
-                BindingResolver.tryResolve ctx.Sources value
-                |> Option.bind (fun s -> if isNull s || s = "" then None else Some s)
-
-            let optionItems =
-                Html.option [ prop.value ""; prop.text "—" ]
-                :: [ for option in opts ->
-                         Html.option [ prop.key option.Value; prop.value option.Value; prop.text option.Label ] ]
-
-            Html.select
-                [ prop.className "fuaran-form-select"
-                  prop.id field.Id
-                  prop.required field.Required
-                  prop.value (current |> Option.defaultValue "")
-                  prop.onChange (fun (v: string) ->
-                      let chosen = if v = "" then None else Some v
-                      fieldChange ctx onChange value (chosen |> Option.map box) chosen)
-                  prop.children optionItems ]
-        | FormFieldKind.Range(FieldView.Range value, FieldView.OnRange onChange, _, _, _) ->
-            // 0.2.0 filters-unification: dual-thumb numeric range as a form
-            // control (absorbed FilterKind.RangeFilter). Two paired number
-            // inputs bound to the `RangePair` record (was a `(min, max)`
-            // tuple); either change emits the whole pair through the standard
-            // write-back.
-            let value =
-                value
-                |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.range))
-
-            let current: RangePair =
-                BindingResolver.tryResolve ctx.Sources value
-                |> Option.defaultValue { Min = 0.0; Max = 0.0 }
-
-            let minV, maxV = current.Min, current.Max
-            // Phase 1141 — the two closures the rendered inputs carry are built
-            // by the module-level seam, so the harness drives exactly them.
-            let onMinInput, onMaxInput = rangeInputHandlers ctx onChange value current
-
-            Html.span
-                [ prop.className Css.Class.FieldRange
-                  prop.children
-                      [ Html.input
-                            [ prop.type'.number
-                              prop.className "fuaran-field-range-min"
-                              prop.value minV
-                              prop.onChange onMinInput ]
-                        Html.span [ prop.className Css.Class.FieldRangeSep; prop.text "–" ]
-                        Html.input
-                            [ prop.type'.number
-                              prop.className "fuaran-field-range-max"
-                              prop.value maxV
-                              prop.onChange onMaxInput ] ] ]
-        | FormFieldKind.RangedNumber(FieldView.Number value, FieldView.OnNumber onChange, min, max, step) ->
-            // Parallel-additive Number case with optional Min /
-            // Max / Step (flat options since the swap; the host
-            // `NumberFieldConstraints` record is rebuilt locally for the
-            // Local-input helper). Emit the corresponding HTML attributes
-            // when present; the input otherwise renders exactly like the
-            // plain `Number` arm (Local-bound variant included).
-            let value =
-                value
-                |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.number))
-
-            let constraints: NumberFieldConstraints = { Min = min; Max = max; Step = step }
-
-            let minAttrs =
-                [ match constraints.Min with
-                  | Some m -> prop.min m
-                  | None -> ()
-                  match constraints.Max with
-                  | Some m -> prop.max m
-                  | None -> ()
-                  match constraints.Step with
-                  | Some s -> prop.step s
-                  | None -> () ]
-
-            match value with
-            | Binding.Local(flushOn, format, initialFrom, onCommit, parse, _, commitTo) ->
-                let external =
-                    BindingResolver.tryResolve ctx.Sources initialFrom |> Option.defaultValue 0.0
-
-                let commit (parsed: float) : unit =
-                    onCommit
-                    |> Option.iter (fun oc -> runAction ctx (unbox<Action<'Msg>> (oc parsed)))
-
-                    commitLocalTo ctx commitTo (box parsed)
-
-                LocalBindings.localNumberInput
-                    {| nodeId = fieldNodeId
-                       fieldId = field.Id
-                       className = "fuaran-form-input"
-                       required = field.Required
-                       externalValue = external
-                       flushOn = flushOn
-                       formatter = format
-                       parser = parse
-                       commit = commit
-                       constraints = constraints |}
-            | _ ->
-                let current =
-                    BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue 0.0
-
-                Html.input (
-                    [ prop.className "fuaran-form-input"
-                      prop.type'.number
-                      prop.id field.Id
-                      prop.required field.Required
-                      prop.value current
-                      prop.onChange (fun (v: float) -> fieldChange ctx onChange value (Some(box v)) v) ]
-                    @ minAttrs
-                )
-        | FormFieldKind.TextArea(FieldView.Text value, FieldView.OnText onChange, rows) ->
-            let value =
-                value
-                |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.text))
-
-            let current = BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue ""
-
-            // Phase 864 — `minLength` / `maxLength` project onto the textarea;
-            // `pattern` does NOT (HTML has no `pattern` on `<textarea>`), so it
-            // is not emitted rather than emitted and ignored.
-            Html.textarea (
-                [ prop.className "fuaran-form-textarea"
-                  prop.id field.Id
-                  prop.required field.Required
-                  prop.rows rows
-                  prop.value current
-                  prop.onChange (fun (v: string) -> fieldChange ctx onChange value (Some(box v)) v) ]
-                @ FieldRules.constraintAttrs false field.Rule
-            )
+                        commitLocalTo ctx commitTo (box parsed)
+                   constraints = constraints |}
+        // Phase 1113 — the full WAI-ARIA combobox, in `ComboboxControl`.
         | FormFieldKind.Combobox(allowFreeText, FieldView.OnChoice onChange, options, FieldView.Text value) ->
-            // Phase 1113 — the full WAI-ARIA combobox, in `ComboboxControl`.
-            // The pattern is stateful (popup open, ACTIVE option, in-progress
-            // query) in a way the tree is not, so it is a React function
-            // component; the renderer resolves the bindings here and the
-            // component holds only the interaction. Nothing on the wire named a
-            // keystroke — the keyboard walk is entirely the renderer's, under
-            // the affordance→op charter.
             let value =
                 value
                 |> Option.defaultValue (Binding.State(field.Id, Fuaran.UI.Defaults.ControlValueDefaults.combobox))
-
-            let current =
-                BindingResolver.tryResolve ctx.Sources value
-                |> Option.bind (fun s -> if isNull s || s = "" then None else Some s)
 
             ComboboxControl.combobox
                 {| fieldId = field.Id
@@ -4028,20 +3821,16 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                    allowFreeText = allowFreeText
                    placeholder = ""
                    options = BindingResolver.resolveOptions ctx.Sources options
-                   committed = current
+                   committed =
+                    BindingResolver.tryResolve ctx.Sources value
+                    |> Option.bind (fun s -> if isNull s || s = "" then None else Some s)
                    commit = fun chosen -> fieldChange ctx onChange value (chosen |> Option.map box) chosen |}
+        // Phase 1130 — the star scale, in `RatingControl` (slider when it can
+        // be written, img when it cannot).
         | FormFieldKind.Rating(allowHalf, max, FieldView.OnNumber onChange, FieldView.Number value) ->
-            // Phase 1130 — the star scale, in `RatingControl`. The ARIA
-            // decision (slider when the control can be written, img when it
-            // cannot) and the whole keyboard model live there; the renderer
-            // resolves the binding here and hands over a number.
             let value =
                 value
                 |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.rating))
-
-            let current =
-                BindingResolver.tryResolve ctx.Sources value
-                |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.rating
 
             RatingControl.rating
                 {| fieldId = field.Id
@@ -4050,51 +3839,17 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                    allowHalf = allowHalf
                    interactive = onChange.IsSome || Fuaran.UI.BindingWalk.isWriteBackTarget value
                    label = labelText
-                   value = current
+                   value =
+                    BindingResolver.tryResolve ctx.Sources value
+                    |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.rating
                    commit = fun (v: float) -> fieldChange ctx onChange value (Some(box v)) v |}
-        | FormFieldKind.Color(FieldView.OnText onChange, FieldView.Text value) ->
-            // Phase 1130 — the platform's own colour picker. Nothing is
-            // synthesised: `<input type="color">` IS the control, on every host
-            // that has one, and it round-trips `#rrggbb` in both directions.
-            //
-            // A value that resolves to something the input cannot hold falls
-            // back to the unset black rather than being handed over — a native
-            // colour input silently substitutes its own default for an
-            // unparseable value, so passing one through would show a colour the
-            // document did not choose while the tree still said otherwise. The
-            // decoder, FUARAN133 and the submission floor all refuse that shape;
-            // this is the render path's share of the same rule.
-            let value =
-                value
-                |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.color))
-
-            let current =
-                BindingResolver.tryResolve ctx.Sources value
-                |> Option.filter Fuaran.UI.HostPrelude.HexColor.isValid
-                |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.color
-
-            Html.input
-                [ prop.className "fuaran-form-input fuaran-color-input"
-                  prop.type'.color
-                  prop.id field.Id
-                  prop.required field.Required
-                  prop.value current
-                  prop.onChange (fun (v: string) -> fieldChange ctx onChange value (Some(box v)) v) ]
+        // Phase 1121 — the multi-token input, in `TokensControl`. `None` and
+        // `Some []` suggestions stay apart: combobox ARIA only where a source
+        // was DECLARED.
         | FormFieldKind.Tokens(allowFreeText, FieldView.OnTokens onChange, suggestions, FieldView.Tokens value) ->
-            // Phase 1121 — the multi-token input, in `TokensControl`. The
-            // pattern is stateful (the in-progress entry, the popup, the active
-            // suggestion, which chip has focus) in a way the tree is not, so it
-            // is a React function component on `ComboboxControl`'s precedent;
-            // the renderer resolves the bindings here and the component holds
-            // only the interaction. Every judgement it then makes is in
-            // `TokensModel`, which the SSR floor reads too.
             let value =
                 value
                 |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.tokens))
-
-            let current =
-                BindingResolver.tryResolve ctx.Sources value
-                |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.tokens
 
             TokensControl.tokens
                 {| fieldId = field.Id
@@ -4103,282 +3858,97 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                    required = field.Required
                    allowFreeText = allowFreeText
                    placeholder = ""
-                   // `None` and `Some []` are kept apart deliberately: the
-                   // control emits combobox ARIA only where a source was
-                   // DECLARED, and an asynchronous source that has not resolved
-                   // yet is still a declared one.
                    suggestions = suggestions |> Option.map (BindingResolver.resolveOptions ctx.Sources)
-                   tokens = current
+                   tokens =
+                    BindingResolver.tryResolve ctx.Sources value
+                    |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.tokens
                    commit = fun next -> fieldChange ctx onChange value (Some(box next)) next |}
-        | FormFieldKind.SegmentedChoice(options, FieldView.Text value, FieldView.OnChoice onChange, orientation) ->
-            // Visible-options exclusive-choice input. Horizontal
-            // emits a `role="radiogroup"` of `role="radio"` buttons styled
-            // as a segmented control; Vertical emits a `<fieldset>` of
-            // `<input type=radio>` elements grouped by `name = fieldId` so
-            // the browser handles arrow-key cycling natively.
-            let value =
-                value
-                |> Option.defaultValue (Binding.State(field.Id, Fuaran.UI.Defaults.ControlValueDefaults.choice))
+        | _ -> Emit.planWith (fieldAttach ctx field) (ElementPlan.InputPlan.fieldControl ctx.Sources field)
 
-            renderSegmentedChoiceCore
-                ctx
-                field.Id
-                options
-                value
-                (fun chosen -> fieldChange ctx onChange value (chosen |> Option.map box) chosen)
-                orientation
-        | FormFieldKind.DateTime(FieldView.Text value, FieldView.OnChoice onChange, variant, min, max, step) ->
-            // Phase 288 — native date / time / datetime control. The bound
-            // value is an ISO-8601 string; min/max are ISO strings, step is
-            // seconds (flat options since the swap). Parity-locked with the
-            // SSR + TS + Python renderers.
-            let value =
-                value
-                |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.dateTime))
+    Emit.plan (ElementPlan.InputPlan.formField ctx.Sources field (ElementPlan.Plan.Host control))
 
-            let current = BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue ""
+/// Phase 2290 — the change handlers a planned filter-chip control binds
+/// (`InputPlan.filterControl`). Phase 423 — a chip whose `onChange` is `None`
+/// writes its typed value to `$filters.<name>` (`filterWriteBinding`); a
+/// `Some` closure dispatches. The READ comes from the chip's own slot, the
+/// declarative WRITE always goes to `$filters.<name>` — routing it through the
+/// resolved binding instead would change chip semantics for every control
+/// kind, a language decision out of scope here.
+and private filterAttach (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>) : Emit.Attach =
+    let dest: Binding<obj> = Binding.Filter(spec.Name, None)
 
-            let inputType =
-                match variant with
-                | DateTimeVariant.Date -> "date"
-                | DateTimeVariant.Time -> "time"
-                | DateTimeVariant.DateTime -> "datetime-local"
+    let onChange (handler: IReactProperty) : Emit.Attach =
+        fun point _ ->
+            if point = ElementPlan.Attach.FieldChange then
+                [ handler ]
+            else
+                []
 
-            let constraintAttrs =
-                [ match min with
-                  | Some m -> prop.custom ("min", m)
-                  | None -> ()
-                  match max with
-                  | Some m -> prop.custom ("max", m)
-                  | None -> ()
-                  match step with
-                  | Some s -> prop.step s
-                  | None -> () ]
+    let auto (binding: Binding<'T> option) : Binding<'T> =
+        binding |> Option.defaultValue (Binding.Filter(spec.Name, None))
 
-            Html.input (
-                [ prop.className "fuaran-form-input fuaran-form-date"
-                  prop.type' inputType
-                  prop.id field.Id
-                  prop.required field.Required
-                  prop.value current
-                  // The Date onChange takes `string option` since the swap —
-                  // an input change always carries a value, so wrap `Some`;
-                  // the store write-back keeps the raw string.
-                  prop.onChange (fun (v: string) -> fieldChange ctx onChange value (Some(box v)) (Some v)) ]
-                @ constraintAttrs
-            )
-        | FormFieldKind.DateTimeRange(FieldView.DateRange value, FieldView.OnDateRange onChange, variant, min, max, step) ->
-            // Phase 725 — single-control date range: `Range`'s two-input shape
-            // with `Date`'s native control per variant. Both ends share the
-            // min/max/step attributes (flat options since the swap; they bound
-            // the whole range), and either change emits the WHOLE pair through
-            // the standard write-back — one value, not two. Class vocabulary is
-            // reused, not extended (the reference-CSS parity lock).
-            let value =
-                value
-                |> Option.defaultValue (
-                    Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.dateTimeRange)
-                )
+    match spec.Kind with
+    | FormFieldKind.Text(_, FieldView.OnText handler)
+    | FormFieldKind.TextArea(_, FieldView.OnText handler, _)
+    | FormFieldKind.Color(FieldView.OnText handler, _) ->
+        onChange (prop.onChange (fun (v: string) -> fieldChange ctx handler dest (Some(box v)) v))
+    | FormFieldKind.Number(_, FieldView.OnNumber handler)
+    | FormFieldKind.RangedNumber(_, FieldView.OnNumber handler, _, _, _) ->
+        onChange (prop.onChange (fun (v: float) -> fieldChange ctx handler dest (Some(box v)) v))
+    | FormFieldKind.Checkbox(_, FieldView.OnBool handler)
+    | FormFieldKind.Toggle(_, FieldView.OnBool handler) ->
+        onChange (prop.onChange (fun (v: bool) -> fieldChange ctx handler dest (Some(box v)) v))
+    | FormFieldKind.DateTime(_, FieldView.OnChoice handler, _, _, _, _) ->
+        onChange (prop.onChange (fun (v: string) -> fieldChange ctx handler dest (Some(box v)) (Some v)))
+    | FormFieldKind.Choice(_, _, FieldView.OnChoice handler) ->
+        onChange (
+            prop.onChange (fun (v: string) ->
+                let chosen = if v = "" then None else Some v
+                fieldChange ctx handler dest (chosen |> Option.map box) chosen)
+        )
+    | FormFieldKind.Range(FieldView.Range value, FieldView.OnRange handler, _, _, _) ->
+        let current: RangePair =
+            BindingResolver.tryResolve ctx.Sources (auto value)
+            |> Option.defaultValue { Min = 0.0; Max = 0.0 }
 
-            // The pair is the `DateTimeRangePair` record since the swap (the
-            // `RangePair` precedent); the tuple `onChange` contract is unchanged.
-            let current: DateTimeRangePair =
-                BindingResolver.tryResolve ctx.Sources value
-                |> Option.defaultValue { From = ""; To = "" }
+        let onMin, onMax = rangeInputHandlers ctx handler dest current
 
-            let fromV, toV = current.From, current.To
-            // Phase 1141 — see the `Range` arm: one seam builds both closures.
-            let onFromInput, onToInput = dateRangeInputHandlers ctx onChange value current
+        fun point key ->
+            match point, key with
+            | ElementPlan.Attach.FieldChange, "min" -> [ prop.onChange onMin ]
+            | ElementPlan.Attach.FieldChange, "max" -> [ prop.onChange onMax ]
+            | _ -> []
+    | FormFieldKind.DateTimeRange(FieldView.DateRange value, FieldView.OnDateRange handler, _, _, _, _) ->
+        let current: DateTimeRangePair =
+            BindingResolver.tryResolve ctx.Sources (auto value)
+            |> Option.defaultValue { From = ""; To = "" }
 
-            let inputType =
-                match variant with
-                | DateTimeVariant.Date -> "date"
-                | DateTimeVariant.Time -> "time"
-                | DateTimeVariant.DateTime -> "datetime-local"
+        let onFrom, onTo = dateRangeInputHandlers ctx handler dest current
 
-            let constraintAttrs =
-                [ match min with
-                  | Some m -> prop.custom ("min", m)
-                  | None -> ()
-                  match max with
-                  | Some m -> prop.custom ("max", m)
-                  | None -> ()
-                  match step with
-                  | Some s -> prop.step s
-                  | None -> () ]
+        fun point key ->
+            match point, key with
+            | ElementPlan.Attach.FieldChange, "min" -> [ prop.onChange onFrom ]
+            | ElementPlan.Attach.FieldChange, "max" -> [ prop.onChange onTo ]
+            | _ -> []
+    | FormFieldKind.SegmentedChoice(options, FieldView.Text value, FieldView.OnChoice handler, _) ->
+        segmentAttach ctx options (auto value) (fun chosen ->
+            fieldChange ctx handler dest (chosen |> Option.map box) chosen)
+    | _ -> fun _ _ -> []
 
-            Html.span
-                [ prop.className Css.Class.FieldRange
-                  prop.children
-                      [ Html.input (
-                            [ prop.className "fuaran-form-input fuaran-form-date fuaran-field-range-min"
-                              prop.type' inputType
-                              prop.id field.Id
-                              prop.required field.Required
-                              prop.value fromV
-                              prop.onChange onFromInput ]
-                            @ constraintAttrs
-                        )
-                        Html.span [ prop.className Css.Class.FieldRangeSep; prop.text "–" ]
-                        Html.input (
-                            [ prop.className "fuaran-form-input fuaran-form-date fuaran-field-range-max"
-                              prop.type' inputType
-                              prop.required field.Required
-                              prop.value toV
-                              prop.onChange onToInput ]
-                            @ constraintAttrs
-                        ) ] ]
-
-    Html.div
-        [ // The field's declared id — the same token `htmlFor`, the unmet-rule
-          // marking and this field's own `Binding.Local` buffer already key on.
-          // A form whose fields are added, removed or re-ordered between
-          // renders must move each field's uncommitted text with the field.
-          prop.key field.Id
-          prop.className Css.Class.FormField
-          prop.children
-              [ Html.label
-                    [ prop.className "fuaran-form-label"
-                      prop.htmlFor field.Id
-                      prop.text labelWithRequired ]
-                control
-                match field.Help with
-                | Some help ->
-                    Html.div
-                        [ prop.className Css.Class.FormHelp
-                          prop.text (BindingResolver.resolveTextSource ctx.Sources help) ]
-                | None -> Html.none ] ]
-
-and private renderFilters (ctx: RenderContext<'Msg>) (specs: FilterSpec<'Msg> list) : ReactElement =
-    Html.div
-        [ prop.className Css.Class.Filters
-          prop.children [ for spec in specs -> renderFilterSpec ctx spec ] ]
-
+/// One `Filters` chip. Phase 2290 — the chip and every plain control are
+/// `ElementPlan.InputPlan` (rulings R7 / R8 / R9), shared with the server;
+/// the combobox, rating and token chips are this renderer's components by
+/// nature, writing through `$filters.<name>` like every declarative chip.
 and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>) : ReactElement =
     let labelText = BindingResolver.resolveTextSource ctx.Sources spec.Label
+    let dest: Binding<obj> = Binding.Filter(spec.Name, None)
 
-    // Phase 423 default write path: a chip whose `onChange` is `None` (the declarative / AI-authored
-    // shape) writes its typed value to the reactive `FilterStore` under `spec.Name` — zero host code,
-    // and every `Binding.Filter` reader re-renders (the `useFilterKeys` subscription). A `Some`
-    // closure dispatches exactly as before (no store write) — F#-authored apps are unchanged.
-    //
-    // Phase 1141 — that write path used to be EIGHT local closures here, a
-    // second implementation of `fieldChange` / `pairFieldChange` unreachable
-    // from any test by construction. They are gone; every arm below routes
-    // through the module-level seam with `filterWriteBinding` as the
-    // destination, which is exactly what those locals wrote to:
-    // `FilterStore.set spec.Name v` IS `writeBackTo`'s `Binding.Filter` arm,
-    // and `FilterStore.clear spec.Name` IS its `None` clear. The substitution
-    // is therefore behaviour-preserving, not a redesign.
-    //
-    // Note the READ and the WRITE are different bindings whenever a chip
-    // carries an explicit non-filter value slot: each arm resolves its CURRENT
-    // value through `spec`'s own slot, while the declarative write has always
-    // gone to `$filters.<name>` regardless. For the auto-bind form — the
-    // overwhelmingly common declarative shape, and the substitution every arm
-    // already makes for an absent slot — the two are the same binding. Routing
-    // the write through the resolved binding instead would change filter-chip
-    // semantics for every control kind, not just these; that is a language
-    // decision, out of this phase's scope, and named here rather than left
-    // implicit in a closure.
-    let filterWriteBinding: Binding<obj> = Binding.Filter(spec.Name, None)
+    let auto (binding: Binding<'T> option) : Binding<'T> =
+        binding |> Option.defaultValue (Binding.Filter(spec.Name, None))
 
-    // 0.2.0 filters-unification: the chip's control is an ordinary
-    // FormFieldKind; every declarative (handler-free) control writes its own
-    // `$filters.<name>`.
-    //
-    // Phase 596 — the value slots are `Binding<_> option` since the swap. An
-    // absent (`None`) slot on a filter chip is the auto-bind form: substitute
-    // exactly the binding the decoder used to synthesise —
-    // `Binding.Filter(spec.Name, None)`.
     let control =
         match spec.Kind with
-        | FormFieldKind.Text(FieldView.Text value, FieldView.OnText onChange) ->
-            let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
-            let current = BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue ""
-
-            Html.input
-                [ prop.className Css.Class.FilterInput
-                  prop.type'.text
-                  prop.placeholder labelText
-                  prop.value current
-                  prop.onChange (fun (v: string) -> fieldChange ctx onChange filterWriteBinding (Some(box v)) v) ]
-        | FormFieldKind.Number(FieldView.Number value, FieldView.OnNumber onChange) ->
-            let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
-
-            let current =
-                BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue 0.0
-
-            Html.input
-                [ prop.className Css.Class.FilterInput
-                  prop.type'.number
-                  prop.value current
-                  prop.onChange (fun (v: float) -> fieldChange ctx onChange filterWriteBinding (Some(box v)) v) ]
-        | FormFieldKind.RangedNumber(FieldView.Number value, FieldView.OnNumber onChange, _, _, _) ->
-            let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
-
-            let current =
-                BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue 0.0
-
-            Html.input
-                [ prop.className Css.Class.FilterInput
-                  prop.type'.number
-                  prop.value current
-                  prop.onChange (fun (v: float) -> fieldChange ctx onChange filterWriteBinding (Some(box v)) v) ]
-        | FormFieldKind.Checkbox(FieldView.Bool value, FieldView.OnBool onToggle) ->
-            let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
-
-            let current =
-                BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue false
-
-            Html.input
-                [ prop.className Css.Class.FilterCheckbox
-                  prop.type'.checkbox
-                  prop.isChecked current
-                  prop.onChange (fun (v: bool) -> fieldChange ctx onToggle filterWriteBinding (Some(box v)) v) ]
-        // Phase 766 — the filter-chip twin of the form toggle; same boolean
-        // filter write-back, switch semantics for the screen reader.
-        | FormFieldKind.Toggle(FieldView.Bool value, FieldView.OnBool onToggle) ->
-            let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
-
-            let current =
-                BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue false
-
-            Html.input
-                [ prop.className Css.Class.FilterToggle
-                  prop.type'.checkbox
-                  prop.role "switch"
-                  prop.ariaChecked current
-                  prop.isChecked current
-                  prop.onChange (fun (v: bool) -> fieldChange ctx onToggle filterWriteBinding (Some(box v)) v) ]
-        | FormFieldKind.TextArea(FieldView.Text value, FieldView.OnText onChange, rows) ->
-            let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
-            let current = BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue ""
-
-            Html.textarea
-                [ prop.className Css.Class.FilterInput
-                  prop.rows rows
-                  prop.value current
-                  prop.onChange (fun (v: string) -> fieldChange ctx onChange filterWriteBinding (Some(box v)) v) ]
-        | FormFieldKind.DateTime(FieldView.Text value, FieldView.OnChoice onChange, _, _, _, _) ->
-            let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
-            let current = BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue ""
-
-            Html.input
-                [ prop.className Css.Class.FilterInput
-                  prop.type'.date
-                  prop.value current
-                  prop.onChange (fun (v: string) -> fieldChange ctx onChange filterWriteBinding (Some(box v)) (Some v)) ]
         | FormFieldKind.Combobox(allowFreeText, FieldView.OnChoice onChange, options, FieldView.Text value) ->
-            // Phase 1113 — the form field's widget, chip-addressed: the same
-            // `ComboboxControl`, writing through `filterWriteBinding` like every
-            // other declarative chip arm.
-            let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
-
-            let current =
-                BindingResolver.tryResolve ctx.Sources value
-                |> Option.bind (fun s -> if isNull s || s = "" then None else Some s)
-
             ComboboxControl.combobox
                 {| fieldId = spec.Name + "-filter"
                    className = Css.Class.FilterInputComboboxInput
@@ -4387,169 +3957,24 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                    allowFreeText = allowFreeText
                    placeholder = labelText
                    options = BindingResolver.resolveOptions ctx.Sources options
-                   committed = current
-                   commit = fun chosen -> fieldChange ctx onChange filterWriteBinding (chosen |> Option.map box) chosen |}
-        | FormFieldKind.Choice(options, FieldView.Text value, FieldView.OnChoice onChange) ->
-            let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
-            let opts = BindingResolver.resolveOptions ctx.Sources options
-
-            // The choice value is `Binding<string>` since the swap — a
-            // null/empty resolution is no-selection, so the placeholder
-            // still renders.
-            let current =
-                BindingResolver.tryResolve ctx.Sources value
-                |> Option.bind (fun s -> if isNull s || s = "" then None else Some s)
-
-            let optionItems =
-                Html.option [ prop.value ""; prop.text "—" ]
-                :: [ for option in opts ->
-                         Html.option [ prop.key option.Value; prop.value option.Value; prop.text option.Label ] ]
-
-            Html.select
-                [ prop.className Css.Class.FilterSelect
-                  prop.value (current |> Option.defaultValue "")
-                  prop.onChange (fun (v: string) ->
-                      let chosen = if v = "" then None else Some v
-                      fieldChange ctx onChange filterWriteBinding (chosen |> Option.map box) chosen)
-                  prop.children optionItems ]
-        | FormFieldKind.Range(FieldView.Range value, FieldView.OnRange onChange, _, _, _) ->
-            // Two-input range — min + max bound to a `RangePair` binding
-            // (was a tuple); any change emits the whole pair back. Real
-            // range sliders are session-4+ ergonomic territory.
-            let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
-
-            let current: RangePair =
-                BindingResolver.tryResolve ctx.Sources value
-                |> Option.defaultValue { Min = 0.0; Max = 0.0 }
-
-            let minV, maxV = current.Min, current.Max
-            // Phase 1141 — the chip's pair write-back is the FORM field's, one
-            // seam; the chip's declarative destination is filterWriteBinding.
-            let onMinInput, onMaxInput =
-                rangeInputHandlers ctx onChange filterWriteBinding current
-
-            Html.span
-                [ prop.className Css.Class.FilterRange
-                  prop.children
-                      [ Html.input
-                            [ prop.type'.number
-                              prop.className Css.Class.FilterRangeMin
-                              prop.value minV
-                              prop.onChange onMinInput ]
-                        Html.span [ prop.className Css.Class.FilterRangeSep; prop.text "–" ]
-                        Html.input
-                            [ prop.type'.number
-                              prop.className Css.Class.FilterRangeMax
-                              prop.value maxV
-                              prop.onChange onMaxInput ] ] ]
-        | FormFieldKind.DateTimeRange(FieldView.DateRange value, FieldView.OnDateRange onChange, variant, min, max, step) ->
-            // Phase 725 — the date-range chip: two native date/time inputs
-            // over ONE filter param carrying the whole (from, to) pair. Both
-            // ends share the min/max/step attributes (flat options since the
-            // swap); the pair is the `DateTimeRangePair` record (the `Range` shape).
-            let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
-
-            let current: DateTimeRangePair =
-                BindingResolver.tryResolve ctx.Sources value
-                |> Option.defaultValue { From = ""; To = "" }
-
-            let fromV, toV = current.From, current.To
-            // Phase 1141 — see the chip's Range arm: one seam, both closures.
-            let onFromInput, onToInput =
-                dateRangeInputHandlers ctx onChange filterWriteBinding current
-
-            let inputType =
-                match variant with
-                | DateTimeVariant.Date -> "date"
-                | DateTimeVariant.Time -> "time"
-                | DateTimeVariant.DateTime -> "datetime-local"
-
-            let constraintAttrs =
-                [ match min with
-                  | Some m -> prop.custom ("min", m)
-                  | None -> ()
-                  match max with
-                  | Some m -> prop.custom ("max", m)
-                  | None -> ()
-                  match step with
-                  | Some s -> prop.step s
-                  | None -> () ]
-
-            Html.span
-                [ prop.className Css.Class.FilterRange
-                  prop.children
-                      [ Html.input (
-                            [ prop.type' inputType
-                              prop.className Css.Class.FilterInputFilterRangeMin
-                              prop.value fromV
-                              prop.onChange onFromInput ]
-                            @ constraintAttrs
-                        )
-                        Html.span [ prop.className Css.Class.FilterRangeSep; prop.text "–" ]
-                        Html.input (
-                            [ prop.type' inputType
-                              prop.className Css.Class.FilterInputFilterRangeMax
-                              prop.value toV
-                              prop.onChange onToInput ]
-                            @ constraintAttrs
-                        ) ] ]
-        | FormFieldKind.SegmentedChoice(options, FieldView.Text value, FieldView.OnChoice onChange, orientation) ->
-            // Visible-options exclusive-choice filter. Parallel
-            // surface to `FormFieldKind.SegmentedChoice`; uses the filter's
-            // `Name` as the id-namespace for the radiogroup / fieldset.
-            let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
-
-            renderSegmentedChoiceCore
-                ctx
-                spec.Name
-                options
-                value
-                (fun chosen -> fieldChange ctx onChange filterWriteBinding (chosen |> Option.map box) chosen)
-                orientation
-        // Phase 1130 — both new controls as filter chips. The chip's write
-        // destination is `$filters.<name>` exactly as every other declarative
-        // chip's is; only the READ comes from the chip's own slot.
+                   committed =
+                    BindingResolver.tryResolve ctx.Sources (auto value)
+                    |> Option.bind (fun s -> if isNull s || s = "" then None else Some s)
+                   commit = fun chosen -> fieldChange ctx onChange dest (chosen |> Option.map box) chosen |}
         | FormFieldKind.Rating(allowHalf, max, FieldView.OnNumber onChange, FieldView.Number value) ->
-            let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
-
-            let current =
-                BindingResolver.tryResolve ctx.Sources value
-                |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.rating
-
             RatingControl.rating
                 {| fieldId = spec.Name
                    className = "fuaran-filter-control"
                    max = max
                    allowHalf = allowHalf
-                   // A chip's declarative write always has somewhere to go, so
-                   // a filter rating is adjustable whatever its read slot is.
+                   // A chip's declarative write always has somewhere to go.
                    interactive = true
                    label = labelText
-                   value = current
-                   commit = fun (v: float) -> fieldChange ctx onChange filterWriteBinding (Some(box v)) v |}
-        | FormFieldKind.Color(FieldView.OnText onChange, FieldView.Text value) ->
-            let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
-
-            let current =
-                BindingResolver.tryResolve ctx.Sources value
-                |> Option.filter Fuaran.UI.HostPrelude.HexColor.isValid
-                |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.color
-
-            Html.input
-                [ prop.className Css.Class.FilterInputColorInput
-                  prop.type'.color
-                  prop.value current
-                  prop.onChange (fun (v: string) -> fieldChange ctx onChange filterWriteBinding (Some(box v)) v) ]
-        // Phase 1121 — the token chip. One filter key carries the whole
-        // multi-token selection, which is what makes "anything carrying any of
-        // these labels" a single declarative filter rather than N of them.
+                   value =
+                    BindingResolver.tryResolve ctx.Sources (auto value)
+                    |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.rating
+                   commit = fun (v: float) -> fieldChange ctx onChange dest (Some(box v)) v |}
         | FormFieldKind.Tokens(allowFreeText, FieldView.OnTokens onChange, suggestions, FieldView.Tokens value) ->
-            let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
-
-            let current =
-                BindingResolver.tryResolve ctx.Sources value
-                |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.tokens
-
             TokensControl.tokens
                 {| fieldId = spec.Name
                    className = "fuaran-filter-control fuaran-tokens-input"
@@ -4558,175 +3983,16 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                    allowFreeText = allowFreeText
                    placeholder = ""
                    suggestions = suggestions |> Option.map (BindingResolver.resolveOptions ctx.Sources)
-                   tokens = current
-                   commit = fun next -> fieldChange ctx onChange filterWriteBinding (Some(box next)) next |}
+                   tokens =
+                    BindingResolver.tryResolve ctx.Sources (auto value)
+                    |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.tokens
+                   commit = fun next -> fieldChange ctx onChange dest (Some(box next)) next |}
+        | _ -> Emit.planWith (filterAttach ctx spec) (ElementPlan.InputPlan.filterControl ctx.Sources spec)
 
-    Html.label
-        [ // The filter's declared name — the key it writes to `$filters.<name>`
-          // and every `Binding.Filter` reader looks it up by.
-          prop.key spec.Name
-          // Phase 1648 — the chip-KIND suffix, which this renderer never
-          // emitted. The server has emitted `fuaran-filter fuaran-filter-<kind>`
-          // since the filters unification while this side emitted a bare
-          // `fuaran-filter`, so a stylesheet or host selector written against
-          // `.fuaran-filter-range` styled the static render and not the hydrated
-          // one — silently, and for the whole family at once. The table is
-          // `Theme.filterKindClass` now, read by both renderers, because two
-          // renderers spelling one vocabulary inline is how a vocabulary drifts.
-          prop.className (Css.filter (Theme.filterKindClass spec.Kind))
-          prop.children
-              [ Html.span [ prop.className Css.Class.FilterLabel; prop.text labelText ]
-                control ] ]
+    Emit.plan (ElementPlan.InputPlan.filter ctx.Sources spec (ElementPlan.Plan.Host control))
 
-/// Shared segmented-control / radio-group renderer.
-/// Drives both `FormFieldKind.SegmentedChoice` (id namespace = field.Id) and
-/// `FilterKind.SegmentedFilter` (id namespace = spec.Name). Emits two
-/// distinct shapes depending on orientation:
-///
-///   Horizontal — `<div role="radiogroup">` of `<button role="radio"
-///     aria-checked={…}>` per option. Keyboard arrow keys cycle focus +
-///     selection (wraps at ends, matching the WAI-ARIA radiogroup pattern).
-///
-///   Vertical — `<fieldset>` with a visually-hidden `<legend>` and per-
-///     option `<input type="radio" name=idNamespace>` + `<label>`. The
-///     shared `name` makes the browser handle arrow-key cycling natively.
-and private renderSegmentedChoiceCore
-    (ctx: RenderContext<'Msg>)
-    (idNamespace: string)
-    (options: Binding<SelectOption list>)
-    (value: Binding<string>)
-    // A side-effecting change handler (Phase 423), not an `Action` factory: the form-field caller
-    // dispatches through `runAction`, while a declarative `SegmentedFilter` writes the FilterStore —
-    // so the shared core stays agnostic to which channel the change drives.
-    (handleChange: string option -> unit)
-    (orientation: Orientation)
-    : ReactElement =
-    let opts = BindingResolver.resolveOptions ctx.Sources options
-
-    // The choice value is `Binding<string>` since the swap — a null/empty
-    // resolution is no-selection.
-    let current =
-        BindingResolver.tryResolve ctx.Sources value
-        |> Option.bind (fun s -> if isNull s || s = "" then None else Some s)
-
-    let optionId (index: int) : string = Ids.optionId idNamespace index
-
-    match orientation with
-    | Orientation.Horizontal ->
-        // Per-option button. `role="radio"` + `aria-checked` carry the
-        // semantic radiogroup contract; `tabindex` is set to 0 only on the
-        // active option (the roving-tabindex pattern) so Tab moves into the
-        // group once and Arrow keys move within it.
-        let activeIndex =
-            match current with
-            | Some v -> opts |> List.tryFindIndex (fun o -> o.Value = v) |> Option.defaultValue -1
-            | None -> -1
-
-        let optionButton (index: int) (option: SelectOption) : ReactElement =
-            let isActive = index = activeIndex
-            let labelText = option.Label
-
-            Html.button
-                [ // The option's VALUE, which is what the choice is stored as
-                  // and compared by — not the position it happens to occupy in
-                  // a list an author or a query can re-order.
-                  prop.key (reconciliationKey (Some option.Value) index)
-                  prop.className Css.Class.SegmentedOption
-                  prop.type'.button
-                  prop.id (optionId index)
-                  prop.ariaChecked isActive
-                  prop.role "radio"
-                  prop.tabIndex (
-                      if isActive then 0
-                      elif activeIndex < 0 && index = 0 then 0
-                      else -1
-                  )
-                  prop.text labelText
-                  prop.onClick (fun _ -> handleChange (Some option.Value)) ]
-
-        let cycle (delta: int) : unit =
-            if List.isEmpty opts then
-                ()
-            else
-                let count = List.length opts
-
-                let nextIndex =
-                    match activeIndex with
-                    | i when i < 0 ->
-                        // No selection yet — entering with ArrowRight picks
-                        // the first; ArrowLeft picks the last.
-                        if delta > 0 then 0 else count - 1
-                    | i ->
-                        // Wrap-around for both directions per the WAI-ARIA
-                        // radiogroup pattern.
-                        ((i + delta) % count + count) % count
-
-                let nextOption = opts |> List.item nextIndex
-                handleChange (Some nextOption.Value)
-
-        let onKeyDown (e: Browser.Types.KeyboardEvent) : unit =
-            match e.key with
-            | "ArrowRight"
-            | "ArrowDown" ->
-                e.preventDefault ()
-                cycle 1
-            | "ArrowLeft"
-            | "ArrowUp" ->
-                e.preventDefault ()
-                cycle -1
-            | "Home" ->
-                e.preventDefault ()
-
-                match opts with
-                | first :: _ -> handleChange (Some first.Value)
-                | [] -> ()
-            | "End" ->
-                e.preventDefault ()
-
-                match List.tryLast opts with
-                | Some last -> handleChange (Some last.Value)
-                | None -> ()
-            | _ -> ()
-
-        Html.div
-            [ prop.className Css.Class.SegmentedHorizontal
-              prop.id idNamespace
-              prop.role "radiogroup"
-              prop.custom ("aria-orientation", "horizontal")
-              prop.onKeyDown onKeyDown
-              prop.children [ for index, option in List.indexed opts -> optionButton index option ] ]
-    | Orientation.Vertical ->
-        // Native radio inputs grouped by shared `name = idNamespace` — the
-        // browser handles arrow-key cycling automatically. Each row is a
-        // `<input>` + `<label>` pair; the fieldset's `<legend>` is the
-        // group's accessible name (visually-hidden via reference CSS).
-        let optionRow (index: int) (option: SelectOption) : ReactElement =
-            let inputId = optionId index
-            let labelText = option.Label
-            let isChecked = current = Some option.Value
-
-            Html.div
-                [ prop.key (reconciliationKey (Some option.Value) index)
-                  prop.className Css.Class.SegmentedRow
-                  prop.children
-                      [ Html.input
-                            [ prop.type'.radio
-                              prop.id inputId
-                              prop.name idNamespace
-                              prop.value option.Value
-                              prop.isChecked isChecked
-                              prop.onChange (fun (checked': bool) ->
-                                  if checked' then
-                                      handleChange (Some option.Value)) ]
-                        Html.label [ prop.htmlFor inputId; prop.text labelText ] ] ]
-
-        Html.fieldSet
-            [ prop.className Css.Class.SegmentedVertical
-              prop.custom ("aria-orientation", "vertical")
-              prop.children (
-                  Html.legend [ prop.className Css.Class.SegmentedLegend; prop.text idNamespace ]
-                  :: [ for index, option in List.indexed opts -> optionRow index option ]
-              ) ]
+and private renderFilters (ctx: RenderContext<'Msg>) (specs: FilterSpec<'Msg> list) : ReactElement =
+    Emit.plan (ElementPlan.InputPlan.filters [ for spec in specs -> ElementPlan.Plan.Host(renderFilterSpec ctx spec) ])
 
 and private renderFileUpload
     (ctx: RenderContext<'Msg>)
@@ -4738,123 +4004,68 @@ and private renderFileUpload
     (nodeId: string)
     (spec: FileUploadSpec<'Msg>)
     : ReactElement =
-    let acceptStr =
-        if List.isEmpty spec.Accept then
-            ""
-        else
-            String.concat "," spec.Accept
+    // Phase 2290 — the label, the input and its attributes are
+    // `ElementPlan.InputPlan` (ruling R13), shared with the server; this binds
+    // the selection.
+    let onSelect (files: Browser.Types.File list) : unit =
+        let selections: FileSelection list =
+            // Phase 136: carry an opaque `FileRef` per selection. `Ref.Id` is an
+            // index-qualified stable token (the only part that ever serialises);
+            // `Ref.Handle` boxes the actual browser `File` so
+            // `Action.ReadFileBody` can read the blob without the consumer
+            // touching `FileReader`.
+            files
+            |> List.mapi (fun i f ->
+                { Name = f.name
+                  Size = int64 f.size
+                  MimeType = f.``type``
+                  Ref =
+                    { Id = sprintf "%d:%s" i f.name
+                      Handle = Some(box f) } })
 
-    // Phase 130: optional bound disabled-state — emit the HTML `disabled`
-    // attribute on the file input when the binding resolves `true`.
-    let isDisabled =
-        spec.Disabled
-        |> Option.bind (BindingResolver.tryResolve ctx.Sources)
-        |> Option.defaultValue false
+        // Phase 1548 — the declared ceilings, applied at SELECTION time. A
+        // selection outside a declared ceiling is REFUSED and REPORTED, and no
+        // `onSelect` runs — never TRUNCATED: silently uploading a subset of the
+        // set the reader chose is a failure with no symptom. `maxBytes` is per
+        // file, the quantity the G1 gate measures on the `file-read` route.
+        // Reported through `Warn` because this control has no failure channel
+        // of its own; inventing one would be a wire change.
+        let tooMany =
+            match spec.MaxFiles with
+            | Some limit when List.length selections > limit -> Some(sprintf "maxFiles of %d" limit)
+            | _ -> None
 
-    let inputProps: IReactProperty list =
-        [ prop.className Css.Class.FileUploadInput
-          prop.type'.file
-          prop.multiple spec.Multiple
-          if isDisabled then
-              prop.disabled true
-          if acceptStr <> "" then
-              prop.accept acceptStr
-          // Phase 1116 — the capture request, projected as the HTML attribute
-          // and nothing else. There is no code here for the desktop case, and
-          // that is the feature rather than an omission: a user agent with no
-          // such device ignores `capture` and shows the file browser, so the
-          // degradation is the platform's and the control stays a working
-          // upload. Nothing else changes — the same input, the same `change`,
-          // the same `onSelect` and the same `input.files` the server-driven
-          // tier reads, so a captured photo travels every route a picked one
-          // does. `accept` is emitted exactly as declared above and is never
-          // synthesised from the device; an incoherent pair is REPORTED by
-          // FUARAN134, not repaired here (see `Fuaran.UI.MediaCapture`).
-          match spec.Capture with
-          | Some source -> prop.custom ("capture", Fuaran.UI.MediaCapture.keyword source)
-          | None -> ()
-          // Feliz `prop.onChange (fun (files: File list) -> ...)` overload —
-          // pulls files off `e.target.files` for us. Per-file metadata is
-          // browser-side; the consumer's Action.Call typically pairs the
-          // list with a multipart upload.
-          prop.onChange (fun (files: Browser.Types.File list) ->
-              let selections: FileSelection list =
-                  // Phase 136: carry an opaque `FileRef` per selection. `Ref.Id`
-                  // is an index-qualified stable token (the only part that ever
-                  // serialises); `Ref.Handle` boxes the actual browser `File`
-                  // so `Action.ReadFileBody` can read the blob without the
-                  // consumer touching `FileReader`.
-                  files
-                  |> List.mapi (fun i f ->
-                      { Name = f.name
-                        Size = int64 f.size
-                        MimeType = f.``type``
-                        Ref =
-                          { Id = sprintf "%d:%s" i f.name
-                            Handle = Some(box f) } })
+        let tooLarge =
+            match spec.MaxBytes with
+            | Some limit when selections |> List.exists (fun s -> s.Size > int64 limit) ->
+                Some(sprintf "maxBytes of %d" limit)
+            | _ -> None
 
-              // Phase 1548 — the declared ceilings, applied at SELECTION time.
-              // This is the floor the node's own declaration buys on a client
-              // that renders it: a selection outside a declared ceiling is
-              // REFUSED and REPORTED, and no `onSelect` runs.
-              //
-              // Refused, never TRUNCATED, and that is the whole judgement. The
-              // tempting behaviour is to take the first `maxFiles` files, or
-              // the ones under `maxBytes`, and carry on — and it is exactly
-              // wrong: the reader chose a set, and silently uploading a subset
-              // of it is a failure with no symptom. They see the control accept
-              // their pick and never learn which half was dropped. A refusal
-              // they can see and correct is strictly better than a success that
-              // is not one.
-              //
-              // `maxBytes` is per file, so EVERY selection is measured against
-              // it rather than the total: that is what the declaration says,
-              // and it is the same quantity the G1 gate measures on the
-              // `file-read` route.
-              //
-              // Reported through `Warn` rather than through a message, because
-              // this control has no failure channel of its own — an upload's
-              // one handler carries a selection, and there is no shape in which
-              // it can carry a refusal. Inventing one would be a wire change,
-              // which is a separate act from enforcing a bound.
-              let tooMany =
-                  match spec.MaxFiles with
-                  | Some limit when List.length selections > limit -> Some(sprintf "maxFiles of %d" limit)
-                  | _ -> None
+        match tooMany |> Option.orElse tooLarge with
+        | Some breached ->
+            ctx.Runtime.Warn(
+                sprintf
+                    "FileUpload '%s': the selection is outside this control's declared %s, so it was refused. Nothing was read and no handler ran."
+                    nodeId
+                    breached
+            )
+        | None ->
+            // `OnSelect` is optional since the swap — an absent handler means
+            // no dispatch.
+            spec.OnSelect
+            |> Option.iter (fun onSelect -> runAction ctx (onSelect selections))
 
-              let tooLarge =
-                  match spec.MaxBytes with
-                  | Some limit when selections |> List.exists (fun s -> s.Size > int64 limit) ->
-                      Some(sprintf "maxBytes of %d" limit)
-                  | _ -> None
+    let attach: Emit.Attach =
+        fun point _ ->
+            match point with
+            // Feliz's `File list` overload pulls the files off `e.target.files`.
+            | ElementPlan.Attach.FileSelect -> [ prop.onChange onSelect ]
+            | _ -> []
 
-              match tooMany |> Option.orElse tooLarge with
-              | Some breached ->
-                  ctx.Runtime.Warn(
-                      sprintf
-                          "FileUpload '%s': the selection is outside this control's declared %s, so it was refused. Nothing was read and no handler ran."
-                          nodeId
-                          breached
-                  )
-              | None ->
-                  // `OnSelect` is optional since the swap — an absent handler
-                  // means no dispatch (an AI-authored upload without a handler
-                  // is inert server-side).
-                  spec.OnSelect
-                  |> Option.iter (fun onSelect -> runAction ctx (onSelect selections))) ]
-
-    let labelChildren =
-        [ Html.span
-              [ prop.className Css.Class.FileUploadLabel
-                prop.text (BindingResolver.resolveTextSource ctx.Sources spec.Label) ]
-          Html.input inputProps ]
-
-    // Phase 1115 — the ingress gestures. Neither declared is the shape every
-    // document written before this phase has, and it renders EXACTLY what it
-    // rendered then: the polarity of the two omit-at-`false` flags is visible
-    // here as well as on the wire. Either declared hands the same children to
-    // `FileUploadDrop`, which wraps them in the drag / paste affordance without
-    // redefining the control — there is one definition of this markup.
+    // Phase 1115 — the ingress gestures. Neither declared renders the plain
+    // picker; either hands the same children to `FileUploadDrop`, which wraps
+    // them in the drag / paste affordance (a stateful component, by nature)
+    // without redefining the control.
     let control =
         if spec.DropTarget || spec.AcceptPaste then
             FileUploadDrop.dropZone
@@ -4863,18 +4074,17 @@ and private renderFileUpload
                    acceptPaste = spec.AcceptPaste
                    accept = spec.Accept
                    multiple = spec.Multiple
-                   children = labelChildren |}
+                   children =
+                    ElementPlan.InputPlan.fileUploadChildren ctx.Sources spec
+                    |> List.map (Emit.planWith attach) |}
         else
-            Html.label [ prop.className Css.Class.FileUpload; prop.children labelChildren ]
+            Emit.planWith attach (ElementPlan.InputPlan.fileUpload ctx.Sources spec)
 
-    // Phase 1117 — the streaming leg. An upload with no declared destination is
-    // the control above, unchanged, and pays nothing: no wrapper element, no
-    // React state, no sink lookup. A declared destination wraps it in the shell
-    // that owns the transfer and its status line; `OnSelect` above is untouched
-    // and fires from the input's own change exactly as it always has, because
-    // "the reader chose these files" and "those files now exist at a
-    // destination" are two facts about one gesture rather than two spellings of
-    // one fact.
+    // Phase 1117 — the streaming leg. No declared destination pays nothing; a
+    // declared one wraps the control in the shell that owns the transfer and
+    // its status line (by nature). `OnSelect` above is untouched: "the reader
+    // chose these files" and "those files now exist at a destination" are two
+    // facts about one gesture.
     match spec.Destination with
     | None -> control
     | Some destination ->
@@ -6137,107 +5347,42 @@ and private renderChart
     match ctx.VisAdapter.RenderChart(spec, visCtx) with
     | Some rendered -> rendered
     | None ->
+        // Phase 2290 — the state slots, the lowered Drawing SVG and the
+        // placeholder (ruling R11) are `ElementPlan.VisPlan.chart`, shared with
+        // the server. Phase 933 — the POINT-SELECTION DEFAULT: one handler on
+        // the container maps `event.target` back to a datum through Phase 642's
+        // `data-fuaran-mark` (the SVG is a raw string, so there is no per-mark
+        // element to attach to); an `OnPointClick` of `None` publishes the
+        // clicked datum under the chart's own node id. POINT SELECTION ONLY —
+        // 866 left zoom and brush out.
+        let drawn: Row list ref = ref []
 
-        let resolution = BindingResolver.resolve<Row seq> ctx.Sources spec.Source
+        let svg (rows: Row list) : string =
+            drawn.Value <- rows
+            Fuaran.UI.Charts.renderSvg ctx.Sources (BindingResolver.resolveTextSource ctx.Sources) spec rows
 
-        match resolution, state.OnLoading, state.OnError with
-        | BindingResolver.NotResolved, Some loadingNode, _ -> render ctx loadingNode
-        | BindingResolver.Errored msg, _, Some errorFn ->
-            render
-                ctx
-                (errorFn
-                    { Kind = ErrorKind.BindingResolution
-                      Message = msg
-                      CorrelationId = correlationId parentNodeId })
-        | _ ->
-            match resolution, spec.Kind with
-            | BindingResolver.Resolved rows, kind when Fuaran.UI.Charts.isLowered kind ->
-                // Phase 526 — first-party render: lower the semantic Chart to a
-                // Drawing and emit it as inline SVG (Phase 525). No third-party
-                // charting dependency; renders identically SSR + CSR (the same
-                // lowering + Drawing builder). The lowered-kind set is
-                // `Charts.isLowered` — the single source of truth (636/637/638
-                // arms included), so this branch never drifts from the engine.
-                // Phase 933 — the POINT-SELECTION DEFAULT: Phase 427's write
-                // default, extended from `DataGrid` to `Chart` exactly as the
-                // affordance charter (866) admitted census #22 — as a REDIRECT,
-                // with no new wire vocabulary at all. A chart whose
-                // `OnPointClick` is `None` publishes the clicked datum under its
-                // OWN `NodeId`, so no key is declared anywhere; every
-                // `Binding.Selection` reader of this chart then re-renders with
-                // the row, and crossfilter falls out of 818's read rule rather
-                // than being wired.
-                //
-                // Why the click is DELEGATED rather than per-point: this branch
-                // emits the lowered Drawing as a raw SVG string, so there is no
-                // per-mark React element to attach to. One handler on the
-                // container maps `event.target` back to a datum through Phase
-                // 642's `data-fuaran-mark`, which has been in the emitted markup
-                // since 642 — so nothing about the rendered SVG changes here,
-                // and no golden moves.
-                //
-                // Scope, deliberately: POINT SELECTION ONLY. 866 dispositioned
-                // chart ZOOM and BRUSH separately and left both OUT; neither is
-                // reachable from this handler and neither should be added under
-                // this heading.
-                let pointRows = List.ofSeq rows
-
-                Html.div
+        Emit.planWith
+            (fun point _ ->
+                match point with
+                | ElementPlan.Attach.ChartPointClick ->
                     [ prop.onClick (fun (ev: Browser.Types.MouseEvent) ->
                           let clicked = ev.target :?> Browser.Types.Element
                           // Chrome (axes, gridlines, labels, the legend) carries
-                          // no mark, so a click on it resolves to nothing and
-                          // this is a no-op — the chart is not one big button.
+                          // no mark, so a click on it is a no-op.
                           match clicked.closest "[data-fuaran-mark]" with
                           | None -> ()
                           | Some marked ->
                               let markId = marked.getAttribute "data-fuaran-mark"
 
                               if not (isNull markId) then
-                                  chartPointClick (runAction ctx) parentNodeId spec pointRows markId)
-                      // Phase 643 — the emission goes through
-                      // `Charts.renderSvg`, the single entry point the SERVER
-                      // arm also calls, so the provenance scope threads through
-                      // both tiers identically by construction rather than by
-                      // two call sites kept in step. The host-installed scope
-                      // ships `Off`, so these client bytes are unchanged.
-                      prop.dangerouslySetInnerHTML (
-                          TrustedTypes.html (
-                              Fuaran.UI.Charts.renderSvg
-                                  ctx.Sources
-                                  (BindingResolver.resolveTextSource ctx.Sources)
-                                  spec
-                                  pointRows
-                          )
-                      ) ]
-            | _ ->
-                // Unresolved data, or a chart kind whose lowering rule has not
-                // shipped yet (Heatmap): a labelled placeholder + row count so
-                // the chart slot stays visible.
-                let rowCount =
-                    match resolution with
-                    | BindingResolver.Resolved seq -> Seq.length seq
-                    | _ -> 0
-
-                Html.div
-                    [ prop.className "fuaran-chart"
-                      prop.children
-                          [ match spec.Title with
-                            | Some title ->
-                                Html.div
-                                    [ prop.className Css.Class.ChartTitle
-                                      prop.text (BindingResolver.resolveTextSource ctx.Sources title) ]
-                            | None -> Html.none
-                            Html.div
-                                [ prop.className Css.Class.ChartPlaceholder
-                                  prop.text (
-                                      sprintf
-                                          "[Chart placeholder: %A — %d rows × {%s} → {%s}. Wire AgChartAdapter for live rendering.]"
-                                          spec.Kind
-                                          rowCount
-                                          spec.XField
-                                          (String.concat ", " spec.YFields)
-                                  ) ] ] ]
+                                  chartPointClick (runAction ctx) parentNodeId spec drawn.Value markId) ]
+                | _ -> [])
+            (ElementPlan.VisPlan.chart
+                (planContext ctx parentNodeId)
+                (Some state)
+                spec
+                (Fuaran.UI.Charts.isLowered spec.Kind)
+                svg)
 
 /// Hand a CSV document to the reader (Phase 1125).
 ///
@@ -6283,82 +5428,46 @@ and private deliverDownload (url: string) (suggestedName: string) : unit =
 /// control would tell the reader nothing, and drawing one that silently does
 /// nothing is the fake-affordance shape. A denied export warns through the same
 /// diagnostic channel every other refusal uses.
+and private gridExportAttach
+    (ctx: RenderContext<'Msg>)
+    (nodeId: string)
+    (project: unit -> string list * string list list)
+    : Emit.Attach =
+    fun point _ ->
+        match point with
+        | ElementPlan.Attach.GridExport ->
+            [ prop.onClick (fun _ ->
+                  applyDispatchGateOutcome ctx.Runtime (Runtime.ActionDescriptor.Export nodeId) (fun () ->
+                      let headers, rows = project ()
+                      let csv = GridExport.document headers rows
+                      deliverDownload (GridExport.dataUrl csv) (GridExport.filename nodeId))
+                  |> ignore) ]
+        | _ -> []
+
+/// The grid's export control (Phase 1125).
+///
+/// RENDERER-OWNED, which is the whole of the grid-behaviour rule and the reason
+/// a decorative export button is not authorable: the control that serialises the
+/// rows and the grid that holds them cannot come apart, because they are the
+/// same node.
+///
+/// `project` is a THUNK. Serialising a grid on every render to fill a button
+/// nobody has pressed would be a per-render cost proportional to the row count,
+/// and the rows are re-projected on the render that follows every sort, every
+/// page and every edit. It runs once, inside the gesture.
+///
+/// The gate is consulted at ACTIVATION, not at render: refusing to draw the
+/// control would tell the reader nothing, and drawing one that silently does
+/// nothing is the fake-affordance shape. A denied export warns through the same
+/// diagnostic channel every other refusal uses. Phase 2290 — the button is
+/// `ElementPlan.VisPlan.exportButton`, the one the static grid's plan carries.
 and private gridExportControl
     (ctx: RenderContext<'Msg>)
     (nodeId: string)
     (scope: GridExport.Scope)
     (project: unit -> string list * string list list)
     : ReactElement =
-    let accessibleName = GridExport.scopeLabel scope
-
-    let performExport () =
-        applyDispatchGateOutcome ctx.Runtime (Runtime.ActionDescriptor.Export nodeId) (fun () ->
-            let headers, rows = project ()
-            let csv = GridExport.document headers rows
-            deliverDownload (GridExport.dataUrl csv) (GridExport.filename nodeId))
-        |> ignore
-
-    Html.button
-        [ prop.className "fuaran-grid-export"
-          prop.type' "button"
-          // The visible label is short because it sits beside a grid; the
-          // accessible name carries the scope and the count, so a reader who
-          // cannot see the grid is told what the file will contain rather than
-          // being handed a page and told it was the grid.
-          prop.custom ("aria-label", accessibleName)
-          prop.title accessibleName
-          prop.onClick (fun _ -> performExport ())
-          prop.text "Export CSV" ]
-
-and private renderTable (ctx: RenderContext<'Msg>) (printBreak: string) (spec: TableSpec<'Msg>) : ReactElement =
-    let headerCells =
-        [ for (headerIndex, h) in List.indexed spec.Headers ->
-              Html.th
-                  [ prop.key (reconciliationKey None headerIndex)
-                    prop.className Css.Class.TableHeader
-                    prop.text (BindingResolver.resolveTextSource ctx.Sources h) ] ]
-
-    let bodyRows =
-        [ for (i, row) in List.indexed spec.Rows ->
-              Html.tr
-                  [ // A static table's rows are literals in document order and
-                    // nothing re-orders them, so position is the identity.
-                    prop.key (reconciliationKey None i)
-                    prop.className Css.Class.TableRow
-                    if spec.OnRowClick.IsSome then
-                        prop.onClick (fun _ ->
-                            match spec.OnRowClick with
-                            | Some f -> runAction ctx (f i)
-                            | None -> ())
-                    prop.children
-                        [ for (cellIndex, cell) in List.indexed row ->
-                              Html.td
-                                  [ prop.key (reconciliationKey None cellIndex)
-                                    prop.className Css.Class.TableCell
-                                    prop.text (BindingResolver.resolveTextSource ctx.Sources cell) ] ] ] ]
-
-    Html.table
-        [ prop.className (Css.Class.Table + printBreak)
-          // Phase 801 — the declared sort intent, surfaced as data attributes so a
-          // progressive-enhancement script honours it without re-parsing the wire.
-          // Emitted ONLY when declared: an undeclared table's markup is unchanged.
-          match spec.Sortable with
-          | Some sortable -> prop.custom ("data-fuaran-sortable", if sortable then "true" else "false")
-          | None -> ()
-          match spec.DefaultSort with
-          | Some ds ->
-              prop.custom ("data-fuaran-sort-column", string ds.Column)
-
-              prop.custom (
-                  "data-fuaran-sort-direction",
-                  match ds.Direction with
-                  | SortDirection.Asc -> "asc"
-                  | SortDirection.Desc -> "desc"
-              )
-          | None -> ()
-          prop.children
-              [ Html.thead [ Html.tr [ prop.children headerCells ] ]
-                Html.tbody [ prop.children bodyRows ] ] ]
+    Emit.planWith (gridExportAttach ctx nodeId project) (ElementPlan.VisPlan.exportButton (GridExport.scopeLabel scope))
 
 and private renderMap
     (ctx: RenderContext<'Msg>)
@@ -6366,60 +5475,20 @@ and private renderMap
     (state: StateBehaviour<'Msg>)
     (spec: MapSpec<'Msg>)
     : ReactElement =
-    // Session 3b: labelled placeholder + the marker count so the demo
-    // shows the slot is reaching live data. Real Leaflet integration
-    // requires a host-provided npm dep — out of Fuaran's standalone-posture
-    // scope, so it's adapter-shaped like AG Charts.
-    let resolution = BindingResolver.resolve<MapMarker list> ctx.Sources spec.Source
-
-    match resolution, state.OnLoading, state.OnError with
-    | BindingResolver.NotResolved, Some loadingNode, _ -> render ctx loadingNode
-    | BindingResolver.Errored msg, _, Some errorFn ->
-        render
-            ctx
-            (errorFn
-                { Kind = ErrorKind.BindingResolution
-                  Message = msg
-                  CorrelationId = correlationId parentNodeId })
-    | _ ->
-        let markers =
-            match resolution with
-            | BindingResolver.Resolved seq -> Seq.toList seq
-            | _ -> []
-
-        Html.div
-            [ prop.className "fuaran-map"
-              prop.children
-                  [ Html.div
-                        [ prop.className "fuaran-map-placeholder"
-                          prop.text (
-                              sprintf
-                                  "[Map placeholder: %d markers around (%.4f, %.4f) zoom %d. Wire a Leaflet adapter for live rendering.]"
-                                  markers.Length
-                                  spec.CentreLatitude
-                                  spec.CentreLongitude
-                                  spec.Zoom
-                          ) ]
-                    if not markers.IsEmpty then
-                        Html.ul
-                            [ prop.className "fuaran-map-marker-list"
-                              prop.children
-                                  [ for (markerIndex, marker) in List.indexed markers ->
-                                        Html.li
-                                            [ prop.key (reconciliationKey (Some marker.Label) markerIndex)
-                                              prop.className "fuaran-map-marker"
-                                              prop.text (
-                                                  sprintf
-                                                      "%s @ (%.4f, %.4f)"
-                                                      marker.Label
-                                                      marker.Latitude
-                                                      marker.Longitude
-                                              )
-                                              if spec.OnMarkerClick.IsSome then
-                                                  prop.onClick (fun _ ->
-                                                      match spec.OnMarkerClick with
-                                                      | Some f -> runAction ctx (f marker)
-                                                      | None -> ()) ] ] ] ] ]
+    // Phase 2290 — the state slots, the placeholder and the marker list are
+    // `ElementPlan.VisPlan.map` (ruling R12), shared with the server; a
+    // marker's click is bound here when `OnMarkerClick` is wired. Real map
+    // rendering needs a host-provided library — adapter-shaped, like charts.
+    Emit.planWith
+        (fun point key ->
+            match point, spec.OnMarkerClick with
+            | ElementPlan.Attach.MarkerClick, Some onMarkerClick ->
+                [ prop.onClick (fun _ ->
+                      BindingResolver.tryResolve ctx.Sources spec.Source
+                      |> Option.bind (List.tryItem (int key))
+                      |> Option.iter (fun marker -> runAction ctx (onMarkerClick marker))) ]
+            | _ -> [])
+        (ElementPlan.VisPlan.map (planContext ctx parentNodeId) (Some state) spec)
 
 // ─── Public entry point ────────────────────────────────────────────────────
 

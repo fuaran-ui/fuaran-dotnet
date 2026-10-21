@@ -77,7 +77,7 @@ The build-time validator's findings carry `FUARAN###` codes (e.g. `FUARAN050` `S
 **Two families share this band, and only one of them is the build-time walker.** The paragraph
 above describes the walker, which reads F# *source* — but the larger family by far is the
 **pre-emit validator**, which reads a *tree* just before it goes on the wire and raises the whole
-`FUARAN047`–`FUARAN164` range. A code you have in hand belongs to whichever family reported it, and
+`FUARAN047`–`FUARAN165` range. A code you have in hand belongs to whichever family reported it, and
 the two are enumerated in different places, though since Phase 2052 both are entries of one registry in one
 file (`PreEmitValidate.DefectCodes.table` and `PreEmitValidate.FindingCodes`): the pre-emit family's codes, severities and message
 shapes are published as data in the conformance corpus's `validator/defect-vocabulary.json`
@@ -130,7 +130,7 @@ release so that a consumer matching on it can find where the defect is now repor
 |---|---|---|
 | `FUARAN001` | Two calls in one tree with the same NodeId literal | **Alias of `FUARAN-DUP-ID`**, through the 0.94.x line (Phase 2052): both validators now report a duplicate id under the tree-time code. A suppression pragma naming `FUARAN001` still suppresses it. The C# / VB analyzers keep `FUARAN001` for the same rule, because a `#pragma warning` cannot name a hyphenated id |
 | `FUARAN040` | A button with `Accessibility = None` and no label | Alias of the tree-time **`FUARAN109`** (an interactive node with no accessible name). The build-time rule matched a field `ButtonSpec` does not have, so it never fired on compiling code |
-| `FUARAN041` | A Warning / Critical callout with `Accessibility = None` | **Withdrawn, with no replacement.** It matched a field `CalloutSpec` does not have, so it never fired on compiling code, and no tree-time rule checks the callout live-region opt-out. The gap is open |
+| `FUARAN041` | A Warning / Critical callout with `Accessibility = None` | **Withdrawn; superseded by the tree-time `FUARAN165`.** It matched a field `CalloutSpec` does not have, so it never fired on compiling code. The live-region opt-out lives on the node (`Node.Accessibility`), where the tree-time rule checks it |
 | `FUARAN047` | Tab headers and children of different lengths | The tree-time rule of the same code. Only the duplicate build-time emitter is gone |
 | `FUARAN048` | Tab tags and children of different lengths | The tree-time rule of the same code |
 | `FUARAN049` | `ActiveTag` set with no `TabTags` | The tree-time rule of the same code |
@@ -1059,6 +1059,14 @@ grid '{nodeId}' column '{columnLabel}' is an action column (Button / ButtonGroup
 
 ```text
 multi-select '{nodeId}' carries a `value` — a multi-select's selection is `values`, it never reads `value`, and every conformant decoder drops one; set Value = None, or build it with Fuaran.multiSelect (Phase 1962)
+```
+
+#### `FUARAN165` — Warning
+
+`SilentUrgentCallout` (Phase 2157)
+
+```text
+{tone} callout '{nodeId}' will not be announced — it declares no live region or announcing role (or switches the live region off, or is hidden), so a screen-reader user is never told about it; give it accessibility.liveRegion = assertive and role = alert (Defaults.Accessibility.callout), or build it with Fuaran.callout (Phase 2157)
 ```
 
 <!-- END GENERATED: PreEmitValidate.DefectCodes.toMarkdown -->
