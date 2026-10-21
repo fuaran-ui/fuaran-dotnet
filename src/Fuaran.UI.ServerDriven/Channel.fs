@@ -385,22 +385,19 @@ type LiveConnection<'Model, 'Msg>
     /// the model — for the bounded driver the store is fully reconstructable; for
     /// the hand-authored `'Model` driver the model is host-owned, so the host
     /// supplies it; the client DOM is correct either way.)
-    member _.ResumeFrom(tree: Node<'Msg>, sequence: int, headHash: string) =
-        session <- { session with Tree = tree }
-        durHead <- headHash
-        durOpSeq <- sequence
-        durSinceCheckpoint <- 0
-        let rootId = tree.Id
-        let html = session.Services.RenderFragment tree
-        seq <- seq + 1
+    member this.ResumeFrom(tree: Node<'Msg>, sequence: int, headHash: string) =
+        // Under the session gate (Phase 2170): an effect's fed-back step must not
+        // interleave with the re-baseline.
+        lock gate (fun () ->
+            session <- { session with Tree = tree }
+            durHead <- headHash
+            durOpSeq <- sequence
+            durSinceCheckpoint <- 0
 
-        let frame =
-            { Seq = seq
-              Patches = [ DomPatch.ReplaceFragment(rootId, html) ]
-              Effects = [] }
-
-        bufferFrame frame
-        channel.Push frame
+            this.EmitFrame
+                { Patches = [ DomPatch.ReplaceFragment(tree.Id, session.Services.RenderFragment tree) ]
+                  Effects = []
+                  Rejected = None })
 
     /// Phase 2170 — turn on the awaited-effect runner for a session built by
     /// `Driver.initWithEffects`, passing the outbox it returned. After every step
