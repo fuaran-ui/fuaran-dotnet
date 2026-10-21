@@ -35,7 +35,7 @@ let private rejectEntries = snd corpus |> List.filter (fun e -> e.Kind = "reject
 /// rule a sibling reader's declaration fills the slot) — and Phase 1821, which
 /// is the "next Core-surfaced refusal" the paragraph below anticipated.
 ///
-/// Its two members are the 0.28.0 column-member rename's ambiguity refusals: a
+/// Its first two members are the 0.28.0 column-member rename's ambiguity refusals: a
 /// `project` step, or a `sort` key, carrying BOTH the canonical spelling and
 /// its decode alias. The decision that both-present is refused rather than
 /// resolved belongs to the dataframe codec, so the refusal arrives through the
@@ -49,10 +49,22 @@ let private rejectEntries = snd corpus |> List.filter (fun e -> e.Kind = "reject
 /// inverse pin. If the wrap ever gains a recovery hint, this fails and the
 /// list shrinks deliberately rather than the exemption quietly outliving its
 /// reason.
+///
+/// Phase 2206 adds the six timestamp-unit refusals. Whether an instant's text is canonical for its
+/// column's unit, whether its fraction fits the unit, and whether a column type tag exists at all
+/// are the column codec's decisions, so each arrives through the same wrap with no shape to hint:
+/// the repair is a different VALUE (a coarser fraction, an unpadded one, a known tag), not a
+/// different document shape.
 let private coreWrappedHintlessRejects: Set<string> =
     Set.ofList
         [ "reject-transform-project-columns-and-cols"
-          "reject-transform-sort-key-column-and-col" ]
+          "reject-transform-sort-key-column-and-col"
+          "reject-transform-timestamp-fractional-second"
+          "reject-transform-timestamp-ms-epoch-before-0000"
+          "reject-transform-timestamp-ms-finer-fraction"
+          "reject-transform-timestamp-ms-padded-fraction"
+          "reject-transform-timestamp-unknown-unit"
+          "reject-transform-timestamp-us-finer-fraction" ]
 
 let private checkError
     (e: Corpus.FixtureEntry)
