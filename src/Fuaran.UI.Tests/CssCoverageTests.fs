@@ -258,9 +258,33 @@ let private scannedClassesInTier (tier: string) : Set<string> =
 
     let constants = sharedClassConstants ()
 
-    Directory.EnumerateFiles(dir, "*.fs", SearchOption.AllDirectories)
+    // Phase 2290 — the input and visualisation kinds are planned in core's
+    // `ElementPlan.fs`, which BOTH tiers emit, so it is part of each tier's
+    // scan. Its served-only floor — the writable rating's native radios, the
+    // one floor whose classes the client never emits (it renders
+    // `RatingControl` instead) — is cut from the client's view of the file, at
+    // the boundaries `ElementPlan.InputPlan.ratingFloor` declares.
+    let planPath = Path.Combine(rendererSourceDir, "core", "ElementPlan.fs")
+
+    let planFor (text: string) : string =
+        if tier = "client" then
+            let a = text.IndexOf("let private ratingFloor", StringComparison.Ordinal)
+
+            let b =
+                text.IndexOf("/// The control of one `Form` field", StringComparison.Ordinal)
+
+            if a < 0 || b < a then
+                failwithf "the served-only rating floor's boundaries were not found in %s" planPath
+
+            text.Substring(0, a) + text.Substring(b)
+        else
+            text
+
+    Seq.append (Directory.EnumerateFiles(dir, "*.fs", SearchOption.AllDirectories)) [ planPath ]
     |> Seq.collect (fun path ->
-        let source = Regex.Replace(File.ReadAllText path, @"(?m)//.*$", "")
+        let raw = File.ReadAllText path
+        let raw = if path = planPath then planFor raw else raw
+        let source = Regex.Replace(raw, @"(?m)//.*$", "")
 
         let literals =
             stringLiteral.Matches source
