@@ -4488,6 +4488,121 @@ let transformUndeclaredParam: Node<obj> =
         ))
         None
 
+/// Phase 2206 — a DataGrid over an embedded `Binding.Transform` source of timestamp columns, one per
+/// `(name, unit, cells)` entry, with an empty pipeline: the shape every timestamp-unit vector below
+/// shares. A `None` cell is absent. `Column.ofCells` reads the canonical instant text exactly as the
+/// decoder does, so a cell the column's unit cannot hold fails the fixture at construction.
+let private timestampGrid
+    (id: string)
+    (columns: (string * Fuaran.Core.TimeUnit * string option list) list)
+    : Node<obj> =
+    let column (name, unit, cells) =
+        let cells =
+            cells
+            |> List.map (function
+                | Some s -> Fuaran.Core.Timestamp s
+                | None -> Fuaran.Core.Null)
+
+        match Fuaran.Core.Column.ofCells name (Fuaran.Core.TimestampType unit) cells with
+        | Ok c -> c
+        | Error e -> failwithf "%s: column %s: %A" id name e
+
+    let source =
+        Fuaran.Core.Embedded
+            { Schema =
+                columns
+                |> List.map (fun (name, unit, _) -> Fuaran.Core.Field.create name (Fuaran.Core.TimestampType unit))
+              Columns = columns |> List.map column }
+
+    node
+        id
+        (NodeKind.DataGrid(
+            { Defaults.dataGrid with
+                Source = Binding.Transform(TransformSource.Data(source), [], None)
+                RowKey = Some(fun _ -> "<closure>") }
+        ))
+        None
+
+[<NodeFixture "Visualisation/Grid (Phase 2206 — a `timestamp` column: the 0000 and 9999 boundary instants at the unit's finest fraction, a whole-second instant whose all-zero fraction is written as no fraction, a fraction with interior zeros in its minimal text, and an absent cell; one instant has one canonical text, WIRE_FORMAT §3.6.25)">]
+let gridTransformTimestampUnitS: Node<obj> =
+    timestampGrid
+        "grid-transform-timestamp-unit-s"
+        [ "t",
+          Fuaran.Core.TimeUnit.Seconds,
+          [ Some "0000-01-01T00:00:00Z"
+            Some "9999-12-31T23:59:59Z"
+            Some "2025-07-08T18:40:00Z"
+            Some "1969-12-31T23:59:59Z"
+            None ] ]
+
+[<NodeFixture "Visualisation/Grid (Phase 2206 — a `timestamp_ms` column: the 0000 and 9999 boundary instants at the unit's finest fraction, a whole-second instant whose all-zero fraction is written as no fraction, a fraction with interior zeros in its minimal text, and an absent cell; one instant has one canonical text, WIRE_FORMAT §3.6.25)">]
+let gridTransformTimestampUnitMs: Node<obj> =
+    timestampGrid
+        "grid-transform-timestamp-unit-ms"
+        [ "t",
+          Fuaran.Core.TimeUnit.Milliseconds,
+          [ Some "0000-01-01T00:00:00.001Z"
+            Some "9999-12-31T23:59:59.999Z"
+            Some "2025-07-08T18:40:00Z"
+            Some "2025-07-08T18:40:00.05Z"
+            None ] ]
+
+[<NodeFixture "Visualisation/Grid (Phase 2206 — a `timestamp_us` column: the 0000 and 9999 boundary instants at the unit's finest fraction, a whole-second instant whose all-zero fraction is written as no fraction, a fraction with interior zeros in its minimal text, and an absent cell; one instant has one canonical text, WIRE_FORMAT §3.6.25)">]
+let gridTransformTimestampUnitUs: Node<obj> =
+    timestampGrid
+        "grid-transform-timestamp-unit-us"
+        [ "t",
+          Fuaran.Core.TimeUnit.Microseconds,
+          [ Some "0000-01-01T00:00:00.000001Z"
+            Some "9999-12-31T23:59:59.999999Z"
+            Some "2025-07-08T18:40:00Z"
+            Some "2025-07-08T18:40:00.0005Z"
+            None ] ]
+
+[<NodeFixture "Visualisation/Grid (Phase 2206 — a `timestamp_ns` column: the 0000 and 9999 boundary instants at the unit's finest fraction, a whole-second instant whose all-zero fraction is written as no fraction, a fraction with interior zeros in its minimal text, and an absent cell; one instant has one canonical text, WIRE_FORMAT §3.6.25)">]
+let gridTransformTimestampUnitNs: Node<obj> =
+    timestampGrid
+        "grid-transform-timestamp-unit-ns"
+        [ "t",
+          Fuaran.Core.TimeUnit.Nanoseconds,
+          [ Some "0000-01-01T00:00:00.000000001Z"
+            Some "9999-12-31T23:59:59.999999999Z"
+            Some "2025-07-08T18:40:00Z"
+            Some "2025-07-08T18:40:00.0000005Z"
+            None ] ]
+
+[<NodeFixture "Visualisation/Grid (Phase 2206 — a coarser unit widens into a finer one: whole-second and millisecond instants in a `timestamp_us` column, and instants of every coarser precision in a `timestamp_ns` column, each read and re-encoded as the same minimal text, WIRE_FORMAT §3.6.25)">]
+let gridTransformTimestampWidening: Node<obj> =
+    timestampGrid
+        "grid-transform-timestamp-widening"
+        [ "ms",
+          Fuaran.Core.TimeUnit.Milliseconds,
+          [ Some "2025-07-08T18:40:00Z"
+            Some "2025-07-08T18:40:00.5Z"
+            Some "2025-07-08T18:40:00.12Z"
+            Some "2025-07-08T18:40:00.123Z"
+            Some "2025-07-08T18:40:00Z"
+            Some "2025-07-08T18:40:00.5Z"
+            Some "2025-07-08T18:40:00.123Z" ]
+          "us",
+          Fuaran.Core.TimeUnit.Microseconds,
+          [ Some "2025-07-08T18:40:00Z"
+            Some "2025-07-08T18:40:00.5Z"
+            Some "2025-07-08T18:40:00.123Z"
+            Some "2025-07-08T18:40:00.1234Z"
+            Some "2025-07-08T18:40:00.12345Z"
+            Some "2025-07-08T18:40:00.123456Z"
+            Some "2025-07-08T18:40:00.1Z" ]
+          "ns",
+          Fuaran.Core.TimeUnit.Nanoseconds,
+          [ Some "2025-07-08T18:40:00Z"
+            Some "2025-07-08T18:40:00.5Z"
+            Some "2025-07-08T18:40:00.123Z"
+            Some "2025-07-08T18:40:00.1234Z"
+            Some "2025-07-08T18:40:00.123456Z"
+            Some "2025-07-08T18:40:00.1234567Z"
+            Some "2025-07-08T18:40:00.123456789Z" ] ]
+
 /// Phase 610 — the multi-select chip idiom end to end: a `<select multiple>` whose `values` binding
 /// IS `$filters.depts` (handler omitted, so its write-back stores the selection there) beside a
 /// `DataGrid` whose `Transform` scopes rows with an `in`/`param` membership test over that same
