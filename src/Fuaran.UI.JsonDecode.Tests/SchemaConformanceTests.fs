@@ -295,7 +295,29 @@ let private schemaInexpressibleRejects: Set<string> =
           // Pinned INVERSELY like every entry here: the day `SchemaGen` states
           // the exclusion, this fails and the two entries go.
           "reject-transform-project-columns-and-cols"
-          "reject-transform-sort-key-column-and-col" ]
+          "reject-transform-sort-key-column-and-col"
+
+          // ─── Phase 2206 — the timestamp unit's refusals ────────────────────
+          //
+          // All six sit inside a Transform's EMBEDDED source, which `SchemaGen`
+          // does not model at all: the schema describes the pipeline steps and
+          // leaves the source an open object, because the columnar wire belongs
+          // to the column codec (WIRE_FORMAT §3.6.25) and not to this tree.
+          // Five of them are cross-field besides: whether a cell's text is
+          // canonical for its unit depends on the `schema` entry of the SAME
+          // NAME in a sibling array, a correlation by value that Draft 2020-12
+          // cannot carry from one array into a predicate over another. The
+          // sixth, the unknown unit tag, is expressible in principle (an `enum`
+          // over `schema[].type`) and is filed for the
+          // `reject-local-oncommit-and-committo` reason: stating it means
+          // modelling the source, which is a schema change of its own and not
+          // this phase's. Pinned INVERSELY like every entry here.
+          "reject-transform-timestamp-fractional-second"
+          "reject-transform-timestamp-ms-epoch-before-0000"
+          "reject-transform-timestamp-ms-finer-fraction"
+          "reject-transform-timestamp-ms-padded-fraction"
+          "reject-transform-timestamp-unknown-unit"
+          "reject-transform-timestamp-us-finer-fraction" ]
 
 // Phase 1068 — `schemaTypeErasedBindingRejects` is GONE, and its deletion is the
 // point rather than a tidy-up. Phase 1064 found four reject fixtures the emitted

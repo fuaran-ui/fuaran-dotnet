@@ -1984,11 +1984,16 @@ let private leniencyFamilies: LeniencyFamily list =
           + "shorthand at all; teaching it would teach a different meaning." }
       { Name = "Epoch-integer timestamps"
         Class = NeverTaught
-        FixtureIds = [ "lenient-transform-epoch-timestamps" ]
+        FixtureIds =
+          [ "lenient-transform-epoch-timestamps"
+            "lenient-transform-epoch-timestamp-units" ]
         Evidence =
           "JUDGEMENT: heuristic — seconds-vs-milliseconds is resolved by magnitude (the fixture's own "
           + "1752000000 and 1752000000000 normalise to the SAME instant), and the coercion is contextual "
-          + "on a schema declaring timestamp. Not provably loss-free; safety net only." }
+          + "on a schema declaring timestamp. Not provably loss-free; safety net only. Phase 2206's "
+          + "per-unit pair carries the same `timestamp` magnitude reading beside the sub-second columns, "
+          + "whose number is read in the column's own unit: exact, but still contextual on the declared "
+          + "unit, so the family's judgement holds for it unchanged." }
       { Name = "Legacy window-function spelling"
         Class = NeverTaught
         FixtureIds = [ "lenient-window-cumsum-legacy" ]
