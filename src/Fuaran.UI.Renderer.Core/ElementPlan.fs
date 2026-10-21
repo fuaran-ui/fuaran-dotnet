@@ -1568,7 +1568,10 @@ module InputPlan =
     /// A string slot's choice: null / empty is no selection.
     let private chosen (sources: BindingResolver.BindingSources) (binding: Binding<string>) : string option =
         BindingResolver.tryResolve sources binding
-        |> Option.bind (fun s -> if isNull s || s = "" then None else Some s)
+        // `IsNullOrEmpty` rather than `isNull`: the resolved string is
+        // non-nullable to the type checker (FS3261 under nullness), and a
+        // default-less State still resolves null at run time.
+        |> Option.bind (fun s -> if System.String.IsNullOrEmpty s then None else Some s)
 
     let private dateInputType (variant: DateTimeVariant) : string =
         match variant with
@@ -2012,7 +2015,7 @@ module InputPlan =
                        // resolves `null`.
                        @ [ Prop.Value(
                                BindingResolver.tryResolve sources v
-                               |> Option.bind (fun s -> if isNull s then None else Some s)
+                               |> Option.filter (fun s -> not (System.String.IsNullOrEmpty s))
                                |> Option.defaultValue ""
                            ) ])
                   datalist listId (BindingResolver.resolveOptions sources options) ]
