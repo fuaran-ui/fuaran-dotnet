@@ -489,6 +489,8 @@
     <Compile Include="RowCodecTests.fs" />
     <!-- Phase 1962 - a multi-select Select carries values and no value: the constructor rule, the lenient drop, FUARAN164. -->
     <Compile Include="SelectValueRuleTests.fs" />
+    <!-- Phase 2157 - a Warning / Critical callout nothing announces: FUARAN165. -->
+    <Compile Include="SilentCalloutTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

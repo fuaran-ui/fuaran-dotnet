@@ -1656,6 +1656,19 @@ type PreEmitDefect =
     ///
     /// Carries the Select node's id.
     | MultiSelectValueIgnored of nodeId: string
+    /// **FUARAN165 (Warning)**. A `Warning` or `Critical` tone `Callout` that no
+    /// screen reader will be told about (Phase 2157). `Defaults.Accessibility.callout`
+    /// supplies `Role = Alert; LiveRegion = Assertive`, but only the smart
+    /// constructor applies it: a tree decoded from the wire with no
+    /// `accessibility` trait, a trait with `liveRegion = off`, a trait that
+    /// neither sets a live region nor an announcing role (`alert` / `status`),
+    /// or a statically hidden node reaches the DOM with no announcement, and
+    /// neither renderer re-applies the default. This replaces the build-time
+    /// FUARAN041, which matched a field `CalloutSpec` does not have. A bound
+    /// `Hidden` is not judged (its value is data this walk cannot see).
+    ///
+    /// Carries the callout node's id and its tone name.
+    | SilentUrgentCallout of nodeId: string * tone: string
 
     /// **FUARAN137 (Error)**. A chart annotation whose value is NON-FINITE —
     /// NaN, or either infinity (Phase 1490, §4l).
@@ -2840,6 +2853,13 @@ module DefectCodes =
               Severity.Warning,
               "multi-select '{nodeId}' carries a `value` — a multi-select's selection is `values`, it never reads `value`, and every conformant decoder drops one; set Value = None, or build it with Fuaran.multiSelect (Phase 1962)",
               "Phase 1962"
+          )
+          row (
+              "SilentUrgentCallout",
+              "FUARAN165",
+              Severity.Warning,
+              "{tone} callout '{nodeId}' will not be announced — it declares no live region or announcing role (or switches the live region off, or is hidden), so a screen-reader user is never told about it; give it accessibility.liveRegion = assertive and role = alert (Defaults.Accessibility.callout), or build it with Fuaran.callout (Phase 2157)",
+              "Phase 2157"
           ) ]
 
     let private byVariant: Map<string, DefectCodeRow> =
@@ -3444,6 +3464,7 @@ let private describeArgs (d: PreEmitDefect) : string * (string * string) list =
     | PreEmitDefect.ActionColumnField(nodeId, columnLabel, field) ->
         "ActionColumnField", [ "nodeId", nodeId; "columnLabel", columnLabel; "field", field ]
     | PreEmitDefect.MultiSelectValueIgnored nodeId -> "MultiSelectValueIgnored", [ "nodeId", nodeId ]
+    | PreEmitDefect.SilentUrgentCallout(nodeId, tone) -> "SilentUrgentCallout", [ "nodeId", nodeId; "tone", tone ]
 
 /// Render a defect as its stable (code, severity, message) triple — the ONE
 /// projection every consumer shares (the .NET validator oracle, certification
@@ -3946,7 +3967,35 @@ let private accessibilityDefects (n: Node<'Msg>) : PreEmitDefect list =
             [ PreEmitDefect.DirectionOnTextlessNode(n.Id, wireKindName n.Kind) ]
         | _ -> []
 
-    unnamed @ declaredEmpty @ tooltip @ direction
+    // Phase 2157 - FUARAN165: the callout default is applied by the smart
+    // constructor only, so the opt-out is judged on the node as it stands.
+    let silentCallout =
+        match n.Kind with
+        | NodeKind.Callout spec when spec.Tone = ToneVariant.Warning || spec.Tone = ToneVariant.Critical ->
+            let announces =
+                match n.Accessibility with
+                | None -> false
+                | Some a ->
+                    let hidden =
+                        match a.Hidden with
+                        | Some(Binding.Static(Some true)) -> true
+                        | _ -> false
+
+                    let live =
+                        match a.LiveRegion with
+                        | Some LiveRegionKind.Off -> false
+                        | Some _ -> true
+                        | None -> a.Role = Some AriaRole.Alert || a.Role = Some AriaRole.Status
+
+                    live && not hidden
+
+            if announces then
+                []
+            else
+                [ PreEmitDefect.SilentUrgentCallout(n.Id, string spec.Tone) ]
+        | _ -> []
+
+    unnamed @ declaredEmpty @ tooltip @ direction @ silentCallout
 
 /// The `(slot, target)` accessibility references a node declares. Empty targets
 /// are excluded — an empty slot is FUARAN111's finding, and reporting the same

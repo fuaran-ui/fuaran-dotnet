@@ -7898,7 +7898,25 @@ decode outcome changes.
 **What a consumer does.** Nothing. A host that wants a deterministic bound on decode cost (an admission budget, a fuzz
 leg of its own) can read it.
 
+
+### What rides this slot — Phase 2157 (a silent Warning / Critical callout is named)
+
+**Class: additive (one pre-emit defect case and one code).** Package `Fuaran.UI`. No wire byte moves.
+
+- **Added: `PreEmitDefect.SilentUrgentCallout of nodeId * tone`, code `FUARAN165` (Warning).** A `Warning` or `Critical`
+  callout that nothing announces: no `accessibility` trait (what every wire-decoded callout without one is), a trait
+  with `liveRegion = off`, a trait with neither a live region nor an `alert` / `status` role, or a statically hidden
+  node. `Fuaran.callout` applies `Defaults.Accessibility.callout` and stays clean. A bound `Hidden` is not judged.
+- **Routes established:** the opt-out lives on the node (`Node.Accessibility`), not on `CalloutSpec`; neither renderer
+  re-applies the default; `fuaran-ts` offers no further opt-out (its callout renderer emits the generic trait only).
+- **Note on a closed match:** a host that matches `PreEmitDefect` exhaustively adds one arm. The shared corpus
+  vocabulary gains the `FUARAN165` row (host coverage declarations that implement the whole vocabulary must list it).
+
+**What a consumer does.** A tree that built its callout by record literal or arrived over the wire gives it
+`Defaults.Accessibility.callout` (or `liveRegion` / `role: alert`), or accepts the warning.
+
 ---
+
 
 ## 0.97.0 — the slot opened after v0.96.0 was released (RELEASED — tagged v0.97.0 at 0d6a626, 2026-10-18)
 

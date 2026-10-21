@@ -815,10 +815,10 @@ module Accessibility =
 
     // ─── Notification / status defaults ───────────────────────────────────
 
-    /// Callout: `Role = Alert; LiveRegion = Assertive`. No validator checks a
-    /// `Warning` / `Critical` tone callout that overrides this with
-    /// `Accessibility = None` (losing the screen-reader announcement): the
-    /// build-time FUARAN041 that claimed to could never fire and was withdrawn.
+    /// Callout: `Role = Alert; LiveRegion = Assertive`. Only the smart
+    /// constructor applies it; a Warning / Critical callout whose node ends up
+    /// with no announcing trait (absent, `liveRegion = off`, hidden) is named
+    /// by the tree-time FUARAN165 (the build-time FUARAN041 was withdrawn).
     let callout: Accessibility option =
         Some
             { empty with
