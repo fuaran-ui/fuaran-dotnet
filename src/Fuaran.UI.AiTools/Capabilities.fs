@@ -29,25 +29,6 @@ let discover (registry: Fuaran.Core.CapabilityRegistry) : (string * Fuaran.Core.
     Fuaran.Core.CapabilityRegistry.enumerate registry
     |> List.map (fun cap -> cap.Id, Fuaran.Core.Function.toJsonSchema cap.Signature)
 
-/// Validate a typed invocation against the registry (default-deny by shape, FGP 3): resolve the
-/// `capabilityId` (an unregistered id is `NoSuchCapability`) and validate the scalar `(addr, value)`
-/// args against the capability's `Signature` (an ill-typed arg is a named `InvokeError`, never a
-/// throw). Re-exposes the `Fuaran.Core` contract; the conformance is `capabilityLaws`.
-let validate
-    (registry: Fuaran.Core.CapabilityRegistry)
-    (capabilityId: string)
-    (args: (string * string) list)
-    : Result<Fuaran.Core.Capability, Fuaran.Core.InvokeError> =
-    match Fuaran.Core.CapabilityRegistry.tryFind capabilityId registry with
-    | None ->
-        Error(
-            Fuaran.Core.NoSuchCapability(
-                capabilityId,
-                Fuaran.Core.CapabilityRegistry.enumerate registry |> List.map _.Id
-            )
-        )
-    | Some cap -> Fuaran.Core.Capability.validateArgs cap args |> Result.map (fun () -> cap)
-
 /// The host's invocation path: dispatch through the registry's own `CapabilityRegistry.dispatch`, so
 /// the registry's whole admission runs before the body does — the id resolves (default-deny), the
 /// arguments validate, and then the registry's POLICY gates decide (a `Deny` is `PolicyRefused`, a

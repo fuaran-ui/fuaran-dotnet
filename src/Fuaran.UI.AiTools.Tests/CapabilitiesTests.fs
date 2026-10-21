@@ -85,17 +85,19 @@ let tests =
               // each entry carries the JSON-Schema projection of the signature (a typed-args object)
               Expect.isTrue (entries |> List.forall (fun (_, schema) -> schema <> Fuaran.Core.JStr "")) "schema present"
 
-          testCase "validate accepts in-space args + names every refusal"
+          testCase "invoke accepts in-space args + names every refusal"
           <| fun _ ->
-              match Capabilities.validate registry "forecast" [ "x", "5" ] with
-              | Ok cap -> Expect.equal cap.Id "forecast" "resolved + validated"
-              | Error e -> failtestf "expected Ok, got %A" e
+              let body = fun (cap: Fuaran.Core.Capability) _ -> Deferred.Ready(box cap.Id)
 
-              match Capabilities.validate registry "forecast" [ "x", "99" ] with
+              match Capabilities.invoke registry "forecast" [ "x", "5" ] body with
+              | Ok(CoreDeferred.Ready v) -> Expect.equal (unbox<string> v) "forecast" "resolved + validated"
+              | other -> failtestf "expected Ready, got %A" other
+
+              match Capabilities.invoke registry "forecast" [ "x", "99" ] body with
               | Error(Fuaran.Core.ArgOutOfSpace _) -> ()
               | other -> failtestf "expected ArgOutOfSpace, got %A" other
 
-              match Capabilities.validate registry "ghost" [] with
+              match Capabilities.invoke registry "ghost" [] body with
               | Error(Fuaran.Core.NoSuchCapability("ghost", _)) -> ()
               | other -> failtestf "expected NoSuchCapability, got %A" other
 

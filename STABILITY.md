@@ -7901,7 +7901,7 @@ leg of its own) can read it.
 
 ### What rides this slot — Phase 2311 (the capability invoker dispatches through the registry, so the policy gate runs)
 
-**Class: behaviour change, additive surface (no signature moves).** Package `Fuaran.UI.AiTools`. No wire byte moves.
+**Class: breaking (one public function removed), plus a behaviour change under policy and an added function.** Package `Fuaran.UI.AiTools`. No wire byte moves.
 
 - **Changed: `Capabilities.makeInvoker` now dispatches through `CapabilityRegistry.dispatch`.** It used to resolve and
   arg-check the call itself and then run the host body, so a registry carrying a policy (`withGate`) was never
@@ -7920,7 +7920,11 @@ leg of its own) can read it.
 - **Added: `Capabilities.invoke`** `registry -> id -> args -> body -> Result<Fuaran.Core.Deferred<obj>, InvokeError>`,
   the typed form of the same path (refusals stay `InvokeError` values, a body failure is `BodyFailed`). It is the
   `Dispatch` of a `CapabilitySeamWitness`, which is how the tier now runs Core's `capabilityLawsAt`; `policyLaws` runs
-  beside it. `Capabilities.validate` and `discover` are unchanged.
+  beside it. `discover` is unchanged.
+- **Removed (breaking): `Capabilities.validate`.** It hand-rolled the lookup-and-validate sequence the registry's
+  `dispatch` owns, and nothing but its own test called it. **Migration:** call `Capabilities.invoke` (an unknown id is
+  `NoSuchCapability`, an ill-typed argument is the named validation error, as before), or Core's
+  `Capability.validateArgs` on a capability from `CapabilityRegistry.tryFind`.
 
 **What a consumer does.** Nothing for a registry that carries no policy. A host that put a gate on its registry
 expecting it to apply to agent calls now has it applied; a host that relied on the gate being ignored should remove the
