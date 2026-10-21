@@ -7900,7 +7900,7 @@ leg of its own) can read it.
 
 ---
 
-## 0.97.0 — the slot opened after v0.96.0 was released (DRAFT — untagged)
+## 0.97.0 — the slot opened after v0.96.0 was released (RELEASED — tagged v0.97.0 at 0d6a626, 2026-10-18)
 
 _Class: **breaking**, set by its first rider, Phase 1960. `v0.96.0` was tagged and published at `9045b5f` on 2026-10-18
 (version cut recorded on the ledger, 2026-10-18). The slot already sits at the minor number, which is where a pre-1.0 breaking
