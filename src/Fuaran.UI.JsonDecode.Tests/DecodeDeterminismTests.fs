@@ -163,14 +163,17 @@ let grammarTests =
                   [ "9007199254740993"
                     "-9007199254740993"
                     "12345678901234567890"
-                    "100000000000000000" ] do
+                    "100000000000000000"
+                    // 2^55, exact as a double, but its canonical layout is 36028797018963970.
+                    "36028797018963968" ] do
                   expectRefused (sprintf "non-canonical integer '%s'" token) (payload token) "INVALID_JSON"
 
               for token in
                   [ "9007199254740991"
                     "9007199254740992"
                     "9007199254740994"
-                    "10000000000000000" ] do
+                    "10000000000000000"
+                    "36028797018963970" ] do
                   match JsonDecode.decodeNodeObj (payload token) with
                   | Ok _ -> ()
                   | Error e -> failtestf "the canonical token '%s' was refused: %s" token e.Message
