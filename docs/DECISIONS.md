@@ -10,6 +10,93 @@ consequence.
 
 ---
 
+## 2026-10-22 — D21: the Core 0.40.2 raise waits on a compute release built on Core 0.39 or later; the parse through Core's reader is ready behind it
+
+**Found (Phase 2286, 2026-10-22).** The decoder's parse through Core's token reader (`Reader.peek` /
+`Reader.path` / `Reader.readNull`, fuaran-core#467, Core DECISIONS D213) needs Fuaran.Core 0.40.2, and this
+repository cannot take 0.40.2 yet. The blocker is not in this repository. `Fuaran.Compute` 0.40.0, the
+newest compute release on nuget.org, was built on Fuaran.Core 0.37. Its `DataFrameCodec.encodeTransform`
+calls `Fuaran.Core.Canon`, which Core 0.39 removed (Core Phase 520: every byte rule is a named `Rendering`).
+Against the raised pins the solution COMPILES, because the call sits inside the compute assembly, and then
+throws at run time:
+
+    System.TypeLoadException: Could not load type 'Fuaran.Core.Canon' from assembly
+    'Fuaran.Core.Wire, Version=0.40.2.0'
+       at Fuaran.Compute.DataFrameCodec.encodeTransform(Transform t)
+
+In `Fuaran.UI.JsonDecode.Tests` this is 89 errored tests: every corpus fixture carrying a `Binding.Transform`,
+the live-Transform suite, the §21.8 expression-bound tests, and the robustness fuzz, which reports the
+exception as escaping the refusal contract. The bounded program core is in the same position.
+`Fuaran.Program` 0.10.0 and 0.10.2 are built on Core 0.38.1, and their assemblies name `Fuaran.Core.Canon`
+too. That half was read from the assemblies, not run.
+
+**Decided.** The pins stay on Fuaran.Core 0.38.1 and Compute 0.40.0. A mixed spine (Core 0.40.2 beside a
+compute layer that cannot load on it) is not shipped, and no compute version is pinned that has not been
+released. The raise, the parse move and the rest of Phase 2286 resume once the compute repository and the
+program core each release a version built on Fuaran.Core 0.39 or later. At that point `FuaranCoreComputeVersion`
+and `FuaranProgramVersion` move in the same change-set as the Core pins.
+
+**What the attempt established, for the change-set that lands it.**
+
+1. **Compile breaks at 0.40.2, beyond `JsonDecode.fs`.** These are mechanical, one Core migration line each.
+   - `Canon.render` / `renderOrdered` / `tryRender` / `canonicalFloat` / `typed` become `Canonical.write` /
+     `tryWrite` under `Rendering.CrossHost` / `Rendering.Declared`, `FloatLayout.canonical` and
+     `Canonical.typed` (about thirty files, including the vocabulary support splice).
+   - The op engine takes a `Policy` and an `OpScope` (`Ops.apply` / `canApply` / `footprint`,
+     `TreePlacement.place` / `move`, `Diff.toOpsWith` / `changes`). `KeyedPosition` gains its slot.
+   - The op stream is one `Stream` value: `StreamConfig.canonical`, `OpStream.ofConfig`,
+     `firstChainBreak`, and `Jsonl.read` / `write`.
+   - `Diff.DiffError` is `Rejection`. `ObserverState` is opaque (`ObserverWitness.isRegistered`).
+   - The IDL records widen: `IdlField.Aliases` / `Presence`, `IdlUnion.Annotations` / `TagRule`,
+     `IdlUnionCase.Hosted`, `HostedCodec.Refusal`, `IdlRecord.Annotations`. The generator's types move to
+     `Fuaran.Core.Idl.Codegen.Types`.
+   - `Json.parseTolerantOfNull` becomes `Decoder.parse ReadOptions.tolerantOfNull`, and
+     `Versioning.Profile` becomes `Versioning.Capability`.
+   - A `Fuaran.Core.Bool` / `Fuaran.Core.Null` cell pattern resolves to the new `JsonToken` case, so it
+     takes `Fuaran.Core.Cell.`.
+   - The generator no longer emits `encodeStateBehaviourJson` / `encodeSemanticStyleJson`, so the support
+     splice declares them.
+   - `Artifact.render` no longer writes a default `description`, so `idl.json` keeps its bytes only if the
+     vocabulary declares its identity and renders with `Artifact.renderWith`.
+2. **No corpus byte moved from the raise itself.** `idl.json` re-rendered byte-identical once the identity
+   was declared, and `Generated.fs` and the F* vocabulary model regenerate with only their headers and stamps
+   moving.
+3. **The parse move changes three answers a corpus vector pins.** The other hosts still give the old answer,
+   so each change is a coordinated corpus change and not this host's alone:
+   - row 7 (`1e999`) is `INVALID_JSON` (D19, operator 2026-10-16), against the §20.2 test's accept;
+   - the `lenient/` fixture whose `beyond` member is 9007199254740993, a non-canonical integer past 2^53, is
+     `INVALID_JSON` under Core's reader, where the corpus pins an accept;
+   - a depth breach is `LIMIT_EXCEEDED` at the breach's PATH (`$[0][0]…`), which Core reports and Phase
+     2286 asks for, where the `repair-limit-exceeded` fixture pins `$`.
+
+   The nine null fixtures, every other §20.2 row and every other `limit` fixture answered as pinned.
+4. **Baseline for the benchmark the move is held to.** This is `decode-rate 100` (Release) at Core 0.40.2
+   with the hand parser still in place:
+
+   | Route | mean µs | allocated B |
+   |---|---|---|
+   | node, string | 4195.2 | 6,974,746 |
+   | node, render-reparse | 4540.6 | 10,386,760 |
+   | node, jval | 2458.5 | 5,221,816 |
+   | ops, string | 633.5 | 3,049,136 |
+   | ops, render-reparse | 1037.5 | 4,758,136 |
+   | ops, jval | 501.1 | 2,127,624 |
+
+   Inputs: a 2,001-node tree of 149,616 characters, and 200 ops of 79,770 characters. No "after" figure is
+   recorded: with the transform codec unloadable, the parse move cannot be timed on the same inputs.
+
+**Rejected.**
+- **Pinning Core back below 0.39 for the compute packages alone.** That is a diamond on `Fuaran.Core.Wire`,
+  and the reader the move needs is 0.40.2's.
+- **Shimming `Fuaran.Core.Canon` in this repository.** A type defined here cannot satisfy a reference the
+  compute assembly binds to `Fuaran.Core.Wire`.
+- **Landing the parse move against a hand-copied token reader.** That would be a parser of this host's own,
+  which is what the phase deletes.
+
+Roadmap: [Phase 2286](../../roadmap/phases/2286-the-reference-host-parses-through-core-with-its-own-limits-and-stops-carrying-a-parser-of-its-own.md).
+
+---
+
 ## 2026-10-18 — D20: the row feed's codec is this tier's, and it refuses its two hazards at encode
 
 **Decided (operator, 2026-10-18).** The grid / chart row feed is written and read by `Fuaran.UI.RowCodec`, which this
