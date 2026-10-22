@@ -1,6 +1,6 @@
 /// The design-provider seam's wire codec (Phase 2295; `wire-format-fixtures/DESIGN_SEAM.md`).
 ///
-/// Encoding goes through `Canon.render`: Ordinal-sorted keys at every depth, the corpus's string
+/// Encoding goes through `Canonical.write Rendering.CrossHost`: Ordinal-sorted keys at every depth, the corpus's string
 /// escape and float layout, so every host writes the same bytes for the same record. A record
 /// document carries `"$type"`; a nested record is typed by its position. An absent optional
 /// member is omitted, and a list member is always present, empty or not.
@@ -164,29 +164,29 @@ let private resultFields (r: DesignResult) : (string * JVal) list =
 
 /// A design-system reference as its canonical document.
 let encodeRef (r: DesignSystemRef) : string =
-    Canon.render (Canon.typed "DesignSystemRef" (refFields r))
+    Canonical.write Rendering.CrossHost (Canonical.typed "DesignSystemRef" (refFields r))
 
 /// A brief as its canonical document. Its UTF-8 bytes are what `DesignRequest.BriefHash` hashes.
 let encodeBrief (b: DesignBrief) : string =
-    Canon.render (Canon.typed "DesignBrief" (briefFields b))
+    Canonical.write Rendering.CrossHost (Canonical.typed "DesignBrief" (briefFields b))
 
 /// A request as its canonical document.
 let encodeRequest (r: DesignRequest) : string =
-    Canon.render (Canon.typed "DesignRequest" (requestFields r))
+    Canonical.write Rendering.CrossHost (Canonical.typed "DesignRequest" (requestFields r))
 
 /// A result as its canonical document.
 let encodeResult (r: DesignResult) : string =
-    Canon.render (Canon.typed "DesignResult" (resultFields r))
+    Canonical.write Rendering.CrossHost (Canonical.typed "DesignResult" (resultFields r))
 
 /// A request and the result a provider returned for it, as one canonical document — the shape
 /// the corpus uses to state the exchange rule (`checkExchange`).
 let encodeExchange (request: DesignRequest) (result: DesignResult) : string =
-    Canon.render (
-        Canon.typed
+    Canonical.write
+        Rendering.CrossHost
+        (Canonical.typed
             "DesignExchange"
-            [ "request", Canon.typed "DesignRequest" (requestFields request)
-              "result", Canon.typed "DesignResult" (resultFields result) ]
-    )
+            [ "request", Canonical.typed "DesignRequest" (requestFields request)
+              "result", Canonical.typed "DesignResult" (resultFields result) ])
 
 // ─── Decoding ───────────────────────────────────────────────────────────────
 

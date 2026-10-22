@@ -33,6 +33,7 @@ open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.Ops
+open Fuaran.Core.Idl.Codegen.Types
 
 /// Locate one family of the workspace-root shared corpus by climbing from the
 /// test binary — the same idiom `MarkdownCorpusTests` uses.
@@ -1160,7 +1161,7 @@ let decoderSubstrateTests =
 //  Phase 2127 — the collecting derivation, requested against THIS vocabulary.
 //
 //  fuaran-core#377 made the generator emit public, per-spec, defect-COLLECTING
-//  decoders (`Gen.Derivation.SpecDecoders`, opt-in), and the pinned Core carries
+//  decoders (`Derivation.SpecDecoders`, opt-in), and the pinned Core carries
 //  it. Requested here, the emission does not COMPILE, so the layering 2040
 //  deferred stays blocked one step later than 2040 measured.
 //
@@ -1214,7 +1215,7 @@ let decoderSubstrateTests =
 /// The generated module with `extra` requested beside the vocabulary's own
 /// derivations, emitted in-process from the vocabulary: what `Generated.fs`
 /// would become if the request were made, without making it.
-let private emitWith (extra: Fuaran.Core.Idl.Gen.Derivation list) : string =
+let private emitWith (extra: Derivation list) : string =
     let idl = Fuaran.Core.Idl.Artifact.canonicalise Fuaran.UI.Vocabulary.uiIdl
 
     match
@@ -1230,7 +1231,7 @@ let private emitWith (extra: Fuaran.Core.Idl.Gen.Derivation list) : string =
 
 /// The collecting section of the module emitted with `SpecDecoders` requested.
 let private collectingSection () : string =
-    let emitted = emitWith [ Fuaran.Core.Idl.Gen.Derivation.SpecDecoders ]
+    let emitted = emitWith [ Derivation.SpecDecoders ]
     let at = emitted.IndexOf "COLLECTING DECODERS"
     Expect.isGreaterThan at 0 "the collecting section is emitted when SpecDecoders is requested"
     emitted.Substring at
@@ -1339,7 +1340,7 @@ let closedCollectingDecoderTests =
           // main on 2026-10-19. When the emission changes, request it, build,
           // and read the slot table from `slotsOfBinding`.
           test "the binding-slot enumeration is still emitted with an unannotated ofKind" {
-              let emitted = emitWith [ Fuaran.Core.Idl.Gen.Derivation.SlotsOf "Binding" ]
+              let emitted = emitWith [ Derivation.SlotsOf "Binding" ]
 
               let at =
                   emitted.IndexOf "let slotsOfBinding (n: Node<'Msg>) : (string * obj) list ="

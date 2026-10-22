@@ -468,11 +468,13 @@ let tests =
                   [ for label, a, b in corpusPairs () do
                         if a.Id = b.Id then
                             match
-                                Fuaran.Core.Diff.toOpsContainedWith
-                                    NodeIndex.holdsList
+                                Fuaran.Core.Diff.toOpsWith
                                     CanonicalJson.encodeNode
-                                    NodeIndex.witness<obj>
-                                    Introspect.idWitness
+                                    Fuaran.Core.Policy.none
+                                    (Fuaran.Core.OpScope.contained
+                                        NodeIndex.holdsList
+                                        NodeIndex.witness<obj>
+                                        Introspect.idWitness)
                                     a
                                     b
                             with

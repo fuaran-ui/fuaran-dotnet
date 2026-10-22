@@ -143,7 +143,9 @@ let tests =
               // the encode path the WIRE takes, reached here without going
               // through the provenance module at all.
               let independent =
-                  Fuaran.Core.Canon.render (Fuaran.UI.Generated.encodeNodeKindJson (NodeKind.Chart baseSpec))
+                  Fuaran.Core.Canonical.write
+                      Fuaran.Core.Rendering.CrossHost
+                      (Fuaran.UI.Generated.encodeNodeKindJson (NodeKind.Chart baseSpec))
 
               Expect.equal (specWireJson baseSpec) independent "the stamped spec bytes are the wire's own bytes"
           }

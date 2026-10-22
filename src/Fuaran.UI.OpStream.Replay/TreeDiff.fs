@@ -168,7 +168,14 @@ module TreeDiff =
     /// `oldTree` the pre-state, `nextTree` the post-state — as Core's
     /// `Diff.changes` reads it (see the preamble).
     let diff<'Msg> (oldTree: Node<'Msg>) (nextTree: Node<'Msg>) : TreeDiff =
-        match Diff.changes CanonicalJson.encodeNode NodeIndex.witness<'Msg> idWitness oldTree nextTree with
+        match
+            Diff.changes
+                CanonicalJson.encodeNode
+                Policy.none
+                (OpScope.plain NodeIndex.witness<'Msg> idWitness)
+                oldTree
+                nextTree
+        with
         | Ok changes -> { Changes = changes }
         | Error _ -> replaced oldTree nextTree
 

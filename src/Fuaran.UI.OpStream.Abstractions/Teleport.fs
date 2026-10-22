@@ -34,7 +34,7 @@ open Fuaran.UI.Ops.Types
 //  not recomputed with it. It is an unkeyed digest, so it catches corruption in
 //  transit, not a sender who assembles a bundle it prefers (CRYPTO.md). Both
 //  encode and decode
-//  assemble the digest preimage through the same `Fuaran.Core.Canon.render`
+//  assemble the digest preimage through the same `Fuaran.Core.Canonical.write Fuaran.Core.Rendering.CrossHost`
 //  path, so verification cannot drift from production.
 //
 //  FGP 3 — closures cannot exist on the wire. The bundle rides the standard
@@ -208,7 +208,7 @@ module Teleport =
         go [] 0 ops
 
     let private digestOf (coreFields: (string * JVal) list) : string =
-        Fuaran.Core.Hash.sha256Hex (DigestPreimageTag + Canon.render (JObj coreFields))
+        Fuaran.Core.Hash.sha256Hex (DigestPreimageTag + Canonical.write Rendering.CrossHost (JObj coreFields))
 
     /// Encode `bundle` as a teleport string: canonical envelope → deflate →
     /// base64url, prefixed `FT1.`. Deterministic — the same bundle produces
@@ -236,7 +236,7 @@ module Teleport =
                       yield "tree", treeJv ]
 
                 let envelope =
-                    Canon.render (JObj(("digest", JStr(digestOf coreFields)) :: coreFields))
+                    Canonical.write Rendering.CrossHost (JObj(("digest", JStr(digestOf coreFields)) :: coreFields))
 
                 FormatPrefix + Base64Url.encode (Deflate.compress (Utf8.encode envelope))))
 

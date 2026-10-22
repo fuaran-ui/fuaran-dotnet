@@ -42,6 +42,7 @@ open System.Text.RegularExpressions
 open Expecto
 open Fuaran.Core.Idl
 
+open Fuaran.Core.Idl.Codegen.Types
 // ─── Locating the repo's own files ─────────────────────────────────────────
 //
 // Climb from the test binary to the checkout root (the directory holding
@@ -140,7 +141,7 @@ let private provesLines =
       "tuned decoders and are certified against the shared wire-format corpus; nothing here"
       "is a statement about any of them, and no host's build generates this file." ]
 
-let private provenance: FStarTarget.Provenance =
+let private provenance: Provenance =
     { Origin =
         [ "this repository's OWN vocabulary — `src/Fuaran.UI.Idl/idl.json`, the structural"
           "source Phase 1181 homed here and `VocabularyTests` holds to `Fuaran.UI.Vocabulary`"

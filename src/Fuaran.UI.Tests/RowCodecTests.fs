@@ -36,7 +36,8 @@ let private requireCorpus () =
 /// A non-null value as a cell; `box` would type it nullable.
 let inline private o (x: 'T when 'T: not null) : obj = x :> obj
 
-let private canon (rows: Map<string, obj> seq) = Canon.render (RowCodec.encodeRows rows)
+let private canon (rows: Map<string, obj> seq) =
+    Canonical.write Rendering.CrossHost (RowCodec.encodeRows rows)
 
 let private row (cells: (string * obj) list) : Map<string, obj> = Map.ofList cells
 
@@ -119,7 +120,7 @@ let tests =
 
               for (file, p) in payloads do
                   match RowCodec.decodeRows p with
-                  | Ok rows -> Expect.equal (canon rows) (Canon.render p) file
+                  | Ok rows -> Expect.equal (canon rows) (Canonical.write Rendering.CrossHost p) file
                   | Error e -> failtestf "%s: %s" file e
 
           testCase "the legacy sentinel and the lenient row feeds decode as the retired codec read them"
@@ -247,7 +248,9 @@ let tests =
                   { Defaults.dataGrid with
                       Source = Binding.Static(Some [ row [ "n", o 9007199254740992L ] ]) }
 
-              let bytes = Canon.render (Generated.encodeNodeKindJson (NodeKind.DataGrid grid))
+              let bytes =
+                  Canonical.write Rendering.CrossHost (Generated.encodeNodeKindJson (NodeKind.DataGrid grid))
+
               Expect.stringContains bytes "\"value\":[{\"n\":9007199254740992}]" "the in-range bound encodes"
 
           testCase "the corpus's row-encode vectors"
@@ -269,6 +272,7 @@ let tests =
                       Expect.equal (RowCodec.RowCellRefusal.code got) (str (r.GetProperty "code")) id
                       Expect.equal got.Row (r.GetProperty("row").GetInt32()) id
                       Expect.equal got.Key (str (r.GetProperty "key")) id
-                  | (true, _), Ok j -> failtestf "%s: expected a refusal, encoded %s" id (Canon.render j)
-                  | _, Ok j -> Expect.equal (Canon.render j) (str (v.GetProperty "expected")) id
+                  | (true, _), Ok j ->
+                      failtestf "%s: expected a refusal, encoded %s" id (Canonical.write Rendering.CrossHost j)
+                  | _, Ok j -> Expect.equal (Canonical.write Rendering.CrossHost j) (str (v.GetProperty "expected")) id
                   | _, Error got -> failtestf "%s: expected bytes, refused %s" id (RowCodec.RowCellRefusal.describe got) ]

@@ -125,7 +125,7 @@ type InMemoryLayoutObserver(options: LayoutObserverOptions) =
             // baseline (0x0 element rect) so calls from the
             // renderer's mount hook don't crash on the in-memory
             // observer. Idempotent — only register if absent.
-            if not (Map.containsKey nodeId state.Entries) then
+            if not (ObserverWitness.isRegistered state nodeId) then
                 let baselineInput = Flags.LayoutInput.empty 0.0 0.0
                 this.RegisterFixture(nodeId, { Input = baselineInput; Parent = None })
 

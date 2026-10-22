@@ -105,7 +105,7 @@ let private ask (key: string) (prompt: string) : Async<string> =
         // canonical encoder's, so a quote or a newline in the prompt is safe.
         let body =
             let q (s: string) =
-                Fuaran.Core.Canon.render (Fuaran.Core.JStr s)
+                Fuaran.Core.Canonical.write Fuaran.Core.Rendering.CrossHost (Fuaran.Core.JStr s)
 
             sprintf
                 """{"model":"claude-sonnet-4-5","max_tokens":2000,"system":%s,"messages":[{"role":"user","content":%s}]}"""

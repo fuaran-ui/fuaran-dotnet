@@ -108,7 +108,7 @@ module DocumentDescriptor =
     /// second hand-rolled one. Used identically by the signing pre-image and by
     /// the envelope, so the two can never disagree about a claim's bytes.
     let internal claimsJson (claims: Map<string, string>) : string =
-        Canon.render (JObj(claims |> Map.toList |> List.map (fun (k, v) -> k, JStr v)))
+        Canonical.write Rendering.CrossHost (JObj(claims |> Map.toList |> List.map (fun (k, v) -> k, JStr v)))
 
     /// The pinned field body shared by the claim payload and this descriptor's
     /// own encoding. Field order — documentVersion / algorithm / digest — is a

@@ -16,9 +16,10 @@ module CoreFable.Program
 // candidate alike were retired when the pin was raised to 0.34.0, so a cut-time run against an older
 // Core line is no longer a supported mode.
 //
-// The program is written for Fuaran.Core 0.38.1, the pin: the `CORE_0_37` arms that let it compile
+// The program is written for Fuaran.Core 0.40.2, the pin: the `CORE_0_37` arms that let it compile
 // against the 0.36.0 pin and the 0.37.0 candidate alike were retired when the pin was raised to
-// 0.38.1 (Phase 2226). A later candidate that breaks a spelling touched here gets a version constant
+// 0.38.1 (Phase 2226), and the 0.40.0 spellings (Text, the `IdlField` canonical-form slots) were
+// written unconditionally when it was raised to 0.40.2 (Phase 2286). A later candidate that breaks a spelling touched here gets a version constant
 // in `CoreFable.fsproj` (keyed off `CoreFableEffectiveCore`) the same way; none is defined today.
 //
 // With `CORE_PARITY` defined (see `core-fable.ps1`), the program is also the VALUE leg: `--vectors`
@@ -54,7 +55,7 @@ let private wireTouch =
     let s = Json.render (JObj [ "k", JStr "v"; "n", JInt 1; "f", JFloat 1.5 ])
 
     match Json.parse s with
-    | Ok _ -> Canon.canonicalFloat 1.5
+    | Ok _ -> FloatLayout.canonical 1.5
     | Error e -> e
 
 // OpStream + DAG — the empty stream / DAG + the default hash.
@@ -104,6 +105,19 @@ let private unitTouch =
     | Ok kmh, Ok ms -> sprintf "%s/%A" (Unit.render kmh) (Unit.conversionFactor kmh ms |> Result.isOk)
     | Error e, _
     | _, Error e -> sprintf "unit:error:%A" e
+
+// Text (Phase 531, Core 0.40.0) — the kernel below Tree, Wire and OpStream. `Hash` already reaches it
+// through Tree; this names the escape and the string/number grammar deliberately, both directions,
+// so the package's own surface is compiled rather than only what Tree happens to call.
+let private textTouch =
+    let quoted = JsonString.quote "a\"b\u0001"
+
+    let read =
+        match JsonSyntax.readString quoted 0 quoted.Length (System.Text.StringBuilder()) with
+        | Ok struct (v, next) -> sprintf "%s@%d" v next
+        | Error r -> sprintf "text:error:%A" r.Fault
+
+    sprintf "%s|%s|%b|%d" quoted read (JsonSyntax.isNumber "-1.5e3") (Hash.utf8ByteCount "smoke\u00e9")
 
 #if CORE_FABLE_COMPUTE
 // A column, spelled once for every compute table below: a typed vector built by its type's
@@ -416,7 +430,9 @@ let private idlTouch =
                   [ { Name = "text"
                       Type = TStr
                       Opt = Required
-                      Annotations = Annotations.Empty }
+                      Annotations = Annotations.Empty
+                      Aliases = []
+                      Presence = None }
                     // Phase 113 — one ANNOTATED field, so the Fable leg actually reaches
                     // `Artifact.annotationsJson`. An empty set short-circuits before any of
                     // it runs, so an all-empty vocabulary would compile the type and prove
@@ -431,7 +447,9 @@ let private idlTouch =
                                     { Replacement = Some "text"
                                       Message = Some "carried by the text slot since 0.18.0" }
                             InProcessOnly = false
-                            Since = Some "0.18.0" } } ] }
+                            Since = Some "0.18.0" }
+                      Aliases = []
+                      Presence = None } ] }
               { Tag = "Box"
                 Category = "container"
                 Annotations = Annotations.Empty
@@ -439,7 +457,9 @@ let private idlTouch =
                   [ { Name = "children"
                       Type = TList TNode
                       Opt = Required
-                      Annotations = Annotations.Empty } ] } ]
+                      Annotations = Annotations.Empty
+                      Aliases = []
+                      Presence = None } ] } ]
           Unions = []
           Enums = [ Declare.enumOf "Tone" [ "Calm"; "Loud" ] ]
           Records = []
@@ -474,16 +494,16 @@ let private idlTouch =
         roundTripped
         (Map.count (Sanitize.sanitizeAttributes (Map.ofList [ "onclick", "x"; "title", "t" ])))
 
-// OpStream.Attributed (Phase 81) — the attributed-stream lift + envelope codec must be Fable-clean on
+// Attributed (Phase 81) — the attributed-stream lift + envelope codec must be Fable-clean on
 // encode AND decode (GP3): liftWitness derives an attributed witness, whose Encode/Decode wrap the inner
 // codec in an attribution envelope decoded via the self-contained JSONL scanner.
 let private attributedTouch =
     let sw: StreamWitness<int, int, string> =
         { Apply = fun op st -> Ok(st + op)
           Encode = fun op -> Json.render (JInt op)
-          Decode = fun s -> Decode.parse s |> Result.bind (Decoder.describing Decoder.int) }
+          Decode = fun s -> Json.parse s |> Result.bind (Decoder.describing Decoder.int) }
 
-    let lifted = OpStream.Attributed.liftWitness sw
+    let lifted = Attributed.liftWitness sw
 
     let a: Attributed<int> =
         { Actor = "a"
@@ -552,7 +572,7 @@ let private sampleAdequacyTouch =
 let private constructThenEncodeTouch =
     let codec: Corpus.Codec<string> =
         { Encode = fun s -> Json.render (JStr s)
-          Decode = fun s -> Decode.parse s |> Result.bind (Decoder.describing Decoder.str) }
+          Decode = fun s -> Json.parse s |> Result.bind (Decoder.describing Decoder.str) }
 
     let witness: ConstructWitness<string> =
         { Surface = "the smoke's own constructor"
@@ -766,7 +786,8 @@ let main argv =
           constructThenEncodeTouch
           observerTouch
           contentAddressTouch
-          unitTouch ]
+          unitTouch
+          textTouch ]
         @ computeTouches
         |> List.iter (printfn "%s")
 

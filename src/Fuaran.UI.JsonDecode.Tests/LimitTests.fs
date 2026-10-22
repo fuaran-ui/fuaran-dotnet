@@ -301,15 +301,15 @@ let tests =
           // `coalesce` is 511 nodes (inside) and 171 is 514 (past the bound).
           test "a rounded node's operand and scale count toward the expression bound" {
               let leaf =
-                  Fuaran.Core.Canon.render (
-                      Fuaran.Compute.DataFrameCodec.encodeExpr (
+                  Fuaran.Core.Canonical.write
+                      Fuaran.Core.Rendering.CrossHost
+                      (Fuaran.Compute.DataFrameCodec.encodeExpr (
                           Fuaran.Compute.Rounded(
                               Fuaran.Compute.Col "a",
                               { Scale = Fuaran.Compute.Slot.Lit 2
                                 Mode = Fuaran.Compute.RoundingMode.HalfUp }
                           )
-                      )
-                  )
+                      ))
 
               let pipeline (leaves: int) =
                   Fixtures.pipelineExprNode "x" "derive" leaf false (leaves + 1)
@@ -320,16 +320,16 @@ let tests =
 
           test "a quotient node's two operands and scale count toward the expression bound" {
               let leaf =
-                  Fuaran.Core.Canon.render (
-                      Fuaran.Compute.DataFrameCodec.encodeExpr (
+                  Fuaran.Core.Canonical.write
+                      Fuaran.Core.Rendering.CrossHost
+                      (Fuaran.Compute.DataFrameCodec.encodeExpr (
                           Fuaran.Compute.Quotient(
                               Fuaran.Compute.Col "a",
                               Fuaran.Compute.Col "a",
                               { Scale = Fuaran.Compute.Slot.Param "s"
                                 Mode = Fuaran.Compute.RoundingMode.HalfEven }
                           )
-                      )
-                  )
+                      ))
 
               // four nodes a leaf: 127 leaves is 509, 128 is 513.
               let pipeline (leaves: int) =

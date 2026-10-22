@@ -205,7 +205,8 @@ let rec encodeAction (action: Action<'Msg>) : string =
     // encoder too, so it is omitted at `Self` and the pre-1536 bytes stand.
     | Action.Navigate(TextSource.Literal route, NavigateTarget.Self) ->
         sprintf "{\"$type\":\"Navigate\",\"route\":%s}" (jsonString route)
-    | Action.Navigate _ -> (Fuaran.Core.Canon.render (Fuaran.UI.Generated.encodeActionJson action))
+    | Action.Navigate _ ->
+        (Fuaran.Core.Canonical.write Fuaran.Core.Rendering.CrossHost (Fuaran.UI.Generated.encodeActionJson action))
     | Action.Notify(channel, payload) ->
         sprintf "{\"$type\":\"Notify\",\"channel\":%s,\"payload\":%s}" (jsonString channel) (jsonValueLite payload)
     // Phase 818 — the literal `value` keeps the existing lite shape
@@ -218,7 +219,7 @@ let rec encodeAction (action: Action<'Msg>) : string =
         // Script-embedding safety (the `jsonString` posture): `<` / `>` / `&`
         // only ever occur inside JSON string literals, so the global escape is
         // sound and keeps the payload inert inside a `<script>` element.
-        (Fuaran.Core.Canon.render (Fuaran.UI.Generated.encodeActionJson action))
+        (Fuaran.Core.Canonical.write Fuaran.Core.Rendering.CrossHost (Fuaran.UI.Generated.encodeActionJson action))
             .Replace("<", "\\u003c")
             .Replace(">", "\\u003e")
             .Replace("&", "\\u0026")
@@ -237,7 +238,7 @@ let rec encodeAction (action: Action<'Msg>) : string =
         // Script-embedding safety, exactly as the `valueFrom` arm above: `<` /
         // `>` / `&` only ever occur inside JSON string literals, so the global
         // escape is sound and keeps the payload inert inside a `<script>`.
-        (Fuaran.Core.Canon.render (Fuaran.UI.Generated.encodeActionJson action))
+        (Fuaran.Core.Canonical.write Fuaran.Core.Rendering.CrossHost (Fuaran.UI.Generated.encodeActionJson action))
             .Replace("<", "\\u003c")
             .Replace(">", "\\u003e")
             .Replace("&", "\\u0026")
@@ -270,7 +271,7 @@ let rec encodeAction (action: Action<'Msg>) : string =
         // resume interpreter never reads it — it is written faithfully anyway,
         // because a payload that is present and wrong is worse than one that is
         // present and unread.
-        (Fuaran.Core.Canon.render (Fuaran.UI.Generated.encodeActionJson action))
+        (Fuaran.Core.Canonical.write Fuaran.Core.Rendering.CrossHost (Fuaran.UI.Generated.encodeActionJson action))
             .Replace("<", "\u003c")
             .Replace(">", "\u003e")
             .Replace("&", "\u0026")

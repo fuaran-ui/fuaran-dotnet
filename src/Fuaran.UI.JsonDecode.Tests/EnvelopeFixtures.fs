@@ -47,13 +47,13 @@ let private nodeTagOf (jv: Fuaran.Core.JVal) : Result<string, string> =
 
 /// Decode a known payload JVal through the UI decoder (over its canonical bytes).
 let private decodeKnownNode (jv: Fuaran.Core.JVal) : Result<Node<obj>, string> =
-    match decodeNodeObj (Fuaran.Core.Canon.render jv) with
+    match decodeNodeObj (Fuaran.Core.Canonical.write Fuaran.Core.Rendering.CrossHost jv) with
     | Ok n -> Ok n
     | Error e -> Error(e.Code + " at " + e.Path)
 
 /// Re-encode a known UI node back to a Core JVal (via its canonical bytes).
 let private encodeKnownNode (n: Node<obj>) : Fuaran.Core.JVal =
-    match Fuaran.Core.Decode.parse (CanonicalJson.encodeNode n) with
+    match Fuaran.Core.Json.parse (CanonicalJson.encodeNode n) with
     | Ok jv -> jv
     | Error m -> failwithf "EnvelopeFixtures.encodeKnownNode: %s" m
 
@@ -67,17 +67,17 @@ let private encodeKnownNode (n: Node<obj>) : Fuaran.Core.JVal =
 /// `INVALID_JSON` at `$`: the bytes are JSON, and what the consumer declines is the profile.
 let negotiateReencode (input: string) : Result<string, string * string> =
     let malformedProfile =
-        Fuaran.Core.Decode.parse input
+        Fuaran.Core.Json.parse input
         |> Result.bind (Fuaran.Core.Decoder.describing (Fuaran.Core.Decoder.field "$profile" Fuaran.Core.Decoder.json))
         |> Result.bind (Fuaran.Core.Decoder.describing Fuaran.Core.Decoder.str)
-        |> Result.map (Fuaran.Core.Versioning.Profile.tryParse >> Result.isError)
+        |> Result.map (Fuaran.Core.Versioning.Capability.tryParse >> Result.isError)
         |> Result.defaultValue false
 
     match Fuaran.Core.Versioning.parse input with
     | Error _ when malformedProfile -> Error("FOREIGN_PROFILE", "$.$profile")
     | Error _ -> Error("INVALID_JSON", "$")
     | Ok env ->
-        match Fuaran.Core.Versioning.negotiate Fuaran.Core.Versioning.Profile.coreV1 env.Profile with
+        match Fuaran.Core.Versioning.negotiate Fuaran.Core.Versioning.Capability.coreV1 env.Profile with
         | Fuaran.Core.Versioning.Foreign _ -> Error("FOREIGN_PROFILE", "$.$profile")
         | _ ->
             match Fuaran.Core.Versioning.decodeTolerant nodeTagOf isKnownKind decodeKnownNode env.Payload with

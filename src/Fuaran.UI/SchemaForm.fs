@@ -1082,19 +1082,22 @@ let derive (options: SchemaFormOptions<'Msg>) (schema: JVal) : Result<Node<'Msg>
 let deriveWire (options: SchemaFormOptions<'Msg>) (schema: JVal) : Result<string, string> =
     match derive options schema with
     | Ok node -> Ok(Generated.encodeNode node)
-    | Error refusals -> Error(Canon.render (SchemaFormRefusal.toJson refusals))
+    | Error refusals -> Error(Canonical.write Rendering.CrossHost (SchemaFormRefusal.toJson refusals))
 
 /// `deriveWire` over schema TEXT. The read is null-tolerant (`"default": null`
 /// is member absence); text the tier's parser refuses is a `schema-not-json`
 /// refusal, in the same envelope.
 let deriveWireFromText (options: SchemaFormOptions<'Msg>) (text: string) : Result<string, string> =
-    match Json.parseTolerantOfNull text with
+    match
+        Decoder.parse ReadOptions.tolerantOfNull text
+        |> Result.mapError DecodeError.describe
+    with
     | Ok schema -> deriveWire options schema
     | Error message ->
         Error(
-            Canon.render (
-                SchemaFormRefusal.toJson
+            Canonical.write
+                Rendering.CrossHost
+                (SchemaFormRefusal.toJson
                     [ { Path = ""
-                        Code = SchemaFormRefusalCode.SchemaNotJson message } ]
-            )
+                        Code = SchemaFormRefusalCode.SchemaNotJson message } ])
         )

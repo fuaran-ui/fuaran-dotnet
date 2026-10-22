@@ -185,9 +185,9 @@ let tests =
                         PrevHash = string i
                         Hash = string (i + 1) })
 
-              let jsonl = Fuaran.Core.OpStream.toJsonl witness coreRecords
+              let jsonl = Fuaran.Core.Jsonl.write witness coreRecords
 
-              match Fuaran.Core.OpStream.fromJsonl witness jsonl with
+              match Fuaran.Core.Jsonl.read witness jsonl with
               | Error e -> failtestf "Core.fromJsonl failed: %s" (Fuaran.Core.StreamLoadFault.toString e)
               | Ok back ->
                   // `TreeOp<obj>` carries closures, so `StreamEntry` has no
@@ -198,7 +198,7 @@ let tests =
                       (entries |> List.map StreamEntry.encode)
                       "the entries round-trip through Core's JSONL"
 
-                  Expect.equal (Fuaran.Core.OpStream.toJsonl witness back) jsonl "re-emitting reproduces the JSONL"
+                  Expect.equal (Fuaran.Core.Jsonl.write witness back) jsonl "re-emitting reproduces the JSONL"
           }
 
           test "the refusing verify-path witness says so" {

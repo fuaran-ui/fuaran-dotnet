@@ -24,7 +24,7 @@ open Fuaran.UI
 //  bump, and a decoder that shrugged at an unknown key would silently accept a
 //  document from a newer producer while ignoring exactly the part that was new.
 //
-//  ENCODE IS CANONICAL AND SORTED (`Canon.render`) — Ordinal keys, recursively.
+//  ENCODE IS CANONICAL AND SORTED (`Canonical.write Rendering.CrossHost`) — Ordinal keys, recursively.
 //  Decode is order-tolerant, because it looks up by name. That asymmetry is the
 //  §2 discipline and it is what makes byte-comparison a usable conformance leg.
 // ============================================================================
@@ -121,7 +121,7 @@ let private encodeProp (p: CustomPropCard) : JVal =
         @ [ "required", JBool p.Required; "type", JStr p.Type ]
     )
 
-/// A card as a `JVal`. `Canon.render` supplies the ordering, so the field order
+/// A card as a `JVal`. `Canonical.write Rendering.CrossHost` supplies the ordering, so the field order
 /// written here is for a reader of this source and not for the wire.
 let encodeCard (card: CustomKindCard) : JVal =
     let summary =
@@ -139,7 +139,8 @@ let encodeCard (card: CustomKindCard) : JVal =
     )
 
 /// One card as canonical wire bytes.
-let encodeCardJson (card: CustomKindCard) : string = Canon.render (encodeCard card)
+let encodeCardJson (card: CustomKindCard) : string =
+    Canonical.write Rendering.CrossHost (encodeCard card)
 
 /// A card BUNDLE — the shape a host publishes (§25.2). Cards are emitted sorted
 /// by `(moduleId, componentId)` Ordinal, so two deployments that hold the same
@@ -152,11 +153,11 @@ let encodeBundleJson (cards: CustomKindCard list) : string =
             | 0 -> System.String.CompareOrdinal(a.ComponentId, b.ComponentId)
             | c -> c)
 
-    Canon.render (
-        JObj
+    Canonical.write
+        Rendering.CrossHost
+        (JObj
             [ "$cards", JStr CustomCard.bundleFormatVersion
-              "cards", JArr(sorted |> List.map encodeCard) ]
-    )
+              "cards", JArr(sorted |> List.map encodeCard) ])
 
 /// Every card a registry holds, as one bundle document — the EXPORT half of the
 /// artefact (Phase 1108 task 2). A deployment publishes this; a foreign host

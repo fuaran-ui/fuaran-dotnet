@@ -24,11 +24,12 @@
 // ---------------------------------------------------------------------------
 
 open Fuaran.Core.Idl
+open Fuaran.Core.Idl.Codegen.Types
 
 /// The `Switch` host projection: the wire has TWO optional keys (`on`, the
 /// compact `stateKey`), the F# API has ONE required `On: Binding<string>` —
 /// Phase 768's merge, kept while the IDL keeps describing the wire.
-let private switchProjection: Gen.KindProjection =
+let private switchProjection: KindProjection =
     { SpecDecl =
         """SwitchSpec<'Msg> =
     {
@@ -54,7 +55,7 @@ let private switchProjection: Gen.KindProjection =
     }"""
       Encoder =
         """and private encSwitchSpec<'Msg> (s: SwitchSpec<'Msg>) : JVal =
-    Canon.typed "Switch" ([ Some("cases", JArr(List.map encSwitchCase s.Cases)); Some("default", encNode s.Default); (match s.On with | Binding.State (key, None) -> Some("stateKey", JStr key) | on -> Some("on", (encBinding JStr) on)); (s.AutoAdvanceMs |> Option.map (fun v -> "autoAdvanceMs", JInt v)) ] |> List.choose id)"""
+    Canonical.typed "Switch" ([ Some("cases", JArr(List.map encSwitchCase s.Cases)); Some("default", encNode s.Default); (match s.On with | Binding.State (key, None) -> Some("stateKey", JStr key) | on -> Some("on", (encBinding JStr) on)); (s.AutoAdvanceMs |> Option.map (fun v -> "autoAdvanceMs", JInt v)) ] |> List.choose id)"""
       Decoder =
         """and private decSwitchSpec (j: JVal) : Result<SwitchSpec<obj>, DecodeError> =
     dObj j |> Result.bind (fun __fs ->
@@ -109,7 +110,9 @@ let private switchProjection: Gen.KindProjection =
             { Name = name
               Type = t
               Opt = opt
-              Annotations = Annotations.Empty }
+              Annotations = Annotations.Empty
+              Aliases = []
+              Presence = None }
 
         Some
             [ field "autoAdvanceMs" TInt Optional
@@ -118,8 +121,8 @@ let private switchProjection: Gen.KindProjection =
               field "on" (TUnion("Binding", [ TStr ])) Required ] }
 
 /// The declared support for `Gen.fsharpModuleWith` — see the module doc above.
-let support: Gen.GenSupport =
-    { Gen.GenSupport.Empty with
+let support: GenSupport =
+    { GenSupport.Empty with
         Docs =
             Map.ofList
                 [ "case:Action.Dispatch",
@@ -749,7 +752,13 @@ and private decI18nArg (j: JVal) : Result<Binding<JVal>, string> =
     | literal -> dJson literal |> Result.map (Some >> Binding.Static) |> Result.mapError DecodeError.describe"""
         AccessorSplice =
             Some
-                """// Phase 818 — JVal-level accessor for a data-shaped Action (the
+                """// Phase 2286 — the two record accessors the generator emitted for itself until
+// Fuaran.Core 0.40 (Phase 524 removed them); the op notation, the canonical op
+// codec and the merge engine read them, so the vocabulary declares them here.
+let encodeStateBehaviourJson (s: StateBehaviour<'Msg>) : JVal = encStateBehaviour s
+let encodeSemanticStyleJson (s: SemanticStyle) : JVal = encSemanticStyle s
+
+// Phase 818 — JVal-level accessor for a data-shaped Action (the
 // `encodeNodeKindJson` precedent): the server resume script re-encodes a
 // `SetState` whose payload is a `valueFrom` Binding through the canonical
 // encoder rather than growing a second hand-rolled binding encoder.
@@ -1064,32 +1073,32 @@ let rec canonicaliseVector (v: IdlValue) : IdlValue =
 /// appending it under the declared `(string * obj) list` result is FS3261. The
 /// fix is the generator's (annotate `ofKind` with the result's element type);
 /// the request waits for a Core release that carries it.
-let derivations: Gen.Derivation list =
+let derivations: Derivation list =
     [
       // `wireTag` / `allWireTags` / `children` / `withChildren`, with
       // `nodeWitness` built on them — the wire-tag enumeration and the
       // DataGrid tag adaptation read these instead of a hand list.
-      Gen.Derivation.StructuralAccess
+      Derivation.StructuralAccess
       // `Action.fold` — the walks over the action union (`Chain` and
       // `Confirm` both nest actions) fold through it, so none can forget a
       // recursive case.
-      Gen.Derivation.Fold "Action"
+      Derivation.Fold "Action"
       // `default<Record>` for every record whose fields all have a value
       // without the caller — `Defaults.style`, `.stateBehaviour`,
       // `.drawStyle` and `.Accessibility.empty` read these.
-      Gen.Derivation.DefaultRecords
+      Derivation.DefaultRecords
       // `kindCategories`, `kindFieldNames`, `envelopeFieldNames` and
       // `opFieldNames` as `Set`s. The decoder's ORDERED kind groups and
       // `opWireFields` stay hand-declared: their order is the cross-host error
       // hint, and the op fields carry a required flag these sets do not.
-      Gen.Derivation.VocabularyConstants
+      Derivation.VocabularyConstants
       // Phase 2177 — `FormFieldKind.value` and `FormFieldKind.onChange`. Every
       // case declares its value as `Binding<JVal>` and its change handler as
       // `onChange: JVal -> Action`, so both project to one type; the walks that
       // read a field's binding or ask whether a handler is present read these
       // instead of matching fifteen cases each.
-      Gen.Derivation.Projections("FormFieldKind", [ "value"; "onChange" ])
+      Derivation.Projections("FormFieldKind", [ "value"; "onChange" ])
       // Phase 2188 — `mapMsg`, the tree with its message type rewritten. It
       // replaces the hand-written structural map `NodeMap` carried, so a new
       // kind or field cannot leave the map behind.
-      Gen.Derivation.MapMsg ]
+      Derivation.MapMsg ]

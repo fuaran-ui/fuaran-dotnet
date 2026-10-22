@@ -222,10 +222,11 @@ let tests =
               let coreRecords = [ first; second ] |> List.map StreamEntry.toCoreRecord
 
               let breakOpt =
-                  Fuaran.Core.OpStream.firstChainBreakWith
-                      HashChain.chainConfig
-                      StreamEntry.hashFn
-                      (StreamEntry.coreWitness<TestMsg> ())
+                  Fuaran.Core.OpStream.firstChainBreak
+                      (Fuaran.Core.OpStream.ofConfig
+                          HashChain.chainConfig
+                          StreamEntry.hashFn
+                          (StreamEntry.coreWitness<TestMsg> ()))
                       coreRecords
 
               Expect.isNone breakOpt "Core's verifier accepts the UI chain directly"
@@ -241,10 +242,11 @@ let tests =
                           r)
 
               let tamperBreak =
-                  Fuaran.Core.OpStream.firstChainBreakWith
-                      HashChain.chainConfig
-                      StreamEntry.hashFn
-                      (StreamEntry.coreWitness<TestMsg> ())
+                  Fuaran.Core.OpStream.firstChainBreak
+                      (Fuaran.Core.OpStream.ofConfig
+                          HashChain.chainConfig
+                          StreamEntry.hashFn
+                          (StreamEntry.coreWitness<TestMsg> ()))
                       tampered
 
               Expect.isSome tamperBreak "Core's verifier catches a re-attributed record on the UI chain"

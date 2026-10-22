@@ -206,8 +206,9 @@ foreach ($name in $touchedEnv) { $savedEnv[$name] = [Environment]::GetEnvironmen
 [Environment]::SetEnvironmentVariable('CoreFableSkipCompute', $null)
 [Environment]::SetEnvironmentVariable('CoreFableEffectiveCore', $null)
 
-# The pins are the root file's and this directory's own: the latter pins a Core package that first
-# ships past the root file's Core line (see its header), and a member is a member wherever it is pinned.
+# The pins are the root file's and this directory's own: the latter may pin a Core package that first
+# ships past the root file's Core line (Phase 2382 did, until Phase 2286's raise moved it to the root
+# file), and a member is a member wherever it is pinned.
 $pinsText = (Get-Content -Raw (Join-Path $repoRoot 'Directory.Packages.props')) + "`n" + (Get-Content -Raw (Join-Path $PSScriptRoot 'Directory.Packages.props'))
 # A pin may name a version property (`Version="$(FuaranCoreComputeVersion)"`, the second producer's
 # pin), so the file's own property values are read first and substituted. A pin naming a property

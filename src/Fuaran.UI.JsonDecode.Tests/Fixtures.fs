@@ -4501,7 +4501,7 @@ let private timestampGrid
             cells
             |> List.map (function
                 | Some s -> Fuaran.Core.Timestamp s
-                | None -> Fuaran.Core.Null)
+                | None -> Fuaran.Core.Cell.Null)
 
         match Fuaran.Core.Column.ofCells name (Fuaran.Core.TimestampType unit) cells with
         | Ok c -> c
@@ -5431,8 +5431,8 @@ let exprScalar: Node<obj> =
                               Fuaran.Compute.Case(
                                   [ Fuaran.Compute.Binary(
                                         Fuaran.Compute.And,
-                                        Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Bool true),
-                                        Fuaran.Compute.Not(Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Bool false))
+                                        Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Cell.Bool true),
+                                        Fuaran.Compute.Not(Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Cell.Bool false))
                                     ),
                                     lit "ready" ],
                                   lit "blocked"
@@ -5443,7 +5443,7 @@ let exprScalar: Node<obj> =
                           "expr-null-test"
                           (Binding.Expr(
                               Fuaran.Compute.Case(
-                                  [ Fuaran.Compute.IsNull(Fuaran.Compute.ColExpr.Lit Fuaran.Core.Null), lit "empty" ],
+                                  [ Fuaran.Compute.IsNull(Fuaran.Compute.ColExpr.Lit Fuaran.Core.Cell.Null), lit "empty" ],
                                   lit "has a value"
                               ),
                               None

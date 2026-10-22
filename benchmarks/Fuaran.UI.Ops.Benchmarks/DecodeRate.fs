@@ -28,7 +28,7 @@ open Fuaran.UI.OpStream.Abstractions
 //   - `render_reparse` — the route a secondary reader takes when it already holds
 //                        the value as a Core `JVal` (a teleport bundle's tree and
 //                        history, an elicitation envelope's tree, an attested
-//                        document): `Canon.render` the value, then decode the
+//                        document): `Canonical.write Rendering.CrossHost` the value, then decode the
 //                        text. The `JVal` is parsed once, outside the timing.
 //   - `jval`           — the `JVal` entry points, `decodeNodeObjJVal` /
 //                        `decodeOpJVal`, over the same parsed value.
@@ -79,7 +79,7 @@ let all: Scenario list =
       { Name = "node.render_reparse"
         Run =
           fun () ->
-              JsonDecode.decodeNodeObj (Canon.render treeJVal)
+              JsonDecode.decodeNodeObj (Canonical.write Rendering.CrossHost treeJVal)
               |> expectOk "node.render_reparse" }
       { Name = "node.jval"
         Run = fun () -> JsonDecode.decodeNodeObjJVal treeJVal |> expectOk "node.jval" }
@@ -89,7 +89,9 @@ let all: Scenario list =
         Run =
           fun () ->
               opJVals
-              |> List.iter (fun jv -> JsonDecode.decodeOp (Canon.render jv) |> expectOk "ops.render_reparse") }
+              |> List.iter (fun jv ->
+                  JsonDecode.decodeOp (Canonical.write Rendering.CrossHost jv)
+                  |> expectOk "ops.render_reparse") }
       { Name = "ops.jval"
         Run = fun () -> opJVals |> List.iter (JsonDecode.decodeOpJVal >> expectOk "ops.jval") } ]
 

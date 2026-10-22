@@ -62,7 +62,10 @@ let private keyedIds (node: Node<'Msg>) : Set<string> =
 
 /// A structural op, through Core's keyed footprint.
 let private skeleton (op: Fuaran.Core.SkeletonOp<Node<'Msg>, NodeId>) : Fuaran.Core.Footprint =
-    CoreOps.footprintKeyed Introspect.keyedWitness Introspect.nodeWitness Introspect.idWitness [ op ]
+    CoreOps.footprint
+        Fuaran.Core.Policy.none
+        (Fuaran.Core.OpScope.keyed Introspect.keyedWitness (fun _ -> true) Introspect.nodeWitness Introspect.idWitness)
+        [ op ]
 
 /// An in-place rewrite of `id` that puts `incoming` into the tree: Core's
 /// `UpdateNode` footprint over the keyed engine.

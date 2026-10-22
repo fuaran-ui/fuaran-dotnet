@@ -509,11 +509,11 @@ module StreamEntry =
     /// record index** — the domain's public 1-based `Sequence` minus one; the
     /// mapping lives in `HashChain.computeHash` (the UI-facing authority), so a
     /// UI record maps to a `Core.OpRecord` with `Seq = Sequence - 1` and
-    /// `Core.OpStream.firstChainBreakWith` verifies the chain directly (F14
+    /// `Core.OpStream.firstChainBreak` verifies the chain directly (F14
     /// resolved: the pre-image speaks Core's basis; the API keeps the domain's).
     let chainHash (previousHash: string) (seq0: int) (actor: Actor) (entry: StreamEntry<'Msg>) : string =
         let payload =
-            Fuaran.Core.OpStream.canonicalConfig.Payload seq0 (coreActor actor) (encode entry)
+            Fuaran.Core.StreamConfig.canonical.Payload seq0 (coreActor actor) (encode entry)
 
         hashFn previousHash payload
 

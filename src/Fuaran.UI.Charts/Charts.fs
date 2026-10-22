@@ -4579,19 +4579,19 @@ let lowerSparkline (spec: SparklineSpec) (series: float list) : DrawingSpec =
 // ─── What the stamp COVERS ───────────────────────────────────────────────────
 //
 //   `specHash`         SHA-256 of the CANONICAL WIRE ENCODING of the `ChartSpec`
-//                      — literally `Canon.render (encodeNodeKindJson (Chart s))`,
+//                      — literally `Canonical.write Rendering.CrossHost (encodeNodeKindJson (Chart s))`,
 //                      the same bytes the wire carries. Not a hash of the F#
 //                      record, not of the lowered drawing: the artefact's claim
 //                      is "this picture came from THIS spec", and the spec's
 //                      identity on the wire is the only identity every host
 //                      agrees on. Canonical-float discipline and Ordinal key
-//                      ordering are INHERITED from `Canon.render` rather than
+//                      ordering are INHERITED from `Canonical.write Rendering.CrossHost` rather than
 //                      re-implemented here, so a stamp minted on .NET and one
 //                      minted under Fable are the same string by construction.
 //
 //   `dataFingerprint`  SHA-256 over a tagged canonical document carrying BOTH
 //                      the schema (the Ordinal-sorted union of column names) and
-//                      the content (`Fuaran.UI.RowCodec.encodeRows` under `Canon.render`).
+//                      the content (`Fuaran.UI.RowCodec.encodeRows` under `Canonical.write Rendering.CrossHost`).
 //                      Two legs rather than one because they fail differently: a
 //                      renamed column with identical values, and identical
 //                      columns with changed values, are both changes a reader
@@ -4689,13 +4689,15 @@ type ChartProvenance =
 /// The canonical wire JSON of a `ChartSpec` — the exact bytes the wire carries
 /// for this node's kind, and the input `specHash` is taken over.
 let specWireJson<'Msg> (spec: ChartSpec<'Msg>) : string =
-    Fuaran.Core.Canon.render (Fuaran.UI.Generated.encodeNodeKindJson (NodeKind.Chart spec))
+    Fuaran.Core.Canonical.write
+        Fuaran.Core.Rendering.CrossHost
+        (Fuaran.UI.Generated.encodeNodeKindJson (NodeKind.Chart spec))
 
 /// The canonical wire JSON of a typed row feed (`Fuaran.UI.RowCodec.encodeRows`, the same
 /// bytes `Generated.fs` writes for `source`). Raises `Fuaran.UI.RowCodec.RowCellRefused` on a cell the
 /// codec refuses: such a feed has no wire, so it has no stamp either.
 let dataWireJson (rows: Row seq) : string =
-    Fuaran.Core.Canon.render (Fuaran.UI.RowCodec.encodeRows rows)
+    Fuaran.Core.Canonical.write Fuaran.Core.Rendering.CrossHost (Fuaran.UI.RowCodec.encodeRows rows)
 
 /// The stamp's spec leg — `sha256:<hex>` over `specWireJson`.
 let specHashOf<'Msg> (spec: ChartSpec<'Msg>) : string =
@@ -4756,7 +4758,11 @@ let provenanceDocument<'Msg> (provenance: ChartProvenance) (spec: ChartSpec<'Msg
                | _ -> Option.None) ]
             |> List.choose id
 
-        Option.Some(Fuaran.Core.Canon.render (Fuaran.Core.Canon.typed provenanceDocumentType fields))
+        Option.Some(
+            Fuaran.Core.Canonical.write
+                Fuaran.Core.Rendering.CrossHost
+                (Fuaran.Core.Canonical.typed provenanceDocumentType fields)
+        )
 
 /// What a self-describing chart SVG recovers to.
 type RecoveredChart =
@@ -4822,8 +4828,11 @@ let tryRecover (svg: string) : Result<RecoveredChart, string> =
                                       // bytes exactly while a substring would
                                       // only reproduce whatever the transport
                                       // happened to leave behind.
-                                      SpecJson = Fuaran.Core.Canon.render specJson
-                                      DataJson = provField "data" fields |> Option.map Fuaran.Core.Canon.render
+                                      SpecJson =
+                                        Fuaran.Core.Canonical.write Fuaran.Core.Rendering.CrossHost specJson
+                                      DataJson =
+                                        provField "data" fields
+                                        |> Option.map (Fuaran.Core.Canonical.write Fuaran.Core.Rendering.CrossHost)
                                       Stamp =
                                         { SpecHash = specHash
                                           DataFingerprint = dataFingerprint

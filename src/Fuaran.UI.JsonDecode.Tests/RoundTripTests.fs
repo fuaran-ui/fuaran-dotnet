@@ -568,7 +568,7 @@ let nonFirstRowSelectionIntent =
 [<Tests>]
 let behindReaderTests =
     let parse (s: string) =
-        match Fuaran.Core.Decode.parse s with
+        match Fuaran.Core.Json.parse s with
         | Ok jv -> jv
         | Error m -> failwithf "parse: %s" m
 
@@ -616,7 +616,11 @@ let behindReaderTests =
                       // must-ignore-but-preserve is untouched by the lift: the
                       // re-encoded payload is the producer's bytes, fallback and all.
                       let reenc = Fuaran.Core.Versioning.reencode (fun _ -> failwith "known") d
-                      Expect.equal (Fuaran.Core.Canon.render reenc) input "byte-for-byte, fallback included"
+
+                      Expect.equal
+                          (Fuaran.Core.Canonical.write Fuaran.Core.Rendering.CrossHost reenc)
+                          input
+                          "byte-for-byte, fallback included"
                   | Ok(Fuaran.Core.Versioning.Known _) -> failtest "hologram is not a known kind"
                   | Error m -> failtestf "decode: %s" m)
 

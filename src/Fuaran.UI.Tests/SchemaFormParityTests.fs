@@ -100,7 +100,10 @@ let parity =
               // `Generated.encodeNode`, which is canonical only over a canonical tree.
               let offenders =
                   [ for c in cases.Value do
-                        match Json.parseTolerantOfNull c.Schema with
+                        match
+                            (Decoder.parse ReadOptions.tolerantOfNull c.Schema
+                             |> Result.mapError DecodeError.describe)
+                        with
                         | Ok schema ->
                             match derive options schema with
                             | Ok node ->

@@ -509,9 +509,11 @@ let tests =
                         (fun () ->
                             assertAllPassed
                                 "go-red probe"
-                                [ { Law = "a deliberately failed law"
-                                    Passed = false
-                                    Counterexample = Some "the probe's own counterexample" } ])
+                                [ Fuaran.Core.LawResult.fail
+                                      "go-red probe"
+                                      "a deliberately failed law"
+                                      1
+                                      "the probe's own counterexample" ])
                         "assertAllPassed accepted a failed law"
 
                 testCase "incrementalLaws certifies change-driven and op-driven equivalence at this pin"

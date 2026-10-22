@@ -741,33 +741,37 @@ module TreeOpDiff =
         |> List.fold (fun (m: Map<string, Node<'Msg>>) n -> Map.add n.Id n m) Map.empty
 
     /// Core's refusal, under the tier's own name for the same defect.
-    let private refusal (e: Diff.DiffError<NodeId>) : ApplyError =
+    let private refusal (e: Rejection<NodeId>) : ApplyError =
         let raw (NodeId s) = s
 
         match e with
-        | Diff.DuplicateIdInTree id ->
+        | DuplicateId id ->
             { Code = ApplyErrorCode.DuplicateNodeId
               Message =
-                $"The tree carries node id '{raw id}' more than once, so no id-addressed script reaches it (Fuaran.Core DiffError.DuplicateIdInTree)."
+                $"The tree carries node id '{raw id}' more than once, so no id-addressed script reaches it (Fuaran.Core Rejection.DuplicateId)."
               Hint = ApplyHint.empty }
-        | Diff.TargetNotAContainer(target, kindTag) ->
+        | NotAContainer(target, kindTag) ->
             { Code = ApplyErrorCode.ChildlessKind
               Message =
-                $"Node '{raw target}' ({kindTag}) holds children in the new tree but its kind cannot (Fuaran.Core DiffError.TargetNotAContainer)."
+                $"Node '{raw target}' ({kindTag}) holds children in the new tree but its kind cannot (Fuaran.Core Rejection.NotAContainer)."
               Hint =
                 { ApplyHint.empty with
                     NodeKind = Some kindTag } }
-        | Diff.IllegalChildInTree(child, childKind, parent, parentKind, _) ->
+        | IllegalChild(child, childKind, parent, parentKind, _) ->
             { Code = ApplyErrorCode.KindMismatch
               Message =
-                $"Node '{raw child}' ({childKind}) sits under '{raw parent}' ({parentKind}), which may not hold it (Fuaran.Core DiffError.IllegalChildInTree)."
+                $"Node '{raw child}' ({childKind}) sits under '{raw parent}' ({parentKind}), which may not hold it (Fuaran.Core Rejection.IllegalChild)."
               Hint = ApplyHint.empty }
-        | Diff.RootIdMismatch(before, after) ->
+        | RootIdMismatch(before, after) ->
             // `tryDiff` answers this pair with `ReplaceRoot` before Core is asked.
             { Code = ApplyErrorCode.KindMismatch
               Message =
-                $"The roots carry different ids ('{raw before}', '{raw after}') (Fuaran.Core DiffError.RootIdMismatch)."
+                $"The roots carry different ids ('{raw before}', '{raw after}') (Fuaran.Core Rejection.RootIdMismatch)."
               Hint = ApplyHint.empty }
+        // Since Fuaran.Core 0.39 (Phase 519) a diff refuses with the engine's `Rejection`; under the
+        // contained scope it answers only the four cases above, so any other is a Core defect.
+        | other ->
+            invalidOp (sprintf "Fuaran.Core Diff.toOpsWith refused with %A, which a contained diff never answers" other)
 
     /// Diff `a` → `b` into an applyable `TreeOp` list, or Core's refusal under
     /// the tier's name for it. Folding an `Ok` script through `Apply.apply`
@@ -778,7 +782,14 @@ module TreeOpDiff =
         if a.Id <> b.Id then
             Ok [ TreeOp.ReplaceRoot b ]
         else
-            match Diff.toOpsContainedWith canHold CanonicalJson.encodeNode NodeIndex.witness<'Msg> idWitness a b with
+            match
+                Diff.toOpsWith
+                    CanonicalJson.encodeNode
+                    Policy.none
+                    (OpScope.contained canHold NodeIndex.witness<'Msg> idWitness)
+                    a
+                    b
+            with
             | Ok [] -> Ok []
             | Ok script -> Ok(lowerScript (lazy (byId a)) (lazy (byId b)) script)
             | Error e -> Error(refusal e)

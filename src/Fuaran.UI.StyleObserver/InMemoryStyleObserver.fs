@@ -134,7 +134,7 @@ type InMemoryStyleObserver(options: StyleObserverOptions, manifest: ThemeManifes
             // from the renderer's mount hook don't crash on the in-memory
             // observer. Test authors normally call RegisterFixture with a
             // populated input.
-            if not (Map.containsKey nodeId state.Entries) then
+            if not (ObserverWitness.isRegistered state nodeId) then
                 this.RegisterFixture(
                     nodeId,
                     { Input = Flags.StyleInput.baseline

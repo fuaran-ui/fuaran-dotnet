@@ -39,7 +39,9 @@
     Program.fs writes the new spelling under it. When the pin reaches that version, the constant and
     the old-pin arm it guards are deleted together. CORE_0_36 (Core Phases 398 and 390) was retired when
     the pin was raised to 0.36.0, and CORE_0_37 (a schema entry a `Field`, fuaran-core#423; a column a
-    typed vector, fuaran-core#444) when it was raised to 0.38.1 (Phase 2226). None is defined today.
+    typed vector, fuaran-core#444) when it was raised to 0.38.1 (Phase 2226). None is defined today: the
+    0.40.0 spellings (the `IdlField` canonical-form slots, Core Phase 539; the Text and Relation packages)
+    were written unconditionally when the pin was raised to 0.40.2 (Phase 2286).
   -->
   <!--
     `CoreFableSkipCompute=true` is set by the script for a Core-only cut, and only then: the compute
@@ -85,8 +87,11 @@
     <PackageReference Include="Fuaran.Core.ContentAddress" />
     <!-- From Core 0.37.0 (Phase 426); unconditional since Phase 2226 raised this repository's pin to carry it. -->
     <PackageReference Include="Fuaran.Core.Unit" />
-    <!-- From Core 0.40.0 (fuaran-core Phase 552, Core D205), pinned ahead of the spine in this
-         directory's Directory.Packages.props (Phase 2382). -->
+    <!-- From Core 0.40.0 (fuaran-core Phase 552, Core D205): pinned alone in this directory by Phase 2382,
+         ahead of the spine; unconditional and pinned in the root file since Phase 2286 raised it to 0.40.2. -->
     <PackageReference Include="Fuaran.Core.Relation" />
+    <!-- From Core 0.40.0 (fuaran-core Phase 531, the kernel below Tree, Wire and OpStream); unconditional
+         since Phase 2286 raised this repository's pin to carry it. -->
+    <PackageReference Include="Fuaran.Core.Text" />
   </ItemGroup>
 </Project>

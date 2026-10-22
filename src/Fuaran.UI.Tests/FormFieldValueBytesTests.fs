@@ -147,7 +147,7 @@ let private slots (doc: JVal) : (string * string * string * string) list =
 
                     let value =
                         match member' "value" with
-                        | Some v -> Canon.render v
+                        | Some v -> Canonical.write Rendering.CrossHost v
                         | None -> "<absent>"
 
                     found.Add(path + ".kind", tag, (if handler = "" then "-" else handler), value)

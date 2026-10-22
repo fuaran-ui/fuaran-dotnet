@@ -393,13 +393,17 @@ let private req (name: string) (t: IdlType) : IdlField =
     { Name = name
       Type = t
       Opt = Required
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Aliases = []
+      Presence = None }
 
 let private opt (name: string) (t: IdlType) : IdlField =
     { Name = name
       Type = t
       Opt = Optional
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Aliases = []
+      Presence = None }
 
 // ─── Phase 691: function-typed slots carry their HOST signature ────────────
 //
@@ -428,7 +432,9 @@ let private hostOnly (name: string) (fs: string) (ph: string) : IdlField =
               TypeScript = "never"
               Placeholder = ph }
       Opt = HostOnly
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Aliases = []
+      Presence = None }
 
 let private fn (fs: string) (ts: string) (ph: string) : IdlType =
     TFn
@@ -460,7 +466,8 @@ let private fieldValue (wire: IdlType) (dec: string) (enc: string) : IdlType =
                 dec
                 enc
           Wire = Some(TUnion("Binding", [ wire ]))
-          Format = None }
+          Format = None
+          Refusal = HostedRefusal.Sentence }
 
 /// Phase 2177 — a `FormFieldKind` CHANGE handler: one name (`onChange`) and one
 /// host type on every case, so the generator can project it
@@ -480,7 +487,9 @@ let private omit (name: string) (t: IdlType) (dflt: IdlValue) : IdlField =
     { Name = name
       Type = t
       Opt = OmitDefault dflt
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Aliases = []
+      Presence = None }
 
 /// `TextSource` — `Literal` (the corpus's only Display case) + `Bound`
 /// (`Binding<string>`) + `I18n` (a name-keyed `Binding<JVal>` argument bag,
@@ -491,10 +500,12 @@ let private textSource =
       Cases =
         [ { Tag = "Literal"
             Fields = [ req "text" TStr ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Bound"
             Fields = [ req "binding" (TUnion("Binding", [ TStr ])) ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // i18n catalog lookup (Phase 692 swap-prep — the last TextSource case;
           // modelled with no corpus fixture behind it, because the hand-written
           // encoder emits it and the generated union had to hold it for the
@@ -523,9 +534,13 @@ let private textSource =
                               Encode = "encI18nArg"
                               Decode = "decI18nArg"
                               Wire = None
-                              Format = None }
+                              Format = None
+                              Refusal = HostedRefusal.Sentence }
                     )) ]
-            Annotations = Annotations.Empty } ] }
+            Annotations = Annotations.Empty
+            Hosted = None } ]
+      Annotations = Annotations.Empty
+      TagRule = UnionTagRule.CaseName }
 
 /// `Binding<'T>` — the real recursive binding union, now at full case parity with
 /// the hand-written tier (the Phase 692 gap-closure): every case the hand-written
@@ -551,7 +566,8 @@ let private binding =
         // key rather than emitting JSON null, for which the wire model has no case.
         [ { Tag = "Static"
             Fields = [ opt "value" (TVar "T") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Phase 671 step 2 — the direct byte-diff caught this: the wire has NOT
           // carried `accessor` since 0.2.0 (the encoder renders `dependsOn` +
           // `name` only). The closure survives as a HOST-ONLY slot (never encoded,
@@ -563,13 +579,15 @@ let private binding =
               [ req "name" TStr
                 hostOnly "accessor" "obj -> 'T" "(fun (raw: obj) -> unbox raw)"
                 opt "dependsOn" (TList TStr) ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // `defaultValue` (Fuaran-UI 0.2.0) rides the wire when present, omitted
           // when None — the value the resolver yields before the filter is first
           // written.
           { Tag = "Filter"
             Fields = [ req "name" TStr; opt "defaultValue" (TVar "T") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Row selection on `nodeId` (Fuaran-UI 0.2.9/0.2.10). `defaultValue` and
           // `field` (the declarative row-field projection) ride when present; the
           // accessor closure is host-only — the hand-written POLICY decoder
@@ -582,10 +600,12 @@ let private binding =
                 hostOnly "accessor" "obj -> 'T" "(fun (raw: obj) -> unbox raw)"
                 opt "defaultValue" (TVar "T")
                 opt "field" TStr ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "State"
             Fields = [ req "key" TStr; opt "defaultValue" (TVar "T") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Phase 765 — the environment "now" binding: the host furnishes the
           // instant, so the wire carries NOTHING beside the `$type` tag, and the
           // accessor is a HOST-ONLY slot restored to the identity projection on
@@ -603,7 +623,8 @@ let private binding =
             Fields =
               [ hostOnly "accessor" "obj -> 'T" "(fun (raw: obj) -> unbox raw)"
                 opt "grain" (TEnum "TimeGrain") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Computed"
             // `BindingContext -> 'T`. `BindingContext` is a HOST type (it carries a
             // `TryGetState<'T>` member), so the argument erases to `obj` here.
@@ -618,7 +639,8 @@ let private binding =
             // behaviour is to fail loudly at the point of use and name the cases
             // that DO cross — which is what `HostPrelude.decodedComputed` does.
             Fields = [ req "fn" (projOf "obj" "'T" "(ctx: unknown) => T" "Fuaran.UI.HostPrelude.decodedComputed") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // A controlled-input local buffer. `initialFrom` recurses at the same
           // `'T`; `format` / `onCommit` / `parse` are closures; `flushOn` is a DU.
           //
@@ -671,7 +693,8 @@ let private binding =
                         "(Fuaran.UI.HostPrelude.LocalCodec.identityParse (decT >> Result.mapError DecodeError.describe))")
                 opt "codec" (TUnion("Format", []))
                 opt "commitTo" TStr ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Locale-aware formatted string. `source` is ALWAYS `Binding<float>`
           // (independent of `'T`); `format` / `locale` are bounded DUs.
           { Tag = "Format"
@@ -679,7 +702,8 @@ let private binding =
               [ req "source" (TUnion("Binding", [ TFloat ]))
                 req "format" (TUnion("Format", []))
                 req "locale" (TUnion("LocaleSource", [])) ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // i18n catalog lookup. `args` is a name-keyed bag of `Binding<obj>`
           // placeholder sources, omitted when None. The obj-erased positions
           // (here and `Transform.params`) instantiate at `JVal` — the typed
@@ -687,7 +711,8 @@ let private binding =
           // to a sentinel and lose bytes.
           { Tag = "I18n"
             Fields = [ req "key" TStr; opt "args" (TMap(TUnion("Binding", [ TJson ]))) ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Declarative dataframe transform (Fuaran-UI Phase 282/424 — the Compute
           // layer). `source` / `pipeline` are HOSTED slots: real `Fuaran.Core`
           // types rendered by Core's own codecs under the same `Canon` discipline,
@@ -709,7 +734,8 @@ let private binding =
                           Encode = "encTransformSource"
                           Decode = "decTransformSource"
                           Wire = None
-                          Format = None })
+                          Format = None
+                          Refusal = HostedRefusal.Sentence })
                 req
                     "pipeline"
                     (TList(
@@ -719,10 +745,12 @@ let private binding =
                               Decode =
                                 "(fun __j -> Fuaran.Compute.DataFrameCodec.decodeTransform __j |> Result.mapError string)"
                               Wire = None
-                              Format = None }
+                              Format = None
+                              Refusal = HostedRefusal.Sentence }
                     ))
                 opt "params" (TList(TRecord "TransformParam")) ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Fuaran-UI Phase 1534 — scalar logic over bound values. `Transform`'s
           // sibling with the ROW removed: one `ColExpr` evaluated against the
           // param environment alone, yielding one cell.
@@ -753,13 +781,18 @@ let private binding =
                           Encode = "Fuaran.Compute.DataFrameCodec.encodeExpr"
                           Decode = "(fun __j -> Fuaran.Compute.DataFrameCodec.decodeExpr __j |> Result.mapError string)"
                           Wire = None
-                          Format = None })
+                          Format = None
+                          Refusal = HostedRefusal.Sentence })
                 opt "params" (TList(TRecord "TransformParam")) ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Host-registered capability value. Same wire shape as `Action.Invoke`.
           { Tag = "Invoke"
             Fields = [ req "capabilityId" TStr; req "args" (TList(TRecord "InvokeArg")) ]
-            Annotations = Annotations.Empty } ] }
+            Annotations = Annotations.Empty
+            Hosted = None } ]
+      Annotations = Annotations.Empty
+      TagRule = UnionTagRule.CaseName }
 
 /// `CellFormat` — the column / `Metric` display-format vocabulary. `Number` /
 /// `Percent` carry an *optional* `decimals` (omitted on `None`, rule 4); `Custom`
@@ -770,40 +803,51 @@ let private cellFormat =
       Cases =
         [ { Tag = "None"
             Fields = []
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Number"
             Fields = [ opt "decimals" TInt ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Currency"
             Fields = [ req "code" TStr ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Percent"
             Fields = [ opt "decimals" TInt ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "SignificantDigits"
             Fields = [ req "digits" TInt ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Phase 1811 — `DateTime` (was `Date`): the .NET format string it
           // carries renders a date, a time, or both, and the name now says so.
           { Tag = "DateTime"
             Fields = [ req "format" TStr ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Phase 819 — trendable duration cells: the raw float counts `unit`s,
           // rendered per `style`.
           { Tag = "Duration"
             Fields = [ req "unit" (TEnum "DurationUnit"); req "style" (TEnum "DurationStyle") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Phase 819 — cell-vocabulary parity with `Format.RelativeTime`: the raw
           // float is a signed count of `unit`.
           { Tag = "RelativeTime"
             Fields = [ req "unit" (TEnum "RelativeTimeUnit") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Custom"
             // `CellValue -> string`; `CellValue` is a host-prelude DU (stage 4b) —
             // the stage-3 obj erasure un-erased now the prelude hosts the type.
             Fields =
               [ req "fn" (projOf "Fuaran.UI.HostPrelude.CellValue" "string" "(v: unknown) => string" "(fun _ -> \"\")") ]
-            Annotations = Annotations.Empty } ] }
+            Annotations = Annotations.Empty
+            Hosted = None } ]
+      Annotations = Annotations.Empty
+      TagRule = UnionTagRule.CaseName }
 
 /// `Action<'Msg>` — the effect-typed action union. `Chain` recurses; `Dispatch`
 /// / `onRead` payloads are closures; `Invoke` / `ReadFileBody` carry data. The
@@ -815,7 +859,8 @@ let private action =
       Cases =
         [ { Tag = "Chain"
             Fields = [ req "ops" (TList(TUnion("Action", []))) ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Phase 1126 — the payload is a `TextSource`, not a bare string, so
           // the thing a reader actually copies (a bound value, a computed
           // reference) has a spelling. Widening the existing case was chosen
@@ -831,7 +876,8 @@ let private action =
           // `{"$type":"Literal","text":…}` envelope at this slot.
           { Tag = "WriteToClipboard"
             Fields = [ req "text" (TUnion("TextSource", [])) ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Fuaran-UI 0.2.x: the dispatch msg closure is omitted entirely (no wire key).
           // `Dispatch of 'Msg`. The payload is a host value with NO wire projection —
           // `{"$type":"Dispatch"}` is the whole encoding, before and after. Declaring it
@@ -855,10 +901,12 @@ let private action =
             Fields = [ hostOnly "msg" "'Msg" "((\"<dispatch>\" :> obj))" ]
             Annotations =
               { Annotations.Empty with
-                  InProcessOnly = true } }
+                  InProcessOnly = true }
+            Hosted = None }
           { Tag = "Invoke"
             Fields = [ req "capabilityId" TStr; req "args" (TList(TRecord "InvokeArg")) ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Phase 1117 — `ReadFileBody` is the SMALL-PAYLOAD path, and this is
           // the statement of that rather than an aside. It reads a selected
           // file's whole body into a string and hands it to a closure, so the
@@ -886,7 +934,8 @@ let private action =
                 hostOnly "fileHandle" "obj option" "None"
                 req "encoding" (TEnum "FileReadEncoding")
                 opt "onRead" (fn "string -> 'Msg" "(body: string) => Msg" "(fun (_: string) -> (\"<closure>\" :> obj))") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // `ApiEndpoint` is a bare string on the wire; `into` is the declarative
           // result target, omitted when None; `onResult` rides only when present.
           { Tag = "Call"
@@ -894,7 +943,8 @@ let private action =
               [ req "endpoint" TStr
                 opt "onResult" (fn "obj -> 'Msg" "(r: unknown) => Msg" "(fun (_: obj) -> (\"<closure>\" :> obj))")
                 opt "into" (TUnion("CallResultTarget", [])) ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Phase 1536 — `route` is a `TextSource`, not a bare string, so
           // "open the selected order" (`/orders/{selection.id}`) has a
           // spelling. The precedent is exact and deliberate: Phase 1126 widened
@@ -919,17 +969,20 @@ let private action =
             Fields =
               [ req "route" (TUnion("TextSource", []))
                 omit "target" (TEnum "NavigateTarget") (VEnum "Self") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "CommitLocal"
             Fields = [ req "nodeId" TStr ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Phase 676 — the three JSON-payload actions. `TJson`, never `TOpaque`:
           // these carry real data in both directions (`Notify` is the estate's
           // cross-host data primitive), so erasing them to a sentinel would be
           // silent data loss.
           { Tag = "Notify"
             Fields = [ req "channel" TStr; req "payload" TJson ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Phase 818 — `valueFrom` (a Binding evaluated at dispatch time) is a
           // SIBLING of the literal `value`, and `value` became optional in the same
           // change so the valueFrom-only wire shape is representable. Both are
@@ -941,10 +994,12 @@ let private action =
               [ req "key" TStr
                 opt "value" TJson
                 opt "valueFrom" (TUnion("Binding", [ TJson ])) ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "AiTool"
             Fields = [ req "toolName" TStr; req "args" TJson ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Phase 1124 — the first PAYLOAD-FREE `Action` case. "Print this
           // invoice": ask the host to open the reader's own print dialogue.
           // There is nothing to carry — no page size, no margin, no sheet
@@ -962,7 +1017,8 @@ let private action =
           // decoder drops silently is a parameter an emitter believes it sent.
           { Tag = "Print"
             Fields = []
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Phase 1537 — "delete — are you sure?" as ONE case rather than as a
           // composition. Today it is spelled `Modal.Open` + `SetState` + a
           // second button: a state key, a writer and a control the emitter must
@@ -991,7 +1047,8 @@ let private action =
               [ req "prompt" (TUnion("TextSource", []))
                 req "onConfirm" (TUnion("Action", []))
                 opt "onCancel" (TUnion("Action", [])) ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Phase 1537 — move keyboard focus to an addressed node. The
           // server-driven tier has carried `ClientEffect.Focus of nodeId` since
           // Phase 152 with no `Action` counterpart, which Phase 1124's outcome
@@ -1008,7 +1065,10 @@ let private action =
           // `IFuaranRuntime` member backs it.
           { Tag = "Focus"
             Fields = [ req "nodeId" TStr ]
-            Annotations = Annotations.Empty } ] }
+            Annotations = Annotations.Empty
+            Hosted = None } ]
+      Annotations = Annotations.Empty
+      TagRule = UnionTagRule.CaseName }
 
 /// Where a `Call`'s result lands, declaratively. NOTE the wire tags are `State` /
 /// `Query`, not the F# case names `IntoState` / `IntoQuery`.
@@ -1018,10 +1078,14 @@ let private callResultTarget =
       Cases =
         [ { Tag = "State"
             Fields = [ req "key" TStr ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Query"
             Fields = [ req "name" TStr ]
-            Annotations = Annotations.Empty } ] }
+            Annotations = Annotations.Empty
+            Hosted = None } ]
+      Annotations = Annotations.Empty
+      TagRule = UnionTagRule.CaseName }
 
 /// The locale-aware `Binding.Format` intent union (distinct from [[cellFormat]] —
 /// this one carries `isoCode` / `dateStyle` / `unit`, not `code`).
@@ -1031,13 +1095,16 @@ let private formatUnion =
       Cases =
         [ { Tag = "Number"
             Fields = [ opt "decimals" TInt ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Currency"
             Fields = [ req "isoCode" TStr ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Percent"
             Fields = [ opt "decimals" TInt ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Phase 1810 — `dateStyle` / `timeStyle` are BOTH optional so that a
           // time of day can be displayed alone (`timeStyle` only) and a
           // date-time with both. Neither present is a defect the validator
@@ -1048,15 +1115,18 @@ let private formatUnion =
           // still styles only the date part, beside `TimeStyle`.
           { Tag = "DateTime"
             Fields = [ opt "dateStyle" (TEnum "DateStyle"); opt "timeStyle" (TEnum "TimeStyle") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "RelativeTime"
             Fields = [ req "unit" (TEnum "RelativeTimeUnit") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Phase 819 — locale-independent duration formatting: the numeric source
           // counts `unit`s, rendered per `style`.
           { Tag = "Duration"
             Fields = [ req "unit" (TEnum "DurationUnit"); req "style" (TEnum "DurationStyle") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Fuaran-UI Phase 1533 — the INSTANT-reading twin of `RelativeTime`.
           // `RelativeTime`'s source is a signed COUNT of its unit, already
           // computed by whoever produced it; `Since`'s source is an INSTANT in
@@ -1071,7 +1141,10 @@ let private formatUnion =
           // authored slot.
           { Tag = "Since"
             Fields = [ opt "unit" (TEnum "RelativeTimeUnit") ]
-            Annotations = Annotations.Empty } ] }
+            Annotations = Annotations.Empty
+            Hosted = None } ]
+      Annotations = Annotations.Empty
+      TagRule = UnionTagRule.CaseName }
 
 let private localeSource =
     { Name = "LocaleSource"
@@ -1079,10 +1152,14 @@ let private localeSource =
       Cases =
         [ { Tag = "Ambient"
             Fields = []
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Explicit"
             Fields = [ req "tag" TStr ]
-            Annotations = Annotations.Empty } ] }
+            Annotations = Annotations.Empty
+            Hosted = None } ]
+      Annotations = Annotations.Empty
+      TagRule = UnionTagRule.CaseName }
 
 let private localFlushTrigger =
     { Name = "LocalFlushTrigger"
@@ -1090,16 +1167,22 @@ let private localFlushTrigger =
       Cases =
         [ { Tag = "OnBlur"
             Fields = []
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "OnSubmit"
             Fields = []
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "OnDebounce"
             Fields = [ req "milliseconds" TInt ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "OnCommitAction"
             Fields = []
-            Annotations = Annotations.Empty } ] }
+            Annotations = Annotations.Empty
+            Hosted = None } ]
+      Annotations = Annotations.Empty
+      TagRule = UnionTagRule.CaseName }
 
 /// `Box.layout` — the container-layout mode (Fuaran-UI 0.2.0 Box unification). `Auto`
 /// (was `Dashboard`), `Flex` (was `Stack`, carries `direction` + `wrap`), `Grid` (was
@@ -1110,7 +1193,8 @@ let private boxLayout =
       Cases =
         [ { Tag = "Auto"
             Fields = []
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // `gap` (the px spacing knob, omitted-when-None) is wire vocabulary
           // on BOTH layout cases — no corpus fixture carries it; found by the
           // stage-3 swap reading the hand-written encoder.
@@ -1121,10 +1205,12 @@ let private boxLayout =
               [ req "direction" (TEnum "Orientation")
                 omit "wrap" TBool (VBool false)
                 opt "gap" TInt ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Grid"
             Fields = [ req "cols" TInt; opt "templateColumns" TStr; opt "gap" TInt ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // `Masonry` — column-FILL, where `Grid` is row-fill. A separate case
           // rather than a field on `Grid` for the reason the vocabulary charter
           // §2.1 names: widening `Grid` changes its arity and stops every
@@ -1140,7 +1226,10 @@ let private boxLayout =
           // opens no escape hatch (Phase 900).
           { Tag = "Masonry"
             Fields = [ req "cols" TInt; opt "gap" TInt ]
-            Annotations = Annotations.Empty } ] }
+            Annotations = Annotations.Empty
+            Hosted = None } ]
+      Annotations = Annotations.Empty
+      TagRule = UnionTagRule.CaseName }
 
 /// `FormFieldKind<'Msg>` — the per-field input-shape union, shared by `Form`
 /// fields AND `Filters` chips (the 0.2.0 filters-unification — the separate
@@ -1162,36 +1251,42 @@ let private formFieldKind =
             Fields =
               [ opt "value" (fieldValue TStr "dStr" "JStr")
                 opt "onChange" (fieldChange "string") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Number"
             Fields =
               [ opt "value" (fieldValue TFloat "dFloat" "encFloat")
                 opt "onChange" (fieldChange "number") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Checkbox"
             Fields =
               [ opt "value" (fieldValue TBool "dBool" "JBool")
                 opt "onChange" (fieldChange "boolean") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Phase 766 — the boolean TOGGLE control: the same value / handler pair
           // as `Checkbox`, a distinct affordance rather than a styling of one.
           { Tag = "Toggle"
             Fields =
               [ opt "value" (fieldValue TBool "dBool" "JBool")
                 opt "onChange" (fieldChange "boolean") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Choice"
             Fields =
               [ req "options" (TUnion("Binding", [ TList(TRecord "SelectOption") ]))
                 opt "value" (fieldValue TStr "dStr" "JStr")
                 opt "onChange" (fieldChange "string | null") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "TextArea"
             Fields =
               [ opt "value" (fieldValue TStr "dStr" "JStr")
                 opt "onChange" (fieldChange "string")
                 req "rows" TInt ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "RangedNumber"
             Fields =
               [ opt "value" (fieldValue TFloat "dFloat" "encFloat")
@@ -1199,7 +1294,8 @@ let private formFieldKind =
                 opt "min" TFloat
                 opt "max" TFloat
                 opt "step" TFloat ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Dual-thumb numeric range (0.2.0 — absorbed FilterKind.RangeFilter).
           // The value slot is HOSTED because its Static case is TRANSPARENT on
           // the wire: `Binding.Static (Some pair)` encodes as the bare
@@ -1219,19 +1315,22 @@ let private formFieldKind =
                           Decode =
                             "(fun (j: JVal) -> (match j with | JObj __rf when not (__rf |> List.exists (fun (k, _) -> k = \"$type\")) -> decRangePair j |> Result.map (fun p -> Binding.Static(Some(encRangePair p))) | __other -> decBinding (fun __p -> decRangePair __p |> Result.map encRangePair) __other) |> Result.mapError DecodeError.describe)"
                           Wire = None
-                          Format = None })
+                          Format = None
+                          Refusal = HostedRefusal.Sentence })
                 opt "onChange" (fieldChange "[number, number]")
                 opt "min" TFloat
                 opt "max" TFloat
                 opt "step" TFloat ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "SegmentedChoice"
             Fields =
               [ req "options" (TUnion("Binding", [ TList(TRecord "SelectOption") ]))
                 opt "value" (fieldValue TStr "dStr" "JStr")
                 opt "onChange" (fieldChange "string | null")
                 omit "orientation" (TEnum "Orientation") (VEnum "Horizontal") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Phase 1811 — `DateTime` (was `Date`): the field already accepted a
           // date, a time of day or a date-time via `variant`; the name now says
           // so, and `Date{variant:"Time"}` is no longer a spelling nobody finds.
@@ -1243,7 +1342,8 @@ let private formFieldKind =
                 opt "min" TStr
                 opt "max" TStr
                 opt "step" TFloat ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Single-control date range (Fuaran-UI Phase 725; `DateTimeRange` since
           // Phase 1811) — `Range`'s pair mechanics with `DateTime`'s value conventions. The value slot carries
           // the same transparent-Static posture as `Range`: a `Static` pair
@@ -1260,13 +1360,15 @@ let private formFieldKind =
                           Decode =
                             "(fun (j: JVal) -> (match j with | JObj __rf when not (__rf |> List.exists (fun (k, _) -> k = \"$type\")) -> decDateTimeRangePair j |> Result.map (fun p -> Binding.Static(Some(encDateTimeRangePair p))) | __other -> decBinding (fun __p -> decDateTimeRangePair __p |> Result.map encDateTimeRangePair) __other) |> Result.mapError DecodeError.describe)"
                           Wire = None
-                          Format = None })
+                          Format = None
+                          Refusal = HostedRefusal.Sentence })
                 opt "onChange" (fieldChange "[string, string]")
                 req "variant" (TEnum "DateTimeVariant")
                 opt "min" TStr
                 opt "max" TStr
                 opt "step" TFloat ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Fuaran-UI Phase 1113 — the typeahead / autocomplete control. A
           // `Choice` is a bounded menu the reader scans; a `Combobox` is a
           // searchable one it FILTERS, which is what makes a two-hundred-option
@@ -1297,7 +1399,8 @@ let private formFieldKind =
                 opt "onChange" (fieldChange "string | null")
                 req "options" (TUnion("Binding", [ TList(TRecord "SelectOption") ]))
                 opt "value" (fieldValue TStr "dStr" "JStr") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Fuaran-UI Phase 1130 — the subjective SCORE control. `RangedNumber`
           // is a numeric QUANTITY the reader types or drags; `Rating` is a
           // judgement it expresses on a small ordinal scale, and the two are
@@ -1345,7 +1448,8 @@ let private formFieldKind =
                 req "max" TInt
                 opt "onChange" (fieldChange "number")
                 opt "value" (fieldValue TFloat "dFloat" "encFloat") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Fuaran-UI Phase 1130 — the colour control, projecting to the
           // platform's own `<input type="color">`.
           //
@@ -1377,7 +1481,8 @@ let private formFieldKind =
             Fields =
               [ opt "onChange" (fieldChange "string")
                 opt "value" (fieldValue TStr "dStr" "JStr") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Fuaran-UI Phase 1121 — the MULTI-TOKEN input. `Combobox` commits ONE
           // value from a searchable set; `Tokens` accumulates SEVERAL, each
           // shown as a removable chip. Recipients, labels, skills: today
@@ -1462,7 +1567,10 @@ let private formFieldKind =
                 opt "onChange" (fieldChange "string[]")
                 opt "suggestions" (TUnion("Binding", [ TList(TRecord "SelectOption") ]))
                 opt "value" (fieldValue (TList TStr) "(dList dStr)" "(fun __l -> JArr(List.map JStr __l))") ]
-            Annotations = Annotations.Empty } ] }
+            Annotations = Annotations.Empty
+            Hosted = None } ]
+      Annotations = Annotations.Empty
+      TagRule = UnionTagRule.CaseName }
 
 // _(The separate `FilterKind` union this file carried until the Phase 692
 // gap-closure was pre-unification drift: the hand-written tier's `FilterSpec`
@@ -1500,10 +1608,14 @@ let private mediaKind =
             Fields =
               [ omit "autoplay" TBool (VBool false)
                 opt "poster" (TUnion("Binding", [ TStr ])) ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Audio"
             Fields = []
-            Annotations = Annotations.Empty } ] }
+            Annotations = Annotations.Empty
+            Hosted = None } ]
+      Annotations = Annotations.Empty
+      TagRule = UnionTagRule.CaseName }
 
 /// `TrackKind` — what a `Media` timed-text track IS (Fuaran-UI Phase 1110).
 ///
@@ -1529,13 +1641,18 @@ let private columnWidth =
       Cases =
         [ { Tag = "Auto"
             Fields = []
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Fixed"
             Fields = [ req "pixels" TInt ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Flex"
             Fields = [ req "weight" TFloat ]
-            Annotations = Annotations.Empty } ] }
+            Annotations = Annotations.Empty
+            Hosted = None } ]
+      Annotations = Annotations.Empty
+      TagRule = UnionTagRule.CaseName }
 
 /// `CellKindErased<'Msg>` — the row-erased grid-cell shape union. Non-interactive
 /// cases (`Text` / `Numeric` / `Date`) are field-less; the interactive ones carry
@@ -1548,13 +1665,16 @@ let private cellKindErased =
       Cases =
         [ { Tag = "Text"
             Fields = []
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Numeric"
             Fields = []
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Date"
             Fields = []
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Editable"
             // `(Row * CellValue) -> Action<'Msg>`; `CellValue` is a host-prelude DU
             // (stage 4b) — the typed edit payload survives the swap. Row closures
@@ -1562,20 +1682,24 @@ let private cellKindErased =
             // the accessors' argument is the name-addressable row, not `obj`).
             Fields =
               [ opt "onEdit" (handlerOf "Map<string, obj> * Fuaran.UI.HostPrelude.CellValue" "[unknown, unknown]") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Checkbox"
             Fields =
               [ req "get" (projOf "Map<string, obj>" "bool" "(row: unknown) => boolean" "(fun _ -> false)")
                 opt "onToggle" (handlerOf "Map<string, obj> * bool" "[unknown, boolean]") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Button"
             Fields =
               [ req "label" (TUnion("TextSource", []))
                 opt "onClick" (handlerOf "Map<string, obj>" "unknown") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "ButtonGroup"
             Fields = [ req "buttons" (TList(TRecord "ButtonGroupItem")) ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Link"
             Fields =
               [ req "hrefFn" (projOf "Map<string, obj>" "string" "(row: unknown) => string" "(fun _ -> \"\")")
@@ -1586,7 +1710,8 @@ let private cellKindErased =
                         "TextSource"
                         "(row: unknown) => TextSource"
                         "(fun _ -> TextSource.Literal \"\")") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Pill"
             Fields =
               [ req
@@ -1603,7 +1728,8 @@ let private cellKindErased =
                         "ToneVariant"
                         "(row: unknown) => ToneVariant"
                         "(fun _ -> ToneVariant.Default)") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Fuaran-UI Phase 750 — the WIRE-EXPRESSIBLE pill. `Pill` above is a pair
           // of closures, so its whole meaning erases to two `"<closure>"` sentinels
           // and "distinguish the delayed rows" is inexpressible in canonical JSON —
@@ -1619,7 +1745,8 @@ let private cellKindErased =
               [ req "field" TStr
                 req "map" (TMap(TEnum "ToneVariant"))
                 omit "default" (TEnum "ToneVariant") (VEnum "Default") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Progress"
             Fields =
               [ req "fractionFn" (projOf "Map<string, obj>" "float" "(row: unknown) => number" "(fun _ -> 0.0)")
@@ -1634,7 +1761,8 @@ let private cellKindErased =
                         "TextSource"
                         "(row: unknown) => TextSource"
                         "(fun _ -> TextSource.Literal \"\")") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Custom"
             // `(Row -> JVal) -> Node<'Msg>` — a cell renderer over the row projector.
             Fields =
@@ -1644,7 +1772,10 @@ let private cellKindErased =
                         "(Map<string, obj> -> JVal) -> Node<'Msg>"
                         "(proj: (row: unknown) => unknown) => Node"
                         "(fun _ -> Unchecked.defaultof<Node<obj>>)") ]
-            Annotations = Annotations.Empty } ] }
+            Annotations = Annotations.Empty
+            Hosted = None } ]
+      Annotations = Annotations.Empty
+      TagRule = UnionTagRule.CaseName }
 
 // ─── Meta-family unions (parameterised fragments) ───────────────────────────
 
@@ -1656,19 +1787,26 @@ let private holeValueSpace =
         // Hand-written positional order (min before max) — wire-free.
         [ { Tag = "IntRange"
             Fields = [ req "min" TInt; req "max" TInt ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "FloatRange"
             Fields = [ req "min" TFloat; req "max" TFloat ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "StringLen"
             Fields = [ req "minLen" TInt; req "maxLen" TInt ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Enum"
             Fields = [ req "choices" (TList TStr) ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "AnyString"
             Fields = []
-            Annotations = Annotations.Empty } ] }
+            Annotations = Annotations.Empty
+            Hosted = None } ]
+      Annotations = Annotations.Empty
+      TagRule = UnionTagRule.CaseName }
 
 /// A boxed scalar — a hole default or a `FragmentRef` value arg. Self-describing
 /// (`$type` pins the CLR shape).
@@ -1678,16 +1816,22 @@ let private scalar =
       Cases =
         [ { Tag = "Int"
             Fields = [ req "value" TInt ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Float"
             Fields = [ req "value" TFloat ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Bool"
             Fields = [ req "value" TBool ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Str"
             Fields = [ req "value" TStr ]
-            Annotations = Annotations.Empty } ] }
+            Annotations = Annotations.Empty
+            Hosted = None } ]
+      Annotations = Annotations.Empty
+      TagRule = UnionTagRule.CaseName }
 
 /// A declared hole on a parameterised fragment (`FragmentDecl.holes`).
 let private holeDecl =
@@ -1700,13 +1844,18 @@ let private holeDecl =
               [ req "name" TStr
                 req "space" (TUnion("HoleValueSpace", []))
                 opt "default" (TUnion("Scalar", [])) ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Slot"
             Fields = [ req "name" TStr; opt "kindConstraint" TStr ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Repeat"
             Fields = [ req "name" TStr; req "countSpace" (TUnion("HoleValueSpace", [])) ]
-            Annotations = Annotations.Empty } ] }
+            Annotations = Annotations.Empty
+            Hosted = None } ]
+      Annotations = Annotations.Empty
+      TagRule = UnionTagRule.CaseName }
 
 /// A bound argument at a `FragmentRef` — a scalar value or a slot subtree. Shares
 /// the scalar tags with [[scalar]] plus `SlotArg` (a `Node`-bearing tree).
@@ -1716,37 +1865,47 @@ let private fragmentArg =
       Cases =
         [ { Tag = "Int"
             Fields = [ req "value" TInt ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Float"
             Fields = [ req "value" TFloat ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Bool"
             Fields = [ req "value" TBool ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Str"
             Fields = [ req "value" TStr ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "SlotArg"
             Fields = [ req "tree" TNode ]
-            Annotations = Annotations.Empty } ] }
+            Annotations = Annotations.Empty
+            Hosted = None } ]
+      Annotations = Annotations.Empty
+      TagRule = UnionTagRule.CaseName }
 
 // ─── Records (non-discriminated objects — no `$type`) ───────────────────────
 
 let private invokeArgRecord =
     { Name = "InvokeArg"
-      Fields = [ req "addr" TStr; req "value" TStr ] }
+      Fields = [ req "addr" TStr; req "value" TStr ]
+      Annotations = Annotations.Empty }
 
 /// An option in a `Select` / `Choice` / `SegmentedChoice` payload (Fuaran-UI 0.2.x
 /// typed-Static: the choice `source` / `options` carry a real `SelectOption` list).
 let private selectOptionRecord =
     { Name = "SelectOption"
-      Fields = [ req "label" TStr; req "value" TStr ] }
+      Fields = [ req "label" TStr; req "value" TStr ]
+      Annotations = Annotations.Empty }
 
 /// A `Map.source` marker (Fuaran-UI 0.2.x typed-Static: the map source carries a real
 /// marker list instead of the opaque sentinel).
 let private mapMarkerRecord =
     { Name = "MapMarker"
-      Fields = [ req "label" TStr; req "latitude" TFloat; req "longitude" TFloat ] }
+      Fields = [ req "label" TStr; req "latitude" TFloat; req "longitude" TFloat ]
+      Annotations = Annotations.Empty }
 
 /// Sort direction on a static table's declared initial order — closed, and
 /// lower-case on the wire (Fuaran-UI Phase 801). Case↔wire mapping for the same
@@ -1765,7 +1924,8 @@ let private sortDirection =
 /// negative index lives in the policy decoder and the published JSON Schema.
 let private defaultSortRecord =
     { Name = "DefaultSort"
-      Fields = [ req "column" TInt; req "direction" (TEnum "SortDirection") ] }
+      Fields = [ req "column" TInt; req "direction" (TEnum "SortDirection") ]
+      Annotations = Annotations.Empty }
 
 /// A `DataGrid.staticRows` payload — the header/row grid a legacy `Table` decode-upgrades
 /// into (Fuaran-UI Phase 393: `Table` retired, becomes a static `DataGrid`). Cells are
@@ -1785,7 +1945,8 @@ let private staticRowsRecord =
         [ opt "defaultSort" (TRecord "DefaultSort")
           req "headers" (TList(TUnion("TextSource", [])))
           req "rows" (TList(TList(TUnion("TextSource", []))))
-          opt "sortable" TBool ] }
+          opt "sortable" TBool ]
+      Annotations = Annotations.Empty }
 
 /// The comparison operand of a cross-field `FieldRule` (Fuaran-UI Phase 864).
 ///
@@ -1802,7 +1963,8 @@ let private staticRowsRecord =
 /// duplicating a bound the control already carries.
 let private compareRuleRecord =
     { Name = "CompareRule"
-      Fields = [ req "against" (TUnion("Binding", [ TJson ])); req "op" (TEnum "CompareOp") ] }
+      Fields = [ req "against" (TUnion("Binding", [ TJson ])); req "op" (TEnum "CompareOp") ]
+      Annotations = Annotations.Empty }
 
 /// A `FormField`'s declared constraint (Fuaran-UI Phase 864) — the accepted SET,
 /// where `FormFieldKind` names the CONTROL. Every slot is `Optional`, so a form
@@ -1826,7 +1988,8 @@ let private fieldRuleRecord =
           opt "maxLength" TInt
           opt "message" (TUnion("TextSource", []))
           opt "minLength" TInt
-          opt "pattern" TStr ] }
+          opt "pattern" TStr ]
+      Annotations = Annotations.Empty }
 
 /// Phase 864 adds one OPTIONAL `rule` slot. `required` stays where it is: it is
 /// the pre-existing degenerate rule, and moving it under `rule` would be a
@@ -1839,28 +2002,32 @@ let private formFieldRecord =
           req "label" (TUnion("TextSource", []))
           omit "required" TBool (VBool false)
           opt "help" (TUnion("TextSource", []))
-          opt "rule" (TRecord "FieldRule") ] }
+          opt "rule" (TRecord "FieldRule") ]
+      Annotations = Annotations.Empty }
 
 let private filterSpecRecord =
     { Name = "FilterSpec"
       Fields =
         [ req "kind" (TUnion("FormFieldKind", []))
           req "label" (TUnion("TextSource", []))
-          req "name" TStr ] }
+          req "name" TStr ]
+      Annotations = Annotations.Empty }
 
 /// One `Binding.Transform` parameter — binds a pipeline `ColExpr.Param` name to a
 /// scalar binding source. `from` instantiates `Binding` at `JVal` (the typed
 /// verbatim carrier for obj-erased positions).
 let private transformParamRecord =
     { Name = "TransformParam"
-      Fields = [ req "from" (TUnion("Binding", [ TJson ])); req "name" TStr ] }
+      Fields = [ req "from" (TUnion("Binding", [ TJson ])); req "name" TStr ]
+      Annotations = Annotations.Empty }
 
 /// The `{max, min}` payload of a `Range` control's value — the wire shape of the
 /// hand-written tier's `(min, max)` float pair (the IDL has no tuple type; the
 /// record IS the wire object, so nothing is lost in the trade).
 let private rangePairRecord =
     { Name = "RangePair"
-      Fields = [ req "max" TFloat; req "min" TFloat ] }
+      Fields = [ req "max" TFloat; req "min" TFloat ]
+      Annotations = Annotations.Empty }
 
 /// The `{from, to}` payload of a `DateTimeRange` control's value (Fuaran-UI
 /// Phase 725; renamed from `DateRangePair` by Phase 1811) — the ordered
@@ -1870,14 +2037,16 @@ let private rangePairRecord =
 /// lenient/reject layer, not here.
 let private dateTimeRangePairRecord =
     { Name = "DateTimeRangePair"
-      Fields = [ req "from" TStr; req "to" TStr ] }
+      Fields = [ req "from" TStr; req "to" TStr ]
+      Annotations = Annotations.Empty }
 
 let private tabHeaderRecord =
     { Name = "TabHeader"
       Fields =
         [ req "label" (TUnion("TextSource", []))
           opt "icon" TStr
-          opt "disabled" (TUnion("Binding", [ TBool ])) ] }
+          opt "disabled" (TUnion("Binding", [ TBool ])) ]
+      Annotations = Annotations.Empty }
 
 /// A `DataGrid` column, row-erased. Fuaran-UI Phase 425: `value` (the projection
 /// closure) and `field` (the declarative row-property name) are SIBLING optional
@@ -1911,14 +2080,16 @@ let private columnErasedRecord =
                   "Fuaran.UI.HostPrelude.CellValue"
                   "(row: unknown) => unknown"
                   "(fun _ -> Fuaran.UI.HostPrelude.CellValue.Empty)")
-          omit "width" (TUnion("ColumnWidth", [])) (VUnion("Auto", [])) ] }
+          omit "width" (TUnion("ColumnWidth", [])) (VUnion("Auto", [])) ]
+      Annotations = Annotations.Empty }
 
 /// One button of a `CellKindErased.ButtonGroup` (`onClick` is a closure over the row).
 let private buttonGroupItemRecord =
     { Name = "ButtonGroupItem"
       Fields =
         [ req "label" (TUnion("TextSource", []))
-          opt "onClick" (handlerOf "Map<string, obj>" "unknown") ] }
+          opt "onClick" (handlerOf "Map<string, obj>" "unknown") ]
+      Annotations = Annotations.Empty }
 
 /// A `Custom` node's content-identity envelope (`strictness` is a bare-string DU).
 let private contentHashRecord =
@@ -1926,7 +2097,8 @@ let private contentHashRecord =
       Fields =
         [ req "algorithm" TStr
           req "hash" TStr
-          req "strictness" (TEnum "HashStrictness") ] }
+          req "strictness" (TEnum "HashStrictness") ]
+      Annotations = Annotations.Empty }
 
 /// Phase 1080 — one candidate source of a responsive `Image`. `width` is the
 /// intrinsic pixel width of THIS candidate (the `w` descriptor a browser picks
@@ -1946,7 +2118,8 @@ let private contentHashRecord =
 /// document no host can render.
 let private srcSetEntryRecord =
     { Name = "SrcSetEntry"
-      Fields = [ req "src" (TUnion("Binding", [ TStr ])); req "width" TInt ] }
+      Fields = [ req "src" (TUnion("Binding", [ TStr ])); req "width" TInt ]
+      Annotations = Annotations.Empty }
 
 /// Phase 1110 — one timed-text track of a `Media` node. The list-of-records shape
 /// follows the `SrcSetEntry` precedent above, and for the same reason: a repeated
@@ -1984,7 +2157,8 @@ let private trackEntryRecord =
           req "kind" (TEnum "TrackKind")
           req "label" (TUnion("TextSource", []))
           req "src" (TUnion("Binding", [ TStr ]))
-          req "srcLang" TStr ] }
+          req "srcLang" TStr ]
+      Annotations = Annotations.Empty }
 
 /// Phase 1120 — one row of a `Tree`, and the vocabulary's first SELF-REFERENTIAL
 /// record: `children` is a list of the record being declared. The IDL's record
@@ -2026,7 +2200,8 @@ let private treeItemRecord =
         [ omit "children" (TList(TRecord "TreeItem")) (VList [])
           opt "icon" TStr
           req "id" TStr
-          req "label" (TUnion("TextSource", [])) ] }
+          req "label" (TUnion("TextSource", [])) ]
+      Annotations = Annotations.Empty }
 
 /// A `FragmentDecl`'s two-axis effect class (omitted on the wire when pure +
 /// deterministic — since Phase 1670 that is the KIND'S OMIT-AT-DEFAULT rather
@@ -2035,7 +2210,8 @@ let private effectClassRecord =
     { Name = "EffectClass"
       Fields =
         [ req "determinism" (TEnum "DeterminismSource")
-          req "hostEffect" (TEnum "HostEffect") ] }
+          req "hostEffect" (TEnum "HostEffect") ]
+      Annotations = Annotations.Empty }
 
 // ─── Type aliases for the field shapes (readability) ───────────────────────
 
@@ -2074,7 +2250,8 @@ let private semanticStyleRecord =
           omit "role" (TEnum "StyleRole") (VEnum "None")
           omit "tone" (TEnum "ToneVariant") (VEnum "Default")
           omit "voice" (TEnum "FontVoice") (VEnum "Default")
-          omit "weight" (TEnum "StyleWeight") (VEnum "Standard") ] }
+          omit "weight" (TEnum "StyleWeight") (VEnum "Standard") ]
+      Annotations = Annotations.Empty }
 
 /// Phase 2291 — the `PatchStyle` payload. The same six members as
 /// `SemanticStyle`, each OPTIONAL with no default: absence means "leave this
@@ -2090,7 +2267,8 @@ let private styleDeltaRecord =
           opt "role" (TEnum "StyleRole")
           opt "tone" (TEnum "ToneVariant")
           opt "voice" (TEnum "FontVoice")
-          opt "weight" (TEnum "StyleWeight") ] }
+          opt "weight" (TEnum "StyleWeight") ]
+      Annotations = Annotations.Empty }
 
 /// `{ "onEmpty"?: Node, "onError"?: "<closure>", "onLoading"?: Node }`.
 /// `onError` is the `ErrorPayload -> Node` callback — unobservable, so the
@@ -2108,7 +2286,8 @@ let private stateBehaviourRecord =
                   "Fuaran.UI.HostPrelude.ErrorPayload -> Node<'Msg>"
                   "(e: unknown) => Node"
                   "(fun _ -> Unchecked.defaultof<Node<obj>>)")
-          opt "onLoading" TNode ] }
+          opt "onLoading" TNode ]
+      Annotations = Annotations.Empty }
 
 /// `aria-live` politeness — closed, and lower-case on the wire. Phase 707: the
 /// lower-case half of the old "doesn't fit `TEnum`" excuse is gone, so this is a
@@ -2153,8 +2332,10 @@ let private accessibilityRecord =
                     Encode = "Fuaran.UI.HostPrelude.encAriaRole"
                     Decode = "Fuaran.UI.HostPrelude.decAriaRole"
                     Wire = None
-                    Format = None })
-          opt "speak" TS ] }
+                    Format = None
+                    Refusal = HostedRefusal.Sentence })
+          opt "speak" TS ]
+      Annotations = Annotations.Empty }
 
 // ─── Display kinds (flat `$type`-discriminated) ────────────────────────────
 
@@ -2927,7 +3108,8 @@ let visKinds: IdlKind list =
                           Encode = "Fuaran.UI.RowCodec.encodeRows"
                           Decode = "Fuaran.UI.RowCodec.decodeRows"
                           Wire = None
-                          Format = None }
+                          Format = None
+                          Refusal = HostedRefusal.Sentence }
                 ))
             opt "staticRows" (TRecord "StaticRows")
             opt "onRowClick" (handlerOf "Map<string, obj>" "unknown") ] }
@@ -2946,7 +3128,8 @@ let visKinds: IdlKind list =
                           Encode = "Fuaran.UI.RowCodec.encodeRows"
                           Decode = "Fuaran.UI.RowCodec.decodeRows"
                           Wire = None
-                          Format = None }
+                          Format = None
+                          Refusal = HostedRefusal.Sentence }
                 ))
             // Phase 1585 — omit-when-`false`. Every decoder in the estate already
             // reads absence as `false` (the F# hand decoder since Phase 126, and
@@ -3015,7 +3198,8 @@ let private textAnchor = Declare.enumOf "TextAnchor" [ "Start"; "Middle"; "End" 
 
 let private drawPoint =
     { Name = "DrawPoint"
-      Fields = [ req "x" TFloat; req "y" TFloat ] }
+      Fields = [ req "x" TFloat; req "y" TFloat ]
+      Annotations = Annotations.Empty }
 
 let private viewBoxRecord =
     { Name = "ViewBox"
@@ -3023,7 +3207,8 @@ let private viewBoxRecord =
         [ req "height" TFloat
           req "minX" TFloat
           req "minY" TFloat
-          req "width" TFloat ] }
+          req "width" TFloat ]
+      Annotations = Annotations.Empty }
 
 /// Every field optional — an empty `{}` is a legitimate style (see `drawing-empty`).
 let private drawStyle =
@@ -3048,7 +3233,8 @@ let private drawStyle =
           opt "textAnchor" (TEnum "TextAnchor")
           // Phase 883 — the mark's hover tip. A TextSource, so it carries the
           // same literal / bound / formatted vocabulary every other label does.
-          opt "tip" TS ] }
+          opt "tip" TS ]
+      Annotations = Annotations.Empty }
 
 let private curveCommand =
     { Name = "CurveCommand"
@@ -3059,22 +3245,29 @@ let private curveCommand =
         // modelled and why `drawing-1` failed to decode. Read the wire.
         [ { Tag = "MoveTo"
             Fields = [ req "to" (TRecord "DrawPoint") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "LineTo"
             Fields = [ req "to" (TRecord "DrawPoint") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "CubicTo"
             Fields =
               [ req "control1" (TRecord "DrawPoint")
                 req "control2" (TRecord "DrawPoint")
                 req "to" (TRecord "DrawPoint") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "QuadraticTo"
             Fields = [ req "control" (TRecord "DrawPoint"); req "to" (TRecord "DrawPoint") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Close"
             Fields = []
-            Annotations = Annotations.Empty } ] }
+            Annotations = Annotations.Empty
+            Hosted = None } ]
+      Annotations = Annotations.Empty
+      TagRule = UnionTagRule.CaseName }
 
 /// Recursive: `Group` carries `Shape list`. Every case carries a `style`.
 let private shape =
@@ -3085,7 +3278,8 @@ let private shape =
             Fields =
               [ req "children" (TList(TUnion("Shape", [])))
                 req "style" (TRecord "DrawStyle") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Case-field order matches the hand-written positional order (the
           // stage-0 swap-prep convention — wire-free, the renderer sorts keys).
           { Tag = "Rectangle"
@@ -3096,7 +3290,8 @@ let private shape =
                 req "height" TFloat
                 opt "cornerRadius" TFloat
                 req "style" (TRecord "DrawStyle") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Line"
             Fields =
               [ req "x1" TFloat
@@ -3104,25 +3299,30 @@ let private shape =
                 req "x2" TFloat
                 req "y2" TFloat
                 req "style" (TRecord "DrawStyle") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Polyline"
             Fields = [ req "points" (TList(TRecord "DrawPoint")); req "style" (TRecord "DrawStyle") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Polygon"
             Fields = [ req "points" (TList(TRecord "DrawPoint")); req "style" (TRecord "DrawStyle") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Curve"
             Fields =
               [ req "commands" (TList(TUnion("CurveCommand", [])))
                 req "style" (TRecord "DrawStyle") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Circle"
             Fields =
               [ req "cx" TFloat
                 req "cy" TFloat
                 req "r" TFloat
                 req "style" (TRecord "DrawStyle") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Ellipse"
             Fields =
               [ req "cx" TFloat
@@ -3130,14 +3330,18 @@ let private shape =
                 req "rx" TFloat
                 req "ry" TFloat
                 req "style" (TRecord "DrawStyle") ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Label"
             Fields =
               [ req "x" TFloat
                 req "y" TFloat
                 req "text" TS
                 req "style" (TRecord "DrawStyle") ]
-            Annotations = Annotations.Empty } ] }
+            Annotations = Annotations.Empty
+            Hosted = None } ]
+      Annotations = Annotations.Empty
+      TagRule = UnionTagRule.CaseName }
 
 /// Phase 1490 — a chart's data-addressed annotations, §4l of
 /// `docs/CHARTS-DRAWING-PRIMITIVE-DESIGN.md`. ONE closed union rather than one
@@ -3174,10 +3378,14 @@ let private chartAnnotationX =
       Cases =
         [ { Tag = "Category"
             Fields = [ req "key" TStr ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "Date"
             Fields = [ req "iso" TStr ]
-            Annotations = Annotations.Empty } ] }
+            Annotations = Annotations.Empty
+            Hosted = None } ]
+      Annotations = Annotations.Empty
+      TagRule = UnionTagRule.CaseName }
 
 /// Phase 1492 — a range band's PAIR (§4l "The three addressing forms", the
 /// third row). Two of the same address form, on one axis.
@@ -3200,12 +3408,16 @@ let private chartAnnotationRange =
       Cases =
         [ { Tag = "ValueRange"
             Fields = [ req "from" TFloat; req "to" TFloat ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           { Tag = "XRange"
             Fields =
               [ req "from" (TUnion("ChartAnnotationX", []))
                 req "to" (TUnion("ChartAnnotationX", [])) ]
-            Annotations = Annotations.Empty } ] }
+            Annotations = Annotations.Empty
+            Hosted = None } ]
+      Annotations = Annotations.Empty
+      TagRule = UnionTagRule.CaseName }
 
 let private chartAnnotation =
     { Name = "ChartAnnotation"
@@ -3213,7 +3425,8 @@ let private chartAnnotation =
       Cases =
         [ { Tag = "ReferenceLine"
             Fields = [ req "value" TFloat; opt "label" TS ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Phase 1491 — the EVENT MARKER: a vertical line at an x address,
           // with an optional label. The mirror of `ReferenceLine` across the
           // axes, and §4l rule 2 is why there is exactly one of each: a vertical
@@ -3222,14 +3435,18 @@ let private chartAnnotation =
           // against.
           { Tag = "EventMarker"
             Fields = [ req "at" (TUnion("ChartAnnotationX", [])); opt "label" TS ]
-            Annotations = Annotations.Empty }
+            Annotations = Annotations.Empty
+            Hosted = None }
           // Phase 1492 — the RANGE BAND: a shaded interval on either axis, the
           // one member that draws BEHIND the series. The pair carries the axis
           // (see `ChartAnnotationRange` above), so the case has an address and a
           // label and — §4l — nothing else.
           { Tag = "RangeBand"
             Fields = [ req "range" (TUnion("ChartAnnotationRange", [])); opt "label" TS ]
-            Annotations = Annotations.Empty } ] }
+            Annotations = Annotations.Empty
+            Hosted = None } ]
+      Annotations = Annotations.Empty
+      TagRule = UnionTagRule.CaseName }
 
 /// Phase 679 — a `Switch` case: the match string plus the node it selects. The
 /// tier holds this as a `(string * Node) tuple list`, which the IDL has no type
@@ -3244,13 +3461,15 @@ let private chartAnnotation =
 /// more than it states path addressing.
 let private switchCase =
     { Name = "SwitchCase"
-      Fields = [ req "child" TNode; opt "match" TStr; opt "when" (bindingOf TBool) ] }
+      Fields = [ req "child" TNode; opt "match" TStr; opt "when" (bindingOf TBool) ]
+      Annotations = Annotations.Empty }
 
 /// Phase 679 — `Mount`'s guest channel. `messageShape` rides only on `TwoWay`
 /// in practice but is optional in the shape, not conditional on direction.
 let private guestChannel =
     { Name = "GuestChannel"
-      Fields = [ req "direction" (TEnum "ChannelDirection"); opt "messageShape" TStr ] }
+      Fields = [ req "direction" (TEnum "ChannelDirection"); opt "messageShape" TStr ]
+      Annotations = Annotations.Empty }
 
 let private channelDirection =
     Declare.enumOf "ChannelDirection" [ "OutOnly"; "TwoWay" ]
@@ -3669,3 +3888,13 @@ let uiIdl: Idl =
           ValueLiteralCase = "Static"
           ValueLiteralField = "value"
           TransparentUnions = [ "TextSource", "Literal" ] } }
+
+/// The published artifact's identity (Phase 2286). Until Fuaran.Core 0.40 `Artifact.render` wrote this
+/// `description` by default; since Core Phase 527 (D40 amended) a vocabulary that wants one declares it,
+/// so the UI vocabulary declares the text its `idl.json` has always carried, and the artifact's bytes
+/// do not move. Render the artifact with `Artifact.renderWith uiIdlIdentity`.
+let uiIdlIdentity: Artifact.Identity =
+    { Name = None
+      Description =
+        Some
+            "Canonical data rendering of the Fuaran UI wire vocabulary — kinds, unions, enums, records, field defaults and the node envelope. This is the STRUCTURAL source: it states what the vocabulary is, including optionality classes and omit-at-default values that a JSON Schema cannot express. schema.json beside it is the VALIDATION surface, derived from the same contract. Keys marked hostSurface are host-language declarations, not wire spec, and carry nothing observable on the wire. See WIRE_FORMAT.md section 13." }

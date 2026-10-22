@@ -14,7 +14,10 @@ open Fuaran.UI.Types
 open Fuaran.UI.SchemaForm
 
 let private parse (text: string) : JVal =
-    match Json.parseTolerantOfNull text with
+    match
+        (Decoder.parse ReadOptions.tolerantOfNull text
+         |> Result.mapError DecodeError.describe)
+    with
     | Ok v -> v
     | Error e -> failwithf "test schema does not parse: %s" e
 

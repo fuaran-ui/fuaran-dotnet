@@ -943,15 +943,15 @@ let formFromSchemaInputSchema: Fuaran.Core.JVal =
           "additionalProperties", Fuaran.Core.JBool false ]
 
 let private argumentsRefusal (path: string) (message: string) : string =
-    Fuaran.Core.Canon.render (
-        Fuaran.Core.JObj
+    Fuaran.Core.Canonical.write
+        Fuaran.Core.Rendering.CrossHost
+        (Fuaran.Core.JObj
             [ "refusals",
               Fuaran.Core.JArr
                   [ Fuaran.Core.JObj
                         [ "code", Fuaran.Core.JStr "invalid-arguments"
                           "message", Fuaran.Core.JStr message
-                          "path", Fuaran.Core.JStr path ] ] ]
-    )
+                          "path", Fuaran.Core.JStr path ] ] ])
 
 /// `fuaran.formFromSchema(schema, formId?, submitLabel?)`. `Ok` is the Form's
 /// canonical wire JSON; `Error` is the refusal envelope

@@ -323,36 +323,36 @@ module DecodeWork =
           MaxNesting = counter.MaxNesting
           Parses = counter.Parses }
 
-// ─── JSON AST + parser ───────────────────────────────────────────────────
+// ─── JSON AST + the parse through Core ───────────────────────────────────
 //
-// Why this decoder parses with its own parser into its own AST, rather than
-// with the substrate's `Json.parse` into `Fuaran.Core.JVal` (Phase 2059 asked,
-// and read both against WIRE_FORMAT §20 and §21 at the pinned Core):
+// This decoder reads wire text through the substrate's parser, Core's token
+// reader (`Fuaran.Core.Reader`, fuaran-core#467), under this host's own §21
+// values — and carries no JSON parser of its own (Phase 2286, closing the
+// WIRE_FORMAT §20.1 declaration this host carried as its worked example).
 //
-//  1. §21 is this host's to enforce, by ruling. Core's DECISIONS D84 (operator,
-//     2026-10-01) rules that Core is NOT a §21 host: its depth cap (512) is its
-//     own stack guard, it bounds no string, array or document size, and it adds
-//     no limits-taking entry point because "the hosts already carry the
-//     enforcement". This parser is where this host carries it, in the units
-//     and with the `LIMIT_EXCEEDED` the section requires.
-//  2. §20.2 answers differ. The substrate parser keeps a repeated member (row 1,
-//     which this host refuses) and passes a raw C0 control through (row 5),
-//     while it refuses an overflowing exponent (row 7, which §20 ratifies as
-//     an accept) and an integer past 2^53 that is not a double's canonical
-//     layout (which this host reads). §20.1 binds every decode entry point, so
-//     the policy decoder cannot inherit those answers.
-//  3. `JVal` has no null, and this decoder's answers to a null depend on where
+//  1. §21 stays this host's to enforce, with its own numbers. Core states no
+//     wire's limits (Core DECISIONS D84, refined by D159); it takes a limits
+//     record and enforces it ON THE WAY DOWN, before the recursion or the
+//     allocation each bound guards, and reports a breach as a typed
+//     `LimitExceeded` at the breach's path, never as malformed JSON. The values
+//     passed are `Fuaran.UI.WireLimits`', so the protocol numbers are unchanged.
+//  2. §20.2 has one answer per row: the reading is Core's grammar, proved to
+//     rebuild Core's strict parse (`proofs/JsonParse.fst`,
+//     `reader_rebuilds_the_parse`), so every entry point of this host — the
+//     policy decoder here and the IDL-generated structural layer — answers each
+//     row the same way (fuaran-dotnet DECISIONS D19 and D21 record row 7 and the
+//     non-canonical integer past 2^53, both Core's refusals).
+//  3. `JVal` has no null, and this decoder's answer to a null depends on where
 //     it stands: read-compat at some slots (a `Static` value, a pre-429 list),
 //     `WRONG_TYPE` at the null's own path in a rule-12 payload — both pinned by
-//     the corpus (`lenient/`, `reject/reject-null-*`). A parse that erases or
-//     refuses null before the decode knows the position cannot give either.
+//     the corpus (`lenient/`, `reject/reject-null-*`). So the reading meets each
+//     `null` token through `Reader.peek`, reads it on this host's rule
+//     (`Reader.readNull`) and builds `JNull`, and the decoder above keeps
+//     choosing the answer by position. No null is refused or erased by the parse.
 //
-// So `JNull` stays here, and a caller that already holds a `JVal` enters through
-// the `JVal` entry points (`decodeNodeJVal` / `decodeNodeObjJVal` /
-// `decodeOpJVal`), which lower the value into this AST without a render.
-//
-// No `Newtonsoft.Json` or `System.Text.Json` either: both are server-only, and
-// the decoder runs under Fable (the client-side emit gate) as well as .NET.
+// A caller that already holds a `JVal` enters through the `JVal` entry points
+// (`decodeNodeJVal` / `decodeNodeObjJVal` / `decodeOpJVal`), which lower the
+// value into this AST without a render.
 
 type private Json =
     | JNull
@@ -362,505 +362,75 @@ type private Json =
     | JArray of Json list
     | JObject of Map<string, Json>
 
-/// Parser cursor + the Phase 781 resource-limit bookkeeping.
-///
-/// `Depth` is the current syntactic JSON nesting level (0 outside any composite
-/// value), incremented on entry to an object / array and decremented on exit;
-/// `parseValue` refuses past `WireLimits.MaxJsonDepth`. Without it,
-/// `parseValue` / `parseObjectValue` / `parseArrayValue` are mutually recursive
-/// with nothing bounding them, and about 200 KB of `[[[[[…` — two bytes per
-/// level — is a `StackOverflowException`: uncatchable in .NET, so the process
-/// dies and no `Result` is ever returned.
-///
-/// `Breach` records that a failure was a LIMIT rather than a syntax error, so
-/// `tryParse` can hand the caller `LIMIT_EXCEEDED` instead of the
-/// `INVALID_JSON` every other parse failure maps to. It is a field rather than
-/// a richer error type because the parser's internals are threaded through
-/// `Result<_, string>` in about forty places; carrying one out-of-band flag is
-/// a far smaller change than re-typing all of them, and it is written exactly
-/// once per parse.
-/// `PendingHigh` and `CodePoints` are `parseStringRaw`'s state, carried on the
-/// cursor rather than local to it for the same reason `Breach` is. Strings do
-/// not nest, so one slot per parse is enough; `parseStringRaw` resets both on
-/// entry.
-type private ParseState =
-    {
-        Text: string
-        mutable Pos: int
-        mutable Depth: int
-        mutable Breach: bool
-        /// A `\uD800`-`\uDBFF` unit has been appended and its low half is owed
-        /// (WIRE_FORMAT §20.2 row 6).
-        mutable PendingHigh: bool
-        /// Unicode code points appended to the string under construction, a
-        /// surrogate pair counting once (WIRE_FORMAT §21.6).
-        mutable CodePoints: int
-        /// Values `parseValue` has read (the work meter's `Steps`, Phase 2328).
-        mutable Steps: int64
-        /// The deepest `Depth` `parseValue` has been entered at.
-        mutable MaxDepth: int
-    }
+/// The §21 JSON-level bounds as Core's limits record: this host's values, one
+/// count (`MaxArrayLength`) for both an array's items and an object's members.
+let private wireJsonLimits: JsonLimits =
+    { MaxDepth = Fuaran.UI.WireLimits.MaxJsonDepth
+      MaxStringLength = Fuaran.UI.WireLimits.MaxStringLength
+      MaxArrayLength = Fuaran.UI.WireLimits.MaxArrayLength
+      MaxObjectMembers = Fuaran.UI.WireLimits.MaxArrayLength
+      MaxDocumentBytes = Fuaran.UI.WireLimits.MaxDocumentBytes }
 
-/// Record a resource-limit breach and produce the message. The `Breach` flag is
-/// what promotes the eventual failure from `INVALID_JSON` to `LIMIT_EXCEEDED`.
-let private limitError (s: ParseState) (message: string) : Result<'a, string> =
-    s.Breach <- true
-    Error message
+/// The read this decoder parses under: every `null` the reading does not read
+/// itself refused (it reads every one, see `readJson`), and the wire's limits.
+let private wireReadOptions: ReadOptions =
+    { Null = RejectNull
+      Limits = wireJsonLimits }
 
-let private peek (s: ParseState) : char =
-    if s.Pos < s.Text.Length then s.Text[s.Pos] else ' '
+/// Values read and the deepest composite nesting reached, for the work meter
+/// (Phase 2328): one per value the reading builds, so `Steps` counts every
+/// object, array, string, number, literal and member value.
+type private ReadCount() =
+    member val Steps = 0L with get, set
+    member val MaxNesting = 0 with get, set
 
-let private advance (s: ParseState) : unit = s.Pos <- s.Pos + 1
+/// A scalar `Reader.value` built, in this host's AST.
+let private lowerScalar (v: JVal) : Json =
+    match v with
+    | JStr s -> JString s
+    | JInt i -> JNumber(float i)
+    | JFloat f -> JNumber f
+    | JVal.JBool b -> JBool b
+    | other -> invalidOp (sprintf "Reader.value answered %A for a scalar token" other)
 
-let private skipWs (s: ParseState) : unit =
-    while s.Pos < s.Text.Length
-          && (let c = s.Text[s.Pos] in c = ' ' || c = '\t' || c = '\n' || c = '\r') do
-        advance s
+/// The reading over Core's token surface: `null` is read on this host's rule
+/// and becomes `JNull` (the one place `JNull` is built from wire text); an array
+/// and an object are read item by item and member by member; every other token
+/// is the value Core's grammar builds, lowered.
+let private readJson (count: ReadCount) : Reader -> Json =
+    let rec read (depth: int) (r: Reader) : Json =
+        count.Steps <- count.Steps + 1L
 
-let private parseError (s: ParseState) (msg: string) : Result<'a, string> =
-    // Phase 810 — nested parsers each wrapped the propagated message again,
-    // so a deep failure read "parse error at offset N:" up to six times and
-    // pushed the didactic tail (the load-bearing part) further back each
-    // level. The INNERMOST wrap carries the precise offset; propagate it
-    // unchanged.
-    if msg.StartsWith "parse error at offset" then
-        Error msg
-    else
-        Error(sprintf "parse error at offset %d: %s" s.Pos msg)
+        if depth > count.MaxNesting then
+            count.MaxNesting <- depth
 
-let private expectChar (s: ParseState) (ch: char) : Result<unit, string> =
-    if peek s = ch then
-        advance s
-        Ok()
-    else
-        parseError s (sprintf "expected '%c' but found '%c'" ch (peek s))
+        match Reader.peek r with
+        | JsonToken.Null ->
+            Reader.readNull r
+            JNull
+        | JsonToken.Array ->
+            let items = ResizeArray<Json>()
+            Reader.items (fun item -> items.Add(read (depth + 1) item)) r
+            JArray(List.ofSeq items)
+        | JsonToken.Object ->
+            let mutable members = Map.empty
+            Reader.members (fun key m -> members <- Map.add key (read (depth + 1) m) members) r
+            JObject members
+        | JsonToken.Bool
+        | JsonToken.Number
+        | JsonToken.String -> lowerScalar (Reader.value r)
 
-/// Append one UTF-16 unit to the accumulator, maintaining WIRE_FORMAT §20.2
-/// row 6 (unpaired surrogates are `INVALID_JSON`) and §21.6 (the string bound
-/// counts Unicode CODE POINTS, so a surrogate pair counts once).
-///
-/// One function for both the literal and the `\uXXXX` paths, deliberately: a
-/// lone surrogate is equally a lone surrogate however it arrived, and the two
-/// paths having separate checks is how a host ends up refusing `"\uD800"` while
-/// accepting the same scalar written literally.
-///
-/// `PendingHigh` is the state a pairing check cannot do without, and it is why
-/// the check runs on the way down rather than over the finished string: once
-/// the string is assembled, a high followed by a low and a lone high followed
-/// by a lone low are the same two units in the same order.
-let private appendStringChar (s: ParseState) (sb: System.Text.StringBuilder) (c: char) : string option =
-    let code = int c
-    let isHigh = code >= 0xD800 && code <= 0xDBFF
-    let isLow = code >= 0xDC00 && code <= 0xDFFF
+    read 0
 
-    if isHigh then
-        if s.PendingHigh then
-            Some "unpaired high surrogate: a \\uD800-\\uDBFF unit must be followed by a \\uDC00-\\uDFFF unit"
-        else
-            s.PendingHigh <- true
-            s.CodePoints <- s.CodePoints + 1
-            sb.Append c |> ignore
-            None
-    elif isLow then
-        if not s.PendingHigh then
-            Some "unpaired low surrogate: a \\uDC00-\\uDFFF unit must be preceded by a \\uD800-\\uDBFF unit"
-        else
-            s.PendingHigh <- false
-            sb.Append c |> ignore
-            None
-    elif s.PendingHigh then
-        Some "unpaired high surrogate: a \\uD800-\\uDBFF unit must be followed by a \\uDC00-\\uDFFF unit"
-    else
-        s.CodePoints <- s.CodePoints + 1
-        sb.Append c |> ignore
-        None
-
-let private parseStringRaw (s: ParseState) : Result<string, string> =
-    match expectChar s '"' with
-    | Error e -> Error e
-    | Ok() ->
-        let sb = System.Text.StringBuilder()
-        let mutable finished = false
-        let mutable error: string option = None
-        s.PendingHigh <- false
-        s.CodePoints <- 0
-
-        while not finished && error.IsNone do
-            if s.Pos >= s.Text.Length then
-                error <- Some "unterminated string"
-            else
-                let c = s.Text[s.Pos]
-                advance s
-
-                if c = '"' then
-                    finished <- true
-                elif c = '\\' then
-                    if s.Pos >= s.Text.Length then
-                        error <- Some "unterminated escape"
-                    else
-                        let esc = s.Text[s.Pos]
-                        advance s
-
-                        match esc with
-                        | '"' -> error <- appendStringChar s sb '"'
-                        | '\\' -> error <- appendStringChar s sb '\\'
-                        | '/' -> error <- appendStringChar s sb '/'
-                        | 'b' -> error <- appendStringChar s sb '\b'
-                        | 'f' -> error <- appendStringChar s sb '\f'
-                        | 'n' -> error <- appendStringChar s sb '\n'
-                        | 'r' -> error <- appendStringChar s sb '\r'
-                        | 't' -> error <- appendStringChar s sb '\t'
-                        | 'u' ->
-                            if s.Pos + 4 > s.Text.Length then
-                                error <- Some "incomplete \\u escape"
-                            else
-                                let hex = s.Text.Substring(s.Pos, 4)
-                                s.Pos <- s.Pos + 4
-                                // Hex→int by hand; Fable rejects the
-                                // (string, NumberStyles, IFormatProvider)
-                                // TryParse overload. BMP-only is
-                                // sufficient for canonical-JSON shapes.
-                                let mutable code = 0
-                                let mutable hexOk = true
-
-                                for ch in hex do
-                                    let digit =
-                                        if ch >= '0' && ch <= '9' then
-                                            int ch - int '0'
-                                        elif ch >= 'a' && ch <= 'f' then
-                                            int ch - int 'a' + 10
-                                        elif ch >= 'A' && ch <= 'F' then
-                                            int ch - int 'A' + 10
-                                        else
-                                            hexOk <- false
-                                            0
-
-                                    code <- code * 16 + digit
-
-                                if hexOk then
-                                    error <- appendStringChar s sb (char code)
-                                else
-                                    error <- Some(sprintf "invalid \\u escape '%s'" hex)
-                        | other -> error <- Some(sprintf "unknown escape '\\%c'" other)
-                elif int c < 0x20 then
-                    // WIRE_FORMAT §20.2 row 5. RFC 8259 requires a C0 control
-                    // character to be escaped, and §2 rule 6 requires a
-                    // conformant encoder to escape it — so a RAW one is a byte
-                    // no host can emit, and accepting it admits input this
-                    // host's own encoder cannot produce. The ESCAPED spelling
-                    // stays legal: it is the specified one.
-                    error <- Some(sprintf "raw control character U+%04X in a string must be escaped" (int c))
-                else
-                    error <- appendStringChar s sb c
-
-            // WIRE_FORMAT §21.6 / §21.2 rule 4 — bound the string ON THE WAY
-            // DOWN, in CODE POINTS. It used to be tested once on the finished
-            // string, which had already paid the allocation the bound exists to
-            // refuse; and it used to count `sb.Length`, which is UTF-16 units,
-            // so an astral document sat inside the limit here and outside it on
-            // a code-point-counting host. `CodePoints` counts a surrogate pair
-            // once.
-            if error.IsNone && s.CodePoints > Fuaran.UI.WireLimits.MaxStringLength then
-                s.Breach <- true
-
-                error <-
-                    Some(
-                        sprintf
-                            "string of %d code points exceeds the wire limit MaxStringLength = %d"
-                            s.CodePoints
-                            Fuaran.UI.WireLimits.MaxStringLength
-                    )
-
-        match error with
-        | Some e -> parseError s e
-        | None when s.PendingHigh ->
-            parseError
-                s
-                "unpaired high surrogate at the end of a string: a \\uD800-\\uDBFF unit must be followed by a \\uDC00-\\uDFFF unit"
-        | None -> Ok(sb.ToString())
-
-/// The RFC 8259 number grammar, exactly:
-///
-///     number = [ '-' ] int [ frac ] [ exp ]
-///     int    = '0' | digit1-9 *digit
-///     frac   = '.' 1*digit
-///     exp    = ('e' | 'E') [ '+' | '-' ] 1*digit
-///
-/// Written out rather than delegated because delegation is the defect: every
-/// platform's own number parser accepts a slightly different superset (a
-/// leading `+`, a leading zero, `.5`, `1.`, thousands separators, hex), and a
-/// decoder that asks one of them "is this a number" is asking about that
-/// platform. WIRE_FORMAT §20.2 row 3 makes the answer a property of the format.
-///
-/// It is total and allocation-free, so it is affordable on every token.
-let private isRfc8259Number (slice: string) : bool =
-    let n = slice.Length
-
-    let digit i =
-        i < n && slice[i] >= '0' && slice[i] <= '9'
-
-    let mutable i = 0
-    let mutable ok = true
-
-    if i < n && slice[i] = '-' then
-        i <- i + 1
-
-    // int: a single '0', or a non-zero digit followed by any digits. A leading
-    // zero ('01') is the case this arm exists to refuse.
-    if not (digit i) then
-        ok <- false
-    elif slice[i] = '0' then
-        i <- i + 1
-    else
-        while digit i do
-            i <- i + 1
-
-    // frac: the point must be followed by at least one digit ('1.' is refused).
-    if ok && i < n && slice[i] = '.' then
-        i <- i + 1
-
-        if not (digit i) then
-            ok <- false
-        else
-            while digit i do
-                i <- i + 1
-
-    // exp: at least one digit after the optional sign ('1e', '1e+' are refused).
-    if ok && i < n && (slice[i] = 'e' || slice[i] = 'E') then
-        i <- i + 1
-
-        if i < n && (slice[i] = '+' || slice[i] = '-') then
-            i <- i + 1
-
-        if not (digit i) then
-            ok <- false
-        else
-            while digit i do
-                i <- i + 1
-
-    // Trailing characters inside the token ('1..2', '0x1F') are a refusal, not
-    // a prefix match: the caller has already consumed the whole run.
-    ok && i = n
-
-let private parseNumberRaw (s: ParseState) : Result<float, string> =
-    let start = s.Pos
-
-    let valid (c: char) =
-        c = '-' || c = '+' || c = '.' || c = 'e' || c = 'E' || (c >= '0' && c <= '9')
-
-    while s.Pos < s.Text.Length && valid s.Text[s.Pos] do
-        advance s
-
-    let slice = s.Text.Substring(start, s.Pos - start)
-
-    // WIRE_FORMAT §20.2 row 3 — check the RFC 8259 grammar BEFORE handing the
-    // slice to a platform parser, never after. `Double.TryParse` accepts a
-    // leading `+`, a leading zero, a missing integer part and a bare trailing
-    // point; JSON permits none of them, and which subset a platform accepts is
-    // a property of that platform rather than of this format. Checking after
-    // the parse would measure the platform's dialect and call it conformance.
-    if not (isRfc8259Number slice) then
-        parseError s (sprintf "'%s' is not a JSON number (RFC 8259 grammar)" slice)
-    else
-        // Under Fable, `Double.TryParse` takes only the single-argument form and
-        // the JS runtime is invariant by construction. On .NET the single-arg
-        // overload honours the AMBIENT CULTURE and permits group separators, so
-        // on a de-DE host `1.5` parsed as `15` — silently, with a green decode,
-        // and a different tree from the same bytes on the same host in a
-        // different locale. That is exactly what §20 exists to refuse, so the
-        // .NET leg pins the culture and the number styles.
-#if FABLE_COMPILER
-        match System.Double.TryParse slice with
-#else
-        match
-            System.Double.TryParse(
-                slice,
-                System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture
-            )
-        with
-#endif
-        | true, n -> Ok n
-        | false, _ -> parseError s (sprintf "invalid number '%s'" slice)
-
-/// True when entering one more level of syntactic nesting would exceed
-/// `MaxJsonDepth`. Callers that pass this increment `Depth` and decrement it on
-/// the way out; callers that do not never incremented, so nothing to undo.
-///
-/// **Call it before deciding the composite is empty** (Phase 792). An empty
-/// `{}` / `[]` returns without incrementing, so testing it after the empty arm
-/// leaves the innermost level of a nested payload uncounted — and that level is
-/// always the empty one. §21.1 counts every `{` and `[`, empty or not.
-let private wouldExceedDepth (s: ParseState) : bool =
-    s.Depth >= Fuaran.UI.WireLimits.MaxJsonDepth
-
-let private depthLimitMessage: string =
-    sprintf "JSON nesting deeper than the wire limit MaxJsonDepth = %d" Fuaran.UI.WireLimits.MaxJsonDepth
-
-let rec private parseValue (s: ParseState) : Result<Json, string> =
-    s.Steps <- s.Steps + 1L
-
-    if s.Depth > s.MaxDepth then
-        s.MaxDepth <- s.Depth
-
-    skipWs s
-
-    match peek s with
-    | '{' -> parseObjectValue s
-    | '[' -> parseArrayValue s
-    | '"' -> parseStringRaw s |> Result.map JString
-    | 't' ->
-        if s.Pos + 4 <= s.Text.Length && s.Text.Substring(s.Pos, 4) = "true" then
-            s.Pos <- s.Pos + 4
-            Ok(JBool true)
-        else
-            parseError s "expected 'true'"
-    | 'f' ->
-        if s.Pos + 5 <= s.Text.Length && s.Text.Substring(s.Pos, 5) = "false" then
-            s.Pos <- s.Pos + 5
-            Ok(JBool false)
-        else
-            parseError s "expected 'false'"
-    | 'n' ->
-        if s.Pos + 4 <= s.Text.Length && s.Text.Substring(s.Pos, 4) = "null" then
-            s.Pos <- s.Pos + 4
-            Ok JNull
-        else
-            parseError s "expected 'null'"
-    | _ -> parseNumberRaw s |> Result.map JNumber
-
-and private parseObjectValue (s: ParseState) : Result<Json, string> =
-    match expectChar s '{' with
-    | Error e -> Error e
-    | Ok() ->
-        skipWs s
-
-        // The depth check comes BEFORE the empty-object arm, and the ordering is
-        // the whole of Phase 792's boundary fix. It used to sit after it, so an
-        // EMPTY composite returned without ever being counted — and the
-        // innermost level of a `[[[…]]]` payload is always the empty one. The
-        // effect was an off-by-one: a document nesting 257 levels was accepted,
-        // because only its 256 non-empty levels were ever measured. §21.1 counts
-        // every `{` and `[`, empty or not.
-        if wouldExceedDepth s then
-            limitError s depthLimitMessage
-        elif peek s = '}' then
-            advance s
-            Ok(JObject Map.empty)
-        else
-            s.Depth <- s.Depth + 1
-            let mutable acc: (string * Json) list = []
-            let mutable seen: Set<string> = Set.empty
-            let mutable count = 0
-            let mutable error: string option = None
-            let mutable finished = false
-
-            while not finished && error.IsNone do
-                skipWs s
-
-                match parseStringRaw s with
-                | Error e -> error <- Some e
-                | Ok key when seen.Contains key ->
-                    // WIRE_FORMAT §20.2 row 1. The one §20 row that changes what
-                    // a document MEANS rather than whether it is accepted: this
-                    // host used to keep the FIRST occurrence and every other
-                    // host the last, so `{"href":"https://ok","href":"javascript:…"}`
-                    // was a different tree on a vetting host than on a rendering
-                    // one, with no error anywhere. First-wins here was emergent
-                    // rather than chosen — `acc` accumulates in reverse and
-                    // `Map.ofList` lets later list entries win, so reversal left
-                    // the first-PARSED key standing. Rejection is the only answer
-                    // two hosts cannot silently differ on, and it costs nothing:
-                    // no conformant encoder can emit a repeated member.
-                    error <- Some(sprintf "duplicate object member '%s'" key)
-                | Ok key ->
-                    skipWs s
-
-                    match expectChar s ':' with
-                    | Error e -> error <- Some e
-                    | Ok() ->
-                        match parseValue s with
-                        | Error e -> error <- Some e
-                        | Ok v ->
-                            acc <- (key, v) :: acc
-                            seen <- seen.Add key
-                            count <- count + 1
-
-                            if count > Fuaran.UI.WireLimits.MaxArrayLength then
-                                s.Breach <- true
-
-                                error <-
-                                    Some(
-                                        sprintf
-                                            "object with more than the wire limit MaxArrayLength = %d members"
-                                            Fuaran.UI.WireLimits.MaxArrayLength
-                                    )
-                            else
-                                skipWs s
-
-                                match peek s with
-                                | ',' -> advance s
-                                | '}' ->
-                                    advance s
-                                    finished <- true
-                                | other -> error <- Some(sprintf "expected ',' or '}' but found '%c'" other)
-
-            s.Depth <- s.Depth - 1
-
-            match error with
-            | Some e -> parseError s e
-            | None -> Ok(JObject(Map.ofList acc))
-
-and private parseArrayValue (s: ParseState) : Result<Json, string> =
-    match expectChar s '[' with
-    | Error e -> Error e
-    | Ok() ->
-        skipWs s
-
-        // Ordering as in `parseObjectValue` above — see the note there.
-        if wouldExceedDepth s then
-            limitError s depthLimitMessage
-        elif peek s = ']' then
-            advance s
-            Ok(JArray [])
-        else
-            s.Depth <- s.Depth + 1
-            let mutable acc: Json list = []
-            let mutable count = 0
-            let mutable error: string option = None
-            let mutable finished = false
-
-            while not finished && error.IsNone do
-                match parseValue s with
-                | Error e -> error <- Some e
-                | Ok v ->
-                    acc <- v :: acc
-                    count <- count + 1
-
-                    if count > Fuaran.UI.WireLimits.MaxArrayLength then
-                        s.Breach <- true
-
-                        error <-
-                            Some(
-                                sprintf
-                                    "array longer than the wire limit MaxArrayLength = %d"
-                                    Fuaran.UI.WireLimits.MaxArrayLength
-                            )
-                    else
-                        skipWs s
-
-                        match peek s with
-                        | ',' -> advance s
-                        | ']' ->
-                            advance s
-                            finished <- true
-                        | other -> error <- Some(sprintf "expected ',' or ']' but found '%c'" other)
-
-            s.Depth <- s.Depth - 1
-
-            match error with
-            | Some e -> parseError s e
-            | None -> Ok(JArray(List.rev acc))
+/// Core's path, in this decoder's spelling (`$`, `.key`, `[i]`).
+let private renderCorePath (path: Fuaran.Core.PathSegment list) : string =
+    path
+    |> List.fold
+        (fun acc seg ->
+            match seg with
+            | Fuaran.Core.PathSegment.Key k -> acc + "." + k
+            | Fuaran.Core.PathSegment.Index i -> acc + "[" + string i + "]")
+        "$"
 
 /// The one didactic-free error class, closed (2026-08-09). A syntax failure
 /// carries only an offset, so a model repairing from the envelope has no cause
@@ -925,52 +495,7 @@ let private sniffArithmeticExpression (text: string) (pos: int) : string option 
 
                     Some(text.Substring(leftStart, j - leftStart))
 
-/// UTF-8 byte length of a .NET/Fable string, computed from its UTF-16 units.
-///
-/// `Encoding.UTF8.GetByteCount` is server-only, so the count is derived rather
-/// than delegated — and it must be derived rather than substituted: `String.Length`
-/// is UTF-16 units, which under-counts a CJK document threefold, and
-/// under-counting is the direction that ADMITS a document §21.7 requires the
-/// host to refuse.
-///
-/// The bounds short-circuit is not a micro-optimisation but the difference
-/// between an O(n) walk on every decode and one on the rare large document:
-/// every UTF-16 unit costs at least one byte and at most three (a surrogate
-/// PAIR costs four across two units, so two per unit), so a string shorter than
-/// a third of the ceiling cannot breach it and one longer than the ceiling must.
-let private documentBytes (input: string) : int =
-    if input.Length > Fuaran.UI.WireLimits.MaxDocumentBytes then
-        input.Length // already past the ceiling; the exact figure is not needed
-    elif input.Length <= Fuaran.UI.WireLimits.MaxDocumentBytes / 3 then
-        input.Length // cannot reach the ceiling however it encodes
-    else
-        let mutable total = 0
-        let mutable i = 0
 
-        while i < input.Length do
-            let c = int input[i]
-
-            if c < 0x80 then
-                total <- total + 1
-            elif c < 0x800 then
-                total <- total + 2
-            elif c >= 0xD800 && c <= 0xDBFF && i + 1 < input.Length then
-                // A surrogate PAIR is one scalar in four bytes. An unpaired half
-                // is §20.2 row 6's refusal, reached later in the parse; counting
-                // it as three here is the conservative reading and never admits.
-                total <- total + 4
-                i <- i + 1
-            else
-                total <- total + 3
-
-            i <- i + 1
-
-        total
-
-/// Parse, classifying the failure. The code is `LIMIT_EXCEEDED` when a
-/// `WireLimits` bound was hit (the `ParseState.Breach` flag) and `INVALID_JSON`
-/// for every ordinary syntax failure — the two are different repairs, and only
-/// one of them means "the input was structurally hostile rather than malformed".
 /// Add one parse's totals to the work meter, when one is on (Phase 2328).
 let private meterParse (units: int) (steps: int64) (maxDepth: int) : unit =
     let counter = WorkMeter.Current
@@ -983,123 +508,139 @@ let private meterParse (units: int) (steps: int64) (maxDepth: int) : unit =
         if maxDepth > counter.MaxNesting then
             counter.MaxNesting <- maxDepth
 
-let private tryParse (input: string) : Result<Json, DecodeErrorCode * string> =
-    if isNull input then
-        Error(DecodeErrorCode.INVALID_JSON, "input is null")
-    elif documentBytes input > Fuaran.UI.WireLimits.MaxDocumentBytes then
-        // WIRE_FORMAT §21.7 — the total-payload ceiling, checked BEFORE the
-        // parse. The five structural limits compose multiplicatively (100 000
-        // array elements each carrying a maximal string satisfies every one of
-        // them and is a hundred gigabytes), so until this bound nothing refused
-        // a document for its size. One comparison, so deferring it would buy
-        // nothing and pay the allocation it exists to refuse.
-        meterParse input.Length 0L 0
+/// The bound a `LimitExceeded` names, read back from the refusal's `Expected`
+/// against the record this decoder passed (`DecodeError.ofJsonRefusal` writes
+/// "within the <limit> bound of <value>"), or `None` when no bound matches.
+let private breachedLimit (e: Fuaran.Core.DecodeError) : JsonLimit option =
+    [ JsonLimit.Depth
+      JsonLimit.StringLength
+      JsonLimit.ArrayLength
+      JsonLimit.ObjectMembers
+      JsonLimit.DocumentBytes ]
+    |> List.tryFind (fun l ->
+        e.Expected = "within the "
+                     + JsonLimit.name l
+                     + " bound of "
+                     + string (JsonLimit.declared wireJsonLimits l))
 
-        Error(
-            DecodeErrorCode.LIMIT_EXCEEDED,
-            sprintf
-                "document of %d UTF-8 bytes exceeds the wire limit MaxDocumentBytes = %d"
-                (documentBytes input)
-                Fuaran.UI.WireLimits.MaxDocumentBytes
-        )
+/// The §21.2 rule-2 message for a breach: the wire limit by this host's name
+/// and its value, and for the document bound the observed size as well.
+let private limitMessage (input: string) (e: Fuaran.Core.DecodeError) : string =
+    match breachedLimit e with
+    | Some JsonLimit.Depth ->
+        sprintf "JSON nesting deeper than the wire limit MaxJsonDepth = %d" Fuaran.UI.WireLimits.MaxJsonDepth
+    | Some JsonLimit.StringLength ->
+        sprintf
+            "a string of more code points than the wire limit MaxStringLength = %d"
+            Fuaran.UI.WireLimits.MaxStringLength
+    | Some JsonLimit.ArrayLength ->
+        sprintf "array longer than the wire limit MaxArrayLength = %d" Fuaran.UI.WireLimits.MaxArrayLength
+    | Some JsonLimit.ObjectMembers ->
+        sprintf "object with more than the wire limit MaxArrayLength = %d members" Fuaran.UI.WireLimits.MaxArrayLength
+    | Some JsonLimit.DocumentBytes ->
+        sprintf
+            "document of %d UTF-8 bytes exceeds the wire limit MaxDocumentBytes = %d"
+            (Hash.utf8ByteCount input)
+            Fuaran.UI.WireLimits.MaxDocumentBytes
+    | None -> e.Message
+
+/// Core's account of malformed text and the position it stopped at, from the
+/// sentence `DecodeError.ofJsonRefusal` writes for `InvalidJson`
+/// ("not valid JSON: <message> at position <n>"); the position is `-1` when the
+/// sentence carries none.
+let private malformedAt (e: Fuaran.Core.DecodeError) : string * int =
+    let detail =
+        if e.Message.StartsWith "not valid JSON: " then
+            e.Message.Substring "not valid JSON: ".Length
+        else
+            e.Message
+
+    let marker = " at position "
+    let at = detail.LastIndexOf marker
+
+    if at < 0 then
+        detail, -1
     else
-        let state =
-            { Text = input
-              Pos = 0
-              Depth = 0
-              Breach = false
-              PendingHigh = false
-              CodePoints = 0
-              Steps = 0L
-              MaxDepth = 0 }
+        match System.Int32.TryParse(detail.Substring(at + marker.Length)) with
+        | true, pos -> detail.Substring(0, at), pos
+        | false, _ -> detail, -1
 
-        skipWs state
-
-        let outcome =
-            if state.Pos >= state.Text.Length then
-                Error "input is empty"
-            else
-                match parseValue state with
-                | Error e -> Error e
-                | Ok j ->
-                    // WIRE_FORMAT §20.2 row 2 — a wire artefact is a single JSON
-                    // document (§1), so the root value must be followed by
-                    // nothing but whitespace. Without this check `{…}garbage`
-                    // decoded here and was refused by two other hosts, which is
-                    // a framing ambiguity rather than a tolerance.
-                    skipWs state
-
-                    if state.Pos < state.Text.Length then
-                        Error(
-                            sprintf
-                                "unexpected content after the root value ('%c'); a wire artefact is a single JSON document"
-                                state.Text[state.Pos]
-                        )
-                    else
-                        Ok j
-
-        meterParse input.Length state.Steps state.MaxDepth
+/// Parse through Core's reader under the wire's limits, classifying the
+/// failure: `LIMIT_EXCEEDED` at the breach's path when a `WireLimits` bound was
+/// passed, and `INVALID_JSON` at `$` for every other failure — the two are
+/// different repairs, and only one of them means "the input was structurally
+/// hostile rather than malformed". The error is `(code, path, message)`.
+let private tryParse (input: string) : Result<Json, DecodeErrorCode * string * string> =
+    if isNull input then
+        Error(DecodeErrorCode.INVALID_JSON, "$", "input is null")
+    else
+        let count = ReadCount()
+        let outcome = Reader.read wireReadOptions (readJson count) input
+        meterParse input.Length count.Steps count.MaxNesting
 
         match outcome with
         | Ok j -> Ok j
-        | Error message ->
-            let code =
-                if state.Breach then
-                    DecodeErrorCode.LIMIT_EXCEEDED
-                else
-                    DecodeErrorCode.INVALID_JSON
+        | Error e ->
+            match e.Code with
+            | DecodeCode.LimitExceeded ->
+                Error(DecodeErrorCode.LIMIT_EXCEEDED, renderCorePath e.Path, limitMessage input e)
+            | DecodeCode.InvalidJson ->
+                let detail, pos = malformedAt e
 
-            let message =
-                if state.Breach then
-                    message
-                else
-                    match sniffArithmeticExpression state.Text state.Pos with
+                let message =
+                    match sniffArithmeticExpression input pos with
                     | Some expr ->
-                        message
+                        sprintf "parse error at offset %d: %s" pos detail
                         + sprintf
                             " — cause: '%s' is an arithmetic expression in a value position. JSON has no expressions; compute the value yourself and emit only the resulting number"
                             expr
-                    | None -> message
+                    | None when pos >= 0 -> sprintf "parse error at offset %d: %s" pos detail
+                    | None -> detail
 
-            Error(code, message)
+                Error(DecodeErrorCode.INVALID_JSON, "$", message)
+            // A reading that reads every token meets no shape it did not ask for, so
+            // any other code is a defect of the reading, not an answer about the input.
+            | other -> invalidOp (sprintf "Reader.read answered %A for a reading that reads every token" other)
+
 
 // ─── The `JVal` entry: lowering a parsed Core value (Phase 2059) ─────────
 //
 // A secondary reader — a teleport bundle, an elicitation envelope, an attested
 // document — already holds its tree or op as a `Fuaran.Core.JVal`, parsed by the
 // substrate's parser along with the envelope around it. Until Phase 2059 the
-// only way in was text: `Canon.render` the value, then decode the string, which
+// only way in was text: `Canonical.write Rendering.CrossHost` the value, then decode the string, which
 // paid for a canonical render and a second parse of bytes that were already a
 // value. `lowerJVal` takes the value into this decoder's AST directly.
 //
 // The contract is that the `JVal` entry decides EXACTLY what the text entry
-// decides over `Canon.render jv`: the same tree, or the same refusal with the
+// decides over `Canonical.write Rendering.CrossHost jv`: the same tree, or the same refusal with the
 // same code, path and message. Lowering is therefore only the FAST PATH, taken
 // when the walk can prove the canonical text would parse cleanly here; every
 // value it cannot prove that for goes down the text path, and the text path's
 // own refusal is the answer. What it proves, each a condition `tryParse` checks:
 //
-//   - no repeated member in any object (WIRE_FORMAT §20.2 row 1 — the substrate
-//     parser keeps both members, and `Canon.render` writes both);
+//   - no repeated member in any object (WIRE_FORMAT §20.2 row 1 — a `JVal` can
+//     carry one, and the parse refuses the text that spells it);
 //   - every string, key or value, is well-formed UTF-16 (§20.2 row 6) and at
 //     most `MaxStringLength` code points (§21.6);
 //   - no composite nests past `MaxJsonDepth`, and none holds more than
 //     `MaxArrayLength` items or members (§21.1);
 //   - the canonical rendering is at most a third of `MaxDocumentBytes` UTF-16
-//     units (§21.7), the bound under which `documentBytes` needs no count.
+//     units (§21.7), so it is within the document-bytes bound however it encodes
+//     (a UTF-16 unit costs at most three UTF-8 bytes).
 //
-// The number policy is `Canon.canonicalFloat`'s, so the lowered number is the
+// The number policy is `FloatLayout.canonical`'s, so the lowered number is the
 // one the re-parse would have read: a `JInt` is its integer, a negative zero is
 // zero, a non-finite float is its quoted sentinel (`"NaN"` / `"Infinity"` /
 // `"-Infinity"`, §7), and every other float is itself, because the layout
 // round-trips. A raw control character needs no check: the render escapes it.
 
 /// The canonical-rendering length, in UTF-16 units, of one string — its two
-/// quotes, plus each unit as `Canon.render` escapes it (`"` and `\` take two, a
+/// quotes, plus each unit as `Canonical.write Rendering.CrossHost` escapes it (`"` and `\` take two, a
 /// C0 control six, every other unit one) — or `None` when its canonical text
 /// would not re-parse here: a lone or ill-ordered surrogate (§20.2 row 6), or
 /// more than `MaxStringLength` code points (§21.6). The surrogate and count rules
-/// are `appendStringChar`'s, unit for unit.
+/// are the parse's (Core's reader under `wireJsonLimits`), unit for unit.
 let private lowerableStringUnits (s: string) : int option =
     let mutable units = 2
     let mutable codePoints = 0
@@ -1232,11 +773,11 @@ let private lowerJVal (jv: JVal) : Json option =
     else
         None
 
-/// Parse a Core `JVal` as this host parses `Canon.render jv`: the lowered value
+/// Parse a Core `JVal` as this host parses `Canonical.write Rendering.CrossHost jv`: the lowered value
 /// when `lowerJVal` can prove the text would parse cleanly, otherwise
 /// `tryParse` over the rendering, whose refusal — code, path and message — is
 /// then the answer. `rendered` is the same rendering the lenient decode repairs.
-let private parseJVal (jv: JVal) (rendered: Lazy<string>) : Result<Json, DecodeErrorCode * string> =
+let private parseJVal (jv: JVal) (rendered: Lazy<string>) : Result<Json, DecodeErrorCode * string * string> =
     match lowerJVal jv with
     | Some j -> Ok j
     | None -> tryParse rendered.Value
@@ -10264,12 +9805,12 @@ module Coerce =
 /// keeps the parser's own message — it already names the limit and the observed
 /// value — because "input is not valid JSON" would be an actively wrong
 /// diagnosis: the input was perfectly well-formed and simply too big to walk.
-let private parseFailure (code: DecodeErrorCode, message: string) : Result<'a, DecodeError> =
+let private parseFailure (code: DecodeErrorCode, path: string, message: string) : Result<'a, DecodeError> =
     match code with
     | DecodeErrorCode.LIMIT_EXCEEDED ->
         err
             code
-            "$"
+            path
             message
             (Some
                 "a payload within the WIRE_FORMAT §21 resource limits (node depth, JSON depth, string length, array length)")
@@ -10285,7 +9826,7 @@ let private parseFailure (code: DecodeErrorCode, message: string) : Result<'a, D
 let private repairParse (text: string) : Repair.Parse<Json> =
     match tryParse text with
     | Ok j -> Repair.Parse.Parsed j
-    | Error(DecodeErrorCode.LIMIT_EXCEEDED, _) -> Repair.Parse.OverLimit
+    | Error(DecodeErrorCode.LIMIT_EXCEEDED, _, _) -> Repair.Parse.OverLimit
     | Error _ -> Repair.Parse.Malformed
 
 /// Repair a malformed canonical-JSON NODE document, deliberately (WIRE_FORMAT.md
@@ -10462,7 +10003,7 @@ let private noReliance = { Applied = []; Declined = [] }
 /// lenient path repairs a refusal.
 let private decodeParsedNodeWith
     (policy: DecodePolicy)
-    (parsed: Result<Json, DecodeErrorCode * string>)
+    (parsed: Result<Json, DecodeErrorCode * string * string>)
     (text: Lazy<string>)
     : Result<Node<obj>, DecodeError list> * RelianceEvents =
     let parseFailure failure =
@@ -10470,7 +10011,7 @@ let private decodeParsedNodeWith
 
     match parsed with
     | Ok j -> collectDefects (fun () -> decodeNodeAst (walkRoot policy) "$" j), noReliance
-    | Error((DecodeErrorCode.INVALID_JSON, _) as failure) when DecodePolicy.recovers policy ->
+    | Error((DecodeErrorCode.INVALID_JSON, _, _) as failure) when DecodePolicy.recovers policy ->
         match repair text.Value with
         | Repair.RepairOutcome.Repaired(repaired, applied) when not applied.IsEmpty ->
             match tryParse repaired with
@@ -10505,10 +10046,10 @@ let private firstDefect (r: Result<'a, DecodeError list>) : Result<'a, DecodeErr
 let private decodeNodeCore (policy: DecodePolicy) (json: string) : Result<Node<obj>, DecodeError> =
     fst (decodeNodeCoreWith policy json) |> firstDefect
 
-/// `decodeNodeCore` over a Core `JVal` — what `decodeNodeCore policy (Canon.render jv)`
+/// `decodeNodeCore` over a Core `JVal` — what `decodeNodeCore policy (Canonical.write Rendering.CrossHost jv)`
 /// decides, without the render and re-parse on the path that accepts.
 let private decodeNodeCoreJVal (policy: DecodePolicy) (jv: JVal) : Result<Node<obj>, DecodeError> =
-    let rendered = lazy (Canon.render jv)
+    let rendered = lazy (Canonical.write Rendering.CrossHost jv)
 
     fst (decodeParsedNodeWith policy (parseJVal jv rendered) rendered)
     |> firstDefect
@@ -10545,22 +10086,22 @@ let decodeOp (json: string) : Result<TreeOp<obj>, DecodeError> =
 // ─── `JVal` entry points (Phase 2059) ────────────────────────────────────
 //
 // For a caller that already holds the payload as a Core `JVal` — parsed out of
-// an envelope by the substrate's parser — and would otherwise `Canon.render` it
+// an envelope by the substrate's parser — and would otherwise `Canonical.write Rendering.CrossHost` it
 // only to hand this decoder the text. Each decides exactly what its text twin
-// decides over `Canon.render jv`: the same value, or the same refusal, code,
+// decides over `Canonical.write Rendering.CrossHost jv`: the same value, or the same refusal, code,
 // path and message alike (see `lowerJVal`). Only the work differs.
 
-/// `decodeNode` over a Core `JVal`: what `decodeNode (Canon.render jv)` returns.
+/// `decodeNode` over a Core `JVal`: what `decodeNode (Canonical.write Rendering.CrossHost jv)` returns.
 let decodeNodeJVal (jv: JVal) : Result<WireTree, DecodeError> =
     decodeNodeCoreJVal DecodePolicy.admitAll jv |> Result.map WireTree.ofDecoded
 
-/// `decodeNodeObj` over a Core `JVal`: what `decodeNodeObj (Canon.render jv)` returns.
+/// `decodeNodeObj` over a Core `JVal`: what `decodeNodeObj (Canonical.write Rendering.CrossHost jv)` returns.
 let decodeNodeObjJVal (jv: JVal) : Result<Node<obj>, DecodeError> =
     decodeNodeCoreJVal DecodePolicy.admitAll jv
 
-/// `decodeOp` over a Core `JVal`: what `decodeOp (Canon.render jv)` returns.
+/// `decodeOp` over a Core `JVal`: what `decodeOp (Canonical.write Rendering.CrossHost jv)` returns.
 let decodeOpJVal (jv: JVal) : Result<TreeOp<obj>, DecodeError> =
-    match parseJVal jv (lazy (Canon.render jv)) with
+    match parseJVal jv (lazy (Canonical.write Rendering.CrossHost jv)) with
     | Error failure -> parseFailure failure
     | Ok j -> decodeTreeOpAst (walkRoot DecodePolicy.admitAll) "$" j
 
@@ -10734,7 +10275,7 @@ module BehindReader =
             match liftFallbackWithPolicy policy u with
             | Ok(Some fb) -> BehindView.Rendered fb
             | Ok None
-            | Error _ -> BehindView.Placeholder(u.Kind, u.RequiredProfile |> Option.map Versioning.Profile.render)
+            | Error _ -> BehindView.Placeholder(u.Kind, u.RequiredProfile |> Option.map Versioning.Capability.render)
 
     /// `viewWithPolicy` under the default policy.
     let view (d: Versioning.Decoded<Node<obj>>) : BehindView<obj> = viewWithPolicy DecodePolicy.admitAll d

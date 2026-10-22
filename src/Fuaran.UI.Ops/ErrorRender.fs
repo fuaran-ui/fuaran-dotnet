@@ -47,7 +47,7 @@ let private opKindToken (op: TreeOp<'Msg>) : string = Fuaran.UI.Ops.TreeOp.kindN
 // ─── The envelope as a `JVal`, rendered by the canonical writer ────────────
 //
 // ONE implementation on every compile target (Phase 2064). The envelope is
-// built as a `JVal` and written by `Canon.renderOrdered`: the canonical escape
+// built as a `JVal` and written by `Canonical.write Rendering.Declared`: the canonical escape
 // (only `"`, `\` and control characters, the latter as lower-case `\u00xx`)
 // with the members in the order they are authored here — `op` before
 // `error`, `kind` first — because the §4d envelope is read by a model, and its
@@ -115,4 +115,4 @@ let render (op: TreeOp<'Msg>) (error: ApplyError) : string =
           "message", JStr error.Message
           "hint", hintValue error.Hint ]
 
-    Canon.renderOrdered (JObj [ "op", JObj(opFields op); "error", JObj errorFields ])
+    Canonical.write Rendering.Declared (JObj [ "op", JObj(opFields op); "error", JObj errorFields ])

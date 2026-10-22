@@ -135,16 +135,14 @@ module Placement =
     /// its slot label.
     let private dryRun (op: SkeletonOp<Node<'Msg>, NodeId>) (root: Node<'Msg>) : Result<unit, PlaceError> =
         match
-            Fuaran.Core.Ops.canApplyContainedKeyed
-                Introspect.keyedWitness
-                canHold
-                Introspect.nodeWitness
-                Introspect.idWitness
+            Fuaran.Core.Ops.canApply
+                Policy.none
+                (OpScope.keyed Introspect.keyedWitness canHold Introspect.nodeWitness Introspect.idWitness)
                 op
                 root
         with
         | Ok() -> Ok()
-        | Error(Rejection.KeyedPosition(target, _) as rejection) ->
+        | Error(Rejection.KeyedPosition(target, _, _) as rejection) ->
             match Introspect.nonStructuralAncestor target root with
             | Some(_, slot, _, true) -> Error(PlaceError.PositionNotStructural(target, slot))
             | _ -> Error(PlaceError.Refused rejection)
@@ -209,10 +207,9 @@ module Placement =
             (SkeletonOp.InsertChild(target.ParentId, child))
             [ target.ParentId ]
             None
-            (TreePlacement.placeContained
-                canHold
-                Introspect.nodeWitness
-                Introspect.idWitness
+            (TreePlacement.place
+                Policy.none
+                (OpScope.contained canHold Introspect.nodeWitness Introspect.idWitness)
                 target.ParentId
                 target.Placement
                 child)
@@ -222,7 +219,7 @@ module Placement =
             Option.defaultValue (TreeOp.InsertChild(target.ParentId, child))
         )
 
-    /// The op a move becomes: Core's `moveContained`. To another parent, a bare
+    /// The op a move becomes: Core's `move` under the contained scope. To another parent, a bare
     /// `MoveNode` when the node lands last, else `Batch [MoveNode;
     /// ReorderChildren]`; within its own parent, a bare `ReorderChildren` —
     /// or `None` when the node is already where `target` puts it, since an
@@ -233,10 +230,9 @@ module Placement =
             (SkeletonOp.MoveNode(moved, target.ParentId))
             [ moved; target.ParentId ]
             (Some moved)
-            (TreePlacement.moveContained
-                canHold
-                Introspect.nodeWitness
-                Introspect.idWitness
+            (TreePlacement.move
+                Policy.none
+                (OpScope.contained canHold Introspect.nodeWitness Introspect.idWitness)
                 moved
                 target.ParentId
                 target.Placement)

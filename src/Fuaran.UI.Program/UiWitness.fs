@@ -623,7 +623,7 @@ let decodeAction (value: JVal) : Result<Action<obj>, WireRefusal> =
                     "onClick", value
                     "variant", JStr "Primary" ] ]
 
-    match Fuaran.UI.Ops.JsonDecode.decodeNodeObj (Canon.render carrier) with
+    match Fuaran.UI.Ops.JsonDecode.decodeNodeObj (Canonical.write Rendering.CrossHost carrier) with
     | Error err ->
         ProgramWire.refuse RefusalClass.MalformedReferencedValue ("the action does not decode: " + string err.Code)
     | Ok node ->

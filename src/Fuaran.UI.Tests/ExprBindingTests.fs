@@ -93,8 +93,8 @@ let operatorSemantics =
                   Fuaran.Compute.Case(
                       [ Fuaran.Compute.Binary(
                             Fuaran.Compute.And,
-                            Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Bool true),
-                            Fuaran.Compute.Not(Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Bool false))
+                            Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Cell.Bool true),
+                            Fuaran.Compute.Not(Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Cell.Bool false))
                         ),
                         lit "ready" ],
                       lit "blocked"
@@ -107,7 +107,7 @@ let operatorSemantics =
               let isEmpty (subject: Fuaran.Compute.ColExpr) =
                   Fuaran.Compute.Case([ Fuaran.Compute.IsNull subject, lit "empty" ], lit "has a value")
 
-              text (sources []) (isEmpty (Fuaran.Compute.ColExpr.Lit Fuaran.Core.Null)) None
+              text (sources []) (isEmpty (Fuaran.Compute.ColExpr.Lit Fuaran.Core.Cell.Null)) None
               |> expectText "isNull of null" "empty"
 
               text (sources []) (isEmpty (lit "x")) None
@@ -283,7 +283,7 @@ let refusals =
               // The discriminator between "could not be computed" and "computed
               // to nothing". Collapsing them is how a host ends up rendering an
               // error surface for an empty value, or an empty value for an error.
-              match text (sources []) (Fuaran.Compute.ColExpr.Lit Fuaran.Core.Null) None with
+              match text (sources []) (Fuaran.Compute.ColExpr.Lit Fuaran.Core.Cell.Null) None with
               | BindingResolver.NotResolved -> ()
               | other -> failtestf "expected NotResolved on a null result, got %A" other
           } ]

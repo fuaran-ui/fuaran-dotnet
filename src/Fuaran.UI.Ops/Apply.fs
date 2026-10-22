@@ -2372,7 +2372,7 @@ and private applyStructuralHere (op: StructuralOp<'Msg>) (root: Node<'Msg>) : Re
         // so its duplicate-id refusal sees a switch case, an error-boundary
         // arm, a state alternative and a slot argument on BOTH sides of a
         // graft — the check the tier used to run as its own pre-pass.
-        match Fuaran.Core.Ops.applyContainedKeyed keyedWitness canHold nodew coreIdw coreOp root with
+        match Fuaran.Core.Ops.apply Policy.none (OpScope.keyed keyedWitness canHold nodew coreIdw) coreOp root with
         | Ok updated -> Ok updated
         | Error rej -> Error(mapRej rej)
 

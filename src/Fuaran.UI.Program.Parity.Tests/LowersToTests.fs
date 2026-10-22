@@ -195,7 +195,7 @@ let private lowered (vector: Vector) : Action<obj> =
     match vector.Tree with
     | None -> action
     | Some tree ->
-        match Fuaran.UI.Ops.JsonDecode.decodeNodeObj (Canon.render tree) with
+        match Fuaran.UI.Ops.JsonDecode.decodeNodeObj (Canonical.write Rendering.CrossHost tree) with
         | Ok root -> UiWitness.lowerCommits root action
         | Error err -> failwithf "%s: the tree does not decode: %A" vector.Name err
 

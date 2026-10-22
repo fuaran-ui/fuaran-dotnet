@@ -482,7 +482,7 @@ and private encodeBindingWith<'T> (staticEnc: 'T -> Appender) (b: Binding<'T>) :
         // time, never carried on the wire. Phase 1533 — the declared GRAIN is
         // carried, and only when it is not the `Second` default, so a
         // grain-less `Now` is the same bytes it has always been. Byte-identical
-        // to the generated encoder's `Canon.typed "Now" [...]`.
+        // to the generated encoder's `Canonical.typed "Now" [...]`.
         | Binding.Now(_, grain) ->
             let grainField =
                 match grain with
@@ -627,7 +627,11 @@ and private encodeBindingWith<'T> (staticEnc: 'T -> Appender) (b: Binding<'T>) :
                     "Expr"
                     ([ "expr",
                        (fun sb ->
-                           sb.Append(Fuaran.Core.Canon.render (Fuaran.Compute.DataFrameCodec.encodeExpr expr))
+                           sb.Append(
+                               Fuaran.Core.Canonical.write
+                                   Fuaran.Core.Rendering.CrossHost
+                                   (Fuaran.Compute.DataFrameCodec.encodeExpr expr)
+                           )
                            |> ignore) ]
                      @ exprParams))
         | Binding.Invoke(capabilityId, args) ->
@@ -846,9 +850,9 @@ let private nodeAppender<'Msg> (n: Node<'Msg>) : Appender =
 let private nodeKindAppender<'Msg> (k: NodeKind<'Msg>) : Appender =
     fun sb ->
         sb.Append(
-            Fuaran.Core.Canon.render (
-                Fuaran.UI.Generated.encodeNodeKindJson (Fuaran.UI.Ops.Introspect.canonicalFormKind k)
-            )
+            Fuaran.Core.Canonical.write
+                Fuaran.Core.Rendering.CrossHost
+                (Fuaran.UI.Generated.encodeNodeKindJson (Fuaran.UI.Ops.Introspect.canonicalFormKind k))
         )
         |> ignore
 
@@ -875,12 +879,18 @@ let private stateBehaviourAppender<'Msg> (s: StateBehaviour<'Msg>) : Appender =
                 OnLoading = s.OnLoading |> Option.map Fuaran.UI.Ops.Introspect.canonicalForm
                 OnEmpty = s.OnEmpty |> Option.map Fuaran.UI.Ops.Introspect.canonicalForm }
 
-        sb.Append(Fuaran.Core.Canon.render (Fuaran.UI.Generated.encodeStateBehaviourJson canonical))
+        sb.Append(
+            Fuaran.Core.Canonical.write
+                Fuaran.Core.Rendering.CrossHost
+                (Fuaran.UI.Generated.encodeStateBehaviourJson canonical)
+        )
         |> ignore
 
 let private semanticStyleAppender (s: SemanticStyle) : Appender =
     fun sb ->
-        sb.Append(Fuaran.Core.Canon.render (Fuaran.UI.Generated.encodeSemanticStyleJson s))
+        sb.Append(
+            Fuaran.Core.Canonical.write Fuaran.Core.Rendering.CrossHost (Fuaran.UI.Generated.encodeSemanticStyleJson s)
+        )
         |> ignore
 
 /// Phase 2291 — the `PatchStyle` payload: exactly the members the delta sets, in
@@ -889,7 +899,11 @@ let private semanticStyleAppender (s: SemanticStyle) : Appender =
 /// edit.
 let private styleDeltaAppender (d: StyleDelta) : Appender =
     fun sb ->
-        sb.Append(Fuaran.Core.Canon.render (JObj(StyleDelta.wireMembers d |> List.map (fun (k, v) -> k, JStr v))))
+        sb.Append(
+            Fuaran.Core.Canonical.write
+                Fuaran.Core.Rendering.CrossHost
+                (JObj(StyleDelta.wireMembers d |> List.map (fun (k, v) -> k, JStr v)))
+        )
         |> ignore
 
 // ─── TreeOp encoder ───────────────────────────────────────────────────────

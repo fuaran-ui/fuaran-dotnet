@@ -142,7 +142,7 @@ let private unpack (encoded: string) : (string * JVal) list =
 
 let private repack (fields: (string * JVal) list) : string =
     Teleport.FormatPrefix
-    + Base64Url.encode (Deflate.compress (Utf8.encode (Canon.render (JObj fields))))
+    + Base64Url.encode (Deflate.compress (Utf8.encode (Canonical.write Rendering.CrossHost (JObj fields))))
 
 let private replaceField (name: string) (value: JVal) (fields: (string * JVal) list) : (string * JVal) list =
     fields |> List.map (fun (k, v) -> if k = name then k, value else k, v)
@@ -151,7 +151,7 @@ let private replaceField (name: string) (value: JVal) (fields: (string * JVal) l
 // *consistent* digest for structurally-invalid envelopes, so the structural
 // error surfaces rather than DigestMismatch.
 let private forgeDigest (coreFields: (string * JVal) list) : string =
-    Fuaran.Core.Hash.sha256Hex ("fuaran-teleport:v1|" + Canon.render (JObj coreFields))
+    Fuaran.Core.Hash.sha256Hex ("fuaran-teleport:v1|" + Canonical.write Rendering.CrossHost (JObj coreFields))
 
 [<Tests>]
 let tests =
@@ -559,7 +559,11 @@ let private inputOf (root: string) (f: CorpusFixture) : string * TeleportLimits 
 /// envelope omits it (§17.2 omits `state` / `history` / `chainHead` when empty).
 let private envelopeMember (envelope: (string * JVal) list) (name: string) : string option =
     envelope
-    |> List.tryPick (fun (k, v) -> if k = name then Some(Canon.render v) else None)
+    |> List.tryPick (fun (k, v) ->
+        if k = name then
+            Some(Canonical.write Rendering.CrossHost v)
+        else
+            None)
 
 /// The `$`-rooted position a §17.4 refusal concerns. The mapping is NORMATIVE
 /// and lives in WIRE_FORMAT.md §17.6, not here: a §17.4 error is a typed case
@@ -642,12 +646,12 @@ let corpusTests =
                       // §2 does not permit — and would still pass, because both
                       // sides are re-rendered before they are compared.
                       Expect.equal
-                          (Canon.render (JObj envelope))
+                          (Canonical.write Rendering.CrossHost (JObj envelope))
                           expectedRaw
                           (sprintf "%s: expectedFile is not in canonical form (WIRE_FORMAT §2)" f.Id)
 
                       Expect.equal
-                          (Canon.render (JStr decoded.Digest))
+                          (Canonical.write Rendering.CrossHost (JStr decoded.Digest))
                           (envelopeMember envelope "digest" |> Option.defaultValue "")
                           (sprintf
                               "%s: the integrity digest, recomputed here, differs from the one the corpus carries"
@@ -665,13 +669,13 @@ let corpusTests =
                           (sprintf "%s: the decoded tree does not re-encode to the corpus's `tree` bytes" f.Id)
 
                       Expect.equal
-                          (Canon.render (JObj(Map.toList decoded.State)))
+                          (Canonical.write Rendering.CrossHost (JObj(Map.toList decoded.State)))
                           (envelopeMember envelope "state" |> Option.defaultValue "{}")
                           (sprintf "%s: the resumed state map differs from the one the envelope carries" f.Id)
 
                       let expectedHistory =
                           match envelope |> List.tryPick (fun (k, v) -> if k = "history" then Some v else None) with
-                          | Some(JArr items) -> items |> List.map Canon.render
+                          | Some(JArr items) -> items |> List.map (Canonical.write Rendering.CrossHost)
                           | _ -> []
 
                       Expect.equal
@@ -680,7 +684,7 @@ let corpusTests =
                           (sprintf "%s: the op-history window differs from the one the envelope carries" f.Id)
 
                       Expect.equal
-                          (decoded.ChainHead |> Option.map (JStr >> Canon.render))
+                          (decoded.ChainHead |> Option.map (JStr >> Canonical.write Rendering.CrossHost))
                           (envelopeMember envelope "chainHead")
                           (sprintf "%s: the chain head differs from the one the envelope carries" f.Id)
           }

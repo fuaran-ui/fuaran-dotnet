@@ -259,7 +259,7 @@ let private unionFp: Fuaran.Core.Footprint -> Fuaran.Core.Footprint -> Fuaran.Co
     Fuaran.Core.Footprint.union
 
 let private skeletonFp (op: Fuaran.Core.SkeletonOp<EqNode, NodeId>) : Fuaran.Core.Footprint =
-    Fuaran.Core.Ops.footprint nodew idw [ op ]
+    Fuaran.Core.Ops.footprint Fuaran.Core.Policy.none (Fuaran.Core.OpScope.plain nodew idw) [ op ]
 
 /// The tier's shipped footprint projection.
 let footprintOfTreeOp (op: TreeOp<obj>) : Fuaran.Core.Footprint = Fuaran.UI.Ops.TreeOpFootprint.ofOp op

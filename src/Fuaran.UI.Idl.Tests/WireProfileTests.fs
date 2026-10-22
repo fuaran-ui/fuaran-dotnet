@@ -37,7 +37,7 @@ let private stepOf (before: string) (after: string) : ProfileStep =
     match reportBetween before after with
     | Error e -> failtestf "the §15.4 report refused a well-formed pair: %s" e
     | Ok _ ->
-        match Diff.parse before, Diff.parse after with
+        match Diff.parse before None, Diff.parse after None with
         | Ok b, Ok a -> Diff.changes b a |> List.map Diff.classify |> step |> fst
         | Error e, _
         | _, Error e -> failtestf "artifact did not parse: %s" e
@@ -50,7 +50,9 @@ let private withExtraField (opt: Optionality) : Idl =
         { Name = "phase1670ProbeField"
           Type = TStr
           Opt = opt
-          Annotations = Annotations.Empty }
+          Annotations = Annotations.Empty
+          Aliases = []
+          Presence = None }
 
     match baseIdl.Kinds with
     | k :: rest ->
@@ -69,7 +71,9 @@ let private withExtraKind: Idl =
                     [ { Name = "label"
                         Type = TStr
                         Opt = Required
-                        Annotations = Annotations.Empty } ]
+                        Annotations = Annotations.Empty
+                        Aliases = []
+                        Presence = None } ]
                   Annotations = Annotations.Empty } ] }
 
 [<Tests>]

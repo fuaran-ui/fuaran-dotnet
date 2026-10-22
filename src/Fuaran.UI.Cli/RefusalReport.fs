@@ -193,5 +193,5 @@ let run (corpusRoot: string) : int * string =
                         [ "cases", JArr(answers |> List.map renderAnswer)
                           "host", jstr "fuaran-dotnet" ]
 
-                0, Canon.render doc + "\n"
+                0, Canonical.write Rendering.CrossHost doc + "\n"
             | _ -> 2, "refusal-report: manifest.json has no 'fixtures' array\n"

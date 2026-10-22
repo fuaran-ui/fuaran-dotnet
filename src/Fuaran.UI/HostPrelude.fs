@@ -384,7 +384,7 @@ module LocalCodec =
     /// The identity text rendition of a boxed buffered value. `string` is
     /// deliberately not used for the numeric and boolean cases: .NET spells
     /// `true` as `True` and `1e21` as `1E+21` where JavaScript spells them
-    /// `true` and `1e+21`, and the hosts have to agree. `Canon.render` is the
+    /// `true` and `1e+21`, and the hosts have to agree. `Canonical.write Rendering.CrossHost` is the
     /// renderer the corpus bytes already go through, so a number reads here
     /// exactly as it reads on the wire.
     /// The parameter is `objnull` rather than `obj` because every caller reaches
@@ -403,9 +403,9 @@ module LocalCodec =
             if System.Double.IsNaN f then "NaN"
             elif System.Double.IsPositiveInfinity f then "Infinity"
             elif System.Double.IsNegativeInfinity f then "-Infinity"
-            else Canon.render (JFloat f)
-        | :? int as i -> Canon.render (JInt i)
-        | :? int64 as i -> Canon.render (JInt(int i))
+            else Canonical.write Rendering.CrossHost (JFloat f)
+        | :? int as i -> Canonical.write Rendering.CrossHost (JInt i)
+        | :? int64 as i -> Canonical.write Rendering.CrossHost (JInt(int i))
         | other -> string other
 
     /// The JSON number grammar, and nothing wider. Surrounding ASCII whitespace
@@ -517,7 +517,7 @@ module LocalCodec =
             let neg = v < 0.0
             let scale = pown 10.0 d
             let scaled = floor (abs v * scale + 0.5)
-            let whole = Canon.render (JFloat scaled)
+            let whole = Canonical.write Rendering.CrossHost (JFloat scaled)
 
             let body =
                 if d = 0 then

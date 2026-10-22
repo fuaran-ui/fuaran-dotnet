@@ -207,16 +207,16 @@ module Elicitation =
 
     let private encodeSpace (s: ValueSpace) : JVal =
         match s with
-        | IntRange(lo, hi) -> Canon.typed "intRange" [ "max", JInt hi; "min", JInt lo ]
-        | FloatRange(lo, hi) -> Canon.typed "floatRange" [ "max", JFloat hi; "min", JFloat lo ]
-        | StringLen(lo, hi) -> Canon.typed "stringLen" [ "max", JInt hi; "min", JInt lo ]
-        | Enum xs -> Canon.typed "enum" [ "values", JArr(xs |> List.map JStr) ]
-        | AnyString -> Canon.typed "anyString" []
+        | IntRange(lo, hi) -> Canonical.typed "intRange" [ "max", JInt hi; "min", JInt lo ]
+        | FloatRange(lo, hi) -> Canonical.typed "floatRange" [ "max", JFloat hi; "min", JFloat lo ]
+        | StringLen(lo, hi) -> Canonical.typed "stringLen" [ "max", JInt hi; "min", JInt lo ]
+        | Enum xs -> Canonical.typed "enum" [ "values", JArr(xs |> List.map JStr) ]
+        | AnyString -> Canonical.typed "anyString" []
         // Not an elicitation space (see `isElicitationSpace`): written in the shared capability
         // form so the bytes say what the contract holds, and refused by name by `decodeSpace`
         // (UNKNOWN_DU_CASE) and before emission by `encodeEnvelope`.
         | SlotTree c ->
-            Canon.typed
+            Canonical.typed
                 "slotTree"
                 (match c with
                  | Some k -> [ "slotKind", JStr k ]
@@ -479,7 +479,8 @@ module Elicitation =
     /// object) — for hosts that carry the contract separately from a full
     /// envelope (e.g. a resolution runtime pairing an outcome with its
     /// pending elicitation).
-    let encodeContractJson (c: AnswerContract) : string = Canon.render (encodeContract c)
+    let encodeContractJson (c: AnswerContract) : string =
+        Canonical.write Rendering.CrossHost (encodeContract c)
 
     /// Decode a bare canonical answer object (`{"<name>": <scalar>, …}`),
     /// reporting at the standard `$.answer` root — the typed input
@@ -637,7 +638,7 @@ module Elicitation =
 
                   yield "tree", treeJv ]
 
-            Ok(Canon.render (JObj fields))
+            Ok(Canonical.write Rendering.CrossHost (JObj fields))
 
     /// Decode + validate an elicitation envelope (fail-fast, §18.3 order):
     /// version tag → id → tree (standard §3.1 decode, errors re-rooted under
@@ -740,7 +741,7 @@ module Elicitation =
 
                   yield "elicitationId", JStr env.ElicitationId ]
 
-        Canon.render (JObj fields)
+        Canonical.write Rendering.CrossHost (JObj fields)
 
     /// Decode an outcome envelope. Contract conformance of an `Answered`
     /// answer is NOT checked here (the outcome does not carry the contract) —

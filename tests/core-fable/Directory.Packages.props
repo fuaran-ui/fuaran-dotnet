@@ -11,23 +11,8 @@
     The compute override is NOT named `FuaranCoreComputeVersion`: the root file defines a property
     of that name unconditionally, and a property a project file defines wins over the environment
     variable the script would set, so the override would silently do nothing.
-
-    One Core package is pinned HERE rather than in the root file: `Fuaran.Core.Relation` (Phase 2382),
-    which first shipped in Core 0.40.0, ahead of the Core spine this repository pins. Nothing else in
-    the repository consumes it; this gate compiles it under Fable on Core's behalf. Its pin is its own
-    property, and the script reads this file's pins beside the root file's, so the pinned run counts it
-    as a member. A cut-time run moves it with every other Core package (the `Update` below). When the
-    root file's Core pins reach 0.40.0 or later, the pin moves there beside the others and this block
-    and its property are deleted.
   -->
   <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Packages.props', '$(MSBuildThisFileDirectory)..'))" />
-  <PropertyGroup>
-    <FuaranCoreRelationVersion>0.40.0</FuaranCoreRelationVersion>
-  </PropertyGroup>
-  <ItemGroup>
-    <!-- cohort-lag(0.40.0): pinned ALONE at the first published Core release that carries the package, ahead of the held Core cohort raise (operator ruling 2026-10-21, fuaran#2382); FSharp.Core-only, so no diamond with the 0.38.1 spine; the cohort raise absorbs it -->
-    <PackageVersion Include="Fuaran.Core.Relation" Version="$(FuaranCoreRelationVersion)" />
-  </ItemGroup>
   <ItemGroup Condition="'$(FuaranCoreVersion)' != ''">
     <PackageVersion Update="Fuaran.Core.Tree" Version="$(FuaranCoreVersion)" />
     <PackageVersion Update="Fuaran.Core.Ops" Version="$(FuaranCoreVersion)" />
@@ -48,6 +33,7 @@
     <PackageVersion Update="Fuaran.Core.ContentAddress" Version="$(FuaranCoreVersion)" />
     <PackageVersion Update="Fuaran.Core.Unit" Version="$(FuaranCoreVersion)" />
     <PackageVersion Update="Fuaran.Core.Relation" Version="$(FuaranCoreVersion)" />
+    <PackageVersion Update="Fuaran.Core.Text" Version="$(FuaranCoreVersion)" />
   </ItemGroup>
   <!-- The second producer (the compute repository, from 0.33.0). The script's `$ComputeOwned` list
        names the same three ids; keep the two in step. -->

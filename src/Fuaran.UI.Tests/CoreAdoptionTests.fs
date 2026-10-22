@@ -480,7 +480,7 @@ let tests =
               let tree = mkStack "root" [ mkStack "a" [] ]
               let op = Fuaran.Core.SkeletonOp.InsertChild(NodeId "root", mkStack "b" [])
 
-              match Fuaran.Core.Ops.apply nodew idw op tree with
+              match Fuaran.Core.Ops.apply Fuaran.Core.Policy.none (Fuaran.Core.OpScope.plain nodew idw) op tree with
               | Ok post ->
                   Expect.equal
                       (nodew.Children post |> List.map (fun e -> e.Node.Id))
@@ -489,7 +489,9 @@ let tests =
 
                   match Fuaran.Core.Ops.invert nodew idw op tree with
                   | Ok inv ->
-                      match Fuaran.Core.Ops.apply nodew idw inv post with
+                      match
+                          Fuaran.Core.Ops.apply Fuaran.Core.Policy.none (Fuaran.Core.OpScope.plain nodew idw) inv post
+                      with
                       | Ok restored -> Expect.equal restored tree "Core.invert undoes the insert on the Fuaran.UI tree"
                       | Error e -> failtestf "invert-apply failed: %A" e
                   | Error e -> failtestf "invert failed: %A" e
@@ -510,8 +512,7 @@ let tests =
                       acc
                       |> Result.bind (fun (st, recs) ->
                           CoreStream.append
-                              CoreStream.defaultHash
-                              coreSw
+                              (CoreStream.canonical CoreStream.defaultHash coreSw)
                               (Fuaran.Core.Actor.ofLegacyString actor)
                               op
                               st
@@ -520,11 +521,14 @@ let tests =
               match coreResult, uiReplay with
               | Ok(coreState, coreRecs), Ok uiState ->
                   Expect.equal coreState uiState "Core.OpStream state == Fuaran.UI apply/replay state"
-                  Expect.isTrue (CoreStream.verifyChain CoreStream.defaultHash coreSw coreRecs) "Core chain verifies"
+
+                  Expect.isTrue
+                      (CoreStream.verifyChain (CoreStream.canonical CoreStream.defaultHash coreSw) coreRecs)
+                      "Core chain verifies"
 
                   // the portable win: Core's fromJsonl is FSharp.Core-only (runs in-browser) and
                   // Result-typed; a round-trip replays identically.
-                  match CoreStream.toJsonl coreSw coreRecs |> CoreStream.fromJsonl coreSw with
+                  match Fuaran.Core.Jsonl.write coreSw coreRecs |> Fuaran.Core.Jsonl.read coreSw with
                   | Ok restored ->
                       match CoreStream.replay coreSw baseTree restored with
                       | Ok rs -> Expect.equal rs coreState "portable JSONL round-trip replays identically"
@@ -544,8 +548,8 @@ let tests =
 
               let viaCore =
                   Fuaran.Core.Ops.apply
-                      nodew
-                      idw
+                      Fuaran.Core.Policy.none
+                      (Fuaran.Core.OpScope.plain nodew idw)
                       (Fuaran.Core.SkeletonOp.InsertChild(NodeId "root", mkSpacer "s2"))
                       baseTree
 

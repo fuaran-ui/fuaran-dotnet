@@ -45,6 +45,7 @@ module Fuaran.UI.WireProfile
 // ---------------------------------------------------------------------------
 
 open Fuaran.Core.Idl
+open Fuaran.Core.Idl.Codegen.Types
 
 /// The wire-profile movement a vocabulary delta implies, under `WIRE_FORMAT.md`
 /// §15.4 as amended by Phase 1670.
@@ -70,17 +71,17 @@ type ProfileStep =
 /// reached through a newly-ADDED optional field is absorbed by the same
 /// must-ignore rule the field itself is. What forces a minor is a tag arriving in
 /// a slot a behind decoder is already reading.
-let private introducesTag (c: Diff.Change) =
+let private introducesTag (c: Change) =
     match c with
-    | Diff.KindAdded _
-    | Diff.OpAdded _
-    | Diff.UnionCaseAdded _
-    | Diff.EnumCaseAdded _ -> true
+    | KindAdded _
+    | OpAdded _
+    | UnionCaseAdded _
+    | EnumCaseAdded _ -> true
     | _ -> false
 
 /// The §15.4 step, plus the sentence that justifies it. Ordered by severity: a
 /// breaking change is never softened by an additive one sitting beside it.
-let step (cs: Diff.Classification list) : ProfileStep * string =
+let step (cs: Classification list) : ProfileStep * string =
     let sev s =
         cs |> List.exists (fun c -> c.Severity = s)
 
@@ -90,21 +91,21 @@ let step (cs: Diff.Classification list) : ProfileStep * string =
         tags
         |> List.map (fun c ->
             match c.Change with
-            | Diff.KindAdded t -> "kind " + t
-            | Diff.OpAdded t -> "op " + t
-            | Diff.UnionCaseAdded(u, k) -> u + "." + k
-            | Diff.EnumCaseAdded(e, w) -> e + "." + w
+            | KindAdded t -> "kind " + t
+            | OpAdded t -> "op " + t
+            | UnionCaseAdded(u, k) -> u + "." + k
+            | EnumCaseAdded(e, w) -> e + "." + w
             | _ -> "?")
         |> String.concat ", "
 
     if List.isEmpty cs then
         NoStep, "no vocabulary change — the artifact is identical."
-    elif sev Diff.BreakingWire then
+    elif sev BreakingWire then
         Major,
         "a document that was valid is not, or its bytes moved — §15.4's removal/rename row. The `/vN/` major "
         + "segment and the schema `$id` move with it, and every behind consumer reads the artifact as `Foreign` "
         + "(§15.2) and hard-refuses."
-    elif sev Diff.Unclassifiable then
+    elif sev Unclassifiable then
         Undecided,
         "at least one change crosses an ERASED slot (`hosted` / `json` / `opaque`) whose admitted values the "
         + "artifact does not state, so the delta cannot be classified from the artifact alone. Resolve the rows "
@@ -115,11 +116,11 @@ let step (cs: Diff.Classification list) : ProfileStep * string =
         + names
         + "). A behind consumer meets a discriminator it cannot map, so it needs §15.3's transport-only `Unknown` "
         + "and a profile that names what it is missing: `core@1.N` → `core@1.(N+1)`."
-        + (if sev Diff.BreakingForEmitters then
+        + (if sev BreakingForEmitters then
                " AND at least one change breaks EMITTERS, which the minor understates — see the rows below."
            else
                "")
-    elif sev Diff.BreakingForEmitters then
+    elif sev BreakingForEmitters then
         NoStep,
         "NO profile step — but at least one change breaks EMITTERS (an authoring default was withdrawn or moved; "
         + "since Fuaran.Core 0.34.0 a required field arriving is graded a wire break instead, because the documents "
@@ -145,7 +146,7 @@ let render (s: ProfileStep) : string =
 /// report. `Error` only when a snapshot will not parse — a malformed artifact is
 /// not a classification.
 let reportBetween (before: string) (after: string) : Result<string, string> =
-    match Diff.parse before, Diff.parse after with
+    match Diff.parse before None, Diff.parse after None with
     | Error e, _ -> Error("the BEFORE artifact does not parse: " + e)
     | _, Error e -> Error("the AFTER artifact does not parse: " + e)
     | Ok b, Ok a ->

@@ -57,10 +57,10 @@ module HashChain =
     /// canonical delimited payload with the domain's 64-zero genesis sentinel —
     /// `StreamConfig.Genesis` is exactly the seam Core ships for a domain
     /// sentinel (the F4/F13 machinery). With the pre-image seq on Core's 0-based
-    /// basis (see `computeHash`), `Core.OpStream.firstChainBreakWith chainConfig`
+    /// basis (see `computeHash`), `Core.OpStream.firstChainBreak (OpStream.ofConfig chainConfig …)`
     /// verifies a UI chain directly.
     let chainConfig: Fuaran.Core.StreamConfig =
-        { Fuaran.Core.OpStream.canonicalConfig with
+        { Fuaran.Core.StreamConfig.canonical with
             Genesis = genesisPreviousHash }
 
     /// The content address of a checkpoint snapshot (Phase 412 — A2). Binds the
@@ -262,16 +262,15 @@ module Verify =
             let offset0 = expectedFirstSequence - 1
 
             let cfg: Fuaran.Core.StreamConfig =
-                { Payload = fun seq0 actor op -> Fuaran.Core.OpStream.canonicalConfig.Payload (seq0 + offset0) actor op
-                  Genesis = expectedPreviousHash }
+                { Fuaran.Core.StreamConfig.canonical with
+                    Payload = fun seq0 actor op -> Fuaran.Core.StreamConfig.canonical.Payload (seq0 + offset0) actor op
+                    Genesis = expectedPreviousHash }
 
             let rebased = recordList |> List.map (fun r -> { r with Seq = r.Seq - offset0 })
 
             match
-                Fuaran.Core.OpStream.firstChainBreakWith
-                    cfg
-                    StreamEntry.hashFn
-                    (StreamEntry.coreWitness<'Msg> ())
+                Fuaran.Core.OpStream.firstChainBreak
+                    (Fuaran.Core.OpStream.ofConfig cfg StreamEntry.hashFn (StreamEntry.coreWitness<'Msg> ()))
                     rebased
             with
             | None -> Ok()

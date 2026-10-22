@@ -4,7 +4,7 @@ module Fuaran.UI.JsonDecode.Tests.JValEntry
 // `decodeOpJVal`) against the route they replace.
 //
 // A secondary reader that holds its payload as a Core `JVal` used to
-// `Canon.render` it and decode the text. The `JVal` entry lowers the value into
+// `Canonical.write Rendering.CrossHost` it and decode the text. The `JVal` entry lowers the value into
 // the decoder's AST instead, and its contract is EQUIVALENCE with that route:
 // for every value, the same tree or the same refusal — code, path and message.
 // So every assertion here compares the two routes over the same value, and the
@@ -40,7 +40,7 @@ let private outcome (r: Result<'a, JsonDecode.DecodeError>) (encode: 'a -> strin
     | Error e -> sprintf "error %s at %s: %s" e.Code e.Path e.Message
 
 let private viaText (route: Route) (jv: JVal) : string =
-    let text = Canon.render jv
+    let text = Canonical.write Rendering.CrossHost jv
 
     match route with
     | Node -> outcome (JsonDecode.decodeNodeObj text) CanonicalJson.encodeNode
@@ -180,7 +180,7 @@ let private numberEdges =
                   // The canonical encoding collapses a negative zero, so it
                   // cannot see the one number the two routes could differ on
                   // without a byte changing: compare the decoded doubles' BITS.
-                  let text = Canon.render (metricWith v)
+                  let text = Canonical.write Rendering.CrossHost (metricWith v)
 
                   Expect.equal
                       (metricBits (JsonDecode.decodeNodeObjJVal (metricWith v)))

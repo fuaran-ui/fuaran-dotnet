@@ -683,7 +683,7 @@ let census: (string * Adoption) list =
           "a host dataframe evaluator — QueryRefine consumes Fuaran.Compute.DataFrame.evalPipeline as the pinned reference rather than shipping a second evaluator, so the parity laws have no host implementation to compare against the reference"
       "Conformance.canonicalFloatLaws",
       NotUsed
-          "Wire.Canon.canonicalFloat — the tier's canonical-JSON encoder carries its own Fable-safe float formatter (CanonicalJson.formatFiniteDouble), and this family is self-contained over Core's encoder rather than taking a host one; cross-host float parity here is gated by the wire-format conformance corpus, a multi-host oracle it cannot replace"
+          "Wire.FloatLayout.canonical — the tier's canonical-JSON encoder carries its own Fable-safe float formatter (CanonicalJson.formatFiniteDouble), and this family is self-contained over Core's encoder rather than taking a host one; cross-host float parity here is gated by the wire-format conformance corpus, a multi-host oracle it cannot replace"
 
       // ---- the families the 0.34.0 pin raise brings (Core 0.33.0 and 0.34.0) ----
       // Classified at the raise, not adopted in it. Where the family's subject exists here the row

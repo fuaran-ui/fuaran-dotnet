@@ -42,6 +42,7 @@ open System.IO
 open Expecto
 open Fuaran.Core.Idl
 
+open Fuaran.Core.Idl.Codegen.Types
 // ─── Locating the repo's own files ─────────────────────────────────────────
 //
 // Climb from the test binary to the checkout root (the directory holding
@@ -149,7 +150,7 @@ let private reportProfileStep (committed: string) (rendered: string) =
 [<Literal>]
 let private generatedModule = "Fuaran.UI.Generated"
 
-let private emit (support: Gen.GenSupport) (idl: Idl) =
+let private emit (support: GenSupport) (idl: Idl) =
     // Phase 2039 — with the declared structural derivations appended
     // (`VocabularySupport.derivations`); an empty list is `fsharpModuleWith`
     // byte for byte.
@@ -175,7 +176,8 @@ let tests =
     <| testList
         "Phase 1181 — the vocabulary regenerates in-process"
         [ testCase "idl.json is what this repo's vocabulary renders" (fun _ ->
-              let rendered = Artifact.render Fuaran.UI.Vocabulary.uiIdl
+              let rendered =
+                  Artifact.renderWith Fuaran.UI.Vocabulary.uiIdlIdentity Fuaran.UI.Vocabulary.uiIdl
               // BEFORE the write, so the regeneration path classifies the delta it
               // is about to erase rather than a delta of nothing.
               reportProfileStep (read idlPath) rendered

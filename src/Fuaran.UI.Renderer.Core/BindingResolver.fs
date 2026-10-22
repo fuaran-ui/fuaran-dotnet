@@ -200,11 +200,11 @@ let private cellToObj (c: Fuaran.Core.Cell) : obj =
     match c with
     | Fuaran.Core.Int i -> box i
     | Fuaran.Core.Float f -> box f
-    | Fuaran.Core.Bool b -> box b
+    | Fuaran.Core.Cell.Bool b -> box b
     | Fuaran.Core.Str s -> box s
     | Fuaran.Core.Cell.Date s -> box s
     | Fuaran.Core.Cell.Timestamp s -> box s
-    | Fuaran.Core.Null -> null
+    | Fuaran.Core.Cell.Null -> null
     // Fuaran.Core 0.33.0 (D72): a decimal cell carries canonical decimal text, which is
     // also its wire form (a JSON string), so a row carries it as that text.
     | Fuaran.Core.Cell.Decimal s -> box s
@@ -215,11 +215,11 @@ let private cellToObj (c: Fuaran.Core.Cell) : obj =
 let private objToCell (v: obj) : Fuaran.Core.Cell option =
     match v with
     | :? string as s -> Some(Fuaran.Core.Str s)
-    | :? bool as b -> Some(Fuaran.Core.Bool b)
+    | :? bool as b -> Some(Fuaran.Core.Cell.Bool b)
     | :? float as f -> Some(Fuaran.Core.Float f)
     | :? int as i -> Some(Fuaran.Core.Float(float i))
     | :? int64 as i -> Some(Fuaran.Core.Float(float i))
-    | null -> Some Fuaran.Core.Null
+    | null -> Some Fuaran.Core.Cell.Null
     | _ -> None
 
 /// The `JVal` twin of [[objToCell]] — a Transform param's `from` source is
@@ -229,7 +229,7 @@ let private jvalToCell (v: JVal) : Fuaran.Core.Cell option =
     // `JVal` has no null case (D1 — absence is structural, never a value).
     match v with
     | JStr s -> Some(Fuaran.Core.Str s)
-    | JBool b -> Some(Fuaran.Core.Bool b)
+    | JBool b -> Some(Fuaran.Core.Cell.Bool b)
     | JFloat f -> Some(Fuaran.Core.Float f)
     | JInt i -> Some(Fuaran.Core.Float(float i))
     | JArr _
@@ -244,7 +244,7 @@ let private jvalToArgObj (v: JVal) : obj =
     | JBool b -> box b
     | JFloat f -> box f
     | JInt i -> box i
-    | other -> box (Fuaran.Core.Canon.render other)
+    | other -> box (Fuaran.Core.Canonical.write Fuaran.Core.Rendering.CrossHost other)
 
 // ─── The Binding<JVal> → Binding<obj> erasure for STORE-READING sources ──────
 //
@@ -791,7 +791,7 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
                           let cell =
                               match column with
                               | Some c -> Fuaran.Core.Column.cell i c
-                              | None -> Fuaran.Core.Null
+                              | None -> Fuaran.Core.Cell.Null
 
                           n, cellToObj cell)
                       |> Map.ofList ]
@@ -816,7 +816,7 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
     | Binding.Expr(expr, parameters) ->
         match evalExprCell sources expr (defaultArg parameters []) with
         | Error m -> Errored m
-        | Ok Fuaran.Core.Null -> NotResolved
+        | Ok Fuaran.Core.Cell.Null -> NotResolved
         | Ok cell ->
             try
                 Resolved(unbox<'T> (cellToObj cell))
@@ -827,11 +827,11 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
                         (match cell with
                          | Fuaran.Core.Int _ -> "int"
                          | Fuaran.Core.Float _ -> "float"
-                         | Fuaran.Core.Bool _ -> "bool"
+                         | Fuaran.Core.Cell.Bool _ -> "bool"
                          | Fuaran.Core.Str _ -> "string"
                          | Fuaran.Core.Cell.Date _ -> "date"
                          | Fuaran.Core.Cell.Timestamp _ -> "timestamp"
-                         | Fuaran.Core.Null -> "null"
+                         | Fuaran.Core.Cell.Null -> "null"
                          | Fuaran.Core.Cell.Decimal _ -> "decimal")
                         ex.Message
                 )
@@ -1209,11 +1209,11 @@ let cellToText (c: Fuaran.Core.Cell) : Result<string, string> =
     | Fuaran.Core.Str s -> Ok s
     | Fuaran.Core.Int i -> Ok(string i)
     | Fuaran.Core.Float f -> Ok(string f)
-    | Fuaran.Core.Bool b -> Ok(if b then "true" else "false")
+    | Fuaran.Core.Cell.Bool b -> Ok(if b then "true" else "false")
     | Fuaran.Core.Cell.Date s -> Ok s
     | Fuaran.Core.Cell.Timestamp s -> Ok s
     | Fuaran.Core.Cell.Decimal s -> Ok s
-    | Fuaran.Core.Null -> Error "Transform yielded a null cell in a text slot"
+    | Fuaran.Core.Cell.Null -> Error "Transform yielded a null cell in a text slot"
 
 /// Coerce a result cell to a numeric-slot float.
 let cellToFloat (c: Fuaran.Core.Cell) : Result<float, string> =
@@ -1226,7 +1226,7 @@ let cellToFloat (c: Fuaran.Core.Cell) : Result<float, string> =
                 "Transform yielded a text cell ('%s') in a numeric slot — project a numeric column, or aggregate with count / sum / mean"
                 s
         )
-    | Fuaran.Core.Bool _ -> Error "Transform yielded a bool cell in a numeric slot"
+    | Fuaran.Core.Cell.Bool _ -> Error "Transform yielded a bool cell in a numeric slot"
     | Fuaran.Core.Cell.Date s
     | Fuaran.Core.Cell.Timestamp s ->
         Error(
@@ -1234,7 +1234,7 @@ let cellToFloat (c: Fuaran.Core.Cell) : Result<float, string> =
                 "Transform yielded a date cell ('%s') in a numeric slot — project a numeric column, or aggregate with count / sum / mean"
                 s
         )
-    | Fuaran.Core.Null -> Error "Transform yielded a null cell in a numeric slot"
+    | Fuaran.Core.Cell.Null -> Error "Transform yielded a null cell in a numeric slot"
     // Fuaran.Core 0.33.0 (D72): a decimal column is numeric; a numeric slot reads it at its
     // nearest float, as Core's own float readings of a decimal do.
     | Fuaran.Core.Cell.Decimal s ->
@@ -1253,7 +1253,7 @@ let cellToFloat (c: Fuaran.Core.Cell) : Result<float, string> =
 /// costs an author nothing but the explicit operator.
 let cellToBool (c: Fuaran.Core.Cell) : Result<bool, string> =
     match c with
-    | Fuaran.Core.Bool b -> Ok b
+    | Fuaran.Core.Cell.Bool b -> Ok b
     | Fuaran.Core.Int _
     | Fuaran.Core.Float _
     | Fuaran.Core.Cell.Decimal _ ->
@@ -1267,7 +1267,7 @@ let cellToBool (c: Fuaran.Core.Cell) : Result<bool, string> =
         )
     | Fuaran.Core.Cell.Date s
     | Fuaran.Core.Cell.Timestamp s -> Error(sprintf "a date cell ('%s') is not a boolean" s)
-    | Fuaran.Core.Null -> Error "a null cell is not a boolean — test presence with `isNull`"
+    | Fuaran.Core.Cell.Null -> Error "a null cell is not a boolean — test presence with `isNull`"
 
 /// Resolve a binding in a SCALAR slot: `Binding.Transform` evaluates through the
 /// shared frame machinery and interprets the result as one cell (see the section
@@ -1286,7 +1286,7 @@ let resolveScalarWith<'T>
     | Binding.Expr(expr, parameters) ->
         match evalExprCell sources expr (defaultArg parameters []) with
         | Error m -> Errored m
-        | Ok Fuaran.Core.Null -> NotResolved
+        | Ok Fuaran.Core.Cell.Null -> NotResolved
         | Ok cell ->
             match coerce cell with
             | Ok v -> Resolved v
@@ -1303,10 +1303,10 @@ let resolveScalarWith<'T>
                 let cell =
                     Fuaran.Core.Table.tryColumn (List.head names) result
                     |> Option.map (Fuaran.Core.Column.cell 0)
-                    |> Option.defaultValue Fuaran.Core.Null
+                    |> Option.defaultValue Fuaran.Core.Cell.Null
 
                 match cell with
-                | Fuaran.Core.Null -> NotResolved
+                | Fuaran.Core.Cell.Null -> NotResolved
                 | c ->
                     match coerce c with
                     | Ok v -> Resolved v

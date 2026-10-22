@@ -159,7 +159,9 @@ let run () =
         printfn
             "    %-18s -> %s"
             entry.Capability.Id
-            (Fuaran.Core.Canon.render (Function.toJsonSchema entry.Capability.Signature))
+            (Fuaran.Core.Canonical.write
+                Fuaran.Core.Rendering.CrossHost
+                (Function.toJsonSchema entry.Capability.Signature))
 
     // ── the half that genuinely needs one ────────────────────────────────────
     printfn ""

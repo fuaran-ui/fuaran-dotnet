@@ -218,7 +218,7 @@ let tests =
                         "size", JStr(string reference.Size)
                         "contentType", JStr reference.ContentType ]
 
-              let text: string = Canon.render written
+              let text: string = Canonical.write Rendering.CrossHost written
 
               // The size is a NUMBER in the record and a short decimal string on
               // the wire. Fifty mebibytes of payload would be ~70 MB of base64;
@@ -252,7 +252,8 @@ let tests =
 
               let asBase64 = System.Convert.ToBase64String bodyBytes
 
-              let throughTheMessageLoop: string = Canon.render (JObj [ "body", JStr asBase64 ])
+              let throughTheMessageLoop: string =
+                  Canonical.write Rendering.CrossHost (JObj [ "body", JStr asBase64 ])
 
               Expect.isGreaterThan
                   throughTheMessageLoop.Length

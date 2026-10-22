@@ -81,7 +81,7 @@ module OpRecordWire =
     /// bundle line. `op` nests the pinned `StreamEntry.encode` envelope (the
     /// exact bytes the chain hash folds) and `actor` Core's `Actor.encode`.
     let encodeRecord<'Msg> (record: OpRecord<'Msg>) : string =
-        Fuaran.Core.OpStream.toJsonl (encodeWitness<'Msg> ()) [ StreamEntry.toCoreRecord record ]
+        Fuaran.Core.Jsonl.write (encodeWitness<'Msg> ()) [ StreamEntry.toCoreRecord record ]
 
     // ── Decode — the bundle-document scanner ──────────────────────────────
 
@@ -189,7 +189,7 @@ module OpRecordWire =
     /// witness, one canonical record per line in sequence order (the bundle's
     /// standalone op-stream artefact).
     let toJsonl<'Msg> (records: OpRecord<'Msg> list) : string =
-        Fuaran.Core.OpStream.toJsonl (encodeWitness<'Msg> ()) (records |> List.map StreamEntry.toCoreRecord)
+        Fuaran.Core.Jsonl.write (encodeWitness<'Msg> ()) (records |> List.map StreamEntry.toCoreRecord)
 
     /// Parse a JSONL op-stream back to records — `Core.OpStream.fromJsonl` over
     /// the `StreamEntry` witness, with `streamId` supplied as the sidecar Core's
@@ -201,7 +201,7 @@ module OpRecordWire =
         (decodeOp: string -> Result<TreeOp<'Msg>, string>)
         (jsonl: string)
         : Result<OpRecord<'Msg> list, string> =
-        Fuaran.Core.OpStream.fromJsonl (StreamEntry.coreWitnessWith decodeOp) jsonl
+        Fuaran.Core.Jsonl.read (StreamEntry.coreWitnessWith decodeOp) jsonl
         |> Result.mapError Fuaran.Core.StreamLoadFault.toString
         |> Result.map (List.map (StreamEntry.ofCoreRecord streamId))
 

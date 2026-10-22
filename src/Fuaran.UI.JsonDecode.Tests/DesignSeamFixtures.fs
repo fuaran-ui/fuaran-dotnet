@@ -249,7 +249,7 @@ let private edit (wire: string) (path: string list) (value: JVal option) : strin
         | _ -> failwithf "design fixture edit: no member at %A" path
 
     match Json.parse wire with
-    | Ok v -> Canon.render (go v path)
+    | Ok v -> Canonical.write Rendering.CrossHost (go v path)
     | Error e -> failwithf "design fixture edit: the base document does not parse: %s" e
 
 let private reject id decoder wire code path description =

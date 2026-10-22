@@ -132,7 +132,8 @@ let private nodeIdText (NodeId raw) : string = raw
 
 /// A canonically-escaped, quoted string — `Canon` owns the escape rules so the
 /// notation never invents a second escaping convention.
-let private quoted (s: string) : string = Canon.render (JStr s)
+let private quoted (s: string) : string =
+    Canonical.write Rendering.CrossHost (JStr s)
 
 /// Best-effort scalar rendering of an erased `obj` payload. Mirrors the
 /// canonical encoder's `appendObj` recognition set exactly (no reflection —
@@ -145,8 +146,8 @@ let private objText (v: obj | null) : string =
     | :? bool as b -> (if b then "true" else "false")
     | :? int as n -> string n
     | :? int64 as n -> string n
-    | :? float as f -> Canon.canonicalFloat f
-    | :? float32 as f -> Canon.canonicalFloat (float f)
+    | :? float as f -> FloatLayout.canonical f
+    | :? float32 as f -> FloatLayout.canonical (float f)
     | :? System.DateTimeOffset as t -> string (t.ToUnixTimeSeconds())
     | :? System.DateTime as t ->
         string (System.DateTimeOffset(t.ToUniversalTime(), System.TimeSpan.Zero).ToUnixTimeSeconds())
@@ -158,7 +159,7 @@ let private objText (v: obj | null) : string =
 let private propValueText (v: PropValue) : string =
     match v with
     | PropValue.Native o -> objText o
-    | PropValue.Wire j -> Canon.render j
+    | PropValue.Wire j -> Canonical.write Rendering.CrossHost j
 
 // ─── Bindings ───────────────────────────────────────────────────────────────
 
@@ -210,7 +211,7 @@ let rec private bindingTextWith<'T> (staticText: 'T -> string) (b: Binding<'T>) 
     | Binding.Invoke(capabilityId, _) -> "$invoke." + capabilityId
 
 and private bindingTextFloat (b: Binding<float>) : string =
-    bindingTextWith<float> Canon.canonicalFloat b
+    bindingTextWith<float> FloatLayout.canonical b
 
 /// The slot-erased shape `TreeOp.ReplaceBinding` carries.
 let private bindingText (b: Binding<obj>) : string = bindingTextWith<obj> objText b
@@ -226,7 +227,7 @@ let private styleText (style: SemanticStyle) : string =
     let scalar (j: JVal) : string =
         match j with
         | JStr s -> s
-        | other -> Canon.render other
+        | other -> Canonical.write Rendering.CrossHost other
 
     match Fuaran.UI.Generated.encodeSemanticStyleJson style with
     | JObj [] -> "(defaults)"
@@ -235,7 +236,7 @@ let private styleText (style: SemanticStyle) : string =
         |> List.sortBy fst
         |> List.map (fun (k, v) -> k + "=" + scalar v)
         |> String.concat " "
-    | other -> Canon.render other
+    | other -> Canonical.write Rendering.CrossHost other
 
 /// `<Kind> "<id>"`, plus the subtree size when it holds more than one node.
 /// Delta-only: an inserted or replacement subtree is SUMMARISED, never dumped —

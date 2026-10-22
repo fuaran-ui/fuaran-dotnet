@@ -21,7 +21,10 @@ let private schemaText =
          "opt":{"type":"boolean"}}}"""
 
 let private parse (text: string) =
-    match Json.parseTolerantOfNull text with
+    match
+        (Decoder.parse ReadOptions.tolerantOfNull text
+         |> Result.mapError DecodeError.describe)
+    with
     | Ok v -> v
     | Error e -> failwithf "test schema does not parse: %s" e
 

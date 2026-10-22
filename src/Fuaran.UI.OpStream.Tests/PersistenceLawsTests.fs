@@ -461,7 +461,7 @@ let tests =
                   entryStreamGen
                   stateEncode
                   hashFn
-                  CoreStream.canonicalConfig
+                  Fuaran.Core.StreamConfig.canonical
                   20260904
                   100
               |> assertAllPassed "snapshotLawsWith over the Fuaran.UI StreamEntry provenance envelope"
