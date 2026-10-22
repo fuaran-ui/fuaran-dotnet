@@ -2086,13 +2086,6 @@ let private leniencyFamilies: LeniencyFamily list =
           + "widens the accept set by exactly the values an integer slot can hold, and `2.5` stays a "
           + "WRONG_TYPE, so no accepted input has a fractional part to lose. Nothing to teach — the pack "
           + "already teaches `int` slots and the catalogue already spells the integer form." }
-      { Name = "Integer payload beyond ±(2^53−1) decodes to the nearest double (Phase 1521)"
-        Class = NeverTaught
-        FixtureIds = [ "lenient-1521-payload-integer-beyond-int53" ]
-        Evidence =
-          "JUDGEMENT: lossy by construction — §2 rule 5: one past the limit has no representation every "
-          + "host holds exactly and decodes to the nearest double. A normalisation that changes the value "
-          + "is the definition of not loss-free. Safety net only; the pack never teaches it." }
       { Name = "null State default as the spelling of absence (Phase 1656)"
         Class = AlreadyCanonical
         FixtureIds = [ "lenient-1656-state-default-null" ]

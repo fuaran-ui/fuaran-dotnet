@@ -83,6 +83,11 @@ open Fuaran.UI.Types
 open Fuaran.UI.KindPolicy
 open Fuaran.UI.Ops.Types
 
+// The agreement test (`Fuaran.UI.Tests/GeneratedLayerTests.fs`, WIRE_FORMAT §20.1)
+// reads `tryParseUnder`, the one internal member of this module (Phase 2286).
+[<assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Fuaran.UI.Tests")>]
+do ()
+
 // ─── DecodeError surface ─────────────────────────────────────────────────
 
 /// Stable AI-friendly discriminator for decode-time failures. The string
@@ -372,10 +377,9 @@ let private wireJsonLimits: JsonLimits =
       MaxDocumentBytes = Fuaran.UI.WireLimits.MaxDocumentBytes }
 
 /// The read this decoder parses under: every `null` the reading does not read
-/// itself refused (it reads every one, see `readJson`), and the wire's limits.
-let private wireReadOptions: ReadOptions =
-    { Null = RejectNull
-      Limits = wireJsonLimits }
+/// itself refused (it reads every one, see `readJson`), and the given limits —
+/// the wire's, on every decode entry point.
+let private readOptionsUnder (limits: JsonLimits) : ReadOptions = { Null = RejectNull; Limits = limits }
 
 /// Values read and the deepest composite nesting reached, for the work meter
 /// (Phase 2328): one per value the reading builds, so `Steps` counts every
@@ -511,7 +515,7 @@ let private meterParse (units: int) (steps: int64) (maxDepth: int) : unit =
 /// The bound a `LimitExceeded` names, read back from the refusal's `Expected`
 /// against the record this decoder passed (`DecodeError.ofJsonRefusal` writes
 /// "within the <limit> bound of <value>"), or `None` when no bound matches.
-let private breachedLimit (e: Fuaran.Core.DecodeError) : JsonLimit option =
+let private breachedLimit (limits: JsonLimits) (e: Fuaran.Core.DecodeError) : JsonLimit option =
     [ JsonLimit.Depth
       JsonLimit.StringLength
       JsonLimit.ArrayLength
@@ -521,12 +525,18 @@ let private breachedLimit (e: Fuaran.Core.DecodeError) : JsonLimit option =
         e.Expected = "within the "
                      + JsonLimit.name l
                      + " bound of "
-                     + string (JsonLimit.declared wireJsonLimits l))
+                     + string (JsonLimit.declared limits l))
 
 /// The §21.2 rule-2 message for a breach: the wire limit by this host's name
-/// and its value, and for the document bound the observed size as well.
-let private limitMessage (input: string) (e: Fuaran.Core.DecodeError) : string =
-    match breachedLimit e with
+/// and its value, and for the document bound the observed size as well. Under
+/// limits other than the wire's (the agreement test's), Core's own sentence.
+let private limitMessage (limits: JsonLimits) (input: string) (e: Fuaran.Core.DecodeError) : string =
+    match
+        (if limits = wireJsonLimits then
+             breachedLimit limits e
+         else
+             None)
+    with
     | Some JsonLimit.Depth ->
         sprintf "JSON nesting deeper than the wire limit MaxJsonDepth = %d" Fuaran.UI.WireLimits.MaxJsonDepth
     | Some JsonLimit.StringLength ->
@@ -570,12 +580,15 @@ let private malformedAt (e: Fuaran.Core.DecodeError) : string * int =
 /// passed, and `INVALID_JSON` at `$` for every other failure — the two are
 /// different repairs, and only one of them means "the input was structurally
 /// hostile rather than malformed". The error is `(code, path, message)`.
-let private tryParse (input: string) : Result<Json, DecodeErrorCode * string * string> =
+/// `limits` is the wire's on every decode entry point (`tryParse`); the test
+/// that holds this parse to the structural layer's (`GeneratedLayerTests`,
+/// WIRE_FORMAT §20.1) passes the limits records of Core's `limit-*` vectors.
+let private tryParseWith (limits: JsonLimits) (input: string) : Result<Json, DecodeErrorCode * string * string> =
     if isNull input then
         Error(DecodeErrorCode.INVALID_JSON, "$", "input is null")
     else
         let count = ReadCount()
-        let outcome = Reader.read wireReadOptions (readJson count) input
+        let outcome = Reader.read (readOptionsUnder limits) (readJson count) input
         meterParse input.Length count.Steps count.MaxNesting
 
         match outcome with
@@ -583,7 +596,7 @@ let private tryParse (input: string) : Result<Json, DecodeErrorCode * string * s
         | Error e ->
             match e.Code with
             | DecodeCode.LimitExceeded ->
-                Error(DecodeErrorCode.LIMIT_EXCEEDED, renderCorePath e.Path, limitMessage input e)
+                Error(DecodeErrorCode.LIMIT_EXCEEDED, renderCorePath e.Path, limitMessage limits input e)
             | DecodeCode.InvalidJson ->
                 let detail, pos = malformedAt e
 
@@ -601,6 +614,16 @@ let private tryParse (input: string) : Result<Json, DecodeErrorCode * string * s
             // A reading that reads every token meets no shape it did not ask for, so
             // any other code is a defect of the reading, not an answer about the input.
             | other -> invalidOp (sprintf "Reader.read answered %A for a reading that reads every token" other)
+
+/// The parse every decode entry point makes: under the wire's limits.
+let private tryParse (input: string) : Result<Json, DecodeErrorCode * string * string> =
+    tryParseWith wireJsonLimits input
+
+/// The same parse under another limits record, the refusal only: the hook the
+/// agreement test (`GeneratedLayerTests`, WIRE_FORMAT §20.1) holds to Core's
+/// own parse on the `limit-*` vectors, which declare their limits record.
+let internal tryParseUnder (limits: JsonLimits) (input: string) : Result<unit, DecodeErrorCode * string * string> =
+    tryParseWith limits input |> Result.map ignore
 
 
 // ─── The `JVal` entry: lowering a parsed Core value (Phase 2059) ─────────

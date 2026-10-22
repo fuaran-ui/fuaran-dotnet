@@ -133,14 +133,47 @@ let grammarTests =
                   | Error e -> failtestf "the grammar refused the legal token '%s': %s" token e.Message
           }
 
-          test "row 7 — an overflowing exponent is an infinity, not a refusal" {
-              // Ratified as-is: all five hosts agreed, so it was unspecified
-              // rather than divergent. It sits deliberately beside row 4, which
-              // refuses the same value written as a bare `Infinity` literal.
-              let json =
-                  """{"id":"m","kind":{"$type":"Metric","label":"R","value":{"$type":"Static","value":1e999}}}"""
+          test "row 7 — an overflowing exponent is refused, not read as an infinity" {
+              // Amended by Phase 2286 (fuaran-dotnet D19, D22): the value is outside
+              // the finite double range and the wire has no non-finite float, so the
+              // substrate's grammar refuses it. Row 4 refuses the bare literal; §7's
+              // quoted sentinel is the one spelling of an infinity, and row 8 reads it.
+              for token in [ "1e999"; "-1e999"; "1E+400" ] do
+                  let json =
+                      sprintf
+                          """{"id":"m","kind":{"$type":"Metric","label":"R","value":{"$type":"Static","value":%s}}}"""
+                          token
 
-              Expect.isTrue (System.Double.IsPositiveInfinity(metricValue json)) "1e999 decodes to +infinity"
+                  expectRefused (sprintf "overflowing token '%s'" token) json "INVALID_JSON"
+
+              // Underflow is a finite double: it is read, as zero.
+              let json =
+                  """{"id":"m","kind":{"$type":"Metric","label":"R","value":{"$type":"Static","value":1e-999}}}"""
+
+              Expect.equal (metricValue json) 0.0 "1e-999 underflows to zero"
+          }
+
+          test "§2 rule 5 — an integer token past 2^53 is read only as a canonical float layout" {
+              let payload token =
+                  sprintf
+                      """{"id":"c","kind":{"$type":"Custom","componentId":"c","moduleId":"m","props":{"n":%s}}}"""
+                      token
+
+              for token in
+                  [ "9007199254740993"
+                    "-9007199254740993"
+                    "12345678901234567890"
+                    "100000000000000000" ] do
+                  expectRefused (sprintf "non-canonical integer '%s'" token) (payload token) "INVALID_JSON"
+
+              for token in
+                  [ "9007199254740991"
+                    "9007199254740992"
+                    "9007199254740994"
+                    "10000000000000000" ] do
+                  match JsonDecode.decodeNodeObj (payload token) with
+                  | Ok _ -> ()
+                  | Error e -> failtestf "the canonical token '%s' was refused: %s" token e.Message
           }
 
           test "row 1 — a repeated member is refused wherever it appears" {

@@ -10,6 +10,53 @@ consequence.
 
 ---
 
+## 2026-10-22 — D22: the reference host parses through Core, and the three answers that moved are every host's
+
+**Resolved (Phase 2286, 2026-10-22).** D21's blocker is gone: `Fuaran.Compute` 0.41.0 and `Fuaran.Program` 0.11.0 are
+released on Fuaran.Core 0.40.2. The Core pins move to 0.40.2, `FuaranCoreComputeVersion` to 0.41.0 and
+`FuaranProgramVersion` to 0.11.0 in one change-set, and the 89 `TypeLoadException: Fuaran.Core.Canon` failures D21
+recorded are gone. `JsonDecode.tryParse` reads through `Reader.read { Null = RejectNull; Limits = wire limits }` and the
+hand parser is deleted, so this host's two decode entry points are one parser and the WIRE_FORMAT §20.1 declaration is
+retired (the test that carried it asserts agreement instead).
+
+**Decided — the three corpus answers the parse move changed are amended, not declared.** Each is a coordinated corpus
+change landed with every codec host in one change-set (the WIRE_FORMAT §11 procedure), never a divergence this host
+carries alone:
+
+1. **§20.2 row 7, an overflowing exponent (`1e999`), is `INVALID_JSON`.** D19 recorded the operator's ruling
+   (2026-10-16): Core's answer is the row's answer. The row met the admission test the section states for a refusal —
+   no conformant encoder can write the token, since the wire has no non-finite float and §7's quoted sentinels are its
+   only spelling — so the amendment takes no version step (§20.5's reasoning). The corpus pins it as
+   `reject-json-number-overflow-exponent`.
+2. **§2 rule 5, an integer token past 2^53, is `INVALID_JSON` unless it is the canonical float layout of the double it
+   reads as.** Confirmed with row 7 (2026-10-16). The rule is Core's exactly, token-judged: `10000000000000000` (the
+   fixed-point layout of `1E+16`) is read because a conformant encoder writes those bytes; `9007199254740993` is
+   refused. The lenient fixture that pinned the rounding is replaced by `reject-json-integer-beyond-int53`.
+3. **A depth breach names the breach's path.** §21.2 rule 2 already required it; the `repair-limit-exceeded` case
+   pinned `$`, and now pins the path of the first array past `MaxJsonDepth`. Only the hosts that implement repair (this
+   one and TypeScript) certify that case, and TypeScript's parser now tracks the path.
+
+Every codec host moved its own parser by the smallest change (TypeScript, Python, Go and Rust each refuse both tokens
+in their own number reading; no code is shared). The two projection hosts decode through the Rust core and inherit its
+answers.
+
+**Found — the parse move is slower on text.** `decode-rate 100` (STABILITY.md, the 0.98.0 entry for this phase): the
+routes that parse text are about 14–23% slower and allocate 8–11% less, and the `JVal` routes are unchanged. Recorded
+as a finding, per the phase's rule that a regression is not a reason to keep a second parser. The cost sits in the
+reading over Core's token surface and Core's scanner, so the place to buy it back is the substrate, where every entry
+point and every host that reads through Core gains it.
+
+**Rejected.**
+- **Declaring rows 7 and the integer past 2^53 as this host's divergence (§20.1 rule 2).** That re-opens the
+  declaration the phase exists to close, as a dialect of one host.
+- **Pre-scanning the text to restore the old answers.** That is a parser of this host's own, in front of Core's.
+- **Moving `reject-limit-json-depth`'s `expectedPath` too.** Reject fixtures match the path as a prefix, so `$` already
+  admits the breach's path; the repair family matches exactly, which is why its case moved.
+
+Roadmap: [Phase 2286](../../roadmap/phases/2286-the-reference-host-parses-through-core-with-its-own-limits-and-stops-carrying-a-parser-of-its-own.md).
+
+---
+
 ## 2026-10-22 — D21: the Core 0.40.2 raise waits on a compute release built on Core 0.39 or later; the parse through Core's reader is ready behind it
 
 **Found (Phase 2286, 2026-10-22).** The decoder's parse through Core's token reader (`Reader.peek` /

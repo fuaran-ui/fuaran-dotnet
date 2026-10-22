@@ -2392,6 +2392,22 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "§20.2 row 6 — both halves of a pair present but separated. A host that counts surrogates rather than pairing them adjacently accepts this and reassembles a scalar the author never wrote. Twin: the `markdown-1` node fixture" }
+      { Id = "reject-json-number-overflow-exponent"
+        Json =
+          """{"id":"metric-1","kind":{"$type":"Metric","format":{"$type":"Currency","code":"GBP"},"icon":"trending-up","label":"Revenue","subtext":"vs last month","tone":"Brand","trend":{"$type":"Static","value":0.07},"trendFormat":{"$type":"Percent","decimals":1},"value":{"$type":"Static","value":1e999}}}"""
+        ExpectedCode = DecodeErrorCode.INVALID_JSON
+        ExpectedPath = "$"
+        IsOp = false
+        Description =
+          "§20.2 row 7 — an overflowing exponent. Amended by Phase 2286 from an accept to a refusal: the value is outside the finite double range, the wire's value model has no non-finite float, and §7's quoted sentinels are the only spelling a conformant encoder writes for an infinity, so no encoder can produce this token. Twin: the `metric-1` node fixture (the value written as `1234.5`)" }
+      { Id = "reject-json-integer-beyond-int53"
+        Json =
+          """{"id":"custom-1","kind":{"$type":"Custom","componentId":"trend-card","moduleId":"analytics","props":{"beyond":9007199254740993}}}"""
+        ExpectedCode = DecodeErrorCode.INVALID_JSON
+        ExpectedPath = "$"
+        IsOp = false
+        Description =
+          "§2 rule 5 — an integer token past 2^53 that is not the canonical float layout of the double it reads as. Phase 2286 amended this from a lenient normalisation (decode to the nearest double) to a refusal: the token has no representation every host holds exactly, and admitting it rounded one document to different bytes on different hosts. A token past 2^53 that IS a canonical float layout (`10000000000000000`) is still read. Twin: the `custom-1` node fixture (drop the member)" }
 
       // ─── WIRE_FORMAT §7.1 — integer slots (ratified with §20) ────────
       //

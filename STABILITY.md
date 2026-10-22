@@ -8070,6 +8070,59 @@ and resolve `Binding.Local` floors. The client's widget arms in `renderFormField
 `VisPlan.staticGrid` and `gridPlaceholder` read `DataGridSpec`. The reshape lands in those three places, and in the
 client's `renderGrid`.
 
+### What rides this slot — Phase 2286 (the decoder parses through Core, and the substrate pins move to Core 0.40.2)
+
+**Class: BREAKING (a dependency floor crosses Core's breaking cuts) + a BEHAVIOUR narrowing on two number tokens.** The
+class the slot already carries, so the number does not move.
+
+- **Pins.** Every `Fuaran.Core.*` package moves 0.38.1 → 0.40.2 together (with `Fuaran.Core.Text` and
+  `Fuaran.Core.Relation` joining the cohort), the compute packages 0.40.0 → 0.41.0 and the bounded program core
+  0.10.0 → 0.11.0: the first releases of each producer built on Core 0.40.2. A consumer of a `Fuaran.UI.*` package
+  inherits the Core 0.40.2 floor, which crosses Core 0.39 (`Canon` is gone; every byte rule is a named `Rendering`)
+  and 0.40. This tier's own surfaces keep their names; the re-points are Core's (fuaran-dotnet DECISIONS D21 records the
+  census).
+- **`JsonDecode` carries no JSON parser of its own.** Every decode entry point reads wire text through Core's token
+  reader (`Reader.read`) under this tier's `WireLimits` values. The ENVELOPE is unchanged for every caller: malformed
+  text is `INVALID_JSON` at `$` with the `parse error at offset N` sentence and the arithmetic-expression cause, and a
+  §21 breach is `LIMIT_EXCEEDED` naming the limit and its value. Three answers move:
+  - an **overflowing exponent** (`1e999`) is `INVALID_JSON`, where it decoded to an infinity (WIRE_FORMAT.md §20.2
+    row 7, amended in the same change-set on every host);
+  - an **integer token past 2^53** that is not the canonical float layout of the double it reads as
+    (`9007199254740993`) is `INVALID_JSON`, where it decoded to the nearest double (§2 rule 5, amended likewise);
+  - a **JSON-depth breach** names the breach's path (`$[0][0]…`), where it named `$` (§21.2 rule 2).
+  The nine null fixtures, every other §20.2 row and every other §21 vector answer as before.
+- **The §20.1 declaration is retired.** The test that listed where the structural layer's parser diverged from the
+  policy decoder's now asserts that the two entry points agree on every §20.2 row and on each §21 bound at and past its
+  value, and fails if a second parser returns.
+
+**What a consumer does.** Raise its own `Fuaran.Core.*` pins with this release if it pins them. Write an infinity as
+the quoted sentinel and an integer that can leave ±2^53 as a string. A caller matching a depth breach on `Path = "$"`
+matches the code instead.
+
+**Measured — `tryParse` before and after** (`dotnet run -c Release -- decode-rate 100` in
+`benchmarks/Fuaran.UI.Ops.Benchmarks`, one machine, 2026-10-22, two runs of each, alternated; the "before" is the
+hand parser on `main` at Core 0.38.1, built and run beside the "after" in the same session):
+
+| Route | before mean µs | after mean µs | before alloc B | after alloc B |
+|---|---|---|---|---|
+| node, string | 4574.9 / 4550.6 | 5319.0 / 5531.2 | 6,937,472 | 6,385,785 |
+| node, render-reparse | 4905.4 / 4870.3 | 5902.9 / 5736.3 | 10,386,746 | 9,774,946 |
+| node, jval | 3145.7 / 2601.1 | 2625.1 / 2603.7 | 5,250,312 | 5,207,759 |
+| ops, string | 763.2 / 716.4 | 923.9 / 896.7 | 3,049,136 | 2,703,136 |
+| ops, render-reparse | 1223.4 / 1230.2 | 1416.0 / 1389.3 | 4,758,136 | 4,412,020 |
+| ops, jval | 600.2 / 657.2 | 488.4 / 640.7 | 2,127,624 | 2,108,424 |
+
+The routes that parse text are **about 14–23% slower** and allocate **8–11% less**; the `JVal` routes, which do not
+parse, are unchanged within noise. That is a regression, recorded as a finding and not as a reason to keep a second
+parser (the phase's rule): the cost is the reading over Core's token surface plus Core's scanner, and a faster reading
+belongs in the substrate, where every host and entry point gains it. DECISIONS D22 records it. The D21 "before" figures
+(hand parser at Core 0.40.2, an earlier session: node string 4195.2 µs, ops string 633.5 µs) are consistent with the
+"before" column above.
+
+**Certified by** the corpus's `reject/` fixtures `reject-json-number-overflow-exponent` and
+`reject-json-integer-beyond-int53` and its `repair-limit-exceeded` case, run by `Fuaran.UI.JsonDecode.Tests`, and by
+`parseAgreementTests` in `src/Fuaran.UI.Tests/GeneratedLayerTests.fs`.
+
 ---
 
 

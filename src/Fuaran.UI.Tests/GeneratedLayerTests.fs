@@ -697,38 +697,18 @@ let generatedLayerTests =
               //    is the one class where the structural gap and the schema gap
               //    are the same gap, and it joins `schemaInexpressibleRejects`
               //    alongside its 725 predecessor for that shared reason.
-              //  - the SIXTH class, and the only one that is not about the
-              //    generated decoder at all: WIRE_FORMAT §20.2's rows, six of
-              //    which the generated layer accepts because it reads its JSON
-              //    through a DIFFERENT PARSER — the substrate's, in a package
-              //    this repository consumes rather than owns. That is exactly the
-              //    situation §20.1 was written for, and this list is where the
-              //    reference host DECLARES it, per §20.1 rule 2: a host that
-              //    cannot route every entry point through one parser must name
-              //    the divergent entry point and the rows on which it diverges.
-              //
-              //    Measured, the substrate parser refuses row 2 (trailing
-              //    content), row 4 (a bare `NaN` literal) and three of row 3's
-              //    four arms (`+1`, `.5`, `1.`), and ACCEPTS: row 1 (a repeated
-              //    member), row 3's leading-zero arm (`03`), row 5 (a raw C0
-              //    control character) and row 6 (an unpaired surrogate, in all
-              //    three shapes). So the divergence is neither "the substrate is
-              //    stricter" nor "it is looser" — it is a different accept set,
-              //    which is why §20.1 refuses to recognise a host-level claim.
-              //
-              //    Re-measured at the Fuaran.Core 0.34.0 pin: the substrate parser
-              //    holds to the JSON grammar since its 0.33.0 (fuaran-core Phase
-              //    299), so it now ALSO refuses row 3's leading-zero arm and row 6
-              //    in all three shapes, and those four fixtures left this list —
-              //    the evidence the note below describes. Rows 1 and 5 remain.
-              //
-              //    Note what this list does NOT mean here. Every other entry is a
-              //    shape structure CANNOT judge; these six are shapes it could
-              //    judge and does not, because the judging happens one layer
-              //    below it. The gap closes when the substrate and the policy
-              //    parser are one parser, not by a refinement to the IDL — and
-              //    an entry leaving this list is then evidence of that, rather
-              //    than of a new refined type.
+              //  - the SIXTH class, §20.2's rows, is CLOSED (Phase 2286, 2026-10-22).
+              //    It was the only class not about the generated decoder: rows the
+              //    generated layer accepted because it read its JSON through a
+              //    different parser from the policy decoder's, which is the
+              //    situation §20.1 was written for, and this list was where the
+              //    reference host DECLARED it (§20.1 rule 2). Its entries left one
+              //    by one as the substrate's grammar tightened (rows 3 and 6 at the
+              //    Core 0.34.0 pin, rows 1 and 5 at 0.38.1), and the class closed
+              //    when the policy decoder stopped carrying a parser: both entry
+              //    points now parse through Core's reader. `parseAgreementTests`
+              //    at the end of this file states the agreement that replaced the
+              //    declaration, and fails if a second parser ever returns.
               //  - the two Phase-1535 `SwitchCase` selector fixtures are the
               //    SIBLING-ABSENCE class `reject-fieldrule-empty` opened, now
               //    reached from both ends: `neither` is that class exactly (a
@@ -1351,4 +1331,138 @@ let closedCollectingDecoderTests =
                   (emitted.Substring at)
                   "\n    let ofKind =\n"
                   "the generator changed the binding-slot enumeration: request SlotsOf \"Binding\", build with nullness checking on, and read the AiTools slot table from slotsOfBinding (fuaran#2255's deferred task)"
+          } ]
+
+// ============================================================================
+//  WIRE_FORMAT §20.1, CLOSED (Phase 2286): the two entry points are one parser.
+//
+//  Until Phase 2286 the policy decoder carried a JSON parser of its own and the
+//  generated structural layer read through the substrate's, with a different
+//  accept set; `policyOwned` above was where this host DECLARED the divergence,
+//  per §20.1 rule 2. The policy decoder now parses through Core's token reader
+//  (`Reader.read`) under the wire's limits, so the declaration is retired and
+//  these tests state what replaced it: the two entry points AGREE.
+//
+//   - on every §20.2 row the corpus pins as a refusal (`reject/reject-json-*`,
+//     rows 1-7, and the §2 rule 5 integer past 2^53), both refuse as malformed;
+//   - on each §21 JSON-level bound at and past its value, the policy parse under
+//     a limits record answers exactly as Core's own parse does under it: the
+//     same code and the same path. The vectors are Core's `conformance/decode/`
+//     `limit-*` family, which declare their limits record, restated here by name
+//     because no package carries the family's file.
+//
+//  A second parser returning to the policy decoder would have to reproduce every
+//  one of these answers to stay green; one that does not fails here by name.
+// ============================================================================
+
+/// Core's answer for a text under a limits record: `None` when it reads, else the
+/// refusal's code (in this decoder's spelling) and path.
+let private coreParse (limits: Fuaran.Core.JsonLimits) (text: string) : (string * string) option =
+    match
+        Fuaran.Core.Decoder.parse
+            { Fuaran.Core.ReadOptions.strict with
+                Limits = limits }
+            text
+    with
+    | Ok _ -> None
+    | Error e ->
+        let code =
+            match e.Code with
+            | Fuaran.Core.DecodeCode.InvalidJson -> "INVALID_JSON"
+            | Fuaran.Core.DecodeCode.LimitExceeded -> "LIMIT_EXCEEDED"
+            | other -> sprintf "%A" other
+
+        Some(code, dottedPath e.Path)
+
+/// The policy decoder's parse under the same record.
+let private policyParse (limits: Fuaran.Core.JsonLimits) (text: string) : (string * string) option =
+    match JsonDecode.tryParseUnder limits text with
+    | Ok() -> None
+    | Error(code, path, _) -> Some(JsonDecode.DecodeErrorCode.toString code, path)
+
+let private limitsOf (depth: int) (stringLength: int) (arrayLength: int) (objectMembers: int) (documentBytes: int) =
+    ({ MaxDepth = depth
+       MaxStringLength = stringLength
+       MaxArrayLength = arrayLength
+       MaxObjectMembers = objectMembers
+       MaxDocumentBytes = documentBytes }
+    : Fuaran.Core.JsonLimits)
+
+/// Core's `limit-*` decode vectors: (name, limits, input).
+let private coreLimitVectors: (string * Fuaran.Core.JsonLimits * string) list =
+    [ "limit-depth-at-max", limitsOf 2 1024 1024 1024 65536, "[[1]]"
+      "limit-depth-past", limitsOf 2 1024 1024 1024 65536, "[[[1]]]"
+      "limit-string-length-at-max", limitsOf 512 3 1024 1024 65536, "\"abc\""
+      "limit-string-length-past", limitsOf 512 3 1024 1024 65536, "\"abcd\""
+      "limit-string-length-astral-at-max", limitsOf 512 3 1024 1024 65536, "\"\U0001F600\U0001F600\U0001F600\""
+      "limit-string-length-astral-past", limitsOf 512 3 1024 1024 65536, "\"\U0001F600\U0001F600\U0001F600\U0001F600\""
+      "limit-string-length-in-a-key", limitsOf 512 3 1024 1024 65536, "{\"abcd\":1}"
+      "limit-string-length-nested", limitsOf 512 3 1024 1024 65536, "{\"a\":[\"abcd\"]}"
+      "limit-array-length-at-max", limitsOf 512 1024 2 1024 65536, "[1,2]"
+      "limit-array-length-past", limitsOf 512 1024 2 1024 65536, "[1,2,3]"
+      "limit-array-length-nested", limitsOf 512 1024 2 1024 65536, "{\"a\":[1,2,3]}"
+      "limit-object-members-at-max", limitsOf 512 1024 1024 2 65536, "{\"a\":1,\"b\":2}"
+      "limit-object-members-past", limitsOf 512 1024 1024 2 65536, "{\"a\":1,\"b\":2,\"c\":3}"
+      "limit-document-bytes-at-max", limitsOf 512 1024 1024 1024 5, "\"\u65e5\""
+      "limit-document-bytes-past", limitsOf 512 1024 1024 1024 4, "\"\u65e5\""
+      "limit-breach-before-malformed-text", limitsOf 512 1024 2 1024 65536, "[1,2,3"
+      "limit-malformed-text-before-breach", limitsOf 512 1024 2 1024 65536, "[1,%,3,4]" ]
+
+[<Tests>]
+let parseAgreementTests =
+    testList
+        "WIRE_FORMAT §20.1 closed - the policy decoder and the structural layer are one parser (Phase 2286)"
+        [ test "every §20.2 row the corpus pins as a refusal is refused as malformed by BOTH entry points" {
+              let rows = familyFixtures "reject" "reject-json-*.json"
+
+              Expect.isGreaterThanOrEqual
+                  rows.Length
+                  12
+                  "the corpus carries the §20.2 row fixtures (reject/reject-json-*) — is the corpus clone present?"
+
+              for (name, json) in rows do
+                  match JsonDecode.decodeNode json with
+                  | Ok _ -> failtestf "%s: the policy decoder accepted a §20.2 refusal" name
+                  | Error e -> Expect.equal e.Code "INVALID_JSON" (sprintf "%s: the policy decoder's class" name)
+
+                  match Generated.decodeNode json with
+                  | Ok _ -> failtestf "%s: the structural layer accepted a §20.2 refusal" name
+                  | Error e ->
+                      Expect.equal
+                          e.Code
+                          Fuaran.Core.DecodeCode.InvalidJson
+                          (sprintf "%s: the structural layer's class" name)
+          }
+
+          test "each §21 JSON-level bound, at and past its value, is answered identically by both parses" {
+              for (name, limits, input) in coreLimitVectors do
+                  Expect.equal
+                      (policyParse limits input)
+                      (coreParse limits input)
+                      (sprintf "%s: the policy parse and Core's parse disagree" name)
+          }
+
+          test "under the wire's own limits the two parses agree at and past MaxJsonDepth" {
+              let wire =
+                  limitsOf
+                      WireLimits.MaxJsonDepth
+                      WireLimits.MaxStringLength
+                      WireLimits.MaxArrayLength
+                      WireLimits.MaxArrayLength
+                      WireLimits.MaxDocumentBytes
+
+              for depth in [ WireLimits.MaxJsonDepth; WireLimits.MaxJsonDepth + 1 ] do
+                  let text = String.replicate depth "[" + String.replicate depth "]"
+
+                  Expect.equal
+                      (policyParse wire text)
+                      (coreParse wire text)
+                      (sprintf "%d nested arrays: the two parses disagree" depth)
+
+              let past = WireLimits.MaxJsonDepth + 1
+
+              Expect.equal
+                  (policyParse wire (String.replicate past "[" + String.replicate past "]"))
+                  (Some("LIMIT_EXCEEDED", "$" + String.replicate WireLimits.MaxJsonDepth "[0]"))
+                  "a depth breach is LIMIT_EXCEEDED at the breach's path (§21.2 rule 2)"
           } ]

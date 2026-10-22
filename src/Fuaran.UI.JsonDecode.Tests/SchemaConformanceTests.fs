@@ -161,7 +161,7 @@ let private schemaInexpressibleRejects: Set<string> =
 
           // ─── Phase 1521 — the §20 rows a JSON Schema validator cannot see ──
           //
-          // These four are not a modelling gap a better `SchemaGen` would close:
+          // These are not a modelling gap a better `SchemaGen` would close:
           // they are refusals at the JSON SYNTAX layer, and a schema validator by
           // construction runs over an ALREADY-PARSED document. By the time it
           // looks, the parser has resolved the duplicate member to whichever one
@@ -177,6 +177,14 @@ let private schemaInexpressibleRejects: Set<string> =
           "reject-json-lone-high-surrogate"
           "reject-json-lone-low-surrogate"
           "reject-json-surrogate-pair-split"
+          // Phase 2286 — the two NUMBER refusals the parse move added, the same
+          // syntax-layer reason: `1e999` (§20.2 row 7) and an integer token past
+          // 2^53 that is not a canonical float layout (§2 rule 5) are both
+          // well-formed RFC 8259 numbers, so the validator's own parser admits
+          // them and a JSON Schema `number` / `{}` slot has nothing to refuse.
+          // The refusal is the substrate grammar's value rule, at the decoder.
+          "reject-json-integer-beyond-int53"
+          "reject-json-number-overflow-exponent"
 
           // §7.1's range half USED TO BE HERE, and Phase 1666 retired the entry
           // exactly as the note predicted: "it fails the moment `SchemaGen` emits
