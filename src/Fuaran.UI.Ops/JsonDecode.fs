@@ -197,16 +197,19 @@ type DecodeError =
 /// list, nor the first entry of it on every document. The generator now emits
 /// defect-collecting, per-spec decoders on request (fuaran-core#377), and since
 /// the Core pin carries fuaran-core#460 they compile against this vocabulary.
-/// They are still not a substrate this module can layer on (Phase 2255): each
-/// public collecting entry takes only the value, and decodes every type nested
-/// in it (child nodes, text sources, bindings, actions) through the generator's
-/// own private decoders. Delegating one family's structure would therefore
-/// decode every subtree beneath it with none of this module's policy (aliases,
-/// the null reading, the §3.6 unwrap, the relational checks, the sentences),
-/// so the layering waits on the generator opening its collecting decoders at
-/// the types a host overrides. The tests pinning these facts are in
-/// `GeneratedLayerTests` ("structural substrate", "collecting derivation",
-/// "collecting decoders are closed").
+/// Since fuaran-core#541 (Core 0.39.0) they read every node, non-generic union,
+/// record and kind spec through one overridable record, `CollectingDecoders`,
+/// so a host decoder at one of those types applies at every depth. They are
+/// still not a substrate this module can layer on (Phase 2344): the record has
+/// no field at an enumeration, a JSON scalar or the generic `Binding` union,
+/// and those are where most of this module's policy is applied per type (the
+/// §3.6 static unwrap in every scalar reader, each enumeration's lenient
+/// aliases, the binding readings and checks). Their input, Core's `JVal`, has
+/// no null either, so the null reading has nowhere to run. Delegating a kind
+/// spec would drop that policy at each such member. The tests pinning these
+/// facts are in `GeneratedLayerTests` ("structural substrate", "collecting
+/// derivation", "the types a host overrides", "the positions this decoder's
+/// policy needs").
 //
 // Under Fable the slot is a plain static: a JS host runs one decode at a time on
 // its one thread, so a plain static IS per-thread there (Phase 2064 checked it).

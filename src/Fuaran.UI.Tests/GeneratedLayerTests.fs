@@ -1273,8 +1273,8 @@ let collectingDerivationTests =
 //  threaded to every depth (`cList (__ov.Node __ov)` for a container's
 //  children), so a host's decoder at a type applies wherever that type nests.
 //  The public entries still take the value alone and use the default record.
-//  The test now pins the OPEN shape; the layering itself is fuaran#2255's
-//  deferred work, which this emission unblocks.
+//  The test now pins the OPEN shape. Phase 2344 took up the layering on it and
+//  found the next closed positions (the list below this one).
 // ============================================================================
 
 [<Tests>]
@@ -1343,6 +1343,125 @@ let closedCollectingDecoderTests =
                   (emitted.Substring at)
                   "\n    let ofKind =\n"
                   "the generator changed the binding-slot enumeration: request SlotsOf \"Binding\", build with nullness checking on, and read the AiTools slot table from slotsOfBinding (fuaran#2255's deferred task)"
+          } ]
+
+// ============================================================================
+//  Phase 2344 — the record reaches the RECORDS, and this decoder's policy sits
+//  at the positions it does not hold.
+//
+//  At Core 0.40.2 (fuaran-core#541), `CollectingDecoders` has one field per
+//  node, non-generic union, record and kind spec. It has no field at an
+//  enumeration, at a JSON scalar, or at the generic `Binding` union (Core's
+//  D175.3 states the Binding case; enumerations and scalars are leaves the record
+//  was never asked to reach). Every kind spec reads those members past the
+//  record, through the generator's private `dec<Enum>`, `dStr` / `dInt` /
+//  `dFloat` / `dBool` and `colBinding`.
+//
+//  Those are the positions where this decoder applies policy PER TYPE, not per
+//  record: every scalar read unwraps a §3.6 static envelope (`requireString`,
+//  `requireBool`, `requireFloat`, `requireInt`; the integer slot admits an
+//  integral float), every enumeration reader carries its lenient aliases
+//  (`Default`, `Danger`, ...), and `Binding<'T>` carries the bare-scalar and
+//  opaque-marker readings, the expression admissibility and limit checks and the
+//  `Local` relational checks. A per-type policy at a type with no field could be
+//  re-applied only at every record that holds the type, by a hand list of which
+//  members are scalars, enums or bindings: a second copy of the vocabulary,
+//  which is what the layering exists to remove. The fourth gap is `null`: the
+//  collecting decoders read Core's `JVal`, which has no null, so Core's parser
+//  refuses a document carrying one at `$` and the per-position null reading
+//  (absent at some members, WRONG_TYPE at others) has nowhere to run.
+//
+//  Measured on 2026-10-22 over every node-decoder corpus fixture (548),
+//  `Generated.decodeNodeAll` against `JsonDecode.decodeNodeObjWithDefects`:
+//  `nodes/` 260 of 260 identical bytes; `lenient/` 41 of 87 identical, 2 with
+//  other bytes, 44 refused; `reject/` 141 of 201 the same path list, 1 the same
+//  head, 1 the same set, 17 another head, 41 accepted. Of the 106 divergences,
+//  classified by the IDL type at the position the policy applies: 22 sit inside a
+//  Binding, 8 at an enumeration, 10 are documents carrying null, and 25 at a
+//  scalar (the static unwrap, the integral float and the cross-vocabulary
+//  emphasis reading are per-type policy; the positivity and limit checks, and a
+//  member alias landing on a scalar, an enclosing record's override could
+//  supply); 38 sit at a node, union, record, map or hosted position the record or
+//  this tier's own codecs reach (member aliases, near-miss member sets,
+//  relational checks, depth limits); 2 are byte differences and 1 the JSON-depth
+//  refusal. So the layering cannot keep
+//  every verdict for any kind spec with a scalar, enumeration or Binding member,
+//  which is every kind spec but a handful whose own members are all reached
+//  through the record (`Markdown`'s one `TextSource`, for one).
+//
+//  These tests go RED when the record grows a field at any of those positions,
+//  which is the signal to re-open the layering on the measurement above.
+// ============================================================================
+
+/// The field names of the emitted `CollectingDecoders` record.
+let private collectingRecordFields () : string list =
+    let collecting = collectingSection ()
+    let at = collecting.IndexOf "type CollectingDecoders ="
+    Expect.isGreaterThan at 0 "the collecting decoders' record is emitted"
+
+    collecting.Substring(at).Split '\n'
+    |> Array.skip 1
+    |> Array.takeWhile (fun line -> line.Trim() <> "")
+    |> Array.choose (fun line ->
+        let m =
+            System.Text.RegularExpressions.Regex.Match(line, @"^\s*\{?\s*(\w+): CollectingDecoders ->")
+
+        if m.Success then Some m.Groups.[1].Value else None)
+    |> List.ofArray
+
+[<Tests>]
+let policyPositionTests =
+    testList
+        "the collecting decoders and the positions this decoder's policy needs (Phase 2344)"
+        [ test "the record reaches nodes, records and the non-generic unions" {
+              let fields = collectingRecordFields ()
+
+              for reached in
+                  [ "Node"
+                    "Action"
+                    "TextSource"
+                    "FormFieldKind"
+                    "Accessibility"
+                    "MetricSpec" ] do
+                  Expect.contains fields reached "the record no longer reaches a type the layering needs it to reach"
+          }
+
+          test "the record has no field at an enumeration, a scalar or the generic Binding" {
+              let fields = collectingRecordFields () |> Set.ofList
+
+              let enums = Fuaran.UI.Vocabulary.uiIdl.Enums |> List.map _.Name |> Set.ofList
+
+              Expect.isGreaterThan enums.Count 40 "the vocabulary's enumerations are read"
+
+              let opened =
+                  Set.unionMany
+                      [ Set.intersect fields enums
+                        Set.intersect fields (set [ "Binding"; "Str"; "String"; "Int"; "Float"; "Bool" ]) ]
+
+              Expect.isEmpty
+                  opened
+                  (sprintf
+                      "the collecting decoders now take a host decoder at %A, a position where this decoder's per-type policy sits: re-open the layering (fuaran#2344's finding)"
+                      opened)
+          }
+
+          test "a kind spec reads its enumeration, scalar and Binding members past the record" {
+              let collecting = collectingSection ()
+
+              let at =
+                  collecting.IndexOf "and private colMetricSpec (__ov: CollectingDecoders) (j: JVal)"
+
+              Expect.isGreaterThan at 0 "the Metric spec's collecting decoder is emitted"
+              let metric = collecting.Substring(at, collecting.IndexOf("\n\n", at) - at)
+
+              for privateRead in
+                  [ "cReq \"value\" __fs (colBinding __ov (cLift dFloat))"
+                    "cOne (dDef \"tone\" __fs decToneVariant (ToneVariant.Default))"
+                    "cOne (dOpt \"icon\" __fs dStr)" ] do
+                  Expect.stringContains
+                      metric
+                      privateRead
+                      "a kind spec's Binding, enumeration or scalar member is no longer read by a private decoder: re-open the layering (fuaran#2344's finding)"
           } ]
 
 // ============================================================================

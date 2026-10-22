@@ -8123,6 +8123,16 @@ belongs in the substrate, where every host and entry point gains it. DECISIONS D
 `reject-json-integer-beyond-int53` and its `repair-limit-exceeded` case, run by `Fuaran.UI.JsonDecode.Tests`, and by
 `parseAgreementTests` in `src/Fuaran.UI.Tests/GeneratedLayerTests.fs`.
 
+### What rides this slot — Phase 2344 (the decoder stays hand-written; the reason is pinned)
+
+**Class: none — no public surface, decode verdict or wire byte moves.** Recorded here because the phase was cut to
+shrink `Fuaran.UI.Ops.JsonDecode` and did not. The layering it set out to land (the hand decoder as policy over the
+generated collecting decoders) cannot keep every verdict on Core 0.40.2's emission. The generated record of
+overridable decoders reaches nodes, records and non-generic unions, but this decoder applies most of its policy per type
+at enumerations, JSON scalars and the generic `Binding` union, which the record does not reach, and its input value has
+no null. `GeneratedLayerTests` measures it over the corpus and pins each closed position, so the layering re-opens when
+the generator reaches them. Hand-written decoder lines: `JsonDecode.fs` 10,304 → 10,307 (a corrected comment).
+
 ---
 
 
