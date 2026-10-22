@@ -551,11 +551,17 @@ let tests =
                    + "decode refines, so an empty set means the refusals stopped being OBSERVED rather than that the "
                    + "vocabulary stopped having them")
 
+              // A refusal is declared when it CARRIES a declared refine's prose: the prose is the
+              // refine's, and since the Core 0.39 raise (Phase 2286) the sentence around it is Core's
+              // (`DecodeError`'s "<code>: <prose>; expected <shape>").
               let undeclared =
-                  observed |> List.filter (fun r -> not (List.contains r declaredRefines))
+                  observed
+                  |> List.filter (fun r -> not (declaredRefines |> List.exists (fun d -> r.Contains d)))
 
-              Expect.isEmpty
+              // `Expect.equal` against the empty list, so a failure names the reasons.
+              Expect.equal
                   undeclared
+                  []
                   (sprintf
                       "%s%s%s %A"
                       "a hosted-free vector was refused for a reason that is NOT a decode refine declared in "

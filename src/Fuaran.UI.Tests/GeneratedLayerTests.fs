@@ -1266,12 +1266,21 @@ let collectingDerivationTests =
 //  member). These tests go RED when the emission changes shape at either
 //  point, which is the signal to re-open the layering (fuaran#2255's deferred
 //  tasks) on the measurement above.
+//
+//  RE-OPENED at the Core 0.40.2 raise (Phase 2286, 2026-10-22): the second test
+//  went red as designed. Core Phase 541 reads every node, non-generic union,
+//  record and kind spec through ONE record of decoders, `CollectingDecoders`,
+//  threaded to every depth (`cList (__ov.Node __ov)` for a container's
+//  children), so a host's decoder at a type applies wherever that type nests.
+//  The public entries still take the value alone and use the default record.
+//  The test now pins the OPEN shape; the layering itself is fuaran#2255's
+//  deferred work, which this emission unblocks.
 // ============================================================================
 
 [<Tests>]
 let closedCollectingDecoderTests =
     testList
-        "the collecting decoders are closed over the types a host overrides (Phase 2255)"
+        "the collecting decoders and the types a host overrides (Phase 2255; open since the Core 0.40.2 raise, Phase 2286)"
         [ test "every public collecting entry takes the value and nothing else" {
               let entries =
                   (collectingSection ()).Split '\n'
@@ -1298,19 +1307,22 @@ let closedCollectingDecoderTests =
                       widened)
           }
 
-          test "a container's collecting decoder reads its nested types through the generator's private decoders" {
+          test "a container's collecting decoder reads its nested types through the CollectingDecoders record" {
               let collecting = collectingSection ()
 
-              for closed in
-                  [ "and private colNode (j: JVal)"
-                    "and private colTextSource (j: JVal)"
-                    "and private colAction (j: JVal)"
-                    "and private colBinding<'T> (colT: JVal -> Result<'T, DecodeError list>) (j: JVal)"
-                    "let __c0 = cReq \"children\" __fs (cList colNode)" ] do
+              for opened in
+                  [ "type CollectingDecoders ="
+                    "and private colNode (__ov: CollectingDecoders) (j: JVal)"
+                    "let __c0 = cReq \"children\" __fs (cList (__ov.Node __ov))"
+                    "let collectingDecoders: CollectingDecoders =" ] do
                   Expect.stringContains
                       collecting
-                      closed
-                      "the collecting decoders no longer reach this nested type through a private decoder of their own, so a host may now supply its policy there: re-open the layering (fuaran#2255)"
+                      opened
+                      "the collecting decoders no longer thread a host-replaceable record of decoders to every depth (Core Phase 541), so a host's decoder at a nested type is unreachable again: the layering fuaran#2255 can build on is closed"
+
+              Expect.isFalse
+                  (collecting.Contains "(cList colNode)")
+                  "a container's children are read through a private decoder again, past any host override"
           }
 
           // The AiTools binding-slot table waits on the same generator, for a

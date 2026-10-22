@@ -376,7 +376,7 @@ let tests =
                   | other -> failtestf "expected exactly one law starting '%s', found %d" prefix (List.length other)
 
               let childBlind = byPrefix "canHold is child-blind"
-              let invariant = byPrefix "applyContained preserves the container invariant"
+              let invariant = byPrefix "the contained apply preserves the container invariant"
               let adequacy = byPrefix "sample adequacy"
 
               Expect.isTrue childBlind.Passed (sprintf "child-blindness: %A" childBlind.Counterexample)

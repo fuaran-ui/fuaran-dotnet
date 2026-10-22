@@ -621,8 +621,10 @@ let census: (string * Adoption) list =
       NotUsed
           "Fuaran.Core.Propagation's incremental evaluator seam (Propagation.eval / evalFrom) — Renderer.Core's BindingGraph references Fuaran.Core.Propagation for the dirty set only and hands it no evaluator; the tier's reactivity runs on its own stores (see propagationEvalLaws)"
       // Arrived with the 0.32.0 pin raise (Phase 1874): the prior-aware evaluator form
-      // (`Propagation.evalWith` / `evalFromWith`). No subject here, for the reason the row above gives.
-      "Conformance.propagationEvaluatorLawsWith",
+      // (`Propagation.evalWith` / `evalFromWith`), renamed from `…LawsWith` to its own stem at Core
+      // 0.39 (Core Phase 507, D127) and taken under the new name at the 0.40.2 raise (Phase 2286).
+      // No subject here, for the reason the row above gives.
+      "Conformance.propagationPriorLawsAt",
       NotUsed
           "Fuaran.Core.Propagation's prior-aware evaluator seam (Propagation.evalWith / evalFromWith) — nothing in this tier hands Propagation an evaluator (see propagationEvaluatorLawsAt)"
       // Arrived with the 0.32.0 pin raise (Phase 1874), in Fuaran.Core.DataFrame.Conformance. Its
@@ -733,14 +735,12 @@ let census: (string * Adoption) list =
       "Conformance.digestLaws",
       NotUsed
           "Fuaran.Core.Ops.Diff's subtree digests and change partition — the tier diffs through `Diff.toOpsContainedWith` and classifies through `Diff.changes` (Phase 2304) but computes no subtree digest (WireProfile's Diff is Fuaran.Core.Idl's IDL diff, a different module)"
-      // Phase 2304 — `TreeDiff.diff` IS `Diff.changes`, but this family holds the classification to
-      // the UNCONTAINED `toOpsWith` script under plain `applyAll`, which this tier does not emit and
-      // its witness cannot run (a survivor that turns from leaf to container takes its inserts before
-      // the witness can give it children). The classification is held to the CONTAINED script the
-      // tier does emit, over the corpus, in `Fuaran.UI.OpStream.Tests` (TreeDiffTests).
-      "Conformance.changeLaws",
+      // `Conformance.changeLaws` left the kit at Core 0.39 (its checks became a unit test of
+      // `Diff.changes`), and its row left here with the 0.40.2 raise (Phase 2286). The family Core
+      // added in its place is keyed, and this tier's diff is not:
+      "Conformance.keyedDiffLawsAt",
       NotUsed
-          "`Diff.changes` held to `Diff.toOpsWith`'s UNCONTAINED script under plain `applyAll` — the tier classifies through `Diff.changes` (TreeDiff, Phase 2304) but diffs through `toOpsContainedWith` (TreeOpDiff), and this witness's `withChildren` is a no-op on a leaf, so the uncontained script's insert under a leaf-turned-container is dropped and the family's landing law cannot run here; the classification is held to the contained script over the corpus instead (Fuaran.UI.OpStream.Tests, TreeDiffTests)"
+          "`Diff.toOpsWith` under `OpScope.keyed` over a domain's keyed positions — the tier diffs under `OpScope.contained` (TreeOpDiff, Phase 2304), with no keyed-position scope, so there is no keyed diff to hold to the keyed engine"
       "Conformance.introducedLaws",
       NotUsed
           "Fuaran.Core.Validator's introduced-findings gate (introduced / verdict / gate under a GatePolicy) — RecipeCertification uses a Core Validator.RuleRegistry only as a validity oracle, and DagMerge.mergeGated gates through the tier's own validator, so nothing here calls the Core gate"
@@ -778,7 +778,8 @@ let census: (string * Adoption) list =
       NotUsed
           "a stored Core effect-capture journal under a declared EncodingProfile — no project here journals a capture (see keyedCaptureLaws)"
       // ---- arriving with the Core 0.35.2 raise (Phase 2039) ----
-      "EncodingProfileVectors.storedCodecLaws",
+      // Spelled `…At` since Core 0.39 (Core Phase 507), taken under that name at the 0.40.2 raise.
+      "EncodingProfileVectors.storedCodecLawsAt",
       NotUsed
           "a persisted corpus of canonical texts written through a Core Codec<'T> under a declared EncodingProfile — no project here declares an EncodingProfile or keys a store on a Core codec's canonical text (see EncodingProfileVectors.laws)"
       // ---- the families the 0.36.0 pin raise brought (Core 0.36.0) ----
@@ -835,9 +836,17 @@ let census: (string * Adoption) list =
       "Conformance.columnOwnershipLawsWith",
       NotUsed
           "the ownership law over a caller's own column draw — no project here borrows or adopts column storage (see columnOwnershipLaws)"
-      "Conformance.codecLaws",
+      // Spelled `…At` since Core 0.39 (Core Phase 507), taken under that name at the 0.40.2 raise.
+      "Conformance.codecLawsAt",
       NotUsed
           "the premises a domain owes the Codec blocks for a Core Codec<'T> it builds — no project here builds a Core Codec<'T>; the tier's wire codecs are its generated layer and hand encoders, certified by the wire-format conformance corpus"
+      // ---- arriving with the Core 0.40.2 raise (Phase 2286) ----
+      "Conformance.footprintInLawsAt",
+      NotUsed
+          "the base-aware footprint projection a domain folds with when it holds the tree (`footprintIn`) — the tier ships only the pure `TreeOp` projection (TreeOpFootprint), which footprintLawsAt certifies; it declares no base-aware one"
+      "Conformance.seamRefusalLaws",
+      NotUsed
+          "the capability / pipeline / query / field-change / rejection seams' refusal documents read through Core's derived seam codecs — no project here reads or writes one of those seam documents; the tier's design-provider seam has its own codec, certified by the corpus's design/ family"
       // ---- the compute kit's families from its own ids (Fuaran.Compute 0.36.0 / 0.37.0) ----
       "Conformance.plannerLaws",
       NotUsed
@@ -1409,17 +1418,25 @@ let tests =
               // Since 0.32.0 each of the kit's two packages declares its own share of the census
               // (fuaran-core#257), and the whole is their composition — Core's suite reads it the
               // same way (`KitRoster.census`).
+              // Since Core 0.39 (Core Phase 507) a family's pinned-default SPELLINGS (`reconcileLaws`
+              // for `reconcileLawsWith`, …) are public entry points the census keys under the `…With`
+              // id alone, so reflection meets them and the kit declares them as spellings of a row.
               let kitDeclared =
-                  Fuaran.Core.SampleAdequacy.census @ Fuaran.Compute.DataFrameFamilies.census
-                  |> List.map fst
+                  (Fuaran.Core.SampleAdequacy.census @ Fuaran.Compute.DataFrameFamilies.census
+                   |> List.map fst)
+                  @ (Fuaran.Core.Families.families |> List.collect (fun f -> f.Spellings))
                   |> Set.ofList
 
-              Expect.isEmpty
+              // `Expect.equal` against the empty list rather than `Expect.isEmpty`, so a failure
+              // NAMES the families (isEmpty reports only that the list was not empty).
+              Expect.equal
                   (Set.difference reflected kitDeclared |> Set.toList)
+                  []
                   "families found by reflection that the kit's own SampleAdequacy census omits"
 
-              Expect.isEmpty
+              Expect.equal
                   (Set.difference kitDeclared reflected |> Set.toList)
+                  []
                   "families the kit's own SampleAdequacy census names that reflection does not find"
 
           testCase "every Adopted row names a test that still exists, reached through a referenced entry point"
