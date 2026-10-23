@@ -143,6 +143,31 @@ let private leavesIn (lane: Lanes.Lane) =
     |> List.map (fun flat -> (String.concat "." flat.name).Split('.') |> Array.last)
     |> List.sort
 
+/// The selector exercised the way the refusal test exercises it. Phase 2418: this used to call
+/// `Lanes.applyTo`, whose banner then landed in every full-lane gate log and named the wrong lane.
+/// It now routes the banner into a list, and asserts the banner was announced there instead.
+let private refuseWhollySlowTree () =
+    let announced = ResizeArray<string>()
+
+    try
+        Lanes.applyWith announced.Add Lanes.Fast whollySlowTree |> ignore
+    finally
+        Expect.equal (List.ofSeq announced) [ Lanes.banner Lanes.Fast ] "the banner went to the given writer"
+
+/// Run `f` with stdout captured, returning what it wrote. Sequenced by its caller, so no other test
+/// writes into the capture.
+let private stdoutOf (f: unit -> unit) : string =
+    let original = System.Console.Out
+    use capture = new StringWriter()
+    System.Console.SetOut capture
+
+    try
+        f ()
+    finally
+        System.Console.SetOut original
+
+    capture.ToString()
+
 [<Tests>]
 let filterTests =
     testList
@@ -187,9 +212,7 @@ let filterTests =
           test "a narrow lane that admits NOTHING raises — it never runs zero tests and exits 0" {
               // The strongest possible green from a suite that proved nothing is the one answer a
               // lane must never give, so `applyTo` refuses the shape rather than returning it.
-              Expect.throws
-                  (fun () -> Lanes.applyTo Lanes.Fast whollySlowTree |> ignore)
-                  "an empty narrow lane is refused"
+              Expect.throws refuseWhollySlowTree "an empty narrow lane is refused"
 
               // ...and the full lane still runs it, because `full` never filters.
               Expect.equal
@@ -206,6 +229,23 @@ let filterTests =
               Expect.equal (Lanes.parse " FAST ") Lanes.Fast "recognised names are trimmed + case-insensitive"
               Expect.equal (Lanes.parse "pure") Lanes.Pure "pure"
               Expect.equal (Lanes.parse "full") Lanes.Full "full"
+          }
+
+          // Phase 2418. Sequenced, so the stdout capture sees only this test's writes.
+          testSequenced
+          <| test "exercising the selector writes NO lane banner to the gate's output" {
+              let written =
+                  stdoutOf (fun () -> Expect.throws refuseWhollySlowTree "an empty narrow lane is refused")
+
+              Expect.isFalse
+                  (written.Contains "== test lane:")
+                  $"the selector test printed a lane banner into the gate log: %s{written.Trim()}"
+
+              // ...while the banner a REAL lane run prints is unchanged.
+              Expect.equal
+                  (Lanes.banner Lanes.Fast)
+                  "== test lane: Fast (set by FUARAN_TEST_LANE; releases cite the full lane only) =="
+                  "the entry point's banner text"
           } ]
 
 // ---------------------------------------------------------------------------

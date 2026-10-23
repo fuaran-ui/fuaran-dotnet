@@ -79,6 +79,10 @@ let keepFor (lane: Lane) (parts: string list) : bool =
     | Fast
     | Pure -> not (List.contains slowLabel parts)
 
+/// The line a narrow lane announces at a suite's entry point.
+let banner (lane: Lane) : string =
+    sprintf "== test lane: %A (set by FUARAN_TEST_LANE; releases cite the full lane only) ==" lane
+
 /// The one place a suite's entry point applies the lane. `full` returns the discovered tree
 /// untouched — no filter is constructed at all — so the ship lane cannot differ from the pre-phase
 /// run by so much as a traversal.
@@ -88,11 +92,14 @@ let keepFor (lane: Lane) (parts: string list) : bool =
 /// whose every test acquired a slow marker, would otherwise report the strongest possible green
 /// having proved nothing. `run.ps1` and `Build.fs` refuse the same shape one level up, at the
 /// roster.
-let applyTo (lane: Lane) (tests: Test) : Test =
+///
+/// The banner goes to `announce`, so a test can exercise the selector without writing a lane banner
+/// into the gate's output (Phase 2418); `applyTo` is the entry points' form, printing to stdout.
+let applyWith (announce: string -> unit) (lane: Lane) (tests: Test) : Test =
     match lane with
     | Full -> tests
     | _ ->
-        printfn "== test lane: %A (set by FUARAN_TEST_LANE; releases cite the full lane only) ==" lane
+        announce (banner lane)
         let laned = Test.filter "." (keepFor lane) tests
 
         if List.isEmpty (Test.toTestCodeList laned) then
@@ -101,3 +108,6 @@ let applyTo (lane: Lane) (tests: Test) : Test =
                 lane
 
         laned
+
+/// A suite entry point's form: the banner, when a narrow lane prints one, goes to stdout.
+let applyTo (lane: Lane) (tests: Test) : Test = applyWith (printfn "%s") lane tests
