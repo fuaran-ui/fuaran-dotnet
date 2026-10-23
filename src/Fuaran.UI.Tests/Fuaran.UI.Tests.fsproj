@@ -491,6 +491,7 @@
     <Compile Include="SelectValueRuleTests.fs" />
     <!-- Phase 2157 - a Warning / Critical callout nothing announces: FUARAN165. -->
     <Compile Include="SilentCalloutTests.fs" />
+    <Compile Include="GateReadsCensusTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
