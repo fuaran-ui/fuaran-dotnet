@@ -1,0 +1,24 @@
+{
+  "kind": "gateReads",
+  "_": "What this repository's gate reads beyond the code-shaped default (sources, tests, proofs, build and project files, the gate scripts). A commit touching only files outside the union is gate-inert, and a green run may stand across it. The gate is run.ps1: the suites in the test-suites.json roster, the Fable stage, the validator-coverage check, the defect-code check, the browser-script harness and the renderer writer's self-test, and the generated-artefact drift checks (Build.fsproj -- DriftChecks, which reconciles the authoring pack under docs/). No stage sweeps the tracked set. The entries are those stages' inputs and the documents the suites open; the wire-format corpus most suites read lives outside this repository. Checked, not trusted: src/Fuaran.UI.Tests/GateReadsCensusTests.fs.",
+  "reads": [
+    "SANITIZATION.md",
+    "docs/AI_AUTHORING_GUIDE.md",
+    "docs/DECODER-ROBUSTNESS.md",
+    "docs/core-conformance.md",
+    "docs/prompt-pack/**",
+    "docs/prompt-pack-lenient/**",
+    "docs/prompt-pack-variants/**",
+    "docs/tools/**",
+    "proofs.json",
+    "scripts/**",
+    "test-suites.json",
+    "validator-coverage.json"
+  ],
+  "notRead": [
+    {
+      "path": "samples/catalog/**",
+      "reason": "named by Build.fs's Catalog target (a Fable build of the catalog sample), which the gate never runs; the gate runs only Build.fsproj's DriftChecks, and the catalog's F# sources are built as a solution project"
+    }
+  ]
+}
