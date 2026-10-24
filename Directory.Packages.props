@@ -28,8 +28,10 @@
          and compute 0.40.0 (fuaran#2226 adopts it: 0.9.0's packages call Core 0.34.0 members 0.37.0
          removed); 0.11.0 is the substrate raise to Fuaran.Core 0.40.2 and compute 0.41.0
          (fuaran#2286 adopts it: 0.10.x's assemblies bind Fuaran.Core.Canon), which the pins here
-         meet. One property per producing repository, as above. -->
-    <FuaranProgramVersion>0.11.0</FuaranProgramVersion>
+         meet. 0.13.0 (fuaran#2432, 2026-10-24; 0.12.x skipped here) carries the empty-name refusals
+         (fuaran#2213, #2436), the wire limits and the windowed, quantity and floor/Required policy
+         clauses, on the same substrate. One property per producing repository, as above. -->
+    <FuaranProgramVersion>0.13.0</FuaranProgramVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="FSharp.Core" Version="10.1.300" />

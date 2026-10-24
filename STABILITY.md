@@ -8133,6 +8133,31 @@ at enumerations, JSON scalars and the generic `Binding` union, which the record 
 no null. `GeneratedLayerTests` measures it over the corpus and pins each closed position, so the layering re-opens when
 the generator reaches them. Hand-written decoder lines: `JsonDecode.fs` 10,304 → 10,307 (a corrected comment).
 
+### What rides this slot — Phase 2432 (the program adapters move to Fuaran.Program 0.13.0)
+
+**Class: BREAKING (a dependency floor crosses the bounded program core's breaking cuts); no `Fuaran.UI.*` surface
+moves.** The class the slot already carries, so the number does not move. The surface guard renders the packed
+`Fuaran.UI.Program` and `Fuaran.UI.Program.Server` identically at the 0.11.0 and the 0.13.0 pin (200 and 53 tokens,
+"Surface unchanged"); what moves is the dependency each nuspec names.
+
+- **Pin.** `FuaranProgramVersion` 0.11.0 → 0.13.0 (0.12.x skipped here). A consumer of either adapter inherits the
+  Program 0.13.0 floor and what Program's `STABILITY.md` lists for 0.12.0 and 0.13.0: `ServerConstraintClause`,
+  `ServerConstraintDefect` and `CoverageFinding` gain cases, `DemandedProjection`, `HostCoverage`, `LeafDeclaration`,
+  `ServerEffectRegistry` and `DurableServices` gain fields, `RefusalClass` gains `malformed-json` and
+  `limit-exceeded`, and the demanded document moves to version 14 with a required `quantities` member.
+- **Decode narrows.** The program wire's handler and invocation decoders refuse an empty `RunQuery` name, an empty
+  `Notify` channel, an empty invocation `endpoint` and an empty `nodeId` on `missing-member`; a document past the
+  program wire's stated limits is refused `limit-exceeded`.
+- **Signed demanded envelopes re-sign.** An envelope signed under document version 11 reports `Unreadable` drift until
+  it is signed again; the K7 pin in `Fuaran.UI.Program.Bounded.Tests` was re-signed over the same tree.
+
+**What a consumer does.** Take the new cases in any exhaustive `match` over those unions, name the new fields in a
+full-literal construction (or build from the defaults Program ships), and re-sign stored envelopes.
+
+**Certified by** the program wire specification's corpus, run by `Fuaran.UI.Program.Server.Tests` (which now refuses
+the four empty-member reject vectors), and the demanded corpus at version 14, emitted by
+`DemandedCorpus.emit` and compared with the committed copy.
+
 ---
 
 

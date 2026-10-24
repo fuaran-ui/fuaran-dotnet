@@ -177,6 +177,7 @@ let harvestTests =
                     Iterations = []
                     OpaqueLeaves = []
                     Values = []
+                    Quantities = []
                     Server =
                       Some
                           { Effects = []

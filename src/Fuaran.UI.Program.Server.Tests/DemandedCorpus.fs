@@ -96,7 +96,7 @@ let private emptyServer =
 let private docWith (server: string) =
     "{\"kind\":\"demanded\",\"version\":"
     + v
-    + ",\"effects\":[],\"hostCalls\":[],\"stateNamespaces\":[],\"opaqueHandlers\":[],\"iterations\":[],\"opaqueLeaves\":[],\"values\":[],\"server\":"
+    + ",\"effects\":[],\"hostCalls\":[],\"stateNamespaces\":[],\"opaqueHandlers\":[],\"iterations\":[],\"opaqueLeaves\":[],\"values\":[],\"quantities\":[],\"server\":"
     + server
     + "}"
 
@@ -323,7 +323,31 @@ let private renderTier (tier: ServerDemand option) =
                             + "}"
                         | ServerConstraintClause.Ceiling bytes ->
                             "{\"clause\":\"ceiling\",\"bytes\":" + string bytes + "}"
-                        | ServerConstraintClause.Label label -> "{\"clause\":\"label\",\"label\":" + q label + "}")
+                        | ServerConstraintClause.Label label -> "{\"clause\":\"label\",\"label\":" + q label + "}"
+                        | ServerConstraintClause.PerWindow(count, window) ->
+                            "{\"clause\":\"perWindow\",\"count\":"
+                            + string count
+                            + ",\"window\":"
+                            + string window
+                            + "}"
+                        | ServerConstraintClause.QuantityPerWindow(argument, quantity, window) ->
+                            "{\"clause\":\"quantityPerWindow\",\"argument\":"
+                            + q argument
+                            + ",\"quantity\":"
+                            + string quantity
+                            + ",\"window\":"
+                            + string window
+                            + "}"
+                        | ServerConstraintClause.Dwell window ->
+                            "{\"clause\":\"dwell\",\"window\":" + string window + "}"
+                        | ServerConstraintClause.AtLeast(argument, limit) ->
+                            "{\"clause\":\"atLeast\",\"argument\":"
+                            + q argument
+                            + ",\"limit\":"
+                            + string limit
+                            + "}"
+                        | ServerConstraintClause.Required argument ->
+                            "{\"clause\":\"required\",\"argument\":" + q argument + "}")
                     |> arr
 
                 "{\"capability\":" + q c.Capability + ",\"clauses\":" + clauses + "}")

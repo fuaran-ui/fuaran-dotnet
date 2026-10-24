@@ -51,6 +51,13 @@
 /// canonical bytes under Core's hash; the falsifier it guards (the two hashes
 /// disagreeing over one byte string) is unchanged, and the old address is in this
 /// file's history should the ruling ever be read back.
+///
+/// fuaran#2432 is a version move again: Fuaran.Program 0.13.0 moved the document
+/// to version 14 (version 12 the windowed clauses, Program Phase 2260; version 13
+/// the declared quantities, Phase 2261; version 14 the floor and Required
+/// clauses, Phase 2262), so the version-11 pin reported `Unreadable` drift, and
+/// the envelope below was signed afresh by the 0.13.0 code over the SAME tree
+/// with a new key whose private half was never kept. The tree hash is unchanged.
 module Fuaran.UI.Program.Bounded.Tests.PreCutEnvelopeTests
 
 open System
@@ -81,22 +88,22 @@ let private tree: Node<obj> =
 let private PreCutTreeHash =
     "sha256:fd89e42469a02b9f0dc8cf4c29fd2267d24f0b82426e9268ac907d3eedaf4e87"
 
-/// The signer's PUBLIC key (SubjectPublicKeyInfo, P-256), as the fuaran#2300
+/// The signer's PUBLIC key (SubjectPublicKeyInfo, P-256), as the fuaran#2432
 /// re-pin exported it. The private half was never kept.
 [<Literal>]
 let private PublicKey =
-    "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEVDVdnUzhW7W3QjKqKwVek+3Du6VGlQ2hBtylwERsrlwTlMvcA1iruJtnQWmBYnB89Xgl+0yZ5uUsZ1ppo1wCVg=="
+    "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEv575AzQ3tSHMQi1jB67OnDMzM3SxoW/FGdxt06V/FgZNPXg/Qir9d1u8sxxNNMYpeyZ2yWMGFwyjILF1tyDL8A=="
 
-/// The signed envelope, byte for byte: the tree hash above, the version-11
-/// demanded document, and the fuaran#2300 signature over the two.
+/// The signed envelope, byte for byte: the tree hash above, the version-14
+/// demanded document, and the fuaran#2432 signature over the two.
 [<Literal>]
 let private PreCutEnvelope =
-    """{"kind":"signed-demanded","version":1,"treeHash":"sha256:fd89e42469a02b9f0dc8cf4c29fd2267d24f0b82426e9268ac907d3eedaf4e87","envelope":"{\"kind\":\"demanded\",\"version\":11,\"effects\":[\"Navigate\"],\"hostCalls\":[],\"stateNamespaces\":[],\"opaqueHandlers\":[],\"iterations\":[],\"opaqueLeaves\":[],\"values\":[],\"server\":null}","keyId":"k7-2300","signature":"RHQuiSm+cfIYcu3jpc9Y3Ydc5irZuGpoRi39dSW3gRD1cHNsSgBzTigxr4AKpCeCIB4IiYuOzvY4chqZa9dA/g=="}"""
+    """{"kind":"signed-demanded","version":1,"treeHash":"sha256:fd89e42469a02b9f0dc8cf4c29fd2267d24f0b82426e9268ac907d3eedaf4e87","envelope":"{\"kind\":\"demanded\",\"version\":14,\"effects\":[\"Navigate\"],\"hostCalls\":[],\"stateNamespaces\":[],\"opaqueHandlers\":[],\"iterations\":[],\"opaqueLeaves\":[],\"values\":[],\"quantities\":[],\"server\":null}","keyId":"k7-2432","signature":"JNhvL1m6wMjaGcDUAHX6OBRybHPIMEDlcgNI5f99TvWHtsLHNqa1aLis9OQK1yoBTfMabPMLbTrgqGOtIDG5fw=="}"""
 
 let private publicEntry () : KeyDirectoryEntry =
     let key = ECDsa.Create()
     key.ImportSubjectPublicKeyInfo(Convert.FromBase64String PublicKey) |> ignore
-    EcdsaP256.keyEntry "k7-2300" key
+    EcdsaP256.keyEntry "k7-2432" key
 
 [<Tests>]
 let tests =
