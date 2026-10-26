@@ -85,6 +85,9 @@ type private Cell =
 let private encodeCell (v: objnull) : Cell =
     match v with
     | null -> Omit
+    // Phase 2006: an exact decimal crosses as its canonical text, exactly the bytes the bare
+    // string it replaced in a Transform row wrote. A decoded row reads it back as text.
+    | :? Fuaran.UI.HostPrelude.DecimalCell as d -> Wire(JStr d.Text)
     | :? string as s -> Wire(JStr s)
     | :? bool as b -> Wire(JBool b)
     | :? float as f -> Wire(JFloat f)

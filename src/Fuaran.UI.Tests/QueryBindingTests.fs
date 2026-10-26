@@ -54,10 +54,11 @@ let private dashboard (id: string) (children: Node<obj> list) : Node<obj> =
 let private relationTests =
     testList
         "compatible relation"
-        [ testCase "numeric sink accepts int / float only"
+        [ testCase "numeric sink accepts int / float / decimal only"
           <| fun _ ->
               Expect.isTrue (compatible FloatType BindingSinkClass.Numeric) "float → numeric"
               Expect.isTrue (compatible IntType BindingSinkClass.Numeric) "int → numeric"
+              Expect.isTrue (compatible DecimalType BindingSinkClass.Numeric) "decimal → numeric (Phase 2006)"
               Expect.isFalse (compatible StringType BindingSinkClass.Numeric) "string ✗ numeric"
               Expect.isFalse (compatible BoolType BindingSinkClass.Numeric) "bool ✗ numeric"
               Expect.isFalse (compatible DateType BindingSinkClass.Numeric) "date ✗ numeric"
@@ -93,9 +94,10 @@ let private relationTests =
 
           testCase "default-deny — every ColumnType × sink pairing not allowed is false"
           <| fun _ ->
-              // Exactly 14 of the 10×4 = 40 pairings are compatible; the rest deny. Since Core 0.37.0 a
+              // Exactly 15 of the 10×4 = 40 pairings are compatible; the rest deny. Since Core 0.37.0 a
               // timestamp type carries its unit and `ColumnType.all` names all four, so the timestamp's
-              // two pairings (temporal, categorical) count once per unit: 8 + 3×2.
+              // two pairings (temporal, categorical) count once per unit: 9 + 3×2. Phase 2006 added the
+              // ninth single pairing, decimal → numeric.
               let allPairs =
                   [ for t in ColumnType.all do
                         for s in
@@ -105,14 +107,14 @@ let private relationTests =
                               BindingSinkClass.Boolean ] -> compatible t s ]
 
               Expect.equal (List.length ColumnType.all) 10 "ten column types, the timestamp at four units"
-              Expect.equal (allPairs |> List.filter id |> List.length) 14 "exactly 14 compatible pairings"
+              Expect.equal (allPairs |> List.filter id |> List.length) 15 "exactly 15 compatible pairings"
 
           testCase "compatibleColumnTypes is derived from compatible (one source of truth)"
           <| fun _ ->
               Expect.equal
                   (compatibleColumnTypes BindingSinkClass.Numeric)
-                  [ IntType; FloatType ]
-                  "numeric ← int, float"
+                  [ IntType; FloatType; DecimalType ]
+                  "numeric ← int, float, decimal"
 
               Expect.equal (compatibleColumnTypes BindingSinkClass.Boolean) [ BoolType ] "boolean ← bool" ]
 

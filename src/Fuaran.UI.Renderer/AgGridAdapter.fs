@@ -171,6 +171,14 @@ let private coerceToCellShape (currentVal: CellValue) (newVal: obj) : CellValue 
         match newVal with
         | :? System.DateTimeOffset as d -> CellValue.Date d
         | _ -> CellValue.Text(string newVal)
+    // Phase 2006 — an edited decimal stays exact: the entry is read as decimal text, never
+    // parsed to a float, and an entry outside the grammar is the text it was.
+    | CellValue.Decimal _ ->
+        let s = string newVal
+
+        match Fuaran.Core.DecimalText.tryCanonical s with
+        | Some canonical -> CellValue.Decimal canonical
+        | None -> CellValue.Text s
     | _ -> CellValue.Text(string newVal)
 
 // ─── Per-column AG Grid columnDef builder ───────────────────────────
@@ -233,6 +241,8 @@ let private buildColumnDef<'Msg>
             | CellValue.Text s -> box s
             | CellValue.Bool b -> box b
             | CellValue.Date d -> box d
+            // The text, for AG's filter and its exports; the ORDER is the runtime's (below).
+            | CellValue.Decimal s -> box s
             | CellValue.Empty -> null
 
     let valueFormatter (p: obj) : string =
@@ -459,6 +469,7 @@ let private buildColumnDef<'Msg>
                 | CellValue.Text s -> commit rowIndex field (box s)
                 | CellValue.Bool b -> commit rowIndex field (box b)
                 | CellValue.Date d -> commit rowIndex field (box d)
+                | CellValue.Decimal s -> commit rowIndex field (box ({ Text = s }: Fuaran.UI.HostPrelude.DecimalCell))
                 | CellValue.Empty -> ()
 
                 false

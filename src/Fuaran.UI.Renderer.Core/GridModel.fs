@@ -65,17 +65,27 @@ let sortDescriptorOfJVal (jv: JVal) : (int * Fuaran.UI.Types.SortDirection) opti
          | _ -> None)
     | _ -> None
 
+// A decimal ranks beside the floats, after them: a column is one type in practice, and
+// ordering the two populations against each other would need a float, which is the one
+// thing a decimal's order must never go through.
 let private cellSortRank (v: CellValue) : int =
     match v with
     | CellValue.Numeric _ -> 0
-    | CellValue.Bool _ -> 1
-    | CellValue.Date _ -> 2
-    | CellValue.Text _ -> 3
-    | CellValue.Empty -> 4
+    | CellValue.Decimal _ -> 1
+    | CellValue.Bool _ -> 2
+    | CellValue.Date _ -> 3
+    | CellValue.Text _ -> 4
+    | CellValue.Empty -> 5
 
 let private compareCells (a: CellValue) (b: CellValue) : int =
     match a, b with
     | CellValue.Numeric x, CellValue.Numeric y -> compare x y
+    // Phase 2006: exact numeric order over the canonical text — never lexical ("10" after
+    // "9"), never via a float. A text outside the decimal grammar cannot reach here from the
+    // typed path; should a host build one by hand, it orders ordinally rather than throwing.
+    | CellValue.Decimal x, CellValue.Decimal y ->
+        Fuaran.Core.DecimalText.compare x y
+        |> Option.defaultWith (fun () -> System.String.CompareOrdinal(x, y))
     | CellValue.Bool x, CellValue.Bool y -> compare x y
     | CellValue.Date x, CellValue.Date y -> compare x y
     | CellValue.Text x, CellValue.Text y -> System.String.CompareOrdinal(x.ToLowerInvariant(), y.ToLowerInvariant())

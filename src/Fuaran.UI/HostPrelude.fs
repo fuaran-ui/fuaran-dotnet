@@ -48,15 +48,33 @@ type FileSelection =
       MimeType: string
       Ref: FileRef }
 
+/// An exact decimal as a ROW carries it (Phase 2006): the boxed value a typed
+/// row-producing path (a `Binding.Transform` over a decimal column) puts in a
+/// `Row`'s cell, so the row projection can tell an exact number from text.
+/// `Text` is Core's canonical decimal text (`Fuaran.Core.DecimalText`), the same
+/// text the cell crosses the wire as: the row codec writes it as that string, and
+/// its string form (`ToString`, and so `String(v)` under Fable) IS that text, so a
+/// reader that only wants the cell's text reads exactly what it read before.
+type DecimalCell =
+    { Text: string }
+
+    override this.ToString() = this.Text
+
 /// What a single cell of grid data is, after a column's `Value` projection runs
 /// (closure interior — never serialises, so no codec). Pre-formatted strings
 /// break numeric sort; use `Numeric` + a `CellFormat` instead.
+///
+/// `Decimal` (Phase 2006) is an EXACT number carried as Core's canonical decimal
+/// text, never a float: it sorts by numeric order (`DecimalText.compare`), formats
+/// from its digits, and becomes a float only where a chart maps it to a screen
+/// coordinate.
 [<RequireQualifiedAccess>]
 type CellValue =
     | Numeric of float
     | Text of string
     | Bool of bool
     | Date of System.DateTimeOffset
+    | Decimal of string
     | Empty
 
 /// ARIA role — a closed convenience list plus `Custom` verbatim passthrough
@@ -314,12 +332,17 @@ module RowProjection =
     /// than a `| null ->` arm: this file compiles under F# 10 nullness, where
     /// `obj` does not admit `null` (FS3261), and the alternative is a file-wide
     /// `#nowarn` on a SHIPPED source file to state something one call can say.
+    ///
+    /// A `DecimalCell` is `Decimal` (Phase 2006): the typed path put it there, so
+    /// the exact text is kept. A bare string stays `Text` — a decimal that reached
+    /// the row untyped (a host-fed feed, a decoded wire row) is not guessed at.
     let ofObj (v: obj) : CellValue =
         if System.Object.ReferenceEquals(v, null) then
             CellValue.Empty
         else
 
             match v with
+            | :? DecimalCell as d -> CellValue.Decimal d.Text
             | :? string as s -> CellValue.Text s
             | :? bool as b -> CellValue.Bool b
             | :? float as f -> CellValue.Numeric f
@@ -343,6 +366,7 @@ module RowProjection =
         | CellValue.Numeric f -> string f
         | CellValue.Bool b -> (if b then "true" else "false")
         | CellValue.Date d -> d.ToString("o")
+        | CellValue.Decimal s -> s
         | CellValue.Empty -> ""
 
 /// The wire-survivability failure a DECODED host-only projection raises when a
