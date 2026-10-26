@@ -15,6 +15,8 @@
          mean two different things in two suites. Must compile FIRST: the marked lists below apply
          it. -->
     <Compile Include="..\..\tests\lanes\Lanes.fs" Link="Lanes.fs" />
+    <!-- Phase 2393 - the ONE temp-directory helper, DECLARED ONCE at tests/temp-dir/TempDir.fs. -->
+    <Compile Include="..\..\tests\temp-dir\TempDir.fs" Link="TempDir.fs" />
     <!-- Phase 1691 — the ONE enum case-to-wire-token table + its artefact renderer, DECLARED ONCE
          at tests/enum-tokens/EnumTokens.fs and linked (not copied) into the emitter here and the
          checker in Fuaran.UI.Tests, so the bytes this project WRITES and the bytes that project

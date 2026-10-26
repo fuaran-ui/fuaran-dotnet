@@ -29,48 +29,41 @@ module Fuaran.UI.JsonDecode.Tests.CorpusEmitEolTests
 
 open System.IO
 open Expecto
+open Fuaran.UI.Testing
 
 [<Tests>]
 let corpusEmitLineEndings =
     testList
         "Corpus --emit-corpus — line endings"
         [ testCase "every emitted file carries LF bytes only" (fun () ->
-              let dir =
-                  Path.Combine(Path.GetTempPath(), "fuaran-corpus-eol-" + Path.GetRandomFileName())
+              use tmp = TempDir.create "corpus-eol"
+              let dir = tmp.Path
 
-              Directory.CreateDirectory dir |> ignore
+              Corpus.emit dir
 
-              try
-                  Corpus.emit dir
+              let emitted =
+                  Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories) |> List.ofSeq
 
-                  let emitted =
-                      Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories) |> List.ofSeq
+              // The probe must be capable of seeing something. An emit that
+              // silently produced nothing would otherwise pass this test
+              // vacuously — the exact shape of green that hides a defect.
+              Expect.isGreaterThan
+                  (List.length emitted)
+                  100
+                  "the emit produced almost nothing — the byte assertion below would pass vacuously"
 
-                  // The probe must be capable of seeing something. An emit that
-                  // silently produced nothing would otherwise pass this test
-                  // vacuously — the exact shape of green that hides a defect.
-                  Expect.isGreaterThan
-                      (List.length emitted)
-                      100
-                      "the emit produced almost nothing — the byte assertion below would pass vacuously"
+              let offenders =
+                  emitted
+                  |> List.choose (fun p ->
+                      let crs = File.ReadAllBytes p |> Array.filter (fun b -> b = 13uy) |> Array.length
 
-                  let offenders =
-                      emitted
-                      |> List.choose (fun p ->
-                          let crs = File.ReadAllBytes p |> Array.filter (fun b -> b = 13uy) |> Array.length
+                      if crs > 0 then
+                          Some(Path.GetRelativePath(dir, p), crs)
+                      else
+                          None)
 
-                          if crs > 0 then
-                              Some(Path.GetRelativePath(dir, p), crs)
-                          else
-                              None)
-
-                  Expect.isEmpty
-                      offenders
-                      (sprintf
-                          "--emit-corpus wrote CR bytes. Git's eol=lf normalisation hides this from `git status`, so it surfaces only in a consumer that byte-compares the working tree. A new emitted artefact needs its writer pinned to LF (Utf8JsonWriter: NewLine = \"\\n\"). Offenders (file, CR count): %A"
-                          offenders)
-              finally
-                  try
-                      Directory.Delete(dir, true)
-                  with _ ->
-                      ()) ]
+              Expect.isEmpty
+                  offenders
+                  (sprintf
+                      "--emit-corpus wrote CR bytes. Git's eol=lf normalisation hides this from `git status`, so it surfaces only in a consumer that byte-compares the working tree. A new emitted artefact needs its writer pinned to LF (Utf8JsonWriter: NewLine = \"\\n\"). Offenders (file, CR count): %A"
+                      offenders)) ]

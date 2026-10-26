@@ -278,31 +278,27 @@ let harnessMechanics =
               // Exercised here rather than only when a real find occurs: the
               // repro writer runs exactly when something has already gone wrong,
               // which is the worst possible moment to discover a defect in it.
-              let dir =
-                  Path.Combine(Path.GetTempPath(), "fuaran-fuzz-repro-" + Guid.NewGuid().ToString("N"))
+              use tmp = TempDir.create "fuzz-repro"
+              let dir = tmp.Path
 
-              try
-                  let c: DecoderFuzz.Counterexample =
-                      { Subject = "decodeNodeObj"
-                        Iteration = 42
-                        Seed = 7UL
-                        ConfigName = "long"
-                        Origin = "mutation:truncate"
-                        Verdict = DecoderFuzz.Escaped("InvalidOperationException", "boom")
-                        Original = "{\"id\":\"a\"}"
-                        Minimised = "{\"id\"" }
+              let c: DecoderFuzz.Counterexample =
+                  { Subject = "decodeNodeObj"
+                    Iteration = 42
+                    Seed = 7UL
+                    ConfigName = "long"
+                    Origin = "mutation:truncate"
+                    Verdict = DecoderFuzz.Escaped("InvalidOperationException", "boom")
+                    Original = "{\"id\":\"a\"}"
+                    Minimised = "{\"id\"" }
 
-                  let payloadPath = DecoderFuzz.persistTo dir c
+              let payloadPath = DecoderFuzz.persistTo dir c
 
-                  Expect.isTrue (File.Exists payloadPath) "the minimised payload is written"
-                  Expect.equal (File.ReadAllText payloadPath) "{\"id\"" "the payload is the MINIMISED input, verbatim"
+              Expect.isTrue (File.Exists payloadPath) "the minimised payload is written"
+              Expect.equal (File.ReadAllText payloadPath) "{\"id\"" "the payload is the MINIMISED input, verbatim"
 
-                  let notes = File.ReadAllText(payloadPath.Replace(".input.txt", ".md"))
-                  Expect.stringContains notes "--fuzz-replay 7" "the notes carry a runnable replay command"
-                  Expect.stringContains notes "reject fixture" "the notes carry the counterexample policy"
-              finally
-                  if Directory.Exists dir then
-                      Directory.Delete(dir, true)
+              let notes = File.ReadAllText(payloadPath.Replace(".input.txt", ".md"))
+              Expect.stringContains notes "--fuzz-replay 7" "the notes carry a runnable replay command"
+              Expect.stringContains notes "reject fixture" "the notes carry the counterexample policy"
           }
 
           test "a counterexample carrying a lone surrogate is persisted, exactly (1837)" {
@@ -310,38 +306,34 @@ let harnessMechanics =
               // one a UTF-8 file cannot hold: the writer must neither throw nor
               // lose the case. `.input.txt` carries U+FFFD in its place; the JSON
               // string literal in `.input.json` carries the exact unit.
-              let dir =
-                  Path.Combine(Path.GetTempPath(), "fuaran-fuzz-surrogate-" + Guid.NewGuid().ToString("N"))
+              use tmp = TempDir.create "fuzz-surrogate"
+              let dir = tmp.Path
 
-              try
-                  let payload = "{\"id\":\"a" + string (char 0xD800) + "\"}"
+              let payload = "{\"id\":\"a" + string (char 0xD800) + "\"}"
 
-                  let c: DecoderFuzz.Counterexample =
-                      { Subject = "decodeNodeObj"
-                        Iteration = 3
-                        Seed = 11UL
-                        ConfigName = "bounded"
-                        Origin = "mutation:lone-surrogate"
-                        Verdict = DecoderFuzz.Escaped("ArgumentException", "lone surrogate")
-                        Original = payload
-                        Minimised = payload }
+              let c: DecoderFuzz.Counterexample =
+                  { Subject = "decodeNodeObj"
+                    Iteration = 3
+                    Seed = 11UL
+                    ConfigName = "bounded"
+                    Origin = "mutation:lone-surrogate"
+                    Verdict = DecoderFuzz.Escaped("ArgumentException", "lone surrogate")
+                    Original = payload
+                    Minimised = payload }
 
-                  let payloadPath = DecoderFuzz.persistTo dir c
+              let payloadPath = DecoderFuzz.persistTo dir c
 
-                  Expect.equal
-                      (File.ReadAllBytes payloadPath)
-                      (Array.append
-                          (Text.Encoding.ASCII.GetBytes "{\"id\":\"a")
-                          (Array.append [| 0xEFuy; 0xBFuy; 0xBDuy |] (Text.Encoding.ASCII.GetBytes "\"}")))
-                      "the UTF-8 payload holds the replacement character where the lone surrogate was"
+              Expect.equal
+                  (File.ReadAllBytes payloadPath)
+                  (Array.append
+                      (Text.Encoding.ASCII.GetBytes "{\"id\":\"a")
+                      (Array.append [| 0xEFuy; 0xBFuy; 0xBDuy |] (Text.Encoding.ASCII.GetBytes "\"}")))
+                  "the UTF-8 payload holds the replacement character where the lone surrogate was"
 
-                  Expect.equal
-                      (File.ReadAllText(payloadPath.Replace(".input.txt", ".input.json")))
-                      "\"{\\u0022id\\u0022:\\u0022a\\ud800\\u0022}\"\n"
-                      "the JSON literal holds the exact unit"
-              finally
-                  if Directory.Exists dir then
-                      Directory.Delete(dir, true)
+              Expect.equal
+                  (File.ReadAllText(payloadPath.Replace(".input.txt", ".input.json")))
+                  "\"{\\u0022id\\u0022:\\u0022a\\ud800\\u0022}\"\n"
+                  "the JSON literal holds the exact unit"
           }
 
           test "the PRNG is deterministic in its seed" {

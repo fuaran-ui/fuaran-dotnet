@@ -18,13 +18,11 @@ open System.IO
 open Expecto
 open Fuaran.UI.Validator
 open Fuaran.UI.Validator.Findings
+open Fuaran.UI.Testing
 
-let private freshDir (name: string) =
-    let path =
-        Path.Combine(Path.GetTempPath(), sprintf "fuaran-emitter-%s-%s" name (Guid.NewGuid().ToString("N")))
-
-    Directory.CreateDirectory path |> ignore
-    path
+/// A scratch project directory (`fuaran-emitter-<name>-<guid>`), deleted with the project tree the
+/// emitter wrote into it when the caller's `use` scope ends (Phase 2393).
+let private freshDir (name: string) = TempDir.create ("emitter-" + name)
 
 let private writeFile (dir: string) (name: string) (contents: string) =
     let path = Path.Combine(dir, name)
@@ -135,7 +133,8 @@ let tests =
         [
           // ─── Acceptance: byte-identical regeneration ───────────────────
           test "Regenerates a manifest byte-identical to the correct hand-written one" {
-              let dir = freshDir "byte-identical"
+              use tmp = freshDir "byte-identical"
+              let dir = tmp.Path
               let projectPath = writeFsproj dir "App.fsproj"
               writeFile dir "App.fs" appSource |> ignore
 
@@ -152,7 +151,8 @@ let tests =
           }
 
           test "Derives each facet from its declaration site" {
-              let dir = freshDir "facets"
+              use tmp = freshDir "facets"
+              let dir = tmp.Path
               let projectPath = writeFsproj dir "App.fsproj"
               writeFile dir "App.fs" appSource |> ignore
 
@@ -184,7 +184,8 @@ let tests =
 
           // ─── Acceptance: the drift gate names what changed ─────────────
           test "Deleting a query from source is reported as drift citing the name" {
-              let dir = freshDir "drift-delete"
+              use tmp = freshDir "drift-delete"
+              let dir = tmp.Path
               let projectPath = writeFsproj dir "App.fsproj"
               writeFile dir "App.fs" appSourceWithoutSalesRows |> ignore
               writeFile dir Manifest.manifestFileName canonicalManifest |> ignore
@@ -204,7 +205,8 @@ let tests =
           }
 
           test "Adding a query without regenerating is reported as drift citing the name" {
-              let dir = freshDir "drift-add"
+              use tmp = freshDir "drift-add"
+              let dir = tmp.Path
               let projectPath = writeFsproj dir "App.fsproj"
               writeFile dir "App.fs" appSource |> ignore
 
@@ -223,7 +225,8 @@ let tests =
           }
 
           test "A semantically-current manifest in non-canonical form is formatting drift, never a gate failure" {
-              let dir = freshDir "formatting"
+              use tmp = freshDir "formatting"
+              let dir = tmp.Path
               let projectPath = writeFsproj dir "App.fsproj"
               writeFile dir "App.fs" appSource |> ignore
 
@@ -248,7 +251,8 @@ let tests =
 
           // ─── Acceptance: the override tier ─────────────────────────────
           test "An override entry survives regeneration and is marked asserted" {
-              let dir = freshDir "overrides"
+              use tmp = freshDir "overrides"
+              let dir = tmp.Path
               let projectPath = writeFsproj dir "App.fsproj"
               writeFile dir "App.fs" appSource |> ignore
 
@@ -289,7 +293,8 @@ let tests =
           }
 
           test "An override the derivation now produces is reported as redundant, not asserted" {
-              let dir = freshDir "redundant-override"
+              use tmp = freshDir "redundant-override"
+              let dir = tmp.Path
               let projectPath = writeFsproj dir "App.fsproj"
               writeFile dir "App.fs" appSource |> ignore
 
@@ -329,7 +334,8 @@ let tests =
 
           // ─── Ambiguity surfaces at generation time, never guessed ──────
           test "Conflicting row-type annotations yield a conflict and no entry" {
-              let dir = freshDir "row-conflict"
+              use tmp = freshDir "row-conflict"
+              let dir = tmp.Path
               let projectPath = writeFsproj dir "App.fsproj"
 
               writeFile
@@ -374,7 +380,8 @@ let b () =
               // and `msgCases` from its `Action.dispatch` references, both of
               // these hallucinations would resolve by construction and this
               // test would report nothing.
-              let dir = freshDir "checks-live"
+              use tmp = freshDir "checks-live"
+              let dir = tmp.Path
               let projectPath = writeFsproj dir "App.fsproj"
 
               writeFile

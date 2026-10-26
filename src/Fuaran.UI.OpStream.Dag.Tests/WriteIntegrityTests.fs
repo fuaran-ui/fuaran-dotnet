@@ -74,17 +74,7 @@ let private criticalLeft =
             Tone = ToneVariant.Critical }
     )
 
-let private freshDbPath () : string =
-    Path.Combine(Path.GetTempPath(), sprintf "fuaran-dag-write-%s.db" (Guid.NewGuid().ToString("N")))
-
 let private connectionString (path: string) = sprintf "Data Source=%s" path
-
-let private cleanup (path: string) =
-    try
-        if File.Exists path then
-            File.Delete path
-    with _ ->
-        ()
 
 /// Run `write`, requiring it to refuse; returns the refusal message.
 let private refusal (what: string) (write: unit -> unit) : string =
@@ -143,35 +133,33 @@ let tests =
           }
 
           test "SqliteDagSink REFUSES a record naming a parent the store does not hold" {
-              let path = freshDbPath ()
+              use db = TempDb.create "dag-write"
+              let path = db.Path
 
-              try
-                  let sink = SqliteDagSink.create<TestMsg> (connectionString path) testCodec
+              let sink = SqliteDagSink.create<TestMsg> (connectionString path) testCodec
 
-                  let absentParent = String.replicate 64 "d"
+              let absentParent = String.replicate 64 "d"
 
-                  let orphan =
-                      DagOpRecord.create
-                          "s"
-                          [ absentParent ]
-                          removeRight
-                          None
-                          (Actor.Human "tester")
-                          (timestamp 1L)
-                          OpResultEnvelope.Success
+              let orphan =
+                  DagOpRecord.create
+                      "s"
+                      [ absentParent ]
+                      removeRight
+                      None
+                      (Actor.Human "tester")
+                      (timestamp 1L)
+                      OpResultEnvelope.Success
 
-                  let message = refusal "SqliteDagSink.Add" (fun () -> add sink orphan)
+              let message = refusal "SqliteDagSink.Add" (fun () -> add sink orphan)
 
-                  Expect.stringContains message "parent-presence check failed" "names the check that failed"
-                  Expect.stringContains message absentParent "names WHICH parent is missing"
-                  Expect.stringContains message orphan.Hash "names the record"
-                  Expect.stringContains message "'s'" "names the stream"
+              Expect.stringContains message "parent-presence check failed" "names the check that failed"
+              Expect.stringContains message absentParent "names WHICH parent is missing"
+              Expect.stringContains message orphan.Hash "names the record"
+              Expect.stringContains message "'s'" "names the stream"
 
-                  Expect.isEmpty
-                      (sink.Records "s" |> Async.RunSynchronously)
-                      "the refused record was not stored — the IMMEDIATE transaction rolled back"
-              finally
-                  cleanup path
+              Expect.isEmpty
+                  (sink.Records "s" |> Async.RunSynchronously)
+                  "the refused record was not stored — the IMMEDIATE transaction rolled back"
           }
 
           test "a CROSS-STREAM parent still satisfies the write-path check (the guest-fork shape)" {
@@ -234,37 +222,35 @@ let tests =
           }
 
           test "SqliteDagSink REFUSES a same-address record carrying a different op" {
-              let path = freshDbPath ()
+              use db = TempDb.create "dag-write"
+              let path = db.Path
 
-              try
-                  let sink = SqliteDagSink.create<TestMsg> (connectionString path) testCodec
+              let sink = SqliteDagSink.create<TestMsg> (connectionString path) testCodec
 
-                  let original = stepRecord "s" None brand 1L
-                  add sink original
+              let original = stepRecord "s" None brand 1L
+              add sink original
 
-                  let impostor = sameAddressDifferentOp original removeRight
-                  Expect.equal impostor.Hash original.Hash "the impostor claims the same address"
+              let impostor = sameAddressDifferentOp original removeRight
+              Expect.equal impostor.Hash original.Hash "the impostor claims the same address"
 
-                  let message = refusal "SqliteDagSink.Add" (fun () -> add sink impostor)
+              let message = refusal "SqliteDagSink.Add" (fun () -> add sink impostor)
 
-                  Expect.stringContains message "content-address collision" "names the check that failed"
-                  Expect.stringContains message original.Hash "names the contested address"
+              Expect.stringContains message "content-address collision" "names the check that failed"
+              Expect.stringContains message original.Hash "names the contested address"
 
-                  // Read back under `LoadVerification.Off`: the verify-on-read
-                  // path would refuse the forged record for an unrelated reason,
-                  // and this assertion is about the WRITE not having landed.
-                  let unchecked' =
-                      SqliteDagSink.createWith<TestMsg> LoadVerification.Off (connectionString path) testCodec
+              // Read back under `LoadVerification.Off`: the verify-on-read
+              // path would refuse the forged record for an unrelated reason,
+              // and this assertion is about the WRITE not having landed.
+              let unchecked' =
+                  SqliteDagSink.createWith<TestMsg> LoadVerification.Off (connectionString path) testCodec
 
-                  match unchecked'.TryGet("s", original.Hash) |> Async.RunSynchronously with
-                  | Some stored ->
-                      Expect.equal
-                          (CanonicalJson.encodeOp stored.Op)
-                          (CanonicalJson.encodeOp original.Op)
-                          "the stored row is untouched"
-                  | None -> failtest "the original row disappeared"
-              finally
-                  cleanup path
+              match unchecked'.TryGet("s", original.Hash) |> Async.RunSynchronously with
+              | Some stored ->
+                  Expect.equal
+                      (CanonicalJson.encodeOp stored.Op)
+                      (CanonicalJson.encodeOp original.Op)
+                      "the stored row is untouched"
+              | None -> failtest "the original row disappeared"
           }
 
           test "an identical re-add is still the idempotent no-op it always was (both sinks)" {
@@ -278,16 +264,14 @@ let tests =
               add mem g
               Expect.equal (mem.Records "s" |> Async.RunSynchronously |> List.length) 1 "in-memory: one record"
 
-              let path = freshDbPath ()
+              use db = TempDb.create "dag-write"
+              let path = db.Path
 
-              try
-                  let sql = SqliteDagSink.create<TestMsg> (connectionString path) testCodec
-                  add sql g
-                  add sql g
-                  add sql g
-                  Expect.equal (sql.Records "s" |> Async.RunSynchronously |> List.length) 1 "sqlite: one row"
-              finally
-                  cleanup path
+              let sql = SqliteDagSink.create<TestMsg> (connectionString path) testCodec
+              add sql g
+              add sql g
+              add sql g
+              Expect.equal (sql.Records "s" |> Async.RunSynchronously |> List.length) 1 "sqlite: one row"
           }
 
           // ── 3. Idempotence across a retention sweep ──────────────────────
@@ -314,27 +298,25 @@ let tests =
           }
 
           test "SqliteDagSink: an identical re-add AFTER tombstoning is still a duplicate" {
-              let path = freshDbPath ()
+              use db = TempDb.create "dag-write"
+              let path = db.Path
 
-              try
-                  let sink = SqliteDagSink.create<TestMsg> (connectionString path) testCodec
+              let sink = SqliteDagSink.create<TestMsg> (connectionString path) testCodec
 
-                  let g = stepRecord "s" None brand 1L
-                  let a = stepRecord "s" (Some g) success 2L
-                  add sink g
-                  add sink a
+              let g = stepRecord "s" None brand 1L
+              let a = stepRecord "s" (Some g) success 2L
+              add sink g
+              add sink a
 
-                  Expect.isTrue (sink.Tombstone("s", a.Hash) |> Async.RunSynchronously) "a is tombstoned"
+              Expect.isTrue (sink.Tombstone("s", a.Hash) |> Async.RunSynchronously) "a is tombstoned"
 
-                  add sink a
+              add sink a
 
-                  let records = sink.Records "s" |> Async.RunSynchronously
-                  Expect.equal records.Length 2 "still exactly two rows — the re-add did not append a copy"
+              let records = sink.Records "s" |> Async.RunSynchronously
+              Expect.equal records.Length 2 "still exactly two rows — the re-add did not append a copy"
 
-                  let stored = records |> List.find (fun r -> r.Hash = a.Hash)
-                  Expect.isTrue stored.Tombstoned "the re-add did not resurrect the pruned payload"
-              finally
-                  cleanup path
+              let stored = records |> List.find (fun r -> r.Hash = a.Hash)
+              Expect.isTrue stored.Tombstoned "the re-add did not resurrect the pruned payload"
           }
 
           test "a tombstoned MERGE node keeps its outcome hash, so its re-add resolves too" {
@@ -411,67 +393,65 @@ let tests =
               // refusal naming a parent that was in fact committed before its
               // write would have run — which is exactly the class of wrongness a
               // deferred read-then-write produces.
-              let path = freshDbPath ()
+              use db = TempDb.create "dag-write"
+              let path = db.Path
 
-              try
-                  let sink = SqliteDagSink.create<TestMsg> (connectionString path) testCodec
+              let sink = SqliteDagSink.create<TestMsg> (connectionString path) testCodec
 
-                  let g = stepRecord "s" None brand 1L
-                  let a = stepRecord "s" (Some g) success 2L
-                  let b = stepRecord "s" (Some a) removeRight 3L
-                  add sink g
+              let g = stepRecord "s" None brand 1L
+              let a = stepRecord "s" (Some g) success 2L
+              let b = stepRecord "s" (Some a) removeRight 3L
+              add sink g
 
-                  use ext = new SqliteConnection(connectionString path)
-                  ext.Open()
-                  // IMMEDIATE: take the write lock now and hold it.
-                  let extTx = ext.BeginTransaction(false)
+              use ext = new SqliteConnection(connectionString path)
+              ext.Open()
+              // IMMEDIATE: take the write lock now and hold it.
+              let extTx = ext.BeginTransaction(false)
 
-                  use insert = ext.CreateCommand()
+              use insert = ext.CreateCommand()
 
-                  insert.CommandText <-
-                      """INSERT INTO dag_op_record
+              insert.CommandText <-
+                  """INSERT INTO dag_op_record
     (stream_id, hash, parents_json, op_json, outcome_hash, prompt_id, user_id, timestamp, result_envelope_json, tombstoned, content_fingerprint)
 VALUES
     (@s, @h, @parents, @op, NULL, NULL, @user, @ts, @env, 0, @fingerprint);"""
 
-                  insert.Parameters.AddWithValue("@s", a.StreamId) |> ignore
-                  insert.Parameters.AddWithValue("@h", a.Hash) |> ignore
-                  insert.Parameters.AddWithValue("@parents", sprintf "[\"%s\"]" g.Hash) |> ignore
-                  insert.Parameters.AddWithValue("@op", testCodec.EncodeOp a.Op) |> ignore
-                  insert.Parameters.AddWithValue("@user", Actor.encode a.Actor) |> ignore
+              insert.Parameters.AddWithValue("@s", a.StreamId) |> ignore
+              insert.Parameters.AddWithValue("@h", a.Hash) |> ignore
+              insert.Parameters.AddWithValue("@parents", sprintf "[\"%s\"]" g.Hash) |> ignore
+              insert.Parameters.AddWithValue("@op", testCodec.EncodeOp a.Op) |> ignore
+              insert.Parameters.AddWithValue("@user", Actor.encode a.Actor) |> ignore
 
-                  insert.Parameters.AddWithValue("@ts", a.Timestamp.ToUnixTimeSeconds()) |> ignore
+              insert.Parameters.AddWithValue("@ts", a.Timestamp.ToUnixTimeSeconds()) |> ignore
 
-                  insert.Parameters.AddWithValue("@env", "{\"$type\":\"Success\"}") |> ignore
+              insert.Parameters.AddWithValue("@env", "{\"$type\":\"Success\"}") |> ignore
 
-                  insert.Parameters.AddWithValue("@fingerprint", DagWire.contentFingerprint CanonicalJson.encodeOp a)
-                  |> ignore
+              insert.Parameters.AddWithValue("@fingerprint", DagWire.contentFingerprint CanonicalJson.encodeOp a)
+              |> ignore
 
-                  Expect.equal (insert.ExecuteNonQuery()) 1 "the external writer inserted `a` (uncommitted)"
+              Expect.equal (insert.ExecuteNonQuery()) 1 "the external writer inserted `a` (uncommitted)"
 
-                  // Ask the sink to add `b` while the lock is still held.
-                  let adding = sink.Add b |> Async.StartAsTask
+              // Ask the sink to add `b` while the lock is still held.
+              let adding = sink.Add b |> Async.StartAsTask
 
-                  // Long enough for the DEFERRED shape to have begun, read and
-                  // refused; the IMMEDIATE shape is still parked at BEGIN.
-                  System.Threading.Thread.Sleep 750
-                  extTx.Commit()
+              // Long enough for the DEFERRED shape to have begun, read and
+              // refused; the IMMEDIATE shape is still parked at BEGIN.
+              System.Threading.Thread.Sleep 750
+              extTx.Commit()
 
-                  if not (adding.Wait(TimeSpan.FromSeconds 30.0)) then
-                      failtest "Add did not complete within 30s of the external commit"
+              if not (adding.Wait(TimeSpan.FromSeconds 30.0)) then
+                  failtest "Add did not complete within 30s of the external commit"
 
-                  // `.Result` rethrows the deferred shape's parent-presence
-                  // refusal, which is the go-red.
-                  adding.GetAwaiter().GetResult()
+              // `.Result` rethrows the deferred shape's parent-presence
+              // refusal, which is the go-red.
+              adding.GetAwaiter().GetResult()
 
-                  let unchecked' =
-                      SqliteDagSink.createWith<TestMsg> LoadVerification.Off (connectionString path) testCodec
+              let unchecked' =
+                  SqliteDagSink.createWith<TestMsg> LoadVerification.Off (connectionString path) testCodec
 
-                  Expect.isSome
-                      (unchecked'.TryGet("s", b.Hash) |> Async.RunSynchronously)
-                      "`b` landed: its parent check saw the committed `a`"
-              finally
-                  cleanup path
+              Expect.isSome
+                  (unchecked'.TryGet("s", b.Hash) |> Async.RunSynchronously)
+                  "`b` landed: its parent check saw the committed `a`"
           }
 
           // ── 5. The op-result envelope decode (typed, not substring) ──────

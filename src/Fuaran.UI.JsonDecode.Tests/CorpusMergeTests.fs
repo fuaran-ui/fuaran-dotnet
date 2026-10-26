@@ -27,6 +27,7 @@ module Fuaran.UI.JsonDecode.Tests.CorpusMergeTests
 open System.IO
 open System.Text.Json
 open Expecto
+open Fuaran.UI.Testing
 
 /// The manifest's fixture rows as `(kind, id, rawText)` — the raw text being
 /// the whole point: the claim is about bytes, so the probe must read bytes.
@@ -40,33 +41,9 @@ let private rowsOf (manifestPath: string) : (string * string * string) list =
         row.GetRawText())
     |> List.ofSeq
 
-let private withTempDir (name: string) (body: string -> unit) : unit =
-    let dir =
-        Path.Combine(Path.GetTempPath(), "fuaran-corpus-" + name + "-" + Path.GetRandomFileName())
-
-    Directory.CreateDirectory dir |> ignore
-
-    try
-        body dir
-    finally
-        try
-            Directory.Delete(dir, true)
-        with _ ->
-            ()
-
-let private withTempDirValue (name: string) (body: string -> 'T) : 'T =
-    let dir =
-        Path.Combine(Path.GetTempPath(), "fuaran-corpus-" + name + "-" + Path.GetRandomFileName())
-
-    Directory.CreateDirectory dir |> ignore
-
-    try
-        body dir
-    finally
-        try
-            Directory.Delete(dir, true)
-        with _ ->
-            ()
+/// A scratch directory (`fuaran-corpus-<name>-<guid>`), deleted when `body` returns (Phase 2393).
+let private withTempDir (name: string) (body: string -> 'T) : 'T =
+    TempDir.withTempDir ("corpus-" + name) body
 
 /// The live corpus's manifest, when this checkout has one. A bare single-repo
 /// clone has none and the corpus-backed arms skip — the same posture every
@@ -139,7 +116,7 @@ let corpusMerge =
                   // builds. A family that later moves into the emitter is then
                   // followed rather than re-asserted from a 2026-09 split.
                   let authoredKinds =
-                      withTempDirValue "merge-scratch" (fun dir ->
+                      withTempDir "merge-scratch" (fun dir ->
                           Corpus.emit dir
 
                           rowsOf (Path.Combine(dir, "manifest.json"))

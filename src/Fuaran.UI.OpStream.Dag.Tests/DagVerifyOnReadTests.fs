@@ -53,16 +53,6 @@ let private refusalMessage (what: string) (read: unit -> unit) : string =
     with :? InvalidOperationException as ex ->
         ex.Message
 
-let private freshDbPath () : string =
-    Path.Combine(Path.GetTempPath(), sprintf "fuaran-dagverify-%s.db" (Guid.NewGuid().ToString("N")))
-
-let private cleanup (path: string) =
-    try
-        if File.Exists path then
-            File.Delete path
-    with _ ->
-        ()
-
 let private corruptRowInDb (path: string) (hash: string) =
     use conn = new SqliteConnection(sprintf "Data Source=%s" path)
     conn.Open()
@@ -161,44 +151,42 @@ let tests =
           // through its own API at all; that is a real gap in coverage on that
           // sink and is stated rather than faked by relaxing the write check.
           test "a store that LOST a parent row is refused on read (truncation, out of band)" {
-              let path = freshDbPath ()
+              use db = TempDb.create "dagverify"
+              let path = db.Path
 
-              try
-                  let sink = SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) testCodec
+              let sink = SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) testCodec
 
-                  let g = stepRecord "s" None brand 1L
-                  let child = stepRecord "s" (Some g) removeRight 2L
-                  add sink g
-                  add sink child
+              let g = stepRecord "s" None brand 1L
+              let child = stepRecord "s" (Some g) removeRight 2L
+              add sink g
+              add sink child
 
-                  Expect.equal
-                      (sink.Records "s" |> Async.RunSynchronously).Length
-                      2
-                      "the store verifies clean before truncation"
+              Expect.equal
+                  (sink.Records "s" |> Async.RunSynchronously).Length
+                  2
+                  "the store verifies clean before truncation"
 
-                  // Delete the parent ROW, leaving the child's link to it — a
-                  // truncated store, exactly what the read-path leg exists for.
-                  do
-                      use conn = new SqliteConnection(sprintf "Data Source=%s" path)
-                      conn.Open()
-                      use cmd = conn.CreateCommand()
-                      cmd.CommandText <- "DELETE FROM dag_op_record WHERE hash = @h;"
-                      cmd.Parameters.AddWithValue("@h", g.Hash) |> ignore
+              // Delete the parent ROW, leaving the child's link to it — a
+              // truncated store, exactly what the read-path leg exists for.
+              do
+                  use conn = new SqliteConnection(sprintf "Data Source=%s" path)
+                  conn.Open()
+                  use cmd = conn.CreateCommand()
+                  cmd.CommandText <- "DELETE FROM dag_op_record WHERE hash = @h;"
+                  cmd.Parameters.AddWithValue("@h", g.Hash) |> ignore
 
-                      if cmd.ExecuteNonQuery() <> 1 then
-                          failtest "expected to delete exactly the parent row"
+                  if cmd.ExecuteNonQuery() <> 1 then
+                      failtest "expected to delete exactly the parent row"
 
-                  let reopened =
-                      SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) testCodec
+              let reopened =
+                  SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) testCodec
 
-                  let message =
-                      refusalMessage "SqliteDagSink.Records" (fun () ->
-                          reopened.Records "s" |> Async.RunSynchronously |> ignore)
+              let message =
+                  refusalMessage "SqliteDagSink.Records" (fun () ->
+                      reopened.Records "s" |> Async.RunSynchronously |> ignore)
 
-                  Expect.stringContains message "not in the store" "names the dangling parent"
-                  Expect.stringContains message g.Hash "names the parent that went missing"
-              finally
-                  cleanup path
+              Expect.stringContains message "not in the store" "names the dangling parent"
+              Expect.stringContains message g.Hash "names the parent that went missing"
           }
 
           test "LoadVerification.Off hands the corrupt record back — the opt-out is real, and named" {
@@ -212,80 +200,69 @@ let tests =
           // ── SqliteDagSink — corruption of the DATABASE FILE ─────────────
 
           test "SqliteDagSink.Records REFUSES a row corrupted in the database file" {
-              let path = freshDbPath ()
+              use db = TempDb.create "dagverify"
+              let path = db.Path
 
-              try
-                  let sink = SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) testCodec
+              let sink = SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) testCodec
 
-                  let g = stepRecord "s" None brand 1L
-                  let child = stepRecord "s" (Some g) removeRight 2L
-                  add sink g
-                  add sink child
+              let g = stepRecord "s" None brand 1L
+              let child = stepRecord "s" (Some g) removeRight 2L
+              add sink g
+              add sink child
 
-                  // Clean before, so the refusal below is attributable to the
-                  // corruption and not to a defect in the fixture.
-                  Expect.equal
-                      (sink.Records "s" |> Async.RunSynchronously).Length
-                      2
-                      "the store verifies clean before corruption"
+              // Clean before, so the refusal below is attributable to the
+              // corruption and not to a defect in the fixture.
+              Expect.equal
+                  (sink.Records "s" |> Async.RunSynchronously).Length
+                  2
+                  "the store verifies clean before corruption"
 
-                  corruptRowInDb path child.Hash
+              corruptRowInDb path child.Hash
 
-                  let reopened =
-                      SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) testCodec
+              let reopened =
+                  SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) testCodec
 
-                  let message =
-                      refusalMessage "SqliteDagSink.Records" (fun () ->
-                          reopened.Records "s" |> Async.RunSynchronously |> ignore)
+              let message =
+                  refusalMessage "SqliteDagSink.Records" (fun () ->
+                      reopened.Records "s" |> Async.RunSynchronously |> ignore)
 
-                  Expect.stringContains message "'s'" "names the stream"
-                  Expect.stringContains message child.Hash "names the corrupt record by its stored address"
-              finally
-                  cleanup path
+              Expect.stringContains message "'s'" "names the stream"
+              Expect.stringContains message child.Hash "names the corrupt record by its stored address"
           }
 
           test "SqliteDagSink.TryGet REFUSES a row corrupted in the database file" {
-              let path = freshDbPath ()
+              use db = TempDb.create "dagverify"
+              let path = db.Path
 
-              try
-                  let sink = SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) testCodec
+              let sink = SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) testCodec
 
-                  let g = stepRecord "s" None brand 1L
-                  add sink g
+              let g = stepRecord "s" None brand 1L
+              add sink g
 
-                  Expect.isSome
-                      (sink.TryGet("s", g.Hash) |> Async.RunSynchronously)
-                      "reads back clean before corruption"
+              Expect.isSome (sink.TryGet("s", g.Hash) |> Async.RunSynchronously) "reads back clean before corruption"
 
-                  corruptRowInDb path g.Hash
+              corruptRowInDb path g.Hash
 
-                  let reopened =
-                      SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) testCodec
+              let reopened =
+                  SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) testCodec
 
-                  refusalMessage "SqliteDagSink.TryGet" (fun () ->
-                      reopened.TryGet("s", g.Hash) |> Async.RunSynchronously |> ignore)
-                  |> ignore
-              finally
-                  cleanup path
+              refusalMessage "SqliteDagSink.TryGet" (fun () ->
+                  reopened.TryGet("s", g.Hash) |> Async.RunSynchronously |> ignore)
+              |> ignore
           }
 
           test "SqliteDagSink under LoadVerification.Off returns the corrupted row" {
-              let path = freshDbPath ()
+              use db = TempDb.create "dagverify"
+              let path = db.Path
 
-              try
-                  let sink = SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) testCodec
+              let sink = SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) testCodec
 
-                  let g = stepRecord "s" None brand 1L
-                  add sink g
-                  corruptRowInDb path g.Hash
+              let g = stepRecord "s" None brand 1L
+              add sink g
+              corruptRowInDb path g.Hash
 
-                  let unchecked' =
-                      SqliteDagSink.createWith<TestMsg> LoadVerification.Off (sprintf "Data Source=%s" path) testCodec
+              let unchecked' =
+                  SqliteDagSink.createWith<TestMsg> LoadVerification.Off (sprintf "Data Source=%s" path) testCodec
 
-                  Expect.equal
-                      (unchecked'.Records "s" |> Async.RunSynchronously).Length
-                      1
-                      "Off returns the row unchecked"
-              finally
-                  cleanup path
+              Expect.equal (unchecked'.Records "s" |> Async.RunSynchronously).Length 1 "Off returns the row unchecked"
           } ]

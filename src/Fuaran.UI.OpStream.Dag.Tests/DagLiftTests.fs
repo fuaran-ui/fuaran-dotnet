@@ -136,11 +136,8 @@ let private liftedAddressPin: (string * string) list =
       "2b195656cc9bda16bdf52c4550ffde1c73a2b6ddb6c222aa3d64f19b231e9da4",
       "a37e07d5e1bb9b27bf0f0d607c2c6a61080390742f90f6ff2d24e8c4dc319354" ]
 
-let private sqliteSink () : IDagOpStreamSink<obj> * string =
-    let path =
-        Path.Combine(Path.GetTempPath(), sprintf "fuaran-dag-lift-%s.db" (Path.GetRandomFileName()))
-
-    SqliteDagSink.create<obj> (sprintf "Data Source=%s" path) (OpJsonCodec.canonicalObj ()), path
+let private sqliteSink (path: string) : IDagOpStreamSink<obj> =
+    SqliteDagSink.create<obj> (sprintf "Data Source=%s" path) (OpJsonCodec.canonicalObj ())
 
 /// Store the lifted corpus in `sink`, read every record back, and assert each
 /// stored address is the pinned one, recomputes from what the store returned,
@@ -396,14 +393,6 @@ let tests =
               [ test "in-memory DAG sink" { assertPinThrough (InMemoryDagSink.create<obj> ()) }
 
                 test "SQLite DAG sink" {
-                    let sink, path = sqliteSink ()
-
-                    try
-                        assertPinThrough sink
-                    finally
-                        try
-                            if File.Exists path then
-                                File.Delete path
-                        with _ ->
-                            ()
+                    use db = TempDb.create "dag-lift"
+                    assertPinThrough (sqliteSink db.Path)
                 } ] ]

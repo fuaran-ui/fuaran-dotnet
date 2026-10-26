@@ -440,23 +440,14 @@ let tests =
 
               let fromMemory = roundTripThroughPort inMemory ops
 
-              let dbPath =
-                  Path.Combine(Path.GetTempPath(), sprintf "fuaran-dag-laws-%s.db" (Path.GetRandomFileName()))
-
               let fromSqlite =
-                  try
+                  TempDb.withTempDb "dag-laws" (fun dbPath ->
                       let sqlite =
                           Fuaran.UI.OpStream.Dag.Sqlite.SqliteDagSink.create<obj>
                               (sprintf "Data Source=%s" dbPath)
                               canonicalCodec
 
-                      roundTripThroughPort sqlite ops
-                  finally
-                      try
-                          if File.Exists dbPath then
-                              File.Delete dbPath
-                      with _ ->
-                          ()
+                      roundTripThroughPort sqlite ops)
 
               match referenceSpine, fromMemory, fromSqlite with
               | Ok reference, Ok mem, Ok sql ->

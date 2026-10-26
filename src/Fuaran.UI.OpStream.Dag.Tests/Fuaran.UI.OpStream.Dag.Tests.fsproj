@@ -11,6 +11,9 @@
          so a git worktree resolves it through FUARAN_WIRE_FIXTURES rather than skipping silently.
          Must compile FIRST: the resolvers below delegate to it. -->
     <Compile Include="..\..\tests\corpus-root\CorpusRoot.fs" Link="CorpusRoot.fs" />
+    <!-- Phase 2393 - the ONE temp-directory helper, DECLARED ONCE at tests/temp-dir/TempDir.fs. -->
+    <Compile Include="..\..\tests\temp-dir\TempDir.fs" Link="TempDir.fs" />
+    <Compile Include="TempDb.fs" />
     <Compile Include="DagCorpus.fs" />
     <Compile Include="MergeCorpus.fs" />
     <Compile Include="DegenerateTests.fs" />
@@ -45,6 +48,8 @@
          this tier's own witnesses, footprint projection and DAG ports. -->
     <Compile Include="CoreLawSupport.fs" />
     <Compile Include="CoreDagLawTests.fs" />
+    <!-- Phase 2393 - the repository-wide guard: no test reaches the temp root except through TempDir. -->
+    <Compile Include="TempDirGuardTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

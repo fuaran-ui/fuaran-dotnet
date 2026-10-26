@@ -36,6 +36,7 @@ module Fuaran.UI.JsonDecode.Tests.CorpusOnlyPayloadTests
 
 open System.IO
 open Expecto
+open Fuaran.UI.Testing
 
 /// `Path.GetFileName` is `string | null` under F# 10 nullness. Every path here
 /// comes from an enumeration and so always has one; the fallback names the whole
@@ -51,46 +52,38 @@ let tests =
               match Fuaran.Tests.CorpusRoot.tryFind () with
               | None -> skiptest Fuaran.Tests.CorpusRoot.AbsentSkipReason
               | Some corpusRoot ->
-                  let scratch =
-                      Path.Combine(Path.GetTempPath(), "fuaran-corpus-drop-probe-" + string (System.Guid.NewGuid()))
+                  use tmp = TempDir.create "corpus-drop-probe"
+                  let scratch = tmp.Path
 
-                  Directory.CreateDirectory scratch |> ignore
+                  Corpus.emit scratch
 
-                  try
-                      Corpus.emit scratch
+                  // The emitter's OWN declaration of which directories it empties, read from the
+                  // emitter rather than restated here. Deliberately NOT "every directory the emit
+                  // wrote": `validator/` is written into but never cleared, and it also holds
+                  // hand-authored cross-host tooling, so a guard over the written-into set would
+                  // report the corpus's own scripts as about to be deleted.
+                  let owned = Corpus.wholesaleDirectories |> List.toArray |> Array.sort
 
-                      // The emitter's OWN declaration of which directories it empties, read from the
-                      // emitter rather than restated here. Deliberately NOT "every directory the emit
-                      // wrote": `validator/` is written into but never cleared, and it also holds
-                      // hand-authored cross-host tooling, so a guard over the written-into set would
-                      // report the corpus's own scripts as about to be deleted.
-                      let owned = Corpus.wholesaleDirectories |> List.toArray |> Array.sort
+                  Expect.isGreaterThan
+                      owned.Length
+                      0
+                      "the emit produced no directories at all — the probe measured nothing, which is not a pass"
 
-                      Expect.isGreaterThan
-                          owned.Length
-                          0
-                          "the emit produced no directories at all — the probe measured nothing, which is not a pass"
+                  let dropped =
+                      [ for dir in owned do
+                            let here = Path.Combine(corpusRoot, dir)
 
-                      let dropped =
-                          [ for dir in owned do
-                                let here = Path.Combine(corpusRoot, dir)
+                            if Directory.Exists here then
+                                let emitted =
+                                    Directory.GetFiles(Path.Combine(scratch, dir)) |> Array.map leaf |> Set.ofArray
 
-                                if Directory.Exists here then
-                                    let emitted =
-                                        Directory.GetFiles(Path.Combine(scratch, dir)) |> Array.map leaf |> Set.ofArray
+                                for f in Directory.GetFiles here do
+                                    let name = leaf f
 
-                                    for f in Directory.GetFiles here do
-                                        let name = leaf f
+                                    if not (emitted.Contains name) then
+                                        yield dir + "/" + name ]
 
-                                        if not (emitted.Contains name) then
-                                            yield dir + "/" + name ]
-
-                      Expect.isEmpty
-                          dropped
-                          "these corpus payloads are authored into the corpus but declared by no F# fixture, so the next `--emit-corpus` deletes them without saying so (the fuaran#1094 class). Adopt each into Fixtures.fs / RejectFixtures.fs / LenientFixtures.fs, or move it to a directory the emitter does not own"
-                  finally
-                      try
-                          Directory.Delete(scratch, true)
-                      with _ ->
-                          ()
+                  Expect.isEmpty
+                      dropped
+                      "these corpus payloads are authored into the corpus but declared by no F# fixture, so the next `--emit-corpus` deletes them without saying so (the fuaran#1094 class). Adopt each into Fixtures.fs / RejectFixtures.fs / LenientFixtures.fs, or move it to a directory the emitter does not own"
           } ]

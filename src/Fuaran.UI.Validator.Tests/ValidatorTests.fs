@@ -21,15 +21,9 @@ open Expecto
 open Fuaran.UI.Validator
 open Fuaran.Core
 open Fuaran.UI.Validator.Findings
+open Fuaran.UI.Testing
 
 // ─── Harness ────────────────────────────────────────────────────────────────
-
-let private freshDir (name: string) =
-    let path =
-        Path.Combine(Path.GetTempPath(), sprintf "fuaran-validator-%s-%s" name (Guid.NewGuid().ToString("N")))
-
-    Directory.CreateDirectory path |> ignore
-    path
 
 let private writeFile (dir: string) (name: string) (contents: string) =
     let path = Path.Combine(dir, name)
@@ -81,8 +75,11 @@ let private setup snippets =
       Orchestrated = false
       Prefix = "" }
 
-let private materialise (s: Setup) =
-    let dir = freshDir "snippet"
+/// The scratch project directory one validation runs in (`fuaran-validator-snippet-<guid>`), deleted
+/// when the caller's `use` scope ends (Phase 2393).
+let private snippetDir () = TempDir.create "validator-snippet"
+
+let private materialise (dir: string) (s: Setup) =
     let projectPath = writeFsproj dir
 
     s.Snippets
@@ -93,10 +90,11 @@ let private materialise (s: Setup) =
     let manifestPath =
         s.Manifest |> Option.map (writeFile dir "fuaran-validator.manifest.json")
 
-    dir, projectPath, manifestPath
+    projectPath, manifestPath
 
 let private runWithParser (parse: Syntax.Parser) (s: Setup) : Validator.RunResult =
-    let _, projectPath, manifestPath = materialise s
+    use dir = snippetDir ()
+    let projectPath, manifestPath = materialise dir.Path s
 
     Validator.runWith
         parse
@@ -107,7 +105,8 @@ let private runWithParser (parse: Syntax.Parser) (s: Setup) : Validator.RunResul
     |> Async.RunSynchronously
 
 let private run (s: Setup) : Validator.RunResult =
-    let _, projectPath, manifestPath = materialise s
+    use dir = snippetDir ()
+    let projectPath, manifestPath = materialise dir.Path s
 
     Validator.run
         { ProjectPath = projectPath
@@ -408,7 +407,9 @@ let private behaviour =
           // ── File discovery ────────────────────────────────────────────────
 
           test "FilesWalked counts the .fs sources under the project dir, ignoring bin/obj" {
-              let dir, projectPath, manifestPath = materialise (setup [ "ValidTree" ])
+              use tmp = snippetDir ()
+              let dir = tmp.Path
+              let projectPath, manifestPath = materialise dir (setup [ "ValidTree" ])
               writeFile dir "B.fs" "module Sample.B" |> ignore
               Directory.CreateDirectory(Path.Combine(dir, "obj")) |> ignore
               writeFile (Path.Combine(dir, "obj")) "Generated.fs" "module Generated" |> ignore
@@ -425,8 +426,10 @@ let private behaviour =
           }
 
           test "the module-pattern filter restricts the walked file set" {
-              let _, projectPath, manifestPath =
-                  materialise (setup [ "DuplicateInDashboard"; "CrossTree" ])
+              use tmp = snippetDir ()
+
+              let projectPath, manifestPath =
+                  materialise tmp.Path (setup [ "DuplicateInDashboard"; "CrossTree" ])
 
               let result =
                   Validator.run
@@ -671,7 +674,9 @@ let private behaviour =
           }
 
           test "disable-next-line suppresses only the line that follows it" {
-              let dir, projectPath, _ = materialise { setup [] with Manifest = None }
+              use tmp = snippetDir ()
+              let dir = tmp.Path
+              let projectPath, _ = materialise dir { setup [] with Manifest = None }
 
               writeFile
                   dir
