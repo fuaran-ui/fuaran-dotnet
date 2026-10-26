@@ -46,7 +46,10 @@ let private grandfathered =
           "src/Fuaran.UI.OpStream.Tests/VerifyOnReadTests.fs"
           "src/Fuaran.UI.OpStream.Tests/WritePathIntegrityTests.fs"
           "src/Fuaran.UI.Site.Tests/ExportTests.fs"
-          "src/Fuaran.UI.Tests/IdlCertificationSupport.fs" ]
+          "src/Fuaran.UI.Tests/IdlCertificationSupport.fs"
+          // Compiled into Build.fsproj (a packaging check, Phase 1865), not into a suite that links the
+          // helper; it deletes its pack directory in a `finally`.
+          "tests/package-roster/PackageRoster.fs" ]
 
 /// The lines of `text` that name a temp-root API, 1-based.
 let offendingLines (text: string) : int list =
