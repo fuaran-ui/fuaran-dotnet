@@ -1129,6 +1129,30 @@ let private registerTargets (args: string array) =
 
     "FablePackCheck" ==> "DriftChecks" |> ignore
 
+    // Phase 1865 — every published F# package ships its XML documentation file beside each `lib/`
+    // assembly, and the pack produces exactly the published set. The rules and their go-red proof
+    // are in `tests/package-roster/PackageRoster.fs`; the subject is a REAL `dotnet pack` of the
+    // solution into a scratch directory, never the project text. Soft-ordered after `Build` so a
+    // gate that has just built packs incrementally; standalone it builds what it packs.
+    Target.create "PackageRosterCheck" (fun _ ->
+        packableProjects
+        |> PackageRoster.run (fun outDir ->
+            dotnet
+                [ "pack"
+                  "Fuaran.sln"
+                  "-c"
+                  configuration
+                  "-o"
+                  outDir
+                  "--nologo"
+                  "-v"
+                  "q"
+                  "-clp:ErrorsOnly" ]
+                repoRoot))
+
+    "PackageRosterCheck" ==> "DriftChecks" |> ignore
+    "Build" ?=> "PackageRosterCheck" |> ignore
+
     // Phase 577 — the embedded browser-renderer assets, on exactly the shape
     // above and for the same reason. `Fuaran.UI.Renderer.Web` embeds a BUILT
     // ARTEFACT from fuaran-ts; a byte copy across a repo boundary goes stale

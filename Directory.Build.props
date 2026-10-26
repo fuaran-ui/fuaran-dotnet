@@ -822,7 +822,13 @@
          error and the Fable leg's cell coercion fires. Class BEHAVIOUR (Fable
          leg) with Phase 2198's additive API; it ADVANCES because v0.93.0 is
          TAGGED. An UNTAGGED DRAFT: changes of this class or lower ride it. See
-         STABILITY.md "0.93.1". -->
+         STABILITY.md "0.93.1".
+         0.98.0 (Phase 1865) - additive package CONTENT rides this untagged
+         breaking draft: every published F# package ships its XML documentation
+         file beside its DLL (build/PackageDocumentation.targets). By the 0.17.0
+         precedent a new packaged asset is a public-contract addition and never
+         rides a same-version repack; no released version is repacked. See
+         STABILITY.md "0.98.0". -->
     <Version>0.98.0</Version>
   </PropertyGroup>
 
@@ -836,6 +842,13 @@
     <RepositoryType>git</RepositoryType>
     <PackageProjectUrl>https://github.com/fuaran-ui/fuaran-dotnet</PackageProjectUrl>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+  </PropertyGroup>
+  <!-- Phase 1865 - the XML documentation file ships in every packable F# package. The rule and
+       why it lives in a file of its own are in build/PackageDocumentation.targets: IsPackable is
+       declared in each project body, which this file is evaluated before. -->
+  <PropertyGroup>
+    <BeforeMicrosoftNETSdkTargets Condition="'$(BeforeMicrosoftNETSdkTargets)' == ''">$(MSBuildThisFileDirectory)build/PackageDocumentation.targets</BeforeMicrosoftNETSdkTargets>
+    <BeforeMicrosoftNETSdkTargets Condition="!$(BeforeMicrosoftNETSdkTargets.Contains('PackageDocumentation.targets'))">$(BeforeMicrosoftNETSdkTargets);$(MSBuildThisFileDirectory)build/PackageDocumentation.targets</BeforeMicrosoftNETSdkTargets>
   </PropertyGroup>
   <PropertyGroup>
     <!-- CI restores from an empty local feed and falls through to nuget.org, so a package version
