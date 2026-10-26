@@ -2576,6 +2576,15 @@ module Binding =
             | :? Map<string, obj> as row ->
                 match Map.tryFind field row with
                 | Some v ->
+                    // Phase 2006: a Transform row's decimal cell is read by a typed slot as
+                    // the canonical text it carries, so a text slot sees the digits and a
+                    // numeric slot converts them invariantly, exactly as before the row
+                    // kept the type. An untyped (`obj`) reader keeps the exact carrier.
+                    let v =
+                        match v with
+                        | :? HostPrelude.DecimalCell as d when typeof<'T> <> typeof<obj> -> box d.Text
+                        | _ -> v
+
                     (try
                         unbox<'T> v
                      with :? System.InvalidCastException ->

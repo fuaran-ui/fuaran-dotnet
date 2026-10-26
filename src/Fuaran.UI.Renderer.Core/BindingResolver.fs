@@ -206,14 +206,27 @@ let private cellToObj (c: Fuaran.Core.Cell) : obj =
     | Fuaran.Core.Cell.Timestamp s -> box s
     | Fuaran.Core.Cell.Null -> null
     // Fuaran.Core 0.33.0 (D72): a decimal cell carries canonical decimal text, which is
-    // also its wire form (a JSON string), so a row carries it as that text.
+    // also its wire form (a JSON string). A slot with no coercion of its own takes that
+    // text; a ROW keeps the type (`cellToRowObj`).
     | Fuaran.Core.Cell.Decimal s -> box s
+
+/// A result cell as a `Row` carries it. Phase 2006: the Transform schema typed this column
+/// decimal, so the row keeps that type as a `DecimalCell` rather than a bare string, and the
+/// grid, the formatter and the chart read an exact number where they used to read text.
+/// Every other cell is `cellToObj`'s.
+let private cellToRowObj (c: Fuaran.Core.Cell) : obj =
+    match c with
+    | Fuaran.Core.Cell.Decimal s -> box ({ Text = s }: Fuaran.UI.HostPrelude.DecimalCell)
+    | other -> cellToObj other
 
 /// Coerce a resolved scalar to a `Cell`. Every numeric arm yields `Float` (int/float are
 /// indistinguishable under Fable, so this stays cross-host-deterministic); DataFrame
 /// comparison treats `Int`/`Float` as numbers, so a float-carried param compares correctly.
+/// A `DecimalCell` (a decimal field of a selected Transform row) goes back as the exact
+/// `Decimal` it came from (Phase 2006), never through a float.
 let private objToCell (v: obj) : Fuaran.Core.Cell option =
     match v with
+    | :? Fuaran.UI.HostPrelude.DecimalCell as d -> Some(Fuaran.Core.Cell.Decimal d.Text)
     | :? string as s -> Some(Fuaran.Core.Str s)
     | :? bool as b -> Some(Fuaran.Core.Cell.Bool b)
     | :? float as f -> Some(Fuaran.Core.Float f)
@@ -405,6 +418,8 @@ let rec jvalOfResolved (v: obj) : JVal option =
 #if FABLE_COMPILER
     match v with
     | :? JVal as jv -> Some jv
+    // Phase 2006: a Transform row's decimal cell lifts as the canonical text it crosses the wire as.
+    | :? Fuaran.UI.HostPrelude.DecimalCell as d -> Some(JStr d.Text)
     | _ when isNull v -> None
     // Phase 1085 — the F# COLLECTION shapes, on the Fable pipeline too.
     //
@@ -454,6 +469,7 @@ let rec jvalOfResolved (v: obj) : JVal option =
 #else
     match v with
     | :? JVal as jv -> Some jv
+    | :? Fuaran.UI.HostPrelude.DecimalCell as d -> Some(JStr d.Text)
     | :? string as s -> Some(JStr s)
     | :? bool as b -> Some(JBool b)
     | :? int as i -> Some(JInt i)
@@ -793,7 +809,7 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
                               | Some c -> Fuaran.Core.Column.cell i c
                               | None -> Fuaran.Core.Cell.Null
 
-                          n, cellToObj cell)
+                          n, cellToRowObj cell)
                       |> Map.ofList ]
 
             try

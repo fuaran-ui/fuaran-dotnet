@@ -1877,6 +1877,12 @@ let private numericOf (row: Row) (field: string) : float =
     // non-numeric posture uses, deterministically.
     | CellValue.Numeric n when System.Double.IsNaN n || System.Double.IsInfinity n -> 0.0
     | CellValue.Numeric n -> n
+    // Phase 2006 — THE one place an exact decimal becomes a float. A chart maps a value to a
+    // screen coordinate, which is a display projection of the number, not the number: the
+    // nearest double is exact to far below a pixel. Nothing else in the lowering reads a
+    // decimal numerically, and the row it came from is untouched. A text past the float range
+    // (`tryToFloat`'s `None`) takes the same 0.0 the non-finite guard above gives.
+    | CellValue.Decimal s -> Fuaran.Core.DecimalText.tryToFloat s |> Option.defaultValue 0.0
     | CellValue.Bool b -> if b then 1.0 else 0.0
     | _ -> 0.0
 

@@ -670,6 +670,139 @@ let formatNumber (format: CellFormat) (value: float) : string =
     | CellFormat.RelativeTime unit -> formatRelativeEnglish unit value
     | CellFormat.Custom f -> f (CellValue.Numeric value)
 
+// ─── The exact decimal (Phase 2006) ──────────────────────────────────────────
+//
+// A `CellValue.Decimal` formats from its DIGITS. Every arm below is the decimal
+// twin of `formatNumber`'s arm of the same name, spelled so that a decimal and a
+// float holding the same value render the same bytes wherever the float is exact,
+// and so that no arm rounds through a float: `12345678901234567.895` to two places
+// is `12345678901234567.90`, where a double would have said `...68.00`.
+
+/// A decimal as `(negative, digits, scale)`: the number `±digits × 10^-scale`.
+/// Read through Core's canonical form, so the grammar is Core's and only Core's.
+let private decimalScaled (text: string) : (bool * string * int) option =
+    Fuaran.Core.DecimalText.tryCanonical text
+    |> Option.map (fun canonical ->
+        let negative = canonical.Length > 0 && canonical[0] = '-'
+        let body = if negative then canonical.Substring 1 else canonical
+
+        match body.IndexOf '.' with
+        | -1 -> negative, body, 0
+        | dot -> negative, body.Substring(0, dot) + body.Substring(dot + 1), body.Length - dot - 1)
+
+/// Add one to a non-empty run of ASCII digits (`"0999"` → `"1000"`, `"99"` → `"100"`).
+let private incrementDigits (digits: string) : string =
+    let chars = digits.ToCharArray()
+    let mutable i = chars.Length - 1
+    let mutable carry = true
+
+    while carry && i >= 0 do
+        if chars[i] = '9' then
+            chars[i] <- '0'
+            i <- i - 1
+        else
+            chars[i] <- char (int chars[i] + 1)
+            carry <- false
+
+    let body = System.String(chars)
+    if carry then "1" + body else body
+
+/// Drop the last `cut` digits, rounding half up on the magnitude (the rule
+/// `jsToFixed` applies to a float's exact value).
+let private roundOff (digits: string) (cut: int) : string =
+    if cut <= 0 then
+        digits
+    else
+        let padded = digits.PadLeft(cut + 1, '0')
+        let keep = padded.Substring(0, padded.Length - cut)
+
+        if padded[padded.Length - cut] >= '5' then
+            incrementDigits keep
+        else
+            keep
+
+/// `toFixed(places)` over a scaled decimal, sign included whatever it rounds to
+/// (`jsToFixed`'s posture: `-0.001` → `-0.00`).
+let private decimalToFixed (places: int) (negative: bool, digits: string, scale: int) : string =
+    let kept =
+        if scale <= places then
+            digits + System.String('0', places - scale)
+        else
+            roundOff digits (scale - places)
+
+    let padded = kept.PadLeft(places + 1, '0')
+    let whole = padded.Substring(0, padded.Length - places).TrimStart('0')
+    let whole = if whole = "" then "0" else whole
+
+    let body =
+        if places = 0 then
+            whole
+        else
+            whole + "." + padded.Substring(padded.Length - places)
+
+    if negative then "-" + body else body
+
+/// Back to canonical decimal text, from a scale that may be negative.
+let private decimalCanonicalOf (negative: bool, digits: string, scale: int) : string =
+    let digits, scale =
+        if scale < 0 then
+            digits + System.String('0', -scale), 0
+        else
+            digits, scale
+
+    let padded = digits.PadLeft(scale + 1, '0')
+
+    let text =
+        (if negative then "-" else "")
+        + (if scale = 0 then
+               padded
+           else
+               padded.Substring(0, padded.Length - scale)
+               + "."
+               + padded.Substring(padded.Length - scale))
+
+    Fuaran.Core.DecimalText.tryCanonical text |> Option.defaultValue text
+
+/// `toPrecision(digits)` rendered plainly: round half up at `digits` significant
+/// digits and give the canonical text, which never takes an exponent.
+let private decimalSignificant (precision: int) (negative: bool, digits: string, scale: int) : string =
+    let significant = digits.TrimStart('0')
+
+    if significant = "" then
+        "0"
+    else
+        let cut = significant.Length - precision
+
+        if cut <= 0 then
+            decimalCanonicalOf (negative, digits, scale)
+        else
+            decimalCanonicalOf (negative, roundOff significant cut, scale - cut)
+
+/// The `CellFormat` projection of an exact decimal (Phase 2006) — `formatNumber`'s
+/// twin, from the canonical text and never through a float. `Number`, `Currency`,
+/// `Percent` and `SignificantDigits` round half up at the declared digit; `None`,
+/// `Number None` and `DateTime` are the canonical text itself. `Duration` and
+/// `RelativeTime` render the canonical text too: each reads its value as a count of
+/// time units through float arithmetic, and a decimal does not become a float here.
+let formatDecimal (format: CellFormat) (text: string) : string =
+    match decimalScaled text with
+    | None -> text
+    | Some scaled ->
+        let negative, digits, scale = scaled
+
+        match format with
+        | CellFormat.Number(Some decimals) -> decimalToFixed (fixedDigits decimals) scaled
+        | CellFormat.Currency code -> code + " " + decimalToFixed 2 scaled
+        | CellFormat.Percent(Some decimals) -> decimalToFixed (fixedDigits decimals) (negative, digits, scale - 2) + "%"
+        | CellFormat.Percent None -> decimalToFixed 1 (negative, digits, scale - 2) + "%"
+        | CellFormat.SignificantDigits d -> decimalSignificant (precisionDigits d) scaled
+        | CellFormat.Custom f -> f (CellValue.Decimal text)
+        | CellFormat.None
+        | CellFormat.Number None
+        | CellFormat.DateTime _
+        | CellFormat.Duration _
+        | CellFormat.RelativeTime _ -> decimalCanonicalOf scaled
+
 /// A grid cell's text — `formatNumber` for a number, the cell's own spelling
 /// otherwise. One definition for the first-party table and the AG Grid
 /// adapter (Phase 1941; each held a copy). A date reads its `DateTime` pattern,
@@ -678,6 +811,7 @@ let formatCellValue (format: CellFormat) (value: CellValue) : string =
     match format, value with
     | CellFormat.Custom f, _ -> f value
     | _, CellValue.Numeric n -> formatNumber format n
+    | _, CellValue.Decimal s -> formatDecimal format s
     | _, CellValue.Text s -> s
     | _, CellValue.Bool b -> if b then "true" else "false"
     | _, CellValue.Date d ->

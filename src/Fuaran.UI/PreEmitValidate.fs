@@ -5226,10 +5226,13 @@ module private ChartRules =
 
                  let colType (name: string) : ColumnType option = SchemaWalk.typeOf name produced
 
+                 // A decimal column plots (Phase 2006): the lowering reads it as the
+                 // nearest double at its one screen-coordinate conversion.
                  let numeric (t: ColumnType) : bool =
                      match t with
                      | ColumnType.IntType
                      | ColumnType.FloatType
+                     | ColumnType.DecimalType
                      | ColumnType.BoolType -> true
                      | _ -> false
 

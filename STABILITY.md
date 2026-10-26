@@ -8158,6 +8158,43 @@ full-literal construction (or build from the defaults Program ships), and re-sig
 the four empty-member reject vectors), and the demanded corpus at version 14, emitted by
 `DemandedCorpus.emit` and compared with the committed copy.
 
+### What rides this slot — Phase 2006 (the row value gains an exact decimal)
+
+**Class: BREAKING (a closed host union gains a case) + additive (one host type, one sink pairing, one chart pairing).**
+The class the slot already carries, so the number does not move. Packages `Fuaran.UI`, `Fuaran.UI.Renderer.Core`,
+`Fuaran.UI.Renderer` and `Fuaran.UI.Charts`. No wire byte moves: a decimal still crosses as its canonical text.
+
+- **Breaking: `CellValue.Decimal of string`** (`Fuaran.UI.HostPrelude`, aliased in `Fuaran.UI.Types`). It carries
+  Core's canonical decimal text (`Fuaran.Core.DecimalText`), one number one text. Every exhaustive `match` over
+  `CellValue` stops compiling until it takes the case.
+- **Added: `HostPrelude.DecimalCell`** (`{ Text: string }`, whose `ToString` is the text): what a `Binding.Transform` row
+  carries for a decimal column. Before this, the resolver boxed the cell as a bare string, so the row read it as `Text`:
+  it sorted `"10"` before `"9"`, plotted as `0` and refused every numeric sink. `RowProjection.ofObj` reads a
+  `DecimalCell` as `CellValue.Decimal`; a bare string in a host-fed or decoded row stays `Text`, never guessed at.
+- **Grid sort** orders `Decimal` cells exactly, through `DecimalText.compare` (never lexically, never through a float).
+  A decimal ranks after the floats and before the booleans in a mixed column.
+- **`CellFormat`**: `Formatting.formatDecimal` (new) renders `Number`, `Currency`, `Percent` and `SignificantDigits` from
+  the digits, rounding half up at the declared place, so `12345678901234567.895` to two places is
+  `12345678901234567.90`. Where the float is exact the bytes equal `formatNumber`'s. `None`, `Number None` and
+  `DateTime` give the canonical text; `Duration` and `RelativeTime` give it too, because both read a value through
+  float arithmetic and a decimal does not become a float there.
+- **Charts** plot a decimal series. `Charts.numericOf` is the ONE place a decimal becomes a float
+  (`DecimalText.tryToFloat`, a screen coordinate).
+- **Sinks**: `QueryBinding.compatible DecimalType Numeric` holds, and the chart pre-emit check (`FUARAN087`) accepts a
+  decimal Y field and a decimal Scatter X.
+- **Edges that read a row cell learn the carrier**: the row codec writes it as its text (same bytes);
+  `Binding.projectSelectionField` gives a typed slot the text (a numeric slot converts it invariantly, as before); a
+  selected decimal field used as a Transform param goes back as the exact `Cell.Decimal`; the AG Grid adapter commits an
+  edited decimal as a `DecimalCell` when the entry is decimal text.
+
+**What a consumer does.** Add a `CellValue.Decimal` arm to any exhaustive match over `CellValue` (a `Column.Value`
+closure, a `CellFormat.Custom` formatter, an `Editable` handler). A consumer that read a decimal Transform column through
+`:? string` on the row now sees a `DecimalCell`, whose `Text` is the same string.
+
+**Certified by** `decimalRowValueTests` in `src/Fuaran.UI.Tests/GridDisplayTests.fs`: the sorted order and the formatted
+text of a decimal column pinned byte for byte (the TypeScript host's twin fixture pins the same bytes), the float-parity
+sweep, a chart whose decimal bars equal the float bars of the same values, and the codec's unchanged bytes.
+
 ---
 
 

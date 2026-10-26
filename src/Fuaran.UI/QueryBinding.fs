@@ -64,7 +64,7 @@ open Fuaran.Core
 type BindingSinkClass =
     /// Plots / measures on a numeric scale — Metric value + trend, LabelValueRow
     /// value, Progress fraction, Sparkline series, chart Y-series, numeric form
-    /// fields. Accepts `int` / `float` columns only.
+    /// fields. Accepts `int` / `float` / `decimal` columns only.
     | Numeric
     /// Reads a point in time — a time axis, a date filter, a date/time field.
     /// Accepts `date` / `timestamp` columns.
@@ -90,7 +90,7 @@ module BindingSinkClass =
 /// `false` (the trailing wildcard), so an unknown / future pairing is treated
 /// as incompatible rather than silently accepted (FGP 3).
 ///
-///   numeric sink   ← int | float
+///   numeric sink   ← int | float | decimal   (an exact decimal is a number; Phase 2006)
 ///   temporal sink  ← date | timestamp
 ///   categorical    ← string | date | timestamp   (date/timestamp render as a label)
 ///   boolean sink   ← bool
@@ -98,6 +98,7 @@ let compatible (col: ColumnType) (sink: BindingSinkClass) : bool =
     match col, sink with
     | IntType, BindingSinkClass.Numeric -> true
     | FloatType, BindingSinkClass.Numeric -> true
+    | DecimalType, BindingSinkClass.Numeric -> true
     | DateType, BindingSinkClass.Temporal -> true
     | TimestampType _, BindingSinkClass.Temporal -> true
     | StringType, BindingSinkClass.Categorical -> true

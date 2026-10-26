@@ -1334,6 +1334,7 @@ module Column =
         | CellValue.Numeric n -> TextSource.Literal(string n)
         | CellValue.Bool b -> TextSource.Literal(if b then "true" else "false")
         | CellValue.Date d -> TextSource.Literal(d.ToString("yyyy-MM-dd"))
+        | CellValue.Decimal s -> TextSource.Literal s
         | CellValue.Empty -> TextSource.Literal ""
 
     /// Postfix pipe: render a column's value as a tone-bearing pill. Reuses the
