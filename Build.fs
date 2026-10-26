@@ -657,7 +657,10 @@ let private init (args: string array) =
     |> Context.setExecutionContext
 
 let private registerTargets (args: string array) =
-    Target.create "Format" (fun _ -> dotnet [ "fantomas"; "." ] repoRoot)
+    // A fresh clone has the tool manifest but not the tools: restore first, or `fantomas` is not found.
+    Target.create "Format" (fun _ ->
+        dotnet [ "tool"; "restore" ] repoRoot
+        dotnet [ "fantomas"; "." ] repoRoot)
 
     Target.create "Build" (fun _ ->
         // Name the tree. A green `-- Build` used to say only "the solution
