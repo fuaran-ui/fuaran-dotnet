@@ -1,0 +1,26 @@
+<Project>
+  <!-- Phase 1865 - every packable F# project ships its XML documentation file beside its DLL, so
+       the `///` comments in its sources reach a consumer's hover and the package carries
+       `lib/<tfm>/<Assembly>.xml`.
+
+       WHY THIS IS NOT IN Directory.Build.props. That file is evaluated BEFORE the project body,
+       and every project here declares `<IsPackable>` in its own project file, so the condition
+       below would read an empty IsPackable there. The SDK reads GenerateDocumentationFile in
+       Microsoft.NET.Sdk.BeforeCommon.targets, which is imported before any
+       Directory.Build.targets, so that file is too late. `BeforeMicrosoftNETSdkTargets` is the
+       SDK's seam between the two: imported after the project body and before the SDK decides.
+       Directory.Build.props points it here.
+
+       THE CONDITION is pack's own: a project packs unless it says `<IsPackable>false`, so test
+       projects, samples, benchmarks and Build.fsproj are left exactly as they were. A project
+       that sets GenerateDocumentationFile itself keeps its own value.
+
+       F# ONLY, deliberately. F# reports no missing-documentation diagnostic, so the flip cannot
+       break a build under TreatWarningsAsErrors. C# and Visual Basic do (CS1591 and its family),
+       and the C# and VB packages are not yet documented to that standard; they are reported by
+       the package-roster check (`tests/package-roster/PackageRoster.fs`) on every run rather
+       than silently left out. -->
+  <PropertyGroup Condition="'$(GenerateDocumentationFile)' == '' and '$(IsPackable)' != 'false' and '$(MSBuildProjectExtension)' == '.fsproj'">
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+</Project>

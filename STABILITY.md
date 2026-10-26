@@ -8158,6 +8158,36 @@ full-literal construction (or build from the defaults Program ships), and re-sig
 the four empty-member reject vectors), and the demanded corpus at version 14, emitted by
 `DemandedCorpus.emit` and compared with the committed copy.
 
+### What rides this slot — Phase 1865 (every F# package ships its XML documentation file)
+
+**Class: additive package CONTENT; no type, member, wire byte or rendered output moves.** Every published package
+built from F# now carries `lib/net10.0/<Assembly>.xml` beside its DLL, so the `///` comments in its sources reach a
+consumer's editor on hover. Before this slot no package shipped one, including the hover documentation the 0.47.0
+entry promised for `Action.dispatch`. The precedent is 0.17.0 (fuaran#800): a new packaged asset is a public-contract
+ADDITION, because a consumer can now read something the previous version could not supply, so it never rides a
+same-version repack. 0.98.0 is an untagged draft of a higher class (breaking), so the addition rides it and the
+number does not move; no released version is repacked.
+
+- **Where it is set.** Once, in `build/PackageDocumentation.targets`, which `Directory.Build.props` hands to the SDK
+  through `BeforeMicrosoftNETSdkTargets`. That is the first point at which a project's own `<IsPackable>` is visible
+  and the last before the SDK reads `GenerateDocumentationFile`. The condition is pack's own (`IsPackable` not
+  `false`), so test projects, samples, benchmarks and the build project produce nothing new.
+- **F# only.** F# reports no missing-documentation diagnostic, so the flip cannot fail a build under
+  `TreatWarningsAsErrors`. `Fuaran.UI.CSharp` and `Fuaran.UI.VisualBasic` are not covered: with the property on, the
+  C# veneer reports 111 documentation diagnostics (101 public members without a comment, plus unresolved and
+  ambiguous `cref`s), each an error under the same setting. The roster check names them on every run.
+  `Fuaran.UI.Analyzers` and the `fuaran` tool ship no `lib/` assembly, so there is nothing for a consumer's compiler
+  to read.
+
+**What a consumer does.** Nothing. Restoring 0.98.0 brings the documentation file with the DLL.
+
+**Certified by** `PackageRosterCheck` (`tests/package-roster/PackageRoster.fs`, run by `DriftChecks` in both gates).
+It packs the solution with a real `dotnet pack` into a scratch directory and reads the archives: every `lib/`
+assembly of an F# package has its `.xml` beside it, the pack produced a package for every published project, and it
+produced none outside that set. A synthetic go-red proof runs first on every invocation. Removing the property from
+one packable project turns the check red, naming that package. `install-smoke.yml` asserts the same for the restored
+`Fuaran.UI` from nuget.org: the file exists and `Action.dispatch` has a `<summary>`.
+
 ### What rides this slot — Phase 2006 (the row value gains an exact decimal)
 
 **Class: BREAKING (a closed host union gains a case) + additive (one host type, one sink pairing, one chart pairing).**

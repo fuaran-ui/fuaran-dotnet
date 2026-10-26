@@ -8,6 +8,7 @@
   <ItemGroup>
     <Compile Include="build/FablePackCheck.fs" />
     <Compile Include="build/ChangeSet.fs" />
+    <Compile Include="tests/package-roster/PackageRoster.fs" />
     <Compile Include="Build.fs" />
   </ItemGroup>
   <ItemGroup>
