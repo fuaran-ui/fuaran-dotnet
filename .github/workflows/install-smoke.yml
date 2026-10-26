@@ -89,6 +89,41 @@ jobs:
         working-directory: dev-scripts/install-smoke/fs
         run: dotnet run --nologo > "$GITHUB_WORKSPACE/smoke-fs.json"
 
+      # Phase 1865 - the restored Fuaran.UI package carries its XML documentation file, and the
+      # file documents a named public member, so a newcomer's editor shows the `///` comments on
+      # hover. The subject is the registry's bytes in the package cache the F# leg just filled,
+      # never a local build. `Action.dispatch` is the member STABILITY.md's 0.47.0 entry first
+      # promised hover documentation for. A release older than 0.98.0, the first to ship the file,
+      # is reported rather than failed: nothing can add the file to a version already published.
+      - name: The restored Fuaran.UI package carries its XML documentation
+        run: |
+          cache="${NUGET_PACKAGES:-$HOME/.nuget/packages}/fuaran.ui"
+          version=$(ls "$cache" | sort -V | tail -1)
+          if [ -z "$version" ]; then
+            echo "::error::The F# leg restored no Fuaran.UI package into $cache."
+            exit 1
+          fi
+          echo "Restored Fuaran.UI $version"
+          if [ "$(printf '%s\n' "$version" 0.98.0 | sort -V | head -1)" != 0.98.0 ]; then
+            echo "::notice::Fuaran.UI $version predates 0.98.0, the first release to ship its XML documentation; not asserted."
+            exit 0
+          fi
+          xml="$cache/$version/lib/net10.0/Fuaran.UI.xml"
+          if [ ! -f "$xml" ]; then
+            echo "::error::Fuaran.UI $version ships no lib/net10.0/Fuaran.UI.xml - a consumer sees no documentation on hover."
+            exit 1
+          fi
+          python3 - "$xml" <<'PY'
+          import sys, xml.etree.ElementTree as ET
+          member = "M:Fuaran.UI.Action.dispatch``1(``0)"
+          found = [m for m in ET.parse(sys.argv[1]).getroot().iter("member") if m.get("name") == member]
+          summary = found[0].find("summary") if found else None
+          if summary is None or not "".join(summary.itertext()).strip():
+              print(f"::error::{sys.argv[1]} has no <summary> for {member}.")
+              sys.exit(1)
+          print(f"{member}: documented.")
+          PY
+
       # Compared TRIMMED. The trailing newline belongs to the two `print` calls,
       # not to the wire document.
       - name: The two hosts' published bytes must be identical
