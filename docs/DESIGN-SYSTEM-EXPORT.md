@@ -32,7 +32,8 @@ There are five groups:
   catalog's own matrix (`samples/catalog/Matrix.fs`, compile-linked) plus a representative for
   each kind the catalog does not show. The note on each card says what the kind is for, which
   fields bind to data (`Binding` and `TextSource` fields), which hold children, and which are
-  required, all read from the IDL.
+  required, all read from the IDL. What the sweep shows is the subject of rule 4 of the card
+  contract below.
 - **Fragments**: one card per certified stdlib fragment (`Fuaran.UI.Fragments`), with its holes,
   their value spaces and whether each is required, and the fragment's example applied.
 - **Type**, **Spacing**, **Colors**: one card each, from the chosen `Theme`.
@@ -55,6 +56,28 @@ A card is a self-contained HTML document:
    when a brand is given, the brand stylesheet in a `<style>` of its own, last (Phase 2339).
 3. The body is rendered by `Fuaran.UI.Renderer.Server`: the same class vocabulary and markup a
    Fuaran host serves.
+4. **A Components card shows what its captions say** (Phase 2468):
+   - **Each axis is set where the kind reads it.** A kind whose IDL spec declares a field of type
+     `ToneVariant`, `StyleWeight` or `Emphasis` (Callout's `tone`, Metric's `tone`, `weight` and
+     `emphasis`, and so on) takes that axis on its spec; any other axis goes on the node style.
+     The list is read from the IDL, so a kind that gains a spec tone is swept through it with no
+     edit to the bundle.
+   - **A variant that would repeat its baseline is left out, and the card says so.** The node
+     style reaches the markup only as the wrapper's hook classes (`fuaran-tone-*`,
+     `fuaran-weight-*`, `fuaran-emphasis-*`), which the reference stylesheet deliberately leaves
+     for a host to bind. So a variant is shown only when its markup, with its node ids masked and
+     the hook classes no stylesheet in the card's cascade paints removed, differs from the
+     baseline's. A brand that binds `.fuaran-tone-*` brings those variants back. The axes left out
+     are named under the representative ("Not shown: Weight, Emphasis.").
+   - **Every text slot has text.** The catalog binds a few labels through `Binding.I18n` so its
+     locale switcher can retranslate them; the bundle resolves those keys in English.
+   - **No part is shown as a hydration placeholder.** A client-library `DataGrid` is previewed as
+     the static read-only table the server renderer emits for the same rows (cell text as the
+     first-party grid formats it), and a `Map` as the table of its markers, each captioned as a
+     preview. The interactive part renders client-side.
+   - Each variant is a `<figure class="ds-variant" data-ds-specimen="<representative>">` whose
+     rendered part sits between `<!--ds-render-->` and `<!--/ds-render-->`; the first figure of a
+     representative is its baseline.
 
 The stylesheet is linked rather than inlined in every card because it is the same bytes in each,
 and a bundle of fifty copies of it would be most of the bundle. A consumer that ingests cards one
@@ -116,10 +139,16 @@ a consumer.
 - every stdlib fragment has a Fragments card;
 - exactly one Type, Colors and Spacing card;
 - no Colors token is a literal colour;
-- every card's first line is the marker of its group.
+- every card's first line is the marker of its group;
+- every swept variant on a Components card differs from its representative's baseline in what
+  the card's cascade paints (rule 4);
+- no example renders an empty label, heading, body or title slot, an empty button, an unresolved
+  `[i18n:<key>]`, or a server hydration placeholder.
 
 The suite also proves each check can fail: removing a kind from the sweep, binding a role named
-`#ff0000`, and rewriting a card's marker group each produce the named finding.
+`#ff0000`, rewriting a card's marker group, repeating a baseline as a variant, a Callout with a
+blank heading, a Metric label bound to a key with no text, Markdown showing an unresolved key, and
+a grid bound to rows the example does not hold each produce the named finding.
 
 ## The design-provider seam
 

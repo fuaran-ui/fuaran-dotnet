@@ -10,6 +10,10 @@ module Fuaran.UI.Design.Bundle
 //  the bundle's content hash. `check` is the bundle's own contract, run by the
 //  CLI verb and by the test suite.
 //
+//  Phase 2468 adds that a card shows what it says it shows: each axis is set where
+//  the kind reads it, a variant that would repeat its baseline is left out, every
+//  text slot has text and no part is a hydration placeholder (`shownFindings`).
+//
 //  Three properties are the point, and each has a check behind it:
 //
 //  - COMPOSITION VOCABULARY, NOT ONLY TOKENS. A card per kind the IDL declares —
@@ -197,16 +201,85 @@ let idlKinds () : IdlKind list = snd idl.Value
 let referenceStylesheet: Lazy<string> =
     lazy (resource "Fuaran.UI.Design.fuaran-reference.css")
 
+// ─── The style axes, set where each kind reads them ──────────────────────────
+
+/// The IDL type names of the three swept axes.
+let private axisTypes = [ "ToneVariant"; "StyleWeight"; "Emphasis" ]
+
+/// Phase 2468 — per kind tag, the spec field carrying each axis, keyed by the axis's
+/// IDL type name: a field typed `ToneVariant`, `StyleWeight` or `Emphasis`. Read from
+/// the IDL, so a kind that gains a spec tone is swept through it with no edit here.
+/// The type is the test, not the name: `Fact.emphasis` is a `bool` and
+/// `SplitPanel.weight` a `float`, and neither is an axis.
+let private specAxisFields: Lazy<Map<string, Map<string, string>>> =
+    lazy
+        (idlKinds ()
+         |> List.map (fun k ->
+             k.Tag,
+             k.Fields
+             |> List.filter (fun f -> List.contains f.Type axisTypes)
+             |> List.map (fun f -> f.Type, f.Name)
+             |> Map.ofList)
+         |> Map.ofList)
+
+/// Replace one field of a node's spec record, named as the IDL names it.
+let private setSpecField (node: Node<unit>) (idlName: string) (value: obj) : Node<unit> =
+    let case, fields =
+        Reflection.FSharpValue.GetUnionFields(node.Kind, typeof<NodeKind<unit>>)
+
+    let spec = fields |> Array.tryExactlyOne |> Option.filter (isNull >> not)
+
+    let target =
+        spec
+        |> Option.bind (fun spec ->
+            let props = Reflection.FSharpType.GetRecordFields(spec.GetType())
+
+            props
+            |> Array.tryFindIndex (fun p ->
+                String.Equals(p.Name, idlName, StringComparison.OrdinalIgnoreCase)
+                && p.PropertyType = value.GetType())
+            |> Option.map (fun i -> spec, i))
+
+    match target with
+    | Some(spec, i) ->
+        let values = Reflection.FSharpValue.GetRecordFields spec
+        values[i] <- value
+
+        { node with
+            Kind =
+                Reflection.FSharpValue.MakeUnion(case, [| Reflection.FSharpValue.MakeRecord(spec.GetType(), values) |])
+                :?> NodeKind<unit> }
+    | None ->
+        failwithf "Fuaran.UI.Design: the IDL declares %s.%s but its spec record has no such field" case.Name idlName
+
 // ─── Specimens ────────────────────────────────────────────────────────────────
 
-let private styled (tone, weight, emphasis) (node: Node<unit>) : Node<unit> =
-    { node with
+/// Set the axes on a node where its kind reads them: the spec's own field when the
+/// IDL declares one, the node style otherwise. Callout reads its tone from its spec,
+/// so a node-style tone on it would caption a variant the card does not show.
+let private styled (tone: ToneVariant, weight: StyleWeight, emphasis: Emphasis) (node: Node<unit>) : Node<unit> =
+    let fields =
+        specAxisFields.Value
+        |> Map.tryFind (Kind.wireTag node.Kind)
+        |> Option.defaultValue Map.empty
+
+    let onSpec (typeName: string) (value: obj) (n: Node<unit>) =
+        match Map.tryFind typeName fields with
+        | Some name -> setSpecField n name value, true
+        | None -> n, false
+
+    let n, toneOnSpec = onSpec "ToneVariant" (box tone) node
+    let n, weightOnSpec = onSpec "StyleWeight" (box weight) n
+    let n, emphasisOnSpec = onSpec "Emphasis" (box emphasis) n
+    let style = n.Style |> Option.defaultValue Defaults.style
+
+    { n with
         Style =
             Some
-                { Defaults.style with
-                    Tone = tone
-                    Weight = weight
-                    Emphasis = emphasis } }
+                { style with
+                    Tone = (if toneOnSpec then style.Tone else tone)
+                    Weight = (if weightOnSpec then style.Weight else weight)
+                    Emphasis = (if emphasisOnSpec then style.Emphasis else emphasis) } }
 
 let private literal (s: string) = TextSource.Literal s
 
@@ -342,14 +415,16 @@ let private baselineAxes =
     (ToneVariant.Default, StyleWeight.Standard, Emphasis.Normal)
 
 /// The catalog matrix as specimens: each entry's kind is the wire tag of the node
-/// it builds, so a catalog entry is filed under the kind it actually emits.
+/// it builds, so a catalog entry is filed under the kind it actually emits. The axes
+/// are then set where the kind reads them (`styled`); several catalog builders take
+/// the axes and set none.
 let catalogSpecimens () : Specimen list =
     Matrix.entries
     |> List.map (fun e ->
         { Kind = Kind.wireTag (e.Build baselineAxes).Kind
           Label = e.Label
           Hint = e.Hint
-          Build = e.Build })
+          Build = fun axes -> styled axes (e.Build axes) })
 
 module BundleOptions =
     /// The catalog sweep plus the supplement, no brand.
@@ -441,7 +516,14 @@ let marker (group: CardGroup) : string =
 
 /// What a card's head carries beside the reference stylesheet: the theme's `:root`
 /// block with any manifest bridge, and the brand stylesheet (empty when none).
-type private CardStyles = { Theme: string; Brand: string }
+type private CardStyles =
+    {
+        Theme: string
+        Brand: string
+        /// The wrapper hook families (`tone`, `weight`, `emphasis`) some stylesheet
+        /// in the card's cascade paints (see `paintedHooks`).
+        Painted: Set<string>
+    }
 
 /// The head cascades in the order the card contract states: reference stylesheet,
 /// theme and bridge, the card's own scaffolding, then the brand in a `<style>` of its
@@ -486,8 +568,137 @@ let private cardDocument (group: CardGroup) (title: string) (depth: int) (styles
           "</html>"
           "" ]
 
+/// English text for the catalog's I18n keys. The catalog binds a few labels through
+/// `Binding.I18n` so its locale switcher retranslates them, and its English locale is
+/// a pass-through; rendered with no catalog those slots come out blank. The bundle
+/// resolves them here. A key with no entry renders `[i18n:<key>]`, which `check`
+/// refuses, so a new catalog key cannot quietly blank a card.
+let private exampleText: Map<string, string> =
+    Map.ofList
+        [ "catalog.metric.label", "Revenue"
+          "catalog.callout.heading.default", "Default notice"
+          "catalog.callout.heading.subdued", "Subdued notice"
+          "catalog.callout.heading.brand", "Brand notice"
+          "catalog.callout.heading.success", "Success notice"
+          "catalog.callout.heading.warning", "Warning notice"
+          "catalog.callout.heading.critical", "Critical notice"
+          "catalog.callout.heading.info", "Info notice"
+          "catalog.callout.body", "A banner for a level, mode or status, sized for one block."
+          "catalog.button.label", "Run analysis"
+          "catalog.labelValueRow.label", "Total revenue" ]
+
+let private exampleSources: BindingResolver.BindingSources =
+    { BindingResolver.empty with
+        I18n = exampleText
+        I18nResolver = BindingResolver.makeI18nResolver exampleText }
+
 let private render (node: Node<unit>) : string =
-    Server.Render.render BindingResolver.empty (Node.mapMsg box node)
+    Server.Render.render exampleSources (Node.mapMsg box node)
+
+// ─── Server-renderable previews ──────────────────────────────────────────────
+
+/// A static read-only table in the node's place, keeping its id and style. This is
+/// the table the server renderer emits for a `DataGrid` carrying `staticRows`.
+let private staticTable (node: Node<unit>) (headers: string list) (rows: string list list) : Node<unit> =
+    let table =
+        Fuaran.table
+            node.Id
+            { Defaults.table<unit> with
+                Headers = headers |> List.map literal
+                Rows = rows |> List.map (List.map literal) }
+
+    { table with Style = node.Style }
+
+/// Phase 2468 — a client-drawn kind renders on the server as a hydration placeholder
+/// (`[Grid: 3 rows — hydrates client-side]`), which shows a designer nothing. Over
+/// rows the example resolves, a client-library `DataGrid` is previewed as the static
+/// table of the same rows (cell text as the first-party grid formats it) and a `Map`
+/// as the table of its markers. Returns the rewritten tree and a caption per preview.
+let rec private serverPreview (node: Node<unit>) : Node<unit> * string list =
+    match node.Kind with
+    | NodeKind.DataGrid spec when spec.StaticRows.IsNone ->
+        (match BindingResolver.tryResolve exampleSources spec.Source with
+         | Some rows ->
+             let cell (col: ColumnErased<unit>) (row: Map<string, obj>) =
+                 let value =
+                     match col.Value, col.Field with
+                     | Some accessor, _ -> accessor row
+                     | None, Some field -> BindingResolver.projectRowFieldValue row field
+                     | None, None -> HostPrelude.CellValue.Empty
+
+                 Formatting.formatCellValue col.Format value
+
+             staticTable
+                 node
+                 (spec.Columns |> List.map _.Label)
+                 [ for r in rows -> [ for c in spec.Columns -> cell c r ] ],
+             [ "Shown as the static read-only table the server renderer emits for the same rows. The interactive grid (sorting, toned pills, selection) renders client-side." ]
+         | None -> node, [])
+    | NodeKind.Map spec ->
+        (match BindingResolver.tryResolve exampleSources spec.Source with
+         | Some markers ->
+             staticTable
+                 node
+                 [ "Marker"; "Latitude"; "Longitude" ]
+                 [ for m in markers -> [ m.Label; sprintf "%.4f" m.Latitude; sprintf "%.4f" m.Longitude ] ],
+             [ "Shown as a static table of the map's markers, which is what a server can show of it. The map itself draws client-side." ]
+         | None -> node, [])
+    | _ ->
+        let children, rebuild = NodeChildren.lens NodeChildren.Reach.kindHeld node
+
+        match children with
+        | [] -> node, []
+        | _ ->
+            let previews = children |> List.map serverPreview
+
+            if previews |> List.forall (snd >> List.isEmpty) then
+                node, []
+            else
+                rebuild (List.map fst previews), previews |> List.collect snd
+
+// ─── Variant comparison ──────────────────────────────────────────────────────
+
+/// The three wrapper hook families every rendered node carries as classes.
+let private hookFamilies = [ "tone"; "weight"; "emphasis" ]
+
+let private cssComment =
+    RegularExpressions.Regex(@"/\*.*?\*/", RegularExpressions.RegexOptions.Singleline)
+
+/// The hook families a stylesheet paints: those with a `.fuaran-<family>-` selector
+/// outside a comment. The reference stylesheet paints none (tone reaches pixels
+/// through each kind's own suffix class, and weight and emphasis are left to hosts),
+/// so a node-style axis is visible only where a theme or brand binds the hook.
+let private paintedHooks (css: string) : Set<string> =
+    let live = cssComment.Replace(css, "")
+
+    hookFamilies
+    |> List.filter (fun f -> live.Contains $".fuaran-{f}-")
+    |> Set.ofList
+
+let private rootId = RegularExpressions.Regex("data-fuaran-node-id=\"([^\"]+)\"")
+
+/// What a variant shows, for comparing it with its baseline: the rendered markup with
+/// its root node id (and every id derived from it) masked, and the hook classes no
+/// stylesheet in the cascade paints removed. Two variants with one signature look the
+/// same on the card.
+let private variantSignature (painted: Set<string>) (markup: string) : string =
+    let m = rootId.Match markup
+
+    let masked =
+        if m.Success then
+            RegularExpressions.Regex.Replace(
+                markup,
+                "(?<=[\"\\s#])" + RegularExpressions.Regex.Escape m.Groups[1].Value,
+                "\u0000"
+            )
+        else
+            markup
+
+    hookFamilies
+    |> List.filter (fun f -> not (Set.contains f painted))
+    |> List.fold
+        (fun acc f -> RegularExpressions.Regex.Replace(acc, $"(?<=[\\s\"])fuaran-{f}-[a-z]+(?=[\\s\"])", ""))
+        masked
 
 let private axesLabel (tone, weight, emphasis) =
     $"{Matrix.toneLabel tone} · {Matrix.weightLabel weight} · {Matrix.emphasisLabel emphasis}"
@@ -526,12 +737,51 @@ let private componentCard (styles: CardStyles) (kind: IdlKind) (specimens: Speci
 
     let sections =
         [ for s in specimens do
+              let variant axes =
+                  let tree, captions = serverPreview (s.Build axes)
+                  axes, render tree, captions
+
+              // The sweep's head is the baseline. A variant whose signature equals the
+              // baseline's would show a caption the card does not show, so it is left
+              // out and its axis is named below as not shown.
+              let baseline = variant (List.head sweep)
+              let (_, baselineHtml, captions) = baseline
+              let baselineSignature = variantSignature styles.Painted baselineHtml
+
+              let shown =
+                  List.tail sweep
+                  |> List.map variant
+                  |> List.filter (fun (_, html, _) -> variantSignature styles.Painted html <> baselineSignature)
+
+              let (t0, w0, _) = baselineAxes
+
+              let axisOf (t, w, _) =
+                  if t <> t0 then "Tone"
+                  elif w <> w0 then "Weight"
+                  else "Emphasis"
+
+              let shownAxes = shown |> List.map (fun (axes, _, _) -> axisOf axes) |> Set.ofList
+
+              let unshown =
+                  [ "Tone"; "Weight"; "Emphasis" ]
+                  |> List.filter (fun a -> not (Set.contains a shownAxes))
+
               yield $"<h2>{enc s.Label}</h2>"
+
+              for c in captions |> List.distinct do
+                  yield $"<p class=\"ds-note\">{enc c}</p>"
+
+              if not (List.isEmpty unshown) then
+                  let names = String.concat ", " unshown
+
+                  yield
+                      $"<p class=\"ds-note\">Not shown: {enc names}. Setting them does not change what this part renders under this theme and brand, so a variant would only repeat the first.</p>"
+
               yield "<div class=\"ds-grid\">"
 
-              for axes in sweep do
+              for (axes, html, _) in baseline :: shown do
                   yield
-                      $"<figure class=\"ds-variant\"><figcaption>{enc (axesLabel axes)}</figcaption>{render (s.Build axes)}</figure>"
+                      $"<figure class=\"ds-variant\" data-ds-specimen=\"{enc s.Label}\"><figcaption>{enc (axesLabel axes)}</figcaption><!--ds-render-->{html}<!--/ds-render--></figure>"
 
               yield "</div>" ]
 
@@ -801,7 +1051,10 @@ let private readme (idlVersion: int) (kindCount: int) (fragmentCount: int) : str
           "## Components"
           ""
           "One card per IDL kind, swept over the tone, weight and emphasis axes one axis at a time. Each"
-          "card says what the kind is for, which fields bind to data, and which hold children."
+          "card says what the kind is for, which fields bind to data, and which hold children. Each axis is"
+          "set where the kind reads it; a variant that would look the same as the first is left out, and"
+          "the card names the axes it leaves out. Choose only a variant the card shows. A client-drawn"
+          "grid or map is previewed as a static table, captioned as a preview."
           ""
           "## Fragments"
           ""
@@ -857,7 +1110,10 @@ let build (theme: Theme) (manifest: ThemeManifest option) (options: BundleOption
         |> List.filter (fun s -> s.Trim() <> "")
         |> String.concat "\n"
 
-    let styles = { Theme = themeCss; Brand = brand }
+    let styles =
+        { Theme = themeCss
+          Brand = brand
+          Painted = paintedHooks (referenceStylesheet.Value + "\n" + themeCss + "\n" + brand) }
 
     // The role values resolve through the whole cascade, brand last.
     let projected = Project.projectFromFuaranToneVars (themeCss + "\n" + brand)
@@ -921,10 +1177,78 @@ let private markerPattern =
         RegularExpressions.RegexOptions.CultureInvariant
     )
 
+let private figurePattern =
+    RegularExpressions.Regex(
+        "<figure class=\"ds-variant\" data-ds-specimen=\"([^\"]*)\"><figcaption>(.*?)</figcaption><!--ds-render-->(.*?)<!--/ds-render--></figure>",
+        RegularExpressions.RegexOptions.Singleline
+    )
+
+/// A text slot rendered empty: an element whose class names a `-label`, `-heading`,
+/// `-body` or `-title` part, or a button, with nothing inside it.
+let private emptySlotPattern =
+    RegularExpressions.Regex(
+        "<(\\w+)\\b[^>]*\\bclass=\"(?:[^\"]*\\s)?(fuaran-[a-z0-9-]+-(?:label|heading|body|title))(?:\\s[^\"]*)?\"[^>]*>\\s*</\\1>|<button\\b[^>]*>\\s*</button>"
+    )
+
+let private unresolvedText = RegularExpressions.Regex("\\[i18n:([^\\]]*)\\]")
+
+let private ssrPlaceholder =
+    RegularExpressions.Regex("data-fuaran-ssr-placeholder=\"([^\"]*)\"")
+
+/// Phase 2468 — what a card shows, read from its HTML so a hand-built bundle is
+/// checked the same way. (a) Every swept variant on a Components card differs from
+/// its specimen's baseline in what the card's cascade paints. (b) No example renders
+/// an empty text slot or an unresolved `[i18n:…]` key, and none renders a server
+/// hydration placeholder in place of the part.
+let private shownFindings (bundle: Bundle) : string list =
+    let reference =
+        bundle.Files
+        |> List.tryFind (fun f -> f.Path = "fuaran-reference.css")
+        |> Option.map _.Content
+        |> Option.defaultValue ""
+
+    [ for c in bundle.Cards do
+          let headEnd = c.Html.IndexOf "</head>"
+
+          let head, body =
+              if headEnd < 0 then
+                  "", c.Html
+              else
+                  c.Html.Substring(0, headEnd), c.Html.Substring headEnd
+
+          if c.Group = CardGroup.Components then
+              let painted = paintedHooks (reference + "\n" + head)
+
+              let figures =
+                  [ for m in figurePattern.Matches body -> m.Groups[1].Value, m.Groups[2].Value, m.Groups[3].Value ]
+
+              for (specimen, group) in figures |> List.groupBy (fun (s, _, _) -> s) do
+                  match group with
+                  | (_, _, baseline) :: variants ->
+                      let baselineSignature = variantSignature painted baseline
+
+                      for (_, caption, html) in variants do
+                          if variantSignature painted html = baselineSignature then
+                              yield
+                                  $"card {c.Path}: specimen {WebUtility.HtmlDecode specimen}, variant {WebUtility.HtmlDecode caption} renders the same as its baseline"
+                  | [] -> ()
+
+          for m in emptySlotPattern.Matches body do
+              let slot = if m.Groups[2].Success then m.Groups[2].Value else "button"
+              yield $"card {c.Path}: an example renders an empty {slot}"
+
+          for m in unresolvedText.Matches body do
+              yield $"card {c.Path}: an example renders the unresolved key [i18n:{m.Groups[1].Value}]"
+
+          for m in ssrPlaceholder.Matches body do
+              yield $"card {c.Path}: an example renders a {m.Groups[1].Value} hydration placeholder" ]
+    |> List.distinct
+
 /// The bundle's contract. Empty means the bundle holds: every IDL kind has a
 /// Components card, every stdlib fragment has a Fragments card, there is exactly one
-/// Type, Colors and Spacing card, no Colors token is a literal colour, and every
-/// card's first line is a marker naming one of the five groups.
+/// Type, Colors and Spacing card, no Colors token is a literal colour, every card's
+/// first line is a marker naming one of the five groups, and every card shows what
+/// it says it shows (`shownFindings`).
 let check (bundle: Bundle) : string list =
     let cardsIn group =
         bundle.Cards |> List.filter (fun c -> c.Group = group)
@@ -965,7 +1289,8 @@ let check (bundle: Bundle) : string list =
               | Some g ->
                   yield
                       $"card {c.Path}: marker group {CardGroup.label g} disagrees with its group {CardGroup.label c.Group}"
-              | None -> yield $"card {c.Path}: marker group \"{m.Groups[1].Value}\" is not one of the five" ]
+              | None -> yield $"card {c.Path}: marker group \"{m.Groups[1].Value}\" is not one of the five"
+      yield! shownFindings bundle ]
 
 // ─── Write ────────────────────────────────────────────────────────────────────
 

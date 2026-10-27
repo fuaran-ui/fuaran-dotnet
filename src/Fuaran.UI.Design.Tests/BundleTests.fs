@@ -277,3 +277,231 @@ let contract =
 
               Expect.notEqual (Bundle.contentHashOf edited) bundle.ContentHash "a one-byte edit moves the hash"
           } ]
+
+// ─── Phase 2468 — the cards show what they say they show ─────────────────────
+
+let private specimen (kind: string) =
+    (defaults ()).Specimens |> List.find (fun s -> s.Kind = kind)
+
+let private brandAxes = (ToneVariant.Brand, StyleWeight.Standard, Emphasis.Normal)
+
+let private card (bundle: Bundle.Bundle) (name: string) =
+    bundle.Cards
+    |> List.find (fun c -> c.Group = Bundle.CardGroup.Components && c.Name = name)
+
+let private figureCount (html: string) =
+    html.Split("<figure class=\"ds-variant\"").Length - 1
+
+/// A specimen of one kind, the sweep's single representative of it.
+let private probe (kind: string) (hint: string) (build: unit -> Node<unit>) : Bundle.Specimen =
+    { Kind = kind
+      Label = "Probe"
+      Hint = hint
+      Build = fun _ -> build () }
+
+/// The default sweep with every specimen of `kind` replaced by `replacement`.
+let private withOnly (kind: string) (replacement: Bundle.Specimen) =
+    { defaults () with
+        Specimens =
+            ((defaults ()).Specimens |> List.filter (fun s -> s.Kind <> kind))
+            @ [ replacement ] }
+
+[<Tests>]
+let shown =
+    testList
+        "Design-system bundle — the cards show what they say"
+        [ test "a spec-toned kind is swept through its spec, the rest through the node style" {
+              let callout = (specimen "Callout").Build brandAxes
+
+              match callout.Kind with
+              | NodeKind.Callout spec -> Expect.equal spec.Tone ToneVariant.Brand "Callout reads its tone from its spec"
+              | other -> failtest $"the Callout specimen built {other}"
+
+              Expect.equal
+                  (callout.Style |> Option.map _.Tone)
+                  (Some ToneVariant.Default)
+                  "and its node style is left at the default"
+
+              match ((specimen "Metric").Build(ToneVariant.Default, StyleWeight.Compact, Emphasis.Loud)).Kind with
+              | NodeKind.Metric spec ->
+                  Expect.equal spec.Weight StyleWeight.Compact "Metric's own weight field carries the weight axis"
+                  Expect.equal spec.Emphasis Emphasis.Loud "and its emphasis field the emphasis axis"
+              | other -> failtest $"the Metric specimen built {other}"
+
+              let chart = (specimen "Chart").Build brandAxes
+
+              Expect.equal
+                  (chart.Style |> Option.map _.Tone)
+                  (Some ToneVariant.Brand)
+                  "Chart declares no spec tone, so the node style carries it"
+          }
+
+          test "every kind whose spec carries a tone shows all seven tones" {
+              let toned =
+                  Bundle.idlKinds ()
+                  |> List.filter (fun k -> k.Fields |> List.exists (fun f -> f.Type = "ToneVariant"))
+                  |> List.map _.Tag
+
+              Expect.containsAll toned [ "Callout"; "Metric" ] "the IDL declares Callout and Metric spec tones"
+
+              let bundle = Bundle.build Defaults.theme None (defaults ())
+
+              for kind in toned do
+                  let html = (card bundle kind).Html
+
+                  for tone in Fuaran.Samples.Catalog.Matrix.allTones do
+                      let caption =
+                          $"<figcaption>{Fuaran.Samples.Catalog.Matrix.toneLabel tone} &#183; Standard &#183; Normal</figcaption>"
+
+                      Expect.stringContains html caption $"{kind} shows the {tone} variant"
+          }
+
+          test "a variant that would only repeat the baseline is not shown, and its axis is named" {
+              let bundle = Bundle.build Defaults.theme None (defaults ())
+              let chart = (card bundle "Chart").Html
+
+              Expect.equal (figureCount chart) 1 "nothing Chart renders moves with tone, weight or emphasis"
+              Expect.stringContains chart "Not shown: Tone, Weight, Emphasis." "the card says which axes it leaves out"
+          }
+
+          test "a brand that paints the wrapper tone hook brings node-style tone variants back" {
+              let painted =
+                  Bundle.build
+                      Defaults.theme
+                      None
+                      { defaults () with
+                          Brand = Some ".fuaran-tone-brand { outline: 2px solid; }" }
+
+              Expect.isEmpty (Bundle.check painted) "the branded bundle satisfies the contract"
+
+              Expect.stringContains
+                  (card painted "Chart").Html
+                  "<figcaption>Brand &#183; Standard &#183; Normal</figcaption>"
+                  "the Brand variant is visible under that brand, so it is shown"
+          }
+
+          test "the DataGrid card previews the client grid as the static table of the same rows" {
+              let bundle = Bundle.build Defaults.theme None (defaults ())
+              let html = (card bundle "DataGrid").Html
+
+              Expect.isFalse (html.Contains "data-fuaran-ssr-placeholder") "no hydration placeholder"
+
+              Expect.stringContains
+                  html
+                  "<th class=\"fuaran-table-header\">Channel</th>"
+                  "the grid's columns head the table"
+
+              Expect.stringContains
+                  html
+                  "<td class=\"fuaran-table-cell\">35.6</td>"
+                  "its cells read as the grid formats them"
+
+              Expect.stringContains
+                  html
+                  "static read-only table the server renderer emits"
+                  "and the preview says what it is"
+          }
+
+          test "no card carries an empty Metric label, Callout heading or body, or a placeholder" {
+              let bundle = Bundle.build Defaults.theme None (defaults ())
+
+              for c in bundle.Cards do
+                  for blank in
+                      [ "class=\"fuaran-metric-label\"></div>"
+                        "class=\"fuaran-callout-heading\"></div>"
+                        "class=\"fuaran-callout-body\"></div>"
+                        "data-fuaran-ssr-placeholder" ] do
+                      Expect.isFalse (c.Html.Contains blank) $"{c.Path}: no {blank}"
+          }
+
+          test "go-red: a variant that renders the same as its baseline is named" {
+              let bundle = Bundle.build Defaults.theme None (defaults ())
+              let callout = card bundle "Callout"
+              let start = callout.Html.IndexOf "<figure class=\"ds-variant\""
+              let finish = callout.Html.IndexOf("</figure>", start) + "</figure>".Length
+              let baseline = callout.Html.Substring(start, finish - start)
+
+              // A copy of the baseline captioned as a variant, its wrapper tone hook
+              // moved: the reference stylesheet paints no hook, so it shows nothing new.
+              let repeat =
+                  baseline
+                      .Replace("Default &#183; Standard &#183; Normal", "Probe &#183; Standard &#183; Normal")
+                      .Replace("fuaran-tone-default", "fuaran-tone-brand")
+
+              let tampered =
+                  { bundle with
+                      Cards =
+                          bundle.Cards
+                          |> List.map (fun c ->
+                              if c.Path = callout.Path then
+                                  { c with
+                                      Html = c.Html.Insert(finish, repeat) }
+                              else
+                                  c) }
+
+              Expect.equal
+                  (Bundle.check tampered)
+                  [ "card cards/components/Callout.html: specimen Callout, variant Probe · Standard · Normal renders the same as its baseline" ]
+                  "the repeated variant is the one finding"
+          }
+
+          test "go-red: an example with an empty text slot is named" {
+              let options =
+                  withOnly
+                      "Callout"
+                      (probe "Callout" "A callout with a blank heading." (fun () ->
+                          Fuaran.callout
+                              "callout-probe"
+                              { Defaults.callout with
+                                  Heading = Some(TextSource.Literal "")
+                                  Body = TextSource.Literal "Body text." }))
+
+              Expect.equal
+                  (Bundle.check (Bundle.build Defaults.theme None options))
+                  [ "card cards/components/Callout.html: an example renders an empty fuaran-callout-heading" ]
+                  "the blank heading is the one finding"
+          }
+
+          test "go-red: an example whose text key has no text renders an empty slot, and it is named" {
+              let options =
+                  withOnly
+                      "Metric"
+                      (probe "Metric" "A metric whose label key has no text." (fun () ->
+                          Fuaran.metric
+                              "metric-probe"
+                              { Defaults.metric with
+                                  Label = TextSource.Bound(Binding.I18n("probe.unknown", None))
+                                  Value = Binding.Static(Some 1.0) }))
+
+              Expect.equal
+                  (Bundle.check (Bundle.build Defaults.theme None options))
+                  [ "card cards/components/Metric.html: an example renders an empty fuaran-metric-label" ]
+                  "the blank label is the one finding"
+          }
+
+          test "go-red: an example showing an unresolved i18n key is named" {
+              let options =
+                  withOnly
+                      "Markdown"
+                      (probe "Markdown" "Markdown whose text is a key with no entry." (fun () ->
+                          { Fuaran.markdown "markdown-probe" "" with
+                              Kind = NodeKind.Markdown { Text = TextSource.I18n("probe.unknown", Map.empty) } }))
+
+              Expect.equal
+                  (Bundle.check (Bundle.build Defaults.theme None options))
+                  [ "card cards/components/Markdown.html: an example renders the unresolved key [i18n:probe.unknown]" ]
+                  "the unresolved key is the one finding"
+          }
+
+          test "go-red: a client grid whose rows do not resolve leaves a placeholder, and it is named" {
+              let options =
+                  withOnly
+                      "DataGrid"
+                      (probe "DataGrid" "A grid bound to rows the example does not hold." (fun () ->
+                          Generated.mkDataGrid "grid-probe" [] (Binding.State("probe.rows", None))))
+
+              Expect.equal
+                  (Bundle.check (Bundle.build Defaults.theme None options))
+                  [ "card cards/components/DataGrid.html: an example renders a DataGrid hydration placeholder" ]
+                  "the placeholder is the one finding"
+          } ]
