@@ -592,6 +592,13 @@ type ChartStyle =
     }
 
 module ChartStyle =
+    /// A theme colour as the literal the lowering draws: a `#rrggbb` hex is
+    /// itself, any other form its CSS projection (the defaults are all hex).
+    let private colourOf (color: ColorVar) : string =
+        match color with
+        | ColorVar.Hex h -> h
+        | other -> Theme.colorVarToCss other
+
     /// The shipped default style — **corpus-pinned**. The `chart-lowering/*`
     /// goldens are this record's projection, and every conformant host
     /// reproduces it, so changing a value here is a corpus event: regenerate the
@@ -611,25 +618,14 @@ module ChartStyle =
           MarginLeftMaxShare = 0.3
           MarginBottomMaxShare = 0.35
           AxisLabelPadding = 6.0
-          // Phase 875 palette v2 — 8 slots, fixed assignment order. Validated on
-          // BOTH surfaces (light #fcfcfb, dark #1a1a19) against the OKLab gate
-          // set: lightness band, chroma floor, adjacent-pair CVD ΔE (protan +
-          // deutan, Machado 2009 at severity 1.0), adjacent-pair normal-vision
-          // ΔE. Every slot sits in the INTERSECTION of the two lightness bands
-          // (OKLCH L 0.48–0.67), which is what lets one hex set serve both
-          // themes. Slot 1 is the brand loch hue (OKLCH h ≈ 228) with its chroma
-          // lifted to clear the 0.10 floor — the brand hex itself reads as grey
-          // to the gate. Predecessor (the 2008 Google Charts default) failed
-          // contrast in both themes and CVD-separated poorly.
-          Palette =
-            [| "#1a86ac" // loch blue
-               "#bf831c" // ochre
-               "#a51574" // magenta
-               "#21a766" // green
-               "#6454e5" // violet
-               "#af153d" // crimson
-               "#21a2b2" // teal
-               "#d3241b" |] // vermilion
+          // Phase 875 palette v2 — 8 slots, fixed assignment order, validated on
+          // both surfaces. Since Phase 2482 its one definition is
+          // `Defaults.chartSeriesHex` (where the validation record now sits), so
+          // the theme's default chart tokens and this corpus-pinned lowering
+          // default are one list rather than two kept in step. A host-installed
+          // theme palette replaces it through `installChartStyleFromTheme`,
+          // never by editing this value.
+          Palette = Array.ofList Defaults.chartSeriesHex
           Ink = "currentColor"
           AxisOpacity = 0.8
           GridOpacity = 0.12
@@ -743,9 +739,11 @@ module ChartStyle =
           // already failed its gates. They are drawn from the SAME validated
           // set the categorical slots come from, but they are not slots — the
           // rotation must never reach them (they encode meaning, not identity).
-          PositiveColour = "#21a766"
-          NegativeColour = "#d3241b"
-          NeutralColour = "#999999" }
+          // The reserved status triple's one definition is `Defaults.charts`
+          // (Phase 2482), for the same reason as the palette.
+          PositiveColour = colourOf Defaults.charts.Positive
+          NegativeColour = colourOf Defaults.charts.Negative
+          NeutralColour = colourOf Defaults.charts.Neutral }
 
 /// Series index (or, on the Pie arm, category index) → colour. An empty palette
 /// inks series from the surface colour rather than failing — a style is host
@@ -4878,8 +4876,77 @@ let currentChartProvenance () : ChartProvenance = installedProvenance
 let clearChartProvenance () : unit =
     installedProvenance <- ChartProvenance.Off
 
+// ─── The host-installed chart style (Phase 2482) ─────────────────────────────
+//
+// The chart lowering bakes literal series colour into the drawing, so a site's
+// theme cannot reach a chart's palette through inherited CSS the way it reaches
+// the chrome (`currentColor`, Phase 536). It reaches it by INSTALLATION instead,
+// through the same process-global seam as the provenance scope above and for the
+// same reasons: the installing host lives in another assembly, there is one
+// theme per page (one per process for a server host), and threading a style
+// through the renderers' context would widen every emitter's public surface.
+//
+// The palette stays LITERAL in the lowering: `lowerWithStyle` is unchanged, the
+// goldens carry hex, and a theme that sets nothing installs nothing — the shipped
+// `ChartStyle.defaults` is what is read until a host installs, so every default
+// render is byte-identical. A theme's palette is VALIDATED before it is drawn
+// (`Fuaran.UI.ChartPalette`): a palette that fails a gate is refused with the
+// failing slot or pair named, and the default is installed in its place. A
+// failing colour is never drawn.
+//
+// A server host serving several themes from one process must not install per
+// request (two concurrent renders would race on the global); it lowers with
+// `lowerWithStyle` and the style `chartStyleOfTheme` derives, per call.
+
+let mutable private installedStyle: ChartStyle = ChartStyle.defaults
+
+/// The chart style a theme asks for: the shipped default with the theme's
+/// series palette and status triple, once they clear every palette gate.
+/// `Error` names each failing slot or pair; nothing else in the style is themed
+/// (canvas, ink and geometry stay the corpus-pinned defaults, and the chrome
+/// already inks from the surface).
+let chartStyleOfTheme (theme: Theme) : Result<ChartStyle, ChartPalette.PaletteFinding list> =
+    match ChartPalette.validate theme.Charts with
+    | [] ->
+        // `validate` passing means every slot below is a `#rrggbb` literal.
+        let hex (c: ColorVar) = (ChartPalette.hexOf c).Value
+
+        Ok
+            { ChartStyle.defaults with
+                Palette = theme.Charts.Series |> List.map hex |> Array.ofList
+                PositiveColour = hex theme.Charts.Positive
+                NegativeColour = hex theme.Charts.Negative
+                NeutralColour = hex theme.Charts.Neutral }
+    | findings -> Error findings
+
+/// Install the style every renderer-driven chart lowers under. Prefer
+/// `installChartStyleFromTheme`, which validates; this entry installs as given.
+let installChartStyle (style: ChartStyle) : unit = installedStyle <- style
+
+/// Install the chart style a host's theme asks for — the boot-time step. A
+/// palette that clears every gate is installed and `[]` returned; one that
+/// fails is REFUSED, the shipped default installed in its place, and the
+/// findings returned so the host can report them (`ChartPalette.describe`
+/// renders each as one sentence naming the slot or pair).
+let installChartStyleFromTheme (theme: Theme) : ChartPalette.PaletteFinding list =
+    match chartStyleOfTheme theme with
+    | Ok style ->
+        installedStyle <- style
+        []
+    | Error findings ->
+        installedStyle <- ChartStyle.defaults
+        findings
+
+/// The installed style. Read-only introspection.
+let currentChartStyle () : ChartStyle = installedStyle
+
+/// Restore the shipped default style — host teardown and test isolation.
+let clearChartStyle () : unit = installedStyle <- ChartStyle.defaults
+
 /// Lower and emit a chart's SVG under an EXPLICIT provenance scope — the entry
-/// point an export-oriented path calls.
+/// point an export-oriented path calls. The style is the host-installed one
+/// (`currentChartStyle`), exactly as for `renderSvg`: provenance chooses what is
+/// stamped, never what the chart looks like.
 ///
 /// A REFUSED lowering (over the cost caps) emits no metadata: the refusal drawing
 /// is not the picture the stamp would be describing, and stamping provenance onto
@@ -4897,10 +4964,12 @@ let renderSvgWith<'Msg>
     (spec: ChartSpec<'Msg>)
     (rows: Row seq)
     : string =
+    let limits = ChartLimits.defaults
+    let style = currentChartStyle ()
+
     match provenance with
-    | ChartProvenance.Off -> DrawingSvg.render sources textOf (lower spec rows)
+    | ChartProvenance.Off -> DrawingSvg.render sources textOf (lowerWithStyle limits style spec rows)
     | _ ->
-        let limits = ChartLimits.defaults
 
         let capped =
             if limits.MaxPointsPerSeries = System.Int32.MaxValue then
@@ -4908,12 +4977,13 @@ let renderSvgWith<'Msg>
             else
                 rows |> Seq.truncate (limits.MaxPointsPerSeries + 1) |> List.ofSeq
 
-        match tryLower spec capped with
-        | Error refusal -> DrawingSvg.render sources textOf (refusalDrawing spec refusal)
+        match tryLowerWithStyle limits style spec capped with
+        | Error refusal -> DrawingSvg.render sources textOf (refusalDrawingWithStyle style spec refusal)
         | Ok drawing -> DrawingSvg.renderWithMetadata (provenanceDocument provenance spec capped) sources textOf drawing
 
-/// Lower and emit a chart's SVG under the host-installed provenance scope — the
-/// single entry point BOTH renderers' `Chart` arms call.
+/// Lower and emit a chart's SVG under the host-installed provenance scope and the
+/// host-installed chart style (Phase 2482) — the single entry point BOTH
+/// renderers' `Chart` arms call.
 let renderSvg<'Msg>
     (sources: BindingResolver.BindingSources)
     (textOf: TextSource -> string)

@@ -19,6 +19,12 @@ namespace Fuaran.UI.ThemeManifest
 // design-world colour-distribution heuristic — as a per-token
 // `targetPct ± tolerancePct`, rather than inventing a new metric.
 //
+// **`ChartSeriesDistinct` (Phase 2482)** is the colour-SET invariant beside
+// the per-role contrast floors: a chart's series palette must stay
+// distinguishable for every reader, which is a property of adjacent pairs
+// rather than of any one token. Its measurement lives in `Fuaran.UI` so the
+// chart lowering's install path and this manifest cannot disagree.
+//
 // **Additive-only post-ship** (parallel to `StyleFlag` / `LayoutFlag`):
 // adding a new `InvariantKind` case is a minor bump (existing matches
 // gain an `FS0025` warning); redefining an existing case breaks every
@@ -51,6 +57,16 @@ type InvariantKind =
     | UsageBudget of token: string * targetPct: float * tolerancePct: float
     /// The theme's motion must stay within the declared `MotionBudget`.
     | MotionVoice of MotionBudget
+    /// Phase 2482 — the manifest's chart series palette (the `chart.series.1`
+    /// … `chart.series.N` tokens, in slot order) must clear every palette gate
+    /// on both chart surfaces: the lightness band and chroma floor per slot,
+    /// and the colour-vision and normal-vision separation floors over ADJACENT
+    /// pairs (`Fuaran.UI.ChartPalette`, the one implementation the chart
+    /// lowering's install path also runs). A failure names the slot or the
+    /// pair. **Implied** for any manifest carrying a chart series token — a
+    /// host installing that palette has it refused whether or not the manifest
+    /// declares this — so declaring it explicitly only sets its `Weight`.
+    | ChartSeriesDistinct
 
 /// One declared invariant + its soft weight. `Weight` defaults to
 /// `1.0` (via `Invariant.create`); Phase 150 will learn weights from a
@@ -76,3 +92,4 @@ module Invariant =
         | InvariantKind.ContrastFloor _ -> "ContrastFloor"
         | InvariantKind.UsageBudget _ -> "UsageBudget"
         | InvariantKind.MotionVoice _ -> "MotionVoice"
+        | InvariantKind.ChartSeriesDistinct -> "ChartSeriesDistinct"

@@ -280,7 +280,27 @@ let private exoticTheme: Theme =
       Breakpoints =
         { Sm = "600px"
           Md = "820px"
-          Lg = "1200px" } }
+          Lg = "1200px" }
+      // Exotic chart tokens (Phase 2482) — a three-slot series list using every
+      // ColorVar case, so the round-trip catches drift in the slot-keyed series
+      // object and in each case's encoding. (Not a drawable palette: the gate
+      // would refuse the two non-literal slots; the round-trip does not care.)
+      // FULL-LITERAL(ChartTokens): every field overridden is what the round-trip asserts.
+      Charts =
+        { Series =
+            [ ColorVar.Hex "#0a7e8c"
+              ColorVar.OKLCH(0.55, 0.15, 30.0, 1.0)
+              ColorVar.CssRaw "var(--house-series-3)" ]
+          Positive = ColorVar.Hex "#2e8540"
+          Negative = ColorVar.OKLCH(0.5, 0.18, 25.0, 1.0)
+          Neutral = ColorVar.CssRaw "var(--house-neutral)" } }
+
+/// Phase 2482 — the chart variables `Theme.toCss` emits that the reference
+/// stylesheet deliberately does not declare: a read-only projection for the
+/// host page, which no reference rule reads (overriding one in CSS recolours no
+/// chart, so declaring them there would advertise an override that does nothing).
+let private chartVariableNames (theme: Theme) : Set<string> =
+    Theme.chartCssVariables theme.Charts |> List.map fst |> Set.ofList
 
 [<Tests>]
 let tests =
@@ -293,7 +313,13 @@ let tests =
               let defaultsVars = themeVariables Defaults.theme
 
               let referenceNames = referenceVars |> Map.toList |> List.map fst |> Set.ofList
-              let defaultsNames = defaultsVars |> Map.toList |> List.map fst |> Set.ofList
+
+              // Phase 2482 — the chart set is the one deliberate difference,
+              // pinned exactly by the test below.
+              let defaultsNames =
+                  Set.difference
+                      (defaultsVars |> Map.toList |> List.map fst |> Set.ofList)
+                      (chartVariableNames Defaults.theme)
 
               let missingFromTheme = Set.difference referenceNames defaultsNames
               let extraInTheme = Set.difference defaultsNames referenceNames
@@ -325,6 +351,72 @@ let tests =
                   (sprintf
                       "Theme.toCss values diverge from fuaran-reference.css. Triples are (variable, theme-value, reference-value): %A"
                       mismatches)
+          }
+
+          test "Phase 2482 — Defaults.theme |> Theme.toCss adds exactly the chart variables, at the Phase 875 values" {
+              let pairs = Theme.toCssVariables Defaults.theme
+              let names = pairs |> List.map fst |> Set.ofList
+
+              let referenceNames =
+                  referenceCssVariables () |> Map.toList |> List.map fst |> Set.ofList
+
+              // The default's CSS is the reference's, plus these eleven and
+              // nothing else.
+              Expect.equal
+                  (Set.difference names referenceNames)
+                  (Set.ofList (
+                      [ for i in 1..8 -> sprintf "--fuaran-chart-series-%d" i ]
+                      @ [ "--fuaran-chart-positive"
+                          "--fuaran-chart-negative"
+                          "--fuaran-chart-neutral" ]
+                  ))
+                  "the only variables beyond the reference sheet are the chart set"
+
+              let chart = Theme.chartCssVariables Defaults.theme.Charts
+
+              Expect.equal
+                  chart
+                  [ "--fuaran-chart-series-1", "#1a86ac"
+                    "--fuaran-chart-series-2", "#bf831c"
+                    "--fuaran-chart-series-3", "#a51574"
+                    "--fuaran-chart-series-4", "#21a766"
+                    "--fuaran-chart-series-5", "#6454e5"
+                    "--fuaran-chart-series-6", "#af153d"
+                    "--fuaran-chart-series-7", "#21a2b2"
+                    "--fuaran-chart-series-8", "#d3241b"
+                    "--fuaran-chart-positive", "#21a766"
+                    "--fuaran-chart-negative", "#d3241b"
+                    "--fuaran-chart-neutral", "#999999" ]
+                  "the chart variables carry the shipped palette in assignment order"
+
+              // The chart block is the TAIL of the bundle, so every variable the
+              // theme emitted before this phase keeps its position.
+              Expect.equal
+                  (pairs |> List.skip (List.length pairs - List.length chart))
+                  chart
+                  "the chart variables are appended, not interleaved"
+          }
+
+          test "Phase 2482 — a theme serialised before the chart group decodes to the default chart tokens" {
+              let json = Theme.toJson Defaults.theme
+              let charts = json.IndexOf ",\"charts\":"
+
+              Expect.isGreaterThan charts 0 "the encoder writes the charts group"
+
+              // Drop the trailing group: the result is exactly the pre-2482 wire shape.
+              let legacy = json.Substring(0, charts) + "}"
+
+              match Theme.fromJson legacy with
+              | Ok parsed -> Expect.equal parsed Defaults.theme "an absent charts group is the default"
+              | Error e -> failtestf "a pre-2482 theme JSON must still decode: %s" e
+          }
+
+          test "Phase 2482 — a gapped series key set is refused by name" {
+              let json = (Theme.toJson Defaults.theme).Replace("\"2\":{", "\"9\":{")
+
+              match Theme.fromJson json with
+              | Ok _ -> failtest "a series object missing slot 2 must not decode"
+              | Error e -> Expect.stringContains e "\"2\" is missing" "the refusal names the missing slot"
           }
 
           test "Theme.toCss emits a :root { ... } block with every variable on its own line" {
@@ -468,23 +560,25 @@ let tests =
               // text-active-color, text-hover-color. Segmented surface
               // Segmented-control surface = 4: bg, active-bg, active-fg, divider-color.
               // Breakpoint surface (Phase 58) = 3: sm, md, lg.
-              // Total = 149.
-              let expectedCount = 149
+              // Chart surface (Phase 2482) = 11: 8 series slots + the status
+              // triple, when the sample keeps the default palette.
+              // Total = 160.
+              let expectedCount = 160
 
               Expect.equal
                   (Theme.toCssVariables Fuaran.Samples.Themes.Default.theme |> List.length)
                   expectedCount
-                  "Default sample emits 149 variables"
+                  "Default sample emits 160 variables"
 
               Expect.equal
                   (Theme.toCssVariables Fuaran.Samples.Themes.Dark.theme |> List.length)
                   expectedCount
-                  "Dark sample emits 149 variables"
+                  "Dark sample emits 160 variables"
 
               Expect.equal
                   (Theme.toCssVariables Fuaran.Samples.Themes.HighContrast.theme |> List.length)
                   expectedCount
-                  "HighContrast sample emits 149 variables"
+                  "HighContrast sample emits 160 variables"
           }
 
           // ── Interaction matrix round-trip ─────────────────

@@ -41,6 +41,9 @@
     <Compile Include="RowCodec.fs" />
     <Compile Include="Generated.fs" />
     <Compile Include="Types.fs" />
+    <!-- Phase 2482: the chart series palette gate, shared by the chart lowering's
+         install path and the theme manifest's invariant. Reads Types.fs alone. -->
+    <Compile Include="ChartPalette.fs" />
     <!-- Phase 2038: the ONE enumeration of what a node's children are, by reach.
          Reads Types.fs alone, so every walker compiled after it can read it. -->
     <Compile Include="NodeChildren.fs" />

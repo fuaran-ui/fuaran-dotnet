@@ -177,6 +177,64 @@ let tests =
                   "override-only c added"
           }
 
+          // ─── Phase 2482 — the chart token group ──────────────────
+
+          test "projectFromFuaranToneVars projects the chart variables and declares their invariant" {
+              // The shape `Theme.toCss` emits for the chart group: a house
+              // palette in slot order, then the status triple.
+              let css =
+                  """
+                  :root {
+                    --fuaran-tone-brand-bg: #3b5bdb;
+                    --fuaran-chart-series-1: #d9480f;
+                    --fuaran-chart-series-2: #1971c2;
+                    --fuaran-chart-series-3: #2f9e44;
+                    --fuaran-chart-positive: #2f9e44;
+                    --fuaran-chart-negative: #d9480f;
+                    --fuaran-chart-neutral: #868e96;
+                  }
+                  """
+
+              let m = Project.projectFromFuaranToneVars css
+
+              Expect.equal
+                  (ThemeManifest.chartSeries m |> List.map (fun t -> t.Name, t.Value, t.Type))
+                  [ "chart.series.1", "#d9480f", "color"
+                    "chart.series.2", "#1971c2", "color"
+                    "chart.series.3", "#2f9e44", "color" ]
+                  "the series slots, typed colour, in slot order"
+
+              Expect.equal
+                  (ThemeManifest.chartTokens m)
+                  // FULL-LITERAL(ChartTokens): the projector sets every field, and that is the assertion.
+                  (Some
+                      { Series = [ ColorVar.Hex "#d9480f"; ColorVar.Hex "#1971c2"; ColorVar.Hex "#2f9e44" ]
+                        Positive = ColorVar.Hex "#2f9e44"
+                        Negative = ColorVar.Hex "#d9480f"
+                        Neutral = ColorVar.Hex "#868e96" })
+                  "the chart tokens a host installs"
+
+              Expect.equal
+                  m.Invariants
+                  [ Invariant.create InvariantKind.ChartSeriesDistinct ]
+                  "a projected palette carries the gate it is held to"
+
+              Expect.isSome (ThemeManifest.resolveRole ToneVariant.Brand m) "the tone projection is unchanged"
+
+              // And the projected manifest round-trips through the DTCG codec.
+              match Decode.decode (Encode.encode m) with
+              | Ok back -> Expect.equal (ThemeManifest.chartTokens back) (ThemeManifest.chartTokens m) "lossless"
+              | Error e -> failtestf "the projected manifest must decode: %s" e
+          }
+
+          test "a tone block with no chart variables projects no chart tokens and no invariant" {
+              let m =
+                  Project.projectFromFuaranToneVars ":root { --fuaran-tone-brand-bg: #3b5bdb; }"
+
+              Expect.isNone (ThemeManifest.chartTokens m) "no chart tokens"
+              Expect.isEmpty m.Invariants "no invariant is invented"
+          }
+
           // ─── CSS scanner robustness ──────────────────────────────
 
           test "scanCssBlocks strips comments + ignores non-custom-property declarations" {

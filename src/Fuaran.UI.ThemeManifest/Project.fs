@@ -126,7 +126,10 @@ let private toneFromCss (s: string) : ToneVariant option =
     | _ -> None
 
 /// Project a `--fuaran-tone-{tone}-{slot}` custom-property set into a
-/// manifest. Token names are `tone.{tone}.{slot}`; each tone whose
+/// manifest. Token names are `tone.{tone}.{slot}`, plus (Phase 2482) the chart
+/// token group as `chart.series.N` / `chart.{positive,negative,neutral}` with
+/// the `ChartSeriesDistinct` invariant declared beside a projected palette;
+/// each tone whose
 /// background (`bg`) slot is present gets a `ToneVariant` role binding to
 /// that token (the tone's primary surface colour). Role inference is
 /// direct — the `--fuaran-tone-*` contract is already semantic (Phase 12.H).
@@ -164,9 +167,43 @@ let projectFromFuaranToneVars (css: string) : ThemeManifest =
                       TokenName = t.Name })
             | _ -> None)
 
+    // Phase 2482 — the chart token group: `--fuaran-chart-series-N` →
+    // `chart.series.N`, `--fuaran-chart-{positive,negative,neutral}` →
+    // `chart.{…}`. Projecting a palette also declares the invariant it must
+    // clear, so a projected manifest carries the gate it will be held to.
+    let chartTokens =
+        decls
+        |> List.choose (fun (name, value) ->
+            let stripped = name.TrimStart('-')
+
+            if stripped.StartsWith("fuaran-chart-series-") then
+                let n = stripped.Substring("fuaran-chart-series-".Length)
+
+                if n.Length > 0 && n |> Seq.forall System.Char.IsDigit then
+                    Some(token $"chart.series.{n}" value)
+                else
+                    None
+            else
+                match stripped with
+                | "fuaran-chart-positive" -> Some(token "chart.positive" value)
+                | "fuaran-chart-negative" -> Some(token "chart.negative" value)
+                | "fuaran-chart-neutral" -> Some(token "chart.neutral" value)
+                | _ -> None)
+        |> List.fold (fun acc t -> (acc |> List.filter (fun (x: ManifestToken) -> x.Name <> t.Name)) @ [ t ]) []
+
+    let chartInvariants =
+        if
+            chartTokens
+            |> List.exists (fun t -> t.Name.StartsWith ThemeManifest.ChartSeriesPrefix)
+        then
+            [ Invariant.create InvariantKind.ChartSeriesDistinct ]
+        else
+            []
+
     { ThemeManifest.empty with
-        Tokens = tokens
-        Roles = roles }
+        Tokens = tokens @ chartTokens
+        Roles = roles
+        Invariants = chartInvariants }
 
 // ─── Generic CSS custom-property projector ──────────────────────
 

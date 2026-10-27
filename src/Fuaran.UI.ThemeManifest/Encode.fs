@@ -93,6 +93,7 @@ let private invariantJson (inv: Invariant) : JsonValue =
               Some weight ]
             |> List.choose id
         )
+    | InvariantKind.ChartSeriesDistinct -> JObj [ "kind", JStr "ChartSeriesDistinct"; weight ]
 
 // ─── Top-level ──────────────────────────────────────────────────
 

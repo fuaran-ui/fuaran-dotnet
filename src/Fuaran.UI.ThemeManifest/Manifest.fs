@@ -139,6 +139,64 @@ module ThemeManifest =
             | _ -> None)
         |> Option.bind (fun name -> tryGetToken name manifest)
 
+    /// Phase 2482 — the token-name stem the chart series palette uses:
+    /// `chart.series.1` … `chart.series.N`, one token per slot.
+    [<Literal>]
+    let ChartSeriesPrefix = "chart.series."
+
+    /// The manifest's chart series tokens in SLOT order (by the numeric
+    /// suffix, not by declaration order — the gates are measured over adjacent
+    /// slots, so the order is part of the palette). A token whose suffix is not
+    /// a positive integer is not a series slot.
+    let chartSeries (manifest: ThemeManifest) : ManifestToken list =
+        manifest.Tokens
+        |> List.choose (fun t ->
+            if t.Name.StartsWith ChartSeriesPrefix then
+                let suffix = t.Name.Substring ChartSeriesPrefix.Length
+
+                if suffix.Length > 0 && suffix |> Seq.forall System.Char.IsDigit then
+                    let n = int suffix
+                    if n > 0 then Some(n, t) else None
+                else
+                    None
+            else
+                None)
+        |> List.sortBy fst
+        |> List.map snd
+
+    /// Phase 2482 — the chart token group a manifest declares, ready to set on
+    /// a `Theme` (`{ theme with Charts = … }`): the series slots in slot order
+    /// and the status triple from `chart.positive` / `chart.negative` /
+    /// `chart.neutral`, each falling back to the shipped default when absent.
+    /// `None` when the manifest declares no series slot at all — a theme file
+    /// that says nothing about charts leaves the default in place. Values are
+    /// carried as written; the palette gate decides whether they can be drawn.
+    let chartTokens (manifest: ThemeManifest) : ChartTokens option =
+        match chartSeries manifest with
+        | [] -> None
+        | series ->
+            let status name (fallback: ColorVar) =
+                tryGetToken ("chart." + name) manifest
+                |> Option.map (fun t -> ColorVar.Hex t.Value)
+                |> Option.defaultValue fallback
+
+            Some
+                { Series = series |> List.map (fun t -> ColorVar.Hex t.Value)
+                  Positive = status "positive" Fuaran.UI.Defaults.charts.Positive
+                  Negative = status "negative" Fuaran.UI.Defaults.charts.Negative
+                  Neutral = status "neutral" Fuaran.UI.Defaults.charts.Neutral }
+
+    /// Phase 2482 — the `ChartSeriesDistinct` invariant, evaluated: every
+    /// palette finding against the manifest's chart tokens, each naming its
+    /// slot or pair (`Fuaran.UI.ChartPalette.describe`). `[]` when the palette
+    /// passes, or when the manifest declares no chart series at all. Evaluated
+    /// whether or not the invariant is declared, because the install path
+    /// refuses a failing palette either way.
+    let verifyChartPalette (manifest: ThemeManifest) : Fuaran.UI.ChartPalette.PaletteFinding list =
+        match chartTokens manifest with
+        | Some tokens -> Fuaran.UI.ChartPalette.validate tokens
+        | None -> []
+
     /// Every colour value declared in the palette — the membership set
     /// Phase 146's `OffPaletteColour` check tests resolved fills against.
     let paletteColours (manifest: ThemeManifest) : Set<string> =

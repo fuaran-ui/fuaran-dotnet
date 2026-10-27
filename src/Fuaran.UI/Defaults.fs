@@ -1168,6 +1168,42 @@ let breakpoints: Breakpoints =
       Md = "768px"
       Lg = "1024px" }
 
+/// Phase 2482 — the shipped chart series palette, as `#rrggbb` literals in
+/// their fixed ASSIGNMENT order. This is the Phase 875 palette v2 and the one
+/// definition of it: `Fuaran.UI.Charts.ChartStyle.defaults.Palette` is read off
+/// this list, so the theme default and the corpus-pinned lowering default
+/// cannot drift apart.
+///
+/// Validated on BOTH surfaces (light #fcfcfb, dark #1a1a19) against the OKLab
+/// gate set `Fuaran.UI.ChartPalette` implements: lightness band, chroma floor,
+/// adjacent-pair CVD ΔE (protan + deutan, Machado 2009 at severity 1.0),
+/// adjacent-pair normal-vision ΔE. Every slot sits in the INTERSECTION of the
+/// two lightness bands (OKLCH L 0.48–0.67), which is what lets one hex set serve
+/// both themes. Slot 1 is the brand loch hue (OKLCH h ≈ 228) with its chroma
+/// lifted to clear the 0.10 floor — the brand hex itself reads as grey to the
+/// gate. Predecessor (the 2008 Google Charts default) failed the lightness band
+/// in both themes. Do not cycle or sort it: re-ordering can drop a passing set
+/// below the adjacent-pair floors. Changing a value is a corpus event (the
+/// `chart-lowering/*` goldens carry these hexes).
+let chartSeriesHex: string list =
+    [ "#1a86ac" // loch blue
+      "#bf831c" // ochre
+      "#a51574" // magenta
+      "#21a766" // green
+      "#6454e5" // violet
+      "#af153d" // crimson
+      "#21a2b2" // teal
+      "#d3241b" ] // vermilion
+
+/// Phase 2482 — the chart token group's default: the Phase 875 series palette
+/// and the reserved status triple (refreshed off the retired 2008 hexes by
+/// Phase 875). A theme that sets nothing draws exactly this.
+let charts: ChartTokens =
+    { Series = chartSeriesHex |> List.map ColorVar.Hex
+      Positive = ColorVar.Hex "#21a766"
+      Negative = ColorVar.Hex "#d3241b"
+      Neutral = ColorVar.Hex "#999999" }
+
 let theme: Theme =
     { Tones = tones
       Spacing = spacing
@@ -1180,7 +1216,8 @@ let theme: Theme =
       Interaction = interaction
       TabBar = tabBar
       Segmented = segmented
-      Breakpoints = breakpoints }
+      Breakpoints = breakpoints
+      Charts = charts }
 
 /// Phase 596 — the typed placeholder defaults the symmetric form-field
 /// auto-bind synthesizes: a Form field whose `value` slot is absent on the

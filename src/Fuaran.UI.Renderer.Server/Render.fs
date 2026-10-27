@@ -948,6 +948,17 @@ let themeStyleElementWithCsp (csp: Csp.CspMode) (theme: Theme) : ReactElement =
 
 /// Render the theme `:root` style block followed by the tree's body HTML, as a
 /// single string. Convenience for a host that wants both in one emission.
+///
+/// Phase 2482 — the CHART palette is not themed by this call. A chart's series
+/// colours are baked into its drawing from the host-installed chart style, and
+/// the install is process-wide, so a per-request install here would let two
+/// concurrent renders under different themes race on it. An SSR host installs
+/// its theme's chart style ONCE, at boot —
+/// `Fuaran.UI.Charts.installChartStyleFromTheme theme`, which validates the
+/// palette and returns any refusal by slot or pair — and every chart this
+/// renderer and the client renderer draw then carries the same palette. A host
+/// serving several themes from one process lowers per call with
+/// `Charts.lowerWithStyle` and `Charts.chartStyleOfTheme` instead.
 let renderWithTheme (theme: Theme) (sources: BindingResolver.BindingSources) (node: Node<obj>) : string =
     Render.htmlView (themeStyleElement theme) + render sources node
 

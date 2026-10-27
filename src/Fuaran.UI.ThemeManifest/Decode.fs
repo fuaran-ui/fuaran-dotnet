@@ -129,6 +129,10 @@ let private parseInvariant (j: JsonValue) : Invariant option =
                         { MaxDurationMs = maxDur
                           Easing = easing }
                   Weight = weight }
+        | Some "ChartSeriesDistinct" ->
+            Some
+                { Kind = InvariantKind.ChartSeriesDistinct
+                  Weight = weight }
         | _ -> None
 
 let private parseMeta (fields: (string * JsonValue) list) : ManifestMeta =

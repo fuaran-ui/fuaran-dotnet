@@ -8310,6 +8310,41 @@ re-emitted, and its references resolve as before.
 `src/Fuaran.UI.Fragments.Tests/StdlibCertificationTests.fs`, and by the library's quantified certification, which
 covers the new hole spaces.
 
+### What rides this slot — Phase 2482 (a theme's chart palette, installed and validated)
+
+**Class: additive, with the record rule's note.** Packages `Fuaran.UI`, `Fuaran.UI.Renderer.Core`,
+`Fuaran.UI.Charts`, `Fuaran.UI.Renderer` and `Fuaran.UI.ThemeManifest`. No wire byte moves, the vocabulary does not
+change, and every default chart and every `chart-lowering/*` golden is byte-identical.
+
+- **`Theme` gains `Charts: ChartTokens`** (series slots plus the positive / negative / neutral triple), defaulted by
+  `Defaults.charts`. A consumer that builds `Theme` as a full literal rather than `{ Defaults.theme with … }` gets
+  FS0764 and adds the field. `Defaults.chartSeriesHex` is now the one definition of the Phase 875 palette, and
+  `ChartStyle.defaults` reads it, so its values are unchanged.
+- **`Theme.toCss` emits eleven more variables**, `--fuaran-chart-series-1` … `-8` and `--fuaran-chart-{positive,
+  negative,neutral}`, appended after every existing one. They are a read-only projection: the reference stylesheet
+  does not declare them, and overriding one recolours no chart (D23). `Theme.chartCssVariables` is new.
+- **`Theme.toJson` writes a `charts` group, and `Theme.fromJson` reads it.** An absent group decodes to the default,
+  so theme JSON written before this phase still decodes.
+- **New module `Fuaran.UI.ChartPalette`**, the palette gate. **New in `Fuaran.UI.Charts`:** `chartStyleOfTheme`,
+  `installChartStyle`, `installChartStyleFromTheme`, `currentChartStyle` and `clearChartStyle`. `renderSvg` and
+  `renderSvgWith` keep their signatures and read the installed style. `lowerWithStyle` is unchanged.
+- **Behaviour: the browser `Render.renderWithTheme` installs its theme's chart style** before rendering. A refused
+  palette is reported through the renderer's diagnostics and the default is drawn. The server renderer does not
+  install per call (D23).
+- **`ThemeManifest`: `InvariantKind.ChartSeriesDistinct`** (a new case, so an exhaustive match gains FS0025, which the
+  Semver section classifies as minor), `ThemeManifest.chartSeries` / `chartTokens` / `verifyChartPalette`, the
+  projector's `--fuaran-chart-*` reading, and `ThemeBridge.VerificationResult.ChartPalette` (a record field: a full
+  literal gets FS0764). The published schema admits the new kind.
+
+**What a consumer does.** Nothing, unless it builds `Theme` or `VerificationResult` as a full literal. To theme its
+charts, it installs once at boot: `Charts.installChartStyleFromTheme theme`, then reports any returned finding with
+`ChartPalette.describe`.
+
+**Certified by** `Chart lowering — host-installed palette (Phase 2482)` in `src/Fuaran.UI.Tests/ChartLoweringTests.fs`
+(including the `chart-lowering/themed/` golden), the Phase 2482 tests in `ThemeTests.fs`, and
+`ThemeManifest — chart series palette (Phase 2482)` and the chart-token projector tests in
+`src/Fuaran.UI.ThemeManifest.Tests`.
+
 ---
 
 ## 0.97.0 — the slot opened after v0.96.0 was released (RELEASED — tagged v0.97.0 at 0d6a626, 2026-10-18)
