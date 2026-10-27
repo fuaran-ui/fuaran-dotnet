@@ -960,6 +960,10 @@ binding can act on.
 definitions, a small comparison, structured help content: headers plus literal cells, no
 column model and no data feed. Emit `"columns": []` and `"source": {"$type":"Static",
 "value": []}` alongside it — both stay required, and the static mode ignores them.
+It needs no `rowKeyField`: the row-identity warning (`FUARAN078`) applies to a data-bound
+grid, and to a static one only when it declares a row click, an edit, a transfer key, or
+is read through a `Selection`. A table the reader acts on is the data-bound grid above,
+with a `rowKeyField`.
 
 **Prose that happens to contain a table → a Markdown node's GFM table.** If the table is
 one element of a written passage and nothing will be done to it, leave it in the markdown
