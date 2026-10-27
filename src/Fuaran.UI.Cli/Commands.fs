@@ -23,7 +23,7 @@ Usage:
                                                             JSON Schema -> a canonical Form tree
   fuaran recipe <query>                                     (served by @fuaran-ui/cli / the MCP)
   fuaran refusal-report --corpus <dir>                      Conformance corpus -> this host's refusal report (JSON)
-  fuaran design-system export --theme <manifest.json | default | dark | high-contrast> --out <dir> [--brand <css>]
+  fuaran design-system export --theme <manifest.json | default | dark | high-contrast> --out <dir> [--brand <css>] [--locale <bcp47>]
                                                             The language as a design-system bundle; prints its hash
 
 Secrets: FUARAN_ENDPOINT / FUARAN_ACCESS_TOKEN / FUARAN_PROVIDER_KEY are read from
@@ -175,7 +175,8 @@ let designSystemExport (args: string list) : int * string =
                     theme
                     manifest
                     { Fuaran.UI.Design.Bundle.BundleOptions.defaults () with
-                        Brand = brand }
+                        Brand = brand
+                        Locale = flagValue "--locale" args }
 
             match Fuaran.UI.Design.Bundle.check bundle with
             | [] ->

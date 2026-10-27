@@ -117,6 +117,10 @@ type BundleOptions =
         /// The component sweep. `BundleOptions.defaults` is the catalog matrix plus
         /// the specimens for the kinds the catalog does not show.
         Specimens: Specimen list
+        /// Phase 2470 — the reader's locale, a BCP-47 tag. With one, the Fact card
+        /// adds a figure produced through `Binding.Format` under it, and the figure
+        /// kinds' cards state what that figure reads. `None` is the locale-free bundle.
+        Locale: string option
     }
 
 type Bundle =
@@ -291,6 +295,8 @@ let private sample (kind: string) (hint: string) (build: unit -> Node<unit>) : S
 
 let private exampleFragment = Stdlib.labelledMetricRow<unit>
 
+let private factHint = "A labelled value pair for read-only detail views."
+
 /// Representatives for the kinds the catalog matrix does not show. Each is the
 /// smallest honest instance of its kind; `check` is what notices a kind with none.
 let supplementSpecimens: Specimen list =
@@ -323,8 +329,7 @@ let supplementSpecimens: Specimen list =
                                   Label = literal "Active users"
                                   Value = Binding.Static(Some 1280.0) })
                     Fallback = Fuaran.markdown "errorboundary-fallback" "This panel is unavailable." } }
-      sample "Fact" "A labelled value pair for read-only detail views." (fun () ->
-          Fuaran.fact "fact" "Account owner" "Northwind team")
+      sample "Fact" factHint (fun () -> Fuaran.fact "fact" "Account owner" "Northwind team")
       { Kind = "FragmentDecl"
         Label = "FragmentDecl"
         Hint = "A parameterised template with typed holes. Paints nothing itself; shown here applied by a FragmentRef."
@@ -430,7 +435,8 @@ module BundleOptions =
     /// The catalog sweep plus the supplement, no brand.
     let defaults () : BundleOptions =
         { Brand = None
-          Specimens = catalogSpecimens () @ supplementSpecimens }
+          Specimens = catalogSpecimens () @ supplementSpecimens
+          Locale = None }
 
 /// The axis sweep a component card shows: the baseline, then every other tone, weight
 /// and emphasis with the other two at their defaults. One axis moves at a time, so a
@@ -595,6 +601,90 @@ let private exampleSources: BindingResolver.BindingSources =
 let private render (node: Node<unit>) : string =
     Server.Render.render exampleSources (Node.mapMsg box node)
 
+// ─── Figures (Phase 2470) ─────────────────────────────────────────────────────
+//
+// A figure has two routes, and the cards name both. `CellFormat` (a Metric's or a
+// LabelValueRow's `Format`, a DataGrid column's) is locale-free: every host renders
+// the same text. `Binding.Format` with a `LocaleSource` renders for a reader, under
+// a locale; it yields TEXT, so it fits a text slot (a Fact's value, a subtext) and
+// never a figure kind's numeric value. With a locale, the bundle shows the second
+// route where a kind can carry it and says what it reads where a kind cannot.
+
+/// The money figure the catalog's Metric and LabelValueRow examples carry.
+let private figureValue = 142_500.0
+let private figureCurrency = "GBP"
+
+/// The example figure through `Binding.Format` under `tag`.
+let private localeFigure (tag: string) : Binding<string> =
+    Binding.Format(Binding.Static(Some figureValue), Format.Currency figureCurrency, LocaleSource.Explicit tag)
+
+/// Refuses a tag the platform does not know: the formatter would otherwise fall back
+/// to the invariant culture, and the card would show a figure no reader reads.
+let private requireLocale (tag: string) : unit =
+    let known =
+        not (String.IsNullOrWhiteSpace tag)
+        && (try
+                Globalization.CultureInfo.GetCultureInfo(tag, true) |> ignore
+                true
+            with :? Globalization.CultureNotFoundException ->
+                false)
+
+    if not known then
+        invalidArg "options" $"the locale \"{tag}\" is not a known BCP-47 tag"
+
+/// The specimen a locale adds to the Fact card: the example figure as a Fact's value,
+/// produced through `Binding.Format` under the locale.
+let private figureSpecimen (tag: string) : Specimen =
+    { Kind = "Fact"
+      Label = $"Fact, a reader-facing figure ({tag})"
+      Hint = factHint
+      Build =
+        fun axes ->
+            styled
+                axes
+                (Fuaran.factSpec
+                    "fact-figure"
+                    { Defaults.fact with
+                        Label = literal "Revenue, year to date"
+                        Value = TextSource.Bound(localeFigure tag) }) }
+
+/// The "Figures" lines of a figure kind's authoring note, by wire tag.
+let private figureNote (locale: string option) (kind: string) : string list =
+    let cellFigure =
+        Formatting.formatCellValue (CellFormat.Currency figureCurrency) (HostPrelude.CellValue.Numeric figureValue)
+
+    let localeFree what =
+        $"{what} a CellFormat, which is locale-free: every host renders the same text (Currency \"{figureCurrency}\" reads {cellFigure})."
+
+    let readerFacing =
+        "A reader-facing figure, grouped and symbol-led in the reader's locale, is Binding.Format with a locale. It yields text, so it goes in a text slot (a Fact's value, a subtext), never in this kind's value."
+
+    let routes =
+        match kind with
+        | "Metric"
+        | "LabelValueRow" -> Some(localeFree "The value is shown through Format," + " " + readerFacing)
+        | "DataGrid" -> Some(localeFree "A column's Format is" + " " + readerFacing)
+        | "Fact" ->
+            Some
+                "The value is text. A reader-facing figure in it is Binding.Format with a locale. For locale-free, host-identical output, use a figure kind (Metric, LabelValueRow) with a CellFormat."
+        | _ -> None
+
+    match routes with
+    | None -> []
+    | Some r ->
+        [ $"<p><strong>Figures:</strong> {enc r}</p>"
+          match locale with
+          | None -> ()
+          | Some tag ->
+              let reads =
+                  BindingResolver.tryResolve exampleSources (localeFigure tag)
+                  |> Option.defaultValue ""
+
+              if kind = "Fact" then
+                  $"<p><strong>Under {enc tag}:</strong> the figure reads {enc reads}, shown below through Binding.Format.</p>"
+              else
+                  $"<p><strong>Under {enc tag}:</strong> a reader-facing figure reads {enc reads}. This kind's value cannot carry it, so the examples keep the locale-free figure the screen renders; the Fact card shows the reader-facing one.</p>" ]
+
 // ─── Server-renderable previews ──────────────────────────────────────────────
 
 /// A static read-only table in the node's place, keeping its id and style. This is
@@ -719,7 +809,12 @@ let private listOrNone (items: string list) =
     else
         String.concat ", " items
 
-let private componentCard (styles: CardStyles) (kind: IdlKind) (specimens: Specimen list) : Card =
+let private componentCard
+    (styles: CardStyles)
+    (locale: string option)
+    (kind: IdlKind)
+    (specimens: Specimen list)
+    : Card =
     let purpose = specimens |> List.map _.Hint |> List.distinct |> String.concat " "
     let required = kind.Fields |> List.filter _.Required |> List.map _.Name
 
@@ -733,6 +828,7 @@ let private componentCard (styles: CardStyles) (kind: IdlKind) (specimens: Speci
               $"<p><strong>Binds to:</strong> {enc (listOrNone (bindsOf kind))}.</p>"
               $"<p><strong>Children:</strong> {enc (listOrNone (slotsOf kind))}.</p>"
               $"<p><strong>Required fields:</strong> {enc (listOrNone required)}.</p>"
+              yield! figureNote locale kind.Tag
               "</div>" ]
 
     let sections =
@@ -1022,7 +1118,7 @@ let private colorsCard (styles: CardStyles) (roles: ColorRole list) : Card =
 
 // ─── Authoring notes ──────────────────────────────────────────────────────────
 
-let private readme (idlVersion: int) (kindCount: int) (fragmentCount: int) : string =
+let private readme (idlVersion: int) (kindCount: int) (fragmentCount: int) (locale: string option) : string =
     String.concat
         "\n"
         [ "# Fuaran UI design system"
@@ -1055,6 +1151,16 @@ let private readme (idlVersion: int) (kindCount: int) (fragmentCount: int) : str
           "set where the kind reads it; a variant that would look the same as the first is left out, and"
           "the card names the axes it leaves out. Choose only a variant the card shows. A client-drawn"
           "grid or map is previewed as a static table, captioned as a preview."
+          ""
+          "Figures have two routes. A figure kind's Format (Metric, LabelValueRow, a DataGrid column) is a"
+          "CellFormat: locale-free, so every host renders the same text, and a currency reads as its code"
+          "and two decimals, ungrouped. A figure a reader reads, grouped and symbol-led in their locale, is"
+          "Binding.Format with a locale; it yields text, so it goes in a text slot such as a Fact's value."
+          "Design a figure kind's value as the locale-free text its card shows, and a reader-facing figure"
+          "as text."
+          match locale with
+          | Some tag -> $"This bundle was exported for {tag}: the Fact card shows a figure as a reader there reads it."
+          | None -> ()
           ""
           "## Fragments"
           ""
@@ -1134,11 +1240,20 @@ let build (theme: Theme) (manifest: ThemeManifest option) (options: BundleOption
 
     let version, kinds = idl.Value
 
-    let bySpecimenKind = options.Specimens |> List.groupBy _.Kind |> Map.ofList
+    let specimens =
+        match options.Locale with
+        | Some tag ->
+            requireLocale tag
+            options.Specimens @ [ figureSpecimen tag ]
+        | None -> options.Specimens
+
+    let bySpecimenKind = specimens |> List.groupBy _.Kind |> Map.ofList
 
     let components =
         kinds
-        |> List.choose (fun k -> Map.tryFind k.Tag bySpecimenKind |> Option.map (componentCard styles k))
+        |> List.choose (fun k ->
+            Map.tryFind k.Tag bySpecimenKind
+            |> Option.map (componentCard styles options.Locale k))
 
     let fragments = Stdlib.all<unit> |> List.map (fragmentCard styles)
 
@@ -1158,7 +1273,7 @@ let build (theme: Theme) (manifest: ThemeManifest option) (options: BundleOption
           { Path = "fuaran-reference.css"
             Content = referenceStylesheet.Value }
           { Path = "README.md"
-            Content = readme version kinds.Length (List.length Stdlib.all<unit>) } ]
+            Content = readme version kinds.Length (List.length Stdlib.all<unit>) options.Locale } ]
         |> List.sortWith (fun a b -> String.CompareOrdinal(a.Path, b.Path))
 
     { IdlVersion = version

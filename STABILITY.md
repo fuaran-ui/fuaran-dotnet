@@ -8252,6 +8252,32 @@ on the new findings.
 **Certified by** the `Design-system bundle — the cards show what they say` list in
 `src/Fuaran.UI.Design.Tests/BundleTests.fs`, with a go-red probe for each new finding.
 
+### What rides this slot — Phase 2470 (designs show locale-formatted figures)
+
+**Class: breaking at the source level for one record (a field added), otherwise additive.** Package
+`Fuaran.UI.Design`, and the `Fuaran.UI.Cli` tool. No wire byte, renderer output or `CellFormat` behaviour moves. The
+slot's class is already breaking (above), so the number does not move.
+
+- **`BundleOptions` gains `Locale: string option`.** A full record literal of `BundleOptions` no longer compiles
+  (FS0764); `{ BundleOptions.defaults () with … }` is unaffected, and `defaults ()` sets `Locale = None`.
+- **The figure kinds' cards name both routes.** The Metric, LabelValueRow, Fact and DataGrid cards carry a
+  "Figures:" line: a `CellFormat` is locale-free, so every host renders the same text (`GBP 142500.00`); a
+  reader-facing figure is `Binding.Format` with a locale, which yields text for a text slot. The bundle README's
+  Components section carries the rule. These lines are in every export, so the bundle's bytes and content hash
+  move; every other card is byte-identical to the 0.97.0 bundle.
+- **`design-system export --locale <bcp47>` (`BundleOptions.Locale`).** With a locale, the Fact card adds a specimen
+  whose value is the example figure through `Binding.Format` under it (`£142,500.00` under `en-GB`), the Metric,
+  LabelValueRow and DataGrid cards say what the figure reads there, and the README names the locale. Those three
+  kinds' own examples keep the locale-free figure, because their value is a number shown through a `CellFormat` and
+  cannot carry a localised one. A tag the platform does not know is refused (`ArgumentException`; exit 2 from the
+  CLI) rather than formatted under the invariant culture.
+
+**What a consumer does.** A consumer constructing `BundleOptions` as a full record literal adds `Locale = None`.
+
+**Certified by** the `Design-system bundle — figures` list in `src/Fuaran.UI.Design.Tests/BundleTests.fs`: both routes
+named on the four cards, the `en-GB` figure rendered as `£142,500` through `Binding.Format`, the locale reaching only
+the four figure cards and the README, and a go-red probe refusing an unknown tag.
+
 ---
 
 

@@ -505,3 +505,97 @@ let shown =
                   [ "card cards/components/DataGrid.html: an example renders a DataGrid hydration placeholder" ]
                   "the placeholder is the one finding"
           } ]
+
+// Phase 2470 — figures. A figure kind's value takes a locale-free `CellFormat`; a
+// reader-facing figure is `Binding.Format` with a locale, which yields text. The cards
+// name both routes, and an export with a locale shows the second where a kind can
+// carry it (a Fact's value) and says what it reads where a kind cannot.
+
+let private cardHtml (bundle: Bundle.Bundle) (kind: string) =
+    (bundle.Cards |> List.find (fun c -> c.Path = $"cards/components/{kind}.html")).Html
+
+let private withLocale (tag: string) = { defaults () with Locale = Some tag }
+
+let private figureKinds = [ "Metric"; "LabelValueRow"; "Fact"; "DataGrid" ]
+
+[<Tests>]
+let figures =
+    testList
+        "Design-system bundle — figures"
+        [ test "the figure kinds' notes name both routes" {
+              let bundle = Bundle.build Defaults.theme None (defaults ())
+
+              for kind in figureKinds do
+                  let html = cardHtml bundle kind
+                  Expect.stringContains html "<strong>Figures:</strong>" $"{kind} carries the figures note"
+                  Expect.stringContains html "CellFormat" $"{kind} names the locale-free route"
+                  Expect.stringContains html "Binding.Format with a locale" $"{kind} names the reader-facing route"
+
+              Expect.isFalse
+                  ((cardHtml bundle "Markdown").Contains "<strong>Figures:</strong>")
+                  "a kind with no figure carries no figures note"
+
+              let readme = (bundle.Files |> List.find (fun f -> f.Path = "README.md")).Content
+              Expect.stringContains readme "Figures have two routes." "the bundle README carries the rule"
+          }
+
+          test "an en-GB export shows the figure grouped and symbol-led, through Binding.Format" {
+              let bundle = Bundle.build Defaults.theme None (withLocale "en-GB")
+              Expect.isEmpty (Bundle.check bundle) "the localised bundle satisfies its own contract"
+
+              let fact = cardHtml bundle "Fact"
+
+              Expect.stringContains
+                  fact
+                  "data-ds-specimen=\"Fact, a reader-facing figure (en-GB)\""
+                  "the Fact card adds the reader-facing specimen"
+
+              let rendered =
+                  fact.Substring(fact.IndexOf "data-ds-specimen=\"Fact, a reader-facing figure (en-GB)\"")
+
+              Expect.stringContains rendered "£142,500" "the figure renders grouped, symbol-led"
+
+              for kind in [ "Metric"; "LabelValueRow"; "DataGrid" ] do
+                  Expect.stringContains
+                      (System.Net.WebUtility.HtmlDecode(cardHtml bundle kind))
+                      "<strong>Under en-GB:</strong> a reader-facing figure reads £142,500"
+                      $"{kind} says what the figure reads under the locale"
+
+              Expect.stringContains
+                  (cardHtml bundle "Metric")
+                  "GBP 142500.00"
+                  "the Metric's own value keeps the locale-free figure the screen renders"
+          }
+
+          test "the locale reaches only the figure cards and the README" {
+              let plain = Bundle.build Defaults.theme None (defaults ())
+              let localised = Bundle.build Defaults.theme None (withLocale "en-GB")
+
+              let touched =
+                  Set.ofList [ for k in figureKinds -> $"cards/components/{k}.html" ]
+                  |> Set.add "README.md"
+
+              Expect.equal (localised.Files |> List.map _.Path) (plain.Files |> List.map _.Path) "the same files"
+
+              for (a, b) in List.zip plain.Files localised.Files do
+                  if Set.contains a.Path touched then
+                      Expect.notEqual b.Content a.Content $"{a.Path} carries the locale"
+                  else
+                      Expect.equal b.Content a.Content $"{a.Path} is byte-identical without the locale"
+
+              Expect.notEqual localised.ContentHash plain.ContentHash "the locale reaches the hash"
+
+              for f in plain.Files do
+                  Expect.isFalse
+                      (f.Content.Contains "reader-facing figure (")
+                      $"{f.Path}: no locale specimen without a locale"
+
+                  Expect.isFalse (f.Content.Contains "<strong>Under ") $"{f.Path}: no locale line without a locale"
+          }
+
+          test "go-red: a locale the platform does not know is refused" {
+              for tag in [ "xx-NOTREAL"; ""; " " ] do
+                  Expect.throwsT<System.ArgumentException>
+                      (fun () -> Bundle.build Defaults.theme None (withLocale tag) |> ignore)
+                      $"\"{tag}\" is refused rather than formatted under the invariant culture"
+          } ]

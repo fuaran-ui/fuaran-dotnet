@@ -7,7 +7,7 @@ it produces is a composition a Fuaran UI tree can express, rather than a picture
 later translate.
 
 ```bash
-fuaran design-system export --theme <manifest.json | default | dark | high-contrast> --out <dir> [--brand <css>]
+fuaran design-system export --theme <manifest.json | default | dark | high-contrast> --out <dir> [--brand <css>] [--locale <bcp47>]
 ```
 
 The verb builds the bundle, runs its checks, writes it only when they hold, and prints the card
@@ -117,6 +117,23 @@ and `theme.tokens.json` show the branded resolution. Because it comes last, its 
 specificity, so a brand can set the typeface with `:root { font-family: … }`. Because it is alone
 in its `<style>` element, it may begin with `@import` to load a web font. A brand stylesheet may
 not contain `</`; it is inlined into a `<style>` element.
+
+## Figures and locales
+
+A figure has two routes, and the Metric, LabelValueRow, Fact and DataGrid cards name both. A figure
+kind's `Format` (a Metric's, a LabelValueRow's, a DataGrid column's) is a `CellFormat`, which is
+locale-free so every host renders the same text: `CellFormat.Currency "GBP"` reads `GBP 142500.00`
+and `Number (Some 0)` reads `3921`, ungrouped. A figure a reader reads, grouped and symbol-led in
+their locale, is `Binding.Format` with a `LocaleSource`. It yields text, so it fits a text slot (a
+Fact's value, a subtext, a heading) and never a figure kind's numeric value.
+
+`--locale <bcp47>` exports the bundle for a reader's locale. The Fact card adds a specimen whose
+value is the example figure through `Binding.Format` under that locale (`£142,500.00` under
+`en-GB`), the other three cards say what the figure reads there, and the README names the locale.
+Nothing else changes: the figure kinds' own examples keep the locale-free text the screen renders,
+because their value cannot carry a localised figure. Without `--locale` there is no locale
+specimen and no locale line. A tag the platform does not know is refused (exit 2) rather than
+formatted under the invariant culture.
 
 ## How a consumer reads it
 

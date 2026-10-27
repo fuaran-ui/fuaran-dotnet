@@ -58,6 +58,12 @@ Every card's first line is `<!-- @dsCard group="…" -->`, the group one of `Typ
 `Spacing`, `Components` or `Fragments`. The rest is a self-contained HTML document rendered by
 `Fuaran.UI.Renderer.Server`, with the theme's `:root` variable block inlined.
 
+Figures have two routes, and the figure kinds' cards name both: a `CellFormat` (a Metric's,
+LabelValueRow's or DataGrid column's `Format`) is locale-free, so every host renders the same text;
+`Binding.Format` with a locale is the reader-facing figure, and yields text for a text slot.
+`BundleOptions.Locale = Some "<bcp47>"` (the CLI's `--locale`) adds a Fact specimen whose value is a
+figure formatted under that locale; `None` adds nothing. A tag the platform does not know is refused.
+
 The content hash is SHA-256 over the sorted file set (every file except `manifest.json`), so two
 exports of one theme with one brand print the same hash.
 
