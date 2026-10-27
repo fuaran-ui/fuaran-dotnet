@@ -1314,6 +1314,55 @@ let metricInvertedPolarity: Node<obj> =
         ))
         None
 
+/// Phase 2472 — a figure compared against two periods at once, the trading-screen
+/// shape: each comparison is its own trend line with its own label, glyph and
+/// sentiment. No primary `trend` — the comparisons carry the whole story — and
+/// both keep the default polarity, so `polarity` is absent and `format` present.
+[<NodeFixture "Display/Metric (Phase 2472 — two comparisons, each its own trend line)">]
+let metricTwoComparisons: Node<obj> =
+    node
+        "metric-two-comparisons"
+        (NodeKind.Metric(
+            { Defaults.metric with
+                Label = TextSource.Literal "Orders yesterday"
+                Value = Binding.Static(Some 1284.0)
+                Format = CellFormat.Number(Some 0)
+                Comparisons =
+                    [ { Label = TextSource.Literal "vs same day last week"
+                        Value = Binding.Static(Some 0.042)
+                        Format = CellFormat.Percent(Some 1)
+                        Polarity = TrendPolarity.HigherIsBetter }
+                      { Label = TextSource.Literal "vs same day last year"
+                        Value = Binding.Static(Some(-0.031))
+                        Format = CellFormat.Percent(Some 1)
+                        Polarity = TrendPolarity.HigherIsBetter } ] }
+        ))
+        None
+
+/// Phase 2472 — the primary trend and one further comparison on an inverted
+/// quantity: the comparison declares `polarity` (a falling wait time is an
+/// improvement against last year too) and leaves `format` at its omitted
+/// default, so this fixture pins the other half of the record's omission rules.
+[<NodeFixture "Display/Metric (Phase 2472 — a trend plus an inverted-polarity comparison)">]
+let metricComparisonInverted: Node<obj> =
+    node
+        "metric-comparison-inverted"
+        (NodeKind.Metric(
+            { Defaults.metric with
+                Label = TextSource.Literal "Avg wait"
+                Value = Binding.Static(Some 80.0)
+                Trend = Some(Binding.Static(Some(-0.0734)))
+                TrendFormat = Some(CellFormat.Percent(Some 2))
+                TrendPolarity = TrendPolarity.LowerIsBetter
+                Comparisons =
+                    [ { Label = TextSource.Literal "minutes vs last year"
+                        Value = Binding.Static(Some 12.0)
+                        Format = CellFormat.None
+                        Polarity = TrendPolarity.LowerIsBetter } ]
+                Subtext = Some(TextSource.Literal "trend is vs last week") }
+        ))
+        None
+
 /// Phase 821 — the standalone icon-only display kind, decorative form: no
 /// label (renderers emit `aria-hidden="true"`), non-default `size` so the
 /// optional key appears on the wire, default tone omitted.

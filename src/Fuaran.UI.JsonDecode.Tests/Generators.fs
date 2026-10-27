@@ -493,6 +493,21 @@ let private genHeadingSpec: Gen<HeadingSpec> =
               Variant = variant }
     }
 
+/// Phase 2472 — one further comparison on a Metric.
+let private genMetricComparison: Gen<MetricComparison> =
+    gen {
+        let! label = genTextSource
+        let! value = genBindingFloat
+        let! format = genCellFormat
+        let! polarity = genTrendPolarity
+
+        return
+            { Label = label
+              Value = value
+              Format = format
+              Polarity = polarity }
+    }
+
 let private genMetricSpec: Gen<MetricSpec> =
     gen {
         let! label = genTextSource
@@ -504,6 +519,7 @@ let private genMetricSpec: Gen<MetricSpec> =
         let! trend = genOption genBindingFloat
         let! trendFormat = genOption genCellFormat
         let! trendPolarity = genTrendPolarity
+        let! comparisons = genSmallList genMetricComparison
         let! icon = genOption genNonEmptyString
         let! subtext = genOption genTextSource
 
@@ -518,6 +534,7 @@ let private genMetricSpec: Gen<MetricSpec> =
                 Trend = trend
                 TrendFormat = trendFormat
                 TrendPolarity = trendPolarity
+                Comparisons = comparisons
                 Icon = icon
                 Subtext = subtext }
     }

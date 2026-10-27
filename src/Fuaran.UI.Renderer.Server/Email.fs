@@ -718,6 +718,17 @@ and private renderKind
                 | None -> []
             | None -> []
 
+        // Phase 2472 - each further comparison is one more line: the figure,
+        // then its label, toned like the primary trend line above.
+        let comparisonEls =
+            spec.Comparisons
+            |> List.choose (fun c ->
+                BindingResolver.tryResolveScalarFloat ctx.Sources c.Value
+                |> Option.map (fun v ->
+                    Html.p
+                        [ prop.custom ("style", textIn opts (toneColour spec.Tone) "font-size:13px;line-height:18px;")
+                          prop.text (Render.formatNumber c.Format v + " " + text c.Label) ]))
+
         let subtextEls =
             match spec.Subtext with
             | Some subtext ->
@@ -751,6 +762,7 @@ and private renderKind
                                       )
                                       prop.text valueText ] ]
                               @ trendEls
+                              @ comparisonEls
                               @ subtextEls
                           ) ] ] ]
 

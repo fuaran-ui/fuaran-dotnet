@@ -8310,6 +8310,38 @@ re-emitted, and its references resolve as before.
 `src/Fuaran.UI.Fragments.Tests/StdlibCertificationTests.fs`, and by the library's quantified certification, which
 covers the new hole spaces.
 
+### What rides this slot — Phase 2472 (a Metric can carry a second comparison)
+
+**Class: BREAKING at one record shape (F#) + additive on the wire.** Packages `Fuaran.UI`, `Fuaran.UI.Ops`,
+`Fuaran.UI.Renderer.Core`, `Fuaran.UI.Renderer`, `Fuaran.UI.Renderer.Server`, `Fuaran.UI.Program`,
+`Fuaran.UI.Design` and `Fuaran.UI.CSharp`. The slot is already a breaking minor, so the number does not move.
+
+- **Wire.** `Metric` gains `comparisons`, a list of `MetricComparison` records — `label` (TextSource, required),
+  `value` (float Binding, required), `format` (CellFormat, omitted at `None`) and `polarity` (TrendPolarity, omitted
+  at `HigherIsBetter`). The list is omitted when empty, so every existing document keeps its bytes and a host that
+  has never met the key ignores it (WIRE_FORMAT §2 rule 2); the wire-profile classifier reports NO profile step.
+  `trend` / `trendFormat` / `trendPolarity` are untouched and stay the primary comparison.
+- **BREAKING (F#): `MetricSpec` gains `Comparisons: MetricComparison list`.** A full-literal `MetricSpec`
+  construction stops compiling (FS0764); `{ Defaults.metric with … }` is unaffected. C# code calling the generated
+  positional constructor gains one argument after `TrendPolarity` (`FSharpList<MetricComparison>.Empty`).
+- **New members.** `Types.MetricComparison` (the generated record); C# `MetricComparison` and
+  `MetricOptions.Comparisons`.
+- **Rendering.** Each comparison is one more `fuaran-metric-trend` line after the primary trend — its own glyph
+  and sentiment (`Theme.trendSentiment` under its own polarity), then the figure in its format, then its label. No
+  new class: the line is the trend line, so every stylesheet already styles it. The email projection adds one line
+  per comparison and the speech projection speaks each after the trend.
+- **Binding coverage.** `BindingWalk`, `QueryBinding`, the client renderer's reactive key walk and the UI witness's
+  substitution read each comparison's label and value.
+- **Not authorable from VB.** `Metric.comparisons` is declared a GAP in `AuthoringDialect`, beside `Metric.icon`
+  and `Metric.subtext`.
+
+**What a consumer does.** Add `Comparisons = []` to any full-literal `MetricSpec`, or build it from
+`Defaults.metric`. Nothing else: a document without the key decodes to the tile it always was.
+
+**Certified by** the corpus fixtures `metric-two-comparisons` and `metric-comparison-inverted` (every
+corpus-certifying host round-trips them), the generator's round-trip property over `MetricSpec`, and
+`src/Fuaran.UI.Renderer.Server.Tests/MetricComparisonTests.fs`.
+
 ---
 
 ## 0.97.0 — the slot opened after v0.96.0 was released (RELEASED — tagged v0.97.0 at 0d6a626, 2026-10-18)

@@ -283,6 +283,24 @@ The rule is **sentiment = sign(trend) × polarity**, and it applies to the trend
 
 There is no `"Neutral"`: the spelling is reserved and no conformant host accepts it. A quantity with no better direction simply omits `trend`.
 
+#### A figure against two periods — `comparisons` (Phase 2472)
+
+A trading screen compares a figure against more than one period at once: yesterday against the same day last week AND last year. `trend` is the primary comparison; every further one goes in `comparisons` on the same `Metric`, and each renders as one more trend line with its own glyph and its own sentiment:
+
+```json
+{ "id": "orders", "kind": { "$type": "Metric", "label": "Orders yesterday",
+  "value": { "$type": "Static", "value": 1284 },
+  "comparisons": [
+    { "label": "vs same day last week", "value": { "$type": "Static", "value": 0.042 },
+      "format": { "$type": "Percent", "decimals": 1 } },
+    { "label": "vs same day last year", "value": { "$type": "Static", "value": -0.031 },
+      "format": { "$type": "Percent", "decimals": 1 } } ] } }
+```
+
+Each entry is `label` (required — it is what the line says it compares against, and it follows the figure), `value` (the signed comparison, a number binding like `trend`), `format` (omitted for a plain number) and `polarity` (`"HigherIsBetter"`, the omitted default, or `"LowerIsBetter"`, read exactly as `trendPolarity` is). An empty list is omitted on the wire, so a single-trend tile is unchanged.
+
+**Not `subtext`, and not two tiles.** Text in `subtext` has no glyph, no sentiment and no polarity, so the reader cannot tell which way the second comparison moved; two `Metric`s side by side show the headline figure twice, as two KPIs. Neither is the same statement.
+
 #### Links and navigation – `Link` vs `Button` + `Action.Navigate`
 
 Two different intents, two different primitives:

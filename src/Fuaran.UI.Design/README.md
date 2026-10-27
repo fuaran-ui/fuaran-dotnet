@@ -64,6 +64,11 @@ LabelValueRow's or DataGrid column's `Format`) is locale-free, so every host ren
 `BundleOptions.Locale = Some "<bcp47>"` (the CLI's `--locale`) adds a Fact specimen whose value is a
 figure formatted under that locale; `None` adds nothing. A tag the platform does not know is refused.
 
+The Metric card also says where a second comparison goes (Phase 2472): `trend` is the figure's
+primary comparison, and each further one (against last week AND last year) is an entry in
+`comparisons`, rendered as its own trend line with its label, glyph and polarity — never text in
+the subtext, and never a second Metric repeating the figure.
+
 The content hash is SHA-256 over the sorted file set (every file except `manifest.json`), so two
 exports of one theme with one brand print the same hash.
 

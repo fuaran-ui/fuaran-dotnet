@@ -217,6 +217,9 @@ let private queryBoundRefsOfNode (n: Node<'Msg>) : QueryBoundRef list =
     | NodeKind.Metric spec ->
         add BindingSinkClass.Numeric spec.Value
         addOpt BindingSinkClass.Numeric spec.Trend
+
+        for c in spec.Comparisons do
+            add BindingSinkClass.Numeric c.Value
     | NodeKind.LabelValueRow spec -> add BindingSinkClass.Numeric spec.Value
     | NodeKind.Progress spec -> add BindingSinkClass.Numeric spec.Fraction
     | NodeKind.Sparkline spec -> add BindingSinkClass.Numeric spec.Source

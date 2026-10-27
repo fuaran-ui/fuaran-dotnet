@@ -316,6 +316,9 @@ let notChildAuthorable: (string * string) list =
       "FragmentDecl.effect", "GAP — no VB spelling"
       "FragmentRef.args", "GAP — no VB spelling"
       "Mount.inputs", "GAP — no VB spelling"
+      // Phase 2472 — the further comparisons; the VB <Metric> spells only its
+      // primary trend, beside the icon / subtext / weight / emphasis gaps.
+      "Metric.comparisons", "GAP — no VB spelling"
       // Labels are child-inferred. If <Tabs> gains header/tag authoring, port
       // FUARAN047/048 (header/tag-vs-children count) into the VB analyzer in
       // the same change.

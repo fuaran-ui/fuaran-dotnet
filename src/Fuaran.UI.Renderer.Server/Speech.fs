@@ -491,9 +491,18 @@ let project (ctx: Render.ServerRenderContext) (root: Node<obj>) : SpeechScript *
                     + Render.formatNumber (spec.TrendFormat |> Option.defaultValue CellFormat.None) t)
                 |> Option.defaultValue ""
 
+            // Phase 2472 - each further comparison is spoken after the trend,
+            // its figure then its label ("…, trend +4%, +12% vs last year").
+            let comparisons =
+                spec.Comparisons
+                |> List.choose (fun c ->
+                    BindingResolver.tryResolveScalarFloat ctx.Sources c.Value
+                    |> Option.map (fun v -> ", " + Render.formatNumber c.Format v + " " + text c.Label))
+                |> String.concat ""
+
             let subtext = spec.Subtext |> Option.map (text >> sentence) |> Option.toList
 
-            leaf (derived ([ sentence (text spec.Label + ": " + value + trend) ] @ subtext))
+            leaf (derived ([ sentence (text spec.Label + ": " + value + trend + comparisons) ] @ subtext))
         | NodeKind.Fact spec ->
             let help = spec.Help |> Option.map (text >> sentence) |> Option.toList
             leaf (derived ([ sentence (text spec.Label + ": " + text spec.Value) ] @ help))

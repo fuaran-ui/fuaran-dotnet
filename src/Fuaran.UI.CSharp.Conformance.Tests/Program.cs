@@ -164,7 +164,7 @@ internal static class Oracle
     internal static string MetricFsHost()
     {
         // Ctor arg order = Generated.fs MetricSpec declaration order (Label, Value, Format,
-        // Tone, Weight, Emphasis, Trend, TrendFormat, TrendPolarity, Icon, Subtext).
+        // Tone, Weight, Emphasis, Trend, TrendFormat, TrendPolarity, Comparisons, Icon, Subtext).
         var spec = new global::Fuaran.UI.Generated.MetricSpec(
             global::Fuaran.UI.Generated.TextSource.NewLiteral("Revenue"),
             global::Fuaran.UI.Generated.Binding<double>.NewStatic(Microsoft.FSharp.Core.FSharpOption<double>.Some(1234.5)),
@@ -177,6 +177,7 @@ internal static class Oracle
             Microsoft.FSharp.Core.FSharpOption<global::Fuaran.UI.Generated.CellFormat>.Some(
                 global::Fuaran.UI.Generated.CellFormat.NewPercent(Microsoft.FSharp.Core.FSharpOption<int>.Some(1))),
             global::Fuaran.UI.Generated.TrendPolarity.HigherIsBetter,
+            Microsoft.FSharp.Collections.FSharpList<global::Fuaran.UI.Generated.MetricComparison>.Empty,
             Microsoft.FSharp.Core.FSharpOption<string>.Some("trending-up"),
             Microsoft.FSharp.Core.FSharpOption<global::Fuaran.UI.Generated.TextSource>.Some(
                 global::Fuaran.UI.Generated.TextSource.NewLiteral("vs last month")));

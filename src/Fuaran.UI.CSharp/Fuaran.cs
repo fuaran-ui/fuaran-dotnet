@@ -149,8 +149,8 @@ public static partial class Fuaran
         new(FsFactory.metric<object>(
             options.Id,
             // Generated MetricSpec ctor is Generated.fs declaration order (Label, Value,
-            // Format, Tone, Weight, Emphasis, Trend, TrendFormat, TrendPolarity, Icon,
-            // Subtext). Phase 867 added `trendPolarity`; a payload FIELD binds neither
+            // Format, Tone, Weight, Emphasis, Trend, TrendFormat, TrendPolarity, Comparisons,
+            // Icon, Subtext). Phase 2472 added `comparisons`. Phase 867 added `trendPolarity`; a payload FIELD binds neither
             // the C# coverage reflection nor the VB analyzer vocabulary (both pin
             // NodeKind cases), so nothing failed while this passed the default —
             // Phase 873 surfaced it on MetricOptions, which is what the absence of a
@@ -165,6 +165,12 @@ public static partial class Fuaran
                 options.Trend is { } t ? Fs.Some(t.Inner) : Fs.None<global::Fuaran.UI.Generated.Binding<double>>(),
                 options.TrendFormat is { } tf ? Fs.Some(tf.Inner) : Fs.None<FsGen.CellFormat>(),
                 options.TrendPolarity.ToFs(),
+                Fs.List((options.Comparisons ?? Enumerable.Empty<MetricComparison>())
+                    .Select(c => new FsGen.MetricComparison(
+                        c.Label.Inner,
+                        c.Value.Inner,
+                        (c.Format ?? CellFormat.None).Inner,
+                        c.Polarity.ToFs()))),
                 Icon(options.Icon),
                 options.Subtext is { } s ? Fs.Some(s.Inner) : Fs.None<FsGen.TextSource>())));
 

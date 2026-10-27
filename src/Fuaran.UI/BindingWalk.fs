@@ -1783,6 +1783,11 @@ let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts =
             recordText inUses readerId k.Label
             recordBinding inUses readerId k.Value
             recordBindingOpt inUses readerId k.Trend
+            // Phase 2472 - each further comparison reads a label and a value.
+            for c in k.Comparisons do
+                recordText inUses readerId c.Label
+                recordBinding inUses readerId c.Value
+
             recordTextOpt inUses readerId k.Subtext
         | NodeKind.Badge b -> recordText inUses readerId b.Label
         | NodeKind.Sparkline s -> recordBinding inUses readerId s.Source

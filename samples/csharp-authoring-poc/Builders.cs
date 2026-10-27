@@ -302,7 +302,8 @@ internal sealed class MetricBuilder : NodeBuilder
             // `trendPolarity`. Authoring it from this veneer is a deliberate
             // follow-up (charter S7); the default is the pre-867 reading.
             new MetricSpec(_label, _source, _format, _tone, _weight, _emphasis, _trend, _trendFormat,
-                TrendPolarity.HigherIsBetter, _icon, _subtext));
+                TrendPolarity.HigherIsBetter,
+                Microsoft.FSharp.Collections.FSharpList<MetricComparison>.Empty, _icon, _subtext));
 }
 
 internal sealed class HeadingBuilder : NodeBuilder

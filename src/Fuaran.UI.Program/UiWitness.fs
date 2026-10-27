@@ -688,6 +688,12 @@ let resolveOwnFields (sources: BindingSources) (node: Node<obj>) : Node<obj> =
                     Label = resolveText sources s.Label
                     Value = substB sources s.Value
                     Trend = substBOpt sources s.Trend
+                    Comparisons =
+                        s.Comparisons
+                        |> List.map (fun c ->
+                            { c with
+                                Label = resolveText sources c.Label
+                                Value = substB sources c.Value })
                     Subtext = resolveTextOpt sources s.Subtext }
         | NodeKind.Callout s ->
             NodeKind.Callout
