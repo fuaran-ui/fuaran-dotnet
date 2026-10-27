@@ -8225,6 +8225,33 @@ closure, a `CellFormat.Custom` formatter, an `Editable` handler). A consumer tha
 text of a decimal column pinned byte for byte (the TypeScript host's twin fixture pins the same bytes), the float-parity
 sweep, a chart whose decimal bars equal the float bars of the same values, and the codec's unchanged bytes.
 
+### What rides this slot — Phase 2468 (the design bundle's cards show what they say they show)
+
+**Class: additive (no public type or signature moves).** Package `Fuaran.UI.Design`. The bundle's bytes change, and so
+does its content hash; no wire byte moves and the vocabulary does not change.
+
+- **Each axis is set where the kind reads it.** A kind whose IDL spec declares a field typed `ToneVariant`,
+  `StyleWeight` or `Emphasis` takes that axis on its spec; any other axis goes on the node style. The list is read
+  from the IDL. The component catalog's builders that took the axes and set none are now swept as well.
+- **A variant that would repeat its baseline is left out, and the card names the axes left out.** The node style
+  reaches the markup only as the wrapper's hook classes, which the reference stylesheet leaves for hosts to bind, so a
+  node-style variant is shown only where a theme or brand paints the hook. Most cards now show one figure and a
+  "Not shown:" line; the tone-bearing kinds (Callout, Fact, Icon, Metric, Progress, Toast) show seven tones.
+- **Text slots have text.** The catalog's `Binding.I18n` labels are resolved in English when the bundle renders.
+- **No hydration placeholders.** A client-library `DataGrid` is previewed as the static read-only table of the same
+  rows, and a `Map` as the table of its markers, each captioned as a preview.
+- **`Bundle.check` reports two more classes**: a swept variant whose markup matches its baseline once ids are masked
+  and unpainted hook classes removed, and an example rendering an empty label, heading, body or title slot, an empty
+  button, an unresolved `[i18n:<key>]` or a hydration placeholder. Each variant is now a
+  `<figure class="ds-variant" data-ds-specimen="…">` with its rendered part between `<!--ds-render-->` markers.
+
+**What a consumer does.** Nothing in code. A consumer that counted figures per card, or expected every card to show
+eleven, reads the figures the card holds instead. A hand-built `Bundle` value that `check` passed before can now fail
+on the new findings.
+
+**Certified by** the `Design-system bundle — the cards show what they say` list in
+`src/Fuaran.UI.Design.Tests/BundleTests.fs`, with a go-red probe for each new finding.
+
 ---
 
 

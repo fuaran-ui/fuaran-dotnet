@@ -6,7 +6,9 @@ manifest:
 
 - a **Components** card per kind the IDL declares, swept over the tone, weight and emphasis
   axes one axis at a time, each with a note on what the kind is for, which fields bind to
-  data and which hold children;
+  data and which hold children. Each axis is set where the kind reads it (its spec's own
+  field when the IDL declares one, the node style otherwise), and a variant that would only
+  repeat the baseline is left out and named;
 - a **Fragments** card per certified stdlib fragment (`Fuaran.UI.Fragments`), with its holes
   named and an applied example;
 - one **Type**, one **Spacing** and one **Colors** card from the chosen `Theme`.
@@ -68,7 +70,10 @@ exports of one theme with one brand print the same hash.
 - every stdlib fragment has a Fragments card;
 - there is exactly one Type, Colors and Spacing card;
 - no Colors token is a literal colour (a hex value, a colour function or a CSS colour name);
-- every card's first line is the marker of its group.
+- every card's first line is the marker of its group;
+- every swept variant differs from its baseline in what the card's stylesheets paint;
+- no example renders an empty text slot, an unresolved `[i18n:<key>]` or a server hydration
+  placeholder (a client-library grid is previewed as the static table of the same rows).
 
 See [`docs/DESIGN-SYSTEM-EXPORT.md`](https://github.com/fuaran-ui/fuaran-dotnet/blob/main/docs/DESIGN-SYSTEM-EXPORT.md)
 for the card contract and how a consumer reads the bundle.
