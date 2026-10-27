@@ -150,6 +150,16 @@ type PreEmitDefect =
     /// closure NOR a declarative `RowKeyField` (Phase 425) — no stable row
     /// identity, so the Phase 427 selected-row state and any keyed diffing
     /// degrade. Carries the grid node's id.
+    ///
+    /// Not raised on a READ-ONLY STATIC table (Phase 2469): a grid whose rows
+    /// are `StaticRows` literals in the tree and which declares no affordance
+    /// that needs identity — no `OnRowClick`, no edit (`Editable`,
+    /// `EditStateKey`, `Reorderable`), no transfer end, and no
+    /// `Binding.Selection` anywhere in the tree naming it. Such rows never
+    /// move, are never selected, edited or transferred, and `Fuaran.table`
+    /// has no field to give them a key, so the rule could only ever be
+    /// unsatisfiable noise there. A static table declaring any of those still
+    /// needs identity, and still fires.
     | UnstableRowIdentity of nodeId: string
     /// **FUARAN072 (Warning)**. An `Action.Call` carries `into: Query <name>`
     /// but no `Binding.Query <name>` anywhere in the tree reads that slot —
@@ -2187,7 +2197,7 @@ module DefectCodes =
               "FUARAN078",
               Severity.Warning,
               "grid '{nodeId}' has neither rowKey nor rowKeyField — no stable row identity",
-              "Phases 425, 427"
+              "Phases 425, 427, 2469"
           )
           row (
               "OrphanQueryFetch",
@@ -4122,6 +4132,10 @@ type private WalkContext =
         Defects: ResizeArray<PreEmitDefect>
         CustomCheck: string -> string -> string -> Map<string, JVal> -> PreEmitDefect option
         ProducedSchemaOf: string -> SchemaKnowledge option
+        /// Phase 2469 — whether some `Binding.Selection` in the tree names this
+        /// node id: the one selection affordance a grid does not declare on
+        /// itself. Read from the same `facts.Uses` FUARAN070 judges.
+        IsSelectionTarget: string -> bool
         Acc: WalkAccumulators
         /// Phase 2054 — the slot a column-grounding finding is about, keyed by
         /// the finding's index in `Defects`: the path from the reader's `kind`
@@ -4409,7 +4423,22 @@ module private GridRules =
                     defects.Add(PreEmitDefect.PillToneContradictsValue(nodeIdStr, value, tone))
             | _ -> ()
 
-        if spec.RowKey.IsNone && spec.RowKeyField.IsNone then
+        // A read-only static table stands FUARAN078 down (Phase 2469): its
+        // rows are literals in the tree that never move, and `Fuaran.table`
+        // has no slot to key them. Any affordance that does need identity —
+        // a row click, an edit, a transfer end, a selection read — keeps the
+        // rule in force.
+        let readOnlyStatic =
+            spec.StaticRows.IsSome
+            && spec.OnRowClick.IsNone
+            && not spec.Editable
+            && spec.EditStateKey.IsNone
+            && not spec.Reorderable
+            && spec.TransferInKey.IsNone
+            && spec.TransferOutKey.IsNone
+            && not (ctx.IsSelectionTarget nodeIdStr)
+
+        if spec.RowKey.IsNone && spec.RowKeyField.IsNone && not readOnlyStatic then
             defects.Add(PreEmitDefect.UnstableRowIdentity nodeIdStr)
 
         // The transfer pair. The PAIRING half is whole-tree and
@@ -6223,11 +6252,20 @@ let private validateLocated
         | Some site when not site.IsLive -> Some(producedSchema site.Source site.Pipeline)
         | _ -> None
 
+    let selectionTargets =
+        treeFacts.Uses
+        |> List.choose (fun u ->
+            match u.Use with
+            | BindingWalk.BindingUse.Selection target -> Some target
+            | _ -> None)
+        |> Set.ofList
+
     let ctx =
         { Options = options
           Defects = defects
           CustomCheck = customCheck
           ProducedSchemaOf = producedSchemaOf
+          IsSelectionTarget = fun id -> Set.contains id selectionTargets
           Acc = acc
           GroundingSlots = System.Collections.Generic.Dictionary<int, obj * string>() }
 

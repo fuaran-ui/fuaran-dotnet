@@ -5810,6 +5810,110 @@ let private dateFormatDefects (tree: Node<Msg>) : PreEmitDefect list =
             | PreEmitDefect.UnstyledDateFormat _ -> true
             | _ -> false)
 
+// ─── Phase 2469 — FUARAN078 leaves a read-only static table alone ───
+
+/// A plain `Fuaran.table`: rows are `StaticRows` literals, and the facade has
+/// no slot for a row key.
+let private staticTable (id: string) : Node<Msg> =
+    Fuaran.table
+        id
+        { Defaults.table<Msg> with
+            Headers = [ TextSource.Literal "Country"; TextSource.Literal "Revenue" ]
+            Rows =
+                [ [ TextSource.Literal "UK"; TextSource.Literal "£1.2m" ]
+                  [ TextSource.Literal "FR"; TextSource.Literal "£0.8m" ] ] }
+
+/// Rewrite the grid spec of a `DataGrid` node, to give a static table an
+/// affordance `Fuaran.table` itself cannot declare.
+let private withGrid (f: DataGridSpec<Msg> -> DataGridSpec<Msg>) (n: Node<Msg>) : Node<Msg> =
+    match n.Kind with
+    | NodeKind.DataGrid spec ->
+        { n with
+            Kind = NodeKind.DataGrid(f spec) }
+    | other -> failwithf "expected a DataGrid, got %A" other
+
+let private rowIdentityDefects (tree: Node<Msg>) : PreEmitDefect list =
+    match PreEmitValidate.validate tree with
+    | Error defects ->
+        defects
+        |> List.filter (function
+            | PreEmitDefect.UnstableRowIdentity _ -> true
+            | _ -> false)
+    | Ok() -> []
+
+[<Tests>]
+let staticTableRowIdentityTests =
+    testList
+        "PreEmitValidate — FUARAN078 and the read-only static table (Phase 2469)"
+        [ test "a plain Fuaran.table raises no FUARAN078" {
+              Expect.isEmpty
+                  (rowIdentityDefects (dashboard "root" [ staticTable "t" ]))
+                  "static literal rows never move, are never selected, edited or transferred"
+          }
+
+          test "a static table with a row click still raises FUARAN078" {
+              let clickable =
+                  staticTable "t"
+                  |> withGrid (fun s ->
+                      { s with
+                          OnRowClick = Some(fun _ -> Action.dispatch NoOp) })
+
+              Expect.equal
+                  (rowIdentityDefects (dashboard "root" [ clickable ]))
+                  [ PreEmitDefect.UnstableRowIdentity "t" ]
+                  "a row click needs to say which row was clicked"
+          }
+
+          test "a static table with an edit, reorder or transfer affordance still raises FUARAN078" {
+              let affordances: (string * (DataGridSpec<Msg> -> DataGridSpec<Msg>)) list =
+                  [ "editable", (fun s -> { s with Editable = true })
+                    "editStateKey", (fun s -> { s with EditStateKey = Some "edits" })
+                    "reorderable", (fun s -> { s with Reorderable = true })
+                    "transferInKey", (fun s -> { s with TransferInKey = Some "board" })
+                    "transferOutKey", (fun s -> { s with TransferOutKey = Some "board" }) ]
+
+              for name, f in affordances do
+                  let tree = dashboard "root" [ staticTable "t" |> withGrid f ]
+
+                  Expect.contains
+                      (rowIdentityDefects tree)
+                      (PreEmitDefect.UnstableRowIdentity "t")
+                      (sprintf "%s keeps the rule in force" name)
+          }
+
+          test "a static table some Binding.Selection reads still raises FUARAN078" {
+              let detail =
+                  Fuaran.metric
+                      "detail"
+                      { Defaults.metric with
+                          Label = TextSource.Literal "Selected"
+                          Value = Binding.Selection("t", (fun (raw: obj) -> unbox raw), None, None) }
+
+              Expect.equal
+                  (rowIdentityDefects (dashboard "root" [ staticTable "t"; detail ]))
+                  [ PreEmitDefect.UnstableRowIdentity "t" ]
+                  "a selection read keys off the row's identity"
+          }
+
+          test "a bound grid with neither rowKey nor rowKeyField still raises FUARAN078" {
+              let bound: Node<Msg> =
+                  { staticTable "g" with
+                      Kind =
+                          NodeKind.DataGrid(
+                              { Defaults.dataGrid with
+                                  Source = Binding.State("rows", Some Seq.empty)
+                                  Columns =
+                                      [ { Defaults.columnErased with
+                                            Label = "Country"
+                                            Field = Some "country" } ] }
+                          ) }
+
+              Expect.equal
+                  (rowIdentityDefects (dashboard "root" [ bound ]))
+                  [ PreEmitDefect.UnstableRowIdentity "g" ]
+                  "the exemption is for StaticRows only"
+          } ]
+
 [<Tests>]
 let unstyledDateFormatTests =
     testList

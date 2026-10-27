@@ -351,7 +351,7 @@ grid '{nodeId}' column '{columnLabel}' has neither a value closure nor a field �
 
 #### `FUARAN078` — Warning
 
-`UnstableRowIdentity` (Phases 425, 427)
+`UnstableRowIdentity` (Phases 425, 427, 2469)
 
 ```text
 grid '{nodeId}' has neither rowKey nor rowKeyField — no stable row identity
