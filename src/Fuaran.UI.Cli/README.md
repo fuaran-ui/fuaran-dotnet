@@ -23,10 +23,12 @@ fuaran design-system export --theme default --out ./ds     # the language as a d
   (turn-loop over the endpoint, rendered through `Fuaran.UI.Renderer`;
   server-proxied).
 - **`design-system export --theme <manifest.json | default | dark | high-contrast>
-  --out <dir> [--brand <css>]`** — the language as a design-system bundle, via
+  --out <dir> [--brand <css>] [--locale <bcp47>]`** — the language as a design-system bundle, via
   `Fuaran.UI.Design`: a preview card per IDL kind, stdlib fragment and theme
   scale, the theme as a DTCG manifest, and a `manifest.json` with the content
-  hash. Colours are offered as roles, never values. The bundle's checks run
+  hash. Colours are offered as roles, never values. `--locale` exports it for a
+  reader's locale: the Fact card adds a figure formatted through `Binding.Format`
+  under that locale, and an unknown tag is refused (exit 2). The bundle's checks run
   first and nothing is written when one fails; on success it prints the card
   count and the hash (exit 0). See `docs/DESIGN-SYSTEM-EXPORT.md`.
 
