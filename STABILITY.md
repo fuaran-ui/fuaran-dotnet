@@ -8281,6 +8281,37 @@ the four figure cards and the README, and a go-red probe refusing an unknown tag
 ---
 
 
+### What rides this slot — Phase 2471 (the kpi-strip and filter-bar fragments fit real screens)
+
+**Class: additive.** Package `Fuaran.UI.Fragments`. The `kpi-strip` and `filter-bar` declarations gain optional holes,
+each defaulted to the shape the fragment had before, so a reference binding none of them expands unchanged. The
+declarations' template bodies keep their bytes; their `holes` lists grow.
+
+- **`kpi-strip`.** A strip-wide `currency` hole (`StringLen 3–3`, default `USD`), and for each figure N from 1 to 6:
+  `format-N` (an `Enum` over `number`, `number-0` to `number-2`, `percent`, `percent-0` to `percent-2` and `currency`;
+  default `number-0`), `trend-N` (`none`, `value`, `percent-0` to `percent-2`; default `none`) and `polarity-N`
+  (`higher-is-better` or `lower-is-better`; default `higher-is-better`). A figure with a trend reads it from host
+  state at `kpi-N-trend`.
+- **`filter-bar`.** `search` (`shown` or `hidden`), `choices` (`IntRange 0–4`, default 0), and for each choice K from 1
+  to 4: `choice-K-label`, `choice-K-key` and `choice-K-options`. The options are one bounded string in a total grammar
+  that `Stdlib.parseFilterOptions` parses: entries separated by `|`, each `value=Label` or a bare label. At
+  `choices = 0` the bar is the original search and status pair. The fragment's `Summary` now describes both shapes.
+- **New members.** `Stdlib.boundExamples` (one reference per fragment binding the new holes) and
+  `Stdlib.parseFilterOptions`. `StdlibFragment` is unchanged.
+- **Corpus.** The two declaration fixtures (`frag-stdlib-kpi-strip`, `frag-stdlib-filter-bar`) move, and two
+  reference fixtures are new (`frag-stdlib-kpi-strip-ref-figures`, `frag-stdlib-filter-bar-ref-choices`). The
+  existing reference fixtures keep their bytes. No new wire vocabulary: the holes use `HoleValueSpace` cases the IDL
+  already carries, though `Enum` is the first value-space of its kind in the node corpus.
+
+**What a consumer does.** Nothing. A stored tree that declares either fragment keeps its old hole list until it is
+re-emitted, and its references resolve as before.
+
+**Certified by** the `Phase 2471 — kpi-strip and filter-bar fit real screens` list in
+`src/Fuaran.UI.Fragments.Tests/StdlibCertificationTests.fs`, and by the library's quantified certification, which
+covers the new hole spaces.
+
+---
+
 ## 0.97.0 — the slot opened after v0.96.0 was released (RELEASED — tagged v0.97.0 at 0d6a626, 2026-10-18)
 
 _Class: **breaking**, set by its first rider, Phase 1960. `v0.96.0` was tagged and published at `9045b5f` on 2026-10-18

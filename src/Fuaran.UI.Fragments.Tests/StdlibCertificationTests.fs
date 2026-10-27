@@ -76,6 +76,42 @@ let private isPureDeterministic (e: EffectClass) : bool =
     e.HostEffect = HostEffect.Pure
     && e.Determinism = DeterminismSource.Deterministic
 
+// ─── Phase 2471 helpers ──────────────────────────────────────────────────────
+
+/// A reference's scalar arguments, boxed the way the certification harness
+/// hands them to `Materialize`.
+let private argsOf (node: Node<'Msg>) : Map<string, obj> =
+    match node.Kind with
+    | NodeKind.FragmentRef spec ->
+        spec.Args
+        |> Option.defaultValue Map.empty
+        |> Map.toList
+        |> List.choose (fun (name, arg) ->
+            match arg with
+            | FragmentArg.Int v -> Some(name, boxed v)
+            | FragmentArg.Float v -> Some(name, boxed v)
+            | FragmentArg.Bool v -> Some(name, boxed v)
+            | FragmentArg.Str v -> Some(name, boxed v)
+            | FragmentArg.SlotArg _ -> None)
+        |> Map.ofList
+    | _ -> Map.empty
+
+/// `CellFormat` carries a closure arm and so has no equality; compare the
+/// printed case, which is what these tests are about.
+let private fmt (c: CellFormat) : string = sprintf "%A" c
+
+let private metricsIn (tree: Node<'Msg>) : MetricSpec list =
+    descendants tree
+    |> List.choose (fun n ->
+        match n.Kind with
+        | NodeKind.Metric m -> Some m
+        | _ -> None)
+
+let private chipsIn (tree: Node<'Msg>) : FilterSpec<'Msg> list =
+    match tree.Kind with
+    | NodeKind.Filters spec -> spec.Items
+    | other -> failtestf "expected a Filters node, got %A" other
+
 // The certification budget. 256 bindings is comfortably above the largest
 // finite hole-space in the set and low enough that the whole suite stays inside
 // a normal test run; the seed is fixed so a counterexample reproduces.
@@ -406,6 +442,177 @@ let tests =
                   let holeCount = (declSpecOf f).Holes |> List.length
                   Expect.equal (List.length s.Holes) holeCount (sprintf "signature for '%s' lost a hole" f.Name)
           }
+
+          // ── Phase 2471 — the kpi-strip and filter-bar holes ────────────────
+          testList
+              "Phase 2471 — kpi-strip and filter-bar fit real screens"
+              [ test "every bound example targets a library fragment and binds only declared holes, inside their spaces" {
+                    Expect.isNonEmpty (Stdlib.boundExamples<unit>) "the bound examples exist"
+
+                    for (name, _, node) in Stdlib.boundExamples<unit> do
+                        let f =
+                            match Stdlib.tryFind<unit> name with
+                            | Some f -> f
+                            | None -> failtestf "bound example names '%s', which is not in the library" name
+
+                        let spec = declSpecOf f
+
+                        let args =
+                            match node.Kind with
+                            | NodeKind.FragmentRef r ->
+                                Expect.equal r.Name name "the example targets the fragment it is filed under"
+                                r.Args |> Option.defaultValue Map.empty
+                            | other -> failtestf "bound example for '%s' is a %A, not a FragmentRef" name other
+
+                        for KeyValue(hole, arg) in args do
+                            let raw =
+                                match arg with
+                                | FragmentArg.Int v -> boxed v
+                                | FragmentArg.Float v -> boxed v
+                                | FragmentArg.Bool v -> boxed v
+                                | FragmentArg.Str v -> boxed v
+                                | FragmentArg.SlotArg _ -> failtestf "'%s' binds a slot it has none of" name
+
+                            Expect.isOk
+                                (Fragment.validateValueArg spec hole raw)
+                                (sprintf "'%s' bound example: '%s' is undeclared or outside its space" name hole)
+                }
+
+                test "kpi-strip: a reference binding no new hole expands exactly as before them" {
+                    let tree = Stdlib.kpiStrip<unit>.Materialize(argsOf Stdlib.kpiStrip<unit>.Example)
+                    let figures = metricsIn tree
+
+                    Expect.equal (List.length figures) 3 "the example's count"
+
+                    for m in figures do
+                        Expect.equal
+                            (fmt m.Format)
+                            (fmt (CellFormat.Number(Some 0)))
+                            "the fixed format the strip always had"
+
+                        Expect.isNone m.Trend "no trend unless one is bound"
+                        Expect.isNone m.TrendFormat "no trend format unless one is bound"
+                        Expect.equal m.TrendPolarity TrendPolarity.HigherIsBetter "the default polarity"
+                }
+
+                test "kpi-strip: a currency row with week-on-week trends is ONE reference" {
+                    // A design's KPI row: revenue in GBP, orders, shoppers and the
+                    // average order value, each against last week.
+                    let row =
+                        Stdlib.apply<unit>
+                            "kpis"
+                            Stdlib.KpiStrip
+                            [ "heading", FragmentArg.Str "Yesterday"
+                              "count", FragmentArg.Int 4
+                              "currency", FragmentArg.Str "GBP"
+                              "format-1", FragmentArg.Str "currency"
+                              "format-4", FragmentArg.Str "currency"
+                              for i in 1..4 do
+                                  sprintf "trend-%d" i, FragmentArg.Str "percent-1" ]
+
+                    let figures = metricsIn (Stdlib.kpiStrip<unit>.Materialize(argsOf row))
+
+                    Expect.equal
+                        (figures |> List.map (fun m -> fmt m.Format))
+                        ([ CellFormat.Currency "GBP"
+                           CellFormat.Number(Some 0)
+                           CellFormat.Number(Some 0)
+                           CellFormat.Currency "GBP" ]
+                         |> List.map fmt)
+                        "per-figure formats"
+
+                    for (i, m) in List.indexed figures do
+                        match m.Trend with
+                        | Some(Binding.State(key, _)) ->
+                            Expect.equal key (sprintf "kpi-%d-trend" (i + 1)) "the trend reads its figure's state key"
+                        | other -> failtestf "figure %d trend is %A, not a state binding" (i + 1) other
+
+                        Expect.equal
+                            (Option.map fmt m.TrendFormat)
+                            (Some(fmt (CellFormat.Percent(Some 1))))
+                            "the trend reads as a percent"
+                }
+
+                test "kpi-strip: polarity and an own-format trend bind per figure; a blank currency falls back" {
+                    let b =
+                        Map.ofList
+                            [ "count", boxed 2
+                              "currency", boxed "   "
+                              "format-1", boxed "currency"
+                              "trend-2", boxed "value"
+                              "polarity-2", boxed "lower-is-better" ]
+
+                    match metricsIn (Stdlib.kpiStrip<unit>.Materialize b) with
+                    | [ first; second ] ->
+                        Expect.equal
+                            (fmt first.Format)
+                            (fmt (CellFormat.Currency "USD"))
+                            "a blank code is never emitted (FUARAN061)"
+
+                        Expect.isSome second.Trend "trend bound"
+                        Expect.isNone second.TrendFormat "`value` reads the trend in the figure's own format"
+                        Expect.equal second.TrendPolarity TrendPolarity.LowerIsBetter "polarity bound"
+                    | other -> failtestf "expected two figures, got %d" (List.length other)
+                }
+
+                test "filter-bar: a reference binding no new hole is the search + status bar it always was" {
+                    let chips =
+                        chipsIn (Stdlib.filterBar<unit>.Materialize(argsOf Stdlib.filterBar<unit>.Example))
+
+                    Expect.equal (chips |> List.map (fun c -> c.Name)) [ "search"; "status" ] "the default shape"
+                }
+
+                test "filter-bar: a two-choice bar with no search chip is ONE reference" {
+                    // A design's Site / Comparison bar.
+                    let bar =
+                        Stdlib.apply<unit>
+                            "filters"
+                            Stdlib.FilterBar
+                            [ "search", FragmentArg.Str "hidden"
+                              "choices", FragmentArg.Int 2
+                              "choice-1-label", FragmentArg.Str "Site"
+                              "choice-1-key", FragmentArg.Str "site"
+                              "choice-1-options", FragmentArg.Str "=Both sites|north|south"
+                              "choice-2-label", FragmentArg.Str "Comparison"
+                              "choice-2-key", FragmentArg.Str "compare"
+                              "choice-2-options", FragmentArg.Str "lw=vs last week|ly=vs last year" ]
+
+                    match chipsIn (Stdlib.filterBar<unit>.Materialize(argsOf bar)) with
+                    | [ site; compare ] ->
+                        Expect.equal (site.Name, compare.Name) ("site", "compare") "each chip writes its own key"
+
+                        let optionsOf (c: FilterSpec<unit>) =
+                            match c.Kind with
+                            | FormFieldKind.Choice(Binding.Static(Some o), _, _) ->
+                                o |> List.map (fun o -> o.Value, o.Label)
+                            | other -> failtestf "chip '%s' is %A, not a static choice" c.Name other
+
+                        Expect.equal
+                            (optionsOf site)
+                            [ "", "Both sites"; "north", "north"; "south", "south" ]
+                            "value=Label, bare labels and the empty value"
+
+                        Expect.equal
+                            (optionsOf compare)
+                            [ "lw", "vs last week"; "ly", "vs last year" ]
+                            "the second chip's options"
+                    | other -> failtestf "expected two chips, got %A" (other |> List.map (fun c -> c.Name))
+                }
+
+                test "filter-bar: the options grammar is total — no string yields an option-less chip" {
+                    for raw in [ ""; "|"; "||="; "a="; "=  "; "x=|y" ] do
+                        Expect.isNonEmpty (Stdlib.parseFilterOptions raw) (sprintf "'%s' produced no option" raw)
+
+                    Expect.equal
+                        (Stdlib.parseFilterOptions "a=|y" |> List.map (fun o -> o.Value, o.Label))
+                        [ "y", "y" ]
+                        "an entry with a blank label is dropped"
+
+                    Expect.equal
+                        (Stdlib.parseFilterOptions "k=a=b" |> List.map (fun o -> o.Value, o.Label))
+                        [ "k", "a=b" ]
+                        "the first `=` separates value from label"
+                } ]
 
           test "the certification harness can still go red — a deliberately broken materialiser is REJECTED" {
               // The go-red self-test. Every assertion above is a green one, and a
