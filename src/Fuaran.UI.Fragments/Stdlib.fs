@@ -230,21 +230,120 @@ module Stdlib =
     [<Literal>]
     let KpiStrip = "kpi-strip"
 
+    /// The most figures a strip carries — the `count` hole's upper bound, and
+    /// the number of per-figure hole triples the declaration carries.
+    [<Literal>]
+    let private KpiMaxFigures = 6
+
+    // Phase 2471 — the per-figure holes. A strip of real figures mixes money,
+    // counts and rates, and compares each against a prior period, so a figure's
+    // FORMAT, its TREND and the trend's POLARITY are holes rather than fixed.
+    // Each is an `Enum` over a closed token set (a bounded value-space, so the
+    // fragment stays total), and each defaults to exactly what the strip did
+    // before the holes existed: `Number(Some 0)`, no trend, higher is better. A
+    // reference that binds none of them therefore expands as it always has.
+    //
+    // The tokens project the `CellFormat` vocabulary a strip figure needs, not
+    // the whole of it: a date, a duration or a host formatter is not a KPI
+    // figure's shape. `currency` reads its ISO code from the strip-wide
+    // `currency` hole — one strip, one currency.
+
+    let private kpiFormatTokens =
+        [ "number"
+          "number-0"
+          "number-1"
+          "number-2"
+          "percent"
+          "percent-0"
+          "percent-1"
+          "percent-2"
+          "currency" ]
+
+    /// The trend tokens: `none` (no trend), `value` (the trend reads in the
+    /// figure's own format), or a percent format for a relative change.
+    let private kpiTrendTokens =
+        [ "none"; "value"; "percent-0"; "percent-1"; "percent-2" ]
+
+    let private kpiPolarityTokens = [ "higher-is-better"; "lower-is-better" ]
+
+    let private kpiFormatOf (currency: string) (token: string) : CellFormat =
+        match token with
+        | "number" -> CellFormat.Number Option.None
+        | "number-1" -> CellFormat.Number(Some 1)
+        | "number-2" -> CellFormat.Number(Some 2)
+        | "percent" -> CellFormat.Percent Option.None
+        | "percent-0" -> CellFormat.Percent(Some 0)
+        | "percent-1" -> CellFormat.Percent(Some 1)
+        | "percent-2" -> CellFormat.Percent(Some 2)
+        // A blank code is FUARAN061; the hole's space admits whitespace, so the
+        // materialiser falls back to the default rather than emit the defect.
+        | "currency" ->
+            CellFormat.Currency(
+                if System.String.IsNullOrWhiteSpace currency then
+                    "USD"
+                else
+                    currency
+            )
+        | _ -> CellFormat.Number(Some 0) // "number-0", the default
+
+    /// `None` = no trend; `Some None` = the trend in the figure's own format;
+    /// `Some(Some f)` = the trend in `f`.
+    let private kpiTrendOf (token: string) : CellFormat option option =
+        match token with
+        | "value" -> Some Option.None
+        | "percent-0" -> Some(Some(CellFormat.Percent(Some 0)))
+        | "percent-1" -> Some(Some(CellFormat.Percent(Some 1)))
+        | "percent-2" -> Some(Some(CellFormat.Percent(Some 2)))
+        | _ -> Option.None // "none", the default
+
+    let private kpiPolarityOf (token: string) : TrendPolarity =
+        match token with
+        | "lower-is-better" -> TrendPolarity.LowerIsBetter
+        | _ -> TrendPolarity.HigherIsBetter
+
     let private kpiStripHoles: HoleDecl list =
         [ HoleDecl.Value("heading", HoleValueSpace.StringLen(1, 40), Some(Scalar.Str "Key figures"))
           // TOTALITY (invariant 1): the count is a bounded `IntRange`, so no
           // binding can produce unbounded expansion.
-          HoleDecl.Repeat("count", HoleValueSpace.IntRange(1, 6)) ]
+          HoleDecl.Repeat("count", HoleValueSpace.IntRange(1, KpiMaxFigures))
+          HoleDecl.Value("currency", HoleValueSpace.StringLen(3, 3), Some(Scalar.Str "USD")) ]
+        @ [ for i in 1..KpiMaxFigures do
+                HoleDecl.Value(sprintf "format-%d" i, HoleValueSpace.Enum kpiFormatTokens, Some(Scalar.Str "number-0"))
+                HoleDecl.Value(sprintf "trend-%d" i, HoleValueSpace.Enum kpiTrendTokens, Some(Scalar.Str "none"))
 
-    let private kpiMetric<'Msg> (i: int) : Node<'Msg> =
+                HoleDecl.Value(
+                    sprintf "polarity-%d" i,
+                    HoleValueSpace.Enum kpiPolarityTokens,
+                    Some(Scalar.Str "higher-is-better")
+                ) ]
+
+    /// One figure. Its label, value and (when it has one) trend read host state
+    /// at `kpi-<i>-label` / `kpi-<i>-value` / `kpi-<i>-trend`: the figures are
+    /// data, the shape is the fragment's.
+    let private kpiMetric<'Msg>
+        (i: int)
+        (format: CellFormat)
+        (trend: CellFormat option option)
+        (polarity: TrendPolarity)
+        : Node<'Msg> =
         Fuaran.metric
             (sprintf "kpi-strip-metric-%d" i)
             { Defaults.metric with
                 Label = TextSource.Bound(Binding.State(sprintf "kpi-%d-label" i, Some(sprintf "KPI %d" i)))
                 Value = Binding.State(sprintf "kpi-%d-value" i, Some 0.0)
-                Format = CellFormat.Number(Some 0) }
+                Format = format
+                Trend =
+                    trend
+                    |> Option.map (fun _ -> Binding.State(sprintf "kpi-%d-trend" i, Option.None))
+                TrendFormat = Option.flatten trend
+                TrendPolarity = polarity }
 
-    let private kpiStripTree<'Msg> (heading: string) (count: int) : Node<'Msg> =
+    /// The figure every hole default describes — what the strip emitted before
+    /// the per-figure holes existed.
+    let private kpiDefaultMetric<'Msg> (i: int) : Node<'Msg> =
+        kpiMetric i (CellFormat.Number(Some 0)) Option.None TrendPolarity.HigherIsBetter
+
+    let private kpiStripTree<'Msg> (heading: string) (figures: Node<'Msg> list) : Node<'Msg> =
         Fuaran.stack
             "kpi-strip"
             { Defaults.stack with
@@ -256,7 +355,7 @@ module Stdlib =
                             Level = 3
                             Text = TextSource.Literal heading
                             Variant = HeadingVariant.Eyebrow }
-                    :: [ for i in 1..count -> kpiMetric i ] }
+                    :: figures }
 
     let private kpiStripBody<'Msg> : Node<'Msg> =
         // The template's heading reads its hole; the exemplar figure stands for
@@ -272,56 +371,159 @@ module Stdlib =
                               Level = 3
                               Text = holeText "heading" "Key figures"
                               Variant = HeadingVariant.Eyebrow }
-                      kpiMetric 1 ] }
+                      kpiDefaultMetric 1 ] }
+
+    let private kpiStripMaterialize<'Msg> : Map<string, obj> -> Node<'Msg> =
+        fun b ->
+            let currency = readStr "USD" "currency" b
+
+            let figure i =
+                kpiMetric
+                    i
+                    (kpiFormatOf currency (readStr "number-0" (sprintf "format-%d" i) b))
+                    (kpiTrendOf (readStr "none" (sprintf "trend-%d" i) b))
+                    (kpiPolarityOf (readStr "higher-is-better" (sprintf "polarity-%d" i) b))
+
+            kpiStripTree (readStr "Key figures" "heading" b) [ for i in 1 .. readCount 1 "count" b -> figure i ]
 
     let kpiStrip<'Msg> : StdlibFragment<'Msg> =
         { Name = KpiStrip
           Summary = "A headed horizontal strip of one to six figures — the dashboard's top band."
           Decl = decl KpiStrip kpiStripBody kpiStripHoles pureDeterministic
-          Materialize = fun b -> kpiStripTree (readStr "Key figures" "heading" b) (readCount 1 "count" b)
+          Materialize = kpiStripMaterialize
           Example = reference KpiStrip [ "heading", FragmentArg.Str "This week"; "count", FragmentArg.Int 3 ] }
 
     // ════════════════════════════════════════════════════════════════════════
-    //  3. filter-bar — a search chip and a status chip over host filter state.
+    //  3. filter-bar — a row of filter chips over host filter state.
     // ════════════════════════════════════════════════════════════════════════
 
     [<Literal>]
     let FilterBar = "filter-bar"
 
+    /// The most choice filters a bar carries — the `choices` hole's bound.
+    [<Literal>]
+    let private FilterBarMaxChoices = 4
+
+    // Phase 2471 — the chips are a bounded repeat of CHOICE filters, each with a
+    // label, the host filter key it writes and its options. `choices` = 0 (the
+    // default) keeps the original bar: a search chip and a status chip. A
+    // `search` hole keeps or drops the free-text chip either way.
+    //
+    // `choices` is a Value hole over `IntRange(0, 4)` rather than a `Repeat`:
+    // a repeat is always required, and making this one required would refuse
+    // every existing reference, which binds none of it. The bound is what
+    // totality asks of a count, and the `IntRange` carries it.
+    //
+    // A hole is a scalar, so a chip's options travel as ONE bounded string in a
+    // small total grammar: entries separated by `|`, each `value=Label`, or a
+    // bare `Label` whose value is the label itself. `=Both sites` is an option
+    // with the empty value. Every string parses: an entry with a blank label is
+    // dropped, and a string with no usable entry yields one `All` option, so no
+    // binding can produce an option-less chip.
+
     let private filterBarHoles: HoleDecl list =
         [ HoleDecl.Value("searchLabel", HoleValueSpace.StringLen(1, 32), Some(Scalar.Str "Search"))
-          HoleDecl.Value("statusLabel", HoleValueSpace.StringLen(1, 32), Some(Scalar.Str "Status")) ]
+          HoleDecl.Value("statusLabel", HoleValueSpace.StringLen(1, 32), Some(Scalar.Str "Status"))
+          HoleDecl.Value("search", HoleValueSpace.Enum [ "shown"; "hidden" ], Some(Scalar.Str "shown"))
+          HoleDecl.Value("choices", HoleValueSpace.IntRange(0, FilterBarMaxChoices), Some(Scalar.Int 0)) ]
+        @ [ for k in 1..FilterBarMaxChoices do
+                HoleDecl.Value(
+                    sprintf "choice-%d-label" k,
+                    HoleValueSpace.StringLen(1, 32),
+                    Some(Scalar.Str(sprintf "Filter %d" k))
+                )
+
+                HoleDecl.Value(
+                    sprintf "choice-%d-key" k,
+                    HoleValueSpace.StringLen(1, 32),
+                    Some(Scalar.Str(sprintf "filter-%d" k))
+                )
+
+                HoleDecl.Value(sprintf "choice-%d-options" k, HoleValueSpace.StringLen(1, 240), Some(Scalar.Str "=All")) ]
+
+    /// Parse a filter-bar chip's options string — entries separated by `|`, each
+    /// `value=Label` or a bare `Label` (its own value). Total: an entry with a
+    /// blank label is dropped, and a string with no usable entry yields a single
+    /// `All` option with the empty value.
+    let parseFilterOptions (raw: string) : SelectOption list =
+        let options =
+            raw.Split '|'
+            |> Array.toList
+            |> List.choose (fun entry ->
+                let value, label =
+                    match entry.IndexOf '=' with
+                    | -1 -> entry, entry
+                    | at -> entry.Substring(0, at), entry.Substring(at + 1)
+
+                if System.String.IsNullOrWhiteSpace label then
+                    Option.None
+                else
+                    Some({ Label = label; Value = value }: SelectOption))
+
+        if List.isEmpty options then
+            [ ({ Label = "All"; Value = "" }: SelectOption) ]
+        else
+            options
 
     let private statusOptions: Binding<SelectOption list> =
         Binding.Static(Some [ { Label = "Open"; Value = "open" }; { Label = "Closed"; Value = "closed" } ])
 
-    let private filterBarTree<'Msg> (searchLabel: TextSource) (statusLabel: TextSource) : Node<'Msg> =
-        Fuaran.filters
-            "filter-bar"
-            [ { Name = "search"
-                Label = searchLabel
-                Kind = FilterField.text "search" }
-              { Name = "status"
-                Label = statusLabel
-                Kind = FilterField.choice "status" statusOptions } ]
+    let private searchChip<'Msg> (label: TextSource) : FilterSpec<'Msg> =
+        { Name = "search"
+          Label = label
+          Kind = FilterField.text "search" }
+
+    let private choiceChip<'Msg>
+        (key: string)
+        (label: TextSource)
+        (options: Binding<SelectOption list>)
+        : FilterSpec<'Msg> =
+        { Name = key
+          Label = label
+          Kind = FilterField.choice key options }
+
+    let private filterBarTree<'Msg> (chips: FilterSpec<'Msg> list) : Node<'Msg> = Fuaran.filters "filter-bar" chips
+
+    let private filterBarMaterialize<'Msg> : Map<string, obj> -> Node<'Msg> =
+        fun b ->
+            let search =
+                if readStr "shown" "search" b = "hidden" then
+                    []
+                else
+                    [ searchChip (TextSource.Literal(readStr "Search" "searchLabel" b)) ]
+
+            let choiceCount = min (readCount 0 "choices" b) FilterBarMaxChoices
+
+            let choices =
+                if choiceCount <= 0 then
+                    [ choiceChip "status" (TextSource.Literal(readStr "Status" "statusLabel" b)) statusOptions ]
+                else
+                    [ for k in 1..choiceCount ->
+                          choiceChip
+                              (readStr (sprintf "filter-%d" k) (sprintf "choice-%d-key" k) b)
+                              (TextSource.Literal(readStr (sprintf "Filter %d" k) (sprintf "choice-%d-label" k) b))
+                              (Binding.Static(
+                                  Some(parseFilterOptions (readStr "=All" (sprintf "choice-%d-options" k) b))
+                              )) ]
+
+            filterBarTree (search @ choices)
 
     let filterBar<'Msg> : StdlibFragment<'Msg> =
         { Name = FilterBar
-          Summary = "A free-text chip and a status chip, both bound to their own host filter keys."
+          Summary =
+            "A row of filter chips, each bound to its own host filter key: a free-text chip and a status chip by default, or up to four choice filters."
           Decl =
             decl
                 FilterBar
-                (filterBarTree (holeText "searchLabel" "Search") (holeText "statusLabel" "Status"))
+                (filterBarTree
+                    [ searchChip (holeText "searchLabel" "Search")
+                      choiceChip "status" (holeText "statusLabel" "Status") statusOptions ])
                 filterBarHoles
                 // The chips READ host filter state. Certification of an
                 // effecting fragment asserts STRUCTURE only (Phase 52) — never
                 // that the emission is a pure function of its holes.
                 readsHost
-          Materialize =
-            fun b ->
-                filterBarTree
-                    (TextSource.Literal(readStr "Search" "searchLabel" b))
-                    (TextSource.Literal(readStr "Status" "statusLabel" b))
+          Materialize = filterBarMaterialize
           Example =
             reference
                 FilterBar
@@ -591,6 +793,42 @@ module Stdlib =
           sectionHeader
           metricCard
           loadingPlaceholder ]
+
+    /// Further representative applications, each binding holes a fragment's
+    /// `Example` leaves at their defaults: `(fragment name, what it shows, the
+    /// reference)`. Phase 2471 — the kpi-strip's per-figure format, trend and
+    /// polarity holes, and the filter-bar's choice filters. The `Example` of each
+    /// stays exactly as it was, so these sit beside it rather than replacing it,
+    /// and the corpus pins both.
+    let boundExamples<'Msg> : (string * string * Node<'Msg>) list =
+        [ KpiStrip,
+          "per-figure format, trend and polarity bound",
+          apply
+              (refIdOf KpiStrip + "-figures")
+              KpiStrip
+              [ "heading", FragmentArg.Str "This week"
+                "count", FragmentArg.Int 3
+                "currency", FragmentArg.Str "EUR"
+                "format-1", FragmentArg.Str "currency"
+                "trend-1", FragmentArg.Str "percent-1"
+                "format-2", FragmentArg.Str "number-0"
+                "trend-2", FragmentArg.Str "value"
+                "format-3", FragmentArg.Str "percent-1"
+                "trend-3", FragmentArg.Str "percent-1"
+                "polarity-3", FragmentArg.Str "lower-is-better" ]
+          FilterBar,
+          "two choice filters, search chip hidden",
+          apply
+              (refIdOf FilterBar + "-choices")
+              FilterBar
+              [ "search", FragmentArg.Str "hidden"
+                "choices", FragmentArg.Int 2
+                "choice-1-label", FragmentArg.Str "Region"
+                "choice-1-key", FragmentArg.Str "region"
+                "choice-1-options", FragmentArg.Str "=All regions|north=North|south=South"
+                "choice-2-label", FragmentArg.Str "Comparison"
+                "choice-2-key", FragmentArg.Str "compare"
+                "choice-2-options", FragmentArg.Str "lw=vs last week|ly=vs last year" ] ]
 
     /// Look a fragment up by its stable name.
     let tryFind<'Msg> (name: string) : StdlibFragment<'Msg> option =

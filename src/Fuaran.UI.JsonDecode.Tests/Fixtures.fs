@@ -8027,10 +8027,19 @@ let a11yWrapperTransformLabel: Node<obj> =
 /// `FragmentRef` nodes over hole and argument shapes the `frag-decl-param` /
 /// `frag-ref-args` pair already exercises in every host.
 let stdlibFragments: (string * Node<obj>) list =
-    Fuaran.UI.Fragments.Stdlib.all<obj>
-    |> List.collect (fun f ->
-        [ sprintf "FragmentDecl (stdlib '%s' — %s)" f.Name f.Summary, f.Decl
-          sprintf "FragmentRef (stdlib '%s' — a representative application)" f.Name, f.Example ])
+    let declared =
+        Fuaran.UI.Fragments.Stdlib.all<obj>
+        |> List.collect (fun f ->
+            [ sprintf "FragmentDecl (stdlib '%s' — %s)" f.Name f.Summary, f.Decl
+              sprintf "FragmentRef (stdlib '%s' — a representative application)" f.Name, f.Example ])
+
+    // Phase 2471 — applications binding the holes each `Example` leaves at their
+    // defaults, appended so the existing fixtures keep their bytes and order.
+    let bound =
+        Fuaran.UI.Fragments.Stdlib.boundExamples<obj>
+        |> List.map (fun (name, what, node) -> sprintf "FragmentRef (stdlib '%s' — %s)" name what, node)
+
+    declared @ bound
 
 // ─── The node-level tooltip trait (Phase 1112) ──────────────────────────────
 //

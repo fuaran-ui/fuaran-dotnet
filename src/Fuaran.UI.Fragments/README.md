@@ -44,13 +44,40 @@ Two consequences follow, and both are enforced rather than hoped for:
 | Fragment | Holes | Effect | What it stands for |
 |---|---|---|---|
 | `labelled-metric-row` | `label`, `value` | pure | A label and its figure on one line — the smallest read-only composite in the set. |
-| `kpi-strip` | `heading`, `count` (repeat, 1–6) | pure | A headed horizontal strip of figures — the dashboard's top band. |
-| `filter-bar` | `searchLabel`, `statusLabel` | reads host | A free-text chip and a status chip, each bound to its own host filter key. |
+| `kpi-strip` | `heading`, `count` (repeat, 1–6), `currency`, per figure `format-N`, `trend-N`, `polarity-N` | pure | A headed horizontal strip of figures — the dashboard's top band. |
+| `filter-bar` | `searchLabel`, `statusLabel`, `search`, `choices` (0–4), per choice `choice-N-label`, `choice-N-key`, `choice-N-options` | reads host | A row of filter chips, each bound to its own host filter key: a free-text chip and a status chip by default, or up to four choice filters. |
 | `confirm-action-pair` | `confirmLabel`, `cancelLabel` | writes host | A primary confirm and a secondary cancel, both writing one declared state key. |
 | `empty-state-panel` | `title`, `body`, `action` (slot, `Button`) | pure | A titled nothing-to-show card whose call to action is the caller's. |
 | `section-header` | `eyebrow`, `title`, `level` (1–4) | pure | An eyebrow above a title, at a caller-chosen heading level. |
 | `metric-card` | `title`, `value`, `caption` | pure | A card carrying one headline figure and the caption that qualifies it. |
 | `loading-placeholder` | `rows` (repeat, 1–8) | pure | Skeleton rows — the shape a list takes while its query is in flight. |
+
+### The kpi-strip and filter-bar holes (Phase 2471)
+
+Both fragments gained holes so that a designed screen's KPI row and filter bar are one reference
+each. Every new hole has a default, and the defaults are exactly the old shape, so a reference that
+binds none of them expands as it always did.
+
+- **`kpi-strip`.** Figure *N* (1 to 6) reads its label, value and trend from host state at
+  `kpi-N-label`, `kpi-N-value` and `kpi-N-trend`. Its holes choose how the figure reads:
+  - `format-N` takes `number`, `number-0` (the default), `number-1`, `number-2`, `percent`,
+    `percent-0`, `percent-1`, `percent-2` or `currency`. These map to `CellFormat`'s `Number`,
+    `Percent` and `Currency` cases.
+  - `currency` is the ISO 4217 code that every `currency` figure uses (default `USD`).
+  - `trend-N` takes `none` (the default), `value` (the trend is shown in the figure's own format), or
+    `percent-0` to `percent-2`.
+  - `polarity-N` takes `higher-is-better` (the default) or `lower-is-better`.
+- **`filter-bar`.** `choices` (0 to 4, default 0) is how many choice filters the bar carries. At 0
+  the bar is the original search chip and status chip. Above 0, the status chip gives way to the
+  choice filters. Choice *K* writes host filter key `choice-K-key` and is labelled `choice-K-label`.
+  Its `choice-K-options` is one string of entries separated by `|`. Each entry is `value=Label`, or a
+  bare `Label` that is its own value, so `=All sites|north=North` gives an empty-valued "All sites"
+  option and a "North" option. Every string parses: an entry with a blank label is dropped, and a
+  string with no usable entry yields a single `All` option. `search` (`shown` by default, or
+  `hidden`) keeps or drops the free-text chip in either shape.
+
+`Stdlib.boundExamples` holds one reference to each fragment that binds these holes, and the corpus
+pins those references next to each fragment's original example.
 
 Fragment names are **permanent**. Renaming one breaks every consumer's refs and every stored tree
 that carries them, so a rename is a new fragment plus a deprecation, never an edit.
