@@ -7818,7 +7818,44 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.98.1 — the slot opened after v0.97.0 was released (DRAFT — untagged)
+## 0.99.0 — the slot opened after v0.98.1 was released (DRAFT — untagged)
+
+_`v0.98.1` was tagged at `c88909e0` on 2026-10-28 and this slot was opened on the ledger the same day. Class: **breaking**
+(source), set by Phase 2474. The slot sits at the minor number, which is where a pre-1.0 breaking change goes._
+
+### What rides this slot — Phase 2474 (selectable static-table rows)
+
+**Class: breaking (source); it sets this slot's class.** Packages `Fuaran.UI`, `Fuaran.UI.Renderer.Core`,
+`Fuaran.UI.Renderer` and `Fuaran.UI.Renderer.Server`. No wire change.
+
+- **Wire.** Unchanged (VOCABULARY.md, the selectable-static-table row: no new vocabulary). A static `DataGrid` whose
+  `rowKeyField` names one of its declared `columns` is selectable.
+- **Rendering.** A selectable static table's row click publishes the row's record (each declared column's `field` to
+  its cell's text) under the table's id, the Phase 427 default on the static leg. The row whose key is the
+  selection's carries `fuaran-grid-row-selected` and `aria-selected="true"`; every other row, and every table that is
+  not selectable, renders byte-for-byte as before.
+- **Designed selection.** A `Selection` on a selectable static table projecting its `rowKeyField` with a
+  `defaultValue` names the row selected before any click. `StateSeeds.apply` (both renderers' context choke point)
+  now lays that row's record under `Selections` as well as the state seeds under `State`: a furnished selection
+  wins, a key naming no row seeds nothing, and a bound grid is never seeded. Readers of such a table's selection
+  therefore read the designed row's cells rather than their own defaults.
+- **New members.** `Fuaran.selectableTable`; `GridModel.staticRow` and `GridModel.staticKeyColumn`;
+  `ElementPlan.Attach.GridRowSelect`; `BindingWalk.BindingUse.SelectionSeed`, `BindingWalk.SelectionSeedDecl`,
+  `BindingWalk.selectionSeeds` / `selectionSeedsOf`, and `BindingWalk.stateSeedsOf`.
+- **Source-breaking, which is why the class matters.** `ElementPlan.VisPlan.staticGrid` takes the table's node id
+  (its second argument); `BindingWalk.TreeBindingFacts` gains `SelectionSeeds` (a full-record construction breaks,
+  FS0764); and an exhaustive match over `BindingWalk.BindingUse` must classify `SelectionSeed`.
+
+**What a consumer does.** A caller of `staticGrid` passes the node id; a caller constructing `TreeBindingFacts` adds
+the field; an exhaustive `BindingUse` match adds the case beside `StateSeed`. A stored tree is unaffected unless its
+static table declares a `rowKeyField` naming a column, in which case its rows become selectable.
+
+**Certified by** the corpus fixture `table-selectable-detail` (every corpus-certifying host round-trips it) and
+`src/Fuaran.UI.Renderer.Server.Tests/StaticTableSelectionTests.fs`.
+
+---
+
+## 0.98.1 — the slot opened after v0.97.0 was released (RELEASED — tagged v0.98.1 at c88909e0, 2026-10-28)
 
 _Released as **0.98.1**, not 0.98.0 (2026-10-28): the slot's surface moved after 0.98.0 was packed as a draft, and a
 released number names one contract, so the packed 0.98.0 draft keeps its number and is never released. Everything below
@@ -8437,36 +8474,6 @@ The record's text is a new format, `fuaran-board-snapshot@1`, whose identifier i
 never a silent extra member. The Fable law harness certifies the same record, hash and reproduced data on both pipelines.
 
 **What a consumer does.** Nothing, unless it wants snapshots.
-
-### What rides this slot — Phase 2474 (selectable static-table rows)
-
-**Class: breaking (source), riding the slot's standing class.** Packages `Fuaran.UI`, `Fuaran.UI.Renderer.Core`,
-`Fuaran.UI.Renderer` and `Fuaran.UI.Renderer.Server`. No wire change.
-
-- **Wire.** Unchanged (VOCABULARY.md, the selectable-static-table row: no new vocabulary). A static `DataGrid` whose
-  `rowKeyField` names one of its declared `columns` is selectable.
-- **Rendering.** A selectable static table's row click publishes the row's record (each declared column's `field` to
-  its cell's text) under the table's id, the Phase 427 default on the static leg. The row whose key is the
-  selection's carries `fuaran-grid-row-selected` and `aria-selected="true"`; every other row, and every table that is
-  not selectable, renders byte-for-byte as before.
-- **Designed selection.** A `Selection` on a selectable static table projecting its `rowKeyField` with a
-  `defaultValue` names the row selected before any click. `StateSeeds.apply` (both renderers' context choke point)
-  now lays that row's record under `Selections` as well as the state seeds under `State`: a furnished selection
-  wins, a key naming no row seeds nothing, and a bound grid is never seeded. Readers of such a table's selection
-  therefore read the designed row's cells rather than their own defaults.
-- **New members.** `Fuaran.selectableTable`; `GridModel.staticRow` and `GridModel.staticKeyColumn`;
-  `ElementPlan.Attach.GridRowSelect`; `BindingWalk.BindingUse.SelectionSeed`, `BindingWalk.SelectionSeedDecl`,
-  `BindingWalk.selectionSeeds` / `selectionSeedsOf`, and `BindingWalk.stateSeedsOf`.
-- **Source-breaking, which is why the class matters.** `ElementPlan.VisPlan.staticGrid` takes the table's node id
-  (its second argument); `BindingWalk.TreeBindingFacts` gains `SelectionSeeds` (a full-record construction breaks,
-  FS0764); and an exhaustive match over `BindingWalk.BindingUse` must classify `SelectionSeed`.
-
-**What a consumer does.** A caller of `staticGrid` passes the node id; a caller constructing `TreeBindingFacts` adds
-the field; an exhaustive `BindingUse` match adds the case beside `StateSeed`. A stored tree is unaffected unless its
-static table declares a `rowKeyField` naming a column, in which case its rows become selectable.
-
-**Certified by** the corpus fixture `table-selectable-detail` (every corpus-certifying host round-trips it) and
-`src/Fuaran.UI.Renderer.Server.Tests/StaticTableSelectionTests.fs`.
 
 ## 0.97.0 — the slot opened after v0.96.0 was released (RELEASED — tagged v0.97.0 at 0d6a626, 2026-10-18)
 
