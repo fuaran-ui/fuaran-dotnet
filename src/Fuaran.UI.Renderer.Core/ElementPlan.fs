@@ -385,10 +385,15 @@ module DisplayPlan =
         | _ -> None
 
     /// A scalar's display text: the formatted value, the em-dash while it has
-    /// not resolved, and the loud error / missing-translation sentinels.
-    let scalarText (format: CellFormat) (resolution: BindingResolver.Resolution<float>) : string =
+    /// not resolved, and the loud error / missing-translation sentinels. An
+    /// `Ambient` figure locale reads `ambientLocale` (Phase 2490).
+    let scalarText
+        (ambientLocale: string)
+        (format: CellFormat)
+        (resolution: BindingResolver.Resolution<float>)
+        : string =
         match resolution with
-        | BindingResolver.Resolved value -> Formatting.formatNumber format value
+        | BindingResolver.Resolved value -> Formatting.formatNumberIn ambientLocale format value
         | BindingResolver.NotResolved -> "—"
         | BindingResolver.Errored msg -> sprintf "(error: %s)" msg
         | BindingResolver.I18nUnresolved key -> sprintf "[i18n:%s]" key
@@ -470,8 +475,8 @@ module DisplayPlan =
 
                 let figure =
                     match label with
-                    | Some l -> Formatting.formatNumber format t + " " + l
-                    | None -> Formatting.formatNumber format t
+                    | Some l -> Formatting.formatNumberIn sources.Locale format t + " " + l
+                    | None -> Formatting.formatNumberIn sources.Locale format t
 
                 Plan.classChildren
                     "div"
@@ -498,7 +503,7 @@ module DisplayPlan =
         let head =
             [ spec.Icon |> Plan.ofOption (iconHook Css.Class.MetricIcon)
               Plan.classText "div" Css.Class.MetricLabel (text spec.Label)
-              Plan.classText "div" Css.Class.MetricValue (scalarText spec.Format resolution)
+              Plan.classText "div" Css.Class.MetricValue (scalarText sources.Locale spec.Format resolution)
               trend ]
 
         let subtext =
@@ -616,7 +621,7 @@ module DisplayPlan =
                   [ Plan.classText "span" Css.Class.LabelValueRowLabel (text spec.Label)
                     spec.Help
                     |> Plan.ofOption (fun h -> Plan.classText "span" "fuaran-label-value-row-help" (text h)) ]
-              Plan.classText "span" Css.Class.LabelValueRowValue (scalarText spec.Format resolution) ]
+              Plan.classText "span" Css.Class.LabelValueRowValue (scalarText sources.Locale spec.Format resolution) ]
 
     /// Phase 287 — `<ol>` / `<ul>` of literal items in document order, so the
     /// position is the identity.

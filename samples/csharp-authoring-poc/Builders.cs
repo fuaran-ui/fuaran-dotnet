@@ -95,9 +95,9 @@ internal static class Bind
 
 internal static class Fmt
 {
-    public static CellFormat Currency(string code) => CellFormat.NewCurrency(code);
-    public static CellFormat Percent(int decimals) => CellFormat.NewPercent(Fs.Some(decimals));
-    public static CellFormat Number(int decimals) => CellFormat.NewNumber(Fs.Some(decimals));
+    public static CellFormat Currency(string code) => CellFormat.NewCurrency(code, Fs.None<LocaleSource>());
+    public static CellFormat Percent(int decimals) => CellFormat.NewPercent(Fs.Some(decimals), Fs.None<LocaleSource>());
+    public static CellFormat Number(int decimals) => CellFormat.NewNumber(Fs.Some(decimals), Fs.None<LocaleSource>());
     public static CellFormat None => CellFormat.None;
 }
 

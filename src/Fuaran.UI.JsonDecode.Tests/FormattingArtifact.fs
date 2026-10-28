@@ -92,62 +92,67 @@ let all: Vector list =
       v
           "number-default-fraction"
           1234567.5
-          (CellFormat.Number None)
+          (CellFormat.Number(None, None))
           "1234567.5"
           "a non-integer with no declared decimals is String(x), never %g's 1.23457e+06"
       v
           "number-default-integer"
           1234.0
-          (CellFormat.Number None)
+          (CellFormat.Number(None, None))
           "1234"
           "an integer with no declared decimals is toFixed(0)"
       v
           "number-default-negative-zero"
           -0.0
-          (CellFormat.Number None)
+          (CellFormat.Number(None, None))
           "0"
           "a negative zero is an integer, and toFixed(0) does not sign it"
-      v "number-default-1e21" 1e21 (CellFormat.Number None) "1e+21" "toFixed answers String(x) from 1e21 up"
-      v "number-fixed-2" 1234.5 (CellFormat.Number(Some 2)) "1234.50" "fixed places, no grouping, a point"
+      v "number-default-1e21" 1e21 (CellFormat.Number(None, None)) "1e+21" "toFixed answers String(x) from 1e21 up"
+      v "number-fixed-2" 1234.5 (CellFormat.Number(Some 2, None)) "1234.50" "fixed places, no grouping, a point"
       v
           "number-fixed-tie-away"
           0.125
-          (CellFormat.Number(Some 2))
+          (CellFormat.Number(Some 2, None))
           "0.13"
           "an exact binary tie rounds away from zero, not to even"
       v
           "number-fixed-binary-below-tie"
           1.005
-          (CellFormat.Number(Some 2))
+          (CellFormat.Number(Some 2, None))
           "1.00"
           "1.005 is stored just below the tie, so it rounds down"
       v
           "number-fixed-negative-to-zero"
           -0.001
-          (CellFormat.Number(Some 2))
+          (CellFormat.Number(Some 2, None))
           "-0.00"
           "a negative amount keeps its sign when it rounds to zero"
       v
           "number-fixed-negative-zero"
           -0.0
-          (CellFormat.Number(Some 2))
+          (CellFormat.Number(Some 2, None))
           "0.00"
           "a negative zero is not less than zero, so it is unsigned"
-      v "number-fixed-0-tie" 2.5 (CellFormat.Number(Some 0)) "3" "toFixed(0) of an exact half rounds up in magnitude"
-      v "number-fixed-1e21" 1e21 (CellFormat.Number(Some 2)) "1e+21" "declared places do not apply from 1e21 up"
-      v "percent-default" 0.4567 (CellFormat.Percent None) "45.7%" "one place by default, after the x100"
-      v "percent-fixed-1" 0.125 (CellFormat.Percent(Some 1)) "12.5%" "declared places on the scaled ratio"
+      v
+          "number-fixed-0-tie"
+          2.5
+          (CellFormat.Number(Some 0, None))
+          "3"
+          "toFixed(0) of an exact half rounds up in magnitude"
+      v "number-fixed-1e21" 1e21 (CellFormat.Number(Some 2, None)) "1e+21" "declared places do not apply from 1e21 up"
+      v "percent-default" 0.4567 (CellFormat.Percent(None, None)) "45.7%" "one place by default, after the x100"
+      v "percent-fixed-1" 0.125 (CellFormat.Percent(Some 1, None)) "12.5%" "declared places on the scaled ratio"
       v
           "percent-fixed-0-tie"
           0.005
-          (CellFormat.Percent(Some 0))
+          (CellFormat.Percent(Some 0, None))
           "1%"
           "0.005 x 100 is exactly 0.5, and the tie rounds up"
-      v "percent-negative-zero" -0.0 (CellFormat.Percent None) "0.0%" "a negative zero ratio renders unsigned"
+      v "percent-negative-zero" -0.0 (CellFormat.Percent(None, None)) "0.0%" "a negative zero ratio renders unsigned"
       v
           "currency-code-prefix"
           1234.5
-          (CellFormat.Currency "USD")
+          (CellFormat.Currency("USD", None))
           "USD 1234.50"
           "the cell vocabulary's currency is the ISO code, a space and two places"
       v
@@ -194,11 +199,11 @@ let all: Vector list =
 let formatJson (format: CellFormat) : string =
     match format with
     | CellFormat.None -> """{"$type":"None"}"""
-    | CellFormat.Number None -> """{"$type":"Number"}"""
-    | CellFormat.Number(Some d) -> sprintf """{"$type":"Number","decimals":%d}""" d
-    | CellFormat.Percent None -> """{"$type":"Percent"}"""
-    | CellFormat.Percent(Some d) -> sprintf """{"$type":"Percent","decimals":%d}""" d
-    | CellFormat.Currency code -> sprintf """{"$type":"Currency","code":"%s"}""" code
+    | CellFormat.Number(None, None) -> """{"$type":"Number"}"""
+    | CellFormat.Number(Some d, None) -> sprintf """{"$type":"Number","decimals":%d}""" d
+    | CellFormat.Percent(None, None) -> """{"$type":"Percent"}"""
+    | CellFormat.Percent(Some d, None) -> sprintf """{"$type":"Percent","decimals":%d}""" d
+    | CellFormat.Currency(code, None) -> sprintf """{"$type":"Currency","code":"%s"}""" code
     | CellFormat.SignificantDigits d -> sprintf """{"$type":"SignificantDigits","digits":%d}""" d
     | other -> failwithf "the formatting family carries no %A vector" other
 

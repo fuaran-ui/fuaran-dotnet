@@ -4,7 +4,7 @@
   "what": "Per-family (section -> needed | never-needed | unknown) map, distilled from the flip record. `unknown` defaults to INCLUDED; `needed` wins a conflict with `never-needed`. Every verdict carries the record line that decided it.",
   "flipRecord": { "file": "SLIMMING-CENSUS.md", "sha256": "sha256:39531ae400f9ae616b2c5ecedf4b8a933508559d8bb9748d0893407d751a4751" },
   "demandAttribution": { "file": "demand-attribution.jsonl", "sha256": "sha256:a829fc98ddb5e094d2106c6bcde67f29e7becfe72890e4b280168a0a85147917", "records": 65 },
-  "pack": { "file": "system-prompt.md", "sha256": "sha256:7a544dc9a1d31bb3eddd73dc64b80b0742cfa617519967d012c031e663bb76f8", "sections": 32 },
+  "pack": { "file": "system-prompt.md", "sha256": "sha256:02b0b8e68f2941f68df9d77609972fbfbbc83bf372f3903f45786d378b0c6568", "sections": 33 },
   "families": ["claude-opus", "claude-sonnet", "gemini", "gpt", "grok", "kimi"],
   "dialect": {
     "claude-opus": { "dialect": "lenient", "evidence": { "line": 808, "excerpt": "| \u0060claude-opus-4-8@low\u0060 | 12/12 (was 11/12) | \u22126.0% | **ADOPT** \u2014 dialect eligible as this family\u0027s pack dimension |" } },
@@ -352,6 +352,20 @@
       }
     },
     {
+      "key": "Dates and times \u2014 always declare the presentation/A figure in the reader\u0027s locale",
+      "alwaysCore": false,
+      "alwaysCoreReason": null,
+      "pinnedExemplars": [],
+      "families": {
+        "claude-opus": { "class": "unknown", "evidence": [] },
+        "claude-sonnet": { "class": "unknown", "evidence": [] },
+        "gemini": { "class": "unknown", "evidence": [] },
+        "gpt": { "class": "unknown", "evidence": [] },
+        "grok": { "class": "unknown", "evidence": [] },
+        "kimi": { "class": "unknown", "evidence": [] }
+      }
+    },
+    {
       "key": "Dates and times \u2014 always declare the presentation/\u0022Today\u0022 is a binding, never a literal",
       "alwaysCore": false,
       "alwaysCoreReason": null,
@@ -465,11 +479,11 @@
     }
   ],
   "summary": {
-    "claude-opus": { "needed": 3, "neverNeeded": 0, "unknownDefaultedIn": 29, "cuttable": 0 },
-    "claude-sonnet": { "needed": 0, "neverNeeded": 0, "unknownDefaultedIn": 32, "cuttable": 0 },
-    "gemini": { "needed": 2, "neverNeeded": 0, "unknownDefaultedIn": 30, "cuttable": 0 },
-    "gpt": { "needed": 3, "neverNeeded": 0, "unknownDefaultedIn": 29, "cuttable": 0 },
-    "grok": { "needed": 3, "neverNeeded": 0, "unknownDefaultedIn": 29, "cuttable": 0 },
-    "kimi": { "needed": 0, "neverNeeded": 0, "unknownDefaultedIn": 32, "cuttable": 0 }
+    "claude-opus": { "needed": 3, "neverNeeded": 0, "unknownDefaultedIn": 30, "cuttable": 0 },
+    "claude-sonnet": { "needed": 0, "neverNeeded": 0, "unknownDefaultedIn": 33, "cuttable": 0 },
+    "gemini": { "needed": 2, "neverNeeded": 0, "unknownDefaultedIn": 31, "cuttable": 0 },
+    "gpt": { "needed": 3, "neverNeeded": 0, "unknownDefaultedIn": 30, "cuttable": 0 },
+    "grok": { "needed": 3, "neverNeeded": 0, "unknownDefaultedIn": 30, "cuttable": 0 },
+    "kimi": { "needed": 0, "neverNeeded": 0, "unknownDefaultedIn": 33, "cuttable": 0 }
   }
 }

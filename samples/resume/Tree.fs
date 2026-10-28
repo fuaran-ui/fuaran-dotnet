@@ -62,13 +62,13 @@ let build<'Msg> (count: int) (onBoot: Action<'Msg>) : Node<'Msg> =
                                     { Defaults.labelValueRow with
                                         Label = TextSource.Literal "Framework JS executed at load"
                                         Value = Binding.Static(Some 0.0)
-                                        Format = CellFormat.Number(Some 0) }
+                                        Format = CellFormat.Number(Some 0, None) }
                                 Fuaran.labelValueRow
                                     "r2"
                                     { Defaults.labelValueRow with
                                         Label = TextSource.Literal "Boot count"
                                         Value = Binding.Static(Some(float count))
-                                        Format = CellFormat.Number(Some 0) } ] }
+                                        Format = CellFormat.Number(Some 0, None) } ] }
 
                   // The Navigate row — every button `interpret`s directly.
                   Fuaran.card

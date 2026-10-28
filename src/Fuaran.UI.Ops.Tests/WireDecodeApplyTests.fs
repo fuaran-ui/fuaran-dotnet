@@ -40,7 +40,7 @@ let private revenueMetric: Node<obj> =
             { Defaults.metric with
                 Label = TextSource.Literal "Revenue"
                 Value = Binding.Static(Some 0.0)
-                Format = CellFormat.Currency "USD"
+                Format = CellFormat.Currency("USD", None)
                 Tone = ToneVariant.Brand }
         )
       // `None` is the canonical empty-state / default-style shape since the swap.
@@ -153,7 +153,7 @@ let tests =
                       let spec = metricOf updated
 
                       match spec.Format with
-                      | CellFormat.Currency "GBP" -> ()
+                      | CellFormat.Currency("GBP", None) -> ()
                       | other -> failtestf "Expected Currency 'GBP', got %A" other
           }
 
@@ -202,7 +202,7 @@ let tests =
                       match updated.Kind with
                       | NodeKind.DataGrid(spec) ->
                           match spec.Columns[0].Format with
-                          | CellFormat.Percent(Some 1) -> ()
+                          | CellFormat.Percent(Some 1, None) -> ()
                           | other -> failtestf "Expected Percent (Some 1), got %A" other
                       | other -> failtestf "Expected DataGrid, got %A" other
           }

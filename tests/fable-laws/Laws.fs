@@ -1024,11 +1024,11 @@ let private numberFormatCase (name: string) (format: CellFormat) (value: float) 
 /// The formats the sweep runs each value through.
 let private sweepFormats: (string * CellFormat) list =
     [ "none", CellFormat.None
-      "number", CellFormat.Number None
-      "fixed0", CellFormat.Number(Some 0)
-      "fixed2", CellFormat.Number(Some 2)
-      "fixed7", CellFormat.Number(Some 7)
-      "percent", CellFormat.Percent None
+      "number", CellFormat.Number(None, None)
+      "fixed0", CellFormat.Number(Some 0, None)
+      "fixed2", CellFormat.Number(Some 2, None)
+      "fixed7", CellFormat.Number(Some 7, None)
+      "percent", CellFormat.Percent(None, None)
       "sig1", CellFormat.SignificantDigits 1
       "sig3", CellFormat.SignificantDigits 3
       "sig17", CellFormat.SignificantDigits 17 ]
@@ -1036,15 +1036,15 @@ let private sweepFormats: (string * CellFormat) list =
 let numberFormatCases (seed: int) (values: int) : NumberFormatCase list =
     let known =
         [ numberFormatCase "sig3-1234" (CellFormat.SignificantDigits 3) 1234.0 "1230"
-          numberFormatCase "number-1234567.5" (CellFormat.Number None) 1234567.5 "1234567.5"
+          numberFormatCase "number-1234567.5" (CellFormat.Number(None, None)) 1234567.5 "1234567.5"
           numberFormatCase "none-small" CellFormat.None 0.000001234 "0.000001234"
           numberFormatCase "none-negative-zero" CellFormat.None -0.0 "0"
           numberFormatCase "none-1e21" CellFormat.None 1e21 "1e+21"
-          numberFormatCase "fixed2-tie" (CellFormat.Number(Some 2)) 0.125 "0.13"
-          numberFormatCase "fixed2-negative-to-zero" (CellFormat.Number(Some 2)) -0.001 "-0.00"
-          numberFormatCase "percent0-tie" (CellFormat.Percent(Some 0)) 0.005 "1%"
+          numberFormatCase "fixed2-tie" (CellFormat.Number(Some 2, None)) 0.125 "0.13"
+          numberFormatCase "fixed2-negative-to-zero" (CellFormat.Number(Some 2, None)) -0.001 "-0.00"
+          numberFormatCase "percent0-tie" (CellFormat.Percent(Some 0, None)) 0.005 "1%"
           numberFormatCase "none-nan" CellFormat.None nan "NaN"
-          numberFormatCase "fixed2-infinity" (CellFormat.Number(Some 2)) -infinity "-Infinity" ]
+          numberFormatCase "fixed2-infinity" (CellFormat.Number(Some 2, None)) -infinity "-Infinity" ]
 
     PortableRng.reseed seed
 

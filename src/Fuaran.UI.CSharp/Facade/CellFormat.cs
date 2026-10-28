@@ -17,17 +17,29 @@ public readonly struct CellFormat
     /// <summary>No formatting — the value renders as-is.</summary>
     public static CellFormat None { get; } = new(FsGen.CellFormat.None);
 
-    /// <summary>A plain number; <paramref name="decimals"/> pins the fraction-digit count.</summary>
-    public static CellFormat Number(int? decimals = null) =>
-        new(FsGen.CellFormat.NewNumber(Fs.OfNullable(decimals)));
+    /// <summary>
+    /// A plain number; <paramref name="decimals"/> pins the fraction-digit count. A
+    /// <paramref name="locale"/> renders it through the locale formatter (Phase 2490).
+    /// </summary>
+    public static CellFormat Number(int? decimals = null, Locale? locale = null) =>
+        new(FsGen.CellFormat.NewNumber(Fs.OfNullable(decimals), LocaleOf(locale)));
 
-    /// <summary>A currency amount; <paramref name="isoCode"/> is the ISO-4217 code (e.g. "GBP").</summary>
-    public static CellFormat Currency(string isoCode) =>
-        new(FsGen.CellFormat.NewCurrency(isoCode));
+    /// <summary>
+    /// A currency amount; <paramref name="isoCode"/> is the ISO-4217 code (e.g. "GBP"). A
+    /// <paramref name="locale"/> renders it grouped and symbol-led (Phase 2490).
+    /// </summary>
+    public static CellFormat Currency(string isoCode, Locale? locale = null) =>
+        new(FsGen.CellFormat.NewCurrency(isoCode, LocaleOf(locale)));
 
-    /// <summary>A percentage; <paramref name="decimals"/> pins the fraction-digit count.</summary>
-    public static CellFormat Percent(int? decimals = null) =>
-        new(FsGen.CellFormat.NewPercent(Fs.OfNullable(decimals)));
+    /// <summary>
+    /// A percentage; <paramref name="decimals"/> pins the fraction-digit count. A
+    /// <paramref name="locale"/> renders it through the locale formatter (Phase 2490).
+    /// </summary>
+    public static CellFormat Percent(int? decimals = null, Locale? locale = null) =>
+        new(FsGen.CellFormat.NewPercent(Fs.OfNullable(decimals), LocaleOf(locale)));
+
+    private static Microsoft.FSharp.Core.FSharpOption<FsGen.LocaleSource> LocaleOf(Locale? locale) =>
+        locale is { } l ? Fs.Some(l.Inner) : Fs.None<FsGen.LocaleSource>();
 
     /// <summary>A value rounded to <paramref name="digits"/> significant digits.</summary>
     public static CellFormat SignificantDigits(int digits) =>

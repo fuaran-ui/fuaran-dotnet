@@ -246,7 +246,7 @@ let private buildColumnDef<'Msg>
             | CellValue.Empty -> null
 
     let valueFormatter (p: obj) : string =
-        Formatting.formatCellValue col.Format (cellValueOf p)
+        Formatting.formatCellValueIn sources.Locale col.Format (cellValueOf p)
 
     let baseProps: (string * obj) list =
         [ // A stable, index-derived column id. AG derives one from `field`

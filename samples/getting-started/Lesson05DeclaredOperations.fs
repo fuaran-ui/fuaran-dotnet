@@ -63,7 +63,7 @@ let private kpiTile: FastPath.Pattern =
                 { Defaults.metric with
                     Label = TextSource.Literal label
                     Value = Binding.Static(Some value)
-                    Format = CellFormat.Currency "GBP"
+                    Format = CellFormat.Currency("GBP", None)
                     Tone = ToneVariant.Brand } }
 
 let private noticeBanner: FastPath.Pattern =

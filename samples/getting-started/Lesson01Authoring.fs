@@ -45,20 +45,20 @@ let dashboard: Node<obj> =
                                     { Defaults.metric with
                                         Label = TextSource.Literal "Revenue"
                                         Value = Binding.Static(Some 142500.0)
-                                        Format = CellFormat.Currency "GBP"
+                                        Format = CellFormat.Currency("GBP", None)
                                         Tone = ToneVariant.Brand }
                                 Fuaran.metric
                                     "sales-orders"
                                     { Defaults.metric with
                                         Label = TextSource.Literal "Orders"
                                         Value = Binding.Static(Some 1284.0)
-                                        Format = CellFormat.Number(Some 0) }
+                                        Format = CellFormat.Number(Some 0, None) }
                                 Fuaran.metric
                                     "sales-conversion"
                                     { Defaults.metric with
                                         Label = TextSource.Literal "Conversion"
                                         Value = Binding.Static(Some 0.043)
-                                        Format = CellFormat.Percent(Some 1)
+                                        Format = CellFormat.Percent(Some 1, None)
                                         Tone = ToneVariant.Success } ] }
                   Fuaran.callout
                       "sales-note"

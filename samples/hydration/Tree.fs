@@ -49,7 +49,7 @@ let build<'Msg> (activeTab: int) (onTab: int -> Action<'Msg>) : Node<'Msg> =
                                     { Defaults.labelValueRow with
                                         Label = TextSource.Literal "Pipelines"
                                         Value = Binding.Static(Some 2.0)
-                                        Format = CellFormat.Number(Some 0) } ] }
+                                        Format = CellFormat.Number(Some 0, None) } ] }
 
                   Fuaran.tabs
                       "tabs"

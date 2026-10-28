@@ -144,7 +144,7 @@ let private metricTile id label value =
         { Defaults.metric with
             Label = lit label
             Value = Binding.Static(Some value)
-            Format = CellFormat.Number(Some 0) }
+            Format = CellFormat.Number(Some 0, None) }
 
 // ─── Fixtures ───────────────────────────────────────────────────────────────
 
@@ -228,7 +228,7 @@ let private displaySubset: Node<obj> =
                       { Defaults.labelValueRow with
                           Label = lit "Gross margin"
                           Value = Binding.Static(Some 0.62)
-                          Format = CellFormat.Percent(Some 1)
+                          Format = CellFormat.Percent(Some 1, None)
                           Emphasis = true }
                   Fuaran.listSpec
                       "d-list"

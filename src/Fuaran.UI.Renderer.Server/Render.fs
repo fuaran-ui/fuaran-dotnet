@@ -101,12 +101,14 @@ let internal renderText (ctx: ServerRenderContext) (text: TextSource) : string =
     // are unchanged.
     BindingResolver.resolveTextSource ctx.Sources text
 
-/// The `CellFormat` projection — `Formatting.formatNumber`, the one definition
-/// both renderers format through (Phase 2108). `internal` for the same reason
-/// as `renderText` above: the email and speech projections format a Metric /
-/// LabelValueRow value through this name, so a figure in a digest reads
-/// identically to the figure on the page.
-let internal formatNumber (format: CellFormat) (value: float) : string = Formatting.formatNumber format value
+/// The `CellFormat` projection — `Formatting.formatNumberIn`, the one definition
+/// both renderers format through (Phase 2108), under the render's ambient
+/// locale for a figure whose `locale` is `Ambient` (Phase 2490). `internal` for
+/// the same reason as `renderText` above: the email and speech projections
+/// format a Metric / LabelValueRow value through this name, so a figure in a
+/// digest reads identically to the figure on the page.
+let internal formatNumber (ctx: ServerRenderContext) (format: CellFormat) (value: float) : string =
+    Formatting.formatNumberIn ctx.Sources.Locale format value
 
 // ─── The plan emitter (Phase 2108) ──────────────────────────────────────────
 

@@ -797,6 +797,11 @@ let private binding =
 /// `CellFormat` — the column / `Metric` display-format vocabulary. `Number` /
 /// `Percent` carry an *optional* `decimals` (omitted on `None`, rule 4); `Custom`
 /// carries a closure fn.
+///
+/// Phase 2490 — the three figure cases (`Number`, `Currency`, `Percent`) carry an
+/// *optional* `locale`. Absent, the figure is the locale-free projection it has
+/// always been, on every host; present, it renders through the same locale
+/// formatter `Binding.Format` uses for the matching `Format` case (Phase 102).
 let private cellFormat =
     { Name = "CellFormat"
       Params = []
@@ -806,15 +811,15 @@ let private cellFormat =
             Annotations = Annotations.Empty
             Hosted = None }
           { Tag = "Number"
-            Fields = [ opt "decimals" TInt ]
+            Fields = [ opt "decimals" TInt; opt "locale" (TUnion("LocaleSource", [])) ]
             Annotations = Annotations.Empty
             Hosted = None }
           { Tag = "Currency"
-            Fields = [ req "code" TStr ]
+            Fields = [ req "code" TStr; opt "locale" (TUnion("LocaleSource", [])) ]
             Annotations = Annotations.Empty
             Hosted = None }
           { Tag = "Percent"
-            Fields = [ opt "decimals" TInt ]
+            Fields = [ opt "decimals" TInt; opt "locale" (TUnion("LocaleSource", [])) ]
             Annotations = Annotations.Empty
             Hosted = None }
           { Tag = "SignificantDigits"

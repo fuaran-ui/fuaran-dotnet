@@ -62,9 +62,9 @@ let private metric id label value trend =
             { Defaults.metric with
                 Label = lit label
                 Value = Binding.Static(Some value)
-                Format = CellFormat.Number(Some 0)
+                Format = CellFormat.Number(Some 0, None)
                 Trend = trend |> Option.map (fun t -> Binding.Static(Some t))
-                TrendFormat = Some(CellFormat.Percent(Some 1)) })
+                TrendFormat = Some(CellFormat.Percent(Some 1, None)) })
 
 let private card id (title: string) (kids: Node<obj> list) =
     Fuaran.card

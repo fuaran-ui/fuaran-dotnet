@@ -204,7 +204,7 @@ module Stdlib =
             { Defaults.labelValueRow with
                 Label = holeText "label" "Metric"
                 Value = holeNumber "value" 0.0
-                Format = CellFormat.Number(Some 0) }
+                Format = CellFormat.Number(Some 0, None) }
 
     let private labelledMetricRowMaterialize<'Msg> : Map<string, obj> -> Node<'Msg> =
         fun b ->
@@ -213,7 +213,7 @@ module Stdlib =
                 { Defaults.labelValueRow with
                     Label = TextSource.Literal(readStr "Metric" "label" b)
                     Value = Binding.Static(Some(readNum 0.0 "value" b))
-                    Format = CellFormat.Number(Some 0) }
+                    Format = CellFormat.Number(Some 0, None) }
 
     let labelledMetricRow<'Msg> : StdlibFragment<'Msg> =
         { Name = LabelledMetricRow
@@ -268,32 +268,33 @@ module Stdlib =
 
     let private kpiFormatOf (currency: string) (token: string) : CellFormat =
         match token with
-        | "number" -> CellFormat.Number Option.None
-        | "number-1" -> CellFormat.Number(Some 1)
-        | "number-2" -> CellFormat.Number(Some 2)
-        | "percent" -> CellFormat.Percent Option.None
-        | "percent-0" -> CellFormat.Percent(Some 0)
-        | "percent-1" -> CellFormat.Percent(Some 1)
-        | "percent-2" -> CellFormat.Percent(Some 2)
+        | "number" -> CellFormat.Number(Option.None, Option.None)
+        | "number-1" -> CellFormat.Number(Some 1, None)
+        | "number-2" -> CellFormat.Number(Some 2, None)
+        | "percent" -> CellFormat.Percent(Option.None, Option.None)
+        | "percent-0" -> CellFormat.Percent(Some 0, None)
+        | "percent-1" -> CellFormat.Percent(Some 1, None)
+        | "percent-2" -> CellFormat.Percent(Some 2, None)
         // A blank code is FUARAN061; the hole's space admits whitespace, so the
         // materialiser falls back to the default rather than emit the defect.
         | "currency" ->
             CellFormat.Currency(
-                if System.String.IsNullOrWhiteSpace currency then
-                    "USD"
-                else
-                    currency
+                (if System.String.IsNullOrWhiteSpace currency then
+                     "USD"
+                 else
+                     currency),
+                Option.None
             )
-        | _ -> CellFormat.Number(Some 0) // "number-0", the default
+        | _ -> CellFormat.Number(Some 0, None) // "number-0", the default
 
     /// `None` = no trend; `Some None` = the trend in the figure's own format;
     /// `Some(Some f)` = the trend in `f`.
     let private kpiTrendOf (token: string) : CellFormat option option =
         match token with
         | "value" -> Some Option.None
-        | "percent-0" -> Some(Some(CellFormat.Percent(Some 0)))
-        | "percent-1" -> Some(Some(CellFormat.Percent(Some 1)))
-        | "percent-2" -> Some(Some(CellFormat.Percent(Some 2)))
+        | "percent-0" -> Some(Some(CellFormat.Percent(Some 0, None)))
+        | "percent-1" -> Some(Some(CellFormat.Percent(Some 1, None)))
+        | "percent-2" -> Some(Some(CellFormat.Percent(Some 2, None)))
         | _ -> Option.None // "none", the default
 
     let private kpiPolarityOf (token: string) : TrendPolarity =
@@ -341,7 +342,7 @@ module Stdlib =
     /// The figure every hole default describes — what the strip emitted before
     /// the per-figure holes existed.
     let private kpiDefaultMetric<'Msg> (i: int) : Node<'Msg> =
-        kpiMetric i (CellFormat.Number(Some 0)) Option.None TrendPolarity.HigherIsBetter
+        kpiMetric i (CellFormat.Number(Some 0, None)) Option.None TrendPolarity.HigherIsBetter
 
     let private kpiStripTree<'Msg> (heading: string) (figures: Node<'Msg> list) : Node<'Msg> =
         Fuaran.stack
@@ -730,7 +731,7 @@ module Stdlib =
                           { Defaults.metric with
                               Label = title
                               Value = value
-                              Format = CellFormat.Number(Some 0) }
+                              Format = CellFormat.Number(Some 0, None) }
                       Fuaran.markdownSpec "metric-card-caption" { Text = caption } ] }
 
     let metricCard<'Msg> : StdlibFragment<'Msg> =

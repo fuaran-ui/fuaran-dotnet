@@ -32,7 +32,7 @@ let private contains (needle: string) (haystack: string) =
 let private comparison label value polarity : MetricComparison =
     { Label = TextSource.Literal label
       Value = Binding.Static(Some value)
-      Format = CellFormat.Percent(Some 1)
+      Format = CellFormat.Percent(Some 1, None)
       Polarity = polarity }
 
 /// The pilot's KPI row figure: orders yesterday, against last week and last year.
@@ -40,7 +40,7 @@ let private ordersSpec: MetricSpec =
     { Defaults.metric with
         Label = TextSource.Literal "Orders yesterday"
         Value = Binding.Static(Some 1284.0)
-        Format = CellFormat.Number(Some 0)
+        Format = CellFormat.Number(Some 0, None)
         Comparisons =
             [ comparison "vs same day last week" 0.042 TrendPolarity.HigherIsBetter
               comparison "vs same day last year" -0.031 TrendPolarity.HigherIsBetter ] }
@@ -84,7 +84,7 @@ let tests =
               let spec =
                   { ordersSpec with
                       Trend = Some(Binding.Static(Some 0.01))
-                      TrendFormat = Some(CellFormat.Percent(Some 1)) }
+                      TrendFormat = Some(CellFormat.Percent(Some 1, None)) }
 
               let out = html spec
               Expect.equal (count "fuaran-metric-trend-glyph" out) 3 "the trend plus two comparisons"

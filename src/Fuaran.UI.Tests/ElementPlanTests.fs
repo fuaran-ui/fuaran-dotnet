@@ -234,14 +234,14 @@ let tests =
 
                 test "the scalar text is the formatted value or its loud sentinel" {
                     Expect.equal
-                        (DisplayPlan.scalarText (CellFormat.Number(Some 1)) (BindingResolver.Resolved 2.0))
+                        (DisplayPlan.scalarText "" (CellFormat.Number(Some 1, None)) (BindingResolver.Resolved 2.0))
                         "2.0"
                         "value"
 
-                    Expect.equal (DisplayPlan.scalarText CellFormat.None BindingResolver.NotResolved) "—" "pending"
+                    Expect.equal (DisplayPlan.scalarText "" CellFormat.None BindingResolver.NotResolved) "—" "pending"
 
                     Expect.equal
-                        (DisplayPlan.scalarText CellFormat.None (BindingResolver.Errored "e"))
+                        (DisplayPlan.scalarText "" CellFormat.None (BindingResolver.Errored "e"))
                         "(error: e)"
                         "error"
                 } ] ]

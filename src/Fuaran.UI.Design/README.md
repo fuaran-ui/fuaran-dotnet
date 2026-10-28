@@ -59,10 +59,13 @@ Every card's first line is `<!-- @dsCard group="…" -->`, the group one of `Typ
 `Fuaran.UI.Renderer.Server`, with the theme's `:root` variable block inlined.
 
 Figures have two routes, and the figure kinds' cards name both: a `CellFormat` (a Metric's,
-LabelValueRow's or DataGrid column's `Format`) is locale-free, so every host renders the same text;
-`Binding.Format` with a locale is the reader-facing figure, and yields text for a text slot.
-`BundleOptions.Locale = Some "<bcp47>"` (the CLI's `--locale`) adds a Fact specimen whose value is a
-figure formatted under that locale; `None` adds nothing. A tag the platform does not know is refused.
+LabelValueRow's or DataGrid column's `Format`) is locale-free unless it carries a `locale` (Phase
+2490), so without one every host renders the same text, and with one the figure reads grouped and
+symbol-led in that locale while staying a number; `Binding.Format` with a locale is the reader-facing
+figure inside text, and yields text for a text slot. `BundleOptions.Locale = Some "<bcp47>"` (the
+CLI's `--locale`) adds a Fact specimen whose value is a figure formatted under that locale through
+`Binding.Format`, and a Metric and a LabelValueRow specimen whose `CellFormat` carries the locale;
+`None` adds nothing. A tag the platform does not know is refused.
 
 The Metric card also says where a second comparison goes (Phase 2472): `trend` is the figure's
 primary comparison, and each further one (against last week AND last year) is an entry in

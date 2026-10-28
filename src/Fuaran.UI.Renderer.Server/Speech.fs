@@ -323,7 +323,7 @@ let project (ctx: Render.ServerRenderContext) (root: Node<obj>) : SpeechScript *
 
     let figure (format: CellFormat) (binding: Binding<float>) : string =
         match BindingResolver.resolveScalarFloat ctx.Sources binding with
-        | BindingResolver.Resolved v -> Render.formatNumber format v
+        | BindingResolver.Resolved v -> Render.formatNumber ctx format v
         | BindingResolver.NotResolved -> "no value"
         | BindingResolver.Errored _
         | BindingResolver.I18nUnresolved _ -> "unavailable"
@@ -488,7 +488,7 @@ let project (ctx: Render.ServerRenderContext) (root: Node<obj>) : SpeechScript *
                 |> Option.bind (BindingResolver.tryResolveScalarFloat ctx.Sources)
                 |> Option.map (fun t ->
                     ", trend "
-                    + Render.formatNumber (spec.TrendFormat |> Option.defaultValue CellFormat.None) t)
+                    + Render.formatNumber ctx (spec.TrendFormat |> Option.defaultValue CellFormat.None) t)
                 |> Option.defaultValue ""
 
             // Phase 2472 - each further comparison is spoken after the trend,
@@ -497,7 +497,7 @@ let project (ctx: Render.ServerRenderContext) (root: Node<obj>) : SpeechScript *
                 spec.Comparisons
                 |> List.choose (fun c ->
                     BindingResolver.tryResolveScalarFloat ctx.Sources c.Value
-                    |> Option.map (fun v -> ", " + Render.formatNumber c.Format v + " " + text c.Label))
+                    |> Option.map (fun v -> ", " + Render.formatNumber ctx c.Format v + " " + text c.Label))
                 |> String.concat ""
 
             let subtext = spec.Subtext |> Option.map (text >> sentence) |> Option.toList

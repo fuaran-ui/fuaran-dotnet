@@ -646,24 +646,23 @@ let private jsSignificant (digits: int) (value: float) : string =
 
 #endif
 
-/// The `CellFormat` projection of a number — a Metric / LabelValueRow value, a
-/// Metric trend, a grid cell. ONE definition (Phase 2108 collapsed the client
-/// and server copies onto it; Phase 1941 the AG Grid adapter's), culture-
-/// invariant, and byte-identical to the hydrating bundle's `formatNumber` on
-/// every arm. The corpus's `formatting` family pins it on every host.
-let formatNumber (format: CellFormat) (value: float) : string =
+/// The LOCALE-FREE `CellFormat` projection of a number: what every arm renders
+/// when the figure carries no `locale` (Phase 2490 — `formatNumberIn` below routes
+/// a present one). Culture-invariant, and byte-identical to the hydrating
+/// bundle's on every arm. The corpus's `formatting` family pins it on every host.
+let private formatFigure (format: CellFormat) (value: float) : string =
     match format with
     | CellFormat.None -> jsNumberText value
-    | CellFormat.Number(Some decimals) -> jsToFixed (fixedDigits decimals) value
-    | CellFormat.Number None ->
+    | CellFormat.Number(Some decimals, _) -> jsToFixed (fixedDigits decimals) value
+    | CellFormat.Number(None, _) ->
         // `Number.isInteger(x) ? x.toFixed(0) : String(x)`.
         if not (System.Double.IsInfinity value) && value = floor value then
             jsToFixed 0 value
         else
             jsNumberText value
-    | CellFormat.Currency code -> code + " " + jsToFixed 2 value
-    | CellFormat.Percent(Some decimals) -> jsToFixed (fixedDigits decimals) (value * 100.0) + "%"
-    | CellFormat.Percent None -> jsToFixed 1 (value * 100.0) + "%"
+    | CellFormat.Currency(code, _) -> code + " " + jsToFixed 2 value
+    | CellFormat.Percent(Some decimals, _) -> jsToFixed (fixedDigits decimals) (value * 100.0) + "%"
+    | CellFormat.Percent(None, _) -> jsToFixed 1 (value * 100.0) + "%"
     | CellFormat.SignificantDigits digits -> jsSignificant (precisionDigits digits) value
     | CellFormat.DateTime _ -> jsNumberText value
     | CellFormat.Duration(unit, style) -> formatDuration unit style value
@@ -673,7 +672,7 @@ let formatNumber (format: CellFormat) (value: float) : string =
 // ─── The exact decimal (Phase 2006) ──────────────────────────────────────────
 //
 // A `CellValue.Decimal` formats from its DIGITS. Every arm below is the decimal
-// twin of `formatNumber`'s arm of the same name, spelled so that a decimal and a
+// twin of `formatFigure`'s arm of the same name, spelled so that a decimal and a
 // float holding the same value render the same bytes wherever the float is exact,
 // and so that no arm rounds through a float: `12345678901234567.895` to two places
 // is `12345678901234567.90`, where a double would have said `...68.00`.
@@ -778,53 +777,31 @@ let private decimalSignificant (precision: int) (negative: bool, digits: string,
         else
             decimalCanonicalOf (negative, roundOff significant cut, scale - cut)
 
-/// The `CellFormat` projection of an exact decimal (Phase 2006) — `formatNumber`'s
-/// twin, from the canonical text and never through a float. `Number`, `Currency`,
+/// The LOCALE-FREE `CellFormat` projection of an exact decimal (Phase 2006) —
+/// `formatFigure`'s twin, from the canonical text and never through a float. `Number`, `Currency`,
 /// `Percent` and `SignificantDigits` round half up at the declared digit; `None`,
 /// `Number None` and `DateTime` are the canonical text itself. `Duration` and
 /// `RelativeTime` render the canonical text too: each reads its value as a count of
 /// time units through float arithmetic, and a decimal does not become a float here.
-let formatDecimal (format: CellFormat) (text: string) : string =
+let private formatDecimalFigure (format: CellFormat) (text: string) : string =
     match decimalScaled text with
     | None -> text
     | Some scaled ->
         let negative, digits, scale = scaled
 
         match format with
-        | CellFormat.Number(Some decimals) -> decimalToFixed (fixedDigits decimals) scaled
-        | CellFormat.Currency code -> code + " " + decimalToFixed 2 scaled
-        | CellFormat.Percent(Some decimals) -> decimalToFixed (fixedDigits decimals) (negative, digits, scale - 2) + "%"
-        | CellFormat.Percent None -> decimalToFixed 1 (negative, digits, scale - 2) + "%"
+        | CellFormat.Number(Some decimals, _) -> decimalToFixed (fixedDigits decimals) scaled
+        | CellFormat.Currency(code, _) -> code + " " + decimalToFixed 2 scaled
+        | CellFormat.Percent(Some decimals, _) ->
+            decimalToFixed (fixedDigits decimals) (negative, digits, scale - 2) + "%"
+        | CellFormat.Percent(None, _) -> decimalToFixed 1 (negative, digits, scale - 2) + "%"
         | CellFormat.SignificantDigits d -> decimalSignificant (precisionDigits d) scaled
         | CellFormat.Custom f -> f (CellValue.Decimal text)
         | CellFormat.None
-        | CellFormat.Number None
+        | CellFormat.Number(None, _)
         | CellFormat.DateTime _
         | CellFormat.Duration _
         | CellFormat.RelativeTime _ -> decimalCanonicalOf scaled
-
-/// A grid cell's text — `formatNumber` for a number, the cell's own spelling
-/// otherwise. One definition for the first-party table and the AG Grid
-/// adapter (Phase 1941; each held a copy). A date reads its `DateTime` pattern,
-/// else ISO `yyyy-MM-dd`, invariantly on the .NET pipeline.
-let formatCellValue (format: CellFormat) (value: CellValue) : string =
-    match format, value with
-    | CellFormat.Custom f, _ -> f value
-    | _, CellValue.Numeric n -> formatNumber format n
-    | _, CellValue.Decimal s -> formatDecimal format s
-    | _, CellValue.Text s -> s
-    | _, CellValue.Bool b -> if b then "true" else "false"
-    | _, CellValue.Date d ->
-        let pattern =
-            match format with
-            | CellFormat.DateTime fmt -> fmt
-            | _ -> "yyyy-MM-dd"
-#if FABLE_COMPILER
-        d.ToString pattern
-#else
-        d.ToString(pattern, System.Globalization.CultureInfo.InvariantCulture)
-#endif
-    | _, CellValue.Empty -> ""
 
 #if FABLE_COMPILER
 
@@ -997,3 +974,89 @@ let format (localeTag: string) (fmt: Format) (value: float) : string =
         formatDuration unit style value
 
 #endif
+
+// ─── A figure's locale (Phase 2490) ─────────────────────────────────────────
+//
+// `CellFormat`'s three figure cases (`Number`, `Currency`, `Percent`) carry an
+// optional `locale`. Absent, the figure is `formatFigure` / `formatDecimalFigure`
+// above, byte-for-byte what it was before the member existed. Present, it renders
+// through `format` — the SAME function `Binding.Format` renders through, for the
+// matching `Format` case — so it takes that route's cross-pipeline caveat (the
+// header above) and no new one: `Intl` in the browser, the documented
+// `System.Globalization` fallback on .NET.
+//
+// `Ambient` is the render's ambient locale, which the caller supplies as it does
+// for `Binding.Format` (`BindingSources.Locale`); the argument-free entry points
+// pass "" — the runtime default, `format`'s own reading of an empty tag.
+
+/// The resolved tag and `Format` case a figure's present `locale` routes to;
+/// `None` for a figure without one, and for every other case.
+let private figureLocale (ambientLocale: string) (cellFormat: CellFormat) : (string * Format) option =
+    let tagOf =
+        function
+        | LocaleSource.Explicit tag -> tag
+        | LocaleSource.Ambient -> ambientLocale
+
+    match cellFormat with
+    | CellFormat.Number(decimals, Some locale) -> Some(tagOf locale, Format.Number decimals)
+    | CellFormat.Currency(code, Some locale) -> Some(tagOf locale, Format.Currency code)
+    | CellFormat.Percent(decimals, Some locale) -> Some(tagOf locale, Format.Percent decimals)
+    | _ -> None
+
+/// The `CellFormat` projection of a number — a Metric / LabelValueRow value, a
+/// Metric trend, a grid cell. ONE definition (Phase 2108 collapsed the client
+/// and server copies onto it; Phase 1941 the AG Grid adapter's). Without a
+/// `locale` it is culture-invariant and byte-identical to the hydrating bundle's
+/// on every arm; with one it is `format` under the resolved tag (Phase 2490).
+let formatNumberIn (ambientLocale: string) (cellFormat: CellFormat) (value: float) : string =
+    match figureLocale ambientLocale cellFormat with
+    | Some(tag, fmt) -> format tag fmt value
+    | None -> formatFigure cellFormat value
+
+/// `formatNumberIn` where no ambient locale is in scope (an `Ambient` figure
+/// takes the runtime default).
+let formatNumber (cellFormat: CellFormat) (value: float) : string = formatNumberIn "" cellFormat value
+
+/// The `CellFormat` projection of an exact decimal (Phase 2006). Without a
+/// `locale` it is computed from the digits and never through a float. With one,
+/// the locale formatter takes a float (`format`'s one numeric input on both
+/// pipelines), so the canonical text converts ONCE, here, at that boundary — the
+/// only point a decimal figure is rounded through a double (Phase 2490).
+let formatDecimalIn (ambientLocale: string) (cellFormat: CellFormat) (text: string) : string =
+    match figureLocale ambientLocale cellFormat, Fuaran.Core.DecimalText.tryCanonical text with
+    | Some(tag, fmt), Some canonical ->
+#if FABLE_COMPILER
+        format tag fmt (float canonical)
+#else
+        format tag fmt (System.Double.Parse(canonical, System.Globalization.CultureInfo.InvariantCulture))
+#endif
+    | _ -> formatDecimalFigure cellFormat text
+
+/// `formatDecimalIn` where no ambient locale is in scope.
+let formatDecimal (cellFormat: CellFormat) (text: string) : string = formatDecimalIn "" cellFormat text
+
+/// A grid cell's text — `formatNumberIn` for a number (`formatDecimalIn` for an
+/// exact decimal), the cell's own spelling otherwise. One definition for the first-party table and the AG Grid
+/// adapter (Phase 1941; each held a copy). A date reads its `DateTime` pattern,
+/// else ISO `yyyy-MM-dd`, invariantly on the .NET pipeline.
+let formatCellValueIn (ambientLocale: string) (format: CellFormat) (value: CellValue) : string =
+    match format, value with
+    | CellFormat.Custom f, _ -> f value
+    | _, CellValue.Numeric n -> formatNumberIn ambientLocale format n
+    | _, CellValue.Decimal s -> formatDecimalIn ambientLocale format s
+    | _, CellValue.Text s -> s
+    | _, CellValue.Bool b -> if b then "true" else "false"
+    | _, CellValue.Date d ->
+        let pattern =
+            match format with
+            | CellFormat.DateTime fmt -> fmt
+            | _ -> "yyyy-MM-dd"
+#if FABLE_COMPILER
+        d.ToString pattern
+#else
+        d.ToString(pattern, System.Globalization.CultureInfo.InvariantCulture)
+#endif
+    | _, CellValue.Empty -> ""
+
+/// `formatCellValueIn` where no ambient locale is in scope.
+let formatCellValue (format: CellFormat) (value: CellValue) : string = formatCellValueIn "" format value

@@ -127,15 +127,76 @@ let private metricSpec: MetricSpec =
     { Defaults.metric with
         Label = TextSource.Literal "Revenue"
         Value = Binding.Static(Some 1234.5)
-        Format = CellFormat.Currency "GBP"
+        Format = CellFormat.Currency("GBP", None)
         Tone = ToneVariant.Brand
         Trend = Some(Binding.Static(Some 0.07))
-        TrendFormat = Some(CellFormat.Percent(Some 1))
+        TrendFormat = Some(CellFormat.Percent(Some 1, None))
         Icon = Some "trending-up"
         Subtext = Some(TextSource.Literal "vs last month") }
 
 [<NodeFixture "Display/Metric">]
 let metric: Node<obj> = node "metric-1" (NodeKind.Metric(metricSpec)) None
+
+/// Phase 2490 — a figure carrying a locale: the designed `£412,380` a dashboard
+/// shows, on the two numeric slots a dashboard uses most. A Metric's value and a
+/// bound grid's revenue column each declare `Currency "GBP"` in `Explicit "en-GB"`,
+/// so the `locale` member rides the wire beside `code`; the Metric's trend keeps a
+/// locale-free `Percent`, pinning that the member is per figure and that its
+/// absence is still the omitted form.
+[<NodeFixture "Display/Metric + Visualisation/Grid (Phase 2490 — a figure carrying a locale: Currency GBP in en-GB on a Metric and a grid column)">]
+let figureLocale: Node<obj> =
+    let gbp = CellFormat.Currency("GBP", Some(LocaleSource.Explicit "en-GB"))
+
+    let metricNode =
+        node
+            "figure-locale-metric"
+            (NodeKind.Metric(
+                { Defaults.metric with
+                    Label = TextSource.Literal "Revenue"
+                    Value = Binding.Static(Some 412380.0)
+                    Format = gbp
+                    Trend = Some(Binding.Static(Some 0.042))
+                    TrendFormat = Some(CellFormat.Percent(Some 1, None)) }
+            ))
+            None
+
+    let region: ColumnErased<obj> =
+        { Defaults.columnErased with
+            Label = "Region"
+            Field = Some "region" }
+
+    let revenue: ColumnErased<obj> =
+        { Defaults.columnErased with
+            Label = "Revenue"
+            Field = Some "revenue"
+            Kind = CellKindErased.Numeric
+            Format = gbp }
+
+    let gridNode =
+        node
+            "figure-locale-grid"
+            (NodeKind.DataGrid(
+                { Defaults.dataGrid with
+                    Source =
+                        Binding.Static(
+                            Some(
+                                Seq.ofList
+                                    [ (Map.ofList [ "region", box "North"; "revenue", box 412380 ]: Row)
+                                      Map.ofList [ "region", box "South"; "revenue", box 1250.5 ] ]
+                            )
+                        )
+                    RowKeyField = Some "region"
+                    Columns = [ region; revenue ] }
+            ))
+            None
+
+    node
+        "figure-locale-en-gb"
+        (NodeKind.Box(
+            { Defaults.box with
+                Children = [ metricNode; gridNode ] }
+        ))
+        None
 
 // ─── Numeric divergence-zone fixtures (Phase 117) ────────────────────────
 //
@@ -1238,7 +1299,7 @@ let labelValueRow: Node<obj> =
             { Defaults.labelValueRow with
                 Label = TextSource.Literal "Total"
                 Value = Binding.Static(Some 42.0)
-                Format = CellFormat.Number(Some 2)
+                Format = CellFormat.Number(Some 2, None)
                 Emphasis = true
                 Help = Some(TextSource.Literal "Last 30 days") }
         ))
@@ -1305,7 +1366,7 @@ let metricInvertedPolarity: Node<obj> =
                 Format = CellFormat.Duration(DurationUnit.Minutes, DurationStyle.Compact)
                 Tone = ToneVariant.Warning
                 Trend = Some(Binding.Static(Some(-0.0734)))
-                TrendFormat = Some(CellFormat.Percent(Some 2))
+                TrendFormat = Some(CellFormat.Percent(Some 2, None))
                 TrendPolarity = TrendPolarity.LowerIsBetter
                 // `tone` says the reading STANDS badly; the polarity says the
                 // quantity is IMPROVING. Both at once, on one node, is exactly
@@ -1326,15 +1387,15 @@ let metricTwoComparisons: Node<obj> =
             { Defaults.metric with
                 Label = TextSource.Literal "Orders yesterday"
                 Value = Binding.Static(Some 1284.0)
-                Format = CellFormat.Number(Some 0)
+                Format = CellFormat.Number(Some 0, None)
                 Comparisons =
                     [ { Label = TextSource.Literal "vs same day last week"
                         Value = Binding.Static(Some 0.042)
-                        Format = CellFormat.Percent(Some 1)
+                        Format = CellFormat.Percent(Some 1, None)
                         Polarity = TrendPolarity.HigherIsBetter }
                       { Label = TextSource.Literal "vs same day last year"
                         Value = Binding.Static(Some(-0.031))
-                        Format = CellFormat.Percent(Some 1)
+                        Format = CellFormat.Percent(Some 1, None)
                         Polarity = TrendPolarity.HigherIsBetter } ] }
         ))
         None
@@ -1352,7 +1413,7 @@ let metricComparisonInverted: Node<obj> =
                 Label = TextSource.Literal "Avg wait"
                 Value = Binding.Static(Some 80.0)
                 Trend = Some(Binding.Static(Some(-0.0734)))
-                TrendFormat = Some(CellFormat.Percent(Some 2))
+                TrendFormat = Some(CellFormat.Percent(Some 2, None))
                 TrendPolarity = TrendPolarity.LowerIsBetter
                 Comparisons =
                     [ { Label = TextSource.Literal "minutes vs last year"
@@ -3868,7 +3929,7 @@ let gridExportable: Node<obj> =
         { Defaults.columnErased with
             Label = "Amount"
             Field = Some "amount"
-            Format = CellFormat.Currency "GBP"
+            Format = CellFormat.Currency("GBP", None)
             Kind = CellKindErased.Numeric }
 
     node

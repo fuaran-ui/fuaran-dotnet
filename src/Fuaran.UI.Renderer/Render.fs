@@ -4183,7 +4183,7 @@ and private renderGrid
                             | Some field -> BindingResolver.projectRowFieldValue row field
                             | None -> CellValue.Empty
 
-                    Formatting.formatCellValue col.Format value
+                    Formatting.formatCellValueIn ctx.Sources.Locale col.Format value
 
                 // Phase 1909 — an action column (Button / ButtonGroup) carries
                 // no data, so the file carries no column for it, even where a
@@ -5109,7 +5109,7 @@ and private renderGrid
                                         | Some field -> BindingResolver.projectRowFieldValue row field
                                         | None -> CellValue.Empty
 
-                                Formatting.formatCellValue col.Format value
+                                Formatting.formatCellValueIn ctx.Sources.Locale col.Format value
 
                             // Phase 1909 — an action column carries no data, so
                             // the file carries no column for it (the AG-Grid
@@ -5230,7 +5230,7 @@ and private renderGridCell
                       prop.value current
                       prop.onChange (fun (v: string) -> commitCell (CellValue.Text v))
                       yield! pasteProps ]
-        | None -> Html.span [ prop.text (Formatting.formatCellValue col.Format value) ]
+        | None -> Html.span [ prop.text (Formatting.formatCellValueIn ctx.Sources.Locale col.Format value) ]
     // Phase 1126 — the `Editable` cell kind carries NO paste handler,
     // deliberately. Its commit is an author closure per cell, so a block would
     // have to be applied one `runAction` at a time and the author's own handler
@@ -5259,7 +5259,7 @@ and private renderGridCell
                   prop.type'.text
                   prop.value s
                   prop.onChange (fun (v: string) -> runEdit (CellValue.Text v)) ]
-        | _ -> Html.span [ prop.text (Formatting.formatCellValue col.Format value) ]
+        | _ -> Html.span [ prop.text (Formatting.formatCellValueIn ctx.Sources.Locale col.Format value) ]
     | CellKindErased.Checkbox(getValue, onToggle) ->
         let current = getValue row
 

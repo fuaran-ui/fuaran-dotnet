@@ -6,20 +6,20 @@
   "artifacts": { "systemPrompt": "system-prompt.md", "fewShot": "few-shot.jsonl" },
   "schema": "../../prompt-pack/schema.json",
   "schemaNote": "The wire schema is the CONTRACT, not a compiled dimension — every variant shares the canonical artefact rather than carrying a copy.",
-  "variantSha256": "sha256:ae5ef3f865cd6f0eedccf8d659e565dff63c6a75f904906fa6938ef7960ca3c7",
-  "bytes": { "systemPrompt": 104787, "fewShot": 14057, "total": 118844 },
+  "variantSha256": "sha256:4276c7dee10c0967bee73555a760c1894b5de69fb4c14e88cbda993c319dfa42",
+  "bytes": { "systemPrompt": 105480, "fewShot": 14057, "total": 119537 },
   "source": {
     "pack": "docs/prompt-pack",
-    "systemPromptSha256": "sha256:7a544dc9a1d31bb3eddd73dc64b80b0742cfa617519967d012c031e663bb76f8",
+    "systemPromptSha256": "sha256:02b0b8e68f2941f68df9d77609972fbfbbc83bf372f3903f45786d378b0c6568",
     "fewShotSha256": "sha256:df69a09afb8919550cb3e6a023797c5e1417b7ffe5828ea4328133dc59b85457"
   },
   "index": {
     "file": "../../tools/section-demand-index.json",
-    "sha256": "sha256:627fa87d84c073d5ea3438ce217b46f4309acb313a90266518bdc03605a12741"
+    "sha256": "sha256:c12ca488771af45975db5d46eb9f16069a03f5c23a86ee0c61d702a5580d9108"
   },
   "dimensions": {
     "dialect": { "value": "canonical", "why": "no per-family dialect verdict on record \u2014 canonical is the default artifact" },
-    "sections": { "included": 32, "excluded": 0, "unknownDefaultedIn": 32 },
+    "sections": { "included": 33, "excluded": 0, "unknownDefaultedIn": 33 },
     "perHost": { "enabled": false, "why": "default OFF — no --host-manifest supplied" }
   },
   "alwaysCore": {
@@ -221,6 +221,14 @@
     },
     {
       "key": "Dates and times \u2014 always declare the presentation",
+      "decision": "included",
+      "class": "unknown",
+      "alwaysCore": false,
+      "why": "unknown on this family\u0027s flip record \u2014 included, the conservative default",
+      "evidence": []
+    },
+    {
+      "key": "Dates and times \u2014 always declare the presentation/A figure in the reader\u0027s locale",
       "decision": "included",
       "class": "unknown",
       "alwaysCore": false,

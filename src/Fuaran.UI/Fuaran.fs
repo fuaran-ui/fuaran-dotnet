@@ -678,11 +678,21 @@ module Action =
 
 [<RequireQualifiedAccess>]
 module format =
-    let currency (code: string) : CellFormat = CellFormat.Currency code
+    let currency (code: string) : CellFormat = CellFormat.Currency(code, None)
 
-    let percent (decimals: int option) : CellFormat = CellFormat.Percent decimals
+    let percent (decimals: int option) : CellFormat = CellFormat.Percent(decimals, None)
 
-    let number (decimals: int option) : CellFormat = CellFormat.Number decimals
+    let number (decimals: int option) : CellFormat = CellFormat.Number(decimals, None)
+
+    /// Phase 2490 — the figure in `locale`: a `number` / `currency` / `percent`
+    /// renders through the locale formatter `binding.format` uses (grouped,
+    /// symbol-led). Every other case carries no locale and is returned unchanged.
+    let inLocale (locale: LocaleSource) (format: CellFormat) : CellFormat =
+        match format with
+        | CellFormat.Number(decimals, _) -> CellFormat.Number(decimals, Some locale)
+        | CellFormat.Currency(code, _) -> CellFormat.Currency(code, Some locale)
+        | CellFormat.Percent(decimals, _) -> CellFormat.Percent(decimals, Some locale)
+        | other -> other
 
     let significantDigits (digits: int) : CellFormat = CellFormat.SignificantDigits digits
 

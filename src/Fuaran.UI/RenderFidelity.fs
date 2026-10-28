@@ -714,7 +714,10 @@ let all: FidelityRow list =
               "the client grid library draws into the placeholder",
               "hydration, for the client-library form only; a `staticRows` grid has no client-only tier"
           ))
-          [ "grid-1"; "table-toned-column"; "table-selectable-detail" ]
+          [ "grid-1"
+            "table-toned-column"
+            "table-selectable-detail"
+            "figure-locale-en-gb" ]
           "Phase 393; Phase 1701; Phase 2473; Phase 2474; docs/SSR.md (Visualisation, sortable rendered tables); WIRE_FORMAT.md 3.6.24"
       |> obliged
           [ owes
@@ -1022,7 +1025,16 @@ let all: FidelityRow list =
                  "WIRE_FORMAT.md 19.1"
                  "a `src` the `embed` egress class refuses omits the attribute entirely - an `<iframe>` at the refusal URL renders that page, where one with no `src` is an empty frame that fetches nothing - and the refusal is recorded as the egress-refusal data attribute" ])
 
-      plain "Metric" "the label + value source + format" "the resolved, formatted metric tile"
+      // Phase 2490 — a figure case's optional `locale` routes the value through the
+      // host's locale formatter (the `Binding.Format` route and its caveat).
+      row
+          "Metric"
+          false
+          "the label + value source + format, the figure cases with their optional `locale`"
+          "the resolved, formatted metric tile; a figure whose format declares a `locale` reads through the host's locale formatter, as a `Binding.Format` slot does, and every other figure through the locale-free projection"
+          RichTier.None
+          [ "figure-locale-en-gb" ]
+          "WIRE_FORMAT.md 3.2; docs/SSR.md (per-kind server behaviour); Phase 2490"
       |> announces
           [ { pinsRole "the trend glyph beside the figure" "img" with
                 Condition =

@@ -93,6 +93,7 @@
     <Compile Include="MetricComparisonTests.fs" />
     <Compile Include="StaticTableToneTests.fs" />
     <Compile Include="StaticTableSelectionTests.fs" />
+    <Compile Include="FigureLocaleTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

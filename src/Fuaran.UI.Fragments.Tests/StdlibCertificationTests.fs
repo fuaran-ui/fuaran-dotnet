@@ -487,7 +487,7 @@ let tests =
                     for m in figures do
                         Expect.equal
                             (fmt m.Format)
-                            (fmt (CellFormat.Number(Some 0)))
+                            (fmt (CellFormat.Number(Some 0, None)))
                             "the fixed format the strip always had"
 
                         Expect.isNone m.Trend "no trend unless one is bound"
@@ -514,10 +514,10 @@ let tests =
 
                     Expect.equal
                         (figures |> List.map (fun m -> fmt m.Format))
-                        ([ CellFormat.Currency "GBP"
-                           CellFormat.Number(Some 0)
-                           CellFormat.Number(Some 0)
-                           CellFormat.Currency "GBP" ]
+                        ([ CellFormat.Currency("GBP", None)
+                           CellFormat.Number(Some 0, None)
+                           CellFormat.Number(Some 0, None)
+                           CellFormat.Currency("GBP", None) ]
                          |> List.map fmt)
                         "per-figure formats"
 
@@ -529,7 +529,7 @@ let tests =
 
                         Expect.equal
                             (Option.map fmt m.TrendFormat)
-                            (Some(fmt (CellFormat.Percent(Some 1))))
+                            (Some(fmt (CellFormat.Percent(Some 1, None))))
                             "the trend reads as a percent"
                 }
 
@@ -546,7 +546,7 @@ let tests =
                     | [ first; second ] ->
                         Expect.equal
                             (fmt first.Format)
-                            (fmt (CellFormat.Currency "USD"))
+                            (fmt (CellFormat.Currency("USD", None)))
                             "a blank code is never emitted (FUARAN061)"
 
                         Expect.isSome second.Trend "trend bound"

@@ -601,14 +601,15 @@ let private exampleSources: BindingResolver.BindingSources =
 let private render (node: Node<unit>) : string =
     Server.Render.render exampleSources (Node.mapMsg box node)
 
-// ─── Figures (Phase 2470) ─────────────────────────────────────────────────────
+// ─── Figures (Phase 2470, 2490) ───────────────────────────────────────────────
 //
 // A figure has two routes, and the cards name both. `CellFormat` (a Metric's or a
-// LabelValueRow's `Format`, a DataGrid column's) is locale-free: every host renders
-// the same text. `Binding.Format` with a `LocaleSource` renders for a reader, under
-// a locale; it yields TEXT, so it fits a text slot (a Fact's value, a subtext) and
-// never a figure kind's numeric value. With a locale, the bundle shows the second
-// route where a kind can carry it and says what it reads where a kind cannot.
+// LabelValueRow's `Format`, a DataGrid column's) is a NUMBER's format: without a
+// `locale` it is locale-free and every host renders the same text; with one (Phase
+// 2490) it reads grouped and symbol-led in that locale, through the formatter
+// `Binding.Format` uses, and stays a number for trends and sorting. `Binding.Format`
+// with a `LocaleSource` yields TEXT, so it fits a text slot (a Fact's value, a
+// subtext). With a locale, the bundle shows each route on the kinds that carry it.
 
 /// The money figure the catalog's Metric and LabelValueRow examples carry.
 let private figureValue = 142_500.0
@@ -648,25 +649,61 @@ let private figureSpecimen (tag: string) : Specimen =
                         Label = literal "Revenue, year to date"
                         Value = TextSource.Bound(localeFigure tag) }) }
 
+/// The example figure's `CellFormat` under `tag` — a figure kind's own route (Phase 2490).
+let private localeCellFormat (tag: string) : CellFormat =
+    CellFormat.Currency(figureCurrency, Some(LocaleSource.Explicit tag))
+
+/// The specimens a locale adds to the Metric and LabelValueRow cards: the example
+/// figure in the kind's own value, its `CellFormat` carrying the locale.
+let private figureKindSpecimens (tag: string) : Specimen list =
+    [ { Kind = "Metric"
+        Label = $"Metric, a figure in {tag}"
+        Hint = "A headline figure with its label."
+        Build =
+          fun axes ->
+              styled
+                  axes
+                  (Fuaran.metric
+                      "metric-figure"
+                      { Defaults.metric with
+                          Label = literal "Revenue, year to date"
+                          Value = Binding.Static(Some figureValue)
+                          Format = localeCellFormat tag }) }
+      { Kind = "LabelValueRow"
+        Label = $"LabelValueRow, a figure in {tag}"
+        Hint = "A label and its figure on one row."
+        Build =
+          fun axes ->
+              styled
+                  axes
+                  (Fuaran.labelValueRow
+                      "labelvaluerow-figure"
+                      { Defaults.labelValueRow with
+                          Label = literal "Revenue, year to date"
+                          Value = Binding.Static(Some figureValue)
+                          Format = localeCellFormat tag }) } ]
+
 /// The "Figures" lines of a figure kind's authoring note, by wire tag.
 let private figureNote (locale: string option) (kind: string) : string list =
     let cellFigure =
-        Formatting.formatCellValue (CellFormat.Currency figureCurrency) (HostPrelude.CellValue.Numeric figureValue)
+        Formatting.formatCellValue
+            (CellFormat.Currency(figureCurrency, None))
+            (HostPrelude.CellValue.Numeric figureValue)
 
     let localeFree what =
-        $"{what} a CellFormat, which is locale-free: every host renders the same text (Currency \"{figureCurrency}\" reads {cellFigure})."
+        $"{what} a CellFormat. Without a locale it is locale-free: every host renders the same text (Currency \"{figureCurrency}\" reads {cellFigure})."
 
-    let readerFacing =
-        "A reader-facing figure, grouped and symbol-led in the reader's locale, is Binding.Format with a locale. It yields text, so it goes in a text slot (a Fact's value, a subtext), never in this kind's value."
+    let located =
+        "A reader-facing figure, grouped and symbol-led in the reader's locale, is the same CellFormat with a locale (Currency with locale Explicit \"en-GB\"); it stays a number, so trends, comparisons and sorting still read it. Binding.Format with a locale is the route for a text slot (a Fact's value, a subtext)."
 
     let routes =
         match kind with
         | "Metric"
-        | "LabelValueRow" -> Some(localeFree "The value is shown through Format," + " " + readerFacing)
-        | "DataGrid" -> Some(localeFree "A column's Format is" + " " + readerFacing)
+        | "LabelValueRow" -> Some(localeFree "The value is shown through Format," + " " + located)
+        | "DataGrid" -> Some(localeFree "A column's Format is" + " " + located)
         | "Fact" ->
             Some
-                "The value is text. A reader-facing figure in it is Binding.Format with a locale. For locale-free, host-identical output, use a figure kind (Metric, LabelValueRow) with a CellFormat."
+                "The value is text. A reader-facing figure in it is Binding.Format with a locale. A figure kind (Metric, LabelValueRow, a DataGrid column) carries its locale in its CellFormat instead."
         | _ -> None
 
     match routes with
@@ -680,10 +717,13 @@ let private figureNote (locale: string option) (kind: string) : string list =
                   BindingResolver.tryResolve exampleSources (localeFigure tag)
                   |> Option.defaultValue ""
 
-              if kind = "Fact" then
+              match kind with
+              | "Fact" ->
                   $"<p><strong>Under {enc tag}:</strong> the figure reads {enc reads}, shown below through Binding.Format.</p>"
-              else
-                  $"<p><strong>Under {enc tag}:</strong> a reader-facing figure reads {enc reads}. This kind's value cannot carry it, so the examples keep the locale-free figure the screen renders; the Fact card shows the reader-facing one.</p>" ]
+              | "DataGrid" ->
+                  $"<p><strong>Under {enc tag}:</strong> a column whose CellFormat carries the locale reads {enc reads} in each cell of the hydrated grid. The preview below is a static table, whose cells are authored text.</p>"
+              | _ ->
+                  $"<p><strong>Under {enc tag}:</strong> a reader-facing figure reads {enc reads}, shown below through the CellFormat's locale; the other examples keep the locale-free figure.</p>" ]
 
 /// Phase 2472 — the Metric card says where a SECOND comparison goes, because the
 /// design-seam pilot pushed one into the subtext as text and lost its glyph, its
@@ -1318,17 +1358,19 @@ let private readme (idlVersion: int) (kindCount: int) (fragmentCount: int) (loca
           "grid or map is previewed as a static table, captioned as a preview."
           ""
           "Figures have two routes. A figure kind's Format (Metric, LabelValueRow, a DataGrid column) is a"
-          "CellFormat: locale-free, so every host renders the same text, and a currency reads as its code"
-          "and two decimals, ungrouped. A figure a reader reads, grouped and symbol-led in their locale, is"
-          "Binding.Format with a locale; it yields text, so it goes in a text slot such as a Fact's value."
-          "Design a figure kind's value as the locale-free text its card shows, and a reader-facing figure"
-          "as text."
+          "CellFormat. Without a locale it is locale-free, so every host renders the same text, and a currency"
+          "reads as its code and two decimals, ungrouped. With a locale (Currency \"GBP\" with locale Explicit"
+          "\"en-GB\") the figure reads grouped and symbol-led there, as £142,500.00, and stays a number for"
+          "trends, comparisons and sorting. A figure in a text slot, such as a Fact's value, is Binding.Format"
+          "with a locale, which yields text. Design a reader-facing figure in a figure kind as its CellFormat"
+          "with the reader's locale, and a figure inside text as Binding.Format."
           ""
           "A Metric compared against more than one period keeps its primary comparison in trend and each"
           "further one in comparisons, each its own trend line with a label, a glyph and a polarity. Do not"
           "fold a second comparison into the subtext or split the figure into two Metrics."
           match locale with
-          | Some tag -> $"This bundle was exported for {tag}: the Fact card shows a figure as a reader there reads it."
+          | Some tag ->
+              $"This bundle was exported for {tag}: the Fact, Metric and LabelValueRow cards show a figure as a reader there reads it."
           | None -> ()
           ""
           "## Fragments"
@@ -1430,7 +1472,7 @@ let build (theme: Theme) (manifest: ThemeManifest option) (options: BundleOption
         match options.Locale with
         | Some tag ->
             requireLocale tag
-            options.Specimens @ [ figureSpecimen tag ]
+            options.Specimens @ (figureSpecimen tag :: figureKindSpecimens tag)
         | None -> options.Specimens
 
     let bySpecimenKind = specimens |> List.groupBy _.Kind |> Map.ofList

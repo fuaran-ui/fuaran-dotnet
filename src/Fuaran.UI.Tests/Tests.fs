@@ -93,7 +93,7 @@ let tests =
                   Expect.equal spec.Tone ToneVariant.Brand "Tone overridden"
 
                   match spec.Format with
-                  | CellFormat.Currency code -> Expect.equal code "GBP" "Currency code"
+                  | CellFormat.Currency(code, _) -> Expect.equal code "GBP" "Currency code"
                   | other -> failtestf "Expected CellFormat.Currency, got %A" other
               | other -> failtestf "Expected NodeKind.Metric, got %A" other
           }
@@ -454,7 +454,7 @@ let tests =
                   Expect.equal spec.Emphasis true "Emphasis propagated"
 
                   match spec.Format with
-                  | CellFormat.Currency code -> Expect.equal code "GBP" "Currency code set"
+                  | CellFormat.Currency(code, _) -> Expect.equal code "GBP" "Currency code set"
                   | other -> failtestf "Expected CellFormat.Currency, got %A" other
               | other -> failtestf "Expected NodeKind.LabelValueRow, got %A" other
           }

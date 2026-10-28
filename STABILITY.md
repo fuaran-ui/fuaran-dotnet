@@ -7853,6 +7853,37 @@ static table declares a `rowKeyField` naming a column, in which case its rows be
 **Certified by** the corpus fixture `table-selectable-detail` (every corpus-certifying host round-trips it) and
 `src/Fuaran.UI.Renderer.Server.Tests/StaticTableSelectionTests.fs`.
 
+### What rides this slot — Phase 2490 (a numeric figure can carry a locale)
+
+**Class: additive on the wire, breaking (source) in F# and C#; it rides the slot's breaking class.** Packages
+`Fuaran.UI`, `Fuaran.UI.Ops`, `Fuaran.UI.Renderer.Core`, `Fuaran.UI.Renderer`, `Fuaran.UI.Renderer.Server`,
+`Fuaran.UI.CSharp`, `Fuaran.UI.Fragments` and `Fuaran.UI.Design`.
+
+- **Wire.** `CellFormat.Number`, `.Currency` and `.Percent` carry an optional `locale` (`LocaleSource`), omitted when
+  absent, so every existing document is byte-unchanged (VOCABULARY.md, the figure-locale row; WIRE_FORMAT, "A figure's
+  `locale`"). The IDL diff classifies all three as `[Additive]` with no profile step.
+- **Rendering.** A present `locale` renders the figure through `Formatting.format`, the function `Binding.Format`
+  renders through, for the matching `Format` case (`Intl` in the browser, the `System.Globalization` fallback on .NET);
+  `Ambient` reads `BindingSources.Locale`. Absent, every arm is byte-for-byte what it was. An exact decimal converts
+  to a double once, at that formatter. The Metric / LabelValueRow value, trend and comparisons on both pipelines, the
+  email and speech projections, and the client grid's cells (first-party and AG Grid) all read it.
+- **Source-breaking, which is why the class matters.** The three DU cases gain a second field:
+  `CellFormat.Number of decimals: int option * locale: LocaleSource option`,
+  `Currency of code: string * locale: LocaleSource option`, `Percent of decimals: int option * locale: LocaleSource option`.
+  Every construction and every pattern on those cases breaks (FS0001 / FS0727). C#'s generated `CellFormat.NewNumber` /
+  `NewCurrency` / `NewPercent` take the extra argument. `ElementPlan.DisplayPlan.scalarText` takes the ambient locale
+  as its first argument.
+- **New members.** `Formatting.formatNumberIn`, `formatDecimalIn`, `formatCellValueIn` (the ambient-locale forms;
+  `formatNumber` / `formatDecimal` / `formatCellValue` keep their signatures and pass `""`); `format.inLocale`;
+  the C# facade's optional `locale` on `CellFormat.Number` / `Currency` / `Percent`.
+
+**What a consumer does.** `CellFormat.Currency "GBP"` becomes `CellFormat.Currency("GBP", None)` (or
+`format.currency "GBP"`, unchanged); `CellFormat.Number(Some 2)` becomes `CellFormat.Number(Some 2, None)`; a pattern
+`| CellFormat.Currency code ->` becomes `| CellFormat.Currency(code, _) ->`. A stored tree is unaffected.
+
+**Certified by** the corpus fixture `figure-locale-en-gb` (every corpus-certifying host round-trips it) and
+`src/Fuaran.UI.Renderer.Server.Tests/FigureLocaleTests.fs`.
+
 ---
 
 ## 0.98.1 — the slot opened after v0.97.0 was released (RELEASED — tagged v0.98.1 at c88909e0, 2026-10-28)

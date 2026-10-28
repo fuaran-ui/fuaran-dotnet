@@ -897,9 +897,10 @@ let private defs: (string * J) list =
       "CellFormat",
       union
           [ duCase "None" [] []
-            duCase "Number" [] [ "decimals", integer ]
-            duCase "Currency" [ "code" ] [ "code", str ]
-            duCase "Percent" [] [ "decimals", integer ]
+            // Phase 2490 — the three figure cases carry an optional `locale`.
+            duCase "Number" [] [ "decimals", integer; "locale", ref "LocaleSource" ]
+            duCase "Currency" [ "code" ] [ "code", str; "locale", ref "LocaleSource" ]
+            duCase "Percent" [] [ "decimals", integer; "locale", ref "LocaleSource" ]
             duCase "SignificantDigits" [ "digits" ] [ "digits", integer ]
             duCase "DateTime" [ "format" ] [ "format", str ]
             // Phase 819 — duration cells + cell-level relative time.

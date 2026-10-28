@@ -253,12 +253,17 @@ let private genRelativeTimeUnitCell: Gen<RelativeTimeUnit> =
           RelativeTimeUnit.Month
           RelativeTimeUnit.Year ]
 
+let private genLocaleSource: Gen<LocaleSource> =
+    Gen.oneof
+        [ Gen.constant LocaleSource.Ambient
+          Gen.map LocaleSource.Explicit genNonEmptyString ]
+
 let private genCellFormat: Gen<CellFormat> =
     Gen.oneof
         [ Gen.constant CellFormat.None
-          Gen.map CellFormat.Number (genOption genInt)
-          Gen.map CellFormat.Currency genNonEmptyString
-          Gen.map CellFormat.Percent (genOption genInt)
+          Gen.map2 (fun d l -> CellFormat.Number(d, l)) (genOption genInt) (genOption genLocaleSource)
+          Gen.map2 (fun c l -> CellFormat.Currency(c, l)) genNonEmptyString (genOption genLocaleSource)
+          Gen.map2 (fun d l -> CellFormat.Percent(d, l)) (genOption genInt) (genOption genLocaleSource)
           Gen.map CellFormat.SignificantDigits genInt
           Gen.map CellFormat.DateTime genNonEmptyString
           Gen.map2 (fun u s -> CellFormat.Duration(u, s)) genDurationUnit genDurationStyle
@@ -269,9 +274,9 @@ let private genCellFormat: Gen<CellFormat> =
 /// column generator so a single generated grid exercises all nine.
 let private allCellFormats: CellFormat list =
     [ CellFormat.None
-      CellFormat.Number(Some 2)
-      CellFormat.Currency "GBP"
-      CellFormat.Percent None
+      CellFormat.Number(Some 2, None)
+      CellFormat.Currency("GBP", None)
+      CellFormat.Percent(None, None)
       CellFormat.SignificantDigits 3
       CellFormat.DateTime "yyyy-MM-dd"
       CellFormat.Duration(DurationUnit.Minutes, DurationStyle.Compact)
@@ -360,11 +365,6 @@ let private genFormat: Gen<Format> =
           Gen.map Format.RelativeTime genRelativeTimeUnit
           // Phase 819 — the locale-independent duration arm.
           Gen.map2 (fun u s -> Format.Duration(u, s)) genDurationUnit genDurationStyle ]
-
-let private genLocaleSource: Gen<LocaleSource> =
-    Gen.oneof
-        [ Gen.constant LocaleSource.Ambient
-          Gen.map LocaleSource.Explicit genNonEmptyString ]
 
 // ─── Typed Binding generators ───────────────────────────────────────────────
 //

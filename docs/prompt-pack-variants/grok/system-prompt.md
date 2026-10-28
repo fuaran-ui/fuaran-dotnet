@@ -486,9 +486,9 @@ CallResultTarget =
 | Query { name:str }
 CellFormat =
 | None
-| Number { decimals?:int }
-| Currency { code:str }
-| Percent { decimals?:int }
+| Number { decimals?:int; locale?:LocaleSource }
+| Currency { code:str; locale?:LocaleSource }
+| Percent { decimals?:int; locale?:LocaleSource }
 | SignificantDigits { digits:int }
 | DateTime { format:str }
 | Duration { style:DurationStyle; unit:DurationUnit }
@@ -1266,6 +1266,16 @@ declaration displays as the raw number and fails the task's data checks. The sur
   value is a signed count of the unit, exactly like the text-slot form.
 - If the prompt gives display-ready times ("14:03"), a plain string in a text slot is
   fine — the rule is about ENCODED values, which always need a format declaration.
+
+### A figure in the reader's locale
+
+A Metric's or LabelValueRow's `format`, a `MetricComparison`'s and a grid column's are
+`CellFormat`: without a `locale` a figure reads locale-free (`GBP 412380.00`). For the
+grouped, symbol-led figure a designed screen shows (`£412,380.00`), give the `Number`,
+`Currency` or `Percent` case a `locale` — `{ "$type": "Currency", "code": "GBP", "locale":
+{ "$type": "Explicit", "tag": "en-GB" } }`, or `{ "$type": "Ambient" }` for the reader's
+own. The value stays a NUMBER, so trends, comparisons and sorting still read it: never
+put a `Format` binding (text) in a figure kind's `value`.
 
 ### "Today" is a binding, never a literal
 

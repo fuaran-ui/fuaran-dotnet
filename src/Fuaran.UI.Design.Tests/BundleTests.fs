@@ -506,10 +506,10 @@ let shown =
                   "the placeholder is the one finding"
           } ]
 
-// Phase 2470 — figures. A figure kind's value takes a locale-free `CellFormat`; a
-// reader-facing figure is `Binding.Format` with a locale, which yields text. The cards
-// name both routes, and an export with a locale shows the second where a kind can
-// carry it (a Fact's value) and says what it reads where a kind cannot.
+// Phase 2470 / 2490 — figures. A figure kind's value takes a `CellFormat`, locale-free
+// unless it carries a `locale`; a figure in a text slot is `Binding.Format` with a
+// locale, which yields text. The cards name both routes, and an export with a locale
+// shows each on the kinds that carry it.
 
 let private cardHtml (bundle: Bundle.Bundle) (kind: string) =
     (bundle.Cards |> List.find (fun c -> c.Path = $"cards/components/{kind}.html")).Html
@@ -539,7 +539,7 @@ let figures =
               Expect.stringContains readme "Figures have two routes." "the bundle README carries the rule"
           }
 
-          test "an en-GB export shows the figure grouped and symbol-led, through Binding.Format" {
+          test "an en-GB export shows the figure grouped and symbol-led, in a Fact and in the figure kinds" {
               let bundle = Bundle.build Defaults.theme None (withLocale "en-GB")
               Expect.isEmpty (Bundle.check bundle) "the localised bundle satisfies its own contract"
 
@@ -555,16 +555,33 @@ let figures =
 
               Expect.stringContains rendered "£142,500" "the figure renders grouped, symbol-led"
 
-              for kind in [ "Metric"; "LabelValueRow"; "DataGrid" ] do
+              // Phase 2490 — a figure kind carries the locale in its own CellFormat, so
+              // its card shows the figure grouped and symbol-led in the kind's value.
+              for kind in [ "Metric"; "LabelValueRow" ] do
+                  let html = System.Net.WebUtility.HtmlDecode(cardHtml bundle kind) |> string
+
                   Expect.stringContains
-                      (System.Net.WebUtility.HtmlDecode(cardHtml bundle kind))
+                      html
                       "<strong>Under en-GB:</strong> a reader-facing figure reads £142,500"
                       $"{kind} says what the figure reads under the locale"
+
+                  let specimen = $"data-ds-specimen=\"{kind}, a figure in en-GB\""
+                  Expect.stringContains html specimen $"{kind} adds the located specimen"
+
+                  Expect.stringContains
+                      (html.Substring(html.IndexOf specimen))
+                      "£142,500.00"
+                      $"{kind}'s value is grouped, symbol-led"
+
+              Expect.stringContains
+                  (System.Net.WebUtility.HtmlDecode(cardHtml bundle "DataGrid"))
+                  "<strong>Under en-GB:</strong> a column whose CellFormat carries the locale reads £142,500"
+                  "DataGrid says what a located column reads"
 
               Expect.stringContains
                   (cardHtml bundle "Metric")
                   "GBP 142500.00"
-                  "the Metric's own value keeps the locale-free figure the screen renders"
+                  "the Metric's catalog examples keep the locale-free figure"
           }
 
           test "the locale reaches only the figure cards and the README" {
@@ -823,11 +840,11 @@ let commonShapes =
                           Label = TextSource.Literal $"Figure {i}"
                           Value = Binding.Static(Some 10.0)
                           Trend = Some(Binding.Static(Some 0.05))
-                          TrendFormat = Some(CellFormat.Percent(Some 0))
+                          TrendFormat = Some(CellFormat.Percent(Some 0, None))
                           Comparisons =
                               [ { Label = TextSource.Literal "vs last year"
                                   Value = Binding.Static(Some -0.02)
-                                  Format = CellFormat.Percent(Some 0)
+                                  Format = CellFormat.Percent(Some 0, None)
                                   Polarity = TrendPolarity.HigherIsBetter } ] }
 
               let html =

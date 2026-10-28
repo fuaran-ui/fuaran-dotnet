@@ -2123,7 +2123,31 @@ let private decodeTimeGrain (path: string) (j: Json) : Result<TimeGrain, DecodeE
     | JString s -> unknownEnumCase path s "Second | Minute | Hour | Day"
     | _ -> wrongType path "JSON string (TimeGrain)"
 
+let private decodeLocaleSource (path: string) (j: Json) : Result<LocaleSource, DecodeError> =
+    match requireObject path j with
+    | Error e -> Error e
+    | Ok fields ->
+        match requireDiscriminator path fields with
+        | Error e -> Error e
+        | Ok "Ambient" -> Ok LocaleSource.Ambient
+        | Ok "Explicit" ->
+            match requireField path fields "tag" "BCP-47 locale tag string" with
+            | Error e -> Error e
+            | Ok j -> requireString (path + ".tag") j |> Result.map LocaleSource.Explicit
+        | Ok s -> unknownDuCase path s "Ambient | Explicit"
+
 let private decodeCellFormat (path: string) (j: Json) : Result<CellFormat, DecodeError> =
+    // Phase 2490 — a figure case's optional `locale`; absent decodes `None`.
+    let optionalDecimals fields =
+        match tryField fields "decimals" with
+        | None -> Ok None
+        | Some j -> requireInt (path + ".decimals") j |> Result.map Some
+
+    let optionalLocale fields =
+        match tryField fields "locale" with
+        | None -> Ok None
+        | Some j -> decodeLocaleSource (path + ".locale") j |> Result.map Some
+
     match requireObject path j with
     | Error e -> Error e
     | Ok fields ->
@@ -2131,21 +2155,17 @@ let private decodeCellFormat (path: string) (j: Json) : Result<CellFormat, Decod
         | Error e -> Error e
         | Ok "None" -> Ok CellFormat.None
         | Ok "Number" ->
-            match tryField fields "decimals" with
-            | None -> Ok(CellFormat.Number None)
-            | Some j ->
-                requireInt (path + ".decimals") j
-                |> Result.map (fun d -> CellFormat.Number(Some d))
+            both (optionalDecimals fields) (optionalLocale fields)
+            |> Result.map CellFormat.Number
         | Ok "Currency" ->
             match requireField path fields "code" "ISO currency code string" with
             | Error e -> Error e
-            | Ok j -> requireString (path + ".code") j |> Result.map CellFormat.Currency
+            | Ok j ->
+                both (requireString (path + ".code") j) (optionalLocale fields)
+                |> Result.map CellFormat.Currency
         | Ok "Percent" ->
-            match tryField fields "decimals" with
-            | None -> Ok(CellFormat.Percent None)
-            | Some j ->
-                requireInt (path + ".decimals") j
-                |> Result.map (fun d -> CellFormat.Percent(Some d))
+            both (optionalDecimals fields) (optionalLocale fields)
+            |> Result.map CellFormat.Percent
         | Ok "SignificantDigits" ->
             match requireField path fields "digits" "integer digit count" with
             | Error e -> Error e
@@ -2275,19 +2295,6 @@ let private decodeFormat (path: string) (j: Json) : Result<Format, DecodeError> 
                 decodeRelativeTimeUnit (path + ".unit") j
                 |> Result.map (fun u -> Format.Since(Some u))
         | Ok s -> unknownDuCase path s "Number | Currency | Percent | DateTime | RelativeTime | Duration | Since"
-
-let private decodeLocaleSource (path: string) (j: Json) : Result<LocaleSource, DecodeError> =
-    match requireObject path j with
-    | Error e -> Error e
-    | Ok fields ->
-        match requireDiscriminator path fields with
-        | Error e -> Error e
-        | Ok "Ambient" -> Ok LocaleSource.Ambient
-        | Ok "Explicit" ->
-            match requireField path fields "tag" "BCP-47 locale tag string" with
-            | Error e -> Error e
-            | Ok j -> requireString (path + ".tag") j |> Result.map LocaleSource.Explicit
-        | Ok s -> unknownDuCase path s "Ambient | Explicit"
 
 // ─── obj best-effort decoder (Binding<obj> static seam ONLY) ─────────────
 //

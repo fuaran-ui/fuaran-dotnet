@@ -253,25 +253,25 @@ let decimalRowValueTests =
                   Formatting.formatCellValue format (CellValue.Decimal text)
 
               Expect.equal (f CellFormat.None "100.25") "100.25" "None is the canonical text"
-              Expect.equal (f (CellFormat.Number None) "10") "10" "Number None, integral"
-              Expect.equal (f (CellFormat.Number None) "0.001") "0.001" "Number None, fractional"
+              Expect.equal (f (CellFormat.Number(None, None)) "10") "10" "Number None, integral"
+              Expect.equal (f (CellFormat.Number(None, None)) "0.001") "0.001" "Number None, fractional"
 
               Expect.equal
-                  (f (CellFormat.Number(Some 2)) "12345678901234567.895")
+                  (f (CellFormat.Number(Some 2, None)) "12345678901234567.895")
                   "12345678901234567.90"
                   "past a double's precision"
 
-              Expect.equal (f (CellFormat.Number(Some 2)) "-0.001") "-0.00" "the sign survives, as toFixed's does"
-              Expect.equal (f (CellFormat.Number(Some 0)) "2.5") "3" "half up"
-              Expect.equal (f (CellFormat.Currency "GBP") "1234.5") "GBP 1234.50" "currency"
+              Expect.equal (f (CellFormat.Number(Some 2, None)) "-0.001") "-0.00" "the sign survives, as toFixed's does"
+              Expect.equal (f (CellFormat.Number(Some 0, None)) "2.5") "3" "half up"
+              Expect.equal (f (CellFormat.Currency("GBP", None)) "1234.5") "GBP 1234.50" "currency"
 
               Expect.equal
-                  (f (CellFormat.Currency "GBP") "99999999999999999.995")
+                  (f (CellFormat.Currency("GBP", None)) "99999999999999999.995")
                   "GBP 100000000000000000.00"
                   "a carry through every digit"
 
-              Expect.equal (f (CellFormat.Percent None) "0.0625") "6.3%" "percent, one place"
-              Expect.equal (f (CellFormat.Percent(Some 2)) "0.123456") "12.35%" "percent, two places"
+              Expect.equal (f (CellFormat.Percent(None, None)) "0.0625") "6.3%" "percent, one place"
+              Expect.equal (f (CellFormat.Percent(Some 2, None)) "0.123456") "12.35%" "percent, two places"
               Expect.equal (f (CellFormat.SignificantDigits 3) "123456") "123000" "significant digits"
               Expect.equal (f (CellFormat.SignificantDigits 2) "0.00012345") "0.00012" "small significant digits"
           }
@@ -279,12 +279,12 @@ let decimalRowValueTests =
           test "where the float is exact, a decimal formats exactly as the float does" {
               let formats =
                   [ CellFormat.None
-                    CellFormat.Number None
-                    CellFormat.Number(Some 0)
-                    CellFormat.Number(Some 3)
-                    CellFormat.Currency "USD"
-                    CellFormat.Percent None
-                    CellFormat.Percent(Some 2)
+                    CellFormat.Number(None, None)
+                    CellFormat.Number(Some 0, None)
+                    CellFormat.Number(Some 3, None)
+                    CellFormat.Currency("USD", None)
+                    CellFormat.Percent(None, None)
+                    CellFormat.Percent(Some 2, None)
                     CellFormat.SignificantDigits 3 ]
 
               for text, value in [ "1234.5", 1234.5; "-0.25", -0.25; "10", 10.0; "0.125", 0.125 ] do

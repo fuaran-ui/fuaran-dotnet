@@ -43,7 +43,7 @@ let private chromeTree: Node<obj> =
             { Defaults.labelValueRow with
                 Label = TextSource.Literal "Revenue"
                 Value = Binding.Static(Some 1234.0)
-                Format = CellFormat.Number(Some 0) }
+                Format = CellFormat.Number(Some 0, None) }
 
     let summary: Node<obj> =
         Fuaran.summaryList

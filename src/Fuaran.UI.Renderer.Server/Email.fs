@@ -702,7 +702,7 @@ and private renderKind
 
         let valueText =
             match resolution with
-            | BindingResolver.Resolved value -> Render.formatNumber spec.Format value
+            | BindingResolver.Resolved value -> Render.formatNumber ctx spec.Format value
             | BindingResolver.NotResolved -> "—"
             | BindingResolver.Errored msg -> "(error: " + msg + ")"
             | BindingResolver.I18nUnresolved key -> "[i18n:" + key + "]"
@@ -714,7 +714,9 @@ and private renderKind
                 | Some t ->
                     [ Html.p
                           [ prop.custom ("style", textIn opts (toneColour spec.Tone) "font-size:13px;line-height:18px;")
-                            prop.text (Render.formatNumber (spec.TrendFormat |> Option.defaultValue CellFormat.None) t) ] ]
+                            prop.text (
+                                Render.formatNumber ctx (spec.TrendFormat |> Option.defaultValue CellFormat.None) t
+                            ) ] ]
                 | None -> []
             | None -> []
 
@@ -727,7 +729,7 @@ and private renderKind
                 |> Option.map (fun v ->
                     Html.p
                         [ prop.custom ("style", textIn opts (toneColour spec.Tone) "font-size:13px;line-height:18px;")
-                          prop.text (Render.formatNumber c.Format v + " " + text c.Label) ]))
+                          prop.text (Render.formatNumber ctx c.Format v + " " + text c.Label) ]))
 
         let subtextEls =
             match spec.Subtext with
@@ -803,7 +805,7 @@ and private renderKind
 
         let valueText =
             match resolution with
-            | BindingResolver.Resolved value -> Render.formatNumber spec.Format value
+            | BindingResolver.Resolved value -> Render.formatNumber ctx spec.Format value
             | BindingResolver.NotResolved -> "—"
             | BindingResolver.Errored msg -> "(error: " + msg + ")"
             | BindingResolver.I18nUnresolved key -> "[i18n:" + key + "]"
