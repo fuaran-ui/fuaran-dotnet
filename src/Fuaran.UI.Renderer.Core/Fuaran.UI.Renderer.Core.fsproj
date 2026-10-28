@@ -36,6 +36,9 @@
     <Compile Include="FieldRules.fs" />
     <Compile Include="GridModel.fs" />
     <Compile Include="TreeModel.fs" />
+    <!-- Phase 1890 — one prepared source per render, shared by every
+         Transform site bound to it. Before BindingResolver.fs, its consumer. -->
+    <Compile Include="PreparedSources.fs" />
     <Compile Include="BindingResolver.fs" />
     <Compile Include="RatingModel.fs" />
     <Compile Include="TokensModel.fs" />
@@ -72,6 +75,10 @@
          stale, as Fuaran.Core.Propagation's dirty closure over the facts
          BindingWalk gathers. Depends on Fuaran.UI's walk only. -->
     <Compile Include="BindingGraph.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Phase 1890: PreparedSources is internal to the resolver; its render-scope laws are read from the suite. -->
+    <InternalsVisibleTo Include="Fuaran.UI.Tests" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />

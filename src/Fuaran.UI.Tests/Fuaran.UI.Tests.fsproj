@@ -78,6 +78,9 @@
     <Compile Include="FormatBindingTests.fs" />
     <Compile Include="NowGrainTests.fs" />
     <Compile Include="ExprBindingTests.fs" />
+    <!-- Phase 1890 - one prepared source per render: the transform-laws corpus through the
+         shared-prepared resolver route, sharing laws, and the render scope. -->
+    <Compile Include="PreparedSourceParityTests.fs" />
     <Compile Include="ConditionalVisibilityTests.fs" />
     <Compile Include="AccessibilityTests.fs" />
     <!-- IdsTests pins Phase 138's deterministic correlation-id swap

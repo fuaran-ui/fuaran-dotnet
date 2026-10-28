@@ -527,6 +527,13 @@ let private liveValueToTable (v: obj) : Result<Fuaran.Core.Table, string> =
             Error(sprintf "Transform live source resolved to a 'ref' source ('%s'), which is not host-resolved" name)
         | Error e -> Error("Transform live source: " + Fuaran.Core.ColumnCodec.errorString e)
 
+/// The one-row frame a `Binding.Expr` evaluates over (Phase 1534; see
+/// `evalExprCell`). One immutable value for the process, so it is prepared once
+/// per render however many `Expr` slots the render holds (Phase 1890).
+let private exprUnitFrame: Fuaran.Core.Table =
+    { Schema = [ Fuaran.Core.Field.create "__unit" Fuaran.Core.BoolType ]
+      Columns = [ Fuaran.Core.Column.ofBools "__unit" (Fuaran.Core.Vector.ofList [ true ]) Fuaran.Core.AllValid ] }
+
 /// Resolve a typed `Binding<'T>` against the supplied sources.
 ///
 /// Per-Defect (2) note: `Query` / `Selection` accessors are obj-typed at the
@@ -891,14 +898,20 @@ and private evalTransformFrame
     (pipeline: Fuaran.Compute.Transform list)
     (parameters: TransformParam list)
     : Result<Fuaran.Core.Table, string> =
-    evalTransformFrameWithin TransformBudget.defaults sources source pipeline parameters
+    evalTransformFrameWithin TransformBudget.defaults sources sources source pipeline parameters
 
 /// `evalTransformFrame` under an EXPLICIT budget (Phase 1532). The budgeted form
 /// is the real one; the arity above is it at `TransformBudget.defaults`, which
 /// is what keeps "the default is a real limit" a property of the code rather
 /// than a claim about it — there is one evaluation path, entered at two arities.
+///
+/// `render` is the render whose prepared sources the input is shared through
+/// (Phase 1890, `PreparedSources`); it is `sources` itself except where a caller
+/// evaluates under a narrowed copy of the render's sources, as `evalExprCell`
+/// does, and must not open a second scope for it.
 and private evalTransformFrameWithin
     (budget: TransformBudget)
+    (render: BindingSources)
     (sources: BindingSources)
     (source: TransformSource)
     (pipeline: Fuaran.Compute.Transform list)
@@ -978,11 +991,20 @@ and private evalTransformFrameWithin
         // about it). Checking earlier would measure a pipeline that is not the
         // one evaluated; checking inside the evaluator is not available, because
         // the evaluator is a separately published package this tier consumes.
-        let evalTable (inputTable: Fuaran.Core.Table) : Result<Fuaran.Core.Table, string> =
+        //
+        // Phase 1890 — the input arrives PREPARED, once per source per render
+        // (`PreparedSources`), and evaluates through `evalPrepared`: the same
+        // resolver, env and pipeline as `evalPipelineInEnv` over the table it
+        // stands for, the same cells and the same errors (Compute's own
+        // contract, and this tier's corpus parity suite). Its row count is the
+        // table's, so the budget reads exactly what it read before.
+        let evalTable (input: Fuaran.Compute.Prepared) : Result<Fuaran.Core.Table, string> =
+            let inputTable = Fuaran.Compute.DataFrame.toTable input
+
             match TransformBudget.check budget (Fuaran.Core.Table.rowCount inputTable) (List.length pipeline) with
             | Error refusal -> Error refusal
             | Ok() ->
-                match Fuaran.Compute.DataFrame.evalPipelineInEnv env pipeline inputTable with
+                match Fuaran.Compute.DataFrame.evalPrepared Fuaran.Compute.DataFrame.noResolve env pipeline input with
                 | Error e -> Error("Transform evaluation failed: " + Fuaran.Compute.DataFrame.errorString e)
                 | Ok result -> Ok result
 
@@ -1022,15 +1044,24 @@ and private evalTransformFrameWithin
         // the Phase-1532 reason: this is the only point where the pruned
         // pipeline and the resolved input are both known, and the store path
         // must not be a way to spend past a refusal.
-        let evalSite (siteKey: string) (inputTable: Fuaran.Core.Table) : Result<Fuaran.Core.Table, string> =
+        let evalSite (siteKey: string) (input: Fuaran.Compute.Prepared) : Result<Fuaran.Core.Table, string> =
             match sources.LiveTransforms with
             | Some store when closed ->
+                let inputTable = Fuaran.Compute.DataFrame.toTable input
+
                 match TransformBudget.check budget (Fuaran.Core.Table.rowCount inputTable) (List.length pipeline) with
                 | Error refusal -> Error refusal
                 | Ok() ->
                     store.Evaluate(siteKey, closedPipeline, inputTable)
                     |> Result.mapError (fun e -> "Transform evaluation failed: " + e)
-            | _ -> evalTable inputTable
+            | _ -> evalTable input
+
+        // Phase 1890 — every site over one source object shares one prepared
+        // input for the render `sources` stands for. The key is the object the
+        // table is read FROM (the embedded table, the resolved store value),
+        // by reference, so a scoped rebinding prepares its own.
+        let prepared (from: obj) (toTable: unit -> Result<Fuaran.Core.Table, string>) =
+            PreparedSources.prepare render from toTable
 
         match source with
         | TransformSource.Data(Fuaran.Core.Ref name) ->
@@ -1044,7 +1075,8 @@ and private evalTransformFrameWithin
         // closed pipeline above is what carries it: an unchanged key over an
         // unchanged table is the store's `ReusedPrior`, evaluating nothing.
         | TransformSource.Data(Fuaran.Core.Embedded inputTable) ->
-            evalSite (Fuaran.UI.BindingWalk.dataSiteKey inputTable closedPipeline) inputTable
+            prepared (box inputTable) (fun () -> Ok inputTable)
+            |> Result.bind (evalSite (Fuaran.UI.BindingWalk.dataSiteKey inputTable closedPipeline))
         // Phase 818 — the LIVE source: resolve the preserved binding against
         // the reactive stores (through the store-reading erasure, so raw store
         // values stay raw) and evaluate over the CURRENT data; an unwritten
@@ -1055,11 +1087,11 @@ and private evalTransformFrameWithin
         | TransformSource.Live(binding, initial) ->
             let fromInitial () =
                 match initial with
-                | Fuaran.Core.Embedded t -> Ok t
+                | Fuaran.Core.Embedded t -> prepared (box t) (fun () -> Ok t)
                 | Fuaran.Core.Ref name ->
                     Error(sprintf "Transform live source initial snapshot is a non-host-resolved 'ref' ('%s')" name)
 
-            let tableR =
+            let inputR =
                 match resolve<obj> sources (objOfJValBinding binding) with
                 // Phase 1085 — an ABSENT resolved value is the initial snapshot,
                 // not an error. `Binding.State(key, None)` on a slot nothing has
@@ -1083,7 +1115,7 @@ and private evalTransformFrameWithin
                 // key and the remedy; a raw `null` at render time can name
                 // neither.
                 | Resolved v when isNull v -> fromInitial ()
-                | Resolved v -> liveValueToTable v
+                | Resolved v -> prepared v (fun () -> liveValueToTable v)
                 | NotResolved -> fromInitial ()
                 | Errored m -> Error(sprintf "Transform live source errored: %s" m)
                 | I18nUnresolved k -> Error(sprintf "Transform live source is an unresolved i18n key '%s'" k)
@@ -1118,7 +1150,7 @@ and private evalTransformFrameWithin
             // is handed, exactly as the server-driven tier hands it. With no
             // params bound the closed pipeline IS the effective one, so every
             // unparameterised site keeps the key it had.
-            tableR
+            inputR
             |> Result.bind (evalSite (Fuaran.UI.BindingWalk.liveSiteKey binding closedPipeline))
 
 /// Fuaran-UI Phase 1534 — evaluate a `Binding.Expr` to ONE cell.
@@ -1139,10 +1171,6 @@ and private evalExprCell
     (expr: Fuaran.Compute.ColExpr)
     (parameters: TransformParam list)
     : Result<Fuaran.Core.Cell, string> =
-    let unitFrame: Fuaran.Core.Table =
-        { Schema = [ Fuaran.Core.Field.create "__unit" Fuaran.Core.BoolType ]
-          Columns = [ Fuaran.Core.Column.ofBools "__unit" (Fuaran.Core.Vector.ofList [ true ]) Fuaran.Core.AllValid ] }
-
     let pipeline =
         [ Fuaran.Compute.Derive("__value", expr)
           Fuaran.Compute.Project [ "__value", "__value" ] ]
@@ -1151,9 +1179,21 @@ and private evalExprCell
     // store the `Data` arm now consults: a 1x1 evaluation costs less than the
     // key that would name it, and a session's bounded store is for the tables
     // that are worth keeping.
-    let sources = { sources with LiveTransforms = None }
+    //
+    // Phase 1890 — the frame is ONE value for the process (`exprUnitFrame`), so
+    // every `Expr` of a render shares one prepared input, scoped by the
+    // render's own sources rather than by this narrowed copy of them.
+    let narrowed = { sources with LiveTransforms = None }
 
-    match evalTransformFrame sources (TransformSource.Data(Fuaran.Core.Embedded unitFrame)) pipeline parameters with
+    match
+        evalTransformFrameWithin
+            TransformBudget.defaults
+            sources
+            narrowed
+            (TransformSource.Data(Fuaran.Core.Embedded exprUnitFrame))
+            pipeline
+            parameters
+    with
     | Error m ->
         // `evalTransformFrame`'s messages say "Transform"; an author looking at
         // an `Expr` binding has no Transform to look for.
