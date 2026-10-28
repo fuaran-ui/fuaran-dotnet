@@ -621,7 +621,8 @@ let private shapeNames =
       "A status message holding rows"
       "A progress bar showing its value"
       "A row of key figures"
-      "A table whose cells carry a status" ]
+      "A table whose cells carry a status"
+      "A row that opens its detail" ]
 
 [<Tests>]
 let commonShapes =
@@ -637,7 +638,13 @@ let commonShapes =
 
               Expect.stringContains readme "Uses: SplitPanel (weight, children)" "a shape names its kinds and fields"
               Expect.stringContains readme "the kpi-strip fragment" "the key-figure row names its fragment"
-              Expect.stringContains readme "(a drill) is not taught here yet" "the drill is named as not yet taught"
+
+              Expect.stringContains
+                  readme
+                  "Uses: SplitPanel (weight, children); DataGrid (staticRows, columns, rowKeyField)"
+                  "the drill names the table's row key"
+
+              Expect.isFalse (readme.Contains "not taught here yet") "the drill is taught, not deferred"
               Expect.isEmpty (Bundle.check bundle) "the bundle checks hold"
           }
 

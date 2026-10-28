@@ -6099,6 +6099,78 @@ let tableTonedColumn: Node<obj> =
             .Kind
         None
 
+/// Phase 2474 — the drill over a static table: a selectable table of countries
+/// beside a detail pane bound to its selection, France selected by design. No new
+/// vocabulary: `rowKeyField` names the declared column whose cell keys each row,
+/// a row click publishes the row's record under the table's id (the Phase 427
+/// default on the static leg), and the `Selection` projecting the key with a
+/// `defaultValue` names the row selected before any click, which the renderers
+/// seed so the server render marks it and the pane reads that row's cells.
+[<NodeFixture "Visualisation/Grid (Phase 2474 — selectable static table with a SplitPanel detail pane bound to its selection)">]
+let tableSelectableDetail: Node<obj> =
+    let detail (id: string) (label: string) (field: string) (designed: string) : Node<obj> =
+        node
+            id
+            (NodeKind.Fact(
+                { Defaults.fact with
+                    Label = TextSource.Literal label
+                    Value =
+                        TextSource.Bound(
+                            Binding.Selection(
+                                "countries",
+                                Binding.projectSelectionField<string> field,
+                                Some designed,
+                                Some field
+                            )
+                        ) }
+            ))
+            None
+
+    let table =
+        Fuaran.selectableTable
+            "countries"
+            "country"
+            [ TableColumn.text "country"
+              TableColumn.text "gdp"
+              TableColumn.text "growth" ]
+            { Defaults.table<obj> with
+                Headers =
+                    [ TextSource.Literal "Country"
+                      TextSource.Literal "GDP"
+                      TextSource.Literal "Growth" ]
+                Rows =
+                    [ [ TextSource.Literal "Germany"
+                        TextSource.Literal "4.5T"
+                        TextSource.Literal "+0.2%" ]
+                      [ TextSource.Literal "France"
+                        TextSource.Literal "3.1T"
+                        TextSource.Literal "+1.1%" ]
+                      [ TextSource.Literal "Italy"
+                        TextSource.Literal "2.3T"
+                        TextSource.Literal "+0.7%" ] ] }
+
+    node
+        "table-selectable-detail"
+        (NodeKind.SplitPanel(
+            { Defaults.splitPanel with
+                Weight = 0.6
+                Children =
+                    [ node "countries" table.Kind None
+                      node
+                          "country-detail"
+                          (NodeKind.Box(
+                              { Defaults.box with
+                                  Role = BoxRole.Card
+                                  Heading = Some(TextSource.Literal "Country detail")
+                                  Children =
+                                      [ detail "detail-country" "Country" "country" "France"
+                                        detail "detail-gdp" "GDP" "gdp" "3.1T"
+                                        detail "detail-growth" "Growth" "growth" "+1.1%" ] }
+                          ))
+                          None ] }
+        ))
+        None
+
 [<NodeFixture "Visualisation/Map">]
 let mapVis: Node<obj> =
     node

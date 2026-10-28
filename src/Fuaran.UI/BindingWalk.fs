@@ -188,6 +188,18 @@ and [<RequireQualifiedAccess>] BindingUse =
     /// it belongs to, so admitting it would record the same reader against the
     /// same name twice.
     | StateSeed of key: string * value: objnull * fingerprint: objnull
+    /// Phase 2474 — a `Binding.Selection` carrying BOTH a `field` and a PRESENT
+    /// `defaultValue`: the reader that names which row of `targetNodeId` is
+    /// selected before anything has been clicked, when `field` is that node's
+    /// row key. The renderers lay it under `Selections` for a STATIC table, whose
+    /// rows are in the tree, so the designed selection is a selection of that
+    /// row (`StateSeeds.apply`); a bound grid's rows arrive at run time and the
+    /// Phase 629 default posture stands for it.
+    ///
+    /// Emitted BESIDE `Selection targetNodeId`, never instead of it, and
+    /// filtered OUT of `Uses` on the `StateSeed` reasoning: a declaring reader is
+    /// still a reader, and admitting the fact would record it twice.
+    | SelectionSeed of targetNodeId: string * field: string * value: objnull
     /// Phase 1075 — an INLINE table carried in the tree, normalised to the
     /// canonical columnar `Table` whatever slot spelled it (a grid/chart
     /// `source` row array, a Transform's `Data` embedded table, a Transform's
@@ -252,6 +264,20 @@ type StateSeedDecl =
         Value: objnull
         /// The comparison form (see `BindingUse.StateSeed`).
         Fingerprint: objnull
+    }
+
+/// Phase 2474 — one `Binding.Selection` declaring a designed selection (see
+/// `BindingUse.SelectionSeed`).
+type SelectionSeedDecl =
+    {
+        /// The id of the node whose spec carries the declaring binding.
+        Reader: string
+        /// The node whose selection is declared.
+        Target: string
+        /// The row field the binding projects.
+        Field: string
+        /// The boxed default — the value of `Field` on the selected row.
+        Value: objnull
     }
 
 /// Phase 1075 — one inline table carried in the tree, normalised.
@@ -544,6 +570,9 @@ type TreeBindingFacts =
         /// re-matching the reader's own `source` slot, which is what makes the
         /// derivation one implementation rather than three.
         TransformSites: TransformSiteDecl list
+        /// Phase 2474 — every designed-selection declaration, in walk order
+        /// (see `BindingUse.SelectionSeed`).
+        SelectionSeeds: SelectionSeedDecl list
     }
 
 /// `TreeBindingFacts`, plus the write DIRECTION on a channel that record does
@@ -755,6 +784,10 @@ let rec usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list =
           BindingUse.StateSeed(key, boxed, seedFingerprint boxed) ]
     | Binding.State(key, _) -> [ BindingUse.State key ]
     | Binding.Filter(name, _) -> [ BindingUse.Filter name ]
+    // Phase 2474 — a projecting reader with a PRESENT default also declares
+    // the designed selection (see `BindingUse.SelectionSeed`).
+    | Binding.Selection(nodeId, _, Some d, Some field) ->
+        [ BindingUse.Selection nodeId; BindingUse.SelectionSeed(nodeId, field, box d) ]
     | Binding.Selection(nodeId, _, _, _) -> [ BindingUse.Selection nodeId ]
     | Binding.Query(name, _, dependsOn) -> [ BindingUse.Query(name, defaultArg dependsOn []) ]
     // Phase 765 — `Now` reads no node, state key, filter or query: the host
@@ -1407,6 +1440,7 @@ let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts =
     // ── The Phase 1075 seeding projection (the resolver's seed map, FUARAN106,
     //    FUARAN107) ──
     let seeds = ResizeArray<StateSeedDecl>()
+    let selectionSeeds = ResizeArray<SelectionSeedDecl>()
     let inlineTables = ResizeArray<InlineTableDecl>()
     // Phase 1615 — every `Binding.Transform` site, in walk order.
     let transformSites = ResizeArray<TransformSiteDecl>()
@@ -1534,6 +1568,12 @@ let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts =
                       Key = key
                       Value = value
                       Fingerprint = fingerprint }
+            | BindingUse.SelectionSeed(target, field, value) ->
+                selectionSeeds.Add
+                    { Reader = readerId
+                      Target = target
+                      Field = field
+                      Value = value }
             | BindingUse.InlineTable(table, seedKey) ->
                 if isNonEmptyTable table then
                     inlineTables.Add
@@ -1565,6 +1605,7 @@ let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts =
                 // a consumption edge, and widening `Uses` would move five
                 // shipped Error-severity rules' verdicts as a side effect.
                 | BindingUse.StateSeed _
+                | BindingUse.SelectionSeed _
                 | BindingUse.InlineTable _
                 // Phase 1615 — the same posture, for the reason recorded on
                 // `BindingUse.TransformSite`: a site is a fact about a slot,
@@ -2159,7 +2200,8 @@ let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts =
               Seeds = List.ofSeq seeds
               InlineTables = List.ofSeq inlineTables
               LiveTransformSites = liveTransformSitesByKey }
-          TransformSites = allTransformSites }
+          TransformSites = allTransformSites
+          SelectionSeeds = List.ofSeq selectionSeeds }
       FilterWrites = List.ofSeq filterWrites }
 
 /// The tree-wide binding facts for `node` (see `TreeBindingFacts`) — the
@@ -2188,8 +2230,11 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts = (collectFacts root).Bi
 ///  - **The seed is the FLOOR, not an override.** The caller merges a
 ///    host-furnished value and any written value OVER this map — see the
 ///    renderers' `StateSeeds.apply`.
-let stateSeeds<'Msg> (root: Node<'Msg>) : Map<string, obj> =
-    (collect root).StateKeys.Seeds
+///
+/// Phase 2474 — over facts a caller already collected, so a pass that wants both
+/// seed maps walks the tree once; `stateSeeds root` is this over `collect root`.
+let stateSeedsOf (facts: TreeBindingFacts) : Map<string, obj> =
+    facts.StateKeys.Seeds
     |> List.fold
         (fun acc (d: StateSeedDecl) ->
             match d.Value with
@@ -2211,5 +2256,27 @@ let stateSeeds<'Msg> (root: Node<'Msg>) : Map<string, obj> =
                 else
                     Map.add d.Key value acc)
         Map.empty
+
+/// The seed map for `root` (see `stateSeedsOf`).
+let stateSeeds<'Msg> (root: Node<'Msg>) : Map<string, obj> = stateSeedsOf (collect root)
+
+/// Phase 2474 — the designed selections a tree's facts declare: for each
+/// (selected node, projected field), the value the FIRST declaring reader in
+/// walk order names. A null default names nothing and is skipped. Which of
+/// these is a selection, and of which row, is the renderers' question
+/// (`StateSeeds.apply`): only a static table whose `rowKeyField` is the field
+/// has its rows in the tree to answer it.
+let selectionSeedsOf (facts: TreeBindingFacts) : Map<string * string, obj> =
+    facts.SelectionSeeds
+    |> List.fold
+        (fun acc (d: SelectionSeedDecl) ->
+            match d.Value with
+            | null -> acc
+            | _ when Map.containsKey (d.Target, d.Field) acc -> acc
+            | value -> Map.add (d.Target, d.Field) value acc)
+        Map.empty
+
+/// The designed selections `root` declares (see `selectionSeedsOf`).
+let selectionSeeds<'Msg> (root: Node<'Msg>) : Map<string * string, obj> = selectionSeedsOf (collect root)
 
 #warnon "44"

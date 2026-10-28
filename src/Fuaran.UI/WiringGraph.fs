@@ -423,6 +423,7 @@ let ofFacts (treeFacts: BindingWalk.TreeFacts) : WiringGraph =
             | BindingWalk.BindingUse.Computed
             | BindingWalk.BindingUse.TransformParam _
             | BindingWalk.BindingUse.StateSeed _
+            | BindingWalk.BindingUse.SelectionSeed _
             | BindingWalk.BindingUse.InlineTable _
             | BindingWalk.BindingUse.TransformSite _
             | BindingWalk.BindingUse.UnstyledDateFormat -> [])

@@ -430,7 +430,7 @@ and private renderKind
         // Phase 393 — a static grid is the semantic table; a bound grid is the
         // client's, and this tier serves its hydration placeholder (by nature).
         match spec.StaticRows with
-        | Some sr -> Emit.plan (ElementPlan.VisPlan.staticGrid ctx.Sources spec sr)
+        | Some sr -> Emit.plan (ElementPlan.VisPlan.staticGrid ctx.Sources parentNodeId spec sr)
         | None -> Emit.plan (ElementPlan.VisPlan.gridPlaceholder ctx.Sources spec)
     | NodeKind.Chart spec ->
         // Phase 526 / 643 — the lowered kinds draw the shared Drawing SVG through

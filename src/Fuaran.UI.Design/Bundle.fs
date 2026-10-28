@@ -790,7 +790,24 @@ let private commonShapes: CommonShape list =
             "toned by its value through the column's map (a rise Success, a fall Critical); declare a Text column"
             "ahead of it to keep the positions aligned."
             ""
-            "Not a `Badge` per cell: Badge is a node, never a cell, and a column of nodes is no longer a table." ] } ]
+            "Not a `Badge` per cell: Badge is a node, never a cell, and a column of nodes is no longer a table." ] }
+      // Phase 2474 — the drill, taught once a static table's rows could be selected.
+      { Name = "A row that opens its detail"
+        Uses =
+          [ "SplitPanel", [ "weight"; "children" ]
+            "DataGrid", [ "staticRows"; "columns"; "rowKeyField" ]
+            "Fact", [ "label"; "value" ] ]
+        Fragments = []
+        Tempting = [ "Markdown", "the detail written out" ]
+        Text =
+          [ "A `SplitPanel` holding a static `DataGrid` and the detail pane. The grid's `rowKeyField` names the"
+            "column whose cell identifies a row, so clicking a row selects it; each detail `Fact` binds its `value`"
+            "through a Selection on the grid's id with its own `field`, and reads that cell of the selected row. A"
+            "row selected in the design is the Selection on the key field with a `defaultValue` naming that row:"
+            "the server render marks the row and every Fact shows its cells."
+            ""
+            "Not the detail written out as `Markdown` or literal Facts: a pane that does not bind to the selection"
+            "shows one row forever, and a click changes nothing beside it." ] } ]
 
 /// The "Common shapes" lines of a kind's authoring note: the shapes it is part of,
 /// and the shapes it is the tempting wrong part for.
@@ -1335,9 +1352,6 @@ let private readme (idlVersion: int) (kindCount: int) (fragmentCount: int) (loca
 
               let fragments = s.Fragments |> List.map (fun f -> $"the {f} fragment")
               $"""Uses: {String.concat "; " (fragments @ uses)}."""
-          ""
-          "A row a reader selects to open its detail (a drill) is not taught here yet: whether a static table's"
-          "rows can be selected is still being settled, and this section names no shape for it until it is."
           "" ]
 
 // ─── Content hash ─────────────────────────────────────────────────────────────

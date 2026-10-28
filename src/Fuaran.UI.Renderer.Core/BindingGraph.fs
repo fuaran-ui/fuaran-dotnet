@@ -187,6 +187,7 @@ let private readsOfUse (u: BindingUse) : string list =
     | BindingUse.Computed -> [ anyStateId ]
     | BindingUse.TransformParam _
     | BindingUse.StateSeed _
+    | BindingUse.SelectionSeed _
     | BindingUse.InlineTable _
     | BindingUse.TransformSite _
     | BindingUse.UnstyledDateFormat -> []

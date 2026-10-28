@@ -2095,6 +2095,32 @@ module Fuaran =
                 Kind = NodeKind.DataGrid { grid with Columns = columns } }
         | _ -> node
 
+    /// Phase 2474 — a static table whose rows can be SELECTED: `rowKeyField`
+    /// names the declared column whose cell is each row's key. A row click then
+    /// publishes the row — the record of each column's `field` to its cell's
+    /// text — under `id`, so a `Binding.Selection` on `id` with a `field` reads
+    /// that cell of the selected row: the master-detail drill over a table whose
+    /// rows are literals. A `Selection` projecting `rowKeyField` with a
+    /// `defaultValue` names the row selected before any click, and the server
+    /// render marks it. The wire is the existing `DataGrid` carrying `columns`,
+    /// `rowKeyField` and `staticRows`.
+    let selectableTable
+        (id: string)
+        (rowKeyField: string)
+        (columns: ColumnErased<'Msg> list)
+        (spec: TableSpec<'Msg>)
+        : Node<'Msg> =
+        let node = tableWithColumns id columns spec
+
+        match node.Kind with
+        | NodeKind.DataGrid grid ->
+            { node with
+                Kind =
+                    NodeKind.DataGrid
+                        { grid with
+                            RowKeyField = Some rowKeyField } }
+        | _ -> node
+
     /// Phase 801 — the sort-intent shorthand over [[table]]: a static read-only
     /// table that declares it invites column sorting, with an optional initial
     /// order. `sortableTable id headers rows None` is the commonest shape; pass

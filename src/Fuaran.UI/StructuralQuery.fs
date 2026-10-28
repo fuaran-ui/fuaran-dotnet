@@ -465,6 +465,7 @@ let private useMatches (channel: Channel) (name: string) (usage: BindingWalk.Bin
     // for the same reason the two above it are.
     | BindingWalk.BindingUse.TransformSite _
     | BindingWalk.BindingUse.StateSeed _
+    | BindingWalk.BindingUse.SelectionSeed _
     | BindingWalk.BindingUse.InlineTable _
     | BindingWalk.BindingUse.TransformParam _
     // Phase 1810 — a `Format.DateTime` with neither style names no channel: it is

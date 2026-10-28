@@ -2902,9 +2902,26 @@ let rec private renderKind
                 (sr.Headers |> List.map (BindingResolver.resolveTextSource ctx.Sources)),
                 (sr.Rows |> List.map (List.map (BindingResolver.resolveTextSource ctx.Sources)))
 
-            Emit.planWith
-                (gridExportAttach ctx parentNodeId project)
-                (ElementPlan.VisPlan.staticGrid ctx.Sources spec sr)
+            // Phase 2474 — a selectable static table's row click publishes the
+            // row's record (`GridModel.staticRow`, what the designed-selection seed
+            // lays down) under the table's own id: the Phase 427 default on the
+            // static leg. Ungated for 427's reason — a node publishes only under
+            // its own id. A static row honours no row-action closure.
+            let attach: Emit.Attach =
+                fun point key ->
+                    match point with
+                    | ElementPlan.Attach.GridRowSelect ->
+                        match System.Int32.TryParse key with
+                        | true, i when i >= 0 && i < List.length sr.Rows ->
+                            [ prop.onClick (fun _ ->
+                                  let texts =
+                                      List.item i sr.Rows |> List.map (BindingResolver.resolveTextSource ctx.Sources)
+
+                                  SelectionStore.set parentNodeId (box (GridModel.staticRow spec.Columns texts))) ]
+                        | _ -> []
+                    | _ -> gridExportAttach ctx parentNodeId project point key
+
+            Emit.planWith attach (ElementPlan.VisPlan.staticGrid ctx.Sources parentNodeId spec sr)
         | None -> renderGrid ctx parentNodeId state spec
     | NodeKind.Chart spec -> renderChart ctx parentNodeId state spec
     | NodeKind.Map spec -> renderMap ctx parentNodeId state spec

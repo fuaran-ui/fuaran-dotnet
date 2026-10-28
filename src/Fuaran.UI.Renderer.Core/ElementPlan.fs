@@ -813,6 +813,11 @@ module Attach =
     [<Literal>]
     let GridExport = "grid-export"
 
+    /// A selectable static table's row was clicked; key = the row index
+    /// (Phase 2474).
+    [<Literal>]
+    let GridRowSelect = "grid-row-select"
+
     /// A map marker was clicked; key = its index (Phase 2290).
     [<Literal>]
     let MarkerClick = "marker-click"
@@ -2573,29 +2578,47 @@ module VisPlan =
     /// POSITIONALLY: `columns[j]` is the column of every row's cell `j`. A
     /// `TonedPill` column draws its cell as the toned pill — the cell's own text
     /// (never dropped: the authored text is the content) in the tone the map gives
-    /// the row's value at the pill's `field`, where a static row reads as the
-    /// record of each declared column's `field` to its cell's text. Every other
-    /// cell, and a cell no column describes, is the plain text it always was. The
-    /// tone lookup is `GridModel.tonedPillOf`, the bound leg's single definition.
-    let staticGrid (sources: BindingResolver.BindingSources) (spec: DataGridSpec<'Msg>) (sr: StaticRows) : Plan<'E> =
+    /// the row's value at the pill's `field`, where a static row reads as its
+    /// record (`GridModel.staticRow`). Every other cell, and a cell no column
+    /// describes, is the plain text it always was. The tone lookup is
+    /// `GridModel.tonedPillOf`, the bound leg's single definition.
+    ///
+    /// Phase 2474 — a SELECTABLE static table (its `rowKeyField` is a declared
+    /// column, `GridModel.staticKeyColumn`) is the bound leg's Phase 427 default
+    /// on the static leg: each row declares `Attach.GridRowSelect` (key = the row
+    /// index; the client publishes the row's record under the table's id, inert
+    /// on the server), and the row whose key is the selection's — `nodeId`'s
+    /// entry in `Selections`, which a designed selection seeds
+    /// (`StateSeeds.apply`) — carries `fuaran-grid-row-selected` and
+    /// `aria-selected="true"`, so a designed selection survives into the static
+    /// render. A table that is not selectable emits exactly what it did.
+    let staticGrid
+        (sources: BindingResolver.BindingSources)
+        (nodeId: string)
+        (spec: DataGridSpec<'Msg>)
+        (sr: StaticRows)
+        : Plan<'E> =
         let text = BindingResolver.resolveTextSource sources
         let columns = Array.ofList spec.Columns
 
-        let cellContent (rowTexts: string list) (j: int) (cellText: string) : Content<'E> =
+        let cellContent (row: Row) (j: int) (cellText: string) : Content<'E> =
             match Array.tryItem j columns |> Option.map _.Kind with
             | Some(CellKindErased.TonedPill(field, toneMap, defaultTone)) ->
-                let row: Row =
-                    rowTexts
-                    |> List.indexed
-                    |> List.choose (fun (k, t) ->
-                        Array.tryItem k columns
-                        |> Option.bind _.Field
-                        |> Option.map (fun f -> f, (t :> obj)))
-                    |> Map.ofList
-
                 let _, tone = GridModel.tonedPillOf row field toneMap defaultTone
                 Content.Children [ Plan.classText "span" (Css.gridCellPill (Theme.toneVar tone)) cellText ]
             | _ -> Content.Text cellText
+
+        let keyAt = GridModel.staticKeyColumn spec.Columns spec.RowKeyField
+
+        // The selection's key, read the way the bound leg reads it: the entry is
+        // the row a click (or the designed-selection seed) published.
+        let selectedKey: string option =
+            match keyAt, spec.RowKeyField with
+            | Some _, Some field ->
+                Map.tryFind (NodeId nodeId) sources.Selections
+                |> Option.map (fun sel -> BindingResolver.projectRowFieldString (unbox<Row> sel) field)
+                |> Option.filter (fun k -> k <> "")
+            | _ -> None
 
         let keyed (tag: string) (className: string) (index: int) (content: Content<'E>) : Plan<'E> =
             Plan.Element
@@ -2647,16 +2670,35 @@ module VisPlan =
                               sr.Rows
                               |> List.mapi (fun i row ->
                                   let rowTexts = row |> List.map text
+                                  let record = GridModel.staticRow spec.Columns rowTexts
 
-                                  keyed
-                                      "tr"
-                                      Css.Class.TableRow
-                                      i
-                                      (Content.Children(
+                                  let cells =
+                                      Content.Children(
                                           rowTexts
                                           |> List.mapi (fun j cell ->
-                                              keyed "td" Css.Class.TableCell j (cellContent rowTexts j cell))
-                                      )))
+                                              keyed "td" Css.Class.TableCell j (cellContent record j cell))
+                                      )
+
+                                  match keyAt with
+                                  | None -> keyed "tr" Css.Class.TableRow i cells
+                                  | Some k ->
+                                      let selected = selectedKey.IsSome && List.tryItem k rowTexts = selectedKey
+
+                                      Plan.Element
+                                          { Tag = "tr"
+                                            Key = Some(reconciliationKey None i)
+                                            Props =
+                                              [ if selected then
+                                                    Prop.Attr(
+                                                        "class",
+                                                        Css.Class.TableRow + " fuaran-grid-row-selected"
+                                                    )
+
+                                                    Prop.Attr("aria-selected", "true")
+                                                else
+                                                    Prop.Attr("class", Css.Class.TableRow)
+                                                Prop.Behaviour(Attach.GridRowSelect, string i) ]
+                                            Content = cells })
                           )) ])
 
         if spec.Exportable then

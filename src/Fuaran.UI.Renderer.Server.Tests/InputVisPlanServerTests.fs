@@ -277,6 +277,7 @@ let tests =
                     let grid: ElementPlan.Plan<string> =
                         ElementPlan.VisPlan.staticGrid
                             BindingResolver.empty
+                            "t"
                             Defaults.dataGrid
                             { Headers = [ lit "H" ]
                               Rows = [ [ lit "c" ]; [ lit "d" ] ]

@@ -4,7 +4,7 @@
   "what": "Per-family (section -> needed | never-needed | unknown) map, distilled from the flip record. `unknown` defaults to INCLUDED; `needed` wins a conflict with `never-needed`. Every verdict carries the record line that decided it.",
   "flipRecord": { "file": "SLIMMING-CENSUS.md", "sha256": "sha256:39531ae400f9ae616b2c5ecedf4b8a933508559d8bb9748d0893407d751a4751" },
   "demandAttribution": { "file": "demand-attribution.jsonl", "sha256": "sha256:a829fc98ddb5e094d2106c6bcde67f29e7becfe72890e4b280168a0a85147917", "records": 65 },
-  "pack": { "file": "system-prompt.md", "sha256": "sha256:e304d6428a872f86258ab8a347758072be9bf01667ca8027b20af8fc25b94399", "sections": 32 },
+  "pack": { "file": "system-prompt.md", "sha256": "sha256:7a544dc9a1d31bb3eddd73dc64b80b0742cfa617519967d012c031e663bb76f8", "sections": 32 },
   "families": ["claude-opus", "claude-sonnet", "gemini", "gpt", "grok", "kimi"],
   "dialect": {
     "claude-opus": { "dialect": "lenient", "evidence": { "line": 808, "excerpt": "| \u0060claude-opus-4-8@low\u0060 | 12/12 (was 11/12) | \u22126.0% | **ADOPT** \u2014 dialect eligible as this family\u0027s pack dimension |" } },
@@ -229,7 +229,7 @@
       "key": "Which tabular shape \u2014 \u0060columns\u0060 vs \u0060staticRows\u0060 vs a Markdown table",
       "alwaysCore": false,
       "alwaysCoreReason": null,
-      "pinnedExemplars": ["table-toned-column"],
+      "pinnedExemplars": ["table-toned-column", "table-selectable-detail"],
       "families": {
         "claude-opus": { "class": "unknown", "evidence": [] },
         "claude-sonnet": { "class": "unknown", "evidence": [] },

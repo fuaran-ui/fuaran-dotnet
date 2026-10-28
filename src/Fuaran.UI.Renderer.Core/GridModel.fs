@@ -436,6 +436,37 @@ let tonedPillOf
     let tone = toneMap |> Map.tryFind label |> Option.defaultValue defaultTone
     label, tone
 
+/// Phase 2473 — a STATIC row as a record: each declared column's `field` to the
+/// text of the row's cell at the column's POSITION (`columns[j]` describes every
+/// row's cell `j`). A cell no field-bearing column describes is not in the record.
+///
+/// Phase 2474 — the ONE definition of what a static row is as data: the toned
+/// pill reads its tone off it, a selectable static table publishes it on a row
+/// click, and the designed-selection seed lays it under `Selections`, so the row a
+/// reader sees after a click and the row the server rendered as selected cannot
+/// differ. Parity-locked with the TS tier's `staticRowRecord`.
+let staticRow (columns: ColumnErased<'Msg> list) (cellTexts: string list) : Row =
+    let columns = Array.ofList columns
+
+    cellTexts
+    |> List.indexed
+    |> List.choose (fun (k, t) ->
+        Array.tryItem k columns
+        |> Option.bind _.Field
+        // Upcast, not `box`: under nullness-ON `box` yields a nullable obj.
+        |> Option.map (fun f -> f, (t :> obj)))
+    |> Map.ofList
+
+/// Phase 2474 — the POSITION of a static table's row-key cell: the declared
+/// column whose `field` is the grid's `rowKeyField`. `Some` is what makes a
+/// static table SELECTABLE — a row has an identity only when its key is a cell
+/// the table actually carries; a `rowKeyField` naming no declared column names
+/// nothing, and such a table stays as inert as it always was.
+let staticKeyColumn (columns: ColumnErased<'Msg> list) (rowKeyField: string option) : int option =
+    match rowKeyField with
+    | Some field -> columns |> List.tryFindIndex (fun c -> c.Field = Some field)
+    | None -> None
+
 /// Phase 934 / Phase 863 — where a WHOLE-ROWS write commits. Stated ONCE
 /// because a grid's two whole-rows writers — an edited cell and a reordered
 /// row — are writes of the same collection, and two copies of this rule is

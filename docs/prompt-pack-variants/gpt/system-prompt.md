@@ -1018,6 +1018,21 @@ each value exactly as its cell spells it — every rise `Success`, every fall `C
 ```
 <!-- /fuaran:example -->
 
+**The drill over a static table — select a row, see its detail beside it.** Give the
+table a `rowKeyField` naming the declared column whose cell identifies each row; clicking a
+row then publishes it, so the detail pane binds every slot through a `Selection` on the
+table's id with its own `field` — the same master-detail idiom as a bound grid. Put the
+table and the pane in a `SplitPanel`. To show a row selected from the start ("France
+selected"), give the `Selection` that projects the key a `defaultValue` naming that row's
+key: the row is marked selected and every slot reads that row's cells. Never write the
+detail as literals — a pane that does not bind to the selection never follows a click:
+
+<!-- fuaran:example fixture=table-selectable-detail -->
+```json
+{"id":"table-selectable-detail","kind":{"$type":"SplitPanel","children":[{"id":"countries","kind":{"$type":"DataGrid","columns":[{"field":"country","kind":{"$type":"Text"},"label":"country"},{"field":"gdp","kind":{"$type":"Text"},"label":"gdp"},{"field":"growth","kind":{"$type":"Text"},"label":"growth"}],"rowKeyField":"country","source":[],"staticRows":{"headers":["Country","GDP","Growth"],"rows":[["Germany","4.5T","+0.2%"],["France","3.1T","+1.1%"],["Italy","2.3T","+0.7%"]]}}},{"id":"country-detail","kind":{"$type":"Box","children":[{"id":"detail-country","kind":{"$type":"Fact","label":"Country","value":{"$type":"Bound","binding":{"$type":"Selection","defaultValue":"France","field":"country","nodeId":"countries"}}}},{"id":"detail-gdp","kind":{"$type":"Fact","label":"GDP","value":{"$type":"Bound","binding":{"$type":"Selection","defaultValue":"3.1T","field":"gdp","nodeId":"countries"}}}},{"id":"detail-growth","kind":{"$type":"Fact","label":"Growth","value":{"$type":"Bound","binding":{"$type":"Selection","defaultValue":"+1.1%","field":"growth","nodeId":"countries"}}}}],"heading":"Country detail","layout":{"$type":"Flex","direction":"Vertical"},"role":"Card"}}],"weight":0.6}}
+```
+<!-- /fuaran:example -->
+
 ## Sorting a BOUND grid — the sort state key turns it on, a pipeline sort does not
 
 The section above sorts a `staticRows` table. A **data-bound** grid — one with `columns`
