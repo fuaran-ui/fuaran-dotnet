@@ -53,6 +53,13 @@ module internal Fuaran.UI.Renderer.PreparedSources
 open Fuaran.Core
 open Fuaran.Compute
 
+// The JavaScript arm below reads a `WeakMap`, whose `get` answers `undefined`
+// for an absent key, so its `isNull` tests are load-bearing. Under Fable the
+// ENTRY project's nullness setting governs the whole source graph, and the
+// project-wide `<Nullable>disable</Nullable>` does not travel, so the
+// suppression is file-scoped here, as in `BindingResolver.fs` and `Sanitize.fs`.
+#nowarn "3261"
+
 /// One source's answer, held by reference so a weak table can carry it
 /// (`Result` is a struct).
 [<AllowNullLiteral>]
