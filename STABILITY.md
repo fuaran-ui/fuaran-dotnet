@@ -7818,7 +7818,11 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.98.0 — the slot opened after v0.97.0 was released (DRAFT — untagged)
+## 0.98.1 — the slot opened after v0.97.0 was released (DRAFT — untagged)
+
+_Released as **0.98.1**, not 0.98.0 (2026-10-28): the slot's surface moved after 0.98.0 was packed as a draft, and a
+released number names one contract, so the packed 0.98.0 draft keeps its number and is never released. Everything below
+rides 0.98.1 unchanged._
 
 _`v0.97.0` was tagged at `0d6a626` on 2026-10-18 and the slot was opened on the ledger the same day. Class: **breaking**,
 set by Phase 2188; Phase 1930 rode it first as additive. The slot already sits at the minor number, which is where a pre-1.0
