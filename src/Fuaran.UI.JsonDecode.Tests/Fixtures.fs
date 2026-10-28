@@ -6073,6 +6073,32 @@ let tableSortable: Node<obj> =
                           Sortable = Some true } })
         None
 
+/// Phase 2473 — a static table whose declared columns tone its change column by
+/// sign. No new vocabulary: the `columns` a `DataGrid` always carries sit beside
+/// `staticRows`, read positionally, and the second is a `TonedPill` mapping each
+/// rise to `Success` and each fall to `Critical`. The round-trip leg proves every
+/// host carries the pairing; the static render draws each change cell as the pill.
+[<NodeFixture "Visualisation/Grid (Phase 2473 — static-table mode with a toned column: columns read positionally beside staticRows)">]
+let tableTonedColumn: Node<obj> =
+    // Built through the facade so the fixture is what `Fuaran.tableWithColumns`
+    // encodes; the accessibility record stays absent like the other table fixtures.
+    node
+        "table-toned-column"
+        (Fuaran.tableWithColumns
+            "table-toned-column"
+            [ TableColumn.text "segment"
+              TableColumn.tonedPill
+                  "change"
+                  (Map.ofList [ "+4.1%", ToneVariant.Success; "-2.3%", ToneVariant.Critical ])
+                  ToneVariant.Default ]
+            { Defaults.table<obj> with
+                Headers = [ TextSource.Literal "Segment"; TextSource.Literal "Change" ]
+                Rows =
+                    [ [ TextSource.Literal "Retail"; TextSource.Literal "+4.1%" ]
+                      [ TextSource.Literal "Wholesale"; TextSource.Literal "-2.3%" ] ] })
+            .Kind
+        None
+
 [<NodeFixture "Visualisation/Map">]
 let mapVis: Node<obj> =
     node

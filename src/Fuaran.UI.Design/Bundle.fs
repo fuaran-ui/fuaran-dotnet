@@ -698,10 +698,19 @@ let private comparisonsNote (kind: string) : string list =
 
 /// A static read-only table in the node's place, keeping its id and style. This is
 /// the table the server renderer emits for a `DataGrid` carrying `staticRows`.
-let private staticTable (node: Node<unit>) (headers: string list) (rows: string list list) : Node<unit> =
+///
+/// Phase 2473 — `columns` ride beside the rows, read positionally, so a previewed
+/// grid's `TonedPill` columns keep their tones on the server render.
+let private staticTable
+    (node: Node<unit>)
+    (columns: ColumnErased<unit> list)
+    (headers: string list)
+    (rows: string list list)
+    : Node<unit> =
     let table =
-        Fuaran.table
+        Fuaran.tableWithColumns
             node.Id
+            columns
             { Defaults.table<unit> with
                 Headers = headers |> List.map literal
                 Rows = rows |> List.map (List.map literal) }
@@ -729,15 +738,17 @@ let rec private serverPreview (node: Node<unit>) : Node<unit> * string list =
 
              staticTable
                  node
+                 spec.Columns
                  (spec.Columns |> List.map _.Label)
                  [ for r in rows -> [ for c in spec.Columns -> cell c r ] ],
-             [ "Shown as the static read-only table the server renderer emits for the same rows. The interactive grid (sorting, toned pills, selection) renders client-side." ]
+             [ "Shown as the static read-only table the server renderer emits for the same rows, toned pills included. The interactive grid (sorting, selection) renders client-side." ]
          | None -> node, [])
     | NodeKind.Map spec ->
         (match BindingResolver.tryResolve exampleSources spec.Source with
          | Some markers ->
              staticTable
                  node
+                 []
                  [ "Marker"; "Latitude"; "Longitude" ]
                  [ for m in markers -> [ m.Label; sprintf "%.4f" m.Latitude; sprintf "%.4f" m.Longitude ] ],
              [ "Shown as a static table of the map's markers, which is what a server can show of it. The map itself draws client-side." ]

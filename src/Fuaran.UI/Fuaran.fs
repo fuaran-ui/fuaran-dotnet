@@ -1375,6 +1375,36 @@ module Column =
 
     let withWidth (width: ColumnWidth) (col: Column<'Msg>) : Column<'Msg> = { col with Width = width }
 
+// ─── Static-table columns (Phase 2473) ──────────────────────────────────────
+
+/// The columns of a static read-only table (`Fuaran.tableWithColumns`). A static
+/// cell is authored text, so these columns carry no accessor and no format: each
+/// names its `field` (the key its cells answer to in the row record) and how its
+/// cells draw. They are tree-level `ColumnErased` values, so a table built with
+/// them encodes and decodes as it renders.
+module TableColumn =
+    let private ofKind (field: string) (kind: CellKindErased<'Msg>) : ColumnErased<'Msg> =
+        { Label = field
+          Field = Some field
+          Value = None
+          Sortable = None
+          Editable = None
+          Format = CellFormat.None
+          Kind = kind
+          Width = ColumnWidth.Auto }
+
+    /// A column whose cells are plain text — the shape every cell had before
+    /// columns were declared. Declare it to give a toned column's pill a field to
+    /// key on, or to keep positions aligned ahead of a toned column.
+    let text (field: string) : ColumnErased<'Msg> = ofKind field CellKindErased.Text
+
+    /// A column whose cells draw as toned pills: each cell keeps its own text and
+    /// takes the tone `toneMap` gives its value, `defaultTone` otherwise. A static
+    /// table's values are literals, so the map can name every one of them — a
+    /// change column maps each rise to `Success` and each fall to `Critical`.
+    let tonedPill (field: string) (toneMap: Map<string, ToneVariant>) (defaultTone: ToneVariant) : ColumnErased<'Msg> =
+        ofKind field (CellKindErased.TonedPill(field, toneMap, defaultTone))
+
 // ─── Grid column rules that follow the cell kind (Phase 1909) ───────────────
 
 /// What a tree-level grid column's CELL KIND says about its `field`. One home
@@ -2046,6 +2076,24 @@ module Fuaran =
                           Sortable = spec.Sortable } }
 
         buildNode id (NodeKind.DataGrid(staticGrid)) Defaults.Accessibility.table
+
+    /// Phase 2473 — a static read-only table whose `columns` say how its cells
+    /// render. The columns are POSITIONAL: `columns[j]` describes every row's cell
+    /// `j`, and a static row reads as the record of each column's `field` to its
+    /// cell's text. Build them with [[TableColumn.text]] and
+    /// [[TableColumn.tonedPill]]; a toned column draws each cell as a pill in the
+    /// tone its value maps to, with the cell's own text, so the distinction is a
+    /// class plus text and never colour alone. The wire is the existing
+    /// `DataGrid` carrying `columns` beside `staticRows`; `table id spec` is
+    /// `tableWithColumns id [] spec`.
+    let tableWithColumns (id: string) (columns: ColumnErased<'Msg> list) (spec: TableSpec<'Msg>) : Node<'Msg> =
+        let node = table id spec
+
+        match node.Kind with
+        | NodeKind.DataGrid grid ->
+            { node with
+                Kind = NodeKind.DataGrid { grid with Columns = columns } }
+        | _ -> node
 
     /// Phase 801 — the sort-intent shorthand over [[table]]: a static read-only
     /// table that declares it invites column sorting, with an optional initial

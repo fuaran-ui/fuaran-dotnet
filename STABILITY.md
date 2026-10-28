@@ -8342,6 +8342,27 @@ covers the new hole spaces.
 corpus-certifying host round-trips them), the generator's round-trip property over `MetricSpec`, and
 `src/Fuaran.UI.Renderer.Server.Tests/MetricComparisonTests.fs`.
 
+### What rides this slot — Phase 2473 (toned cells in static tables)
+
+**Class: additive.** Packages `Fuaran.UI`, `Fuaran.UI.Renderer.Core`, `Fuaran.UI.Renderer`,
+`Fuaran.UI.Renderer.Server` and `Fuaran.UI.Design`. No wire change.
+
+- **Wire.** Unchanged. A `DataGrid` has always carried `columns` beside `staticRows`; the static leg now reads them
+  (VOCABULARY.md, the toned-static-table row: no new vocabulary).
+- **Rendering.** On the static leg `columns[j]` describes every row's cell `j`. A `TonedPill` column draws its cell
+  as `<span class="fuaran-grid-cell-pill fuaran-pill-<tone>">` holding the cell's own text, toned by the map entry
+  for the row's value at the pill's `field` (a static row reads as each declared column's `field` mapped to its
+  cell's text; the lookup is `GridModel.tonedPillOf`). Every other cell, and every cell of a table declaring no
+  columns, renders byte-for-byte as before. The class is the one the bound grid's pill already uses.
+- **New members.** `Fuaran.tableWithColumns`, and the `TableColumn` module (`text`, `tonedPill`).
+- **Design bundle.** The `DataGrid` card's server preview keeps the grid's declared columns, so its toned pills show.
+
+**What a consumer does.** Nothing. A static table that declares no columns renders exactly as it did; a stored tree
+whose static table carries columns gains the declared tones.
+
+**Certified by** the corpus fixture `table-toned-column` (every corpus-certifying host round-trips it) and
+`src/Fuaran.UI.Renderer.Server.Tests/StaticTableToneTests.fs`.
+
 ---
 
 ## 0.97.0 — the slot opened after v0.96.0 was released (RELEASED — tagged v0.97.0 at 0d6a626, 2026-10-18)

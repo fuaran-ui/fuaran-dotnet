@@ -979,7 +979,8 @@ binding can act on.
 **A simple read-only table → a `DataGrid` with `staticRows`.** Reference tables, glossary
 definitions, a small comparison, structured help content: headers plus literal cells, no
 column model and no data feed. Emit `"columns": []` and `"source": {"$type":"Static",
-"value": []}` alongside it — both stay required, and the static mode ignores them.
+"value": []}` alongside it — both stay required. The static mode ignores the source; its
+`columns` are optional teaching for the cells, below.
 It needs no `rowKeyField`: the row-identity warning (`FUARAN078`) applies to a data-bound
 grid, and to a static one only when it declares a row click, an edit, a transfer key, or
 is read through a `Selection`. A table the reader acts on is the data-bound grid above,
@@ -1002,6 +1003,20 @@ by default to leave this one alone.
 `"$1,200.00"`; `"0.68"`, not `"68%"`. Column sorting compares numbers as numbers only when
 the cell reads as one, and a pre-formatted cell sorts as text — so `"$980"` lands above
 `"$1,200"`. Put the units in the header (`"Revenue (£)"`) where they belong.
+
+**A static column whose cells should read at a glance → declare `columns` beside
+`staticRows`.** A change column where a rise is good and a fall is bad, a status column in a
+reference table: the columns are read by POSITION (`columns[0]` is every row's first cell),
+and a column whose `kind` is a `TonedPill` draws each of its cells as a pill in the tone its
+value maps to, keeping the cell's text. Give every column a `field` (its name in the row) and
+a `label`; a plain column is `{"$type":"Text"}`. The cells are literals, so the `map` names
+each value exactly as its cell spells it — every rise `Success`, every fall `Critical`:
+
+<!-- fuaran:example fixture=table-toned-column -->
+```json
+{"id":"table-toned-column","kind":{"$type":"DataGrid","columns":[{"field":"segment","kind":{"$type":"Text"},"label":"segment"},{"field":"change","kind":{"$type":"TonedPill","field":"change","map":{"\u002B4.1%":"Success","-2.3%":"Critical"}},"label":"change"}],"source":[],"staticRows":{"headers":["Segment","Change"],"rows":[["Retail","+4.1%"],["Wholesale","-2.3%"]]}}}
+```
+<!-- /fuaran:example -->
 
 ## Sorting a BOUND grid — the sort state key turns it on, a pipeline sort does not
 
@@ -1143,7 +1158,8 @@ Three things to get right:
   carrying a `map` is accepted and read as a `TonedPill`, but emit the right tag.)
 
 The same tone vocabulary distinguishes non-tabular things: a `Badge` `variant`, a
-`Callout` `tone`, a `Metric` `tone`. `TonedPill` is the per-row form of it.
+`Callout` `tone`, a `Metric` `tone`. `TonedPill` is the per-row form of it. A static `staticRows` table
+takes it too, through a declared column — see "Which tabular shape" above.
 
 ### Closure cells cannot be authored from the wire — no `*Fn` payloads, no invented bindings
 

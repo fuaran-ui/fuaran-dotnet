@@ -709,13 +709,13 @@ let all: FidelityRow list =
           "DataGrid"
           true
           "the column declarations, the row-source binding, the declared sort / page / edit intent, and the two Phase 1473 print-break declarations"
-          "in static read-only mode the full semantic `<table class=\"fuaran-table\">` (byte-identical to the retired `Table`, with the declared sort surfaced as `data-fuaran-sort-*`); for a client-library grid a deterministic `fuaran-grid-ssr-placeholder` carrying `data-fuaran-row-count` - never a blank. A declared `keepRowsTogether` / `repeatHeader` is carried as the `fuaran-grid-rows-together` / `fuaran-grid-repeat-header` class on BOTH legs - on the static table the reference stylesheet's `@media print` rules then reach its rows and its header row group with no script at all, and on the placeholder the class records that the declaration was read and survives to the hydrated grid. A declared `exportable` (Phase 1125) reaches NEITHER leg: the export control is drawn only where it can act, so a server-rendered grid emits the markup it emitted before the affordance existed and the declaration rides the wire to the client tier"
+          "in static read-only mode the full semantic `<table class=\"fuaran-table\">` (byte-identical to the retired `Table`, with the declared sort surfaced as `data-fuaran-sort-*`); a static table's declared `columns` are read by position (`columns[j]` describes every row's cell `j`), and a `TonedPill` column draws its cell as `<span class=\"fuaran-grid-cell-pill fuaran-pill-<tone>\">` holding the cell's own text, toned by the map entry for the row's value at the pill's `field` (a static row reads as each declared column's `field` mapped to its cell's text) - a class plus text, never colour alone, and every other cell plain text; for a client-library grid a deterministic `fuaran-grid-ssr-placeholder` carrying `data-fuaran-row-count` - never a blank. A declared `keepRowsTogether` / `repeatHeader` is carried as the `fuaran-grid-rows-together` / `fuaran-grid-repeat-header` class on BOTH legs - on the static table the reference stylesheet's `@media print` rules then reach its rows and its header row group with no script at all, and on the placeholder the class records that the declaration was read and survives to the hydrated grid. A declared `exportable` (Phase 1125) reaches NEITHER leg: the export control is drawn only where it can act, so a server-rendered grid emits the markup it emitted before the affordance existed and the declaration rides the wire to the client tier"
           (RichTier.ClientOnly(
               "the client grid library draws into the placeholder",
               "hydration, for the client-library form only; a `staticRows` grid has no client-only tier"
           ))
-          [ "grid-1" ]
-          "Phase 393; Phase 1701; docs/SSR.md (Visualisation, sortable rendered tables); WIRE_FORMAT.md 3.6.24"
+          [ "grid-1"; "table-toned-column" ]
+          "Phase 393; Phase 1701; Phase 2473; docs/SSR.md (Visualisation, sortable rendered tables); WIRE_FORMAT.md 3.6.24"
       |> obliged
           [ owes
                 ObligationClaim.InteractiveRowOnlyWithAction

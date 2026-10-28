@@ -2568,8 +2568,34 @@ module VisPlan =
     /// Phase 801's declared sort intent rides as data attributes (only when
     /// declared); Phase 1473's print-break classes ride the table. An
     /// `Exportable` grid sits beside its export button (Phase 1125, R10).
+    ///
+    /// Phase 2473 — the grid's declared `columns` describe the static cells
+    /// POSITIONALLY: `columns[j]` is the column of every row's cell `j`. A
+    /// `TonedPill` column draws its cell as the toned pill — the cell's own text
+    /// (never dropped: the authored text is the content) in the tone the map gives
+    /// the row's value at the pill's `field`, where a static row reads as the
+    /// record of each declared column's `field` to its cell's text. Every other
+    /// cell, and a cell no column describes, is the plain text it always was. The
+    /// tone lookup is `GridModel.tonedPillOf`, the bound leg's single definition.
     let staticGrid (sources: BindingResolver.BindingSources) (spec: DataGridSpec<'Msg>) (sr: StaticRows) : Plan<'E> =
         let text = BindingResolver.resolveTextSource sources
+        let columns = Array.ofList spec.Columns
+
+        let cellContent (rowTexts: string list) (j: int) (cellText: string) : Content<'E> =
+            match Array.tryItem j columns |> Option.map _.Kind with
+            | Some(CellKindErased.TonedPill(field, toneMap, defaultTone)) ->
+                let row: Row =
+                    rowTexts
+                    |> List.indexed
+                    |> List.choose (fun (k, t) ->
+                        Array.tryItem k columns
+                        |> Option.bind _.Field
+                        |> Option.map (fun f -> f, (t :> obj)))
+                    |> Map.ofList
+
+                let _, tone = GridModel.tonedPillOf row field toneMap defaultTone
+                Content.Children [ Plan.classText "span" (Css.gridCellPill (Theme.toneVar tone)) cellText ]
+            | _ -> Content.Text cellText
 
         let keyed (tag: string) (className: string) (index: int) (content: Content<'E>) : Plan<'E> =
             Plan.Element
@@ -2620,14 +2646,16 @@ module VisPlan =
                           (Content.Children(
                               sr.Rows
                               |> List.mapi (fun i row ->
+                                  let rowTexts = row |> List.map text
+
                                   keyed
                                       "tr"
                                       Css.Class.TableRow
                                       i
                                       (Content.Children(
-                                          row
+                                          rowTexts
                                           |> List.mapi (fun j cell ->
-                                              keyed "td" Css.Class.TableCell j (Content.Text(text cell)))
+                                              keyed "td" Css.Class.TableCell j (cellContent rowTexts j cell))
                                       )))
                           )) ])
 
