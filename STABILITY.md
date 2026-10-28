@@ -7884,6 +7884,36 @@ static table declares a `rowKeyField` naming a column, in which case its rows be
 **Certified by** the corpus fixture `figure-locale-en-gb` (every corpus-certifying host round-trips it) and
 `src/Fuaran.UI.Renderer.Server.Tests/FigureLocaleTests.fs`.
 
+### What rides this slot — Phase 1891 (grid edits as `ColumnOp`s)
+
+**Class: additive on the wire, breaking (source) in F#; it rides the slot's breaking class.** Packages
+`Fuaran.UI.ServerDriven` (which now references `Fuaran.Compute.ColumnOps`) and `Fuaran.UI.Renderer.Core`.
+
+- **Wire.** A new payload, `GridEdit` — `{"$type":"GridEdit","key","op","rowKeyField"?}`, the edit as a columnar
+  op beside the unchanged whole-rows write (WIRE_FORMAT, "Edits as column ops — `GridEdit`"). No node vocabulary
+  changes; every existing document is byte-unchanged.
+- **New members (`Fuaran.UI.ServerDriven`).** `GridEdit` and its codec (`GridEdit.encode` / `decode` /
+  `encodeJson` / `decodeJson`); `GridEditLog` (`create`, `apply`, `undo`, `redo`, `current`, `table`, `records`,
+  `baseTable`, `anchor`, `head`, `verify`, `replay`, `canUndo`, `canRedo`) — a bounded, hash-chained edit history
+  whose record replays to the live table; `EditStep`, `EditRefusal`; `LiveTransformStore.Record` and
+  `RecordedEdits`; `LiveTransform.applyEdit` / `undoEdit` / `redoEdit`; `LiveTransformDefaults.EditHistory`;
+  `DeltaSource` and `ReferencePathReason`.
+- **Behaviour.** A live-`Transform` site over a key whose edits were recorded refreshes from the delta each edit's op
+  induces (`DeltaSource.OpDerived`) rather than by diffing; a site with no row identity declared says it took the
+  reference path (`ReferencePath NoRowIdentityDeclared`). The renderer reads a prepared version held in State as
+  the Transform input itself and as its rows for every other reader (`BindingResolver`). An unrecorded change is
+  diffed exactly as before.
+- **Source-breaking, which is why the class matters.** `LiveTransformEvaluation` gains `Delta: DeltaSource`, so a
+  full-record construction of it breaks (FS0764).
+
+**What a consumer does.** A caller constructing `LiveTransformEvaluation` adds the field. A host that wants the
+op-derived refresh keeps a `GridEditLog` per edited key, applies decoded `GridEdit`s through
+`LiveTransform.applyEdit`, and writes `GridEditLog.current` under the edit's key.
+
+**Certified by** the corpus's `grid-edit/` vectors (this host emits and runs them) and
+`src/Fuaran.UI.ServerDriven.Tests/GridEditTests.fs` (the history law, the op-derived refresh and its 10,000-row cost,
+and Core's `columnarOpLawsWith` / `incrementalLawsWith` at the tier's own grid-edit generator).
+
 ---
 
 ## 0.98.1 — the slot opened after v0.97.0 was released (RELEASED — tagged v0.98.1 at c88909e0, 2026-10-28)

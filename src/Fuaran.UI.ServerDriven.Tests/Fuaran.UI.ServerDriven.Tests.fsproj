@@ -44,6 +44,9 @@
     <Compile Include="ResolvesActionsOneWayTests.fs" />
     <!-- Phase 1885: reproducible board snapshots - the round-trip law and the refusals. -->
     <Compile Include="BoardSnapshotTests.fs" />
+    <!-- Phase 1891: grid edits as ColumnOps - the wire and its corpus vectors, the history law,
+         the op-derived refresh, its 10,000-row cost and the kit columnar families. -->
+    <Compile Include="GridEditTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

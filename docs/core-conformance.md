@@ -46,7 +46,7 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 | `Conformance.columnOwnershipLawsWith` | Not used | — | the ownership law over a caller's own column draw — no project here borrows or adopts column storage (see columnOwnershipLaws) |
 | `Conformance.columnVectorLaws` | Not used | — | Core's own Vector / Column storage and its readers — the tier has no vector implementation of its own; it builds columns through Core's typed builders and ofCells and reads them through Column.cell / try… |
 | `Conformance.columnarOpLaws` | Adopted | 600 | `the columnar op algebra certifies under Core's columnarOpLaws` — via `Conformance.columnarOpLaws` |
-| `Conformance.columnarOpLawsWith` | Adopted | 600 | `the columnar op algebra certifies under Core's columnarOpLawsWith at the kit's reference generator` — via `Conformance.columnarOpLawsWith — at ColumnOps.invert and Conformance.columnarOpStreamGen, the kit's reference generator; the tier has no table-edit op to draw its own` |
+| `Conformance.columnarOpLawsWith` | Adopted | 600 | `the columnar op algebra certifies under Core's columnarOpLawsWith at the kit's reference generator` — via `Conformance.columnarOpLawsWith — at ColumnOps.invert and Conformance.columnarOpStreamGen, the kit's reference generator`<br>`the columnar op algebra certifies under Core's columnarOpLawsWith at this tier's grid-edit generator` — via `Conformance.columnarOpLawsWith — at ColumnOps.invert and the tier's grid-edit generator (ServerDriven/LiveTransform.fs, GridEditLog)` |
 | `Conformance.columnarValidatorLaws` | Adopted | 200 | `the columnar validator certifies under Core's columnarValidatorLaws` — via `Conformance.columnarValidatorLaws` |
 | `Conformance.compositionLawsAt` | Adopted | — | `FastPath artifact-functions compose hygienically under Core's compositionLawsAt` — via `Conformance.compositionLawsAt` |
 | `Conformance.compositionPilotAt` | Not used | — | Fuaran.Core.Function's applyMemo over a cross-witness composeAcross — the tier supplies one ArtifactWitness and no memoised cross-witness composition, so the pilot has no second witness or memo key to run against |
@@ -72,7 +72,7 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 | `Conformance.hashFnLaws` | Adopted | 600 | `the portable SHA-256 certifies under Core's hashFnLaws (the supply-your-own-crypto contract)` — via `Conformance.hashFnLaws` |
 | `Conformance.idempotencyLaws` | Adopted | — | `idempotencyLaws certifies over the Fuaran.UI op-stream witness` — via `Conformance.idempotencyLaws — beside the store-shaped 'both durable stores return the same receipt for a re-sent keyed append and persist nothing the second time' and 'the store-shaped compare-and-append and keyed-append laws hold over both durable stores' (fuaran#1485)` |
 | `Conformance.incrementalLaws` | Adopted | — | `incrementalLaws certifies change-driven and op-driven equivalence at this pin` — via `Conformance.incrementalLaws — beside the tier-shaped 'the seven corpus vectors obey the one-scale bound, declined ones included'` |
-| `Conformance.incrementalLawsWith` | Not used | — | DataFrame.evalFrom over ColumnOps.changeOf at a domain's StreamGen<ColumnOp, Table> — the tier's incremental path is Incremental.primeOn / refreshOn over a row TableDelta (ServerDriven/LiveTransform.fs, see IncrementalDelta.laws / lawsWith), and no project here edits a table through a ColumnOp |
+| `Conformance.incrementalLawsWith` | Adopted | — | `incrementalLawsWith certifies op-driven equivalence at this tier's grid edits and pipelines` — via `Conformance.incrementalLawsWith — at the tier's grid-edit generator and grid pipelines (ServerDriven/LiveTransform.fs, GridEditLog)` |
 | `Conformance.introducedLaws` | Not used | — | Fuaran.Core.Validator's introduced-findings gate (introduced / verdict / gate under a GatePolicy) — RecipeCertification uses a Core Validator.RuleRegistry only as a validity oracle, and DagMerge.mergeGated gates through the tier's own validator, so nothing here calls the Core gate |
 | `Conformance.keyedApplyLawsAt` | Carried by phase | — | unfiled — Introspect.keyedWitness, which keyedChildrenLawsAt is adopted at (the `fallback`, `state.onEmpty` and `state.onLoading` slots among its positions), is this family's subject too |
 | `Conformance.keyedArbitrationLawsAt` | Carried by phase | — | unfiled — runs at the same Introspect.keyedWitness keyedChildrenLawsAt is adopted at |
@@ -145,8 +145,8 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 
 | Status | Families |
 |---|---|
-| Adopted | 57 |
+| Adopted | 58 |
 | Carried by phase | 8 |
-| Not used | 51 |
+| Not used | 50 |
 | Sibling host | 1 |
 | **Total** | **117** |

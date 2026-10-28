@@ -81,5 +81,8 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />
+    <!-- Phase 1891: grid edits as columnar ops (LiveTransform.fs) - apply, invert and the
+         op-derived delta over a prepared version. Pinned centrally on FuaranCoreComputeVersion. -->
+    <PackageReference Include="Fuaran.Compute.ColumnOps" />
   </ItemGroup>
 </Project>

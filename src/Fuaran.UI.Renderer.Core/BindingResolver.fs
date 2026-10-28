@@ -219,6 +219,39 @@ let private cellToRowObj (c: Fuaran.Core.Cell) : obj =
     | Fuaran.Core.Cell.Decimal s -> box ({ Text = s }: Fuaran.UI.HostPrelude.DecimalCell)
     | other -> cellToObj other
 
+/// A table's rows as a `Row` list — each row the `Map<string,obj>` keyed by column name, each
+/// cell through [[cellToRowObj]]. The ONE materialisation: a Transform's result surfaces as rows
+/// through it, and so (Phase 1891) does a prepared version a host wrote to State, so a grid
+/// reading the key and a Transform reading it see the same rows.
+///
+/// Each column is looked up ONCE by name, and each cell read through `Column.cell`, which is O(1)
+/// over the typed vectors (Core 0.37.0) and answers `Null` for an absent row and past a short
+/// column's end, so the rows cost O(rows × columns). (Phase 1761 read each cell list into an array
+/// first, because `cell` used to walk the list from its head.)
+let private rowsOfTable (table: Fuaran.Core.Table) : Row list =
+    let names = Fuaran.Core.Table.columnNames table
+    let rowCount = Fuaran.Core.Table.rowCount table
+    let columns = names |> List.map (fun n -> n, Fuaran.Core.Table.tryColumn n table)
+
+    [ for i in 0 .. rowCount - 1 ->
+          columns
+          |> List.map (fun (n, column) ->
+              let cell =
+                  match column with
+                  | Some c -> Fuaran.Core.Column.cell i c
+                  | None -> Fuaran.Core.Cell.Null
+
+              n, cellToRowObj cell)
+          |> Map.ofList ]
+
+/// Phase 1891 — a State value as the resolver reads it: a prepared version (an edited grid's
+/// live table, written whole by a host's edit log) reads as its rows, the shape every other
+/// writer of a grid's key stores; every other value is itself.
+let private stateValue (raw: obj) : obj =
+    match raw with
+    | :? Fuaran.Compute.Prepared as version -> box (Seq.ofList (rowsOfTable (Fuaran.Compute.DataFrame.toTable version)))
+    | other -> other
+
 /// Coerce a resolved scalar to a `Cell`. Every numeric arm yields `Float` (int/float are
 /// indistinguishable under Fable, so this stays cross-host-deterministic); DataFrame
 /// comparison treats `Int`/`Float` as numbers, so a float-carried param compares correctly.
@@ -601,7 +634,7 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
         match Map.tryFind key sources.State with
         | Some raw ->
             try
-                Resolved(unbox<'T> raw)
+                Resolved(unbox<'T> (stateValue raw))
             with ex ->
                 Errored(sprintf "State '%s' value did not unbox to expected type: %s" key ex.Message)
         | None ->
@@ -797,27 +830,7 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
         match evalTransformFrame sources source pipeline (defaultArg parameters []) with
         | Error m -> Errored m
         | Ok result ->
-            let names = Fuaran.Core.Table.columnNames result
-            let rowCount = Fuaran.Core.Table.rowCount result
-
-            // Each column is looked up ONCE by name, and each cell read through
-            // `Column.cell`, which is O(1) over the typed vectors (Core 0.37.0) and
-            // answers `Null` for an absent row and past a short column's end, so
-            // the rows cost O(rows × columns). (Phase 1761 read each cell list into
-            // an array first, because `cell` used to walk the list from its head.)
-            let columns = names |> List.map (fun n -> n, Fuaran.Core.Table.tryColumn n result)
-
-            let rows: Row list =
-                [ for i in 0 .. rowCount - 1 ->
-                      columns
-                      |> List.map (fun (n, column) ->
-                          let cell =
-                              match column with
-                              | Some c -> Fuaran.Core.Column.cell i c
-                              | None -> Fuaran.Core.Cell.Null
-
-                          n, cellToRowObj cell)
-                      |> Map.ofList ]
+            let rows = rowsOfTable result
 
             try
                 Resolved(unbox<'T> (box (Seq.ofList rows)))
@@ -1091,34 +1104,52 @@ and private evalTransformFrameWithin
                 | Fuaran.Core.Ref name ->
                     Error(sprintf "Transform live source initial snapshot is a non-host-resolved 'ref' ('%s')" name)
 
+            // Phase 1891 — a State slot holding a prepared VERSION (an edited
+            // grid's live table, written whole by a host's edit log) is the input
+            // itself, read before the resolver lifts it to rows for every other
+            // reader of the key: nothing to lift, and no second preparation that
+            // would lose the chunks the version shares with the one before it,
+            // which is what lets a session store refresh the site from the edit
+            // rather than by diffing.
+            let heldVersion =
+                match binding with
+                | Binding.State(key, _) ->
+                    match Map.tryFind key sources.State with
+                    | Some(:? Fuaran.Compute.Prepared as version) -> Some version
+                    | _ -> None
+                | _ -> None
+
             let inputR =
-                match resolve<obj> sources (objOfJValBinding binding) with
-                // Phase 1085 — an ABSENT resolved value is the initial snapshot,
-                // not an error. `Binding.State(key, None)` on a slot nothing has
-                // seeded or written resolves to the slot's default
-                // representation (`null`) rather than to `NotResolved`, so
-                // without this arm the bare wire spelling
-                // `{"$type":"State","key":k}` — the one this phase makes
-                // decodable, and the one FUARAN106's own remedy tells an author
-                // to write — would refuse where `"defaultValue": []` renders the
-                // empty table. Two spellings of "I read this key and carry no
-                // data of my own" must resolve alike.
-                //
-                // DELIBERATELY the quiet arm, and the choice is FUARAN105's:
-                // that rule's own contract already says a default-less source
-                // "decodes to `TransformLive.emptySource`" and names the
-                // resulting zero as a pre-emit WARNING. Making the resolver loud
-                // instead would put the resolver and the shipped validator in
-                // flat contradiction inside one binary — the exact defect class
-                // 1075 closed when it widened FUARAN105 rather than leaving it.
-                // The loudness lives at authoring time, where it can name the
-                // key and the remedy; a raw `null` at render time can name
-                // neither.
-                | Resolved v when isNull v -> fromInitial ()
-                | Resolved v -> prepared v (fun () -> liveValueToTable v)
-                | NotResolved -> fromInitial ()
-                | Errored m -> Error(sprintf "Transform live source errored: %s" m)
-                | I18nUnresolved k -> Error(sprintf "Transform live source is an unresolved i18n key '%s'" k)
+                match heldVersion with
+                | Some version -> Ok version
+                | None ->
+                    match resolve<obj> sources (objOfJValBinding binding) with
+                    // Phase 1085 — an ABSENT resolved value is the initial snapshot,
+                    // not an error. `Binding.State(key, None)` on a slot nothing has
+                    // seeded or written resolves to the slot's default
+                    // representation (`null`) rather than to `NotResolved`, so
+                    // without this arm the bare wire spelling
+                    // `{"$type":"State","key":k}` — the one this phase makes
+                    // decodable, and the one FUARAN106's own remedy tells an author
+                    // to write — would refuse where `"defaultValue": []` renders the
+                    // empty table. Two spellings of "I read this key and carry no
+                    // data of my own" must resolve alike.
+                    //
+                    // DELIBERATELY the quiet arm, and the choice is FUARAN105's:
+                    // that rule's own contract already says a default-less source
+                    // "decodes to `TransformLive.emptySource`" and names the
+                    // resulting zero as a pre-emit WARNING. Making the resolver loud
+                    // instead would put the resolver and the shipped validator in
+                    // flat contradiction inside one binary — the exact defect class
+                    // 1075 closed when it widened FUARAN105 rather than leaving it.
+                    // The loudness lives at authoring time, where it can name the
+                    // key and the remedy; a raw `null` at render time can name
+                    // neither.
+                    | Resolved v when isNull v -> fromInitial ()
+                    | Resolved v -> prepared v (fun () -> liveValueToTable v)
+                    | NotResolved -> fromInitial ()
+                    | Errored m -> Error(sprintf "Transform live source errored: %s" m)
+                    | I18nUnresolved k -> Error(sprintf "Transform live source is an unresolved i18n key '%s'" k)
 
             // Phase 1586 — the live path consults the session-held store before
             // it evaluates. Phase 1179 shipped the incremental seam behind a

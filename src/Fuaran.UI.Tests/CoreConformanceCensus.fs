@@ -288,6 +288,16 @@ let private aggregateNullSkipTest =
 let private columnarOpWithTest =
     "the columnar op algebra certifies under Core's columnarOpLawsWith at the kit's reference generator"
 
+/// Phase 1891 — the same two columnar families at THIS tier's own table-edit generator: an editable
+/// grid's edits as `ColumnOp`s (`Fuaran.UI.ServerDriven`'s `GridEditLog`), enrolled from
+/// `Fuaran.UI.ServerDriven.Tests/GridEditTests.fs`, where the edit history and the op-derived
+/// refresh they are about live.
+let private columnarOpGridEditTest =
+    "the columnar op algebra certifies under Core's columnarOpLawsWith at this tier's grid-edit generator"
+
+let private incrementalGridEditTest =
+    "incrementalLawsWith certifies op-driven equivalence at this tier's grid edits and pipelines"
+
 /// The observer family (Phase 2307), enrolled from the two observer test projects: each in-memory
 /// observer threads Core's `ObserverWitness`, and its own suite certifies the witness it is built
 /// on. Named once each for the same reason every block above is.
@@ -571,14 +581,16 @@ let census: (string * Adoption) list =
       // `columnarOpLaws`, the no-argument spelling that delegated here. 0.32.0 RETYPED it to take the
       // domain's `StreamGen<ColumnOp, Table>` and the two now share a runner instead, so a row
       // claiming the one reaches the other would be enrolment by a delegation that no longer exists.
-      // It is run by its own name, at Core's shipped `ColumnOps.invert` and the kit's reference
-      // generator: the tier edits no table through a table-edit op, so it has no generator of its
-      // own to hand it, and the port says so rather than reading as tier evidence.
+      // It is run by its own name, at Core's shipped `ColumnOps.invert`, through TWO ports since
+      // Phase 1891: the kit's reference generator here, and the tier's OWN generator — an editable
+      // grid's edits, which the tier now records as `ColumnOp`s — in the ServerDriven project. The
+      // second is the tier evidence; the first stays as the kit's baseline at this pin.
       "Conformance.columnarOpLawsWith",
-      Adopted(
-          columnarOpWithTest,
-          "Conformance.columnarOpLawsWith — at ColumnOps.invert and Conformance.columnarOpStreamGen, the kit's reference generator; the tier has no table-edit op to draw its own"
-      )
+      AdoptedAcross
+          [ columnarOpWithTest,
+            "Conformance.columnarOpLawsWith — at ColumnOps.invert and Conformance.columnarOpStreamGen, the kit's reference generator"
+            columnarOpGridEditTest,
+            "Conformance.columnarOpLawsWith — at ColumnOps.invert and the tier's grid-edit generator (ServerDriven/LiveTransform.fs, GridEditLog)" ]
       // Not adopted, and the mechanism is precise: the pilot needs TWO structurally-distinct
       // `ArtifactWitness`es plus an `embed` between them, and certifies `applyMemo` ACROSS that
       // boundary. This tier ships one artifact witness (FastPath patterns) — `compositionLaws`
@@ -629,12 +641,16 @@ let census: (string * Adoption) list =
           "Fuaran.Core.Propagation's prior-aware evaluator seam (Propagation.evalWith / evalFromWith) — nothing in this tier hands Propagation an evaluator (see propagationEvaluatorLawsAt)"
       // Arrived with the 0.32.0 pin raise (Phase 1874), in Fuaran.Core.DataFrame.Conformance. Its
       // subject is `DataFrame.evalFrom` driven by `ColumnOps.changeOf` over a domain's table-edit
-      // stream. The tier's incremental path is a different seam — `Incremental.primeOn` /
-      // `refreshOn` over a row `TableDelta` (`ServerDriven/LiveTransform.fs`), certified by the
-      // `IncrementalDelta` rows above — and no project here edits a table through a `ColumnOp`.
+      // stream. NotUsed until Phase 1891, when an editable grid's edits became `ColumnOp`s: the
+      // tier now has a table-edit stream and pipelines over it, so the family runs at the tier's own
+      // generator and grid pipelines. The tier's own refresh is the row-delta seam beside it
+      // (`ColumnOps.deltaOfPrepared` into `Incremental.refreshOnPrepared`), which the
+      // `IncrementalDelta` rows above and `GridEditTests.fs` certify.
       "Conformance.incrementalLawsWith",
-      NotUsed
-          "DataFrame.evalFrom over ColumnOps.changeOf at a domain's StreamGen<ColumnOp, Table> — the tier's incremental path is Incremental.primeOn / refreshOn over a row TableDelta (ServerDriven/LiveTransform.fs, see IncrementalDelta.laws / lawsWith), and no project here edits a table through a ColumnOp"
+      Adopted(
+          incrementalGridEditTest,
+          "Conformance.incrementalLawsWith — at the tier's grid-edit generator and grid pipelines (ServerDriven/LiveTransform.fs, GridEditLog)"
+      )
       // Arrived with the Compute 0.38.1 pin raise (the compute repository's Phases 355-358): the
       // incremental state's wire codec. `LiveTransformStore` holds its `Incremental` state in
       // process across `primeOn` / `refreshOn` and never encodes, persists or ships it, so the
