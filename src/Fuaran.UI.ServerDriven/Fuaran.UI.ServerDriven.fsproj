@@ -44,6 +44,10 @@
     <Compile Include="LiveTransform.fs" />
     <Compile Include="Channel.fs" />
     <Compile Include="FrameWire.fs" />
+    <!-- Phase 1885: the board snapshot - a hash naming the tree, each live source's
+         op-stream head, the bound parameters and the pinned clock, from which the
+         data a board showed reproduces on any host. -->
+    <Compile Include="BoardSnapshot.fs" />
   </ItemGroup>
   <!-- TreeOp + Node + Introspect.findNode for the lowering; TreeOpDiff (the
        Track-A diff) for the driver's re-render→diff step. All Fable-clean; the

@@ -104,6 +104,14 @@ let main _ =
     for line in Laws.numberFormatLines numberFormatCases do
         printfn "%s" line
 
+    // ---- law 8: a board snapshot reproduces the same data on both pipelines ----
+    // Phase 1885. The record, its hash and the rendered data are printed, so the
+    // runner's line comparison is the cross-host claim.
+    let boardSnapshot = BoardSnapshotLaw.boardSnapshotLaw ()
+
+    for line in boardSnapshot.Lines do
+        printfn "%s" line
+
     let violations =
         Laws.mergeViolations mergeVerdict
         + laneFailures
@@ -113,6 +121,7 @@ let main _ =
         + Laws.dateSentinelViolations dateCases
         + Laws.checkpointViolations checkpointCases
         + Laws.numberFormatViolations numberFormatCases
+        + boardSnapshot.Violations
 
     printfn "TOTAL violations=%d" violations
 

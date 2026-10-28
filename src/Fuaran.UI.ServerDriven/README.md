@@ -45,6 +45,41 @@ released early calls `store.Clear()`, which is correctness-neutral. Not opting i
 exactly: every render evaluates the pipeline in full.
 
 
+### Board snapshots — a hash that reproduces what a board showed (Phase 1885)
+
+`BoardSnapshot` names everything a board's rendered data is a function of, so the same data renders
+again anywhere: the **tree** (referenced: `sha256:` over its canonical wire text), each **live source**
+(referenced: the op stream, its length and its head hash — a stream that has grown since still
+reproduces the value it held), the **bound parameters** the tree reads (embedded as canonical values),
+and the pinned **`Now`** and **locale** (embedded). The identifier is `sha256:` over the record's
+canonical text.
+
+```fsharp
+// at the moment the board renders: which channels are live, and the head each was read at
+let live = Map.ofList [ BoardChannel.State "orders", LiveSourceReplay.headOf "orders" ordersStream ]
+
+match BoardSnapshot.capture tree sources live with
+| Ok snapshot -> BoardSnapshot.hash snapshot, BoardSnapshot.encode snapshot   // id + record text
+| Error refusals -> ...                                                         // why it cannot be
+
+// anywhere later, on any host: the same data
+BoardSnapshot.decode text
+|> Result.mapError List.singleton
+|> Result.bind (fun s -> BoardSnapshot.reproduce hostSources tree s (LiveSourceReplay.ofCore streams))
+```
+
+What cannot be reproduced is **refused, never approximated**: a live source the host keeps no op stream
+of (`Unstreamed`), a `Computed` closure or `Custom` renderer the wire form does not carry
+(`OpaqueReader`), a store value with no exact wire form (`NoWireForm`), a different tree
+(`TreeMismatch`), and a stream whose prefix does not end at the recorded head (`SourceUnreproducible`).
+A host capability's result is not in the record, so the reproduced sources answer every `Invoke` with a
+typed error rather than a value. The reproducing host still supplies its own configuration — renderer,
+i18n catalog, evaluation store.
+
+`BoardSnapshot.publication` renders the record as an inert
+`<script type="application/vnd.fuaran.board-snapshot+json">` element carrying its hash, which a host
+places beside the board so an inspector can copy a verified repro without asking the host anything.
+
 ## Roadmap (Phase 152)
 
 - ✅ Track A — the `TreeOp`-emitting diff (`Fuaran.UI.OpStream.Replay.TreeOpDiff`).

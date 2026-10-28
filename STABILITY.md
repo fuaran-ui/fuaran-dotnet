@@ -8378,6 +8378,19 @@ corpus-certifying host round-trips them), the generator's round-trip property ov
 
 ---
 
+### What rides this slot — Phase 1885 (reproducible board snapshots)
+
+**Additive, and it rides the draft.** `Fuaran.UI.ServerDriven` gains `BoardSnapshot` and the records it reads and writes
+(`BoardChannel`, `LiveSource`, `ValueForm`, `BoardParameter`, `BoardSource`, `SnapshotRefusal`, `ILiveSourceReplay`,
+`CoreLiveStream`, `LiveSourceReplay`): a record naming a board's tree by digest, each live source by its op-stream head,
+and embedding the bound parameters, the pinned `Now` and the locale, so the data the board showed reproduces on any host.
+No existing type, member or behaviour moves; every new type is new, so no full-literal construction elsewhere can break.
+The record's text is a new format, `fuaran-board-snapshot@1`, whose identifier is `sha256:` over its canonical
+(cross-host) text; a reader refuses a member the format does not define, so a later minor of the format is a new marker,
+never a silent extra member. The Fable law harness certifies the same record, hash and reproduced data on both pipelines.
+
+**What a consumer does.** Nothing, unless it wants snapshots.
+
 ## 0.97.0 — the slot opened after v0.96.0 was released (RELEASED — tagged v0.97.0 at 0d6a626, 2026-10-18)
 
 _Class: **breaking**, set by its first rider, Phase 1960. `v0.96.0` was tagged and published at `9045b5f` on 2026-10-18

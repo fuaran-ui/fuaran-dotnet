@@ -47,6 +47,8 @@
   <ItemGroup>
     <Compile Include="TestSupport.fs" />
     <Compile Include="Laws.fs" />
+    <!-- Law 8 (Phase 1885): a board snapshot reproduces the same data on both pipelines. -->
+    <Compile Include="BoardSnapshotLaw.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
@@ -59,6 +61,8 @@
     <ProjectReference Include="..\..\src\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
     <!-- The subject of the first law: the three-way merge that runs in the browser. -->
     <ProjectReference Include="..\..\src\Fuaran.UI.OpStream.Dag.Merge\Fuaran.UI.OpStream.Dag.Merge.fsproj" />
+    <!-- Law 8's subject: the board snapshot, taken and reproduced on both pipelines. -->
+    <ProjectReference Include="..\..\src\Fuaran.UI.ServerDriven\Fuaran.UI.ServerDriven.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />
