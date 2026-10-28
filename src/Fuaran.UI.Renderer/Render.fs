@@ -5952,18 +5952,41 @@ let renderStateReactive
 let themeStyleElement (theme: Theme) : ReactElement =
     Html.style [ prop.dangerouslySetInnerHTML (TrustedTypes.html (Theme.toCss theme)) ]
 
+/// Phase 2482 — the chart tokens `renderWithTheme` last installed, so a
+/// re-render under an unchanged theme does not re-measure its palette (and a
+/// refused palette is reported once, not once per frame).
+let mutable private installedThemeCharts: ChartTokens option = None
+
+/// Install the theme's chart style (validated; a refused palette installs the
+/// shipped default and is reported by slot or pair through `Diagnostics`). In
+/// the browser the page has one theme, so the theme a page renders under IS the
+/// chart style its charts lower under.
+let private installThemeCharts (theme: Theme) : unit =
+    if installedThemeCharts <> Some theme.Charts then
+        installedThemeCharts <- Some theme.Charts
+
+        for finding in Fuaran.UI.Charts.installChartStyleFromTheme theme do
+            Diagnostics.warn
+                "the theme's chart palette was refused and the default palette is drawn"
+                (box (Fuaran.UI.ChartPalette.describe finding))
+
 /// Convenience entry point that mounts a `Theme`'s CSS-variable bundle
 /// alongside the rendered node tree. `Defaults.theme` mirrors the post-
 /// `fuaran-reference.css` byte-for-byte, so apps that pass it see no
 /// visual change. Apps composing their own Theme record get
 /// it picked up at the renderer root without touching any stylesheet
 /// file.
+///
+/// Phase 2482: it also installs the theme's chart style before the tree
+/// renders, so every chart on the page draws the theme's series palette — or,
+/// if the palette fails a gate, the shipped default, never the failing colour.
 let renderWithTheme
     (theme: Theme)
     (sources: BindingResolver.BindingSources)
     (dispatch: 'Msg -> unit)
     (node: Node<'Msg>)
     : ReactElement =
+    installThemeCharts theme
     React.Fragment [ themeStyleElement theme; renderWithSources sources dispatch node ]
 
 // ─── Strict-CSP rendering (Phase 1545) ─────────────────────────────────────

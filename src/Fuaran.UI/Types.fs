@@ -2420,6 +2420,39 @@ and Segmented =
 /// `docs/migrations/phase-58-mobile-responsive.md`.
 and Breakpoints = { Sm: string; Md: string; Lg: string }
 
+/// Phase 2482 — the chart token group: the categorical series palette a
+/// lowered chart draws, and the reserved status triple beside it.
+///
+/// Unlike every other colour in this record, these do NOT reach a chart
+/// through inherited CSS. The chart lowering bakes literal hex into the
+/// drawing (the colours must stay distinct for every reader on a light or a
+/// dark surface, which is a property of the SET, measured over adjacent
+/// pairs), so a house palette reaches a chart by INSTALLATION: the host
+/// derives a chart style from its theme once, at boot, and the gate in
+/// `Fuaran.UI.ChartPalette` refuses — by slot or by pair — a palette a
+/// reader could not tell apart, installing the shipped default instead.
+/// `Theme.toCss` still emits them as `--fuaran-chart-*` variables, as a
+/// read-only projection a host page can match (an HTML legend, a table
+/// swatch); overriding a variable in CSS does not recolour a chart.
+///
+/// The default ([[Defaults.charts]]) is the Phase 875 validated 8-slot set,
+/// so a theme that sets nothing draws exactly what it drew before.
+and ChartTokens =
+    {
+        /// The categorical series palette, in ASSIGNMENT order (series i
+        /// draws slot i modulo the length). The order is load-bearing: the
+        /// colour-vision gates are measured over adjacent pairs. Each slot
+        /// must be a `ColorVar.Hex "#rrggbb"` literal to pass the gate.
+        Series: ColorVar list
+        /// Reserved — favourable variance / gain. Never drawn from the
+        /// series rotation.
+        Positive: ColorVar
+        /// Reserved — adverse variance / loss.
+        Negative: ColorVar
+        /// Reserved — no-change / baseline.
+        Neutral: ColorVar
+    }
+
 /// The full theme record. Apps construct one and pass it to
 /// `Fuaran.UI.Renderer.Render.render` via the optional `?theme` parameter
 /// (default: [[Defaults.theme]]); the renderer emits the variable bundle
@@ -2446,6 +2479,9 @@ and Theme =
         Segmented: Segmented
         /// Responsive breakpoint thresholds (Phase 58).
         Breakpoints: Breakpoints
+        /// Phase 2482 — the chart series palette + reserved status triple,
+        /// installed into the chart lowering rather than inherited as CSS.
+        Charts: ChartTokens
     }
 
 /// Companion helpers for `Binding<'T>`. Merges with the RequireQualifiedAccess

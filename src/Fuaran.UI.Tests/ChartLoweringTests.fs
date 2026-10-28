@@ -5023,3 +5023,215 @@ let chartLoweringTests =
                       (CanonicalJson.encodeNode forwards)
                       "a backwards pair lowers to the same band as its ordered twin"
               } ]
+
+// ═══ Phase 2482 — the host-installed palette ═════════════════════════════════
+//
+// A theme carries a chart series palette (`Theme.Charts`); a host installs the
+// style it derives ONCE (`Charts.installChartStyleFromTheme`) and every chart the
+// renderers draw through `Charts.renderSvg` lowers under it. The palette is
+// validated first: a palette failing a gate is refused by slot or pair and the
+// shipped default installed instead.
+//
+// The themed golden lives in its own SUBFAMILY, `chart-lowering/themed/`, and
+// that placement is deliberate. A themed case is certified only by a host that
+// ships an install seam, and every other host's harness enumerates the family
+// directory non-recursively — so the subfamily adds a contract without
+// reddening a host that has no theme install to certify. Its input carries the
+// palette as a harness-only `palette` style selector, the `axisUnitMode`
+// precedent: the palette is a lowering parameter, never a wire field.
+
+/// A house palette that clears every gate on both surfaces (worst adjacent CVD
+/// ΔE 11.0, worst adjacent normal-vision ΔE 25.8), and shares no slot with the
+/// default.
+let private housePalette =
+    [ "#d9480f"
+      "#1971c2"
+      "#2f9e44"
+      "#ae3ec9"
+      "#c27c0e"
+      "#4263eb"
+      "#c2255c"
+      "#0b8ba3" ]
+
+let private themeWithSeries (series: string list) : Theme =
+    { Defaults.theme with
+        Charts =
+            { Defaults.charts with
+                Series = series |> List.map ColorVar.Hex } }
+
+let private houseTheme = themeWithSeries housePalette
+
+/// The 2008 Google Charts default that Phase 875 replaced — its first eight
+/// slots. `#ff9900` sits above the light surface's lightness band (OKLCH L
+/// 0.772 > 0.77) and `#990099` below the dark one's (0.479 < 0.48).
+let private google2008 =
+    [ "#3366cc"
+      "#dc3912"
+      "#ff9900"
+      "#109618"
+      "#990099"
+      "#0099c6"
+      "#dd4477"
+      "#66aa00" ]
+
+/// The themed subfamily's cases: a corpus case re-lowered under the house style.
+/// `bar-legend-eight-series` draws every slot, so the golden pins all eight.
+let private themedCases: (string * Case) list =
+    [ "bar-legend-eight-series-house-palette", cases |> List.find (fun c -> c.Name = "bar-legend-eight-series") ]
+
+let private houseStyle: Charts.ChartStyle =
+    match Charts.chartStyleOfTheme houseTheme with
+    | Ok style -> style
+    | Error findings -> failwithf "the house palette must clear every gate: %A" findings
+
+let private themedJson (name: string) (case: Case) : string =
+    let ds =
+        Charts.lowerWithStyle Charts.ChartLimits.defaults houseStyle (specOf case) (Seq.ofList (buildRows case))
+
+    let node: Node<obj> = Fuaran.drawingSpec (sprintf "chart-%s" name) ds
+    CanonicalJson.encodeNode node
+
+/// The themed input: the base case's neutral contract plus the `palette` style
+/// selector, written before `data` so the member order stays readable.
+let private themedInputJson (case: Case) : string =
+    let palette = housePalette |> List.map (sprintf "\"%s\"") |> String.concat ","
+
+    let input = inputJson case
+    let at = input.IndexOf ",\"data\":["
+    input.Substring(0, at) + ",\"palette\":[" + palette + "]" + input.Substring at
+
+let private renderTextOf (t: TextSource) : string =
+    match t with
+    | TextSource.Literal s -> s
+    | _ -> ""
+
+let private themedFixtureTests: Test list =
+    match tryFindFixtures () with
+    | None ->
+        [ test "themed fixtures absent — skipped (standalone checkout)" {
+              Expect.isTrue true "wire-format-fixtures/ not found"
+          } ]
+    | Some fixturesRoot ->
+        let dir = Path.Combine(fixturesRoot, "chart-lowering", "themed")
+
+        if Environment.GetEnvironmentVariable "FUARAN_EMIT_CHART_LOWERING" = "1" then
+            Directory.CreateDirectory dir |> ignore
+
+            for name, case in themedCases do
+                File.WriteAllText(Path.Combine(dir, name + ".input.json"), themedInputJson case)
+                File.WriteAllText(Path.Combine(dir, name + ".expected.json"), themedJson name case)
+
+        [ test "every themed case lowers byte-identically to its committed golden" {
+              for name, case in themedCases do
+                  let expectedFile = Path.Combine(dir, name + ".expected.json")
+
+                  Expect.isTrue
+                      (File.Exists expectedFile)
+                      (sprintf "%s: themed golden missing (regenerate with FUARAN_EMIT_CHART_LOWERING=1)" name)
+
+                  Expect.equal
+                      (File.ReadAllText(Path.Combine(dir, name + ".input.json")))
+                      (themedInputJson case)
+                      (sprintf "%s: themed input drifted" name)
+
+                  Expect.equal
+                      (themedJson name case)
+                      (File.ReadAllText expectedFile)
+                      (sprintf "%s: themed lowering drifted from golden" name)
+          }
+
+          test "a themed golden differs from its default golden in the series colours alone" {
+              // Map each house slot back to the default slot it replaced (and the
+              // node id back to the base case's): what is left must be the
+              // DEFAULT golden byte for byte. So the install themes the palette
+              // and nothing else, and the default family is untouched.
+              for name, case in themedCases do
+                  let themed = File.ReadAllText(Path.Combine(dir, name + ".expected.json"))
+
+                  let unthemed =
+                      List.zip housePalette Defaults.chartSeriesHex
+                      |> List.fold
+                          (fun (s: string) (house, dflt) -> s.Replace(house, dflt))
+                          (themed.Replace(sprintf "chart-%s" name, sprintf "chart-%s" case.Name))
+
+                  Expect.equal
+                      unthemed
+                      (File.ReadAllText(Path.Combine(fixturesRoot, "chart-lowering", case.Name + ".expected.json")))
+                      (sprintf "%s: the themed golden differs from %s beyond its palette" name case.Name)
+          } ]
+
+[<Tests>]
+let hostInstalledPaletteTests =
+    testList
+        "Chart lowering — host-installed palette (Phase 2482)"
+        ([ test "the default theme derives exactly the corpus-pinned default style" {
+               Expect.equal
+                   (Charts.chartStyleOfTheme Defaults.theme)
+                   (Ok Charts.ChartStyle.defaults)
+                   "a theme that sets nothing installs nothing new — the default goldens cannot move"
+           }
+
+           test "a theme's palette is the ONLY themed field when the triple is the default" {
+               Expect.equal
+                   { houseStyle with
+                       Palette = Charts.ChartStyle.defaults.Palette }
+                   Charts.ChartStyle.defaults
+                   "everything but the palette is the corpus-pinned default"
+
+               Expect.equal (List.ofArray houseStyle.Palette) housePalette "the palette is the theme's, in slot order"
+           }
+
+           test "a failing palette is refused by name, never drawn" {
+               match Charts.chartStyleOfTheme (themeWithSeries google2008) with
+               | Ok _ -> failtest "the 2008 palette fails the lightness band and must be refused"
+               | Error findings ->
+                   let text = findings |> List.map ChartPalette.describe
+
+                   Expect.exists
+                       text
+                       (fun s -> s.Contains "#ff9900" && s.Contains " on light ")
+                       "the refusal names #ff9900 on the light surface"
+           }
+
+           test "the installed style is what renderSvg reads; a refused palette installs the default" {
+               let case = snd themedCases.Head
+               let spec = specOf case
+               let rows = buildRows case
+
+               let emitUnder (style: Charts.ChartStyle) =
+                   DrawingSvg.render
+                       BindingResolver.empty
+                       renderTextOf
+                       (Charts.lowerWithStyle Charts.ChartLimits.defaults style spec (Seq.ofList rows))
+
+               let render () =
+                   Charts.renderSvg BindingResolver.empty renderTextOf spec (Seq.ofList rows)
+
+               // Process-global, like the provenance scope: a test that leaves a
+               // style installed changes what every later chart renders.
+               try
+                   Charts.clearChartStyle ()
+
+                   Expect.equal (render ()) (emitUnder Charts.ChartStyle.defaults) "nothing installed: the default"
+
+                   Expect.isEmpty (Charts.installChartStyleFromTheme houseTheme) "the house palette installs"
+                   let themed = render ()
+                   Expect.equal themed (emitUnder houseStyle) "renderSvg draws the installed style"
+                   Expect.stringContains themed "#0b8ba3" "the eighth house slot is drawn"
+                   Expect.isFalse (themed.Contains "#1a86ac") "no default slot survives"
+
+                   let refused = Charts.installChartStyleFromTheme (themeWithSeries google2008)
+                   Expect.isNonEmpty refused "the 2008 palette is refused"
+
+                   Expect.equal
+                       (Charts.currentChartStyle ())
+                       Charts.ChartStyle.defaults
+                       "a refusal installs the default, not the last good palette"
+
+                   let after = render ()
+                   Expect.equal after (emitUnder Charts.ChartStyle.defaults) "and the default is drawn"
+                   Expect.isFalse (after.Contains "#ff9900") "the failing colour is never drawn"
+               finally
+                   Charts.clearChartStyle ()
+           } ]
+         @ themedFixtureTests)

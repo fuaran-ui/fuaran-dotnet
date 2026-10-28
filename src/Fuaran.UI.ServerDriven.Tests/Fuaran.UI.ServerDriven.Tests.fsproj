@@ -42,6 +42,8 @@
     <!-- Phase 2071: the tier resolves actions one way - one JSON string writer, one
          event policy, one route normaliser, one landed-index fallback. -->
     <Compile Include="ResolvesActionsOneWayTests.fs" />
+    <!-- Phase 1885: reproducible board snapshots - the round-trip law and the refusals. -->
+    <Compile Include="BoardSnapshotTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

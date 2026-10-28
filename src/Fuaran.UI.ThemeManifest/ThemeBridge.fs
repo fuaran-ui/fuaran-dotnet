@@ -560,8 +560,15 @@ type DeferredCheck = { Description: string; Reason: string }
 /// emitted bridge values. `Violations` is the breached subset of
 /// `ContrastChecks`, surfaced for a quick `isEmpty` gate.
 type VerificationResult =
-    { ContrastChecks: ContrastCheck list
-      Deferred: DeferredCheck list }
+    {
+        ContrastChecks: ContrastCheck list
+        Deferred: DeferredCheck list
+        /// Phase 2482 — the `ChartSeriesDistinct` invariant's findings: each
+        /// chart series slot or adjacent pair that fails a palette gate, named.
+        /// `[]` when the palette passes or the manifest declares no chart series.
+        /// A host installing this palette has it refused for the same findings.
+        ChartPalette: Fuaran.UI.ChartPalette.PaletteFinding list
+    }
 
 module VerificationResult =
     /// The breached contrast checks — a non-empty list is a build-time
@@ -570,8 +577,10 @@ module VerificationResult =
         result.ContrastChecks |> List.filter (fun c -> c.Status = CheckStatus.Violated)
 
     /// `true` when every resolvable invariant holds (indeterminate +
-    /// deferred checks do not fail the gate).
-    let passed (result: VerificationResult) : bool = violations result |> List.isEmpty
+    /// deferred checks do not fail the gate) and the chart palette, if the
+    /// manifest declares one, clears every gate.
+    let passed (result: VerificationResult) : bool =
+        List.isEmpty (violations result) && List.isEmpty result.ChartPalette
 
 /// Resolve the value a contract stem renders as: the bound host token's
 /// value if mapped, else the reference default.
@@ -672,10 +681,12 @@ let verify (manifest: ThemeManifest) : VerificationResult =
                 Some
                     { Description = $"MotionVoice maxDurationMs={mb.MaxDurationMs}"
                       Reason = "needs a runtime — motion is keyframe-class-based, not a bridged variable" }
-            | InvariantKind.ContrastFloor _ -> None)
+            | InvariantKind.ContrastFloor _
+            | InvariantKind.ChartSeriesDistinct -> None)
 
     { ContrastChecks = contrastChecks
-      Deferred = deferred }
+      Deferred = deferred
+      ChartPalette = ThemeManifest.verifyChartPalette manifest }
 
 // ─── One-call composition ───────────────────────────────────────
 

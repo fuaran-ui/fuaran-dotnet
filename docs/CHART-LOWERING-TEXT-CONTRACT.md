@@ -72,6 +72,23 @@ in front of it at the root instead, so the announced string is `"<title>. <summa
 The same reasoning is why a units statement is never concatenated into a title: a rule expressible
 only for `Literal` is not a rule.
 
+## The palette beside the text (Phase 2482)
+
+The series palette is not a text slot, but it answers the same question this document answers
+for text — what the lowering is handed and what it decides — so its rule sits here.
+
+**7. The series palette is host-installed and validated, never a wire field.** A chart's series
+colours are literal hex in the drawing, chosen by the chart style the HOST installs from its
+theme, not by anything the `ChartSpec` carries. A palette is validated before it is installed:
+the lightness band and chroma floor per slot, on both the light and the dark chart surface, and
+the colour-vision and normal-vision separation floors over ADJACENT slots. A palette that fails
+is refused with the failing slot or pair named, and the shipped default is installed in its
+place. A failing colour is never drawn. With nothing installed, the lowering draws the shipped
+default, which is what every `chart-lowering/*` golden pins. The `chart-lowering/themed/`
+subfamily pins a non-default palette for a host that ships an install seam. Its input names the
+palette as a harness-only `palette` selector, which is a style choice like `axisUnitMode` and
+never part of the wire. The decision and its reasons are D23 in `DECISIONS.md`.
+
 ## Why this rather than the alternatives
 
 **Resolving at the bridge** was the shape two hosts had reached for, and it fails on clause 3: what

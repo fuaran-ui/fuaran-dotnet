@@ -10,6 +10,62 @@ consequence.
 
 ---
 
+## 2026-10-27 — D23: a chart's series palette stays literal in the lowering and is themed by installation, after a gate
+
+**Decided (Phase 2482).** A theme carries a chart series palette (`Theme.Charts`: up to eight series slots in
+assignment order, plus the reserved positive / negative / neutral triple; default `Defaults.charts`, the Phase 875
+set). It reaches a chart by INSTALLATION, not by inherited CSS: a host derives a chart style from its theme once, at
+boot (`Charts.installChartStyleFromTheme`), and `Charts.renderSvg` — the one entry point both renderers' chart arms
+call — lowers under the installed style. `lowerWithStyle` is unchanged, and with nothing installed the style is
+`ChartStyle.defaults`, so every default chart and every default golden is byte-identical. Before a palette is installed
+it is VALIDATED (`Fuaran.UI.ChartPalette`): the lightness band and chroma floor per slot, on both chart surfaces, and
+the colour-vision (Machado 2009, protanopia and deuteranopia, ΔE ≥ 6) and normal-vision (ΔE ≥ 15) floors over adjacent
+pairs. A failing palette is refused with each failing slot or pair named, and the shipped default is installed in its
+place. A failing colour is never drawn.
+
+**Why the palette stays literal in the lowering.** A series colour must stay distinct for every reader on a light or a
+dark surface. That is a property of the SET, measured over adjacent pairs, so a palette cannot be assembled from
+per-slot CSS variables the way the chrome inks from `currentColor` (Phase 536). Indirection through CSS would make each
+slot a cascade function that no gate ever sees as a set, and would make the drawing depend on the page it lands in, so
+two hosts could draw the same tree differently. Keeping the colours literal keeps the lowering a pure function of its
+inputs. The theme still decides WHICH literals: the style is a lowering parameter, never a `ChartSpec` field, so the
+wire does not move.
+
+**Why the palette is checked by one shared gate.** The install path and the theme manifest's new
+`ChartSeriesDistinct` invariant, which `ThemeBridge.verify` reports beside the contrast floors, both call the same
+`ChartPalette.validateSeries`. A designer therefore sees the same refusal a host would hit. The gate lives in
+`Fuaran.UI` because that is the only package both `Fuaran.UI.Charts` and `Fuaran.UI.ThemeManifest` already depend on.
+Its thresholds are the ones the Phase 875 default was validated against, and they are calibrated to the Machado
+simulation, so changing the simulation would mean recalibrating them. The relief-eligible gates are not refused: CVD in
+the 6–8 band, and contrast below 3:1 against the surface. Every lowered series and pie category carries a visible
+legend label, which is the relief those gates require.
+
+**Decided with it.**
+- **The `--fuaran-chart-*` variables are a read-only projection.** `Theme.toCss` emits them so a host page can match a
+  chart (an HTML legend, a table swatch). The reference stylesheet does not declare them, because no rule there reads
+  them and overriding one in CSS recolours no chart: declaring them would advertise an override that does nothing.
+  `ThemeTests` pins the difference as exactly those eleven names.
+- **The browser renderer's `renderWithTheme` installs; the server's does not.** A page has one theme. A server process
+  may render several, concurrently, and a per-request install would race on a process-wide style. An SSR host
+  installs at boot, or lowers per call with `lowerWithStyle` and `chartStyleOfTheme`.
+- **The themed golden is a subfamily, `chart-lowering/themed/`.** It pins the install path on this host. Every other
+  host's harness enumerates the family directory non-recursively, so the subfamily adds a contract without failing a
+  host that has no install seam to certify. A host that gains an install seam certifies the subfamily too. The input
+  carries the palette as a harness-only `palette` selector, following the `axisUnitMode` precedent.
+
+**Rejected.**
+- **A per-theme palette chosen by the lowering** (light and dark sets). D8's theme-invariance argument stands: one hex
+  set clears both surfaces, and a lowering that picks per surface would need to know the surface.
+- **Validating at draw time.** That would repeat the measurement on every render, and the only possible failure
+  response there is to draw something else silently. Measuring once at install puts the refusal where it can be
+  reported.
+- **Threading a style through the renderers' contexts.** That widens every emitter's public record for a value set
+  once per process. The provenance scope (Phase 643) uses the same process-global seam for the same reason.
+
+Roadmap: [Phase 2482](../../roadmap/phases/2482-a-host-installed-chart-style-from-the-theme-validated.md).
+
+---
+
 ## 2026-10-22 — D22: the reference host parses through Core, and the three answers that moved are every host's
 
 **Resolved (Phase 2286, 2026-10-22).** D21's blocker is gone: `Fuaran.Compute` 0.41.0 and `Fuaran.Program` 0.11.0 are

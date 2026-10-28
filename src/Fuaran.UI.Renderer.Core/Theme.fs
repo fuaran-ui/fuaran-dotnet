@@ -650,6 +650,17 @@ let private interactionStatesInOrder (interaction: Interaction) : (string * Tone
 /// no trailing zero past the meaningful precision (`1.5` not `1.50`).
 let private floatCss (value: float) : string = invariantFloat value
 
+/// Phase 2482 — the chart token group's CSS variables:
+/// `--fuaran-chart-series-{1..N}` in assignment order, then
+/// `--fuaran-chart-{positive,negative,neutral}`. Exposed so a test can name the
+/// set the reference stylesheet deliberately does not declare.
+let chartCssVariables (charts: ChartTokens) : (string * string) list =
+    [ for i, color in List.indexed charts.Series do
+          sprintf "--fuaran-chart-series-%d" (i + 1), colorVarToCss color
+      "--fuaran-chart-positive", colorVarToCss charts.Positive
+      "--fuaran-chart-negative", colorVarToCss charts.Negative
+      "--fuaran-chart-neutral", colorVarToCss charts.Neutral ]
+
 /// Emit the `(name, value)` pairs for every CSS variable a `Theme` projects.
 /// Exposed as a separate helper so the test suite can diff against the
 /// reference CSS's parsed pairs without re-parsing `Theme.toCss`'s output.
@@ -731,7 +742,15 @@ let toCssVariables (theme: Theme) : (string * string) list =
       "--fuaran-segmented-bg", colorVarToCss theme.Segmented.Background
       "--fuaran-segmented-active-bg", colorVarToCss theme.Segmented.ActiveBackground
       "--fuaran-segmented-active-fg", colorVarToCss theme.Segmented.ActiveForeground
-      "--fuaran-segmented-divider-color", colorVarToCss theme.Segmented.DividerColor ]
+      "--fuaran-segmented-divider-color", colorVarToCss theme.Segmented.DividerColor
+
+      // Chart tokens — Phase 2482. One per series slot, then the reserved
+      // status triple. A READ-ONLY projection: the chart lowering draws literal
+      // hex from the host-INSTALLED style (`Charts.installChartStyleFromTheme`),
+      // so these let a host page match a chart (an HTML legend, a table swatch)
+      // and overriding one in CSS recolours no chart. For that reason no rule in
+      // the reference stylesheet declares or reads them.
+      yield! chartCssVariables theme.Charts ]
 
 /// Emit a `:root { --fuaran-...: value; ... }` block from a Theme. The
 /// renderer mounts this into a `<style>` element it maintains. Apps that
@@ -852,6 +871,8 @@ let private interactionToJsonString (interaction: Interaction) : string =
 /// see the comment block above for why Fable.SimpleJson's `Json.stringify`
 /// isn't usable here.
 let toJson (theme: Theme) : string =
+    let charts = theme.Charts
+
     jsonObject
         [ "tones", tonesToJsonString theme.Tones
           "spacing",
@@ -913,7 +934,16 @@ let toJson (theme: Theme) : string =
           jsonObject
               [ "sm", jsonString theme.Breakpoints.Sm
                 "md", jsonString theme.Breakpoints.Md
-                "lg", jsonString theme.Breakpoints.Lg ] ]
+                "lg", jsonString theme.Breakpoints.Lg ]
+          // Phase 2482. The series list rides an object keyed by its 1-based
+          // slot, because this wire shape has no arrays; the decoder rebuilds
+          // the order from the keys.
+          "charts",
+          jsonObject
+              [ "series", jsonObject (charts.Series |> List.mapi (fun i c -> string (i + 1), colorVarToJsonString c))
+                "positive", colorVarToJsonString charts.Positive
+                "negative", colorVarToJsonString charts.Negative
+                "neutral", colorVarToJsonString charts.Neutral ] ]
 
 // ─── fromJson — minimal hand-rolled JSON parser for the Theme wire shape ──
 //
@@ -1476,6 +1506,61 @@ let private breakpointsFromJson (path: string) (j: JsonValue) : Result<Breakpoin
         s "sm"
         >>= fun sm -> s "md" >>= fun md -> s "lg" >>= fun lg -> Ok { Sm = sm; Md = md; Lg = lg }
 
+/// Decode the chart token group (Phase 2482). `series` is an object keyed by
+/// 1-based slot (`"1"` … `"N"`, contiguous), which is how the order survives a
+/// wire shape with no arrays.
+let private chartsFromJson (path: string) (j: JsonValue) : Result<ChartTokens, string> =
+    expectObject path j
+    >>= fun m ->
+        let c name =
+            lookup name m >>= colorVarFromJson (path + "." + name)
+
+        lookup "series" m
+        >>= expectObject (path + ".series")
+        >>= fun series ->
+            let count = Map.count series
+            let keys = [ for i in 1..count -> string i ]
+
+            match keys |> List.tryFind (fun k -> not (Map.containsKey k series)) with
+            | Some missing ->
+                Error(
+                    sprintf
+                        "%s.series: expected contiguous 1-based slot keys \"1\"..\"%d\"; \"%s\" is missing"
+                        path
+                        count
+                        missing
+                )
+            | None ->
+                let decoded =
+                    keys
+                    |> List.map (fun k -> colorVarFromJson (sprintf "%s.series.%s" path k) series[k])
+
+                match
+                    decoded
+                    |> List.tryPick (function
+                        | Error e -> Some e
+                        | Ok _ -> None)
+                with
+                | Some e -> Error e
+                | None ->
+                    let colours =
+                        decoded
+                        |> List.choose (function
+                            | Ok v -> Some v
+                            | Error _ -> None)
+
+                    c "positive"
+                    >>= fun positive ->
+                        c "negative"
+                        >>= fun negative ->
+                            c "neutral"
+                            >>= fun neutral ->
+                                Ok
+                                    { Series = colours
+                                      Positive = positive
+                                      Negative = negative
+                                      Neutral = neutral }
+
 /// Parse a Theme from its flat-JSON wire shape. Returns `Error <message>`
 /// on malformed / missing field; the consumer (Portal / AI pipeline) wraps
 /// this in an error-surfacing step rather than crashing the renderer.
@@ -1521,19 +1606,27 @@ let fromJson (json: string) : Result<Theme, string> =
                                                             lookup "breakpoints" m
                                                             >>= breakpointsFromJson "breakpoints"
                                                             >>= fun breakpoints ->
-                                                                Ok
-                                                                    { Tones = tones
-                                                                      Spacing = spacing
-                                                                      FontScale = fontScale
-                                                                      FontWeight = fontWeight
-                                                                      LineHeight = lineHeight
-                                                                      Radius = radius
-                                                                      ButtonSize = buttonSize
-                                                                      BorderWidth = borderWidth
-                                                                      Interaction = interaction
-                                                                      TabBar = tabBar
-                                                                      Segmented = segmented
-                                                                      Breakpoints = breakpoints }
+                                                                // Phase 2482 — additive: a theme serialised
+                                                                // before the chart group existed carries no
+                                                                // `charts` key and decodes to the default.
+                                                                (match Map.tryFind "charts" m with
+                                                                 | Some j -> chartsFromJson "charts" j
+                                                                 | None -> Ok Fuaran.UI.Defaults.charts)
+                                                                >>= fun charts ->
+                                                                    Ok
+                                                                        { Tones = tones
+                                                                          Spacing = spacing
+                                                                          FontScale = fontScale
+                                                                          FontWeight = fontWeight
+                                                                          LineHeight = lineHeight
+                                                                          Radius = radius
+                                                                          ButtonSize = buttonSize
+                                                                          BorderWidth = borderWidth
+                                                                          Interaction = interaction
+                                                                          TabBar = tabBar
+                                                                          Segmented = segmented
+                                                                          Breakpoints = breakpoints
+                                                                          Charts = charts }
             | _ -> Error "root: expected object"
     with ex ->
         Error(sprintf "JSON parse failed: %s" ex.Message)
