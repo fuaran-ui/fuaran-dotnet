@@ -293,7 +293,7 @@ LayoutKind =
 DisplayKind =
 | Heading { level:int; text:TextSource; variant?:"Standard"|"Eyebrow"|"Caption"|"Lead" }
 | Markdown { text:TextSource }
-| Metric { label:TextSource; value:Binding_float; emphasis?:Emphasis; format?:CellFormat; icon?:str; subtext?:TextSource; tone?:ToneVariant; trend?:Binding_float; trendFormat?:CellFormat; trendPolarity?:"HigherIsBetter"|"LowerIsBetter"; weight?:StyleWeight }
+| Metric { label:TextSource; value:Binding_float; comparisons?:MetricComparison[]; emphasis?:Emphasis; format?:CellFormat; icon?:str; subtext?:TextSource; tone?:ToneVariant; trend?:Binding_float; trendFormat?:CellFormat; trendPolarity?:TrendPolarity; weight?:StyleWeight }
 | Badge { label:TextSource; variant?:"Neutral"|"Brand"|"Success"|"Warning"|"Critical"|"Info" }
 | Sparkline { source:Binding_list_float }
 | Callout { body:TextSource; dismissable?:bool; heading?:TextSource; icon?:str; tone?:ToneVariant }
@@ -653,6 +653,7 @@ FilterSpec { kind:FormFieldKind; label:TextSource; name:str }
 FormField { id:str; kind:FormFieldKind; label:TextSource; help?:TextSource; required?:bool; rule?:FieldRule }
 GuestChannel { direction:"OutOnly"|"TwoWay"; messageShape?:str }
 MapMarker { label:TextSource; latitude:num; longitude:num }
+MetricComparison { label:TextSource; value:Binding_float; format?:CellFormat; polarity?:TrendPolarity }
 SelectOption { label:TextSource; value:str }
 SemanticStyle { direction?:TextDirection; emphasis?:Emphasis; role?:StyleRole; tone?:ToneVariant; voice?:FontVoice; weight?:StyleWeight }
 SrcSetEntry { src:Binding_str; width:int }
@@ -679,6 +680,7 @@ StyleWeight = "Compact"|"Standard"|"Spacious"
 TextDirection = "auto"|"ltr"|"rtl"
 TimeGrain = "Second"|"Minute"|"Hour"|"Day"
 ToneVariant = "Default"|"Subdued"|"Brand"|"Success"|"Warning"|"Critical"|"Info"
+TrendPolarity = "HigherIsBetter"|"LowerIsBetter"
 ```
 <!-- /fuaran:signature-catalogue -->
 
@@ -789,6 +791,24 @@ target, `trendPolarity` says the fall is the good direction:
 {"id":"metric-inverted-polarity","kind":{"$type":"Metric","format":{"$type":"Duration","style":"Compact","unit":"Minutes"},"label":"Avg wait","subtext":"still above target","tone":"Warning","trend":-0.0734,"trendFormat":{"$type":"Percent","decimals":2},"trendPolarity":"LowerIsBetter","value":80}}
 ```
 <!-- /fuaran:example -->
+
+## A figure against two periods — `comparisons`, not `subtext`
+
+When a figure is compared against MORE than one period at once — yesterday against the
+same day last week AND last year — the further comparisons go in **`"comparisons"`** on
+the same `Metric`: a list of `{"label", "value", "format"?, "polarity"?}` entries, each
+rendered as one more trend line with its own glyph and its own improving / regressing
+reading. `label` says what the figure is compared against ("vs same day last year") and
+is required; `value` is the signed comparison, a number binding exactly like `trend`;
+`format` is a `CellFormat` (omit it for a plain number); `polarity` is
+`"HigherIsBetter"` (the default — omit it) or `"LowerIsBetter"`, read exactly as
+`trendPolarity` is.
+
+Do not write the second comparison into `subtext` as text: text has no glyph, no
+sentiment and no polarity, so a reader cannot tell at a glance which way it moved. And
+do not split one figure into two `Metric`s to get two trends — that shows the headline
+number twice, as two KPIs. `trend` stays the primary comparison; `comparisons` adds to
+it and never replaces it, and a tile with one comparison needs only `trend`.
 
 ## Selected, pre-selected, and derived state — the three idioms
 

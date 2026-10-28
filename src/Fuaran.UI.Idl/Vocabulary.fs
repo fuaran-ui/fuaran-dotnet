@@ -2048,6 +2048,33 @@ let private tabHeaderRecord =
           opt "disabled" (TUnion("Binding", [ TBool ])) ]
       Annotations = Annotations.Empty }
 
+/// Fuaran-UI Phase 2472 — one further comparison on a `Metric`: a figure measured
+/// against a second (or third) period at once — yesterday against the same weekday
+/// last week AND last year. `Metric.trend` stays the primary comparison and is
+/// untouched; each entry here renders as one more trend line under it, with its
+/// own glyph, sentiment and polarity, and its own LABEL — which the primary trend
+/// has never needed, since a tile with one comparison names it in `subtext`.
+///
+/// Irreducible under the charter's §1.2: two `Metric`s side by side repeat the
+/// headline figure as two KPIs; a `Badge` beside the tile carries a static tone
+/// that cannot be a function of a bound value's sign (the Phase 867 ground); and
+/// `subtext` over a formatted binding is text, so it loses the glyph, the
+/// sentiment and the polarity — which is exactly what the pilot lost. A record
+/// FIELD on the kind the author already chose is the §2.1 tier: no new choice.
+///
+/// `label` is REQUIRED: an unlabelled second comparison is ambiguous against the
+/// first. `format` omits at `None` (the `Metric.format` spelling) and `polarity`
+/// at `HigherIsBetter` (the `Metric.trendPolarity` default), so a comparison
+/// declared with only what it must say is three keys on the wire.
+let private metricComparisonRecord =
+    { Name = "MetricComparison"
+      Fields =
+        [ req "label" (TUnion("TextSource", []))
+          req "value" (TUnion("Binding", [ TFloat ]))
+          omit "format" (TUnion("CellFormat", [])) (VUnion("None", []))
+          omit "polarity" (TEnum "TrendPolarity") (VEnum "HigherIsBetter") ]
+      Annotations = Annotations.Empty }
+
 /// A `DataGrid` column, row-erased. Fuaran-UI Phase 425: `value` (the projection
 /// closure) and `field` (the declarative row-property name) are SIBLING optional
 /// slots, each omitted-when-None — a closure-authored column keeps
@@ -2595,6 +2622,9 @@ let displayKinds: IdlKind list =
             // Says nothing about `value`: a Metric with no `trend` that declares
             // a polarity is legal-but-inert.
             omit "trendPolarity" (TEnum "TrendPolarity") (VEnum "HigherIsBetter")
+            // Phase 2472 — further comparisons, each its own trend line. Omitted
+            // when empty, so every existing document keeps its bytes.
+            omit "comparisons" (TList(TRecord "MetricComparison")) (VList [])
             opt "icon" icon
             opt "subtext" TS ] }
       { Tag = "LabelValueRow"
@@ -3776,6 +3806,7 @@ let uiIdl: Idl =
           contentHashRecord
           srcSetEntryRecord
           trackEntryRecord
+          metricComparisonRecord
           treeItemRecord
           effectClassRecord ]
       Defaults = []

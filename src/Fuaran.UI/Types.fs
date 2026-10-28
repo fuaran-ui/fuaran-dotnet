@@ -1423,6 +1423,11 @@ and IconSpec = Generated.IconSpec
 /// `Defaults.metric`; AI emits only what differs.
 and MetricSpec = Generated.MetricSpec
 
+/// Phase 2472 — one further comparison on a Metric (label, value, format,
+/// polarity), rendered as one more trend line under the primary `Trend`
+/// (generated).
+and MetricComparison = Generated.MetricComparison
+
 /// §4k Q3.4 — tier/mode/status banner; sized for content blocks.
 /// Toasts are separate (§4n overlay surfaces, session 3+).
 and CalloutSpec = Generated.CalloutSpec

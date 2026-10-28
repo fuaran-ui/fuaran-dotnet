@@ -182,12 +182,34 @@ public sealed record MetricOptions
     /// </summary>
     public TrendPolarity TrendPolarity { get; init; } = TrendPolarity.HigherIsBetter;
 
+    /// <summary>
+    /// Further comparisons (Phase 2472), each rendered as one more trend line under
+    /// <see cref="Trend"/> with its own label, glyph and sentiment — a figure against
+    /// last week AND last year at once. Empty (the default) is omitted on the wire.
+    /// </summary>
+    public IEnumerable<MetricComparison>? Comparisons { get; init; }
+
     /// <summary>An optional leading icon name.</summary>
     public string? Icon { get; init; }
 
     /// <summary>Optional supporting subtext.</summary>
     public Text? Subtext { get; init; }
 }
+
+/// <summary>One further comparison on a <see cref="Fuaran.Metric"/> (Phase 2472).</summary>
+/// <param name="Label">What the figure is compared against ("vs same day last year"),
+/// rendered after the figure. Required: an unlabelled second comparison is ambiguous
+/// against the first.</param>
+/// <param name="Value">The comparison's signed value.</param>
+/// <param name="Format">Display format for the value; <c>null</c> is
+/// <see cref="CellFormat.None"/>, omitted on the wire.</param>
+/// <param name="Polarity">Which direction of movement is good, exactly as
+/// <see cref="MetricOptions.TrendPolarity"/>; the default is omitted on the wire.</param>
+public sealed record MetricComparison(
+    Text Label,
+    Binding<double> Value,
+    CellFormat? Format = null,
+    TrendPolarity Polarity = TrendPolarity.HigherIsBetter);
 
 /// <summary>Options for <see cref="Fuaran.Heading"/>.</summary>
 public sealed record HeadingOptions

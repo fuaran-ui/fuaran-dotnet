@@ -685,6 +685,15 @@ let private figureNote (locale: string option) (kind: string) : string list =
               else
                   $"<p><strong>Under {enc tag}:</strong> a reader-facing figure reads {enc reads}. This kind's value cannot carry it, so the examples keep the locale-free figure the screen renders; the Fact card shows the reader-facing one.</p>" ]
 
+/// Phase 2472 — the Metric card says where a SECOND comparison goes, because the
+/// design-seam pilot pushed one into the subtext as text and lost its glyph, its
+/// sentiment and its polarity.
+let private comparisonsNote (kind: string) : string list =
+    if kind = "Metric" then
+        [ "<p><strong>Comparisons:</strong> trend is the figure's primary comparison. A figure compared against more than one period (yesterday against last week and last year) carries each further one in comparisons: a label, a value, a format and a polarity, each rendered as its own trend line with its own glyph and reading. Not the subtext, which is text with no direction, and not a second Metric, which repeats the figure.</p>" ]
+    else
+        []
+
 // ─── Server-renderable previews ──────────────────────────────────────────────
 
 /// A static read-only table in the node's place, keeping its id and style. This is
@@ -829,6 +838,7 @@ let private componentCard
               $"<p><strong>Children:</strong> {enc (listOrNone (slotsOf kind))}.</p>"
               $"<p><strong>Required fields:</strong> {enc (listOrNone required)}.</p>"
               yield! figureNote locale kind.Tag
+              yield! comparisonsNote kind.Tag
               "</div>" ]
 
     let sections =
@@ -1158,6 +1168,10 @@ let private readme (idlVersion: int) (kindCount: int) (fragmentCount: int) (loca
           "Binding.Format with a locale; it yields text, so it goes in a text slot such as a Fact's value."
           "Design a figure kind's value as the locale-free text its card shows, and a reader-facing figure"
           "as text."
+          ""
+          "A Metric compared against more than one period keeps its primary comparison in trend and each"
+          "further one in comparisons, each its own trend line with a label, a glyph and a polarity. Do not"
+          "fold a second comparison into the subtext or split the figure into two Metrics."
           match locale with
           | Some tag -> $"This bundle was exported for {tag}: the Fact card shows a figure as a reader there reads it."
           | None -> ()

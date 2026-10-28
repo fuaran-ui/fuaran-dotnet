@@ -231,6 +231,7 @@ let metric: MetricSpec =
       Trend = Option.None
       TrendFormat = Option.None
       TrendPolarity = TrendPolarity.HigherIsBetter
+      Comparisons = []
       Icon = Option.None
       Subtext = Option.None }
 

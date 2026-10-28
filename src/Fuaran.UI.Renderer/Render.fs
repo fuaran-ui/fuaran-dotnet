@@ -1670,6 +1670,9 @@ and private kindKeys<'Msg> (channel: KeyChannel) (kind: NodeKind<'Msg>) : string
             keysOfText channel k.Label
             @ keysOfBinding channel k.Value
             @ keysOfBindingOpt channel k.Trend
+            // Phase 2472 - each further comparison's label and value.
+            @ (k.Comparisons
+               |> List.collect (fun c -> keysOfText channel c.Label @ keysOfBinding channel c.Value))
             @ keysOfTextOpt channel k.Subtext
 
         __v, []

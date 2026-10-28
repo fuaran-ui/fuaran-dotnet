@@ -1096,8 +1096,20 @@ let private defs: (string * J) list =
             // Phase 867 - omitted-when-default like the stylistic fields above,
             // so it stays out of `required` and lives in `props`.
             "trendPolarity", ref "TrendPolarity"
+            // Phase 2472 - further comparisons, omitted when empty.
+            "comparisons", arrayOf (ref "MetricComparison")
             "icon", str
             "subtext", ref "TextSource" ]
+
+      // Phase 2472 - one further comparison: label + value required; format and
+      // polarity omit at their identity defaults, as the tile's own do.
+      "MetricComparison",
+      record
+          [ "label"; "value" ]
+          [ "format", ref "CellFormat"
+            "label", ref "TextSource"
+            "polarity", ref "TrendPolarity"
+            "value", binding "float" ]
 
       "HeadingSpec",
       // Phase 2300 — the declared-default rule: `variant` (and every other field

@@ -3974,6 +3974,39 @@ let rec private decodeAction (path: string) (j: Json) : Result<Action<obj>, Deco
 
 // ─── Spec decoders ───────────────────────────────────────────────────────
 
+/// Phase 2472 — one further comparison on a `Metric`. `label` and `value` are
+/// required; `format` and `polarity` omit at their identity defaults, exactly as
+/// the tile's own `format` and `trendPolarity` do.
+let private decodeMetricComparison (path: string) (j: Json) : Result<MetricComparison, DecodeError> =
+    match requireObject path j with
+    | Error e -> Error e
+    | Ok fields ->
+        let labelR =
+            requireField path fields "label" "comparison label TextSource"
+            |> Result.bind (decodeTextSource (path + ".label"))
+
+        let valueR =
+            requireField path fields "value" "comparison value binding"
+            |> Result.bind (decodeBindingFloat (path + ".value"))
+
+        let formatR =
+            fieldOrDefault fields "format" CellFormat.None (decodeCellFormat (path + ".format"))
+
+        let polarityR =
+            fieldOrDefault fields "polarity" TrendPolarity.HigherIsBetter (decodeTrendPolarity (path + ".polarity"))
+
+        match labelR, valueR, formatR, polarityR with
+        | Ok label, Ok value, Ok format, Ok polarity ->
+            Ok
+                { Label = label
+                  Value = value
+                  Format = format
+                  Polarity = polarity }
+        | Error e, _, _, _
+        | _, Error e, _, _
+        | _, _, Error e, _
+        | _, _, _, Error e -> Error e
+
 let private decodeMetricSpec (path: string) (j: Json) : Result<MetricSpec, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
@@ -4046,6 +4079,17 @@ let private decodeMetricSpec (path: string) (j: Json) : Result<MetricSpec, Decod
             | None -> Ok TrendPolarity.HigherIsBetter
             | Some v -> decodeTrendPolarity (path + ".trendPolarity") v
 
+        // Phase 2472 - omitted when empty, so a document without it decodes to
+        // exactly the single-trend tile it always was.
+        let comparisonsR =
+            match tryField fields "comparisons" with
+            | None -> Ok []
+            | Some v ->
+                requireArray (path + ".comparisons") v
+                |> Result.bind (
+                    traverseIndexed (fun i el -> decodeMetricComparison (sprintf "%s.comparisons[%d]" path i) el)
+                )
+
         let iconR =
             match tryField fields "icon" with
             | None -> Ok None
@@ -4057,7 +4101,18 @@ let private decodeMetricSpec (path: string) (j: Json) : Result<MetricSpec, Decod
             | Some v -> decodeTextSource (path + ".subtext") v |> Result.map Some
 
         match
-            labelR, sourceR, formatR, toneR, weightR, emphasisR, trendR, trendFormatR, trendPolarityR, iconR, subtextR
+            labelR,
+            sourceR,
+            formatR,
+            toneR,
+            weightR,
+            emphasisR,
+            trendR,
+            trendFormatR,
+            trendPolarityR,
+            comparisonsR,
+            iconR,
+            subtextR
         with
         | Ok label,
           Ok source,
@@ -4068,6 +4123,7 @@ let private decodeMetricSpec (path: string) (j: Json) : Result<MetricSpec, Decod
           Ok trend,
           Ok trendFormat,
           Ok trendPolarity,
+          Ok comparisons,
           Ok icon,
           Ok subtext ->
             Ok
@@ -4080,19 +4136,21 @@ let private decodeMetricSpec (path: string) (j: Json) : Result<MetricSpec, Decod
                   Trend = trend
                   TrendFormat = trendFormat
                   TrendPolarity = trendPolarity
+                  Comparisons = comparisons
                   Icon = icon
                   Subtext = subtext }
-        | Error e, _, _, _, _, _, _, _, _, _, _
-        | _, Error e, _, _, _, _, _, _, _, _, _
-        | _, _, Error e, _, _, _, _, _, _, _, _
-        | _, _, _, Error e, _, _, _, _, _, _, _
-        | _, _, _, _, Error e, _, _, _, _, _, _
-        | _, _, _, _, _, Error e, _, _, _, _, _
-        | _, _, _, _, _, _, Error e, _, _, _, _
-        | _, _, _, _, _, _, _, Error e, _, _, _
-        | _, _, _, _, _, _, _, _, Error e, _, _
-        | _, _, _, _, _, _, _, _, _, Error e, _
-        | _, _, _, _, _, _, _, _, _, _, Error e -> Error e
+        | Error e, _, _, _, _, _, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _, _, _, _, _, _
+        | _, _, Error e, _, _, _, _, _, _, _, _, _
+        | _, _, _, Error e, _, _, _, _, _, _, _, _
+        | _, _, _, _, Error e, _, _, _, _, _, _, _
+        | _, _, _, _, _, Error e, _, _, _, _, _, _
+        | _, _, _, _, _, _, Error e, _, _, _, _, _
+        | _, _, _, _, _, _, _, Error e, _, _, _, _
+        | _, _, _, _, _, _, _, _, Error e, _, _, _
+        | _, _, _, _, _, _, _, _, _, Error e, _, _
+        | _, _, _, _, _, _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, _, _, _, _, _, Error e -> Error e
 
 let private decodeHeadingSpec (path: string) (j: Json) : Result<HeadingSpec, DecodeError> =
     match requireObject path j with

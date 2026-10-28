@@ -460,38 +460,52 @@ module DisplayPlan =
         let text = BindingResolver.resolveTextSource sources
 
         // Phase 867 — the trend element carries a SENTIMENT (sign and declared
-        // polarity), not a constant; `tone` colours the tile alone.
+        // polarity), not a constant; `tone` colours the tile alone. Phase 2472 —
+        // the same line serves every further comparison, whose label follows
+        // the figure ("▲ +4.0% vs last year"); the primary trend has none.
+        let trendLine polarity format (label: string option) (binding: Binding<float>) =
+            match BindingResolver.tryResolveScalarFloat sources binding with
+            | Some t ->
+                let sentiment, glyph = Theme.trendSentiment polarity t
+
+                let figure =
+                    match label with
+                    | Some l -> Formatting.formatNumber format t + " " + l
+                    | None -> Formatting.formatNumber format t
+
+                Plan.classChildren
+                    "div"
+                    (Css.metricTrend sentiment)
+                    [ Plan.element
+                          "span"
+                          [ Prop.Attr("class", Css.Class.MetricTrendGlyph)
+                            Prop.Attr("role", "img")
+                            Prop.Attr("aria-label", sentiment) ]
+                          (Content.Text glyph)
+                      Plan.TextNode figure ]
+            | None -> Plan.classText "div" Css.Class.MetricTrend ""
+
         let trend =
-            match spec.Trend with
-            | Some trendBinding ->
-                match BindingResolver.tryResolveScalarFloat sources trendBinding with
-                | Some t ->
-                    let sentiment, glyph = Theme.trendSentiment spec.TrendPolarity t
+            spec.Trend
+            |> Plan.ofOption (
+                trendLine spec.TrendPolarity (spec.TrendFormat |> Option.defaultValue CellFormat.None) None
+            )
 
-                    Plan.classChildren
-                        "div"
-                        (Css.metricTrend sentiment)
-                        [ Plan.element
-                              "span"
-                              [ Prop.Attr("class", Css.Class.MetricTrendGlyph)
-                                Prop.Attr("role", "img")
-                                Prop.Attr("aria-label", sentiment) ]
-                              (Content.Text glyph)
-                          Plan.TextNode(
-                              Formatting.formatNumber (spec.TrendFormat |> Option.defaultValue CellFormat.None) t
-                          ) ]
-                | None -> Plan.classText "div" Css.Class.MetricTrend ""
-            | None -> Plan.Nothing
+        let comparisons =
+            spec.Comparisons
+            |> List.map (fun c -> trendLine c.Polarity c.Format (Some(text c.Label)) c.Value)
 
-        Plan.classChildren
-            "div"
-            (Css.metric (Theme.toneVar spec.Tone))
+        let head =
             [ spec.Icon |> Plan.ofOption (iconHook Css.Class.MetricIcon)
               Plan.classText "div" Css.Class.MetricLabel (text spec.Label)
               Plan.classText "div" Css.Class.MetricValue (scalarText spec.Format resolution)
-              trend
-              spec.Subtext
-              |> Plan.ofOption (fun s -> Plan.classText "div" Css.Class.MetricSubtext (text s)) ]
+              trend ]
+
+        let subtext =
+            spec.Subtext
+            |> Plan.ofOption (fun s -> Plan.classText "div" Css.Class.MetricSubtext (text s))
+
+        Plan.classChildren "div" (Css.metric (Theme.toneVar spec.Tone)) (head @ comparisons @ [ subtext ])
 
     /// A labelled TEXT fact tile — Metric's chrome for a TextSource value.
     let fact (sources: BindingResolver.BindingSources) (spec: FactSpec) : Plan<'E> =
