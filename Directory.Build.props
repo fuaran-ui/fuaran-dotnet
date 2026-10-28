@@ -829,7 +829,7 @@
          precedent a new packaged asset is a public-contract addition and never
          rides a same-version repack; no released version is repacked. See
          STABILITY.md "0.98.0". -->
-    <Version>0.98.0</Version>
+    <Version>0.98.1</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org
