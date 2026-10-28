@@ -599,3 +599,269 @@ let figures =
                       (fun () -> Bundle.build Defaults.theme None (withLocale tag) |> ignore)
                       $"\"{tag}\" is refused rather than formatted under the invariant culture"
           } ]
+
+// ─── Common shapes (Phase 2475) ───────────────────────────────────────────────
+//
+// The README teaches five shapes as combinations of kinds. These tests hold the
+// teaching to the tree: the section exists and its check can go red, the cards a
+// shape touches point at it, and each combination renders as the README says.
+
+let private serverRender (node: Node<unit>) : string =
+    Fuaran.UI.Renderer.Server.Render.render
+        Fuaran.UI.Renderer.BindingResolver.empty
+        (Node.mapMsg (fun () -> obj ()) node)
+
+let private md (id: string) (text: string) : Node<unit> = Fuaran.markdown id text
+
+let private readmeOf (bundle: Bundle.Bundle) =
+    (bundle.Files |> List.find (fun f -> f.Path = "README.md")).Content
+
+let private shapeNames =
+    [ "Columns that share the width"
+      "A status message holding rows"
+      "A progress bar showing its value"
+      "A row of key figures"
+      "A table whose cells carry a status" ]
+
+[<Tests>]
+let commonShapes =
+    testList
+        "Design-system bundle — common shapes"
+        [ test "the README teaches each shape, and the check holds" {
+              let bundle = Bundle.build Defaults.theme None (defaults ())
+              let readme = readmeOf bundle
+              Expect.stringContains readme "\n## Common shapes\n" "the section exists"
+
+              for name in shapeNames do
+                  Expect.stringContains readme $"### {name}\n" $"the README teaches \"{name}\""
+
+              Expect.stringContains readme "Uses: SplitPanel (weight, children)" "a shape names its kinds and fields"
+              Expect.stringContains readme "the kpi-strip fragment" "the key-figure row names its fragment"
+              Expect.stringContains readme "(a drill) is not taught here yet" "the drill is named as not yet taught"
+              Expect.isEmpty (Bundle.check bundle) "the bundle checks hold"
+          }
+
+          test "go-red: a kind a shape names, removed from the IDL list, is named" {
+              let bundle = Bundle.build Defaults.theme None (defaults ())
+
+              let without =
+                  { bundle with
+                      Kinds = bundle.Kinds |> List.filter (fun k -> k.Tag <> "SplitPanel") }
+
+              Expect.contains
+                  (Bundle.check without)
+                  "Common shape \"Columns that share the width\" names kind SplitPanel, which the IDL does not declare"
+                  "the removed kind is named against the shape that teaches it"
+          }
+
+          test "go-red: a field a shape names, renamed in the IDL, is named" {
+              let bundle = Bundle.build Defaults.theme None (defaults ())
+
+              let rename (f: Bundle.IdlField) =
+                  if f.Name = "comparisons" then
+                      { f with Name = "compare" }
+                  else
+                      f
+
+              let renamed =
+                  { bundle with
+                      Kinds =
+                          bundle.Kinds
+                          |> List.map (fun k ->
+                              if k.Tag = "Metric" then
+                                  { k with
+                                      Fields = List.map rename k.Fields }
+                              else
+                                  k) }
+
+              Expect.contains
+                  (Bundle.check renamed)
+                  "Common shape \"A row of key figures\" names Metric.comparisons, a field the IDL does not declare"
+                  "the renamed field is named"
+          }
+
+          test "go-red: a README without the section is named" {
+              let bundle = Bundle.build Defaults.theme None (defaults ())
+
+              let stripped =
+                  { bundle with
+                      Files =
+                          bundle.Files
+                          |> List.map (fun f ->
+                              if f.Path = "README.md" then
+                                  { f with
+                                      Content = f.Content.Replace("## Common shapes", "## Shapes") }
+                              else
+                                  f) }
+
+              Expect.contains (Bundle.check stripped) "README.md has no Common shapes section" "the section is checked"
+          }
+
+          test "the cards a shape touches point at the section" {
+              let bundle = Bundle.build Defaults.theme None (defaults ())
+
+              for kind in [ "SplitPanel"; "Box"; "Callout"; "Progress"; "Metric"; "DataGrid" ] do
+                  Expect.stringContains
+                      (cardHtml bundle kind)
+                      "<strong>Common shapes:</strong>"
+                      $"the {kind} card points at Common shapes"
+
+              Expect.stringContains
+                  (cardHtml bundle "Callout")
+                  "A status message holding rows"
+                  "the Callout card names the shape it is the tempting wrong kind for"
+
+              Expect.isFalse
+                  ((cardHtml bundle "Toast").Contains "<strong>Common shapes:</strong>")
+                  "a kind no shape names carries no pointer"
+          }
+
+          test "columns: a SplitPanel shares the row by weight, a Grid Box equally" {
+              let split =
+                  serverRender (
+                      Fuaran.splitPanel
+                          "cols"
+                          { Defaults.splitPanel with
+                              Weight = 0.6
+                              Children = [ md "l" "Left"; md "r" "Right" ] }
+                  )
+
+              Expect.stringContains split "style=\"flex:0.600000 1 0\"" "the first pane takes the weight"
+              Expect.stringContains split "style=\"flex:0.400000 1 0\"" "the second pane takes the rest"
+
+              let grid =
+                  serverRender (
+                      Fuaran.box
+                          "g"
+                          { Defaults.box with
+                              Layout = BoxLayout.Grid(3, None, None)
+                              Children = [ md "a" "A"; md "b" "B"; md "c" "C" ] }
+                  )
+
+              Expect.stringContains grid "grid-template-columns:repeat(3, 1fr)" "a Grid Box shares the width equally"
+          }
+
+          test "status with rows: one Card region, the Badge carries the tone" {
+              let html =
+                  serverRender (
+                      Fuaran.box
+                          "q"
+                          { Defaults.box with
+                              Role = BoxRole.Card
+                              Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
+                              Heading = Some(TextSource.Literal "Data quality")
+                              Children =
+                                  [ Fuaran.badge
+                                        "q-status"
+                                        { Defaults.badge with
+                                            Label = TextSource.Literal "Needs attention"
+                                            Variant = BadgeVariant.Warning }
+                                    Fuaran.labelValueRow
+                                        "q-rows"
+                                        { Defaults.labelValueRow with
+                                            Label = TextSource.Literal "Rows checked"
+                                            Value = Binding.Static(Some 1200.0) } ] }
+                  )
+
+              let body = html.IndexOf "fuaran-card-body"
+              Expect.isGreaterThan body 0 "the Card has a body"
+              Expect.isGreaterThan (html.IndexOf "fuaran-badge-warning") body "the toned Badge sits inside the Card"
+              Expect.isGreaterThan (html.IndexOf "Rows checked") body "the rows sit inside the Card"
+          }
+
+          test "progress with its value: label, bar and value in one grid row" {
+              let bar =
+                  Fuaran.progress
+                      "band-bar"
+                      { Defaults.progress with
+                          Fraction = Binding.Static(Some 0.62) }
+
+              let bar =
+                  { bar with
+                      Accessibility =
+                          bar.Accessibility
+                          |> Option.map (fun a ->
+                              { a with
+                                  LabelledBy = Some "band-label" }) }
+
+              let value =
+                  TextSource.Bound(
+                      Binding.Format(Binding.Static(Some 0.62), Format.Percent(Some 0), LocaleSource.Explicit "en-GB")
+                  )
+
+              let html =
+                  serverRender (
+                      Fuaran.box
+                          "band"
+                          { Defaults.box with
+                              Layout = BoxLayout.Grid(3, Some "minmax(0, 1fr) minmax(0, 2fr) auto", None)
+                              Children =
+                                  [ md "band-label" "Search"
+                                    bar
+                                    Fuaran.markdownSpec "band-value" { Defaults.markdown with Text = value } ] }
+                  )
+
+              Expect.stringContains html "grid-template-columns:minmax(0, 1fr) minmax(0, 2fr) auto" "three cells"
+              Expect.stringContains html "aria-labelledby=\"band-label\"" "the bar is named by its label"
+              Expect.stringContains html "width:62.000000%" "the bar follows the fraction"
+              Expect.stringContains html "<p>62%</p>" "the value is the formatted fraction"
+              Expect.isFalse (html.Contains "fuaran-progress-label") "the bar carries no merged label"
+          }
+
+          test "key figures: Metrics with comparisons share a Grid row" {
+              let figure (i: int) : Node<unit> =
+                  Fuaran.metric
+                      $"kpi-{i}"
+                      { Defaults.metric with
+                          Label = TextSource.Literal $"Figure {i}"
+                          Value = Binding.Static(Some 10.0)
+                          Trend = Some(Binding.Static(Some 0.05))
+                          TrendFormat = Some(CellFormat.Percent(Some 0))
+                          Comparisons =
+                              [ { Label = TextSource.Literal "vs last year"
+                                  Value = Binding.Static(Some -0.02)
+                                  Format = CellFormat.Percent(Some 0)
+                                  Polarity = TrendPolarity.HigherIsBetter } ] }
+
+              let html =
+                  serverRender (
+                      Fuaran.box
+                          "kpis"
+                          { Defaults.box with
+                              Layout = BoxLayout.Grid(3, None, None)
+                              Children = [ figure 1; figure 2; figure 3 ] }
+                  )
+
+              Expect.stringContains html "grid-template-columns:repeat(3, 1fr)" "the figures share the width"
+              Expect.stringContains html "vs last year" "the further comparison is its own trend line"
+
+              let strip =
+                  serverRender (
+                      Stdlib.kpiStrip<unit>
+                          .Materialize(Map.ofList [ "heading", ("This week" :> obj); "count", (3 :> obj) ])
+                  )
+
+              Expect.stringContains strip "kpi-strip-metric-3" "the kpi-strip fragment lays out its figures"
+          }
+
+          test "a table whose cells carry a status: a static DataGrid with a TonedPill column" {
+              let html =
+                  serverRender (
+                      Fuaran.tableWithColumns
+                          "t"
+                          [ TableColumn.text "name"
+                            TableColumn.tonedPill
+                                "status"
+                                (Map.ofList [ "Late", ToneVariant.Critical; "On time", ToneVariant.Success ])
+                                ToneVariant.Default ]
+                          { Defaults.table<unit> with
+                              Headers = [ TextSource.Literal "Name"; TextSource.Literal "Status" ]
+                              Rows =
+                                  [ [ TextSource.Literal "A"; TextSource.Literal "Late" ]
+                                    [ TextSource.Literal "B"; TextSource.Literal "On time" ] ] }
+                  )
+
+              Expect.stringContains html "<table class=\"fuaran-table\">" "a static table"
+              Expect.stringContains html "fuaran-pill-critical\">Late" "a late row is a Critical pill"
+              Expect.stringContains html "fuaran-pill-success\">On time" "an on-time row is a Success pill"
+          } ]

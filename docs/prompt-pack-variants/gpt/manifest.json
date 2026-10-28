@@ -6,20 +6,20 @@
   "artifacts": { "systemPrompt": "system-prompt.md", "fewShot": "few-shot.jsonl" },
   "schema": "../../prompt-pack/schema.json",
   "schemaNote": "The wire schema is the CONTRACT, not a compiled dimension — every variant shares the canonical artefact rather than carrying a copy.",
-  "variantSha256": "sha256:896038800f6135653e1c724b924fa46c14a203c74bef7e126173d16fcc65936d",
-  "bytes": { "systemPrompt": 101762, "fewShot": 13158, "total": 114920 },
+  "variantSha256": "sha256:adae5799d18e4a0b4cc8a7fede8eb6b1b54ab29ab7a661a583774f9f5370d0b8",
+  "bytes": { "systemPrompt": 103920, "fewShot": 13158, "total": 117078 },
   "source": {
     "pack": "docs/prompt-pack-lenient",
-    "systemPromptSha256": "sha256:0e7a59ed1588ca819ae2fbf0ece5f971dc12276811804ea14f7f742705d55f7d",
+    "systemPromptSha256": "sha256:9d8bc85e6ead2a1be74e9841bd00db0ca3f143060e2857a398bf3b99809bf783",
     "fewShotSha256": "sha256:b73b5cb3ec058d5ecc2183038d605b338b30dba9f2338afe32cc5b488c992969"
   },
   "index": {
     "file": "../../tools/section-demand-index.json",
-    "sha256": "sha256:84f41b410d97789016bee46b0d039a6df4e23141a5ae991127b80433b10be315"
+    "sha256": "sha256:9983ee0c1c3e815637685734ac6c80aaa2a19189117f4ba940cf7a88a865049b"
   },
   "dimensions": {
     "dialect": { "value": "lenient", "why": "flip record line 809: | \u0060gpt-5.6-terra@low\u0060 | 11/12 (was 10/12) | \u22126.3% | **ADOPT** \u2014 same |" },
-    "sections": { "included": 32, "excluded": 0, "unknownDefaultedIn": 29 },
+    "sections": { "included": 33, "excluded": 0, "unknownDefaultedIn": 30 },
     "perHost": { "enabled": false, "why": "default OFF — no --host-manifest supplied" }
   },
   "alwaysCore": {
@@ -261,6 +261,14 @@
     },
     {
       "key": "Empty states and other actionable messages \u2014 a Card \u0060Box\u0060, not a \u0060Callout\u0060",
+      "decision": "included",
+      "class": "unknown",
+      "alwaysCore": false,
+      "why": "unknown on this family\u0027s flip record \u2014 included, the conservative default",
+      "evidence": []
+    },
+    {
+      "key": "Shapes that are combinations, not kinds",
       "decision": "included",
       "class": "unknown",
       "alwaysCore": false,

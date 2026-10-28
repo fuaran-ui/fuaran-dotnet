@@ -694,6 +694,132 @@ let private comparisonsNote (kind: string) : string list =
     else
         []
 
+// ─── Common shapes (Phase 2475) ───────────────────────────────────────────────
+//
+// A shape a designer reaches for that is a COMBINATION of kinds, not a kind of its
+// own. The design-seam pilot lost three of them: the designer composed each from
+// the kind that looked closest, and the lowering followed. The README teaches the
+// combination and names the tempting kind; the cards a shape touches point at it;
+// `check` keeps every kind, field and fragment a shape names in the IDL, so a
+// rename goes red here instead of leaving the teaching to name a part that is gone.
+//
+// Each combination was rendered through the server renderer before it was taught.
+// A Card Box's node tone is not painted (the Box card shows Tone as not shown), so
+// a status message's tone rides a toned Badge inside the Card.
+
+/// A shape taught as a combination of kinds.
+type private CommonShape =
+    {
+        /// The heading the README and the cards use.
+        Name: string
+        /// The kinds the combination uses, each with the wire fields it sets.
+        Uses: (string * string list) list
+        /// The stdlib fragments the combination applies.
+        Fragments: string list
+        /// The tempting kinds, each with what of it a designer reaches for.
+        Tempting: (string * string) list
+        /// The README prose: the combination, then why the tempting kind loses.
+        Text: string list
+    }
+
+/// The README heading the section sits under; `check` looks for it.
+[<Literal>]
+let private commonShapesHeading = "## Common shapes"
+
+let private commonShapes: CommonShape list =
+    [ { Name = "Columns that share the width"
+        Uses = [ "SplitPanel", [ "weight"; "children" ]; "Box", [ "layout"; "children" ] ]
+        Fragments = []
+        Tempting = [ "Box", "a Flex layout" ]
+        Text =
+          [ "Two columns sharing the row at a ratio are a `SplitPanel`: its first child takes `weight` of the width"
+            "(0.5 for halves, 0.6 for three fifths) and the second the rest, each in its own pane. `weight` is that"
+            "share, not the Weight density axis. Three or more columns are a `Box` whose `layout` is `Grid` with"
+            "`cols`, which shares the width equally; `templateColumns` sets unequal shares."
+            ""
+            "Not a `Box` with a `Flex` layout: a flex row sizes each child to its content and has no grow or basis,"
+            "so the columns render narrow." ] }
+      { Name = "A status message holding rows"
+        Uses = [ "Box", [ "role"; "heading"; "children" ]; "Badge", [ "label"; "variant" ] ]
+        Fragments = []
+        Tempting = [ "Callout", "its body" ]
+        Text =
+          [ "One bordered region: a `Box` with `role` Card, its `heading` naming the subject, and its `children` a"
+            "`Badge` carrying the status (its `variant` is the tone) followed by the rows (LabelValueRow, Fact,"
+            "Markdown). The tone goes on the Badge: the Box card shows Tone as not painted, so a tone set on the"
+            "Card itself would not show."
+            ""
+            "Not a `Callout`: its `body` is text and it holds no children, so the rows end up in a second region"
+            "beside it." ] }
+      { Name = "A progress bar showing its value"
+        Uses =
+          [ "Box", [ "layout"; "children" ]
+            "Progress", [ "fraction" ]
+            "Markdown", [ "text" ] ]
+        Fragments = []
+        Tempting = [ "Progress", "its label" ]
+        Text =
+          [ "Three cells in a `Box` whose `layout` is `Grid` with `templateColumns` (for example"
+            "`minmax(0, 1fr) minmax(0, 2fr) auto`): the label as `Markdown`, the `Progress` with its `fraction`"
+            "and no `label`, and the value as `Markdown` whose `text` is the fraction through Binding.Format with"
+            "a Percent format. Several bars are one such Box with three cells per bar, so labels, bars and values"
+            "line up in columns. Point each bar at its label through `accessibility.labelledBy`."
+            ""
+            "Not the label and the value merged into the Progress `label`: that is one line of text above the bar,"
+            "and the value can no longer line up or follow the fraction." ] }
+      { Name = "A row of key figures"
+        Uses = [ "Metric", [ "trend"; "comparisons" ]; "Box", [ "layout"; "children" ] ]
+        Fragments = [ "kpi-strip" ]
+        Tempting = [ "Fact", "a figure as text" ]
+        Text =
+          [ "The `kpi-strip` fragment: a heading and one to six `Metric`s, each figure's format, trend and"
+            "polarity a hole, and its label, value and trend read from host state. A row whose figures share the"
+            "width, or compare against more than one period, is a `Box` whose `layout` is `Grid` with `cols` set"
+            "to the figure count, holding `Metric`s; a figure's further comparison is an entry in its"
+            "`comparisons`."
+            ""
+            "Not `Fact`s or Markdown numbers, which carry no trend and no polarity, and not a second comparison"
+            "written into a Metric's subtext." ] }
+      { Name = "A table whose cells carry a status"
+        Uses = [ "DataGrid", [ "staticRows"; "columns" ] ]
+        Fragments = []
+        Tempting = [ "Badge", "a pill per cell" ]
+        Text =
+          [ "A static `DataGrid`: `staticRows` holds the headers and the cells, and `columns`, read by position,"
+            "says how each column's cells draw. A column whose cell kind is TonedPill draws each cell as a pill"
+            "toned by its value through the column's map (a rise Success, a fall Critical); declare a Text column"
+            "ahead of it to keep the positions aligned."
+            ""
+            "Not a `Badge` per cell: Badge is a node, never a cell, and a column of nodes is no longer a table." ] } ]
+
+/// The "Common shapes" lines of a kind's authoring note: the shapes it is part of,
+/// and the shapes it is the tempting wrong part for.
+let private shapesNote (kind: string) : string list =
+    let quoted (s: CommonShape) = $"“{s.Name}”"
+
+    let partOf =
+        commonShapes
+        |> List.filter (fun s -> s.Uses |> List.exists (fun (k, _) -> k = kind))
+        |> List.map quoted
+
+    let notFor =
+        commonShapes
+        |> List.choose (fun s ->
+            s.Tempting
+            |> List.tryFind (fun (k, _) -> k = kind)
+            |> Option.map (fun (_, what) -> $"{quoted s} (not {what})"))
+
+    if List.isEmpty partOf && List.isEmpty notFor then
+        []
+    else
+        let parts =
+            [ if not (List.isEmpty partOf) then
+                  "part of " + String.concat ", " partOf
+              if not (List.isEmpty notFor) then
+                  "composed otherwise for " + String.concat ", " notFor ]
+
+        [ $"""<p><strong>Common shapes:</strong> {enc (String.concat "; " parts)}. The README's Common shapes section gives each combination.</p>""" ]
+
 // ─── Server-renderable previews ──────────────────────────────────────────────
 
 /// A static read-only table in the node's place, keeping its id and style. This is
@@ -850,6 +976,7 @@ let private componentCard
               $"<p><strong>Required fields:</strong> {enc (listOrNone required)}.</p>"
               yield! figureNote locale kind.Tag
               yield! comparisonsNote kind.Tag
+              yield! shapesNote kind.Tag
               "</div>" ]
 
     let sections =
@@ -1191,6 +1318,26 @@ let private readme (idlVersion: int) (kindCount: int) (fragmentCount: int) (loca
           ""
           "One card per certified stdlib fragment: a reusable composite with typed holes. Apply one by"
           "name and bind its holes; its example binds every hole."
+          ""
+          commonShapesHeading
+          ""
+          "A shape below is a combination of the parts above, not a part of its own. Compose it as written: the"
+          "kind it is tempting to reach for instead loses something on the way to a tree."
+          for s in commonShapes do
+              ""
+              $"### {s.Name}"
+              ""
+              yield! s.Text
+              ""
+
+              let uses =
+                  s.Uses |> List.map (fun (k, fields) -> $"""{k} ({String.concat ", " fields})""")
+
+              let fragments = s.Fragments |> List.map (fun f -> $"the {f} fragment")
+              $"""Uses: {String.concat "; " (fragments @ uses)}."""
+          ""
+          "A row a reader selects to open its detail (a drill) is not taught here yet: whether a static table's"
+          "rows can be selected is still being settled, and this section names no shape for it until it is."
           "" ]
 
 // ─── Content hash ─────────────────────────────────────────────────────────────
@@ -1389,6 +1536,46 @@ let private shownFindings (bundle: Bundle) : string list =
 /// Type, Colors and Spacing card, no Colors token is a literal colour, every card's
 /// first line is a marker naming one of the five groups, and every card shows what
 /// it says it shows (`shownFindings`).
+/// Phase 2475 — the README's Common shapes section exists, names each shape, and
+/// every kind, field and fragment a shape names is one the IDL and the stdlib
+/// declare. A renamed or removed kind is a finding here, not a stale lesson.
+let private commonShapeFindings (bundle: Bundle) : string list =
+    let kinds = bundle.Kinds |> List.map (fun k -> k.Tag, k) |> Map.ofList
+    let fragments = Stdlib.all<unit> |> List.map _.Name |> Set.ofList
+
+    let readme =
+        bundle.Files
+        |> List.tryFind (fun f -> f.Path = "README.md")
+        |> Option.map _.Content
+
+    [ match readme with
+      | None -> yield "README.md is missing, so the Common shapes section is too"
+      | Some text ->
+          if not (text.Contains(commonShapesHeading + "\n", StringComparison.Ordinal)) then
+              yield "README.md has no Common shapes section"
+
+          for s in commonShapes do
+              if not (text.Contains($"### {s.Name}\n", StringComparison.Ordinal)) then
+                  yield $"README.md Common shapes does not teach \"{s.Name}\""
+      for s in commonShapes do
+          for (tag, fields) in s.Uses do
+              match Map.tryFind tag kinds with
+              | None -> yield $"Common shape \"{s.Name}\" names kind {tag}, which the IDL does not declare"
+              | Some k ->
+                  let declared = k.Fields |> List.map _.Name |> Set.ofList
+
+                  for f in fields do
+                      if not (Set.contains f declared) then
+                          yield $"Common shape \"{s.Name}\" names {tag}.{f}, a field the IDL does not declare"
+
+          for (tag, _) in s.Tempting do
+              if not (Map.containsKey tag kinds) then
+                  yield $"Common shape \"{s.Name}\" names kind {tag}, which the IDL does not declare"
+
+          for f in s.Fragments do
+              if not (Set.contains f fragments) then
+                  yield $"Common shape \"{s.Name}\" names fragment {f}, which the stdlib does not declare" ]
+
 let check (bundle: Bundle) : string list =
     let cardsIn group =
         bundle.Cards |> List.filter (fun c -> c.Group = group)
@@ -1430,6 +1617,7 @@ let check (bundle: Bundle) : string list =
                   yield
                       $"card {c.Path}: marker group {CardGroup.label g} disagrees with its group {CardGroup.label c.Group}"
               | None -> yield $"card {c.Path}: marker group \"{m.Groups[1].Value}\" is not one of the five"
+      yield! commonShapeFindings bundle
       yield! shownFindings bundle ]
 
 // ─── Write ────────────────────────────────────────────────────────────────────

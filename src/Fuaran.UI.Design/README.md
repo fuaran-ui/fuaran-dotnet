@@ -46,7 +46,7 @@ typeface (`:root { font-family: … }`) and begin with an `@import` that loads a
 manifest.json          file list with hashes, cards by group, colour roles, content hash, IDL version
 theme.tokens.json      the theme as a DTCG manifest (Fuaran.UI.ThemeManifest)
 fuaran-reference.css   the canonical class stylesheet every card links
-README.md              an authoring note per group
+README.md              an authoring note per group, and the Common shapes section
 cards/type/type.html
 cards/colors/colors.html
 cards/spacing/spacing.html
@@ -69,6 +69,13 @@ primary comparison, and each further one (against last week AND last year) is an
 `comparisons`, rendered as its own trend line with its label, glyph and polarity — never text in
 the subtext, and never a second Metric repeating the figure.
 
+The bundle README's **Common shapes** section (Phase 2475) teaches the shapes that are combinations
+rather than parts: columns that share the width (`SplitPanel` with `weight`, or a `Grid` `Box`), a
+status message holding rows (a Card `Box` with a toned `Badge` and the rows, not a `Callout`), a
+progress bar showing its value (a `Grid` row of label, `Progress` and formatted value), a row of key
+figures (`kpi-strip`, or a `Grid` `Box` of `Metric`s with `comparisons`) and a table whose cells carry
+a status (a static `DataGrid` with a `TonedPill` column). The cards of the kinds it names point at it.
+
 The content hash is SHA-256 over the sorted file set (every file except `manifest.json`), so two
 exports of one theme with one brand print the same hash.
 
@@ -84,7 +91,9 @@ exports of one theme with one brand print the same hash.
 - every card's first line is the marker of its group;
 - every swept variant differs from its baseline in what the card's stylesheets paint;
 - no example renders an empty text slot, an unresolved `[i18n:<key>]` or a server hydration
-  placeholder (a client-library grid is previewed as the static table of the same rows).
+  placeholder (a client-library grid is previewed as the static table of the same rows);
+- the README teaches every Common shape, and each kind, field and fragment a shape names is in the
+  IDL and the stdlib, so a renamed kind is a finding rather than a stale lesson.
 
 See [`docs/DESIGN-SYSTEM-EXPORT.md`](https://github.com/fuaran-ui/fuaran-dotnet/blob/main/docs/DESIGN-SYSTEM-EXPORT.md)
 for the card contract and how a consumer reads the bundle.

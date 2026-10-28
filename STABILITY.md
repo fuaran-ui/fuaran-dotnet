@@ -8397,6 +8397,28 @@ whose static table carries columns gains the declared tones.
 **Certified by** the corpus fixture `table-toned-column` (every corpus-certifying host round-trips it) and
 `src/Fuaran.UI.Renderer.Server.Tests/StaticTableToneTests.fs`.
 
+### What rides this slot — Phase 2475 (the design README names the composition for common shapes)
+
+**Class: additive.** Package `Fuaran.UI.Design`, and the authoring pack's prose. No wire change, no new
+vocabulary, no new public member.
+
+- **Bundle.** The bundle's `README.md` gains a **Common shapes** section: five shapes taught as combinations of
+  existing kinds (columns that share the width, a status message holding rows, a progress bar showing its value,
+  a row of key figures, a table whose cells carry a status), each with the tempting kind that loses something.
+  Every Components card for a kind a shape names gains a `Common shapes:` line. The content hash of every
+  bundle therefore moves.
+- **Check.** `Bundle.check` adds findings for a README without the section or a shape, and for a kind, field or
+  fragment a shape names that the IDL or the stdlib does not declare. A consumer that asserted `check` empty over
+  a hand-edited bundle may see the new findings.
+- **Pack.** `docs/prompt-pack/system-prompt.md` gains the section "Shapes that are combinations, not kinds"; the
+  lenient and family variants are regenerated from it.
+
+**What a consumer does.** Nothing. A design tool re-ingesting the bundle sees a new content hash.
+
+**Certified by** `Design-system bundle — common shapes` in `src/Fuaran.UI.Design.Tests/BundleTests.fs`, which
+renders each taught combination through the server renderer and proves the check goes red on a removed kind, a
+renamed field and a missing section.
+
 ---
 
 ### What rides this slot — Phase 1885 (reproducible board snapshots)

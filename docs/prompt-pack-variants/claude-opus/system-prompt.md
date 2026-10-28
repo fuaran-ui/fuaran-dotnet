@@ -1385,6 +1385,36 @@ One bordered region; heading, prose and action all inside it. Reach for `Callout
 the message is purely informational, and for a Card `Box` the moment an action belongs
 with it — **even if the prompt says "callout"**, which describes the intent, not the kind.
 
+## Shapes that are combinations, not kinds
+
+Three shapes have no kind of their own, and each has a tempting near-miss that renders, but
+loses part of the shape:
+
+- **Columns that share the width.** Two columns at a ratio are a `SplitPanel`: its first child
+  takes `weight` of the row (`0.5` halves it, `0.6` gives three fifths) and the second the rest.
+  `weight` is that share, not the `weight` density axis of a style. Three or more columns are a
+  `Box` whose `layout` is `{ "$type": "Grid", "cols": 3 }`, which shares the width equally. **Not**
+  a `Box` with a `Flex` layout: a flex row sizes each child to its content, so the columns
+  render narrow.
+- **A status message holding rows.** One Card `Box`: `heading` names the subject, and `children`
+  are a `Badge` carrying the status (its `variant` is the tone) followed by the rows
+  (`LabelValueRow`, `Fact`, `Markdown`). Put the tone on the `Badge` — a tone set on the Card
+  `Box` itself does not paint. **Not** a `Callout`: its `body` is text and it holds no children,
+  so the rows end up in a second region beside it (the section above).
+- **A progress bar showing its value.** Three cells in a `Box` whose `layout` is
+  `{ "$type": "Grid", "cols": 3, "templateColumns": "minmax(0, 1fr) minmax(0, 2fr) auto" }`: the
+  label as `Markdown`, the `Progress` with its `fraction` and **no** `label`, and the value as
+  `Markdown` whose `text` is a `Format` binding over the same fraction (a `Percent` format).
+  Several bars are one such `Box` with three cells per bar, so labels, bars and values line up.
+  Name each bar by its label with `"accessibility": { "labelledBy": "<the label node's id>" }`.
+  **Not** the label and the value merged into the `Progress` `label`: that is one line of text
+  above the bar, and the value no longer lines up or follows the fraction.
+
+Two more shapes are taught where their kinds are: a row of key figures is `Metric`s (a
+`kpi-strip` fragment, or a Grid `Box` of `Metric`s with `comparisons` — see "A figure against two
+periods"), and a table whose cells carry a status is a static `DataGrid` with a `TonedPill` column
+(see "Distinguishing rows by value").
+
 ## On/off controls — `Toggle` is the switch, `Checkbox` is the tick
 
 A prompt asking for a **switch**, a **toggle**, an **on/off** control, or a start/stop

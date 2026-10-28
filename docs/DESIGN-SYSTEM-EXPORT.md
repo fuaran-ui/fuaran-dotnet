@@ -21,7 +21,7 @@ count and the content hash. The library entry points are `Bundle.build`, `Bundle
 | `manifest.json` | `kind: "fuaranDesignSystemBundle"`, `formatVersion`, the `contentHash`, the IDL `version` and kind count the cards came from, the cards by group, the colour roles, and every file with its SHA-256 |
 | `theme.tokens.json` | The theme as a DTCG manifest (`Fuaran.UI.ThemeManifest`), including the role bindings |
 | `fuaran-reference.css` | The canonical class stylesheet; every card links it |
-| `README.md` | An authoring note per group |
+| `README.md` | An authoring note per group, and the Common shapes section |
 | `cards/<group>/<name>.html` | One preview card per part |
 
 There are five groups:
@@ -135,6 +135,31 @@ because their value cannot carry a localised figure. Without `--locale` there is
 specimen and no locale line. A tag the platform does not know is refused (exit 2) rather than
 formatted under the invariant culture.
 
+## Common shapes
+
+Some shapes a designer reaches for are combinations of parts rather than parts of their own, and the
+designer, and the lowering after them, tends to reach for the nearest single kind instead. The README's
+**Common shapes** section (Phase 2475) teaches five, each as the combination that expresses it and the
+tempting kind that loses something on the way to a tree:
+
+| Shape | The combination | Not |
+|---|---|---|
+| Columns that share the width | `SplitPanel` with `weight` (the first pane's share); three or more columns, a `Box` with a `Grid` layout and `cols` | a `Box` with a `Flex` layout, which sizes each child to its content |
+| A status message holding rows | a `Box` with `role` Card and a `heading`, its children a `Badge` carrying the status tone and then the rows | a `Callout`, whose `body` is text and which holds no children |
+| A progress bar showing its value | a `Box` with a `Grid` layout and `templateColumns`: label `Markdown`, `Progress` with no `label`, value `Markdown` through `Binding.Format` | the label and value merged into the Progress `label` |
+| A row of key figures | the `kpi-strip` fragment; a `Grid` `Box` of `Metric`s, each further comparison in `comparisons` | `Fact`s or Markdown numbers, or a comparison in the subtext |
+| A table whose cells carry a status | a static `DataGrid`: `staticRows` with `columns` declaring a `TonedPill` column | a `Badge` per cell |
+
+Each combination was rendered through the server renderer before it was taught, and the suite renders it
+again. One premise did not hold: a Card `Box`'s node tone is not painted (the Box card shows Tone as not
+shown), so a status's tone rides a `Badge` inside the Card rather than the Card itself. The drill, a row a
+reader selects to open its detail, is not taught yet; the section says so.
+
+Every card for a kind a shape names (`SplitPanel`, `Box`, `Callout`, `Progress`, `Metric`, `DataGrid`, and
+the others the table lists) carries a **Common shapes** line naming the shapes it is part of and those it is
+the tempting wrong kind for. The authoring pack carries the same lessons, so the lowering reads what the
+designer read.
+
 ## How a consumer reads it
 
 1. Read `manifest.json`. Check `kind` and `formatVersion`, and note `idl.version`: a bundle names
@@ -160,12 +185,16 @@ a consumer.
 - every swept variant on a Components card differs from its representative's baseline in what
   the card's cascade paints (rule 4);
 - no example renders an empty label, heading, body or title slot, an empty button, an unresolved
-  `[i18n:<key>]`, or a server hydration placeholder.
+  `[i18n:<key>]`, or a server hydration placeholder;
+- the README has its Common shapes section, teaches each shape, and every kind, field and fragment a
+  shape names is one the IDL and the stdlib declare.
 
 The suite also proves each check can fail: removing a kind from the sweep, binding a role named
 `#ff0000`, rewriting a card's marker group, repeating a baseline as a variant, a Callout with a
 blank heading, a Metric label bound to a key with no text, Markdown showing an unresolved key, and
-a grid bound to rows the example does not hold each produce the named finding.
+a grid bound to rows the example does not hold, a kind a shape names removed from the IDL list, a
+field a shape names renamed, and a README without the Common shapes section each produce the named
+finding.
 
 ## The design-provider seam
 
