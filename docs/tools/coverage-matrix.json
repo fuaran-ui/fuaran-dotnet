@@ -162,6 +162,7 @@
     "grid-toned-pill": [308,835],
     "grid-toned-pill-ungrounded": [308,835,839,854],
     "grid-transform": [308,827,835,839,840,843,846,848,851,853,854,857],
+    "grid-transform-int-bounds": [308,827,835],
     "grid-transform-param": [308,827,829,835,843,846,849,850,853],
     "grid-transform-timestamp-unit-ms": [308,827,835],
     "grid-transform-timestamp-unit-ns": [308,827,835],

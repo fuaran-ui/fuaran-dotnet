@@ -397,6 +397,33 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "Phase 2206 — a timestamp unit tag no host knows (`timestamp_ps`) is an unknown column type, refused by name rather than read as the nearest unit (WIRE_FORMAT §3.6.25)" }
+      // Phase 2484 — an `int` column value is a signed 32-bit integer (WIRE_FORMAT §3.6.28): a value
+      // one past either end of the range, and a fractional value, are refused at the source rather
+      // than widened, wrapped or truncated.
+      { Id = "reject-transform-int-above-int32"
+        Json =
+          """{"id":"reject-transform-int-above-int32","kind":{"$type":"DataGrid","columns":[],"rowKey":"<closure>","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"n":{"validity":[true],"values":[2147483648]}},"schema":[{"name":"n","type":"int"}]}}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.source.source"
+        IsOp = false
+        Description =
+          "Phase 2484 — `2147483648`, one past the signed 32-bit maximum, in a declared `int` column: refused, never widened to a 64-bit cell; a wider integer travels in a `decimal` or `string` column (WIRE_FORMAT §3.6.28)" }
+      { Id = "reject-transform-int-below-int32"
+        Json =
+          """{"id":"reject-transform-int-below-int32","kind":{"$type":"DataGrid","columns":[],"rowKey":"<closure>","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"n":{"validity":[true],"values":[-2147483649]}},"schema":[{"name":"n","type":"int"}]}}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.source.source"
+        IsOp = false
+        Description =
+          "Phase 2484 — `-2147483649`, one past the signed 32-bit minimum, in a declared `int` column: refused, never widened to a 64-bit cell (WIRE_FORMAT §3.6.28)" }
+      { Id = "reject-transform-int-fractional"
+        Json =
+          """{"id":"reject-transform-int-fractional","kind":{"$type":"DataGrid","columns":[],"rowKey":"<closure>","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"n":{"validity":[true],"values":[2.5]}},"schema":[{"name":"n","type":"int"}]}}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.source.source"
+        IsOp = false
+        Description =
+          "Phase 2484 — `2.5` in a declared `int` column: refused, never truncated to `2`; §7.1's integer-slot rule, applied to a column value (WIRE_FORMAT §3.6.28)" }
       // Phase 1080 — `srcSet: null` is REFUSED, and this is the fixture that
       // makes the missing-list-field decode class a wire law rather than each
       // host's reading. An ABSENT `srcSet` is the empty list; a PRESENT `null`

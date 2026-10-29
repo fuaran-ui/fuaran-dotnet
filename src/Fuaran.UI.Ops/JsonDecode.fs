@@ -1365,7 +1365,8 @@ let rec private jsonToJVal (depth: int) (path: string) (j: Json) : Result<Fuaran
                 not (System.Double.IsNaN n)
                 && not (System.Double.IsInfinity n)
                 && floor n = n
-                && abs n <= 2147483647.0
+                && n >= -2147483648.0
+                && n <= 2147483647.0
             then
                 Ok(Fuaran.Core.JInt(int n))
             else
@@ -1413,7 +1414,8 @@ let rec private jsonToJValStrict (depth: int) (path: string) (j: Json) : Result<
                 not (System.Double.IsNaN n)
                 && not (System.Double.IsInfinity n)
                 && floor n = n
-                && abs n <= 2147483647.0
+                && n >= -2147483648.0
+                && n <= 2147483647.0
             then
                 Ok(Fuaran.Core.JInt(int n))
             else

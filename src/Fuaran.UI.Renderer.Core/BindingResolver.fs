@@ -423,7 +423,8 @@ let private liftNumber (f: float) : JVal =
         not (System.Double.IsNaN f)
         && not (System.Double.IsInfinity f)
         && floor f = f
-        && abs f <= 2147483647.0
+        && f >= -2147483648.0
+        && f <= 2147483647.0
     then
         JInt(int f)
     else

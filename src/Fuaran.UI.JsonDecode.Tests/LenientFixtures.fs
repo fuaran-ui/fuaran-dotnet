@@ -644,6 +644,24 @@ let all: LenientFixture list =
           """{"id":"lenient-transform-epoch-timestamp-units","kind":{"$type":"DataGrid","columns":[],"rowKey":"<closure>","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"ms":{"validity":[true,true,true,true],"values":["2025-07-08T18:40:00.123Z","2025-07-08T18:40:00Z","1969-12-31T23:59:59.999Z","0000-01-01T00:00:00Z"]},"ns":{"validity":[true,true,true,true],"values":["1970-01-01T00:29:12.000000123Z","1970-01-01T00:00:00Z","1969-12-31T23:59:59.999999999Z","1970-04-15T03:59:59.999999999Z"]},"s":{"validity":[true,true,true,true],"values":["2025-07-08T18:40:00Z","2025-07-08T18:40:00Z","1966-10-31T14:13:20Z","1969-12-31T23:59:59Z"]},"us":{"validity":[true,true,true,true],"values":["2025-07-08T18:40:00.123456Z","2025-07-08T18:40:00Z","1969-12-31T23:59:59.999999Z","1970-01-01T00:00:00Z"]}},"schema":[{"name":"s","type":"timestamp"},{"name":"ms","type":"timestamp_ms"},{"name":"us","type":"timestamp_us"},{"name":"ns","type":"timestamp_ns"}]}}}}"""
         Description =
           "Phase 2206 — an epoch number is read in its column's unit: a `timestamp` column keeps fuaran-core#94's reading by magnitude (>= 1e11 is milliseconds, TRUNCATED toward zero, so -100000000001 is -100000000 s), and a sub-second column reads the number in its own unit with no guess (floor second, non-negative fraction), written as the minimal canonical text — a whole-second result carries no fraction, and the 0000 boundary is reachable as milliseconds (WIRE_FORMAT §3.6.25)" }
+      // ─── Phase 2484 — an `int` column value is a signed 32-bit integer (WIRE_FORMAT §3.6.28) ──
+      // A whole-valued number spelled with a point is the integer it denotes (§7.1: `2.0` reads as
+      // `2`), and inference classifies a number by its VALUE, so a whole value past the range is not
+      // an `int` and an all-whole column holding one infers `float`.
+      { Id = "lenient-transform-int-whole-float-token"
+        LenientJson =
+          """{"id":"lenient-transform-int-whole-float-token","kind":{"$type":"DataGrid","columns":[],"rowKey":"<closure>","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"declared":{"validity":[true,true],"values":[2.0,-3.0]}},"schema":[{"name":"declared","type":"int"}]}}}}"""
+        VerboseJson =
+          """{"id":"lenient-transform-int-whole-float-token","kind":{"$type":"DataGrid","columns":[],"rowKey":"<closure>","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"declared":{"validity":[true,true],"values":[2,-3]}},"schema":[{"name":"declared","type":"int"}]}}}}"""
+        Description =
+          "Phase 2484 — a whole-valued number written with a point in an `int` column (`2.0`, `-3.0`) is the integer it denotes, and re-encodes without the point: §7.1's integer-slot rule applied to a column value (WIRE_FORMAT §3.6.28)" }
+      { Id = "lenient-transform-int-inferred-past-int32"
+        LenientJson =
+          """{"id":"lenient-transform-int-inferred-past-int32","kind":{"$type":"DataGrid","columns":[],"rowKey":"<closure>","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"big":[1,2147483648],"small":[2.0,-2147483648]}}}}}"""
+        VerboseJson =
+          """{"id":"lenient-transform-int-inferred-past-int32","kind":{"$type":"DataGrid","columns":[],"rowKey":"<closure>","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"big":{"validity":[true,true],"values":[1,2147483648]},"small":{"validity":[true,true],"values":[2,-2147483648]}},"schema":[{"name":"big","type":"float"},{"name":"small","type":"int"}]}}}}"""
+        Description =
+          "Phase 2484 — inference classifies a number by its value: a column of whole values with one past the signed 32-bit range infers `float` (never `int`, and never a refusal), while whole values inside the range, `2.0` and the minimum included, infer `int` (WIRE_FORMAT §3.6.28)" }
       // ─── Phase 719 — compact authoring twins of the pack exemplars ────────
       // The pack's marker blocks + few-shot render fixture INPUT files
       // verbatim; until 719 they rendered the canonical envelope, teaching by
