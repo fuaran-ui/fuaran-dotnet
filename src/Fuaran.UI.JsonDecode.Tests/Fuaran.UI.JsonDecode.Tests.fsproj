@@ -134,6 +134,7 @@
          properties (IdempotenceProperties.fs). -->
     <Compile Include="Generators.fs" />
     <Compile Include="IdempotenceProperties.fs" />
+    <Compile Include="ApplyLimitProperties.fs" />
     <!-- Cross-host fuzz-sample exchange (F# half of the Phase 101 cross-host
          parity harness; the emit/check CLI modes wired through Program.fs). -->
     <Compile Include="FuzzSamples.fs" />

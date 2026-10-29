@@ -332,6 +332,11 @@ type private UpdateResult<'Msg> =
     | UnknownField
     | NotSupportedYet
     | TypeMismatch of string
+    /// The value is one the field's slot can hold but a WIRE_FORMAT 21 bound
+    /// refuses - the decoder's `LIMIT_EXCEEDED`, met on the write path
+    /// (Phase 1925). Kept apart from `TypeMismatch` so the refusal carries the
+    /// shared `LimitExceeded` code the decode-side twin does.
+    | OverLimit of string
 
 /// Coerce the boxed `obj` carried by an `UpdateProp` value into the
 /// dispatcher's expected typed `'T`. Native F# callers (typed orchestrator
@@ -505,12 +510,20 @@ let private updateLink (field: string) (v: obj) (spec: LinkSpec) : UpdateResult<
             |> Result.map (fun x -> { spec with Download = x }))
     | _ -> UnknownField
 
+// `Rows` takes the decoder's two rules in the decoder's order (Phase 1925):
+// 7.1 decides whether the value is an integer at all (`TypeMismatch`), then
+// the 21.9 bound refuses a count the renderer would loop over (`OverLimit`).
+// The bound runs on the COERCED int, so a `Native` payload the .NET fast path
+// unboxed is held to it as surely as a wire value.
 let private updateSkeleton (field: string) (v: obj) (spec: SkeletonSpec) : UpdateResult<'Msg> =
     match field with
     | "Rows" ->
         match coerceField JsonDecode.Coerce.tryInt v with
-        | Ok x -> Updated(NodeKind.Skeleton({ spec with Rows = x }))
         | Error msg -> TypeMismatch msg
+        | Ok rows ->
+            match JsonDecode.Coerce.boundSkeletonRows rows with
+            | Ok x -> Updated(NodeKind.Skeleton({ spec with Rows = x }))
+            | Error e -> OverLimit e.Message
     | _ -> UnknownField
 
 // Phase 821 — the standalone Icon display kind's field surface.
@@ -2441,6 +2454,21 @@ and private applyStructuralHere (op: StructuralOp<'Msg>) (root: Node<'Msg>) : Re
 
 // ─── Single-op apply ───────────────────────────────────────────────────────
 
+/// The shared `LimitExceeded` refusal (WIRE_FORMAT 21): a tree-shape breach
+/// carries the flattening suggestion, a field bound (Phase 1925) its own.
+let private limitExceededWith (suggestion: string) (message: string) : ApplyError =
+    { Code = ApplyErrorCode.LimitExceeded
+      Message = message
+      Hint =
+        { ApplyHint.empty with
+            Suggestion = Some suggestion } }
+
+let private limitExceeded (message: string) : ApplyError =
+    limitExceededWith
+        "Flatten the nesting, or split the emission across trees — the resulting tree would not decode on any host, including this one."
+        message
+
+
 let rec private applyOne (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Msg>, ApplyError> =
     match op with
     | TreeOp.EditNode(target, newKind) ->
@@ -2502,6 +2530,17 @@ let rec private applyOne (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Ms
                         Error(fieldNotFound targetNode.Kind target field otherNodes)
                     | NotSupportedYet -> Error(pathNotSupportedYet targetNode.Kind target field)
                     | TypeMismatch detail -> valueTypeMismatch detail
+                    | OverLimit detail ->
+                        Error(
+                            limitExceededWith
+                                "Set a value inside the bound — the resulting tree would not decode on any host, including this one."
+                                (sprintf
+                                    "UpdateProp value for '%s' on node '%s' is past a wire limit: %s"
+                                    path
+                                    (match target with
+                                     | NodeId s -> s)
+                                    detail)
+                        )
                 | _ ->
                     // Nested path (Phase 364) — the per-kind typed traversal.
                     match dispatchNestedUpdate segs v targetNode.Kind with
@@ -2670,15 +2709,6 @@ let rec private opCanGrow (op: TreeOp<'Msg>) : bool =
     | TreeOp.MoveNode _ -> true
     | TreeOp.Batch inner -> inner |> List.exists opCanGrow
     | _ -> not (List.isEmpty (Fuaran.UI.Ops.TreeOp.inserted op))
-
-let private limitExceeded (message: string) : ApplyError =
-    { Code = ApplyErrorCode.LimitExceeded
-      Message = message
-      Hint =
-        { ApplyHint.empty with
-            Suggestion =
-                Some
-                    "Flatten the nesting, or split the emission across trees — the resulting tree would not decode on any host, including this one." } }
 
 /// Refuse a result breaching `WireLimits.MaxDepth` / `MaxNodes`. Run on the
 /// RESULT, because the op alone determines neither figure: the same

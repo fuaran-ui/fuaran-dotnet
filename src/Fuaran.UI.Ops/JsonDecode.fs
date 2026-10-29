@@ -5007,26 +5007,33 @@ let private decodeSparklineSpec (path: string) (j: Json) : Result<SparklineSpec,
 // Upper bound only, deliberately: a negative count is an authoring defect, not
 // a resource breach, and `PreEmitValidate`'s `SkeletonRowsOutOfRange`
 // (FUARAN152) is where it belongs.
+//
+// Phase 1925 - the bound is ONE function, because `UpdateProp` writes the same
+// slot: an apply that set `rows` without it built a tree no host decodes.
+let private boundSkeletonRows (path: string) (rows: int) : Result<int, DecodeError> =
+    if rows > Fuaran.UI.WireLimits.MaxSkeletonRows then
+        Error(
+            DecodeError.create
+                DecodeErrorCode.LIMIT_EXCEEDED
+                path
+                (sprintf
+                    "skeleton rows %d exceeds the maximum of %d (WIRE_FORMAT 21.9)"
+                    rows
+                    Fuaran.UI.WireLimits.MaxSkeletonRows)
+                (Some(sprintf "at most %d rows on one Skeleton" Fuaran.UI.WireLimits.MaxSkeletonRows))
+        )
+    else
+        Ok rows
+
+let private decodeSkeletonRows (path: string) (j: Json) : Result<int, DecodeError> =
+    requireInt path j |> Result.bind (boundSkeletonRows path)
+
 let private decodeSkeletonSpec (path: string) (j: Json) : Result<SkeletonSpec, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
     | Ok fields ->
         requireField path fields "rows" "skeleton row count integer"
-        |> Result.bind (requireInt (path + ".rows"))
-        |> Result.bind (fun rows ->
-            if rows > Fuaran.UI.WireLimits.MaxSkeletonRows then
-                Error(
-                    DecodeError.create
-                        DecodeErrorCode.LIMIT_EXCEEDED
-                        (path + ".rows")
-                        (sprintf
-                            "skeleton rows %d exceeds the maximum of %d (WIRE_FORMAT 21.9)"
-                            rows
-                            Fuaran.UI.WireLimits.MaxSkeletonRows)
-                        (Some(sprintf "at most %d rows on one Skeleton" Fuaran.UI.WireLimits.MaxSkeletonRows))
-                )
-            else
-                Ok rows)
+        |> Result.bind (decodeSkeletonRows (path + ".rows"))
         |> Result.map (fun rows -> { Rows = rows })
 
 // Phase 821 — the standalone icon-only display kind.
@@ -9680,9 +9687,13 @@ module Coerce =
     /// shape (`bool` / `string` / `float` / `Map<string,obj>` / `obj list`)
     /// back into the `Json` AST so the existing typed decoders can consume
     /// it. The lowering's emission rules are total over JSON inputs (every
-    /// JVal case lowers to one of those CLR shapes), so the fallback
-    /// string-of-anything branch is defensive — never expected to fire
-    /// under canonical-JSON wire inputs.
+    /// JVal case lowers to one of those CLR shapes). Any OTHER value - a
+    /// `Native` payload of a type no wire decoder reads - is refused with
+    /// `WRONG_TYPE` (Phase 1925). It used to become `JString(string v)`, so a
+    /// mistyped native value reached a string field as its `ToString()`.
+    let private unreadable (v: obj) : DecodeError =
+        DecodeError.create DecodeErrorCode.WRONG_TYPE "$value" (sprintf "a value no wire decoder reads (got %A)" v) None
+
 #if FABLE_COMPILER
     // Fable refuses *every* generic type-test (`:? Map<string,obj>` and even
     // `:? IDictionary<string,obj>` are hard compile errors:
@@ -9701,32 +9712,44 @@ module Coerce =
 
     let private emptyStringMap: obj = box (Map.empty<string, obj>)
 
-    let rec private objToJson (v: obj) : Json =
+    let rec private objToJson (v: obj) : Result<Json, DecodeError> =
         match v with
-        | null -> JNull
-        | :? bool as b -> JBool b
-        | :? string as s -> JString s
-        | :? float as f -> JNumber f
-        | :? int as i -> JNumber(float i)
-        | _ when sameCtor v emptyStringMap ->
-            let m = v :?> Map<string, obj>
-            JObject(Map.map (fun _ vv -> objToJson vv) m)
-        | :? System.Collections.IEnumerable as e -> JArray [ for item in e -> objToJson item ]
-        | _ -> JString(string v)
+        | null -> Ok JNull
+        | :? bool as b -> Ok(JBool b)
+        | :? string as s -> Ok(JString s)
+        | :? float as f -> Ok(JNumber f)
+        | :? int as i -> Ok(JNumber(float i))
+        | _ when sameCtor v emptyStringMap -> objectToJson (v :?> Map<string, obj>)
+        | :? System.Collections.IEnumerable as e -> arrayToJson e
+        | _ -> Error(unreadable v)
 #else
-    let rec private objToJson (v: obj) : Json =
+    let rec private objToJson (v: obj) : Result<Json, DecodeError> =
         match v with
-        | null -> JNull
-        | :? bool as b -> JBool b
-        | :? string as s -> JString s
-        | :? float as f -> JNumber f
-        | :? int as i -> JNumber(float i)
-        | :? Map<string, obj> as m -> JObject(Map.map (fun _ vv -> objToJson vv) m)
-        | :? System.Collections.IEnumerable as e ->
-            let items = [ for item in e -> objToJson item ]
-            JArray items
-        | _ -> JString(string v)
+        | null -> Ok JNull
+        | :? bool as b -> Ok(JBool b)
+        | :? string as s -> Ok(JString s)
+        | :? float as f -> Ok(JNumber f)
+        | :? int as i -> Ok(JNumber(float i))
+        | :? Map<string, obj> as m -> objectToJson m
+        | :? System.Collections.IEnumerable as e -> arrayToJson e
+        | _ -> Error(unreadable v)
 #endif
+
+    and private objectToJson (m: Map<string, obj>) : Result<Json, DecodeError> =
+        Map.foldBack
+            (fun k vv acc ->
+                match objToJson vv, acc with
+                | Ok j, Ok fields -> Ok(Map.add k j fields)
+                | Error e, _
+                | _, Error e -> Error e)
+            m
+            (Ok Map.empty)
+        |> Result.map JObject
+
+    and private arrayToJson (e: System.Collections.IEnumerable) : Result<Json, DecodeError> =
+        [ for item in e -> item ]
+        |> traverseIndexed (fun _ item -> objToJson item)
+        |> Result.map JArray
 
     /// Wrap a Json-AST typed decoder so it consumes the obj shape
     /// `decodeObj` produces. Path is a fixed sentinel — Apply re-frames
@@ -9736,7 +9759,7 @@ module Coerce =
     /// The refusal is the decoder's own typed `DecodeError` (Phase 2065) — code,
     /// path and expected shape intact; a caller that wants text reads `Message`.
     let private viaJson (decoder: string -> Json -> Result<'T, DecodeError>) (v: obj) : Result<'T, DecodeError> =
-        decoder "$value" (objToJson v)
+        objToJson v |> Result.bind (decoder "$value")
 
     /// Optional flavour: a JSON `null` (or CLR `null`) decodes to `None`;
     /// anything else is decoded as `'T` and wrapped in `Some`.
@@ -9746,7 +9769,7 @@ module Coerce =
         : Result<'T option, DecodeError> =
         match v with
         | null -> Ok None
-        | _ -> decoder "$value" (objToJson v) |> Result.map Some
+        | _ -> viaJson decoder v |> Result.map Some
 
     let tryTextSource (v: obj) : Result<TextSource, DecodeError> = viaJson decodeTextSource v
 
@@ -9871,35 +9894,25 @@ module Coerce =
     /// `ScrollArea.MaxHeight` / `MaxWidth : int option`.
     let tryIntOption (v: obj) : Result<int option, DecodeError> = viaJsonOpt requireInt v
 
-    /// JSON numbers decode as boxed float — narrow to int for fields like
-    /// `Heading.Level` / `Grid.Cols` / `Skeleton.Rows`. Native F# callers
-    /// who already box an int still go through `Apply.tryUnbox`'s direct
-    /// path; this only fires on the JsonDecode fallback.
-    // Diagnostic messages report the offending *value* (`%A`) rather than its
-    // CLR type name: `v.GetType().FullName` is not Fable-portable (Fable can
-    // only resolve types at compile time), and this coercion path must run on
-    // both the .NET host and the Fable browser host (Phase 191).
-    /// A scalar coercion's refusal, typed like every other `Coerce` refusal:
-    /// `WRONG_TYPE` at the `$value` sentinel path the structural twins use.
-    let private coerceMismatch (message: string) : DecodeError =
-        DecodeError.create DecodeErrorCode.WRONG_TYPE "$value" message None
+    /// An integer slot (`Heading.Level`, `Grid.Cols`, ...) reads its value
+    /// through the decoder's own `requireInt` (WIRE_FORMAT 7.1), so an
+    /// `UpdateProp` admits exactly what a decode admits (Phase 1925). It used to
+    /// narrow with `int f`, which TRUNCATED `2.5` to `2` and wrapped `1e10` -
+    /// the defects `requireInt` retired at decode, alive on the write path.
+    let tryInt (v: obj) : Result<int, DecodeError> = viaJson requireInt v
 
-    let tryInt (v: obj) : Result<int, DecodeError> =
-        match v with
-        | :? int as i -> Ok i
-        | :? float as f -> Ok(int f)
-        | _ -> Error(coerceMismatch (sprintf "expected int (or JSON-decoded float); got value %A" v))
+    /// `Skeleton.Rows` - 7.1 first, then the 21.9 bound: the decoder's own two
+    /// rules, in the decoder's order (Phase 1925).
+    let trySkeletonRows (v: obj) : Result<int, DecodeError> = viaJson decodeSkeletonRows v
 
-    let tryFloat (v: obj) : Result<float, DecodeError> =
-        match v with
-        | :? float as f -> Ok f
-        | :? int as i -> Ok(float i)
-        | _ -> Error(coerceMismatch (sprintf "expected float; got value %A" v))
+    /// The 21.9 bound alone, for a `Skeleton.Rows` value that is ALREADY an
+    /// int: a `Native` payload the .NET fast path unboxed without consulting
+    /// the decoder.
+    let boundSkeletonRows (rows: int) : Result<int, DecodeError> = boundSkeletonRows "$value" rows
 
-    let tryBool (v: obj) : Result<bool, DecodeError> =
-        match v with
-        | :? bool as b -> Ok b
-        | _ -> Error(coerceMismatch (sprintf "expected bool; got value %A" v))
+    let tryFloat (v: obj) : Result<float, DecodeError> = viaJson requireFloat v
+
+    let tryBool (v: obj) : Result<bool, DecodeError> = viaJson requireBool v
 
 // ─── Public surface ─────────────────────────────────────────────────────
 
