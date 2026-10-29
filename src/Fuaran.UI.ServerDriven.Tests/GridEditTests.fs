@@ -505,7 +505,7 @@ let private historyExpected (table: Table) (gestures: Gesture list) : JVal =
     |> JArr
 
 let private vectorsDescription =
-    "Grid edits as columnar ops (WIRE_FORMAT.md, \"Edits as column ops - GridEdit\", Phase 1891). NOT YET AN ENUMERATED FAMILY: this directory carries no manifest.json, on the grid-window-writer/ precedent (27.7), so no host's corpusFamilies names it until its hosts adopt it. Emitted by the reference host (fuaran-dotnet: FUARAN_REGEN=1 over the GridEditTests of Fuaran.UI.ServerDriven.Tests), whose answers are the columnar op substrate's. BEHAVIOUR vectors, not byte-parity fixtures: tables are the canonical column codec's embedded form, ops the columnar op codec's, deltas the row-delta codec's, compared after decoding. vectors: apply input.edit.op to input.table. A refused op expects refused, the refusal token. Otherwise expected.after is the table it produced; expected.delta the row delta the op induces under the identity input.edit.rowKeyField declares (scheme column:<field>), or, where it declares none, the top delta with referencePath noRowIdentityDeclared; expected.inverse the op that undoes it and expected.undone the table that inverse restores (equal to input.table), or expected.notInvertible true. histories: from input.table, run input.gestures in order through one edit history - edit applies its op, undo applies the most recent undoable edit's inverse, redo re-applies the most recently undone op; a new edit clears what could be redone, and a non-invertible edit clears what could be undone - and compare each entry of expected.steps: the table and both flags, or refused with nothingToUndo, nothingToRedo or a refusal token."
+    "Grid edits as columnar ops (WIRE_FORMAT.md, \"Edits as column ops - GridEdit\", Phase 1891). SELF-ENUMERATED (27.7): grid-edit/manifest.json names this file, so the directory is one corpus family, grid-edit, which every codec host's corpusFamilies declares. Emitted by the reference host (fuaran-dotnet: FUARAN_REGEN=1 over the GridEditTests of Fuaran.UI.ServerDriven.Tests), whose answers are the columnar op substrate's. BEHAVIOUR vectors, not byte-parity fixtures: tables are the canonical column codec's embedded form, ops the columnar op codec's, deltas the row-delta codec's, compared after decoding. vectors: apply input.edit.op to input.table. A refused op expects refused, the refusal token. Otherwise expected.after is the table it produced; expected.delta the row delta the op induces under the identity input.edit.rowKeyField declares (scheme column:<field>), or, where it declares none, the top delta with referencePath noRowIdentityDeclared; expected.inverse the op that undoes it and expected.undone the table that inverse restores (equal to input.table), or expected.notInvertible true. histories: from input.table, run input.gestures in order through one edit history - edit applies its op, undo applies the most recent undoable edit's inverse, redo re-applies the most recently undone op; a new edit clears what could be redone, and a non-invertible edit clears what could be undone - and compare each entry of expected.steps: the table and both flags, or refused with nothingToUndo, nothingToRedo or a refusal token."
 
 let private vectorsJson () : JVal =
     JObj
@@ -529,9 +529,19 @@ let private vectorsJson () : JVal =
                           "input", JObj [ "edit", GridEdit.encodeJson edit; "table", tableJson small ] ] ]
           "version", JInt 1 ]
 
-/// The vectors file as committed: the canonical bytes, indented two spaces, LF, one trailing newline.
-let private vectorsText () : string =
-    let canonical = Canonical.write Rendering.CrossHost (vectorsJson ())
+/// The family's own manifest (WIRE_FORMAT 27.7): the directory is one family, `grid-edit`, whose
+/// vectors are the one file it names. Emitted beside the vectors, so the directory is this host's output.
+let private manifestJson () : JVal =
+    JObj
+        [ "description",
+          JStr
+              "Grid edits as columnar ops (WIRE_FORMAT.md 3.2, \"Edits as column ops - GridEdit\", Phase 1891). SELF-ENUMERATED, so the directory is one corpus family (27.7): `grid-edit`. grid-edit-vectors.json carries one vector per op kind and refusal class (the edited table, the row delta, the inverse and the table it restores) and three scripted undo/redo histories. A host that receives grid edits decodes each GridEdit with its own codec, applies, inverts and replays it through its own edit history, and asserts every expected answer after decoding. Emitted by the reference host (fuaran-dotnet, FUARAN_REGEN=1 over the GridEditTests of Fuaran.UI.ServerDriven.Tests)."
+          "files", JArr [ JStr "grid-edit-vectors.json" ]
+          "version", JInt 1 ]
+
+/// A corpus file as committed: the canonical bytes, indented two spaces, LF, one trailing newline.
+let private committedText (value: JVal) : string =
+    let canonical = Canonical.write Rendering.CrossHost value
     use doc = JsonDocument.Parse canonical
     use buffer = new MemoryStream()
 
@@ -547,6 +557,9 @@ let private vectorsText () : string =
 let private vectorsPath (root: string) =
     Path.Combine(root, "grid-edit", "grid-edit-vectors.json")
 
+let private manifestPath (root: string) =
+    Path.Combine(root, "grid-edit", "manifest.json")
+
 let private field (name: string) (el: JVal) : JVal =
     match el with
     | JObj fields ->
@@ -560,20 +573,20 @@ let private canonical (v: JVal) = Canonical.write Rendering.CrossHost v
 let private corpusTests =
     testList
         "the grid-edit corpus vectors"
-        [ testCase "the committed vectors are what this host emits (FUARAN_REGEN=1 rewrites them)"
+        [ testCase "the committed family is what this host emits (FUARAN_REGEN=1 rewrites it)"
           <| fun () ->
               match Fuaran.Tests.CorpusRoot.tryFind () with
               | None -> skiptest Fuaran.Tests.CorpusRoot.AbsentSkipReason
               | Some root ->
-                  let path = vectorsPath root
-                  let text = vectorsText ()
+                  for path, text in
+                      [ vectorsPath root, committedText (vectorsJson ())
+                        manifestPath root, committedText (manifestJson ()) ] do
+                      if Environment.GetEnvironmentVariable "FUARAN_REGEN" = "1" then
+                          Directory.CreateDirectory(Path.GetDirectoryName path |> nonNull) |> ignore
+                          File.WriteAllText(path, text, UTF8Encoding(false))
 
-                  if Environment.GetEnvironmentVariable "FUARAN_REGEN" = "1" then
-                      Directory.CreateDirectory(Path.GetDirectoryName path |> nonNull) |> ignore
-                      File.WriteAllText(path, text, UTF8Encoding(false))
-
-                  Expect.isTrue (File.Exists path) (sprintf "%s exists — emit it with FUARAN_REGEN=1" path)
-                  Expect.equal (File.ReadAllText path) text "the committed vectors are current"
+                      Expect.isTrue (File.Exists path) (sprintf "%s exists — emit it with FUARAN_REGEN=1" path)
+                      Expect.equal (File.ReadAllText path) text (sprintf "%s is current" path)
 
           testCase "this host agrees with every committed vector"
           <| fun () ->
