@@ -63,7 +63,8 @@ module JsonBridge =
                     not (System.Double.IsNaN n)
                     && not (System.Double.IsInfinity n)
                     && System.Math.Floor n = n
-                    && abs n <= 2147483647.0
+                    && n >= -2147483648.0
+                    && n <= 2147483647.0
                 then
                     JInt(int n)
                 else

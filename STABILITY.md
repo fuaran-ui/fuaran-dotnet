@@ -7941,6 +7941,25 @@ unaffected.
 **Certified by** `src/Fuaran.UI.Renderer.Server.Tests/FieldMetadataRenderTests.fs`, the `fm-*` cases of §3.6.27's
 parity table (fuaran-ts's renderer suite carries the same documents under the same ids).
 
+### What rides this slot — Phase 2484 (an `int` column value is a signed 32-bit integer)
+
+**Class: breaking for wire READERS (behavioural); no public surface moves, so the slot's class is unchanged.**
+Packages `Fuaran.UI.Ops`, `Fuaran.UI.Renderer` and `Fuaran.UI.Renderer.Core`.
+
+- **Wire.** WIRE_FORMAT §3.6.28 states what the column codec already enforced: an embedded `Transform` source's `int`
+  column holds signed 32-bit integers, a fraction or a value past either end is a `WRONG_TYPE` at the source, a whole
+  value written with a point reads as the integer, and inference reads a whole value past the range as `float`.
+- **The lower boundary.** The bridges that hand a number to the column codec (`JsonDecode`'s two `jsonToJVal`
+  bridges, the browser runtime's value bridge and `BindingResolver`'s `liftNumber`) tested `abs n <= 2147483647`, so
+  `-2147483648` — a valid int32 — crossed as a float and an `int` column refused it. They now test the signed range.
+  A document carrying the int32 minimum in an `int` column, which this host refused, now decodes; nothing it accepted
+  before is refused.
+
+**What a consumer does.** Nothing. **Certified by** the corpus vectors `grid-transform-int-bounds` (the minimum
+round-trips), `reject-transform-int-above-int32`, `reject-transform-int-below-int32`,
+`reject-transform-int-fractional`, `lenient-transform-int-whole-float-token` and
+`lenient-transform-int-inferred-past-int32`, emitted by this repository's reference emitter.
+
 ---
 
 ## 0.98.1 — the slot opened after v0.97.0 was released (RELEASED — tagged v0.98.1 at c88909e0, 2026-10-28)

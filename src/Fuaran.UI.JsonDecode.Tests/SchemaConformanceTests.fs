@@ -325,7 +325,17 @@ let private schemaInexpressibleRejects: Set<string> =
           "reject-transform-timestamp-ms-finer-fraction"
           "reject-transform-timestamp-ms-padded-fraction"
           "reject-transform-timestamp-unknown-unit"
-          "reject-transform-timestamp-us-finer-fraction" ]
+          "reject-transform-timestamp-us-finer-fraction"
+
+          // ─── Phase 2484 — the int column's 32-bit bound ────────────────────
+          //
+          // Inside the same EMBEDDED source `SchemaGen` leaves open, and
+          // cross-field on the same ground as the six above: whether a number
+          // is in range depends on the `schema` entry of the same name in a
+          // sibling array. Pinned INVERSELY like every entry here.
+          "reject-transform-int-above-int32"
+          "reject-transform-int-below-int32"
+          "reject-transform-int-fractional" ]
 
 // Phase 1068 — `schemaTypeErasedBindingRejects` is GONE, and its deletion is the
 // point rather than a tidy-up. Phase 1064 found four reject fixtures the emitted

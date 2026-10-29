@@ -64,7 +64,13 @@ let private coreWrappedHintlessRejects: Set<string> =
           "reject-transform-timestamp-ms-finer-fraction"
           "reject-transform-timestamp-ms-padded-fraction"
           "reject-transform-timestamp-unknown-unit"
-          "reject-transform-timestamp-us-finer-fraction" ]
+          "reject-transform-timestamp-us-finer-fraction"
+          // Phase 2484 — an int column value past the signed 32-bit range, or a fractional one, is
+          // refused by the column codec: the repair is a different VALUE (or a wider column type),
+          // never a different document shape.
+          "reject-transform-int-above-int32"
+          "reject-transform-int-below-int32"
+          "reject-transform-int-fractional" ]
 
 let private checkError
     (e: Corpus.FixtureEntry)

@@ -4713,6 +4713,39 @@ let gridTransformTimestampWidening: Node<obj> =
             Some "2025-07-08T18:40:00.1234567Z"
             Some "2025-07-08T18:40:00.123456789Z" ] ]
 
+/// Phase 2484 — an `int` column value is a signed 32-bit integer (WIRE_FORMAT §3.6.28): the two
+/// boundary values round-trip, beside zero, a small negative and an absent cell. The values outside
+/// the range are reject vectors (`reject-transform-int-*`); these are the ones inside it.
+[<NodeFixture "Visualisation/Grid (Phase 2484 — an `int` column holds signed 32-bit integers: the boundary values 2147483647 and -2147483648 round-trip beside zero, a small negative and an absent cell, WIRE_FORMAT §3.6.28)">]
+let gridTransformIntBounds: Node<obj> =
+    let column =
+        match
+            Fuaran.Core.Column.ofCells
+                "n"
+                Fuaran.Core.IntType
+                [ Fuaran.Core.Int 2147483647
+                  Fuaran.Core.Int(-2147483648)
+                  Fuaran.Core.Int 0
+                  Fuaran.Core.Int(-1)
+                  Fuaran.Core.Cell.Null ]
+        with
+        | Ok c -> c
+        | Error e -> failwithf "grid-transform-int-bounds: column n: %A" e
+
+    let source =
+        Fuaran.Core.Embedded
+            { Schema = [ Fuaran.Core.Field.create "n" Fuaran.Core.IntType ]
+              Columns = [ column ] }
+
+    node
+        "grid-transform-int-bounds"
+        (NodeKind.DataGrid(
+            { Defaults.dataGrid with
+                Source = Binding.Transform(TransformSource.Data(source), [], None)
+                RowKey = Some(fun _ -> "<closure>") }
+        ))
+        None
+
 /// Phase 610 — the multi-select chip idiom end to end: a `<select multiple>` whose `values` binding
 /// IS `$filters.depts` (handler omitted, so its write-back stores the selection there) beside a
 /// `DataGrid` whose `Transform` scopes rows with an `in`/`param` membership test over that same
