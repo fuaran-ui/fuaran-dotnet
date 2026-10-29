@@ -168,7 +168,7 @@ internal static class Oracle
         var spec = new global::Fuaran.UI.Generated.MetricSpec(
             global::Fuaran.UI.Generated.TextSource.NewLiteral("Revenue"),
             global::Fuaran.UI.Generated.Binding<double>.NewStatic(Microsoft.FSharp.Core.FSharpOption<double>.Some(1234.5)),
-            global::Fuaran.UI.Generated.CellFormat.NewCurrency("GBP", Microsoft.FSharp.Core.FSharpOption<global::Fuaran.UI.Generated.LocaleSource>.None),
+            global::Fuaran.UI.Generated.CellFormat.NewCurrency("GBP", Microsoft.FSharp.Core.FSharpOption<int>.None, Microsoft.FSharp.Core.FSharpOption<global::Fuaran.UI.Generated.LocaleSource>.None),
             global::Fuaran.UI.Generated.ToneVariant.Brand,
             global::Fuaran.UI.Generated.StyleWeight.Standard,
             global::Fuaran.UI.Generated.Emphasis.Normal,

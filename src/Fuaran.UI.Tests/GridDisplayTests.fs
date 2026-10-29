@@ -263,10 +263,10 @@ let decimalRowValueTests =
 
               Expect.equal (f (CellFormat.Number(Some 2, None)) "-0.001") "-0.00" "the sign survives, as toFixed's does"
               Expect.equal (f (CellFormat.Number(Some 0, None)) "2.5") "3" "half up"
-              Expect.equal (f (CellFormat.Currency("GBP", None)) "1234.5") "GBP 1234.50" "currency"
+              Expect.equal (f (CellFormat.Currency("GBP", None, None)) "1234.5") "GBP 1234.50" "currency"
 
               Expect.equal
-                  (f (CellFormat.Currency("GBP", None)) "99999999999999999.995")
+                  (f (CellFormat.Currency("GBP", None, None)) "99999999999999999.995")
                   "GBP 100000000000000000.00"
                   "a carry through every digit"
 
@@ -282,7 +282,7 @@ let decimalRowValueTests =
                     CellFormat.Number(None, None)
                     CellFormat.Number(Some 0, None)
                     CellFormat.Number(Some 3, None)
-                    CellFormat.Currency("USD", None)
+                    CellFormat.Currency("USD", None, None)
                     CellFormat.Percent(None, None)
                     CellFormat.Percent(Some 2, None)
                     CellFormat.SignificantDigits 3 ]

@@ -45,7 +45,7 @@ let dashboard: Node<obj> =
                                     { Defaults.metric with
                                         Label = TextSource.Literal "Revenue"
                                         Value = Binding.Static(Some 142500.0)
-                                        Format = CellFormat.Currency("GBP", None)
+                                        Format = CellFormat.Currency("GBP", None, None)
                                         Tone = ToneVariant.Brand }
                                 Fuaran.metric
                                     "sales-orders"

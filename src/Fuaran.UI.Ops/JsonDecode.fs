@@ -2138,6 +2138,7 @@ let private decodeLocaleSource (path: string) (j: Json) : Result<LocaleSource, D
 
 let private decodeCellFormat (path: string) (j: Json) : Result<CellFormat, DecodeError> =
     // Phase 2490 — a figure case's optional `locale`; absent decodes `None`.
+    // Phase 2499 — `Currency` carries the optional `decimals` the other two do.
     let optionalDecimals fields =
         match tryField fields "decimals" with
         | None -> Ok None
@@ -2161,8 +2162,8 @@ let private decodeCellFormat (path: string) (j: Json) : Result<CellFormat, Decod
             match requireField path fields "code" "ISO currency code string" with
             | Error e -> Error e
             | Ok j ->
-                both (requireString (path + ".code") j) (optionalLocale fields)
-                |> Result.map CellFormat.Currency
+                both (requireString (path + ".code") j) (both (optionalDecimals fields) (optionalLocale fields))
+                |> Result.map (fun (code, (decimals, locale)) -> CellFormat.Currency(code, decimals, locale))
         | Ok "Percent" ->
             both (optionalDecimals fields) (optionalLocale fields)
             |> Result.map CellFormat.Percent
@@ -2240,7 +2241,15 @@ let private decodeFormat (path: string) (j: Json) : Result<Format, DecodeError> 
         | Ok "Currency" ->
             match requireField path fields "isoCode" "ISO-4217 currency code string" with
             | Error e -> Error e
-            | Ok j -> requireString (path + ".isoCode") j |> Result.map Format.Currency
+            | Ok j ->
+                // Phase 2499 — an optional `decimals`, the formatter's fraction digits.
+                let decimals =
+                    match tryField fields "decimals" with
+                    | None -> Ok None
+                    | Some j -> requireInt (path + ".decimals") j |> Result.map Some
+
+                both (requireString (path + ".isoCode") j) decimals
+                |> Result.map Format.Currency
         | Ok "Percent" ->
             match tryField fields "decimals" with
             | None -> Ok(Format.Percent None)

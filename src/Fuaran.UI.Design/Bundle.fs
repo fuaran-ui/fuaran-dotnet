@@ -610,6 +610,13 @@ let private render (node: Node<unit>) : string =
 // `Binding.Format` uses, and stays a number for trends and sorting. `Binding.Format`
 // with a `LocaleSource` yields TEXT, so it fits a text slot (a Fact's value, a
 // subtext). With a locale, the bundle shows each route on the kinds that carry it.
+//
+// Phase 2499 — the money figure is whole pounds, as a designed screen shows it
+// (`£142,500`): both routes carry `decimals: 0`, the fraction digits that override
+// the currency's own. Without it the currency's digits apply (`£142,500.00`).
+
+/// The fraction digits the located money figure carries on both routes (Phase 2499).
+let private figureDecimals = 0
 
 /// The money figure the catalog's Metric and LabelValueRow examples carry.
 let private figureValue = 142_500.0
@@ -617,7 +624,11 @@ let private figureCurrency = "GBP"
 
 /// The example figure through `Binding.Format` under `tag`.
 let private localeFigure (tag: string) : Binding<string> =
-    Binding.Format(Binding.Static(Some figureValue), Format.Currency figureCurrency, LocaleSource.Explicit tag)
+    Binding.Format(
+        Binding.Static(Some figureValue),
+        Format.Currency(figureCurrency, Some figureDecimals),
+        LocaleSource.Explicit tag
+    )
 
 /// Refuses a tag the platform does not know: the formatter would otherwise fall back
 /// to the invariant culture, and the card would show a figure no reader reads.
@@ -651,7 +662,7 @@ let private figureSpecimen (tag: string) : Specimen =
 
 /// The example figure's `CellFormat` under `tag` — a figure kind's own route (Phase 2490).
 let private localeCellFormat (tag: string) : CellFormat =
-    CellFormat.Currency(figureCurrency, Some(LocaleSource.Explicit tag))
+    CellFormat.Currency(figureCurrency, Some figureDecimals, Some(LocaleSource.Explicit tag))
 
 /// The specimens a locale adds to the Metric and LabelValueRow cards: the example
 /// figure in the kind's own value, its `CellFormat` carrying the locale.
@@ -687,14 +698,14 @@ let private figureKindSpecimens (tag: string) : Specimen list =
 let private figureNote (locale: string option) (kind: string) : string list =
     let cellFigure =
         Formatting.formatCellValue
-            (CellFormat.Currency(figureCurrency, None))
+            (CellFormat.Currency(figureCurrency, None, None))
             (HostPrelude.CellValue.Numeric figureValue)
 
     let localeFree what =
         $"{what} a CellFormat. Without a locale it is locale-free: every host renders the same text (Currency \"{figureCurrency}\" reads {cellFigure})."
 
     let located =
-        "A reader-facing figure, grouped and symbol-led in the reader's locale, is the same CellFormat with a locale (Currency with locale Explicit \"en-GB\"); it stays a number, so trends, comparisons and sorting still read it. Binding.Format with a locale is the route for a text slot (a Fact's value, a subtext)."
+        "A reader-facing figure, grouped and symbol-led in the reader's locale, is the same CellFormat with a locale (Currency with locale Explicit \"en-GB\"); it stays a number, so trends, comparisons and sorting still read it. Its decimals sets the fraction digits on either route: whole pounds are Currency with decimals 0; without it the currency's own digits apply. Binding.Format with a locale is the route for a text slot (a Fact's value, a subtext)."
 
     let routes =
         match kind with
@@ -1361,9 +1372,11 @@ let private readme (idlVersion: int) (kindCount: int) (fragmentCount: int) (loca
           "CellFormat. Without a locale it is locale-free, so every host renders the same text, and a currency"
           "reads as its code and two decimals, ungrouped. With a locale (Currency \"GBP\" with locale Explicit"
           "\"en-GB\") the figure reads grouped and symbol-led there, as £142,500.00, and stays a number for"
-          "trends, comparisons and sorting. A figure in a text slot, such as a Fact's value, is Binding.Format"
-          "with a locale, which yields text. Design a reader-facing figure in a figure kind as its CellFormat"
-          "with the reader's locale, and a figure inside text as Binding.Format."
+          "trends, comparisons and sorting. Either route takes decimals, the fraction digits, overriding the"
+          "currency's own: Currency \"GBP\" with decimals 0 and locale Explicit \"en-GB\" reads £142,500. A"
+          "figure in a text slot, such as a Fact's value, is Binding.Format with a locale, which yields text."
+          "Design a reader-facing figure in a figure kind as its CellFormat with the reader's locale, and a"
+          "figure inside text as Binding.Format; give either decimals when the design shows whole units."
           ""
           "A Metric compared against more than one period keeps its primary comparison in trend and each"
           "further one in comparisons, each its own trend line with a label, a glyph and a polarity. Do not"

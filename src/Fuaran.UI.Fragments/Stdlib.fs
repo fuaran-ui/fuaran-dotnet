@@ -283,6 +283,7 @@ module Stdlib =
                      "USD"
                  else
                      currency),
+                Option.None,
                 Option.None
             )
         | _ -> CellFormat.Number(Some 0, None) // "number-0", the default

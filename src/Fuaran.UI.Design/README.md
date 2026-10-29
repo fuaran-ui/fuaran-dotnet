@@ -65,7 +65,9 @@ symbol-led in that locale while staying a number; `Binding.Format` with a locale
 figure inside text, and yields text for a text slot. `BundleOptions.Locale = Some "<bcp47>"` (the
 CLI's `--locale`) adds a Fact specimen whose value is a figure formatted under that locale through
 `Binding.Format`, and a Metric and a LabelValueRow specimen whose `CellFormat` carries the locale;
-`None` adds nothing. A tag the platform does not know is refused.
+`None` adds nothing. A tag the platform does not know is refused. Either route takes `decimals`, the
+fraction digits, overriding the currency's own (Phase 2499): the located money specimens carry
+`decimals: 0`, so they read whole pounds (`£142,500`), as a designed screen shows them.
 
 The Metric card also says where a second comparison goes (Phase 2472): `trend` is the figure's
 primary comparison, and each further one (against last week AND last year) is an entry in

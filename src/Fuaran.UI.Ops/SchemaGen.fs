@@ -899,7 +899,8 @@ let private defs: (string * J) list =
           [ duCase "None" [] []
             // Phase 2490 — the three figure cases carry an optional `locale`.
             duCase "Number" [] [ "decimals", integer; "locale", ref "LocaleSource" ]
-            duCase "Currency" [ "code" ] [ "code", str; "locale", ref "LocaleSource" ]
+            // Phase 2499 — `Currency` carries the optional `decimals` too.
+            duCase "Currency" [ "code" ] [ "code", str; "decimals", integer; "locale", ref "LocaleSource" ]
             duCase "Percent" [] [ "decimals", integer; "locale", ref "LocaleSource" ]
             duCase "SignificantDigits" [ "digits" ] [ "digits", integer ]
             duCase "DateTime" [ "format" ] [ "format", str ]
@@ -918,7 +919,7 @@ let private defs: (string * J) list =
       "Format",
       union
           [ duCase "Number" [] [ "decimals", integer ]
-            duCase "Currency" [ "isoCode" ] [ "isoCode", str ]
+            duCase "Currency" [ "isoCode" ] [ "isoCode", str; "decimals", integer ]
             duCase "Percent" [] [ "decimals", integer ]
             // Phase 1810 — neither style is required on the wire: `timeStyle`
             // alone is a time of day, both a date-time. Neither present is

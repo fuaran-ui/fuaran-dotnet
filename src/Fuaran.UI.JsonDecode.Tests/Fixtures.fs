@@ -127,7 +127,7 @@ let private metricSpec: MetricSpec =
     { Defaults.metric with
         Label = TextSource.Literal "Revenue"
         Value = Binding.Static(Some 1234.5)
-        Format = CellFormat.Currency("GBP", None)
+        Format = CellFormat.Currency("GBP", None, None)
         Tone = ToneVariant.Brand
         Trend = Some(Binding.Static(Some 0.07))
         TrendFormat = Some(CellFormat.Percent(Some 1, None))
@@ -145,7 +145,7 @@ let metric: Node<obj> = node "metric-1" (NodeKind.Metric(metricSpec)) None
 /// absence is still the omitted form.
 [<NodeFixture "Display/Metric + Visualisation/Grid (Phase 2490 — a figure carrying a locale: Currency GBP in en-GB on a Metric and a grid column)">]
 let figureLocale: Node<obj> =
-    let gbp = CellFormat.Currency("GBP", Some(LocaleSource.Explicit "en-GB"))
+    let gbp = CellFormat.Currency("GBP", None, Some(LocaleSource.Explicit "en-GB"))
 
     let metricNode =
         node
@@ -195,6 +195,93 @@ let figureLocale: Node<obj> =
         (NodeKind.Box(
             { Defaults.box with
                 Children = [ metricNode; gridNode ] }
+        ))
+        None
+
+/// Phase 2499 — every figure case carries `decimals`, so a currency figure can set
+/// its fraction digits: the designed `£412,380` in whole pounds. A Metric declares
+/// `Currency "GBP"` at `decimals: 0` in `Explicit "en-GB"`; a bound grid's share
+/// column is a located `Percent` at one place; a LabelValueRow is a located
+/// `Number` at none; and a Fact's text is `Binding.Format` over `Format.Currency`
+/// at `decimals: 0`, the text route's twin of the same member.
+[<NodeFixture "Display/Metric + Visualisation/Grid + Display/LabelValueRow + Display/Fact (Phase 2499 — a figure setting its fraction digits: Currency GBP at 0 decimals, a Percent at 1 and a Number at 0, each in en-GB)">]
+let figureDecimals: Node<obj> =
+    let enGb = Some(LocaleSource.Explicit "en-GB")
+
+    let metricNode =
+        node
+            "figure-decimals-metric"
+            (NodeKind.Metric(
+                { Defaults.metric with
+                    Label = TextSource.Literal "Revenue"
+                    Value = Binding.Static(Some 412380.0)
+                    Format = CellFormat.Currency("GBP", Some 0, enGb) }
+            ))
+            None
+
+    let region: ColumnErased<obj> =
+        { Defaults.columnErased with
+            Label = "Region"
+            Field = Some "region" }
+
+    let share: ColumnErased<obj> =
+        { Defaults.columnErased with
+            Label = "Share"
+            Field = Some "share"
+            Kind = CellKindErased.Numeric
+            Format = CellFormat.Percent(Some 1, enGb) }
+
+    let gridNode =
+        node
+            "figure-decimals-grid"
+            (NodeKind.DataGrid(
+                { Defaults.dataGrid with
+                    Source =
+                        Binding.Static(
+                            Some(
+                                Seq.ofList
+                                    [ (Map.ofList [ "region", box "North"; "share", box 0.4125 ]: Row)
+                                      Map.ofList [ "region", box "South"; "share", box 0.5875 ] ]
+                            )
+                        )
+                    RowKeyField = Some "region"
+                    Columns = [ region; share ] }
+            ))
+            None
+
+    let ordersNode =
+        node
+            "figure-decimals-orders"
+            (NodeKind.LabelValueRow(
+                { Defaults.labelValueRow with
+                    Label = TextSource.Literal "Orders"
+                    Value = Binding.Static(Some 1234567.6)
+                    Format = CellFormat.Number(Some 0, enGb) }
+            ))
+            None
+
+    let factNode =
+        node
+            "figure-decimals-fact"
+            (NodeKind.Fact(
+                { Defaults.fact with
+                    Label = TextSource.Literal "Revenue, year to date"
+                    Value =
+                        TextSource.Bound(
+                            Binding.Format(
+                                Binding.Static(Some 412380.0),
+                                Format.Currency("GBP", Some 0),
+                                LocaleSource.Explicit "en-GB"
+                            )
+                        ) }
+            ))
+            None
+
+    node
+        "figure-decimals-en-gb"
+        (NodeKind.Box(
+            { Defaults.box with
+                Children = [ metricNode; gridNode; ordersNode; factNode ] }
         ))
         None
 
@@ -3929,7 +4016,7 @@ let gridExportable: Node<obj> =
         { Defaults.columnErased with
             Label = "Amount"
             Field = Some "amount"
-            Format = CellFormat.Currency("GBP", None)
+            Format = CellFormat.Currency("GBP", None, None)
             Kind = CellKindErased.Numeric }
 
     node
@@ -4068,7 +4155,7 @@ let chartValueFormat: Node<obj> =
                 XField = "month"
                 YFields = [ "revenue" ]
                 Title = Some(TextSource.Literal "Revenue")
-                ValueFormat = Some(Format.Currency "GBP") }
+                ValueFormat = Some(Format.Currency("GBP", None)) }
         ))
         None
 
@@ -4096,7 +4183,7 @@ let chartAxisTitles: Node<obj> =
                 XField = "quarter"
                 YFields = [ "revenue" ]
                 Title = Some(TextSource.Literal "Revenue by quarter")
-                ValueFormat = Some(Format.Currency "GBP")
+                ValueFormat = Some(Format.Currency("GBP", None))
                 XTitle = Some(TextSource.Literal "Quarter")
                 YTitle = Some(TextSource.Literal "Revenue")
                 Subtitle = Some(TextSource.Literal "Millions of £") }
@@ -7387,7 +7474,7 @@ let formatBindings: Node<obj> =
                           "fmt-currency"
                           (Binding.Format(
                               Binding.Static(Some 1234.5),
-                              Format.Currency "GBP",
+                              Format.Currency("GBP", None),
                               LocaleSource.Explicit "en-GB"
                           ))
                       md

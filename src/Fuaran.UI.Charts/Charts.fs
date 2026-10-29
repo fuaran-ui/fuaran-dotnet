@@ -1124,7 +1124,7 @@ let private renderFixed (dps: int) (v: float) : string =
 /// on each tick).
 let private formatUnitSymbol (fmt: Format option) : string =
     match fmt with
-    | Some(Format.Currency iso) -> Formatting.currencySymbol iso
+    | Some(Format.Currency(iso, _)) -> Formatting.currencySymbol iso
     | _ -> ""
 
 /// The ×100 a `Format.Percent` applies to BOTH the value and the step (so the
@@ -1153,7 +1153,7 @@ let private formatValue (fmt: Format option) (divisor: float) (dropSymbol: bool)
 
     match fmt with
     | Some(Format.Percent _) -> body + "%"
-    | Some(Format.Currency iso) when not dropSymbol ->
+    | Some(Format.Currency(iso, _)) when not dropSymbol ->
         let sym = Formatting.currencySymbol iso
 
         if body.StartsWith "-" then

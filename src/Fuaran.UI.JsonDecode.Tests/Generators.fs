@@ -262,7 +262,11 @@ let private genCellFormat: Gen<CellFormat> =
     Gen.oneof
         [ Gen.constant CellFormat.None
           Gen.map2 (fun d l -> CellFormat.Number(d, l)) (genOption genInt) (genOption genLocaleSource)
-          Gen.map2 (fun c l -> CellFormat.Currency(c, l)) genNonEmptyString (genOption genLocaleSource)
+          Gen.map3
+              (fun c d l -> CellFormat.Currency(c, d, l))
+              genNonEmptyString
+              (genOption genInt)
+              (genOption genLocaleSource)
           Gen.map2 (fun d l -> CellFormat.Percent(d, l)) (genOption genInt) (genOption genLocaleSource)
           Gen.map CellFormat.SignificantDigits genInt
           Gen.map CellFormat.DateTime genNonEmptyString
@@ -275,7 +279,7 @@ let private genCellFormat: Gen<CellFormat> =
 let private allCellFormats: CellFormat list =
     [ CellFormat.None
       CellFormat.Number(Some 2, None)
-      CellFormat.Currency("GBP", None)
+      CellFormat.Currency("GBP", None, None)
       CellFormat.Percent(None, None)
       CellFormat.SignificantDigits 3
       CellFormat.DateTime "yyyy-MM-dd"
@@ -355,7 +359,7 @@ let private genTimeStyle: Gen<TimeStyle> =
 let private genFormat: Gen<Format> =
     Gen.oneof
         [ Gen.map Format.Number (genOption genInt)
-          Gen.map Format.Currency genNonEmptyString
+          Gen.map2 (fun c d -> Format.Currency(c, d)) genNonEmptyString (genOption genInt)
           Gen.map Format.Percent (genOption genInt)
           // Phase 1810 — the three admitted shapes; neither-present is
           // FUARAN155's subject and is deliberately not generated.

@@ -7884,6 +7884,40 @@ static table declares a `rowKeyField` naming a column, in which case its rows be
 **Certified by** the corpus fixture `figure-locale-en-gb` (every corpus-certifying host round-trips it) and
 `src/Fuaran.UI.Renderer.Server.Tests/FigureLocaleTests.fs`.
 
+### What rides this slot — Phase 2499 (a currency figure can set its fraction digits)
+
+**Class: additive on the wire, breaking (source) in F# and C#; it rides the slot's breaking class.** Packages
+`Fuaran.UI`, `Fuaran.UI.Ops`, `Fuaran.UI.OpStream.Abstractions`, `Fuaran.UI.Renderer.Core`, `Fuaran.UI.Renderer`,
+`Fuaran.UI.Renderer.Server`, `Fuaran.UI.Charts`, `Fuaran.UI.Validator`, `Fuaran.UI.CSharp`, `Fuaran.UI.Fragments` and
+`Fuaran.UI.Design`.
+
+- **Wire.** `CellFormat.Currency` and `Format.Currency` carry an optional `decimals` (an integer), omitted when absent,
+  so every existing document is byte-unchanged and every figure case now carries `decimals` (operator ruling B,
+  2026-10-28; VOCABULARY.md, the figure-locale row; WIRE_FORMAT, "A figure's `decimals`"). The IDL diff classifies both
+  as `[Additive]` with no profile step.
+- **Rendering.** Absent, every arm renders exactly as before. Present, it is the fixed digit count of the locale-free
+  projection (`code + " " + toFixed d`; an exact decimal rounds half up from its own digits), and through a locale
+  formatter both the minimum and maximum fraction digits (`Intl` in the browser; the `"C<d>"` pattern on the .NET
+  fallback), overriding the currency's and the locale's defaults. `Currency "GBP"` at `decimals: 0` in `en-GB` reads
+  `£412,380`. A chart's value axis keeps deriving its precision from the tick step for every currency.
+- **Source-breaking, which is why the class matters.** `CellFormat.Currency of code: string * decimals: int option *
+  locale: LocaleSource option` and `Format.Currency of isoCode: string * decimals: int option`. Every construction and
+  every pattern on those cases breaks (FS0001 / FS0727 / FS0019). C#'s generated `CellFormat.NewCurrency` and
+  `Format.NewCurrency` take the extra argument, and the facade's `CellFormat.Currency(isoCode, decimals, locale)` puts
+  `decimals` before `locale`, so a positional `Currency(code, locale)` call becomes `Currency(code, locale: locale)`.
+- **New members.** `format.withDecimals` (sets `decimals` on the three figure cases); `localeFormat.currencyDigits`;
+  the C# facade's optional `decimals` on `CellFormat.Currency` and `LocaleFormat.Currency`. FUARAN061 reads the code of
+  the tupled `Format.Currency(code, decimals)` and of `localeFormat.currencyDigits`.
+
+**What a consumer does.** `CellFormat.Currency("GBP", locale)` becomes `CellFormat.Currency("GBP", None, locale)` (or
+`format.currency "GBP"`, unchanged); `Format.Currency "GBP"` becomes `Format.Currency("GBP", None)` (or
+`localeFormat.currency "GBP"`, unchanged); a pattern `| CellFormat.Currency(code, _) ->` becomes
+`| CellFormat.Currency(code, _, _) ->`. A stored tree is unaffected.
+
+**Certified by** the corpus fixture `figure-decimals-en-gb` (every corpus-certifying host round-trips it), the
+`formatting` family's `currency-decimals-0` / `currency-decimals-3` vectors (every host's locale-free projection) and
+`src/Fuaran.UI.Renderer.Server.Tests/FigureLocaleTests.fs`.
+
 ### What rides this slot — Phase 1891 (grid edits as `ColumnOp`s)
 
 **Class: additive on the wire, breaking (source) in F#; it rides the slot's breaking class.** Packages

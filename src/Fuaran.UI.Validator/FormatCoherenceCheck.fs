@@ -15,10 +15,11 @@ module Fuaran.UI.Validator.FormatCoherenceCheck
 //
 //  Static-detectable shapes:
 //
-//    Format.Currency ""
-//    Format.Currency "   "
+//    Format.Currency("", None)            // Phase 2499 — the case is a tuple
+//    Format.Currency("   ", Some 0)
 //    localeFormat.currency ""
-//    binding.format src (Format.Currency "") locale.ambient   // nested
+//    localeFormat.currencyDigits "" 0
+//    binding.format src (Format.Currency("", None)) locale.ambient   // nested
 //
 //  Non-detectable shapes (no finding):
 //
@@ -29,6 +30,7 @@ module Fuaran.UI.Validator.FormatCoherenceCheck
 //      that's a runtime `RangeError`, out of scope for the static rule.
 // ============================================================================
 
+open FSharp.Compiler.Syntax
 open Fuaran.UI.PreEmitValidate
 open Fuaran.UI.Validator.Findings
 open Fuaran.UI.Validator.Syntax
@@ -37,18 +39,26 @@ type private CurrencyCall =
     { Location: Location
       IsoLiteral: string option }
 
-/// `Format.Currency "<iso>"` (the DU case) or `localeFormat.currency "<iso>"`.
+/// `Format.Currency("<iso>", decimals)` (the DU case — its first tuple item since
+/// Phase 2499 gave it a second member), `localeFormat.currency "<iso>"` or
+/// `localeFormat.currencyDigits "<iso>" d`.
 let private scan (sources: ParsedSource list) : CurrencyCall list =
+    let isoOf (arg: SynExpr) : string option =
+        match unwrap arg with
+        | SynExpr.Tuple(exprs = first :: _) -> literalString first
+        | other -> literalString other
+
     sources
     |> collectApps (fun file head args ->
         if
             (isQualified "Format" "Currency" head
-             || isQualified "localeFormat" "currency" head)
+             || isQualified "localeFormat" "currency" head
+             || isQualified "localeFormat" "currencyDigits" head)
             && not args.IsEmpty
         then
             Some
                 { Location = mkLocation file head.Range
-                  IsoLiteral = List.tryHead args |> Option.bind literalString }
+                  IsoLiteral = List.tryHead args |> Option.bind isoOf }
         else
             None)
 

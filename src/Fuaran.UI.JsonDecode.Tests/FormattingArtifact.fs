@@ -152,9 +152,22 @@ let all: Vector list =
       v
           "currency-code-prefix"
           1234.5
-          (CellFormat.Currency("USD", None))
+          (CellFormat.Currency("USD", None, None))
           "USD 1234.50"
           "the cell vocabulary's currency is the ISO code, a space and two places"
+      // Phase 2499 — a currency's present `decimals` is its fixed digit count.
+      v
+          "currency-decimals-0"
+          412380.5
+          (CellFormat.Currency("GBP", Some 0, None))
+          "GBP 412381"
+          "a present decimals replaces the two places; the tie rounds up"
+      v
+          "currency-decimals-3"
+          1.5
+          (CellFormat.Currency("USD", Some 3, None))
+          "USD 1.500"
+          "a present decimals pads with zeros like toFixed"
       v
           "significant-3-of-1234"
           1234.0
@@ -203,7 +216,8 @@ let formatJson (format: CellFormat) : string =
     | CellFormat.Number(Some d, None) -> sprintf """{"$type":"Number","decimals":%d}""" d
     | CellFormat.Percent(None, None) -> """{"$type":"Percent"}"""
     | CellFormat.Percent(Some d, None) -> sprintf """{"$type":"Percent","decimals":%d}""" d
-    | CellFormat.Currency(code, None) -> sprintf """{"$type":"Currency","code":"%s"}""" code
+    | CellFormat.Currency(code, None, None) -> sprintf """{"$type":"Currency","code":"%s"}""" code
+    | CellFormat.Currency(code, Some d, None) -> sprintf """{"$type":"Currency","code":"%s","decimals":%d}""" code d
     | CellFormat.SignificantDigits d -> sprintf """{"$type":"SignificantDigits","digits":%d}""" d
     | other -> failwithf "the formatting family carries no %A vector" other
 
@@ -273,7 +287,7 @@ let private description =
     + "figure and its hydration agree byte for byte: `None` and `DateTime` are `String(x)`; `Number` is "
     + "`x.toFixed(d)`, or with no declared places `x.toFixed(0)` for an integer and `String(x)` "
     + "otherwise; `Percent` is `(x * 100).toFixed(d)` plus `%` (one place by default); `Currency` is "
-    + "the code, a space and `x.toFixed(2)`; `SignificantDigits` is `Number(x.toPrecision(d)).toString()`. "
+    + "the code, a space and `x.toFixed(d)` (two places by default); `SignificantDigits` is `Number(x.toPrecision(d)).toString()`. "
     + "The text depends on no locale. Generated from the reference host's own formatter, which PROVES "
     + "every vector, through its decoder, before this file is written."
 

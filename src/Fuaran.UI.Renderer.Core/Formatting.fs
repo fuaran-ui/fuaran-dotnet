@@ -660,7 +660,11 @@ let private formatFigure (format: CellFormat) (value: float) : string =
             jsToFixed 0 value
         else
             jsNumberText value
-    | CellFormat.Currency(code, _) -> code + " " + jsToFixed 2 value
+    // Phase 2499 — a present `decimals` is the fixed digit count; absent, two.
+    | CellFormat.Currency(code, decimals, _) ->
+        code
+        + " "
+        + jsToFixed (decimals |> Option.map fixedDigits |> Option.defaultValue 2) value
     | CellFormat.Percent(Some decimals, _) -> jsToFixed (fixedDigits decimals) (value * 100.0) + "%"
     | CellFormat.Percent(None, _) -> jsToFixed 1 (value * 100.0) + "%"
     | CellFormat.SignificantDigits digits -> jsSignificant (precisionDigits digits) value
@@ -791,7 +795,10 @@ let private formatDecimalFigure (format: CellFormat) (text: string) : string =
 
         match format with
         | CellFormat.Number(Some decimals, _) -> decimalToFixed (fixedDigits decimals) scaled
-        | CellFormat.Currency(code, _) -> code + " " + decimalToFixed 2 scaled
+        | CellFormat.Currency(code, decimals, _) ->
+            code
+            + " "
+            + decimalToFixed (decimals |> Option.map fixedDigits |> Option.defaultValue 2) scaled
         | CellFormat.Percent(Some decimals, _) ->
             decimalToFixed (fixedDigits decimals) (negative, digits, scale - 2) + "%"
         | CellFormat.Percent(None, _) -> decimalToFixed 1 (negative, digits, scale - 2) + "%"
@@ -826,7 +833,14 @@ let private numberOptions (fmt: Format) : obj =
     match fmt with
     | Format.Number(Some d) -> createObj [ "minimumFractionDigits" ==> d; "maximumFractionDigits" ==> d ]
     | Format.Number None -> createObj []
-    | Format.Currency isoCode -> createObj [ "style" ==> "currency"; "currency" ==> isoCode ]
+    | Format.Currency(isoCode, None) -> createObj [ "style" ==> "currency"; "currency" ==> isoCode ]
+    // Phase 2499 — a present `decimals` overrides the currency's own digits.
+    | Format.Currency(isoCode, Some d) ->
+        createObj
+            [ "style" ==> "currency"
+              "currency" ==> isoCode
+              "minimumFractionDigits" ==> d
+              "maximumFractionDigits" ==> d ]
     | Format.Percent(Some d) ->
         createObj
             [ "style" ==> "percent"
@@ -898,7 +912,7 @@ let format (localeTag: string) (fmt: Format) (value: float) : string =
 
     match fmt with
     | Format.Number decimals -> value.ToString(numberPattern decimals, c)
-    | Format.Currency isoCode ->
+    | Format.Currency(isoCode, decimals) ->
         // Format with the locale's currency pattern (symbol placement,
         // grouping, decimal digits) but substitute the requested currency's
         // symbol — resolved from the curated ISO-4217 table, the code itself
@@ -908,7 +922,13 @@ let format (localeTag: string) (fmt: Format) (value: float) : string =
         // approximation; the browser Intl path is exact.
         let nfi = c.NumberFormat.Clone() :?> NumberFormatInfo
         nfi.CurrencySymbol <- currencySymbol isoCode
-        value.ToString("C", nfi)
+        // Phase 2499 — a present `decimals` overrides the locale's digits.
+        let precision =
+            match decimals with
+            | Some d -> string (max 0 d)
+            | None -> ""
+
+        value.ToString("C" + precision, nfi)
     | Format.Percent decimals ->
         let suffix =
             match decimals with
@@ -999,7 +1019,7 @@ let private figureLocale (ambientLocale: string) (cellFormat: CellFormat) : (str
 
     match cellFormat with
     | CellFormat.Number(decimals, Some locale) -> Some(tagOf locale, Format.Number decimals)
-    | CellFormat.Currency(code, Some locale) -> Some(tagOf locale, Format.Currency code)
+    | CellFormat.Currency(code, decimals, Some locale) -> Some(tagOf locale, Format.Currency(code, decimals))
     | CellFormat.Percent(decimals, Some locale) -> Some(tagOf locale, Format.Percent decimals)
     | _ -> None
 

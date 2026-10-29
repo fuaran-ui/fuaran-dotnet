@@ -40,7 +40,7 @@ let private revenueMetric: Node<obj> =
             { Defaults.metric with
                 Label = TextSource.Literal "Revenue"
                 Value = Binding.Static(Some 0.0)
-                Format = CellFormat.Currency("USD", None)
+                Format = CellFormat.Currency("USD", None, None)
                 Tone = ToneVariant.Brand }
         )
       // `None` is the canonical empty-state / default-style shape since the swap.
@@ -153,7 +153,7 @@ let tests =
                       let spec = metricOf updated
 
                       match spec.Format with
-                      | CellFormat.Currency("GBP", None) -> ()
+                      | CellFormat.Currency("GBP", None, None) -> ()
                       | other -> failtestf "Expected Currency 'GBP', got %A" other
           }
 

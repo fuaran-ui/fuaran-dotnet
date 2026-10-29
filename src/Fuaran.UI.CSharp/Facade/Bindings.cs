@@ -396,9 +396,13 @@ public readonly struct LocaleFormat
     public static LocaleFormat Number(int? decimals = null) =>
         new(FsGen.Format.NewNumber(Fs.OfNullable(decimals)));
 
-    /// <summary>A currency amount; <paramref name="isoCode"/> is the ISO-4217 code (e.g. "GBP").</summary>
-    public static LocaleFormat Currency(string isoCode) =>
-        new(FsGen.Format.NewCurrency(isoCode));
+    /// <summary>
+    /// A currency amount; <paramref name="isoCode"/> is the ISO-4217 code (e.g. "GBP").
+    /// <paramref name="decimals"/> pins the fraction-digit count, overriding the
+    /// currency's own (Phase 2499).
+    /// </summary>
+    public static LocaleFormat Currency(string isoCode, int? decimals = null) =>
+        new(FsGen.Format.NewCurrency(isoCode, Fs.OfNullable(decimals)));
 
     /// <summary>A percentage of a ratio source (<c>0.42</c> → "42%").</summary>
     public static LocaleFormat Percent(int? decimals = null) =>

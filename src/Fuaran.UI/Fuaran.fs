@@ -678,7 +678,7 @@ module Action =
 
 [<RequireQualifiedAccess>]
 module format =
-    let currency (code: string) : CellFormat = CellFormat.Currency(code, None)
+    let currency (code: string) : CellFormat = CellFormat.Currency(code, None, None)
 
     let percent (decimals: int option) : CellFormat = CellFormat.Percent(decimals, None)
 
@@ -690,8 +690,20 @@ module format =
     let inLocale (locale: LocaleSource) (format: CellFormat) : CellFormat =
         match format with
         | CellFormat.Number(decimals, _) -> CellFormat.Number(decimals, Some locale)
-        | CellFormat.Currency(code, _) -> CellFormat.Currency(code, Some locale)
+        | CellFormat.Currency(code, decimals, _) -> CellFormat.Currency(code, decimals, Some locale)
         | CellFormat.Percent(decimals, _) -> CellFormat.Percent(decimals, Some locale)
+        | other -> other
+
+    /// Phase 2499 — the figure at `decimals` fraction digits: a `number` /
+    /// `currency` / `percent` sets them on the locale-free projection and the
+    /// locale formatter alike (`currency "GBP" |> withDecimals 0 |> inLocale …`
+    /// reads `£412,380`). Every other case carries no `decimals` and is returned
+    /// unchanged.
+    let withDecimals (decimals: int) (format: CellFormat) : CellFormat =
+        match format with
+        | CellFormat.Number(_, locale) -> CellFormat.Number(Some decimals, locale)
+        | CellFormat.Currency(code, _, locale) -> CellFormat.Currency(code, Some decimals, locale)
+        | CellFormat.Percent(_, locale) -> CellFormat.Percent(Some decimals, locale)
         | other -> other
 
     let significantDigits (digits: int) : CellFormat = CellFormat.SignificantDigits digits
@@ -715,7 +727,11 @@ module localeFormat =
 
     /// Currency amount; `isoCode` is the ISO-4217 code (e.g. `"GBP"`). The
     /// validator (FUARAN061) rejects a blank code at build time.
-    let currency (isoCode: string) : Format = Format.Currency isoCode
+    let currency (isoCode: string) : Format = Format.Currency(isoCode, None)
+
+    /// Phase 2499 — a currency amount at `decimals` fraction digits, overriding
+    /// the currency's own (`currencyDigits "GBP" 0` reads `£412,380`).
+    let currencyDigits (isoCode: string) (decimals: int) : Format = Format.Currency(isoCode, Some decimals)
 
     /// Percentage of a ratio source (`0.42` → "42%"); `decimals` pins the
     /// fraction-digit count (`None` = locale default).

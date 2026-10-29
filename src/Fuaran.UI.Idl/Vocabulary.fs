@@ -802,6 +802,11 @@ let private binding =
 /// *optional* `locale`. Absent, the figure is the locale-free projection it has
 /// always been, on every host; present, it renders through the same locale
 /// formatter `Binding.Format` uses for the matching `Format` case (Phase 102).
+///
+/// Phase 2499 — `Currency` carries an *optional* `decimals` too, so every figure
+/// case can set its fraction digits (operator ruling B, 2026-10-28). Absent, the
+/// currency renders exactly as before; present, it is the fixed digit count on the
+/// locale-free projection and the locale formatter's fraction digits alike.
 let private cellFormat =
     { Name = "CellFormat"
       Params = []
@@ -815,7 +820,10 @@ let private cellFormat =
             Annotations = Annotations.Empty
             Hosted = None }
           { Tag = "Currency"
-            Fields = [ req "code" TStr; opt "locale" (TUnion("LocaleSource", [])) ]
+            Fields =
+              [ req "code" TStr
+                opt "decimals" TInt
+                opt "locale" (TUnion("LocaleSource", [])) ]
             Annotations = Annotations.Empty
             Hosted = None }
           { Tag = "Percent"
@@ -1102,8 +1110,11 @@ let private formatUnion =
             Fields = [ opt "decimals" TInt ]
             Annotations = Annotations.Empty
             Hosted = None }
+          // Phase 2499 — an optional `decimals`, the formatter's minimum and
+          // maximum fraction digits, overriding the currency's (and on the .NET
+          // fallback the locale's) default digits. Absent, unchanged.
           { Tag = "Currency"
-            Fields = [ req "isoCode" TStr ]
+            Fields = [ req "isoCode" TStr; opt "decimals" TInt ]
             Annotations = Annotations.Empty
             Hosted = None }
           { Tag = "Percent"

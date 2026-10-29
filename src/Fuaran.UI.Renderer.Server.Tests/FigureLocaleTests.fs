@@ -28,7 +28,8 @@ let private revenue (format: CellFormat) : Node<obj> =
             Value = Binding.Static(Some 412380.0)
             Format = format }
 
-let private gbp (locale: LocaleSource option) = CellFormat.Currency("GBP", locale)
+let private gbp (locale: LocaleSource option) =
+    CellFormat.Currency("GBP", None, locale)
 
 [<Tests>]
 let tests =
@@ -50,7 +51,7 @@ let tests =
               for tag in [ "en-GB"; "de-DE"; "fr-FR"; "" ] do
                   for cell, fmt in
                       [ CellFormat.Number(Some 2, None), Format.Number(Some 2)
-                        CellFormat.Currency("EUR", None), Format.Currency "EUR"
+                        CellFormat.Currency("EUR", None, None), Format.Currency("EUR", None)
                         CellFormat.Percent(Some 1, None), Format.Percent(Some 1) ] do
                       let located = format.inLocale (LocaleSource.Explicit tag) cell
 
@@ -96,4 +97,86 @@ let tests =
               Expect.isTrue (contains "£412,380.00" email) "the email digest's figure"
               let script, _ = Speech.projectStatic node
               Expect.isTrue (contains "£412,380.00" (Speech.toPlainText script)) "the spoken figure"
+          } ]
+
+/// Phase 2499 — every figure case carries `decimals`: a currency figure can set its
+/// fraction digits, on the locale-free projection and the locale formatter alike.
+let private gbpDigits (decimals: int option) (locale: LocaleSource option) =
+    CellFormat.Currency("GBP", decimals, locale)
+
+[<Tests>]
+let decimalsTests =
+    testList
+        "Phase 2499 — a currency figure can set its fraction digits"
+        [ test "a GBP figure at 0 decimals in en-GB renders whole pounds" {
+              let out =
+                  Render.render
+                      BindingResolver.empty
+                      (revenue (gbpDigits (Some 0) (Some(LocaleSource.Explicit "en-GB"))))
+
+              Expect.isTrue (contains ">£412,380<" out) $"whole pounds in: {out}"
+          }
+
+          test "without decimals the located figure keeps the currency's digits, and without either it is unchanged" {
+              let located =
+                  Render.render BindingResolver.empty (revenue (gbpDigits None (Some(LocaleSource.Explicit "en-GB"))))
+
+              Expect.isTrue (contains ">£412,380.00<" located) $"the currency's digits in: {located}"
+              let plain = Render.render BindingResolver.empty (revenue (gbpDigits None None))
+              Expect.isTrue (contains ">GBP 412380.00<" plain) $"the locale-free projection in: {plain}"
+          }
+
+          test "a present decimals sets the locale-free currency's digits" {
+              Expect.equal (Formatting.formatNumber (gbpDigits (Some 0) None) 412380.4) "GBP 412380" "0 digits"
+              Expect.equal (Formatting.formatNumber (gbpDigits (Some 3) None) 1.5) "GBP 1.500" "3 digits"
+              Expect.equal (Formatting.formatDecimal (gbpDigits (Some 0) None) "412380.5") "GBP 412381" "exact, half up"
+
+              Expect.equal
+                  (Formatting.formatDecimal (gbpDigits (Some 3) None) "0.0005")
+                  "GBP 0.001"
+                  "exact: from the digits, never through a float"
+          }
+
+          test "a located Percent and Number render at their decimals" {
+              let percent =
+                  format.inLocale (LocaleSource.Explicit "en-GB") (format.percent (Some 1))
+
+              Expect.equal (Formatting.formatNumber percent 0.0425) "4.3%" "Percent at 1 place"
+
+              let number =
+                  format.inLocale (LocaleSource.Explicit "en-GB") (format.number (Some 0))
+
+              Expect.equal (Formatting.formatNumber number 1234567.6) "1,234,568" "Number at 0 places"
+          }
+
+          test "a located currency at decimals is the Binding.Format route with the same digits" {
+              for tag in [ "en-GB"; "de-DE"; "" ] do
+                  for d in [ 0; 1; 3 ] do
+                      let located =
+                          format.currency "EUR"
+                          |> format.withDecimals d
+                          |> format.inLocale (LocaleSource.Explicit tag)
+
+                      Expect.equal
+                          (Formatting.formatNumber located 1234.5678)
+                          (Formatting.format tag (localeFormat.currencyDigits "EUR" d) 1234.5678)
+                          $"{tag} {d}"
+          }
+
+          test "withDecimals sets the digits on the three figure cases and leaves the rest" {
+              match format.withDecimals 0 (format.currency "GBP") with
+              | CellFormat.Currency("GBP", Some 0, None) -> ()
+              | other -> failtestf "currency: %A" other
+
+              match format.withDecimals 2 (format.number None) with
+              | CellFormat.Number(Some 2, None) -> ()
+              | other -> failtestf "number: %A" other
+
+              match format.withDecimals 1 (format.percent None) with
+              | CellFormat.Percent(Some 1, None) -> ()
+              | other -> failtestf "percent: %A" other
+
+              match format.withDecimals 1 (CellFormat.SignificantDigits 3) with
+              | CellFormat.SignificantDigits 3 -> ()
+              | other -> failtestf "no decimals member, unchanged: %A" other
           } ]

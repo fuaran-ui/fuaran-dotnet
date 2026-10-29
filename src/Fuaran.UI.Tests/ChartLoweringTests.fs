@@ -344,7 +344,7 @@ let private cases: Case list =
           XField = "quarter"
           YFields = [ "revenue" ]
           Title = Some(lit "Revenue")
-          ValueFormat = Some(Format.Currency "GBP")
+          ValueFormat = Some(Format.Currency("GBP", None))
           Rows = [ "Q1", [ 4200.0 ]; "Q2", [ 9500.0 ]; "Q3", [ 6800.0 ]; "Q4", [ 7300.0 ] ] }
       { plain with
           // `WordsWithSymbol` + a currency: the symbol moves INTO the label
@@ -354,7 +354,7 @@ let private cases: Case list =
           XField = "region"
           YFields = [ "revenue" ]
           Title = Some(lit "Revenue by region")
-          ValueFormat = Some(Format.Currency "GBP")
+          ValueFormat = Some(Format.Currency("GBP", None))
           UnitMode = Some "WordsWithSymbol"
           Rows =
               [ "North", [ 12500000.0 ]
@@ -368,7 +368,7 @@ let private cases: Case list =
           XField = "region"
           YFields = [ "revenue" ]
           Title = Some(lit "Revenue by region")
-          ValueFormat = Some(Format.Currency "GBP")
+          ValueFormat = Some(Format.Currency("GBP", None))
           UnitMode = Some "SIAbbreviation"
           Rows =
               [ "North", [ 12500000.0 ]
@@ -522,7 +522,7 @@ let private cases: Case list =
           XField = "quarter"
           YFields = [ "revenue" ]
           Title = Some(lit "Revenue")
-          ValueFormat = Some(Format.Currency "GBP")
+          ValueFormat = Some(Format.Currency("GBP", None))
           UnitMode = Some "WordsWithSymbol"
           Rows =
               [ "Q1", [ 12500000.0 ]
@@ -539,7 +539,7 @@ let private cases: Case list =
           XField = "quarter"
           YFields = [ "revenue" ]
           Title = Some(lit "Revenue")
-          ValueFormat = Some(Format.Currency "GBP")
+          ValueFormat = Some(Format.Currency("GBP", None))
           UnitMode = Some "WordsWithSymbol"
           Subtitle = Some(lit "Millions of £")
           Rows =
@@ -1738,7 +1738,10 @@ let private inputJson (case: Case) : string =
         | Some(Format.Number(Some d)) -> sprintf ",\"valueFormat\":{\"$type\":\"Number\",\"decimals\":%d}" d
         | Some(Format.Percent None) -> ",\"valueFormat\":{\"$type\":\"Percent\"}"
         | Some(Format.Percent(Some d)) -> sprintf ",\"valueFormat\":{\"$type\":\"Percent\",\"decimals\":%d}" d
-        | Some(Format.Currency iso) -> sprintf ",\"valueFormat\":{\"$type\":\"Currency\",\"isoCode\":\"%s\"}" (esc iso)
+        | Some(Format.Currency(iso, None)) ->
+            sprintf ",\"valueFormat\":{\"$type\":\"Currency\",\"isoCode\":\"%s\"}" (esc iso)
+        | Some(Format.Currency(iso, Some d)) ->
+            sprintf ",\"valueFormat\":{\"$type\":\"Currency\",\"decimals\":%d,\"isoCode\":\"%s\"}" d (esc iso)
         | Some _ -> failwith "chart-lowering inputs carry only the numeric Format arms"
 
     let unitMode =
@@ -2325,7 +2328,7 @@ let chartLoweringTests =
                           Kind = ChartKind.Bar
                           XField = "quarter"
                           YFields = [ "delta" ]
-                          ValueFormat = Some(Format.Currency "GBP")
+                          ValueFormat = Some(Format.Currency("GBP", None))
                           Rows = [ "Q1", [ -1200.0 ]; "Q2", [ 800.0 ] ] }
 
                   let ticks = yTickTexts (Charts.lower (specOf case) (Seq.ofList (buildRows case)))

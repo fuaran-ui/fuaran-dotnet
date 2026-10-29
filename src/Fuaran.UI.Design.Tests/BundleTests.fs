@@ -554,6 +554,7 @@ let figures =
                   fact.Substring(fact.IndexOf "data-ds-specimen=\"Fact, a reader-facing figure (en-GB)\"")
 
               Expect.stringContains rendered "£142,500" "the figure renders grouped, symbol-led"
+              Expect.isFalse (rendered.Contains "£142,500.00") "the Fact's figure is whole pounds too (Phase 2499)"
 
               // Phase 2490 — a figure kind carries the locale in its own CellFormat, so
               // its card shows the figure grouped and symbol-led in the kind's value.
@@ -568,10 +569,12 @@ let figures =
                   let specimen = $"data-ds-specimen=\"{kind}, a figure in en-GB\""
                   Expect.stringContains html specimen $"{kind} adds the located specimen"
 
-                  Expect.stringContains
-                      (html.Substring(html.IndexOf specimen))
-                      "£142,500.00"
-                      $"{kind}'s value is grouped, symbol-led"
+                  // Phase 2499 — the located money figure carries `decimals: 0`, so it
+                  // reads whole pounds, as a designed screen shows it.
+                  let located = html.Substring(html.IndexOf specimen)
+                  Expect.stringContains located "£142,500<" $"{kind}'s value is grouped, symbol-led, whole pounds"
+
+                  Expect.isFalse (located.Contains "£142,500.00") $"{kind}'s located value carries no fraction digits"
 
               Expect.stringContains
                   (System.Net.WebUtility.HtmlDecode(cardHtml bundle "DataGrid"))

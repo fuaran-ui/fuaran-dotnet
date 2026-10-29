@@ -26,10 +26,12 @@ public readonly struct CellFormat
 
     /// <summary>
     /// A currency amount; <paramref name="isoCode"/> is the ISO-4217 code (e.g. "GBP"). A
-    /// <paramref name="locale"/> renders it grouped and symbol-led (Phase 2490).
+    /// <paramref name="locale"/> renders it grouped and symbol-led (Phase 2490);
+    /// <paramref name="decimals"/> pins the fraction-digit count, overriding the
+    /// currency's own (Phase 2499).
     /// </summary>
-    public static CellFormat Currency(string isoCode, Locale? locale = null) =>
-        new(FsGen.CellFormat.NewCurrency(isoCode, LocaleOf(locale)));
+    public static CellFormat Currency(string isoCode, int? decimals = null, Locale? locale = null) =>
+        new(FsGen.CellFormat.NewCurrency(isoCode, Fs.OfNullable(decimals), LocaleOf(locale)));
 
     /// <summary>
     /// A percentage; <paramref name="decimals"/> pins the fraction-digit count. A

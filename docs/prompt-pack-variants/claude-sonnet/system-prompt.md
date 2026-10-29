@@ -487,7 +487,7 @@ CallResultTarget =
 CellFormat =
 | None
 | Number { decimals?:int; locale?:LocaleSource }
-| Currency { code:str; locale?:LocaleSource }
+| Currency { code:str; decimals?:int; locale?:LocaleSource }
 | Percent { decimals?:int; locale?:LocaleSource }
 | SignificantDigits { digits:int }
 | DateTime { format:str }
@@ -545,7 +545,7 @@ FormFieldKind =
 | Tokens { allowFreeText?:bool; suggestions?:Binding_list_SelectOption; value?:Binding_list_str }
 Format =
 | Number { decimals?:int }
-| Currency { isoCode:str }
+| Currency { isoCode:str; decimals?:int }
 | Percent { decimals?:int }
 | DateTime { dateStyle?:"Short"|"Medium"|"Long"|"Full"; timeStyle?:"Short"|"Medium"|"Long"|"Full" }
 | RelativeTime { unit:RelativeTimeUnit }
@@ -1276,6 +1276,11 @@ grouped, symbol-led figure a designed screen shows (`£412,380.00`), give the `N
 { "$type": "Explicit", "tag": "en-GB" } }`, or `{ "$type": "Ambient" }` for the reader's
 own. The value stays a NUMBER, so trends, comparisons and sorting still read it: never
 put a `Format` binding (text) in a figure kind's `value`.
+
+`decimals` sets a figure's fraction digits on any of the three cases, located or not:
+whole pounds (`£412,380`) are `{ "$type": "Currency", "code": "GBP", "decimals": 0,
+"locale": { "$type": "Explicit", "tag": "en-GB" } }`. Without it a currency keeps its own
+digits (`£412,380.00`). A `Binding.Format`'s `Currency` takes the same member beside `isoCode`.
 
 ### "Today" is a binding, never a literal
 

@@ -717,7 +717,8 @@ let all: FidelityRow list =
           [ "grid-1"
             "table-toned-column"
             "table-selectable-detail"
-            "figure-locale-en-gb" ]
+            "figure-locale-en-gb"
+            "figure-decimals-en-gb" ]
           "Phase 393; Phase 1701; Phase 2473; Phase 2474; docs/SSR.md (Visualisation, sortable rendered tables); WIRE_FORMAT.md 3.6.24"
       |> obliged
           [ owes
@@ -898,7 +899,15 @@ let all: FidelityRow list =
                  "WIRE_FORMAT.md 3.6.4"
                  "a non-empty `srcSet` emits `<url> <width>w` candidates ordered ASCENDING by width; a candidate the egress floor refuses is dropped rather than emitted, so the primary `src` remains the fallback" ])
 
-      plain "LabelValueRow" "the label / value TextSources" "the resolved, formatted row"
+      // Phase 2499 — a figure's `decimals` and `locale` reach the row's value too.
+      row
+          "LabelValueRow"
+          false
+          "the label / value TextSources"
+          "the resolved, formatted row"
+          RichTier.None
+          [ "figure-decimals-en-gb" ]
+          "WIRE_FORMAT.md 3.2; docs/SSR.md (per-kind server behaviour); Phase 2499"
 
       row
           "Link"
@@ -1033,8 +1042,8 @@ let all: FidelityRow list =
           "the label + value source + format, the figure cases with their optional `locale`"
           "the resolved, formatted metric tile; a figure whose format declares a `locale` reads through the host's locale formatter, as a `Binding.Format` slot does, and every other figure through the locale-free projection"
           RichTier.None
-          [ "figure-locale-en-gb" ]
-          "WIRE_FORMAT.md 3.2; docs/SSR.md (per-kind server behaviour); Phase 2490"
+          [ "figure-locale-en-gb"; "figure-decimals-en-gb" ]
+          "WIRE_FORMAT.md 3.2; docs/SSR.md (per-kind server behaviour); Phase 2490; Phase 2499"
       |> announces
           [ { pinsRole "the trend glyph beside the figure" "img" with
                 Condition =

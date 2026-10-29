@@ -43,12 +43,12 @@ let tests =
           }
 
           test "Currency uses the resolved currency symbol in the .NET fallback" {
-              let s = Formatting.format "en-GB" (Format.Currency "GBP") 1234.5
+              let s = Formatting.format "en-GB" (Format.Currency("GBP", None)) 1234.5
               Expect.equal s "£1,234.50" "GBP symbol from the curated table + locale pattern"
           }
 
           test "Currency symbol + placement follow the locale pattern (de-DE/EUR)" {
-              let s = Formatting.format "de-DE" (Format.Currency "EUR") 1234.5
+              let s = Formatting.format "de-DE" (Format.Currency("EUR", None)) 1234.5
               // de-DE puts the symbol after the amount with comma decimals.
               Expect.stringContains s "€" "euro symbol resolved"
               Expect.stringContains s "1.234,50" "de-DE grouping + decimal"
@@ -59,7 +59,7 @@ let tests =
               // RegionInfo scan, so the glyph is identical on Windows NLS and
               // Linux/ICU (where the server renderer runs). Guards the EUR→"EUR"
               // server-side regression the RegionInfo-only path exhibited.
-              let s = Formatting.format "en-US" (Format.Currency "USD") 1234.5
+              let s = Formatting.format "en-US" (Format.Currency("USD", None)) 1234.5
               Expect.equal s "$1,234.50" "USD symbol + en-US pattern"
           }
 
@@ -71,7 +71,7 @@ let tests =
               Expect.equal (Formatting.currencySymbol "MYR") "MYR" "unlisted code falls back to itself"
               Expect.equal (Formatting.currencySymbol "EUR") "€" "listed code reads the table"
 
-              let s = Formatting.format "en-US" (Format.Currency "MYR") 1234.5
+              let s = Formatting.format "en-US" (Format.Currency("MYR", None)) 1234.5
               Expect.stringContains s "MYR" "the code is the symbol"
           }
 
@@ -131,7 +131,11 @@ let tests =
 
           test "Binding.Format resolves a Static numeric source to the formatted string" {
               let b: Binding<string> =
-                  Binding.Format(Binding.Static(Some 1234.5), Format.Currency "GBP", LocaleSource.Explicit "en-GB")
+                  Binding.Format(
+                      Binding.Static(Some 1234.5),
+                      Format.Currency("GBP", None),
+                      LocaleSource.Explicit "en-GB"
+                  )
 
               Expect.equal (resolvesTo BindingResolver.empty b) "£1,234.50" "explicit-locale currency"
           }
@@ -187,9 +191,9 @@ let tests =
               // the symbol after the amount, English before it. So the phase's
               // question — does the formatter need to know about direction —
               // is answered no: the pattern already did.
-              let arabic = Formatting.format "ar-EG" (Format.Currency "USD") 1234.5
-              let hebrew = Formatting.format "he-IL" (Format.Currency "USD") 1234.5
-              let english = Formatting.format "en-US" (Format.Currency "USD") 1234.5
+              let arabic = Formatting.format "ar-EG" (Format.Currency("USD", None)) 1234.5
+              let hebrew = Formatting.format "he-IL" (Format.Currency("USD", None)) 1234.5
+              let english = Formatting.format "en-US" (Format.Currency("USD", None)) 1234.5
 
               Expect.stringEnds arabic "$" "ar-EG places the symbol after the amount"
               Expect.stringEnds hebrew "$" "he-IL places the symbol after the amount"

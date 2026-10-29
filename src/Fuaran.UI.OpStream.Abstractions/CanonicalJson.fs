@@ -349,7 +349,14 @@ let private encodeFormat (f: Format) : Appender =
                 | None -> []
 
             appendObject sb (case "Number" fields)
-        | Format.Currency isoCode -> appendObject sb (case "Currency" [ "isoCode", str isoCode ])
+        | Format.Currency(isoCode, decimals) ->
+            // Phase 2499 — the optional `decimals`, omitted when absent.
+            let fields =
+                match decimals with
+                | Some d -> [ "decimals", int_ d; "isoCode", str isoCode ]
+                | None -> [ "isoCode", str isoCode ]
+
+            appendObject sb (case "Currency" fields)
         | Format.Percent decimals ->
             let fields =
                 match decimals with
