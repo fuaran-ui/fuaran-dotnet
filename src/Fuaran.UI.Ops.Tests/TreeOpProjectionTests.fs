@@ -102,6 +102,47 @@ let private everyCase: (TreeOp<Msg> * string * NodeId list) list =
       "Batch",
       [ NodeId "k"; NodeId "p" ] ]
 
+// ---- Phase 2327: the base-aware form ----
+
+/// root [ p1 [ k ]; p2 [ q ] ] — two in-place targets under different parents.
+let private inPlaceBase: Node<Msg> =
+    Fuaran.box
+        "root"
+        { Defaults.box<Msg> with
+            Children =
+                [ Fuaran.box
+                      "p1"
+                      { Defaults.box<Msg> with
+                          Children = [ leaf "k" ] }
+                  Fuaran.box
+                      "p2"
+                      { Defaults.box<Msg> with
+                          Children = [ leaf "q" ] } ] }
+
+let private tone (id: string) : TreeOp<Msg> =
+    TreeOp.PatchStyle(
+        NodeId id,
+        { StyleDelta.empty with
+            Tone = Some ToneVariant.Brand }
+    )
+
+let private voice (id: string) : TreeOp<Msg> =
+    TreeOp.PatchStyle(
+        NodeId id,
+        { StyleDelta.empty with
+            Voice = Some FontVoice.Display }
+    )
+
+/// Whether the two ops, each read at `state`, are independent under Core.
+let private independentAt (state: Node<Msg>) (a: TreeOp<Msg>) (b: TreeOp<Msg>) : bool =
+    Fuaran.Core.Ops.independent (TreeOpFootprint.ofOpIn state a) (TreeOpFootprint.ofOpIn state b)
+
+let private bothOrdersApply (state: Node<Msg>) (a: TreeOp<Msg>) (b: TreeOp<Msg>) : bool =
+    let run x y =
+        Apply.apply x state |> Result.bind (Apply.apply y) |> Result.isOk
+
+    run a b && run b a
+
 [<Tests>]
 let tests =
     testList
@@ -320,4 +361,107 @@ let tests =
                   (List.length (NodeChildren.children NodeChildren.Reach.keyed twice))
                   1
                   "and that root holds a second node"
+          }
+
+          // Phase 2327 — the base-aware form, at the tree the op applies to.
+          test "base-aware: a kind edit and a restyle of one node are independent" {
+              let edit = TreeOp.EditNode(NodeId "k", (leaf "k").Kind)
+
+              Expect.isTrue (independentAt inPlaceBase edit (tone "k")) "kind beside style"
+              Expect.isTrue (bothOrdersApply inPlaceBase edit (tone "k")) "and both orders apply"
+          }
+
+          test "base-aware: a state edit and a prop edit of one node are independent" {
+              let state =
+                  TreeOp.UpdateState(
+                      NodeId "k",
+                      { Defaults.stateBehaviour<Msg> with
+                          OnEmpty = Some(leaf "k-empty") }
+                  )
+
+              let prop = TreeOp.UpdateProp(NodeId "k", "Text", PropValue.Native(nn "edited"))
+
+              Expect.isTrue (independentAt inPlaceBase state prop) "state beside prop"
+              Expect.isTrue (bothOrdersApply inPlaceBase state prop) "and both orders apply"
+          }
+
+          test "base-aware: two in-place edits under different parents are independent" {
+              let edit = TreeOp.EditNode(NodeId "q", (leaf "q").Kind)
+
+              Expect.isTrue (independentAt inPlaceBase (tone "k") edit) "k under p1, q under p2"
+              Expect.isTrue (independentAt inPlaceBase (tone "k") (voice "k")) "two fields of one style"
+          }
+
+          test "base-aware: an in-place edit beside the removal of its ancestor still interferes" {
+              for edit in
+                  [ tone "k"
+                    TreeOp.EditNode(NodeId "k", (leaf "k").Kind)
+                    TreeOp.UpdateProp(NodeId "k", "Text", PropValue.Native(nn "edited")) ] do
+                  Expect.isFalse
+                      (independentAt inPlaceBase (TreeOp.RemoveNode(NodeId "p1")) edit)
+                      (sprintf "removing p1 orders %A" edit)
+
+              // the parent's kind rewritten takes k out with it
+              Expect.isFalse
+                  (independentAt inPlaceBase (TreeOp.EditNode(NodeId "p1", (leaf "p1").Kind)) (tone "k"))
+                  "a kind edit of the parent takes the child out"
+
+              Expect.isFalse
+                  (independentAt inPlaceBase (TreeOp.ReplaceRoot(leaf "other")) (tone "k"))
+                  "a replaced root takes every node out"
+          }
+
+          test "base-aware: one slot is ordered against itself and against its whole" {
+              let prop (v: string) =
+                  TreeOp.UpdateProp(NodeId "k", "Text", PropValue.Native(nn v))
+
+              Expect.isFalse (independentAt inPlaceBase (prop "a") (prop "b")) "two prop edits: the kind slot"
+              Expect.isFalse (independentAt inPlaceBase (tone "k") (tone "k")) "one style field twice"
+
+              Expect.isFalse
+                  (independentAt inPlaceBase (TreeOp.UpdateStyle(NodeId "k", Defaults.style)) (tone "k"))
+                  "a whole restyle against a field"
+          }
+
+          test "base-aware: a target the walk does not locate takes the pure arm" {
+              let absent = tone "ghost"
+              Expect.equal (TreeOpFootprint.ofOpIn inPlaceBase absent) (TreeOpFootprint.ofOp absent) "absent"
+
+              // A node held only in a keyed position (a `state` alternative) is not located either.
+              let held =
+                  TreeOp.UpdateState(
+                      NodeId "k",
+                      { Defaults.stateBehaviour<Msg> with
+                          OnEmpty = Some(leaf "k-empty") }
+                  )
+
+              let after =
+                  match Apply.apply held inPlaceBase with
+                  | Ok t -> t
+                  | Error e -> failtestf "%A" e
+
+              Expect.equal
+                  (TreeOpFootprint.ofOpIn after (tone "k-empty"))
+                  (TreeOpFootprint.ofOp (tone "k-empty"))
+                  "keyed-only"
+          }
+
+          test "base-aware: a structural op is Core's footprintIn, and a script is threaded" {
+              let remove = TreeOp.RemoveNode(NodeId "p1")
+              let f = TreeOpFootprint.ofOpIn inPlaceBase remove
+
+              Expect.isEmpty f.UnknownParentWrites "the parent is named"
+              Expect.equal f.StructureWrites (Set.singleton "root") "the parent's child list"
+              Expect.isTrue (f.ContentWrites.Contains "k") "the destroyed subtree"
+
+              // an op on a node an earlier op of the script put in is located at the threaded tree
+              let script = [ TreeOp.InsertChild(NodeId "p2", leaf "n"); tone "n" ]
+              let each = TreeOpFootprint.ofEachIn inPlaceBase script
+
+              Expect.isEmpty (List.item 1 each).UnknownParentWrites "located after the insert"
+
+              Expect.equal
+                  (TreeOpFootprint.ofScriptIn inPlaceBase script)
+                  (List.reduce Fuaran.Core.Footprint.union each)
+                  "unioned"
           } ]

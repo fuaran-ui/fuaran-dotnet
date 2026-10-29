@@ -146,10 +146,16 @@ let verticalOps (NodeId target) : (string * TreeOp<obj>) list =
 //  pipelines, and there is no copy here to drift from it.
 //
 //  It is not asserted directly. `FoldConfluence.laneFoldLawsAt` is instantiated with it below, so
-//  the fold-confluence claim is made about THIS function.
+//  the fold-confluence claim is made about THIS function; `Conformance.footprintInLawsAt` is
+//  instantiated with it and the base-aware form beside it (Phase 2327).
 
 /// The tier's shipped footprint projection.
 let footprintOfEqOp (e: EqOp) : Fuaran.Core.Footprint = Fuaran.UI.Ops.TreeOpFootprint.ofOp e.Op
+
+/// The tier's shipped BASE-AWARE projection (Phase 2327), `TreeOpFootprint.ofOpIn`, re-exported as
+/// `CoreLawSupport.footprintInOfEqOp` is: `Conformance.footprintInLawsAt` is run over it below.
+let footprintInOfEqOp (state: EqNode) (e: EqOp) : Fuaran.Core.Footprint =
+    Fuaran.UI.Ops.TreeOpFootprint.ofOpIn state.Node e.Op
 
 // ---------------------------------------------------------------------------
 //  the stream witness (laneFoldLawsAt)
@@ -293,6 +299,41 @@ let laneGen: Fuaran.Core.LaneGen<EqOp, EqNode> =
 
             // The kit's rng is handed straight back, unadvanced: see the block above `PortableRng`.
             lanes, rng }
+
+/// One tier op off `laneBase` and whatever the ops before it left — `CoreLawSupport.genFootprintOp`'s
+/// shapes, drawn from the portable source (Phase 2327): inserts under the four containers (3 in 10),
+/// vertical edits of a leaf, a field-level restyle included (4 in 10 — the pairs the base-aware form
+/// frees), a removal of a container, a move of a leaf, and a reorder of the root.
+let private genFootprintOp () : TreeOp<obj> =
+    let k = PortableRng.below 3
+    let e = PortableRng.below 6
+
+    match PortableRng.below 10 with
+    | 0
+    | 1
+    | 2 ->
+        let p = PortableRng.below 4
+        TreeOp.InsertChild(laneParents[p], unwrap (mkLeaf ("f" + string (PortableRng.below 1000))))
+    | 3
+    | 4
+    | 5
+    | 6 ->
+        if e = 5 then
+            TreeOp.PatchStyle(
+                laneLeaves[k],
+                { StyleDelta.empty with
+                    Tone = Some tones[k] }
+            )
+        else
+            verticalOps laneLeaves[k] |> List.item e |> snd
+    | 7 -> TreeOp.RemoveNode laneAncestors[k]
+    | 8 -> TreeOp.MoveNode(laneLeaves[k], laneParents[e % 4])
+    | _ -> TreeOp.ReorderChildren(NodeId "root", [ NodeId "b"; NodeId "a" ])
+
+let footprintGen: Fuaran.Core.StreamGen<EqOp, EqNode> =
+    { State0 = laneBase
+      // The kit's rng is handed straight back, unadvanced, as `laneGen` does.
+      Op = fun rng -> wrapOp (genFootprintOp ()), rng }
 
 // ---------------------------------------------------------------------------
 //  reporting — the Expecto-free half of `CoreLawSupport.assertAllPassed`

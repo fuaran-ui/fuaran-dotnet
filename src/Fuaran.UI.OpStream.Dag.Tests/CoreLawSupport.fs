@@ -250,6 +250,8 @@ let opGen: Fuaran.Core.OpGen<EqNode, NodeId> =
 //  independent only of a structure-free script, every other `TreeOp` writes
 //  structure, and so two vertical edits — of different nodes, or of different
 //  fields of one node — are reported dependent, ordered rather than merged.
+//  The base-aware form (`footprintInOfEqOp`, Phase 2327) is what frees them:
+//  read at the tree, a located vertical op needs no unknown-parent write.
 //  `CoreDagLawTests` pins the ancestor-removal pair, its erased-term falsifier,
 //  and the verdicts the shipped projection gives.
 
@@ -265,6 +267,13 @@ let private skeletonFp (op: Fuaran.Core.SkeletonOp<EqNode, NodeId>) : Fuaran.Cor
 let footprintOfTreeOp (op: TreeOp<obj>) : Fuaran.Core.Footprint = Fuaran.UI.Ops.TreeOpFootprint.ofOp op
 
 let footprintOfEqOp (e: EqOp) : Fuaran.Core.Footprint = footprintOfTreeOp e.Op
+
+/// The tier's shipped BASE-AWARE projection (Phase 2327), `TreeOpFootprint.ofOpIn`: the op read at
+/// the tree it applies to, its parents resolved through Core's `Ops.footprintIn` and a located
+/// vertical op declared at its slot. The projection `Dag.conflictsIn` / `reconcileIn` fold with,
+/// and the one `Conformance.footprintInLawsAt` certifies against `footprintOfEqOp`.
+let footprintInOfEqOp (state: EqNode) (e: EqOp) : Fuaran.Core.Footprint =
+    Fuaran.UI.Ops.TreeOpFootprint.ofOpIn state.Node e.Op
 
 /// Phase 2004's erased-term falsifier: the shipped projection with the vertical arms' unknown-parent
 /// write taken out and nothing else changed. No law runs over it except to show that it goes red: a
@@ -355,7 +364,7 @@ let private childIds = [| NodeId "c0"; NodeId "c1"; NodeId "c2" |]
 let private tones =
     [| ToneVariant.Brand; ToneVariant.Success; ToneVariant.Critical |]
 
-let private styleOp (id: NodeId) (tone: ToneVariant) : TreeOp<obj> =
+let styleOp (id: NodeId) (tone: ToneVariant) : TreeOp<obj> =
     TreeOp.UpdateStyle(id, { Defaults.style with Tone = tone })
 
 /// A mix of accepted ops and typed rejections, so the reducer's totality is exercised as well
@@ -457,8 +466,11 @@ let laneGen: Fuaran.Core.LaneGen<EqOp, EqNode> =
 // ---- the footprint generator (footprintLawsAt) ----------------------------
 
 /// One tier op off `laneBase` and whatever the ops before it left (Phase 2292), for
-/// `Conformance.footprintLawsAt`, which threads single draws through the reducer and pairs the
-/// scripts. Every op kind the projection has an arm for, weighted towards the two classes its
+/// `Conformance.footprintLawsAt` and `footprintInLawsAt` (Phase 2327), which thread single draws
+/// through the reducer and pair the scripts. Under the base-aware form the vertical draws ARE the
+/// newly independent pairs: two edits of one leaf at different slots (a kind edit beside a restyle,
+/// a state edit beside a prop edit — six kinds over three leaves draw both), and edits of leaves
+/// under different parents. Every op kind the projection has an arm for, weighted towards the two classes its
 /// adequacy guard demands: inserts under the four containers (3 in 10), the pairs of which under
 /// different parents are the INDEPENDENT class; and vertical edits of a leaf (4 in 10, all six
 /// kinds, a field-level restyle included), removals of a container and moves of a leaf (1 in 10

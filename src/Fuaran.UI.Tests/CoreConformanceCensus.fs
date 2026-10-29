@@ -147,6 +147,10 @@ let private laneFoldTest =
 /// certify one witness on two pipelines rather than two witnesses. It is not an Expecto case (Expecto does
 /// not transpile); the harness prints this name as its family label, so the census row, the code
 /// and the gate log all name one thing.
+/// The FABLE port of `footprintInLawsAt` (Phase 2327), in the same harness, over the same re-export.
+let private footprintInFableTest =
+    "footprintInLawsAt certifies through the Fable law harness over the tier's base-aware footprint"
+
 let private laneFoldFableTest =
     "laneFoldLawsAt certifies through the Fable law harness over the tier's reducer and codec"
 
@@ -159,6 +163,10 @@ let private footprintTest =
 /// `footprintLaws`' domain-witness form (Phase 2292), over the SHIPPED `TreeOp` projection.
 let private footprintAtTest =
     "the SHIPPED footprint projection is sound at the tier's own ops (footprintLawsAt)"
+
+/// `footprintLawsAt`'s base-aware form (Phase 2327), over the shipped `TreeOpFootprint.ofOpIn`.
+let private footprintInAtTest =
+    "the BASE-AWARE footprint is sound and refines the pure one (footprintInLawsAt)"
 
 let private mergeConflictTest =
     "merge-conflict reporting is symmetric, deterministic and complete (mergeConflictLaws)"
@@ -857,9 +865,12 @@ let census: (string * Adoption) list =
       NotUsed
           "the premises a domain owes the Codec blocks for a Core Codec<'T> it builds — no project here builds a Core Codec<'T>; the tier's wire codecs are its generated layer and hand encoders, certified by the wire-format conformance corpus"
       // ---- arriving with the Core 0.40.2 raise (Phase 2286) ----
+      // Phase 2327 — the tier ships the base-aware projection (`TreeOpFootprint.ofOpIn`), and this
+      // family certifies it against the pure one at the tier's own reducer and ops.
       "Conformance.footprintInLawsAt",
-      NotUsed
-          "the base-aware footprint projection a domain folds with when it holds the tree (`footprintIn`) — the tier ships only the pure `TreeOp` projection (TreeOpFootprint), which footprintLawsAt certifies; it declares no base-aware one"
+      AdoptedAcross
+          [ footprintInAtTest, "Conformance.footprintInLawsAt (.NET)"
+            footprintInFableTest, "Conformance.footprintInLawsAt (Fable and Node)" ]
       "Conformance.seamRefusalLaws",
       NotUsed
           "the capability / pipeline / query / field-change / rejection seams' refusal documents read through Core's derived seam codecs — no project here reads or writes one of those seam documents; the tier's design-provider seam has its own codec, certified by the corpus's design/ family"

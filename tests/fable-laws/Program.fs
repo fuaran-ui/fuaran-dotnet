@@ -60,6 +60,15 @@ let main _ =
 
     let laneFailures = laneResults |> List.filter (fun r -> not r.Passed) |> List.length
 
+    // ---- law 2b: the base-aware footprint, over the transpiled projection (Phase 2327) ----
+    let footprintInResults = Laws.footprintInResults seed 100
+
+    for line in renderResults Laws.footprintInFablePort footprintInResults do
+        printfn "%s" line
+
+    let footprintInFailures =
+        footprintInResults |> List.filter (fun r -> not r.Passed) |> List.length
+
     // ---- law 3: the raw-DEFLATE inflater over a foreign dynamic-Huffman stream ----
     // The block type no host of ours emits and every standard deflater does. Its .NET
     // conformance cross-check sits behind `#if !FABLE_COMPILER` (`System.IO.Compression`
@@ -115,6 +124,7 @@ let main _ =
     let violations =
         Laws.mergeViolations mergeVerdict
         + laneFailures
+        + footprintInFailures
         + List.length mergeAdequacy
         + Laws.deflateViolations deflateCases
         + Laws.selectionFieldViolations selectionCases

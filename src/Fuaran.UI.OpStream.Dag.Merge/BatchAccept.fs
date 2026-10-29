@@ -31,6 +31,21 @@ type BatchPartiallyAccepted =
 
 module BatchAccept =
 
+    /// The reverse pass both closures share; see `dependencyClosure`.
+    let private closeOver (footprints: Fuaran.Core.Footprint list) (selected: Set<int>) : Set<int> =
+        let _, closed =
+            List.foldBack
+                (fun (i, footprint: Fuaran.Core.Footprint) (needed: Fuaran.Core.Footprint, kept: Set<int>) ->
+                    if Set.contains i selected || not (Fuaran.Core.Ops.independent footprint needed) then
+                        Fuaran.Core.Footprint.union needed footprint, Set.add i kept
+                    else
+                        needed, kept)
+                (List.indexed footprints)
+                (Fuaran.Core.Footprint.empty, Set.empty)
+
+        // An index outside the list depends on nothing and is returned as given.
+        Set.union closed selected
+
     /// The dependency-closed superset of `selected` indices: an op depends on an
     /// EARLIER op when the two INTERFERE — `Fuaran.Core.Ops.interference` over
     /// their footprints (`TreeOpFootprint.ofOp`, Phase 2292) names a clause they
@@ -54,34 +69,25 @@ module BatchAccept =
     /// state — no pairwise interference is recomputed, and no fixpoint is
     /// iterated.
     let dependencyClosure<'Msg> (ops: TreeOp<'Msg> list) (selected: Set<int>) : Set<int> =
-        let footprints = ops |> List.map TreeOpFootprint.ofOp |> List.toArray
+        closeOver (ops |> List.map TreeOpFootprint.ofOp) selected
 
-        let _, closed =
-            Array.foldBack
-                (fun (i, footprint: Fuaran.Core.Footprint) (needed: Fuaran.Core.Footprint, kept: Set<int>) ->
-                    if Set.contains i selected || not (Fuaran.Core.Ops.independent footprint needed) then
-                        Fuaran.Core.Footprint.union needed footprint, Set.add i kept
-                    else
-                        needed, kept)
-                (Array.indexed footprints)
-                (Fuaran.Core.Footprint.empty, Set.empty)
+    /// `dependencyClosure` where the batch's base tree is in hand (Phase 2327):
+    /// each op is footprinted at the tree the ops before it reach
+    /// (`TreeOpFootprint.ofEachIn`), so a removal names the parent it writes and
+    /// the subtree it destroys, and an in-place edit is ordered only against the
+    /// ops that touch its slot or its node. A selected restyle no longer keeps
+    /// every earlier op; it keeps the ones it depends on. The closure argument is
+    /// the pure form's: a dropped op is independent of every later kept op.
+    let dependencyClosureIn<'Msg> (baseTree: Node<'Msg>) (ops: TreeOp<'Msg> list) (selected: Set<int>) : Set<int> =
+        closeOver (TreeOpFootprint.ofEachIn baseTree ops) selected
 
-        // An index outside the list depends on nothing and is returned as given.
-        Set.union closed selected
-
-
-    /// Partially accept a `Batch`'s inner ops, keeping a dependency-closed subset
-    /// of `selected`. `indivisible = true` forces all-or-nothing (the batch
-    /// atomicity tier of the precedence lattice): a non-full selection drops
-    /// everything with a withdraw reason, so the caller re-delegates (re-split
-    /// default) rather than applying an incoherent partial.
-    let partialAccept<'Msg>
+    /// The kept / dropped split of a closed index set; see `partialAccept`.
+    let private acceptClosed<'Msg>
         (ops: TreeOp<'Msg> list)
-        (selected: Set<int>)
+        (closed: Set<int>)
         (indivisible: bool)
         : TreeOp<'Msg> list * BatchPartiallyAccepted =
         let all = Set.ofList [ 0 .. List.length ops - 1 ]
-        let closed = dependencyClosure ops selected
 
         if indivisible && closed <> all then
             // Withdraw — an indivisible batch cannot be split.
@@ -103,3 +109,24 @@ module BatchAccept =
                     "all ops accepted"
                 else
                     "dependency-closed partial accept" }
+
+    /// Partially accept a `Batch`'s inner ops, keeping a dependency-closed subset
+    /// of `selected`. `indivisible = true` forces all-or-nothing (the batch
+    /// atomicity tier of the precedence lattice): a non-full selection drops
+    /// everything with a withdraw reason, so the caller re-delegates (re-split
+    /// default) rather than applying an incoherent partial.
+    let partialAccept<'Msg>
+        (ops: TreeOp<'Msg> list)
+        (selected: Set<int>)
+        (indivisible: bool)
+        : TreeOp<'Msg> list * BatchPartiallyAccepted =
+        acceptClosed ops (dependencyClosure ops selected) indivisible
+
+    /// `partialAccept` over `dependencyClosureIn`: the batch's base tree in hand.
+    let partialAcceptIn<'Msg>
+        (baseTree: Node<'Msg>)
+        (ops: TreeOp<'Msg> list)
+        (selected: Set<int>)
+        (indivisible: bool)
+        : TreeOp<'Msg> list * BatchPartiallyAccepted =
+        acceptClosed ops (dependencyClosureIn baseTree ops selected) indivisible

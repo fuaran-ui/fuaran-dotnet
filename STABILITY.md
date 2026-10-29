@@ -7818,6 +7818,48 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
+## Phase 2327 — the DAG fold arbitrates with the base-aware footprint (rides the slot opened after v0.99.1)
+
+_`v0.99.1` is tagged at `9669dfb`, so this change cannot ride it. It rides the next slot the version ledger opens
+after v0.99.1; this commit does not move `<Version>` (the slot is opened by the ledger act, not by a phase commit).
+Class: **additive**, with a behaviour change in the new entries only._
+
+Packages `Fuaran.UI.Ops` and `Fuaran.UI.OpStream.Dag.Merge`. No wire byte moves, no hash moves, no existing verdict
+changes.
+
+- **Added — `TreeOpFootprint.ofOpIn` / `ofScriptIn` / `ofEachIn`** (`Fuaran.UI.Ops`). The footprint of a `TreeOp` at
+  the tree it applies to, over Fuaran.Core's `Ops.footprintIn` (fuaran-core Phase 500): a removal names the parent it
+  writes and content-writes the subtree it destroys, and a vertical op whose node the structural walk locates carries
+  no unknown-parent write and is declared at its SLOT — `kind` for `EditNode`, `UpdateProp` and `ReplaceBinding`,
+  `state` for `UpdateState`, `style` for `UpdateStyle`, `style.<field>` beside a read of `style` for `PatchStyle` —
+  plus every id it puts in or takes out. A script is threaded through `Apply.apply`; from an op that does not apply,
+  and for a node held only in a keyed position, the pure arm stands. `ofOpIn` is the shape `Dag.conflictsIn` /
+  `Dag.reconcileIn` take. The pure `ofOp` / `ofScript` are unchanged.
+- **A prop is the `kind` slot, not a slot per path — decided.** A field's validity can read another field of the
+  same spec (a select's `Value` is checked against its `Multiple` in `Apply`), so two prop edits of one node are
+  ordered; a per-path slot would declare that pair independent and be unsound.
+- **Added — `BatchAccept.dependencyClosureIn` / `partialAcceptIn`** (`Fuaran.UI.OpStream.Dag.Merge`): the closure
+  over the per-op base-aware footprints where the batch's base tree is in hand. **Behaviour change, in the new
+  entries only:** Phase 2292's recorded loss — a selected vertical op, remove or move keeps every earlier non-empty
+  op — does not hold here: a selected restyle keeps only the ops it interferes with (pinned by a test, which also
+  checks the kept batch applies). `dependencyClosure` / `partialAccept` keep their verdicts.
+- **Certified** — `Conformance.footprintInLawsAt` is adopted on .NET and on the Fable law harness (soundness of every
+  pair `Dag.conflictsIn` frees, refinement of the pure projection, determinism, and a freed-pair adequacy guard), with
+  a falsifier test that turns the family red when the removal's destroyed set is taken out.
+- **Re-measured — `derivability-snapshot`** (seed 20261016, 20000 trials; the `.in` lines are new). The share of the
+  tier's auto-merges Core refuses while both apply orders reach the UI's tree:
+
+  | population | pure (Phase 2292) | base-aware | delta |
+  |---|---|---|---|
+  | generated | 0.8401 (7808 / 9294) | **0.2906** (2701 / 9294) | −0.5495 |
+  | corpus | 0.7143 (5 / 7) | **0.1429** (1 / 7) | −0.5714 |
+  | pooled | 0.8400 | **0.2905** | −0.5495 |
+
+  Every shape naming `MoveVsRemove` (7198 of the pure form's 7808) is gone under the base-aware form; what remains is
+  `ConcurrentUpdate`, `InsertPositionClash` and the slot clashes the form declares on purpose. No triad lands in `OrderSensitive` or `Fault` under either form.
+
+---
+
 ## 0.99.1 — the slot opened after v0.98.1 was released (DRAFT — untagged)
 
 _Released as **0.99.1**, not 0.99.0 (2026-10-29): the slot's surface moved after 0.99.0 was packed as a draft, and a

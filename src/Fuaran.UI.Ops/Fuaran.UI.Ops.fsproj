@@ -9,9 +9,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Introspect.fs" />
-    <!-- Phase 2292: the one footprint projection of TreeOp, over the witnesses
-         Introspect declares. -->
-    <Compile Include="TreeOpFootprint.fs" />
     <!-- Structural decoder mirroring
          Fuaran.UI.OpStream.Abstractions.CanonicalJson.encodeNode / encodeOp.
          Lives here (rather than in Fuaran.UI) because TreeOp lives in
@@ -43,6 +40,10 @@
          the corpus manifest's reject columns. -->
     <Compile Include="CustomCardJson.fs" />
     <Compile Include="Apply.fs" />
+    <!-- Phase 2292: the one footprint projection of TreeOp, over the witnesses
+         Introspect declares. After Apply.fs since Phase 2327: the base-aware
+         form threads a script through the apply engine. -->
+    <Compile Include="TreeOpFootprint.fs" />
     <!-- Placement — Fuaran.Core's TreePlacement over the tier's witnesses (no
          new op kinds, no wire change); every verdict is the engine's own dry
          run (Phase 2306). Compiled after Introspect.fs (uses the witnesses +

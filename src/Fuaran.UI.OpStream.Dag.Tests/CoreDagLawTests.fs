@@ -370,6 +370,115 @@ let tests =
               CoreConf.footprintLawsAt coreSw footprintOfEqOp hashState footprintGen seed 300
               |> assertAllPassed "footprintLawsAt over the shipped TreeOp footprint"
 
+          testCase "the BASE-AWARE footprint is sound and refines the pure one (footprintInLawsAt)"
+          <| fun _ ->
+              // Phase 2327, over fuaran-core Phase 500's family. A pair `Dag.conflictsIn` reports
+              // clean at the state both scripts were drawn from must commute under `Apply.apply`;
+              // every pair the pure projection frees, the base-aware one frees; and the guard
+              // demands a FREED pair — refused by the pure footprint, admitted by the base-aware —
+              // so a green run has certified the precision the form exists for.
+              CoreConf.footprintInLawsAt coreSw footprintOfEqOp footprintInOfEqOp hashState footprintGen seed 300
+              |> assertAllPassed "footprintInLawsAt over the shipped base-aware TreeOp footprint"
+
+          testCase "the base-aware family sees an understated removal (its falsifier is red)"
+          <| fun _ ->
+              // The removal arm's destroyed set taken out and nothing else changed: the in-place
+              // edit of a removed node then reads as independent of the removal. A family that
+              // stayed green over this would not be measuring the pair the form must still halt.
+              let erased (st: EqNode) (e: EqOp) =
+                  match e.Op with
+                  | TreeOp.RemoveNode _ ->
+                      { footprintInOfEqOp st e with
+                          ContentWrites = Set.empty }
+                  | _ -> footprintInOfEqOp st e
+
+              let failures =
+                  CoreConf.footprintInLawsAt coreSw footprintOfEqOp erased hashState footprintGen seed 300
+                  |> List.filter (fun r -> not r.Passed)
+
+              Expect.isNonEmpty failures "an understated removal refutes the base-aware family"
+
+          testCase "the base-aware fold frees the vertical pairs and still halts an ancestor removal"
+          <| fun _ ->
+              // The acceptance of Phase 2327, at `laneBase`: each pair through `Dag.conflictsIn`, the
+              // entry `reconcileIn` reads, and each freed pair confirmed to commute both ways.
+              let ops name =
+                  verticalOps (NodeId name)
+                  |> List.map (fun (k, op) -> k, wrapOp op)
+                  |> Map.ofList
+
+              let a0 = ops "a0"
+              let b0 = ops "b0"
+              let ab0 = ops "ab0"
+
+              let clean (x: EqOp) (y: EqOp) =
+                  List.isEmpty (Fuaran.Core.Dag.conflictsIn footprintInOfEqOp coreSw.Apply laneBase [ x ] [ y ])
+
+              let commutesAt (x: EqOp) (y: EqOp) =
+                  let run p q =
+                      coreSw.Apply p laneBase |> Result.bind (coreSw.Apply q) |> Result.map hashState
+
+                  match run x y, run y x with
+                  | Ok l, Ok r -> l = r
+                  | _ -> false
+
+              for name, x, y in
+                  [ "a kind edit beside a restyle of one node", a0["EditNode"], a0["UpdateStyle"]
+                    "a state edit beside a prop edit of one node", a0["UpdateState"], a0["UpdateProp"]
+                    "a binding beside a restyle of one node", a0["ReplaceBinding"], a0["UpdateStyle"]
+                    "two edits under different parents", a0["UpdateProp"], b0["EditNode"]
+                    "a node's and its cousin's edits", a0["UpdateStyle"], ab0["UpdateState"] ] do
+                  Expect.isTrue (clean x y) (name + ": the base-aware fold composes it")
+                  Expect.isTrue (commutesAt x y) (name + ": and both orders reach one tree")
+
+                  Expect.isNonEmpty
+                      (Fuaran.Core.Dag.conflicts footprintOfEqOp [ x ] [ y ])
+                      (name + ": which the pure form refuses")
+
+              let removeA = wrapOp (TreeOp.RemoveNode(NodeId "a"))
+
+              for edit in [ a0["EditNode"]; ab0["UpdateProp"]; a0["UpdateStyle"] ] do
+                  Expect.isFalse (clean removeA edit) "an in-place edit beside the removal of its ancestor halts"
+
+              Expect.isFalse (clean a0["UpdateProp"] a0["ReplaceBinding"]) "two kind-slot edits of one node halt"
+
+          testCase "a base-aware partial accept keeps only what the selection depends on, and applies"
+          <| fun _ ->
+              // Phase 2327 — `BatchAccept.partialAcceptIn`. Under the pure form a selected restyle
+              // keeps every earlier non-empty op (Phase 2292's recorded behaviour change); at the
+              // base it keeps only the ops it interferes with, and the kept batch applies.
+              let ops: TreeOp<obj> list =
+                  [ TreeOp.InsertChild(NodeId "b", unwrap (mkLeaf "fresh"))
+                    snd (verticalOps (NodeId "b0") |> List.head)
+                    TreeOp.RemoveNode(NodeId "ab")
+                    styleOp (NodeId "a0") ToneVariant.Success ]
+
+              let selected = Set.singleton 3
+
+              Expect.equal
+                  (Fuaran.UI.OpStream.Dag.Merge.BatchAccept.dependencyClosure ops selected)
+                  (Set.ofList [ 0; 1; 2; 3 ])
+                  "the pure form keeps every earlier op"
+
+              let kept, evt =
+                  Fuaran.UI.OpStream.Dag.Merge.BatchAccept.partialAcceptIn (unwrap laneBase) ops selected false
+
+              Expect.equal evt.Kept [ 3 ] "the base-aware form keeps the restyle alone"
+              Expect.isOk (UiApply.apply (TreeOp.Batch kept) (unwrap laneBase)) "and the kept batch applies"
+
+              // a selection that needs an earlier op still pulls it in
+              let insertThenStyle =
+                  [ TreeOp.InsertChild(NodeId "b", unwrap (mkLeaf "n"))
+                    styleOp (NodeId "n") ToneVariant.Brand ]
+
+              Expect.equal
+                  (Fuaran.UI.OpStream.Dag.Merge.BatchAccept.dependencyClosureIn
+                      (unwrap laneBase)
+                      insertThenStyle
+                      (Set.singleton 1))
+                  (Set.ofList [ 0; 1 ])
+                  "a restyle of an inserted node keeps the insert"
+
           testCase "merge-conflict reporting is symmetric, deterministic and complete (mergeConflictLaws)"
           <| fun _ ->
               CoreConf.mergeConflictLaws nodew idw opGen seed 100

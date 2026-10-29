@@ -23,12 +23,18 @@ open Fuaran.UI.OpStream.Dag.Merge
 //     projection `TreeOpFootprint.ofOp`. No conflict means the fold composes the
 //     branches, and both apply orders are run to see whether they agree.
 //
+//  Core's verdict is taken twice (Phase 2327): under the PURE projection, the
+//  `derivability.<population>.*` lines, and under the BASE-AWARE one —
+//  `Dag.conflictsIn` with `TreeOpFootprint.ofOpIn`, each branch threaded from
+//  the triad's base through `Apply.apply` — the `derivability.<population>.in.*`
+//  lines. The two shares side by side are what the base-aware form buys.
+//
 //  Each triad lands in one cell. The number this exists to print is
 //  `derivability.overapprox_share`: of the triads the UI auto-merges, the share
 //  Core refuses although both apply orders reach the UI's merged tree — the
 //  footprint's over-approximation, measured. Every change to the projection (or
-//  to Core's independence clauses) re-measures it against the baseline recorded
-//  in STABILITY.md under Phase 2292.
+//  to Core's independence clauses) re-measures it against the baselines recorded
+//  in STABILITY.md under Phase 2292 (pure) and Phase 2327 (base-aware).
 //
 //  Two populations, reported separately and pooled:
 //
@@ -41,6 +47,13 @@ open Fuaran.UI.OpStream.Dag.Merge
 //  `dotnet run -c Release -- derivability-snapshot [trials]` (default 20000).
 //  Deterministic: a seeded `System.Random` and no clock.
 // ============================================================================
+
+/// Which of the shipped projections Core's verdict is taken under.
+type Projection =
+    /// `Dag.conflicts` over `TreeOpFootprint.ofOp`.
+    | Pure
+    /// `Dag.conflictsIn` over `TreeOpFootprint.ofOpIn`, from the triad's base.
+    | BaseAware
 
 type Cell =
     /// Core composes; the fold is the UI's merged tree.
@@ -94,15 +107,20 @@ let private shapeName (c: Fuaran.Core.MergeConflict<TreeOp<obj>>) =
     | Fuaran.Core.MergeConflictShape.MoveVsRemove -> "MoveVsRemove"
     | Fuaran.Core.MergeConflictShape.SlotClash slot -> "SlotClash(" + slot + ")"
 
-/// The cell a triad lands in, and — for a Core refusal — the conflict shapes it named.
+/// The cell a triad lands in under `projection`, and — for a Core refusal — the conflict shapes it
+/// named.
 let classify
+    (projection: Projection)
     (b: Node<obj>)
     (a: Node<obj>)
     (bb: Node<obj>)
     (dA: TreeOp<obj> list)
     (dB: TreeOp<obj> list)
     : Cell * string =
-    let conflicts = Fuaran.Core.Dag.conflicts TreeOpFootprint.ofOp dA dB
+    let conflicts =
+        match projection with
+        | Pure -> Fuaran.Core.Dag.conflicts TreeOpFootprint.ofOp dA dB
+        | BaseAware -> Fuaran.Core.Dag.conflictsIn TreeOpFootprint.ofOpIn Apply.apply b dA dB
 
     let shapes =
         conflicts
@@ -270,10 +288,14 @@ let generatedTriads (trials: int) =
 
 // ─── the report ─────────────────────────────────────────────────────────────
 
-/// The lines `derivability-snapshot` prints for one population.
-let report (name: string) (triads: (Node<obj> * Node<obj> * Node<obj> * TreeOp<obj> list * TreeOp<obj> list) list) =
+/// The lines for one population under one projection, keyed `derivability.<name>.`.
+let private reportUnder
+    (projection: Projection)
+    (name: string)
+    (triads: (Node<obj> * Node<obj> * Node<obj> * TreeOp<obj> list * TreeOp<obj> list) list)
+    =
     let classified =
-        triads |> List.map (fun (b, a, bb, dA, dB) -> classify b a bb dA dB)
+        triads |> List.map (fun (b, a, bb, dA, dB) -> classify projection b a bb dA dB)
 
     let count (c: Cell) =
         classified |> List.filter (fun (k, _) -> k = c) |> List.length
@@ -298,3 +320,8 @@ let report (name: string) (triads: (Node<obj> * Node<obj> * Node<obj> * TreeOp<o
                    "n/a"
                else
                    sprintf "%.4f" (float (count ConflictButFoldAgrees) / float merged)) ]
+
+/// The lines `derivability-snapshot` prints for one population: the pure projection's, then the
+/// base-aware projection's under `<name>.in`.
+let report (name: string) (triads: (Node<obj> * Node<obj> * Node<obj> * TreeOp<obj> list * TreeOp<obj> list) list) =
+    reportUnder Pure name triads @ reportUnder BaseAware (name + ".in") triads
