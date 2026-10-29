@@ -1994,6 +1994,24 @@ let private leniencyFamilies: LeniencyFamily list =
           + "per-unit pair carries the same `timestamp` magnitude reading beside the sub-second columns, "
           + "whose number is read in the column's own unit: exact, but still contextual on the declared "
           + "unit, so the family's judgement holds for it unchanged." }
+      { Name = "Whole-valued number with a point in an int column"
+        Class = AlreadyCanonical
+        FixtureIds = [ "lenient-transform-int-whole-float-token" ]
+        Evidence =
+          "Phase 2484 (WIRE_FORMAT §3.6.28): an int column value is read by value under §7.1's "
+          + "integer-slot rule, so `2.0` is the integer 2 and re-encodes as `2`. The canonical form is "
+          + "the point-free spelling, which is also the terser one (Δ bytes negative on the accepted "
+          + "side), so there is nothing to teach beyond the canonical rule." }
+      { Name = "Int inference past the 32-bit range"
+        Class = NeverTaught
+        FixtureIds = [ "lenient-transform-int-inferred-past-int32" ]
+        Evidence =
+          "Phase 2484 (WIRE_FORMAT §3.6.28): inference reads a number by value, so a schema-less column of "
+          + "whole values holding one past the signed 32-bit range infers `float`, not `int`. The pin is "
+          + "the inference rule's edge, not a shorthand: the float carries such a value exactly only to "
+          + "2^53, and the taught remedy for a wider integer is a declared `decimal` column, so the "
+          + "schema-omission family's guard (drop a schema only where inference reproduces the declared "
+          + "type) already keeps an int-meant column's schema. Accepted as a safety net, never taught." }
       { Name = "Legacy window-function spelling"
         Class = NeverTaught
         FixtureIds = [ "lenient-window-cumsum-legacy" ]
