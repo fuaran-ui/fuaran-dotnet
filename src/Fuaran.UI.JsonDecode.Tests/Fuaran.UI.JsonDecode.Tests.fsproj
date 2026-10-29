@@ -66,6 +66,7 @@
          that PROVES each one through the reference decoder and formatter. Must
          precede Corpus.fs, which co-emits it. -->
     <Compile Include="FormattingArtifact.fs" />
+    <Compile Include="BindingPropagationArtifact.fs" />
     <Compile Include="Corpus.fs" />
     <!-- Phase 699 — WIRE_FORMAT.md's mechanical tables as marker-block
          projections over idl.json (Phase 696) + manifest.json, with the
@@ -127,6 +128,7 @@
     <!-- Phase 1941 — the reference host's leg of the formatting family: the
          stale-artefact guard and every committed vector read back. -->
     <Compile Include="FormattingTests.fs" />
+    <Compile Include="BindingPropagationTests.fs" />
     <!-- Phase 101 — generative / property-based wire-format fuzzer:
          FsCheck generators (Generators.fs) + idempotence + DU-arm coverage
          properties (IdempotenceProperties.fs). -->

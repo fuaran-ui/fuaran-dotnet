@@ -134,6 +134,20 @@ let main argv =
 
         printfn "Emitted %s" (FormattingArtifact.write dir)
         0
+    // Phase 1764 — write ONLY the binding-propagation family into a corpus
+    // directory:
+    //   dotnet run --project src/Fuaran.UI.JsonDecode.Tests -- --emit-binding-propagation [<dir>]
+    // `--emit-corpus` co-emits it. The writer proves every vector against the
+    // reference BindingGraph, so it cannot publish a claim the reference host
+    // does not meet.
+    | "--emit-binding-propagation" :: rest ->
+        let dir =
+            match rest with
+            | d :: _ -> d
+            | [] -> Fuaran.Tests.CorpusRoot.find ()
+
+        printfn "Emitted %s" (BindingPropagationArtifact.write dir)
+        0
     // Phase 101 cross-host fuzz-sample exchange. `--emit-fuzz-samples <dir>
     // <count>` writes F#-canonical generated samples; `--check-fuzz-samples
     // <dir> [host]` validates the <host>-canonical samples that host's emitter

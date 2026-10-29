@@ -1008,6 +1008,12 @@ let emit (outputDir: string) : unit =
     // `--emit-formatting [<dir>]` writes only it.
     FormattingArtifact.write outputDir |> ignore
 
+    // Co-emit the BINDING-PROPAGATION family (Phase 1764): (tree, write) -> the
+    // stale readers, proved against `BindingGraph` through the reference
+    // decoder. Self-enumerated in its own directory, outside
+    // `wholesaleDirectories`. `--emit-binding-propagation [<dir>]` writes only it.
+    BindingPropagationArtifact.write outputDir |> ignore
+
     // The canonical NodeKind enumeration is the set of true wire `kind.$type`
     // discriminators over the node round-trip fixtures — extracted from the
     // *encoded* bytes, NOT `Kind.name` (which is a display tag that diverges from
