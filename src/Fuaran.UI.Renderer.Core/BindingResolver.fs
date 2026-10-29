@@ -1492,9 +1492,14 @@ module FieldDisplay =
     /// The unit text a renderer shows: the field's canonical unit text, unless
     /// it states none or states the dimensionless `1` — a pure number, where
     /// "(1)" beside it would tell a reader nothing.
+    ///
+    /// The canonical text is `UnitOfMeasure`'s own rendering — the value Core's
+    /// `Unit.render` returns, which is defined as exactly this override. It is
+    /// called directly because under Fable the module path `Fuaran.Core.Unit`
+    /// resolves to the union case `FieldChange.Unit` instead of the module.
     let unitText (field: Fuaran.Core.Field) : string option =
         field.Unit
-        |> Option.map Fuaran.Core.Unit.render
+        |> Option.map (fun (u: Fuaran.Core.UnitOfMeasure) -> u.ToString())
         |> Option.filter (fun u -> u <> "1")
 
     /// The label when stated and non-empty, else the column name.
