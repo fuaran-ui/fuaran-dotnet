@@ -7914,6 +7914,33 @@ op-derived refresh keeps a `GridEditLog` per edited key, applies decoded `GridEd
 `src/Fuaran.UI.ServerDriven.Tests/GridEditTests.fs` (the history law, the op-derived refresh and its 10,000-row cost,
 and Core's `columnarOpLawsWith` / `incrementalLawsWith` at the tier's own grid-edit generator).
 
+### What rides this slot — Phase 2209 (a bound field's unit and label at the read sites)
+
+**Class: additive on the wire, breaking (source) in F#; it rides the slot's breaking class.** Packages
+`Fuaran.UI.Renderer.Core`, `Fuaran.UI.Renderer` and `Fuaran.UI.Renderer.Server`.
+
+- **Wire.** Unchanged. The rendering obligation is WIRE_FORMAT §3.6.27, over the schema-entry members §3.6.26 admitted.
+- **Rendering.** Where a slot reads a value from a `Transform` field that states a `label` or a `unit`: an empty
+  `DataGrid` header takes the field's column title (`Payload mass (kg)`, first-party and AG Grid legs and the export's
+  header row); an absent chart `xTitle` / `yTitle` takes the x / first y field's column title; a resolved `Metric`
+  value is followed by the unit (formats `None`, `Number`, `SignificantDigits` only) and an empty caption takes the
+  field's display name; an accessibility `label` read from a `Transform` is followed by the unit. A tree's own text
+  always wins, and a document whose fields state no metadata renders byte-for-byte as before.
+- **New members.** `BindingResolver.resolveScalarWithField`, `BindingResolver.resolveRowsWithFields` and the
+  `BindingResolver.FieldDisplay` module (`unitText`, `displayName`, `columnTitle`, `withColumnHeaders`,
+  `withAxisTitles`, `valueUnit`, `withUnit`, `caption`). `resolveScalarWith` keeps its signature.
+- **Source-breaking, which is why the class matters.** `ElementPlan.DisplayPlan.metric` takes the bound field
+  (`Fuaran.Core.Field option`) after the resolution, and `ElementPlan.VisPlan.chart`'s drawing callback takes the spec
+  it should draw (`ChartSpec<'Msg> -> Row list -> string`), so a caller passes `Charts.renderSvg sources textOf`
+  without the spec.
+
+**What a consumer does.** A caller of `metric` resolves with `resolveScalarWithField cellToFloat` and passes the
+field (or `None`); a caller of `chart` drops the spec from its `renderSvg` partial application. A stored tree is
+unaffected.
+
+**Certified by** `src/Fuaran.UI.Renderer.Server.Tests/FieldMetadataRenderTests.fs`, the `fm-*` cases of §3.6.27's
+parity table (fuaran-ts's renderer suite carries the same documents under the same ids).
+
 ---
 
 ## 0.98.1 — the slot opened after v0.97.0 was released (RELEASED — tagged v0.98.1 at c88909e0, 2026-10-28)

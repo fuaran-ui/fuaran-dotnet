@@ -457,9 +457,14 @@ module DisplayPlan =
                 | None -> [ Prop.Attr("aria-hidden", "true") ]))
             Content.Empty
 
+    /// A `Metric`. `field` is the bound field its value was read from
+    /// (`BindingResolver.resolveScalarWithField`, Phase 2209): where it states a
+    /// unit, the resolved figure carries it, and where it states metadata it
+    /// names an empty caption (WIRE_FORMAT §3.6.27).
     let metric
         (sources: BindingResolver.BindingSources)
         (resolution: BindingResolver.Resolution<float>)
+        (field: Fuaran.Core.Field option)
         (spec: MetricSpec)
         : Plan<'E> =
         let text = BindingResolver.resolveTextSource sources
@@ -502,8 +507,19 @@ module DisplayPlan =
 
         let head =
             [ spec.Icon |> Plan.ofOption (iconHook Css.Class.MetricIcon)
-              Plan.classText "div" Css.Class.MetricLabel (text spec.Label)
-              Plan.classText "div" Css.Class.MetricValue (scalarText sources.Locale spec.Format resolution)
+              Plan.classText "div" Css.Class.MetricLabel (BindingResolver.FieldDisplay.caption field (text spec.Label))
+              Plan.classText
+                  "div"
+                  Css.Class.MetricValue
+                  (match resolution with
+                   // Only a READ value carries the unit: the em-dash and the
+                   // sentinels say no value was read.
+                   | BindingResolver.Resolved _ ->
+                       scalarText sources.Locale spec.Format resolution
+                       |> BindingResolver.FieldDisplay.withUnit (
+                           BindingResolver.FieldDisplay.valueUnit spec.Format field
+                       )
+                   | _ -> scalarText sources.Locale spec.Format resolution)
               trend ]
 
         let subtext =
@@ -2782,15 +2798,20 @@ module VisPlan =
         (state: StateBehaviour<'Msg> option)
         (spec: ChartSpec<'Msg>)
         (lowered: bool)
-        (svg: Row list -> string)
+        (svg: ChartSpec<'Msg> -> Row list -> string)
         : Plan<'E> =
-        let resolution = BindingResolver.resolve<Row seq> pc.Sources spec.Source
+        // Phase 2209 — the rows and the schema they were read from come from ONE
+        // evaluation; an axis title the tree leaves absent is filled from its
+        // bound field (WIRE_FORMAT §3.6.27) before the lowering measures it.
+        let resolution, fields =
+            BindingResolver.resolveRowsWithFields pc.Sources spec.Source
 
         match stateSlot pc state resolution with
         | Some slot -> slot
         | None ->
             match resolution with
-            | BindingResolver.Resolved rows when lowered -> loweredChart (svg (List.ofSeq rows))
+            | BindingResolver.Resolved rows when lowered ->
+                loweredChart (svg (BindingResolver.FieldDisplay.withAxisTitles fields spec) (List.ofSeq rows))
             | BindingResolver.Resolved rows -> chartPlaceholder pc.Sources spec (Seq.length rows)
             | _ -> chartPlaceholder pc.Sources spec 0
 

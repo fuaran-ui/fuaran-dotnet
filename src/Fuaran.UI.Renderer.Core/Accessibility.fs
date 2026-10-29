@@ -90,10 +90,22 @@ let accessibilityAttributes
         // Pinned cross-host by `nodes/a11y-wrapper-transform-label` and the
         // `behaviour` vectors in the corpus's `a11y-contract.json`; stated
         // normatively in `WIRE_FORMAT.md`'s accessibility-trait obligations.
+        //
+        // Phase 2209 — a name read from a `Transform` is a VALUE read from a field,
+        // so it says what the value measures: the bound field's unit text follows
+        // it (WIRE_FORMAT §3.6.27, read site 4). The empty-name filter runs first,
+        // so a unit never rescues an empty name.
         let labelAttr =
             a.Label
-            |> Option.bind (BindingResolver.tryResolveScalarText sources)
-            |> Option.filter (fun t -> t <> "")
+            |> Option.bind (fun binding ->
+                match BindingResolver.resolveScalarWithField BindingResolver.cellToText sources binding with
+                | BindingResolver.Resolved name, field when name <> "" ->
+                    Some(
+                        BindingResolver.FieldDisplay.withUnit
+                            (field |> Option.bind BindingResolver.FieldDisplay.unitText)
+                            name
+                    )
+                | _ -> None)
             |> Option.map (fun t -> "aria-label", t)
 
         let labelledByAttr = a.LabelledBy |> Option.map (fun nid -> "aria-labelledby", nid)

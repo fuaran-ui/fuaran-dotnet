@@ -510,7 +510,15 @@ let renderGridWithReady<'Msg>
     // shape for OnLoading / OnError; OnEmpty fires once rows resolve.
     // Returning Some commits the slot's Node to the rendered output, so
     // the renderer doesn't also run its fallback.
-    let resolution = BindingResolver.resolve<Row seq> context.Sources spec.Source
+    //
+    // Phase 2209 — the rows and the schema they were read from come from ONE
+    // evaluation; a data column whose header the tree left empty takes its bound
+    // field's column title (WIRE_FORMAT §3.6.27), so `headerName` below reads the
+    // filled label exactly as the first-party leg's header cell does.
+    let resolution, fields =
+        BindingResolver.resolveRowsWithFields context.Sources spec.Source
+
+    let spec = BindingResolver.FieldDisplay.withColumnHeaders fields spec
 
     let stateNode =
         match resolution, context.State.OnLoading, context.State.OnError with
