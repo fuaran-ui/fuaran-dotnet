@@ -1356,6 +1356,83 @@ let cellToBool (c: Fuaran.Core.Cell) : Result<bool, string> =
     | Fuaran.Core.Cell.Timestamp s -> Error(sprintf "a date cell ('%s') is not a boolean" s)
     | Fuaran.Core.Cell.Null -> Error "a null cell is not a boolean — test presence with `isNull`"
 
+/// Resolve a binding in a SCALAR slot, and name the field the value was read
+/// from: `Binding.Transform` evaluates through the shared frame machinery and
+/// interprets the result as one cell (see the section note above), and its
+/// result's one schema entry is the BOUND FIELD (Phase 2209, WIRE_FORMAT
+/// §3.6.27) — read from the same evaluation, so a slot that shows the field's
+/// unit evaluates the pipeline once. Every other binding case resolves exactly as
+/// `resolve` does and has no bound field.
+let resolveScalarWithField<'T>
+    (coerce: Fuaran.Core.Cell -> Result<'T, string>)
+    (sources: BindingSources)
+    (binding: Binding<'T>)
+    : Resolution<'T> * Fuaran.Core.Field option =
+    match binding with
+    // Fuaran-UI Phase 1534 — the scalar expression in a slot that has a
+    // coercion. `Null` is `NotResolved` (the slot's empty state, exactly as a
+    // null cell out of a scalar `Transform` is); an unbound param or a type
+    // error is `Errored`, never a substituted default — a wrong number rendered
+    // confidently is worse than a slot that says it could not be computed.
+    | Binding.Expr(expr, parameters) ->
+        let resolution =
+            match evalExprCell sources expr (defaultArg parameters []) with
+            | Error m -> Errored m
+            | Ok Fuaran.Core.Cell.Null -> NotResolved
+            | Ok cell ->
+                match coerce cell with
+                | Ok v -> Resolved v
+                | Error m -> Errored m
+
+        resolution, None
+    | Binding.Transform(source, pipeline, parameters) ->
+        match evalTransformFrame sources source pipeline (defaultArg parameters []) with
+        | Error m -> Errored m, None
+        | Ok result ->
+            let names = Fuaran.Core.Table.columnNames result
+            let rowCount = Fuaran.Core.Table.rowCount result
+            let colCount = List.length names
+
+            let field =
+                match result.Schema with
+                | [ only ] -> Some only
+                | _ -> None
+
+            let resolution =
+                if rowCount = 1 && colCount = 1 then
+                    let cell =
+                        Fuaran.Core.Table.tryColumn (List.head names) result
+                        |> Option.map (Fuaran.Core.Column.cell 0)
+                        |> Option.defaultValue Fuaran.Core.Cell.Null
+
+                    match cell with
+                    | Fuaran.Core.Cell.Null -> NotResolved
+                    | c ->
+                        match coerce c with
+                        | Ok v -> Resolved v
+                        | Error m -> Errored m
+                elif rowCount = 0 then
+                    // The count of nothing is 0: Core's strict groupBy fold yields zero
+                    // groups over an empty frame; a trailing global single-`count`
+                    // aggregate completes to 0 here. Every other empty result is the
+                    // slot's empty state ("filter matched nothing" renders as absence).
+                    match List.tryLast pipeline with
+                    | Some(Fuaran.Compute.GroupBy([], [ agg ])) when agg.Fn = Fuaran.Core.AggFn.Count ->
+                        match coerce (Fuaran.Core.Int 0) with
+                        | Ok v -> Resolved v
+                        | Error m -> Errored m
+                    | _ -> NotResolved
+                else
+                    Errored(
+                        sprintf
+                            "Transform in a scalar slot must yield exactly one row × one column (got %d×%d) — end the pipeline with `project` to one column + `limit` 1 (a row-field lookup), or aggregate with `groupBy` keys [] + one agg (count / sum / mean / first)"
+                            rowCount
+                            colCount
+                    )
+
+            resolution, field
+    | other -> resolve<'T> sources other, None
+
 /// Resolve a binding in a SCALAR slot: `Binding.Transform` evaluates through the
 /// shared frame machinery and interprets the result as one cell (see the section
 /// note above); every other binding case resolves exactly as `resolve` does.
@@ -1364,59 +1441,7 @@ let resolveScalarWith<'T>
     (sources: BindingSources)
     (binding: Binding<'T>)
     : Resolution<'T> =
-    match binding with
-    // Fuaran-UI Phase 1534 — the scalar expression in a slot that has a
-    // coercion. `Null` is `NotResolved` (the slot's empty state, exactly as a
-    // null cell out of a scalar `Transform` is); an unbound param or a type
-    // error is `Errored`, never a substituted default — a wrong number rendered
-    // confidently is worse than a slot that says it could not be computed.
-    | Binding.Expr(expr, parameters) ->
-        match evalExprCell sources expr (defaultArg parameters []) with
-        | Error m -> Errored m
-        | Ok Fuaran.Core.Cell.Null -> NotResolved
-        | Ok cell ->
-            match coerce cell with
-            | Ok v -> Resolved v
-            | Error m -> Errored m
-    | Binding.Transform(source, pipeline, parameters) ->
-        match evalTransformFrame sources source pipeline (defaultArg parameters []) with
-        | Error m -> Errored m
-        | Ok result ->
-            let names = Fuaran.Core.Table.columnNames result
-            let rowCount = Fuaran.Core.Table.rowCount result
-            let colCount = List.length names
-
-            if rowCount = 1 && colCount = 1 then
-                let cell =
-                    Fuaran.Core.Table.tryColumn (List.head names) result
-                    |> Option.map (Fuaran.Core.Column.cell 0)
-                    |> Option.defaultValue Fuaran.Core.Cell.Null
-
-                match cell with
-                | Fuaran.Core.Cell.Null -> NotResolved
-                | c ->
-                    match coerce c with
-                    | Ok v -> Resolved v
-                    | Error m -> Errored m
-            elif rowCount = 0 then
-                // The count of nothing is 0: Core's strict groupBy fold yields zero
-                // groups over an empty frame; a trailing global single-`count`
-                // aggregate completes to 0 here. Every other empty result is the
-                // slot's empty state ("filter matched nothing" renders as absence).
-                match List.tryLast pipeline with
-                | Some(Fuaran.Compute.GroupBy([], [ agg ])) when agg.Fn = Fuaran.Core.AggFn.Count ->
-                    match coerce (Fuaran.Core.Int 0) with
-                    | Ok v -> Resolved v
-                    | Error m -> Errored m
-                | _ -> NotResolved
-            else
-                Errored(
-                    sprintf
-                        "Transform in a scalar slot must yield exactly one row × one column (got %d×%d) — end the pipeline with `project` to one column + `limit` 1 (a row-field lookup), or aggregate with `groupBy` keys [] + one agg (count / sum / mean / first)"
-                        rowCount
-                        colCount
-                )
-    | other -> resolve<'T> sources other
+    fst (resolveScalarWithField coerce sources binding)
 
 /// Scalar-slot resolution for a text slot (`TextSource.Bound` and friends).
 let resolveScalarText (sources: BindingSources) (binding: Binding<string>) : Resolution<string> =
@@ -1431,6 +1456,139 @@ let resolveScalarFloat (sources: BindingSources) (binding: Binding<float>) : Res
 /// text or numeric one does, rather than through the generic unbox.
 let resolveScalarBool (sources: BindingSources) (binding: Binding<bool>) : Resolution<bool> =
     resolveScalarWith cellToBool sources binding
+
+/// Resolve a ROWS slot (a `DataGrid` / `Chart` `source`) together with the
+/// result schema its columns are read from (Phase 2209). A `Binding.Transform`
+/// evaluates ONCE, through the same frame machinery `resolve` uses, and its
+/// result's schema rides beside the rows; every other binding case resolves
+/// exactly as `resolve` does and has no fields — so a slot that is not a
+/// `Transform` has no bound field and renders as before.
+let resolveRowsWithFields
+    (sources: BindingSources)
+    (binding: Binding<Row seq>)
+    : Resolution<Row seq> * Fuaran.Core.Field list =
+    match binding with
+    | Binding.Transform(source, pipeline, parameters) ->
+        match evalTransformFrame sources source pipeline (defaultArg parameters []) with
+        | Error m -> Errored m, []
+        | Ok result -> Resolved(Seq.ofList (rowsOfTable result)), result.Schema
+    | other -> resolve<Row seq> sources other, []
+
+// ─── A bound field's metadata at the read sites (Phase 2209) ─────────────────
+//
+// WIRE_FORMAT §3.6.27, stated once for both renderers and both tiers of each:
+// where a slot reads a value from a field that states a `label` or a `unit`
+// (§3.6.26), the renderer shows them — a header reads "Payload mass (kg)", an
+// axis names its unit, a KPI value carries it, and an accessible name says it.
+// The tree's own text always wins; the field supplies only what the tree left
+// unstated. Every clause fires only on a STATED label or unit, so a document
+// whose fields state none renders byte-for-byte as it did before.
+//
+// These are pure functions over a resolved schema. Resolution itself stays in
+// `resolveRowsWithFields` / `resolveScalarWithField`, which read the field from
+// the evaluation the slot already performs.
+module FieldDisplay =
+
+    /// The unit text a renderer shows: the field's canonical unit text, unless
+    /// it states none or states the dimensionless `1` — a pure number, where
+    /// "(1)" beside it would tell a reader nothing.
+    ///
+    /// The canonical text is `UnitOfMeasure`'s own rendering — the value Core's
+    /// `Unit.render` returns, which is defined as exactly this override. It is
+    /// called directly because under Fable the module path `Fuaran.Core.Unit`
+    /// resolves to the union case `FieldChange.Unit` instead of the module.
+    let unitText (field: Fuaran.Core.Field) : string option =
+        field.Unit
+        |> Option.map (fun (u: Fuaran.Core.UnitOfMeasure) -> u.ToString())
+        |> Option.filter (fun u -> u <> "1")
+
+    /// The label when stated and non-empty, else the column name.
+    let displayName (field: Fuaran.Core.Field) : string =
+        match field.Label with
+        | Some label when label <> "" -> label
+        | _ -> field.Name
+
+    /// The column title — `Payload mass (kg)` — which EXISTS only when the
+    /// field states a non-empty label or has a unit text. `None` is the
+    /// renderer's cue to draw exactly what it drew before §3.6.27.
+    let columnTitle (field: Fuaran.Core.Field) : string option =
+        match unitText field, field.Label with
+        | Some unit, _ -> Some(displayName field + " (" + unit + ")")
+        | None, Some label when label <> "" -> Some label
+        | None, _ -> None
+
+    let private titleOf (fields: Fuaran.Core.Field list) (name: string) : string option =
+        fields |> List.tryFind (fun f -> f.Name = name) |> Option.bind columnTitle
+
+    /// A `DataGrid` with each EMPTY header of a data column replaced by its bound
+    /// field's column title. A non-empty `label` is the author's header and is
+    /// kept verbatim; an action column reads no field (`GridColumn.dataField`).
+    /// With no fields — a source that is not a `Transform` — the spec is
+    /// returned unchanged.
+    let withColumnHeaders (fields: Fuaran.Core.Field list) (spec: DataGridSpec<'Msg>) : DataGridSpec<'Msg> =
+        if List.isEmpty fields then
+            spec
+        else
+            let header (col: ColumnErased<'Msg>) =
+                if col.Label <> "" then
+                    col
+                else
+                    match Fuaran.UI.GridColumn.dataField col |> Option.bind (titleOf fields) with
+                    | Some title -> { col with Label = title }
+                    | None -> col
+
+            { spec with
+                Columns = List.map header spec.Columns }
+
+    /// A `Chart` with each ABSENT axis title filled from its bound field's
+    /// column title: x from `XField`, y from the first of `YFields` (the field
+    /// the capitalised fallback names). A filled title is a STATED one, so it
+    /// draws on a temporal x axis too. A declared title, whatever its arm, wins.
+    let withAxisTitles (fields: Fuaran.Core.Field list) (spec: ChartSpec<'Msg>) : ChartSpec<'Msg> =
+        if List.isEmpty fields then
+            spec
+        else
+            let fill (declared: TextSource option) (field: string option) =
+                match declared with
+                | Some _ -> declared
+                | None -> field |> Option.bind (titleOf fields) |> Option.map TextSource.Literal
+
+            { spec with
+                XTitle = fill spec.XTitle (Some spec.XField)
+                YTitle = fill spec.YTitle (List.tryHead spec.YFields) }
+
+    /// The unit a read VALUE carries: the bound field's unit text, where the
+    /// slot's format does not state a unit of its own. `Currency`, `Percent`,
+    /// `Duration`, `RelativeTime` and `DateTime` already say what the figure
+    /// is, and `Custom` is the host's — a second unit would contradict or repeat.
+    let valueUnit (format: CellFormat) (field: Fuaran.Core.Field option) : string option =
+        match format with
+        | CellFormat.None
+        | CellFormat.Number _
+        | CellFormat.SignificantDigits _ -> field |> Option.bind unitText
+        | CellFormat.Currency _
+        | CellFormat.Percent _
+        | CellFormat.DateTime _
+        | CellFormat.Duration _
+        | CellFormat.RelativeTime _
+        | CellFormat.Custom _ -> None
+
+    /// `text` followed by a space and `unit`, when there is one.
+    let withUnit (unit: string option) (text: string) : string =
+        match unit with
+        | Some u -> text + " " + u
+        | None -> text
+
+    /// A caption the tree left EMPTY, filled with the bound field's display
+    /// name when the field states metadata (it has a column title). A non-empty
+    /// caption is the author's and is returned unchanged.
+    let caption (field: Fuaran.Core.Field option) (explicitCaption: string) : string =
+        if explicitCaption <> "" then
+            explicitCaption
+        else
+            match field with
+            | Some f when Option.isSome (columnTitle f) -> displayName f
+            | _ -> explicitCaption
 
 // ─── Conditional presence and predicate branching (Phase 1535) ───────────────
 //

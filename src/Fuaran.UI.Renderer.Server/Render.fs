@@ -336,8 +336,10 @@ and private renderKind
     | NodeKind.Markdown spec -> Emit.plan (ElementPlan.DisplayPlan.markdown ctx.Policy.Egress ctx.Sources spec)
     | NodeKind.Metric spec ->
         // Phase 632 — a scalar slot: a `Binding.Transform` resolves to its 1×1
-        // result cell.
-        let resolution = BindingResolver.resolveScalarFloat ctx.Sources spec.Value
+        // result cell. Phase 2209 — its bound field rides the same evaluation
+        // (WIRE_FORMAT §3.6.27).
+        let resolution, field =
+            BindingResolver.resolveScalarWithField BindingResolver.cellToFloat ctx.Sources spec.Value
 
         match
             ElementPlan.DisplayPlan.stateSlot
@@ -346,7 +348,7 @@ and private renderKind
                 resolution
         with
         | Some slot -> renderNode (Walk.deeper walk) ctx slot
-        | None -> Emit.plan (ElementPlan.DisplayPlan.metric ctx.Sources resolution spec)
+        | None -> Emit.plan (ElementPlan.DisplayPlan.metric ctx.Sources resolution field spec)
     | NodeKind.Badge spec -> Emit.plan (ElementPlan.DisplayPlan.badge ctx.Sources spec)
     | NodeKind.Skeleton spec -> Emit.plan (ElementPlan.DisplayPlan.skeleton spec)
     | NodeKind.Icon spec -> Emit.plan (ElementPlan.DisplayPlan.icon spec)
@@ -443,7 +445,7 @@ and private renderKind
                 state
                 spec
                 (Fuaran.UI.Charts.isLowered spec.Kind)
-                (Fuaran.UI.Charts.renderSvg ctx.Sources (renderText ctx) spec)
+                (Fuaran.UI.Charts.renderSvg ctx.Sources (renderText ctx))
         )
     | NodeKind.Map spec -> Emit.plan (ElementPlan.VisPlan.map (planContext walk ctx parentNodeId) state spec)
     | NodeKind.ErrorBoundary spec ->

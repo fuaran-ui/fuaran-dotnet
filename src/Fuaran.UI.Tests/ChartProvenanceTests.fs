@@ -434,14 +434,17 @@ let tests =
               // resolver its own way: the client calls the shared
               // `BindingResolver.resolveTextSource` directly (Phase 2108 retired
               // its private `renderText`), the server through its `renderText`,
-              // which is that same function.
+              // which is that same function. Phase 2209: the spec is not part of
+              // the matched call — `VisPlan.chart` hands the drawing callback the
+              // spec with its axis titles filled from the bound fields, so the
+              // client passes that spec by name and the server partially applies.
               for tier, textOf in
                   [ "client", "(BindingResolver.resolveTextSource ctx.Sources)"
                     "server", "(renderText ctx)" ] do
                   let source = Regex.Replace(rendererSource tier, @"\s+", " ")
 
                   Expect.equal
-                      (occurrences ("Fuaran.UI.Charts.renderSvg ctx.Sources " + textOf + " spec") source)
+                      (occurrences ("Fuaran.UI.Charts.renderSvg ctx.Sources " + textOf) source)
                       1
                       (tier + " renders a chart through Charts.renderSvg, exactly once")
 

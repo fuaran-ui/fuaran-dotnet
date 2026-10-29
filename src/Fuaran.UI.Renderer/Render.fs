@@ -2671,11 +2671,13 @@ let rec private renderKind
     | NodeKind.Metric spec ->
         // Phase 632 — a scalar slot: a `Binding.Transform` resolves to its 1×1
         // result cell.
-        let resolution = BindingResolver.resolveScalarFloat ctx.Sources spec.Value
+        // Phase 2209 — the bound field rides the same evaluation (§3.6.27).
+        let resolution, field =
+            BindingResolver.resolveScalarWithField BindingResolver.cellToFloat ctx.Sources spec.Value
 
         match ElementPlan.DisplayPlan.stateSlot parentNodeId state resolution with
         | Some slot -> render ctx slot
-        | None -> Emit.plan (ElementPlan.DisplayPlan.metric ctx.Sources resolution spec)
+        | None -> Emit.plan (ElementPlan.DisplayPlan.metric ctx.Sources resolution field spec)
     | NodeKind.Badge spec -> Emit.plan (ElementPlan.DisplayPlan.badge ctx.Sources spec)
     | NodeKind.Skeleton spec -> Emit.plan (ElementPlan.DisplayPlan.skeleton spec)
     | NodeKind.Icon spec -> Emit.plan (ElementPlan.DisplayPlan.icon spec)
@@ -4157,8 +4159,16 @@ and private renderGrid
         if not spec.Exportable then
             rendered
         else
+            // Phase 2209 — the file's header row is the grid's: an empty header
+            // takes its bound field's column title (WIRE_FORMAT §3.6.27), read
+            // from the same evaluation as the rows.
+            let resolution, fields =
+                BindingResolver.resolveRowsWithFields ctx.Sources spec.Source
+
+            let spec = BindingResolver.FieldDisplay.withColumnHeaders fields spec
+
             let rows =
-                match BindingResolver.resolve<Row seq> ctx.Sources spec.Source with
+                match resolution with
                 | BindingResolver.Resolved seq -> Seq.toList seq
                 | _ -> []
 
@@ -4205,7 +4215,14 @@ and private renderGrid
                             project ] ]
     | None ->
 
-        let resolution = BindingResolver.resolve<Row seq> ctx.Sources spec.Source
+        // Phase 2209 — the rows and the schema they were read from come from ONE
+        // evaluation; a data column whose header the tree left empty takes its
+        // bound field's column title (WIRE_FORMAT §3.6.27). Every later read of
+        // `spec` — the header cells, the export's header row — sees the filled one.
+        let resolution, fields =
+            BindingResolver.resolveRowsWithFields ctx.Sources spec.Source
+
+        let spec = BindingResolver.FieldDisplay.withColumnHeaders fields spec
 
         match resolution, state.OnLoading, state.OnError with
         | BindingResolver.NotResolved, Some loadingNode, _ -> render ctx loadingNode
@@ -5377,9 +5394,12 @@ and private renderChart
         // 866 left zoom and brush out.
         let drawn: Row list ref = ref []
 
-        let svg (rows: Row list) : string =
+        // Phase 2209 — `chart` hands back the spec with its absent axis titles
+        // filled from the bound fields (WIRE_FORMAT §3.6.27); the point-click
+        // map below reads only the fields' names, which the fill leaves alone.
+        let svg (titled: ChartSpec<'Msg>) (rows: Row list) : string =
             drawn.Value <- rows
-            Fuaran.UI.Charts.renderSvg ctx.Sources (BindingResolver.resolveTextSource ctx.Sources) spec rows
+            Fuaran.UI.Charts.renderSvg ctx.Sources (BindingResolver.resolveTextSource ctx.Sources) titled rows
 
         Emit.planWith
             (fun point _ ->
