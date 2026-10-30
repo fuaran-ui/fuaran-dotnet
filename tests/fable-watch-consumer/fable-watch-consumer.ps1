@@ -117,7 +117,8 @@ try {
                 if ($null -eq $line) { $pending[$i] = $null; break } # the stream closed
                 $captured.Add($line)
                 Write-Host "  | $line"
-                if (-not $watching -and $line -match '^\s*Watching\b') {
+                # Fable colours its lines on Linux, so the match reads the text under the ANSI codes.
+                if (-not $watching -and ($line -replace '\x1b\[[0-9;]*m', '') -match '^\s*Watching\b') {
                     $watching = $true
                     $watchingAt = $clock.Elapsed.TotalSeconds
                 }
