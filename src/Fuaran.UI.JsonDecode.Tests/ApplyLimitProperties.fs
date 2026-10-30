@@ -21,6 +21,7 @@ module Fuaran.UI.JsonDecode.Tests.ApplyLimitProperties
 // ============================================================================
 
 open Expecto
+open Fuaran.UI.Testing
 open FsCheck
 open FsCheck.FSharp
 open Fuaran.Core
