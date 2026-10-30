@@ -323,7 +323,11 @@ let notChildAuthorable: (string * string) list =
       // FUARAN047/048 (header/tag-vs-children count) into the VB analyzer in
       // the same change.
       "Tabs.tabHeaders", "GAP — labels are child-inferred"
-      "Tabs.tabTags", "GAP — the tag half of the same gap" ]
+      "Tabs.tabTags", "GAP — the tag half of the same gap"
+      // Phase 2517 — the operability affordance is authored in F# / on the wire;
+      // the VB tier spells no agent-facing vocabulary yet.
+      "Button.affordance", "GAP — no VB spelling"
+      "Select.affordance", "GAP — no VB spelling" ]
 
 /// One C# veneer enum and the IDL enum it mirrors. The C# DECLARATION stays
 /// hand-authored, because it carries per-member public documentation the IDL

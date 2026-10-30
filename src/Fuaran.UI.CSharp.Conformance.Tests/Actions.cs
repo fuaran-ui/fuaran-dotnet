@@ -325,21 +325,22 @@ internal static class ActionOracle
     internal static string ButtonNotify()
     {
         // Ctor arg order = Generated.fs ButtonSpec declaration order
-        // (Label, OnClick, Variant, Icon, Tooltip, Disabled).
+        // (Label, OnClick, Variant, Icon, Tooltip, Disabled, Affordance).
         var spec = new FsGen.ButtonSpec<object>(
             Lit("Save"),
             Notify("audit.saved", ("id", global::Fuaran.Core.JVal.NewJInt(42)), ("draft", global::Fuaran.Core.JVal.NewJBool(false))),
             FsGen.ButtonVariant.Primary,
             FSharpOption<string>.None,
             FSharpOption<FsGen.TextSource>.None,
-            FSharpOption<FsGen.Binding<bool>>.None);
+            FSharpOption<FsGen.Binding<bool>>.None,
+            FSharpOption<FsGen.Affordance>.None);
 
         return FsCanon.encodeNode(global::Fuaran.UI.Fuaran.button<object>("save", spec));
     }
 
     internal static string FormChain()
     {
-        // Generated FormField declares (Id, Kind, Label, Required, Help, Rule); the
+        // Generated FormField declares (Id, Kind, Label, Required, Help, Rule, Affordance); the
         // Text kind is (value, onChange), and the veneer's FormField.Text supplies a
         // no-op handler + a Static "" value, which this mirrors.
         var field = new FsGen.FormField<object>(
@@ -353,7 +354,8 @@ internal static class ActionOracle
             Lit("Name"),
             false,
             FSharpOption<FsGen.TextSource>.None,
-            FSharpOption<FsGen.FieldRule>.None);
+            FSharpOption<FsGen.FieldRule>.None,
+            FSharpOption<FsGen.Affordance>.None);
 
         var chain = FsAction.NewChain(
             Microsoft.FSharp.Collections.ListModule.OfSeq(new[]

@@ -371,7 +371,7 @@ internal sealed class ButtonBuilder : NodeBuilder
 
     protected override NodeKind<object> BuildKind() =>
         NodeKind<object>.NewButton(
-            new FsGen.ButtonSpec<object>(_label, _onClick, _variant, _icon, _tooltip, _disabled));
+            new FsGen.ButtonSpec<object>(_label, _onClick, _variant, _icon, _tooltip, _disabled, Fs.None<FsGen.Affordance>()));
 }
 
 /// <summary>A single form field. DU field-kinds surface as factory methods
@@ -399,7 +399,7 @@ internal sealed class FieldBuilder
     // declaration order. Phase 864's Rule slot is not authorable from this POC (the
     // charter rules §11 step 6 does not bind for a spec-record field), so it passes None.
     public FsGen.FormField<object> Build() =>
-        new(_id, _kind, _label, _required, _help, Fs.None<FsGen.FieldRule>());
+        new(_id, _kind, _label, _required, _help, Fs.None<FsGen.FieldRule>(), Fs.None<FsGen.Affordance>());
 
     private static FSharpFunc<TArg, FsAction> NoOp<TArg>() => Fs.Func<TArg, FsAction>(_ => Defaults.PlaceholderChain);
 

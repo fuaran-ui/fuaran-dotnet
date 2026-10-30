@@ -267,6 +267,31 @@ module NodePlan =
             else
                 bidi @ a11y @ extras, []
 
+        // Phase 2517 — a node that DECLARES an affordance carries its operable
+        // surface (WIRE_FORMAT §31.8) on the element an agent operates: the
+        // semantic element where the kind forwards to one, else the wrapper. An
+        // attribute the author already set wins; a node declaring nothing gets
+        // nothing, so every pre-2517 document renders byte-for-byte as before.
+        let wrapperAttrs0, semanticAttrs0 =
+            match Fuaran.UI.Operability.Operability.nodeAnnotations node with
+            | [] -> wrapperAttrs0, semanticAttrs0
+            | annotations ->
+                let target, other =
+                    if Accessibility.forwardsToSemanticElement node.Kind then
+                        semanticAttrs0, wrapperAttrs0
+                    else
+                        wrapperAttrs0, semanticAttrs0
+
+                let taken = (target @ other) |> List.map fst |> Set.ofList
+
+                let stamped =
+                    target @ (annotations |> List.filter (fun (k, _) -> not (taken.Contains k)))
+
+                if Accessibility.forwardsToSemanticElement node.Kind then
+                    wrapperAttrs0, stamped
+                else
+                    stamped, semanticAttrs0
+
         let wrapperAttrs, semanticAttrs =
             match tooltipText with
             | None -> wrapperAttrs0, semanticAttrs0
@@ -1889,7 +1914,12 @@ module InputPlan =
     /// rating and `Binding.Local` controls are their no-script floors here;
     /// the client renders its own component for those.
     let fieldControl (sources: BindingResolver.BindingSources) (field: FormField<'Msg>) : Plan<'E> =
-        let ident = [ Prop.Attr("id", field.Id); Prop.Attr("data-fuaran-field", field.Id) ]
+        // Phase 2517 — a field that declares an affordance carries its operable
+        // surface (WIRE_FORMAT §31.8); `data-fuaran-field` is already the id.
+        let ident =
+            [ Prop.Attr("id", field.Id); Prop.Attr("data-fuaran-field", field.Id) ]
+            @ (Fuaran.UI.Operability.Operability.fieldAnnotations field
+               |> List.map (fun (k, v) -> Prop.Attr(k, v)))
 
         let required = if field.Required then [ Prop.Flag "required" ] else []
         let change key = Prop.Behaviour(Attach.FieldChange, key)

@@ -89,7 +89,12 @@ let tests =
                     // here now, which is what makes the promise true again.
                     ActionDescriptor.Print
                     ActionDescriptor.Export "grid-1"
-                    ActionDescriptor.Upload "session-recordings" ]
+                    ActionDescriptor.Upload "session-recordings"
+                    // Phase 2517 found Confirm (1537) and Focus (1537) missing
+                    // from this list as well, and added them with Operate.
+                    ActionDescriptor.Confirm "Delete it?"
+                    ActionDescriptor.Focus "name"
+                    ActionDescriptor.Operate("country:set", Some "fr") ]
 
               // Enumerated, not sampled: a descriptor added later without a
               // deny default should fail here, which is the whole point of
@@ -123,7 +128,12 @@ let tests =
                     // here now, which is what makes the promise true again.
                     ActionDescriptor.Print
                     ActionDescriptor.Export "grid-1"
-                    ActionDescriptor.Upload "session-recordings" ]
+                    ActionDescriptor.Upload "session-recordings"
+                    // Phase 2517 found Confirm (1537) and Focus (1537) missing
+                    // from this list as well, and added them with Operate.
+                    ActionDescriptor.Confirm "Delete it?"
+                    ActionDescriptor.Focus "name"
+                    ActionDescriptor.Operate("country:set", Some "fr") ]
 
               for d in everyDescriptor do
                   Expect.isTrue
@@ -168,6 +178,13 @@ let tests =
                   (ActionDescriptor.describe (ActionDescriptor.Upload "session-recordings"))
                   "Upload(session-recordings)"
                   "Upload label carries the destination and nothing of the reader's"
+          }
+
+          test "Operate's label carries the affordance id and withholds the slot value (Phase 2517)" {
+              Expect.equal
+                  (ActionDescriptor.describe (ActionDescriptor.Operate("notes:set", Some "call me at 555-0100")))
+                  "Operate(notes:set)"
+                  "the instruction's own words never reach a diagnostic line"
           }
 
           test "the four newly-gated actions: unconfigured refuses, configured allow permits" {

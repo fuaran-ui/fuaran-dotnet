@@ -1466,6 +1466,19 @@ and SelectSpec<'Msg> = Generated.SelectSpec<'Msg>
 /// `Label` is the displayed text.
 and SelectOption = Generated.SelectOption
 
+/// Phase 2517 — the operability affordance a field-bearing node (`Select`,
+/// `Button`, a `Form` field) may declare: the set / read phrasings an
+/// agent-initiated instruction may use, the spoken aliases of its options, a
+/// description, whether it may be cleared, and the `NeverControllable` opt-out.
+/// Every member is omit-at-default on the wire (WIRE_FORMAT §31); what a node
+/// already says — its name, label and value space — is read by
+/// `Fuaran.UI.Operability.derive`, never restated here.
+and Affordance = Generated.Affordance
+
+/// Phase 2517 — one spoken alias of an option value: `Alias` resolves to the
+/// canonical option `Value`.
+and AffordanceAlias = Generated.AffordanceAlias
+
 /// Minimal viable FormSpec for session 3b. Per the §4k worked example: a
 /// Form is an ordered list of fields + a submit Action. `FormField` carries
 /// per-field `Kind` rather than a stringly-typed cell-type discriminator —

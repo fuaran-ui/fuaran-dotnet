@@ -415,6 +415,32 @@ type ActionDescriptor =
     /// The destination is an author-declared NAME, never a URL, so it is safe
     /// in a diagnostic line — there is nothing here of the reader's.
     | Upload of destination: string
+    /// An AGENT-INITIATED operation (Phase 2517) — an instruction resolved
+    /// against the tree's derived operable surface (`Fuaran.UI.Operability`,
+    /// WIRE_FORMAT §31) is about to dispatch the node's own action.
+    /// `affordanceId` is the derived id (`<node>:<kind>`, `<mount>/<node>:<kind>`
+    /// under a mount); `value` is the decoded slot value of a `set`, `None` for a
+    /// clear, click or navigation.
+    ///
+    /// It is a descriptor of its own, not the descriptor of the action it
+    /// resolves to, because the two are different questions. A reader's own
+    /// click on a button is the reader acting; the same click reached from an
+    /// instruction is an agent acting on the reader's page. A host that lets its
+    /// readers do everything may still refuse agents everything, or allow them
+    /// only the affordances a composition lists — which is what carrying the id
+    /// makes expressible. Default-deny like every other case: no shipped runtime
+    /// allows it.
+    ///
+    /// It is the first of TWO gates, never the only one: the action the
+    /// affordance resolves to is dispatched through the ordinary entry and meets
+    /// its own descriptor (`Call`, `Navigate`, `SetState`, …), exactly as a
+    /// confirmed dialogue's continuation does. `Operate` is not a way to reach an
+    /// effect a host refuses.
+    ///
+    /// The value is what the instruction supplied, so it can be the reader's own
+    /// words (a free-text slot): `describe` withholds it, on the clipboard's
+    /// reasoning, and a policy that wants it reads the case.
+    | Operate of affordanceId: string * value: string option
 
 [<RequireQualifiedAccess>]
 module ActionDescriptor =
@@ -447,6 +473,9 @@ module ActionDescriptor =
         // carried in full; nothing the reader chose — not the file's name, not
         // its size — reaches this line.
         | ActionDescriptor.Upload destination -> sprintf "Upload(%s)" destination
+        // The affordance id is derived from author-declared names (grade B); the
+        // slot value can be the instruction's own words, so it is withheld.
+        | ActionDescriptor.Operate(affordanceId, _) -> sprintf "Operate(%s)" affordanceId
 
 /// The five Action substrates the renderer dispatches to. Consumers
 /// implement once at the app shell; the renderer treats it as a black box.

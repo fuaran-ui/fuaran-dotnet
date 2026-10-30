@@ -4378,6 +4378,130 @@ let private decodeLinkSpec (path: string) (j: Json) : Result<LinkSpec, DecodeErr
         | _, _, _, _, Error e, _
         | _, _, _, _, _, Error e -> Error e
 
+/// Phase 2517 — what an affordance's SET patterns must say about the slot,
+/// decided by the kind that carries it (WIRE_FORMAT §31.2). A `Button` is a
+/// click: there is no value for a slot to name, so a pattern carrying one is
+/// refused. A `Select` or a `Form` field is a set: the instruction's value must
+/// go somewhere, so a pattern naming no slot is refused.
+[<RequireQualifiedAccess>]
+type AffordanceSlotRule =
+    | Forbidden
+    | Required
+
+/// The one slot token (§31.2). A pattern is literal text with at most one
+/// `{value}`; any other brace is refused, so the pattern grammar stays closed.
+[<Literal>]
+let private AffordanceSlotToken = "{value}"
+
+let private affordanceSlotCount (pattern: string) : int option =
+    let stripped = pattern.Replace(AffordanceSlotToken, "")
+
+    if stripped.Contains "{" || stripped.Contains "}" then
+        None
+    else
+        Some((pattern.Length - stripped.Length) / AffordanceSlotToken.Length)
+
+let private decodeAffordancePatterns
+    (path: string)
+    (fields: Map<string, Json>)
+    (key: string)
+    (slotsAllowed: int)
+    (expected: string)
+    : Result<string list, DecodeError> =
+    match tryField fields key with
+    | None -> Ok []
+    | Some v ->
+        requireArray (path + "." + key) v
+        |> Result.bind (
+            traverseIndexed (fun i el ->
+                let at = sprintf "%s.%s[%d]" path key i
+
+                requireString at el
+                |> Result.bind (fun pattern ->
+                    match affordanceSlotCount pattern with
+                    | Some n when n = slotsAllowed && pattern.Trim() <> "" -> Ok pattern
+                    | _ -> wrongType at expected))
+        )
+
+/// Phase 2517 — the `affordance` record on a field-bearing node (WIRE_FORMAT
+/// §31). Every member is omit-at-default, so `{}` decodes to the empty
+/// affordance. The slot rule is the carrying kind's (`AffordanceSlotRule`);
+/// `readPatterns` are questions and never carry a slot.
+let private decodeAffordance (slotRule: AffordanceSlotRule) (path: string) (j: Json) : Result<Affordance, DecodeError> =
+    match requireObject path j with
+    | Error e -> Error e
+    | Ok fields ->
+        let patternsR =
+            match slotRule with
+            | AffordanceSlotRule.Required ->
+                decodeAffordancePatterns path fields "patterns" 1 "a set pattern naming exactly one {value} slot"
+            | AffordanceSlotRule.Forbidden ->
+                decodeAffordancePatterns path fields "patterns" 0 "a click pattern naming no slot"
+
+        let readPatternsR =
+            decodeAffordancePatterns path fields "readPatterns" 0 "a read pattern naming no slot"
+
+        let aliasesR =
+            match tryField fields "aliases" with
+            | None -> Ok []
+            | Some v ->
+                requireArray (path + ".aliases") v
+                |> Result.bind (
+                    traverseIndexed (fun i el ->
+                        let at = sprintf "%s.aliases[%d]" path i
+
+                        match requireObject at el with
+                        | Error e -> Error e
+                        | Ok alias ->
+                            let aliasR =
+                                requireField at alias "alias" "string alias"
+                                |> Result.bind (requireString (at + ".alias"))
+
+                            let valueR =
+                                requireField at alias "value" "string option value"
+                                |> Result.bind (requireString (at + ".value"))
+
+                            match aliasR, valueR with
+                            | Ok a, Ok v -> Ok({ Alias = a; Value = v }: AffordanceAlias)
+                            | Error e, _
+                            | _, Error e -> Error e)
+                )
+
+        let descriptionR =
+            match tryField fields "description" with
+            | None -> Ok None
+            | Some v -> requireString (path + ".description") v |> Result.map Some
+
+        let boolOf key =
+            match tryField fields key with
+            | None -> Ok false
+            | Some v -> requireBool (path + "." + key) v
+
+        match patternsR, readPatternsR, aliasesR, descriptionR, boolOf "clearable", boolOf "neverControllable" with
+        | Ok patterns, Ok readPatterns, Ok aliases, Ok description, Ok clearable, Ok neverControllable ->
+            Ok
+                { Patterns = patterns
+                  ReadPatterns = readPatterns
+                  Aliases = aliases
+                  Description = description
+                  Clearable = clearable
+                  NeverControllable = neverControllable }
+        | Error e, _, _, _, _, _
+        | _, Error e, _, _, _, _
+        | _, _, Error e, _, _, _
+        | _, _, _, Error e, _, _
+        | _, _, _, _, Error e, _
+        | _, _, _, _, _, Error e -> Error e
+
+let private decodeOptionalAffordance
+    (slotRule: AffordanceSlotRule)
+    (path: string)
+    (fields: Map<string, Json>)
+    : Result<Affordance option, DecodeError> =
+    match tryField fields "affordance" with
+    | None -> Ok None
+    | Some v -> decodeAffordance slotRule (path + ".affordance") v |> Result.map Some
+
 /// Phase 1080 — one `srcSet` candidate. `width` is the intrinsic pixel width of
 /// this rendition and must be a POSITIVE integer; zero and negative values are a
 /// `WRONG_TYPE` at `<path>.width`, which is also what the published schema's
@@ -6329,21 +6453,27 @@ let private decodeFormField (path: string) (j: Json) : Result<FormField<obj>, De
             | Error e, _ -> Error e
             | Ok(), r -> r
 
-        match idR, kindR, labelR, requiredR, helpR, ruleR with
-        | Ok id, Ok kind, Ok label, Ok required, Ok help, Ok rule ->
+        // Phase 2517 — the field's affordance; a form field is a SET, so a
+        // declared set pattern must name its slot (WIRE_FORMAT §31.2).
+        let affordanceR = decodeOptionalAffordance AffordanceSlotRule.Required path fields
+
+        match idR, kindR, labelR, requiredR, helpR, ruleR, affordanceR with
+        | Ok id, Ok kind, Ok label, Ok required, Ok help, Ok rule, Ok affordance ->
             Ok
                 { Id = id
                   Label = label
                   Kind = kind
                   Required = required
                   Help = help
-                  Rule = rule }
-        | Error e, _, _, _, _, _
-        | _, Error e, _, _, _, _
-        | _, _, Error e, _, _, _
-        | _, _, _, Error e, _, _
-        | _, _, _, _, Error e, _
-        | _, _, _, _, _, Error e -> Error e
+                  Rule = rule
+                  Affordance = affordance }
+        | Error e, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _
+        | _, _, Error e, _, _, _, _
+        | _, _, _, Error e, _, _, _
+        | _, _, _, _, Error e, _, _
+        | _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, Error e -> Error e
 
 let private decodeFormSpec (path: string) (j: Json) : Result<FormSpec<obj>, DecodeError> =
     match requireObject path j with
@@ -6440,8 +6570,12 @@ let private decodeButtonSpec (path: string) (j: Json) : Result<ButtonSpec<obj>, 
             | None -> Ok None
             | Some v -> decodeBindingBool (path + ".disabled") v |> Result.map Some
 
-        match labelR, onClickR, variantR, iconR, disabledR with
-        | Ok label, Ok onClick, Ok variant, Ok icon, Ok disabled ->
+        // Phase 2517 — a button is a CLICK: a declared pattern names no slot
+        // (WIRE_FORMAT §31.2).
+        let affordanceR = decodeOptionalAffordance AffordanceSlotRule.Forbidden path fields
+
+        match labelR, onClickR, variantR, iconR, disabledR, affordanceR with
+        | Ok label, Ok onClick, Ok variant, Ok icon, Ok disabled, Ok affordance ->
             // Tooltip is currently not emitted by the encoder; decode to
             // None. See `docs/migrations/12-E-0-json-decoder.md` "Encoder
             // gaps" for the tracked follow-up.
@@ -6451,12 +6585,14 @@ let private decodeButtonSpec (path: string) (j: Json) : Result<ButtonSpec<obj>, 
                   Variant = variant
                   Icon = icon
                   Tooltip = None
-                  Disabled = disabled }
-        | Error e, _, _, _, _
-        | _, Error e, _, _, _
-        | _, _, Error e, _, _
-        | _, _, _, Error e, _
-        | _, _, _, _, Error e -> Error e
+                  Disabled = disabled
+                  Affordance = affordance }
+        | Error e, _, _, _, _, _
+        | _, Error e, _, _, _, _
+        | _, _, Error e, _, _, _
+        | _, _, _, Error e, _, _
+        | _, _, _, _, Error e, _
+        | _, _, _, _, _, Error e -> Error e
 
 let private decodeSelectSpec (path: string) (j: Json) : Result<SelectSpec<obj>, DecodeError> =
     match requireObject path j with
@@ -6520,8 +6656,12 @@ let private decodeSelectSpec (path: string) (j: Json) : Result<SelectSpec<obj>, 
             | None -> Ok Option.None
             | Some v -> decodeBindingStringList (path + ".values") v |> Result.map Some
 
-        match labelR, sourceR, valueR, placeholderR, disabledR, multipleR, valuesR with
-        | Ok label, Ok source, Ok value, Ok placeholder, Ok disabled, Ok multiple, Ok values ->
+        // Phase 2517 — a select is a SET: a declared set pattern must name its
+        // slot (WIRE_FORMAT §31.2).
+        let affordanceR = decodeOptionalAffordance AffordanceSlotRule.Required path fields
+
+        match labelR, sourceR, valueR, placeholderR, disabledR, multipleR, valuesR, affordanceR with
+        | Ok label, Ok source, Ok value, Ok placeholder, Ok disabled, Ok multiple, Ok values, Ok affordance ->
             // Handlers are optional (Phase 426): a present `"<closure>"`
             // sentinel decodes to the inert placeholder `Some`; an absent key
             // decodes to `None`, arming the renderer's write-back default
@@ -6541,14 +6681,16 @@ let private decodeSelectSpec (path: string) (j: Json) : Result<SelectSpec<obj>, 
                   OnChangeMulti =
                     (match tryField fields "onChangeMulti" with
                      | Some _ -> Some(fun _ -> Action.Chain [])
-                     | None -> Option.None) }
-        | Error e, _, _, _, _, _, _
-        | _, Error e, _, _, _, _, _
-        | _, _, Error e, _, _, _, _
-        | _, _, _, Error e, _, _, _
-        | _, _, _, _, Error e, _, _
-        | _, _, _, _, _, Error e, _
-        | _, _, _, _, _, _, Error e -> Error e
+                     | None -> Option.None)
+                  Affordance = affordance }
+        | Error e, _, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _, _
+        | _, _, Error e, _, _, _, _, _
+        | _, _, _, Error e, _, _, _, _
+        | _, _, _, _, Error e, _, _, _
+        | _, _, _, _, _, Error e, _, _
+        | _, _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, _, Error e -> Error e
 
 let private decodeFileUploadSpec (path: string) (j: Json) : Result<FileUploadSpec<obj>, DecodeError> =
     match requireObject path j with

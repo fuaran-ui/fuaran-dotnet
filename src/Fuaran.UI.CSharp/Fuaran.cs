@@ -199,5 +199,6 @@ public static partial class Fuaran
                 options.Variant.ToFs(),
                 Icon(options.Icon),
                 Fs.None<FsGen.TextSource>(),
-                Fs.None<global::Fuaran.UI.Generated.Binding<bool>>())));
+                Fs.None<global::Fuaran.UI.Generated.Binding<bool>>(),
+                Fs.None<FsGen.Affordance>())));
 }

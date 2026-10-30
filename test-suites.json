@@ -48,6 +48,10 @@
       "note": "Phase 512 — the public signature-searchable pattern bank (engine + domain-neutral seed catalogue)."
     },
     {
+      "project": "src/Fuaran.UI.Operability.Tests/Fuaran.UI.Operability.Tests.fsproj",
+      "note": "Phase 2517 — the operable surface: the affordance on the wire, Operability.derive, the resolution contract's reference matcher, the DOM stamp, and the operability/ corpus family it emits (FUARAN_REGEN=1)."
+    },
+    {
       "project": "src/Fuaran.UI.Validator.Tests/Fuaran.UI.Validator.Tests.fsproj",
       "lane": "slow"
     },

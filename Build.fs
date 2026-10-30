@@ -138,6 +138,10 @@ let private packableProjects =
       // Phase 512 — the public signature-searchable pattern bank (a Fable-clean
       // façade over Fuaran.Core.FunctionRegistry + a domain-neutral seed catalogue).
       "Fuaran.UI.FastPath"
+      // Phase 2517 — the operable-surface derivation and the resolution contract's
+      // reference matcher. Renderer.Core project-references it (the DOM stamp), so
+      // its nupkg declares a dependency on it; it must pack alongside.
+      "Fuaran.UI.Operability"
       "Fuaran.UI.Validator"
       // Phase 2058 — recipe / fragment certification, moved out of the validator executable
       // into a library it references; the validator nupkg declares a dependency on it.

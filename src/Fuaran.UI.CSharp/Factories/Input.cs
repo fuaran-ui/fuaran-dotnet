@@ -107,7 +107,8 @@ public static partial class Fuaran
                 options.Placeholder is { } p ? Fs.Some(p.Inner) : Fs.None<FsGen.TextSource>(),
                 Fs.None<global::Fuaran.UI.Generated.Binding<bool>>(),
                 Fs.None<bool>(),
-                Fs.None<global::Fuaran.UI.Generated.Binding<Microsoft.FSharp.Collections.FSharpList<string>>>())));
+                Fs.None<global::Fuaran.UI.Generated.Binding<Microsoft.FSharp.Collections.FSharpList<string>>>(),
+                Fs.None<FsGen.Affordance>())));
 
     /// <summary>A multi-select (<c>&lt;select multiple&gt;</c>).</summary>
     public static FuaranNode MultiSelect(MultiSelectOptions options) =>
@@ -184,7 +185,8 @@ public sealed class FormField
             label.Inner,
             required,
             help is { } h ? Fs.Some(h.Inner) : Fs.None<FsGen.TextSource>(),
-            rule is { } r ? Fs.Some(r.Inner) : Fs.None<FsGen.FieldRule>()));
+            rule is { } r ? Fs.Some(r.Inner) : Fs.None<FsGen.FieldRule>(),
+            Fs.None<FsGen.Affordance>()));
 
     /// <summary>A text field. <paramref name="rule"/> declares a constraint the host
     /// must enforce at submit (Phase 864).</summary>

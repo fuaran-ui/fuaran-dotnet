@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Phase 1647 - the ONE corpus-root resolver, linked (not copied), so a git worktree
+         resolves the corpus through FUARAN_WIRE_FIXTURES rather than skipping silently. -->
+    <Compile Include="..\..\tests\corpus-root\CorpusRoot.fs" Link="CorpusRoot.fs" />
+    <Compile Include="Cases.fs" />
+    <Compile Include="Vectors.fs" />
+    <Compile Include="OperabilityTests.fs" />
+    <Compile Include="RendererTests.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <!-- The reference decoder: every tree is derived from what the WIRE carries. -->
+    <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Operability\Fuaran.UI.Operability.fsproj" />
+    <!-- The two consumers this phase wires: the server renderer's DOM stamp and the
+         renderer's affordance-provider seam. -->
+    <ProjectReference Include="..\Fuaran.UI.Renderer.Server\Fuaran.UI.Renderer.Server.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Renderer\Fuaran.UI.Renderer.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Expecto" />
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>

@@ -1516,7 +1516,24 @@ let private defs: (string * J) list =
                 "label", ref "TextSource"
                 "required", boolean
                 "help", ref "TextSource"
-                "rule", ref "FieldRule" ])
+                "rule", ref "FieldRule"
+                // Phase 2517 — the field's operable surface (WIRE_FORMAT §31.1).
+                "affordance", ref "Affordance" ])
+
+      // Phase 2517 — the affordance a field-bearing node declares. Every member is
+      // omit-at-default, so nothing is required. The slot rule on `patterns` /
+      // `readPatterns` (§31.2) depends on the CARRYING kind and is the decoder's.
+      "Affordance",
+      record
+          []
+          [ "patterns", arrayOf str
+            "readPatterns", arrayOf str
+            "aliases", arrayOf (ref "AffordanceAlias")
+            "description", str
+            "clearable", boolean
+            "neverControllable", boolean ]
+
+      "AffordanceAlias", record [ "alias"; "value" ] [ "alias", str; "value", str ]
 
       "FormSpec",
       record
@@ -1536,7 +1553,8 @@ let private defs: (string * J) list =
             "onClick", ref "Action"
             "variant", ref "ButtonVariant"
             "icon", str
-            "disabled", binding "bool" ]
+            "disabled", binding "bool"
+            "affordance", ref "Affordance" ]
 
       "SelectSpec",
       record
@@ -1555,7 +1573,8 @@ let private defs: (string * J) list =
             // single-select), matching the decoder's tolerance.
             "multiple", boolean
             "values", binding "list_str"
-            "onChangeMulti", closure ]
+            "onChangeMulti", closure
+            "affordance", ref "Affordance" ]
       |> selectValueRule
 
       "FileUploadSpec",

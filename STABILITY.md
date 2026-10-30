@@ -7818,6 +7818,60 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
+## 0.100.0 — the slot opened after v0.99.1 was released (DRAFT — untagged)
+
+_`v0.99.1` is TAGGED (2026-10-29), so under the draft-slot rule nothing may ride it: the change below opens the next
+slot. Class: **breaking** (source), set by Phase 2517 — a closed union gains a case. The slot sits at the minor number,
+where a pre-1.0 breaking change goes. The `<Version>` advance and its ledger record are the release act's, recorded
+separately; this entry is the slot's account of what rides it._
+
+### What rides this slot — Phase 2517 (a tree's operable surface is a specified projection of it)
+
+**Class: breaking (source); it sets this slot's class.** Packages `Fuaran.UI`, `Fuaran.UI.Ops`,
+`Fuaran.UI.Renderer.Core`, `Fuaran.UI.Renderer` and the C# facade; one NEW package, `Fuaran.UI.Operability`.
+
+- **Wire — additive.** An optional `affordance` member on `Select`, `Button` and every `Form` field (WIRE_FORMAT §31.1):
+  `{ patterns, readPatterns, aliases, description, clearable, neverControllable }`, every member omit-at-default, the
+  whole member absent at `None`. Every existing document decodes and re-encodes byte-for-byte as before. The decoder
+  refuses a set pattern naming no `{value}` slot on a `Select` or a field, a click pattern naming one on a `Button`, a
+  read pattern naming one anywhere, and any other brace (`WRONG_TYPE` at the pattern, §31.2). No `NodeKind` is added,
+  merged or retired, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s admission gates are not engaged; the
+  member is a field on three existing records.
+- **`ActionDescriptor.Operate of affordanceId: string * value: string option` — BREAKING for an exhaustive match.**
+  The descriptor an agent-initiated resolution dispatches under, distinct from a reader's own interaction with the same
+  node, decided by `IFuaranRuntime.CanDispatch` like every other case and refused by every shipped runtime (the 0.14.0
+  default-deny posture). It is the first of two gates: the resolved action then meets its own descriptor.
+  `ActionDescriptor.describe` withholds the slot value.
+- **`Fuaran.UI.Operability` (new).** `Operability.derive` (a pure, total function from a tree to its affordances),
+  `Operability.resolve` (the resolution contract's reference matcher, §31.4–31.5), their canonical corpus projection,
+  and the DOM annotation projection (§31.8). FSharp.Core + `Fuaran.UI` only; Fable-clean.
+- **Rendering.** A `Select`, `Button` or field that DECLARES an affordance is stamped with `data-ai-name` (its name),
+  `data-fuaran-shape` / `-controllable` / `-commands` / `-aliases` / `-values` / `-description` and `aria-description`
+  — on the semantic element where the kind forwards to one, else the wrapper; an attribute the author already set wins.
+  A node that declares nothing renders byte-for-byte as before on both pipelines. `Affordances.ofDerived` and
+  `Affordances.registerDerivedProvider` let a host answer `__fuaran.getAffordances` / `read.affordances` from the tree.
+- **Source-breaking, which is why the class matters.** (1) An exhaustive `match` over `ActionDescriptor` must gain an
+  `Operate` arm (FS0025 under warnings-as-errors). Every host runtime that matches the union exhaustively is named for
+  the change-set: in this repository, `ActionDescriptor.describe`; outside it, any consumer runtime whose
+  `CanDispatch` adapter enumerates the cases. (2) A full-literal construction of `SelectSpec`, `ButtonSpec` or
+  `FormField` gains `Affordance = None` (FS0764); `{ Defaults.select with … }` and every copy-update site are
+  untouched. (3) The C# generated-record constructors of the same three types take one more positional argument
+  (CS7036): pass `FSharpOption<Affordance>.None`.
+
+**What a consumer does.** Add the `Operate` arm (deny it, or allow the affordance ids a composition lists); add
+`Affordance = None` to a full record literal. A stored tree is unaffected.
+
+**Certified by** the corpus's `operability/` family (WIRE_FORMAT §31.7: the affordance's wire round-trips and
+refusals, the derivation over authored trees, and the resolution contract over instructions recast from the S1–S7
+calibration strata), emitted and asserted by `src/Fuaran.UI.Operability.Tests`; and
+`src/Fuaran.UI.Tests/DispatchGateTests.fs`, whose enumerated closed set now carries `Operate` (and `Confirm` and
+`Focus`, which it had been missing).
+
+**Escape hatch.** `Operate` is a new gated action class, so the escape-hatch inventory gains its entry (an
+agent-initiated resolution dispatching a node's own action; what mediates it; what is not claimed).
+
+---
+
 ## 0.99.1 — the slot opened after v0.98.1 was released (DRAFT — untagged)
 
 _Released as **0.99.1**, not 0.99.0 (2026-10-29): the slot's surface moved after 0.99.0 was packed as a draft, and a

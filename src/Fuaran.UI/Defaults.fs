@@ -402,7 +402,8 @@ let button<'Msg> : ButtonSpec<'Msg> =
       Variant = ButtonVariant.Secondary
       Icon = Option.None
       Tooltip = Option.None
-      Disabled = Option.None }
+      Disabled = Option.None
+      Affordance = Option.None }
 
 let select<'Msg> : SelectSpec<'Msg> =
     // `OnChange = None` (Phase 426): the write-back default — a State/Filter-bound
@@ -420,7 +421,10 @@ let select<'Msg> : SelectSpec<'Msg> =
       // omitted on the wire so every existing Select fixture stays byte-identical.
       Multiple = Option.None
       Values = Option.None
-      OnChangeMulti = Option.None }
+      OnChangeMulti = Option.None
+      // Phase 2517 — no declared affordance: the node is still operable through
+      // what `Operability.derive` reads off its name, label and options.
+      Affordance = Option.None }
 
 let form<'Msg> : FormSpec<'Msg> =
     { Fields = []
@@ -439,7 +443,19 @@ let formField<'Msg> : FormField<'Msg> =
       // Phase 864 — an unconstrained field. `required` is the pre-existing
       // degenerate rule and stays above; everything else a field may demand of
       // its value lives in `Rule`, and the default is to demand nothing.
-      Rule = Option.None }
+      Rule = Option.None
+      Affordance = Option.None }
+
+/// Phase 2517 — the affordance that declares nothing beyond what the node
+/// already says: `{}` on the wire. Copy-update it (`{ Defaults.affordance with
+/// Patterns = [ … ] }`) to declare phrasings, aliases or the opt-out.
+let affordance: Affordance =
+    { Patterns = []
+      ReadPatterns = []
+      Aliases = []
+      Description = Option.None
+      Clearable = false
+      NeverControllable = false }
 
 /// `NumberFieldConstraints` default — all three bounds absent.
 /// Authors who want the canonical `FormFieldKind.Number` shape (no bounds)

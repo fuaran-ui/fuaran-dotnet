@@ -77,6 +77,7 @@
     "merge-conformance": "covered",
     "node-round-trip": "covered",
     "op-round-trip": "covered",
+    "operability": "covered",
     "reject": "covered",
     "repair": "covered",
     "row-encode": "covered",

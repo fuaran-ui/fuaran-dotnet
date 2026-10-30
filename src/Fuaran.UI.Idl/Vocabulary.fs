@@ -1909,6 +1909,31 @@ let private invokeArgRecord =
       Fields = [ req "addr" TStr; req "value" TStr ]
       Annotations = Annotations.Empty }
 
+/// Phase 2517 — the AFFORDANCE a field-bearing node declares: how an agent-initiated
+/// instruction may address it, over and above what `Operability.derive` reads off the
+/// node itself (its name, label and value space). Every member is omit-at-default, so
+/// `{}` is the "declares nothing extra" affordance and a node with no affordance at all
+/// is still derived from its label. `patterns` are SET forms (a `{value}` slot names
+/// where the instruction's value goes); `readPatterns` are question forms that resolve
+/// only to a `Read`; `aliases` map a spoken token onto a canonical option value.
+/// `neverControllable` withdraws the node from the operable surface entirely — the
+/// derivation yields nothing for it. WIRE_FORMAT §31.
+let private affordanceAliasRecord =
+    { Name = "AffordanceAlias"
+      Fields = [ req "alias" TStr; req "value" TStr ]
+      Annotations = Annotations.Empty }
+
+let private affordanceRecord =
+    { Name = "Affordance"
+      Fields =
+        [ omit "patterns" (TList TStr) (VList [])
+          omit "readPatterns" (TList TStr) (VList [])
+          omit "aliases" (TList(TRecord "AffordanceAlias")) (VList [])
+          opt "description" TStr
+          omit "clearable" TBool (VBool false)
+          omit "neverControllable" TBool (VBool false) ]
+      Annotations = Annotations.Empty }
+
 /// An option in a `Select` / `Choice` / `SegmentedChoice` payload (Fuaran-UI 0.2.x
 /// typed-Static: the choice `source` / `options` carry a real `SelectOption` list).
 let private selectOptionRecord =
@@ -2018,7 +2043,10 @@ let private formFieldRecord =
           req "label" (TUnion("TextSource", []))
           omit "required" TBool (VBool false)
           opt "help" (TUnion("TextSource", []))
-          opt "rule" (TRecord "FieldRule") ]
+          opt "rule" (TRecord "FieldRule")
+          // Phase 2517 — appended, absent-at-`None`: every form written before it
+          // encodes to the bytes it always did. WIRE_FORMAT §31.
+          opt "affordance" (TRecord "Affordance") ]
       Annotations = Annotations.Empty }
 
 let private filterSpecRecord =
@@ -2871,7 +2899,9 @@ let inputKinds: IdlKind list =
             // spec forbids — invisible to the corpus (no fixture carries it),
             // caught by the Phase 101 idempotence fuzz at the 694 collapse.
             hostOnly "tooltip" "TextSource option" "None"
-            opt "disabled" (bindingOf TBool) ] }
+            opt "disabled" (bindingOf TBool)
+            // Phase 2517 — appended, absent-at-`None`. WIRE_FORMAT §31.
+            opt "affordance" (TRecord "Affordance") ] }
       { Tag = "Select"
         Category = "Input"
         Annotations = Annotations.Empty
@@ -2899,7 +2929,9 @@ let inputKinds: IdlKind list =
             opt "placeholder" (TUnion("TextSource", []))
             opt "disabled" (bindingOf TBool)
             opt "multiple" TBool
-            opt "values" (bindingOf (TList TStr)) ] }
+            opt "values" (bindingOf (TList TStr))
+            // Phase 2517 — appended, absent-at-`None`. WIRE_FORMAT §31.
+            opt "affordance" (TRecord "Affordance") ] }
       { Tag = "FileUpload"
         Category = "Input"
         Annotations = Annotations.Empty
@@ -3805,6 +3837,8 @@ let uiIdl: Idl =
           viewBoxRecord
           drawStyle
           invokeArgRecord
+          affordanceAliasRecord
+          affordanceRecord
           selectOptionRecord
           mapMarkerRecord
           defaultSortRecord
