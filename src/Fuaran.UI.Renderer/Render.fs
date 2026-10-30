@@ -5269,7 +5269,11 @@ and private renderGridCell
                 [ prop.className "fuaran-grid-cell-editable"
                   prop.type'.number
                   prop.value n
-                  prop.onChange (fun (v: float) -> runEdit (CellValue.Numeric v)) ]
+                  prop.onChange (fun (v: float) ->
+                      // As on the declarative path (Phase 663): an empty / mid-edit number
+                      // input parses NaN, and a NaN is never committed.
+                      if not (System.Double.IsNaN v) then
+                          runEdit (CellValue.Numeric v)) ]
         | CellValue.Text s ->
             Html.input
                 [ prop.className "fuaran-grid-cell-editable"

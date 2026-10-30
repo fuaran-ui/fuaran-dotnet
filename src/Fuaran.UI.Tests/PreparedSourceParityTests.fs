@@ -12,7 +12,9 @@ module Fuaran.UI.Tests.PreparedSourceParity
 //   1. Every Transform vector in the corpus (`laws/transform-laws.json`)
 //      answers through the resolver's route exactly as the reference
 //      evaluator answers it: the same table, byte for byte as the corpus pins
-//      it, the same rows at a rendered site, and the same refusal.
+//      it (a host-rounded column within the vector's stated bound, Phase 559:
+//      `log10` differs in its last digit between platforms), the same rows at a
+//      rendered site, and the same refusal.
 //   2. Sharing changes no answer: every corpus pipeline evaluated as a site
 //      over every corpus source, all in ONE render — embedded, and live through
 //      a state key each — renders the rows it renders alone in a render of its
@@ -39,6 +41,9 @@ type private Vector =
         /// The corpus's canonical table text for an `ok` vector; `None` for an
         /// `error` vector, whose refusal is deliberately unnamed.
         Expected: string option
+        /// The vector's `expected.tolerance`: each host-rounded column with its
+        /// bound in ulps, empty where the vector carries none.
+        Tolerance: (string * int) list
     }
 
 /// A string member of a corpus vector; the corpus never writes one as null.
@@ -75,7 +80,11 @@ let private vectors () : Vector list option =
                     Expected =
                       match text expected "verdict" with
                       | "ok" -> Some(text expected "table")
-                      | _ -> None } ])
+                      | _ -> None
+                    Tolerance =
+                      match expected.TryGetProperty "tolerance" with
+                      | true, bounds -> [ for b in bounds.EnumerateObject() -> b.Name, b.Value.GetInt32() ]
+                      | _ -> [] } ])
 
 let private withVectors (f: Vector list -> unit) () =
     match vectors () with
@@ -112,8 +121,13 @@ let tests =
 
                   match v.Expected, reference, viaPrepared with
                   | Some pinned, Ok r, Ok p ->
-                      Expect.equal (ColumnCodec.encode (Embedded r)) pinned (v.Id + ": the reference is the corpus's")
-                      Expect.equal (ColumnCodec.encode (Embedded p)) pinned (v.Id + ": evalPrepared is the corpus's")
+                      let agrees (table: Table) (what: string) =
+                          Expect.isNone
+                              (VectorTolerance.tableAgrees v.Tolerance pinned (ColumnCodec.encode (Embedded table)))
+                              (v.Id + ": " + what)
+
+                      agrees r "the reference is the corpus's"
+                      agrees p "evalPrepared is the corpus's"
                   | None, Error r, Error p ->
                       Expect.equal (DataFrame.errorString p) (DataFrame.errorString r) (v.Id + ": the same refusal")
                   | _ -> failtestf "%s: the verdicts disagree (reference %A, prepared %A)" v.Id reference viaPrepared
