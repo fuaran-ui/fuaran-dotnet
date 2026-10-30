@@ -129,6 +129,7 @@ let tree: Node<obj> =
             Fallback = Some(declOf "in-envelope-fallback") }
 
     let slotArgument =
+        // fuaran-validator: disable-next-line FUARAN057 — `outer` is declared through the local `decl` helper, which the rule cannot see
         let r = Fuaran.fragmentRef "slot-argument" "outer"
 
         match r.Kind with

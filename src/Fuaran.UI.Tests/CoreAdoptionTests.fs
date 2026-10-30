@@ -1716,9 +1716,9 @@ module MemoGateConformance =
     /// A network-reading sub-fragment, honestly declared.
     let private ticker: Node<obj> =
         Fuaran.fragmentDecl
-            "ticker"
+            "network-ticker"
             { Defaults.fragmentDecl<obj> with
-                Name = "ticker"
+                Name = "network-ticker"
                 Effect =
                     { HostEffect = HostEffect.ReadsHost
                       Determinism = DeterminismSource.Network }
@@ -1737,6 +1737,7 @@ module MemoGateConformance =
                 Fuaran.dashboard
                     "card-root"
                     { Defaults.dashboard<obj> with
+                        // fuaran-validator: disable-next-line FUARAN057 — the reference names the card's own `content` slot, not a declared fragment
                         Children = [ md "card-title" "Title"; Fuaran.fragmentRef "content" "content" ] @ extra } }
 
     let private pureCard = card "card" EffectClass.pureDeterministic []

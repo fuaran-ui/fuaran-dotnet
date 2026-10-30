@@ -91,12 +91,12 @@ console.log("apply-parity Fable lane: PASS");
 // Fable writes each transpiled package to `fable_modules/<id>.<version>/`; the
 // version follows the pin, so the directory is found rather than named.
 const fableModules = join(here, "output", "fable_modules");
-const coreTreeDir = readdirSync(fableModules).find((d) => /^Fuaran\.Core\.Tree\.\d/.test(d));
-if (!coreTreeDir) {
-  console.error(`no Fuaran.Core.Tree package under ${fableModules} — was the Fable build run?`);
+const coreTextDir = readdirSync(fableModules).find((d) => /^Fuaran\.Core\.Text\.\d/.test(d));
+if (!coreTextDir) {
+  console.error(`no Fuaran.Core.Text package under ${fableModules} — was the Fable build run?`);
   process.exit(1);
 }
-const { Hash_sha256Hex } = await import(pathToFileURL(join(fableModules, coreTreeDir, "Hash.fs.js")).href);
+const { Hash_sha256Hex } = await import(pathToFileURL(join(fableModules, coreTextDir, "Hash.fs.js")).href);
 
 const shaVectors = [
   ["", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"],
