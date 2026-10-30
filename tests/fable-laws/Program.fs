@@ -112,6 +112,14 @@ let main _ =
     for line in boardSnapshot.Lines do
         printfn "%s" line
 
+    // ---- law 9: the operable surface and the resolution contract ----
+    // Phase 2517. The derived affordances and every recast instruction's outcome
+    // are printed, so the runner's line comparison is the cross-host claim.
+    let operability = OperabilityLaw.operabilityLaw ()
+
+    for line in operability.Lines do
+        printfn "%s" line
+
     let violations =
         Laws.mergeViolations mergeVerdict
         + laneFailures
@@ -122,6 +130,7 @@ let main _ =
         + Laws.checkpointViolations checkpointCases
         + Laws.numberFormatViolations numberFormatCases
         + boardSnapshot.Violations
+        + operability.Violations
 
     printfn "TOTAL violations=%d" violations
 

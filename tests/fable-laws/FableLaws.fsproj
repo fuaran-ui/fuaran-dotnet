@@ -49,6 +49,10 @@
     <Compile Include="Laws.fs" />
     <!-- Law 8 (Phase 1885): a board snapshot reproduces the same data on both pipelines. -->
     <Compile Include="BoardSnapshotLaw.fs" />
+    <!-- Law 9 (Phase 2517): the operable surface and the resolution contract. The cases are
+         the operability/ family's authored inputs, linked from the suite that emits it. -->
+    <Compile Include="..\..\src\Fuaran.UI.Operability.Tests\Cases.fs" Link="OperabilityCases.fs" />
+    <Compile Include="OperabilityLaw.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
