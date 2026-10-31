@@ -267,23 +267,12 @@ let expandNamespaced<'Msg> (prefix: string) (body: Node<'Msg>) : Node<'Msg> =
 ///   refuses duplicate names, so this only decides already-invalid trees; it is
 ///   stated so both renderers decide them the same way.
 ///
-/// ITERATIVE, with an explicit stack (Phase 781): this runs before the first
-/// render, so it is the first walk an untrusted tree meets, and a recursive
+/// The renderers normally take the registry from the render pass
+/// (`registryOf`); this walk is the canonical definition of it.
+///
+/// ITERATIVE, with an explicit stack (Phase 781): a recursive
 /// walk would overflow on a tree deep enough to make the renderers' depth guard
 /// unreachable. The stack is an F# list so the walk lowers unchanged under Fable.
-/// Phase 2069 — the same registry, folded from the declarations
-/// `BindingWalk.collectFacts` already gathered (last declaration wins, as
-/// below), so a context builder that runs the facts walk for its seeds reads
-/// the registry off it instead of walking again. `RendererAgreementTests` pins
-/// that this and `collectFragments` agree over `FragmentRegistryFixture`.
-let registryOfDeclarations<'Key, 'Msg when 'Key: comparison>
-    (key: string -> 'Key)
-    (acc: Map<'Key, Node<'Msg>>)
-    (declarations: (string * Node<'Msg>) list)
-    : Map<'Key, Node<'Msg>> =
-    declarations
-    |> List.fold (fun registry (name, body) -> Map.add (key name) body registry) acc
-
 let collectFragments<'Key, 'Msg when 'Key: comparison>
     (key: string -> 'Key)
     (acc: Map<'Key, Node<'Msg>>)
@@ -304,3 +293,22 @@ let collectFragments<'Key, 'Msg when 'Key: comparison>
             @ List.tail pending
 
     result
+
+/// Phase 2069 — the registry from the declarations the render pass found
+/// (`BindingWalk.RenderFacts.Fragments`), with no walk of its own. That pass
+/// visits in its own order, which matters only to a repeated name, so such a tree
+/// (already invalid, FUARAN056) takes `collectFragments` for the canonical
+/// last-decl-wins answer.
+let registryOf<'Key, 'Msg when 'Key: comparison>
+    (key: string -> 'Key)
+    (node: Node<'Msg>)
+    (decls: (string * Node<'Msg>) list)
+    : Map<'Key, Node<'Msg>> =
+    let registry =
+        decls
+        |> List.fold (fun acc (name, body) -> Map.add (key name) body acc) Map.empty
+
+    if Map.count registry = List.length decls then
+        registry
+    else
+        collectFragments key Map.empty node

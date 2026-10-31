@@ -7849,6 +7849,29 @@ _Untagged. Set by Phase 2527, the first change to ride the slot._
 
 `visible` and `fallback` are still set by no op (`TreeOpDiff.fs` documents it).
 
+### What rides this slot — Phase 2069 (one render pass)
+
+**BREAKING, `Fuaran.UI.Renderer`.** `TrustedTypes.createHtml` is removed and `TrustedTypes.html` only
+mints: it no longer sanitises. Each producer makes its own markup safe, once, on both renderers
+(`SANITIZATION.md`). A host minting its own markup through `TrustedTypes.html` must make it safe first.
+
+**BREAKING, `Fuaran.UI`.** `BindingWalk.TransformSiteFacts` gains `SourceReads`, so a full-literal
+construction no longer compiles (FS0764). The walk builds this record; no consumer is expected to.
+
+**Additive.** `BindingWalk.renderFacts` is one walk for a tree's seeds, fragments and reactive keys, with
+the records `RenderFacts<'Msg>` and `ReactiveKeys` and the projection `reactiveKeysOf`.
+`StateSeeds.applyFacts`, `FragmentExpansion.registryOf`, `Render.PreparedTree<'Msg>`,
+`Render.RenderContext.prepare` / `ofPrepared`, `Render.collectReactiveKeys`, and `StateStore.useKeys` /
+`useKeysWith`.
+
+**Behaviour.** `Render.collectKeys` is a projection of `BindingWalk`'s uses, and `Render.keysOfBinding` /
+`keysOfText` return their keys in sorted order. A surface now subscribes three slots it read and never
+followed: a node's `Visible`, a node's `Tooltip`, and a `Switch` case's `When`. `BindingWalk`'s analysis
+gains the slots only the reactive walk had: `Media` track `Src` and `Label`, `Media.Transcript`, and a
+`Tree`'s expanded and selection state keys. `Theme.toCss` applies the floor to its own output, so the
+server's stylesheet now gets what the client's sink used to do. `useSelectionKeys` no longer resubscribes
+on every change.
+
 ---
 
 ## 0.100.1 — the slot opened after v0.100.0 was released (DRAFT — untagged)
@@ -7863,9 +7886,7 @@ record are the release act's, recorded separately; this entry is the slot's acco
 **Class: additive, with one record field.** Packages `Fuaran.UI`, `Fuaran.UI.Renderer.Core`, `Fuaran.UI.Renderer`,
 `Fuaran.UI.Renderer.Server`.
 
-- **Surface — additive.** `BindingWalk.collectFactsAndFragments` (the facts walk returning the fragment
-  declarations beside the facts; `collectFacts` and `collect` are unchanged and now derive from it),
-  `FragmentExpansion.registryOfDeclarations`, `StateSeeds.applyFacts`, `StateStore.generation`.
+- **Surface — additive.** `StateStore.generation`. The render pass itself is the `0.101.0` entry above.
 - **Surface — `Render.RenderContext` gains `SubtreeMemo: bool`.** `RenderContext.create` sets it `false`, so a host
   built through `create` plus `with` sees no change; a host that spelt the record out in full (the shape
   `RENDER-ENTRIES.md` has asked hosts not to use since Phase 2067) takes `FS0764` and adds the field. The

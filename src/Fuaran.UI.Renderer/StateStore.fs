@@ -627,6 +627,33 @@ let resetAllScopes () : unit =
 
     scopes.Clear()
 
+/// The one keyed subscription hook (Phase 2069), over the two React hooks it needs
+/// so a .NET test can drive its lifecycle. `useKeys` is this over React, and the
+/// four channels' hooks are `useKeys` over their own `subscribeKeys`. Returns a
+/// monotonically-increasing tick whose only purpose is to drive the re-render.
+///
+/// Subscription lifecycle: the effect's cleanup thunk unsubscribes on unmount and
+/// re-subscribes when the key set changes, so a surface that stops reading a key
+/// drops its subscription.
+///
+/// SUBSCRIBED ONCE PER KEY SET. The effect deps are the key set alone. A hook with
+/// `tick` beside it re-ran the effect on every notification: unsubscribe,
+/// re-subscribe, on every single write, churn proportional to write volume. `tick`
+/// was there to sidestep a stale closure, since `setTick (tick + 1)` closes over the
+/// `tick` of the render that created it. The updater removes the capture instead of
+/// refreshing it: it is handed the CURRENT value, so the subscription can live as
+/// long as the key set does.
+let useKeysWith
+    (useTick: int -> int * ((int -> int) -> unit))
+    (useEffect: (unit -> (unit -> unit)) -> obj array -> unit)
+    (subscribe: Set<string> -> (unit -> unit) -> (unit -> unit))
+    (keys: Set<string>)
+    : int =
+    let depKey = keys |> Set.toSeq |> String.concat " "
+    let tick, setTick = useTick 0
+    useEffect (fun () -> subscribe keys (fun () -> setTick (fun current -> current + 1))) [| box depKey |]
+    tick
+
 #if FABLE_COMPILER
 /// React hook: subscribe a rendered surface to a string state key and
 /// re-render whenever it changes. Returns the current value or `defaultValue`.
@@ -647,37 +674,11 @@ let useStateValue (key: string) (defaultValue: string) : string =
 
     value
 
-/// React hook: subscribe a rendered surface to a *set* of state keys and
-/// force a re-render whenever any of them changes. Returns a monotonically-
-/// increasing tick whose only purpose is to drive the re-render — callers
-/// ignore the value. This is the reactivity primitive behind Phase 106's
-/// `Render.renderStateReactive` opt-in: the surface re-paints (re-reading
-/// every `Binding.State` reader against the live snapshot) on a single
-/// global `Action.SetState`, not just the control that owns the value.
-///
-/// Subscription lifecycle: the `useEffect` cleanup thunk unsubscribes on
-/// unmount and re-subscribes when the key set changes (so a surface that
-/// stops reading a key drops its subscription — no leak).
-///
-/// SUBSCRIBED ONCE PER KEY SET. The effect deps are the key set alone. `tick`
-/// used to sit beside it, so every notification re-ran the effect: unsubscribe,
-/// re-subscribe, on every single write. That was churn rather than a leak — the
-/// cleanup did run — but it is churn proportional to write volume on every
-/// subscribed surface, and it made a subscription's lifetime depend on how often
-/// the value changed rather than on what the surface reads.
-///
-/// `tick` was in the deps to sidestep a stale-closure capture: the effect's
-/// `setTick (tick + 1)` closes over the `tick` of the render that created it, so
-/// a subscription that outlived one notification would keep incrementing from a
-/// stale base and stop advancing. `useStateWithUpdater` removes the capture
-/// instead of refreshing it — the updater is handed the CURRENT value, so the
-/// closure never reads a stale one and the subscription can live as long as the
-/// key set does.
-let useStateKeys (keys: Set<string>) : int =
-    let depKey = keys |> Set.toSeq |> String.concat " "
-    let tick, setTick = React.useStateWithUpdater 0
+/// React hook: `useKeysWith` over React, for one channel's `subscribe`.
+let useKeys (subscribe: Set<string> -> (unit -> unit) -> (unit -> unit)) (keys: Set<string>) : int =
+    useKeysWith React.useStateWithUpdater (fun effect deps -> React.useEffect (effect, deps)) subscribe keys
 
-    React.useEffect ((fun () -> subscribeKeys keys (fun () -> setTick (fun current -> current + 1))), [| box depKey |])
-
-    tick
+/// React hook: re-render a surface when any of its state `keys` changes. The
+/// reactivity primitive behind Phase 106's `Render.renderStateReactive` opt-in.
+let useStateKeys (keys: Set<string>) : int = useKeys subscribeKeys keys
 #endif

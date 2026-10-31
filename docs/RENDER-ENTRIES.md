@@ -23,7 +23,7 @@ let ctx = Render.RenderContext.create sources dispatch node
 Render.render { ctx with Runtime = myRuntime; TelemetrySink = Some mySink } node
 ```
 
-`create` runs ONE pre-render walk over `node` (`BindingWalk.collectFactsAndFragments`, Phase 2069) and
+`create` runs ONE pre-render walk over `node` (`BindingWalk.renderFacts`, Phase 2069) and
 reads two things off it: the declared state seeds, laid under `sources.State`, and the fragment
 registry. It pins every other field to its convenience default.
 Adjust what you need with `with`. Do **not** spell the record out in full: a full literal is a

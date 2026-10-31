@@ -1,42 +1,28 @@
 module Fuaran.UI.Tests.WalkConformance
 
 // ============================================================================
-//  Phase 936 — the two binding walks agree, and a test says so.
+//  Phase 936 — analysis and subscription agree, and a test says so.
 //
-//  The estate maintains TWO walks over the same node vocabulary:
-//   - `BindingWalk.collect` (Fuaran.UI) — the analysis walk validation runs on;
-//   - `Render.collectKeys`  (Fuaran.UI.Renderer) — the reactive walk that
-//     decides which State keys a rendered surface SUBSCRIBES.
-//  Their only coupling was a comment, and it failed in both directions
-//  (`PageStateKey` was a live reactivity bug that sat undetected across four
-//  phases). This file is the chosen coupling mechanism: an EXECUTABLE CENSUS —
-//  one fixture per slot class, each declaring what the analysis walk must see
-//  and what the reactive walk must subscribe — plus the two-sided containment
-//  assertion between the walks over the whole fixture set.
+//  SINCE PHASE 2069 THERE IS ONE SLOT ENUMERATION: `Render.collectKeys` is a
+//  projection of `BindingWalk`'s uses, and `kindKeys` is gone. This census now
+//  pins the projection: per slot class, what `BindingWalk.collect` must read and
+//  what the reactive projection must subscribe, plus the two-sided containment
+//  between them over the fixture set.
 //
-//  THE VERDICT (task 3 of the phase, recorded here so the next reader finds
-//  it): the conformance-test mechanism was chosen over a single shared slot
-//  enumeration both walks consume. The census below found at least FOUR
-//  distinct per-slot semantics — subscribed read; dispatch-time read (real to
+//  Phase 936's verdict went the other way, keeping two walks because the census
+//  found at least FOUR distinct per-slot semantics. Phase 2069 keeps those four
+//  as the projection's scope instead of as flags on every slot: an action slot is
+//  outside the render pass, and a `SlotArg` or `fallback` subtree is walked with
+//  subscription off. The four — subscribed read; dispatch-time read (real to
 //  analysis, deliberately NOT subscribed: it resolves when the action fires,
 //  not at render); boundary read (`SlotArg` trees: counted conservatively by
 //  analysis, deliberately not subscribed — a `Mount` re-render would re-mount
 //  the guest, and `FragmentRef` expansion subscribes post-expansion); and
-//  write-destination (`editStateKey`: read by NEITHER, by design). A shared
-//  enumeration would have to encode all four as per-slot flags that both walks
-//  interpret — a third artefact that can be wrong in BOTH walks at once,
-//  forfeiting the independent redundancy that caught the historical drifts.
-//  The test keeps the walks independent and makes divergence red. What it
-//  costs: a new FIELD on an existing spec lands green until a census fixture
-//  exists for it (new KINDS are compiler-forced in both walks — each holds an
-//  exhaustive match). The recorded follow-up for that residue is deriving the
-//  slot inventory from the IDL (`Generated`), which knows every spec field.
-//
-//  Go-red proofs (run at authoring, per the phase's evidence rule):
-//   - reverting the Phase 936 `collectKeys` StateBehaviour descent reddens the
-//     OnEmpty/OnLoading fixtures AND the containment assertion;
-//   - reverting the Drawing arm reddens the drawing fixtures the same way;
-//   - dropping a fixture's key from the exemption set reddens containment.
+//  write-destination (`editStateKey`: read by NEITHER, by design). A new FIELD on
+//  an existing spec still lands green until a census fixture exists for it (a new
+//  KIND is compiler-forced by the walk's exhaustive match), and the recorded
+//  follow-up for that residue is deriving the slot inventory from the IDL
+//  (`Generated`), which knows every spec field.
 // ============================================================================
 
 open Expecto
@@ -280,6 +266,62 @@ let private census: CensusRow list =
                               None
                           )
                       ) }
+        ExpectRead = true
+        ExpectSubscribe = true
+        Asymmetry = "" }
+
+      // ── Phase 2069: slots one walk had and the other did not ──
+      { Slot = "Media.Tracks Src (only the deleted reactive walk had it)"
+        Key = "cw-track"
+        Tree =
+          { Fuaran.video "vid" "/a.mp4" "Clip" with
+              Kind =
+                  NodeKind.Media
+                      { Defaults.media with
+                          Tracks =
+                              [ { Src = binding.state "cw-track" "/a.vtt"
+                                  Kind = TrackKind.Captions
+                                  SrcLang = "en"
+                                  Label = TextSource.Literal "English"
+                                  Default = false } ] } }
+        ExpectRead = true
+        ExpectSubscribe = true
+        Asymmetry = "" }
+      { Slot = "Media.Transcript (only the deleted reactive walk had it)"
+        Key = "cw-transcript"
+        Tree =
+          { Fuaran.video "vidt" "/a.mp4" "Clip" with
+              Kind =
+                  NodeKind.Media
+                      { Defaults.media with
+                          Transcript = Some(TextSource.Bound(binding.state "cw-transcript" "t")) } }
+        ExpectRead = true
+        ExpectSubscribe = true
+        Asymmetry = "" }
+      { Slot = "Tree.ExpandedStateKey (only the deleted reactive walk had it)"
+        Key = "cw-tree-expanded"
+        Tree =
+          { Fuaran.tree "tree" [] with
+              Kind =
+                  NodeKind.Tree
+                      { Defaults.tree with
+                          ExpandedStateKey = Some "cw-tree-expanded" } }
+        ExpectRead = true
+        ExpectSubscribe = true
+        Asymmetry = "" }
+      { Slot = "Node.Visible (only analysis had it, so a predicate never re-rendered)"
+        Key = "cw-visible"
+        Tree =
+          { Fuaran.markdown "vis" "text" with
+              Visible = Some(binding.state "cw-visible" true) }
+        ExpectRead = true
+        ExpectSubscribe = true
+        Asymmetry = "" }
+      { Slot = "Node.Tooltip (only analysis had it)"
+        Key = "cw-tooltip"
+        Tree =
+          { Fuaran.markdown "tip" "text" with
+              Tooltip = Some(TextSource.Bound(binding.state "cw-tooltip" "hint")) }
         ExpectRead = true
         ExpectSubscribe = true
         Asymmetry = "" }

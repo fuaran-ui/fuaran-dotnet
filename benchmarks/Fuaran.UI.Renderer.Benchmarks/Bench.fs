@@ -311,12 +311,7 @@ let private isolatedStages (surface: Surface) (samples: int) : obj =
 
     let baseline =
         sampled samples (fun () ->
-            [ "keyWalks",
-              timed (fun () ->
-                  Render.collectStateKeys surface.Tree |> ignore
-                  Render.collectFilterKeys surface.Tree |> ignore
-                  Render.collectSelectionKeys surface.Tree |> ignore
-                  Render.collectQueryKeys surface.Tree |> ignore)
+            [ "keyWalks", timed (fun () -> Render.collectReactiveKeys surface.Tree |> ignore)
               "contextCreate", timed (fun () -> Render.RenderContext.create sources dispatch surface.Tree |> ignore)
               "fragmentExpansionCold",
               timed (fun () ->
@@ -337,7 +332,7 @@ let private isolatedStages (surface: Surface) (samples: int) : obj =
               "chartSinkSanitise",
               timed (fun () ->
                   for svg in drawn do
-                      TrustedTypes.createHtml svg |> ignore)
+                      Sanitize.sanitizeMarkdownHtml svg |> ignore)
               "constructWhole", construct sources surface.Tree
               "constructReaders",
               timed (fun () ->

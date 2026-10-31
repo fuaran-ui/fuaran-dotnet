@@ -1431,12 +1431,12 @@ let private ensureTooltipDismissal () : unit = ()
 
 // ─── Fragment resolver + expansion ─────────────────────────────────────────
 //
-// `collectFragments` walks the input tree once before the first render and
-// builds the `RenderContext.Fragments` registry. The walk is
-// `FragmentExpansion.collectFragments` (Phase 2244: shared with the server
-// renderer, so the two tiers register the same fragments; its doc comment is
-// where the enumeration is decided). Refs don't carry bodies, so they're not
-// visited by collection.
+// `RenderContext.Fragments` is built before the first render from the
+// declarations the render pass found (`FragmentExpansion.registryOf`, Phase 2069).
+// `FragmentExpansion.collectFragments` is that registry's definition (Phase 2244:
+// shared with the server renderer, so the two tiers register the same fragments;
+// its doc comment is where the enumeration is decided). Refs don't carry bodies,
+// so they're not visited by collection.
 //
 // `FragmentExpansion.namespaceIds` (Phase 2041: shared with the server
 // renderer, so the two tiers emit the same ids) rewrites every interior
@@ -1449,16 +1449,20 @@ let private ensureTooltipDismissal () : unit = ()
 // expansions get the prefix concatenated by the recursive render call,
 // so `outerRef.innerRef.btn` is what reaches the DOM.
 
-/// One-shot pre-render walk that collects every
-/// reachable `NodeKind.FragmentDecl` body into a `Map<FragmentId, _>`.
-/// `RenderContext.create` calls this on the input tree and stashes the
-/// result on the `RenderContext.Fragments` field. Empty for trees that
-/// don't declare fragments — zero-cost for the common case. The walk itself
-/// is `FragmentExpansion.collectFragments`, keyed here by `FragmentId`.
+/// Every reachable `NodeKind.FragmentDecl` body as a `Map<FragmentId, _>`:
+/// `FragmentExpansion.collectFragments`, keyed here by `FragmentId`.
 let collectFragments<'Msg> (acc: Map<FragmentId, Node<'Msg>>) (node: Node<'Msg>) : Map<FragmentId, Node<'Msg>> =
     FragmentExpansion.collectFragments FragmentId acc node
 
 // ─── Building a render context (Phase 2067) ────────────────────────────────
+
+/// A tree and its pre-render pass (Phase 2069). `RenderContext.ofPrepared` builds
+/// a context from it with no walk, which is what lets `renderStateReactive` take
+/// the pass once outside the component.
+type PreparedTree<'Msg> =
+    { Node: Node<'Msg>
+      Facts: Fuaran.UI.BindingWalk.RenderFacts<'Msg>
+      Fragments: Map<FragmentId, Node<'Msg>> }
 
 /// Builders over `RenderContext`. Every entry point below, the `Mount` guest
 /// context and the catalog build their context here; a host adjusts the
@@ -1466,31 +1470,36 @@ let collectFragments<'Msg> (acc: Map<FragmentId, Node<'Msg>>) (node: Node<'Msg>)
 [<RequireQualifiedAccess>]
 module RenderContext =
 
-    /// The context for rendering `node` against `sources`, dispatching to
-    /// `dispatch`. It runs the two one-shot pre-render passes (the state seeds
-    /// laid under `sources.State`, and the fragment registry) and pins every
-    /// other field to its convenience default: the diagnostic runtime, the
-    /// no-op visualisation adapter, no telemetry, action or upload sink, an
-    /// empty session context, and `RenderPolicy.defaults` (default-deny
-    /// egress, the process hash floor, `Permissive` CSP, the root scope).
-    let create
+    /// The pre-render pass over `node`, for `ofPrepared`. A host that renders
+    /// one tree repeatedly holds this; a tree built fresh pays it once per
+    /// render, in one walk (`BindingWalk.renderFacts`).
+    let prepare (node: Node<'Msg>) : PreparedTree<'Msg> =
+        let facts = Fuaran.UI.BindingWalk.renderFacts node
+
+        { Node = node
+          Facts = facts
+          Fragments = FragmentExpansion.registryOf FragmentId node facts.Fragments }
+
+    /// The context for rendering a prepared tree against `sources`, dispatching
+    /// to `dispatch`. The state seeds are laid under `sources.State` and the
+    /// fragment registry taken from `prepared`, so nothing here walks the tree,
+    /// and every other field is pinned to its convenience default: the
+    /// diagnostic runtime, the no-op visualisation adapter, no telemetry, action
+    /// or upload sink, an empty session context, and `RenderPolicy.defaults`
+    /// (default-deny egress, the process hash floor, `Permissive` CSP, the root
+    /// scope).
+    let ofPrepared
+        (prepared: PreparedTree<'Msg>)
         (sources: BindingResolver.BindingSources)
         (dispatch: 'Msg -> unit)
-        (node: Node<'Msg>)
         : RenderContext<'Msg> =
-        // Phase 2069 — ONE walk: the seeds and the fragment registry both come
-        // off `BindingWalk.collectFacts`, where this used to run the seed walk
-        // and `collectFragments` as two full passes over a tree a host rebuilds
-        // on every dispatch.
-        let facts, fragments = Fuaran.UI.BindingWalk.collectFactsAndFragments node
-
-        { Sources = StateSeeds.applyFacts facts.Bindings node sources
+        { Sources = StateSeeds.applyFacts prepared.Facts prepared.Node sources
           Runtime = Runtime.diagnostic
           VisAdapter = VisAdapter.noOp<'Msg>
           Dispatch = dispatch
           TelemetrySink = None
           InErrorBoundary = false
-          Fragments = FragmentExpansion.registryOfDeclarations FragmentId Map.empty fragments
+          Fragments = prepared.Fragments
           ExpandingFragments = Set.empty
           SessionContext = Map.empty
           ActionSink = None
@@ -1498,6 +1507,14 @@ module RenderContext =
           UploadSink = None
           Policy = RenderPolicy.defaults
           SubtreeMemo = false }
+
+    /// `ofPrepared` over a pass made for this call.
+    let create
+        (sources: BindingResolver.BindingSources)
+        (dispatch: 'Msg -> unit)
+        (node: Node<'Msg>)
+        : RenderContext<'Msg> =
+        ofPrepared (prepare node) sources dispatch
 
     /// `ctx` rendered under the runtime scope `scopeId` (Phase 266, §4o): the
     /// scope's `StateStore.forScope` snapshot is merged over `Sources.State`
@@ -1514,559 +1531,82 @@ module RenderContext =
             Sources = { ctx.Sources with State = scopedState }
             Policy = { ctx.Policy with Scope = Some scopeId } }
 
-// ─── Binding.State key collection (Phase 106) ──────────────────────────────
+// ─── Reactive key collection (Phase 106; one walk since Phase 2069) ─────────
 //
-// Pure render-time pass that collects every `Binding.State` key a tree reads,
-// wherever a `Binding<'T>` or a `TextSource` appears. `renderStateReactive`
-// feeds the result to `StateStore.subscribeKeys` so a surface re-renders when
-// any state key it reads changes — closing the gap where a global
-// `Action.SetState` re-rendered only the control that owns the value, leaving
-// every sibling reader stale until its own next render.
-//
-// FORWARD-COUPLING (same discipline as `collectFragments`): a new binding-
-// bearing field on any spec — or a new `NodeKind` / `Binding` / `TextSource`
-// case — must extend this walk, else its `Binding.State` readers silently
-// miss the auto-subscription. The walk only ever reads the key *string*, so
-// it stays generic over each binding's `'T` with no type-erasure hazard.
+// `renderStateReactive` subscribes a surface to every key a tree reads, so a
+// global `Action.SetState` re-renders every reader rather than only the control
+// that owns the value. The keys are a projection of `BindingWalk`'s uses
+// (`BindingWalk.ReactiveKeys`): a new binding-bearing slot extends that walk once,
+// and validation and subscription move together.
 
-/// The reactive channel a key-collection walk targets (Phase 423; Selection joined in Phase 427).
-/// One walk, parameterised by channel, so the `Binding.State` (`StateStore`), `Binding.Filter`
-/// (`FilterStore`) and `Binding.Selection` (`SelectionStore`) subscription key-sets share a single
-/// forward-coupling point: a new `Binding` / spec / `NodeKind` case extends the walk once and all
-/// channels stay correct. Threading a plain value (not a rank-2 generic selector) keeps the generic
-/// `keysOfBinding<'T>` inference intact.
+/// One channel of `BindingWalk.ReactiveKeys` (Phase 423; Selection joined in Phase 427).
 type KeyChannel =
     | StateChannel
     | FilterChannel
     | SelectionChannel
     | QueryChannel
 
-/// Reactive keys referenced by a single binding for `channel`, recursing into a `Local` binding's
-/// re-sync source, an `I18n` binding's `{arg}` sub-bindings, and a `Format` binding's numeric source
-/// (e.g. a salary `State` formatted as currency re-renders when the salary changes). `StateChannel`
-/// collects `Binding.State` keys; `FilterChannel` collects `Binding.Filter` names. A `Transform`
-/// binding's source + pipeline are static `Fuaran.Core` data (no `State`/`Filter` reader inside).
-let rec keysOfBinding<'T> (channel: KeyChannel) (binding: Binding<'T>) : string list =
-    match binding with
-    // Phase 765 — `Now` is furnished once per render pass and reads no state
-    // key or filter, so it opens no reactive channel.
-    | Binding.Now _ -> []
-    | Binding.State(key, _) ->
-        match channel with
-        | StateChannel -> [ key ]
-        | _ -> []
-    | Binding.Filter(name, _) ->
-        match channel with
-        | FilterChannel -> [ name ]
-        | _ -> []
-    // A `Binding.Selection` reader (Phase 427) subscribes to its producer node's id on the
-    // Selection channel, so a row click re-renders every reader of that grid.
-    | Binding.Selection(nodeId, _, _, _) ->
-        match channel with
-        | SelectionChannel -> [ nodeId ]
-        | _ -> []
-    | Binding.Local(_, _, initialFrom, _, _, _, _) -> keysOfBinding channel initialFrom
-    | Binding.I18n(_, Some args) ->
-        args
-        |> Map.toList
-        |> List.collect (fun (_, ab) -> keysOfBinding<JVal> channel ab)
-    | Binding.I18n(_, None) -> []
-    | Binding.Format(source, _, _) -> keysOfBinding channel source
-    // A parameterised `Transform` (Phase 424) reads through to each param's scalar source, so a chip
-    // write re-evaluates every pipeline parameterised on it (its filter/state keys are the union of
-    // its param sources' keys). A param-free `Transform` over a `Data` source still contributes
-    // nothing. Phase 818 — a LIVE source contributes its own binding's channel keys, so a
-    // `SetState` on the source key re-evaluates the pipeline and re-renders every reader (the
-    // subscription semantics the reactive-derivation charter names).
-    | Binding.Transform(source, _, parameters) ->
-        let sourceKeys =
-            match source with
-            | TransformSource.Live(b, _) -> keysOfBinding channel b
-            | TransformSource.Data _ -> []
+let private keysOn (channel: KeyChannel) (keys: Fuaran.UI.BindingWalk.ReactiveKeys) : Set<string> =
+    match channel with
+    | StateChannel -> keys.State
+    | FilterChannel -> keys.Filter
+    | SelectionChannel -> keys.Selection
+    | QueryChannel -> keys.Query
 
-        sourceKeys
-        @ (defaultArg parameters []
-           |> List.collect (fun (p: TransformParam) -> keysOfBinding channel p.From))
-    // A `Query`'s `dependsOn` (Phase 421) names the FILTERS that scope it — a filter-store change
-    // re-resolves the query. On the Filter channel it contributes those names (the invalidation
-    // subscription); on the Query channel (Phase 428) it contributes its own name, so a
-    // `Call … into Query <name>` write re-renders every reader of that slot.
-    | Binding.Query(name, _, dependsOn) ->
-        match channel with
-        | FilterChannel -> defaultArg dependsOn []
-        | QueryChannel -> [ name ]
-        | StateChannel
-        | SelectionChannel -> []
-    // Fuaran-UI Phase 1534 — an `Expr` has no source slot, so its params ARE its
-    // whole reactive edge: a chip or state write on any param source
-    // re-evaluates the expression and re-renders every reader. The `Transform`
-    // param walk above with the source half removed.
-    | Binding.Expr(_, parameters) ->
-        defaultArg parameters []
-        |> List.collect (fun (p: TransformParam) -> keysOfBinding channel p.From)
-    | Binding.Invoke _
-    | Binding.Static _
-    | Binding.Computed _ -> []
+/// Reactive keys a single binding reads on `channel`.
+let keysOfBinding<'T> (channel: KeyChannel) (binding: Binding<'T>) : string list =
+    Fuaran.UI.BindingWalk.usesOfBinding binding
+    |> Fuaran.UI.BindingWalk.reactiveKeysOf
+    |> keysOn channel
+    |> Set.toList
 
-/// Reactive keys referenced by a `TextSource` for `channel`. `Literal` carries none; `Bound` defers
-/// to its binding; `TextSource.I18n` defers to its ARGUMENTS.
-///
-/// Fuaran-UI Phase 1661 — the args are `Binding<JVal>` now rather than `JVal`
-/// literals, so a caption reading "{count} items left" subscribes to whatever
-/// channel `count` names. Missing this would not render wrongly on first paint;
-/// it would render correctly once and then never update, which is the harder
-/// defect to see.
+/// Reactive keys a `TextSource` reads on `channel`.
 let keysOfText (channel: KeyChannel) (text: TextSource) : string list =
-    match text with
-    | TextSource.Bound b -> keysOfBinding channel b
-    | TextSource.I18n(_, args) -> args |> Map.toList |> List.collect (fun (_, ab) -> keysOfBinding channel ab)
-    | TextSource.Literal _ -> []
+    Fuaran.UI.BindingWalk.usesOfText text
+    |> Fuaran.UI.BindingWalk.reactiveKeysOf
+    |> keysOn channel
+    |> Set.toList
 
-let private keysOfTextOpt (channel: KeyChannel) (text: TextSource option) : string list =
-    match text with
-    | Some t -> keysOfText channel t
-    | None -> []
+/// Every reactive key in the tree rooted at `node`, on all four channels, from
+/// one walk.
+let collectReactiveKeys<'Msg> (node: Node<'Msg>) : Fuaran.UI.BindingWalk.ReactiveKeys =
+    (Fuaran.UI.BindingWalk.renderFacts node).Keys
 
-let private keysOfBindingOpt (channel: KeyChannel) (binding: Binding<'T> option) : string list =
-    match binding with
-    | Some b -> keysOfBinding channel b
-    | None -> []
+/// Every reactive key on `channel` in the tree rooted at `node`.
+let collectKeys<'Msg> (channel: KeyChannel) (node: Node<'Msg>) : Set<string> =
+    collectReactiveKeys node |> keysOn channel
 
-/// Phase 596 auto-bind context for an absent (`None`) control value slot: the
-/// slot behaves exactly as the decode-synthesised binding would have —
-/// `Binding.State(field.Id, <typed placeholder>)` on a form field,
-/// `Binding.Filter(chip.Name, None)` on a filter chip — so its reactive key is
-/// the field id on the State channel / the chip name on the Filter channel.
-[<RequireQualifiedAccess>]
-type private ValueAutoBind =
-    | FormField of id: string
-    | FilterChip of name: string
-
-let private keysOfFormFieldKind<'Msg>
-    (channel: KeyChannel)
-    (autoBind: ValueAutoBind)
-    (kind: FormFieldKind<'Msg>)
-    : string list =
-    let keysOfValue (v: Binding<JVal> option) : string list =
-        match v with
-        | Some b -> keysOfBinding channel b
-        | None ->
-            match autoBind, channel with
-            | ValueAutoBind.FormField id, StateChannel -> [ id ]
-            | ValueAutoBind.FilterChip name, FilterChannel -> [ name ]
-            | _ -> []
-
-    // The option sources are the only per-case subscriptions: Choice and
-    // SegmentedChoice carry a required `options` binding; the combobox
-    // (Phase 1113) and the token field (Phase 1121, OPTIONAL `suggestions`)
-    // subscribe to theirs too — a Query suggestion feed is the shape those
-    // controls exist for. The value slot is the generated projection
-    // (Phase 2177), so a new field kind subscribes with no arm to add.
-    let optionKeys =
-        match kind with
-        | FormFieldKind.Choice(opts, _, _)
-        | FormFieldKind.SegmentedChoice(opts, _, _, _)
-        | FormFieldKind.Combobox(_, _, opts, _) -> keysOfBinding channel opts
-        | FormFieldKind.Tokens(_, _, Some suggestions, _) -> keysOfBinding channel suggestions
-        | _ -> []
-
-    optionKeys @ keysOfValue (Fuaran.UI.Generated.FormFieldKind.value kind)
-
-
-/// The single-`HashSet` DFS behind `collectKeys` (Phase 207) — the reactive
-/// re-render path walks the whole tree on every frame to derive its
-/// subscription set, and the pre-207 walk allocated a `Set` per node and
-/// `Set.union`ed them bottom-up, so an N-node tree paid O(N) immutable-set
-/// merges to produce one set. This threads ONE mutable accumulator down the
-/// walk instead; `collectKeys` seals it into the same immutable `Set` at the
-/// top, so every caller's result is unchanged (a `Set` is order-independent, so
-/// the DFS order cannot show through).
-///
-/// Perf primitive: the `HashSet` + `for` shape is deliberate. Do NOT "simplify"
-/// it back to a fold over `Set.union` — the result is identical, so no
-/// behavioural test can see the regression.
-let rec private collectKeysInto<'Msg> (channel: KeyChannel) (acc: HashSet<string>) (node: Node<'Msg>) : unit =
-    match node.Accessibility with
-    | Some a ->
-        for k in keysOfBindingOpt channel a.Label do
-            acc.Add k |> ignore
-
-        for k in keysOfBindingOpt channel a.Hidden do
-            acc.Add k |> ignore
-    | None -> ()
-
-    // Phase 936 — a `StateBehaviour` branch is a wire-encoded child node
-    // rendered in place of the body, so a binding inside it is a real reader
-    // that must be SUBSCRIBED exactly as the body's readers are. Until this
-    // descent existed, such a binding was validated (`BindingWalk` descends
-    // since 7052ede) but never subscribed — the `PageStateKey` shape: a write
-    // moved the key in State and nothing on screen followed. Subscribing the
-    // union of body + branches over-subscribes only while a branch is not
-    // showing, and a spurious re-render is a no-op where a missed one is a
-    // stale surface. `OnError` is a CLOSURE producing its node at error time;
-    // its output is statically invisible to every walk in the estate (it is
-    // also not wire-encodable, so decoded trees never carry one).
-    match node.State with
-    | Some sb ->
-        match sb.OnEmpty with
-        | Some slot -> collectKeysInto channel acc slot
-        | None -> ()
-
-        match sb.OnLoading with
-        | Some slot -> collectKeysInto channel acc slot
-        | None -> ()
-    | None -> ()
-
-    let directKeys, children = kindKeys channel node.Kind
-
-    for k in directKeys do
-        acc.Add k |> ignore
-
-    for child in children do
-        collectKeysInto channel acc child
-
-/// Every reactive key for `channel` in the tree rooted at `node`. Public: the
-/// .NET test runner and the reactive host both pin this walk.
-and collectKeys<'Msg> (channel: KeyChannel) (node: Node<'Msg>) : Set<string> =
-    let acc = HashSet<string>()
-    collectKeysInto channel acc node
-    Set.ofSeq acc
-
-/// This node's own (non-descendant) reactive keys for `channel`, paired with its child `Node`s for
-/// `collectKeys` to recurse into.
-and private kindKeys<'Msg> (channel: KeyChannel) (kind: NodeKind<'Msg>) : string list * Node<'Msg> list =
-    match kind with
-    // -- Layout --
-    | NodeKind.Box s -> keysOfTextOpt channel s.Heading, s.Children
-    | NodeKind.SplitPanel s -> [], s.Children
-    | NodeKind.SummaryList s -> keysOfTextOpt channel s.Heading, s.Children
-    | NodeKind.Stepper s -> keysOfBinding channel s.ActiveStep, s.Children
-    | NodeKind.Disclosure s -> (keysOfText channel s.Heading @ keysOfBinding channel s.Open), s.Children
-    | NodeKind.Tabs s ->
-        let headerKeys =
-            match s.TabHeaders with
-            | Some headers ->
-                headers
-                |> List.collect (fun h -> keysOfText channel h.Label @ keysOfBindingOpt channel h.Disabled)
-            | None -> []
-
-        (keysOfBinding channel s.ActiveIndex
-         @ keysOfBindingOpt channel s.ActiveTag
-         @ headerKeys),
-        s.Children
-    | NodeKind.Modal s -> (keysOfTextOpt channel s.Heading @ keysOfBinding channel s.Open), s.Children
-    | NodeKind.ScrollArea s -> [], s.Children
-    // -- Display --
-    | NodeKind.Heading h -> keysOfText channel h.Text, []
-    | NodeKind.Markdown m -> keysOfText channel m.Text, []
-    | NodeKind.Metric k ->
-        let __v =
-            keysOfText channel k.Label
-            @ keysOfBinding channel k.Value
-            @ keysOfBindingOpt channel k.Trend
-            // Phase 2472 - each further comparison's label and value.
-            @ (k.Comparisons
-               |> List.collect (fun c -> keysOfText channel c.Label @ keysOfBinding channel c.Value))
-            @ keysOfTextOpt channel k.Subtext
-
-        __v, []
-    | NodeKind.Badge b -> keysOfText channel b.Label, []
-    | NodeKind.Sparkline s -> keysOfBinding channel s.Source, []
-    | NodeKind.Callout c -> keysOfTextOpt channel c.Heading @ keysOfText channel c.Body, []
-    | NodeKind.Progress p ->
-        let __v =
-            keysOfBinding channel p.Fraction
-            @ keysOfTextOpt channel p.Label
-            @ keysOfTextOpt channel p.Caveat
-
-        __v, []
-    | NodeKind.Skeleton _ -> [], []
-    | NodeKind.Icon _ -> [], []
-    | NodeKind.LabelValueRow r ->
-        let __v =
-            keysOfText channel r.Label
-            @ keysOfBinding channel r.Value
-            @ keysOfTextOpt channel r.Help
-
-        __v, []
-    | NodeKind.Fact fa ->
-        let __v =
-            keysOfText channel fa.Label
-            @ keysOfText channel fa.Value
-            @ keysOfTextOpt channel fa.Help
-
-        __v, []
-    | NodeKind.Link l -> keysOfBinding channel l.Href @ keysOfText channel l.Label, []
-    // Phase 1080 — every `srcSet` candidate's binding is a reactive key too:
-    // a candidate resolved from a query re-renders when that query moves, on
-    // exactly the terms the primary `src` does. Missing them would leave a
-    // responsive image serving stale renditions from a live source.
-    //
-    // Phase 1079 closes the same omission for `Caption`, which Phase 1078
-    // introduced and neither 1078 nor 1080 collected. A caption is a
-    // `TextSource`, so it can be `Bound`/`I18n` over live sources exactly as
-    // `Alt` can — and `Alt` has always been collected here. The two slots take
-    // the same values from the same resolver, so a caption that never
-    // re-rendered while the alt text beside it did was a defect of omission
-    // rather than a design choice. `keysOfTextOpt` is the existing helper for
-    // the optional case (the `FormField.Help` arm above uses it).
-    | NodeKind.Image i ->
-        keysOfBinding channel i.Src
-        @ (i.SrcSet |> List.collect (fun e -> keysOfBinding channel e.Src))
-        @ keysOfText channel i.Alt
-        @ keysOfTextOpt channel i.Caption,
-        []
-    // Phase 1076 — `Poster` lives inside the `MediaKind.Video` payload rather
-    // than on the spec, so a collector written from the record's field list
-    // would miss it and a poster bound to a live source would never re-render.
-    // Collected from the case, on the same terms as `Src`.
-    | NodeKind.Media m ->
-        let kindKeys =
-            match m.Kind with
-            | MediaKind.Video(_, poster) ->
-                match poster with
-                | Some p -> keysOfBinding channel p
-                | None -> []
-            | MediaKind.Audio -> []
-
-        // Phase 1110 - every track carries a bindable `Src` and an i18n-capable
-        // `Label`, and the transcript is an optional `TextSource`. All three are
-        // collected for the reason the poster is: a slot that resolves from a
-        // live source and is not collected is one that never re-renders, and a
-        // caption menu frozen at its first values is a defect a reader meets
-        // rather than one a test does.
-        let trackKeys =
-            m.Tracks
-            |> List.collect (fun t -> keysOfBinding channel t.Src @ keysOfText channel t.Label)
-
-        keysOfBinding channel m.Src
-        @ keysOfText channel m.Label
-        @ kindKeys
-        @ trackKeys
-        @ keysOfTextOpt channel m.Transcript,
-        []
-    // Phase 1111 — two reactive slots, both on the spec: the document URL and
-    // the frame's accessible title. `Permissions` and `AspectRatio` are closed
-    // enums with no binding to follow.
-    | NodeKind.Embed e -> keysOfBinding channel e.Src @ keysOfText channel e.Title, []
-    | NodeKind.List l -> l.Items |> List.collect (keysOfText channel), []
-    | NodeKind.Toast t ->
-        let __v = keysOfText channel t.Message @ keysOfBinding channel t.Open
-        // CodeBlock + Math carry plain strings, not bindings — no reactive keys.
-
-        __v, []
-    | NodeKind.CodeBlock _ -> [], []
-    | NodeKind.Math _ ->
-        let __v = []
-        // Phase 524 ships a placeholder render; the reactive DrawStyle-colour keys
-        // are wired with the real SVG renderer in Phase 525.
-
-        __v, []
-    | NodeKind.Drawing d ->
-        // Phase 936 — the reactive slots the analysis walk (`BindingWalk`) has
-        // collected since Phase 524 and this walk never gained: the `DrawStyle`
-        // colour/width/opacity bindings (recursing `Group` nesting), `Label`
-        // text, and the drawing's `Title` / `Description`. The Math arm's old
-        // "wired with the real SVG renderer in Phase 525" note never happened —
-        // a state-bound fill rendered once and never followed its key.
-        let keysOfDrawStyle (st: DrawStyle) =
-            keysOfBindingOpt channel st.Fill
-            @ keysOfBindingOpt channel st.Stroke
-            @ keysOfBindingOpt channel st.StrokeWidth
-            @ keysOfBindingOpt channel st.Opacity
-
-        let rec keysOfShape (sh: Shape) =
-            match sh with
-            | Shape.Group(children, st) -> (children |> List.collect keysOfShape) @ keysOfDrawStyle st
-            | Shape.Rectangle(_, _, _, _, _, st) -> keysOfDrawStyle st
-            | Shape.Line(_, _, _, _, st) -> keysOfDrawStyle st
-            | Shape.Polyline(_, st) -> keysOfDrawStyle st
-            | Shape.Polygon(_, st) -> keysOfDrawStyle st
-            | Shape.Curve(_, st) -> keysOfDrawStyle st
-            | Shape.Circle(_, _, _, st) -> keysOfDrawStyle st
-            | Shape.Ellipse(_, _, _, _, st) -> keysOfDrawStyle st
-            | Shape.Label(_, _, text, st) -> keysOfText channel text @ keysOfDrawStyle st
-
-        let __v =
-            keysOfDrawStyle d.Style
-            @ (d.Shapes |> List.collect keysOfShape)
-            @ keysOfTextOpt channel d.Title
-            @ keysOfTextOpt channel d.Description
-
-        __v, []
-    // -- Input --
-    | NodeKind.Button b ->
-        let __v =
-            keysOfText channel b.Label
-            @ keysOfTextOpt channel b.Tooltip
-            @ keysOfBindingOpt channel b.Disabled
-
-        __v, []
-    | NodeKind.FileUpload fu -> keysOfText channel fu.Label @ keysOfBindingOpt channel fu.Disabled, []
-    | NodeKind.Select s ->
-        let __v =
-            keysOfText channel s.Label
-            @ keysOfBinding channel s.Source
-            @ keysOfBindingOpt channel s.Value
-            // Phase 291 — the multi-select value binding (Some only in multi mode).
-            @ keysOfBindingOpt channel s.Values
-            @ keysOfTextOpt channel s.Placeholder
-            @ keysOfBindingOpt channel s.Disabled
-
-        __v, []
-    | NodeKind.Form f ->
-        let __v =
-            let fieldKeys =
-                f.Fields
-                |> List.collect (fun field ->
-                    keysOfText channel field.Label
-                    @ keysOfTextOpt channel field.Help
-                    @ keysOfFormFieldKind channel (ValueAutoBind.FormField field.Id) field.Kind)
-
-            keysOfText channel f.SubmitLabel
-            @ keysOfBindingOpt channel f.Disabled
-            @ fieldKeys
-
-        __v, []
-    | NodeKind.Filters filters ->
-        let __v =
-            filters.Items
-            |> List.collect (fun (fs: FilterSpec<'Msg>) ->
-                keysOfText channel fs.Label
-                @ keysOfFormFieldKind channel (ValueAutoBind.FilterChip fs.Name) fs.Kind)
-
-        __v, []
-    // Phase 1120 — the tree subscribes BOTH State keys, on the grid's
-    // `sortStateKey` argument exactly: a row toggle writes the expanded set and
-    // a selection writes the selected id, and the tree READS both, so without
-    // these two lines a reader would press Right, the state would move, and
-    // nothing on screen would follow it. Its labels subscribe on their own
-    // account, recursively — a bound label deep in a closed branch still
-    // becomes live the moment its branch opens.
-    | NodeKind.Tree t ->
-        let rec labelKeys (items: TreeItem list) =
-            items
-            |> List.collect (fun i -> keysOfText channel i.Label @ labelKeys i.Children)
-
-        let stateKeys =
-            match channel with
-            | StateChannel -> [ t.ExpandedStateKey; t.SelectionStateKey ] |> List.choose id
-            | _ -> []
-
-        (labelKeys t.Items @ stateKeys), []
-    // -- Vis --
-    | NodeKind.DataGrid g ->
-        let __v =
-            keysOfBinding channel g.Source
-            // Phase 818 — a `sortStateKey` grid reads its sort descriptor off
-            // the State channel, so it subscribes that key: a header click's
-            // descriptor write re-renders (and re-sorts) the grid.
-            @ (match g.SortStateKey, channel with
-               | Some k, StateChannel -> [ k ]
-               | _ -> [])
-            // The identical argument for `pageStateKey` (Phase 862), which this
-            // arm simply never gained: `renderGrid` reads the requested page off
-            // the State channel via `BindingResolver.readPageDescriptor`, so a
-            // pager click's write must re-render the grid or the page position
-            // moves in State and nothing on screen follows it.
-            //
-            // `editStateKey` is deliberately NOT here, and the asymmetry is the
-            // point: it is a write DESTINATION with no reader anywhere in the
-            // renderer (Phase 932 established this) — an edit COMMITS there. A
-            // tree that shows its edits does so because the author points the
-            // grid's `source` at the same key, and THAT read is subscribed
-            // through `source`, on this arm's first line.
-            @ (match g.PageStateKey, channel with
-               | Some k, StateChannel -> [ k ]
-               | _ -> [])
-            // Phase 1892 — the window descriptor, on the same argument: the
-            // viewport's write must re-render the grid on the new window. The
-            // declared total is a binding the grid resolves, so it subscribes
-            // through the binding's own keys.
-            @ (match g.WindowStateKey, channel with
-               | Some k, StateChannel -> [ k ]
-               | _ -> [])
-            @ (match g.RowTotal with
-               | Some total -> keysOfBinding channel total
-               | None -> [])
-            @ (match g.StaticRows with
-               | Some sr ->
-                   (sr.Headers |> List.collect (keysOfText channel))
-                   @ (sr.Rows |> List.collect (List.collect (keysOfText channel)))
-               | None -> [])
-
-        __v, []
-    | NodeKind.Chart c -> keysOfBinding channel c.Source @ keysOfTextOpt channel c.Title, []
-    | NodeKind.Map m -> keysOfBinding channel m.Source, []
-    | NodeKind.ErrorBoundary spec -> [], [ spec.Child; spec.Fallback ]
-    | NodeKind.Switch spec ->
-        // Switch reads its StateKey off the state channel, so it registers that
-        // key here (Phase 392): `renderStateReactive` subscribes the surface to
-        // it, so a global `Action.SetState` re-renders and Switch re-selects the
-        // matching case. Off the state channel the key contributes nothing. The
-        // case children + default recurse for their own reactive keys.
-        // Phase 768 — the selector is any Binding, so the reactive walk defers
-        // to keysOfBinding: a State selector still subscribes its key on the
-        // state channel (the Phase 392 behaviour, unchanged), and a Filter
-        // selector now subscribes its name on the filter channel.
-        let ownKeys = keysOfBinding channel spec.On
-
-        ownKeys, (spec.Cases |> List.map _.Child) @ [ spec.Default ]
-    | NodeKind.FragmentDecl spec -> [], [ spec.Body ]
-    | NodeKind.FragmentRef _ -> [], []
-    // Custom props are JVal literals, not bindings — no reactive keys.
-    | NodeKind.Custom _ -> [], []
-    // Mount (§4o) — the guest owns its own scoped state store; its keys
-    // live in the guest scope, not the host binding registry, so the
-    // boundary contributes no host keys and no host children to recurse.
-    | NodeKind.Mount _ -> [], []
-
-// ── Public channel aliases ──────────────────────────────────────────────────
-//  The State-channel names are the Phase 106 public surface (the .NET test runner + reactive host
-//  pin them); the Filter-channel twins (Phase 423) are the new surface. Both delegate to the one walk.
-
-/// State keys referenced by a single binding (the `StateChannel` walk).
+/// State keys referenced by a single binding.
 let stateKeysOfBinding<'T> (binding: Binding<'T>) : string list = keysOfBinding StateChannel binding
 
-/// State keys referenced by a `TextSource` (the `StateChannel` walk).
+/// State keys referenced by a `TextSource`.
 let stateKeysOfText (text: TextSource) : string list = keysOfText StateChannel text
 
-/// Collect every `Binding.State` key the tree rooted at `node` reads. Public so the .NET test
-/// runner can pin the walk without driving the React substrate.
+/// Every `Binding.State` key the tree rooted at `node` reads.
 let collectStateKeys<'Msg> (node: Node<'Msg>) : Set<string> = collectKeys StateChannel node
 
-/// Filter names referenced by a single binding (the `FilterChannel` walk, Phase 423) — the twin of
-/// `stateKeysOfBinding`, recursing `Local` / `I18n` args / `Format` identically. A `Binding.Filter
-/// name` reader auto-subscribes to that filter via `FilterStore`.
+/// Filter names referenced by a single binding (Phase 423).
 let filterKeysOfBinding<'T> (binding: Binding<'T>) : string list = keysOfBinding FilterChannel binding
 
-/// Filter names referenced by a `TextSource` (the `FilterChannel` walk).
+/// Filter names referenced by a `TextSource`.
 let filterKeysOfText (text: TextSource) : string list = keysOfText FilterChannel text
 
-/// Collect every `Binding.Filter` name the tree rooted at `node` reads (Phase 423) — the twin of
-/// `collectStateKeys`, so the reactive host subscribes a surface to its filter keys alongside its
-/// state keys.
+/// Every `Binding.Filter` name the tree rooted at `node` reads (Phase 423).
 let collectFilterKeys<'Msg> (node: Node<'Msg>) : Set<string> = collectKeys FilterChannel node
 
-/// Selection node-ids referenced by a single binding (the `SelectionChannel` walk, Phase 427) — the
-/// third twin, recursing `Local` / `I18n` args / `Format` / `Transform` params identically. A
-/// `Binding.Selection (nodeId, _)` reader auto-subscribes to that producer via `SelectionStore`.
+/// Selection node-ids referenced by a single binding (Phase 427).
 let selectionKeysOfBinding<'T> (binding: Binding<'T>) : string list = keysOfBinding SelectionChannel binding
 
-/// Selection node-ids referenced by a `TextSource` (the `SelectionChannel` walk).
+/// Selection node-ids referenced by a `TextSource`.
 let selectionKeysOfText (text: TextSource) : string list = keysOfText SelectionChannel text
 
-/// Collect every `Binding.Selection` producer node-id the tree rooted at `node` reads (Phase 427) —
-/// the third twin, so the reactive host subscribes a surface to its selection keys alongside its
-/// state + filter keys.
+/// Every `Binding.Selection` producer node-id the tree rooted at `node` reads (Phase 427).
 let collectSelectionKeys<'Msg> (node: Node<'Msg>) : Set<string> = collectKeys SelectionChannel node
 
-/// Query names referenced by a single binding (the `QueryChannel` walk, Phase 428) — a
-/// `Binding.Query name` reader auto-subscribes to a declarative `Call … into Query name` write.
+/// Query names referenced by a single binding (Phase 428).
 let queryKeysOfBinding<'T> (binding: Binding<'T>) : string list = keysOfBinding QueryChannel binding
 
-/// Collect every `Binding.Query` name the tree rooted at `node` reads (Phase 428) — the fourth
-/// twin, so the reactive host subscribes a surface to its query slots alongside the other channels.
+/// Every `Binding.Query` name the tree rooted at `node` reads (Phase 428).
 let collectQueryKeys<'Msg> (node: Node<'Msg>) : Set<string> = collectKeys QueryChannel node
 
 /// The named fragment-expansion primitive (Phase 1151): the fragment `body`
@@ -3087,7 +2627,7 @@ let rec private renderKind
         // `Action.SetState` routing), match its string form against each case in
         // order (first-match-wins), and render that case's child — else the
         // `Default`. The surface is subscribed to `spec.StateKey` via
-        // `kindKeys`/`collectKeys`, so a global `Action.SetState` re-renders here
+        // `collectKeys`, so a global `Action.SetState` re-renders here
         // and re-selects the matching case with no bespoke dispatch path (FGP 3).
         let currentValue: string option =
             match spec.On with
@@ -6036,23 +5576,21 @@ let private stateReactiveComponent
     (props:
         {| sources: BindingResolver.BindingSources
            dispatch: 'Msg -> unit
-           node: Node<'Msg>
-           keys: Set<string>
-           filterKeys: Set<string>
-           selectionKeys: Set<string>
-           queryKeys: Set<string> |})
+           prepared: PreparedTree<'Msg> |})
     : ReactElement =
-    StateStore.useStateKeys props.keys |> ignore
+    let keys = props.prepared.Facts.Keys
+    StateStore.useStateKeys keys.State |> ignore
     // Filter twin (Phase 423): subscribe the surface to its `Binding.Filter` names too, so a chip
     // write (`FilterStore.set`) re-renders every reader alongside the State channel.
-    FilterStore.useFilterKeys props.filterKeys |> ignore
+    FilterStore.useFilterKeys keys.Filter |> ignore
     // Selection twin (Phase 427): subscribe to the `Binding.Selection` producer ids too, so a
     // default row-click write (`SelectionStore.set`) re-renders every detail reader.
-    SelectionStore.useSelectionKeys props.selectionKeys |> ignore
+    SelectionStore.useSelectionKeys keys.Selection |> ignore
     // Query twin (Phase 428): subscribe to the `Binding.Query` names too, so a declarative
     // `Call … into Query <name>` write (`QueryStore.set`) re-renders every reader of that slot.
-    QueryStore.useQueryKeys props.queryKeys |> ignore
-    renderWithSources (withLiveState props.sources) props.dispatch props.node
+    QueryStore.useQueryKeys keys.Query |> ignore
+    // Phase 2069 — no walk here: a write re-renders from the pass taken once below.
+    render (RenderContext.ofPrepared props.prepared (withLiveState props.sources) props.dispatch) props.prepared.Node
 #endif
 
 /// GP-13 opt-in entry point: render `node`, subscribing the surface to every
@@ -6065,11 +5603,6 @@ let renderStateReactive
     (node: Node<'Msg>)
     : ReactElement =
 #if FABLE_COMPILER
-    let keys = collectStateKeys node
-    let filterKeys = collectFilterKeys node
-    let selectionKeys = collectSelectionKeys node
-    let queryKeys = collectQueryKeys node
-
     // Pass the ORIGINAL sources; the component re-merges the live snapshot on
     // every re-render (see `stateReactiveComponent`).
     reactCreateElement
@@ -6077,11 +5610,7 @@ let renderStateReactive
         (box
             {| sources = sources
                dispatch = dispatch
-               node = node
-               keys = keys
-               filterKeys = filterKeys
-               selectionKeys = selectionKeys
-               queryKeys = queryKeys |})
+               prepared = RenderContext.prepare node |})
 #else
     // .NET / SSR: no React runtime to subscribe to — render once with the live
     // snapshot merged. Reactivity is a browser concern.

@@ -480,13 +480,9 @@ let private ownWalks (code: string) : string list =
           "a recursive collectFragments"
       if code.Contains "fragmentChildren" then
           "a private child enumeration for the registry"
-      // Phase 2069 — a context builder may read the registry off the facts walk
-      // instead: that is the shared walk's registry too.
       if
-          not (
-              code.Contains "FragmentExpansion.collectFragments"
-              || code.Contains "FragmentExpansion.registryOfDeclarations"
-          )
+          not (code.Contains "FragmentExpansion.collectFragments")
+          && not (code.Contains "FragmentExpansion.registryOf")
       then
           "no call of FragmentExpansion.collectFragments" ]
 
@@ -524,11 +520,10 @@ let fragmentRegistry =
 
           test "Phase 2069 — the registry folded from the facts walk is the shared walk's, over every position" {
               for tree in [ FragmentRegistryFixture.tree; FragmentRegistryFixture.parityTree ] do
-                  let _, declarations = BindingWalk.collectFactsAndFragments tree
+                  let facts = BindingWalk.renderFacts tree
 
                   let fromFacts =
-                      FragmentExpansion.registryOfDeclarations FragmentId Map.empty declarations
-                      |> Map.toList
+                      FragmentExpansion.registryOf FragmentId tree facts.Fragments |> Map.toList
 
                   let shared = Render.collectFragments Map.empty tree |> Map.toList
                   Expect.equal (List.map fst fromFacts) (List.map fst shared) "the same names, the same last-wins"
@@ -558,7 +553,7 @@ let fragmentRegistry =
               let reverted =
                   (rendererSource "client")
                       .Replace("FragmentExpansion.collectFragments", "collectFragmentsWalk")
-                      .Replace("FragmentExpansion.registryOfDeclarations", "registryWalk")
+                      .Replace("FragmentExpansion.registryOf", "registryWalk")
                       .Replace("let collectFragments<'Msg>", "let rec collectFragments<'Msg>")
 
               Expect.equal
