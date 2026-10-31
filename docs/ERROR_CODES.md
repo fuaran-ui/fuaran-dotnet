@@ -77,7 +77,7 @@ The build-time validator's findings carry `FUARAN###` codes (e.g. `FUARAN050` `S
 **Two families share this band, and only one of them is the build-time walker.** The paragraph
 above describes the walker, which reads F# *source* — but the larger family by far is the
 **pre-emit validator**, which reads a *tree* just before it goes on the wire and raises the whole
-`FUARAN047`–`FUARAN165` range. A code you have in hand belongs to whichever family reported it, and
+`FUARAN047`–`FUARAN167` range. A code you have in hand belongs to whichever family reported it, and
 the two are enumerated in different places, though since Phase 2052 both are entries of one registry in one
 file (`PreEmitValidate.DefectCodes.table` and `PreEmitValidate.FindingCodes`): the pre-emit family's codes, severities and message
 shapes are published as data in the conformance corpus's `validator/defect-vocabulary.json`
@@ -1067,6 +1067,22 @@ multi-select '{nodeId}' carries a `value` — a multi-select's selection is `val
 
 ```text
 {tone} callout '{nodeId}' will not be announced — it declares no live region or announcing role (or switches the live region off, or is hidden), so a screen-reader user is never told about it; give it accessibility.liveRegion = assertive and role = alert (Defaults.Accessibility.callout), or build it with Fuaran.callout (Phase 2157)
+```
+
+#### `FUARAN166` — Error
+
+`PageSourceNotRequest` (Phase 2522)
+
+```text
+{kind} '{nodeId}' {slot} is {found}, not a Binding.Query naming one of the page's requests — inside a page document every data-bearing source names a request in the sidecar, which the host resolves and the signed read-set describes; bind the slot as a Binding.Query on a request key and add the request (Phase 2522)
+```
+
+#### `FUARAN167` — Error
+
+`PageInlineRows` (Phase 2522)
+
+```text
+{kind} '{nodeId}' {slot} carries inline data — a page document's numbers come from its requests, never from the tree, so the read-set cannot name inline rows; move the data behind a request and bind the slot as a Binding.Query on its key (Phase 2522)
 ```
 
 <!-- END GENERATED: PreEmitValidate.DefectCodes.toMarkdown -->

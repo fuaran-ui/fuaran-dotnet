@@ -270,6 +270,21 @@ portable surface. The .NET verifier shares one curve check with the segment veri
 carrying a second copy: an algorithm id names one curve, a key size does not identify a curve, and two
 copies of that test are two places for the ends of an id to drift apart.
 
+## Page read-sets — a signature over a recomputed projection (opt-in)
+
+A stored page document (Phase 2522, WIRE_FORMAT §32; [`docs/PAGE-DOCUMENT.md`](docs/PAGE-DOCUMENT.md)) is
+signed over a canonical preimage of three things: the SHA-256 of its tree's canonical bytes, the SHA-256 of
+its request sidecar's canonical bytes, and the canonical bytes of its demanded document — what the page can
+ever reach. Signing goes through the same `Fuaran.Core.IAttestationSink` seam; verification takes a
+`ClaimVerifier` over the host's own key type, the bounded program core's signed-envelope pattern consumed as
+a package, so this tier holds no cryptography.
+
+Verification RECOMPUTES the demanded document from the page and checks the signature over the preimage it
+computed, never over the bytes it was handed. A verify with no key refuses; a foreign key, a drifted read-set
+and a bad signature are distinct refusals. Boundaries: the signature says the key holder paired this tree and
+this sidecar with this read-set, not that the reach is acceptable (a coverage check's question), and it does
+not cover the document's provenance, which is the writer's assertion.
+
 ## Lift receipts — a recomputation, not a signature
 
 `Fuaran.UI.OpStream.Dag.Abstractions/DagLift.fs` (Phase 2116) lifts a linear op-stream segment to a

@@ -78,6 +78,7 @@
     "node-round-trip": "covered",
     "op-round-trip": "covered",
     "operability": "covered",
+    "page-document": "covered",
     "reject": "covered",
     "repair": "covered",
     "row-encode": "covered",

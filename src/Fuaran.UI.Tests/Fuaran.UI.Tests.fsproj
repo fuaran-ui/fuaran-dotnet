@@ -494,6 +494,9 @@
     <Compile Include="SelectValueRuleTests.fs" />
     <!-- Phase 2157 - a Warning / Critical callout nothing announces: FUARAN165. -->
     <Compile Include="SilentCalloutTests.fs" />
+    <!-- Phase 2522: the page document, its demanded projection and signed read-set, the
+         page-document validator mode, and the page-document/ corpus family (emits with FUARAN_REGEN=1). -->
+    <Compile Include="PageDocumentTests.fs" />
     <Compile Include="GateReadsCensusTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
