@@ -7870,6 +7870,8 @@ calibration strata), emitted and asserted by `src/Fuaran.UI.Operability.Tests`; 
 **Escape hatch.** `Operate` is a new gated action class, so the escape-hatch inventory gains its entry (an
 agent-initiated resolution dispatching a node's own action; what mediates it; what is not claimed).
 
+
+**Also rides this slot, additive (Phase 2523):** `BindingSources` gains `ParameterDependents: Map<string, Set<string>>` (empty by default; `{ BindingSources.empty with … }` sites are untouched, a full record literal gains `ParameterDependents = Map.empty`, FS0764), plus `ParameterChange`, `ResolvedSource`, `SourceRefusal`, `SourceOutcome`, `SourceResolver`, `BindingSources.reResolve` / `applyOutcomes`, `DriverServices.ReResolution` (`create` sets `None`; a full `DriverServices` literal gains it) and `LocalBindings.attachParameterReResolution`; a `Binding.Query` over a refused source resolves `Errored`, naming the source.
 ---
 
 ## 0.99.1 — the slot opened after v0.98.1 was released (DRAFT — untagged)
