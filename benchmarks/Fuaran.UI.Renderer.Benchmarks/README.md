@@ -1,6 +1,6 @@
 # Fuaran.UI.Renderer.Benchmarks (Phase 2529)
 
-The Fable client render path, timed in a real browser. Three surfaces, four operations, a breakdown per stage.
+The Fable client render path, timed in a real browser. Four surfaces, four operations, a breakdown per stage.
 The reading it produced, with the method and the decisions taken on it, is
 [`docs/CLIENT-RENDER-COST.md`](../../docs/CLIENT-RENDER-COST.md).
 

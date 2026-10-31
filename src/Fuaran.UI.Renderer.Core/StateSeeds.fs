@@ -96,21 +96,26 @@ let private applySelections<'Msg>
                 | _ -> acc)
             sources
 
-/// Lay `node`'s declared state seeds under `sources.State`: a furnished value
-/// wins over a seed. Zero-cost when the tree declares nothing: the caller's
-/// sources come back unchanged, by reference.
+/// Lay the seeds of `facts`, the render pass over `node`, under `sources.State`:
+/// a furnished value wins over a seed. Zero-cost when the tree declares nothing:
+/// the caller's sources come back unchanged, by reference.
 ///
 /// Phase 2474 — and a static table's designed selection under
 /// `sources.Selections` (`applySelections`), from the same walk.
-let apply<'Msg> (node: Node<'Msg>) (sources: BindingResolver.BindingSources) : BindingResolver.BindingSources =
-    let facts = Fuaran.UI.BindingWalk.collect node
-    let seeds = Fuaran.UI.BindingWalk.stateSeedsOf facts
-
+let applyFacts<'Msg>
+    (facts: Fuaran.UI.BindingWalk.RenderFacts<'Msg>)
+    (node: Node<'Msg>)
+    (sources: BindingResolver.BindingSources)
+    : BindingResolver.BindingSources =
     let seeded =
-        if Map.isEmpty seeds then
+        if Map.isEmpty facts.StateSeeds then
             sources
         else
             { sources with
-                State = sources.State |> Map.fold (fun acc k v -> Map.add k v acc) seeds }
+                State = sources.State |> Map.fold (fun acc k v -> Map.add k v acc) facts.StateSeeds }
 
-    applySelections node (Fuaran.UI.BindingWalk.selectionSeedsOf facts) seeded
+    applySelections node facts.SelectionSeeds seeded
+
+/// `applyFacts` over a walk of `node` made for this call.
+let apply<'Msg> (node: Node<'Msg>) (sources: BindingResolver.BindingSources) : BindingResolver.BindingSources =
+    applyFacts (Fuaran.UI.BindingWalk.renderFacts node) node sources

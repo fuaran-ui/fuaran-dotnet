@@ -1,7 +1,7 @@
 module Fuaran.UI.Renderer.Benchmarks.Surfaces
 
 // ============================================================================
-//  The three measured surfaces (Phase 2529). Pipeline-neutral: every surface is
+//  The measured surfaces (Phase 2529). Pipeline-neutral: every surface is
 //  plain authoring code, so the solution build compiles it on .NET and the
 //  browser run compiles the same source under Fable.
 //
@@ -11,6 +11,8 @@ module Fuaran.UI.Renderer.Benchmarks.Surfaces
 //   - catalog: every kind `samples/catalog/Matrix.fs` declares, once per tone.
 //   - shell: a many-module shell, every module mounted at once: the worst case
 //     of a host whose modules are all live.
+//   - table200 (Phase 2069): 200 rows of two text cells and a button, the shape a
+//     host rebuilds on every dispatch, declaring no seed and no fragment.
 // ============================================================================
 
 open Fuaran.Core
@@ -295,4 +297,38 @@ let private shell: Surface =
       Readers = [ modules.Head ]
       WithoutCharts = None }
 
-let all: Surface list = [ sites24; catalog; shell ]
+// ─── The 200-row table ─────────────────────────────────────────────────────
+
+let private tableRow (i: int) : Node<unit> =
+    let id = "r" + string i
+
+    Fuaran.card
+        id
+        { Defaults.card<unit> with
+            Children =
+                [ Fuaran.markdown (id + "-label") ("Row " + string i)
+                  Fuaran.markdown (id + "-value") (string (i * 7))
+                  Fuaran.button
+                      (id + "-bump")
+                      { Defaults.button with
+                          Label = TextSource.Literal "+"
+                          OnClick = Action.Print } ] }
+
+let private table200: Surface =
+    let key = "table-tick"
+    let tick = metric "tick" "Tick" (Binding.State(key, Some 0.0))
+    let rows = [ for i in 0..199 -> tableRow i ]
+
+    let root (extra: Node<unit> list) =
+        dashboard "table" ([ tick ] @ rows @ extra)
+
+    { Name = "table-200"
+      Tree = root []
+      Grown = root [ grownChild ]
+      Channel = StateWrite
+      Key = key
+      Values = nonNull (box 1.0), nonNull (box 2.0)
+      Readers = [ tick ]
+      WithoutCharts = None }
+
+let all: Surface list = [ sites24; catalog; shell; table200 ]

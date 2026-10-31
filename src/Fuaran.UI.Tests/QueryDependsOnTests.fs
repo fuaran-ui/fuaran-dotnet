@@ -42,8 +42,8 @@ let tests =
 
           test "Query.dependsOn surfaces on the Filter reactivity channel (the invalidation edge)" {
               Expect.equal
-                  (Render.filterKeysOfBinding decodedQuery)
-                  [ "status"; "region" ]
+                  (Render.filterKeysOfBinding decodedQuery |> Set.ofList)
+                  (set [ "status"; "region" ])
                   "dependsOn names are the query's filter subscription keys"
           }
 

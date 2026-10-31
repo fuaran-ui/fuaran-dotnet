@@ -482,3 +482,29 @@ let fragmentScope =
               Expect.equal (count (idAttr "r2.ld") html) 1 "the second copy is namespaced under its ref"
               Expect.isFalse (contains (idAttr "ld") html) "no copy keeps the bare arm id"
           } ]
+
+// ─── Phase 2069 — the server emits the producer's bytes ─────────────────────
+//
+// The server half of `Fuaran.UI.Tests/RenderCostTests.fs`, over an input the
+// sanitiser would rewrite. Before that phase the client swept it at the sink and
+// this renderer did not, which is a hydration mismatch.
+
+[<Tests>]
+let producerBytes =
+    testList
+        "Phase 2069 — the server emits the producer's bytes"
+        [ test "a drawing whose label the sanitiser would rewrite" {
+              let spec =
+                  { Defaults.drawing with
+                      Title = Some(TextSource.Literal "Sales onload=up")
+                      Description = Some(TextSource.Literal "A figure") }
+
+              let markup =
+                  DrawingSvg.render BindingResolver.empty (BindingResolver.resolveTextSource BindingResolver.empty) spec
+
+              Expect.notEqual (Sanitize.sanitizeMarkdownHtml markup) markup "the fixture must be one the sweep changes"
+
+              Expect.isTrue
+                  (contains markup (Render.renderStatic (Fuaran.drawingSpec "d" spec)))
+                  "the server's sink carries the shared producer's bytes, which the client's mint leaves alone"
+          } ]

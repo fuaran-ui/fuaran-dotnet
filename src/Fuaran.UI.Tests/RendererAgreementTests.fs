@@ -480,7 +480,10 @@ let private ownWalks (code: string) : string list =
           "a recursive collectFragments"
       if code.Contains "fragmentChildren" then
           "a private child enumeration for the registry"
-      if not (code.Contains "FragmentExpansion.collectFragments") then
+      if
+          not (code.Contains "FragmentExpansion.collectFragments")
+          && not (code.Contains "FragmentExpansion.registryOf")
+      then
           "no call of FragmentExpansion.collectFragments" ]
 
 [<Tests>]
@@ -535,6 +538,7 @@ let fragmentRegistry =
               let reverted =
                   (rendererSource "client")
                       .Replace("FragmentExpansion.collectFragments", "collectFragmentsWalk")
+                      .Replace("FragmentExpansion.registryOf", "registryWalk")
                       .Replace("let collectFragments<'Msg>", "let rec collectFragments<'Msg>")
 
               Expect.equal

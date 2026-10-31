@@ -7818,6 +7818,29 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
+## 0.101.0 — Phase 2069: one render pass (DRAFT — untagged)
+
+**BREAKING, `Fuaran.UI.Renderer`.** `TrustedTypes.createHtml` is removed and `TrustedTypes.html` only
+mints: it no longer sanitises. Each producer makes its own markup safe, once, on both renderers
+(`SANITIZATION.md`). A host minting its own markup through `TrustedTypes.html` must make it safe first.
+
+**BREAKING, `Fuaran.UI`.** `BindingWalk.TransformSiteFacts` gains `SourceReads`, so a full-literal
+construction no longer compiles (FS0764). The walk builds this record; no consumer is expected to.
+
+**Additive.** `BindingWalk.renderFacts` is one walk for a tree's seeds, fragments and reactive keys, with
+the records `RenderFacts<'Msg>` and `ReactiveKeys` and the projection `reactiveKeysOf`.
+`StateSeeds.applyFacts`, `FragmentExpansion.registryOf`, `Render.PreparedTree<'Msg>`,
+`Render.RenderContext.prepare` / `ofPrepared`, `Render.collectReactiveKeys`, and `StateStore.useKeys` /
+`useKeysWith`.
+
+**Behaviour.** `Render.collectKeys` is a projection of `BindingWalk`'s uses, and `Render.keysOfBinding` /
+`keysOfText` return their keys in sorted order. A surface now subscribes three slots it read and never
+followed: a node's `Visible`, a node's `Tooltip`, and a `Switch` case's `When`. `BindingWalk`'s analysis
+gains the slots only the reactive walk had: `Media` track `Src` and `Label`, `Media.Transcript`, and a
+`Tree`'s expanded and selection state keys. `Theme.toCss` applies the floor to its own output, so the
+server's stylesheet now gets what the client's sink used to do. `useSelectionKeys` no longer resubscribes
+on every change.
+
 ## 0.100.1 — the slot opened after v0.100.0 was released (DRAFT — untagged)
 
 _`v0.100.0` is TAGGED (2026-10-31), so nothing may ride it: the change below opens the next slot. Class: **additive**

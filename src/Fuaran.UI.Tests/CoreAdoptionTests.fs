@@ -1472,7 +1472,6 @@ module KeyedEnumeration =
               "Fuaran.UI/Generated.fs"
               "Fuaran.UI/HostLimits.fs"
               "Fuaran.UI/PreEmitValidate.fs"
-              "Fuaran.UI.Renderer/Render.fs"
               "Fuaran.UI.Renderer.Server/Email.fs"
               "Fuaran.UI.Renderer.Server/Speech.fs"
               "Fuaran.UI.Validator.Certification/RecipeCertification.fs" ]

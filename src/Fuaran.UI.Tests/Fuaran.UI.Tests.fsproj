@@ -436,6 +436,7 @@
     <Compile Include="RatingModelTests.fs" />
     <Compile Include="TokensModelTests.fs" />
     <Compile Include="TrustedTypesTests.fs" />
+    <Compile Include="RenderCostTests.fs" />
     <Compile Include="LocalWireTests.fs" />
     <!-- Phase 1667 - the write-back predicate is one definition, pinned behaviourally against
          FUARAN069 and structurally by a census over the two copied renderer sources. -->
