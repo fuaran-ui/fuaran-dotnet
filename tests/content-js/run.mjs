@@ -71,6 +71,20 @@ function loadInto(source, { document = new StubDocument(), extras = {} } = {}) {
 
 const read = (key) => readFileSync(SUBJECTS[key], "utf8");
 
+/** A rendered node with a tooltip: `<div marker><h2>before</h2><span>a hint</span></div>`. */
+function nodeWithHint() {
+    const document = new StubDocument();
+    const wrapper = new StubElement("div", { "data-fuaran-node-id": "n1", class: "fuaran-node" });
+    const body = new StubElement("h2", { class: "fuaran-heading" });
+    const hint = new StubElement("span", { role: "tooltip" });
+    body.textContent = "before";
+    hint.textContent = "a hint";
+    wrapper.appendChild(body);
+    wrapper.appendChild(hint);
+    document.body.appendChild(wrapper);
+    return { document, body, hint };
+}
+
 // ─── The cases ──────────────────────────────────────────────────────────────
 //
 // Each case is `{ name, run }`. `run` throws to fail. `mutate` (optional) is
@@ -213,6 +227,77 @@ const cases = [
             // the marker or throw.
             loadInto(source, { document });
             assert.equal(document.documentElement.getAttribute("data-fuaran-tables-observed"), "true");
+        }
+    },
+
+    // ─── Phase 2526: the granular patches ───────────────────────────────────
+    //
+    // The markup both SSR hosts emit for a node: the marker on a wrapper, the
+    // body element first, the tooltip hint after it.
+    {
+        name: "SetText writes a node's body element and leaves its tooltip hint",
+        subject: "liveShim",
+        mutate: (src) => src.replace("bodyOf(e).textContent = p.text", "e.textContent = p.text"),
+        run: (source) => {
+            const { document, body, hint } = nodeWithHint();
+            loadInto(source, { document }).window.FuaranLive.applyPatches([
+                { kind: "SetText", nodeId: "n1", text: "after" }
+            ]);
+
+            assert.equal(body.textContent, "after");
+            assert.deepEqual(body.parentNode.children, [body, hint], "the wrapper keeps both children");
+            assert.equal(hint.textContent, "a hint", "the hint is untouched");
+        }
+    },
+    {
+        name: "SetAttr writes a node's body element, not its wrapper",
+        subject: "liveShim",
+        mutate: (src) => src.replace("bodyOf(e).setAttribute(p.name, p.value)", "e.setAttribute(p.name, p.value)"),
+        run: (source) => {
+            const { document, body } = nodeWithHint();
+            loadInto(source, { document }).window.FuaranLive.applyPatches([
+                { kind: "SetAttr", nodeId: "n1", name: "class", value: "fuaran-heading-lead" }
+            ]);
+
+            assert.equal(body.getAttribute("class"), "fuaran-heading-lead");
+            assert.equal(body.parentNode.getAttribute("class"), "fuaran-node", "the wrapper's class is its own");
+        }
+    },
+    {
+        name: "RemoveAttr clears a node's body element, not its wrapper",
+        subject: "liveShim",
+        mutate: (src) => src.replace("bodyOf(e).removeAttribute(p.name)", "e.removeAttribute(p.name)"),
+        run: (source) => {
+            const { document, body } = nodeWithHint();
+            body.setAttribute("rel", "noopener");
+            body.parentNode.setAttribute("rel", "the wrapper's");
+            loadInto(source, { document }).window.FuaranLive.applyPatches([
+                { kind: "RemoveAttr", nodeId: "n1", name: "rel" }
+            ]);
+
+            assert.equal(body.hasAttribute("rel"), false);
+            assert.equal(body.parentNode.getAttribute("rel"), "the wrapper's");
+        }
+    },
+    {
+        // Form validation addresses the field marker, and the field error is a
+        // property of that element whatever it holds (Phase 156).
+        name: "a form field's SetAttr stays on the field itself",
+        subject: "liveShim",
+        mutate: (src) => src.replace("(el.hasAttribute(ATTR) && el.firstElementChild) || el", "el.firstElementChild || el"),
+        run: (source) => {
+            const document = new StubDocument();
+            const field = new StubElement("div", { "data-fuaran-field": "name" });
+            const input = new StubElement("input", { type: "text" });
+            field.appendChild(input);
+            document.body.appendChild(field);
+
+            loadInto(source, { document }).window.FuaranLive.applyPatches([
+                { kind: "SetAttr", nodeId: "name", name: "data-fuaran-field-error", value: "Required." }
+            ]);
+
+            assert.equal(field.getAttribute("data-fuaran-field-error"), "Required.");
+            assert.equal(input.hasAttribute("data-fuaran-field-error"), false);
         }
     }
 ];

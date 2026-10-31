@@ -51,6 +51,13 @@
       document.querySelector("[" + FIELD + '="' + cssEscape(nodeId) + '"]')
     );
   }
+  // A node's marker sits on its WRAPPER; what the node renders is the wrapper's
+  // first element child, its BODY, with the tooltip hint (when it has one) after
+  // it. A granular patch writes the body: `textContent` on the wrapper would
+  // erase both. A form field is its own target.
+  function bodyOf(el) {
+    return (el.hasAttribute(ATTR) && el.firstElementChild) || el;
+  }
   function byField(fieldId) {
     return document.querySelector("[" + FIELD + '="' + cssEscape(fieldId) + '"]');
   }
@@ -141,9 +148,9 @@
   // ── DomPatch applier ────────────────────────────────────────────────────
   function applyPatch(p) {
     switch (p.kind) {
-      case "SetAttr": { var e = byId(p.nodeId); if (e) e.setAttribute(p.name, p.value); break; }
-      case "RemoveAttr": { var e = byId(p.nodeId); if (e) e.removeAttribute(p.name); break; }
-      case "SetText": { var e = byId(p.nodeId); if (e) e.textContent = p.text; break; }
+      case "SetAttr": { var e = byId(p.nodeId); if (e) bodyOf(e).setAttribute(p.name, p.value); break; }
+      case "RemoveAttr": { var e = byId(p.nodeId); if (e) bodyOf(e).removeAttribute(p.name); break; }
+      case "SetText": { var e = byId(p.nodeId); if (e) bodyOf(e).textContent = p.text; break; }
       case "ReplaceFragment": {
         var e = byId(p.nodeId);
         var frag = parseFragment(p.html);

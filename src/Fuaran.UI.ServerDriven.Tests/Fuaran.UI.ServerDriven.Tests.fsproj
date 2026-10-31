@@ -58,6 +58,9 @@
     <ProjectReference Include="..\Fuaran.UI.OpStream.Replay\Fuaran.UI.OpStream.Replay.fsproj" />
     <!-- Phase 153: BoundedActionsTests use BindingResolver.BindingSources as the store. -->
     <ProjectReference Include="..\Fuaran.UI.Renderer.Core\Fuaran.UI.Renderer.Core.fsproj" />
+    <!-- Phase 2526: the frame-cost reading and the DOM-equivalence law run the REAL server
+         renderer; the lowering's own suites stay on the stub. -->
+    <ProjectReference Include="..\Fuaran.UI.Renderer.Server\Fuaran.UI.Renderer.Server.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- The conformance family's own bytes, vendored so these legs run in any
