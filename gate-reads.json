@@ -19,6 +19,10 @@
     {
       "path": "samples/catalog/**",
       "reason": "named by Build.fs's Catalog target (a Fable build of the catalog sample), which the gate never runs; the gate runs only Build.fsproj's DriftChecks, and the catalog's F# sources are built as a solution project"
+    },
+    {
+      "path": "benchmarks/Fuaran.UI.Renderer.Benchmarks/run.ps1",
+      "reason": "the render-cost benchmark's own launcher, run by hand to take a reading; the census matches it by its basename against suites that name the root run.ps1, and no gate stage invokes it"
     }
   ]
 }
