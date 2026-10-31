@@ -93,11 +93,13 @@ module internal JsonString =
 
 /// One browser-applyable DOM patch, addressed by `data-fuaran-node-id`.
 type DomPatch =
-    /// Set attribute `name` to `value` on the addressed node.
+    /// Set attribute `name` to `value` on the addressed node's body element, or
+    /// on the addressed form field (see `Lowering`'s header for why the body).
     | SetAttr of nodeId: string * name: string * value: string
-    /// Remove attribute `name` from the addressed node.
+    /// Remove attribute `name` from the addressed node's body element, or from
+    /// the addressed form field.
     | RemoveAttr of nodeId: string * name: string
-    /// Replace the addressed node's text content.
+    /// Replace the text content of the addressed node's body element.
     | SetText of nodeId: string * text: string
     /// Replace the addressed node's outer HTML with a pre-rendered fragment
     /// (a kind swap or a wholesale node re-render).
