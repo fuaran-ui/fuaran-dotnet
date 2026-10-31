@@ -40,6 +40,51 @@ is the one function that threads them.
 
 ---
 
+## What a content write lowers to
+
+Step ⑤ has a floor and a granular arm (Phase 2526; the reading behind it is
+[`SERVER-DRIVEN-FRAME-COST.md`](SERVER-DRIVEN-FRAME-COST.md)).
+
+**The floor** re-renders the changed node and emits `ReplaceFragment(id, html)`. It is always correct, and it is
+what a write gets unless the arm below claims it.
+
+**The granular arm** needs no render. `Lowering.PropSlot.slotOf` says where a prop lands, and the value is read
+off `ElementPlan`, the same plan the server renderer emits, so the patch and the fragment cannot disagree:
+
+| Kind | Field | Lowers to |
+|---|---|---|
+| `Heading` | `Text` | `SetText` |
+| `Heading` | `Variant` | `SetAttr class` |
+| `Badge` | `Label` | `SetText` |
+| `Badge` | `Variant` | `SetAttr class` |
+| `Button` | `Label`, with no icon and no declared affordance | `SetText` |
+| `Button` | `Variant`, with no declared affordance | `SetAttr class` |
+| `Icon` | `Icon` | `SetAttr data-icon` |
+| `Icon` | `Size`, `Tone` | `SetAttr class` |
+| `Icon` | `Label` | `SetAttr` / `RemoveAttr` of `role`, `aria-label`, `aria-hidden` |
+| `Link` | `Label`, unprotected | `SetText` |
+| `Link` | `Rel`, `Download`, unprotected | `SetAttr` / `RemoveAttr` |
+| `Link` | `Target`, unprotected | `SetAttr` / `RemoveAttr` of `target` and the `rel` it decides |
+
+A `SetText` needs a literal text; a bound one keeps the floor, because its value needs the host's sources. Two
+more arms read the node as it stood, so they hold in a script (`lowerScript`, what the driver calls) and not in
+`lower`: a text-only `EditNode` of a `Heading` or `Badge` lowers to `SetText`, and an `UpdateState` that leaves a
+stateless node stateless lowers to nothing. A script's adjacent re-renders of one node ship the last.
+
+Everything else keeps the floor: a prop that moves the tag or the element structure, every style, state and
+binding edit, and a URL, which the host's render checks against its egress policy.
+
+**A granular patch lands on the node's body.** A node's `data-fuaran-node-id` sits on its wrapper, and what the
+node renders is the wrapper's first element child, with the tooltip hint after it. The shim writes that element
+for a node-addressed `SetText` / `SetAttr` / `RemoveAttr`, and writes a form field addressed by
+`data-fuaran-field` directly. So an attribute of the wrapper itself (its class, `dir`, a wrapper-level ARIA
+attribute) is out of a granular patch's reach, and so is anything deeper than the body. Both keep the floor.
+
+The law: for generated trees and op scripts, applying the patches to the old tree's DOM yields the DOM the new
+tree renders to (`LoweringTests.fs`), and it goes red when the map or the addressing is perturbed.
+
+---
+
 ## The three client tiers
 
 | | **Fable client** | **Hydration** (`hydrateRoot`) | **Server-driven** (this) |

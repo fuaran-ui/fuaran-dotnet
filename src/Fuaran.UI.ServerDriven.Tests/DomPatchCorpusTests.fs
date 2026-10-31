@@ -9,11 +9,13 @@ module Fuaran.UI.ServerDriven.Tests.DomPatchCorpusTests
 // `DomPatchCorpus` Build target runs this project as a standalone CI gate.
 //
 // Every lowering branch is represented: the four structural ops lower directly;
-// the five content ops (EditNode / UpdateProp / UpdateStyle / UpdateState /
-// ReplaceBinding) all hit the same `reRender id` arm (3 representatives prove
-// it); Batch flattens; an absent node lowers to nothing.
+// a content op the prop map does not cover hits the `reRender id` arm (3
+// representatives prove it); Batch flattens; an absent node lowers to nothing.
+// The granular arms (Phase 2526) are the second block: a mapped prop lowers to
+// `SetText` / `SetAttr` / `RemoveAttr` and emits no `ReplaceFragment`.
 
 open Expecto
+open Fuaran.Core
 open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.Ops.Types
@@ -96,9 +98,144 @@ let private corpus: Case list =
         Ops = [ TreeOp.UpdateStyle(NodeId "ghost", Defaults.style) ]
         Expected = [] } ]
 
+// ─── Phase 2526: the granular arms ──────────────────────────────────────────
+
+let private literal (s: string) : PropValue = PropValue.Wire(JStr s)
+
+let private heading (text: string) : Node<obj> =
+    Fuaran.heading
+        "h"
+        { Defaults.heading with
+            Text = TextSource.Literal text }
+
+let private leadHeading: Node<obj> =
+    Fuaran.heading
+        "h"
+        { Defaults.heading with
+            Variant = HeadingVariant.Lead }
+
+let private badge: Node<obj> =
+    Fuaran.badge
+        "b"
+        { Defaults.badge with
+            Label = TextSource.Literal "new" }
+
+let private button: Node<obj> =
+    Fuaran.button
+        "go"
+        { Defaults.button<obj> with
+            Label = TextSource.Literal "new" }
+
+let private namedLink: Node<obj> =
+    Fuaran.linkSpec
+        "l"
+        { Defaults.link with
+            Label = TextSource.Literal "new"
+            Rel = Some "external" }
+
+let private blankLink: Node<obj> =
+    Fuaran.linkSpec
+        "l"
+        { Defaults.link with
+            Target = Some "_blank" }
+
+let private labelledIcon: Node<obj> =
+    Fuaran.iconSpec
+        "i"
+        { Defaults.icon with
+            Icon = "moon"
+            Label = Some "A moon" }
+
+let private granularCorpus: Case list =
+    [ { Name = "UpdateProp on a Heading's text → SetText"
+        Tree = heading "new"
+        Ops = [ TreeOp.UpdateProp(NodeId "h", "Text", literal "new") ]
+        Expected = [ DomPatch.SetText("h", "new") ] }
+
+      { Name = "UpdateProp on a Badge's label → SetText"
+        Tree = badge
+        Ops = [ TreeOp.UpdateProp(NodeId "b", "Label", literal "new") ]
+        Expected = [ DomPatch.SetText("b", "new") ] }
+
+      { Name = "UpdateProp on a Button's label → SetText"
+        Tree = button
+        Ops = [ TreeOp.UpdateProp(NodeId "go", "Label", literal "new") ]
+        Expected = [ DomPatch.SetText("go", "new") ] }
+
+      { Name = "UpdateProp on a Link's label → SetText"
+        Tree = namedLink
+        Ops = [ TreeOp.UpdateProp(NodeId "l", "Label", literal "new") ]
+        Expected = [ DomPatch.SetText("l", "new") ] }
+
+      { Name = "UpdateProp on a Link's rel → SetAttr"
+        Tree = namedLink
+        Ops = [ TreeOp.UpdateProp(NodeId "l", "Rel", literal "external") ]
+        Expected = [ DomPatch.SetAttr("l", "rel", "external") ] }
+
+      { Name = "UpdateProp clearing a Link's rel → RemoveAttr"
+        Tree = Fuaran.linkSpec "l" Defaults.link
+        Ops = [ TreeOp.UpdateProp(NodeId "l", "Rel", PropValue.Native(Unchecked.defaultof<obj>)) ]
+        Expected = [ DomPatch.RemoveAttr("l", "rel") ] }
+
+      { Name = "UpdateProp on a Link's target moves the rel it decides"
+        Tree = blankLink
+        Ops = [ TreeOp.UpdateProp(NodeId "l", "Target", literal "_blank") ]
+        Expected =
+          [ DomPatch.SetAttr("l", "target", "_blank")
+            DomPatch.SetAttr("l", "rel", "noopener noreferrer") ] }
+
+      { Name = "UpdateProp on an Icon's label sets the name and clears aria-hidden"
+        Tree = labelledIcon
+        Ops = [ TreeOp.UpdateProp(NodeId "i", "Label", literal "A moon") ]
+        Expected =
+          [ DomPatch.SetAttr("i", "role", "img")
+            DomPatch.SetAttr("i", "aria-label", "A moon")
+            DomPatch.RemoveAttr("i", "aria-hidden") ] }
+
+      { Name = "UpdateProp on a prop the map does not cover keeps the floor"
+        Tree = heading "new"
+        Ops = [ TreeOp.UpdateProp(NodeId "h", "Level", PropValue.Wire(JInt 3)) ]
+        Expected = [ DomPatch.ReplaceFragment("h", "<f id='h'/>") ] } ]
+
+/// The arms that read the node as it stood: a script, from its old tree.
+type private ScriptCase =
+    { Name: string
+      Before: Node<obj>
+      Ops: TreeOp<obj> list
+      Expected: DomPatch list }
+
+let private scriptCorpus: ScriptCase list =
+    [ { Name = "a text-only EditNode → SetText"
+        Before = heading "old"
+        Ops = [ TreeOp.EditNode(NodeId "h", (heading "new").Kind) ]
+        Expected = [ DomPatch.SetText("h", "new") ] }
+
+      { Name = "an EditNode that moves more than the text keeps the floor"
+        Before = heading "old"
+        Ops = [ TreeOp.EditNode(NodeId "h", leadHeading.Kind) ]
+        Expected = [ DomPatch.ReplaceFragment("h", "<f id='h'/>") ] }
+
+      { Name = "the UpdateState the diff pairs with an EditNode costs a stateless node nothing"
+        Before = heading "old"
+        Ops =
+          [ TreeOp.EditNode(NodeId "h", (heading "new").Kind)
+            TreeOp.UpdateState(NodeId "h", Defaults.stateBehaviour<obj>) ]
+        Expected = [ DomPatch.SetText("h", "new") ] }
+
+      { Name = "two adjacent re-renders of one node ship the last"
+        Before = heading "old"
+        Ops =
+          [ TreeOp.UpdateProp(NodeId "h", "Level", PropValue.Wire(JInt 3))
+            TreeOp.UpdateStyle(NodeId "h", Defaults.style) ]
+        Expected = [ DomPatch.ReplaceFragment("h", "<f id='h'/>") ] } ]
+
 [<Tests>]
 let tests =
     testList
         "DomPatch conformance corpus (Phase 158 QW6)"
-        [ for case in corpus ->
-              test case.Name { Expect.equal (Lowering.lower stubRender case.Tree case.Ops) case.Expected case.Name } ]
+        [ for case in corpus @ granularCorpus ->
+              test case.Name { Expect.equal (Lowering.lower stubRender case.Tree case.Ops) case.Expected case.Name }
+          for case in scriptCorpus ->
+              test case.Name {
+                  Expect.equal (Lowering.lowerScript stubRender case.Before case.Ops) case.Expected case.Name
+              } ]

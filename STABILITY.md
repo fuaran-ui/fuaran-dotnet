@@ -7818,6 +7818,32 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
+## 0.100.1 — the slot opened after v0.100.0 was released (DRAFT — untagged)
+
+_`v0.100.0` is TAGGED (2026-10-31), so nothing may ride it: the change below opens the next slot. Class: **additive**
+on the surface, with one behaviour change on the shim, set by Phase 2526. The `<Version>` advance and its ledger
+record are the release act's, recorded separately; this entry is the slot's account of what rides it._
+
+### What rides this slot — Phase 2526 (a changed prop or text patches the attribute, not the subtree)
+
+**Class: additive.** Package `Fuaran.UI.ServerDriven`. The `DomPatch` vocabulary is unchanged.
+
+- **Surface — additive.** `Lowering` gains `PropSlot` (the type and `slotOf` / `patches` / `textOnlyEdit`),
+  `lowerOpWith` and `lowerScriptWith`. `lowerOp`, `lower` and `lowerScript` keep their signatures.
+- **Lowering — what a write emits changes.** `UpdateProp` on a mapped field lowers to `SetAttr` / `RemoveAttr` /
+  `SetText` where it lowered to `ReplaceFragment`. In `lowerScript`, a text-only `EditNode` of a `Heading` or `Badge`
+  lowers to `SetText`, an `UpdateState` that leaves a stateless node stateless lowers to nothing, and adjacent
+  re-renders of one node ship the last. A host that asserts on a frame's patch list for those writes sees the new
+  patches. The resulting DOM is the same, which the phase's law states.
+- **Shim — behaviour.** `fuaran-live-patch.js` lands a node-addressed `SetText` / `SetAttr` / `RemoveAttr` on the
+  wrapper's first element child, the node's body, rather than on the wrapper. No lowering emitted those patches for
+  a node before this slot. A form field addressed by `data-fuaran-field` is still its own target. **A custom applier
+  of the frame takes the same rule**, or the granular patches erase the node's body.
+
+The reading and the decision: [`docs/SERVER-DRIVEN-FRAME-COST.md`](docs/SERVER-DRIVEN-FRAME-COST.md).
+
+---
+
 ## 0.100.0 — the slot opened after v0.99.1 was released (DRAFT — untagged)
 
 _`v0.99.1` is TAGGED (2026-10-29), so under the draft-slot rule nothing may ride it: the change below opens the next
