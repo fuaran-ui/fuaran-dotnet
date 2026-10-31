@@ -7853,9 +7853,7 @@ record are the release act's, recorded separately; this entry is the slot's acco
 **Class: additive, with one record field.** Packages `Fuaran.UI`, `Fuaran.UI.Renderer.Core`, `Fuaran.UI.Renderer`,
 `Fuaran.UI.Renderer.Server`.
 
-- **Surface — additive.** `BindingWalk.collectFactsAndFragments` (the facts walk returning the fragment
-  declarations beside the facts; `collectFacts` and `collect` are unchanged and now derive from it),
-  `FragmentExpansion.registryOfDeclarations`, `StateSeeds.applyFacts`, `StateStore.generation`.
+- **Surface — additive.** `StateStore.generation`. The render pass itself is the `0.101.0` entry above.
 - **Surface — `Render.RenderContext` gains `SubtreeMemo: bool`.** `RenderContext.create` sets it `false`, so a host
   built through `create` plus `with` sees no change; a host that spelt the record out in full (the shape
   `RENDER-ENTRIES.md` has asked hosts not to use since Phase 2067) takes `FS0764` and adds the field. The

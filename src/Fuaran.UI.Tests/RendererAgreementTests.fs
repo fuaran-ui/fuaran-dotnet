@@ -520,11 +520,10 @@ let fragmentRegistry =
 
           test "Phase 2069 — the registry folded from the facts walk is the shared walk's, over every position" {
               for tree in [ FragmentRegistryFixture.tree; FragmentRegistryFixture.parityTree ] do
-                  let _, declarations = BindingWalk.collectFactsAndFragments tree
+                  let facts = BindingWalk.renderFacts tree
 
                   let fromFacts =
-                      FragmentExpansion.registryOfDeclarations FragmentId Map.empty declarations
-                      |> Map.toList
+                      FragmentExpansion.registryOf FragmentId tree facts.Fragments |> Map.toList
 
                   let shared = Render.collectFragments Map.empty tree |> Map.toList
                   Expect.equal (List.map fst fromFacts) (List.map fst shared) "the same names, the same last-wins"
