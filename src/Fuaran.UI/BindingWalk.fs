@@ -1544,6 +1544,16 @@ let private walkTree<'Msg> (analysis: bool) (root: Node<'Msg>) : TreeFacts * Ren
     let closures = ResizeArray<ClosureUse>()
     let nodes = System.Collections.Generic.Dictionary<string, bool>()
 
+    // Phase 2069 — every `FragmentDecl` inside the fragment scope
+    // (`NodeChildren.Reach.fragmentScope`), in walk order, so a renderer's
+    // context builder reads its registry off this walk instead of running
+    // `FragmentExpansion.collectFragments` as a second one. The envelope
+    // `fallback` and a slot argument are outside the scope, as the registry
+    // walk has always had it (`FragmentRegistryFixture`); the counter says how
+    // many of those positions the walk is currently under.
+    let fragmentDecls = ResizeArray<string * Node<'Msg>>()
+    let mutable outsideFragmentScope = 0
+
     // ── The Phase 932 State-channel projection (see `StateKeyFacts`) ──
     let stateReads = System.Collections.Generic.HashSet<string>()
     let stateWrites = ResizeArray<string * string>()
@@ -2335,7 +2345,11 @@ let private walkTree<'Msg> (analysis: bool) (root: Node<'Msg>) : TreeFacts * Ren
                 walk inUses c.Child
 
             walk inUses spec.Default
-        | NodeKind.FragmentDecl spec -> walk inUses spec.Body
+        | NodeKind.FragmentDecl spec ->
+            if outsideFragmentScope = 0 then
+                fragmentDecls.Add(spec.Name, spec.Body)
+
+            walk inUses spec.Body
         // Custom props are JVal literals, not bindings; a FragmentRef carries
         // no body; a Mount guest owns its own scoped stores.
         | NodeKind.Custom _ ->
