@@ -7822,7 +7822,26 @@ document that declares no ceiling is exactly the control it was.
 
 _`v0.100.0` is TAGGED (2026-10-31), so nothing may ride it: the change below opens the next slot. Class: **additive**
 on the surface, with one behaviour change on the shim, set by Phase 2526. The `<Version>` advance and its ledger
-record are the release act's, recorded separately; this entry is the slot's account of what rides it._
+record are the release act's, recorded separately; this entry is the slot's account of what rides it. The standing
+`<Version>` has since been raised to **0.101.0** for Phase 2527; the entries below ride that draft._
+
+### What rides this slot — Phase 2069 (one context walk, a stable raw-sink prop) and Phase 2547 (the subtree memo)
+
+**Class: additive, with one record field.** Packages `Fuaran.UI`, `Fuaran.UI.Renderer.Core`, `Fuaran.UI.Renderer`,
+`Fuaran.UI.Renderer.Server`.
+
+- **Surface — additive.** `BindingWalk.collectFactsAndFragments` (the facts walk returning the fragment
+  declarations beside the facts; `collectFacts` and `collect` are unchanged and now derive from it),
+  `FragmentExpansion.registryOfDeclarations`, `StateSeeds.applyFacts`, `StateStore.generation`.
+- **Surface — `Render.RenderContext` gains `SubtreeMemo: bool`.** `RenderContext.create` sets it `false`, so a host
+  built through `create` plus `with` sees no change; a host that spelt the record out in full (the shape
+  `RENDER-ENTRIES.md` has asked hosts not to use since Phase 2067) takes `FS0764` and adds the field. The
+  surface guard classes a record gaining a field as breaking; it rides a draft that is already a minor advance.
+- **Behaviour — none on output.** Both context builders run one walk where they ran two, and read the same seeds
+  and the same registry (pinned over `FragmentRegistryFixture` by `RendererAgreementTests`). The client emitter
+  hands React one `dangerouslySetInnerHTML` object per markup string, so an unchanged raw sink is not reparsed on
+  re-render; the markup is unchanged. With `SubtreeMemo` on, a kept subtree under the same context and store
+  generation returns the element it built before; off, nothing moves.
 
 ### What rides this slot — Phase 2526 (a changed prop or text patches the attribute, not the subtree)
 

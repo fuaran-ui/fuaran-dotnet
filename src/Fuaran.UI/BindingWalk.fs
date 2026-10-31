@@ -1400,12 +1400,27 @@ let formFieldFilterWrite<'Msg> (kind: FormFieldKind<'Msg>) : string option =
 /// `collect` is this function's `Bindings` half and is the entry point every
 /// shipped rule still uses; prefer this one where the write direction is wanted,
 /// so the two halves come from the same walk rather than from two.
-let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts =
+/// Phase 2069 — the facts AND every `FragmentDecl` in the fragment scope, as
+/// (name, body) in walk order, from one walk; the last declaration of a name
+/// wins when folded into a registry (`FragmentExpansion.registryOfDeclarations`),
+/// as `FragmentExpansion.collectFragments` has it. Both renderers' context
+/// builders read their seeds and their registry off this one call.
+let collectFactsAndFragments<'Msg> (root: Node<'Msg>) : TreeFacts * (string * Node<'Msg>) list =
     let uses = ResizeArray<NodeBindingUse>()
     let declaredFilters = ResizeArray<string * string>()
     let calls = ResizeArray<CallUse>()
     let closures = ResizeArray<ClosureUse>()
     let nodes = System.Collections.Generic.Dictionary<string, bool>()
+
+    // Phase 2069 — every `FragmentDecl` inside the fragment scope
+    // (`NodeChildren.Reach.fragmentScope`), in walk order, so a renderer's
+    // context builder reads its registry off this walk instead of running
+    // `FragmentExpansion.collectFragments` as a second one. The envelope
+    // `fallback` and a slot argument are outside the scope, as the registry
+    // walk has always had it (`FragmentRegistryFixture`); the counter says how
+    // many of those positions the walk is currently under.
+    let fragmentDecls = ResizeArray<string * Node<'Msg>>()
+    let mutable outsideFragmentScope = 0
 
     // ── The Phase 932 State-channel projection (see `StateKeyFacts`) ──
     let stateReads = System.Collections.Generic.HashSet<string>()
@@ -1753,7 +1768,10 @@ let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts =
         // reader never renders the fallback, and the census in
         // `WalkConformanceTests` records the asymmetry with its reason.
         match n.Fallback with
-        | Some fallback -> walk inUses fallback
+        | Some fallback ->
+            outsideFragmentScope <- outsideFragmentScope + 1
+            walk inUses fallback
+            outsideFragmentScope <- outsideFragmentScope - 1
         | None -> ()
 
         // Phase 692 — one exhaustive match over the flat vocabulary, where this
@@ -2135,7 +2153,11 @@ let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts =
                 walk inUses c.Child
 
             walk inUses spec.Default
-        | NodeKind.FragmentDecl spec -> walk inUses spec.Body
+        | NodeKind.FragmentDecl spec ->
+            if outsideFragmentScope = 0 then
+                fragmentDecls.Add(spec.Name, spec.Body)
+
+            walk inUses spec.Body
         // Custom props are JVal literals, not bindings; a FragmentRef carries
         // no body; a Mount guest owns its own scoped stores.
         | NodeKind.Custom _ ->
@@ -2163,7 +2185,10 @@ let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts =
     and walkSlotArgs (args: Map<string, FragmentArg<'Msg>>) =
         for KeyValue(_, arg) in args do
             match arg with
-            | FragmentArg.SlotArg tree -> walk true tree
+            | FragmentArg.SlotArg tree ->
+                outsideFragmentScope <- outsideFragmentScope + 1
+                walk true tree
+                outsideFragmentScope <- outsideFragmentScope - 1
             | _ -> ()
 
     walk true root
@@ -2202,7 +2227,11 @@ let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts =
               LiveTransformSites = liveTransformSitesByKey }
           TransformSites = allTransformSites
           SelectionSeeds = List.ofSeq selectionSeeds }
-      FilterWrites = List.ofSeq filterWrites }
+      FilterWrites = List.ofSeq filterWrites },
+    List.ofSeq fragmentDecls
+
+/// The facts alone: the `collectFactsAndFragments` walk, its registry half dropped.
+let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts = fst (collectFactsAndFragments root)
 
 /// The tree-wide binding facts for `node` (see `TreeBindingFacts`) — the
 /// `Bindings` half of `collectFacts`, unchanged, and what every shipped rule

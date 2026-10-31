@@ -480,7 +480,14 @@ let private ownWalks (code: string) : string list =
           "a recursive collectFragments"
       if code.Contains "fragmentChildren" then
           "a private child enumeration for the registry"
-      if not (code.Contains "FragmentExpansion.collectFragments") then
+      // Phase 2069 — a context builder may read the registry off the facts walk
+      // instead: that is the shared walk's registry too.
+      if
+          not (
+              code.Contains "FragmentExpansion.collectFragments"
+              || code.Contains "FragmentExpansion.registryOfDeclarations"
+          )
+      then
           "no call of FragmentExpansion.collectFragments" ]
 
 [<Tests>]
@@ -515,6 +522,22 @@ let fragmentRegistry =
                   "the same body instances"
           }
 
+          test "Phase 2069 — the registry folded from the facts walk is the shared walk's, over every position" {
+              for tree in [ FragmentRegistryFixture.tree; FragmentRegistryFixture.parityTree ] do
+                  let _, declarations = BindingWalk.collectFactsAndFragments tree
+
+                  let fromFacts =
+                      FragmentExpansion.registryOfDeclarations FragmentId Map.empty declarations
+                      |> Map.toList
+
+                  let shared = Render.collectFragments Map.empty tree |> Map.toList
+                  Expect.equal (List.map fst fromFacts) (List.map fst shared) "the same names, the same last-wins"
+
+                  Expect.isTrue
+                      (List.forall2 (fun (_, a) (_, b) -> obj.ReferenceEquals(a, b)) fromFacts shared)
+                      "the same body instances"
+          }
+
           test "the walk is iterative: a tree far past any stack's recursion depth collects" {
               // 200,000 nested containers: the recursive walk this replaced
               // overflowed the default 1 MB stack long before the bottom.
@@ -535,6 +558,7 @@ let fragmentRegistry =
               let reverted =
                   (rendererSource "client")
                       .Replace("FragmentExpansion.collectFragments", "collectFragmentsWalk")
+                      .Replace("FragmentExpansion.registryOfDeclarations", "registryWalk")
                       .Replace("let collectFragments<'Msg>", "let rec collectFragments<'Msg>")
 
               Expect.equal

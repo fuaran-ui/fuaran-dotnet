@@ -23,8 +23,9 @@ let ctx = Render.RenderContext.create sources dispatch node
 Render.render { ctx with Runtime = myRuntime; TelemetrySink = Some mySink } node
 ```
 
-`create` runs the two one-shot pre-render passes over `node` (its declared state seeds laid under
-`sources.State`, and its fragment registry) and pins every other field to its convenience default.
+`create` runs ONE pre-render walk over `node` (`BindingWalk.collectFactsAndFragments`, Phase 2069) and
+reads two things off it: the declared state seeds, laid under `sources.State`, and the fragment
+registry. It pins every other field to its convenience default.
 Adjust what you need with `with`. Do **not** spell the record out in full: a full literal is a
 construction site that every new field breaks, and the builder is the one place a new field gets its
 default. `RenderContext.inScope scopeId ctx` renders under a runtime scope (below).
@@ -39,6 +40,28 @@ holds the same record, so a posture moves on both tiers together:
 | `CustomHashFloor` | This render's own `Custom` content-hash floor. Raise-only: the stricter of it and the process floor applies. | `None` (the process floor) |
 | `Csp` | The Content-Security-Policy posture: `Permissive` emits inline styles, `Strict nonce` emits generated classes. | `Csp.Permissive` |
 | `Scope` | The runtime scope this tree renders under. | `None` (the root scope) |
+
+## Subtree memoisation (Phase 2547)
+
+`SubtreeMemo: bool`, off in `create`. On, `render` returns the element it built last time for a node it
+has already rendered, when three keys hold: the **same `Node` value** (by identity, not structure), the
+**same `RenderContext`** (by identity: sources, runtime, policy, dispatch and the registries all live in
+it), and the **same store write generation** (`StateStore.generation ()`, advanced by every write,
+removal or reset on the state, filter, selection and query stores, because some kinds read a store at
+construction time). A node rendered under an `ActionSink` is never memoised, because its context is
+re-stamped per node there. React skips reconciling a subtree whose element is referentially the one it
+mounted, so a hit costs nothing in commit either.
+
+**The authoring rule.** The memo pays only a host that keeps unchanged `Node` values across dispatches.
+A view that rebuilds its whole tree from its model on every dispatch gets nothing from it, by design:
+every node is new. Build the subtrees that did not change once, keep them (in the model, or a cache keyed
+on what they depend on), and rebuild only what moved. Measured on a 200-row table that keeps its rows and
+rebuilds its heading: 15 to 16 ms a dispatch without the memo, under 1 ms with it.
+
+```fsharp
+let ctx = { Render.RenderContext.create sources dispatch root with SubtreeMemo = true }
+Render.render ctx root
+```
 
 ## The `RenderContext` axes a host cares about
 

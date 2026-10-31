@@ -96,14 +96,14 @@ let private applySelections<'Msg>
                 | _ -> acc)
             sources
 
-/// Lay `node`'s declared state seeds under `sources.State`: a furnished value
-/// wins over a seed. Zero-cost when the tree declares nothing: the caller's
-/// sources come back unchanged, by reference.
-///
-/// Phase 2474 — and a static table's designed selection under
-/// `sources.Selections` (`applySelections`), from the same walk.
-let apply<'Msg> (node: Node<'Msg>) (sources: BindingResolver.BindingSources) : BindingResolver.BindingSources =
-    let facts = Fuaran.UI.BindingWalk.collect node
+/// Phase 2069 — `apply` over facts the caller already collected, so a context
+/// builder that also wants the fragment registry off the same walk runs one
+/// walk, not two: `BindingWalk.collectFacts` carries both.
+let applyFacts<'Msg>
+    (facts: Fuaran.UI.BindingWalk.TreeBindingFacts)
+    (node: Node<'Msg>)
+    (sources: BindingResolver.BindingSources)
+    : BindingResolver.BindingSources =
     let seeds = Fuaran.UI.BindingWalk.stateSeedsOf facts
 
     let seeded =
@@ -114,3 +114,12 @@ let apply<'Msg> (node: Node<'Msg>) (sources: BindingResolver.BindingSources) : B
                 State = sources.State |> Map.fold (fun acc k v -> Map.add k v acc) seeds }
 
     applySelections node (Fuaran.UI.BindingWalk.selectionSeedsOf facts) seeded
+
+/// Lay `node`'s declared state seeds under `sources.State`: a furnished value
+/// wins over a seed. Zero-cost when the tree declares nothing: the caller's
+/// sources come back unchanged, by reference.
+///
+/// Phase 2474 — and a static table's designed selection under
+/// `sources.Selections` (`applySelections`), from the same walk.
+let apply<'Msg> (node: Node<'Msg>) (sources: BindingResolver.BindingSources) : BindingResolver.BindingSources =
+    applyFacts (Fuaran.UI.BindingWalk.collect node) node sources
