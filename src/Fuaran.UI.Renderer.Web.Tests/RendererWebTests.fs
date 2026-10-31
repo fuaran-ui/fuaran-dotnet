@@ -275,3 +275,80 @@ let tests =
 
               Expect.isFalse (html.Contains "console.warn") "nothing disagrees, so nothing is said"
           } ]
+
+// ─── Phase 2523 — query-bound sources re-resolve on a parameter write ───────
+//
+// The browser-driven path: a write to a request parameter in the State or Filter
+// store re-asks exactly the dependent sources and writes the outcomes to the
+// query store, which the renderer merges over the host's results.
+
+module private ReResolution =
+    open Fuaran.UI
+    open Fuaran.UI.Renderer
+
+    let sources =
+        { BindingSources.empty with
+            ParameterDependents = Map.ofList [ "day", Set.ofList [ "a"; "b" ]; "site", Set.ofList [ "c" ] ] }
+
+    let attach (answer: string -> Result<ResolvedSource, string>) (asked: ResizeArray<string>) =
+        StateStore.reset ()
+        FilterStore.reset ()
+        QueryStore.reset ()
+
+        LocalBindings.attachParameterReResolution
+            (fun () -> sources)
+            (fun _ name ->
+                asked.Add name
+                answer name)
+            (fun _ _ -> [])
+
+    let ok (v: string) : Result<ResolvedSource, string> =
+        Ok
+            { Value = Unchecked.nonNull (box v)
+              Schema = None }
+
+[<Tests>]
+let reResolutionTests =
+    // Sequenced: the State, Filter and Query stores are process-global.
+    testSequenced
+    <| testList
+        "Fuaran.UI.Renderer.LocalBindings (Phase 2523)"
+        [ test "a state write to a parameter re-resolves exactly its dependents into the query store" {
+              let asked = ResizeArray()
+              let stop = ReResolution.attach (fun _ -> ReResolution.ok "fresh") asked
+              Fuaran.UI.Renderer.StateStore.set "day" (Unchecked.nonNull (box "d2"))
+              stop ()
+
+              Expect.equal (List.ofSeq asked) [ "a"; "b" ] "only the sources that depend on day"
+              Expect.equal (Fuaran.UI.Renderer.QueryStore.get "a") (Some(Unchecked.nonNull (box "fresh"))) "a written"
+              Expect.isNone (Fuaran.UI.Renderer.QueryStore.get "c") "c untouched"
+          }
+
+          test "a filter write counts, and an unchanged value does not" {
+              let asked = ResizeArray()
+              let stop = ReResolution.attach (fun _ -> ReResolution.ok "x") asked
+              Fuaran.UI.Renderer.FilterStore.set "site" (Unchecked.nonNull (box "s2"))
+              Fuaran.UI.Renderer.FilterStore.set "site" (Unchecked.nonNull (box "s2"))
+              stop ()
+
+              Expect.equal (List.ofSeq asked) [ "c" ] "asked once: the second write changed nothing"
+          }
+
+          test "a refusal is written as the source's refusal, replacing any value" {
+              let asked = ResizeArray()
+              let stop = ReResolution.attach (fun _ -> Error "no") asked
+              Fuaran.UI.Renderer.StateStore.set "site" (Unchecked.nonNull (box "s2"))
+              stop ()
+
+              match Fuaran.UI.Renderer.QueryStore.get "c" with
+              | Some(:? Fuaran.UI.SourceRefusal as r) -> Expect.equal r { Source = "c"; Reason = "no" } "named refusal"
+              | other -> failtestf "expected a refusal, got %A" other
+          }
+
+          test "after detaching, writes re-resolve nothing" {
+              let asked = ResizeArray()
+              let stop = ReResolution.attach (fun _ -> ReResolution.ok "x") asked
+              stop ()
+              Fuaran.UI.Renderer.StateStore.set "day" (Unchecked.nonNull (box "d3"))
+              Expect.isEmpty asked "detached"
+          } ]

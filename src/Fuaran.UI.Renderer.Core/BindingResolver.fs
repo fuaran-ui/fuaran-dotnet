@@ -593,6 +593,9 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
     // so a filter-store change re-resolves this Query; resolution itself is unchanged.
     | Binding.Query(name, accessor, _) ->
         match Map.tryFind name sources.QueryResults with
+        // Phase 2523 — a source its resolver refused holds the refusal in place of
+        // a value, so the stale result cannot be read; the error names the source.
+        | Some(:? Fuaran.UI.SourceRefusal as refusal) -> Errored(sprintf "Query '%s' refused: %s" name refusal.Reason)
         | Some raw ->
             try
                 Resolved(accessor raw)
