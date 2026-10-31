@@ -757,9 +757,14 @@ let mkContextWith
     // builder runs too), at the server tier's single context choke point, so it
     // lands on every entry point below by construction and the two hosts' first
     // render read an identical `State` map (`docs/SSR.md`).
-    { Sources = StateSeeds.apply node sources
-      // The registry walk the client builds its table with too (Phase 2244).
-      Fragments = FragmentExpansion.collectFragments id Map.empty node
+    // Phase 2069 — one walk: the seeds and the fragment registry both come off
+    // `BindingWalk.collectFacts`, as the client builder has it.
+    let facts, fragments = Fuaran.UI.BindingWalk.collectFactsAndFragments node
+
+    { Sources = StateSeeds.applyFacts facts.Bindings node sources
+      // The registry the client builds its table with too (Phase 2244), folded
+      // from the same walk's declarations.
+      Fragments = FragmentExpansion.registryOfDeclarations id Map.empty fragments
       Customs = customs
       // Phase 1108 — empty by default. A host that holds cards reaches them by
       // name (`mkContextWithCards`), exactly as it reaches a non-default egress

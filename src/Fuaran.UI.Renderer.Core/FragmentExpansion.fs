@@ -271,6 +271,19 @@ let expandNamespaced<'Msg> (prefix: string) (body: Node<'Msg>) : Node<'Msg> =
 /// render, so it is the first walk an untrusted tree meets, and a recursive
 /// walk would overflow on a tree deep enough to make the renderers' depth guard
 /// unreachable. The stack is an F# list so the walk lowers unchanged under Fable.
+/// Phase 2069 — the same registry, folded from the declarations
+/// `BindingWalk.collectFacts` already gathered (last declaration wins, as
+/// below), so a context builder that runs the facts walk for its seeds reads
+/// the registry off it instead of walking again. `RendererAgreementTests` pins
+/// that this and `collectFragments` agree over `FragmentRegistryFixture`.
+let registryOfDeclarations<'Key, 'Msg when 'Key: comparison>
+    (key: string -> 'Key)
+    (acc: Map<'Key, Node<'Msg>>)
+    (declarations: (string * Node<'Msg>) list)
+    : Map<'Key, Node<'Msg>> =
+    declarations
+    |> List.fold (fun registry (name, body) -> Map.add (key name) body registry) acc
+
 let collectFragments<'Key, 'Msg when 'Key: comparison>
     (key: string -> 'Key)
     (acc: Map<'Key, Node<'Msg>>)

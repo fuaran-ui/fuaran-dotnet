@@ -1,4 +1,4 @@
-﻿module Fuaran.UI.Renderer.Render
+module Fuaran.UI.Renderer.Render
 
 // FS0067 ("this type test or downcast will always hold") fires under the Fable
 // pipeline on the DOM downcasts this renderer needs for the .NET pipeline (e.g.
@@ -223,7 +223,61 @@ type RenderContext<'Msg> =
         /// What this render may do: its egress, `Custom` hash floor, CSP
         /// posture and scope, shared in shape with the server context.
         Policy: RenderPolicy
+        /// Phase 2547 — when true, `render` returns the element it built last
+        /// time for a node it has already rendered under THIS context (by
+        /// identity) and the current store write generation, so a host that
+        /// keeps unchanged `Node` values across dispatches pays only for what
+        /// changed. Off by default; a node rendered under an action sink is
+        /// never memoised, because its context is re-stamped per node.
+        SubtreeMemo: bool
     }
+
+/// Phase 2547 — the subtree memo's table: one entry per `Node` value, held
+/// weakly, so a tree a host drops is collected with its elements.
+[<RequireQualifiedAccess>]
+module SubtreeMemo =
+    type Entry =
+        { Context: obj
+          Generation: int
+          Element: ReactElement }
+
+    /// The memo's decision, as a value: the element an entry holds is served
+    /// only under the context it was built for (by identity) and the store
+    /// generation it was built at. Pure, so the .NET suite pins it; the element
+    /// side is exercised in a browser.
+    let hit (entry: Entry option) (context: obj) (generation: int) : ReactElement option =
+        match entry with
+        | Some e when obj.ReferenceEquals(e.Context, context) && e.Generation = generation -> Some e.Element
+        | _ -> None
+
+#if FABLE_COMPILER
+    [<Fable.Core.Emit("new WeakMap()")>]
+    let private newTable () : obj = Fable.Core.Util.jsNative
+
+    [<Fable.Core.Emit("($0.get($1) ?? null)")>]
+    let private tableGet (table: obj) (key: obj) : obj = Fable.Core.Util.jsNative
+
+    [<Fable.Core.Emit("$0.set($1, $2)")>]
+    let private tableSet (table: obj) (key: obj) (value: obj) : unit = Fable.Core.Util.jsNative
+
+    let private table = newTable ()
+
+    let tryGet (node: obj) : Entry option =
+        match tableGet table node with
+        | null -> None
+        | entry -> Some(unbox<Entry> entry)
+
+    let set (node: obj) (entry: Entry) : unit = tableSet table node (box entry)
+#else
+    let private table = System.Runtime.CompilerServices.ConditionalWeakTable<obj, obj>()
+
+    let tryGet (node: obj) : Entry option =
+        match table.TryGetValue node with
+        | true, entry -> Some(unbox<Entry> entry)
+        | _ -> None
+
+    let set (node: obj) (entry: Entry) : unit = table.AddOrUpdate(node, box entry)
+#endif
 
 // ─── Accessibility-attribute emission ──────────────────────────────────────
 //
@@ -311,6 +365,39 @@ module private Emit =
 
     let private unbound: Attach = fun _ _ -> []
 
+    // Phase 2069 — one `dangerouslySetInnerHTML` prop per markup string. React
+    // 19 assigns `innerHTML` whenever the prop OBJECT is new, without comparing
+    // `__html`, so a fresh object per render reparsed every unchanged raw sink
+    // (markdown, chart SVG, drawing) on every re-render: 400 `childList`
+    // mutations per dispatch on a 200-row table of markdown cells. Keyed by the
+    // markup itself, bounded by a clear at the bound (a surface's distinct
+    // markup strings are few; a stream of unique ones is the case the bound is
+    // for).
+#if FABLE_COMPILER
+    let private innerHtmlProps = Dictionary<string, IReactProperty>()
+
+    [<Literal>]
+    let private InnerHtmlPropBound = 4096
+#endif
+
+    let private innerHtml (markup: string) : IReactProperty =
+#if FABLE_COMPILER
+        match innerHtmlProps.TryGetValue markup with
+        | true, p -> p
+        | _ ->
+            if innerHtmlProps.Count >= InnerHtmlPropBound then
+                innerHtmlProps.Clear()
+
+            let p = prop.dangerouslySetInnerHTML (TrustedTypes.html markup)
+            innerHtmlProps[markup] <- p
+            p
+#else
+        // On .NET the element never reaches React, and Feliz's property is a
+        // tuple a typed table cannot hold; the identity the cache exists for is
+        // a browser concern.
+        prop.dangerouslySetInnerHTML (TrustedTypes.html markup)
+#endif
+
     /// Emit a plan, binding its attachment points through `attach` (Phase 2278).
     let rec planWith (attach: Attach) (p: ElementPlan.Plan<ReactElement>) : ReactElement =
         match p with
@@ -327,7 +414,7 @@ module private Emit =
                   | ElementPlan.Content.Empty -> ()
                   | ElementPlan.Content.Text text -> prop.text text
                   | ElementPlan.Content.Children children -> prop.children (children |> List.map (planWith attach))
-                  | ElementPlan.Content.InnerHtml markup -> prop.dangerouslySetInnerHTML (TrustedTypes.html markup) ]
+                  | ElementPlan.Content.InnerHtml markup -> innerHtml markup ]
 
             HtmlHelper.createElement spec.Tag props
 
@@ -1391,19 +1478,26 @@ module RenderContext =
         (dispatch: 'Msg -> unit)
         (node: Node<'Msg>)
         : RenderContext<'Msg> =
-        { Sources = StateSeeds.apply node sources
+        // Phase 2069 — ONE walk: the seeds and the fragment registry both come
+        // off `BindingWalk.collectFacts`, where this used to run the seed walk
+        // and `collectFragments` as two full passes over a tree a host rebuilds
+        // on every dispatch.
+        let facts, fragments = Fuaran.UI.BindingWalk.collectFactsAndFragments node
+
+        { Sources = StateSeeds.applyFacts facts.Bindings node sources
           Runtime = Runtime.diagnostic
           VisAdapter = VisAdapter.noOp<'Msg>
           Dispatch = dispatch
           TelemetrySink = None
           InErrorBoundary = false
-          Fragments = collectFragments Map.empty node
+          Fragments = FragmentExpansion.registryOfDeclarations FragmentId Map.empty fragments
           ExpandingFragments = Set.empty
           SessionContext = Map.empty
           ActionSink = None
           CurrentNodeId = None
           UploadSink = None
-          Policy = RenderPolicy.defaults }
+          Policy = RenderPolicy.defaults
+          SubtreeMemo = false }
 
     /// `ctx` rendered under the runtime scope `scopeId` (Phase 266, §4o): the
     /// scope's `StateStore.forScope` snapshot is merged over `Sources.State`
@@ -5564,6 +5658,29 @@ and private renderMap
 /// `WireLimits.MaxDepth` the subtree is replaced by the shared depth marker and
 /// the omission is reported through `Warn`.
 and render (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactElement =
+    // Phase 2547 — the subtree memo. Three keys, all by identity or by count:
+    // the node, the context, and the store write generation. A node under an
+    // action sink is never memoised: `renderPresent` stamps a per-node copy of
+    // the context there, so no two renders share one.
+    if ctx.SubtreeMemo && ctx.ActionSink.IsNone then
+        let generation = StateStore.generation ()
+
+        match SubtreeMemo.hit (SubtreeMemo.tryGet (box node)) (box ctx) generation with
+        | Some element -> element
+        | None ->
+            let element = renderUnmemoised ctx node
+
+            SubtreeMemo.set
+                (box node)
+                { Context = box ctx
+                  Generation = generation
+                  Element = element }
+
+            element
+    else
+        renderUnmemoised ctx node
+
+and private renderUnmemoised (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactElement =
     let depth = RenderDepth.current () + 1
 
     if depth > Fuaran.UI.WireLimits.MaxDepth then

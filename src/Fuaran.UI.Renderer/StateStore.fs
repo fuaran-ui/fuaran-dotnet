@@ -206,6 +206,16 @@ let inMemoryPersistence () : StatePersistence =
 /// `persistence` is the backing store the declared keys reach (Phase 1532);
 /// the one-argument constructor takes `defaultPersistence`, so every existing
 /// construction site compiles and behaves unchanged.
+/// Phase 2547 — the write generation across EVERY store instance (the default
+/// store, each scope, and the filter, selection and query stores, which wrap
+/// instances of this class): advanced on every write, removal and reset. The
+/// client renderer's subtree memo keys on it, so an element built before a
+/// write is never served after one.
+let mutable private writeGeneration = 0
+
+/// The current write generation (Phase 2547). Monotonic within a process.
+let generation () : int = writeGeneration
+
 type StateStoreInstance(persistPrefix: string, persistence: StatePersistence) =
     let store = Dictionary<string, obj>()
 
@@ -226,6 +236,7 @@ type StateStoreInstance(persistPrefix: string, persistence: StatePersistence) =
     let keyedSubscribers = Dictionary<string, ResizeArray<unit -> unit>>()
 
     let notify (key: string) =
+        writeGeneration <- writeGeneration + 1
         // Iterate copies: a subscriber may unsubscribe during notification.
         for cb in List.ofSeq keylessSubscribers do
             cb ()
@@ -414,6 +425,7 @@ type StateStoreInstance(persistPrefix: string, persistence: StatePersistence) =
 
         declared <- Set.empty
         store.Clear()
+        writeGeneration <- writeGeneration + 1
         keylessSubscribers.Clear()
         keyedSubscribers.Clear()
 
