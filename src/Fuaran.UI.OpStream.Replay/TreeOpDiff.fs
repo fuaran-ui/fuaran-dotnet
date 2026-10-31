@@ -121,19 +121,21 @@ module TreeOpDiff =
     /// The trait ops that take `a`'s envelope to `b`'s, each only when its trait
     /// moved. Closure-safe: the traits are compared by the canonical bytes of `b`
     /// carrying each side's value, and the materialised records make an absent
-    /// accessibility and an empty one the same trait.
-    let private traitEdits<'Msg> (a: Node<'Msg>) (b: Node<'Msg>) : TreeOp<'Msg> list =
+    /// accessibility and an empty one the same trait. `shellB` is
+    /// `NodeIndex.encodeShell b`; a node with no accessibility on either side,
+    /// the common case, pays no further encoding for it.
+    let private traitEdits<'Msg> (a: Node<'Msg>) (b: Node<'Msg>) (shellB: string) : TreeOp<'Msg> list =
         let withAccessibility (n: Node<'Msg>) =
             NodeIndex.encodeShell
                 { b with
                     Accessibility = Some(accessibilityOf n) }
 
-        let withTooltip (n: Node<'Msg>) =
-            NodeIndex.encodeShell { b with Tooltip = n.Tooltip }
-
-        [ if withAccessibility a <> withAccessibility b then
+        [ if
+              (a.Accessibility.IsSome || b.Accessibility.IsSome)
+              && withAccessibility a <> withAccessibility b
+          then
               TreeOp.UpdateAccessibility(NodeId b.Id, accessibilityOf b)
-          if withTooltip a <> withTooltip b then
+          if NodeIndex.encodeShell { b with Tooltip = a.Tooltip } <> shellB then
               TreeOp.UpdateTooltip(NodeId b.Id, b.Tooltip) ]
 
 
@@ -685,7 +687,7 @@ module TreeOpDiff =
                   yield! styleEdit id (styleOf before) (styleOf after)
                   if stateChanged before after shellB then
                       TreeOp.UpdateState(id, stateOf after)
-                  yield! traitEdits before after ]
+                  yield! traitEdits before after shellB ]
             | None ->
                 // Floor: the new kind, holding the children the node holds here.
                 // EditNode preserves the old state·style, so the state is set
@@ -700,14 +702,14 @@ module TreeOpDiff =
                 [ TreeOp.EditNode(id, held)
                   TreeOp.UpdateState(id, stateOf after)
                   yield! styleEdit id (styleOf before) (styleOf after)
-                  yield! traitEdits before after ]
+                  yield! traitEdits before after shellB ]
         else
             // Kind shape identical: only the state, style and traits can have
             // moved, each emitted only if it drifted.
             [ yield! styleEdit id (styleOf before) (styleOf after)
               if stateChanged before after shellB then
                   TreeOp.UpdateState(id, stateOf after)
-              yield! traitEdits before after ]
+              yield! traitEdits before after shellB ]
 
     /// The ids of a subtree as the diff reads it (the node and every free-list
     /// descendant, `NodeIndex.children`) — the ids Core's index keys, so the ids
