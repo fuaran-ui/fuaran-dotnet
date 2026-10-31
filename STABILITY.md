@@ -7870,6 +7870,8 @@ calibration strata), emitted and asserted by `src/Fuaran.UI.Operability.Tests`; 
 **Escape hatch.** `Operate` is a new gated action class, so the escape-hatch inventory gains its entry (an
 agent-initiated resolution dispatching a node's own action; what mediates it; what is not claimed).
 
+**Phase 2522 — additive, rides this slot:** `Fuaran.UI` gains the page document (`PageDocument`, `PageRequest`, `PageProvenance`, the `PageDocument` / `PageRequest` modules), its demanded projection (`DemandedPage`, with `check` against a host's coverage) and the signed read-set (`SignedPage.sign` / `verify`, by recomputation), plus `QueryBinding.checkSources`, `PreEmitValidate.validatePage` / `pageRuleDefects` and two pre-emit defect cases, `PageSourceNotRequest` (FUARAN166) and `PageInlineRows` (FUARAN167) — a host matching `PreEmitDefect` exhaustively adds two arms; the package now references `Fuaran.Core.OpStream` and `Fuaran.Program.Bounded`; no existing wire byte moves (WIRE_FORMAT §32, the new self-enumerated `page-document/` family; `docs/PAGE-DOCUMENT.md`).
+
 ---
 
 ## 0.99.1 — the slot opened after v0.98.1 was released (DRAFT — untagged)

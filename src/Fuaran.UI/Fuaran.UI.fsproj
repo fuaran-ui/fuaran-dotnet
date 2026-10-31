@@ -131,6 +131,11 @@
          form vocabulary (no new node kind, no wire change). Reads Types.fs,
          Fuaran.fs (the form constructor) and StateKeyPolicy.fs. -->
     <Compile Include="SchemaForm.fs" />
+    <!-- Phase 2522: the page document (a tree, its request sidecar and provenance) and
+         its demanded projection, signed and verified by recomputation (WIRE_FORMAT 32).
+         Reads BindingWalk, NodeChildren, KindPolicy and PreEmitValidate's page mode. -->
+    <Compile Include="PageDocument.fs" />
+    <Compile Include="DemandedPage.fs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />
@@ -145,5 +150,10 @@
          dataframe types. Fable-distributed (source-packed), so the Fable client compiles them. -->
     <PackageReference Include="Fuaran.Core.Column" />
     <PackageReference Include="Fuaran.Compute.DataFrame" />
+    <!-- Phase 2522: a page's read-set is signed through Core's IAttestationSink and
+         verified under the bounded program core's ClaimVerifier, the signed-envelope
+         pattern consumed as a package (FuaranProgramVersion). Both Fable-distributed. -->
+    <PackageReference Include="Fuaran.Core.OpStream" />
+    <PackageReference Include="Fuaran.Program.Bounded" />
   </ItemGroup>
 </Project>
