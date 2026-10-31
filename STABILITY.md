@@ -7872,6 +7872,7 @@ agent-initiated resolution dispatching a node's own action; what mediates it; wh
 
 **Phase 2522 — additive, rides this slot:** `Fuaran.UI` gains the page document (`PageDocument`, `PageRequest`, `PageProvenance`, the `PageDocument` / `PageRequest` modules), its demanded projection (`DemandedPage`, with `check` against a host's coverage) and the signed read-set (`SignedPage.sign` / `verify`, by recomputation), plus `QueryBinding.checkSources`, `PreEmitValidate.validatePage` / `pageRuleDefects` and two pre-emit defect cases, `PageSourceNotRequest` (FUARAN166) and `PageInlineRows` (FUARAN167) — a host matching `PreEmitDefect` exhaustively adds two arms; the package now references `Fuaran.Core.OpStream` and `Fuaran.Program.Bounded`; no existing wire byte moves (WIRE_FORMAT §32, the new self-enumerated `page-document/` family; `docs/PAGE-DOCUMENT.md`).
 
+**Also rides this slot, additive (Phase 2523):** `BindingSources` gains `ParameterDependents: Map<string, Set<string>>` (empty by default; `{ BindingSources.empty with … }` sites are untouched, a full record literal gains `ParameterDependents = Map.empty`, FS0764), plus `ParameterChange`, `ResolvedSource`, `SourceRefusal`, `SourceOutcome`, `SourceResolver`, `BindingSources.reResolve` / `applyOutcomes`, `DriverServices.ReResolution` (`create` sets `None`; a full `DriverServices` literal gains it) and `LocalBindings.attachParameterReResolution`; a `Binding.Query` over a refused source resolves `Errored`, naming the source.
 ---
 
 ## 0.99.1 — the slot opened after v0.98.1 was released (DRAFT — untagged)
