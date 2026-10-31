@@ -7818,6 +7818,39 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
+## 0.101.0 — DRAFT
+
+_Untagged. Set by Phase 2527, the first change to ride the slot._
+
+### What rides this slot — Phase 2527 (accessibility and tooltip edits are expressible TreeOps)
+
+**Class: additive, on the op vocabulary.** Packages `Fuaran.UI.Ops.Abstractions`, `Fuaran.UI.Ops`,
+`Fuaran.UI.OpStream.*`, `Fuaran.UI.ServerDriven`, `Fuaran.UI.Telemetry.Abstractions`,
+`Fuaran.UI.Ops.CleanRoom`. A wire event under `WIRE_FORMAT.md` §11; every codec host moves with it.
+
+- **`TreeOp` gains two cases.** `UpdateAccessibility of NodeId * Accessibility` replaces the whole trait, and a
+  record setting no field stores as the absent slot. `UpdateTooltip of NodeId * TextSource option` sets the trait, or
+  clears it on `None`. An exhaustive `match` over `TreeOp` in a consumer reports `FS0025`; add the two arms. Nothing
+  else about an existing case moves. `OpKind` gains the same two cases, appended.
+- **The wire.** `{"$type":"UpdateAccessibility","accessibility":{…},"target":"…"}` and
+  `{"$type":"UpdateTooltip","target":"…","tooltip":…}`. `tooltip` is the one optional member of any op: its absence
+  is the clear. The spec is `WIRE_FORMAT.md` §3.4, the vectors `ops/`, `reject/` and `diff/goldens.json`.
+- **`TreeOpDiff` — what a diff emits changes.** An accessibility-only edit, which diffed to nothing, is one
+  `UpdateAccessibility`. A tooltip-only edit, which fell to an `EditNode` that left the tooltip as it was, is one
+  `UpdateTooltip`. Each follows any style or state edit of the same node. A host asserting on a diff script of such a
+  pair sees the new ops; the script now round-trips.
+- **`DagMerge` — a merge that used to be refused now mints.** A merge taking a branch's accessibility or tooltip was
+  `DeltaNotReplayable`; its delta now reproduces the tree. A merge node's `Op` may carry the two cases, so an engine
+  on an older version refuses that node at decode.
+- **`Lowering`.** Both ops re-render the node (`ReplaceFragment`). A node's traits land on its wrapper unless the
+  kind forwards them, and a granular patch lands on the body, so no attribute patch can reach them. `DomPatch` is
+  unchanged, and a server-driven session now patches an accessibility-only edit it used to drop.
+- **`Generated`.** `encodeAccessibilityJson` joins the public encoders.
+
+`visible` and `fallback` are still set by no op (`TreeOpDiff.fs` documents it).
+
+---
+
 ## 0.100.1 — the slot opened after v0.100.0 was released (DRAFT — untagged)
 
 _`v0.100.0` is TAGGED (2026-10-31), so nothing may ride it: the change below opens the next slot. Class: **additive**

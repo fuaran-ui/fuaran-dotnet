@@ -1050,6 +1050,8 @@ After the initial emission, subsequent turns can edit the tree via `Fuaran.UI.Op
 | **`UpdateStyle`** | Replace `SemanticStyle` wholesale – every field the payload leaves at its default is RESET to it. | "Restyle the callout as exactly: Warning tone, loud emphasis, nothing else." |
 | **`PatchStyle`** | Set only the style fields it names (`{"tone":"Warning"}`); every other style field is left as it is. A default token is an edit (`{"tone":"Default"}` sets it back). | "Change a callout from Tone.Info to Tone.Warning." |
 | **`UpdateState`** | Replace `StateBehaviour` wholesale. | "Update the Skeleton onLoading slot to use a different shape." |
+| **`UpdateAccessibility`** | Replace the node's `accessibility` record wholesale – a member the payload leaves out is cleared, and `{}` removes the trait. | "Describe this chart by its caption node." |
+| **`UpdateTooltip`** | Set the node's `tooltip`; leave the `tooltip` member out to clear it. | "Add a hint to this metric saying when it refreshes." |
 | **`InsertChild`** | **Append** a new child to a parent. | "Add a Markdown summary to the dashboard." |
 | **`RemoveNode`** | Remove a node. | "Drop the deprecated progress bar." |
 | **`MoveNode`** | Move a subtree to a different parent, **appending** it there. | "Move the Metric from the header into the sidebar." |

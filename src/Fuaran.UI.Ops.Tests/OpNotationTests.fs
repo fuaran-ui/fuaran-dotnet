@@ -98,6 +98,8 @@ let private allCases =
       "UpdateStyle"
       "PatchStyle"
       "UpdateState"
+      "UpdateAccessibility"
+      "UpdateTooltip"
       "InsertChild"
       "RemoveNode"
       "MoveNode"

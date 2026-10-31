@@ -93,6 +93,8 @@ let private everyCase: (TreeOp<Msg> * string * NodeId list) list =
       "PatchStyle",
       [ NodeId "k" ]
       TreeOp.UpdateState(NodeId "k", Defaults.stateBehaviour<Msg>), "UpdateState", [ NodeId "k" ]
+      TreeOp.UpdateAccessibility(NodeId "k", Defaults.Accessibility.empty), "UpdateAccessibility", [ NodeId "k" ]
+      TreeOp.UpdateTooltip(NodeId "k", None), "UpdateTooltip", [ NodeId "k" ]
       TreeOp.InsertChild(NodeId "p", leaf "c"), "InsertChild", [ NodeId "p" ]
       TreeOp.RemoveNode(NodeId "k"), "RemoveNode", [ NodeId "k" ]
       TreeOp.MoveNode(NodeId "k", NodeId "p"), "MoveNode", [ NodeId "k"; NodeId "p" ]

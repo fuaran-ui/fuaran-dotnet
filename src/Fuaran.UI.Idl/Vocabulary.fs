@@ -3751,7 +3751,16 @@ let private treeOps: IdlKind list =
       { Tag = "PatchStyle"
         Category = "op"
         Annotations = Annotations.Empty
-        Fields = [ req "style" (TRecord "StyleDelta"); req "target" TStr ] } ]
+        Fields = [ req "style" (TRecord "StyleDelta"); req "target" TStr ] }
+      { Tag = "UpdateAccessibility"
+        Category = "op"
+        Annotations = Annotations.Empty
+        Fields = [ req "accessibility" (TRecord "Accessibility"); req "target" TStr ] }
+      // The one optional op field: an absent `tooltip` is the edit that clears it.
+      { Tag = "UpdateTooltip"
+        Category = "op"
+        Annotations = Annotations.Empty
+        Fields = [ req "target" TStr; opt "tooltip" TS ] } ]
 
 let uiIdl: Idl =
     { Kinds = displayKinds @ layoutKinds @ inputKinds @ visKinds @ metaKinds

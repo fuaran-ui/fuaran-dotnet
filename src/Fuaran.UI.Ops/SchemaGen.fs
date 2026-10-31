@@ -2214,6 +2214,12 @@ let private defs: (string * J) list =
             duCase "UpdateStyle" [ "style"; "target" ] [ "style", ref "SemanticStyle"; "target", str ]
             duCase "PatchStyle" [ "style"; "target" ] [ "style", ref "StyleDelta"; "target", str ]
             duCase "UpdateState" [ "state"; "target" ] [ "state", ref "StateBehaviour"; "target", str ]
+            duCase
+                "UpdateAccessibility"
+                [ "accessibility"; "target" ]
+                [ "accessibility", ref "Accessibility"; "target", str ]
+            // `tooltip` is optional: its absence is the edit that clears the trait.
+            duCase "UpdateTooltip" [ "target" ] [ "target", str; "tooltip", ref "TextSource" ]
             // `position` / `newPosition` are the RETIRED positional slots (Phase
             // 681 removed them, Phase 687 closed the accept-and-ignore window).
             // Forbidden BY NAME for the same reason the `FormField` near misses

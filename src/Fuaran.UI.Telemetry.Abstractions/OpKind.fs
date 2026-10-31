@@ -36,6 +36,9 @@ type OpKind =
     /// Phase 2291. Appended rather than placed beside `UpdateStyle`, so every
     /// existing kind keeps its position in an `OpKind`-ordered aggregate.
     | PatchStyle
+    /// Phase 2527. Appended for the same reason.
+    | UpdateAccessibility
+    | UpdateTooltip
 
 [<RequireQualifiedAccess>]
 module OpKind =
@@ -49,6 +52,8 @@ module OpKind =
         | TreeOp.UpdateStyle _ -> OpKind.UpdateStyle
         | TreeOp.PatchStyle _ -> OpKind.PatchStyle
         | TreeOp.UpdateState _ -> OpKind.UpdateState
+        | TreeOp.UpdateAccessibility _ -> OpKind.UpdateAccessibility
+        | TreeOp.UpdateTooltip _ -> OpKind.UpdateTooltip
         | TreeOp.InsertChild _ -> OpKind.InsertChild
         | TreeOp.RemoveNode _ -> OpKind.RemoveNode
         | TreeOp.MoveNode _ -> OpKind.MoveNode
@@ -73,4 +78,6 @@ module OpKind =
         | OpKind.ReorderChildren -> "ReorderChildren"
         | OpKind.ReplaceRoot -> "ReplaceRoot"
         | OpKind.PatchStyle -> "PatchStyle"
+        | OpKind.UpdateAccessibility -> "UpdateAccessibility"
+        | OpKind.UpdateTooltip -> "UpdateTooltip"
         | OpKind.Batch -> "Batch"

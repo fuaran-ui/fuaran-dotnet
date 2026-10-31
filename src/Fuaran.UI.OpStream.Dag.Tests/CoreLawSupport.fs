@@ -181,7 +181,9 @@ let verticalOps (NodeId target) : (string * TreeOp<obj>) list =
       "UpdateState",
       """{"$type":"UpdateState","state":{"onLoading":{"id":"skel-%T%","kind":{"$type":"Skeleton","rows":3}}},"target":"%T%"}"""
       "ReplaceBinding",
-      """{"$type":"ReplaceBinding","binding":{"$type":"Static","value":99.5},"slot":"Value","target":"%T%"}""" ]
+      """{"$type":"ReplaceBinding","binding":{"$type":"Static","value":99.5},"slot":"Value","target":"%T%"}"""
+      "UpdateAccessibility", """{"$type":"UpdateAccessibility","accessibility":{"role":"status"},"target":"%T%"}"""
+      "UpdateTooltip", """{"$type":"UpdateTooltip","target":"%T%","tooltip":"Updated nightly."}""" ]
     |> List.map (fun (name, json) ->
         match JsonDecode.decodeOp (json.Replace("%T%", target)) with
         | Ok op -> name, op
@@ -277,7 +279,9 @@ let rec footprintErasingVerticalTerm (op: TreeOp<obj>) : Fuaran.Core.Footprint =
     | TreeOp.ReplaceBinding _
     | TreeOp.UpdateStyle _
     | TreeOp.PatchStyle _
-    | TreeOp.UpdateState _ ->
+    | TreeOp.UpdateState _
+    | TreeOp.UpdateAccessibility _
+    | TreeOp.UpdateTooltip _ ->
         { footprintOfTreeOp op with
             UnknownParentWrites = Set.empty }
     | TreeOp.Batch inner ->
@@ -415,7 +419,7 @@ let private laneAncestors = [| NodeId "a"; NodeId "ab"; NodeId "b" |]
 let private genLane (rng: CoreRng.T) : TreeOp<obj> list * CoreRng.T =
     let shape, r1 = CoreRng.intBelow 8 rng
     let k, r2 = CoreRng.intBelow 3 r1
-    let e, r3 = CoreRng.intBelow 5 r2
+    let e, r3 = CoreRng.intBelow 7 r2
 
     let edit () =
         verticalOps laneLeaves[k] |> List.item e |> snd
@@ -468,7 +472,7 @@ let laneGen: Fuaran.Core.LaneGen<EqOp, EqNode> =
 let private genFootprintOp (rng: CoreRng.T) : EqOp * CoreRng.T =
     let shape, r1 = CoreRng.intBelow 10 rng
     let k, r2 = CoreRng.intBelow 3 r1
-    let e, r3 = CoreRng.intBelow 6 r2
+    let e, r3 = CoreRng.intBelow 8 r2
 
     let op, r =
         match shape with
@@ -483,7 +487,7 @@ let private genFootprintOp (rng: CoreRng.T) : EqOp * CoreRng.T =
         | 5
         | 6 ->
             let edit =
-                if e = 5 then
+                if e = 7 then
                     TreeOp.PatchStyle(
                         laneLeaves[k],
                         { StyleDelta.empty with

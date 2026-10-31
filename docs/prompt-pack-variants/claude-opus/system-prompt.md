@@ -329,6 +329,8 @@ TreeOp =
 | UpdateStyle { style:SemanticStyle; target:str }
 | PatchStyle { style:StyleDelta; target:str }
 | UpdateState { state:StateBehaviour; target:str }
+| UpdateAccessibility { accessibility:Accessibility; target:str }
+| UpdateTooltip { target:str; tooltip?:TextSource }
 | InsertChild { child:Node; parentId:str }
 | RemoveNode { target:str }
 | MoveNode { newParentId:str; target:str }

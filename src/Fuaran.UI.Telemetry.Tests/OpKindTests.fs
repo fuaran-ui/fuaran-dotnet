@@ -49,6 +49,8 @@ let tests =
                     ),
                     OpKind.PatchStyle
                     TreeOp.UpdateState(NodeId "k", Defaults.stateBehaviour<Msg>), OpKind.UpdateState
+                    TreeOp.UpdateAccessibility(NodeId "k", Defaults.Accessibility.empty), OpKind.UpdateAccessibility
+                    TreeOp.UpdateTooltip(NodeId "k", None), OpKind.UpdateTooltip
                     TreeOp.InsertChild(NodeId "p", leafChild), OpKind.InsertChild
                     TreeOp.RemoveNode(NodeId "k"), OpKind.RemoveNode
                     TreeOp.MoveNode(NodeId "k", NodeId "p"), OpKind.MoveNode
@@ -70,6 +72,8 @@ let tests =
                     OpKind.UpdateStyle, "UpdateStyle"
                     OpKind.PatchStyle, "PatchStyle"
                     OpKind.UpdateState, "UpdateState"
+                    OpKind.UpdateAccessibility, "UpdateAccessibility"
+                    OpKind.UpdateTooltip, "UpdateTooltip"
                     OpKind.InsertChild, "InsertChild"
                     OpKind.RemoveNode, "RemoveNode"
                     OpKind.MoveNode, "MoveNode"
@@ -96,6 +100,8 @@ let tests =
                     ),
                     Some "k"
                     TreeOp.UpdateState(NodeId "k", Defaults.stateBehaviour<Msg>), Some "k"
+                    TreeOp.UpdateAccessibility(NodeId "k", Defaults.Accessibility.empty), Some "k"
+                    TreeOp.UpdateTooltip(NodeId "k", None), Some "k"
                     TreeOp.InsertChild(NodeId "p", leafChild), Some "p"
                     TreeOp.RemoveNode(NodeId "k"), Some "k"
                     TreeOp.MoveNode(NodeId "k", NodeId "p"), Some "k"
@@ -120,6 +126,8 @@ let tests =
                             Tone = Some ToneVariant.Brand }
                     )
                     TreeOp.UpdateState(NodeId "k", Defaults.stateBehaviour<Msg>)
+                    TreeOp.UpdateAccessibility(NodeId "k", Defaults.Accessibility.empty)
+                    TreeOp.UpdateTooltip(NodeId "k", None)
                     TreeOp.InsertChild(NodeId "p", leafChild)
                     TreeOp.RemoveNode(NodeId "k")
                     TreeOp.MoveNode(NodeId "k", NodeId "p")

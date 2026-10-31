@@ -1505,6 +1505,24 @@ let rec private genOpSized (size: int) : Gen<TreeOp<obj>> =
               return TreeOp.UpdateState(NodeId target, state)
           }
           gen {
+              let! target = genNonEmptyString
+              let! role = Gen.elements [ AriaRole.Status; AriaRole.Alert ]
+              let! describedBy = Gen.oneof [ Gen.constant None; Gen.map Some genNonEmptyString ]
+
+              return
+                  TreeOp.UpdateAccessibility(
+                      NodeId target,
+                      { Defaults.Accessibility.empty with
+                          Role = Some role
+                          DescribedBy = describedBy }
+                  )
+          }
+          gen {
+              let! target = genNonEmptyString
+              let! hint = Gen.oneof [ Gen.constant None; Gen.map Some genNonEmptyString ]
+              return TreeOp.UpdateTooltip(NodeId target, hint |> Option.map TextSource.Literal)
+          }
+          gen {
               let! parent = genNonEmptyString
               let! child = genNodeSized 2
               return TreeOp.InsertChild(NodeId parent, child)

@@ -131,6 +131,17 @@ let tests =
                   "PatchStyle"
           }
 
+          // Phase 2527 — a trait edit carries authored text, so it is content.
+          test "UpdateAccessibility and UpdateTooltip are withheld" {
+              Expect.isTrue
+                  (isWithheld (TreeOp.UpdateAccessibility(NodeId "recital", Fuaran.UI.Defaults.Accessibility.empty)))
+                  "UpdateAccessibility"
+
+              Expect.isTrue
+                  (isWithheld (TreeOp.UpdateTooltip(NodeId "recital", Some(TextSource.Literal "x"))))
+                  "UpdateTooltip"
+          }
+
           // ── Batch withholds if ANY inner op is withheld ──
           test "Batch with one content op withholds the whole batch" {
               let op =

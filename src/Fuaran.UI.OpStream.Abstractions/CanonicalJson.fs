@@ -951,6 +951,22 @@ let private encodeTreeOp<'Msg> (op: TreeOp<'Msg>) : Appender =
                 appendObject
                     sb
                     (case "UpdateState" [ "state", stateBehaviourAppender state; "target", str (nodeIdStr target) ])
+            | TreeOp.UpdateAccessibility(target, accessibility) ->
+                appendObject
+                    sb
+                    (case
+                        "UpdateAccessibility"
+                        [ "accessibility", encodeJVal (Fuaran.UI.Generated.encodeAccessibilityJson accessibility)
+                          "target", str (nodeIdStr target) ])
+            | TreeOp.UpdateTooltip(target, tooltip) ->
+                appendObject
+                    sb
+                    (case
+                        "UpdateTooltip"
+                        [ "target", str (nodeIdStr target)
+                          match tooltip with
+                          | Some text -> "tooltip", encodeJVal (Fuaran.UI.Generated.encodeTextSourceJson text)
+                          | None -> () ])
             | TreeOp.InsertChild(parentId, child) ->
                 appendObject
                     sb

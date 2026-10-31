@@ -1593,6 +1593,41 @@ let all: RejectFixture list =
         IsOp = true
         Description = "UpdateStyle style.direction not a JSON string (Phase 1472)" }
 
+      // ─── Phase 2527 — the two trait ops ───────────────────────────────
+      //
+      // Each payload decodes through the shared decoder of the envelope slot it
+      // writes, so the trait's own refusals are pinned on the op too.
+      { Id = "reject-op-updateaccessibility-missing-accessibility"
+        Json = """{"$type":"UpdateAccessibility","target":"n1"}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.accessibility"
+        IsOp = true
+        Description = "UpdateAccessibility without its record: an absent trait is spelled {} (Phase 2527)" }
+      { Id = "reject-op-updateaccessibility-nonobject"
+        Json = """{"$type":"UpdateAccessibility","accessibility":"Revenue","target":"n1"}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.accessibility"
+        IsOp = true
+        Description = "UpdateAccessibility accessibility not a JSON object (Phase 2527)" }
+      { Id = "reject-op-updateaccessibility-near-miss"
+        Json = """{"$type":"UpdateAccessibility","accessibility":{"ariaLabel":"Revenue"},"target":"n1"}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.accessibility.ariaLabel"
+        IsOp = true
+        Description = "UpdateAccessibility near-miss member, refused as on the envelope (Phase 2527)" }
+      { Id = "reject-op-updatetooltip-missing-target"
+        Json = """{"$type":"UpdateTooltip","tooltip":"x"}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.target"
+        IsOp = true
+        Description = "UpdateTooltip without a target (Phase 2527)" }
+      { Id = "reject-op-updatetooltip-nontext"
+        Json = """{"$type":"UpdateTooltip","target":"n1","tooltip":7}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.tooltip"
+        IsOp = true
+        Description = "UpdateTooltip tooltip not a TextSource (Phase 2527)" }
+
       // ─── Phase 2291 — `PatchStyle`, the field-level style edit ────────
       //
       // The op's payload decodes through the same per-field token decoders as

@@ -179,14 +179,15 @@ module TreeOp =
     ///
     /// `f` answers, for one erased payload, which host message it is — or
     /// `None`, which refuses the whole op by name rather than substituting a
-    /// default. Total over all eleven op cases: the match carries no wildcard,
+    /// default. Total over every op case: the match carries no wildcard,
     /// so a new `TreeOp` case surfaces here as an incomplete-match build
     /// failure rather than escaping the map.
     ///
     /// The `'Msg`-free ops (`UpdateProp`, `ReplaceBinding`, `UpdateStyle`, `PatchStyle`,
-    /// `RemoveNode`, `MoveNode`, `ReorderChildren`) are re-tagged and can never
-    /// refuse — `PropValue`, `Binding<obj>`, `SemanticStyle` and `NodeId` carry
-    /// no message.
+    /// `UpdateAccessibility`, `UpdateTooltip`, `RemoveNode`, `MoveNode`,
+    /// `ReorderChildren`) are re-tagged and can never refuse — `PropValue`,
+    /// `Binding<obj>`, `SemanticStyle`, `Accessibility`, `TextSource` and `NodeId`
+    /// carry no message.
     let rec mapMsg (f: obj -> 'Msg option) (op: TreeOp<obj>) : Result<TreeOp<'Msg>, MapRefusal> =
         match op with
         | TreeOp.EditNode(id, kind) ->
@@ -202,6 +203,10 @@ module TreeOp =
 
         | TreeOp.UpdateState(id, state) ->
             through "UpdateState" (addressed id) "state" f (fun m -> TreeOp.UpdateState(id, NodeMap.mapState m state))
+
+        | TreeOp.UpdateAccessibility(id, accessibility) -> Ok(TreeOp.UpdateAccessibility(id, accessibility))
+
+        | TreeOp.UpdateTooltip(id, tooltip) -> Ok(TreeOp.UpdateTooltip(id, tooltip))
 
         | TreeOp.InsertChild(parentId, child) ->
             through "InsertChild" (addressed parentId) "child" f (fun m ->

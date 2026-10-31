@@ -137,7 +137,7 @@ let private roundTripThroughPort (sink: IDagOpStreamSink<obj>) (ops: TreeOp<obj>
 let private ancestryTree =
     mkBox "root" [ mkBox "g" [ mkBox "p" [ mkMetric "n"; mkMetric "m" ] ]; mkMetric "s" ]
 
-/// Every pair the phase names: each of the five vertical ops on `n`, beside a `RemoveNode` of
+/// Every pair the phase names: each of the vertical ops on `n`, beside a `RemoveNode` of
 /// `n`'s parent and of its grandparent.
 let private ancestorPairs =
     [ for name, edit in verticalOps (NodeId "n") do

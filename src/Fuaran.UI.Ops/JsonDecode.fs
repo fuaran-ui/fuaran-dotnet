@@ -1033,8 +1033,7 @@ let nodeKindNearMiss (discriminator: string) : string option =
 
 /// Every recognised `TreeOp` `$type` discriminator with its WIRE field set, in
 /// the order `decodeTreeOpAstCore` matches them. Each field is `(name, required)`;
-/// every op field is required today, and the flag is carried anyway so a future
-/// optional field is expressible without a shape change to this export.
+/// the one optional op field is `UpdateTooltip.tooltip`, whose absence clears the trait.
 ///
 /// This is the vocabulary, not a description of it: `unknownOpKindHint` below is
 /// projected from it, and a test pins it field-for-field against the corpus's
@@ -1047,6 +1046,8 @@ let opWireFields: (string * (string * bool) list) list =
       "UpdateStyle", [ "target", true; "style", true ]
       "PatchStyle", [ "target", true; "style", true ]
       "UpdateState", [ "target", true; "state", true ]
+      "UpdateAccessibility", [ "target", true; "accessibility", true ]
+      "UpdateTooltip", [ "target", true; "tooltip", false ]
       "InsertChild", [ "parentId", true; "child", true ]
       "RemoveNode", [ "target", true ]
       "MoveNode", [ "target", true; "newParentId", true ]
@@ -9711,6 +9712,37 @@ and private decodeTreeOpAstCore (w: Walk) (path: string) (j: Json) : Result<Tree
 
             match targetR, stateR with
             | Ok target, Ok state -> Ok(TreeOp.UpdateState(target, state))
+            | Error e, _
+            | _, Error e -> Error e
+        | Ok "UpdateAccessibility" ->
+            let targetR =
+                requireField path fields "target" "target NodeId"
+                |> Result.bind (requireString (path + ".target"))
+                |> Result.map NodeId
+
+            let accessibilityR =
+                requireField path fields "accessibility" "Accessibility object"
+                |> Result.bind (decodeAccessibility (path + ".accessibility"))
+
+            match targetR, accessibilityR with
+            | Ok target, Ok accessibility -> Ok(TreeOp.UpdateAccessibility(target, accessibility))
+            | Error e, _
+            | _, Error e -> Error e
+        | Ok "UpdateTooltip" ->
+            let targetR =
+                requireField path fields "target" "target NodeId"
+                |> Result.bind (requireString (path + ".target"))
+                |> Result.map NodeId
+
+            // The node envelope's own slot and the same shared decoder (see
+            // `tooltipR` in the node decoder); an absent member clears the trait.
+            let tooltipR =
+                match tryField fields "tooltip" with
+                | None -> Ok None
+                | Some v -> decodeTextSource (path + ".tooltip") v |> Result.map Some
+
+            match targetR, tooltipR with
+            | Ok target, Ok tooltip -> Ok(TreeOp.UpdateTooltip(target, tooltip))
             | Error e, _
             | _, Error e -> Error e
         | Ok "InsertChild" ->

@@ -48,11 +48,11 @@ open Fuaran.UI.OpStream.Dag.Abstractions
 /// rests on the two being the same tree.
 ///
 /// They can differ, because the delta is `TreeOpDiff.diffBatched` and the
-/// `TreeOp` vocabulary is NOT total over the node record: no op sets
-/// `Accessibility` or `Tooltip`, both of which `TreeMerge` merges as facets of
-/// their own. A merge that took the other branch's accessibility produced a
-/// delta that could not carry it, and every layer downstream — mint, commit,
-/// replay, verify — accepted it in silence.
+/// `TreeOp` vocabulary is NOT total over the node record: no op sets `Visible`
+/// or `Fallback`, which `TreeMerge` merges with the kind. (`Accessibility` and
+/// `Tooltip` were in that set until Phase 2527.) A merge that took such a slot
+/// from the other branch produced a delta that could not carry it, and every
+/// layer downstream — mint, commit, replay, verify — accepted it in silence.
 ///
 /// So the mint verifies its own delta and refuses. The refusal is deliberately
 /// not a fallback to a lossy node: what is lost is a facet a human or an agent

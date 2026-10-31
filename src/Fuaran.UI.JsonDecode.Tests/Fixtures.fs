@@ -7226,6 +7226,41 @@ let opPatchStyleDirectionAuto: TreeOp<obj> =
             Direction = Some TextDirection.Auto }
     )
 
+/// Phase 2527 — the accessibility trait edit: the whole record, in the same
+/// member order the node envelope's `accessibility` slot writes.
+[<OpFixture "UpdateAccessibility">]
+let opUpdateAccessibility: TreeOp<obj> =
+    TreeOp.UpdateAccessibility(
+        NodeId "metric-1",
+        { Defaults.Accessibility.empty with
+            Label = Some(Binding.Static(Some "Revenue, this quarter"))
+            DescribedBy = Some "metric-1-help"
+            Role = Some AriaRole.Status
+            LiveRegion = Some LiveRegionKind.Polite }
+    )
+
+/// Phase 2527 — a record setting no field is on the wire as `{}`: the edit that
+/// removes the trait, since the absent slot has no other spelling on this op.
+[<OpFixture "UpdateAccessibility (Phase 2527 empty record removes the trait)">]
+let opUpdateAccessibilityEmpty: TreeOp<obj> =
+    TreeOp.UpdateAccessibility(NodeId "metric-1", Defaults.Accessibility.empty)
+
+/// Phase 2527 — the tooltip trait edit. A literal hint is the bare string, the
+/// canonical form the node envelope's `tooltip` slot writes.
+[<OpFixture "UpdateTooltip">]
+let opUpdateTooltip: TreeOp<obj> =
+    TreeOp.UpdateTooltip(NodeId "metric-1", Some(TextSource.Literal "Updated nightly."))
+
+/// Phase 2527 — a non-literal `TextSource` rides the same member.
+[<OpFixture "UpdateTooltip (Phase 2527 i18n)">]
+let opUpdateTooltipI18n: TreeOp<obj> =
+    TreeOp.UpdateTooltip(NodeId "metric-1", Some(TextSource.I18n("metric.help", Map.empty)))
+
+/// Phase 2527 — an absent `tooltip` member is the edit that clears the trait.
+[<OpFixture "UpdateTooltip (Phase 2527 absent member clears the trait)">]
+let opUpdateTooltipClear: TreeOp<obj> =
+    TreeOp.UpdateTooltip(NodeId "metric-1", None)
+
 /// Phase 2291 — every member at once, pinning the alphabetical member order
 /// and `direction`'s lower-case token on this arm.
 [<OpFixture "PatchStyle (Phase 2291 all six members)">]

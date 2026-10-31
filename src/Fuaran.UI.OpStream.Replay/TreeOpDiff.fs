@@ -44,7 +44,9 @@ open Fuaran.UI.OpStream.Abstractions
 //      `ReplaceBinding` where they reproduce the kind (propose-then-verify,
 //      below), else the `EditNode` floor — carrying the children the node
 //      HOLDS at that point of the script, which is what Core's `UpdateNode`
-//      keeps — then `UpdateState` when the state moved, and the style edit.
+//      keeps — then `UpdateState` when the state moved, and the style edit;
+//      `UpdateAccessibility` and `UpdateTooltip` last, each when its trait
+//      moved (Phase 2527).
 //    - a style change is ALWAYS field-level (Phase 2291): `PatchStyle` naming
 //      the fields that moved, and the whole-record `UpdateStyle` only when
 //      every one of them did (`styleEdit` below).
@@ -62,24 +64,17 @@ open Fuaran.UI.OpStream.Abstractions
 //  DOM (identical markup); a consumer that cares about closure identity must
 //  know this boundary.
 //
-//  **Node-trait vocabulary gap (documented limitation).** The canonical wire
-//  surface is id + kind + state + style + **accessibility** + **tooltip**, but
-//  the `TreeOp` vocabulary has **no op for either trait** (only
-//  EditNode/UpdateState/UpdateStyle/PatchStyle + structural ops, and `EditNode`
-//  replaces `Kind` alone). So a change to either is **not expressible** and does
-//  not round-trip: an accessibility-only edit diffs to NO ops at all, and a
-//  tooltip-only edit falls to the `EditNode` floor, which reinstates the kind
-//  and leaves the trait as it was. Both traits are author-structural and stable
-//  across a re-render, so the server-driven use case is unaffected — but it is a
-//  real gap, and `ReplaceRoot` is the only op that closes it, wholesale.
+//  **`visible` and `fallback` (documented limitation).** Both are on the
+//  canonical surface and no `TreeOp` sets either, so an edit of one falls to the
+//  `EditNode` floor, which reinstates the kind and leaves the slot as it was.
+//  `ReplaceRoot` is the only op that reaches them, wholesale.
 //
 //  **What is NOT acceptable is a caller that cannot tell.** Phase 1526: the DAG
 //  merge takes this diff as the replay delta of a merge node that commits, by
 //  hash, to the merged tree, so the mint REPLAYS its own delta and refuses the
 //  node on a mismatch (`Fuaran.UI.OpStream.Dag.Merge.DagMerge.buildMergeRecord`),
 //  and `DagReplay` reports the same mismatch on a node an older engine already
-//  wrote. Closing the gap outright means new `TreeOp` cases, which is a wire
-//  event under WIRE_FORMAT §11.
+//  wrote.
 //
 //  (`Motion` / `ExtraAttributes` are omitted from the canonical surface
 //  entirely, so they are invisible to the round-trip — no gap there.)
@@ -119,6 +114,28 @@ module TreeOpDiff =
     let private stateOf<'Msg> (n: Node<'Msg>) : StateBehaviour<'Msg> =
         n.State |> Option.defaultValue Fuaran.UI.Defaults.stateBehaviour
 
+    /// An absent trait is the empty record, as `Apply` stores it.
+    let private accessibilityOf<'Msg> (n: Node<'Msg>) : Accessibility =
+        n.Accessibility |> Option.defaultValue Fuaran.UI.Defaults.Accessibility.empty
+
+    /// The trait ops that take `a`'s envelope to `b`'s, each only when its trait
+    /// moved. Closure-safe: the traits are compared by the canonical bytes of `b`
+    /// carrying each side's value, and the materialised records make an absent
+    /// accessibility and an empty one the same trait.
+    let private traitEdits<'Msg> (a: Node<'Msg>) (b: Node<'Msg>) : TreeOp<'Msg> list =
+        let withAccessibility (n: Node<'Msg>) =
+            NodeIndex.encodeShell
+                { b with
+                    Accessibility = Some(accessibilityOf n) }
+
+        let withTooltip (n: Node<'Msg>) =
+            NodeIndex.encodeShell { b with Tooltip = n.Tooltip }
+
+        [ if withAccessibility a <> withAccessibility b then
+              TreeOp.UpdateAccessibility(NodeId b.Id, accessibilityOf b)
+          if withTooltip a <> withTooltip b then
+              TreeOp.UpdateTooltip(NodeId b.Id, b.Tooltip) ]
+
 
     // ── Own-content comparison (Phase 2063) ─────────────────────────────────
     //
@@ -135,10 +152,10 @@ module TreeOpDiff =
 
     /// `true` when the node's **kind own-fields** changed (the kind
     /// discriminator, or a scalar/binding field of the spec — children,
-    /// state, style and accessibility excluded). Closure-safe: compares the
-    /// childless kinds via canonical JSON with state·style·accessibility
-    /// normalised to `b`'s, so only kind drift (or a tooltip, which no op can
-    /// set) moves the needle. When this is `false`, the kind shape is identical
+    /// state, style and the traits excluded). Closure-safe: compares the
+    /// childless kinds via canonical JSON with state·style·accessibility·tooltip
+    /// normalised to `b`'s, so only kind drift moves the needle. When this is
+    /// `false`, the kind shape is identical
     /// and a wholesale `EditNode` (which would re-send the whole subtree) is
     /// unnecessary. `shellB` is `NodeIndex.encodeShell b`.
     let private kindChanged<'Msg> (a: Node<'Msg>) (b: Node<'Msg>) (shellB: string) : bool =
@@ -146,16 +163,13 @@ module TreeOpDiff =
             { a with
                 State = b.State
                 Style = b.Style
-                Accessibility = b.Accessibility }
+                Accessibility = b.Accessibility
+                Tooltip = b.Tooltip }
         <> shellB
 
     /// `true` when the node's `State` block changed. Substituting `b`'s
-    /// childless kind, style and accessibility into `a` leaves state, id and
-    /// tooltip as the only members that can differ from `b`'s shell; both call
-    /// sites in `lowerUpdate` have already established the tooltip is equal — one
-    /// because `kindChanged` is `false`, the other because the field-level
-    /// patch passed `tryFieldLevel`'s verify, which is `kindChanged` over the
-    /// patched node and no field op sets a tooltip — and `lowerUpdate` is only
+    /// childless kind, style and traits into `a` leaves state and id as the
+    /// only members that can differ from `b`'s shell, and `lowerUpdate` is only
     /// reached for equal ids. So the comparison isolates `State`, whether or
     /// not the kind changed. Closure-safe via canonical JSON; `shellB` is
     /// `NodeIndex.encodeShell b`.
@@ -164,7 +178,8 @@ module TreeOpDiff =
             { a with
                 Kind = b.Kind
                 Style = b.Style
-                Accessibility = b.Accessibility }
+                Accessibility = b.Accessibility
+                Tooltip = b.Tooltip }
         <> shellB
 
     /// Launder `box` to a non-null `obj` (F# 10 nullness: `box` yields
@@ -669,7 +684,8 @@ module TreeOpDiff =
                 [ yield! fieldOps
                   yield! styleEdit id (styleOf before) (styleOf after)
                   if stateChanged before after shellB then
-                      TreeOp.UpdateState(id, stateOf after) ]
+                      TreeOp.UpdateState(id, stateOf after)
+                  yield! traitEdits before after ]
             | None ->
                 // Floor: the new kind, holding the children the node holds here.
                 // EditNode preserves the old state·style, so the state is set
@@ -683,13 +699,15 @@ module TreeOpDiff =
 
                 [ TreeOp.EditNode(id, held)
                   TreeOp.UpdateState(id, stateOf after)
-                  yield! styleEdit id (styleOf before) (styleOf after) ]
+                  yield! styleEdit id (styleOf before) (styleOf after)
+                  yield! traitEdits before after ]
         else
-            // Kind shape identical: only the state and/or style moved (or a trait
-            // no op expresses — see the preamble), each emitted only if it drifted.
+            // Kind shape identical: only the state, style and traits can have
+            // moved, each emitted only if it drifted.
             [ yield! styleEdit id (styleOf before) (styleOf after)
               if stateChanged before after shellB then
-                  TreeOp.UpdateState(id, stateOf after) ]
+                  TreeOp.UpdateState(id, stateOf after)
+              yield! traitEdits before after ]
 
     /// The ids of a subtree as the diff reads it (the node and every free-list
     /// descendant, `NodeIndex.children`) — the ids Core's index keys, so the ids
@@ -775,8 +793,8 @@ module TreeOpDiff =
 
     /// Diff `a` → `b` into an applyable `TreeOp` list, or Core's refusal under
     /// the tier's name for it. Folding an `Ok` script through `Apply.apply`
-    /// against `a` reconstructs `b` (canonical equality, up to the traits no op
-    /// expresses — see the preamble). Two roots with different ids diff to
+    /// against `a` reconstructs `b` (canonical equality, up to the two envelope
+    /// slots no op expresses — see the preamble). Two roots with different ids diff to
     /// `[ ReplaceRoot b ]`, the one op that may change the root id.
     let tryDiff<'Msg> (a: Node<'Msg>) (b: Node<'Msg>) : Result<TreeOp<'Msg> list, ApplyError> =
         if a.Id <> b.Id then

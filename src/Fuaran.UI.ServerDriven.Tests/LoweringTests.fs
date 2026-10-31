@@ -726,3 +726,65 @@ let granularTests =
               Expect.isFalse (lawHolds dropsTheRel true) "an attribute a prop moves, left out"
               Expect.isFalse (lawHolds slotOf false) "a granular patch landing on the wrapper"
           } ]
+
+// ─── Phase 2527: the trait edits on the real renderer ───────────────────────
+
+[<Tests>]
+let traitTests =
+    let heading: Node<obj> = Fuaran.markdown "h" "Revenue"
+    let page (node: Node<obj>) = dash [ node ]
+
+    let lowered (before: Node<obj>) (after: Node<obj>) : DomPatch list =
+        Lowering.lowerScript serverRender before (TreeOpDiff.diff before after)
+
+    testList
+        "Lowering (trait edits)"
+        [ test "an accessibility-only edit arrives as a patch carrying the ARIA attribute" {
+              let labelled =
+                  { heading with
+                      Accessibility =
+                          Some
+                              { Defaults.Accessibility.empty with
+                                  DescribedBy = Some "help-1" } }
+
+              match lowered (page heading) (page labelled) with
+              | [ DomPatch.ReplaceFragment("h", html) ] ->
+                  Expect.stringContains html "aria-describedby=\"help-1\"" "the attribute is in the patch"
+              | other -> failtestf "expected one fragment of the edited node, got %A" other
+
+              match lowered (page labelled) (page heading) with
+              | [ DomPatch.ReplaceFragment("h", html) ] ->
+                  Expect.isFalse (html.Contains "aria-describedby") "removing the trait removes the attribute"
+              | other -> failtestf "expected one fragment of the edited node, got %A" other
+          }
+
+          test "a tooltip-only edit arrives as a patch" {
+              let hinted =
+                  { heading with
+                      Tooltip = Some(TextSource.Literal "Updated nightly.") }
+
+              match lowered (page heading) (page hinted) with
+              | [ DomPatch.ReplaceFragment("h", html) ] ->
+                  Expect.stringContains html "Updated nightly." "the hint is in the patch"
+              | other -> failtestf "expected one fragment of the edited node, got %A" other
+          }
+
+          test "every trait op of one node collapses into its one re-render" {
+              let edited =
+                  { heading with
+                      Accessibility =
+                          Some
+                              { Defaults.Accessibility.empty with
+                                  DescribedBy = Some "help-1" }
+                      Tooltip = Some(TextSource.Literal "Updated nightly.")
+                      Style =
+                          Some
+                              { Defaults.style with
+                                  Tone = ToneVariant.Brand } }
+
+              Expect.hasLength (TreeOpDiff.diff (page heading) (page edited)) 3 "style, accessibility, tooltip"
+
+              match lowered (page heading) (page edited) with
+              | [ DomPatch.ReplaceFragment("h", _) ] -> ()
+              | other -> failtestf "expected one fragment of the edited node, got %A" other
+          } ]

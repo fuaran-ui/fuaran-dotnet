@@ -257,9 +257,8 @@ let private nestedTree () : Node<TestMsg> =
 
 let private tone (t: ToneVariant) (id: NodeId) : TreeOp<TestMsg> = style (fun s -> { s with Tone = t }) id
 
-/// Set a node's `Tooltip` by id. There is no `TreeOp` that sets the trait — the
-/// vocabulary gap `TreeOpDiff` documents — so a fixture that exercises it has to
-/// build its trees directly rather than by applying ops.
+/// Set a node's `Tooltip` by id, building the tree directly: the fixture's bytes
+/// predate `UpdateTooltip` (Phase 2527) and pin the merge, not the op.
 let private withTooltip (targetId: string) (hint: string) (root: Node<TestMsg>) : Node<TestMsg> =
     let rec go (n: Node<TestMsg>) : Node<TestMsg> =
         let self =

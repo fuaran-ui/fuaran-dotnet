@@ -21,7 +21,8 @@ open Fuaran.UI.Renderer
 //  lowering owns the op→patch mapping; the host owns HTML production.
 //
 //  **Floor lowering.** A content op (`EditNode` / `UpdateProp` / `UpdateStyle` /
-//  `PatchStyle` / `UpdateState` / `ReplaceBinding`) re-renders the **changed
+//  `PatchStyle` / `UpdateState` / `UpdateAccessibility` / `UpdateTooltip` /
+//  `ReplaceBinding`) re-renders the **changed
 //  node** and emits `ReplaceFragment(id, html)` — targeted (only that node's
 //  subtree, not the document; the Track-A diff already localised to the changed
 //  node). The floor is always correct, and it is what a write gets unless the
@@ -39,7 +40,9 @@ open Fuaran.UI.Renderer
 //  Everything else keeps the floor: a bound text (its value needs the host's
 //  sources, which this core does not hold), a prop that moves the tag or the
 //  element structure, a URL (`ReplaceBinding`, egress-checked by the host's
-//  render), and every style, state and binding edit.
+//  render), every style, state and binding edit, and both trait edits: a node's
+//  accessibility and tooltip land on its wrapper unless the kind forwards them
+//  to its body, and a granular patch cannot reach the wrapper.
 //
 //  The map is `PropSlot.slotOf`, and it says WHERE a prop lands, never what it
 //  renders as: the value is read off `ElementPlan`, the same plan the server
@@ -217,6 +220,8 @@ let rec lowerOpWith<'Msg>
         | _ -> reRender id
     | TreeOp.UpdateStyle(id, _)
     | TreeOp.PatchStyle(id, _)
+    | TreeOp.UpdateAccessibility(id, _)
+    | TreeOp.UpdateTooltip(id, _)
     | TreeOp.ReplaceBinding(id, _, _) -> reRender id
     // Whole-tree swap: re-render the new root fragment (= replace all content).
     | TreeOp.ReplaceRoot node -> reRender (NodeId node.Id)
