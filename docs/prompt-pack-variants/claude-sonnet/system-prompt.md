@@ -287,9 +287,9 @@ DisplayKind =
 InputKind =
 | Form { fields:FormField[]; onSubmit:Action; submitLabel:TextSource; disabled?:Binding_bool }
 | Filters { items:FilterSpec[] }
-| Button { label:TextSource; onClick:Action; disabled?:Binding_bool; icon?:str; variant?:"Primary"|"Secondary"|"Tertiary"|"Destructive" }
+| Button { label:TextSource; onClick:Action; affordance?:Affordance; disabled?:Binding_bool; icon?:str; variant?:"Primary"|"Secondary"|"Tertiary"|"Destructive" }
 | FileUpload { accept:str[]; label:TextSource; acceptPaste?:bool; capture?:"Camera"|"Microphone"; destination?:str; disabled?:Binding_bool; dropTarget?:bool; maxBytes?:int; maxFiles?:int; multiple?:bool }
-| Select { label:TextSource; source:Binding_list_SelectOption; disabled?:Binding_bool; multiple?:bool; placeholder?:TextSource; value?:Binding_str_choice; values?:Binding_list_str }
+| Select { label:TextSource; source:Binding_list_SelectOption; affordance?:Affordance; disabled?:Binding_bool; multiple?:bool; placeholder?:TextSource; value?:Binding_str_choice; values?:Binding_list_str }
 VisKind =
 | DataGrid { columns:ColumnErased[]; source:Binding_hosted; defaultSort?:{ column:int; direction:"asc"|"desc" }; editStateKey?:str; editable?:bool; exportable?:bool; keepRowsTogether?:bool; pageSize?:int; pageStateKey?:str; reorderable?:bool; repeatHeader?:bool; rowKeyField?:str; rowTotal?:Binding_int; sortStateKey?:str; staticRows?:{ headers:TextSource[]; rows:TextSource[][]; defaultSort?:{ column:int; direction:"asc"|"desc" }; sortable?:bool }; transferInKey?:str; transferOutKey?:str; windowStateKey?:str }
 | Chart { kind:"Line"|"Bar"|"Area"|"Pie"|"Scatter"|"Heatmap"; source:Binding_hosted; xField:str; yFields:str[]; annotations?:ChartAnnotation[]; dataLabels?:"Off"|"Ends"; legendPosition?:"Top"|"Right"|"Bottom"|"None"; stacked?:bool; subtitle?:TextSource; title?:TextSource; valueFormat?:Format; xScale?:"Category"|"Temporal"; xTitle?:TextSource; yTitle?:TextSource }
@@ -614,6 +614,8 @@ TransformStep =
 | intersect { source:object }
 | except { source:object }
 Accessibility { describedBy?:str; hidden?:Binding_bool; label?:Binding_str; labelledBy?:str; liveRegion?:"polite"|"assertive"|"off"; role?:str; speak?:TextSource }
+Affordance { aliases?:AffordanceAlias[]; clearable?:bool; description?:str; neverControllable?:bool; patterns?:str[]; readPatterns?:str[] }
+AffordanceAlias { alias:str; value:str }
 ColumnErased { kind:CellKindErased; label:str; editable?:bool; field?:str; format?:CellFormat; sortable?:bool; width?:ColumnWidth }
 CompareRule { against:Binding_json; op:"eq"|"neq"|"lt"|"lte"|"gt"|"gte" }
 ContentHash { algorithm:str; hash:str; strictness:"StrictReplay"|"AdvisoryWarning"|"Enforced" }
@@ -622,7 +624,7 @@ DrawStyle { emphasis?:Emphasis; fill?:Binding_str; fontFamily?:str; fontSize?:nu
 EffectClass { determinism:"Deterministic"|"Clock"|"Random"|"Network"; hostEffect:"Pure"|"ReadsHost"|"WritesHost" }
 FieldRule { compare?:CompareRule; format?:"email"|"url"|"tel"; maxLength?:int; message?:TextSource; minLength?:int; pattern?:str }
 FilterSpec { kind:FormFieldKind; label:TextSource; name:str }
-FormField { id:str; kind:FormFieldKind; label:TextSource; help?:TextSource; required?:bool; rule?:FieldRule }
+FormField { id:str; kind:FormFieldKind; label:TextSource; affordance?:Affordance; help?:TextSource; required?:bool; rule?:FieldRule }
 GuestChannel { direction:"OutOnly"|"TwoWay"; messageShape?:str }
 MapMarker { label:TextSource; latitude:num; longitude:num }
 MetricComparison { label:TextSource; value:Binding_float; format?:CellFormat; polarity?:TrendPolarity }
