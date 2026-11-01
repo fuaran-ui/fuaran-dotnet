@@ -1,241 +1,536 @@
 module Fuaran.UI.ServerDriven.Tests.DomPatchCorpusTests
 
-// ─── Phase 158 QW6: DomPatch conformance corpus ───────────────────────────────
+// ─── The DomPatch frame contract: the `server-driven/` corpus family ─────────
 //
-// A named golden corpus locking the TreeOp → DomPatch lowering — the cheap gate
-// against silent patch-lowering drift (the DomPatch analogue of the Phase 142
-// SSR class+ARIA parity corpus). Each case is `(name, newTree, ops, expected)`;
-// the corpus asserts `Lowering.lower stubRender newTree ops = expected`. The
-// `DomPatchCorpus` Build target runs this project as a standalone CI gate.
+// Phase 158 QW6 locked the TreeOp → DomPatch lowering with a golden corpus held
+// in this file. Phase 2528 moved those cases, and the ones Phases 2526 and 2527
+// added, into the specification repository as the `server-driven/` family
+// (WIRE_FORMAT.md §33), so the frame is a contract a second host can certify
+// against. This suite holds no golden of its own: it reads the family, and
+// `FUARAN_REGEN=1` emits it.
 //
-// Every lowering branch is represented: the four structural ops lower directly;
-// a content op the prop map does not cover hits the `reRender id` arm (3
-// representatives prove it); Batch flattens; an absent node lowers to nothing.
-// The granular arms (Phase 2526) are the second block: a mapped prop lowers to
-// `SetText` / `SetAttr` / `RemoveAttr` and emits no `ReplaceFragment`.
+//   dom-patch-vectors.json  lowering: `before` + `ops` → `patches`, the script
+//                           lowering (`Lowering.lowerScript`) under the family's
+//                           reference renderer; apply: authored patches. Every
+//                           case also carries the DOM before and after, which the
+//                           browser leg (tests/content-js/browser-leg.mjs) checks
+//                           against the shim.
+//   frame-vectors.json      frames: `FrameWire`'s JSON body and SSE form, byte for
+//                           byte; inbound: the client event bodies `Inbound`
+//                           parses, as the shim sends them.
+//
+// The inputs and the DOMs are authored in the family; every computed member is
+// this host's. The `DomPatchCorpus` Build target still runs this project as a
+// standalone CI gate. An absent corpus FAILS here rather than skipping: the
+// goldens live nowhere else.
 
+open System
+open System.IO
+open System.Text
+open System.Text.Json
+open Microsoft.FSharp.Reflection
 open Expecto
 open Fuaran.Core
 open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.Ops.Types
 open Fuaran.UI.ServerDriven
+open Fuaran.UI.ServerDriven.Validation
 
-let private stubRender (n: Node<obj>) : string =
-    let s = n.Id
-    $"<f id='{s}'/>"
+[<Literal>]
+let private FamilyDir = "server-driven"
 
-let private dash (children: Node<obj> list) : Node<obj> =
-    Fuaran.dashboard
-        "dash"
-        { Defaults.dashboard<obj> with
-            Children = children }
+[<Literal>]
+let private DomPatchFile = "dom-patch-vectors.json"
 
-let private other (children: Node<obj> list) : Node<obj> =
-    Fuaran.dashboard
-        "other"
-        { Defaults.dashboard<obj> with
-            Children = children }
+[<Literal>]
+let private FrameFile = "frame-vectors.json"
 
-let private tree = dash [ Fuaran.markdown "m" "hello"; Fuaran.markdown "n" "world" ]
+/// The family's reference renderer (§33.2): where a fragment goes is the
+/// contract, not what a renderer draws.
+let private referenceRender (n: Node<obj>) : string =
+    let escaped =
+        n.Id.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;")
 
-type private Case =
-    { Name: string
-      Tree: Node<obj>
-      Ops: TreeOp<obj> list
-      Expected: DomPatch list }
+    "<div data-fuaran-node-id=\"" + escaped + "\"></div>"
 
-let private corpus: Case list =
-    [ { Name = "RemoveNode → DomPatch.RemoveNode"
-        Tree = tree
-        Ops = [ TreeOp.RemoveNode(NodeId "m") ]
-        Expected = [ DomPatch.RemoveNode "m" ] }
+// ─── reading ────────────────────────────────────────────────────────────────
 
-      { Name = "ReorderChildren → DomPatch.ReorderChildren (ids → raw strings)"
-        Tree = tree
-        Ops = [ TreeOp.ReorderChildren(NodeId "dash", [ NodeId "n"; NodeId "m" ]) ]
-        Expected = [ DomPatch.ReorderChildren("dash", [ "n"; "m" ]) ] }
+let private parseJson (text: string) : JVal =
+    match Json.parse text with
+    | Ok v -> v
+    | Error e -> failwithf "not JSON: %s" e
 
-      // `Tree` is the POST-apply tree — the DOM index is derived from where the
-      // node landed, since the op no longer carries one.
-      { Name = "MoveNode → identity-preserving DomPatch.MoveNode"
-        Tree = dash [ Fuaran.markdown "n" "world"; other [ Fuaran.markdown "m" "hello" ] ]
-        Ops = [ TreeOp.MoveNode(NodeId "m", NodeId "other") ]
-        Expected = [ DomPatch.MoveNode("m", "other", 0) ] }
+let private members (where: string) (v: JVal) : (string * JVal) list =
+    match v with
+    | JObj fields -> fields
+    | _ -> failwithf "%s: not an object" where
 
-      { Name = "InsertChild → InsertFragment with the rendered child"
-        Tree =
-          dash
-              [ Fuaran.markdown "m" "hello"
-                Fuaran.markdown "n" "world"
-                Fuaran.markdown "fresh" "new" ]
-        Ops = [ TreeOp.InsertChild(NodeId "dash", Fuaran.markdown "fresh" "new") ]
-        Expected = [ DomPatch.InsertFragment("dash", 2, "<f id='fresh'/>") ] }
+/// The object's members, refusing any member the schema does not declare.
+let private closed (where: string) (allowed: string list) (v: JVal) : Map<string, JVal> =
+    let fields = members where v
 
-      { Name = "EditNode → ReplaceFragment of the re-rendered node"
-        Tree = tree
-        Ops = [ TreeOp.EditNode(NodeId "m", (Fuaran.markdown "m" "x").Kind) ]
-        Expected = [ DomPatch.ReplaceFragment("m", "<f id='m'/>") ] }
+    for name, _ in fields do
+        if not (List.contains name allowed) then
+            failwithf "%s: undeclared member '%s'" where name
 
-      { Name = "UpdateProp → ReplaceFragment of the re-rendered node"
-        Tree = tree
-        Ops =
-          [ TreeOp.UpdateProp(NodeId "m", "Text", PropValue.Native(Unchecked.nonNull (box (TextSource.Literal "x")))) ]
-        Expected = [ DomPatch.ReplaceFragment("m", "<f id='m'/>") ] }
+    Map.ofList fields
 
-      { Name = "UpdateStyle → ReplaceFragment of the re-rendered node"
-        Tree = tree
-        Ops = [ TreeOp.UpdateStyle(NodeId "n", Defaults.style) ]
-        Expected = [ DomPatch.ReplaceFragment("n", "<f id='n'/>") ] }
+let private req (where: string) (name: string) (m: Map<string, JVal>) : JVal =
+    match m.TryFind name with
+    | Some v -> v
+    | None -> failwithf "%s: missing member '%s'" where name
 
-      { Name = "Batch flattens to its inner ops, in order"
-        Tree = tree
-        Ops = [ TreeOp.Batch [ TreeOp.RemoveNode(NodeId "m"); TreeOp.MoveNode(NodeId "n", NodeId "dash") ] ]
-        Expected = [ DomPatch.RemoveNode "m"; DomPatch.MoveNode("n", "dash", 1) ] }
+let private str (where: string) (v: JVal) : string =
+    match v with
+    | JStr s -> s
+    | _ -> failwithf "%s: not a string" where
 
-      { Name = "a content op for an absent node lowers to nothing"
-        Tree = tree
-        Ops = [ TreeOp.UpdateStyle(NodeId "ghost", Defaults.style) ]
-        Expected = [] } ]
+let private int32 (where: string) (v: JVal) : int =
+    match v with
+    | JInt n -> n
+    | _ -> failwithf "%s: not a 32-bit integer" where
 
-// ─── Phase 2526: the granular arms ──────────────────────────────────────────
+let private items (where: string) (v: JVal) : JVal list =
+    match v with
+    | JArr xs -> xs
+    | _ -> failwithf "%s: not an array" where
 
-let private literal (s: string) : PropValue = PropValue.Wire(JStr s)
+// ─── the patch, effect and frame shapes (§33.4, §33.5) ──────────────────────
 
-let private heading (text: string) : Node<obj> =
-    Fuaran.heading
-        "h"
-        { Defaults.heading with
-            Text = TextSource.Literal text }
+let private patchJson (p: DomPatch) : JVal = parseJson (DomPatch.encode p)
 
-let private leadHeading: Node<obj> =
-    Fuaran.heading
-        "h"
-        { Defaults.heading with
-            Variant = HeadingVariant.Lead }
+let private decodePatch (where: string) (v: JVal) : DomPatch =
+    let kind = v |> members where |> List.tryFind (fst >> (=) "kind")
 
-let private badge: Node<obj> =
-    Fuaran.badge
-        "b"
-        { Defaults.badge with
-            Label = TextSource.Literal "new" }
+    let s name m =
+        req where name m |> str $"{where}.{name}"
 
-let private button: Node<obj> =
-    Fuaran.button
-        "go"
-        { Defaults.button<obj> with
-            Label = TextSource.Literal "new" }
+    let i name m =
+        req where name m |> int32 $"{where}.{name}"
 
-let private namedLink: Node<obj> =
-    Fuaran.linkSpec
-        "l"
-        { Defaults.link with
-            Label = TextSource.Literal "new"
-            Rel = Some "external" }
+    match kind with
+    | Some(_, JStr "SetAttr") ->
+        let m = closed where [ "kind"; "nodeId"; "name"; "value" ] v
+        DomPatch.SetAttr(s "nodeId" m, s "name" m, s "value" m)
+    | Some(_, JStr "RemoveAttr") ->
+        let m = closed where [ "kind"; "nodeId"; "name" ] v
+        DomPatch.RemoveAttr(s "nodeId" m, s "name" m)
+    | Some(_, JStr "SetText") ->
+        let m = closed where [ "kind"; "nodeId"; "text" ] v
+        DomPatch.SetText(s "nodeId" m, s "text" m)
+    | Some(_, JStr "ReplaceFragment") ->
+        let m = closed where [ "kind"; "nodeId"; "html" ] v
+        DomPatch.ReplaceFragment(s "nodeId" m, s "html" m)
+    | Some(_, JStr "InsertFragment") ->
+        let m = closed where [ "kind"; "parentId"; "position"; "html" ] v
+        DomPatch.InsertFragment(s "parentId" m, i "position" m, s "html" m)
+    | Some(_, JStr "RemoveNode") ->
+        let m = closed where [ "kind"; "nodeId" ] v
+        DomPatch.RemoveNode(s "nodeId" m)
+    | Some(_, JStr "ReorderChildren") ->
+        let m = closed where [ "kind"; "parentId"; "orderedIds" ] v
 
-let private blankLink: Node<obj> =
-    Fuaran.linkSpec
-        "l"
-        { Defaults.link with
-            Target = Some "_blank" }
+        DomPatch.ReorderChildren(
+            s "parentId" m,
+            req where "orderedIds" m
+            |> items $"{where}.orderedIds"
+            |> List.map (str $"{where}.orderedIds")
+        )
+    | Some(_, JStr "MoveNode") ->
+        let m = closed where [ "kind"; "nodeId"; "newParentId"; "position" ] v
+        DomPatch.MoveNode(s "nodeId" m, s "newParentId" m, i "position" m)
+    | _ -> failwithf "%s: no DomPatch kind" where
 
-let private labelledIcon: Node<obj> =
-    Fuaran.iconSpec
-        "i"
-        { Defaults.icon with
-            Icon = "moon"
-            Label = Some "A moon" }
+let private decodeEffect (where: string) (v: JVal) : ClientEffect =
+    let kind = v |> members where |> List.tryFind (fst >> (=) "kind")
 
-let private granularCorpus: Case list =
-    [ { Name = "UpdateProp on a Heading's text → SetText"
-        Tree = heading "new"
-        Ops = [ TreeOp.UpdateProp(NodeId "h", "Text", literal "new") ]
-        Expected = [ DomPatch.SetText("h", "new") ] }
+    let s name m =
+        req where name m |> str $"{where}.{name}"
 
-      { Name = "UpdateProp on a Badge's label → SetText"
-        Tree = badge
-        Ops = [ TreeOp.UpdateProp(NodeId "b", "Label", literal "new") ]
-        Expected = [ DomPatch.SetText("b", "new") ] }
+    match kind with
+    | Some(_, JStr "WriteToClipboard") -> ClientEffect.WriteToClipboard(s "text" (closed where [ "kind"; "text" ] v))
+    | Some(_, JStr "Navigate") ->
+        let m = closed where [ "kind"; "route"; "target" ] v
 
-      { Name = "UpdateProp on a Button's label → SetText"
-        Tree = button
-        Ops = [ TreeOp.UpdateProp(NodeId "go", "Label", literal "new") ]
-        Expected = [ DomPatch.SetText("go", "new") ] }
+        let target =
+            match m.TryFind "target" with
+            | None -> NavigateTarget.Self
+            | Some(JStr "Blank") -> NavigateTarget.Blank
+            | Some _ -> failwithf "%s.target: only \"Blank\" is written" where
 
-      { Name = "UpdateProp on a Link's label → SetText"
-        Tree = namedLink
-        Ops = [ TreeOp.UpdateProp(NodeId "l", "Label", literal "new") ]
-        Expected = [ DomPatch.SetText("l", "new") ] }
+        ClientEffect.Navigate(s "route" m, target)
+    | Some(_, JStr "PushState") -> ClientEffect.PushState(s "route" (closed where [ "kind"; "route" ] v))
+    | Some(_, JStr "Focus") -> ClientEffect.Focus(s "nodeId" (closed where [ "kind"; "nodeId" ] v))
+    | Some(_, JStr "Download") ->
+        let m = closed where [ "kind"; "url"; "name" ] v
+        ClientEffect.Download(s "url" m, s "name" m)
+    | Some(_, JStr "ReadFileBody") ->
+        let m = closed where [ "kind"; "nodeId"; "encoding" ] v
+        ClientEffect.ReadFileBody(s "nodeId" m, s "encoding" m)
+    | Some(_, JStr "Print") ->
+        closed where [ "kind" ] v |> ignore
+        ClientEffect.Print
+    | Some(_, JStr "Confirm") ->
+        let m = closed where [ "kind"; "prompt"; "token" ] v
+        ClientEffect.Confirm(s "prompt" m, s "token" m)
+    | _ -> failwithf "%s: no ClientEffect kind" where
 
-      { Name = "UpdateProp on a Link's rel → SetAttr"
-        Tree = namedLink
-        Ops = [ TreeOp.UpdateProp(NodeId "l", "Rel", literal "external") ]
-        Expected = [ DomPatch.SetAttr("l", "rel", "external") ] }
+let private decodeFrame (where: string) (v: JVal) : Frame =
+    let m = closed where [ "seq"; "patches"; "effects" ] v
 
-      { Name = "UpdateProp clearing a Link's rel → RemoveAttr"
-        Tree = Fuaran.linkSpec "l" Defaults.link
-        Ops = [ TreeOp.UpdateProp(NodeId "l", "Rel", PropValue.Native(Unchecked.defaultof<obj>)) ]
-        Expected = [ DomPatch.RemoveAttr("l", "rel") ] }
+    { Seq = req where "seq" m |> int32 $"{where}.seq"
+      Patches =
+        req where "patches" m
+        |> items $"{where}.patches"
+        |> List.mapi (fun i p -> decodePatch $"{where}.patches[{i}]" p)
+      Effects =
+        req where "effects" m
+        |> items $"{where}.effects"
+        |> List.mapi (fun i e -> decodeEffect $"{where}.effects[{i}]" e) }
 
-      { Name = "UpdateProp on a Link's target moves the rel it decides"
-        Tree = blankLink
-        Ops = [ TreeOp.UpdateProp(NodeId "l", "Target", literal "_blank") ]
-        Expected =
-          [ DomPatch.SetAttr("l", "target", "_blank")
-            DomPatch.SetAttr("l", "rel", "noopener noreferrer") ] }
+/// A payload value as the server types it (§33.5): the wire model has no
+/// `null`, so each value names its `LiveValue` case.
+let private liveValueJson (v: LiveValue) : JVal =
+    match v with
+    | LiveValue.Str s -> JObj [ "$type", JStr "Str"; "value", JStr s ]
+    | LiveValue.Num n when Math.Floor n = n && n >= float Int32.MinValue && n <= float Int32.MaxValue ->
+        JObj [ "$type", JStr "Num"; "value", JInt(int n) ]
+    | LiveValue.Num n -> JObj [ "$type", JStr "Num"; "value", JFloat n ]
+    | LiveValue.Bool b -> JObj [ "$type", JStr "Bool"; "value", JBool b ]
+    | LiveValue.Null -> JObj [ "$type", JStr "Null" ]
 
-      { Name = "UpdateProp on an Icon's label sets the name and clears aria-hidden"
-        Tree = labelledIcon
-        Ops = [ TreeOp.UpdateProp(NodeId "i", "Label", literal "A moon") ]
-        Expected =
-          [ DomPatch.SetAttr("i", "role", "img")
-            DomPatch.SetAttr("i", "aria-label", "A moon")
-            DomPatch.RemoveAttr("i", "aria-hidden") ] }
+/// What a server reads from an inbound body; `"refused"` for a body that is not JSON.
+let private eventJson (body: string) : JVal =
+    match Inbound.tryParseLiveEvent "conn" body with
+    | None -> JStr "refused"
+    | Some e ->
+        JObj
+            [ "nodeId", JStr e.NodeId
+              "event", JStr e.Event
+              "payload", JObj [ for KeyValue(k, v) in e.Payload -> k, liveValueJson v ]
+              "lastSeq", JInt e.LastSeq ]
 
-      { Name = "UpdateProp on a prop the map does not cover keeps the floor"
-        Tree = heading "new"
-        Ops = [ TreeOp.UpdateProp(NodeId "h", "Level", PropValue.Wire(JInt 3)) ]
-        Expected = [ DomPatch.ReplaceFragment("h", "<f id='h'/>") ] } ]
+// ─── emitting ───────────────────────────────────────────────────────────────
 
-/// The arms that read the node as it stood: a script, from its old tree.
-type private ScriptCase =
-    { Name: string
-      Before: Node<obj>
-      Ops: TreeOp<obj> list
-      Expected: DomPatch list }
+let private nodeOf (where: string) (v: JVal) : Node<obj> =
+    match Fuaran.UI.Ops.JsonDecode.decodeNodeObjJVal v with
+    | Ok n -> n
+    | Error e -> failwithf "%s: the node does not decode (%s at %s)" where e.Code e.Path
 
-let private scriptCorpus: ScriptCase list =
-    [ { Name = "a text-only EditNode → SetText"
-        Before = heading "old"
-        Ops = [ TreeOp.EditNode(NodeId "h", (heading "new").Kind) ]
-        Expected = [ DomPatch.SetText("h", "new") ] }
+let private opOf (where: string) (v: JVal) : TreeOp<obj> =
+    match Fuaran.UI.Ops.JsonDecode.decodeOpJVal v with
+    | Ok op -> op
+    | Error e -> failwithf "%s: the op does not decode (%s at %s)" where e.Code e.Path
 
-      { Name = "an EditNode that moves more than the text keeps the floor"
-        Before = heading "old"
-        Ops = [ TreeOp.EditNode(NodeId "h", leadHeading.Kind) ]
-        Expected = [ DomPatch.ReplaceFragment("h", "<f id='h'/>") ] }
+let private domOf (where: string) (v: JVal) : JVal =
+    let m = closed where [ "before"; "after" ] v
+    req where "before" m |> str $"{where}.before" |> ignore
+    req where "after" m |> str $"{where}.after" |> ignore
+    v
 
-      { Name = "the UpdateState the diff pairs with an EditNode costs a stateless node nothing"
-        Before = heading "old"
-        Ops =
-          [ TreeOp.EditNode(NodeId "h", (heading "new").Kind)
-            TreeOp.UpdateState(NodeId "h", Defaults.stateBehaviour<obj>) ]
-        Expected = [ DomPatch.SetText("h", "new") ] }
+let private nameOf (where: string) (m: Map<string, JVal>) =
+    req where "name" m |> str $"{where}.name"
 
-      { Name = "two adjacent re-renders of one node ship the last"
-        Before = heading "old"
-        Ops =
-          [ TreeOp.UpdateProp(NodeId "h", "Level", PropValue.Wire(JInt 3))
-            TreeOp.UpdateStyle(NodeId "h", Defaults.style) ]
-        Expected = [ DomPatch.ReplaceFragment("h", "<f id='h'/>") ] } ]
+/// The patches the reference lowers a case to.
+let private lowered (before: Node<obj>) (ops: TreeOp<obj> list) : DomPatch list =
+    Lowering.lowerScript referenceRender before ops
 
+let private emitLowering (i: int) (v: JVal) : JVal =
+    let where = $"lowering[{i}]"
+    let m = closed where [ "name"; "before"; "ops"; "patches"; "dom" ] v
+    let before = req where "before" m |> nodeOf $"{where}.before"
+
+    let ops =
+        req where "ops" m
+        |> items $"{where}.ops"
+        |> List.mapi (fun j op -> opOf $"{where}.ops[{j}]" op)
+
+    JObj
+        [ "name", JStr(nameOf where m)
+          "before", Generated.encodeNodeJson before
+          "ops",
+          JArr(
+              ops
+              |> List.map (Fuaran.UI.OpStream.Abstractions.CanonicalJson.encodeOp >> parseJson)
+          )
+          "patches", JArr(lowered before ops |> List.map patchJson)
+          "dom", req where "dom" m |> domOf $"{where}.dom" ]
+
+/// `{ "<selector>": <scrollTop> }` or the focus record; carried as authored,
+/// checked for shape.
+let private stateOf (where: string) (allowed: string list) (v: JVal) : JVal =
+    let m = closed where [ "before"; "after" ] v
+
+    for side in [ "before"; "after" ] do
+        let s = req where side m
+
+        if List.isEmpty allowed then
+            for _, top in members $"{where}.{side}" s do
+                int32 $"{where}.{side}" top |> ignore
+        else
+            closed $"{where}.{side}" allowed s |> ignore
+
+    v
+
+let private emitApply (i: int) (v: JVal) : JVal =
+    let where = $"apply[{i}]"
+    let m = closed where [ "name"; "patches"; "dom"; "focus"; "scroll" ] v
+
+    let patches =
+        req where "patches" m
+        |> items $"{where}.patches"
+        |> List.mapi (fun j p -> decodePatch $"{where}.patches[{j}]" p)
+
+    JObj
+        [ yield "name", JStr(nameOf where m)
+          yield "patches", JArr(patches |> List.map patchJson)
+          yield "dom", req where "dom" m |> domOf $"{where}.dom"
+          match m.TryFind "focus" with
+          | Some f -> yield "focus", stateOf $"{where}.focus" [ "element"; "selection"; "scrollTop"; "same" ] f
+          | None -> ()
+          match m.TryFind "scroll" with
+          | Some s -> yield "scroll", stateOf $"{where}.scroll" [] s
+          | None -> () ]
+
+let private emitFrame (i: int) (v: JVal) : JVal =
+    let where = $"frames[{i}]"
+    let m = closed where [ "name"; "frame"; "json"; "sse" ] v
+    let frame = req where "frame" m |> decodeFrame $"{where}.frame"
+
+    JObj
+        [ "name", JStr(nameOf where m)
+          "frame", parseJson (FrameWire.encodeJson frame)
+          "json", JStr(FrameWire.encodeJson frame)
+          "sse", JStr(FrameWire.encodeSse frame) ]
+
+let private emitInbound (i: int) (v: JVal) : JVal =
+    let where = $"inbound[{i}]"
+    let m = closed where [ "name"; "dom"; "seq"; "gesture"; "body"; "event" ] v
+    let body = req where "body" m |> str $"{where}.body"
+    let produced = [ "dom"; "seq"; "gesture" ] |> List.filter m.ContainsKey
+
+    if not (produced.IsEmpty || produced.Length = 3) then
+        failwithf "%s: dom, seq and gesture go together (a body the shim produces) or not at all" where
+
+    JObj
+        [ yield "name", JStr(nameOf where m)
+          for key in produced -> key, m.[key]
+          yield "body", JStr body
+          yield "event", eventJson body ]
+
+let private emitArray (where: string) (emit: int -> JVal -> JVal) (file: Map<string, JVal>) : JVal =
+    JArr(req "file" where file |> items where |> List.mapi emit)
+
+let private domPatchDescription =
+    "The DomPatch frame contract (WIRE_FORMAT.md 33, Phase 2528). lowering: decode `before` (a node) and `ops` (TreeOps) and lower `ops` as a script applied to `before`, each op read against the tree its predecessors built (33.3), every fragment drawn by `renderer`; the patches must equal `patches` in order. Then, in a DOM holding `dom.before`, apply `patches` in order; the DOM must equal `dom.after`. apply: patch lists the lowering does not produce under `renderer` (field addresses, positions inside a child list, absent addresses, and the focus, caret and scroll survival cases); apply `patches` to `dom.before` and compare with `dom.after`. Where `focus` is given, focus `focus.before.element` with its `selection` and `scrollTop` first; afterwards `focus.after.element` holds focus with those values, and is the same element object when `same` is true. Where `scroll` is given, each selector's scrollTop is set first and holds the `after` value afterwards. Emitted by the reference host (fuaran-dotnet, FUARAN_REGEN=1 over Fuaran.UI.ServerDriven.Tests): the inputs and both DOMs are authored, every lowering case's `patches` is the reference's."
+
+let private rendererDescription =
+    "A node renders as <div data-fuaran-node-id=\"ID\"></div>, ID its id with & < > \" written as character references. The family certifies where a fragment goes, not what a renderer draws."
+
+let private frameDescription =
+    "The frame envelope and the client event (WIRE_FORMAT.md 33.5, Phase 2528). frames: `frame` is a frame; `json` is its JSON body and `sse` its Server-Sent-Events form, byte for byte; a client reading `sse` receives one `patch` event whose id is the frame's seq and whose data parses to `frame`. inbound: `body` is a client event; a server reads it as `event`, each payload value naming the case the server types it as (Str, Num, Bool, Null), or refuses it as not JSON (`event` is \"refused\"). Where `dom`, `seq` and `gesture` are given the shim produces `body` itself: in a DOM holding `dom`, after a frame with that seq, the gesture on `gesture.target` sends exactly `body`. Emitted by the reference host (fuaran-dotnet, FUARAN_REGEN=1 over Fuaran.UI.ServerDriven.Tests): the inputs are authored, `frame`, `json`, `sse` and `event` are the reference's."
+
+let private familyDescription =
+    "The DomPatch frame contract (WIRE_FORMAT.md 33, Phase 2528). SELF-ENUMERATED, so the directory is one corpus family (27.7): `server-driven`. dom-patch-vectors.json carries the TreeOp to DomPatch lowering (a tree, an op script, the patches) and the patch application (the DOM before and after, with focus, caret and scroll survival); frame-vectors.json carries the frame envelope (JSON body and SSE form) and the client event bodies. One producer (fuaran-dotnet's lowering) and one applier (fuaran-dotnet's fuaran-live-patch.js) certify on it today (33.6). Emitted by the reference host (fuaran-dotnet, FUARAN_REGEN=1 over Fuaran.UI.ServerDriven.Tests)."
+
+/// A family file as committed: canonical members, indented two spaces, LF,
+/// one trailing newline - the layout the self-enumerated families share.
+let private committedText (value: JVal) : string =
+    use doc = JsonDocument.Parse(Canonical.write Rendering.CrossHost value)
+    use buffer = new MemoryStream()
+
+    let options =
+        JsonWriterOptions(Indented = true, Encoder = Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping)
+
+    do
+        use writer = new Utf8JsonWriter(buffer, options)
+        doc.WriteTo writer
+
+    Encoding.UTF8.GetString(buffer.ToArray()).Replace("\r\n", "\n") + "\n"
+
+let private familyPath (root: string) (file: string) = Path.Combine(root, FamilyDir, file)
+
+let private committed (root: string) (file: string) : Map<string, JVal> =
+    let path = familyPath root file
+
+    if not (File.Exists path) then
+        failwithf "%s is absent - the family's inputs are authored there" path
+
+    File.ReadAllText path |> parseJson |> members file |> Map.ofList
+
+/// Every family file this host emits, from the committed inputs.
+let private emitted (root: string) : (string * string) list =
+    let domPatch = committed root DomPatchFile
+    let frames = committed root FrameFile
+
+    [ DomPatchFile,
+      committedText (
+          JObj
+              [ "version", JInt 1
+                "description", JStr domPatchDescription
+                "renderer", JStr rendererDescription
+                "lowering", emitArray "lowering" emitLowering domPatch
+                "apply", emitArray "apply" emitApply domPatch ]
+      )
+      FrameFile,
+      committedText (
+          JObj
+              [ "version", JInt 1
+                "description", JStr frameDescription
+                "frames", emitArray "frames" emitFrame frames
+                "inbound", emitArray "inbound" emitInbound frames ]
+      )
+      "manifest.json",
+      committedText (
+          JObj
+              [ "version", JInt 1
+                "description", JStr familyDescription
+                "files", JArr [ JStr DomPatchFile; JStr FrameFile ] ]
+      ) ]
+
+// ─── the suite ──────────────────────────────────────────────────────────────
+
+let private regenerating = Environment.GetEnvironmentVariable "FUARAN_REGEN" = "1"
+
+let private opKinds (ops: JVal list) : string list =
+    let rec walk (op: JVal) =
+        [ match op with
+          | JObj fields ->
+              match fields |> List.tryFind (fst >> (=) "$type") with
+              | Some(_, JStr t) -> yield t
+              | _ -> ()
+
+              match fields |> List.tryFind (fst >> (=) "ops") with
+              | Some(_, JArr inner) -> yield! inner |> List.collect walk
+              | _ -> ()
+          | _ -> () ]
+
+    ops |> List.collect walk
+
+let private patchKinds (cases: JVal list) : string list =
+    [ for case in cases do
+          match case |> members "case" |> List.tryFind (fst >> (=) "patches") with
+          | Some(_, JArr ps) ->
+              for p in ps do
+                  match p |> members "patch" |> List.tryFind (fst >> (=) "kind") with
+                  | Some(_, JStr k) -> yield k
+                  | _ -> ()
+          | _ -> () ]
+
+let private unionCases (t: Type) : string list =
+    FSharpType.GetUnionCases t |> Array.map (fun c -> c.Name) |> List.ofArray
+
+let private memberOf (name: string) (case: JVal) : JVal =
+    case |> members "case" |> List.find (fst >> (=) name) |> snd
+
+let private caseName (case: JVal) : string = memberOf "name" case |> str "name"
+
+let private familyTests (root: string) : Test list =
+    let domPatch = committed root DomPatchFile
+    let frames = committed root FrameFile
+    let lowering = req "file" "lowering" domPatch |> items "lowering"
+    let apply = req "file" "apply" domPatch |> items "apply"
+    let frameCases = req "file" "frames" frames |> items "frames"
+    let inbound = req "file" "inbound" frames |> items "inbound"
+
+    let allOps =
+        lowering
+        |> List.collect (fun c -> memberOf "ops" c |> items "ops")
+        |> opKinds
+        |> Set.ofList
+
+    let framePatches =
+        frameCases |> List.map (memberOf "frame") |> patchKinds |> Set.ofList
+
+    let frameEffects =
+        [ for c in frameCases do
+              for e in
+                  memberOf "frame" c
+                  |> members "frame"
+                  |> List.find (fst >> (=) "effects")
+                  |> snd
+                  |> items "effects" do
+                  match e |> members "effect" |> List.tryFind (fst >> (=) "kind") with
+                  | Some(_, JStr k) -> yield k
+                  | _ -> () ]
+        |> Set.ofList
+
+    [ test "the committed family is what this host emits (FUARAN_REGEN=1 rewrites it)" {
+          for file, text in emitted root do
+              let path = familyPath root file
+
+              if regenerating then
+                  Directory.CreateDirectory(Path.GetDirectoryName path |> nonNull) |> ignore
+                  File.WriteAllText(path, text, UTF8Encoding(false))
+
+              Expect.equal (File.ReadAllText path) text $"{path} is current"
+      }
+
+      test "every TreeOp case has a lowering case" {
+          for kind in unionCases typeof<TreeOp<obj>> do
+              Expect.isTrue (allOps.Contains kind) $"no lowering case carries a {kind}"
+      }
+
+      test "every DomPatch kind reaches the applier, and every DomPatch and ClientEffect kind has a frame vector" {
+          let applied = patchKinds (lowering @ apply) |> Set.ofList
+
+          for kind in unionCases typeof<DomPatch> do
+              Expect.isTrue (applied.Contains kind) $"no DOM case applies a {kind}"
+              Expect.isTrue (framePatches.Contains kind) $"no frame vector carries a {kind}"
+
+          for kind in unionCases typeof<ClientEffect> do
+              Expect.isTrue (frameEffects.Contains kind) $"no frame vector carries a {kind}"
+      }
+
+      testList
+          "lowering"
+          [ for i, case in List.indexed lowering ->
+                test (caseName case) {
+                    let where = $"lowering[{i}]"
+                    let before = memberOf "before" case |> nodeOf where
+
+                    let ops = memberOf "ops" case |> items where |> List.map (opOf where)
+
+                    let actual =
+                        lowered before ops
+                        |> List.map patchJson
+                        |> JArr
+                        |> Canonical.write Rendering.CrossHost
+
+                    let expected = memberOf "patches" case |> Canonical.write Rendering.CrossHost
+                    Expect.equal actual expected (caseName case)
+                } ]
+
+      testList
+          "frames"
+          [ for i, case in List.indexed frameCases ->
+                test (caseName case) {
+                    let frame = memberOf "frame" case |> decodeFrame $"frames[{i}]"
+                    Expect.equal (FrameWire.encodeJson frame) (memberOf "json" case |> str "json") "the JSON body"
+                    Expect.equal (FrameWire.encodeSse frame) (memberOf "sse" case |> str "sse") "the SSE form"
+                } ]
+
+      testList
+          "inbound"
+          [ for case in inbound ->
+                test (caseName case) {
+                    let body = memberOf "body" case |> str "body"
+
+                    Expect.equal
+                        (eventJson body |> Canonical.write Rendering.CrossHost)
+                        (memberOf "event" case |> Canonical.write Rendering.CrossHost)
+                        "the event a server reads"
+                } ] ]
+
+/// An absent or unreadable family is ONE failing test, not a suite that cannot
+/// be discovered: the rest of this project still runs and reports.
 [<Tests>]
 let tests =
-    testList
-        "DomPatch conformance corpus (Phase 158 QW6)"
-        [ for case in corpus @ granularCorpus ->
-              test case.Name { Expect.equal (Lowering.lower stubRender case.Tree case.Ops) case.Expected case.Name }
-          for case in scriptCorpus ->
-              test case.Name {
-                  Expect.equal (Lowering.lowerScript stubRender case.Before case.Ops) case.Expected case.Name
-              } ]
+    let cases =
+        try
+            familyTests (Fuaran.Tests.CorpusRoot.find ())
+        with e ->
+            [ test "the server-driven corpus family reads" { failtest e.Message } ]
+
+    testList "DomPatch frame contract (the server-driven corpus family, Phase 158 QW6 / Phase 2528)" cases

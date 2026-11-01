@@ -10,8 +10,9 @@
  * and (4) a `ClientEffect` performer (clipboard / navigate / focus / download /
  * file-read). Target: a few KB minified.
  *
- * Wire contract (matches Fuaran.UI.ServerDriven F# encoders exactly):
- *   server → client frame: { "patches": DomPatch[], "effects": ClientEffect[] }
+ * Wire contract (matches Fuaran.UI.ServerDriven F# encoders exactly; certified by
+ * the specification's `server-driven/` corpus family, WIRE_FORMAT.md §33):
+ *   server → client frame: { "seq": number, "patches": DomPatch[], "effects": ClientEffect[] }
  *   client → server event:  { "nodeId": string, "event": string, "payload": any, "lastSeq": number }
  *   DomPatch.kind ∈ SetAttr | RemoveAttr | SetText | ReplaceFragment |
  *                   InsertFragment | RemoveNode | ReorderChildren | MoveNode
@@ -145,6 +146,34 @@
     if (saved.scrollTop != null) { try { target.scrollTop = saved.scrollTop; target.scrollLeft = saved.scrollLeft; } catch (_) {} }
   }
 
+  // QW5 for a MOVE — relocate the live element so its identity, focus, caret and
+  // scroll survive (MoveNode, ReorderChildren). A plain insertBefore/appendChild
+  // is a removal and an insertion: the browser drops focus and resets the moved
+  // element's scroll. `moveBefore`, the state-preserving move, keeps all of it;
+  // where a browser has none, the focused element, its caret and scroll, and the
+  // moved element's own scroll are put back. (Fallback limit: the scroll of a
+  // non-focused DESCENDANT of the moved element is not restored.)
+  function moveInto(parent, el, before) {
+    if (parent.moveBefore) {
+      try { parent.moveBefore(el, before || null); return; } catch (_) {}
+    }
+    var a = document.activeElement;
+    var held = a && (a === el || el.contains(a)) ? a : null;
+    var sel = null, aTop = 0, aLeft = 0;
+    if (held) {
+      try { if (held.selectionStart != null) sel = [held.selectionStart, held.selectionEnd]; } catch (_) {}
+      aTop = held.scrollTop; aLeft = held.scrollLeft;
+    }
+    var top = el.scrollTop, left = el.scrollLeft;
+    parent.insertBefore(el, before || null);
+    el.scrollTop = top; el.scrollLeft = left;
+    if (held) {
+      try { held.focus(); } catch (_) {}
+      if (sel && held.setSelectionRange) { try { held.setSelectionRange(sel[0], sel[1]); } catch (_) {} }
+      held.scrollTop = aTop; held.scrollLeft = aLeft;
+    }
+  }
+
   // ── DomPatch applier ────────────────────────────────────────────────────
   function applyPatch(p) {
     switch (p.kind) {
@@ -180,18 +209,18 @@
         var parent = byId(p.newParentId);
         if (!e || !parent) break;
         var kids = fuaranChildren(parent).filter(function (k) { return k !== e; });
-        if (p.position >= kids.length || kids.length === 0) parent.appendChild(e);
-        else kids[p.position].parentElement.insertBefore(e, kids[p.position]);
+        if (p.position >= kids.length || kids.length === 0) moveInto(parent, e, null);
+        else moveInto(kids[p.position].parentElement, e, kids[p.position]);
         break;
       }
       case "ReorderChildren": {
         var parent = byId(p.parentId);
         if (!parent) break;
-        // Append each id in target order — appendChild moves the existing node,
-        // so order is fixed without re-render (identity preserved).
+        // Move each id to the end in target order — the existing node moves, so
+        // order is fixed without re-render (identity, focus and scroll preserved).
         for (var i = 0; i < p.orderedIds.length; i++) {
           var child = byId(p.orderedIds[i]);
-          if (child) child.parentElement.appendChild(child);
+          if (child) moveInto(child.parentElement, child, null);
         }
         break;
       }

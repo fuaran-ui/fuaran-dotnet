@@ -346,6 +346,20 @@ for (const c of cases) {
     }
 }
 
+// Phase 2528: the shim's browser leg over the `server-driven/` corpus family runs a
+// real headless Chromium rather than the stub, so it is its own process; it rides
+// this entry point so every gate that runs the harness runs it, in the same mode.
+{
+    const { spawnSync } = await import("node:child_process");
+    const leg = spawnSync(process.execPath, [join(here, "browser-leg.mjs"), ...(selfTest ? ["--self-test"] : [])], {
+        stdio: "inherit"
+    });
+    if (leg.status !== 0) {
+        console.log(`  ✗  the browser leg over the server-driven family (exit ${leg.status})`);
+        failures += 1;
+    }
+}
+
 const label = selfTest ? "content-js harness (go-red self-test)" : "content-js harness";
 if (failures === 0) {
     console.log(`${label}: ${cases.length} case(s), all green.`);
