@@ -134,6 +134,7 @@ ORDER BY id;"""
                 match reader.GetString 6 with
                 | "tree-declared" -> AffordanceProvenance.TreeDeclared
                 | "renderer-synthesised" -> AffordanceProvenance.RendererSynthesised
+                | "agent-operation" -> AffordanceProvenance.AgentOperation
                 | other -> invalidOp (sprintf "ActionInvocationSqliteSink: unknown provenance token '%s'." other)
 
             let path =
@@ -204,6 +205,7 @@ VALUES
                 match invocation.Provenance with
                 | AffordanceProvenance.TreeDeclared -> "tree-declared"
                 | AffordanceProvenance.RendererSynthesised -> "renderer-synthesised"
+                | AffordanceProvenance.AgentOperation -> "agent-operation"
 
             let pathToken =
                 match invocation.Path with

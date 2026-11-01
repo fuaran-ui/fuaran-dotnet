@@ -352,3 +352,158 @@ let reResolutionTests =
               Fuaran.UI.Renderer.StateStore.set "day" (Unchecked.nonNull (box "d3"))
               Expect.isEmpty asked "detached"
           } ]
+
+// ============================================================================
+//  Phase 2559 — the renderer's interpreter, reached by an agent operation.
+//
+//  A runtime whose gate is the subject records what the interpreter asked. The
+//  allowed arm of `Confirm` raises a browser dialogue, so on .NET only its
+//  refusal is observable; the suite here pins that a refused Confirm performs
+//  neither branch.
+// ============================================================================
+
+module private Operation =
+    open Fuaran.Core
+    open Fuaran.UI
+    open Fuaran.UI.Generated
+    open Fuaran.UI.Ops.ActionInvocation
+    open Fuaran.UI.Renderer
+    open Fuaran.UI.Renderer.Runtime
+
+    type Recording(gate: ActionDescriptor -> bool) =
+        let asked = ResizeArray<ActionDescriptor>()
+        let notified = ResizeArray<string>()
+
+        member _.Asked = List.ofSeq asked
+        member _.Notified = List.ofSeq notified
+
+        interface IFuaranRuntime with
+            member _.Call(e, o) = diagnostic.Call(e, o)
+
+            member _.Notify(channel, _) =
+                if channel = "boom" then
+                    failwith "the host effect threw"
+
+                notified.Add channel
+
+            member _.Navigate(r) = diagnostic.Navigate r
+            member _.SetState(k, v) = diagnostic.SetState(k, v)
+            member _.InvokeAiTool(t, a) = diagnostic.InvokeAiTool(t, a)
+            member _.Warn(_) = ()
+            member _.WriteToClipboard(text) = diagnostic.WriteToClipboard text
+            member _.ReadFileBody(f, e, o) = diagnostic.ReadFileBody(f, e, o)
+            member _.TryRenderCustom(m, c, p) = diagnostic.TryRenderCustom(m, c, p)
+            member _.TryGetCustomRenderer(m, c) = diagnostic.TryGetCustomRenderer(m, c)
+
+            member _.TryRenderCustomInScope(s, m, c, p) =
+                diagnostic.TryRenderCustomInScope(s, m, c, p)
+
+            member _.TryGetCustomRendererInScope(s, m, c) =
+                diagnostic.TryGetCustomRendererInScope(s, m, c)
+
+            member _.LayoutObserver = None
+
+            member _.CanDispatch(descriptor) =
+                asked.Add descriptor
+                gate descriptor
+
+            member _.TryLoadGuest(_) = None
+
+    let run (gate: ActionDescriptor -> bool) (action: Action<unit>) =
+        let runtime = Recording gate
+        let sink = ActionInvocationSink.Collector()
+
+        let ctx =
+            { Render.RenderContext.create BindingSources.empty ignore (Fuaran.divider "root") with
+                Runtime = runtime
+                ActionSink = Some(sink :> IActionInvocationSink) }
+
+        let outcome = Render.interpretOperation ctx "mount/n:click" "mount/n" action
+        outcome, runtime, sink.Recorded
+
+    let notify (channel: string) : Action<unit> = Action.Notify(channel, JStr "")
+
+[<Tests>]
+let interpretOperationTests =
+    let open_ = fun (_: Fuaran.UI.Renderer.Runtime.ActionDescriptor) -> true
+
+    testList
+        "Fuaran.UI.Renderer.Render.interpretOperation (Phase 2559)"
+        [ test "an allowed action dispatches and the record says an agent operated this affordance" {
+              let outcome, runtime, records = Operation.run open_ (Operation.notify "toast")
+
+              Expect.equal outcome Fuaran.UI.Ops.ActionInvocation.ActionOutcome.Dispatched "dispatched"
+              Expect.equal runtime.Notified [ "toast" ] "the effect ran"
+              Expect.hasLength records 1 "one record"
+              let record = records.Head
+
+              Expect.equal
+                  record.Provenance
+                  Fuaran.UI.Ops.ActionInvocation.AffordanceProvenance.AgentOperation
+                  "distinguishable from a gesture"
+
+              Expect.equal record.Event (Some "mount/n:click") "the affordance"
+              Expect.equal record.NodeId (Some "mount/n") "the node path"
+          }
+
+          test "Invoke meets the descriptor a gesture's Invoke meets" {
+              let outcome, runtime, _ =
+                  Operation.run (fun _ -> false) (Fuaran.UI.Generated.Action.Invoke("cap.publish", []))
+
+              Expect.equal runtime.Asked [ Fuaran.UI.Renderer.Runtime.ActionDescriptor.AiTool "cap.publish" ] "one gate"
+
+              match outcome with
+              | Fuaran.UI.Ops.ActionInvocation.ActionOutcome.Denied reason ->
+                  Expect.stringContains reason "denied by policy gate" "the gate's own reason"
+              | other -> failtestf "expected Denied, got %A" other
+          }
+
+          test "a refused Confirm performs neither branch" {
+              let action: Fuaran.UI.Generated.Action<unit> =
+                  Fuaran.UI.Generated.Action.Confirm(
+                      Fuaran.UI.Generated.TextSource.Literal "sure?",
+                      Operation.notify "accepted",
+                      Some(Operation.notify "cancelled")
+                  )
+
+              let outcome, runtime, _ =
+                  Operation.run
+                      (function
+                      | Fuaran.UI.Renderer.Runtime.ActionDescriptor.Confirm _ -> false
+                      | _ -> true)
+                      action
+
+              Expect.isEmpty runtime.Notified "the reader was never asked, so neither answer happened"
+
+              Expect.isTrue
+                  (match outcome with
+                   | Fuaran.UI.Ops.ActionInvocation.ActionOutcome.Denied _ -> true
+                   | _ -> false)
+                  "reported as denied"
+          }
+
+          test "a chain with one refused arm runs the rest, and is one Denied record" {
+              let action: Fuaran.UI.Generated.Action<unit> =
+                  Fuaran.UI.Generated.Action.Chain [ Operation.notify "blocked"; Operation.notify "toast" ]
+
+              let outcome, runtime, records =
+                  Operation.run
+                      (function
+                      | Fuaran.UI.Renderer.Runtime.ActionDescriptor.Notify "blocked" -> false
+                      | _ -> true)
+                      action
+
+              Expect.equal runtime.Notified [ "toast" ] "the remaining arm ran"
+              Expect.hasLength records 1 "a chain is one invocation"
+              Expect.equal records.Head.Outcome outcome "the record and the answer agree"
+          }
+
+          test "a throwing effect is a Failed outcome and record, not an exception" {
+              let outcome, _, records = Operation.run open_ (Operation.notify "boom")
+
+              let failed =
+                  Fuaran.UI.Ops.ActionInvocation.ActionOutcome.Failed "the host effect threw"
+
+              Expect.equal outcome failed "returned"
+              Expect.equal (records |> List.map _.Outcome) [ failed ] "recorded once"
+          } ]

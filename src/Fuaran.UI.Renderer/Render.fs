@@ -737,7 +737,7 @@ let treeCallOutcome
         )
 
 /// The recursive action interpreter. NOT the emission point — see
-/// `runActionAs` below and the `Chain` note there.
+/// `runRecorded` below and the `Chain` note there.
 ///
 /// `denied` accumulates every gate refusal observed anywhere in the (possibly
 /// chained) interpretation, so the single OUTER emission point can classify the
@@ -1042,8 +1042,8 @@ let rec private runActionCore (ctx: RenderContext<'Msg>) (denied: string list re
 #warnon "44"
 
 /// **The single client-side emission point** (Phase 889). One record per user
-/// gesture, at the outer entry, with the outcome the interpretation actually
-/// produced.
+/// gesture or agent operation, at the outer entry, with the outcome the
+/// interpretation actually produced.
 ///
 /// Why the outer entry and not inside the interpreter: `runActionCore` recurses
 /// through `Action.Chain`, so emitting inside it would yield N records for one
@@ -1059,29 +1059,37 @@ let rec private runActionCore (ctx: RenderContext<'Msg>) (denied: string list re
 ///
 /// A throwing effect is recorded as `Failed` and then RE-RAISED. Recording must
 /// not change what the renderer propagates to React.
+let private runRecorded
+    (site: ActionInvocation.Site)
+    (ctx: RenderContext<'Msg>)
+    (action: Action<'Msg>)
+    : ActionOutcome =
+    let denied = ref []
+
+    let outcome =
+        try
+            runActionCore ctx denied action
+
+            match List.rev denied.Value with
+            | [] -> ActionOutcome.Dispatched
+            | reasons -> ActionOutcome.Denied(String.concat "; " reasons)
+        with ex ->
+            ActionInvocation.emit ctx.ActionSink site (ActionOutcome.Failed ex.Message) action
+            reraise ()
+
+    ActionInvocation.emit ctx.ActionSink site outcome action
+    outcome
+
 let private runActionAs (provenance: AffordanceProvenance) (ctx: RenderContext<'Msg>) (action: Action<'Msg>) : unit =
     match ctx.ActionSink with
     | None ->
         // Recording off — the shipped default. No ref cell, no site, no record.
         runActionCore ctx (ref []) action
     | Some _ ->
-        let denied = ref []
-
         let site =
             ActionInvocation.clientSite provenance ctx.CurrentNodeId (Map.tryFind promptIdKey ctx.SessionContext)
 
-        let outcome =
-            try
-                runActionCore ctx denied action
-
-                match List.rev denied.Value with
-                | [] -> ActionOutcome.Dispatched
-                | reasons -> ActionOutcome.Denied(String.concat "; " reasons)
-            with ex ->
-                ActionInvocation.emit ctx.ActionSink site (ActionOutcome.Failed ex.Message) action
-                reraise ()
-
-        ActionInvocation.emit ctx.ActionSink site outcome action
+        runRecorded site ctx action |> ignore
 
 /// Interpret a TREE-DECLARED action — the shape every authored handler takes.
 let private runAction (ctx: RenderContext<'Msg>) (action: Action<'Msg>) : unit =
@@ -1097,6 +1105,31 @@ let private runAction (ctx: RenderContext<'Msg>) (action: Action<'Msg>) : unit =
 /// that cannot tell them apart attributes renderer behaviour to the emitter.
 let private runSynthesisedAction (ctx: RenderContext<'Msg>) (action: Action<'Msg>) : unit =
     runActionAs AffordanceProvenance.RendererSynthesised ctx action
+
+/// Phase 2559 — interpret an AGENT-INITIATED action: one an agent reached
+/// through the affordance `affordanceId` on the node at `nodePath`. It runs the
+/// interpreter a user's gesture runs, so every case meets the same gates, and
+/// the record says `AgentOperation`, naming the affordance.
+///
+/// Whether the agent may operate this affordance at all is the caller's
+/// question, asked first (`ActionDescriptor.Operate`). This answers what the
+/// node's own action did.
+///
+/// The outcome is RETURNED because there is no React above an operation to
+/// propagate to: a throwing effect is `Failed` here, as it is in the record.
+let interpretOperation
+    (ctx: RenderContext<'Msg>)
+    (affordanceId: string)
+    (nodePath: string)
+    (action: Action<'Msg>)
+    : ActionOutcome =
+    let site =
+        ActionInvocation.operationSite affordanceId nodePath (Map.tryFind promptIdKey ctx.SessionContext)
+
+    try
+        runRecorded site ctx action
+    with ex ->
+        ActionOutcome.Failed ex.Message
 
 // ─── Control write-back default (Phase 426) ─────────────────────────────────
 //

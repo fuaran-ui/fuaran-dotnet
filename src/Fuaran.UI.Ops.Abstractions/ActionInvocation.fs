@@ -96,10 +96,15 @@ type DispatchPath =
 /// SYNTHESISED by the renderer under Phase 866's rule (the wire names a
 /// capability; the renderer owns the affordance). Both are genuinely "what the
 /// user did"; only one is "what the emitter authored".
+///
+/// `AgentOperation` (Phase 2559) is the third answer: the action is the tree's
+/// own, reached through its affordance, but an agent operated it and no user
+/// gesture happened. It is what lets the log tell the two apart.
 [<RequireQualifiedAccess>]
 type AffordanceProvenance =
     | TreeDeclared
     | RendererSynthesised
+    | AgentOperation
 
 /// One user gesture, as recorded at the dispatch gate.
 type ActionInvocation =
@@ -113,7 +118,9 @@ type ActionInvocation =
         NodeId: string option
         /// The DOM event name, where the path has one in scope. With `NodeId`
         /// this is the affordance's identity — 866 declined to give a gesture a
-        /// wire name, so there is nothing else to record.
+        /// wire name, so there is nothing else to record. An agent operation
+        /// has no DOM event and does have an affordance id, so it records that
+        /// id here (Phase 2559).
         Event: string option
         Outcome: ActionOutcome
         Provenance: AffordanceProvenance
@@ -317,6 +324,15 @@ module ActionInvocation =
           Provenance = provenance
           NodeId = nodeId
           Event = None
+          InteractionId = interactionId }
+
+    /// An agent operation's site (Phase 2559): the client path, with the
+    /// operated affordance's id where a gesture's event name would sit.
+    let operationSite (affordanceId: string) (nodePath: string) (interactionId: string option) : Site =
+        { Path = DispatchPath.ClientRenderer
+          Provenance = AffordanceProvenance.AgentOperation
+          NodeId = Some nodePath
+          Event = Some affordanceId
           InteractionId = interactionId }
 
     /// A server-driven site. Every gesture here arrives as an inbound

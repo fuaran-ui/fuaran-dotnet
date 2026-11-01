@@ -7849,6 +7849,21 @@ _Untagged. Set by Phase 2527, the first change to ride the slot._
 
 `visible` and `fallback` are still set by no op (`TreeOpDiff.fs` documents it).
 
+### What rides this slot — Phase 2559 (an agent operation runs the renderer's interpreter)
+
+**Additive, with one exhaustive-match cost.** Packages `Fuaran.UI.Renderer`, `Fuaran.UI.Ops.Abstractions`,
+`Fuaran.UI.OpStream.Sqlite`.
+
+- **`Render.interpretOperation ctx affordanceId nodePath action : ActionOutcome`** interprets an agent-initiated
+  action through the interpreter a gesture runs, so every action case meets the same gates. It returns the outcome,
+  and a throwing effect is `Failed` rather than an exception. Whether the agent may operate the affordance stays the
+  caller's check, asked first.
+- **`AffordanceProvenance` gains `AgentOperation`.** An exhaustive `match` in a consumer reports `FS0025`; add the arm.
+  `ActionInvocation.operationSite` builds the site: the record's `Event` carries the affordance id and its `NodeId` the
+  node path.
+- **The durable log.** The token is `agent-operation`. `tree-declared` and `renderer-synthesised` do not move, so a log
+  already on disk keeps decoding. An older reader refuses a log holding the new token.
+
 ### What rides this slot — Phase 2069 (one render pass)
 
 **BREAKING, `Fuaran.UI.Renderer`.** `TrustedTypes.createHtml` is removed and `TrustedTypes.html` only
