@@ -36,11 +36,20 @@ a quiet machine: load moves these figures by more than the tolerance.
 | `fanOut` | The store's `Set`, up to the point React starts |
 | `commits` | Profiler commits in the sample |
 | `domChanged` | Whether the container's text moved |
+| `boundaryRenders` | Phase 2530: reader-boundary component renders one write cost, from `Render.ReaderBoundaries.renderCount` |
 
 `isolated` holds what the renderer does not expose in place, measured over the surface's own inputs: `keyWalks`,
 `contextCreate`, `fragmentExpansionCold`, `fragmentExpansionMemo`, `transformEvaluation`, `chartLowering`,
 `chartSinkSanitise`, `constructWhole`, `constructReaders` (the subtrees that depend on the write, under the
 whole tree's context) and `constructWithoutCharts`, which calibrates the chart figures on `sites-24`.
+
+`checks` (Phase 2530) holds, per write operation, `plannedBoundaries` (what
+`Render.ReaderBoundaries.rerenderedBy` says one write of the surface's key re-renders), the fewest and most
+`boundaryRenders` any sample measured, `matchesFresh` (the surface after its last write against a fresh render of the
+same stores) and `focusKept` (focus held in the surface's first input across every write; `null` with no input).
+`drive.mjs` refuses a run whose `writeReactive` measured a count other than the planned one on any sample, differs from
+the fresh render, or lost focus. `writePlain` records the same checks and is expected to fail `matchesFresh` and to count no boundary: the plain
+entry subscribes nothing, which is what makes the probe able to fail.
 
 `mutationsPerUpdate` counts DOM mutation records for one update, tallied by kind, in a separate unsampled pass,
 because an observer is a cost on the path it watches. `FUARAN_BENCH_TRUSTED_TYPES=off` runs with the Trusted

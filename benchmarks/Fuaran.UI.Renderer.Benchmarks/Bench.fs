@@ -165,10 +165,46 @@ let private fullRender (surface: Surface) (samples: int) : obj =
           "commits", float commits
           "elements", float elements ])
 
+/// Phase 2530 — the boundaries one write of the surface's key re-renders, by the
+/// plan the reactive entry places: what `ReaderBoundaries.renderCount` must move by.
+let private plannedBoundaries (surface: Surface) : int =
+    let channel =
+        match surface.Channel with
+        | StateWrite -> Render.StateChannel
+        | FilterWrite -> Render.FilterChannel
+
+    Render.prepareReactive surface.Tree
+    |> snd
+    |> Render.ReaderBoundaries.rerenderedBy channel surface.Key
+    |> List.length
+
+/// Phase 2530 — the markup a FRESH plain render of the tree draws against the
+/// live stores, which a surface that kept up with its writes must equal.
+let private freshMarkup (surface: Surface) : string =
+    let container = newContainer ()
+    let root = createRoot container
+    flushSync (fun () -> root?render (Render.renderWithSources (liveSources ()) dispatch surface.Tree))
+    let markup = container.innerHTML
+    unmount (root, container)
+    markup
+
 let private writeOperation (surface: Surface) (samples: int) (element: ReactElement) : obj =
     let first, second = surface.Values
     let mounted = mount element
     let container = snd mounted
+    let planned = plannedBoundaries surface
+    let mutable fewestBoundaries = System.Int32.MaxValue
+    let mutable mostBoundaries = 0
+
+    // Phase 2530 — focus held in the surface's first input across every write.
+    let focused: Browser.Types.HTMLElement option =
+        match container.querySelector "input" with
+        | null -> None
+        | input ->
+            let el = input :?> Browser.Types.HTMLElement
+            el.focus ()
+            Some el
+
     let mutable useSecond = true
 
     let pick () =
@@ -182,6 +218,7 @@ let private writeOperation (surface: Surface) (samples: int) (element: ReactElem
             let before = container.textContent
             resetProfile ()
             let mutable fannedOut = 0.0
+            let boundariesBefore = Render.ReaderBoundaries.renderCount ()
             let t0 = now ()
 
             flushSync (fun () ->
@@ -194,6 +231,9 @@ let private writeOperation (surface: Surface) (samples: int) (element: ReactElem
             let phase = renderPhaseMs
             let commits = commitCount
             let moved = container.textContent <> before
+            let boundaries = Render.ReaderBoundaries.renderCount () - boundariesBefore
+            fewestBoundaries <- min fewestBoundaries boundaries
+            mostBoundaries <- max mostBoundaries boundaries
             // Off the render path, after the commit: this write's construction, by itself.
             let constructed = construct (liveSources ()) surface.Tree
 
@@ -204,7 +244,16 @@ let private writeOperation (surface: Surface) (samples: int) (element: ReactElem
               "layout", t2 - t1
               "constructOffPath", constructed
               "commits", float commits
+              "boundaryRenders", float boundaries
               "domChanged", (if moved then 1.0 else 0.0) ])
+
+    // Phase 2530 — the surface after its last write against a fresh render of it.
+    let focusKept: obj =
+        match focused with
+        | None -> null
+        | Some el -> box (obj.ReferenceEquals(Browser.Dom.document.activeElement, el))
+
+    let matchesFresh = container.innerHTML = freshMarkup surface
 
     let mutations =
         mutationsOf container (fun () ->
@@ -212,7 +261,17 @@ let private writeOperation (surface: Surface) (samples: int) (element: ReactElem
             flushSync (fun () -> write surface value))
 
     unmount mounted
-    createObj [ "samples" ==> result; "mutations" ==> mutations ]
+
+    createObj
+        [ "samples" ==> result
+          "mutations" ==> mutations
+          "checks"
+          ==> createObj
+                  [ "plannedBoundaries" ==> planned
+                    "fewestBoundaries" ==> fewestBoundaries
+                    "mostBoundaries" ==> mostBoundaries
+                    "matchesFresh" ==> matchesFresh
+                    "focusKept" ==> focusKept ] ]
 
 let private structural (surface: Surface) (samples: int) : obj =
     let sources = liveSources ()

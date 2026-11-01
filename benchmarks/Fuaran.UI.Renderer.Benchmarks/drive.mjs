@@ -84,6 +84,7 @@ const surfaces = raw.map((s) => {
     fullRender: summarise(s.fullRender),
     ...Object.fromEntries(mounted.map((op) => [op, summarise(s[op].samples)])),
     mutationsPerUpdate: Object.fromEntries(mounted.map((op) => [op, s[op].mutations])),
+    checks: Object.fromEntries(["writeReactive", "writePlain"].map((op) => [op, s[op].checks])),
   };
 });
 
@@ -95,6 +96,13 @@ for (const s of surfaces) {
   if (s.writeReactive.commits.min < 1) refuse.push(`${s.surface}: a reactive write re-rendered nothing`);
   if (s.writeReactive.domChanged.min < 1) refuse.push(`${s.surface}: a reactive write left the DOM unchanged`);
   if (s.structural.elementsMoved.min < 1) refuse.push(`${s.surface}: the structural change moved no element`);
+  // Phase 2530: a reactive write re-renders exactly the boundaries that read the key, every sample, and the
+  // surface it leaves is the surface a fresh render of the same stores draws.
+  const r = s.checks.writeReactive;
+  if (r.fewestBoundaries !== r.plannedBoundaries || r.mostBoundaries !== r.plannedBoundaries)
+    refuse.push(`${s.surface}: a reactive write re-rendered ${r.fewestBoundaries}..${r.mostBoundaries} boundaries, planned ${r.plannedBoundaries}`);
+  if (!r.matchesFresh) refuse.push(`${s.surface}: the reactive surface differs from a fresh render of the same stores`);
+  if (r.focusKept === false) refuse.push(`${s.surface}: a reactive write moved focus out of the surface's first input`);
 }
 if (!environment.crossOriginIsolated) refuse.push("the page is not cross-origin isolated: the clock is coarse");
 if (!environment.gc) refuse.push("gc is not exposed: samples would carry each other's garbage");
