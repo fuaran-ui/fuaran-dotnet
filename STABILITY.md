@@ -7864,6 +7864,22 @@ _Untagged. Set by Phase 2527, the first change to ride the slot._
 - **The durable log.** The token is `agent-operation`. `tree-declared` and `renderer-synthesised` do not move, so a log
   already on disk keeps decoding. An older reader refuses a log holding the new token.
 
+### What rides this slot — Phase 2528 (the DomPatch frame is a certified contract)
+
+**Additive; no vocabulary change. Two behaviour corrections.** Packages `Fuaran.UI.ServerDriven` (the lowering and
+the shim it ships).
+
+- **The contract moved into the specification.** The `TreeOp → DomPatch` goldens, the frame envelope and the client
+  event bodies are the `server-driven/` corpus family (`WIRE_FORMAT.md` §33). `DomPatch`, `ClientEffect`, `Frame`
+  and their encoders are unchanged, byte for byte; the family now pins them.
+- **`Lowering` — a `ReplaceRoot` under a new root id now reaches the page.** In a script (`lowerScript`, what the
+  driver calls) the `ReplaceFragment` is addressed at the root the page holds, not the new root's id, which the page
+  did not hold, so the shim found nothing and the swap was dropped. Same-id swaps and `lower` are unchanged.
+- **`fuaran-live-patch.js` — a move keeps focus, caret and scroll.** `MoveNode` and `ReorderChildren` move the live
+  element with the browser's `moveBefore`, or, where it has none, insert it and put back the focused element, its
+  caret and scroll, and the moved element's scroll. A plain DOM move blurred the focused field and reset scroll,
+  which the claim beside `DomPatch.MoveNode` said it did not.
+
 ### What rides this slot — Phase 2069 (one render pass)
 
 **BREAKING, `Fuaran.UI.Renderer`.** `TrustedTypes.createHtml` is removed and `TrustedTypes.html` only

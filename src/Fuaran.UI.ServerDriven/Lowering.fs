@@ -223,8 +223,13 @@ let rec lowerOpWith<'Msg>
     | TreeOp.UpdateAccessibility(id, _)
     | TreeOp.UpdateTooltip(id, _)
     | TreeOp.ReplaceBinding(id, _, _) -> reRender id
-    // Whole-tree swap: re-render the new root fragment (= replace all content).
-    | TreeOp.ReplaceRoot node -> reRender (NodeId node.Id)
+    // Whole-tree swap: re-render the new root fragment (= replace all content),
+    // addressed at the root the page HOLDS — a new root may carry another id
+    // (Phase 2528; the `server-driven/` family's ReplaceRoot cases).
+    | TreeOp.ReplaceRoot node ->
+        match oldTree, findNode (NodeId node.Id) newTree with
+        | Some old, Some fresh -> [ DomPatch.ReplaceFragment(old.Id, renderFragment fresh) ]
+        | _ -> reRender (NodeId node.Id)
     | TreeOp.Batch ops -> ops |> List.collect (lowerOpWith slotOf renderFragment oldTree newTree)
 
 /// Lower one `TreeOp` to its `DomPatch`es. `renderFragment` renders a node's

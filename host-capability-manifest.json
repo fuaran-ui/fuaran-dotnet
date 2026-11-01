@@ -83,6 +83,7 @@
     "repair": "covered",
     "row-encode": "covered",
     "sanitization": "covered",
+    "server-driven": "covered",
     "stored-emissions": "covered",
     "style-observer": "covered",
     "teleport-decode": "covered",

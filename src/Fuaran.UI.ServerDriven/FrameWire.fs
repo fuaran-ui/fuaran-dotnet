@@ -15,6 +15,11 @@ module Fuaran.UI.ServerDriven.FrameWire
 //  `patches` / `effects` (see `content/fuaran-live-patch.js`). The `id:` line
 //  carries the op sequence so `EventSource` replays `Last-Event-ID` on
 //  reconnect (→ `LiveConnection.Resync`).
+//
+//  Both forms are a contract (Phase 2528): the specification's `server-driven/`
+//  corpus family (WIRE_FORMAT.md §33.5, `frame-vectors.json`) holds them byte for
+//  byte for every patch and effect kind, and a change here without a family
+//  change fails `DomPatchCorpusTests`.
 // ============================================================================
 
 /// The frame's JSON body: `{ "seq": N, "patches": [...], "effects": [...] }`,
