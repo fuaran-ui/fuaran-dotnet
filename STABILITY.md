@@ -7887,6 +7887,25 @@ gains the slots only the reactive walk had: `Media` track `Src` and `Label`, `Me
 server's stylesheet now gets what the client's sink used to do. `useSelectionKeys` no longer resubscribes
 on every change.
 
+### What rides this slot — Phase 2530 (a reactive write re-renders only its readers)
+
+**Class: additive.** Packages `Fuaran.UI`, `Fuaran.UI.Renderer`. No signature changes; no record gains a field.
+
+- **Surface — additive, `Fuaran.UI`.** `BindingWalk.reactiveRenderFacts` (the render pass with the reader
+  projection beside it, one walk), `BindingWalk.ReaderEntry<'Msg>`, `BindingWalk.readerMap` (the key-to-reader map by
+  node id) and `BindingWalk.unionKeys`.
+- **Surface — additive, `Fuaran.UI.Renderer`.** `Render.ReaderBoundary<'Msg>`, `Render.ReaderBoundaries.plan` /
+  `rerenderedBy` / `renderCount`, and `Render.prepareReactive`.
+- **Behaviour — `renderStateReactive`.** A write re-renders the nodes that read the written key, behind their own
+  boundaries, where it re-rendered the whole surface; the surface subscribes to nothing. A node's keys are what it
+  READS: a Transform param the pipeline does not reference no longer subscribes. A node now also re-renders when a key
+  its action slot reads is written, so its handler resolves the current value. The markup after a write is unchanged
+  (a fresh render of the same stores draws the same). A host that relied on a write repainting a node that reads none
+  of the written keys — a `Static` subtree, an unreferenced param's chip — sees it no longer repaint. On .NET nothing
+  moves: the entry is `renderWithSources` there.
+- **Behaviour — none elsewhere.** `renderFacts`, `collectReactiveKeys` and every analysis rule read the declared
+  projection exactly as before.
+
 ---
 
 ## 0.100.1 — the slot opened after v0.100.0 was released (DRAFT — untagged)

@@ -100,7 +100,36 @@ Two wrappers compose over the above rather than adding axes:
 | Entry | What it adds |
 |---|---|
 | `renderWithTheme theme …` | `renderWithSources` plus a `<style>` element carrying the `Theme`'s CSS-variable bundle. Same pinned axes as `renderWithSources`. |
-| `renderStateReactive` | `renderWithSources` plus a subscription to every State / Filter / Selection / Query key the tree reads, so a store write re-renders the whole surface. Fable-only behaviour; on .NET it is `renderWithSources`. |
+| `renderStateReactive` | `renderWithSources` plus subscriptions, so a State / Filter / Selection / Query write re-renders every node that reads the written key, and only those (Phase 2530; see below). Fable-only behaviour; on .NET it is `renderWithSources`. |
+
+### What a write re-renders under `renderStateReactive`
+
+Since Phase 2530 the reactive entry re-renders the **readers** of a written key, not the surface. Each node that
+reads a reactive key renders behind its own component boundary, subscribed to the keys that node reads; the surface
+component subscribes to nothing and renders once per host render. One pass over the tree
+(`BindingWalk.reactiveRenderFacts`) yields the keys and the readers; `Render.prepareReactive` turns them into the
+boundaries (`ReaderBoundaries.plan`). What decides a node's keys:
+
+- **What it reads, not what it declares.** A Transform or Expr param the pipeline does not reference reads nothing, so
+  a write to it re-renders nothing. Its seed still seeds.
+- **Every slot the render resolves**, its action slots included: a handler resolves against the context its node was
+  last rendered under, so a node re-renders when a key its action reads moves.
+- **Subtrees the render does not reach on its own belong to the nearest node it does.** A slot argument and an
+  envelope `fallback` subscribe their owner; a `FragmentRef` subscribes everything its fragment's body reads, through
+  nested references, because the expansion it draws is a copy; an `ErrorBoundary` subscribes its child's keys, and no
+  boundary is placed inside its child (its catch is synchronous).
+- **An opaque reader subscribes everything the surface reads**: a `Computed` binding or a registered `Custom`
+  renderer may read any key.
+
+A boundary re-renders only for its own keys: a nested boundary whose keys did not move is skipped when an enclosing
+one re-renders. So the count of boundary renders one write costs is `ReaderBoundaries.rerenderedBy channel key`, and
+`ReaderBoundaries.renderCount ()` measures it in a browser (the renderer benchmark asserts the two agree on every
+sample). The markup is the markup a fresh render of the same stores draws, and focus held elsewhere on the page
+survives the write. Reconciliation keys are untouched: a node's wrapper carries none, and every key sits on an
+element enclosing a node's render.
+
+**Correction.** `renderWithSources` holds no subscription at all: a write there updates nothing until the host
+re-renders (Phase 2529's measurement). Reactivity on a write is this entry's alone.
 
 Server-side rendering is a different package with a deliberately smaller
 surface — `Fuaran.UI.Renderer.Server.Render.render` / `renderWithTheme` /

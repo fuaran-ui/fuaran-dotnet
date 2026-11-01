@@ -1844,6 +1844,248 @@ module private RenderDepth =
 let mutable private renderGuestHook: (RenderContext<obj> -> Node<obj> -> ReactElement) option =
     None
 
+// ─── Reader boundaries (Phase 2530) ─────────────────────────────────────────
+//
+// `renderStateReactive` puts every node that READS a reactive key behind its own
+// component boundary, subscribed to exactly the keys that node reads
+// (`BindingWalk.reactiveRenderFacts`, a second projection of the one render
+// walk), so a write re-renders the subtrees that read the written key and
+// nothing else. The surface component itself subscribes to nothing.
+//
+// Three properties carry the design:
+//
+//  - **Boundaries are keyed by node IDENTITY, not by id.** The table is built
+//    over the very `Node` values the walk saw, so a node reached by another
+//    route — a fragment expansion's namespaced copy, a guest tree, a tree some
+//    nested entry renders — is never mistaken for a reader of this surface. A
+//    fragment expansion is covered by its `FragmentRef`'s boundary, which carries
+//    every key the fragment's body reads.
+//  - **A boundary re-renders only for its own keys.** It is memoised on the
+//    node, the surface and every context field but `Sources`, and it rebuilds
+//    `Sources` from the live stores itself, so an enclosing boundary re-rendering
+//    does not re-render a nested one whose keys did not move. The count a write
+//    costs is therefore the number of boundaries reading the key
+//    (`ReaderBoundaries.rerenderedBy`), which `renderCount` measures in a browser.
+//  - **The element tree is unchanged.** A boundary emits exactly what `render`
+//    emits for its node; the wrapper carries no key, and every reconciliation key
+//    sits on an element ENCLOSING a node's render, so it is untouched. Inside an
+//    `ErrorBoundary`'s child no boundary is placed (the boundary's catch is
+//    synchronous and a deferred render would escape it); the walk attributes the
+//    child's reads to the `ErrorBoundary` node instead.
+
+/// Phase 2530 — one boundary a reactive surface places: the node (by identity)
+/// and the keys its boundary subscribes.
+type ReaderBoundary<'Msg> =
+    { Node: Node<'Msg>
+      Keys: Fuaran.UI.BindingWalk.ReactiveKeys }
+
+/// Boundary component renders since the process started (Fable only; `0` on
+/// .NET, where nothing subscribes).
+let mutable private boundaryRenders = 0
+
+/// Phase 2530 — the reader boundaries of a reactive render, as values.
+[<RequireQualifiedAccess>]
+module ReaderBoundaries =
+
+    /// The boundaries a reactive render of a tree places, from its reader
+    /// entries (`BindingWalk.reactiveRenderFacts`): one per node, by identity,
+    /// the keys of every entry for that node unioned; an opaque reader also
+    /// subscribes every key `surfaceKeys` names. Walk order.
+    let plan
+        (surfaceKeys: Fuaran.UI.BindingWalk.ReactiveKeys)
+        (entries: Fuaran.UI.BindingWalk.ReaderEntry<'Msg> list)
+        : ReaderBoundary<'Msg> list =
+        let index = Dictionary<obj, int>(HashIdentity.Reference)
+        let placed = ResizeArray<ReaderBoundary<'Msg>>()
+
+        for entry in entries do
+            let keys =
+                if entry.Opaque then
+                    Fuaran.UI.BindingWalk.unionKeys entry.Keys surfaceKeys
+                else
+                    entry.Keys
+
+            match index.TryGetValue(box entry.Node) with
+            | true, i ->
+                placed[i] <-
+                    { placed[i] with
+                        Keys = Fuaran.UI.BindingWalk.unionKeys placed[i].Keys keys }
+            | _ ->
+                index[box entry.Node] <- placed.Count
+                placed.Add { Node = entry.Node; Keys = keys }
+
+        List.ofSeq placed
+
+    /// The boundaries one write of `key` on `channel` re-renders: the boundaries
+    /// subscribed to it, and no other. A browser measures the same number as the
+    /// change in `renderCount` across the write.
+    let rerenderedBy
+        (channel: KeyChannel)
+        (key: string)
+        (boundaries: ReaderBoundary<'Msg> list)
+        : ReaderBoundary<'Msg> list =
+        boundaries |> List.filter (fun b -> Set.contains key (keysOn channel b.Keys))
+
+    /// The instrumented count: boundary component renders since the process
+    /// started, a mount's included. Read it before and after a write; the
+    /// difference is what the write re-rendered.
+    let renderCount () : int = boundaryRenders
+
+#if FABLE_COMPILER
+[<Fable.Core.Import("createElement", "react")>]
+let private reactCreateElement (componentFn: obj) (props: obj) : ReactElement = Fable.Core.Util.jsNative
+
+[<Fable.Core.Import("memo", "react")>]
+let private reactMemo (componentFn: obj) (areEqual: obj) : obj = Fable.Core.Util.jsNative
+
+[<Fable.Core.Emit("new Map()")>]
+let private newIdentityTable () : obj = Fable.Core.Util.jsNative
+
+[<Fable.Core.Emit("$0.set($1, $2)")>]
+let private identitySet (table: obj) (key: obj) (value: obj) : unit = Fable.Core.Util.jsNative
+
+[<Fable.Core.Emit("($0.get($1) ?? null)")>]
+let private identityGet (table: obj) (key: obj) : obj = Fable.Core.Util.jsNative
+
+/// The reactive surface a render is under: its boundaries by node identity,
+/// and the live, seeded sources a boundary renders against.
+type private ReactiveFrame =
+    { Boundaries: obj
+      Sources: unit -> BindingResolver.BindingSources }
+
+/// The frame of the surface whose render is on the stack, set by the surface
+/// component and by each boundary for the length of its own render (a render
+/// is synchronous, so a cell is the whole mechanism — `RenderDepth`'s).
+let mutable private activeFrame: ReactiveFrame option = None
+
+/// The node a boundary is rendering itself, so `render` renders it in place
+/// rather than placing its boundary a second time.
+let mutable private enteringNode: obj option = None
+
+let private identityTableOf (boundaries: ReaderBoundary<'Msg> list) : obj =
+    let table = newIdentityTable ()
+
+    for b in boundaries do
+        identitySet table (box b.Node) (box b.Keys)
+
+    table
+
+type private BoundaryProps =
+    {| ctx: RenderContext<obj>
+       node: Node<obj>
+       keys: Fuaran.UI.BindingWalk.ReactiveKeys
+       frame: ReactiveFrame
+       depth: int |}
+
+/// Two contexts that differ at most in `Sources`, which a boundary rebuilds.
+let private sameContextButSources (a: RenderContext<obj>) (b: RenderContext<obj>) : bool =
+    let same (x: obj) (y: obj) = obj.ReferenceEquals(x, y)
+
+    same a b
+    || (same a.Runtime b.Runtime
+        && same a.VisAdapter b.VisAdapter
+        && same a.Dispatch b.Dispatch
+        && same a.TelemetrySink b.TelemetrySink
+        && a.InErrorBoundary = b.InErrorBoundary
+        && same a.Fragments b.Fragments
+        && a.ExpandingFragments = b.ExpandingFragments
+        && same a.SessionContext b.SessionContext
+        && same a.ActionSink b.ActionSink
+        && a.CurrentNodeId = b.CurrentNodeId
+        && same a.UploadSink b.UploadSink
+        && same a.Policy b.Policy
+        && a.SubtreeMemo = b.SubtreeMemo)
+
+let private boundaryUnchanged (previous: BoundaryProps) (next: BoundaryProps) : bool =
+    obj.ReferenceEquals(previous.node, next.node)
+    && obj.ReferenceEquals(previous.frame, next.frame)
+    && previous.depth = next.depth
+    && sameContextButSources previous.ctx next.ctx
+
+/// One reader boundary: subscribed to its node's keys on the four channels, it
+/// renders its node in place against the live sources.
+let private readerBoundary (props: BoundaryProps) : ReactElement =
+    let keys = props.keys
+    StateStore.useStateKeys keys.State |> ignore
+    FilterStore.useFilterKeys keys.Filter |> ignore
+    SelectionStore.useSelectionKeys keys.Selection |> ignore
+    QueryStore.useQueryKeys keys.Query |> ignore
+    boundaryRenders <- boundaryRenders + 1
+
+    let ctx =
+        { props.ctx with
+            Sources = props.frame.Sources() }
+
+    let savedFrame = activeFrame
+    let savedEntering = enteringNode
+    let savedDepth = RenderDepth.current ()
+    activeFrame <- Some props.frame
+    enteringNode <- Some(box props.node)
+    RenderDepth.set props.depth
+
+    try
+        try
+            match renderGuestHook with
+            | Some renderInPlace -> renderInPlace ctx props.node
+            | None -> Html.none
+        with ex ->
+            // A throw `render` itself does not catch reached the enclosing
+            // node's guard before this boundary existed; it is caught here, at
+            // the node, rather than escaping to the React root.
+            let node = props.node
+
+            let corrId =
+                emitRenderFailureWithContext
+                    ctx.TelemetrySink
+                    ctx.SessionContext
+                    node.Id
+                    (nodeKindName node.Kind)
+                    ex.Message
+                    RenderFailureSource.PerNodeGuard
+
+            Emit.plan (ElementPlan.NodePlan.renderFailure node.Id (nodeKindName node.Kind) ex.Message corrId)
+    finally
+        activeFrame <- savedFrame
+        enteringNode <- savedEntering
+        RenderDepth.set savedDepth
+
+let private memoReaderBoundary: obj =
+    reactMemo
+        (box readerBoundary)
+        (box (System.Func<BoundaryProps, BoundaryProps, bool>(fun a b -> boundaryUnchanged a b)))
+#endif
+
+/// The boundary `render` places for `node` instead of rendering it, when the
+/// render is under a reactive surface that names `node` a reader. `None`
+/// everywhere else, and always on .NET.
+let private placeBoundary (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactElement option =
+#if FABLE_COMPILER
+    match activeFrame with
+    | None -> None
+    | Some frame ->
+        match enteringNode with
+        | Some entering when obj.ReferenceEquals(entering, box node) ->
+            enteringNode <- None
+            None
+        | _ when ctx.InErrorBoundary -> None
+        | _ ->
+            match identityGet frame.Boundaries (box node) with
+            | null -> None
+            | keys ->
+                let props: BoundaryProps =
+                    {| ctx = unbox<RenderContext<obj>> (box ctx)
+                       node = unbox<Node<obj>> (box node)
+                       keys = unbox<Fuaran.UI.BindingWalk.ReactiveKeys> keys
+                       frame = frame
+                       depth = RenderDepth.current () |}
+
+                Some(reactCreateElement memoReaderBoundary (box props))
+#else
+    ignore ctx
+    ignore node
+    None
+#endif
+
 // ─── Host-pluggable guest capability seam (§4o) ─────────────────────────────
 //
 // The `Mount` arm below renders a guest under its own scope, but it handed the
@@ -5231,6 +5473,13 @@ and private renderMap
 /// `WireLimits.MaxDepth` the subtree is replaced by the shared depth marker and
 /// the omission is reported through `Warn`.
 and render (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactElement =
+    // Phase 2530 — under a reactive surface, a reader renders behind its own
+    // boundary (see "Reader boundaries" above).
+    match placeBoundary ctx node with
+    | Some boundary -> boundary
+    | None -> renderMemoised ctx node
+
+and private renderMemoised (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactElement =
     // Phase 2547 — the subtree memo. Three keys, all by identity or by count:
     // the node, the context, and the store write generation. A node under an
     // action sink is never memoised: `renderPresent` stamps a per-node copy of
@@ -5526,24 +5775,27 @@ let renderWithSourcesInScopeAndSink
 // ─── State-reactive render (Phase 106) ─────────────────────────────────────
 //
 // `renderStateReactive` is the GP-13 opt-in companion to `renderWithSources`.
-// It collects the `Binding.State` keys the tree reads and subscribes the
-// rendered surface to them via `StateStore.subscribeKeys`, so a single global
-// `Action.SetState` re-renders EVERY visible reader of that key — not just the
-// control that owns the value. Callers that don't opt in keep calling
-// `renderWithSources` and see byte-identical legacy behaviour (each surface
-// refreshes on its own next tick, the pre-Phase-106 model).
+// A write to a key the tree reads — a global `Action.SetState`, a filter chip, a
+// row selection, a declarative `Call … into Query` — re-renders EVERY visible
+// reader of that key, not just the control that owns the value, and since Phase
+// 2530 it re-renders those readers ONLY: each reading node renders behind its
+// own boundary subscribed to its own keys (see "Reader boundaries"), and the
+// rest of the surface renders once per host render. Callers that don't opt in
+// keep calling `renderWithSources`, which subscribes nothing: a write there
+// updates nothing until the host re-renders.
 //
 // Consumer-adoption note: a data-heavy app with a global toggle
-// (Cash/Real terms, theme, locale) lifted into chrome gets instant whole-
-// module refresh for free by swapping `renderWithSources` →
+// (Cash/Real terms, theme, locale) lifted into chrome gets instant refresh of
+// everything that reads it by swapping `renderWithSources` →
 // `renderStateReactive` at the surface root. No per-component subscription
-// glue — the reactivity is derived from the tree's own `Binding.State` reads.
+// glue — the reactivity is derived from the tree's own reads.
 //
 // Cross-pipeline (FGP 4): the React subscription path is browser-only and
 // guarded by `#if FABLE_COMPILER`. On .NET (Expecto / SSR) the entry point
 // renders once against the live snapshot — reactivity is a browser concern,
-// and the .NET test runner pins the pure pieces (`collectStateKeys` +
-// `StateStore.subscribeKeys`) directly.
+// and the .NET test runner pins the pure pieces (`BindingWalk.reactiveRenderFacts`,
+// `ReaderBoundaries.plan` / `rerenderedBy` and `StateStore.subscribeKeys`)
+// directly.
 
 /// Merge the live `StateStore` snapshot over `sources.State` (store wins) so a
 /// re-render reads the current value for every `Binding.State`. Idempotent if
@@ -5594,41 +5846,74 @@ let private withLiveState (sources: BindingResolver.BindingSources) : BindingRes
             QueryResults = QueryStore.overlayOnto withSelections.QueryResults }
 
 #if FABLE_COMPILER
-open Fable.Core // `jsNative` for the createElement import below
+/// The live, seeded sources of one surface, rebuilt only when a store has been
+/// written since they were last built (`StateStore.generation` advances on a
+/// write to any store). The ORIGINAL sources are kept and the live stores merged
+/// over them on each rebuild — merging once before would freeze a stale
+/// snapshot into every re-render.
+let private liveSourcesOf
+    (prepared: PreparedTree<'Msg>)
+    (sources: BindingResolver.BindingSources)
+    : unit -> BindingResolver.BindingSources =
+    let built = ref None
 
-[<Import("createElement", "react")>]
-let private reactCreateElement (componentFn: obj) (props: obj) : ReactElement = jsNative
+    fun () ->
+        let generation = StateStore.generation ()
+
+        match built.Value with
+        | Some(at, live) when at = generation -> live
+        | _ ->
+            let live =
+                StateSeeds.applyFacts prepared.Facts prepared.Node (withLiveState sources)
+
+            built.Value <- Some(generation, live)
+            live
 
 // Stable module-level function component (identity preserved across renders,
-// so it never remounts). `useStateKeys` subscribes the surface to its state
-// keys and bumps a re-render tick on change. `withLiveState` is re-applied
-// HERE, inside the component, so each re-render re-reads the current snapshot
-// — merging it once before the prop is passed would freeze a stale snapshot
-// into every re-render.
+// so it never remounts). It subscribes to NOTHING (Phase 2530): it renders the
+// surface once per host render, with the surface's frame active, and every
+// reader inside it renders behind its own subscribed boundary.
 let private stateReactiveComponent
     (props:
         {| sources: BindingResolver.BindingSources
            dispatch: 'Msg -> unit
-           prepared: PreparedTree<'Msg> |})
+           prepared: PreparedTree<'Msg>
+           boundaries: obj |})
     : ReactElement =
-    let keys = props.prepared.Facts.Keys
-    StateStore.useStateKeys keys.State |> ignore
-    // Filter twin (Phase 423): subscribe the surface to its `Binding.Filter` names too, so a chip
-    // write (`FilterStore.set`) re-renders every reader alongside the State channel.
-    FilterStore.useFilterKeys keys.Filter |> ignore
-    // Selection twin (Phase 427): subscribe to the `Binding.Selection` producer ids too, so a
-    // default row-click write (`SelectionStore.set`) re-renders every detail reader.
-    SelectionStore.useSelectionKeys keys.Selection |> ignore
-    // Query twin (Phase 428): subscribe to the `Binding.Query` names too, so a declarative
-    // `Call … into Query <name>` write (`QueryStore.set`) re-renders every reader of that slot.
-    QueryStore.useQueryKeys keys.Query |> ignore
-    // Phase 2069 — no walk here: a write re-renders from the pass taken once below.
-    render (RenderContext.ofPrepared props.prepared (withLiveState props.sources) props.dispatch) props.prepared.Node
+    let frame =
+        { Boundaries = props.boundaries
+          Sources = liveSourcesOf props.prepared props.sources }
+
+    let ctx =
+        { RenderContext.ofPrepared props.prepared props.sources props.dispatch with
+            Sources = frame.Sources() }
+
+    let savedFrame = activeFrame
+    let savedEntering = enteringNode
+    activeFrame <- Some frame
+    enteringNode <- None
+
+    try
+        render ctx props.prepared.Node
+    finally
+        activeFrame <- savedFrame
+        enteringNode <- savedEntering
 #endif
 
-/// GP-13 opt-in entry point: render `node`, subscribing the surface to every
-/// `Binding.State` key it reads so a global `Action.SetState` re-renders the
-/// whole surface. Default callers keep `renderWithSources` (no behaviour
+/// Phase 2530 — the pass a reactive render takes once per call: the prepared
+/// tree (`RenderContext.ofPrepared`'s input) and the boundaries it places, from
+/// one walk (`BindingWalk.reactiveRenderFacts`).
+let prepareReactive (node: Node<'Msg>) : PreparedTree<'Msg> * ReaderBoundary<'Msg> list =
+    let facts, readers = Fuaran.UI.BindingWalk.reactiveRenderFacts node
+
+    { Node = node
+      Facts = facts
+      Fragments = FragmentExpansion.registryOf FragmentId node facts.Fragments },
+    ReaderBoundaries.plan facts.Keys readers
+
+/// GP-13 opt-in entry point: render `node` so a write to a key it reads
+/// re-renders the nodes that read it, and nothing else (Phase 2530; before it,
+/// the whole surface). Default callers keep `renderWithSources` (no behaviour
 /// change). See the section header for the adoption + cross-pipeline notes.
 let renderStateReactive
     (sources: BindingResolver.BindingSources)
@@ -5636,14 +5921,17 @@ let renderStateReactive
     (node: Node<'Msg>)
     : ReactElement =
 #if FABLE_COMPILER
-    // Pass the ORIGINAL sources; the component re-merges the live snapshot on
-    // every re-render (see `stateReactiveComponent`).
+    let prepared, boundaries = prepareReactive node
+
+    // Pass the ORIGINAL sources; the frame merges the live snapshot over them
+    // whenever a store has moved (see `liveSourcesOf`).
     reactCreateElement
         (box stateReactiveComponent)
         (box
             {| sources = sources
                dispatch = dispatch
-               prepared = RenderContext.prepare node |})
+               prepared = prepared
+               boundaries = identityTableOf boundaries |})
 #else
     // .NET / SSR: no React runtime to subscribe to — render once with the live
     // snapshot merged. Reactivity is a browser concern.

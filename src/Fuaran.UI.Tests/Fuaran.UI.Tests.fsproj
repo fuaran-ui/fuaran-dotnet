@@ -438,6 +438,9 @@
     <Compile Include="TokensModelTests.fs" />
     <Compile Include="TrustedTypesTests.fs" />
     <Compile Include="RenderCostTests.fs" />
+    <!-- Phase 2530 - the key-to-reader map and the boundaries a reactive render places; the
+         instrumented count is read in a browser by the renderer benchmark. -->
+    <Compile Include="ReaderBoundaryTests.fs" />
     <Compile Include="LocalWireTests.fs" />
     <!-- Phase 1667 - the write-back predicate is one definition, pinned behaviourally against
          FUARAN069 and structurally by a census over the two copied renderer sources. -->

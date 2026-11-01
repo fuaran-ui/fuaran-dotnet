@@ -781,7 +781,7 @@ let dataSiteKey (source: Fuaran.Core.Table) (pipeline: Fuaran.Compute.Transform 
         + pipelineKey pipeline
     )
 
-let rec usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list =
+let rec private usesOfBindingIn<'T> (referencedOnly: bool) (binding: Binding<'T>) : BindingUse list =
     match binding with
     // Phase 1075 — a PRESENT default is a seed declaration as well as a read.
     | Binding.State(key, Some d) ->
@@ -801,13 +801,17 @@ let rec usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list =
     // furnishes it once per render pass. It participates in no reactive edge,
     // so it contributes no usage (the `Computed` posture below).
     | Binding.Now _ -> []
-    | Binding.Local(_, _, initialFrom, _, _, _, _) -> usesOfBinding initialFrom
-    | Binding.I18n(_, Some args) -> args |> Map.toList |> List.collect (fun (_, ab) -> usesOfBinding<JVal> ab)
+    | Binding.Local(_, _, initialFrom, _, _, _, _) -> usesOfBindingIn referencedOnly initialFrom
+    | Binding.I18n(_, Some args) ->
+        args
+        |> Map.toList
+        |> List.collect (fun (_, ab) -> usesOfBindingIn<JVal> referencedOnly ab)
     | Binding.I18n(_, None) -> []
     // Phase 1810 — a `Format.DateTime` with neither style declared is recorded
     // beside the source's own uses (see `BindingUse.UnstyledDateFormat`).
-    | Binding.Format(source, Format.DateTime(None, None), _) -> BindingUse.UnstyledDateFormat :: usesOfBinding source
-    | Binding.Format(source, _, _) -> usesOfBinding source
+    | Binding.Format(source, Format.DateTime(None, None), _) ->
+        BindingUse.UnstyledDateFormat :: usesOfBindingIn referencedOnly source
+    | Binding.Format(source, _, _) -> usesOfBindingIn referencedOnly source
     | Binding.Transform(source, pipeline, parameters) ->
         // The pure `Transform.paramsOf` derivation (fuaran-core#77) names every
         // param the pipeline actually references — a declared `params` entry
@@ -878,7 +882,7 @@ let rec usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list =
                     let sourceReads =
                         match b with
                         | Binding.State _ -> []
-                        | _ -> usesOfBinding b
+                        | _ -> usesOfBindingIn referencedOnly b
 
                     // Phase 1761 — the channel the source reads, where a use
                     // can name it (see `sourceChannelUses`).
@@ -898,19 +902,7 @@ let rec usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list =
                   SourceUses = sourceUses
                   SourceReads = sourceReads }
 
-        (site :: sourceUse)
-        @ (defaultArg parameters []
-           |> List.collect (fun (p: TransformParam) ->
-               let sourceUses =
-                   usesOfBinding p.From
-                   |> List.map (function
-                       // A param's Filter source is the DECLARED filter→consumer
-                       // edge (the 424 construct) — distinct from a plain value
-                       // read for the dangling / consumption checks.
-                       | BindingUse.Filter filterName -> BindingUse.TransformParamFilter filterName
-                       | other -> other)
-
-               BindingUse.TransformParam(p.Name, Set.contains p.Name referenced) :: sourceUses))
+        (site :: sourceUse) @ paramUses referencedOnly referenced parameters
     // Fuaran-UI Phase 1534 — the scalar expression. It has no source slot at
     // all, so its whole reactive edge IS its params: the same
     // `TransformParam` / `TransformParamFilter` uses `Transform` emits, over
@@ -920,17 +912,7 @@ let rec usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list =
     // checks reach an `Expr` with no rule edited, and a rule that ever needs to
     // tell the two apart can read the param's own binding.
     | Binding.Expr(expr, parameters) ->
-        let referenced = Fuaran.Compute.ColExpr.paramsOf expr |> Set.ofList
-
-        defaultArg parameters []
-        |> List.collect (fun (p: TransformParam) ->
-            let sourceUses =
-                usesOfBinding p.From
-                |> List.map (function
-                    | BindingUse.Filter filterName -> BindingUse.TransformParamFilter filterName
-                    | other -> other)
-
-            BindingUse.TransformParam(p.Name, Set.contains p.Name referenced) :: sourceUses)
+        paramUses referencedOnly (Fuaran.Compute.ColExpr.paramsOf expr |> Set.ofList) parameters
     // Phase 932 — `Computed` reads the whole state bag through a closure, so it
     // is an OPAQUE read, not an absent one. See `BindingUse.Computed`.
     | Binding.Computed _ -> [ BindingUse.Computed ]
@@ -944,14 +926,47 @@ let rec usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list =
 /// use names — a `Local`'s buffer, a nested `Transform`, a `Computed` closure,
 /// `Now`, an `Invoke`, a `Static` — answers empty and stays unnamed, rather
 /// than half-named by whatever inputs it also happens to read.
+/// The uses of a Transform's or Expr's declared `params`: each one's
+/// `TransformParam` marker, then what its `From` reads. Under `referencedOnly`
+/// (Fuaran-UI Phase 2530, the reader projection) a param the pipeline does not
+/// reference contributes its marker and its declarations (a seed, an inline
+/// table), never a read: its value cannot move the output, so a write to it
+/// re-renders nothing, while a seed it declares still seeds the store.
+and private paramUses
+    (referencedOnly: bool)
+    (referenced: Set<string>)
+    (parameters: TransformParam list option)
+    : BindingUse list =
+    defaultArg parameters []
+    |> List.collect (fun (p: TransformParam) ->
+        let isReferenced = Set.contains p.Name referenced
+
+        let sourceUses =
+            usesOfBindingIn referencedOnly p.From
+            |> List.choose (function
+                | BindingUse.StateSeed _
+                | BindingUse.SelectionSeed _
+                | BindingUse.InlineTable _ as declaration -> Some declaration
+                | _ when referencedOnly && not isReferenced -> None
+                // A param's Filter source is the DECLARED filter→consumer
+                // edge (the 424 construct) — distinct from a plain value
+                // read for the dangling / consumption checks.
+                | BindingUse.Filter filterName -> Some(BindingUse.TransformParamFilter filterName)
+                | other -> Some other)
+
+        BindingUse.TransformParam(p.Name, isReferenced) :: sourceUses)
+
 and private sourceChannelUses<'T> (binding: Binding<'T>) : BindingUse list =
     match binding with
     | Binding.State _
     | Binding.Query _
     | Binding.Filter _
-    | Binding.Selection _ -> usesOfBinding binding
+    | Binding.Selection _ -> usesOfBindingIn false binding
     | Binding.Format(inner, _, _) -> sourceChannelUses inner
     | _ -> []
+
+/// The binding usages `binding` reads, its declared Transform params included.
+let usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list = usesOfBindingIn false binding
 
 /// Binding usages read by a `TextSource`. `Literal` carries none; `Bound`
 /// defers to its binding; `TextSource.I18n` defers to its ARGUMENTS.
@@ -962,15 +977,21 @@ and private sourceChannelUses<'T> (binding: Binding<'T>) : BindingUse list =
 /// caption whose count comes from a state key is a READER of that key, and an
 /// enumeration that missed it would under-report the tree's state reads to every
 /// consumer of this walk.
-let usesOfText (text: TextSource) : BindingUse list =
+let private usesOfTextIn (referencedOnly: bool) (text: TextSource) : BindingUse list =
     match text with
-    | TextSource.Bound b -> usesOfBinding b
-    | TextSource.I18n(_, args) -> args |> Map.toList |> List.collect (fun (_, ab) -> usesOfBinding<JVal> ab)
+    | TextSource.Bound b -> usesOfBindingIn referencedOnly b
+    | TextSource.I18n(_, args) ->
+        args
+        |> Map.toList
+        |> List.collect (fun (_, ab) -> usesOfBindingIn<JVal> referencedOnly ab)
     | TextSource.Literal _ -> []
 
-let private usesOfTextOpt (text: TextSource option) : BindingUse list =
+/// Binding usages read by a `TextSource` (see `usesOfTextIn`).
+let usesOfText (text: TextSource) : BindingUse list = usesOfTextIn false text
+
+let private usesOfTextOpt (referencedOnly: bool) (text: TextSource option) : BindingUse list =
     match text with
-    | Some t -> usesOfText t
+    | Some t -> usesOfTextIn referencedOnly t
     | None -> []
 
 /// Phase 1075 — binding usages of a ROW-FEED slot (a grid's / chart's
@@ -985,7 +1006,7 @@ let private usesOfTextOpt (text: TextSource option) : BindingUse list =
 ///
 /// The seed VALUE is untouched: the store must receive the `Row seq` the grid
 /// itself resolves, not a re-encoding of it.
-let private rowFeedUses (binding: Binding<Map<string, obj> seq>) : BindingUse list =
+let private rowFeedUses (referencedOnly: bool) (binding: Binding<Map<string, obj> seq>) : BindingUse list =
     let table =
         match binding with
         | Binding.State(_, Some rows)
@@ -993,7 +1014,7 @@ let private rowFeedUses (binding: Binding<Map<string, obj> seq>) : BindingUse li
         | _ -> None
 
     let normalised =
-        usesOfBinding binding
+        usesOfBindingIn referencedOnly binding
         |> List.map (fun u ->
             match u, table with
             | BindingUse.StateSeed(k, v, _), Some t -> BindingUse.StateSeed(k, v, box t)
@@ -1050,12 +1071,16 @@ let private tagSourceSite
         tag found
     | _ -> found
 
-let private usesOfBindingOpt (binding: Binding<'T> option) : BindingUse list =
+let private usesOfBindingOpt (referencedOnly: bool) (binding: Binding<'T> option) : BindingUse list =
     match binding with
-    | Some b -> usesOfBinding b
+    | Some b -> usesOfBindingIn referencedOnly b
     | None -> []
 
-let private usesOfFormFieldKind<'Msg> (implicitUse: BindingUse option) (kind: FormFieldKind<'Msg>) : BindingUse list =
+let private usesOfFormFieldKind<'Msg>
+    (referencedOnly: bool)
+    (implicitUse: BindingUse option)
+    (kind: FormFieldKind<'Msg>)
+    : BindingUse list =
     // Value slots are `option` since the swap (Phase 596 auto-bind — absence
     // is legal wire); constraints ride flat (min/max/step) rather than as the
     // retired constraint records.
@@ -1068,7 +1093,7 @@ let private usesOfFormFieldKind<'Msg> (implicitUse: BindingUse option) (kind: Fo
     // decode-synthesised shape.
     let usesOfValueSlot (v: Binding<JVal> option) : BindingUse list =
         match v with
-        | Some b -> usesOfBinding b
+        | Some b -> usesOfBindingIn referencedOnly b
         | None -> Option.toList implicitUse
 
     // The OPTION sources are the only per-case reads left: Choice, Combobox and
@@ -1083,8 +1108,8 @@ let private usesOfFormFieldKind<'Msg> (implicitUse: BindingUse option) (kind: Fo
         match kind with
         | FormFieldKind.Choice(opts, _, _)
         | FormFieldKind.Combobox(_, _, opts, _)
-        | FormFieldKind.SegmentedChoice(opts, _, _, _) -> usesOfBinding opts
-        | FormFieldKind.Tokens(_, _, Some suggestions, _) -> usesOfBinding suggestions
+        | FormFieldKind.SegmentedChoice(opts, _, _, _) -> usesOfBindingIn referencedOnly opts
+        | FormFieldKind.Tokens(_, _, Some suggestions, _) -> usesOfBindingIn referencedOnly suggestions
         | _ -> []
 
     optionSources @ usesOfValueSlot (Generated.FormFieldKind.value kind)
@@ -1519,6 +1544,45 @@ let private selectionSeedMap (decls: SelectionSeedDecl list) : Map<string * stri
             | value -> Map.add (d.Target, d.Field) value acc)
         Map.empty
 
+/// Fuaran-UI Phase 2530 — one node a reactive render puts behind its own
+/// subscription boundary, and the keys that boundary subscribes.
+///
+/// `Keys` are what the node READS, which is narrower than what it declares: a
+/// Transform or Expr param its pipeline does not reference reads nothing (its
+/// value cannot move the output). `Opaque` is a node that may read any key — a
+/// `Computed` binding or a registered `Custom` renderer — and subscribes to every
+/// key the surface reads. A read inside a subtree the render does not reach on
+/// its own (a slot argument, an envelope `fallback`) is attributed to the nearest
+/// ancestor the walk renders. A `FragmentRef`'s entry carries every key its
+/// fragment's body reads, through the references nested in it, because the
+/// expansion the renderer draws is a copy of the body, never the body itself.
+type ReaderEntry<'Msg> =
+    { Node: Node<'Msg>
+      Keys: ReactiveKeys
+      Opaque: bool }
+
+/// The reads one rendered node (or one fragment body) accumulates, its key sink
+/// made on the first read.
+type private ReaderSink =
+    { mutable Sink: KeySink option
+      mutable Opaque: bool }
+
+let private emptyKeys: ReactiveKeys =
+    { State = Set.empty
+      Filter = Set.empty
+      Selection = Set.empty
+      Query = Set.empty }
+
+let private isEmptyKeys (k: ReactiveKeys) : bool =
+    k.State.IsEmpty && k.Filter.IsEmpty && k.Selection.IsEmpty && k.Query.IsEmpty
+
+/// The union of two key sets, channel by channel.
+let unionKeys (a: ReactiveKeys) (b: ReactiveKeys) : ReactiveKeys =
+    { State = Set.union a.State b.State
+      Filter = Set.union a.Filter b.Filter
+      Selection = Set.union a.Selection b.Selection
+      Query = Set.union a.Query b.Query }
+
 /// Collect the tree-wide binding facts for `node` (see `TreeBindingFacts`) AND
 /// the filter-channel write direction beside them (see `TreeFacts`), in ONE
 /// walk, descending through layout children, error-boundary subtrees, and
@@ -1537,7 +1601,17 @@ let private selectionSeedMap (decls: SelectionSeedDecl list) : Map<string * stri
 /// the envelope `fallback` and slot arguments are outside it, as they are outside
 /// `NodeChildren.Reach.fragmentScope`, so they declare no fragment and open no
 /// subscription, while their seeds still count.
-let private walkTree<'Msg> (analysis: bool) (root: Node<'Msg>) : TreeFacts * RenderFacts<'Msg> =
+///
+/// **The reader projection (Phase 2530).** With `readers` on (never with
+/// `analysis`) the same walk also attributes every read to the node that renders
+/// it (see `ReaderEntry`), and every slot is read under `referencedOnly`, so the
+/// keys — the surface's and each reader's — are what the tree READS.
+let private walkTree<'Msg>
+    (analysis: bool)
+    (readers: bool)
+    (root: Node<'Msg>)
+    : TreeFacts * RenderFacts<'Msg> * ReaderEntry<'Msg> list =
+    let referencedOnly = readers
     let uses = ResizeArray<NodeBindingUse>()
     let declaredFilters = ResizeArray<string * string>()
     let calls = ResizeArray<CallUse>()
@@ -1594,6 +1668,57 @@ let private walkTree<'Msg> (analysis: bool) (root: Node<'Msg>) : TreeFacts * Ren
 
     // ── The Phase 2069 render pass (see `RenderFacts`) ──
     let reactiveKeys = newKeySink ()
+
+    // Phase 2530 — the reader projection, kept only under `readers`: a sink per
+    // rendered node in walk order, the stack of rendered nodes a read is
+    // attributed to, and per fragment name the reads of its body and the
+    // fragments its body references.
+    let readerFrames = ResizeArray<Node<'Msg> * ReaderSink>()
+    let readerStack = ResizeArray<ReaderSink>()
+    let fragmentStack = ResizeArray<string>()
+    // The sinks every read beneath them also reaches: an `ErrorBoundary`'s, for
+    // its child, since its catch is synchronous and no boundary is placed inside.
+    let absorbing = ResizeArray<ReaderSink>()
+    let fragmentSinks = System.Collections.Generic.Dictionary<string, ReaderSink>()
+
+    let fragmentEdges =
+        System.Collections.Generic.Dictionary<string, ResizeArray<string>>()
+
+    let fragmentRefs = ResizeArray<Node<'Msg> * string>()
+
+    let newReaderSink () : ReaderSink = { Sink = None; Opaque = false }
+
+    let fragmentSink (name: string) : ReaderSink =
+        match fragmentSinks.TryGetValue name with
+        | true, sink -> sink
+        | _ ->
+            let sink = newReaderSink ()
+            fragmentSinks[name] <- sink
+            sink
+
+    let intoReader (u: BindingUse) (target: ReaderSink) =
+        match u with
+        | BindingUse.Computed -> target.Opaque <- true
+        | _ ->
+            let sink =
+                match target.Sink with
+                | Some sink -> sink
+                | None ->
+                    let sink = newKeySink ()
+                    target.Sink <- Some sink
+                    sink
+
+            noteReactiveUse sink u
+
+    let noteReader (u: BindingUse) =
+        intoReader u readerStack[readerStack.Count - 1]
+
+        for name in fragmentStack do
+            intoReader u (fragmentSink name)
+
+        for sink in absorbing do
+            intoReader u sink
+
     let fragments = ResizeArray<string * Node<'Msg>>()
 
     /// An EMPTY table is not a copy of anything. `TransformLive.emptySource` is
@@ -1761,8 +1886,12 @@ let private walkTree<'Msg> (analysis: bool) (root: Node<'Msg>) : TreeFacts * Ren
                       Target = target
                       Field = field
                       Value = value }
-            | _ when inUses -> noteReactiveUse reactiveKeys u
-            | _ -> ()
+            | _ ->
+                if inUses then
+                    noteReactiveUse reactiveKeys u
+
+                if readers then
+                    noteReader u
 
     let record (inUses: bool) (readerId: string) (found: BindingUse list) =
         if analysis then
@@ -1838,7 +1967,8 @@ let private walkTree<'Msg> (analysis: bool) (root: Node<'Msg>) : TreeFacts * Ren
         Generated.Action.fold (fun () a -> recordStateAt readerId a) () action
 
     // Phase 2069 — an action slot is a DISPATCH-TIME read: it resolves when the
-    // action fires, so the render pass has nothing to subscribe here.
+    // action fires, so the surface's keys subscribe nothing here. The reader
+    // projection (Phase 2530) still attributes its reads to the node.
     let recordCalls (inUses: bool) (readerId: string) (action: Action<'Msg>) =
         if analysis then
             recordStateAction readerId action
@@ -1850,14 +1980,25 @@ let private walkTree<'Msg> (analysis: bool) (root: Node<'Msg>) : TreeFacts * Ren
 
                 for c in closuresOfAction readerId action do
                     closures.Add c
+        // Phase 2530 — a dispatch-time read still makes its node a READER: the
+        // handler resolves against the context its node was last rendered under,
+        // so a reactive render re-renders the node when a key its action reads
+        // moves, and the handler it holds resolves the current value.
+        elif readers then
+            for u in usesOfAction action do
+                noteReader u
 
     /// A state key a renderer reads off a plain string slot, with no `Binding`
     /// for the uses to carry.
     let noteStateRead (inUses: bool) (key: string) =
         if analysis then
             stateReads.Add key |> ignore
-        elif inUses then
-            reactiveKeys.StateKeys.Add key |> ignore
+        else
+            if inUses then
+                reactiveKeys.StateKeys.Add key |> ignore
+
+            if readers then
+                noteReader (BindingUse.State key)
 
     /// A row feed's uses. Normalising rows to a table is for the seed comparison
     /// and the inline-table rule, so the render pass skips it where the feed
@@ -1865,7 +2006,7 @@ let private walkTree<'Msg> (analysis: bool) (root: Node<'Msg>) : TreeFacts * Ren
     let rowFeed (binding: Binding<Map<string, obj> seq>) =
         match binding with
         | Binding.Static _ when not analysis -> []
-        | _ -> rowFeedUses binding
+        | _ -> rowFeedUses referencedOnly binding
 
     // Phase 2054 — the slot readers below fold each slot's usages straight into
     // the accumulators, one `record` per slot, in the order the slots were
@@ -1874,7 +2015,7 @@ let private walkTree<'Msg> (analysis: bool) (root: Node<'Msg>) : TreeFacts * Ren
     // two slots of one node interleave within one accumulator — so the walk
     // builds no per-node list of usages to concatenate and then fold.
     let recordText (inUses: bool) (readerId: string) (text: TextSource) =
-        record inUses readerId (usesOfText text)
+        record inUses readerId (usesOfTextIn referencedOnly text)
 
     let recordTextOpt (inUses: bool) (readerId: string) (text: TextSource option) =
         match text with
@@ -1882,14 +2023,27 @@ let private walkTree<'Msg> (analysis: bool) (root: Node<'Msg>) : TreeFacts * Ren
         | None -> ()
 
     let recordBinding (inUses: bool) (readerId: string) (binding: Binding<'T>) =
-        record inUses readerId (usesOfBinding binding)
+        record inUses readerId (usesOfBindingIn referencedOnly binding)
 
     let recordBindingOpt (inUses: bool) (readerId: string) (binding: Binding<'T> option) =
         match binding with
         | Some b -> recordBinding inUses readerId b
         | None -> ()
 
+    // Phase 2530 — under `readers`, a node the render reaches on its own opens
+    // a frame its reads (and those of every subtree it holds that the render
+    // does not reach on its own) are attributed to.
     let rec walk (inUses: bool) (n: Node<'Msg>) =
+        if readers && inUses then
+            let sink = newReaderSink ()
+            readerFrames.Add(n, sink)
+            readerStack.Add sink
+            walkNode inUses n
+            readerStack.RemoveAt(readerStack.Count - 1)
+        else
+            walkNode inUses n
+
+    and walkNode (inUses: bool) (n: Node<'Msg>) =
         let readerId = n.Id
 
         if analysis && inUses then
@@ -1915,14 +2069,14 @@ let private walkTree<'Msg> (analysis: bool) (root: Node<'Msg>) : TreeFacts * Ren
         // of the walk would make a state key that ONLY a tooltip reads look
         // unread — and the unwired-producer diagnostics quantify over exactly
         // that.
-        record inUses readerId (usesOfTextOpt n.Tooltip)
+        record inUses readerId (usesOfTextOpt referencedOnly n.Tooltip)
 
         // Fuaran-UI Phase 1535 — the node-level `visible` predicate, for the same
         // reason the tooltip is walked: the renderer resolves it against the same
         // sources, so a state key that ONLY a visibility predicate reads would
         // otherwise look unread. It is recorded as a READ and never as a write —
         // deciding whether a node appears writes nothing.
-        record inUses readerId (usesOfBindingOpt n.Visible)
+        record inUses readerId (usesOfBindingOpt referencedOnly n.Visible)
 
         match n.Visible with
         | Some(Binding.State(key, None)) -> visibleStateSources.Add(readerId, key)
@@ -2185,7 +2339,7 @@ let private walkTree<'Msg> (analysis: bool) (root: Node<'Msg>) : TreeFacts * Ren
                 recordFormFieldWrites readerId false (Some field.Id) field.Kind
                 recordText inUses readerId field.Label
                 recordTextOpt inUses readerId field.Help
-                record inUses readerId (usesOfFormFieldKind (Some(BindingUse.State field.Id)) field.Kind)
+                record inUses readerId (usesOfFormFieldKind referencedOnly (Some(BindingUse.State field.Id)) field.Kind)
         | NodeKind.Filters spec ->
             if analysis && inUses then
                 for fs in spec.Items do
@@ -2196,7 +2350,7 @@ let private walkTree<'Msg> (analysis: bool) (root: Node<'Msg>) : TreeFacts * Ren
                 // auto-binds to the FILTER store, not the State store.
                 recordFormFieldWrites readerId true None fs.Kind
                 recordText inUses readerId fs.Label
-                record inUses readerId (usesOfFormFieldKind (Some(BindingUse.Filter fs.Name)) fs.Kind)
+                record inUses readerId (usesOfFormFieldKind referencedOnly (Some(BindingUse.Filter fs.Name)) fs.Kind)
         // ── Visualisation ──
         | NodeKind.DataGrid g ->
             // Phase 932 — `sortStateKey` / `pageStateKey` are plain STRINGS the
@@ -2270,10 +2424,18 @@ let private walkTree<'Msg> (analysis: bool) (root: Node<'Msg>) : TreeFacts * Ren
         | NodeKind.Chart c ->
             record inUses readerId (tagSourceSite "source" None c.Source (rowFeed c.Source))
             recordTextOpt inUses readerId c.Title
-        | NodeKind.Map m -> record inUses readerId (tagSourceSite "source" None m.Source (usesOfBinding m.Source))
+        | NodeKind.Map m ->
+            record inUses readerId (tagSourceSite "source" None m.Source (usesOfBindingIn referencedOnly m.Source))
         // ── Structural ──
         | NodeKind.ErrorBoundary spec ->
+            if readers then
+                absorbing.Add readerStack[readerStack.Count - 1]
+
             walk inUses spec.Child
+
+            if readers then
+                absorbing.RemoveAt(absorbing.Count - 1)
+
             walk inUses spec.Fallback
         // Phase 932 — the branch SELECTOR is a BINDING since Phase 768; the comment
         // that stood here still described the `StateKey: string` field that change
@@ -2349,7 +2511,13 @@ let private walkTree<'Msg> (analysis: bool) (root: Node<'Msg>) : TreeFacts * Ren
             if outsideFragmentScope = 0 then
                 fragmentDecls.Add(spec.Name, spec.Body)
 
+            if readers then
+                fragmentStack.Add spec.Name
+
             walk inUses spec.Body
+
+            if readers then
+                fragmentStack.RemoveAt(fragmentStack.Count - 1)
         // Custom props are JVal literals, not bindings; a FragmentRef carries
         // no body; a Mount guest owns its own scoped stores.
         | NodeKind.Custom _ ->
@@ -2359,7 +2527,19 @@ let private walkTree<'Msg> (analysis: bool) (root: Node<'Msg>) : TreeFacts * Ren
             // other channel.
             noteOpaqueReader (OpaqueReaderAt.Custom readerId)
             opaqueWriter <- true
-        | NodeKind.FragmentRef spec -> spec.Args |> Option.iter walkSlotArgs
+
+            if readers then
+                noteReader BindingUse.Computed
+        | NodeKind.FragmentRef spec ->
+            if readers then
+                fragmentRefs.Add(n, spec.Name)
+
+                for enclosing in fragmentStack do
+                    match fragmentEdges.TryGetValue enclosing with
+                    | true, edges -> edges.Add spec.Name
+                    | _ -> fragmentEdges[enclosing] <- ResizeArray [ spec.Name ]
+
+            spec.Args |> Option.iter walkSlotArgs
         | NodeKind.Mount spec ->
             // A guest's INTERIOR reads no host key (it renders under an isolated
             // `StateStore.forScope`), but a `SlotArg` handed to it is host-authored
@@ -2381,6 +2561,66 @@ let private walkTree<'Msg> (analysis: bool) (root: Node<'Msg>) : TreeFacts * Ren
             | _ -> ()
 
     walk true root
+
+    // Phase 2530 — the entries: every rendered node that reads, then every
+    // fragment reference whose body (through its own references) reads.
+    let readerEntries =
+        if not readers then
+            []
+        else
+            let sealSinks (sinks: ReaderSink seq) : ReactiveKeys * bool =
+                sinks
+                |> Seq.fold
+                    (fun (keys, opaque) (s: ReaderSink) ->
+                        let own =
+                            match s.Sink with
+                            | Some sink -> sealKeys sink
+                            | None -> emptyKeys
+
+                        unionKeys keys own, opaque || s.Opaque)
+                    (emptyKeys, false)
+
+            let entryOf (node: Node<'Msg>) (sinks: ReaderSink seq) : ReaderEntry<'Msg> option =
+                let keys, opaque = sealSinks sinks
+
+                if opaque || not (isEmptyKeys keys) then
+                    Some
+                        { Node = node
+                          Keys = keys
+                          Opaque = opaque }
+                else
+                    None
+
+            // The fragments a reference reaches: its own, and every one a body on
+            // the way references. A cycle is visited once (FUARAN058 refuses it).
+            let reachable (name: string) : ReaderSink list =
+                let seen = System.Collections.Generic.HashSet<string>()
+                let pending = System.Collections.Generic.Stack<string>()
+                pending.Push name
+
+                while pending.Count > 0 do
+                    let next = pending.Pop()
+
+                    if seen.Add next then
+                        match fragmentEdges.TryGetValue next with
+                        | true, edges ->
+                            for e in edges do
+                                pending.Push e
+                        | _ -> ()
+
+                [ for f in seen do
+                      match fragmentSinks.TryGetValue f with
+                      | true, sink -> sink
+                      | _ -> () ]
+
+            [ for node, sink in readerFrames do
+                  match entryOf node [ sink ] with
+                  | Some entry -> entry
+                  | None -> ()
+              for node, name in fragmentRefs do
+                  match entryOf node (reachable name) with
+                  | Some entry -> entry
+                  | None -> () ]
 
     let allTransformSites = List.ofSeq transformSites
 
@@ -2423,15 +2663,47 @@ let private walkTree<'Msg> (analysis: bool) (root: Node<'Msg>) : TreeFacts * Ren
     { StateSeeds = stateSeedMap (List.ofSeq seeds)
       SelectionSeeds = selectionSeedMap (List.ofSeq selectionSeeds)
       Fragments = List.ofSeq fragments
-      Keys = sealKeys reactiveKeys }
+      Keys = sealKeys reactiveKeys },
+    readerEntries
 
 /// The whole walk (see `walkTree`).
-let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts = walkTree true root |> fst
+let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts =
+    let facts, _, _ = walkTree true false root
+    facts
 
 /// Fuaran-UI Phase 2069 — the render pass: one walk for a tree's seeds, fragments
 /// and reactive keys, cheap enough to run per render of a tree rebuilt per
 /// dispatch.
-let renderFacts<'Msg> (root: Node<'Msg>) : RenderFacts<'Msg> = walkTree false root |> snd
+let renderFacts<'Msg> (root: Node<'Msg>) : RenderFacts<'Msg> =
+    let _, facts, _ = walkTree false false root
+    facts
+
+/// Fuaran-UI Phase 2530 — the render pass with the reader projection beside it,
+/// from the same one walk: `renderFacts`, with every slot read for what it READS
+/// (so `Keys` drops a key only an unreferenced Transform param names), and the
+/// nodes a reactive render puts behind their own boundaries (see `ReaderEntry`).
+let reactiveRenderFacts<'Msg> (root: Node<'Msg>) : RenderFacts<'Msg> * ReaderEntry<'Msg> list =
+    let _, facts, readers = walkTree false true root
+    facts, readers
+
+/// Fuaran-UI Phase 2530 — the key-to-reader map on one channel, by node id: for
+/// each key `channel` names, the ids of the entries that read it. A node id that
+/// appears twice in a tree is one reader here; the renderer keys its boundaries
+/// by node identity, so the two stay two there.
+let readerMap<'Msg>
+    (channel: ReactiveKeys -> Set<string>)
+    (entries: ReaderEntry<'Msg> list)
+    : Map<string, Set<string>> =
+    entries
+    |> List.fold
+        (fun acc (e: ReaderEntry<'Msg>) ->
+            channel e.Keys
+            |> Set.fold
+                (fun acc key ->
+                    let readers = Map.tryFind key acc |> Option.defaultValue Set.empty
+                    Map.add key (Set.add e.Node.Id readers) acc)
+                acc)
+        Map.empty
 
 /// The tree-wide binding facts for `node` (see `TreeBindingFacts`) — the
 /// `Bindings` half of `collectFacts`, unchanged, and what every shipped rule
