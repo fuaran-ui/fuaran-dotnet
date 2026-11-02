@@ -3338,6 +3338,66 @@ let selectMultipleFalse: Node<obj> =
         ))
         None
 
+/// Phase 2571 — option groups, every option grouped (WIRE_FORMAT §3.6.30). Each
+/// group's `values` is written in an order other than `source`'s, so the vector
+/// pins that the wire keeps the authored order while a renderer draws a group's
+/// options in `source` order.
+[<NodeFixture "Input/Select (Phase 2571 — option groups, every option grouped)">]
+let selectOptionGroups: Node<obj> =
+    node
+        "select-option-groups"
+        (NodeKind.Select(
+            { Defaults.select with
+                Label = TextSource.Literal "Chart"
+                Source =
+                    Binding.Static(
+                        Some
+                            [ { Value = "revenue-trend"
+                                Label = "Revenue" }
+                              { Value = "orders-trend"
+                                Label = "Orders" }
+                              { Value = "region-breakdown"
+                                Label = "By region" }
+                              { Value = "channel-breakdown"
+                                Label = "By channel" } ]
+                    )
+                Value = Some(Binding.Static(Some "revenue-trend"))
+                Groups =
+                    [ { Label = "Trend"
+                        Values = [ "orders-trend"; "revenue-trend" ] }
+                      { Label = "Breakdown"
+                        Values = [ "region-breakdown"; "channel-breakdown" ] } ] }
+        ))
+        None
+
+/// Phase 2571 — option groups with an ungrouped remainder: the options no group
+/// names render after the groups, in `source` order (WIRE_FORMAT §3.6.30).
+[<NodeFixture "Input/Select (Phase 2571 — option groups, an ungrouped remainder)">]
+let selectOptionGroupsRemainder: Node<obj> =
+    node
+        "select-option-groups-remainder"
+        (NodeKind.Select(
+            { Defaults.select with
+                Label = TextSource.Literal "Chart"
+                Source =
+                    Binding.Static(
+                        Some
+                            [ { Value = "summary"; Label = "Summary" }
+                              { Value = "revenue-trend"
+                                Label = "Revenue" }
+                              { Value = "region-breakdown"
+                                Label = "By region" }
+                              { Value = "notes"; Label = "Notes" } ]
+                    )
+                Value = Some(Binding.State("chart", Some "summary"))
+                Groups =
+                    [ { Label = "Trend"
+                        Values = [ "revenue-trend" ] }
+                      { Label = "Breakdown"
+                        Values = [ "region-breakdown" ] } ] }
+        ))
+        None
+
 /// Round-trip cover for the Phase 291 multi-select `Select`. `Multiple = true`
 /// + a `Values` `Binding<string list>` (non-empty Static → the `<opaque>`
 /// sentinel, mirroring `Source`). `OnChangeMulti = None` (Phase 426): the

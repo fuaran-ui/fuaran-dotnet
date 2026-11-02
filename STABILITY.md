@@ -7960,6 +7960,36 @@ change: `yFields` was always a list and an empty one always decoded (WIRE_FORMAT
 - **Corpus.** `attestation/page-corpus.json` (signed pages and their refusals), checked by `Fuaran.UI.Tests` on .NET
   and by law 10 of the Fable law harness under Node.
 
+---
+
+### What rides this slot — Phase 2571 (a `Select` carries optional option groups)
+
+**Class: additive on the wire; a record widening on the surface (`FS0764` at a full-literal `SelectSpec`).**
+Packages `Fuaran.UI`, `Fuaran.UI.Ops`, `Fuaran.UI.Renderer.Core`, `Fuaran.UI.Renderer`, `Fuaran.UI.Renderer.Server`,
+`Fuaran.UI.Renderer.Web`, `Fuaran.UI.CSharp`. It rides the `0.101.0` draft: the slot is a minor, the class pre-1.0
+widenings have always ridden (the 0.50.0 entry is the worked case), and nothing has tagged it.
+
+- **Wire.** `Select` gains `groups`, a list of `SelectOptionGroup` (`{label, values}`), omit-at-default: absent and
+  `[]` are one fact and encode identically, so every ungrouped document is byte-unchanged (WIRE_FORMAT §3.6.30).
+  Two decode refusals, both `WRONG_TYPE` at the offending `values` element: a value named more than once, and over
+  STATIC options a value naming no option. `schema.json` carries the shape; the refusals are the decoder's.
+- **Surface — a record widening.** `SelectSpec` gains `Groups: SelectOptionGroup list` (appended), and the new record
+  `SelectOptionGroup` (`Label`, `Values`) is aliased in `Fuaran.UI.Types`. `Defaults.select` sets `Groups = []`, so a
+  spec built from it (`{ Defaults.select with … }`, the shape every constructor and sample uses) compiles unchanged;
+  a spec written as a FULL record literal reports `FS0764` — add `Groups = []`. **`SelectOption` is unchanged**: the
+  grouping names options by `value` from the `Select`, so every `{ Label = …; Value = … }` option literal compiles as
+  before (pinned by `SelectOptionGroupsTests`).
+- **Rendering.** `ElementPlan.InputPlan.select` (client and server share it) draws one `<optgroup label>` per group
+  in list order holding the options it names in `source` order, then the ungrouped remainder; no groups draws the
+  flat list exactly as before. A group value a bound source's rows do not hold is not drawn.
+- **Operability.** Unchanged by construction: a set slot enumerates options alone, so a group label is never an
+  alias (pinned in `Fuaran.UI.Operability.Tests`).
+- **C#.** `SelectOptions.Groups` (`(Label, Values)` tuples), threaded through the factory's positional `SelectSpec`
+  construction. **VB:** a declared GAP (`AuthoringDialect.notChildAuthorable`, `Select.groups`).
+- **Embedded renderer.** `Fuaran.UI.Renderer.Web` re-synced: the bundled `@fuaran-ui/renderer` draws the groups.
+- **Corpus.** `nodes/select-option-groups.json`, `nodes/select-option-groups-remainder.json`,
+  `reject/reject-2571-select-group-value-twice.json`, `reject/reject-2571-select-group-value-unknown.json`.
+
 ## 0.100.1 — the slot opened after v0.100.0 was released (DRAFT — untagged)
 
 _`v0.100.0` is TAGGED (2026-10-31), so nothing may ride it: the change below opens the next slot. Class: **additive**

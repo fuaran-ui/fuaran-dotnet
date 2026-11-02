@@ -208,3 +208,58 @@ let family =
                           fresh
                           "the committed family is stale: FUARAN_REGEN=1 dotnet run --project src/Fuaran.UI.Operability.Tests"
           } ]
+
+[<Tests>]
+let optionGroups =
+    testList
+        "Phase 2571 — option groups are not aliases (§31, WIRE_FORMAT §3.6.30)"
+        [ let tree =
+              Fuaran.select
+                  "chart"
+                  { Defaults.select with
+                      Label = TextSource.Literal "Chart"
+                      Source =
+                          Binding.Static(
+                              Some
+                                  [ { Label = "Revenue"
+                                      Value = "revenue-trend" }
+                                    { Label = "By region"
+                                      Value = "region-breakdown" }
+                                    { Label = "Notes"; Value = "notes" } ]
+                          )
+                      Value = Some(Binding.State("chart", Some "notes"))
+                      Groups =
+                          [ { Label = "Trend"
+                              Values = [ "revenue-trend" ] }
+                            { Label = "Breakdown"
+                              Values = [ "region-breakdown" ] } ] }
+
+          let affordances = Operability.derive None tree
+
+          test "a grouped select derives exactly the affordances its ungrouped twin does" {
+              let ungrouped =
+                  match tree.Kind with
+                  | NodeKind.Select s ->
+                      { tree with
+                          Kind = NodeKind.Select { s with Groups = [] } }
+                  | _ -> failtest "a Select"
+
+              Expect.equal
+                  (affordances |> List.map (fun a -> a.Id, a.Slot))
+                  (Operability.derive None ungrouped |> List.map (fun a -> a.Id, a.Slot))
+                  "groups add no slot entry and no alias"
+          }
+
+          test "an option label resolves inside a group" {
+              Expect.equal
+                  (Operability.resolve "set chart to Revenue" affordances)
+                  (Outcome.Resolved [ "chart:set", SlotValue.Value "revenue-trend" ])
+                  "the option, not its group"
+          }
+
+          test "a group label names no option" {
+              Expect.equal
+                  (Operability.resolve "set chart to Trend" affordances)
+                  Outcome.NotResolved
+                  "a group label is never an alias"
+          } ]

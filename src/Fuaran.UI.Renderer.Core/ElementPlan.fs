@@ -1708,9 +1708,39 @@ module InputPlan =
              | Some icon -> Content.Children [ DisplayPlan.iconHook Css.Class.ButtonIcon icon; Plan.TextNode label ]
              | None -> Content.Text label)
 
+    /// Phase 2571 — a `Select`'s options under its `groups` (WIRE_FORMAT
+    /// §3.6.30): one `<optgroup label>` per group in list order, holding the
+    /// options it names in `source` order, then the options no group names,
+    /// ungrouped. No groups: the options as one flat list. A group value the
+    /// resolved options do not hold (a bound source) is simply not drawn.
+    let private groupedOptions
+        (groups: SelectOptionGroup list)
+        (options: SelectOption list)
+        (option: SelectOption -> Plan<'E>)
+        : Plan<'E> list =
+        match groups with
+        | [] -> [ for o in options -> option o ]
+        | _ ->
+            let named = groups |> List.collect (fun g -> g.Values) |> Set.ofList
+
+            [ for index, g in List.indexed groups ->
+                  Plan.Element
+                      { Tag = "optgroup"
+                        Key = Some(sprintf "optgroup:%d" index)
+                        Props = [ Prop.Attr("label", g.Label) ]
+                        Content =
+                          Content.Children
+                              [ for o in options do
+                                    if List.contains o.Value g.Values then
+                                        option o ] } ]
+            @ [ for o in options do
+                    if not (Set.contains o.Value named) then
+                        option o ]
+
     /// A `Select`. Single: the placeholder (when declared) and the options,
     /// the chosen one `Selected`; multi (Phase 291): `multiple`, the options
     /// alone, every chosen one `Selected`. The change is `Attach.SelectChange`.
+    /// Options are grouped per `groups` (Phase 2571); the placeholder stays first.
     let select (sources: BindingResolver.BindingSources) (spec: SelectSpec<'Msg>) : Plan<'E> =
         let options = BindingResolver.resolveOptions sources spec.Source
 
@@ -1722,7 +1752,7 @@ module InputPlan =
                     |> Option.defaultValue []
 
                 [ Prop.Flag "multiple"; Prop.Values values ],
-                [ for o in options -> optionPlan o.Value o.Label (List.contains o.Value values) ]
+                groupedOptions spec.Groups options (fun o -> optionPlan o.Value o.Label (List.contains o.Value values))
             else
                 // Phase 1962 — a single-select carries one `Value`.
                 let selected = spec.Value |> Option.bind (chosen sources)
@@ -1735,7 +1765,7 @@ module InputPlan =
                            [ Prop.Attr("value", "") ]
                            (Content.Text(BindingResolver.resolveTextSource sources placeholder)) ]
                  | None -> [])
-                @ [ for o in options -> optionPlan o.Value o.Label (selected = Some o.Value) ]
+                @ groupedOptions spec.Groups options (fun o -> optionPlan o.Value o.Label (selected = Some o.Value))
 
         Plan.classChildren
             "label"

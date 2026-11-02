@@ -392,6 +392,48 @@ let tests =
                             html)
                         html
                 }
+                test "Phase 2571 — option groups are served as optgroups, the ungrouped remainder after them" {
+                    let html =
+                        Render.renderStatic (
+                            Fuaran.select
+                                "s"
+                                { Defaults.select with
+                                    Source =
+                                        Binding.Static(
+                                            Some
+                                                [ { Value = "a"; Label = "A" }
+                                                  { Value = "b"; Label = "B" }
+                                                  { Value = "c"; Label = "C" }
+                                                  { Value = "d"; Label = "D" } ]
+                                        )
+                                    Value = Some(Binding.Static(Some "b"))
+                                    Groups =
+                                        [ { Label = "Second"
+                                            Values = [ "d"; "b" ] }
+                                          { Label = "First"; Values = [ "a" ] } ] }
+                        )
+
+                    // Groups in list order; a group's options in `source` order;
+                    // `c` (named by no group) after the last group.
+                    Expect.isTrue
+                        (contains
+                            "<select class=\"fuaran-select-control\"><optgroup label=\"Second\"><option value=\"b\" selected=\"selected\">B</option><option value=\"d\">D</option></optgroup><optgroup label=\"First\"><option value=\"a\">A</option></optgroup><option value=\"c\">C</option></select>"
+                            html)
+                        html
+                }
+                test "Phase 2571 — no groups serve the flat option list unchanged" {
+                    let html =
+                        Render.renderStatic (
+                            Fuaran.select
+                                "s"
+                                { Defaults.select with
+                                    Source = options
+                                    Value = Some(Binding.Static(Some "b"))
+                                    Groups = [] }
+                        )
+
+                    Expect.isFalse (contains "optgroup" html) html
+                }
                 test "R1 — data-fuaran-commit is served; the unwired cue is not" {
                     let html =
                         Render.renderStatic (

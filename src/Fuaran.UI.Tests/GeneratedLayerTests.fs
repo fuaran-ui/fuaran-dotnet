@@ -732,6 +732,13 @@ let generatedLayerTests =
               Expect.equal
                   policyOwned
                   [ "reject-1962-select-missing-value.json"
+                    // Fuaran-UI Phase 2571 — the option-group refusals relate a
+                    // group's value to its siblings (every other group's values;
+                    // the static `source`'s option values). The IDL declares
+                    // `groups` a plain list of records, so the generated decoder
+                    // reads either document whole.
+                    "reject-2571-select-group-value-twice.json"
+                    "reject-2571-select-group-value-unknown.json"
                     "reject-action-print-with-payload.json"
                     "reject-box-masonry-nonpositive-cols.json"
                     "reject-chart-annotation-date-unparseable.json"

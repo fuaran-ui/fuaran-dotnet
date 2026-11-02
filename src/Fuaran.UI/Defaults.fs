@@ -424,7 +424,10 @@ let select<'Msg> : SelectSpec<'Msg> =
       OnChangeMulti = Option.None
       // Phase 2517 — no declared affordance: the node is still operable through
       // what `Operability.derive` reads off its name, label and options.
-      Affordance = Option.None }
+      Affordance = Option.None
+      // Phase 2571 — no option groups: the options render as one flat list, and
+      // the member is omitted on the wire (absent and `[]` are one fact).
+      Groups = [] }
 
 let form<'Msg> : FormSpec<'Msg> =
     { Fields = []

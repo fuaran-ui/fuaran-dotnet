@@ -1466,6 +1466,11 @@ and SelectSpec<'Msg> = Generated.SelectSpec<'Msg>
 /// `Label` is the displayed text.
 and SelectOption = Generated.SelectOption
 
+/// Phase 2571 — a named group of a `Select`'s options: `Values` names options of
+/// the same `Select` by their `Value`. Options no group names render after the
+/// groups, ungrouped (WIRE_FORMAT §3.6.30).
+and SelectOptionGroup = Generated.SelectOptionGroup
+
 /// Phase 2517 — the operability affordance a field-bearing node (`Select`,
 /// `Button`, a `Form` field) may declare: the set / read phrasings an
 /// agent-initiated instruction may use, the spoken aliases of its options, a

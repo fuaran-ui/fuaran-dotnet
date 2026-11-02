@@ -1574,8 +1574,14 @@ let private defs: (string * J) list =
             "multiple", boolean
             "values", binding "list_str"
             "onChangeMulti", closure
-            "affordance", ref "Affordance" ]
+            "affordance", ref "Affordance"
+            // Phase 2571 — the option groups, omit-at-default. The two refusals
+            // (a value named twice, a value naming no static option) are
+            // relations across the document the schema cannot state.
+            "groups", arrayOf (ref "SelectOptionGroup") ]
       |> selectValueRule
+
+      "SelectOptionGroup", record [ "label"; "values" ] [ "label", str; "values", arrayOf str ]
 
       "FileUploadSpec",
       record

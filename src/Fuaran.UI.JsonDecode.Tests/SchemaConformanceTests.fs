@@ -149,6 +149,12 @@ let private schemaInexpressibleRejects: Set<string> =
         [ "reject-chart-annotation-date-unparseable"
           "reject-chart-annotation-range-unordered"
           "reject-daterange-unordered"
+          // Phase 2571 — the option-group refusals are relations ACROSS the
+          // document (a value unique over every group's list; a value one of the
+          // sibling `source`'s options carries). `uniqueItems` reaches one array
+          // only, and nothing in the dialect joins a member to a sibling's values.
+          "reject-2571-select-group-value-twice"
+          "reject-2571-select-group-value-unknown"
           // fuaran#1085 retired `reject-transform-source-empty-wrapper` from
           // this list with the fixture itself: the shape the schema could not
           // refuse is one the DECODER no longer refuses either.

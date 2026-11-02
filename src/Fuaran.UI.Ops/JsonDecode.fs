@@ -6595,6 +6595,87 @@ let private decodeButtonSpec (path: string) (j: Json) : Result<ButtonSpec<obj>, 
         | _, _, _, _, Error e, _
         | _, _, _, _, _, Error e -> Error e
 
+/// Phase 2571 — `Select.groups` (WIRE_FORMAT §3.6.30): an ordered list of
+/// `{label, values}`, omit-at-default (absent and `[]` are one fact). Two
+/// refusals, both `WRONG_TYPE` at the offending `values` element: a value named
+/// more than once (by two groups, or twice by one), and — over STATIC options
+/// only — a value naming no option. A bound source resolves at render, where a
+/// value its rows do not hold is reported, never here.
+let private decodeSelectOptionGroups
+    (path: string)
+    (fields: Map<string, Json>)
+    (source: Result<Binding<SelectOption list>, DecodeError>)
+    : Result<SelectOptionGroup list, DecodeError> =
+    let decodeGroup (p: string) (g: Json) : Result<SelectOptionGroup, DecodeError> =
+        match requireObject p g with
+        | Error e -> Error e
+        | Ok gf ->
+            both
+                (requireField p gf "label" "group label string"
+                 |> Result.bind (requireString (p + ".label")))
+                (requireField p gf "values" "array of option values"
+                 |> Result.bind (requireArray (p + ".values"))
+                 |> Result.bind (traverseIndexed (fun i v -> requireString (sprintf "%s.values[%d]" p i) v)))
+            |> Result.map (fun (label, values) -> { Label = label; Values = values })
+
+    match tryField fields "groups" with
+    | None -> Ok []
+    | Some v ->
+        let gp = path + ".groups"
+
+        match
+            requireArray gp v
+            |> Result.bind (traverseIndexed (fun i g -> decodeGroup (sprintf "%s[%d]" gp i) g))
+        with
+        | Error e -> Error e
+        | Ok groups ->
+            // Static options only: a bound source's rows are not in the document.
+            let known =
+                match source with
+                | Ok(Binding.Static(Some opts)) when not (opts |> List.exists (fun o -> o.Value = opaqueSentinel)) ->
+                    Some(opts |> List.map (fun o -> o.Value) |> Set.ofList)
+                | Ok(Binding.Static None) -> Some Set.empty
+                | _ -> None
+
+            let named =
+                groups
+                |> List.mapi (fun gi g -> g.Values |> List.mapi (fun vi value -> gi, vi, value))
+                |> List.concat
+
+            let rec check (seen: Map<string, int * string>) rest =
+                match rest with
+                | [] -> Ok groups
+                | (gi, vi, value) :: tail ->
+                    let at = sprintf "%s[%d].values[%d]" gp gi vi
+
+                    match Map.tryFind value seen with
+                    | Some(firstGroup, firstLabel) ->
+                        err
+                            DecodeErrorCode.WRONG_TYPE
+                            at
+                            (sprintf
+                                "option value '%s' is already named by group %d ('%s'): an option belongs to at most one group"
+                                value
+                                firstGroup
+                                firstLabel)
+                            (Some "a value no other group (and no earlier entry of this group) names")
+                    | None ->
+                        match known with
+                        | Some values when not (Set.contains value values) ->
+                            err
+                                DecodeErrorCode.WRONG_TYPE
+                                at
+                                (sprintf
+                                    "option value '%s' names no option of this Select: a group can only gather the options its Select carries"
+                                    value)
+                                (Some(
+                                    "the value of one of this Select's options: "
+                                    + (values |> Set.toList |> List.map (sprintf "'%s'") |> String.concat ", ")
+                                ))
+                        | _ -> check (Map.add value (gi, groups.[gi].Label) seen) tail
+
+            check Map.empty named
+
 let private decodeSelectSpec (path: string) (j: Json) : Result<SelectSpec<obj>, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
@@ -6661,8 +6742,11 @@ let private decodeSelectSpec (path: string) (j: Json) : Result<SelectSpec<obj>, 
         // slot (WIRE_FORMAT §31.2).
         let affordanceR = decodeOptionalAffordance AffordanceSlotRule.Required path fields
 
-        match labelR, sourceR, valueR, placeholderR, disabledR, multipleR, valuesR, affordanceR with
-        | Ok label, Ok source, Ok value, Ok placeholder, Ok disabled, Ok multiple, Ok values, Ok affordance ->
+        // Phase 2571 — the option groups, checked against the static options.
+        let groupsR = decodeSelectOptionGroups path fields sourceR
+
+        match labelR, sourceR, valueR, placeholderR, disabledR, multipleR, valuesR, both affordanceR groupsR with
+        | Ok label, Ok source, Ok value, Ok placeholder, Ok disabled, Ok multiple, Ok values, Ok(affordance, groups) ->
             // Handlers are optional (Phase 426): a present `"<closure>"`
             // sentinel decodes to the inert placeholder `Some`; an absent key
             // decodes to `None`, arming the renderer's write-back default
@@ -6683,7 +6767,8 @@ let private decodeSelectSpec (path: string) (j: Json) : Result<SelectSpec<obj>, 
                     (match tryField fields "onChangeMulti" with
                      | Some _ -> Some(fun _ -> Action.Chain [])
                      | None -> Option.None)
-                  Affordance = affordance }
+                  Affordance = affordance
+                  Groups = groups }
         | Error e, _, _, _, _, _, _, _
         | _, Error e, _, _, _, _, _, _
         | _, _, Error e, _, _, _, _, _

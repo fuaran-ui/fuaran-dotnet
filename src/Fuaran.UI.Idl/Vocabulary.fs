@@ -1941,6 +1941,15 @@ let private selectOptionRecord =
       Fields = [ req "label" TStr; req "value" TStr ]
       Annotations = Annotations.Empty }
 
+/// Phase 2571 — a named group of a `Select`'s options (WIRE_FORMAT §3.6.30). The
+/// grouping lives on the `Select` spec and names options by `value`, never on
+/// `SelectOption`: `SelectOption` is built as a full record literal across the
+/// estate, so a member there would break every construction.
+let private selectOptionGroupRecord =
+    { Name = "SelectOptionGroup"
+      Fields = [ req "label" TStr; req "values" (TList TStr) ]
+      Annotations = Annotations.Empty }
+
 /// A `Map.source` marker (Fuaran-UI 0.2.x typed-Static: the map source carries a real
 /// marker list instead of the opaque sentinel).
 let private mapMarkerRecord =
@@ -2931,7 +2940,10 @@ let inputKinds: IdlKind list =
             opt "multiple" TBool
             opt "values" (bindingOf (TList TStr))
             // Phase 2517 — appended, absent-at-`None`. WIRE_FORMAT §31.
-            opt "affordance" (TRecord "Affordance") ] }
+            opt "affordance" (TRecord "Affordance")
+            // Phase 2571 — appended, omit-at-default (absent and `[]` are one
+            // fact: no grouping). WIRE_FORMAT §3.6.30.
+            omit "groups" (TList(TRecord "SelectOptionGroup")) (VList []) ] }
       { Tag = "FileUpload"
         Category = "Input"
         Annotations = Annotations.Empty
@@ -3853,6 +3865,7 @@ let uiIdl: Idl =
           affordanceAliasRecord
           affordanceRecord
           selectOptionRecord
+          selectOptionGroupRecord
           mapMarkerRecord
           defaultSortRecord
           staticRowsRecord

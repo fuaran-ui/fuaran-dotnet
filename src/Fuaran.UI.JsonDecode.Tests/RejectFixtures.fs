@@ -2350,6 +2350,26 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "a single-select (`multiple` absent) with no `value`. `value` is the single-select binding and is required there; only a multi-select omits it (WIRE_FORMAT §3.2, Phase 1962)" }
+      // ─── Phase 2571 — the two option-group refusals (WIRE_FORMAT §3.6.30) ──
+      //
+      // Both are relations across the document: neither the IDL's per-field
+      // optionality nor the schema can state them, so the decoder does.
+      { Id = "reject-2571-select-group-value-twice"
+        Json =
+          """{"id":"x","kind":{"$type":"Select","groups":[{"label":"Trend","values":["revenue-trend"]},{"label":"Breakdown","values":["region-breakdown","revenue-trend"]}],"label":"Chart","source":{"$type":"Static","value":[{"label":"Revenue","value":"revenue-trend"},{"label":"By region","value":"region-breakdown"}]},"value":{"$type":"Static","value":"revenue-trend"}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.groups[1].values[1]"
+        IsOp = false
+        Description =
+          "a Select option group naming a value an earlier group already names. An option belongs to at most one group: drawn twice it would be two entries a reader cannot tell apart, and drawn once the document would not say which group holds it, so no rendering could be the one the author meant (WIRE_FORMAT §3.6.30, Phase 2571)" }
+      { Id = "reject-2571-select-group-value-unknown"
+        Json =
+          """{"id":"x","kind":{"$type":"Select","groups":[{"label":"Trend","values":["revenue-trend","orders-trend"]}],"label":"Chart","source":{"$type":"Static","value":[{"label":"Revenue","value":"revenue-trend"},{"label":"By region","value":"region-breakdown"}]},"value":{"$type":"Static","value":"revenue-trend"}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.groups[0].values[1]"
+        IsOp = false
+        Description =
+          "a Select option group naming a value no static option carries. A group gathers the Select's own options and adds none, so a value it cannot find is an author's typo the document would otherwise drop in silence. Over a BOUND source the options are not in the document, and the same miss is reported at render instead (WIRE_FORMAT §3.6.30, Phase 2571)" }
       { Id = "reject-limit-json-depth-at-max"
         Json =
           String.replicate Fuaran.UI.WireLimits.MaxJsonDepth "["
