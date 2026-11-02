@@ -3219,6 +3219,10 @@ let visKinds: IdlKind list =
             // restores it, and the schema is optional by construction.
             omit "stacked" TBool (VBool false)
             req "xField" TStr
+            // Phase 2568 — the list may be EMPTY: the series are then every numeric column of the
+            // bound rows but `xField`, Ordinal-ordered and named by column (WIRE_FORMAT §3.6.29).
+            // A list already admits empty, so the projection does not move; the rule that an empty
+            // list is admitted only over a `Query` source is the validator's (FUARAN168).
             req "yFields" (TList TStr)
             opt "title" TS
             // Phase 876 — the VALUE axis's number format, reusing the existing

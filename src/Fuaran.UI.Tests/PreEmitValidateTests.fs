@@ -1886,6 +1886,71 @@ let tests =
               | Ok() -> failtest "Expected ChartFieldTypeMismatch for the scatter x"
           }
 
+          test "an empty yFields is admitted over a Query and refused over anything else, by name (FUARAN168)" {
+              let rows: Map<string, obj> seq =
+                  Seq.ofList [ Map.ofList [ "day", ("Mon" :> obj); "a", (1.0 :> obj) ] ]
+
+              let chartOver (kind: ChartKind) (source: Binding<Map<string, obj> seq>) : Node<Msg> =
+                  Fuaran.chart
+                      "c"
+                      { Defaults.chart<Msg> with
+                          Kind = kind
+                          Source = source
+                          XField = "day"
+                          YFields = [] }
+
+              let unnamed (node: Node<Msg>) =
+                  match PreEmitValidate.validate node with
+                  | Ok() -> []
+                  | Error defects ->
+                      defects
+                      |> List.choose (function
+                          | PreEmitDefect.ChartSeriesUnnamed(id, found) -> Some(id, found)
+                          | _ -> None)
+
+              let query = Binding.Query("trend", (fun _ -> rows), None)
+
+              Expect.isEmpty (unnamed (chartOver ChartKind.Line query)) "a Query source derives its series"
+
+              Expect.equal
+                  (unnamed (chartOver ChartKind.Line (Binding.Static(Some rows))))
+                  [ "c", "inline rows (a Static binding)" ]
+                  "inline rows are refused by name"
+
+              Expect.equal
+                  (unnamed (chartOver ChartKind.Bar (Binding.State("rows", Some rows))))
+                  [ "c", "a State binding" ]
+                  "a tree-fed binding is refused by name"
+
+              // A derived pie is counted when its rows arrive, so FUARAN088 does
+              // not judge it pre-emit; over inline rows the finding is FUARAN168,
+              // the root cause, not a zero-series pie.
+              match PreEmitValidate.validate (chartOver ChartKind.Pie query) with
+              | Error defects ->
+                  Expect.isFalse
+                      (defects
+                       |> List.exists (function
+                           | PreEmitDefect.ChartPieSeriesShape _ -> true
+                           | _ -> false))
+                      "a derived pie is not a zero-series pie"
+              | Ok() -> ()
+
+              match PreEmitValidate.validate (chartOver ChartKind.Pie (Binding.Static(Some rows))) with
+              | Error defects ->
+                  Expect.contains
+                      defects
+                      (PreEmitDefect.ChartSeriesUnnamed("c", "inline rows (a Static binding)"))
+                      "FUARAN168"
+
+                  Expect.isFalse
+                      (defects
+                       |> List.exists (function
+                           | PreEmitDefect.ChartPieSeriesShape _ -> true
+                           | _ -> false))
+                      "not also FUARAN088"
+              | Ok() -> failtest "Expected ChartSeriesUnnamed"
+          }
+
           test "a multi-series pie fires ChartPieSeriesShape; stacked Line fires ChartStackedMeaningless" {
               let pie: Node<Msg> =
                   Fuaran.chart

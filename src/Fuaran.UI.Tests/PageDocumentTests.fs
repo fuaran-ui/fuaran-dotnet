@@ -38,6 +38,15 @@ let private presentationRequests =
 /// A stored analytics page: a metric and a chart, each on a presentation request.
 let presentationPage = documentOf presentationTree presentationRequests provenance
 
+/// Phase 2568 — the same page with the chart's series read from its rows: an
+/// empty `yFields` over the trend request, whose columns the resolver names (one
+/// per store). Only the tree's `yFields` differs from `presentationPage`.
+let derivedSeriesPage =
+    documentOf
+        (presentationTree.Replace("\"yFields\":[\"revenue\",\"orders\"]", "\"yFields\":[]"))
+        presentationRequests
+        provenance
+
 let private pipelineTree =
     """{"id":"analysis","kind":{"$type":"Box","children":[{"id":"basket","kind":{"$type":"DataGrid","columns":[{"field":"category","kind":{"$type":"Text"},"label":"Category"},{"field":"perShopper","kind":{"$type":"Text"},"label":"Per shopper"}],"rowKeyField":"category","source":{"$type":"Query","name":"basket-by-category"}}},{"id":"orders-spark","kind":{"$type":"Sparkline","source":{"$type":"Query","name":"orders-7d","dependsOn":["store"]}}},{"id":"lookup","kind":{"$type":"Metric","label":"Lookup","value":{"$type":"Query","name":"lookup"}}},{"id":"export","kind":{"$type":"Button","label":"Export","onClick":{"$type":"Invoke","args":[],"capabilityId":"export.csv"}}},{"id":"refresh","kind":{"$type":"Button","label":"Refresh","onClick":{"$type":"Call","endpoint":"/api/refresh"}}},{"id":"guest","kind":{"$type":"Mount","capabilities":["notify"],"channel":{"direction":"OutOnly"},"scopeId":"guest-panel"}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}"""
 
@@ -108,6 +117,11 @@ let private pageWith (tree: string) (keys: string list) : string =
 let private chartInlineRows =
     """{"id":"inline-chart","kind":{"$type":"Chart","kind":"Bar","source":{"$type":"Static","value":[{"day":"Mon","revenue":10}]},"xField":"day","yFields":["revenue"]}}"""
 
+/// Phase 2568 — an empty `yFields` over inline rows: the columns are the tree's
+/// own, so the series are the author's to name.
+let private chartDerivedInlineRows =
+    """{"id":"inline-derived","kind":{"$type":"Chart","kind":"Line","source":{"$type":"Static","value":[{"day":"Mon","north":10,"south":7}]},"xField":"day","yFields":[]}}"""
+
 let private metricOnState =
     """{"id":"m","kind":{"$type":"Metric","label":"Total","value":{"$type":"State","key":"total"}}}"""
 
@@ -128,7 +142,9 @@ module Vectors =
         | Error e -> failwithf "canonical text unreadable: %A" e
 
     let private accepts =
-        [ "presentation-page", presentationPage; "pipeline-page", pipelinePage ]
+        [ "presentation-page", presentationPage
+          "pipeline-page", pipelinePage
+          "derived-series-page", derivedSeriesPage ]
 
     /// Documents decode refuses: (id, input).
     let rejects =
@@ -154,7 +170,8 @@ module Vectors =
     let rules =
         [ "chart-inline-rows", pageWith chartInlineRows []
           "metric-on-state", pageWith metricOnState []
-          "grid-static-rows", pageWith gridStaticRows [] ]
+          "grid-static-rows", pageWith gridStaticRows []
+          "chart-derived-inline-rows", pageWith chartDerivedInlineRows [] ]
 
     let private refusalJson (r: PageRefusal) : JVal =
         match r with
@@ -522,6 +539,33 @@ let ruleTests =
               match PreEmitValidate.validatePage PreEmitValidate.ValidateOptions.defaults Set.empty inline'.Tree with
               | Error ds -> Expect.contains (codesOf ds) "FUARAN167" "the page mode judges it"
               | Ok() -> failtest "the page mode passed inline rows"
+          }
+
+          test
+              "a chart reading its series from its rows is admitted over a request and refused over inline rows (Phase 2568)" {
+              let pageCodes (doc: PageDocument) =
+                  let keys = doc.Requests |> Map.toList |> List.map fst |> Set.ofList
+
+                  match PreEmitValidate.validatePage PreEmitValidate.ValidateOptions.defaults keys doc.Tree with
+                  | Error ds -> codesOf ds
+                  | Ok() -> []
+
+              let derived = decodeOk derivedSeriesPage
+
+              for code in [ "FUARAN166"; "FUARAN167"; "FUARAN168" ] do
+                  Expect.isFalse (List.contains code (pageCodes derived)) (code + ": the derived chart is bound")
+
+              let inlineDerived = decodeOk (snd Vectors.rules.[3])
+              let codes = pageCodes inlineDerived
+              Expect.contains codes "FUARAN167" "the page rule refuses the inline rows"
+              Expect.contains codes "FUARAN168" "and the chart rule names the unstated series"
+
+              // The read-set is the request's: the demanded document does not
+              // move when the series are read from the rows.
+              Expect.equal
+                  (demandedOf derived)
+                  (demandedOf (decodeOk presentationPage))
+                  "a derived chart demands what the authored one does"
           } ]
 
 [<Tests>]

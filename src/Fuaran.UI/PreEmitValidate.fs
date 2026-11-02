@@ -301,6 +301,15 @@ type PreEmitDefect =
     /// mistake: plot one share column, or switch kind. Carries the node id and
     /// the series count.
     | ChartPieSeriesShape of nodeId: string * seriesCount: int
+    /// **FUARAN168 (Error)**. A `Chart` leaves `YFields` EMPTY over a source
+    /// that is not a `Binding.Query` (Phase 2568, WIRE_FORMAT §3.6.29). An empty
+    /// list means "every numeric column of the bound rows but `XField`, named by
+    /// column" — the shape a stored page's chart takes when its resolver names the
+    /// series (the subjects of a trend, the dates of a comparison). Over inline
+    /// rows, or any binding the tree feeds itself, the columns are the author's
+    /// own and are named by writing them: an empty list there is a chart whose
+    /// series nobody stated. Carries the node id and the source's binding case.
+    | ChartSeriesUnnamed of nodeId: string * found: string
     /// **FUARAN089 (Warning)**. `Stacked = true` on a `ChartKind` where
     /// stacking is meaningless (`Line` / `Scatter` / `Pie`) — the lowering
     /// ignores the flag (Phase 637), so the emission carries dead intent;
@@ -2363,6 +2372,13 @@ module DefectCodes =
               "Phases 638, 640"
           )
           row (
+              "ChartSeriesUnnamed",
+              "FUARAN168",
+              Severity.Error,
+              "chart '{nodeId}' leaves yFields empty over {found} — an empty yFields reads its series off a Query's rows (every numeric column but xField, named by column), so it is admitted only over a Binding.Query; name the series this source carries in yFields (Phase 2568)",
+              "Phase 2568"
+          )
+          row (
               "ChartStackedMeaningless",
               "FUARAN089",
               Severity.Warning,
@@ -3308,6 +3324,7 @@ let private describeArgs (d: PreEmitDefect) : string * (string * string) list =
         [ "nodeId", nodeId; "subject", subject; "fromText", fromText; "toText", toText ]
     | PreEmitDefect.ChartPieSeriesShape(nodeId, seriesCount) ->
         "ChartPieSeriesShape", [ "nodeId", nodeId; "seriesCount", string seriesCount ]
+    | PreEmitDefect.ChartSeriesUnnamed(nodeId, found) -> "ChartSeriesUnnamed", [ "nodeId", nodeId; "found", found ]
     | PreEmitDefect.ChartStackedMeaningless(nodeId, kind) ->
         "ChartStackedMeaningless", [ "nodeId", nodeId; "kind", kind ]
     | PreEmitDefect.InertEditableGrid nodeId -> "InertEditableGrid", [ "nodeId", nodeId ]
@@ -5015,6 +5032,24 @@ module private FormRules =
             defects.Add(PreEmitDefect.CaptureAcceptMismatch(n.Id, string source, spec.Accept))
         | _ -> ()
 
+/// A binding's case as a finding names it ("a State binding", "inline rows").
+let private bindingCaseName (b: Binding<'T>) : string =
+    match b with
+    | Binding.Static(Some _) -> "inline rows (a Static binding)"
+    | Binding.Static None -> "an empty Static binding"
+    | Binding.Query _ -> "a Query binding"
+    | Binding.Filter _ -> "a Filter binding"
+    | Binding.Selection _ -> "a Selection binding"
+    | Binding.State _ -> "a State binding"
+    | Binding.Now _ -> "a Now binding"
+    | Binding.Computed _ -> "a Computed binding"
+    | Binding.Local _ -> "a Local binding"
+    | Binding.Format _ -> "a Format binding"
+    | Binding.I18n _ -> "an I18n binding"
+    | Binding.Transform _ -> "a Transform binding"
+    | Binding.Expr _ -> "an Expr binding"
+    | Binding.Invoke _ -> "an Invoke binding"
+
 /// `Chart`: schema grounding of fields and annotations against the source it lowers.
 module private ChartRules =
 
@@ -5036,10 +5071,20 @@ module private ChartRules =
             | ChartKind.Scatter -> "Scatter"
             | ChartKind.Heatmap -> "Heatmap"
 
+        // FUARAN168 — an empty YFields derives its series from a Query's rows
+        // (Phase 2568) and is admitted over nothing else.
+        (match spec.YFields, spec.Source with
+         | [], Binding.Query _ -> ()
+         | [], other -> defects.Add(PreEmitDefect.ChartSeriesUnnamed(nodeIdStr, bindingCaseName other))
+         | _ -> ())
+
         // FUARAN088 — pie needs exactly one series (the 638 lowering
-        // refuses multi-series geometry rather than truncating).
+        // refuses multi-series geometry rather than truncating). A derived list
+        // (an empty YFields, Phase 2568) is counted only when the rows arrive,
+        // so it is not judged here: the lowering refuses a pie it derives
+        // other than one series for.
         (match spec.Kind with
-         | ChartKind.Pie when spec.YFields.Length <> 1 ->
+         | ChartKind.Pie when spec.YFields.Length > 1 ->
              defects.Add(PreEmitDefect.ChartPieSeriesShape(nodeIdStr, spec.YFields.Length))
          | _ -> ())
 
@@ -6465,21 +6510,13 @@ let validateWith (options: ValidateOptions) (node: Node<'Msg>) : Result<unit, Pr
 // tree to the sidecar.
 
 /// What a binding is, as the page rules name it.
+/// A `Static` here is the empty one: `pageSlotDefects` judges a valued `Static`
+/// as inline rows (FUARAN167) before asking this.
 let private pageBindingFound (b: Binding<'T>) : string =
     match b with
     | Binding.Static _ -> "an empty Static binding"
     | Binding.Query(name, _, _) -> "a Query on '" + name + "', which names no request in the sidecar"
-    | Binding.Filter _ -> "a Filter binding"
-    | Binding.Selection _ -> "a Selection binding"
-    | Binding.State _ -> "a State binding"
-    | Binding.Now _ -> "a Now binding"
-    | Binding.Computed _ -> "a Computed binding"
-    | Binding.Local _ -> "a Local binding"
-    | Binding.Format _ -> "a Format binding"
-    | Binding.I18n _ -> "an I18n binding"
-    | Binding.Transform _ -> "a Transform binding"
-    | Binding.Expr _ -> "an Expr binding"
-    | Binding.Invoke _ -> "an Invoke binding"
+    | other -> bindingCaseName other
 
 /// The page rules over ONE node's data-bearing slots.
 let private pageSlotDefects (requestKeys: Set<string>) (n: Node<'Msg>) : PreEmitDefect list =

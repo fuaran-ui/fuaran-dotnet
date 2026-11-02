@@ -7924,6 +7924,25 @@ on every change.
 
 ---
 
+### What rides this slot — Phase 2568 (a chart whose series are read from its rows)
+
+**Class: additive.** Packages `Fuaran.UI`, `Fuaran.UI.Charts`, `Fuaran.UI.Renderer`, `Fuaran.UI.Renderer.Web`. No wire
+change: `yFields` was always a list and an empty one always decoded (WIRE_FORMAT §3.6.29 states what it means).
+
+- **Lowering.** `Charts.lower` / `tryLower*` given an EMPTY `YFields` plot one series per numeric column of the rows
+  other than `XField` (a `Numeric` or `Decimal` cell, no row carrying text, a boolean or a date there),
+  Ordinal-ordered and named by column, and lower exactly as the chart naming those columns would. More such columns
+  than `ChartLimits.MaxSeries` is `TooManySeries`, never a truncation; the point cap is applied first, since derived
+  series are counted once the rows are read. An authored list lowers to the bytes it lowered to before.
+- **Surface — additive.** `Charts.derivedSeriesFields` and `Charts.seriesFieldsOf`. The AG adapter derives the same
+  series, and declines (falling to the first-party refusal drawing) over the cap.
+- **`PreEmitDefect` gains `ChartSeriesUnnamed of nodeId * found`** — **FUARAN168 (Error)**: an empty `YFields` over a
+  source that is not a `Binding.Query`, naming the binding found. An exhaustive match over `PreEmitDefect` reports
+  `FS0025`; add the arm. `FUARAN088` no longer counts an empty pie (its series are counted at lowering).
+- **Embedded renderer.** `Fuaran.UI.Renderer.Web` re-synced: the bundled `@fuaran-ui/charts` lowers the same way.
+- **Corpus.** `chart-lowering/derived-series/` (six goldens), and `page-document/` gains `derived-series-page` and
+  `chart-derived-inline-rows`.
+
 ## 0.100.1 — the slot opened after v0.100.0 was released (DRAFT — untagged)
 
 _`v0.100.0` is TAGGED (2026-10-31), so nothing may ride it: the change below opens the next slot. Class: **additive**

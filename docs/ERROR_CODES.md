@@ -1085,6 +1085,14 @@ multi-select '{nodeId}' carries a `value` — a multi-select's selection is `val
 {kind} '{nodeId}' {slot} carries inline data — a page document's numbers come from its requests, never from the tree, so the read-set cannot name inline rows; move the data behind a request and bind the slot as a Binding.Query on its key (Phase 2522)
 ```
 
+#### `FUARAN168` — Error
+
+`ChartSeriesUnnamed` (Phase 2568)
+
+```text
+chart '{nodeId}' leaves yFields empty over {found} — an empty yFields reads its series off a Query's rows (every numeric column but xField, named by column), so it is admitted only over a Binding.Query; name the series this source carries in yFields (Phase 2568)
+```
+
 <!-- END GENERATED: PreEmitValidate.DefectCodes.toMarkdown -->
 
 ---

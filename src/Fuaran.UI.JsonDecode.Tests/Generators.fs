@@ -1103,10 +1103,18 @@ let private genChartSpec: Gen<ChartSpec<obj>> =
         // property fail on a document the codec is correct to reject.
         let! annotations = genOption (genSmallList genChartAnnotation)
         let! stacked = genBool
+        // Phase 2568 — a query-bound source beside the inline one. `genSmallList`
+        // already draws the empty `yFields` a quarter of the time; over a `Query`
+        // that empty list is the derived-series form (WIRE_FORMAT §3.6.29), so the
+        // round-trip covers the shape a stored page's chart is written in.
+        let! source =
+            Gen.oneof
+                [ Gen.constant (Binding.Static(Some Seq.empty<Map<string, obj>>))
+                  Gen.map (fun n -> Binding.Query(n, (fun _ -> Seq.empty<Map<string, obj>>), None)) genNonEmptyString ]
 
         return
             { Defaults.chart with
-                Source = Binding.Static(Some Seq.empty)
+                Source = source
                 Kind = kind
                 XField = xField
                 YFields = yFields
