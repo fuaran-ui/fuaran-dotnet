@@ -1080,6 +1080,14 @@ let claimVerifier
     { KeyId = fun key -> key.KeyId
       Verify = fun payload signature key -> crypto.VerifyClaim payload signature key }
 
+/// The published `ecdsa-p256-sha256-v1` `ClaimVerifier` (Phase 2570): the
+/// tier's `EcdsaP256.claimVerifier` through `claimVerifier`. One name on both
+/// pipelines — the BCL on .NET, WebCrypto under Fable — so a host's stored
+/// page verifier names this and holds no crypto of its own. Asynchronous as
+/// the seam is: WebCrypto's promise is awaited inside the provider.
+let ecdsaP256: ClaimVerifier<Fuaran.UI.OpStream.Abstractions.KeyDirectoryEntry> =
+    claimVerifier Fuaran.UI.OpStream.Abstractions.EcdsaP256.claimVerifier
+
 // ─── the witness, assembled ─────────────────────────────────────────────────
 
 /// The walk axis: the structural and traversal surfaces, the per-node data

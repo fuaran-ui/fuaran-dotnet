@@ -296,6 +296,217 @@ module Vectors =
                   "files", JArr [ JStr FileName ] ])
         + "\n"
 
+// ─── the signed-page attestation vectors (Phase 2570) ────────────────────────
+
+/// `attestation/page-corpus.json` in the specification repository: pages signed
+/// by the .NET ECDSA P-256 provider, beside the refusals any verifier — the BCL
+/// arm here, WebCrypto in the browser — must name. ECDSA signatures are not
+/// deterministic and the signing key is discarded, so the file cannot be
+/// re-emitted byte for byte. The check is therefore SEMANTIC: the committed
+/// file holds exactly the vectors below, each document is the reference's
+/// canonical page, and the .NET provider gives every expected verdict.
+/// `FUARAN_REGEN=1` re-signs under a fresh key only when that check fails.
+module SignedPageVectors =
+
+    open System.Security.Cryptography
+    open Fuaran.UI.OpStream.Abstractions
+
+    let FileName = "page-corpus.json"
+
+    [<Literal>]
+    let SignerKeyId = "page-key-2026"
+
+    /// The .NET provider, as the published `ClaimVerifier` wraps it.
+    let crypto: Fuaran.Program.Bounded.ClaimVerifier<KeyDirectoryEntry> =
+        { KeyId = fun key -> key.KeyId
+          Verify = fun payload signature key -> EcdsaP256.claimVerifier.VerifyClaim payload signature key }
+
+    /// What the record a vector carries was signed over.
+    type SignedOver =
+        | Presentation
+        | Pipeline
+        | PresentationForged
+
+    /// (id, document, record, offered key name, expected verdict). The key
+    /// names: `signer` (the signing key's public half), `foreign` (the same
+    /// public half under another key id), `impostor` (another P-256 key under
+    /// the signer's id) and `other-curve` (a secp256k1 key under the signer's
+    /// id — a curve the algorithm id does not name, which both arms refuse).
+    let pages: (string * string * SignedOver * string option * string) list =
+        [ "accept-presentation-page", presentationPage, Presentation, Some "signer", "Verified"
+          "accept-pipeline-page", pipelinePage, Pipeline, Some "signer", "Verified"
+          "refuse-no-key", presentationPage, Presentation, None, "NoKey"
+          "refuse-foreign-key", presentationPage, Presentation, Some "foreign", "ForeignKey"
+          "refuse-drift", Vectors.driftedPage, Presentation, Some "signer", "Drift"
+          "refuse-tree-moved",
+          presentationPage.Replace("Revenue by store", "Store revenue"),
+          Presentation,
+          Some "signer",
+          "BadSignature"
+          "refuse-forged-signature", presentationPage, PresentationForged, Some "signer", "BadSignature"
+          "refuse-impostor-key", presentationPage, Presentation, Some "impostor", "BadSignature"
+          "refuse-other-curve-key", presentationPage, Presentation, Some "other-curve", "BadSignature" ]
+
+    /// The verdict's name: `Verified`, or the refusal's §32.5 name.
+    let verdictOf (result: Result<VerifiedPage, PageVerifyRefusal>) : string =
+        match result with
+        | Ok _ -> "Verified"
+        | Error refusal -> SignedPage.refusalName refusal
+
+    let private description =
+        "Signed pages (WIRE_FORMAT.md 32.5, Phase 2570) - the page document's signed read-set under ecdsa-p256-sha256-v1, read by name like the two other files here and outside manifest.json (26.7). keys: key directory entries, each with a local `name`; publicKeySpki is base64 DER SubjectPublicKeyInfo. pages: decode `document` with the page-document codec and `signed` with the signed-record codec, offer the key named by `key` (no `key` member: offer none), verify (32.5: recompute, then check the base64 IEEE P1363 r||s signature over the UTF-8 bytes of the recomputed preimage) and assert the verdict is `expect`: Verified, or the refusal's 32.5 name (NoKey, ForeignKey, Drift, BadSignature). The signer, foreign and impostor keys are on P-256; other-curve is a secp256k1 key under the signer's id, which a verifier refuses because the algorithm id names P-256. Signed by the reference host's .NET provider under a key that was then discarded, so the vectors are re-signed, not re-emitted: fuaran-dotnet checks them semantically, and FUARAN_REGEN=1 over Fuaran.UI.Tests re-signs only when that check fails. `coverage` records which host pipelines run the file."
+
+    let private coverage =
+        JObj
+            [ "fuaran-dotnet (.NET)",
+              JStr "covered - Fuaran.UI.Tests (PageDocumentTests) verifies every vector through EcdsaP256 on the BCL"
+              "fuaran-dotnet (Fable, browser)",
+              JStr
+                  "covered - tests/fable-laws law 10 verifies every vector through UiWitness.ecdsaP256 under WebCrypto and byte-compares its verdict lines with the .NET run" ]
+
+    let private sinkOf (key: ECDsa) : IAttestationSink =
+        { new IAttestationSink with
+            member _.Sign head =
+                Some
+                    { Head = head
+                      KeyId = SignerKeyId
+                      Signature =
+                        Convert.ToBase64String(key.SignData(Text.Encoding.UTF8.GetBytes head, HashAlgorithmName.SHA256)) }
+
+            member _.Verify _ _ = false }
+
+    let private entryJson (name: string) (keyId: string) (spki: string) : JVal =
+        JObj
+            [ "algorithm", JStr AttestationAlgorithm.ecdsaP256Sha256V1
+              "keyId", JStr keyId
+              "name", JStr name
+              "publicKeySpki", JStr spki ]
+
+    /// Sign every vector under a fresh key and render the whole file.
+    let emitFresh () : string =
+        use signer = ECDsa.Create ECCurve.NamedCurves.nistP256
+        use impostor = ECDsa.Create ECCurve.NamedCurves.nistP256
+        use otherCurve = ECDsa.Create(ECCurve.CreateFromValue "1.3.132.0.10")
+
+        let spki (k: ECDsa) =
+            Convert.ToBase64String(k.ExportSubjectPublicKeyInfo())
+
+        let signedOf (json: string) =
+            match SignedPage.sign (sinkOf signer) (decodeOk json) with
+            | Ok s -> s
+            | Error r -> failwithf "the reference refused to sign a vector page: %A" r
+
+        let presentation = signedOf presentationPage
+        let pipeline = signedOf pipelinePage
+
+        let forged =
+            let bytes = Convert.FromBase64String presentation.Signature
+            bytes.[bytes.Length - 1] <- bytes.[bytes.Length - 1] ^^^ 1uy
+
+            { presentation with
+                Signature = Convert.ToBase64String bytes }
+
+        let keys =
+            [ entryJson "signer" SignerKeyId (spki signer)
+              entryJson "foreign" "another-page-key" (spki signer)
+              entryJson "impostor" SignerKeyId (spki impostor)
+              entryJson "other-curve" SignerKeyId (spki otherCurve) ]
+
+        let pageJson (id, json, over, key: string option, expect) =
+            let record =
+                match over with
+                | Presentation -> presentation
+                | Pipeline -> pipeline
+                | PresentationForged -> forged
+
+            JObj(
+                [ "document", JStr(PageDocument.encode (decodeOk json))
+                  "expect", JStr expect
+                  "id", JStr id ]
+                @ (key |> Option.map (fun k -> "key", JStr k) |> Option.toList)
+                @ [ "signed", JStr(SignedPage.encode record) ]
+            )
+
+        Canonical.write
+            Rendering.CrossHost
+            (JObj
+                [ "coverage", coverage
+                  "description", JStr description
+                  "keys", JArr keys
+                  "pages", JArr(pages |> List.map pageJson)
+                  "version", JInt 1 ])
+        + "\n"
+
+    let private str (name: string) (fields: (string * JVal) list) : string option =
+        fields
+        |> List.tryPick (fun (k, v) ->
+            match v with
+            | JStr s when k = name -> Some s
+            | _ -> None)
+
+    let private parseKey (v: JVal) : string * KeyDirectoryEntry =
+        match v with
+        | JObj fields ->
+            match str "name" fields, str "keyId" fields, str "algorithm" fields, str "publicKeySpki" fields with
+            | Some name, Some keyId, Some algorithm, Some spki ->
+                name,
+                { KeyId = keyId
+                  Algorithm = algorithm
+                  PublicKeySpki = spki
+                  NotBefore = None
+                  Expires = None
+                  RevokedFrom = None }
+            | _ -> failwith "a key entry lacks a member"
+        | _ -> failwith "a key entry is not an object"
+
+    /// Every way the committed file differs from what it must say; empty when
+    /// it holds exactly the vectors above and the .NET provider agrees with each.
+    let problems (text: string) : string list =
+        match Canonical.read text with
+        | Error e -> [ sprintf "the file is not canonical JSON: %A" e ]
+        | Ok(JObj fields) ->
+            let memberOf name =
+                fields |> List.tryPick (fun (k, v) -> if k = name then Some v else None)
+
+            let keys =
+                match memberOf "keys" with
+                | Some(JArr ks) -> ks |> List.map parseKey |> Map.ofList
+                | _ -> Map.empty
+
+            match memberOf "pages" with
+            | Some(JArr committed) when List.length committed = List.length pages ->
+                List.zip pages committed
+                |> List.collect (fun ((id, json, _, key, expect), v) ->
+                    match v with
+                    | JObj page ->
+                        let carried = str "id" page, str "document" page, str "key" page, str "expect" page
+                        let wanted = Some id, Some(PageDocument.encode (decodeOk json)), key, Some expect
+
+                        if carried <> wanted then
+                            [ sprintf "%s: the vector is not the reference's (id, document, key or expect)" id ]
+                        else
+                            match str "signed" page |> Option.map SignedPage.decode with
+                            | Some(Ok signed) ->
+                                let offered = key |> Option.bind (fun k -> Map.tryFind k keys)
+
+                                let verdict =
+                                    SignedPage.verify crypto offered (decodeOk json) signed
+                                    |> Async.RunSynchronously
+                                    |> verdictOf
+
+                                if verdict = expect then
+                                    []
+                                else
+                                    [ sprintf
+                                          "%s: the .NET provider answers %s, the vector expects %s"
+                                          id
+                                          verdict
+                                          expect ]
+                            | _ -> [ sprintf "%s: the signed record does not decode" id ]
+                    | _ -> [ sprintf "%s: the vector is not an object" id ])
+            | _ -> [ "the file does not hold exactly the reference's pages" ]
+        | Ok _ -> [ "the file is not an object" ]
+
 // ─── the tests ───────────────────────────────────────────────────────────────
 
 [<Tests>]
@@ -609,4 +820,23 @@ let corpusTests =
                       Expect.isTrue (File.Exists path) (sprintf "the corpus at %s holds no %s" root path)
                       Expect.equal (File.ReadAllText path) emitted "regenerate with FUARAN_REGEN=1"
                       Expect.equal (File.ReadAllText manifestPath) Vectors.manifest "the family manifest"
+          }
+
+          test "Phase 2570 - the signed pages verify under the .NET provider as the vectors expect" {
+              match Fuaran.Tests.CorpusRoot.tryFind () with
+              | None -> () // a single-repo checkout: no corpus to check
+              | Some root ->
+                  let path = Path.Combine(root, "attestation", SignedPageVectors.FileName)
+
+                  let found =
+                      if File.Exists path then
+                          SignedPageVectors.problems (File.ReadAllText path)
+                      else
+                          [ sprintf "the corpus at %s holds no %s" root path ]
+
+                  if Vectors.regenerating && not (List.isEmpty found) then
+                      File.WriteAllText(path, SignedPageVectors.emitFresh ())
+                      Expect.isEmpty (SignedPageVectors.problems (File.ReadAllText path)) "the re-signed vectors"
+                  else
+                      Expect.isEmpty found "re-sign with FUARAN_REGEN=1"
           } ]

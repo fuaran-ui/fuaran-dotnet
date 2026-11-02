@@ -517,6 +517,18 @@ module SignedPage =
                                     )
         }
 
+    /// A refusal's §32.5 name — `NoKey`, `ForeignKey`, `InvalidDocument`,
+    /// `PageRulesBroken`, `Drift` or `BadSignature` — the token a corpus vector
+    /// and a host's report name it by, identical on every pipeline (Phase 2570).
+    let refusalName (refusal: PageVerifyRefusal) : string =
+        match refusal with
+        | PageVerifyRefusal.NoKey -> "NoKey"
+        | PageVerifyRefusal.ForeignKey _ -> "ForeignKey"
+        | PageVerifyRefusal.InvalidDocument _ -> "InvalidDocument"
+        | PageVerifyRefusal.PageRulesBroken _ -> "PageRulesBroken"
+        | PageVerifyRefusal.Drift _ -> "Drift"
+        | PageVerifyRefusal.BadSignature _ -> "BadSignature"
+
     /// The signed record as a self-describing canonical document.
     let encode (signed: SignedPage) : string =
         Canonical.write

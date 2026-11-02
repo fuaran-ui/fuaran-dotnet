@@ -7943,6 +7943,23 @@ change: `yFields` was always a list and an empty one always decoded (WIRE_FORMAT
 - **Corpus.** `chart-lowering/derived-series/` (six goldens), and `page-document/` gains `derived-series-page` and
   `chart-derived-inline-rows`.
 
+---
+
+### What rides this slot — Phase 2570 (the browser verifies a signed page)
+
+**Class: additive.** Packages `Fuaran.UI.OpStream.Abstractions`, `Fuaran.UI.Program`, `Fuaran.UI`. No wire change.
+
+- **`EcdsaP256` gains a Fable arm.** Under Fable the module holds `verifier: IAttestationVerifier` and
+  `claimVerifier: IClaimSignatureVerifier` over WebCrypto (`crypto.subtle`), importing the same base64 SPKI public
+  half a `KeyDirectoryEntry` carries and checking the same base64 IEEE P1363 signature as the .NET arm. It does not
+  sign. Before, the module did not exist under Fable at all; the .NET arm is unchanged.
+- **New members.** `UiWitness.ecdsaP256 : ClaimVerifier<KeyDirectoryEntry>` (the published page verifier, one name on
+  both pipelines) and `SignedPage.refusalName : PageVerifyRefusal -> string` (a refusal's §32.5 name).
+- **No seam changes.** Every verification seam was already asynchronous; WebCrypto's promise is awaited inside the
+  provider.
+- **Corpus.** `attestation/page-corpus.json` (signed pages and their refusals), checked by `Fuaran.UI.Tests` on .NET
+  and by law 10 of the Fable law harness under Node.
+
 ## 0.100.1 — the slot opened after v0.100.0 was released (DRAFT — untagged)
 
 _`v0.100.0` is TAGGED (2026-10-31), so nothing may ride it: the change below opens the next slot. Class: **additive**

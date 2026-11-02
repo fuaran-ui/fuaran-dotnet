@@ -1,16 +1,32 @@
 namespace Fuaran.UI.OpStream.Abstractions
 
 // ============================================================================
-//  The .NET attestation provider (Phase 789) — ECDSA P-256 / SHA-256 through
-//  the BCL only, plus a file-backed reference key directory.
+//  The attestation provider — ECDSA P-256 / SHA-256 (`ecdsa-p256-sha256-v1`).
 //
-//  Server-only by design, fenced out of the Fable pipeline entirely: browser
-//  hosts VERIFY (over the same `IAttestationVerifier` seam, via WebCrypto's
-//  asynchronous ECDSA) and never sign — a browser cannot hold an issued
-//  identity, so client-originated ops are attestable only once a server signs
-//  them. Until a browser-side verifier lands, the signing AND verifying
-//  property is explicitly scoped to .NET hosts; the portable vocabulary in
-//  `Attestation.fs` compiles on both pipelines so the types travel now.
+//  Two arms, one module name. On .NET (Phase 789) `EcdsaP256` signs and
+//  verifies through the BCL only, beside a file-backed reference key
+//  directory. Under Fable (Phase 2570) `EcdsaP256` VERIFIES and never signs:
+//  a browser cannot hold an issued identity, so client-originated ops are
+//  attestable only once a server signs them. The Fable arm imports the same
+//  base64 SPKI public half a `KeyDirectoryEntry` carries through WebCrypto
+//  (`crypto.subtle.importKey("spki", …, { namedCurve: "P-256" })`) and checks
+//  the same base64 IEEE P1363 (r||s) signature over the same UTF-8 payload, so
+//  `EcdsaP256.verifier` and `EcdsaP256.claimVerifier` name one provider on
+//  both pipelines and a page or segment signed on a server verifies in the
+//  browser. The curve is held on both arms: the BCL arm checks it after the
+//  import, and WebCrypto refuses at import an SPKI whose curve is not the
+//  P-256 the import names. Either refusal, and any malformed key or signature
+//  bytes, answers `false`.
+//
+//  THE ASYNC FORM — no new one. Every seam this provider implements is already
+//  asynchronous: `IAttestationVerifier.VerifySignature` and
+//  `IClaimSignatureVerifier.VerifyClaim` answer `Async<bool>`, and so does the
+//  program core's `ClaimVerifier.Verify`, which `UiWitness.ecdsaP256` builds
+//  from `claimVerifier`. WebCrypto's promise is awaited INSIDE the provider
+//  (`Async.AwaitPromise`), so the browser arm fits the existing seams
+//  unchanged and the .NET arm keeps answering synchronously inside its
+//  `async`. A host's stored view awaits `SignedPage.verify`, which awaits the
+//  `ClaimVerifier`; nothing above the provider changes.
 //
 //  RULE, not a hope: no hand-rolled ECDSA SIGNER, ever. Signing goes through
 //  the BCL (or WebCrypto), both of which own nonce generation — ECDSA's
@@ -312,5 +328,66 @@ module FileKeyDirectory =
     /// Load a directory from a file, once, at call time.
     let load (path: string) : IKeyDirectory =
         KeyDirectory.ofList (parse (IO.File.ReadAllText path))
+
+#else
+
+open System
+open System.Text
+open Fable.Core
+
+/// ECDSA P-256 / SHA-256 (`ecdsa-p256-sha256-v1`) VERIFICATION through WebCrypto
+/// (Phase 2570) — the browser arm of the provider the .NET arm above implements
+/// in full. There is no signer here, by design: see the file header.
+module EcdsaP256 =
+
+    /// Import a DER `SubjectPublicKeyInfo` as a P-256 verification key. Rejects
+    /// (the promise fails) for a key on any other curve, an explicit-parameters
+    /// key, or bytes that are not an SPKI.
+    [<Emit("globalThis.crypto.subtle.importKey('spki', $0, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify'])")>]
+    let private importSpki (der: byte array) : JS.Promise<obj> = jsNative
+
+    /// Verify an IEEE P1363 (r||s) signature over `data` under an imported key.
+    [<Emit("globalThis.crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, $0, $1, $2)")>]
+    let private subtleVerify (key: obj) (signature: byte array) (data: byte array) : JS.Promise<bool> = jsNative
+
+    /// The one crypto step both verifiers below take — the browser twin of the
+    /// .NET arm's: import the entry's SPKI (WebCrypto holds the curve), and
+    /// verify `signature` over the UTF-8 bytes of `payload`. Every failure —
+    /// a foreign curve, malformed base64, a refused import, a signature of the
+    /// wrong length — answers `false`, as the .NET arm does.
+    let private verifyPayloadUnder (key: KeyDirectoryEntry) (payload: string) (signature: string) : Async<bool> =
+        async {
+            try
+                let der = Convert.FromBase64String key.PublicKeySpki
+                let signatureBytes = Convert.FromBase64String signature
+                let! imported = Async.AwaitPromise(importSpki der)
+                return! Async.AwaitPromise(subtleVerify imported signatureBytes (Encoding.UTF8.GetBytes payload))
+            with _ ->
+                return false
+        }
+
+    /// The segment verifier — the same algorithm-id dispatch as the .NET arm's
+    /// `verifier`, over WebCrypto.
+    let verifier: IAttestationVerifier =
+        { new IAttestationVerifier with
+            member _.VerifySignature attestation key =
+                if
+                    key.Algorithm <> AttestationAlgorithm.ecdsaP256Sha256V1
+                    || attestation.Descriptor.Algorithm <> AttestationAlgorithm.ecdsaP256Sha256V1
+                then
+                    async { return false }
+                else
+                    verifyPayloadUnder key (SegmentAttestation.claimPayloadOf attestation) attestation.Signature }
+
+    /// The claim verifier — a signature over an arbitrary canonical claim
+    /// payload, the arm a document attestation and a signed page take. The
+    /// .NET arm's `claimVerifier`, over WebCrypto.
+    let claimVerifier: IClaimSignatureVerifier =
+        { new IClaimSignatureVerifier with
+            member _.VerifyClaim claimPayload signature key =
+                if key.Algorithm <> AttestationAlgorithm.ecdsaP256Sha256V1 then
+                    async { return false }
+                else
+                    verifyPayloadUnder key claimPayload signature }
 
 #endif

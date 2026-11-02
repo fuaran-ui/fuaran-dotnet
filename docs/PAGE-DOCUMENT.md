@@ -65,7 +65,28 @@ with no key refuses), `ForeignKey`, `InvalidDocument`, `PageRulesBroken`, `Drift
 shortfall, each a demanded document) and `BadSignature` (carried and recomputed hashes beside each other).
 
 The signature does not cover the provenance, and it does not say the reach is acceptable — that is
-`DemandedPage.check`'s question.
+`DemandedPage.check`'s question. `SignedPage.refusalName` gives a refusal's §32.5 name, the token a report and
+a corpus vector use.
+
+### The published verifier — in the browser too (Phase 2570)
+
+```fsharp
+UiWitness.ecdsaP256 : ClaimVerifier<KeyDirectoryEntry>      // package Fuaran.UI.Program
+```
+
+A host verifying a stored page names this and writes no crypto: `SignedPage.verify UiWitness.ecdsaP256 (Some
+entry) doc signed`, with `entry` the signer's `KeyDirectoryEntry` from the host's own key directory. It is
+`UiWitness.claimVerifier EcdsaP256.claimVerifier` (`Fuaran.UI.OpStream.Abstractions`), and it is ONE name on
+both pipelines: on .NET `EcdsaP256` is the BCL provider, which also signs; under Fable it is a WebCrypto verifier
+(`crypto.subtle.importKey("spki", …)` + `verify`) over the same base64 SPKI public half and the same base64
+IEEE P1363 signature, and it never signs. Both refuse a key on any curve but P-256, and malformed key or
+signature bytes, as a `BadSignature`.
+
+**The asynchronous form — no new one.** WebCrypto's verify is a promise, and every seam it sits behind was
+already asynchronous: `ClaimVerifier.Verify` and `IClaimSignatureVerifier.VerifyClaim` answer `Async<bool>`, and
+`SignedPage.verify` answers an `Async`. The promise is awaited inside the provider, so the .NET provider is
+unchanged and a host's stored view awaits `SignedPage.verify` exactly as it did; there is no synchronous browser
+form, and none is needed.
 
 ## The page rules
 
@@ -91,3 +112,12 @@ map is not judged; an unresolved request is the host's refusal to render that so
 `page-document/page-document-vectors.json` in the specification repository is emitted by
 `src/Fuaran.UI.Tests/PageDocumentTests.fs` (`FUARAN_REGEN=1`, with `FUARAN_WIRE_FIXTURES` naming the corpus)
 and compared byte for byte on every run.
+
+`attestation/page-corpus.json` holds pages the .NET provider signed, beside the refusals any verifier must name
+(no key, a foreign key, drift, a moved tree, a forged signature, an impostor key, a key on another curve). ECDSA
+signatures are not deterministic and the signing key is discarded, so the file is checked semantically by the
+same suite and re-signed under `FUARAN_REGEN=1` only when that check fails. The browser pipeline runs it too:
+law 10 of `tests/fable-laws` verifies every vector through `UiWitness.ecdsaP256` on .NET and under Node's
+WebCrypto, and the stage byte-compares the two runs' verdict lines. The file records that coverage in its own
+`coverage` member; like the other two attestation corpus files it is read by name and sits outside the root
+`manifest.json` (§26.7), so no other host is obliged to it until it adopts.

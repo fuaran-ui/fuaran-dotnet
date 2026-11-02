@@ -184,8 +184,8 @@ own key directory — no service, no database, no private key — and returns a 
 convenience for a verifier that has established those keys by another route; it is never read by
 verification, because a bundle carrying its own trust root proves only that it agrees with itself.
 
-Signing uses **platform implementations only** — the BCL's `ECDsa` on .NET (WebCrypto's ECDSA is the
-browser verification route when it lands). No hand-rolled ECDSA signer, ever: nonce generation stays
+Signing uses **platform implementations only** — the BCL's `ECDsa` on .NET. A browser verifies and never
+signs: `EcdsaP256`'s Fable arm checks the same signatures through WebCrypto's ECDSA (Phase 2570). No hand-rolled ECDSA signer, ever: nonce generation stays
 with the platform. The canonical descriptor/claim encodings are pinned cross-host artefacts with
 golden vectors in `wire-format-fixtures/attestation/descriptor-corpus.json`; the algorithm id is a
 field, so a future primitive (`ed25519-v1` is reserved) is a new registered id, never a format
