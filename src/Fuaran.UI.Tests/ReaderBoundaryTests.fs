@@ -215,8 +215,11 @@ let private mapTests =
                             "outer"
                             (stack
                                 "outer-body"
+                                // fuaran-validator: disable-next-line FUARAN057 — the declarations come from the local `decl` helper, which the source scan cannot follow
                                 [ metric "outer-own" (stateOf "shallow"); Fuaran.fragmentRef "nested" "inner" ])
+                        // fuaran-validator: disable-next-line FUARAN057 — the declarations come from the local `decl` helper, which the source scan cannot follow
                         Fuaran.fragmentRef "use-outer" "outer"
+                        // fuaran-validator: disable-next-line FUARAN057 — negative case: an undeclared reference is what the reader boundary is measured against
                         Fuaran.fragmentRef "use-static" "none-declared" ]
 
               let readers = stateReaders tree
