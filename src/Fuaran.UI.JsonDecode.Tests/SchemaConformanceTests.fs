@@ -570,3 +570,316 @@ let transformStepUnion =
                           p.Why
                           (pipelineNode p.Defective)
                   | None -> failtestf "the probe for '%s' is not parseable JSON" p.Id) ]
+
+// ─── The constrained-emitter acceptance leg (Phase 2451, WIRE_FORMAT §11.4) ───
+//
+// The manifest declares emitter profiles: per lineage, revisions oldest first,
+// each naming its axes, its declared subset and its vectors, and per codec host
+// the oldest revision that host still accepts (§15.6). This leg is this host's
+// answer: for every lineage it reads every revision from `oldestAccepted.fuaran`
+// onward and asserts each vector is a row of a family every codec host reads,
+// integer-only when the revision claims it, inside the revision's subset, valid
+// against the schema, and ACCEPTED — re-encoded byte-identical (a round-trip row)
+// or normalised to its expected bytes (an alias-shim row, §16). Like the rest of
+// this suite it reads the committed corpus, never the F# fixture values.
+
+/// This host's token in the §11.0 roster and in every `oldestAccepted` record.
+let private thisHost = "fuaran"
+
+/// `true` when the bytes carry a number token with a fraction or an exponent
+/// anywhere outside a string — the `integer-only` axis reads the TOKEN, not the
+/// value, so `2.0` is refused although it is whole.
+let carriesNonIntegerNumber (wire: string) : bool =
+    let mutable inString = false
+    let mutable escaped = false
+    let mutable inNumber = false
+    let mutable found = false
+
+    for c in wire do
+        if inString then
+            if escaped then
+                escaped <- false
+            elif c = '\\' then
+                escaped <- true
+            elif c = '"' then
+                inString <- false
+        elif c = '"' then
+            inString <- true
+            inNumber <- false
+        elif c = '-' || System.Char.IsDigit c then
+            inNumber <- true
+        elif inNumber && (c = '.' || c = 'e' || c = 'E') then
+            found <- true
+        else
+            inNumber <- false
+
+    found
+
+/// Every `TreeOp` discriminator an op document carries: its own, and every
+/// member of a `Batch` at any depth.
+let rec opTagsOf (el: JsonElement) : string list =
+    match el.TryGetProperty "$type" with
+    | true, t when t.ValueKind = JsonValueKind.String ->
+        let tag = string (t.GetString())
+
+        let nested =
+            match tag, el.TryGetProperty "ops" with
+            | "Batch", (true, arr) when arr.ValueKind = JsonValueKind.Array ->
+                arr.EnumerateArray() |> Seq.collect opTagsOf |> List.ofSeq
+            | _ -> []
+
+        tag :: nested
+    | _ -> []
+
+type private EmitterRevisionDecl =
+    { Revision: string
+      Axes: string list
+      Kinds: string list
+      ControlKinds: string list
+      OpKinds: string list
+      Vectors: string list }
+
+let private stringsOf (el: JsonElement) (name: string) : string list =
+    match el.TryGetProperty name with
+    | true, arr when arr.ValueKind = JsonValueKind.Array ->
+        arr.EnumerateArray() |> Seq.map (fun s -> string (s.GetString())) |> List.ofSeq
+    | _ -> failwithf "emitter profile member '%s' is missing or not an array" name
+
+/// The declared lineages: (name, oldestAccepted by host, revisions oldest first).
+let private emitterLineages: (string * Map<string, string> * EmitterRevisionDecl list) list =
+    use doc =
+        JsonDocument.Parse(File.ReadAllText(Path.Combine(corpusRoot, "manifest.json")), Corpus.wireJsonOptions)
+
+    match doc.RootElement.TryGetProperty "emitterProfiles" with
+    | true, profiles when profiles.ValueKind = JsonValueKind.Object ->
+        [ for lineage in profiles.EnumerateObject() do
+              let oldest =
+                  lineage.Value.GetProperty("oldestAccepted").EnumerateObject()
+                  |> Seq.map (fun p -> p.Name, string (p.Value.GetString()))
+                  |> Map.ofSeq
+
+              let revisions =
+                  [ for r in lineage.Value.GetProperty("revisions").EnumerateArray() do
+                        let subset = r.GetProperty "subset"
+
+                        { Revision = string (r.GetProperty("id").GetString())
+                          Axes = stringsOf r "axes"
+                          Kinds = stringsOf subset "kinds"
+                          ControlKinds = stringsOf subset "formFieldKinds"
+                          OpKinds = stringsOf subset "ops"
+                          Vectors = stringsOf r "vectors" } ]
+
+              lineage.Name, oldest, revisions ]
+    | _ -> []
+
+let private entryById = corpusEntries |> List.map (fun e -> e.Id, e) |> Map.ofList
+
+let private trimEol (s: string) = s.TrimEnd('\n')
+
+/// Every reason `bytes` (of a row read by `decoder`) falls outside `r`, or [].
+let private subsetDefects (r: EmitterRevisionDecl) (decoder: string) (bytes: string) : string list =
+    let policy = Fuaran.UI.KindPolicy.DecodePolicy.admitting r.Revision r.Kinds
+
+    let kindDefect =
+        let result =
+            if decoder = "op" then
+                JsonDecode.decodeOpWithPolicy policy bytes |> Result.map ignore
+            else
+                JsonDecode.decodeNodeObjWithPolicy policy bytes |> Result.map ignore
+
+        match result with
+        | Ok() -> []
+        | Error e -> [ sprintf "a node kind outside the subset: %s at %s (%s)" e.Code e.Path e.Message ]
+
+    let controls =
+        Corpus.controlKindsIn bytes
+        |> List.filter (fun k -> not (List.contains k r.ControlKinds))
+        |> List.map (sprintf "a form-field kind outside the subset: %s")
+
+    let ops =
+        if decoder = "op" then
+            use doc = JsonDocument.Parse(bytes, Corpus.wireJsonOptions)
+
+            opTagsOf doc.RootElement
+            |> List.filter (fun t -> not (List.contains t r.OpKinds))
+            |> List.map (sprintf "an op outside the subset: %s")
+        else
+            []
+
+    kindDefect @ controls @ ops
+
+/// Every reason the vector `id` fails revision `r`'s bar on this host, or [].
+let private vectorDefects (r: EmitterRevisionDecl) (id: string) : string list =
+    match Map.tryFind id entryById with
+    | None -> [ "names no row of the manifest" ]
+    | Some e when not (Corpus.emitterVectorKinds.Contains e.Kind) ->
+        [ sprintf "is a %s row, not a family every codec host reads" e.Kind ]
+    | Some e ->
+        let input = Corpus.readPayload corpusRoot e.InputFile |> trimEol
+
+        let expected =
+            e.ExpectedFile |> Option.map (Corpus.readPayload corpusRoot >> trimEol)
+
+        let integer =
+            if List.contains "integer-only" r.Axes && carriesNonIntegerNumber input then
+                [ "carries a number token with a fraction or an exponent under integer-only" ]
+            else
+                []
+
+        let accepted =
+            let reencoded =
+                if e.Decoder = "op" then
+                    JsonDecode.decodeOp input
+                    |> Result.map Fuaran.UI.OpStream.Abstractions.CanonicalJson.encodeOp
+                else
+                    JsonDecode.decodeNodeObj input
+                    |> Result.map Fuaran.UI.OpStream.Abstractions.CanonicalJson.encodeNode
+
+            match reencoded, expected with
+            | Error err, _ -> [ sprintf "is NOT accepted: %s at %s (%s)" err.Code err.Path err.Message ]
+            | Ok _, None -> [ "carries no expected file" ]
+            | Ok bytes, Some want when bytes <> want -> [ "re-encodes to bytes other than its expected file" ]
+            | Ok _, Some _ -> []
+
+        let schemaValid =
+            match expected |> Option.map validate with
+            | Some(Some true) -> []
+            | _ -> [ "its canonical form does not validate against schema.json" ]
+
+        integer @ subsetDefects r e.Decoder input @ accepted @ schemaValid
+
+let private opPayloads (revisions: EmitterRevisionDecl list) =
+    revisions
+    |> List.collect _.Vectors
+    |> List.distinct
+    |> List.choose (fun id -> Map.tryFind id entryById)
+    |> List.filter (fun e -> e.Kind = "op-round-trip")
+    |> List.map (fun e -> e, Corpus.readPayload corpusRoot e.InputFile |> trimEol)
+
+[<Tests>]
+let emitterAcceptance =
+    testList
+        "Phase 2451 — the constrained-emitter acceptance leg (WIRE_FORMAT 11.4)"
+        [ test "the corpus declares at least one emitter-profile lineage" {
+              Expect.isNonEmpty
+                  emitterLineages
+                  "manifest.json declares no emitterProfiles — the leg would read nothing, which is not a pass"
+          }
+
+          test "every lineage's oldestAccepted names exactly the roster's codec hosts, each a revision of it" {
+              use roster =
+                  JsonDocument.Parse(File.ReadAllText(Path.Combine(corpusRoot, "conformance", "roster.json")))
+
+              let codecHosts =
+                  roster.RootElement.GetProperty("hosts").EnumerateArray()
+                  |> Seq.filter (fun h -> h.GetProperty("role").GetString() = "codec")
+                  |> Seq.map (fun h -> string (h.GetProperty("id").GetString()))
+                  |> Set.ofSeq
+
+              for (name, oldest, revisions) in emitterLineages do
+                  Expect.equal
+                      (oldest |> Map.keys |> Set.ofSeq)
+                      codecHosts
+                      (sprintf "lineage %s: oldestAccepted must name every codec host of the roster and no other" name)
+
+                  for KeyValue(host, rev) in oldest do
+                      Expect.isTrue
+                          (revisions |> List.exists (fun r -> r.Revision = rev))
+                          (sprintf "lineage %s: oldestAccepted[%s] = %s names no revision of it" name host rev)
+          }
+
+          test "every lineage's newest revision declares only tags the corpus attests" {
+              let kinds = Corpus.loadKinds () |> Set.ofList
+              let controls = Corpus.loadFormFieldKinds () |> Set.ofList
+              let ops = Corpus.loadOps () |> Set.ofList
+
+              for (name, _, revisions) in emitterLineages do
+                  let newest = List.last revisions
+
+                  let stray =
+                      (newest.Kinds |> List.filter (kinds.Contains >> not))
+                      @ (newest.ControlKinds |> List.filter (controls.Contains >> not))
+                      @ (newest.OpKinds |> List.filter (ops.Contains >> not))
+
+                  Expect.isEmpty
+                      stray
+                      (sprintf "lineage %s: %s declares tags outside the attested vocabularies" name newest.Revision)
+          }
+
+          // A `kind.$type` names one family only while the two vocabularies stay
+          // disjoint; the form-field check reads control positions, the node-kind
+          // check reads node positions, and this pins that no tag could be both.
+          test "the NodeKind and FormFieldKind vocabularies share no tag" {
+              let shared =
+                  Set.intersect (Corpus.loadKinds () |> Set.ofList) (Corpus.loadFormFieldKinds () |> Set.ofList)
+
+              Expect.isEmpty shared "a tag names both a node kind and a control kind"
+          }
+
+          for (name, oldest, revisions) in emitterLineages do
+              let from =
+                  match Map.tryFind thisHost oldest with
+                  | Some rev -> rev
+                  | None -> failwithf "lineage %s records no oldestAccepted for %s" name thisHost
+
+              let index = revisions |> List.findIndex (fun r -> r.Revision = from)
+
+              for r in List.skip index revisions do
+                  test (sprintf "%s: every vector is accepted under its declaration" r.Revision) {
+                      Expect.isNonEmpty r.Vectors (sprintf "%s names no vector" r.Revision)
+
+                      let failures =
+                          [ for v in r.Vectors do
+                                for d in vectorDefects r v do
+                                    yield sprintf "%s %s" v d ]
+
+                      Expect.isEmpty failures (sprintf "%s fails its bar on %s" r.Revision thisHost)
+                  }
+
+          // Go-red: each check above can fail.
+          test "the integer-only scanner refuses a fraction and an exponent, and ignores strings" {
+              Expect.isTrue (carriesNonIntegerNumber """{"v":2.0}""") "2.0 is a fraction token"
+              Expect.isTrue (carriesNonIntegerNumber """{"v":[1E+21]}""") "1E+21 is an exponent token"
+              Expect.isFalse (carriesNonIntegerNumber """{"v":"1.5e3","w":-7}""") "a string is not a number token"
+          }
+
+          test "the subset check refuses a frame carrying a kind, a control or an op outside it" {
+              for (name, _, revisions) in emitterLineages do
+                  let newest = List.last revisions
+                  let frames = opPayloads [ newest ]
+                  Expect.isNonEmpty frames (sprintf "lineage %s carries no frame to perturb" name)
+
+                  for (e, bytes) in frames do
+                      Expect.isEmpty (subsetDefects newest e.Decoder bytes) (sprintf "%s is inside its subset" e.Id)
+
+                      use doc = JsonDocument.Parse(bytes, Corpus.wireJsonOptions)
+                      let own = (opTagsOf doc.RootElement).Head
+
+                      let narrowed =
+                          { newest with
+                              OpKinds = newest.OpKinds |> List.filter ((<>) own) }
+
+                      Expect.isNonEmpty
+                          (subsetDefects narrowed e.Decoder bytes)
+                          (sprintf "%s admitted without %s" e.Id own)
+
+                  for (e, bytes) in frames do
+                      for k in Corpus.controlKindsIn bytes do
+                          let narrowed =
+                              { newest with
+                                  ControlKinds = newest.ControlKinds |> List.filter ((<>) k) }
+
+                          Expect.isNonEmpty
+                              (subsetDefects narrowed e.Decoder bytes)
+                              (sprintf "%s admitted without the control %s" e.Id k)
+
+                      for k in newest.Kinds do
+                          if bytes.Contains(sprintf "\"$type\":\"%s\"" k) then
+                              let narrowed =
+                                  { newest with
+                                      Kinds = newest.Kinds |> List.filter ((<>) k) }
+
+                              Expect.isNonEmpty
+                                  (subsetDefects narrowed e.Decoder bytes)
+                                  (sprintf "%s admitted without the kind %s" e.Id k)
+          } ]

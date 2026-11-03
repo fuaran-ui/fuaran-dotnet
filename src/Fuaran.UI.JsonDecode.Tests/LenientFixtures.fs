@@ -1018,6 +1018,32 @@ let all: LenientFixture list =
         Description =
           "§3.6 — the declared-default rule over a binding-valued initial slot: `Stepper.activeStep` omits at `Static{value=0}` (the `Tabs.activeIndex` precedent). Written explicitly at its default it re-encodes WITHOUT the member; a State-bound `activeStep` is not a default and is kept (Phase 2300)" }
 
+      // ─── Phase 2451 — the alias-shim vectors of a declared old emitter profile ──
+      //
+      // `panel@1.0` is the `panel` lineage written in the spelling before Phase
+      // 1811 renamed the form-field `Date` to `DateTime` (WIRE_FORMAT §11.4,
+      // §15.6). A device that emits it keeps emitting it, so every codec host
+      // carries the §16 alias for it under the producer-support commitment. The
+      // panel's expected bytes are exactly the `panel@1.1` node vector
+      // (`nodes/emitter-panel.json`): the shim maps the old device's first frame
+      // onto the current canonical frame and nothing else.
+
+      { Id = "lenient-2451-panel-1-0"
+        LenientJson =
+          """{"id":"emitter-panel","kind":{"$type":"Box","children":[{"id":"panel-title","kind":{"$type":"Heading","level":2,"text":"Cold room 3"}},{"id":"panel-temp","kind":{"$type":"Metric","label":"Temperature","value":{"$type":"Static","value":4}}},{"id":"panel-status","kind":{"$type":"Badge","label":"Cooling","variant":"Success"}},{"id":"panel-defrost","kind":{"$type":"Button","label":"Start defrost","onClick":{"$type":"Dispatch"}}},{"id":"panel-schedule","kind":{"$type":"Form","fields":[{"id":"minutes","kind":{"$type":"Number","value":{"$type":"Static","value":45}},"label":"Minutes","required":true},{"id":"start","kind":{"$type":"Date","value":{"$type":"Static","value":"06:00"},"variant":"Time"},"label":"Start at"}],"onSubmit":{"$type":"Dispatch"},"submitLabel":"Schedule"}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}"""
+        VerboseJson =
+          """{"id":"emitter-panel","kind":{"$type":"Box","children":[{"id":"panel-title","kind":{"$type":"Heading","level":2,"text":"Cold room 3"}},{"id":"panel-temp","kind":{"$type":"Metric","label":"Temperature","value":{"$type":"Static","value":4}}},{"id":"panel-status","kind":{"$type":"Badge","label":"Cooling","variant":"Success"}},{"id":"panel-defrost","kind":{"$type":"Button","label":"Start defrost","onClick":{"$type":"Dispatch"}}},{"id":"panel-schedule","kind":{"$type":"Form","fields":[{"id":"minutes","kind":{"$type":"Number","value":{"$type":"Static","value":45}},"label":"Minutes","required":true},{"id":"start","kind":{"$type":"DateTime","value":{"$type":"Static","value":"06:00"},"variant":"Time"},"label":"Start at"}],"onSubmit":{"$type":"Dispatch"},"submitLabel":"Schedule"}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}"""
+        Description =
+          "§15.6 producer-support shim (Phase 2451) — the `panel@1.0` emitter profile's first frame, written in the spelling before Phase 1811 (a `Date` form field with `variant` `Time`). Every codec host decodes it through the §16 alias and re-encodes the `panel@1.1` panel byte for byte" }
+
+      { Id = "lenient-2451-panel-schedule-1-0"
+        LenientJson =
+          """{"id":"panel-schedule","kind":{"$type":"Form","fields":[{"id":"minutes","kind":{"$type":"Number","value":{"$type":"Static","value":45}},"label":"Minutes","required":true},{"id":"start","kind":{"$type":"Date","value":{"$type":"Static","value":"06:00"},"variant":"Time"},"label":"Start at"}],"onSubmit":{"$type":"Dispatch"},"submitLabel":"Schedule"}}"""
+        VerboseJson =
+          """{"id":"panel-schedule","kind":{"$type":"Form","fields":[{"id":"minutes","kind":{"$type":"Number","value":{"$type":"Static","value":45}},"label":"Minutes","required":true},{"id":"start","kind":{"$type":"DateTime","value":{"$type":"Static","value":"06:00"},"variant":"Time"},"label":"Start at"}],"onSubmit":{"$type":"Dispatch"},"submitLabel":"Schedule"}}"""
+        Description =
+          "§15.6 producer-support shim (Phase 2451) — the `panel@1.0` schedule form on its own, the node a frame of that revision carries when it re-inserts the form. Decodes through the §16 `Date` alias and re-encodes in the current spelling" }
+
       // ─── Phase 1670 — the `FragmentRef` twin, and why it is NOT here ───────
       //
       // `FragmentRefSpec.Args = Some Map.empty` is the third member of the same

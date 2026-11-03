@@ -8882,6 +8882,62 @@ let gridTonedPillUngrounded: Node<obj> =
           columnKindColumn "Status" (Some "dept") (columnKindPill "status") ]
 
 
+// ─── Constrained-emitter vectors (Phase 2451 — WIRE_FORMAT §11.4) ────────────
+//
+// What a constrained emitter writes is BYTES: a device compiles its panel in as a
+// constant string of canonical JSON and emits it as its first frame, then emits
+// small ops for the readings that change. So these vectors are authored as the
+// bytes such an emitter writes, and decoded here only so the ordinary registry
+// carries them: the reference encoder re-encodes each one into the corpus, and a
+// vector that is not already canonical changes on that re-encode, which the
+// round-trip leg of every codec host then reports. They are the `panel@1.1`
+// revision's vectors, declared in `Corpus.emitterProfiles`; the `panel@1.0`
+// revision's alias-shim vectors are the `lenient-2451-*` entries of
+// `LenientFixtures.all`. Integers only, and inside the revision's declared subset:
+// the emitter-acceptance leg (`SchemaConformanceTests`) checks both on the
+// committed bytes.
+
+let private emittedNode (bytes: string) : Node<obj> =
+    match Fuaran.UI.Ops.JsonDecode.decodeNodeObj bytes with
+    | Ok n -> n
+    | Error e -> failwithf "emitter vector does not decode: %s at %s (%s)" e.Code e.Path e.Message
+
+let private emittedOp (bytes: string) : TreeOp<obj> =
+    match Fuaran.UI.Ops.JsonDecode.decodeOp bytes with
+    | Ok op -> op
+    | Error e -> failwithf "emitter frame does not decode: %s at %s (%s)" e.Code e.Path e.Message
+
+/// The panel a constrained emitter writes as its first frame: a heading, one
+/// reading, a status badge, a command button and a two-field schedule form.
+[<Literal>]
+let private emitterPanelBytes =
+    """{"id":"emitter-panel","kind":{"$type":"Box","children":[{"id":"panel-title","kind":{"$type":"Heading","level":2,"text":"Cold room 3"}},{"id":"panel-temp","kind":{"$type":"Metric","label":"Temperature","value":{"$type":"Static","value":4}}},{"id":"panel-status","kind":{"$type":"Badge","label":"Cooling","variant":"Success"}},{"id":"panel-defrost","kind":{"$type":"Button","label":"Start defrost","onClick":{"$type":"Dispatch"}}},{"id":"panel-schedule","kind":{"$type":"Form","fields":[{"id":"minutes","kind":{"$type":"Number","value":{"$type":"Static","value":45}},"label":"Minutes","required":true},{"id":"start","kind":{"$type":"DateTime","value":{"$type":"Static","value":"06:00"},"variant":"Time"},"label":"Start at"}],"onSubmit":{"$type":"Dispatch"},"submitLabel":"Schedule"}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}"""
+
+[<NodeFixture "Emitter/panel@1.1 (Phase 2451 — the panel document a constrained emitter writes as its first frame: integers only, inside the declared subset)">]
+let emitterPanel: Node<obj> = emittedNode emitterPanelBytes
+
+[<OpFixture "Emitter-ReplaceRoot">]
+let opEmitterReplaceRoot: TreeOp<obj> =
+    emittedOp ("""{"$type":"ReplaceRoot","node":""" + emitterPanelBytes + "}")
+
+[<OpFixture "Emitter-ReplaceBinding">]
+let opEmitterReplaceBinding: TreeOp<obj> =
+    emittedOp
+        """{"$type":"ReplaceBinding","binding":{"$type":"Static","value":5},"slot":"Value","target":"panel-temp"}"""
+
+[<OpFixture "Emitter-UpdateProp">]
+let opEmitterUpdateProp: TreeOp<obj> =
+    emittedOp """{"$type":"UpdateProp","path":"Label","target":"panel-status","value":"Defrosting"}"""
+
+[<OpFixture "Emitter-InsertChild">]
+let opEmitterInsertChild: TreeOp<obj> =
+    emittedOp
+        """{"$type":"InsertChild","child":{"id":"panel-alarm","kind":{"$type":"Callout","body":"Door open","tone":"Critical"}},"parentId":"emitter-panel"}"""
+
+[<OpFixture "Emitter-RemoveNode">]
+let opEmitterRemoveNode: TreeOp<obj> =
+    emittedOp """{"$type":"RemoveNode","target":"panel-alarm"}"""
+
 /// Every node fixture, read off the `[<NodeFixture>]` attributes on the declarations above
 /// (Phase 2066): a fixture registers where it is declared, so adding one is one edit and this
 /// registry cannot lag the declarations. `stdlibFragments` is its own list literal.
