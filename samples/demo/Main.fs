@@ -386,6 +386,41 @@ let private session3bShowcase (model: Model) : Node<Msg> =
                           YFields = [ "RefGrp" ]
                           Title = Some(TextSource.Literal "GRPs by channel") }
 
+                  // Phase 2577 — the chart's export pair: two Invokes of the conventional
+                  // ids, each naming the chart's node and a slide-worthy scale. The
+                  // performer is RenderExport (registered in buildSources); the gate is
+                  // PermittingRuntime's per-name permit; a default-deny host refuses
+                  // both before any rasterise.
+                  Fuaran.stack
+                      "showcase-chart-export"
+                      { Defaults.stack<Msg> with
+                          Orientation = Orientation.Horizontal
+                          Children =
+                              [ Fuaran.button
+                                    "showcase-chart-copy"
+                                    { Defaults.button<Msg> with
+                                        Label = TextSource.Literal "Copy image"
+                                        OnClick =
+                                            Action.Invoke(
+                                                RenderExport.CopyImageId,
+                                                [ ({ Addr = "node"
+                                                     Value = "showcase-chart" }
+                                                  : InvokeArg)
+                                                  ({ Addr = "scale"; Value = "2" }: InvokeArg) ]
+                                            ) }
+                                Fuaran.button
+                                    "showcase-chart-save"
+                                    { Defaults.button<Msg> with
+                                        Label = TextSource.Literal "Save image"
+                                        OnClick =
+                                            Action.Invoke(
+                                                RenderExport.SaveImageId,
+                                                [ ({ Addr = "node"
+                                                     Value = "showcase-chart" }
+                                                  : InvokeArg)
+                                                  ({ Addr = "scale"; Value = "2" }: InvokeArg) ]
+                                            ) } ] }
+
                   // Table (static, non-bound)
                   Fuaran.table
                       "showcase-table"
@@ -457,7 +492,12 @@ let private buildSources (model: Model) : BindingResolver.BindingSources =
     { BindingResolver.empty with
         QueryResults = queryMap
         State = stateMap
-        I18n = Map.empty }
+        I18n = Map.empty
+        // Phase 2577 — the two render-export capabilities, registered by one
+        // assignment: `render.copy-image` / `render.save-image` resolve through
+        // RenderExport's own registry, so an out-of-space argument is refused
+        // before any canvas is touched.
+        CapabilityInvoker = RenderExport.invoker }
 
 // ─── View — Render the Fuaran tree through the renderer ─────────────────────
 
@@ -481,8 +521,44 @@ let private layoutObserver: ILayoutObserver =
 let private exposeForDevtools () : unit =
     Fable.Core.JsInterop.emitJsStatement layoutObserver "globalThis.__fuarandemo_layout = $0"
 
+/// Phase 2577 — the demo's dispatch policy. The browser runtime is DENY-by-default
+/// (Phase 782) and stays so; this permits exactly the two render-export ids BY
+/// NAME, so the chart's "Copy image" / "Save image" pair dispatches and nothing
+/// else gains a permit. A host rendering a DECODED tree writes its own allow-list
+/// the same way, naming the capabilities it registered and no others.
+type private PermittingRuntime(inner: Runtime.IFuaranRuntime) =
+    interface Runtime.IFuaranRuntime with
+        member _.Call(endpoint, onResult) = inner.Call(endpoint, onResult)
+        member _.Notify(channel, payload) = inner.Notify(channel, payload)
+        member _.Navigate(route) = inner.Navigate(route)
+        member _.SetState(key, value) = inner.SetState(key, value)
+        member _.InvokeAiTool(toolName, args) = inner.InvokeAiTool(toolName, args)
+        member _.WriteToClipboard(text) = inner.WriteToClipboard(text)
+
+        member _.ReadFileBody(file, encoding, onRead) =
+            inner.ReadFileBody(file, encoding, onRead)
+
+        member _.Warn(message) = inner.Warn(message)
+        member _.LayoutObserver = inner.LayoutObserver
+        member _.TryRenderCustom(m, c, p) = inner.TryRenderCustom(m, c, p)
+        member _.TryGetCustomRenderer(m, c) = inner.TryGetCustomRenderer(m, c)
+
+        member _.TryRenderCustomInScope(s, m, c, p) =
+            inner.TryRenderCustomInScope(s, m, c, p)
+
+        member _.TryGetCustomRendererInScope(s, m, c) =
+            inner.TryGetCustomRendererInScope(s, m, c)
+
+        member _.TryLoadGuest(guest) = inner.TryLoadGuest(guest)
+
+        member _.CanDispatch(descriptor) =
+            match descriptor with
+            | Runtime.ActionDescriptor.Invoke id when id = RenderExport.CopyImageId || id = RenderExport.SaveImageId ->
+                true
+            | other -> inner.CanDispatch(other)
+
 let private fuaranRuntime: Runtime.IFuaranRuntime =
-    BrowserRuntime.createWithLayoutObserver layoutObserver
+    PermittingRuntime(BrowserRuntime.createWithLayoutObserver layoutObserver) :> Runtime.IFuaranRuntime
 
 let view (model: Model) (dispatch: Msg -> unit) =
     let tree = root model

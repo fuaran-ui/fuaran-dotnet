@@ -7843,6 +7843,19 @@ so no codec host moves.
   (the no-registry default) dispatches with a diagnostic naming the pending state.
 - **`Render.treeInvokeOutcome`** joins the public outcome helpers beside `treeCallOutcome` / `treeNavigateOutcome`.
 
+### What rides this slot — Phase 2577 (`RenderExport`, the browser rasterise performer)
+
+**Class: additive, on `Fuaran.UI.Renderer`.** No wire event.
+
+- **New public module `Fuaran.UI.Renderer.RenderExport`.** Two `Fuaran.Core.Capability` declarations —
+  `render.copy-image` and `render.save-image`: `node` required, `format` ∈ {`png`}, `scale` ∈ [0.5, 4] — the pure
+  `parseArgs` / `plan` half, the browser bodies behind `FABLE_COMPILER`, and `invoker`, a ready-made
+  `BindingSources.CapabilityInvoker` over the module's own registry. A .NET host's invoker answers the typed
+  no-canvas refusal; a browser host registers both ids by one assignment.
+- **`Fuaran.UI.Renderer` gains a package dependency on `Fuaran.Core.Function`** (the declarations' types). A
+  consumer's restore pulls it; it was already in the graph of every host that references `Fuaran.UI.AiTools`. No
+  API moves.
+
 ## 0.101.0 (RELEASED — tagged v0.101.0 at 25dd3ecc, 2026-11-02)
 
 _Set by Phase 2527, the first change to ride the slot. The heading said DRAFT until 2026-11-03, a day after the tag._

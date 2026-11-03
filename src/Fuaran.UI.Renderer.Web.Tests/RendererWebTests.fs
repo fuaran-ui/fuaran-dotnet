@@ -541,3 +541,139 @@ let interpretOperationTests =
               Expect.equal outcome failed "returned"
               Expect.equal (records |> List.map _.Outcome) [ failed ] "recorded once"
           } ]
+
+// ============================================================================
+//  Phase 2577 — RenderExport: the declarations, the pure half, the registry's
+//  admission, and the effect route reaching the performer. The browser half runs
+//  only under Fable; here its .NET twin answers the typed no-canvas refusal,
+//  which proves the registry admitted the call and the body was reached.
+// ============================================================================
+
+[<Tests>]
+let renderExportTests =
+    let permitBoth (d: Fuaran.UI.Renderer.Runtime.ActionDescriptor) =
+        match d with
+        | Fuaran.UI.Renderer.Runtime.ActionDescriptor.Invoke id ->
+            id = Fuaran.UI.Renderer.RenderExport.CopyImageId
+            || id = Fuaran.UI.Renderer.RenderExport.SaveImageId
+        | _ -> false
+
+    let sources =
+        { Fuaran.UI.BindingSources.empty with
+            CapabilityInvoker = Fuaran.UI.Renderer.RenderExport.invoker }
+
+    let arg (addr: string) (value: string) : Fuaran.UI.Types.InvokeArg = { Addr = addr; Value = value }
+
+    testList
+        "Fuaran.UI.Renderer.RenderExport (Phase 2577)"
+        [ test "the two declarations carry the conventional ids, three holes and a client placement" {
+              let copy = Fuaran.UI.Renderer.RenderExport.copyImage
+              Expect.equal copy.Id "render.copy-image" "id"
+
+              Expect.equal
+                  (copy.Signature.Holes |> List.map (fun h -> h.Addr, h.Required))
+                  [ "node", true; "format", false; "scale", false ]
+                  "holes — node required, the rest defaulting"
+
+              Expect.equal copy.Placement (Fuaran.Core.ClientIsland Fuaran.Core.IslandKind.Js) "a client performer"
+              Expect.equal copy.Signature.Effect.Host Fuaran.Core.WritesHost "writes the host"
+              Expect.equal Fuaran.UI.Renderer.RenderExport.saveImage.Id "render.save-image" "id"
+          }
+
+          test "plan: the canvas is the on-screen size at the scale, the source a data URL, the name the node's" {
+              match
+                  Fuaran.UI.Renderer.RenderExport.plan
+                      "showcase-chart"
+                      "<svg xmlns='http://www.w3.org/2000/svg'/>"
+                      640.0
+                      400.0
+                      2.0
+              with
+              | Ok p ->
+                  Expect.equal (p.Width, p.Height) (1280, 800) "dimensions"
+                  Expect.stringStarts (Option.defaultValue "" p.Source) "data:image/svg+xml;charset=utf-8," "source"
+                  Expect.equal p.SuggestedName "showcase-chart.png" "name"
+              | Error e -> failtestf "expected a plan, got %s" e
+          }
+
+          test "plan refuses an empty document, a degenerate size, an out-of-range scale and a canvas past the ceiling" {
+              Expect.isError (Fuaran.UI.Renderer.RenderExport.plan "n" "" 10.0 10.0 1.0) "empty"
+              Expect.isError (Fuaran.UI.Renderer.RenderExport.plan "n" "<svg/>" 0.0 10.0 1.0) "degenerate"
+              Expect.isError (Fuaran.UI.Renderer.RenderExport.plan "n" "<svg/>" 10.0 10.0 9.0) "scale"
+              Expect.isError (Fuaran.UI.Renderer.RenderExport.plan "n" "<svg/>" 9000.0 10.0 4.0) "ceiling"
+          }
+
+          test "parseArgs: node is required, format and scale default, and the bounds hold without the registry" {
+              Expect.equal (Fuaran.UI.Renderer.RenderExport.parseArgs [ "node", "c" ]) (Ok("c", "png", 2.0)) "defaults"
+              Expect.isError (Fuaran.UI.Renderer.RenderExport.parseArgs [ "scale", "2" ]) "no node"
+              Expect.isError (Fuaran.UI.Renderer.RenderExport.parseArgs [ "node", "c"; "format", "svg" ]) "format"
+              Expect.isError (Fuaran.UI.Renderer.RenderExport.parseArgs [ "node", "c"; "scale", "x" ]) "not a number"
+              Expect.isError (Fuaran.UI.Renderer.RenderExport.parseArgs [ "node", "c"; "scale", "9" ]) "out of range"
+          }
+
+          test "the registry refuses an out-of-space scale, an unknown id and a missing node before any body" {
+              match Fuaran.UI.Renderer.RenderExport.invoker "render.copy-image" [ "node", "c"; "scale", "9" ] with
+              | Fuaran.UI.Types.Deferred.Error m -> Expect.stringContains m "scale" "names the argument"
+              | other -> failtestf "expected a refusal, got %A" other
+
+              match Fuaran.UI.Renderer.RenderExport.invoker "render.nope" [ "node", "c" ] with
+              | Fuaran.UI.Types.Deferred.Error _ -> ()
+              | other -> failtestf "expected an unknown-id refusal, got %A" other
+
+              match Fuaran.UI.Renderer.RenderExport.invoker "render.save-image" [] with
+              | Fuaran.UI.Types.Deferred.Error _ -> ()
+              | other -> failtestf "expected a missing-node refusal, got %A" other
+          }
+
+          test "on a host with no canvas the body answers the typed refusal, through the registry" {
+              match Fuaran.UI.Renderer.RenderExport.invoker "render.copy-image" [ "node", "showcase-chart" ] with
+              | Fuaran.UI.Types.Deferred.Error m -> Expect.stringContains m "browser host" "no canvas here"
+              | other -> failtestf "expected the no-canvas refusal, got %A" other
+          }
+
+          test
+              "an Invoke of render.copy-image reaches the performer under a per-name permit, and is refused under default-deny" {
+              let action =
+                  Fuaran.UI.Generated.Action.Invoke(
+                      Fuaran.UI.Renderer.RenderExport.CopyImageId,
+                      [ arg "node" "showcase-chart" ]
+                  )
+
+              let permitted, runtime, _ = Operation.runWith sources permitBoth action
+
+              match permitted with
+              | Fuaran.UI.Ops.ActionInvocation.ActionOutcome.Denied reason ->
+                  Expect.stringContains
+                      reason
+                      "browser host"
+                      "reached the performer, which refused for want of a canvas"
+              | other -> failtestf "expected the performer's refusal, got %A" other
+
+              Expect.equal
+                  runtime.Asked
+                  [ Fuaran.UI.Renderer.Runtime.ActionDescriptor.Invoke "render.copy-image" ]
+                  "its own descriptor"
+
+              let denied, _, _ = Operation.runWith sources (fun _ -> false) action
+
+              match denied with
+              | Fuaran.UI.Ops.ActionInvocation.ActionOutcome.Denied reason ->
+                  Expect.stringContains reason "denied by policy gate" "refused before the performer"
+              | other -> failtestf "expected the gate's refusal, got %A" other
+          } ]
+
+[<Tests>]
+let renderExportCanvasTests =
+    testList
+        "Fuaran.UI.Renderer.RenderExport — the canvas plan (Phase 2577)"
+        [ test "planCanvas carries no source and the same dimensions, name and refusals as plan" {
+              match Fuaran.UI.Renderer.RenderExport.planCanvas "showcase-chart" 600.0 300.0 2.0 with
+              | Ok p ->
+                  Expect.equal (p.Width, p.Height) (1200, 600) "dimensions"
+                  Expect.isNone p.Source "a canvas is drawn from its own pixels"
+                  Expect.equal p.SuggestedName "showcase-chart.png" "name"
+              | Error e -> failtestf "expected a plan, got %s" e
+
+              Expect.isError (Fuaran.UI.Renderer.RenderExport.planCanvas "n" 0.0 10.0 1.0) "degenerate"
+              Expect.isError (Fuaran.UI.Renderer.RenderExport.planCanvas "n" 10.0 10.0 9.0) "scale"
+          } ]
