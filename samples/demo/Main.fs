@@ -24,11 +24,12 @@ open Fuaran.UI.Types
 open Fuaran.UI.Renderer
 
 importSideEffects "./index.css"
-// AG Grid + AG Charts adapter CSS — Vite
-// resolves these from node_modules; the renderer's AgGridAdapter / AgChartAdapter
-// emit DOM expecting the alpine theme + ag-charts default styles.
-importSideEffects "ag-grid-community/styles/ag-grid.css"
-importSideEffects "ag-grid-community/styles/ag-theme-alpine.css"
+// No visualisation adapter: the grid and the chart are the renderer's own —
+// the first-party `<table>` grid (editable cells, row click, export chrome)
+// and the first-party inline-SVG chart (the Chart -> Drawing lowering). The
+// AG Grid / AG Charts adapter the demo once wired (and its two stylesheets)
+// went 2026-11-03, so the demo exercises the first-party legs and carries no
+// third-party chart or grid dependency.
 
 // ─── Debug-global opt-in (Phase 1532) ──────────────────────────────────────
 //
@@ -371,7 +372,8 @@ let private session3bShowcase (model: Model) : Node<Msg> =
                           Multiple = false
                           OnSelect = Some(fun files -> Action.dispatch (FilesSelected files)) }
 
-                  // Chart (falls back to labelled placeholder — no AG Charts adapter wired)
+                  // Chart — the first-party inline-SVG chart (no adapter wired), which
+                  // is also what the export pair below pictures.
                   Fuaran.chart
                       "showcase-chart"
                       { Defaults.chart<Msg> with
@@ -569,7 +571,6 @@ let view (model: Model) (dispatch: Msg -> unit) =
 
         { baseCtx with
             Runtime = fuaranRuntime
-            VisAdapter = AgAdapter.adapter<Msg>
             // A HAND-AUTHORED tree, where the author is the trust boundary, so the
             // permissive egress posture is correct and is reached BY NAME. A host
             // rendering a DECODED tree must not copy this line.
