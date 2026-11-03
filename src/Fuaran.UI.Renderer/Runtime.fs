@@ -297,6 +297,15 @@ type ActionDescriptor =
     | Call of endpoint: string
     | Navigate of route: string
     | AiTool of toolName: string
+    /// An EFFECT-route `Action.Invoke` of the host-registered capability
+    /// `capabilityId` (Phase 2576). Until 2576 the arm borrowed `AiTool`, so a
+    /// host could not permit a capability without permitting a tool of the same
+    /// name, and the vocabulary's "permitting a chart rasterise permits nothing
+    /// else" was not what the gate enforced. The id is author-declared (grade B
+    /// in `docs/ACTION-LOG-PRIVACY.md`), so it is carried; the arguments are
+    /// not — they can be the reader's own values, and the decision is "may this
+    /// tree invoke THIS capability".
+    | Invoke of capabilityId: string
     /// A `ReadFileBody` of the selected file identified by `fileId`
     /// (Phase 136). Reading a user-selected file's bytes is a host-effecting
     /// action, so it joins the gated set — a default-deny host (BYOK
@@ -456,6 +465,7 @@ module ActionDescriptor =
         | ActionDescriptor.Navigate route ->
             sprintf "Navigate(%s)" (Fuaran.UI.Ops.ActionInvocation.ActionInvocation.routePath route)
         | ActionDescriptor.AiTool toolName -> sprintf "AiTool(%s)" toolName
+        | ActionDescriptor.Invoke capabilityId -> sprintf "Invoke(%s)" capabilityId
         | ActionDescriptor.ReadFileBody fileId -> sprintf "ReadFileBody(%s)" fileId
         | ActionDescriptor.ApplyTreeOp summary -> sprintf "ApplyTreeOp(%s)" summary
         | ActionDescriptor.Notify channel -> sprintf "Notify(%s)" channel

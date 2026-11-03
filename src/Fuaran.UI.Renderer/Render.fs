@@ -736,6 +736,57 @@ let treeCallOutcome
                 (ActionInvocation.routePath endpoint)
         )
 
+/// Phase 2576 — an EFFECT-route `Action.Invoke`: gate on its own descriptor, then
+/// dispatch through the same invoker the VALUE route (`BindingSource.Invoke`,
+/// `BindingResolver.fs`) already uses — `BindingSources.CapabilityInvoker`, which
+/// a host builds with `Capabilities.makeInvoker` so the registry's own admission
+/// (the id resolves, the args validate, the policy decides) runs before any body.
+///
+/// Until 2576 this arm consulted the gate under the borrowed `AiTool` descriptor
+/// and then only WARNED that no host dispatch was wired, so the vocabulary's
+/// "covered by `Action.Invoke`" was covered on paper: a tree that asked was asking
+/// a host that could not answer.
+///
+/// What comes back is DISCARDED. An effect returns nothing into tree-readable
+/// state — `docs/security/ESCAPE-HATCHES.md`'s standing limit, which keeps
+/// "export the rendering" from becoming "read the rendering". A `Deferred.Error`
+/// (the registry's policy refusing or parking it, an unknown id, a failed body)
+/// is a REFUSAL — noted, warned, `Denied` at the emission point — never
+/// swallowed. `Pending` is what a host with no registry wired answers to every
+/// invoke (the `BindingSources.empty` default) and also what a genuinely async
+/// body answers until it settles, so it dispatches WITH a diagnostic naming the
+/// state rather than in silence. A throwing invoker propagates, as every effect
+/// does: `runRecorded` records it as `Failed` and re-raises.
+let treeInvokeOutcome
+    (runtime: Runtime.IFuaranRuntime)
+    (invoker: string -> (string * string) list -> Fuaran.UI.Types.Deferred<obj>)
+    (capabilityId: string)
+    (args: (string * string) list)
+    : Result<unit, string> =
+    let refusal: string option ref = ref None
+
+    let gated =
+        applyDispatchGateOutcome runtime (Runtime.ActionDescriptor.Invoke capabilityId) (fun () ->
+            match invoker capabilityId args with
+            | Fuaran.UI.Types.Deferred.Ready _ -> ()
+            | Fuaran.UI.Types.Deferred.Pending ->
+                runtime.Warn(
+                    sprintf
+                        "[Fuaran] Action.Invoke(%s) is pending — the host's capability invoker settled no value; a host with no capability registry wired answers Pending to every invoke"
+                        capabilityId
+                )
+            | Fuaran.UI.Types.Deferred.Error message -> refusal.Value <- Some message)
+
+    match gated, refusal.Value with
+    | Error reason, _ -> Error reason
+    | Ok(), None -> Ok()
+    | Ok(), Some message ->
+        let reason =
+            sprintf "Action.Invoke(%s) refused by the host's capability invoker: %s" capabilityId message
+
+        runtime.Warn("[Fuaran] " + reason)
+        Error reason
+
 /// The recursive action interpreter. NOT the emission point — see
 /// `runRecorded` below and the `Chain` note there.
 ///
@@ -1030,14 +1081,18 @@ let rec private runActionCore (ctx: RenderContext<'Msg>) (denied: string list re
                 | None -> ignore
 
             ctx.Runtime.ReadFileBody(file, encoding, dispatchRead))
-    | Action.Invoke(capabilityId, _args) ->
-        // Phase 283 — invoke a host-registered capability as an effect. Default-deny by shape
-        // (FGP 3): consult the policy gate before dispatch (reusing the AiTool descriptor — the
-        // closest gate surface for a named host invocation). v1 surfaces the invocation via the
-        // runtime diagnostic; a host wires real capability dispatch + Phase-27 replay through the
-        // AiTools registry.
-        gate (Runtime.ActionDescriptor.AiTool capabilityId) (fun () ->
-            ctx.Runtime.Warn(sprintf "[Fuaran] capability invoke (no host dispatch wired): %s" capabilityId))
+    | Action.Invoke(capabilityId, args) ->
+        // Phase 283 declared the effect; Phase 2576 dispatches it. The args go
+        // to the invoker as the `(addr, value)` pairs the wire carries — the
+        // VALUE route's own reading, and the registry validates them against the
+        // capability's signature before the body runs. See `treeInvokeOutcome`.
+        note (
+            treeInvokeOutcome
+                ctx.Runtime
+                ctx.Sources.CapabilityInvoker
+                capabilityId
+                (args |> List.map (fun (a: InvokeArg) -> a.Addr, a.Value))
+        )
 
 #warnon "44"
 

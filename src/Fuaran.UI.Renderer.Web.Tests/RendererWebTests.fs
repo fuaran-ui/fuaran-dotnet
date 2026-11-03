@@ -409,17 +409,20 @@ module private Operation =
 
             member _.TryLoadGuest(_) = None
 
-    let run (gate: ActionDescriptor -> bool) (action: Action<unit>) =
+    let runWith sources (gate: ActionDescriptor -> bool) (action: Action<unit>) =
         let runtime = Recording gate
         let sink = ActionInvocationSink.Collector()
 
         let ctx =
-            { Render.RenderContext.create BindingSources.empty ignore (Fuaran.divider "root") with
+            { Render.RenderContext.create sources ignore (Fuaran.divider "root") with
                 Runtime = runtime
                 ActionSink = Some(sink :> IActionInvocationSink) }
 
         let outcome = Render.interpretOperation ctx "mount/n:click" "mount/n" action
         outcome, runtime, sink.Recorded
+
+    let run (gate: ActionDescriptor -> bool) (action: Action<unit>) =
+        runWith BindingSources.empty gate action
 
     let notify (channel: string) : Action<unit> = Action.Notify(channel, JStr "")
 
@@ -450,12 +453,43 @@ let interpretOperationTests =
               let outcome, runtime, _ =
                   Operation.run (fun _ -> false) (Fuaran.UI.Generated.Action.Invoke("cap.publish", []))
 
-              Expect.equal runtime.Asked [ Fuaran.UI.Renderer.Runtime.ActionDescriptor.AiTool "cap.publish" ] "one gate"
+              // Phase 2576 — its OWN descriptor, no longer the borrowed `AiTool`.
+              Expect.equal runtime.Asked [ Fuaran.UI.Renderer.Runtime.ActionDescriptor.Invoke "cap.publish" ] "one gate"
 
               match outcome with
               | Fuaran.UI.Ops.ActionInvocation.ActionOutcome.Denied reason ->
                   Expect.stringContains reason "denied by policy gate" "the gate's own reason"
               | other -> failtestf "expected Denied, got %A" other
+          }
+
+          test "a permitted Invoke dispatches through the context's capability invoker (Phase 2576)" {
+              let calls = ResizeArray<string * (string * string) list>()
+
+              let sources =
+                  { Fuaran.UI.BindingSources.empty with
+                      CapabilityInvoker =
+                          fun capabilityId args ->
+                              calls.Add((capabilityId, args))
+                              Fuaran.UI.Types.Deferred.Ready("a value the tree never sees" :> obj) }
+
+              let arg: Fuaran.UI.Types.InvokeArg = { Addr = "node"; Value = "chart-1" }
+
+              let outcome, runtime, records =
+                  Operation.runWith sources (fun _ -> true) (Fuaran.UI.Generated.Action.Invoke("cap.publish", [ arg ]))
+
+              Expect.equal outcome Fuaran.UI.Ops.ActionInvocation.ActionOutcome.Dispatched "dispatched"
+
+              Expect.equal
+                  runtime.Asked
+                  [ Fuaran.UI.Renderer.Runtime.ActionDescriptor.Invoke "cap.publish" ]
+                  "one gate, its own descriptor"
+
+              Expect.equal
+                  (List.ofSeq calls)
+                  [ "cap.publish", [ "node", "chart-1" ] ]
+                  "the invoker saw the id and the args"
+
+              Expect.hasLength records 1 "one record"
           }
 
           test "a refused Confirm performs neither branch" {

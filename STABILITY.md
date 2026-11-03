@@ -7818,9 +7818,34 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.101.0 — DRAFT
+## 0.102.0 — the slot opened after v0.101.0 was released (DRAFT — untagged)
 
-_Untagged. Set by Phase 2527, the first change to ride the slot._
+_Untagged. Set by Phase 2576, the first change to ride the slot._
+
+### What rides this slot — Phase 2576 (the `Action.Invoke` effect arm dispatches through the capability invoker)
+
+**Class: additive, on `Fuaran.UI.Renderer`.** No wire event: `Action.Invoke` and its canonical shape are unchanged,
+so no codec host moves.
+
+- **`ActionDescriptor` gains a case.** `Invoke of capabilityId: string` — the descriptor an effect-route
+  `Action.Invoke` now meets at `IFuaranRuntime.CanDispatch`. Until now the arm borrowed `AiTool capabilityId`, so a
+  host policy permitting a tool of some name also permitted a capability of that name, and could not permit one
+  without the other. A policy that matches `ActionDescriptor` exhaustively reports `FS0025` under
+  `TreatWarningsAsErrors`; add the arm. A policy written `function | AiTool _ -> true | _ -> false` keeps permitting
+  tools and STOPS permitting invokes — that is the correction, and a host that relied on the borrowed permit adds
+  `| Invoke _ -> true` (or the per-id form) deliberately.
+- **Behaviour under a registered capability.** The arm dispatches through `BindingSources.CapabilityInvoker` — the
+  function `Fuaran.UI.AiTools.Capabilities.makeInvoker` builds (Phase 2311), the one the value route already uses —
+  where it used to warn `capability invoke (no host dispatch wired)` and do nothing. A host that wired an invoker for
+  `Binding.Invoke` now sees its effect-route invokes RUN. The settled value is discarded: an effect returns nothing
+  into tree-readable state. A `Deferred.Error` from the invoker (the registry's policy, an unknown id, a failed body)
+  is a dispatch refusal — `Denied` at the action-log emission point, carrying the invoker's sentence — and `Pending`
+  (the no-registry default) dispatches with a diagnostic naming the pending state.
+- **`Render.treeInvokeOutcome`** joins the public outcome helpers beside `treeCallOutcome` / `treeNavigateOutcome`.
+
+## 0.101.0 (RELEASED — tagged v0.101.0 at 25dd3ecc, 2026-11-02)
+
+_Set by Phase 2527, the first change to ride the slot. The heading said DRAFT until 2026-11-03, a day after the tag._
 
 ### What rides this slot — Phase 2527 (accessibility and tooltip edits are expressible TreeOps)
 

@@ -75,6 +75,8 @@ let tests =
                   [ ActionDescriptor.Call "/api/x"
                     ActionDescriptor.Navigate "/home"
                     ActionDescriptor.AiTool "anything"
+                    // Phase 2576: the effect-route Invoke stops borrowing AiTool.
+                    ActionDescriptor.Invoke "render.copy-image"
                     ActionDescriptor.ReadFileBody "f"
                     ActionDescriptor.ApplyTreeOp "{}"
                     ActionDescriptor.Notify "channel"
@@ -114,6 +116,8 @@ let tests =
                   [ ActionDescriptor.Call "/api/x"
                     ActionDescriptor.Navigate "/home"
                     ActionDescriptor.AiTool "anything"
+                    // Phase 2576: the effect-route Invoke stops borrowing AiTool.
+                    ActionDescriptor.Invoke "render.copy-image"
                     ActionDescriptor.ReadFileBody "f"
                     ActionDescriptor.ApplyTreeOp "{}"
                     ActionDescriptor.Notify "channel"
@@ -425,4 +429,144 @@ let tests =
               Expect.equal navRan 1 "Navigate allowed → ran"
               Expect.equal toolRan 0 "AiTool denied → skipped"
               Expect.equal runtime.Warnings.Count 1 "only the AiTool deny emitted a diagnostic"
+          } ]
+
+// ============================================================================
+//  Phase 2576 — the `Action.Invoke` EFFECT arm dispatches through the capability
+//  invoker (`BindingSources.CapabilityInvoker`) under its own descriptor. Pinned
+//  on `Render.treeInvokeOutcome`, the helper the arm drives, exactly as the gate
+//  tests above pin `applyDispatchGate` — pure .NET, no render.
+// ============================================================================
+
+[<Tests>]
+let invokeArmTests =
+    let recordingInvoker (answer: Deferred<obj>) =
+        let calls = ResizeArray<string * (string * string) list>()
+
+        let invoker (capabilityId: string) (args: (string * string) list) : Deferred<obj> =
+            calls.Add((capabilityId, args))
+            answer
+
+        calls, invoker
+
+    testList
+        "Phase 2576 — the Action.Invoke effect arm"
+        [ test "default-deny refuses before the invoker runs, and says so" {
+              let runtime = GatingRuntime(fun _ -> false)
+              let calls, invoker = recordingInvoker (Deferred.Ready("ok" :> obj))
+
+              let outcome =
+                  Render.treeInvokeOutcome (runtime :> IFuaranRuntime) invoker "render.copy-image" [ "node", "chart-1" ]
+
+              Expect.equal
+                  outcome
+                  (Error "dispatch denied by policy gate: Invoke(render.copy-image)")
+                  "the gate's reason"
+
+              Expect.isEmpty calls "the invoker never ran"
+              Expect.hasLength runtime.Warnings 1 "one diagnostic"
+          }
+
+          test "a per-name permit dispatches that id with its args verbatim, and permits no other" {
+              let runtime =
+                  GatingRuntime (function
+                      | ActionDescriptor.Invoke "render.copy-image" -> true
+                      | _ -> false)
+
+              let calls, invoker = recordingInvoker (Deferred.Ready("ok" :> obj))
+
+              let permitted =
+                  Render.treeInvokeOutcome
+                      (runtime :> IFuaranRuntime)
+                      invoker
+                      "render.copy-image"
+                      [ "node", "chart-1"; "format", "png" ]
+
+              Expect.equal permitted (Ok()) "permitted"
+
+              Expect.equal
+                  (List.ofSeq calls)
+                  [ "render.copy-image", [ "node", "chart-1"; "format", "png" ] ]
+                  "the invoker saw the id and the args as the wire carried them"
+
+              let sibling =
+                  Render.treeInvokeOutcome (runtime :> IFuaranRuntime) invoker "render.save-image" []
+
+              Expect.isError sibling "the sibling id is refused — the token is taken per name"
+              Expect.hasLength calls 1 "and its invoker never ran"
+          }
+
+          test "an AiTool permit no longer permits an Invoke" {
+              let runtime =
+                  GatingRuntime (function
+                      | ActionDescriptor.AiTool _ -> true
+                      | _ -> false)
+
+              let calls, invoker = recordingInvoker (Deferred.Ready("ok" :> obj))
+
+              let outcome =
+                  Render.treeInvokeOutcome (runtime :> IFuaranRuntime) invoker "render.copy-image" []
+
+              Expect.isError outcome "a tool permit is not a capability permit"
+              Expect.isEmpty calls "the invoker never ran"
+          }
+
+          test "a registry refusal is surfaced as a refusal carrying the registry's sentence" {
+              let runtime = GatingRuntime(fun _ -> true)
+
+              let _, invoker =
+                  recordingInvoker (Deferred.Error "policy refused: render.copy-image needs approval")
+
+              let outcome =
+                  Render.treeInvokeOutcome (runtime :> IFuaranRuntime) invoker "render.copy-image" []
+
+              match outcome with
+              | Error reason ->
+                  Expect.stringContains reason "render.copy-image" "names the capability"
+                  Expect.stringContains reason "needs approval" "carries the registry's sentence"
+              | Ok() -> failtest "expected a refusal"
+
+              Expect.hasLength runtime.Warnings 1 "one diagnostic"
+              Expect.stringContains runtime.Warnings.[0] "refused" "the diagnostic says refused"
+          }
+
+          test "a settled value is discarded and nothing is warned" {
+              let runtime = GatingRuntime(fun _ -> true)
+
+              let _, invoker =
+                  recordingInvoker (Deferred.Ready("pixels the tree never sees" :> obj))
+
+              Expect.equal
+                  (Render.treeInvokeOutcome (runtime :> IFuaranRuntime) invoker "render.copy-image" [])
+                  (Ok())
+                  "dispatched"
+
+              Expect.isEmpty runtime.Warnings "nothing to say"
+          }
+
+          test "the no-host default (Pending) dispatches with a diagnostic, not in silence" {
+              let runtime = GatingRuntime(fun _ -> true)
+
+              let outcome =
+                  Render.treeInvokeOutcome
+                      (runtime :> IFuaranRuntime)
+                      Fuaran.UI.BindingSources.empty.CapabilityInvoker
+                      "render.copy-image"
+                      []
+
+              Expect.equal outcome (Ok()) "the gate allowed it"
+              Expect.hasLength runtime.Warnings 1 "one diagnostic"
+              Expect.stringContains runtime.Warnings.[0] "pending" "names the pending state"
+          }
+
+          test "a throwing invoker propagates — the emission point records it as Failed" {
+              let runtime = GatingRuntime(fun _ -> true)
+
+              let invoker (_: string) (_: (string * string) list) : Deferred<obj> = failwith "the host invoker threw"
+
+              Expect.throws
+                  (fun () ->
+                      Render.treeInvokeOutcome (runtime :> IFuaranRuntime) invoker "render.copy-image" []
+                      |> ignore)
+                  "propagates"
           } ]
