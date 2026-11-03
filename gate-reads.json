@@ -1,6 +1,6 @@
 {
   "kind": "gateReads",
-  "_": "What this repository's gate reads beyond the code-shaped default (sources, tests, proofs, build and project files, the gate scripts). A commit touching only files outside the union is gate-inert, and a green run may stand across it. The gate is run.ps1: the suites in the test-suites.json roster, the Fable stage, the validator-coverage check, the defect-code check, the browser-script harness and the renderer writer's self-test, and the generated-artefact drift checks (Build.fsproj -- DriftChecks, which reconciles the authoring pack under docs/). No stage sweeps the tracked set. The entries are those stages' inputs and the documents the suites open; the wire-format corpus most suites read lives outside this repository. Checked, not trusted: src/Fuaran.UI.Tests/GateReadsCensusTests.fs.",
+  "_": "What this repository's gate reads beyond the code-shaped default (sources, tests, proofs, build and project files, the gate scripts). A commit touching only files outside the union is gate-inert, and a green run may stand across it. The gate is run.ps1: the suites in the test-suites.json roster, the Fable stage, the validator-coverage check, the defect-code check, the browser-script harness and the renderer writer's self-test, and the generated-artefact drift checks (Build.fsproj -- DriftChecks, which reconciles the authoring pack under docs/). No stage sweeps the tracked set. The entries are those stages' inputs and the documents the suites open; the wire-format corpus most suites read lives outside this repository. Checked, not trusted: src/Fuaran.UI.Tests/GateReadsCensusTests.fs. Phase 1012: `builds` names what the gate builds — Fuaran.sln, Build.fsproj (its DriftChecks target), and the projects the Fable stage (tests/fable-laws/fable-check.ps1) compiles — and `notBuilt` each project file the gate deliberately does not, with the reason; the coverage check holds the pair to the tracked project files, and an unreached project is an error once `builds` is declared.",
   "reads": [
     "SANITIZATION.md",
     "docs/AI_AUTHORING_GUIDE.md",
@@ -23,6 +23,52 @@
     {
       "path": "benchmarks/Fuaran.UI.Renderer.Benchmarks/run.ps1",
       "reason": "the render-cost benchmark's own launcher, run by hand to take a reading; the census matches it by its basename against suites that name the root run.ps1, and no gate stage invokes it"
+    }
+  ],
+  "builds": [
+    "Fuaran.sln",
+    "Build.fsproj",
+    "tests/core-fable/CoreFable.fsproj",
+    "src/Fuaran.UI.Program.Parity.Fable/Fuaran.UI.Program.Parity.Fable.fsproj",
+    "tests/fable-pack-consumer/FablePackConsumer.fsproj",
+    "tests/fable-watch-consumer/FableWatchConsumer.fsproj"
+  ],
+  "notBuilt": [
+    {
+      "path": "samples/apply-demo/ApplyDemo.fsproj",
+      "reason": "the in-page apply host: outside Fuaran.sln and the local gate (run.ps1); CI's apply-parity-fable workflow Fable-compiles it and runs its parity job"
+    },
+    {
+      "path": "samples/giraffe-ssr/GiraffeSsr.Sample.fsproj",
+      "reason": "outside Fuaran.sln and the local gate (run.ps1); CI builds it in the apply-parity-fable workflow's out-of-solution-projects job"
+    },
+    {
+      "path": "samples/hydration/gen/Gen.fsproj",
+      "reason": "outside Fuaran.sln and the local gate (run.ps1); CI builds it in the apply-parity-fable workflow's out-of-solution-projects job"
+    },
+    {
+      "path": "samples/resume/gen/Gen.fsproj",
+      "reason": "outside Fuaran.sln and the local gate (run.ps1); CI builds it in the apply-parity-fable workflow's out-of-solution-projects job"
+    },
+    {
+      "path": "samples/hydration/client/Client.fsproj",
+      "reason": "the sample's Fable browser client: outside Fuaran.sln and the local gate (run.ps1); CI builds it in the apply-parity-fable workflow's out-of-solution-projects job (dotnet fable)"
+    },
+    {
+      "path": "samples/resume/client/Client.fsproj",
+      "reason": "the sample's Fable browser client: outside Fuaran.sln and the local gate (run.ps1); CI builds it in the apply-parity-fable workflow's out-of-solution-projects job (dotnet fable)"
+    },
+    {
+      "path": "templates/fsharp-starter/Starter.fsproj",
+      "reason": "an unrooted template: its nuget.config resolves the local feed relative to the instantiated app, so it cannot restore in place; built only once instantiated"
+    },
+    {
+      "path": "tests/ids-parity-probe/IdsParityProbe.fsproj",
+      "reason": "a cross-pipeline value probe that needs a Node runtime: deliberately outside Fuaran.sln and the gate, which stays dependency-free; run by hand with run-parity-probe.ps1"
+    },
+    {
+      "path": "tests/pure-tier-laws/PureTierLaws.fsproj",
+      "reason": "a cross-pipeline value probe that needs a Node runtime: deliberately outside Fuaran.sln and the gate, which stays dependency-free; run by hand with run-pure-tier-laws.ps1"
     }
   ]
 }
