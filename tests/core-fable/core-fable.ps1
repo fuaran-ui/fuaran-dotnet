@@ -127,7 +127,7 @@ $skipCompute = $coreOverride -and -not $computeOverride
 # gate references). From its 0.36.0 they carry their own ids and the `Fuaran.Compute` namespace; the
 # C#-only half is gone. Every Fuaran.Core.* package is Fuaran.Core's. Keep in step with the compute
 # ItemGroups in this directory's Directory.Packages.props and CoreFable.fsproj.
-$ComputeOwned = @('Fuaran.Compute.DataFrame', 'Fuaran.Compute.ColumnOps', 'Fuaran.Compute.Conformance', 'Fuaran.Compute.PipelineQuery')
+$ComputeOwned = @('Fuaran.Compute.LinearAlgebra', 'Fuaran.Compute.DataFrame', 'Fuaran.Compute.ColumnOps', 'Fuaran.Compute.Conformance', 'Fuaran.Compute.PipelineQuery')
 
 function Fail([string] $message) {
     Write-Host "==== core-fable: FAILED — $message" -ForegroundColor Red
@@ -222,6 +222,9 @@ foreach ($m in [regex]::Matches($pinsText, '<PackageVersion\s+Include="(Fuaran\.
     $ref = [regex]::Match($version, '^\$\((\w+)\)$')
     if ($ref.Success) {
         $propName = $ref.Groups[1].Value
+        # A version naming one of this gate's own override properties is a candidate-run override, not a
+        # pin (the candidate supplies it), so it is not read here.
+        if ($propName -like 'CoreFable*') { continue }
         if (-not $pinProps.ContainsKey($propName)) { Fail "the pin for $id names the property $propName, which no Directory.Packages.props defines" }
         $version = $pinProps[$propName]
     }
@@ -355,10 +358,13 @@ try {
     # only when the Core this run compiles against is at or past that version, so ONE Program.fs builds
     # against the pin and the candidate alike.
     [Environment]::SetEnvironmentVariable('CoreFableEffectiveCore', $effectiveCore.ToString())
+    # A compute package's marker reads the COMPUTE producer's version, never Core's: the two producers
+    # version independently, and Fuaran.Compute.LinearAlgebra first ships at compute 0.43.0 (fuaran-core#590).
+    $effectiveCompute = if ($computeOverride) { [version]$ComputeVersion } else { [version]$pins['Fuaran.Compute.DataFrame'] }
     [xml]$projectXml = Get-Content -Raw $project
     $referenced = @($projectXml.SelectNodes('//PackageReference') |
         Where-Object { $_.Include -match '^Fuaran\.(Core|Compute)\.' } |
-        Where-Object { -not $_.CandidateFrom -or [version]$_.CandidateFrom -le $effectiveCore } |
+        Where-Object { -not $_.CandidateFrom -or [version]$_.CandidateFrom -le $(if ($_.Include -in $ComputeOwned) { $effectiveCompute } else { $effectiveCore }) } |
         ForEach-Object { $_.Include } | Sort-Object -Unique)
 
     $exclusions = @(Get-Content -Raw (Join-Path $PSScriptRoot 'exclusions.json') | ConvertFrom-Json)

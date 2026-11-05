@@ -251,8 +251,8 @@ lower (no Expecto, no `System.IO`, no reflection).
      moment to raise the six `Fuaran.Core.*` pins this gate alone uses, with the others.
    - **The compute layer has its own producer and its own flags.** From 0.33.0 the compute
      packages ship from a separate repository, from its 0.36.0 as `Fuaran.Compute.DataFrame`,
-     `Fuaran.Compute.ColumnOps`, `Fuaran.Compute.Conformance` and `Fuaran.Compute.PipelineQuery`
-     (namespace `Fuaran.Compute`); they are pinned on `FuaranCoreComputeVersion` in
+     `Fuaran.Compute.ColumnOps`, `Fuaran.Compute.Conformance` and `Fuaran.Compute.PipelineQuery`, and from its 0.43.0
+     `Fuaran.Compute.LinearAlgebra` (namespace `Fuaran.Compute`); they are pinned on `FuaranCoreComputeVersion` in
      `Directory.Packages.props`. A compute cut runs
      `pwsh ./tests/core-fable/core-fable.ps1 -ComputeVersion <v> -ComputeFeed <folder of .nupkg>`,
      independent of the Core pair (either pair alone, or both together); with neither pair, every

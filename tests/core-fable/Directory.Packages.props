@@ -42,5 +42,9 @@
     <PackageVersion Update="Fuaran.Compute.ColumnOps" Version="$(CoreFableComputeVersion)" />
     <PackageVersion Update="Fuaran.Compute.Conformance" Version="$(CoreFableComputeVersion)" />
     <PackageVersion Update="Fuaran.Compute.PipelineQuery" Version="$(CoreFableComputeVersion)" />
+    <!-- First shipped at compute 0.43.0 (fuaran-core#590); not yet pinned in the root file, so a candidate
+         run INCLUDES it rather than updating a pin. The compute pin raise to 0.43.0 adds the root pin and
+         turns this line into an Update beside the others. -->
+    <PackageVersion Include="Fuaran.Compute.LinearAlgebra" Version="$(CoreFableComputeVersion)" />
   </ItemGroup>
 </Project>

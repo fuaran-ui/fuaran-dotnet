@@ -618,6 +618,16 @@ let private columnOpsTouch =
         (ColumnOps.changeOf op)
         (ColumnOps.streamWitness.Apply op t |> Result.mapError ColumnOps.rejectionString)
 
+#if CORE_FABLE_LINALG
+// LinearAlgebra (fuaran-core#590, from compute 0.43.0) — the matrix type, and the pinned elementary and
+// normal-distribution routines (#593, #600) whose Fable bytes the package promises.
+let private linAlgTouch =
+    let open' = Fuaran.Compute.LinearAlgebra.Matrix.identity 2
+    let e = Fuaran.Compute.LinearAlgebra.Elementary.exp 1.0
+    let p = Fuaran.Compute.LinearAlgebra.Elementary.normalCdf 0.0
+    sprintf "%A|%.17g|%.17g" open' e p
+#endif
+
 // The compute touches, consumed by `main` below. Empty when the compute packages are not compiled
 // (a Core-only cut), so nothing outside this block names a compute type or module.
 let private computeTouches =
@@ -628,6 +638,9 @@ let private computeTouches =
       (sprintf "%A" incrementalTouch)
       slotAndClockTouch
       columnOpsTouch ]
+#if CORE_FABLE_LINALG
+    @ [ linAlgTouch ]
+#endif
 #else
 let private computeTouches: string list = []
 #endif
