@@ -36,15 +36,12 @@
     <PackageVersion Update="Fuaran.Core.Text" Version="$(FuaranCoreVersion)" />
   </ItemGroup>
   <!-- The second producer (the compute repository, from 0.33.0). The script's `$ComputeOwned` list
-       names the same three ids; keep the two in step. -->
+       names the same five ids; keep the two in step. -->
   <ItemGroup Condition="'$(CoreFableComputeVersion)' != ''">
     <PackageVersion Update="Fuaran.Compute.DataFrame" Version="$(CoreFableComputeVersion)" />
     <PackageVersion Update="Fuaran.Compute.ColumnOps" Version="$(CoreFableComputeVersion)" />
     <PackageVersion Update="Fuaran.Compute.Conformance" Version="$(CoreFableComputeVersion)" />
     <PackageVersion Update="Fuaran.Compute.PipelineQuery" Version="$(CoreFableComputeVersion)" />
-    <!-- First shipped at compute 0.43.0 (fuaran-core#590); not yet pinned in the root file, so a candidate
-         run INCLUDES it rather than updating a pin. The compute pin raise to 0.43.0 adds the root pin and
-         turns this line into an Update beside the others. -->
-    <PackageVersion Include="Fuaran.Compute.LinearAlgebra" Version="$(CoreFableComputeVersion)" />
+    <PackageVersion Update="Fuaran.Compute.LinearAlgebra" Version="$(CoreFableComputeVersion)" />
   </ItemGroup>
 </Project>

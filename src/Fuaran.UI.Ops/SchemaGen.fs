@@ -231,6 +231,64 @@ let private record (required: string list) (props: (string * J) list) : J =
 let private invokeArgs: J =
     arrayOf (record [ "addr"; "value" ] [ "addr", str; "value", str ])
 
+/// A slot (Fuaran.Compute's `Slot<'T>`): the literal, or a `{"$param":"<name>"}`
+/// reference resolved against the binding's `params`.
+let private paramSlot (literal: J) : J =
+    JObj [ "anyOf", JArr [ literal; record [ "$param" ] [ "$param", str ] ] ]
+
+/// The members of a fit document (Fuaran.Compute 0.43.0, `DataFrameCodec`'s
+/// `fitFields`), which a `fit` step carries at its top level and a `predict`
+/// step nests under `fit` — one list, so the two positions cannot drift.
+/// Expressions (`predictors[].expr`, `offset`) stay structural objects, as
+/// `filter.pred` and `derive.expr` do. A slot (`ridge`, `control.maxIter` /
+/// `tol`) is a `paramSlot`. `power` is required by the decoder exactly when
+/// `family` is `tweedie`; that relation is left unstated, as `window.n`'s is,
+/// so the schema says less than the decoder and never something different.
+let private fitRequired: string list =
+    [ "control"
+      "family"
+      "groupBy"
+      "intercept"
+      "link"
+      "output"
+      "predictors"
+      "response" ]
+
+let private fitMembers: (string * J) list =
+    [ "control", record [ "maxIter"; "tol" ] [ "maxIter", paramSlot integer; "tol", paramSlot number ]
+      "family",
+      enumDef
+          [ "gaussian"
+            "poisson"
+            "gamma"
+            "tweedie"
+            "quasiPoisson"
+            "binomial"
+            "quasiBinomial"
+            "inverseGaussian"
+            "negativeBinomial" ]
+      "groupBy", arrayOf str
+      "intercept", boolean
+      "link",
+      enumDef
+          [ "identity"
+            "log"
+            "logit"
+            "probit"
+            "cloglog"
+            "inverse"
+            "inverseSquare"
+            "sqrt" ]
+      "offset", object_
+      "output", enumDef [ "coefficients"; "summary"; "fitted"; "residuals" ]
+      "power", number
+      "predictors", arrayOf (record [ "expr"; "name" ] [ "expr", object_; "name", str ])
+      "response", str
+      "ridge", paramSlot number
+      "stdErrors", enumDef [ "classical"; "hc0"; "hc1"; "hc2"; "hc3"; "robust" ]
+      "theta", number
+      "weights", str ]
+
 /// Phase 863 — forbid an ENUMERATED set of near-miss property names on a
 /// record, as `allOf: [{ "not": { "required": ["<name>"] } }, …]`.
 ///
@@ -731,7 +789,36 @@ let private defs: (string * J) list =
             duCase "limit" [ "n" ] [ "n", integer; "offset", integer ]
             duCase "union" [ "source" ] [ "source", object_ ]
             duCase "intersect" [ "source" ] [ "source", object_ ]
-            duCase "except" [ "source" ] [ "source", object_ ] ]
+            duCase "except" [ "source" ] [ "source", object_ ]
+            // Fuaran.Compute 0.43.0 — a named function the pipeline carries. A
+            // parameter's `default` is a typed cell (`{"$type":"Int","value":…}`)
+            // or a `{"$param":…}` reference: an object either way.
+            duCase
+                "define"
+                [ "body"; "name"; "params" ]
+                [ "body", object_
+                  "name", str
+                  "params", arrayOf (record [ "name" ] [ "default", object_; "name", str ]) ]
+            // Fuaran.Compute 0.43.0 — a regression fit; its members are the
+            // shared fit document (`TransformFitSpec`).
+            duCase "fit" fitRequired fitMembers
+            // Fuaran.Compute 0.43.0 — scoring rows against a fitted model. The
+            // interval's `level` is a slot, as `ridge` is.
+            duCase
+                "predict"
+                [ "fit"; "model"; "scale" ]
+                [ "fit", ref "TransformFitSpec"
+                  "interval",
+                  record
+                      [ "kind"; "level" ]
+                      [ "kind", enumDef [ "confidence"; "prediction" ]; "level", paramSlot number ]
+                  "model",
+                  record [ "from"; "source" ] [ "from", enumDef [ "training"; "coefficients" ]; "source", object_ ]
+                  "scale", enumDef [ "link"; "response" ] ] ]
+
+      // The fit document a `predict` step nests under `fit` — the `fit` step's
+      // own members without its `$type`.
+      "TransformFitSpec", record fitRequired fitMembers
 
       // A column rename pair — `project.columns` and `join.on` both carry it, and
       // both read `a` / `b` through the same `pairOf`. `a` / `b` name a POSITION in

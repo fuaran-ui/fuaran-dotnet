@@ -7856,6 +7856,28 @@ so no codec host moves.
   consumer's restore pulls it; it was already in the graph of every host that references `Fuaran.UI.AiTools`. No
   API moves.
 
+### What rides this slot — the `Fuaran.Compute` pin raise to 0.43.0
+
+**Class: additive on this repository's own surface, union-widening through the dependency.** `FuaranCoreComputeVersion`
+moves 0.41.0 → 0.43.0 (0.42.0 was skipped here); `Fuaran.Compute.LinearAlgebra`, new in that release and a dependency of
+`Fuaran.Compute.DataFrame`, is pinned beside its siblings.
+
+- **What a consumer receives from the producer.** `Transform` gains `Define`, `Fit` and `Predict`; `ColExpr` gains
+  `Arg`, `Call` and `Interpolate`; `EvalError` gains `FunctionError`, `RecursiveFunction`, `ExpansionTooLarge`,
+  `InvalidKnots`, `UnsupportedFit` and `FitError`. A consumer matching any of them exhaustively reports `FS0025`; add
+  the arms. The evaluator's `exp` / `ln` / `log10` / float `pow` now run the producer's pinned routines, so a column they
+  compute may differ from the host library's answer in its last bit, and is the same bits on every host.
+- **`Binding.Transform` decoding.** The pipeline codec is the producer's, so a document's pipeline may now carry the
+  three new steps. WIRE_FORMAT §21.8's expression bound reaches every expression they embed — a `define` body, each
+  `fit` predictor and its `offset`, and the same inside a `predict` step's `fit` — refused as `LIMIT_EXCEEDED` at the
+  offending member, as `derive` and `filter` are. The bound's step match is now exhaustive, so a step a later release
+  adds stops it compiling rather than passing unbounded; `Call` arguments and the `Interpolate` operand are counted, and
+  `Arg` is a leaf.
+- **`schema.json`.** The `TransformStep` union gains the `define`, `fit` and `predict` arms, and a `TransformFitSpec`
+  definition the `predict` arm references (additive: a document valid before is valid now). The shared corpus copy is
+  re-emitted with it. The transform law vectors the release adds are NOT re-emitted into the corpus with this raise:
+  the other codec hosts do not yet evaluate the new steps, so that copy waits for them (fuaran#2588).
+
 ## 0.101.0 (RELEASED — tagged v0.101.0 at 25dd3ecc, 2026-11-02)
 
 _Set by Phase 2527, the first change to ride the slot. The heading said DRAFT until 2026-11-03, a day after the tag._

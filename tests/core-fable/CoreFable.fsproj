@@ -53,20 +53,6 @@
   <PropertyGroup Condition="'$(CoreFableSkipCompute)' != 'true'">
     <DefineConstants>$(DefineConstants);CORE_FABLE_COMPUTE</DefineConstants>
   </PropertyGroup>
-  <!--
-    Fuaran.Compute.LinearAlgebra first ships at 0.43.0 (fuaran-core#590). It is compiled when the compute
-    version in force (a cut-time candidate's, else the pin) is at or above that, and `CORE_FABLE_LINALG`
-    gates its touch in Program.fs. Below it the package does not exist, so neither is active. When the pin
-    reaches 0.43.0 this condition and the constant are retired and the reference becomes unconditional.
-  -->
-  <PropertyGroup>
-    <CoreFableComputeInForce>$(CoreFableComputeVersion)</CoreFableComputeInForce>
-    <CoreFableComputeInForce Condition="'$(CoreFableComputeInForce)' == ''">$(FuaranCoreComputeVersion)</CoreFableComputeInForce>
-    <CoreFableLinAlg Condition="'$(CoreFableSkipCompute)' != 'true' And $([MSBuild]::VersionGreaterThanOrEquals('$(CoreFableComputeInForce)', '0.43.0'))">true</CoreFableLinAlg>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(CoreFableLinAlg)' == 'true'">
-    <DefineConstants>$(DefineConstants);CORE_FABLE_LINALG</DefineConstants>
-  </PropertyGroup>
   <ItemGroup>
     <Compile Include="Program.fs" />
   </ItemGroup>
@@ -79,7 +65,8 @@
     <!-- Reached transitively through Fuaran.Compute.Conformance; referenced so the gate names every
          package the producer ships. -->
     <PackageReference Include="Fuaran.Compute.PipelineQuery" />
-    <PackageReference Include="Fuaran.Compute.LinearAlgebra" CandidateFrom="0.43.0" Condition="'$(CoreFableLinAlg)' == 'true'" />
+    <!-- First shipped at 0.43.0 (fuaran-core#590), which Fuaran.Compute.DataFrame depends on. -->
+    <PackageReference Include="Fuaran.Compute.LinearAlgebra" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />

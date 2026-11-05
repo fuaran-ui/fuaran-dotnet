@@ -643,6 +643,9 @@ TransformStep =
 | union { source:object }
 | intersect { source:object }
 | except { source:object }
+| define { body:object; name:str; params:{ name:str; default?:object }[] }
+| fit { control:{ maxIter:int | { $param:str }; tol:num | { $param:str } }; family:"gaussian"|"poisson"|"gamma"|"tweedie"|"quasiPoisson"|"binomial"|"quasiBinomial"|"inverseGaussian"|"negativeBinomial"; groupBy:str[]; intercept:bool; link:"identity"|"log"|"logit"|"probit"|"cloglog"|"inverse"|"inverseSquare"|"sqrt"; output:"coefficients"|"summary"|"fitted"|"residuals"; predictors:{ expr:object; name:str }[]; response:str; offset?:object; power?:num; ridge?:num | { $param:str }; stdErrors?:"classical"|"hc0"|"hc1"|"hc2"|"hc3"|"robust"; theta?:num; weights?:str }
+| predict { fit:TransformFitSpec; model:{ from:"training"|"coefficients"; source:object }; scale:"link"|"response"; interval?:{ kind:"confidence"|"prediction"; level:num | { $param:str } } }
 Accessibility { describedBy?:str; hidden?:Binding_bool; label?:Binding_str; labelledBy?:str; liveRegion?:"polite"|"assertive"|"off"; role?:str; speak?:TextSource }
 Affordance { aliases?:AffordanceAlias[]; clearable?:bool; description?:str; neverControllable?:bool; patterns?:str[]; readPatterns?:str[] }
 AffordanceAlias { alias:str; value:str }
@@ -667,6 +670,7 @@ StyleDelta { direction?:TextDirection; emphasis?:Emphasis; role?:StyleRole; tone
 TabHeader { label:TextSource; disabled?:Binding_bool; icon?:str }
 TrackEntry { kind:"Subtitles"|"Captions"|"Descriptions"|"Chapters"; label:TextSource; src:Binding_str; srcLang:str; default?:bool }
 TransformAgg { fn:AggFn; name:str; of:str }
+TransformFitSpec { control:{ maxIter:int | { $param:str }; tol:num | { $param:str } }; family:"gaussian"|"poisson"|"gamma"|"tweedie"|"quasiPoisson"|"binomial"|"quasiBinomial"|"inverseGaussian"|"negativeBinomial"; groupBy:str[]; intercept:bool; link:"identity"|"log"|"logit"|"probit"|"cloglog"|"inverse"|"inverseSquare"|"sqrt"; output:"coefficients"|"summary"|"fitted"|"residuals"; predictors:{ expr:object; name:str }[]; response:str; offset?:object; power?:num; ridge?:num | { $param:str }; stdErrors?:"classical"|"hc0"|"hc1"|"hc2"|"hc3"|"robust"; theta?:num; weights?:str }
 TransformRename { a:str; b:str }
 TransformSortKey { column:str; dir?:"asc"|"desc" }
 TreeItem { id:str; label:TextSource; children?:TreeItem[]; icon?:str }

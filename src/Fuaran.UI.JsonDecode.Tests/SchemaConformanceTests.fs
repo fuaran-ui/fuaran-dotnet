@@ -450,7 +450,7 @@ let private unionTags (defName: string) : Set<string> =
     |> Set.ofSeq
 
 /// The wire tag a `Fuaran.Compute.Transform` case encodes as. Every one
-/// of the fourteen is its case name with a lowered initial — `Filter` → `filter`,
+/// of the seventeen is its case name with a lowered initial — `Filter` → `filter`,
 /// `GroupBy` → `groupBy` — which is what `DataFrameCodec.encodeTransform` writes
 /// and `decodeTransform` reads back, so the mapping is derived rather than
 /// transcribed and a case added to Core arrives here on its own.
@@ -569,7 +569,60 @@ let transformStepUnion =
                           "the schema ACCEPTED %s — a schema-bound emitter is unconstrained there and the decoder is the only refusal\n  %s"
                           p.Why
                           (pipelineNode p.Defective)
-                  | None -> failtestf "the probe for '%s' is not parseable JSON" p.Id) ]
+                  | None -> failtestf "the probe for '%s' is not parseable JSON" p.Id)
+
+          // Fuaran.Compute 0.43.0's three steps, as the producer's own codec writes them —
+          // every optional member present and every slot a `$param`, so the arms are held to
+          // the encoder's widest output rather than to a hand-written document that might
+          // only exercise the narrow one. Each must validate AND decode.
+          testCase "the define, fit and predict arms admit the producer's encoding of each step" (fun () ->
+              let ols = Fuaran.Compute.FitSpec.ols "split" [ "km", Fuaran.Compute.Col "km" ]
+
+              let fit: Fuaran.Compute.FitSpec =
+                  { ols with
+                      Weights = Some "km"
+                      Offset = Some(Fuaran.Compute.Col "km")
+                      Ridge = Some(Fuaran.Compute.Slot.Param "r")
+                      Control =
+                          { MaxIter = Fuaran.Compute.Slot.Param "m"
+                            Tol = Fuaran.Compute.Slot.Param "t" }
+                      StdErrors = Fuaran.Compute.FitStdErrors.HC1 }
+
+              let scored = Fuaran.Compute.PredictSpec.ofTraining fit (Fuaran.Core.Ref "training")
+
+              let steps: Fuaran.Compute.Transform list =
+                  [ Fuaran.Compute.Define
+                        { Name = "f"
+                          Params =
+                            [ { Name = "x"
+                                Default = Some(Fuaran.Compute.Slot.Lit(Fuaran.Core.Int 1)) }
+                              { Name = "y"
+                                Default = Some(Fuaran.Compute.Slot.Param "p") } ]
+                          Body = Fuaran.Compute.Call("g", [ Fuaran.Compute.Arg "x" ]) }
+                    Fuaran.Compute.Fit fit
+                    Fuaran.Compute.Fit
+                        { fit with
+                            Family = Fuaran.Compute.FitFamily.Tweedie 1.5
+                            Link = Fuaran.Compute.FitLink.Log }
+                    Fuaran.Compute.Predict
+                        { scored with
+                            Interval =
+                                Some
+                                    { Kind = Fuaran.Compute.IntervalKind.Prediction
+                                      Level = Fuaran.Compute.Slot.Param "l" } } ]
+
+              for step in steps do
+                  let wire = Fuaran.Compute.DataFrameCodec.encodePipeline [ step ]
+                  let node = pipelineNode (wire.Substring(1, wire.Length - 2))
+
+                  match validate node with
+                  | Some true -> ()
+                  | Some false -> failtestf "the schema REFUSED the producer's encoding\n  %s" node
+                  | None -> failtestf "not parseable JSON\n  %s" node
+
+                  match JsonDecode.decodeNode node with
+                  | Ok _ -> ()
+                  | Error e -> failtestf "the producer's encoding does not DECODE: %A\n  %s" e node) ]
 
 // ─── The constrained-emitter acceptance leg (Phase 2451, WIRE_FORMAT §11.4) ───
 //

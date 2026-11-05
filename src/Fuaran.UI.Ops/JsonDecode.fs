@@ -2407,7 +2407,10 @@ let private scanExpr (expr: Fuaran.Compute.ColExpr) : struct (int * bool) =
             | Fuaran.Compute.ColExpr.Lit _
             | Fuaran.Compute.ColExpr.Param _
             // A `now` literal at a grain (Core 0.23.0) is a leaf: no column, no children.
-            | Fuaran.Compute.Now _ -> ()
+            | Fuaran.Compute.Now _
+            // A function body's read of its parameter (Fuaran.Compute 0.43.0) is a leaf too: it names a
+            // parameter, not a column, and the evaluator refuses one outside a definition by name.
+            | Fuaran.Compute.Arg _ -> ()
             | Fuaran.Compute.Binary(_, l, r) ->
                 walk l
                 walk r
@@ -2416,9 +2419,15 @@ let private scanExpr (expr: Fuaran.Compute.ColExpr) : struct (int * bool) =
             // A unit conversion (Fuaran.Compute 0.40.0): its operand is the one child, and the target
             // unit is a declaration, not a node.
             | Fuaran.Compute.Convert(x, _)
+            // A curve read (Fuaran.Compute 0.43.0): the operand is the one child; the knots, the kind
+            // and the outside rule are declarations, not nodes.
+            | Fuaran.Compute.Interpolate(x, _, _, _)
             | Fuaran.Compute.IsNull x -> walk x
             | Fuaran.Compute.Coalesce xs
-            | Fuaran.Compute.ApplyFn(_, xs) -> List.iter walk xs
+            | Fuaran.Compute.ApplyFn(_, xs)
+            // A call of a pipeline-defined function (Fuaran.Compute 0.43.0): its arguments are the
+            // children. The expansion's own size is bounded by the evaluator (`FnDef.expand`).
+            | Fuaran.Compute.Call(_, xs) -> List.iter walk xs
             | Fuaran.Compute.Case(cases, elseExpr) ->
                 cases
                 |> List.iter (fun (w, t) ->
@@ -2481,10 +2490,13 @@ let private exprAdmissible (path: string) (expr: Fuaran.Compute.ColExpr) : Resul
 /// Transform: a `derive`'s expression and a `filter`'s predicate reach the same
 /// evaluator and carried no ceiling on any host.
 ///
-/// `Filter` and `Derive` are the whole surface — the only `Fuaran.Core`
-/// `Transform` cases carrying a `ColExpr` — and a `join` / `union` / `intersect`
-/// / `except` operand is a `DataSource` (embedded table or named ref), never
-/// another pipeline, so there is no recursive axis to descend.
+/// The steps carrying a `ColExpr` are `Filter` and `Derive`, and from
+/// Fuaran.Compute 0.43.0 `Define` (its body), `Fit` (each predictor and the
+/// offset) and `Predict` (the same, inside its `fit` document). The match below
+/// names every step, so a step a later release adds stops this compiling rather
+/// than passing unbounded. A `join` / `union` / `intersect` / `except` operand,
+/// and a `predict` model's source, is a `DataSource` (embedded table or named
+/// ref), never another pipeline, so there is no recursive axis to descend.
 ///
 /// Counted per EMBEDDED EXPRESSION and against the SAME budget, per §21.8: the
 /// thing bounded is one evaluation either way. The refusal is `LIMIT_EXCEEDED`
@@ -2513,13 +2525,35 @@ let private pipelineExprsAdmissible
         else
             None
 
+    // A fit document's expressions, at their wire members under `prefix`: each
+    // predictor's `expr`, then the `offset`.
+    let fitBreach (prefix: string) (i: int) (spec: Fuaran.Compute.FitSpec) =
+        spec.Predictors
+        |> List.indexed
+        |> List.tryPick (fun (k, (_, expr)) -> breach (sprintf "%spredictors[%d].expr" prefix k) i expr)
+        |> Option.orElse (spec.Offset |> Option.bind (breach (prefix + "offset") i))
+
     pipeline
     |> List.indexed
     |> List.tryPick (fun (i, step) ->
         match step with
         | Fuaran.Compute.Filter pred -> breach "pred" i pred
         | Fuaran.Compute.Derive(_, expr) -> breach "expr" i expr
-        | _ -> None)
+        | Fuaran.Compute.Define fd -> breach "body" i fd.Body
+        | Fuaran.Compute.Fit spec -> fitBreach "" i spec
+        | Fuaran.Compute.Predict spec -> fitBreach "fit." i spec.Fit
+        | Fuaran.Compute.Project _
+        | Fuaran.Compute.GroupBy _
+        | Fuaran.Compute.Join _
+        | Fuaran.Compute.Window _
+        | Fuaran.Compute.Pivot _
+        | Fuaran.Compute.Unpivot _
+        | Fuaran.Compute.Sort _
+        | Fuaran.Compute.Distinct
+        | Fuaran.Compute.Limit _
+        | Fuaran.Compute.Union _
+        | Fuaran.Compute.Intersect _
+        | Fuaran.Compute.Except _ -> None)
     |> Option.map Error
     |> Option.defaultValue (Ok())
 
