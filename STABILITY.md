@@ -7818,9 +7818,9 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.102.0 — the slot opened after v0.101.0 was released (DRAFT — untagged)
+## 0.102.0 (RELEASED — tagged v0.102.0 at 00225688, 2026-11-06)
 
-_Untagged. Set by Phase 2576, the first change to ride the slot._
+_Set by Phase 2576, the first change to ride the slot._
 
 ### What rides this slot — Phase 2592 (a table cell can cite its figure)
 
