@@ -232,7 +232,11 @@ let tests =
           }
 
           test "EditNode swaps the addressed node's Kind wholesale, preserving Id" {
-              let newKind = NodeKind.Markdown({ Text = TextSource.Literal "Replaced" })
+              let newKind =
+                  NodeKind.Markdown(
+                      { Citations = []
+                        Text = TextSource.Literal "Replaced" }
+                  )
 
               match Apply.apply (TreeOp.EditNode(NodeId "revenue-metric", newKind)) dashboard with
               | Ok updated ->

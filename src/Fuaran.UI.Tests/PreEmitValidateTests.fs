@@ -5864,7 +5864,8 @@ let severityToneCoherenceTests =
 let private formatted (id: string) (fmt: Format) : Node<Msg> =
     Fuaran.markdownSpec
         id
-        { Text = TextSource.Bound(Binding.Format(Binding.Static(Some 1700000000.0), fmt, LocaleSource.Ambient)) }
+        { Citations = []
+          Text = TextSource.Bound(Binding.Format(Binding.Static(Some 1700000000.0), fmt, LocaleSource.Ambient)) }
 
 let private dateFormatDefects (tree: Node<Msg>) : PreEmitDefect list =
     match PreEmitValidate.validate tree with

@@ -2169,7 +2169,11 @@ let private walkTree<'Msg>
         | NodeKind.ScrollArea s -> walkAll inUses s.Children
         // ── Display ──
         | NodeKind.Heading h -> recordText inUses readerId h.Text
-        | NodeKind.Markdown m -> recordText inUses readerId m.Text
+        | NodeKind.Markdown m ->
+            recordText inUses readerId m.Text
+
+            for c in m.Citations do
+                c.Label |> Option.iter (recordText inUses readerId)
         | NodeKind.Metric k ->
             recordText inUses readerId k.Label
             recordBinding inUses readerId k.Value

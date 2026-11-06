@@ -145,7 +145,11 @@ let mkBox (id: string) (kids: EqNode list) : EqNode =
 let mkLeaf (id: string) : EqNode =
     wrap
         { Id = id
-          Kind = NodeKind.Markdown({ Text = TextSource.Literal "" })
+          Kind =
+            NodeKind.Markdown(
+                { Citations = []
+                  Text = TextSource.Literal "" }
+            )
           State = None
           Style = None
           Accessibility = Option.None

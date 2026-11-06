@@ -1423,6 +1423,58 @@ let factReference: Node<obj> =
         ))
         None
 
+/// Phase 2591 — a sentence citing one figure, whose label says what the number is for a screen
+/// reader without being printed. The display text is the link's own (WIRE_FORMAT.md §3.6.32).
+[<NodeFixture "Display/Markdown (Phase 2591 — a sentence citing one figure)">]
+let markdownCitationOne: Node<obj> =
+    node
+        "markdown-citation-one"
+        (NodeKind.Markdown(
+            { Text = TextSource.Literal "Online.com took [23%](cite:share) of the category."
+              Citations =
+                [ { Name = "share"
+                    Reference = "9f04f29b27c86926a1c3e5d7b8f0a2c4e6d8f0a1b3c5d7e9f1a3b5c7d9e1f3a5"
+                    Label = Some(TextSource.Literal "Online share of category spend") } ] }
+        ))
+        None
+
+/// Phase 2591 — a sentence citing several figures, in the three reference forms that occur.
+[<NodeFixture "Display/Markdown (Phase 2591 — a sentence citing several figures)">]
+let markdownCitationSeveral: Node<obj> =
+    node
+        "markdown-citation-several"
+        (NodeKind.Markdown(
+            { Text =
+                TextSource.Literal
+                    "Online.com took [23%](cite:share) from [£412k](cite:spend) placed by **[17](cite:brands)** brands, against a forecast of [about 20](cite:forecast)."
+              Citations =
+                [ { Name = "share"
+                    Reference = "9f04f29b27c86926a1c3e5d7b8f0a2c4e6d8f0a1b3c5d7e9f1a3b5c7d9e1f3a5"
+                    Label = Some(TextSource.Literal "Online share of category spend") }
+                  { Name = "spend"
+                    Reference = "fact:spend-q3"
+                    Label = None }
+                  { Name = "brands"
+                    Reference = "fact:brands-q3"
+                    Label = Some(TextSource.Literal "Brands placing") }
+                  { Name = "forecast"
+                    Reference = "fcst:brands-q4@2026-11-01"
+                    Label = None } ] }
+        ))
+        None
+
+/// Phase 2591 — a sentence citing nothing: the member is absent, and a `cite:` link in the
+/// text is the dead link it has always been. The twin of `markdown-1` on the wire.
+[<NodeFixture "Display/Markdown (Phase 2591 — a sentence citing nothing)">]
+let markdownCitationNone: Node<obj> =
+    node
+        "markdown-citation-none"
+        (NodeKind.Markdown(
+            { Defaults.markdown with
+                Text = TextSource.Literal "Online.com took [23%](cite:share) of the category." }
+        ))
+        None
+
 /// Phase 819 — a duration Metric: the raw value counts MINUTES (80 → "1h
 /// 20m" under Compact), and the trend slot carries the cell-vocabulary
 /// RelativeTime parity case (a signed count of the unit).

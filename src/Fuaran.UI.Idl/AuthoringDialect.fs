@@ -319,6 +319,9 @@ let notChildAuthorable: (string * string) list =
       // Phase 2472 — the further comparisons; the VB <Metric> spells only its
       // primary trend, beside the icon / subtext / weight / emphasis gaps.
       "Metric.comparisons", "GAP — no VB spelling"
+      // Phase 2591 — a <Markdown> body is its element text; a citation list has no
+      // spelling beside it yet, and the wire form is what an emitter writes.
+      "Markdown.citations", "GAP — no VB spelling"
       // Labels are child-inferred. If <Tabs> gains header/tag authoring, port
       // FUARAN047/048 (header/tag-vs-children count) into the VB analyzer in
       // the same change.

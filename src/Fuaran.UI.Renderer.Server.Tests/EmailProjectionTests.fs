@@ -364,6 +364,19 @@ let emailProjectionTests =
     testList
         "email projection (Phase 441)"
         [ // ── The scope line, measured against the fidelity manifest ──────────
+          test "Phase 2591 — a citation keeps its reference in an email and prints no label" {
+              let html =
+                  Email.renderWith
+                      Email.defaults
+                      BindingResolver.empty
+                      ((Fuaran.markdown "m" "It took [23%](cite:share).": Node<obj>)
+                       |> Markdown.withCitation "share" "fact:share" (Some "Online share"))
+
+              Expect.stringContains html "data-fact=\"fact:share\"" "the figure keeps its reference"
+              Expect.isFalse (html.Contains "Online share") "a mail client has no stylesheet to hide a label with"
+              Expect.isFalse (html.Contains "about:blank") "a citation is not a dead link"
+          }
+
           test "scope declares exactly one posture per canonical wire kind" {
               let declared = Email.scope |> List.map fst
               let canonical = RenderFidelity.wireKindNames

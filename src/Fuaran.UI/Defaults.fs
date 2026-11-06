@@ -220,7 +220,7 @@ let fact: FactSpec =
       Help = Option.None
       Reference = Option.None }
 
-let markdown: MarkdownSpec = { Text = emptyLiteral }
+let markdown: MarkdownSpec = { Citations = []; Text = emptyLiteral }
 
 let metric: MetricSpec =
     { Label = emptyLiteral

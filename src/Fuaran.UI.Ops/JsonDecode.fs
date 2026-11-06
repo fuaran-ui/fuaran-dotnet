@@ -1613,7 +1613,11 @@ let private decodeInvokeArgs (path: string) (j: Json) : Result<(string * string)
 
 let private placeholderClosureNode: Node<obj> =
     { Id = closureSentinel
-      Kind = NodeKind.Markdown({ Text = TextSource.Literal closureSentinel })
+      Kind =
+        NodeKind.Markdown(
+            { Citations = []
+              Text = TextSource.Literal closureSentinel }
+        )
       State = None
       Style = None
       Accessibility = None
@@ -4340,13 +4344,80 @@ let private decodeLabelValueRowSpec (path: string) (j: Json) : Result<LabelValue
         | _, _, _, Error e, _
         | _, _, _, _, Error e -> Error e
 
+/// Phase 2591 — a citation's name is what a `cite:<name>` link destination says, so it is a
+/// token no Markdown destination needs escaping for (WIRE_FORMAT.md §3.6.32).
+let private isCitationName (name: string) : bool =
+    name <> ""
+    && name
+       |> Seq.forall (fun c ->
+           (c >= 'a' && c <= 'z')
+           || (c >= 'A' && c <= 'Z')
+           || (c >= '0' && c <= '9')
+           || c = '-'
+           || c = '_')
+
+let private decodeMarkdownCitation (path: string) (j: Json) : Result<MarkdownCitation, DecodeError> =
+    match requireObject path j with
+    | Error e -> Error e
+    | Ok fields ->
+        let nameR =
+            requireField path fields "name" "citation name"
+            |> Result.bind (requireString (path + ".name"))
+            |> Result.bind (fun name ->
+                if isCitationName name then
+                    Ok name
+                else
+                    wrongType (path + ".name") "a citation name of letters, digits, '-' and '_'")
+
+        let referenceR =
+            requireField path fields "reference" "citation reference"
+            |> Result.bind (requireString (path + ".reference"))
+
+        let labelR =
+            match tryField fields "label" with
+            | None -> Ok None
+            | Some v -> decodeTextSource (path + ".label") v |> Result.map Some
+
+        match nameR, referenceR, labelR with
+        | Error e, _, _
+        | _, Error e, _
+        | _, _, Error e -> Error e
+        | Ok name, Ok reference, Ok label ->
+            Ok
+                { Name = name
+                  Reference = reference
+                  Label = label }
+
+let private decodeMarkdownCitations (path: string) (j: Json) : Result<MarkdownCitation list, DecodeError> =
+    requireArray path j
+    |> Result.bind (fun els ->
+        if List.isEmpty els then
+            wrongType path "a non-empty citation list, or no member at all"
+        else
+            traverseIndexed (fun i el -> decodeMarkdownCitation (sprintf "%s[%d]" path i) el) els)
+    |> Result.bind (fun citations ->
+        let names = citations |> List.map (fun c -> c.Name)
+
+        match names |> List.countBy id |> List.tryFind (fun (_, n) -> n > 1) with
+        | Some(name, _) ->
+            let at = names |> List.findIndexBack ((=) name)
+            wrongType (sprintf "%s[%d].name" path at) "a citation name no other citation in this list uses"
+        | None -> Ok citations)
+
 let private decodeMarkdownSpec (path: string) (j: Json) : Result<MarkdownSpec, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
     | Ok fields ->
-        requireField path fields "text" "markdown TextSource"
-        |> Result.bind (decodeTextSource (path + ".text"))
-        |> Result.map (fun text -> { Text = text })
+        let citationsR =
+            match tryField fields "citations" with
+            | None -> Ok []
+            | Some v -> decodeMarkdownCitations (path + ".citations") v
+
+        citationsR
+        |> Result.bind (fun citations ->
+            requireField path fields "text" "markdown TextSource"
+            |> Result.bind (decodeTextSource (path + ".text"))
+            |> Result.map (fun text -> { Citations = citations; Text = text }))
 
 let private decodeBadgeSpec (path: string) (j: Json) : Result<BadgeSpec, DecodeError> =
     match requireObject path j with

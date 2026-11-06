@@ -1205,7 +1205,18 @@ let private defs: (string * J) list =
       // the IDL declares `omitDefault`) leaves `required` and stays in `props`.
       record [ "level"; "text" ] [ "level", integer; "text", ref "TextSource"; "variant", ref "HeadingVariant" ]
 
-      "MarkdownSpec", record [ "text" ] [ "text", ref "TextSource" ]
+      "MarkdownSpec",
+      record
+          [ "text" ]
+          [ "text", ref "TextSource"
+            // Phase 2591 - absent is the one spelling of none.
+            "citations", JObj [ "type", JStr "array"; "minItems", JInt 1; "items", ref "MarkdownCitation" ] ]
+      "MarkdownCitation",
+      record
+          [ "name"; "reference" ]
+          [ "name", JObj [ "type", JStr "string"; "pattern", JStr "^[A-Za-z0-9_-]+$" ]
+            "reference", str
+            "label", ref "TextSource" ]
 
       "BadgeSpec", record [ "label" ] [ "label", ref "TextSource"; "variant", ref "BadgeVariant" ]
 

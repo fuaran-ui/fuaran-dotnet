@@ -442,9 +442,22 @@ let private stripEgressMarkers (html: string) : string =
 /// above. A digest is the surface where an undeclared markdown image IS the
 /// tracking pixel, so leaving this one unchecked would have been the largest
 /// remaining hole rather than the smallest.
-let private emailSafeMarkdown (policy: Sanitize.EgressPolicy) (markdownText: string) : string =
+let private emailSafeMarkdown
+    (policy: Sanitize.EgressPolicy)
+    (citations: MarkdownCitation list)
+    (markdownText: string)
+    : string =
+    // Phase 2591 — a mail client has no reference stylesheet, so a hidden label would be
+    // printed in the sentence. The figure stays in line with its reference, without one.
+    let cited: Markdown.Citation list =
+        citations
+        |> List.map (fun c ->
+            { Name = c.Name
+              Reference = c.Reference
+              Label = None })
+
     let html =
-        Sanitize.sanitizeMarkdownHtml (Markdown.toHtmlWithEgress policy markdownText)
+        Sanitize.sanitizeMarkdownHtml (Markdown.toHtmlCited policy cited markdownText)
         |> stripEgressMarkers
 
     html
@@ -695,7 +708,9 @@ and private renderKind
             [ Html.tr
                   [ Html.td
                         [ prop.custom ("style", textStyle opts "font-size:15px;line-height:22px;")
-                          prop.dangerouslySetInnerHTML (emailSafeMarkdown ctx.Policy.Egress (text spec.Text)) ] ] ]
+                          prop.dangerouslySetInnerHTML (
+                              emailSafeMarkdown ctx.Policy.Egress spec.Citations (text spec.Text)
+                          ) ] ] ]
 
     | NodeKind.Metric spec ->
         let resolution = BindingResolver.resolveScalarFloat ctx.Sources spec.Value

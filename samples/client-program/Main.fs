@@ -105,7 +105,11 @@ let private authored: Node<obj> =
         let n = Fuaran.markdown "readout" "placeholder"
 
         { n with
-            Kind = NodeKind.Markdown({ Text = TextSource.Bound(Binding.State("clicks", Some "not clicked yet")) }) }
+            Kind =
+                NodeKind.Markdown(
+                    { Citations = []
+                      Text = TextSource.Bound(Binding.State("clicks", Some "not clicked yet")) }
+                ) }
 
     let bump =
         Fuaran.button

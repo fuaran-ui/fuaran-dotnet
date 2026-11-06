@@ -2128,6 +2128,20 @@ let private metricComparisonRecord =
           omit "polarity" (TEnum "TrendPolarity") (VEnum "HigherIsBetter") ]
       Annotations = Annotations.Empty }
 
+/// Phase 2591 — one figure a `Markdown` text cites. `name` is what the text's `cite:<name>`
+/// link destination says; `reference` is the same opaque value `Fact.reference` carries
+/// (WIRE_FORMAT.md §3.6.31); `label` says what the figure is, for a screen reader, and is
+/// never printed. The figure's display text is the link's own text, so it lives in the
+/// sentence. The name's grammar and uniqueness are refused at DECODE (the IDL has no refined
+/// string type), which is why those reject fixtures sit in the policy-only list.
+let private markdownCitationRecord =
+    { Name = "MarkdownCitation"
+      Fields =
+        [ opt "label" (TUnion("TextSource", []))
+          req "name" TStr
+          req "reference" TStr ]
+      Annotations = Annotations.Empty }
+
 /// A `DataGrid` column, row-erased. Fuaran-UI Phase 425: `value` (the projection
 /// closure) and `field` (the declarative row-property name) are SIBLING optional
 /// slots, each omitted-when-None — a closure-authored column keeps
@@ -2443,7 +2457,12 @@ let displayKinds: IdlKind list =
       { Tag = "Markdown"
         Category = "Display"
         Annotations = Annotations.Empty
-        Fields = [ req "text" TS ] }
+        // Phase 2591 — the figures the text cites, each placed by a `cite:<name>` link
+        // destination (WIRE_FORMAT.md §3.6.32). Omitted when empty, so a `Markdown` with
+        // nothing to cite is byte-unchanged.
+        Fields =
+          [ omit "citations" (TList(TRecord "MarkdownCitation")) (VList [])
+            req "text" TS ] }
       { Tag = "Math"
         Category = "Display"
         Annotations = Annotations.Empty
@@ -3889,6 +3908,7 @@ let uiIdl: Idl =
           srcSetEntryRecord
           trackEntryRecord
           metricComparisonRecord
+          markdownCitationRecord
           treeItemRecord
           effectClassRecord ]
       Defaults = []

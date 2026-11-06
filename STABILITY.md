@@ -7822,6 +7822,27 @@ document that declares no ceiling is exactly the control it was.
 
 _Untagged. Set by Phase 2576, the first change to ride the slot._
 
+### What rides this slot — Phase 2591 (a cited figure reads inside a sentence)
+
+**Class: additive on the wire; a record widening in the language tier, FS0764 at a full-literal `MarkdownSpec`, the
+class pre-1.0 minor drafts carry, so it rides.** A full-literal `{ Text = x }` is now
+`{ Defaults.markdown with Text = x }`; `Fuaran.markdown` is unchanged. The positional C# `MarkdownSpec` constructor
+gains its first argument. `WIRE_FORMAT.md` §3.6.32: `Markdown` gains the optional `citations`, omitted when empty, so
+every document already written is byte-unchanged and renders as it did.
+
+- **Language tier.** `MarkdownCitation` (`Name`, `Reference`, `Label`) and `MarkdownSpec.Citations`, generated from the
+  IDL; `Markdown.withCitation` builds one; the C# `MarkdownOptions.Citations` and `MarkdownCitation` follow. The VB
+  element has no spelling, declared as a dialect gap.
+- **Decoder.** Refuses an empty array, a name outside `[A-Za-z0-9_-]+` and a repeated name as `WRONG_TYPE`. It does
+  not read the text: a name the text never uses and a name it uses undeclared are facts of the render.
+- **Renderer.** `Markdown.toHtmlCited` is new; `toHtmlWithEgress` is its no-citation case, byte-for-byte. A declared
+  `cite:` link draws `span.fuaran-cited[data-fact]`, with a label as a visually hidden first child. The email
+  projection keeps the span and drops the label, having no stylesheet to hide it with. Reference stylesheet:
+  `.fuaran-cited`, `.fuaran-cited-label`.
+- **Ops.** A change to `citations` diffs to `EditNode`, the floor every uncovered field takes, so it survives an op
+  stream with no `UpdateProp` field of its own.
+- **Ruling.** `docs/VOCABULARY.md`, Appendix A, Citation cluster, including the shape Phase 2592 takes.
+
 ### What rides this slot — Phase 2535 (a `Fact` carries its reference on the wire)
 
 **Class: additive on the wire; a record widening in the language tier, FS0764 at a full-literal `FactSpec`, the class

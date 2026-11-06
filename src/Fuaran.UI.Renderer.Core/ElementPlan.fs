@@ -449,7 +449,16 @@ module DisplayPlan =
         Plan.element
             "div"
             [ Prop.Attr("class", Css.Class.Markdown) ]
-            (Content.InnerHtml(Markdown.toHtmlWithEgress egress (BindingResolver.resolveTextSource sources spec.Text)))
+            (Content.InnerHtml(
+                Markdown.toHtmlCited
+                    egress
+                    (spec.Citations
+                     |> List.map (fun c ->
+                         { Markdown.Citation.Name = c.Name
+                           Markdown.Citation.Reference = c.Reference
+                           Markdown.Citation.Label = c.Label |> Option.map (BindingResolver.resolveTextSource sources) }))
+                    (BindingResolver.resolveTextSource sources spec.Text)
+            ))
 
     let badge (sources: BindingResolver.BindingSources) (spec: BadgeSpec) : Plan<'E> =
         Plan.classText

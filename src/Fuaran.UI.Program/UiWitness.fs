@@ -677,7 +677,12 @@ let resolveOwnFields (sources: BindingSources) (node: Node<obj>) : Node<obj> =
         | NodeKind.Markdown s ->
             NodeKind.Markdown
                 { s with
-                    Text = resolveText sources s.Text }
+                    Text = resolveText sources s.Text
+                    Citations =
+                        s.Citations
+                        |> List.map (fun c ->
+                            { c with
+                                Label = resolveTextOpt sources c.Label }) }
         | NodeKind.Badge s ->
             NodeKind.Badge
                 { s with

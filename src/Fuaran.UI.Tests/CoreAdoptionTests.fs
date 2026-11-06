@@ -139,7 +139,11 @@ let private mkSpacer (id: string) : EqNode =
         { Id = id
           // Phase 459 — Spacer retired; a childless Markdown leaf serves the
           // same "leaf with no bindings/handlers" role this op-stream test needs.
-          Kind = NodeKind.Markdown({ Text = TextSource.Literal "" })
+          Kind =
+            NodeKind.Markdown(
+                { Citations = []
+                  Text = TextSource.Literal "" }
+            )
           State = None
           Style = None
           Accessibility = Option.None

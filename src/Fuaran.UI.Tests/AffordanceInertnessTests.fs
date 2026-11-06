@@ -238,7 +238,11 @@ let tests =
                             "g3"
                             (column (
                                 CellKindErased.Custom(fun _ ->
-                                    node "x" (NodeKind.Markdown { Text = TextSource.Literal "" }))
+                                    node
+                                        "x"
+                                        (NodeKind.Markdown
+                                            { Citations = []
+                                              Text = TextSource.Literal "" }))
                             ))
                         gridWith
                             "g4"

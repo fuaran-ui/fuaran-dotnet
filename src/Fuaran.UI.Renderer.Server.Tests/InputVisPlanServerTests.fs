@@ -392,6 +392,23 @@ let tests =
                             html)
                         html
                 }
+                test "Phase 2591 — a cited figure is a span in the sentence, with no tile, and the label is hidden" {
+                    let out =
+                        Render.renderStatic (
+                            (Fuaran.markdown "m" "It took [23%](cite:share) of [£412k](cite:spend).": Node<obj>)
+                            |> Markdown.withCitation "share" "fact:share" (Some "Online share")
+                            |> Markdown.withCitation "spend" "fact:spend" None
+                        )
+
+                    Expect.stringContains
+                        out
+                        "<p>It took <span class=\"fuaran-cited\" data-fact=\"fact:share\"><span class=\"fuaran-cited-label\">Online share </span>23%</span> of <span class=\"fuaran-cited\" data-fact=\"fact:spend\">£412k</span>.</p>"
+                        "one paragraph, each figure inline and carrying its reference"
+
+                    Expect.isFalse (contains "fuaran-kind-fact" out) "no tile"
+                    Expect.isFalse (contains "<a " out) "a declared citation is not a link"
+                }
+
                 test
                     "Phase 2535 — a cited Fact is served with data-fact on its tile, encoded, and an uncited one without" {
                     let cited (reference: string) =

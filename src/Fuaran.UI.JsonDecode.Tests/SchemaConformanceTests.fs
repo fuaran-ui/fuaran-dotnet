@@ -149,6 +149,9 @@ let private schemaInexpressibleRejects: Set<string> =
         [ "reject-chart-annotation-date-unparseable"
           "reject-chart-annotation-range-unordered"
           "reject-daterange-unordered"
+          // Phase 2591 — a name unique across a list of records: `uniqueItems` compares whole
+          // items, and two citations with one name differ in their references.
+          "reject-markdown-citation-name-repeated"
           // Phase 2571 — the option-group refusals are relations ACROSS the
           // document (a value unique over every group's list; a value one of the
           // sibling `source`'s options carries). `uniqueItems` reaches one array

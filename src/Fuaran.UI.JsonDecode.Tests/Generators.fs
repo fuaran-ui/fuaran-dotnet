@@ -597,7 +597,7 @@ let private genLabelValueRowSpec: Gen<LabelValueRowSpec> =
 let private genDisplayKind: Gen<NodeKind<obj>> =
     Gen.oneof
         [ Gen.map NodeKind.Heading genHeadingSpec
-          Gen.map (fun t -> NodeKind.Markdown { Text = t }) genTextSource
+          Gen.map (fun t -> NodeKind.Markdown { Defaults.markdown with Text = t }) genTextSource
           Gen.map NodeKind.Metric genMetricSpec
           gen {
               let! label = genTextSource
@@ -969,7 +969,11 @@ let private genGridColumns: Gen<ColumnErased<obj> list> =
               CellKindErased.Progress((fun _ -> 0.5), Some(fun _ -> TextSource.Literal "p"))
               CellKindErased.Custom(fun _ ->
                   { Id = "cell-custom"
-                    Kind = NodeKind.Markdown({ Text = TextSource.Literal "x" })
+                    Kind =
+                      NodeKind.Markdown(
+                          { Defaults.markdown with
+                              Text = TextSource.Literal "x" }
+                      )
                     State = None
                     Style = None
                     Accessibility = None
@@ -1430,7 +1434,11 @@ and private genStateBehaviour (size: int) : Gen<StateBehaviour<obj>> =
 
 and private placeholderErrorNode: Node<obj> =
     { Id = "err"
-      Kind = NodeKind.Markdown({ Text = TextSource.Literal "err" })
+      Kind =
+        NodeKind.Markdown(
+            { Defaults.markdown with
+                Text = TextSource.Literal "err" }
+        )
       State = None
       Style = None
       Accessibility = None

@@ -283,6 +283,18 @@ The rule is **sentiment = sign(trend) × polarity**, and it applies to the trend
 
 There is no `"Neutral"`: the spelling is reserved and no conformant host accepts it. A quantity with no better direction simply omits `trend`.
 
+#### A figure cited in a sentence — `citations` on `Markdown` (Phase 2591)
+
+A `Fact` tile stands alone. A figure a sentence cites stays in the sentence: put the whole sentence in one `Markdown`, write the figure as a link whose destination is `cite:<name>`, and declare the name in `citations`. Never split a sentence into a row of `Markdown` fragments and `Fact` tiles.
+
+```json
+{ "id": "summary", "kind": { "$type": "Markdown",
+  "text": "Online.com took [23%](cite:share) of the category.",
+  "citations": [ { "name": "share", "reference": "fact:share-q3", "label": "Online share of category spend" } ] } }
+```
+
+The figure's display text is the link's text. `reference` names the Fact, as on `Fact.reference`. `label` says what the figure is for a screen reader and is never printed, so leave out what the sentence already says. A name is letters, digits, `-` and `_`, used once; a `cite:` link naming no declared citation is a dead link. A sentence citing nothing has no `citations` member at all.
+
 #### A figure against two periods — `comparisons` (Phase 2472)
 
 A trading screen compares a figure against more than one period at once: yesterday against the same day last week AND last year. `trend` is the primary comparison; every further one goes in `comparisons` on the same `Metric`, and each renders as one more trend line with its own glyph and its own sentiment:

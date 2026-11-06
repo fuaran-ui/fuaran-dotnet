@@ -737,6 +737,42 @@ let all: RejectFixture list =
       // on one deployment and not another — so it is refused at dispatch, where
       // the registry is. A decoder that judged it would make the same bytes
       // valid or invalid depending on who read them.
+      // Phase 2591 — what decode refuses of `Markdown.citations` (WIRE_FORMAT.md §3.6.32). The
+      // text is never read here: it may be bound, and §14 keeps Markdown out of decode, so an
+      // undeclared or unused name is a render fact, not a refusal.
+      { Id = "reject-markdown-citations-empty"
+        Json = """{"id":"m","kind":{"$type":"Markdown","citations":[],"text":"x"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.citations"
+        IsOp = false
+        Description = "an empty `citations` array — absent is the one spelling of none, so a document has one byte form" }
+      { Id = "reject-markdown-citation-name-grammar"
+        Json = """{"id":"m","kind":{"$type":"Markdown","citations":[{"name":"a b","reference":"r"}],"text":"x"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.citations[0].name"
+        IsOp = false
+        Description =
+          "a citation name outside letters, digits, `-` and `_` — a `cite:` destination could not say it without escaping" }
+      { Id = "reject-markdown-citation-name-empty"
+        Json = """{"id":"m","kind":{"$type":"Markdown","citations":[{"name":"","reference":"r"}],"text":"x"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.citations[0].name"
+        IsOp = false
+        Description = "an empty citation name — no destination names it" }
+      { Id = "reject-markdown-citation-name-repeated"
+        Json =
+          """{"id":"m","kind":{"$type":"Markdown","citations":[{"name":"a","reference":"r1"},{"name":"a","reference":"r2"}],"text":"x"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.citations[1].name"
+        IsOp = false
+        Description =
+          "a citation name used twice — the figure would stamp whichever a host found first; the second occurrence is the path" }
+      { Id = "reject-markdown-citation-reference-missing"
+        Json = """{"id":"m","kind":{"$type":"Markdown","citations":[{"name":"a"}],"text":"x"}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.citations[0].reference"
+        IsOp = false
+        Description = "a citation that cites nothing — `reference` is the member that makes it one" }
       { Id = "reject-upload-destination-empty"
         Json =
           """{"id":"up","kind":{"$type":"FileUpload","accept":["video/*"],"destination":"","label":"Upload","multiple":true,"onSelect":"<closure>"}}"""

@@ -344,7 +344,7 @@ internal sealed class MarkdownBuilder : NodeBuilder
     public MarkdownBuilder Text(string text) { _text = Txt.Literal(text); return this; }
 
     protected override NodeKind<object> BuildKind() =>
-        NodeKind<object>.NewMarkdown(new MarkdownSpec(_text));
+        NodeKind<object>.NewMarkdown(new MarkdownSpec(Microsoft.FSharp.Collections.FSharpList<MarkdownCitation>.Empty, _text));
 }
 
 // ─── Input builders ─────────────────────────────────────────────────────────

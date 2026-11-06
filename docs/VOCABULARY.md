@@ -719,6 +719,75 @@ concurrent edit of a different one.*
 | `PatchStyle` / field-level style edit (set one `SemanticStyle` field, leave the others) | **Admitted 2026-10-16 (Phase 2291) — a new `TreeOp` case, `PatchStyle of NodeId * StyleDelta`; `UpdateStyle` kept as the whole-record write** | **Demand (§1.1, the op analogue of an expression gap):** the op-stream recorded LESS than the merge resolved. The merge-conformance fixture `merge-style-blend` (one branch sets `left`'s `tone`, the other its `voice`; the merge keeps both) has no op-level derivation under whole-record `UpdateStyle`: each branch's op carries the other field at its default, so either fold order loses one. Measured over 18,597 generated three-way triads (seed 20261016; the probe ships as a benchmark in Phase 2292): **387 of 9,311** tree-merge auto-merges were exactly that blend under whole-record ops, and **0** were once the same intent was carried per field and footprinted as `slotEdit id "style.<field>"` — the residual order-sensitive rows are all structural. **Irreducible (§1.2):** `UpdateStyle` writes every field (and §3.6's omitted-when-default rule makes an absent member mean *default*, not *untouched*, so even a one-member payload resets the other five); `UpdateProp`'s path resolves against the spec record and cannot reach the envelope's `style`; no other op touches it; a `Batch` of them is still whole-record. **Shape — (a) a new case, not (b) a `fields` member on `UpdateStyle`:** (b) changes an existing case's shape (every construction breaks, not only matches), makes one op mean two things by a member's presence so a behind reader applies a patch as a reset — silently wrong where (a) is loudly unknown (§15.3) — and still carries the whole record. `StyleDelta` reuses `style`'s member name, the six closed enums and their alphabetical member order; the one new rule is that absence means untouched, so a default value is written explicitly when it is the edit. A delta naming no field is refused (`WRONG_TYPE` at `$.style`, the `reject-fieldrule-empty` precedent). **Cost (§1.3):** the five codecs and apply engines, the `ops/` and `reject/` corpus, the schema and `idl.json`, `TreeOpDiff` (which now emits `PatchStyle` for a style change and `UpdateStyle` only when all six fields moved — a change to its output), every exhaustive match over `TreeOp` (telemetry's `OpKind` gains its own case), and one line in every authoring-pack signature catalogue — the working-memory tax, literally. The authoring mirrors (§11 step 6) do NOT move: ops are not dialect records and `StyleDelta` is reachable from no kind or envelope field. The slot-precise footprint itself is Phase 2292's. **Confusion delta (§3.2):** zero on the kind-confusion metric by construction (no kind moves); there is NO op-confusion instrument, so the op delta is unmeasured and said so. The pair is a near-synonym pair for an emitter — named to say the difference (*update* = replace the record, *patch* = set these fields) — and it resolves a confusion the old vocabulary already carried: an emitter writing `UpdateStyle` with only `tone` meant a patch and got a reset. The next emission eval that exercises style edits should report the two as a pair; a sustained wrong-op rate is §3.3's merge review, applied to ops. **Profile (flagged, not ruled here):** §15.4 row 1 names a new tag a minor step; the profile has stood at `core@1.0` through every tag admitted since it was introduced, and this row follows that practice rather than deciding which of the two is wrong. |
 | `UpdateAccessibility` / `UpdateTooltip` / the trait edits | **Admitted 2026-10-31 (Phase 2527) — two new `TreeOp` cases, `UpdateAccessibility of NodeId * Accessibility` and `UpdateTooltip of NodeId * TextSource option`** | **Demand (§1.1, the op analogue of an expression gap):** a diff could not spell a trait edit. An accessibility-only edit diffed to no op, so a server-driven DOM never updated its ARIA; a tooltip-only edit fell to an `EditNode` that left the tooltip as it was; and a merge taking either was refused at mint, because its delta could not reach the tree it committed to (Phase 1526). **Irreducible (§1.2):** `UpdateProp` resolves against the spec record and cannot reach the envelope, and `ReplaceRoot` closes the gap only by re-sending the tree. **Shape:** a case per trait with the shape of `UpdateStyle`, the governing sentence above applied at the trait's own grain: each is one unit a host re-renders whole, and no footprint reads inside one, so no field-level twin is admitted. **Vocabulary (§5):** the payloads are the envelope's own slots, decoded by those slots' decoders, so the ops add no new type. |
 
+### Citation cluster (added 2026-11-06 — a cited figure inside prose, Phases 2591 and 2592)
+
+Phase 2535 gave a `Fact` tile its reference. This cluster is about the two places a cited figure lives
+that are not a tile: a sentence and a table cell. **The governing sentence:** *a citation belongs to the
+text it annotates, so the text stays whole and the citation names a span of it; the reference has one
+name, one opaque value and one attribute wherever it appears (`reference`, WIRE_FORMAT.md §3.6.31,
+`data-fact`).*
+
+| Reserved name | Disposition | Ruling |
+|---|---|---|
+| `citations` on `Markdown` / "a figure inside a sentence" / inline `Fact` | **Field (admitted 2026-11-06, Phase 2591)** | Not a kind and not a `Fact` variant: an optional list on `MarkdownSpec`, omitted when empty, each entry a `MarkdownCitation` (`name`, `reference`, optional `label`), placed in the text by an ordinary Markdown link whose destination is `cite:<name>`. Gates and the placeholder analysis below. |
+| `display` on `Fact` (tile or inline) | **Rejected (Phase 2591)** | Candidate 2 in the shard. It does not give a sentence one element: an inline `Fact` still needs a flow container holding `Markdown` fragments and facts, every fragment its own block with its own Markdown parse, so emphasis or a link cannot span a figure. It also adds a choice for every author of a `Fact`. |
+| `Prose` / a prose kind with inline children | **Rejected (Phase 2591)** | Candidate 3. A new top-level near-synonym of `Markdown`, the expensive axis of §2, and it needs an inline-node vocabulary every host would have to draw. Candidate 1 is shown to work, so the shard's condition for admitting this is not met. |
+| `TextSource` case for a cited value | **Rejected (Phase 2591, for both phases)** | Reaches every slot that takes a `TextSource`, far wider than the need, and `Markdown.text` would then hold a cited value at the whole-text level, which cannot say which figure in a sentence is cited. |
+| `citations` on `Table` / "a table cell cites its figure" | **Recommendation for Phase 2592; its worker takes this shape without reopening it** | An optional `citations` list on `TableSpec` beside `rows`, omitted when empty, each entry `{ column, label?, reference, row }`: `row` and `column` zero-based integers, `reference` the same member as above, `label` the same optional `TextSource`. No placeholder and no `name`: a cell is already addressable, and its text stays exactly as `rows` holds it. Decode refuses a row or column out of range, two entries for one cell, and an empty array, as `WRONG_TYPE`. Rendering stamps `data-fact` on the `<td>`, and a label is the same `fuaran-cited-label` span as the first child of the cell, so `.fuaran-table` applies unchanged. A link or image in a cell stays the remaining gap, per the shard. **The shared shape is the reference and the label, not a shared record**: a shared record would carry both `name` and coordinates with one of them always absent. |
+
+**§1.1 Demand.** A real translation reached a pattern the kinds could not express: a consumer application's
+report pages, served as trees and seen on 2026-11-06, had every sentence broken up by boxed figures, and the
+application went back to its own narrative HTML, where a figure is an inline span. Recorded in the FUARAN054
+ledger, Appendix B.
+
+**§1.2 Irreducibility.** A host can already render a cited figure in-process through `ExtraAttributes`,
+but that hatch is wire-omitted, so the reference does not survive the wire or an op stream, the argument 2535
+makes for the reference itself. A Markdown link alone is not enough either: with no declared list, the only
+place left for the reference is the destination, where a bound or generated text could fake a citation and
+the value would need Markdown escaping. Only a declared name stamps `data-fact`.
+
+**The placeholder, checked against every host's renderer.** The five Markdown renderers are ports of one
+parser, held byte-identical by `markdown/corpus.json`, so each question below has one answer, pinned there.
+
+- **A host that ignores the field.** `cite:` is no allowed scheme, so the scheme floor renders
+  `<a href="about:blank">23%</a>`: the number stays in the sentence as a dead link. A curly-brace or token
+  placeholder would lose the number on that host, which is why the display text is the link text and not a
+  member of the citation. For the same reason a figure's display text can be anything, and can differ from any
+  value the Fact holds.
+- **Markdown inside it.** `[**23%**](cite:a)` keeps its emphasis, since the label is parsed like any link's.
+- **Escapes and code.** `\[23%\](cite:a)` and `` `[23%](cite:a)` `` stay literal, by the same parse.
+- **Inside a link.** `[see [23%](cite:a)](https://x.example)` is a span inside an anchor, valid HTML, so a
+  cited figure in a link no longer has to be refused.
+- **An image or autolink.** `![x](cite:a)` and `<cite:a>` are not citations, and meet the scheme floor as today.
+- **A reference-style link.** `[23%][r]` with `[r]: cite:a` resolves first and is a citation.
+- **A title.** `[23%](cite:a "Hi")` keeps its title on the span, as a link does.
+- **An undeclared name.** A dead link, exactly as today, so the number stays and no reference is invented.
+- **An unused citation.** Draws nothing. Decode does not refuse this or the case above: `text` may be bound or
+  an i18n key, and §14 keeps Markdown out of decode.
+- **The egress policy.** A citation has no destination, so no policy is asked and no refusal marker is written.
+
+**What decode refuses (`WRONG_TYPE`, a reject fixture each):** an empty `citations` array (absent is the one
+spelling of none, so a document has one byte form), a `name` outside `[A-Za-z0-9_-]+`, a repeated `name`. A
+missing or mistyped member is the ordinary refusal. `reference` stays opaque: no grammar and no reject on
+content, as §3.6.31 rules.
+
+**Byte-identity.** `citations` omits when empty, so every `Markdown` already written encodes as it did, and a
+`Markdown` with no citations renders as it did, including one whose text happens to hold a `cite:` link.
+
+**Accessibility.** A label reaches a screen reader as a visually hidden span inside the figure's span. Not
+`aria-label`, which is unreliable on a generic element. Email has no stylesheet, so it renders the figure
+without the label; the sentence already says what the number is.
+
+**§1.3 Cost.** No new kind, so no new top-level choice and no new renderer dispatch. What it does carry: one
+record through the codec of five hosts, one branch in five Markdown ports, two classes in the reference
+stylesheet, the reject fixtures, and one more field for an author to learn. The native surfaces (fuaran-kt,
+fuaran-swift) pin an old corpus and reach this through fuaran#2574.
+
+**§3.2 Confusion delta.** Not measured: no eval was run for this field, so there is no pre/post figure to
+cite. The structural delta is zero on the kind-confusion metric, since no kind was added and an emitter with no
+figure to cite never meets the member. The risk to watch is `Fact` versus a cited `Markdown`; the authoring
+guide states the choice (a tile stands alone, a citation sits in a sentence).
+
 ## Appendix B – Demand-evidence sweep (recorded 2026-07-07)
 
 This is the recorded output of the demand-evidence sweep the charter mandates before publication: a mine
@@ -732,6 +801,7 @@ language-settled gate ([`LANGUAGE-SETTLED-CHECKLIST.md`](LANGUAGE-SETTLED-CHECKL
 | Source | What it records | Sweep verdict |
 |---|---|---|
 | **`Custom`-node usage in shipped case studies / demos** (the FUARAN054 "couldn't express" ledger) | Patterns a real translation had to drop to `NodeKind.Custom` to render | **No kind-forcing entry.** The consolidated multi-app harvest concludes every surfaced gap closed *additively* – an author-surface helper or a portability seam – and explicitly records **no `NodeKind.Custom` escape was needed** across the three structurally-distinct views exercised. |
+| **Report pages served as trees** (FUARAN054, recorded 2026-11-06) | A cited figure inside a sentence, and in a table cell | **Field, not kind.** A consumer application's report pages had no faithful form for either, and went back to their own narrative HTML. Closed by `Markdown.citations` (Phase 2591) and `Table.citations` (Phase 2592); see the Citation cluster in Appendix A. |
 | **Real-app translation exercises** (three structurally-distinct consumer views: form-heavy, data-grid/upload/drill-down, selection-driven analysis) | Whether translating a real view forced a new core `NodeKind` / `Spec` / `Binding` / `Action` case | **No kind-forcing gap.** All harvested gaps were additive author-surface / portability-seam items (each shipped or recorded); **none forced a new core wire case.** This is precisely the settle-checklist item (b) signal. |
 | **Emission-eval failures** (canonical-prompt runs classified as *"no expressible tree – missing contract"* vs low quality) | Prompts the vocabulary cannot satisfy at all | **No recorded miss.** The kind-confusion metric and the release-gate emission micro-eval are the producing instruments. The confusion metric's first baseline landed 2026-08-16 (below); the release-gate eval's first canonical-set pass has not. No *"missing contract case"* outcome is on record from either. |
 

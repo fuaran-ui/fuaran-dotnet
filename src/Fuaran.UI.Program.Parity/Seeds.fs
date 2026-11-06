@@ -22,7 +22,11 @@ let private bound (id: string) (key: string) (dflt: string) : Node<obj> =
     let n = Fuaran.markdown id "placeholder"
 
     { n with
-        Kind = NodeKind.Markdown({ Text = TextSource.Bound(Binding.State(key, Some dflt)) }) }
+        Kind =
+            NodeKind.Markdown(
+                { Citations = []
+                  Text = TextSource.Bound(Binding.State(key, Some dflt)) }
+            ) }
 
 let private button (id: string) (action: Action<obj>) : Node<obj> =
     Fuaran.button

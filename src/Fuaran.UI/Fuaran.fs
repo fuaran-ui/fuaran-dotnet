@@ -1534,6 +1534,26 @@ module Fact =
                 Kind = NodeKind.Fact { spec with Reference = Some reference } }
         | other -> invalidArg (nameof node) $"Fact.withReference needs a Fact node, not {Kind.name other}"
 
+module Markdown =
+    /// Phase 2591 — a figure a `Markdown` text cites, placed by a `cite:<name>` link:
+    /// `Fuaran.markdown "m" "Revenue was [£412k](cite:rev)." |> Markdown.withCitation "rev" factId None`.
+    /// The label says what the figure is, for a screen reader. Any other kind is a
+    /// programming error, as for `Fact.withReference`.
+    let withCitation (name: string) (reference: string) (label: string option) (node: Node<'Msg>) : Node<'Msg> =
+        match node.Kind with
+        | NodeKind.Markdown spec ->
+            let citation: MarkdownCitation =
+                { Name = name
+                  Reference = reference
+                  Label = label |> Option.map TextSource.Literal }
+
+            { node with
+                Kind =
+                    NodeKind.Markdown
+                        { spec with
+                            Citations = spec.Citations @ [ citation ] } }
+        | other -> invalidArg (nameof node) $"Markdown.withCitation needs a Markdown node, not {Kind.name other}"
+
 module Fuaran =
     let private buildNode (id: string) (kind: NodeKind<'Msg>) (accessibility: Accessibility option) : Node<'Msg> =
         // `State = None` / `Style = None` since the swap — the canonical

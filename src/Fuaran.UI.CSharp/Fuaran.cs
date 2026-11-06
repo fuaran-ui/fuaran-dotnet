@@ -182,7 +182,13 @@ public static partial class Fuaran
 
     /// <summary>A markdown block.</summary>
     public static FuaranNode Markdown(MarkdownOptions options) =>
-        new(FsFactory.markdownSpec<object>(options.Id, new FsGen.MarkdownSpec(options.Text.Inner)));
+        new(FsFactory.markdownSpec<object>(options.Id, new FsGen.MarkdownSpec(
+            Fs.List((options.Citations ?? Enumerable.Empty<MarkdownCitation>())
+                .Select(c => new FsGen.MarkdownCitation(
+                    c.Label is { } l ? Fs.Some(l.Inner) : Fs.None<FsGen.TextSource>(),
+                    c.Name,
+                    c.Reference))),
+            options.Text.Inner)));
 
     // ─── Input ────────────────────────────────────────────────────────────────
 

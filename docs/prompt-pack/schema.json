@@ -6389,10 +6389,34 @@
       "properties": {
         "text": {
           "$ref": "#/$defs/TextSource"
+        },
+        "citations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MarkdownCitation"
+          }
         }
       },
       "required": [
         "text"
+      ]
+    },
+    "MarkdownCitation": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "reference": {
+          "type": "string"
+        },
+        "label": {
+          "$ref": "#/$defs/TextSource"
+        }
+      },
+      "required": [
+        "name",
+        "reference"
       ]
     },
     "BadgeSpec": {

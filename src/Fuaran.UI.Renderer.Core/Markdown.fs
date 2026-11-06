@@ -82,6 +82,12 @@ module Fuaran.UI.Renderer.Markdown
 //  renderer call sites: the client tier, the SSR tier and the email projection
 //  all pass their context's `EgressPolicy`, whose own default denies.
 //
+//  CITATIONS (Phase 2591, WIRE_FORMAT.md §3.6.32). `toHtmlCited` takes the figures a
+//  text declares. A link whose destination is `cite:<a declared name>` draws a span
+//  carrying `data-fact`, in the line of text, and asks no egress question because it
+//  has no destination. Anything else, an undeclared name included, is the link it
+//  always was, so the number stays in the sentence and nothing is invented.
+//
 //  THE SCHEME FLOOR'S OWN ANSWER IS UNCHANGED. A URL the floor rejects
 //  (`javascript:`, an unknown scheme, a protocol-relative reference) still
 //  renders the bare `about:blank` it has rendered since Phase 292, with no
@@ -279,6 +285,29 @@ let private tryDecodeEntity (text: string) (i: int) : (string * int) option =
             | None -> None
 
 // ─── Inline AST ─────────────────────────────────────────────────────────────
+
+/// Phase 2591 — one figure a text cites, its label already resolved to a string.
+type Citation =
+    { Name: string
+      Reference: string
+      Label: string option }
+
+/// The span a cited figure draws. The label is visually hidden by the reference stylesheet,
+/// so it reaches a screen reader without being printed in the sentence.
+let private citedSpan (citation: Citation) (titleAttr: string) (inner: string) : string =
+    let label =
+        match citation.Label with
+        | Some l when l <> "" -> "<span class=\"fuaran-cited-label\">" + escapeHtml l + " </span>"
+        | _ -> ""
+
+    "<span class=\"fuaran-cited\" data-fact=\""
+    + escapeHtml citation.Reference
+    + "\""
+    + titleAttr
+    + ">"
+    + label
+    + inner
+    + "</span>"
 
 type private Inline =
     | Text of string // literal text — escaped on render
@@ -566,8 +595,8 @@ let private scanInlineDestination (text: string) (start: int) : (string * string
 // Forward reference: parseInlines is recursive (link text is parsed as inlines).
 // Declared via a mutable ref so the tokenizer can call back into it.
 let mutable private parseInlinesRef
-    : (Sanitize.EgressPolicy -> Map<string, string * string option> -> string -> Inline list) =
-    fun _ _ _ -> []
+    : (Sanitize.EgressPolicy -> Citation list -> Map<string, string * string option> -> string -> Inline list) =
+    fun _ _ _ _ -> []
 
 /// Find the index of the matching `]` for a `[` at `open0`, honouring
 /// backslash escapes and nested brackets. Returns -1 if unbalanced.
@@ -697,6 +726,7 @@ let private scanBareAutolink (policy: Sanitize.EgressPolicy) (text: string) (i: 
 /// of `* _ ~` become `TDelim` for the emphasis pass.
 let private tokenize
     (policy: Sanitize.EgressPolicy)
+    (citations: Citation list)
     (refs: Map<string, string * string option>)
     (text: string)
     : ResizeArray<Tok> =
@@ -767,7 +797,7 @@ let private tokenize
                     match scanInlineDestination text (close + 2) with
                     | Some(url, titleOpt, after) ->
                         flush ()
-                        let alt = plainText (parseInlinesRef policy refs labelText)
+                        let alt = plainText (parseInlinesRef policy citations refs labelText)
                         let safe, markers = markdownDestination policy Sanitize.EgressClass.Media url
 
                         let titleAttr =
@@ -811,7 +841,7 @@ let private tokenize
                     match Map.tryFind (normLabel refLabel) refs with
                     | Some(url, titleOpt) ->
                         flush ()
-                        let alt = plainText (parseInlinesRef policy refs labelText)
+                        let alt = plainText (parseInlinesRef policy citations refs labelText)
                         let safe, markers = markdownDestination policy Sanitize.EgressClass.Media url
 
                         let titleAttr =
@@ -850,28 +880,32 @@ let private tokenize
 
                 let makeLink url titleOpt =
                     flush ()
-                    let inner = renderInlinesImpl (parseInlinesRef policy refs labelText)
-                    let safe, markers = markdownDestination policy Sanitize.EgressClass.Hyperlink url
+                    let inner = renderInlinesImpl (parseInlinesRef policy citations refs labelText)
 
                     let titleAttr =
                         match titleOpt with
                         | Some t -> " title=\"" + escapeHtml t + "\""
                         | None -> ""
 
-                    toks.Add(
-                        TNode(
-                            Raw(
-                                "<a href=\""
-                                + escapeHtml safe
-                                + "\""
-                                + titleAttr
-                                + egressAttrs markers
-                                + ">"
-                                + inner
-                                + "</a>"
+                    match citations |> List.tryFind (fun c -> "cite:" + c.Name = url) with
+                    | Some citation -> toks.Add(TNode(Raw(citedSpan citation titleAttr inner)))
+                    | None ->
+                        let safe, markers = markdownDestination policy Sanitize.EgressClass.Hyperlink url
+
+                        toks.Add(
+                            TNode(
+                                Raw(
+                                    "<a href=\""
+                                    + escapeHtml safe
+                                    + "\""
+                                    + titleAttr
+                                    + egressAttrs markers
+                                    + ">"
+                                    + inner
+                                    + "</a>"
+                                )
                             )
                         )
-                    )
 
                 if close + 1 < n && text[close + 1] = '(' then
                     match scanInlineDestination text (close + 2) with
@@ -1080,20 +1114,22 @@ let private processEmphasis (toks: ResizeArray<Tok>) : Inline list =
 /// Public inline parser: string → Inline list. Used recursively for link text.
 let private parseInlines
     (policy: Sanitize.EgressPolicy)
+    (citations: Citation list)
     (refs: Map<string, string * string option>)
     (text: string)
     : Inline list =
-    text |> tokenize policy refs |> processEmphasis
+    text |> tokenize policy citations refs |> processEmphasis
 
 // Wire the forward reference now that parseInlines exists.
 parseInlinesRef <- parseInlines
 
 let private renderInline
     (policy: Sanitize.EgressPolicy)
+    (citations: Citation list)
     (refs: Map<string, string * string option>)
     (text: string)
     : string =
-    parseInlines policy refs text |> renderInlinesImpl
+    parseInlines policy citations refs text |> renderInlinesImpl
 
 // ─── Block parsing ──────────────────────────────────────────────────────────
 
@@ -1605,18 +1641,20 @@ let private alignAttr (a: Align) : string =
 
 let rec private renderBlocks
     (policy: Sanitize.EgressPolicy)
+    (citations: Citation list)
     (refs: Map<string, string * string option>)
     (blocks: Block list)
     : string =
     let sb = StringBuilder()
 
     for b in blocks do
-        sb.Append(renderBlock policy refs b) |> ignore
+        sb.Append(renderBlock policy citations refs b) |> ignore
 
     sb.ToString()
 
 and private renderBlock
     (policy: Sanitize.EgressPolicy)
+    (citations: Citation list)
     (refs: Map<string, string * string option>)
     (b: Block)
     : string =
@@ -1626,11 +1664,11 @@ and private renderBlock
         "<h"
         + string lvl
         + ">"
-        + renderInline policy refs txt
+        + renderInline policy citations refs txt
         + "</h"
         + string lvl
         + ">\n"
-    | Paragraph txt -> "<p>" + renderInline policy refs txt + "</p>\n"
+    | Paragraph txt -> "<p>" + renderInline policy citations refs txt + "</p>\n"
     | FencedCode(lang, content) ->
         let cls =
             if lang = "" then
@@ -1640,7 +1678,7 @@ and private renderBlock
 
         "<pre><code" + cls + ">" + escapeHtml content + "\n</code></pre>\n"
     | IndentedCode content -> "<pre><code>" + escapeHtml content + "\n</code></pre>\n"
-    | BlockQuote inner -> "<blockquote>\n" + renderBlocks policy refs inner + "</blockquote>\n"
+    | BlockQuote inner -> "<blockquote>\n" + renderBlocks policy citations refs inner + "</blockquote>\n"
     | Table(headers, aligns, rows) ->
         let sb = StringBuilder()
         sb.Append "<table class=\"fuaran-table\"><thead><tr>" |> ignore
@@ -1653,7 +1691,7 @@ and private renderBlock
                 .Append("<th class=\"fuaran-table-header\"")
                 .Append(alignAttr a)
                 .Append(">")
-                .Append(renderInline policy refs h)
+                .Append(renderInline policy citations refs h)
                 .Append("</th>")
             |> ignore)
 
@@ -1670,7 +1708,7 @@ and private renderBlock
                     .Append("<td class=\"fuaran-table-cell\"")
                     .Append(alignAttr a)
                     .Append(">")
-                    .Append(renderInline policy refs cell)
+                    .Append(renderInline policy citations refs cell)
                     .Append("</td>")
                 |> ignore
 
@@ -1678,7 +1716,7 @@ and private renderBlock
 
         sb.Append "</tbody></table>\n" |> ignore
         sb.ToString()
-    | BulletList(tight, items) -> "<ul>\n" + renderItems policy refs tight items + "</ul>\n"
+    | BulletList(tight, items) -> "<ul>\n" + renderItems policy citations refs tight items + "</ul>\n"
     | OrderedList(startNum, tight, items) ->
         let startAttr =
             if startNum = 1 then
@@ -1686,10 +1724,15 @@ and private renderBlock
             else
                 " start=\"" + string startNum + "\""
 
-        "<ol" + startAttr + ">\n" + renderItems policy refs tight items + "</ol>\n"
+        "<ol"
+        + startAttr
+        + ">\n"
+        + renderItems policy citations refs tight items
+        + "</ol>\n"
 
 and private renderItems
     (policy: Sanitize.EgressPolicy)
+    (citations: Citation list)
     (refs: Map<string, string * string option>)
     (tight: bool)
     (items: ListItem list)
@@ -1715,8 +1758,8 @@ and private renderItems
                 item.Blocks
                 |> List.map (fun blk ->
                     match blk with
-                    | Paragraph txt -> renderInline policy refs txt
-                    | other -> "\n" + renderBlock policy refs other)
+                    | Paragraph txt -> renderInline policy citations refs txt
+                    | other -> "\n" + renderBlock policy citations refs other)
                 |> String.concat ""
 
             sb.Append("<li" + liClass + ">" + checkbox + inner + "</li>\n") |> ignore
@@ -1726,7 +1769,7 @@ and private renderItems
                 + liClass
                 + ">\n"
                 + checkbox
-                + renderBlocks policy refs item.Blocks
+                + renderBlocks policy citations refs item.Blocks
                 + "</li>\n"
             )
             |> ignore
@@ -1749,7 +1792,7 @@ and private renderItems
 /// `Sanitize.denyNonLocalEgress` or its own declaration. The renderer tiers
 /// call it with their context's `EgressPolicy`, so a decoded markdown body no
 /// longer reaches an undeclared origin without any caller opt-in on the path.
-let toHtmlWithEgress (policy: Sanitize.EgressPolicy) (source: string) : string =
+let toHtmlCited (policy: Sanitize.EgressPolicy) (citations: Citation list) (source: string) : string =
     if isNull source || source = "" then
         ""
     else
@@ -1763,8 +1806,11 @@ let toHtmlWithEgress (policy: Sanitize.EgressPolicy) (source: string) : string =
         let rawLines = normalized.Split('\n')
         let refs, lines = extractRefDefs rawLines
         let blocks = parseBlocks lines
-        let html = renderBlocks policy refs blocks
+        let html = renderBlocks policy citations refs blocks
         Sanitize.sanitizeMarkdownHtml html
+
+/// `toHtmlCited` for a text that declares no citation: every link is a link.
+let toHtmlWithEgress (policy: Sanitize.EgressPolicy) (source: string) : string = toHtmlCited policy [] source
 
 /// Render a GFM markdown `source` string to deterministic HTML under the
 /// PERMISSIVE destination policy — every destination the scheme floor accepts
