@@ -108,7 +108,8 @@ let private tryFindTsCssCopy () : string option =
             else
                 climb dir.Parent
 
-    declared |> Option.orElseWith (fun () -> climb (DirectoryInfo(AppContext.BaseDirectory)))
+    declared
+    |> Option.orElseWith (fun () -> climb (DirectoryInfo(AppContext.BaseDirectory)))
 
 // ─── The stylesheet side ───────────────────────────────────────────────────
 
