@@ -6392,6 +6392,7 @@
         },
         "citations": {
           "type": "array",
+          "minItems": 1,
           "items": {
             "$ref": "#/$defs/MarkdownCitation"
           }
@@ -6405,7 +6406,8 @@
       "type": "object",
       "properties": {
         "name": {
-          "type": "string"
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$"
         },
         "reference": {
           "type": "string"
