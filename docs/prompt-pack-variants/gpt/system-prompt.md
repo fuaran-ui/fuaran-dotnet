@@ -292,7 +292,7 @@ LayoutKind =
 | ScrollArea { children:Node[]; orientation:"Vertical"|"Horizontal"|"Both"; maxHeight?:int; maxWidth?:int }
 DisplayKind =
 | Heading { level:int; text:TextSource; variant?:"Standard"|"Eyebrow"|"Caption"|"Lead" }
-| Markdown { text:TextSource }
+| Markdown { text:TextSource; citations?:MarkdownCitation[] }
 | Metric { label:TextSource; value:Binding_float; comparisons?:MetricComparison[]; emphasis?:Emphasis; format?:CellFormat; icon?:str; subtext?:TextSource; tone?:ToneVariant; trend?:Binding_float; trendFormat?:CellFormat; trendPolarity?:TrendPolarity; weight?:StyleWeight }
 | Badge { label:TextSource; variant?:"Neutral"|"Brand"|"Success"|"Warning"|"Critical"|"Info" }
 | Sparkline { source:Binding_list_float }
@@ -660,6 +660,7 @@ FilterSpec { kind:FormFieldKind; label:TextSource; name:str }
 FormField { id:str; kind:FormFieldKind; label:TextSource; affordance?:Affordance; help?:TextSource; required?:bool; rule?:FieldRule }
 GuestChannel { direction:"OutOnly"|"TwoWay"; messageShape?:str }
 MapMarker { label:TextSource; latitude:num; longitude:num }
+MarkdownCitation { name:str; reference:str; label?:TextSource }
 MetricComparison { label:TextSource; value:Binding_float; format?:CellFormat; polarity?:TrendPolarity }
 SelectOption { label:TextSource; value:str }
 SelectOptionGroup { label:str; values:str[] }
