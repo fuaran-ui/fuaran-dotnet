@@ -65,7 +65,8 @@ Friend Module DisplayMapping
                 .Icon = OptStr(el, "icon"),
                 .Tone = AsEnum(Of Csharp.Tone)(el, "tone", Csharp.Tone.Default),
                 .Emphasis = AttrBool(el, "emphasis"),
-                .Help = OptText(el, "help")})
+                .Help = OptText(el, "help"),
+                .Reference = OptStr(el, "reference")})
 
         d("Link") = Function(el) Csharp.Fuaran.Link(
             New Csharp.LinkOptions With {

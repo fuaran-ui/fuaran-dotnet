@@ -1428,7 +1428,8 @@ let private defs: (string * J) list =
             "tone", ref "ToneVariant"
             "emphasis", boolean
             "help", ref "TextSource"
-            "icon", str ]
+            "icon", str
+            "reference", str ]
 
       // ── Drawing (Phase 524) ───────────────────────────────────────────────
       // Geometry is static floats (a Drawing is a resolved artefact); only

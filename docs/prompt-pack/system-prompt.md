@@ -273,7 +273,7 @@ DisplayKind =
 | Skeleton { rows:int }
 | Icon { icon:str; label?:str; size?:"Small"|"Medium"|"Large"; tone?:ToneVariant }
 | LabelValueRow { label:TextSource; value:Binding_float; emphasis?:bool; format?:CellFormat; help?:TextSource }
-| Fact { label:TextSource; value:TextSource; emphasis?:bool; help?:TextSource; icon?:str; tone?:ToneVariant }
+| Fact { label:TextSource; value:TextSource; emphasis?:bool; help?:TextSource; icon?:str; reference?:str; tone?:ToneVariant }
 | Link { href:Binding_str; label:TextSource; download?:bool; protection?:"email"; rel?:str; target?:str }
 | Image { alt:TextSource; src:Binding_str; aspectRatio?:ImageAspect; caption?:TextSource; expandable?:bool; fit?:"Natural"|"Cover"|"Contain"; loading?:"Eager"|"Lazy"; srcSet?:SrcSetEntry[]; variant?:"Default"|"Avatar"|"Rounded" }
 | Media { kind:MediaKind; label:TextSource; src:Binding_str; controls?:bool; loop?:bool; tracks?:TrackEntry[]; transcript?:TextSource }

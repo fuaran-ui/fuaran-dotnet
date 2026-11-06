@@ -1522,6 +1522,18 @@ module drawStyle =
 
 // ─── Components — the `Fuaran.X` author surface ──────────────────────────────
 
+module Fact =
+    /// Phase 2535 — the reference naming the Fact a `Fact` node's figure cites:
+    /// `Fuaran.fact "id" "Revenue" "£412k" |> Fact.withReference factId`. Opaque to the language
+    /// (WIRE_FORMAT.md §3.6.31). Any other kind is a programming error, not a figure to leave
+    /// uncited in silence.
+    let withReference (reference: string) (node: Node<'Msg>) : Node<'Msg> =
+        match node.Kind with
+        | NodeKind.Fact spec ->
+            { node with
+                Kind = NodeKind.Fact { spec with Reference = Some reference } }
+        | other -> invalidArg (nameof node) $"Fact.withReference needs a Fact node, not {Kind.name other}"
+
 module Fuaran =
     let private buildNode (id: string) (kind: NodeKind<'Msg>) (accessibility: Accessibility option) : Node<'Msg> =
         // `State = None` / `Style = None` since the swap — the canonical
@@ -1727,7 +1739,7 @@ module Fuaran =
             ))
             Defaults.Accessibility.none
 
-    /// Record-form `Fact` (tone / emphasis / icon / help).
+    /// Record-form `Fact` (tone / emphasis / icon / help / reference).
     let factSpec (id: string) (spec: FactSpec) : Node<'Msg> =
         buildNode id (NodeKind.Fact(spec)) Defaults.Accessibility.none
 

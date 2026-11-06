@@ -7822,6 +7822,26 @@ document that declares no ceiling is exactly the control it was.
 
 _Untagged. Set by Phase 2576, the first change to ride the slot._
 
+### What rides this slot — Phase 2535 (a `Fact` carries its reference on the wire)
+
+**Class: additive on the wire; a record widening in the language tier, FS0764 at a full-literal `FactSpec`, the class
+pre-1.0 minor drafts carry, so it rides.** `WIRE_FORMAT.md` §3.6.31: `Fact` gains the optional `reference`, the Fact
+its figure cites. A document without it is byte-unchanged.
+
+- **`FactSpec.Reference: string option`**, with `Defaults.fact` at `None`. Every construction through
+  `{ Defaults.fact with … }` compiles as before. The C# positional constructor gains the argument, and
+  `FactOptions.Reference` and the VB `reference` attribute carry it.
+- **`Fact.withReference`** is the builder: `Fuaran.fact "id" "Revenue" "£412k" |> Fact.withReference factId`. On any
+  other kind it throws rather than leaving the figure uncited in silence.
+- **Rendering.** `ElementPlan.DisplayPlan.fact` stamps `data-fact` on the tile's root, so the client and server
+  renderers emit it from one place. `citationProps` is the one spelling a later citing element reuses. The value goes
+  through the ordinary attribute encoder.
+- **The value is opaque.** Its documented form is a Fact id as the Fact wire specification states it (`FACT_WIRE.md`
+  §4: 64 lower-case hex digits, no prefix). No decoder refuses a value over its form, because references of other
+  shapes are carried today. **No as-of member:** no consumer asks for one, and an optional member can join later
+  additively. Recorded here because this repository keeps no decision record.
+- **`UpdateProp`.** `Reference` is an updatable `Fact` field, and the introspected props list it.
+
 ### What rides this slot — Phase 2576 (the `Action.Invoke` effect arm dispatches through the capability invoker)
 
 **Class: additive, on `Fuaran.UI.Renderer`.** No wire event: `Action.Invoke` and its canonical shape are unchanged,

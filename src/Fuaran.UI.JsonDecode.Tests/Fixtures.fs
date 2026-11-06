@@ -1409,6 +1409,20 @@ let fact: Node<obj> =
         ))
         None
 
+/// Phase 2535 — a cited figure: the reference names the Fact behind it. The value has the
+/// shape of a content-addressed Fact id, 64 lowercase hex digits (WIRE_FORMAT.md §3.6.31).
+[<NodeFixture "Display/Fact (Phase 2535 — a figure citing the Fact behind it)">]
+let factReference: Node<obj> =
+    node
+        "fact-cited"
+        (NodeKind.Fact(
+            { Defaults.fact with
+                Label = TextSource.Literal "Revenue"
+                Value = TextSource.Literal "£412k"
+                Reference = Some "9f04f29b27c86926a1c3e5d7b8f0a2c4e6d8f0a1b3c5d7e9f1a3b5c7d9e1f3a5" }
+        ))
+        None
+
 /// Phase 819 — a duration Metric: the raw value counts MINUTES (80 → "1h
 /// 20m" under Compact), and the trend slot carries the cell-vocabulary
 /// RelativeTime parity case (a signed count of the unit).

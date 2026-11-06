@@ -792,6 +792,10 @@ let private updateFact (field: string) (v: obj) (spec: FactSpec) : UpdateResult<
         wrap (fun v ->
             coerceField JsonDecode.Coerce.tryStringOption v
             |> Result.map (fun x -> { spec with Icon = x }))
+    | "Reference" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryStringOption v
+            |> Result.map (fun x -> { spec with Reference = x }))
     | _ -> UnknownField
 
 let private updateFragmentDecl (field: string) (v: obj) (spec: FragmentDeclSpec<'Msg>) : UpdateResult<'Msg> =

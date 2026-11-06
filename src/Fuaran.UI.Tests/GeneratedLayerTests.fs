@@ -116,7 +116,36 @@ let private manifestFamilySize (kind: string) : int =
 let generatedLayerTests =
     testList
         "Phase 671 — the IDL-generated structural layer, tier-side"
-        [ test "the generated encoder reproduces a corpus fixture byte-for-byte" {
+        [ test "Phase 2535 — a Fact's reference crosses the canonical wire, and no reference is no member" {
+              let cited: Node<obj> =
+                  Fuaran.fact "f" "Revenue" "£412k" |> Fact.withReference "fact:revenue-q3"
+
+              let encoded = CanonicalJson.encodeNode cited
+
+              Expect.equal
+                  encoded
+                  "{\"id\":\"f\",\"kind\":{\"$type\":\"Fact\",\"label\":\"Revenue\",\"reference\":\"fact:revenue-q3\",\"value\":\"£412k\"}}"
+                  "the member sits in its canonical place"
+
+              match JsonDecode.decodeNodeObj encoded with
+              | Error e -> failtestf "decode refused the cited Fact: %A" e
+              | Ok decoded ->
+                  Expect.equal (CanonicalJson.encodeNode decoded) encoded "the round trip is byte-identical"
+
+                  match decoded.Kind with
+                  | NodeKind.Fact spec -> Expect.equal spec.Reference (Some "fact:revenue-q3") "the field is read back"
+                  | other -> failtestf "decoded to %A" other
+
+              Expect.isFalse
+                  ((CanonicalJson.encodeNode (Fuaran.fact "f" "Revenue" "£412k": Node<obj>)).Contains "reference")
+                  "an uncited Fact is byte-unchanged"
+
+              Expect.throws
+                  (fun () -> (Fuaran.markdown "m" "x": Node<obj>) |> Fact.withReference "r" |> ignore)
+                  "a reference on any other kind is refused rather than dropped"
+          }
+
+          test "the generated encoder reproduces a corpus fixture byte-for-byte" {
               match fixture "heading-1" with
               | None -> skiptest "wire-format-fixtures/nodes/heading-1.json not found"
               | Some expected ->

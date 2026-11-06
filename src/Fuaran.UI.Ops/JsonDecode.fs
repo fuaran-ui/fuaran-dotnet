@@ -4267,21 +4267,29 @@ let private decodeFactSpec (path: string) (j: Json) : Result<FactSpec, DecodeErr
             | None -> Ok None
             | Some v -> requireString (path + ".icon") v |> Result.map Some
 
-        match labelR, valueR, toneR, emphasisR, helpR, iconR with
-        | Ok label, Ok value, Ok tone, Ok emphasis, Ok help, Ok icon ->
+        // Phase 2535 — the citation, opaque to the language (WIRE_FORMAT.md §3.6.31).
+        let referenceR =
+            match tryField fields "reference" with
+            | None -> Ok None
+            | Some v -> requireString (path + ".reference") v |> Result.map Some
+
+        match labelR, valueR, toneR, emphasisR, helpR, iconR, referenceR with
+        | Ok label, Ok value, Ok tone, Ok emphasis, Ok help, Ok icon, Ok reference ->
             Ok
                 { Label = label
                   Value = value
                   Icon = icon
                   Tone = tone
                   Emphasis = emphasis
-                  Help = help }
-        | Error e, _, _, _, _, _
-        | _, Error e, _, _, _, _
-        | _, _, Error e, _, _, _
-        | _, _, _, Error e, _, _
-        | _, _, _, _, Error e, _
-        | _, _, _, _, _, Error e -> Error e
+                  Help = help
+                  Reference = reference }
+        | Error e, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _
+        | _, _, Error e, _, _, _, _
+        | _, _, _, Error e, _, _, _
+        | _, _, _, _, Error e, _, _
+        | _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, Error e -> Error e
 
 let private decodeLabelValueRowSpec (path: string) (j: Json) : Result<LabelValueRowSpec, DecodeError> =
     match requireObject path j with

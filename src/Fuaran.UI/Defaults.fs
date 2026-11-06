@@ -217,7 +217,8 @@ let fact: FactSpec =
       Icon = Option.None
       Tone = ToneVariant.Default
       Emphasis = false
-      Help = Option.None }
+      Help = Option.None
+      Reference = Option.None }
 
 let markdown: MarkdownSpec = { Text = emptyLiteral }
 

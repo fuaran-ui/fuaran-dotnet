@@ -2300,6 +2300,11 @@ let private bindingOf (t: IdlType) = TUnion("Binding", [ t ])
 let private CF = TUnion("CellFormat", [])
 /// `IconSource` is a bare string on the wire (`"icon":"trending-up"`).
 let private icon = TStr
+/// Phase 2535 — the citation slot: the reference naming the Fact behind a figure, a bare
+/// string on the wire. The language carries it and never parses or resolves it; a renderer
+/// stamps it as `data-fact`. Its form and the reasoning are WIRE_FORMAT.md §3.6.31. A kind
+/// that cites a figure takes this member, so every citation shares one documented value.
+let private factReference = opt "reference" TStr
 
 // ─── The node envelope records (Phase 690, WIRE_FORMAT.md §3.1) ────────────
 //
@@ -2702,7 +2707,8 @@ let displayKinds: IdlKind list =
             opt "icon" icon
             req "label" TS
             omit "tone" (TEnum "ToneVariant") (VEnum "Default")
-            req "value" TS ] }
+            req "value" TS
+            factReference ] }
       { Tag = "Sparkline"
         Category = "Display"
         Annotations = Annotations.Empty

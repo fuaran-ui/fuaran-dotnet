@@ -553,21 +553,30 @@ module DisplayPlan =
 
         Plan.classChildren "div" (Css.metric (Theme.toneVar spec.Tone)) (head @ comparisons @ [ subtext ])
 
+    /// Phase 2535 — the attribute a cited figure carries: `data-fact` holding the reference
+    /// (WIRE_FORMAT.md §3.6.31). Nothing when the figure cites nothing. Every citing element
+    /// stamps through this, so a reference reads the same wherever it is drawn. The value goes
+    /// through the attribute encoder like every other string attribute on this plan.
+    let citationProps (reference: string option) : Prop list =
+        reference |> Option.map (fun r -> Prop.Attr("data-fact", r)) |> Option.toList
+
     /// A labelled TEXT fact tile — Metric's chrome for a TextSource value.
     let fact (sources: BindingResolver.BindingSources) (spec: FactSpec) : Plan<'E> =
         let text = BindingResolver.resolveTextSource sources
 
-        Plan.classChildren
+        Plan.element
             "div"
-            (Css.fact (Theme.toneVar spec.Tone) (Css.factEmphasis spec.Emphasis))
-            [ Plan.classText "div" Css.Class.FactLabel (text spec.Label)
-              Plan.classChildren
-                  "div"
-                  Css.Class.FactValue
-                  [ spec.Icon |> Plan.ofOption (iconHook Css.Class.FactIcon)
-                    Plan.element "span" [] (Content.Text(text spec.Value)) ]
-              spec.Help
-              |> Plan.ofOption (fun h -> Plan.classText "div" Css.Class.FactHelp (text h)) ]
+            (Prop.Attr("class", Css.fact (Theme.toneVar spec.Tone) (Css.factEmphasis spec.Emphasis))
+             :: citationProps spec.Reference)
+            (Content.Children
+                [ Plan.classText "div" Css.Class.FactLabel (text spec.Label)
+                  Plan.classChildren
+                      "div"
+                      Css.Class.FactValue
+                      [ spec.Icon |> Plan.ofOption (iconHook Css.Class.FactIcon)
+                        Plan.element "span" [] (Content.Text(text spec.Value)) ]
+                  spec.Help
+                  |> Plan.ofOption (fun h -> Plan.classText "div" Css.Class.FactHelp (text h)) ])
 
     /// The dismiss affordance is inert on BOTH tiers — no handler is attached
     /// on the client either (Phase 2108 parity fix (a): the server omitted it).

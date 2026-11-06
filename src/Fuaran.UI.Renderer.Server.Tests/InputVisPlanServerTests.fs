@@ -392,6 +392,28 @@ let tests =
                             html)
                         html
                 }
+                test
+                    "Phase 2535 — a cited Fact is served with data-fact on its tile, encoded, and an uncited one without" {
+                    let cited (reference: string) =
+                        Render.renderStatic (
+                            (Fuaran.fact "f" "Revenue" "£412k": Node<obj>) |> Fact.withReference reference
+                        )
+
+                    Expect.isTrue
+                        (contains
+                            "<div class=\"fuaran-fact fuaran-fact-default\" data-fact=\"fact:revenue-q3\">"
+                            (cited "fact:revenue-q3"))
+                        (cited "fact:revenue-q3")
+
+                    Expect.isFalse
+                        (contains "<script" (cited "\"><script>x</script>"))
+                        "the value goes through the attribute encoder"
+
+                    Expect.isFalse
+                        (contains "data-fact" (Render.renderStatic ((Fuaran.fact "f" "Revenue" "£412k": Node<obj>))))
+                        "no reference, no attribute"
+                }
+
                 test "Phase 2571 — option groups are served as optgroups, the ungrouped remainder after them" {
                     let html =
                         Render.renderStatic (

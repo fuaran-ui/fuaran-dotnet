@@ -386,14 +386,17 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
            | None -> entry "Help" None (Some "TextSource option")) ]
     | NodeKind.Fact(spec) ->
         // No Binding slot: `Value` is a TextSource (its Bound leg resolves
-        // through renderText, not the slot surface) — all five are props.
+        // through renderText, not the slot surface) — all six are props.
         [ textEntry "Label" spec.Label
           textEntry "Value" spec.Value
           valueEntry "Tone" spec.Tone
           valueEntry "Emphasis" spec.Emphasis
           (match spec.Help with
            | Some h -> textEntry "Help" h
-           | None -> entry "Help" None (Some "TextSource option")) ]
+           | None -> entry "Help" None (Some "TextSource option"))
+          (match spec.Reference with
+           | Some r -> valueEntry "Reference" r
+           | None -> entry "Reference" None (Some "string option")) ]
     | NodeKind.Link(spec) ->
         // Href is a Binding slot exposed via extractBindings; the remaining
         // fields are scalar props.
