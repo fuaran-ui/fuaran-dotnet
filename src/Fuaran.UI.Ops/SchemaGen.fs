@@ -1211,6 +1211,13 @@ let private defs: (string * J) list =
           [ "text", ref "TextSource"
             // Phase 2591 - absent is the one spelling of none.
             "citations", JObj [ "type", JStr "array"; "minItems", JInt 1; "items", ref "MarkdownCitation" ] ]
+      "TableCitation",
+      record
+          [ "column"; "reference"; "row" ]
+          [ "column", JObj [ "type", JStr "integer"; "minimum", JInt 0 ]
+            "label", ref "TextSource"
+            "reference", str
+            "row", JObj [ "type", JStr "integer"; "minimum", JInt 0 ] ]
       "MarkdownCitation",
       record
           [ "name"; "reference" ]
@@ -1822,7 +1829,9 @@ let private defs: (string * J) list =
             "staticRows",
             record
                 [ "headers"; "rows" ]
-                [ "defaultSort",
+                [ // Phase 2592 - absent is the one spelling of none.
+                  "citations", JObj [ "type", JStr "array"; "minItems", JInt 1; "items", ref "TableCitation" ]
+                  "defaultSort",
                   record
                       [ "column"; "direction" ]
                       [ "column", JObj [ "type", JStr "integer"; "minimum", JInt 0 ]

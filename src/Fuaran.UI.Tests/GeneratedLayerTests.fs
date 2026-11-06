@@ -174,6 +174,50 @@ let generatedLayerTests =
                   "a citation on any other kind is refused rather than dropped"
           }
 
+          test "Phase 2592 — a table's citations cross the canonical wire, and none is no member" {
+              let spec: TableSpec<obj> =
+                  { Defaults.table<obj> with
+                      Headers = [ TextSource.Literal "A"; TextSource.Literal "B" ]
+                      Rows = [ [ TextSource.Literal "x"; TextSource.Literal "1" ] ] }
+
+              let cited: Node<obj> =
+                  Fuaran.table "t" spec |> Table.withCitation 0 1 "fact:one" (Some "One")
+
+              let encoded = CanonicalJson.encodeNode cited
+
+              Expect.stringContains
+                  encoded
+                  "\"staticRows\":{\"citations\":[{\"column\":1,\"label\":\"One\",\"reference\":\"fact:one\",\"row\":0}],\"headers\":[\"A\",\"B\"]"
+                  "the member sits in its canonical place"
+
+              match JsonDecode.decodeNodeObj encoded with
+              | Error e -> failtestf "decode refused the cited table: %A" e
+              | Ok decoded -> Expect.equal (CanonicalJson.encodeNode decoded) encoded "the round trip is byte-identical"
+
+              Expect.isFalse
+                  ((CanonicalJson.encodeNode (Fuaran.table "t" spec)).Contains "citations")
+                  "a table citing nothing is byte-unchanged"
+
+              Expect.throws
+                  (fun () -> Fuaran.table "t" spec |> Table.withCitation 1 0 "r" None |> ignore)
+                  "a row naming no cell is refused where the table is built"
+
+              Expect.throws
+                  (fun () -> Fuaran.table "t" spec |> Table.withCitation 0 2 "r" None |> ignore)
+                  "a column naming no cell is refused where the table is built"
+
+              Expect.throws
+                  (fun () -> cited |> Table.withCitation 0 1 "r" None |> ignore)
+                  "two citations for one cell are refused where the table is built"
+
+              Expect.throws
+                  (fun () ->
+                      (Fuaran.markdown "m" "x": Node<obj>)
+                      |> Table.withCitation 0 0 "r" None
+                      |> ignore)
+                  "a citation on any other kind is refused rather than dropped"
+          }
+
           test "the generated encoder reproduces a corpus fixture byte-for-byte" {
               match fixture "heading-1" with
               | None -> skiptest "wire-format-fixtures/nodes/heading-1.json not found"
@@ -898,6 +942,15 @@ let generatedLayerTests =
                     "reject-nearmiss-grid-sortable.json"
                     "reject-switch-case-match-and-when.json"
                     "reject-switch-case-neither.json"
+                    // Phase 2592 — likewise: the generated decoder reads a well-typed coordinate
+                    // and the policy decoder reads it against the rows.
+                    "reject-table-citation-cell-repeated.json"
+                    "reject-table-citation-column-jagged.json"
+                    "reject-table-citation-column-negative.json"
+                    "reject-table-citation-column-range.json"
+                    "reject-table-citation-row-negative.json"
+                    "reject-table-citation-row-range.json"
+                    "reject-table-citations-empty.json"
                     "reject-upload-destination-empty.json"
                     // Fuaran-UI Phase 1548 — the two upload ceilings' POSITIVE
                     // floor, and the value-bound class exactly: the IDL declares

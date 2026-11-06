@@ -77,7 +77,13 @@ public static partial class Fuaran
                 // neither veneer and nothing was red while they were absent. That is what
                 // made surfacing them a deliberate act rather than an automatic one.
                 options.Sortable is { } tSortable ? Fs.Some(tSortable) : Fs.None<bool>(),
-                options.DefaultSort is { } tSort ? Fs.Some(tSort.Inner) : Fs.None<FsGen.DefaultSort>())));
+                options.DefaultSort is { } tSort ? Fs.Some(tSort.Inner) : Fs.None<FsGen.DefaultSort>(),
+                Fs.List((options.Citations ?? Enumerable.Empty<TableCitation>())
+                    .Select(c => new FsGen.TableCitation(
+                        c.Column,
+                        c.Label is { } l ? Fs.Some(l.Inner) : Fs.None<FsGen.TextSource>(),
+                        c.Reference,
+                        c.Row))))));
 
     /// <summary>A marker map.</summary>
     public static FuaranNode Map(MapOptions options) =>
@@ -339,7 +345,19 @@ public sealed record TableOptions
     /// <summary>The order the table OPENS in (Phase 801) — configuration, not
     /// data movement. <c>Column</c> indexes <see cref="Headers"/>.</summary>
     public DefaultSort? DefaultSort { get; init; }
+
+    /// <summary>The cells whose figures name their Facts (Phase 2592), by zero-based row
+    /// and column into <see cref="Rows"/>; omitted on the wire when empty.</summary>
+    public IEnumerable<TableCitation>? Citations { get; init; }
 }
+
+/// <summary>One cell of a static table that cites its figure (Phase 2592).</summary>
+/// <param name="Row">The cited cell's zero-based row.</param>
+/// <param name="Column">The cited cell's zero-based column.</param>
+/// <param name="Reference">The reference naming the Fact; renderers stamp it as
+/// <c>data-fact</c> on the cell. Opaque to the language.</param>
+/// <param name="Label">What the figure is, for a screen reader; never printed.</param>
+public sealed record TableCitation(int Row, int Column, string Reference, Text? Label = null);
 
 /// <summary>Options for <see cref="Fuaran.Map"/>.</summary>
 public sealed record MapOptions

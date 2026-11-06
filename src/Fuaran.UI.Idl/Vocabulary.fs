@@ -1989,10 +1989,14 @@ let private defaultSortRecord =
 /// before the addition encodes byte-identically, which is the phase's hard
 /// constraint. The declaration is INTENT, not a behaviour guarantee — a host
 /// honours it with whatever sorting affordance it has.
+///
+/// Phase 2592 adds `citations`, the cells whose figures name their Facts (WIRE_FORMAT.md
+/// §3.6.33). Omitted when empty, so a table citing nothing is byte-unchanged.
 let private staticRowsRecord =
     { Name = "StaticRows"
       Fields =
-        [ opt "defaultSort" (TRecord "DefaultSort")
+        [ omit "citations" (TList(TRecord "TableCitation")) (VList [])
+          opt "defaultSort" (TRecord "DefaultSort")
           req "headers" (TList(TUnion("TextSource", [])))
           req "rows" (TList(TList(TUnion("TextSource", []))))
           opt "sortable" TBool ]
@@ -2140,6 +2144,21 @@ let private markdownCitationRecord =
         [ opt "label" (TUnion("TextSource", []))
           req "name" TStr
           req "reference" TStr ]
+      Annotations = Annotations.Empty }
+
+/// Phase 2592 — one cell of a static table that cites its figure. `row` and `column` are
+/// zero-based coordinates into `StaticRows.rows`, so the cell's text stays exactly as `rows`
+/// holds it and no placeholder is needed; `reference` and `label` are the members of the same
+/// name on `MarkdownCitation`, with no record shared, since one would carry both a name and
+/// coordinates with one always absent. Range and uniqueness are refused at DECODE (the IDL has
+/// no relation across fields), which is why those reject fixtures sit in the policy-only list.
+let private tableCitationRecord =
+    { Name = "TableCitation"
+      Fields =
+        [ req "column" TInt
+          opt "label" (TUnion("TextSource", []))
+          req "reference" TStr
+          req "row" TInt ]
       Annotations = Annotations.Empty }
 
 /// A `DataGrid` column, row-erased. Fuaran-UI Phase 425: `value` (the projection
@@ -3909,6 +3928,7 @@ let uiIdl: Idl =
           trackEntryRecord
           metricComparisonRecord
           markdownCitationRecord
+          tableCitationRecord
           treeItemRecord
           effectClassRecord ]
       Defaults = []

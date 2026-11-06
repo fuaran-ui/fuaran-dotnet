@@ -740,6 +740,64 @@ let all: RejectFixture list =
       // Phase 2591 — what decode refuses of `Markdown.citations` (WIRE_FORMAT.md §3.6.32). The
       // text is never read here: it may be bound, and §14 keeps Markdown out of decode, so an
       // undeclared or unused name is a render fact, not a refusal.
+      // Phase 2592 — what decode refuses of `staticRows.citations` (WIRE_FORMAT.md §3.6.33).
+      { Id = "reject-table-citations-empty"
+        Json =
+          """{"id":"t","kind":{"$type":"DataGrid","columns":[],"source":{"$type":"Static","value":[]},"staticRows":{"citations":[],"headers":["A","B"],"rows":[["a","b"]]}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.staticRows.citations"
+        IsOp = false
+        Description = "an empty `citations` array — absent is the one spelling of none, so a document has one byte form" }
+      { Id = "reject-table-citation-row-range"
+        Json =
+          """{"id":"t","kind":{"$type":"DataGrid","columns":[],"source":{"$type":"Static","value":[]},"staticRows":{"citations":[{"column":0,"reference":"r","row":1}],"headers":["A","B"],"rows":[["a","b"]]}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.staticRows.citations[0].row"
+        IsOp = false
+        Description = "a citation whose row names no row of the table" }
+      { Id = "reject-table-citation-row-negative"
+        Json =
+          """{"id":"t","kind":{"$type":"DataGrid","columns":[],"source":{"$type":"Static","value":[]},"staticRows":{"citations":[{"column":0,"reference":"r","row":-1}],"headers":["A","B"],"rows":[["a","b"]]}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.staticRows.citations[0].row"
+        IsOp = false
+        Description = "a negative row — the schema says the same with minimum:0" }
+      { Id = "reject-table-citation-column-range"
+        Json =
+          """{"id":"t","kind":{"$type":"DataGrid","columns":[],"source":{"$type":"Static","value":[]},"staticRows":{"citations":[{"column":2,"reference":"r","row":0}],"headers":["A","B"],"rows":[["a","b"]]}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.staticRows.citations[0].column"
+        IsOp = false
+        Description = "a citation whose column names no cell of its row" }
+      { Id = "reject-table-citation-column-negative"
+        Json =
+          """{"id":"t","kind":{"$type":"DataGrid","columns":[],"source":{"$type":"Static","value":[]},"staticRows":{"citations":[{"column":-1,"reference":"r","row":0}],"headers":["A","B"],"rows":[["a","b"]]}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.staticRows.citations[0].column"
+        IsOp = false
+        Description = "a negative column — the schema says the same with minimum:0" }
+      { Id = "reject-table-citation-column-jagged"
+        Json =
+          """{"id":"t","kind":{"$type":"DataGrid","columns":[],"source":{"$type":"Static","value":[]},"staticRows":{"citations":[{"column":1,"reference":"r","row":1}],"headers":["A","B"],"rows":[["a","b"],["c"]]}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.staticRows.citations[0].column"
+        IsOp = false
+        Description = "the column is read against the cited row, so a column another row has is still no cell here" }
+      { Id = "reject-table-citation-cell-repeated"
+        Json =
+          """{"id":"t","kind":{"$type":"DataGrid","columns":[],"source":{"$type":"Static","value":[]},"staticRows":{"citations":[{"column":0,"reference":"r1","row":0},{"column":0,"reference":"r2","row":0}],"headers":["A","B"],"rows":[["a","b"]]}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.staticRows.citations[1]"
+        IsOp = false
+        Description =
+          "two citations for one cell — the cell would stamp whichever a host found first; the later occurrence is the path" }
+      { Id = "reject-table-citation-reference-missing"
+        Json =
+          """{"id":"t","kind":{"$type":"DataGrid","columns":[],"source":{"$type":"Static","value":[]},"staticRows":{"citations":[{"column":0,"row":0}],"headers":["A","B"],"rows":[["a","b"]]}}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.staticRows.citations[0].reference"
+        IsOp = false
+        Description = "a citation that cites nothing — `reference` is the member that makes it one" }
       { Id = "reject-markdown-citations-empty"
         Json = """{"id":"m","kind":{"$type":"Markdown","citations":[],"text":"x"}}"""
         ExpectedCode = DecodeErrorCode.WRONG_TYPE

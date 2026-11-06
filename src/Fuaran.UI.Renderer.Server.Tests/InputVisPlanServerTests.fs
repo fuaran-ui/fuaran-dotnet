@@ -279,7 +279,8 @@ let tests =
                             BindingResolver.empty
                             "t"
                             Defaults.dataGrid
-                            { Headers = [ lit "H" ]
+                            { Citations = []
+                              Headers = [ lit "H" ]
                               Rows = [ [ lit "c" ]; [ lit "d" ] ]
                               Sortable = None
                               DefaultSort = None }
@@ -524,7 +525,8 @@ let tests =
                                         Exportable = true
                                         StaticRows =
                                             Some
-                                                { Headers = [ lit "H" ]
+                                                { Citations = []
+                                                  Headers = [ lit "H" ]
                                                   Rows = [ [ lit "c" ]; [ lit "d" ] ]
                                                   Sortable = None
                                                   DefaultSort = None } })

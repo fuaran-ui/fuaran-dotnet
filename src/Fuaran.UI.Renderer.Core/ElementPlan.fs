@@ -2691,6 +2691,11 @@ module VisPlan =
     /// (`StateSeeds.apply`) — carries `fuaran-grid-row-selected` and
     /// `aria-selected="true"`, so a designed selection survives into the static
     /// render. A table that is not selectable emits exactly what it did.
+    ///
+    /// Phase 2592 — a cited cell stamps `DisplayPlan.citationProps` on its `<td>`, and
+    /// a label is the `fuaran-cited-label` span as the cell's first child, the span a
+    /// cited figure in a sentence draws (WIRE_FORMAT.md §3.6.33). A table citing nothing
+    /// emits exactly what it did. Coordinates address `sr.Rows` as authored.
     let staticGrid
         (sources: BindingResolver.BindingSources)
         (nodeId: string)
@@ -2719,13 +2724,41 @@ module VisPlan =
                 |> Option.filter (fun k -> k <> "")
             | _ -> None
 
-        let keyed (tag: string) (className: string) (index: int) (content: Content<'E>) : Plan<'E> =
+        let citedAt = sr.Citations |> List.map (fun c -> (c.Row, c.Column), c) |> Map.ofList
+
+        let keyedWith
+            (extra: Prop list)
+            (tag: string)
+            (className: string)
+            (index: int)
+            (content: Content<'E>)
+            : Plan<'E> =
             Plan.Element
                 { Tag = tag
                   // A static table's rows are literals in document order.
                   Key = Some(reconciliationKey None index)
-                  Props = [ Prop.Attr("class", className) ]
+                  Props = Prop.Attr("class", className) :: extra
                   Content = content }
+
+        let keyed (tag: string) (className: string) (index: int) (content: Content<'E>) : Plan<'E> =
+            keyedWith [] tag className index content
+
+        let bodyCell (i: int) (j: int) (content: Content<'E>) : Plan<'E> =
+            match Map.tryFind (i, j) citedAt with
+            | None -> keyed "td" Css.Class.TableCell j content
+            | Some citation ->
+                let labelled =
+                    let labelSpan (label: string) =
+                        Plan.classText "span" "fuaran-cited-label" (label + " ")
+
+                    match citation.Label |> Option.map text, content with
+                    | Some label, Content.Text cellText when label <> "" ->
+                        Content.Children [ labelSpan label; Plan.TextNode cellText ]
+                    | Some label, Content.Children children when label <> "" ->
+                        Content.Children(labelSpan label :: children)
+                    | _ -> content
+
+                keyedWith (DisplayPlan.citationProps (Some citation.Reference)) "td" Css.Class.TableCell j labelled
 
         let table =
             Plan.element
@@ -2774,8 +2807,7 @@ module VisPlan =
                                   let cells =
                                       Content.Children(
                                           rowTexts
-                                          |> List.mapi (fun j cell ->
-                                              keyed "td" Css.Class.TableCell j (cellContent record j cell))
+                                          |> List.mapi (fun j cell -> bodyCell i j (cellContent record j cell))
                                       )
 
                                   match keyAt with

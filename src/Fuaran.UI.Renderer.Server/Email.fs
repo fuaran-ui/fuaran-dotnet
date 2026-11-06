@@ -1073,9 +1073,9 @@ and private renderKind
                             prop.text (text h) ] ]
 
             let bodyRows =
-                [ for row in sr.Rows ->
+                [ for i, row in List.indexed sr.Rows ->
                       Html.tr
-                          [ for cell in row ->
+                          [ for j, cell in List.indexed row ->
                                 Html.td
                                     [ prop.custom (
                                           "style",
@@ -1084,6 +1084,11 @@ and private renderKind
                                           + ";"
                                           + textStyle opts "font-size:13px;line-height:18px;"
                                       )
+                                      // Phase 2592 — a mail client has no reference stylesheet, so a
+                                      // hidden label would be printed in the cell. The reference stays.
+                                      match sr.Citations |> List.tryFind (fun c -> c.Row = i && c.Column = j) with
+                                      | Some citation -> prop.custom ("data-fact", citation.Reference)
+                                      | None -> ()
                                       prop.text (text cell) ] ] ]
 
             Html.table (

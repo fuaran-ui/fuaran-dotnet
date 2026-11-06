@@ -230,6 +230,54 @@ const cases = [
         }
     },
 
+    {
+        // Phase 2592 — a cited cell's label is the cell's first child. It is hidden, but
+        // textContent reads it, so a sort keyed on textContent would order by the label.
+        name: "the table sort keys on a cited cell's value, not its hidden label",
+        subject: "referenceTables",
+        mutate: (src) => src.replace("keyOf(cellText(c))", "keyOf(c.textContent)"),
+        run: (source) => {
+            const document = new StubDocument();
+            const cell = (text, label) => {
+                const td = new StubElement("td");
+                if (label) {
+                    const span = new StubElement("span", { class: "fuaran-cited-label" });
+                    span.textContent = label + " ";
+                    td.appendChild(span);
+                }
+                td.appendChild(Object.assign(new StubElement("span"), { _text: text }));
+                return td;
+            };
+            const row = (td) => {
+                const tr = new StubElement("tr");
+                tr.cells = [td];
+                return tr;
+            };
+            // The labels order the rows one way and the values the other.
+            const first = row(cell("20", "A figure"));
+            const second = row(cell("3", "Z figure"));
+            const th = new StubElement("th");
+            const tbody = new StubElement("tbody");
+            tbody.rows = [first, second];
+            const appended = [];
+            tbody.appendChild = (r) => appended.push(r);
+            const table = new StubElement("table", {
+                class: "fuaran-table",
+                "data-fuaran-sort-column": "0",
+                "data-fuaran-sort-direction": "asc"
+            });
+            table.tHead = { rows: [{ cells: [th] }] };
+            table.tBodies = [tbody];
+            document.documentElement.appendChild(table);
+            loadInto(source, { document });
+            assert.deepEqual(
+                appended.slice(-2),
+                [second, first],
+                "ascending by value puts 3 before 20, where the labels would put 20 first"
+            );
+        }
+    },
+
     // ─── Phase 2526: the granular patches ───────────────────────────────────
     //
     // The markup both SSR hosts emit for a node: the marker on a wrapper, the

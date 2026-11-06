@@ -2422,6 +2422,9 @@ let private walkTree<'Msg>
                 for row in sr.Rows do
                     for cell in row do
                         recordText inUses readerId cell
+
+                for c in sr.Citations do
+                    c.Label |> Option.iter (recordText inUses readerId)
             | None -> ()
         // Phase 1615 — a chart and a map declare no row identity, so the
         // slot is named and the identity column is honestly absent.

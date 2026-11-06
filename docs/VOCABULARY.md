@@ -733,7 +733,7 @@ name, one opaque value and one attribute wherever it appears (`reference`, WIRE_
 | `display` on `Fact` (tile or inline) | **Rejected (Phase 2591)** | Candidate 2 in the shard. It does not give a sentence one element: an inline `Fact` still needs a flow container holding `Markdown` fragments and facts, every fragment its own block with its own Markdown parse, so emphasis or a link cannot span a figure. It also adds a choice for every author of a `Fact`. |
 | `Prose` / a prose kind with inline children | **Rejected (Phase 2591)** | Candidate 3. A new top-level near-synonym of `Markdown`, the expensive axis of §2, and it needs an inline-node vocabulary every host would have to draw. Candidate 1 is shown to work, so the shard's condition for admitting this is not met. |
 | `TextSource` case for a cited value | **Rejected (Phase 2591, for both phases)** | Reaches every slot that takes a `TextSource`, far wider than the need, and `Markdown.text` would then hold a cited value at the whole-text level, which cannot say which figure in a sentence is cited. |
-| `citations` on `Table` / "a table cell cites its figure" | **Recommendation for Phase 2592; its worker takes this shape without reopening it** | An optional `citations` list on `TableSpec` beside `rows`, omitted when empty, each entry `{ column, label?, reference, row }`: `row` and `column` zero-based integers, `reference` the same member as above, `label` the same optional `TextSource`. No placeholder and no `name`: a cell is already addressable, and its text stays exactly as `rows` holds it. Decode refuses a row or column out of range, two entries for one cell, and an empty array, as `WRONG_TYPE`. Rendering stamps `data-fact` on the `<td>`, and a label is the same `fuaran-cited-label` span as the first child of the cell, so `.fuaran-table` applies unchanged. A link or image in a cell stays the remaining gap, per the shard. **The shared shape is the reference and the label, not a shared record**: a shared record would carry both `name` and coordinates with one of them always absent. |
+| `citations` on `Table` / "a table cell cites its figure" | **Field (admitted 2026-11-06, Phase 2592)** | Not a kind and not a cell type: an optional `citations` list on the static table's payload, `DataGrid.staticRows` on the wire and `TableSpec` in the facade, omitted when empty, each entry a `TableCitation` `{ column, label?, reference, row }`: `row` and `column` zero-based integers into `rows`, `reference` the same member as above, `label` the same optional `TextSource`. No placeholder and no `name`: a cell is already addressable, and its text stays exactly as `rows` holds it. Decode refuses a row or column out of range, two entries for one cell, and an empty array, as `WRONG_TYPE`. Rendering stamps `data-fact` on the `<td>`, and a label is the same `fuaran-cited-label` span as the first child of the cell, so `.fuaran-table` applies unchanged. A link or image in a cell stays the remaining gap, per the shard. **The shared shape is the reference and the label, not a shared record**: a shared record would carry both `name` and coordinates with one of them always absent. Gates below. |
 
 **§1.1 Demand.** A real translation reached a pattern the kinds could not express: a consumer application's
 report pages, served as trees and seen on 2026-11-06, had every sentence broken up by boxed figures, and the
@@ -787,6 +787,52 @@ fuaran-swift) pin an old corpus and reach this through fuaran#2574.
 cite. The structural delta is zero on the kind-confusion metric, since no kind was added and an emitter with no
 figure to cite never meets the member. The risk to watch is `Fact` versus a cited `Markdown`; the authoring
 guide states the choice (a tile stands alone, a citation sits in a sentence).
+
+**`Table.citations` — the gates (Phase 2592).**
+
+**§1.1 Demand.** A real translation reached a pattern the kinds could not express: a consumer application's report
+tables, every cell a gated Fact, served as trees and seen on 2026-11-06. `TableSpec.Rows` holds text, so such a table
+could not be a `Table` and was laid out as a `Box` grid of `Markdown` headers and `Fact` tiles: no `<table>`, no
+`.fuaran-table` rules, and a bordered tile in every cell. Recorded in the FUARAN054 ledger, Appendix B.
+
+**§1.2 Irreducibility.** `DataGrid` in its bound form is no answer: it is a data surface with its own behaviour, and a
+report table is static. `ExtraAttributes` reaches a node and not a cell, and is wire-omitted. Cells that hold nodes
+would answer this and much else, and reopen what a static table is, so they are not this phase's to take. Only a
+declared coordinate puts a reference on a cell and leaves the cell's text where it was.
+
+**Where it lives.** `Table` has been a facade since Phase 393: the wire kind is `DataGrid`, and its static mode is the
+`StaticRows` record. So the wire member is `staticRows.citations`, beside `rows`, whose coordinates it reads, and
+`TableSpec.Citations` rides through `Fuaran.table` as `Sortable` and `DefaultSort` do. A bound grid has no member to
+misread, since its cells are not literals.
+
+**What decode refuses (`WRONG_TYPE`, a reject fixture each):** an empty array; a negative row or column; a row the
+table does not have; a column the cited row does not have, read against that row, so a jagged table is honest; two
+entries for one cell, with the path at the later one. A missing `reference`, `row` or `column` is `MISSING_FIELD`.
+`reference` stays opaque, as §3.6.31 rules. The F# facade refuses the same range and repetition where the table is
+built, since an in-process render would otherwise drop a bad citation silently.
+
+**A cell's value stays the value.** Coordinates address the rows as authored, so a declared sort, a reader's sort and
+a selection move a citation with its cell. The sort enhancement keys on the cell's text without the label. The export
+serialises resolved `rows`, so no label and no reference reach a CSV. A cited toned cell keeps its pill, after the label.
+
+**Accessibility.** A label reaches a screen reader as the visually hidden first child of the cell, the span a sentence
+uses. Email has no stylesheet, so its cell keeps `data-fact` and drops the label; the row and column headers already
+say what the number is.
+
+**§1.3 Cost.** No new kind, so no new top-level choice and no new renderer dispatch. What it does carry: one record
+through the codec of five hosts, one branch in the static-table leg of each renderer, the reject fixtures, and one
+more field for an author to learn. No stylesheet rule: `.fuaran-cited-label` is 2591's. The native surfaces (fuaran-kt,
+fuaran-swift) pin an old corpus and reach this through fuaran#2574.
+
+**§3.2 Confusion delta.** Not measured: no eval was run for this field, so there is no pre/post figure to cite. The
+structural delta is zero on the kind-confusion metric, since no kind was added and an emitter with no figure to cite
+never meets the member. The risk to watch is a `Box` grid of `Fact` tiles against a cited table; the authoring guide
+states the choice.
+
+**No column alignment was lost, because a static table has none.** The phase asked that a cited numeric cell keep its
+column's alignment. `ColumnErased` carries no alignment and the static leg applies none: every cell is
+`.fuaran-table-cell`, start-aligned. A cited cell computes the same style as its uncited twin, measured in a browser.
+Right-aligned numbers in a static table are a separate gap, this phase neither closes nor widens.
 
 ## Appendix B – Demand-evidence sweep (recorded 2026-07-07)
 

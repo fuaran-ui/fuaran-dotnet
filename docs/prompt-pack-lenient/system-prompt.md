@@ -319,7 +319,7 @@ InputKind =
 | FileUpload { accept:str[]; label:TextSource; acceptPaste?:bool; capture?:"Camera"|"Microphone"; destination?:str; disabled?:Binding_bool; dropTarget?:bool; maxBytes?:int; maxFiles?:int; multiple?:bool }
 | Select { label:TextSource; source:Binding_list_SelectOption; affordance?:Affordance; disabled?:Binding_bool; groups?:SelectOptionGroup[]; multiple?:bool; placeholder?:TextSource; value?:Binding_str_choice; values?:Binding_list_str }
 VisKind =
-| DataGrid { columns:ColumnErased[]; source:Binding_hosted; defaultSort?:{ column:int; direction:"asc"|"desc" }; editStateKey?:str; editable?:bool; exportable?:bool; keepRowsTogether?:bool; pageSize?:int; pageStateKey?:str; reorderable?:bool; repeatHeader?:bool; rowKeyField?:str; rowTotal?:Binding_int; sortStateKey?:str; staticRows?:{ headers:TextSource[]; rows:TextSource[][]; defaultSort?:{ column:int; direction:"asc"|"desc" }; sortable?:bool }; transferInKey?:str; transferOutKey?:str; windowStateKey?:str }
+| DataGrid { columns:ColumnErased[]; source:Binding_hosted; defaultSort?:{ column:int; direction:"asc"|"desc" }; editStateKey?:str; editable?:bool; exportable?:bool; keepRowsTogether?:bool; pageSize?:int; pageStateKey?:str; reorderable?:bool; repeatHeader?:bool; rowKeyField?:str; rowTotal?:Binding_int; sortStateKey?:str; staticRows?:{ headers:TextSource[]; rows:TextSource[][]; citations?:TableCitation[]; defaultSort?:{ column:int; direction:"asc"|"desc" }; sortable?:bool }; transferInKey?:str; transferOutKey?:str; windowStateKey?:str }
 | Chart { kind:"Line"|"Bar"|"Area"|"Pie"|"Scatter"|"Heatmap"; source:Binding_hosted; xField:str; yFields:str[]; annotations?:ChartAnnotation[]; dataLabels?:"Off"|"Ends"; legendPosition?:"Top"|"Right"|"Bottom"|"None"; stacked?:bool; subtitle?:TextSource; title?:TextSource; valueFormat?:Format; xScale?:"Category"|"Temporal"; xTitle?:TextSource; yTitle?:TextSource }
 | Map { centreLatitude:num; centreLongitude:num; source:Binding_list_MapMarker; zoom:int }
 TreeOp =
@@ -669,6 +669,7 @@ SrcSetEntry { src:Binding_str; width:int }
 StateBehaviour { onEmpty?:Node; onLoading?:Node }
 StyleDelta { direction?:TextDirection; emphasis?:Emphasis; role?:StyleRole; tone?:ToneVariant; voice?:FontVoice; weight?:StyleWeight }
 TabHeader { label:TextSource; disabled?:Binding_bool; icon?:str }
+TableCitation { column:int; reference:str; row:int; label?:TextSource }
 TrackEntry { kind:"Subtitles"|"Captions"|"Descriptions"|"Chapters"; label:TextSource; src:Binding_str; srcLang:str; default?:bool }
 TransformAgg { fn:AggFn; name:str; of:str }
 TransformFitSpec { control:{ maxIter:int | { $param:str }; tol:num | { $param:str } }; family:"gaussian"|"poisson"|"gamma"|"tweedie"|"quasiPoisson"|"binomial"|"quasiBinomial"|"inverseGaussian"|"negativeBinomial"; groupBy:str[]; intercept:bool; link:"identity"|"log"|"logit"|"probit"|"cloglog"|"inverse"|"inverseSquare"|"sqrt"; output:"coefficients"|"summary"|"fitted"|"residuals"; predictors:{ expr:object; name:str }[]; response:str; offset?:object; power?:num; ridge?:num | { $param:str }; stdErrors?:"classical"|"hc0"|"hc1"|"hc2"|"hc3"|"robust"; theta?:num; weights?:str }

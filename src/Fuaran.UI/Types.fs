@@ -1816,12 +1816,16 @@ and ChartAnnotationRange = Generated.ChartAnnotationRange
 /// the table's INITIAL order — configuration, and deliberately distinct from the
 /// transform pipeline's one-shot data `sort`, which re-orders the data itself.
 /// Both `None` ⇒ the pre-801 wire, byte-for-byte.
+///
+/// Phase 2592 adds `Citations`: the cells whose figures name their Facts, by zero-based
+/// row and column into `Rows`. Empty ⇒ no member on the wire.
 and TableSpec<'Msg> =
     { Headers: TextSource list
       Rows: TextSource list list
       OnRowClick: (int -> Action<'Msg>) option
       Sortable: bool option
-      DefaultSort: DefaultSort option }
+      DefaultSort: DefaultSort option
+      Citations: TableCitation list }
 
 /// Minimal viable Map spec for session 3b. Coordinates are WGS-84 latitude /
 /// longitude in decimal degrees. The renderer defers to a host-provided map
@@ -1896,6 +1900,7 @@ and CustomSpec = Generated.CustomSpec
 /// as a record), plus the Phase 801 optional sort-intent slots `Sortable` and
 /// `DefaultSort` (both `None` ⇒ the pre-801 wire, byte-for-byte).
 and StaticRows = Generated.StaticRows
+and TableCitation = Generated.TableCitation
 
 /// A static table's declared INITIAL order (generated — Phase 801): `Column` is
 /// an index into `StaticRows.Headers`, `Direction` the two-value closed enum.

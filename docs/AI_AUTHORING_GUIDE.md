@@ -295,6 +295,20 @@ A `Fact` tile stands alone. A figure a sentence cites stays in the sentence: put
 
 The figure's display text is the link's text. `reference` names the Fact, as on `Fact.reference`. `label` says what the figure is for a screen reader and is never printed, so leave out what the sentence already says. A name is letters, digits, `-` and `_`, used once; a `cite:` link naming no declared citation is a dead link. A sentence citing nothing has no `citations` member at all.
 
+#### A figure cited in a table — `citations` on `staticRows` (Phase 2592)
+
+A table whose numbers are cited is still a table. Keep the cells' text in `rows`, and name each cited cell in `citations` by its zero-based `row` and `column`. Never lay a report table out as a `Box` grid of `Fact` tiles.
+
+```json
+{ "id": "spend", "kind": { "$type": "DataGrid", "columns": [], "source": { "$type": "Static", "value": [] },
+  "staticRows": {
+    "headers": [ "Channel", "Spend" ],
+    "rows": [ [ "Online", "£412k" ], [ "Retail", "£1.2m" ] ],
+    "citations": [ { "row": 0, "column": 1, "reference": "fact:online-spend", "label": "Online spend" } ] } } }
+```
+
+`reference` and `label` mean what they do on a `Markdown` citation, and the label is never printed. A coordinate names a cell that exists, and a cell is cited once. A table citing nothing has no `citations` member at all. A link or an image in a cell is not expressible here.
+
 #### A figure against two periods — `comparisons` (Phase 2472)
 
 A trading screen compares a figure against more than one period at once: yesterday against the same day last week AND last year. `trend` is the primary comparison; every further one goes in `comparisons` on the same `Metric`, and each renders as one more trend line with its own glyph and its own sentiment:

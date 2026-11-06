@@ -7433,6 +7433,80 @@ let private decodeDefaultSort (path: string) (j: Json) : Result<DefaultSort, Dec
         | Error e, _
         | _, Error e -> Error e
 
+/// Phase 2592 — one cited cell. The coordinates are read as the header index is, and a row
+/// or column naming no cell is refused against the rows they address (WIRE_FORMAT.md §3.6.33).
+let private decodeTableCitation
+    (rows: TextSource list list)
+    (path: string)
+    (j: Json)
+    : Result<TableCitation, DecodeError> =
+    match requireObject path j with
+    | Error e -> Error e
+    | Ok fields ->
+        let coordinate (name: string) (expected: string) =
+            requireField path fields name expected
+            |> Result.bind (fun v ->
+                match v with
+                | JNumber n when n >= 0.0 && n = floor n -> Ok(int n)
+                | _ -> wrongType (path + "." + name) ("JSON number (" + expected + ")"))
+
+        let rowR =
+            coordinate "row" "non-negative row index"
+            |> Result.bind (fun row ->
+                if row < List.length rows then
+                    Ok row
+                else
+                    wrongType (path + ".row") "a row index this table has")
+
+        let columnR =
+            coordinate "column" "non-negative column index"
+            |> Result.bind (fun column ->
+                match rowR with
+                | Ok row when column >= List.length (List.item row rows) ->
+                    wrongType (path + ".column") "a column index the cited row has"
+                | _ -> Ok column)
+
+        let referenceR =
+            requireField path fields "reference" "citation reference"
+            |> Result.bind (requireString (path + ".reference"))
+
+        let labelR =
+            match tryField fields "label" with
+            | None -> Ok None
+            | Some v -> decodeTextSource (path + ".label") v |> Result.map Some
+
+        match rowR, columnR, referenceR, labelR with
+        | Error e, _, _, _
+        | _, Error e, _, _
+        | _, _, Error e, _
+        | _, _, _, Error e -> Error e
+        | Ok row, Ok column, Ok reference, Ok label ->
+            Ok
+                { Column = column
+                  Label = label
+                  Reference = reference
+                  Row = row }
+
+let private decodeTableCitations
+    (rows: TextSource list list)
+    (path: string)
+    (j: Json)
+    : Result<TableCitation list, DecodeError> =
+    requireArray path j
+    |> Result.bind (fun els ->
+        if List.isEmpty els then
+            wrongType path "a non-empty citation list, or no member at all"
+        else
+            traverseIndexed (fun i el -> decodeTableCitation rows (sprintf "%s[%d]" path i) el) els)
+    |> Result.bind (fun citations ->
+        let cells = citations |> List.map (fun c -> c.Row, c.Column)
+
+        match cells |> List.countBy id |> List.tryFind (fun (_, n) -> n > 1) with
+        | Some(cell, _) ->
+            let at = cells |> List.findIndexBack ((=) cell)
+            wrongType (sprintf "%s[%d]" path at) "a cell no other citation in this list names"
+        | None -> Ok citations)
+
 /// Phase 393 — decode the `{headers, rows}` static-rows object of a read-only grid
 /// (also the shape the legacy `Table` decode-upgrade reads). Cells are `TextSource`.
 ///
@@ -7477,17 +7551,26 @@ let private decodeStaticRows (path: string) (j: Json) : Result<StaticRows, Decod
             | None -> Ok None
             | Some v -> decodeDefaultSort (path + ".defaultSort") v |> Result.map Some
 
-        match headersR, rowsR, sortableR, defaultSortR with
-        | Ok headers, Ok rows, Ok sortable, Ok defaultSort ->
+        // Phase 2592 — read against the rows, so a bad row list is reported first.
+        let citationsR =
+            match tryField fields "citations", rowsR with
+            | None, _ -> Ok []
+            | Some v, Ok rows -> decodeTableCitations rows (path + ".citations") v
+            | Some _, Error e -> Error e
+
+        match citationsR, headersR, rowsR, sortableR, defaultSortR with
+        | Ok citations, Ok headers, Ok rows, Ok sortable, Ok defaultSort ->
             Ok
-                { DefaultSort = defaultSort
+                { Citations = citations
+                  DefaultSort = defaultSort
                   Headers = headers
                   Rows = rows
                   Sortable = sortable }
-        | Error e, _, _, _
-        | _, Error e, _, _
-        | _, _, Error e, _
-        | _, _, _, Error e -> Error e
+        | Error e, _, _, _, _
+        | _, Error e, _, _, _
+        | _, _, Error e, _, _
+        | _, _, _, Error e, _
+        | _, _, _, _, Error e -> Error e
 
 let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, DecodeError> =
     match requireObject path j with

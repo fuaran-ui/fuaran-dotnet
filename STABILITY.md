@@ -7822,6 +7822,27 @@ document that declares no ceiling is exactly the control it was.
 
 _Untagged. Set by Phase 2576, the first change to ride the slot._
 
+### What rides this slot — Phase 2592 (a table cell can cite its figure)
+
+**Class: additive on the wire; a record widening in the language tier, FS0764 at a full-literal `StaticRows` or
+`TableSpec`, the class pre-1.0 minor drafts carry, so it rides.** A full-literal `TableSpec` takes
+`{ Defaults.table with ... }`; `Fuaran.table` is unchanged. The positional C# `TableSpec` constructor gains a last
+argument and `StaticRows` a first; the C# `Fuaran.Table` facade is source-compatible. `WIRE_FORMAT.md` §3.6.33:
+`DataGrid.staticRows` gains the optional `citations`, omitted when empty, so every document already written is
+byte-unchanged and renders as it did.
+
+- **Language tier.** `TableCitation` (`Column`, `Label`, `Reference`, `Row`) and `StaticRows.Citations`, generated from
+  the IDL; `TableSpec.Citations` rides through `Fuaran.table`; `Table.withCitation` builds one, and `Table.requireCitations`
+  refuses what decode refuses, where a table is built. The C# `TableOptions.Citations` and `TableCitation` follow. The VB
+  `<Table>` has no spelling, and the wire form is what an emitter writes.
+- **Decoder.** Refuses an empty array, a negative or out-of-range row or column (a column reads against its own row) and
+  two entries for one cell as `WRONG_TYPE`, with `MISSING_FIELD` for a missing member.
+- **Renderer.** `VisPlan.staticGrid` stamps `data-fact` on a cited `<td>`, with a label as a `fuaran-cited-label` first
+  child. A table citing nothing emits exactly what it did. The email projection keeps `data-fact` and drops the label.
+- **Reference tables enhancement.** A sort keys on a cell's text without its label.
+- **Ops.** A change to `citations` diffs to `EditNode`, as `Markdown.citations` does.
+- **Ruling.** `docs/VOCABULARY.md`, Appendix A, Citation cluster.
+
 ### What rides this slot — Phase 2591 (a cited figure reads inside a sentence)
 
 **Class: additive on the wire; a record widening in the language tier, FS0764 at a full-literal `MarkdownSpec`, the

@@ -6347,7 +6347,8 @@ let table: Node<obj> =
                         // Phase 801 — the sort-intent slots stay ABSENT here deliberately.
                         // `table-1.json` is the byte-identity anchor for the pre-801 wire:
                         // if this fixture's payload ever moves, the addition was not additive.
-                        { DefaultSort = None
+                        { Citations = []
+                          DefaultSort = None
                           Headers = [ TextSource.Literal "Term"; TextSource.Literal "Definition" ]
                           Rows =
                             [ [ TextSource.Literal "MVU"; TextSource.Literal "Model-View-Update" ]
@@ -6369,7 +6370,8 @@ let tableSortable: Node<obj> =
                 Source = Binding.Static(Some Seq.empty)
                 StaticRows =
                     Some
-                        { DefaultSort =
+                        { Citations = []
+                          DefaultSort =
                             Some
                                 { Column = 1
                                   Direction = SortDirection.Desc }
@@ -6403,6 +6405,111 @@ let tableTonedColumn: Node<obj> =
                 Rows =
                     [ [ TextSource.Literal "Retail"; TextSource.Literal "+4.1%" ]
                       [ TextSource.Literal "Wholesale"; TextSource.Literal "-2.3%" ] ] })
+            .Kind
+        None
+
+/// Phase 2592 — a report table with every figure cited, in the three reference forms that
+/// occur, its first column a row header that cites nothing. The cell text stays in `rows`; a
+/// citation only names a cell (WIRE_FORMAT.md §3.6.33).
+[<NodeFixture "Visualisation/Grid (Phase 2592 — static table with every figure cited)">]
+let tableCitationAll: Node<obj> =
+    let cited (row: int) (column: int) (reference: string) (label: string option) : TableCitation =
+        { Column = column
+          Label = label |> Option.map TextSource.Literal
+          Reference = reference
+          Row = row }
+
+    node
+        "table-citation-all"
+        (Fuaran.table
+            "table-citation-all"
+            { Defaults.table<obj> with
+                Headers =
+                    [ TextSource.Literal "Channel"
+                      TextSource.Literal "Spend"
+                      TextSource.Literal "Share"
+                      TextSource.Literal "Brands" ]
+                Rows =
+                    [ [ TextSource.Literal "Online"
+                        TextSource.Literal "£412k"
+                        TextSource.Literal "23%"
+                        TextSource.Literal "17" ]
+                      [ TextSource.Literal "Retail"
+                        TextSource.Literal "£1.2m"
+                        TextSource.Literal "67%"
+                        TextSource.Literal "41" ] ]
+                Citations =
+                    [ cited 0 1 "9f04f29b27c86926a1c3e5d7b8f0a2c4e6d8f0a1b3c5d7e9f1a3b5c7d9e1f3a5" (Some "Online spend")
+                      cited 0 2 "fact:online-share" (Some "Online share of category spend")
+                      cited 0 3 "fact:online-brands" None
+                      cited 1 1 "fact:retail-spend" (Some "Retail spend")
+                      cited 1 2 "fact:retail-share" None
+                      cited 1 3 "fcst:retail-brands@2026-11-01" None ] })
+            .Kind
+        None
+
+/// Phase 2592 — some cells cited, in a table declaring sort intent and a toned column, so a
+/// cited pill keeps its pill and a cited cell keeps its place under a declared column.
+[<NodeFixture "Visualisation/Grid (Phase 2592 — static table with some figures cited, beside a toned column and sort intent)">]
+let tableCitationSome: Node<obj> =
+    node
+        "table-citation-some"
+        (Fuaran.tableWithColumns
+            "table-citation-some"
+            [ TableColumn.text "segment"
+              TableColumn.text "revenue"
+              TableColumn.tonedPill
+                  "change"
+                  (Map.ofList [ "+4.1%", ToneVariant.Success; "-2.3%", ToneVariant.Critical ])
+                  ToneVariant.Default ]
+            { Defaults.table<obj> with
+                Headers =
+                    [ TextSource.Literal "Segment"
+                      TextSource.Literal "Revenue"
+                      TextSource.Literal "Change" ]
+                Rows =
+                    [ [ TextSource.Literal "Retail"
+                        TextSource.Literal "1200"
+                        TextSource.Literal "+4.1%" ]
+                      [ TextSource.Literal "Wholesale"
+                        TextSource.Literal "980"
+                        TextSource.Literal "-2.3%" ] ]
+                Sortable = Some true
+                Citations =
+                    [ { Column = 1
+                        Label = Some(TextSource.Literal "Retail revenue")
+                        Reference = "fact:retail-revenue"
+                        Row = 0 }
+                      { Column = 2
+                        Label = Some(TextSource.Literal "Wholesale change")
+                        Reference = "fact:wholesale-change"
+                        Row = 1 } ] })
+            .Kind
+        None
+
+/// Phase 2592 — the uncited twin of `table-citation-all`: the member is absent, and the table
+/// is what it has always been on the wire and on the page.
+[<NodeFixture "Visualisation/Grid (Phase 2592 — static table citing nothing)">]
+let tableCitationNone: Node<obj> =
+    node
+        "table-citation-none"
+        (Fuaran.table
+            "table-citation-none"
+            { Defaults.table<obj> with
+                Headers =
+                    [ TextSource.Literal "Channel"
+                      TextSource.Literal "Spend"
+                      TextSource.Literal "Share"
+                      TextSource.Literal "Brands" ]
+                Rows =
+                    [ [ TextSource.Literal "Online"
+                        TextSource.Literal "£412k"
+                        TextSource.Literal "23%"
+                        TextSource.Literal "17" ]
+                      [ TextSource.Literal "Retail"
+                        TextSource.Literal "£1.2m"
+                        TextSource.Literal "67%"
+                        TextSource.Literal "41" ] ] })
             .Kind
         None
 

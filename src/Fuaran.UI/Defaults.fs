@@ -560,7 +560,9 @@ let table<'Msg> : TableSpec<'Msg> =
       OnRowClick = Option.None
       // Phase 801 — sort intent is opt-in; absent is absent on the wire.
       Sortable = Option.None
-      DefaultSort = Option.None }
+      DefaultSort = Option.None
+      // Phase 2592 — likewise a citation.
+      Citations = [] }
 
 let map<'Msg> : MapSpec<'Msg> =
     { Source = noBinding<MapMarker list>

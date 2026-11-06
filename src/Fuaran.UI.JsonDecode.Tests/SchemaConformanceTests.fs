@@ -152,6 +152,12 @@ let private schemaInexpressibleRejects: Set<string> =
           // Phase 2591 — a name unique across a list of records: `uniqueItems` compares whole
           // items, and two citations with one name differ in their references.
           "reject-markdown-citation-name-repeated"
+          // Phase 2592 — a coordinate is read against the rows beside it, a relation no
+          // keyword states, and one cell cited twice differs in its references.
+          "reject-table-citation-row-range"
+          "reject-table-citation-column-range"
+          "reject-table-citation-column-jagged"
+          "reject-table-citation-cell-repeated"
           // Phase 2571 — the option-group refusals are relations ACROSS the
           // document (a value unique over every group's list; a value one of the
           // sibling `source`'s options carries). `uniqueItems` reaches one array
