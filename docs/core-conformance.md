@@ -108,7 +108,7 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 | `Conformance.reducer` | Adopted | 1200 | `the Phase-406 StreamEntry witness certifies via Conformance.certifyStream (consumption)` — via `Conformance.certifyStream` |
 | `Conformance.referenceLawsAt` | Not used | — | a Core RefWitness — the tier declares no Core reference seam (no project here builds a RefWitness) |
 | `Conformance.registryLaws` | Adopted | — | `the signature-typed function registry certifies under Core's registryLaws` — via `Conformance.registryLaws` |
-| `Conformance.sanitizeLawsAt` | Carried by phase | — | unfiled — Fuaran.UI.Renderer's Sanitize is this host's copy of the sanitisation floor the family holds every host to (Fuaran.Core.Idl.Sanitize is the reference witness); adoption is one SanitizeWitness over the tier's sanitiser |
+| `Conformance.sanitizeLawsAt` | Adopted | 1800 | `the renderer's sanitisation floor certifies under Core's sanitizeLawsAt, with its stated limit` — via `Conformance.sanitizeLawsAt (.NET)`<br>`sanitizeLawsAt certifies through the Fable law harness over the renderer's floor` — via `Conformance.sanitizeLawsAt (Fable and Node)` |
 | `Conformance.schemaWalkLaws` | Adopted | 600 | `static output-schema derivation certifies under Core's schemaWalkLaws` — via `Conformance.schemaWalkLaws` |
 | `Conformance.seamRefusalLaws` | Not used | — | the capability / pipeline / query / field-change / rejection seams' refusal documents read through Core's derived seam codecs — no project here reads or writes one of those seam documents; the tier's design-provider seam has its own codec, certified by the corpus's design/ family |
 | `Conformance.slotParamLaws` | Adopted | — | `slotParamLaws certifies a param in a Sort / Limit slot at this pin` — via `Conformance.slotParamLaws` |
@@ -145,8 +145,8 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 
 | Status | Families |
 |---|---|
-| Adopted | 59 |
-| Carried by phase | 8 |
+| Adopted | 60 |
+| Carried by phase | 7 |
 | Not used | 49 |
 | Sibling host | 1 |
 | **Total** | **117** |

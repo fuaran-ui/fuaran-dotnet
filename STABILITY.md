@@ -7818,11 +7818,19 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## Phase 2327 — the DAG fold arbitrates with the base-aware footprint (rides the slot opened after v0.102.0)
+## 0.103.0 — the slot opened after v0.102.0 was released (DRAFT — untagged)
 
-_`v0.102.0` is tagged at `00225688`, so this change cannot ride it. It rides the next slot the version ledger opens
-after v0.102.0; this commit does not move `<Version>` (the slot is opened by the ledger act, not by a phase commit).
-Class: **additive**, with a behaviour change in the new entries only._
+_`v0.102.0` is TAGGED (2026-11-06, at `00225688`), so nothing may ride it: the changes below open the next slot.
+The slot was opened as `0.102.1` (additive) by Phases 2327 and 2010; Phase 2060 REMOVES two public `Introspect`
+functions, which is a higher class than the draft carried, so under the draft-slot rule the slot ADVANCES to the
+breaking number (`0.103.0` under the 0.x convention) rather than carrying a number that says "additive" over a
+removal. The `<Version>` advance and its ledger record are the release act's, recorded separately; this entry is
+the slot's account of what rides it. Landed together as tier 1 of the core-adoption campaign
+(`camp-obj-core-adoption-20261107T10162`), wave 1._
+
+### What rides this slot — Phase 2327 (the DAG fold arbitrates with the base-aware footprint)
+
+**Class: additive**, with a behaviour change in the new entries only.
 
 Packages `Fuaran.UI.Ops` and `Fuaran.UI.OpStream.Dag.Merge`. No wire byte moves, no hash moves, no existing verdict
 changes.
@@ -7857,6 +7865,59 @@ changes.
 
   Every shape naming `MoveVsRemove` (7198 of the pure form's 7808) is gone under the base-aware form; what remains is
   `ConcurrentUpdate`, `InsertPositionClash` and the slot clashes the form declares on purpose. No triad lands in `OrderSensitive` or `Fault` under either form.
+
+### What rides this slot — Phase 2010 (the markdown floor repeats to a fixed point, and indexes the string it edits)
+
+**Class: additive.** Package `Fuaran.UI.Renderer.Core` (`Sanitize.sanitizeMarkdownHtml`); every renderer that pours
+markdown or SVG markup through it inherits the change.
+
+- **Surface — none.** Two private helpers and a private single pass; the public function keeps its signature.
+- **Behaviour — adversarial input only.** The sweep now repeats until its output stops changing, the rule Core's
+  copy of the floor adopted. A single pass could rebuild a dangerous element from fragments an earlier step of the
+  same pass had already swept. And every scan compares one UTF-16 unit at a time under an ASCII case fold, on the
+  string it edits. Under Fable it used to take its index from a lowered copy, which is longer than the original when
+  the text holds certain non-ASCII letters, so the browser's floor could rewrite the wrong span or throw. The .NET
+  pipeline was not affected by the second point.
+- **Benign input — unchanged.** Output that one pass already left with nothing to sweep is returned as before: the
+  second pass finds nothing, and the fold is exact for every token the sweep looks for. Pinned by the existing
+  markdown, SVG and prose cases in `SanitizeTests.fs`, all unchanged, and by the law family's benign-text law.
+- **Certified.** The floor runs Core's `Conformance.sanitizeLawsAt` on .NET and under Fable, with a stated limit:
+  two of the family's six laws describe a broader floor than the renderer claims, by decision. See `docs/DECISIONS.md`
+  D25.
+
+### What rides this slot — Phase 2060 (the tree walks run on Fuaran.Core; field ops apply in one pass)
+
+**Class: BREAKING** (removals). Packages `Fuaran.UI.Ops` and `Fuaran.UI` (`NodeChildren`).
+
+- **Removed — `Introspect.collectNodeIdsInto`, `Introspect.mapParentOf`** (`Fuaran.UI.Ops`). Both had no callers in
+  this repository or its known consumers; the keyed walks they served are now Fuaran.Core's (`Tree.idsKeyed`,
+  `Tree.path`).
+- **Added — `Introspect.depthOf`** (`Fuaran.UI.Ops`), over `Tree.depth`.
+- **Behaviour — keyed-first on a repeated id (decided).** `findNode`, `mapNode` and `allNodeIds` now locate a node
+  that appears both in a keyed position and in ordered children at its keyed position first, as Core's structural
+  ops already did; the tests pin it. On a well-formed tree (unique ids) nothing changes.
+- **Behaviour — limits.** `InsertChild` works its depth and node-count check out incrementally from the inserted
+  subtree and the parent's depth; every other growing op still measures the whole result, so no refusal changes.
+- **Streaming** delegates to Core's `Ops.shellOf`, `skeletonRoot` and `lower` through a witness that treats a
+  `FragmentDecl` as childless; outputs are unchanged.
+- **`NodeChildren`** reads keyed positions without building a label per ordered child; labels and order unchanged.
+- **Measured.** Per-insert walks removed from this tier cut allocation of a progressive build by ~58% (2.11 GB →
+  0.89 GB at 1,000 nodes). The build stays quadratic because Core's keyed `Ops.apply` scans every id on each insert
+  (filed as fuaran-core spillover). Single field ops on a 241-node deep tree allocate more (44 KB → 221 KB per op)
+  under Core's walk; kept because the shard requires Core's walk, and filed as fuaran spillover against `NodeChildren`.
+
+### What rides this slot — Phase 2028 (the stored-op unescapers copy only between escapes)
+
+**Class: additive — no surface moves, no behaviour moves.** Packages `Fuaran.UI.OpStream.Abstractions`,
+`Fuaran.UI.OpStream.Dag.Abstractions`, `Fuaran.UI.OpStream.Replay`, `Fuaran.UI.OpStream.Sqlite`,
+`Fuaran.UI.OpStream.Dag.Sqlite`.
+
+- Every stored-string reader returns the inner substring when the string holds no backslash, and otherwise copies the
+  runs between escapes; each escape and each failure (value, exception type and message) reads exactly as before, pinned
+  against a frozen copy of the old bodies over an edge table and a seeded 20,000-string fuzz. No corpus, fixture or
+  hash pin changes.
+- In-process A/B: 0.12–0.51× the old time on strings without a backslash, 0.83–0.97× with escapes; DAG-row decode
+  58.8 → 45.7 µs and 37.8 → 25.3 KB.
 
 ---
 

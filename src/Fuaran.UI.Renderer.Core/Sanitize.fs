@@ -855,27 +855,41 @@ let encodeEgressPolicy (policy: EgressPolicy) : string =
 
 // ─── Markdown raw-HTML sanitization ────────────────────────────────────────
 
-/// Strip `<script>` / `<iframe>` / `<object>` / `<embed>` / `<link>` /
-/// `<meta>` / `<form>` elements (open tags + balanced bodies) from a
-/// chunk of HTML, plus inline `on*=` event-handler attributes, plus
-/// `javascript:` / `vbscript:` href / src values. Approximate: this is
-/// NOT a full HTML parser, but since Phase 292 the Fuaran render path feeds
-/// it the deterministic GFM renderer's output (a known, escaped-by-
-/// construction shape), so the substring sweep is sufficient defence in
-/// depth on top of that renderer's own escaping.
+/// ASCII case fold of ONE UTF-16 unit: `A`-`Z` to `a`-`z`, everything else unchanged.
 ///
-/// Hosts that need full DOMPurify-level sanitization layer it consumer-
-/// side over the markdown emission — Fuaran's renderer-side pass is the
-/// floor, not the ceiling. The contract is documented in
-/// `fuaran-dotnet/SANITIZATION.md`.
-///
-/// ⚠️ PRECONDITION (Phase 303): this is a *defence-in-depth* sweep over the Fuaran GFM renderer's
-/// own already-escaped-by-construction output — NOT a general-purpose HTML sanitizer. It is an
-/// approximate substring scanner with the usual gaps (it anchors `on*=` on leading whitespace and
-/// splits attributes on the first `=`/quote), sound for the renderer's narrow output shape but
-/// bypassable on arbitrary untrusted HTML. Do NOT call it as the sole sanitizer for HTML from an
-/// untrusted source — route such input through a real sanitizer (DOMPurify-class) first.
-let sanitizeMarkdownHtml (html: string) : string =
+/// Deliberately not a lowered copy of the string (Phase 2010, the renderer's port of
+/// fuaran-core#291). Under Fable a string lowercase is `toLowerCase()`, which is not
+/// length-preserving — U+0130 becomes two units — so an index taken from a lowered copy and applied
+/// to the original lands on the wrong characters, one position per such character: the sweep then
+/// rewrites the wrong text, and on a long enough run it throws. Every token the sweep scans for (an
+/// element name, `on`, a URL scheme) is ASCII and a browser compares each of them ASCII
+/// case-insensitively, so the per-unit fold is the whole of what a scan needs, and it is the same
+/// function on both pipelines: no index ever comes from a string of another length.
+let private foldAscii (c: char) : char =
+    if c >= 'A' && c <= 'Z' then char (int c + 32) else c
+
+/// The first index at or after `start` where `needle` occurs in `hay`, comparing each unit of `hay`
+/// through `foldAscii`, or `-1`. `needle` MUST already be lower-case ASCII (every caller passes a
+/// literal). The index is into `hay` itself. `String.IndexOf` with `OrdinalIgnoreCase` is not used
+/// for the same reason a lowered copy is not: under Fable it lowers both strings.
+let private indexOfFolded (hay: string) (needle: string) (start: int) : int =
+    let last = hay.Length - needle.Length
+    let mutable i = if start < 0 then 0 else start
+    let mutable found = -1
+
+    while found < 0 && i <= last do
+        let mutable k = 0
+
+        while k < needle.Length && foldAscii hay[i + k] = needle[k] do
+            k <- k + 1
+
+        if k = needle.Length then found <- i else i <- i + 1
+
+    found
+
+/// One pass of the sweep `sanitizeMarkdownHtml` repeats to a fixed point; its contract is
+/// documented there.
+let private scrubPass (html: string) : string =
     if isNull html || html = "" then
         ""
     else
@@ -905,7 +919,7 @@ let sanitizeMarkdownHtml (html: string) : string =
             let mutable found = -1
 
             while found < 0 && from <= s.Length - openTag.Length do
-                let i = s.IndexOf(openTag, from, StringComparison.OrdinalIgnoreCase)
+                let i = indexOfFolded s openTag from
 
                 if i < 0 then
                     from <- s.Length
@@ -928,7 +942,7 @@ let sanitizeMarkdownHtml (html: string) : string =
                 if i < 0 then
                     keepGoing <- false
                 else
-                    let j = result.IndexOf(closeTag, i, StringComparison.OrdinalIgnoreCase)
+                    let j = indexOfFolded result closeTag i
 
                     if j >= 0 then
                         result <- result.Remove(i, j + closeTag.Length - i)
@@ -964,13 +978,14 @@ let sanitizeMarkdownHtml (html: string) : string =
             let mutable keepGoing = true
 
             while keepGoing do
-                let lower = s.ToLowerInvariant()
+                // Scanned on `s` itself, folding per unit, so every index below is an index into
+                // the string it is applied to (Phase 2010).
                 let mutable found = -1
                 let mutable i = 0
                 let mutable insideTag = false
 
-                while i < lower.Length - 3 && found < 0 do
-                    let ch = lower[i]
+                while i < s.Length - 3 && found < 0 do
+                    let ch = s[i]
 
                     if ch = '<' then
                         insideTag <- true
@@ -979,9 +994,9 @@ let sanitizeMarkdownHtml (html: string) : string =
                     elif
                         insideTag
                         && (ch = ' ' || ch = '\t' || ch = '\n')
-                        && lower[i + 1] = 'o'
-                        && lower[i + 2] = 'n'
-                        && (Char.IsLetter lower[i + 3])
+                        && foldAscii s[i + 1] = 'o'
+                        && foldAscii s[i + 2] = 'n'
+                        && (Char.IsLetter s[i + 3])
                     then
                         found <- i
 
@@ -1061,8 +1076,7 @@ let sanitizeMarkdownHtml (html: string) : string =
             let mutable searchFrom = 0
 
             while keepGoing do
-                let lower = result.ToLowerInvariant()
-                let i = lower.IndexOf(proto, searchFrom, StringComparison.Ordinal)
+                let i = indexOfFolded result proto searchFrom
 
                 if i < 0 then
                     keepGoing <- false
@@ -1075,10 +1089,10 @@ let sanitizeMarkdownHtml (html: string) : string =
                     let mutable settled = false
 
                     while j >= 0 && not settled do
-                        if lower[j] = '<' then
+                        if result[j] = '<' then
                             insideTag <- true
                             settled <- true
-                        elif lower[j] = '>' then
+                        elif result[j] = '>' then
                             settled <- true
                         else
                             j <- j - 1
@@ -1096,3 +1110,53 @@ let sanitizeMarkdownHtml (html: string) : string =
                         searchFrom <- i + proto.Length
 
         result
+
+/// Strip `<script>` / `<iframe>` / `<object>` / `<embed>` / `<link>` /
+/// `<meta>` / `<form>` elements (open tags + balanced bodies) from a
+/// chunk of HTML, plus inline `on*=` event-handler attributes, plus
+/// `javascript:` / `vbscript:` href / src values. Approximate: this is
+/// NOT a full HTML parser, but since Phase 292 the Fuaran render path feeds
+/// it the deterministic GFM renderer's output (a known, escaped-by-
+/// construction shape), so the substring sweep is sufficient defence in
+/// depth on top of that renderer's own escaping.
+///
+/// Hosts that need full DOMPurify-level sanitization layer it consumer-
+/// side over the markdown emission — Fuaran's renderer-side pass is the
+/// floor, not the ceiling. The contract is documented in
+/// `fuaran-dotnet/SANITIZATION.md`.
+///
+/// ⚠️ PRECONDITION (Phase 303): this is a *defence-in-depth* sweep over the Fuaran GFM renderer's
+/// own already-escaped-by-construction output — NOT a general-purpose HTML sanitizer. It is an
+/// approximate substring scanner with the usual gaps (it anchors `on*=` on leading whitespace and
+/// splits attributes on the first `=`/quote), sound for the renderer's narrow output shape but
+/// bypassable on arbitrary untrusted HTML. Do NOT call it as the sole sanitizer for HTML from an
+/// untrusted source — route such input through a real sanitizer (DOMPurify-class) first.
+///
+/// **The sweep repeats until it changes nothing** (Phase 2010; Core adopted the same rule in its
+/// Phase 349). One pass is not enough: REMOVING text splices its neighbours together, and the splice
+/// can form something an EARLIER step of the same pass already swept — `<scr<iframe>ipt>` loses its
+/// `<iframe>` after the `<script` step has run and came out a live `<script>`, and stripping the
+/// handler from `<scri onx=""pt>` did the same. At the fixed point no step finds anything, which is
+/// exactly the floor this function claims, and the output is idempotent by construction.
+///
+/// It terminates. Count the text's length plus two per `javascript:` / `vbscript:` occurrence in it.
+/// A scheme rewrite leaves that count unchanged or lowers it (the occurrence goes and `about:blank`,
+/// which can form neither scheme, is at most two units longer). Every removal lowers it by at least
+/// two: it takes at least four units (a handler's white space, `on` and a letter; an element's
+/// shortest opener is longer) and can form at most one new scheme at its splice point, because
+/// neither scheme can overlap another occurrence. And after the first pass a pass that removes
+/// nothing changes nothing: the scheme step ends every pass with no scheme left inside a tag, so a
+/// pass can only find a new one where a removal moved a tag boundary. So every pass after the first
+/// that changes the text lowers a non-negative count.
+let sanitizeMarkdownHtml (html: string) : string =
+    if isNull html then
+        ""
+    else
+        let mutable current = scrubPass html
+        let mutable next = scrubPass current
+
+        while next <> current do
+            current <- next
+            next <- scrubPass current
+
+        current

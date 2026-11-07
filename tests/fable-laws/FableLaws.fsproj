@@ -56,6 +56,10 @@
     <!-- Law 10 (Phase 2570): a page signed by the .NET provider verifies through the published
          ClaimVerifier on both pipelines - the BCL here, WebCrypto under Node. -->
     <Compile Include="AttestationLaw.fs" />
+    <!-- Law 11 (Phase 2010): the renderer's markdown floor over the cases the .NET suite pins,
+         linked from the suite that runs them there. -->
+    <Compile Include="..\..\src\Fuaran.UI.Tests\SanitizeCases.fs" Link="SanitizeCases.fs" />
+    <Compile Include="SanitizeLaw.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
