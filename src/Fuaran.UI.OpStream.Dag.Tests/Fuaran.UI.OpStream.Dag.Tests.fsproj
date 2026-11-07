@@ -50,6 +50,8 @@
     <Compile Include="CoreDagLawTests.fs" />
     <!-- Phase 2393 - the repository-wide guard: no test reaches the temp root except through TempDir. -->
     <Compile Include="TempDirGuardTests.fs" />
+    <!-- Phase 2028 - the stored-op string readers equal their pre-2028 bodies on every input. -->
+    <Compile Include="StoredOpUnescapeTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
