@@ -150,6 +150,8 @@
          client is still SERVED at 1.0 and is neither offered nor served the 1.1
          entry point. Sequenced: the provider registry is page-global. -->
     <Compile Include="AffordancesTests.fs" />
+    <!-- Phase 2010: the markdown floor's cases, Fable-clean; tests/fable-laws links this file. -->
+    <Compile Include="SanitizeCases.fs" />
     <Compile Include="SanitizeTests.fs" />
     <Compile Include="SanitizationCorpusTests.fs" />
     <!-- MarkdownTests pins Phase 292's deterministic GFM renderer

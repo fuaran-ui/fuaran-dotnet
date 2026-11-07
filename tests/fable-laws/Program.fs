@@ -120,6 +120,14 @@ let main _ =
     for line in operability.Lines do
         printfn "%s" line
 
+    // ---- law 11: the renderer's markdown floor, on both pipelines ----
+    // Phase 2010. The U+0130 index defect shows under Fable alone, so the cases the
+    // .NET suite pins are run here too.
+    let sanitize = SanitizeLaw.sanitizeLaw ()
+
+    for line in sanitize.Lines do
+        printfn "%s" line
+
     let violations =
         Laws.mergeViolations mergeVerdict
         + laneFailures
@@ -131,6 +139,7 @@ let main _ =
         + Laws.numberFormatViolations numberFormatCases
         + boardSnapshot.Violations
         + operability.Violations
+        + sanitize.Violations
 
     // ---- law 10: a signed page verifies through the published provider ----
     // Phase 2570. Asynchronous, as WebCrypto is: the TOTAL line is printed once
