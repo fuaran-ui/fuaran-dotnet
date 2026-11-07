@@ -7941,6 +7941,20 @@ markdown or SVG markup through it inherits the change.
   unchanged within noise (190–198 µs both sides); node (Fable) clean 0.80–0.92 → 0.08–0.09 ms, heavy 2.38–2.56 →
   0.33–0.47 ms, keys 0.91–1.02 → 0.29–0.39 ms. Readings: `benchmarks/Fuaran.UI.Ops.Benchmarks/results/`.
 
+### What rides this slot — Phase 2620 (the client-effect decoder refuses the empty members the program wire forbids)
+
+**Class: breaking — a narrowed decode; no public type, member or signature moves.** Package `Fuaran.UI.Program`.
+The slot is already breaking (Phase 2060), so this rides it. `docs/DECISIONS.md` D29 records what was decided.
+
+- `UiWitness.decodeClientEffect` (and so `ProgramWire.decodeClientEffect` and every reader of a client effect) refuses,
+  on `missing-member` with the detail `member '<name>' is empty`, a present-and-empty `Navigate` / `PushState`
+  `route`, `Focus` / `ReadFileBody` `nodeId`, `Download` `url` and `name`, and `Confirm` `prompt` and `token`
+  (`PROGRAM_WIRE.md` §2's non-empty rule). A document carrying one decoded before and is refused now; no conformant
+  emitter writes one.
+- **What did not move:** the encoder, and `WriteToClipboard`'s `text`, which is content and may still be empty.
+- Certified by the program specification's eight new `client-effect/reject-*-empty-*` vectors, which the conformance
+  suite runs for their class, and by `ClientEffectNonEmptyTests`.
+
 ---
 
 ## 0.102.0 (RELEASED — tagged v0.102.0 at 00225688, 2026-11-06)
