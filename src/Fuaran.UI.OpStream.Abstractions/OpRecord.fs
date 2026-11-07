@@ -107,12 +107,38 @@ module Actor =
 
     /// Read a canonical JSON string starting at `i` (`s[i]` must be '"').
     /// Returns the unescaped value + the index just past the closing quote.
+    ///
+    /// The first run of ordinary characters is scanned before anything is built,
+    /// so a value with no backslash comes back as one substring (Phase 2028); with
+    /// a backslash, the runs between escapes are copied whole. Every escape, and
+    /// every refusal (a bad `\u`, a backslash at the end of input, no closing
+    /// quote), reads exactly as before.
     let private readString (s: string) (i: int) : (string * int) option =
-        if i >= s.Length || s[i] <> '"' then
-            None
-        else
+        // The end of the run of ordinary characters starting at `j`.
+        let runEnd (j: int) : int =
+            let mutable k = j
+
+            while k < s.Length && s[k] <> '"' && s[k] <> '\\' do
+                k <- k + 1
+
+            k
+
+        // Manual 4-digit hex parse for the \uXXXX escape. Fable rejects the
+        // NumberStyles.HexNumber + culture TryParse overload ("provider argument
+        // is ignored"), and the single-arg overload can't read hex, so the four
+        // nibbles are parsed directly: pure char arithmetic, Fable-safe and
+        // .NET-identical, keeping the graceful-failure (ok <- false) path.
+        let hexDigit (c: char) : int =
+            if c >= '0' && c <= '9' then int c - int '0'
+            elif c >= 'a' && c <= 'f' then int c - int 'a' + 10
+            elif c >= 'A' && c <= 'F' then int c - int 'A' + 10
+            else -1
+
+        // The escape-bearing path: `s[first]` is the first backslash.
+        let unescapeFrom (first: int) : (string * int) option =
             let sb = System.Text.StringBuilder()
-            let mutable j = i + 1
+            sb.Append(s, i + 1, first - i - 1) |> ignore
+            let mutable j = first
             let mutable finished = false
             let mutable ok = true
 
@@ -134,19 +160,6 @@ module Actor =
                             sb.Append '\\' |> ignore
                             j <- j + 2
                         | 'u' when j + 5 < s.Length ->
-                            // Manual 4-digit hex parse for the \uXXXX escape.
-                            // Fable rejects the NumberStyles.HexNumber + culture
-                            // TryParse overload ("provider argument is ignored"),
-                            // and the single-arg overload can't read hex — so we
-                            // parse the four nibbles directly. Pure char
-                            // arithmetic, Fable-safe AND .NET-identical, and it
-                            // preserves the graceful-failure (ok <- false) path.
-                            let hexDigit (c: char) : int =
-                                if c >= '0' && c <= '9' then int c - int '0'
-                                elif c >= 'a' && c <= 'f' then int c - int 'a' + 10
-                                elif c >= 'A' && c <= 'F' then int c - int 'A' + 10
-                                else -1
-
                             let d0 = hexDigit s[j + 2]
                             let d1 = hexDigit s[j + 3]
                             let d2 = hexDigit s[j + 4]
@@ -162,10 +175,24 @@ module Actor =
                             sb.Append other |> ignore
                             j <- j + 2
                 else
-                    sb.Append c |> ignore
-                    j <- j + 1
+                    // A run of ordinary characters, copied whole.
+                    let stop = runEnd j
+                    sb.Append(s, j, stop - j) |> ignore
+                    j <- stop
 
             if ok && finished then Some(sb.ToString(), j) else None
+
+        if i >= s.Length || s[i] <> '"' then
+            None
+        else
+            let first = runEnd (i + 1)
+
+            if first >= s.Length then
+                None // no closing quote
+            elif s[first] = '"' then
+                Some(s.Substring(i + 1, first - i - 1), first + 1)
+            else
+                unescapeFrom first
 
     /// Extract the value of the first `"<key>":"<string>"` occurrence.
     let private field (key: string) (s: string) : string option =

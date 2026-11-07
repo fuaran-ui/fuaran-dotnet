@@ -101,10 +101,8 @@ module private ResultEnvelopeJson =
             let extractString (key: string) : string option =
                 let needle = sprintf "\"%s\":\"" key
 
-                match json.IndexOf(needle, System.StringComparison.Ordinal) with
-                | -1 -> None
-                | start ->
-                    let valueStart = start + needle.Length
+                // The escape-reading loop, from the value's first character.
+                let readEscaped (valueStart: int) : string option =
                     let mutable i = valueStart
                     let sb = System.Text.StringBuilder()
                     let mutable closed = false
@@ -137,6 +135,20 @@ module private ResultEnvelopeJson =
                             i <- i + 1
 
                     if closed && not failed then Some(sb.ToString()) else None
+
+                match json.IndexOf(needle, System.StringComparison.Ordinal) with
+                | -1 -> None
+                | start ->
+                    let valueStart = start + needle.Length
+                    // Phase 2028: a value with no backslash before its closing quote
+                    // is the substring between them, with no builder. Anything else
+                    // takes the escape-reading loop, unchanged, from the top.
+                    let quote = json.IndexOf('"', valueStart)
+
+                    if quote >= 0 && json.IndexOf('\\', valueStart, quote - valueStart) < 0 then
+                        Some(json.Substring(valueStart, quote - valueStart))
+                    else
+                        readEscaped valueStart
 
             match extractString "code", extractString "message" with
             | Some code, Some message -> Ok(OpResultEnvelope.Failure(code, message))

@@ -250,15 +250,33 @@ module StreamEntry =
     /// is here because the pre-1525 `Substring(1, raw.Length - 2)` THREW on a
     /// shorter span, and a throw is precisely what a caller holding a `Result`
     /// has no way to handle.
-    let private unquote (raw: string) : string =
+    ///
+    /// Nearly every stored string holds no backslash, so that case returns the
+    /// inner substring itself: no builder and no second copy (Phase 2028). With a
+    /// backslash, `unescapeFrom` copies the runs between escapes whole.
+    let rec private unquote (raw: string) : string =
         let inner =
             if raw.Length < 2 then
                 raw
             else
                 raw.Substring(1, raw.Length - 2)
 
-        let sb = System.Text.StringBuilder()
-        let mutable i = 0
+        let firstEscape = inner.IndexOf '\\'
+
+        if firstEscape < 0 then
+            inner
+        else
+            unescapeFrom inner firstEscape
+
+    /// The escape-bearing path of `unquote`: `inner[firstEscape]` is the first
+    /// backslash. Every escape reads exactly as it did before Phase 2028,
+    /// including a bad `\u` (kept as its six literal characters), a `\u` too near
+    /// the end to hold four digits (read as the shorthand `u`) and a backslash
+    /// with nothing after it (kept as itself).
+    and private unescapeFrom (inner: string) (firstEscape: int) : string =
+        let sb = System.Text.StringBuilder(inner.Length)
+        sb.Append(inner, 0, firstEscape) |> ignore
+        let mutable i = firstEscape
 
         let hexDigit (c: char) : int =
             if c >= '0' && c <= '9' then int c - int '0'
@@ -311,8 +329,12 @@ module StreamEntry =
                     sb.Append other |> ignore
                     i <- i + 2
             else
-                sb.Append inner[i] |> ignore
-                i <- i + 1
+                // The run up to the next backslash, copied whole. `inner[i]` is an
+                // ordinary character or a trailing lone backslash; both stand as is.
+                let next = inner.IndexOf('\\', i + 1)
+                let stop = if next < 0 then inner.Length else next
+                sb.Append(inner, i, stop - i) |> ignore
+                i <- stop
 
         sb.ToString()
 

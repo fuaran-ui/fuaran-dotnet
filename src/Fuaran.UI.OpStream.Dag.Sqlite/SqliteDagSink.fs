@@ -94,24 +94,41 @@ module private DagJson =
             // Strip the surrounding [ ], split top-level quoted strings.
             let inner = trimmed.Trim('[', ']')
             let result = ResizeArray<string>()
-            let sb = StringBuilder()
-            let mutable inStr = false
-            let mutable escaped = false
 
-            for ch in inner do
-                if escaped then
-                    sb.Append ch |> ignore
-                    escaped <- false
-                elif ch = '\\' then
-                    escaped <- true
-                elif ch = '"' then
-                    if inStr then
-                        result.Add(sb.ToString())
-                        sb.Clear() |> ignore
+            // Phase 2028: the parents are 64-hex hashes, so a row holds no escape
+            // and each parent is the substring between a pair of quotes. A row
+            // with a backslash anywhere takes the escape-aware scanner, unchanged.
+            if inner.IndexOf '\\' < 0 then
+                let mutable openQuote = inner.IndexOf '"'
 
-                    inStr <- not inStr
-                elif inStr then
-                    sb.Append ch |> ignore
+                while openQuote >= 0 do
+                    let closeQuote = inner.IndexOf('"', openQuote + 1)
+
+                    if closeQuote < 0 then
+                        // An unterminated last string: the scanner drops it too.
+                        openQuote <- -1
+                    else
+                        result.Add(inner.Substring(openQuote + 1, closeQuote - openQuote - 1))
+                        openQuote <- inner.IndexOf('"', closeQuote + 1)
+            else
+                let sb = StringBuilder()
+                let mutable inStr = false
+                let mutable escaped = false
+
+                for ch in inner do
+                    if escaped then
+                        sb.Append ch |> ignore
+                        escaped <- false
+                    elif ch = '\\' then
+                        escaped <- true
+                    elif ch = '"' then
+                        if inStr then
+                            result.Add(sb.ToString())
+                            sb.Clear() |> ignore
+
+                        inStr <- not inStr
+                    elif inStr then
+                        sb.Append ch |> ignore
 
             List.ofSeq result
 

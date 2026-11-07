@@ -236,38 +236,53 @@ module DagWire =
         j
 
     /// Unescape a raw JSON string substring (including its surrounding quotes).
+    ///
+    /// A string with no backslash, nearly every stored one, comes back as the inner
+    /// substring itself (Phase 2028); otherwise the runs between escapes are copied
+    /// whole. Each escape reads as before, and a bad `\u` still throws from
+    /// `Convert.ToInt32`, so a caller catching it reports the same message.
     let private unquote (raw: string) : string =
         let inner = raw.Substring(1, raw.Length - 2)
-        let sb = StringBuilder()
-        let mutable i = 0
+        let firstEscape = inner.IndexOf '\\'
 
-        while i < inner.Length do
-            if inner[i] = '\\' && i + 1 < inner.Length then
-                match inner[i + 1] with
-                | '"' ->
-                    sb.Append '"' |> ignore
-                    i <- i + 2
-                | '\\' ->
-                    sb.Append '\\' |> ignore
-                    i <- i + 2
-                | 'n' ->
-                    sb.Append '\n' |> ignore
-                    i <- i + 2
-                | 't' ->
-                    sb.Append '\t' |> ignore
-                    i <- i + 2
-                | 'u' when i + 5 < inner.Length ->
-                    let code = System.Convert.ToInt32(inner.Substring(i + 2, 4), 16)
-                    sb.Append(char code) |> ignore
-                    i <- i + 6
-                | other ->
-                    sb.Append other |> ignore
-                    i <- i + 2
-            else
-                sb.Append inner[i] |> ignore
-                i <- i + 1
+        if firstEscape < 0 then
+            inner
+        else
+            let sb = StringBuilder(inner.Length)
+            sb.Append(inner, 0, firstEscape) |> ignore
+            let mutable i = firstEscape
 
-        sb.ToString()
+            while i < inner.Length do
+                if inner[i] = '\\' && i + 1 < inner.Length then
+                    match inner[i + 1] with
+                    | '"' ->
+                        sb.Append '"' |> ignore
+                        i <- i + 2
+                    | '\\' ->
+                        sb.Append '\\' |> ignore
+                        i <- i + 2
+                    | 'n' ->
+                        sb.Append '\n' |> ignore
+                        i <- i + 2
+                    | 't' ->
+                        sb.Append '\t' |> ignore
+                        i <- i + 2
+                    | 'u' when i + 5 < inner.Length ->
+                        let code = System.Convert.ToInt32(inner.Substring(i + 2, 4), 16)
+                        sb.Append(char code) |> ignore
+                        i <- i + 6
+                    | other ->
+                        sb.Append other |> ignore
+                        i <- i + 2
+                else
+                    // The run up to the next backslash, copied whole. `inner[i]` is an
+                    // ordinary character or a trailing lone backslash; both stand as is.
+                    let next = inner.IndexOf('\\', i + 1)
+                    let stop = if next < 0 then inner.Length else next
+                    sb.Append(inner, i, stop - i) |> ignore
+                    i <- stop
+
+            sb.ToString()
 
     /// Map of top-level key → raw value substring for a canonical envelope.
     let private topLevelFields (json: string) : Map<string, string> =
