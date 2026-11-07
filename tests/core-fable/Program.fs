@@ -432,7 +432,8 @@ let private idlTouch =
                       Opt = Required
                       Annotations = Annotations.Empty
                       Aliases = []
-                      Presence = None }
+                      Presence = None
+                      Keyed = false }
                     // Phase 113 — one ANNOTATED field, so the Fable leg actually reaches
                     // `Artifact.annotationsJson`. An empty set short-circuits before any of
                     // it runs, so an all-empty vocabulary would compile the type and prove
@@ -449,7 +450,8 @@ let private idlTouch =
                             InProcessOnly = false
                             Since = Some "0.18.0" }
                       Aliases = []
-                      Presence = None } ] }
+                      Presence = None
+                      Keyed = false } ] }
               { Tag = "Box"
                 Category = "container"
                 Annotations = Annotations.Empty
@@ -459,7 +461,8 @@ let private idlTouch =
                       Opt = Required
                       Annotations = Annotations.Empty
                       Aliases = []
-                      Presence = None } ] } ]
+                      Presence = None
+                      Keyed = false } ] } ]
           Unions = []
           Enums = [ Declare.enumOf "Tone" [ "Calm"; "Loud" ] ]
           Records = []
