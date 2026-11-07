@@ -66,22 +66,12 @@ module private DagJson =
         Actor.tryDecode raw |> Option.defaultValue (Actor.ofLegacyString raw)
 
     /// JSON array of parent hashes. Hashes are 64-hex / opaque tokens with no
-    /// JSON-special characters, but we quote + escape defensively.
+    /// JSON-special characters, but each is spelled through Core's canonical
+    /// escape all the same (Phase 2026).
     let encodeParents (parents: string list) : string =
-        let esc (s: string) =
-            let sb = StringBuilder()
-            sb.Append '"' |> ignore
-
-            for ch in s do
-                match ch with
-                | '"' -> sb.Append "\\\"" |> ignore
-                | '\\' -> sb.Append "\\\\" |> ignore
-                | c -> sb.Append c |> ignore
-
-            sb.Append '"' |> ignore
-            sb.ToString()
-
-        "[" + (parents |> List.map esc |> String.concat ",") + "]"
+        "["
+        + (parents |> List.map Fuaran.Core.JsonString.quote |> String.concat ",")
+        + "]"
 
     /// Inverse of `encodeParents`. The writer is the only producer, so a small
     /// scanner over the quoted tokens is enough.
@@ -136,10 +126,14 @@ module private DagJson =
         match envelope with
         | OpResultEnvelope.Success -> "{\"$type\":\"Success\"}"
         | OpResultEnvelope.Failure(code, message) ->
-            let esc (s: string) =
-                s.Replace("\\", "\\\\").Replace("\"", "\\\"")
-
-            sprintf "{\"$type\":\"Failure\",\"code\":\"%s\",\"message\":\"%s\"}" (esc code) (esc message)
+            // Phase 2026: Core's canonical escape, so a control character is
+            // `\u00xx` and the column is valid JSON. A row written before it
+            // holds the control character raw; the reader below takes both.
+            "{\"$type\":\"Failure\",\"code\":"
+            + Fuaran.Core.JsonString.quote code
+            + ",\"message\":"
+            + Fuaran.Core.JsonString.quote message
+            + "}"
 
     /// Inverse of `encodeEnvelope`. `Success` is the common case; a `Failure`
     /// extracts the two quoted strings (the encoder is the only writer).
@@ -161,7 +155,12 @@ module private DagJson =
                     while not closed && i < json.Length do
                         let c = json[i]
 
-                        if c = '\\' && i + 1 < json.Length then
+                        if c = '\\' && i + 5 < json.Length && json[i + 1] = 'u' then
+                            // `\uXXXX`: the writer's spelling of a control
+                            // character since Phase 2026.
+                            sb.Append(char (Convert.ToInt32(json.Substring(i + 2, 4), 16))) |> ignore
+                            i <- i + 6
+                        elif c = '\\' && i + 1 < json.Length then
                             sb.Append json[i + 1] |> ignore
                             i <- i + 2
                         elif c = '"' then

@@ -62,19 +62,8 @@ module private ResultEnvelopeJson =
     // Hand-rolled, no Newtonsoft / no Fable.SimpleJson — same posture as
     // ArgsJsonContract. Closed shape so we don't need a codec from the host.
 
-    let private escape (s: string) : string =
-        let sb = System.Text.StringBuilder()
-        sb.Append '"' |> ignore
-
-        for ch in s do
-            match ch with
-            | '"' -> sb.Append "\\\"" |> ignore
-            | '\\' -> sb.Append "\\\\" |> ignore
-            | c when c < ' ' -> sb.Append(sprintf "\\u%04x" (int c)) |> ignore
-            | c -> sb.Append c |> ignore
-
-        sb.Append '"' |> ignore
-        sb.ToString()
+    /// A string as a JSON string literal, through Core's canonical escape (Phase 2026).
+    let private escape (s: string) : string = Fuaran.Core.JsonString.quote s
 
     let encode (envelope: OpResultEnvelope) : string =
         match envelope with

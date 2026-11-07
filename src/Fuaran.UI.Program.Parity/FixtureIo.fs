@@ -262,22 +262,8 @@ let load (fixturesRoot: string) : Fixture list =
 /// `"`, `\` and the control range, and nothing else. Deliberately NOT
 /// `JsonSerializer.Serialize`, whose default escaping spells an ordinary quote
 /// `"` — valid, and unreadable in a corpus a human is meant to review.
-let private quoted (s: string) : string =
-    let sb = Text.StringBuilder()
-    sb.Append '"' |> ignore
-
-    for ch in s do
-        if ch = '"' then
-            sb.Append "\\\"" |> ignore
-        elif ch = '\\' then
-            sb.Append "\\\\" |> ignore
-        elif ch < ' ' then
-            sb.AppendFormat("\\u{0:x4}", int ch) |> ignore
-        else
-            sb.Append ch |> ignore
-
-    sb.Append '"' |> ignore
-    sb.ToString()
+/// Core's canonical escape (Phase 2026), which is exactly that rule.
+let private quoted (s: string) : string = Fuaran.Core.JsonString.quote s
 
 /// One payload value as the event script spells it — `liveValueOf` read back.
 let private liveValueText (v: Fuaran.UI.ServerDriven.Validation.LiveValue) : string =

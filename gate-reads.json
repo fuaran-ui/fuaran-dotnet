@@ -35,6 +35,10 @@
   ],
   "notBuilt": [
     {
+      "path": "benchmarks/Fuaran.UI.Ops.Benchmarks/escape-node/EscapeNode.fsproj",
+      "reason": "the node leg of the escape-rate benchmark: a timing that needs a Node runtime, deliberately outside Fuaran.sln and the gate; run by hand with run-escape-node.ps1"
+    },
+    {
       "path": "samples/apply-demo/ApplyDemo.fsproj",
       "reason": "the in-page apply host: outside Fuaran.sln and the local gate (run.ps1); CI's apply-parity-fable workflow Fable-compiles it and runs its parity job"
     },

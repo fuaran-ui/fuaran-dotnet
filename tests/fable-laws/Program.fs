@@ -144,6 +144,11 @@ let main _ =
     for line in sanitizeKit.Lines do
         printfn "%s" line
 
+    let escape = EscapeLaw.escapeLaw ()
+
+    for line in escape.Lines do
+        printfn "%s" line
+
     let violations =
         Laws.mergeViolations mergeVerdict
         + laneFailures
@@ -158,6 +163,7 @@ let main _ =
         + operability.Violations
         + sanitize.Violations
         + sanitizeKit.Violations
+        + escape.Violations
 
     // ---- law 10: a signed page verifies through the published provider ----
     // Phase 2570. Asynchronous, as WebCrypto is: the TOTAL line is printed once

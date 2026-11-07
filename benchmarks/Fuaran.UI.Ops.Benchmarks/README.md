@@ -52,6 +52,20 @@ InMemory is the floor — a Sqlite sink layers I/O on top, but the in-process
 append (Dictionary insert + per-stream lock + async-state-machine cost) is the
 bookkeeping core every sink shares.
 
+The canonical encoder's **string escape** has its own cases (Phase 2026), because the
+op shapes above carry strings a few characters long and the escape is an unseparated
+sliver of their encode. `EscapeRate.fs` times one `CanonicalJson.encodeOp` per case,
+each dominated by the escape: `clean` (one 4,096-character string with nothing to
+escape), `heavy` (4,096 characters, every fourth escaped) and `keys` (an object of 256
+short keys and values). `capture op` fills `opstream.escape.<case>.mean_ns` / `.alloc_b`
+in-process, and `escape-rate [iterations]` prints them. The same file is Fable-clean:
+`escape-node/run-escape-node.ps1 [-Iterations n]` compiles it with Fable and runs it
+under node, printing `opstream.escape.<case>.node.mean_ns`, so the cost on the browser
+pipeline is measured by the same loop. The node leg is outside `Fuaran.sln` and the
+gate (it needs a Node runtime), declared so in `gate-reads.json`. Every line beside a
+timing prints the encoded length, so two runs are seen to have encoded the same bytes.
+Recorded readings: [`results/`](results/).
+
 ## Build (this opener — done)
 
 ```powershell
@@ -100,6 +114,7 @@ keyed by metric id:
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- hit-rate
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- render-alloc 20000
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- append-rate 20000
+dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- escape-rate 20000
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- tree-diff 20
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- apply-rate 5 1000,10000
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- decode-rate 50

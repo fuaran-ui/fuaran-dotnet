@@ -160,19 +160,11 @@ module ValidatorGate =
           Choices = [ MergeChoice.KeepBase ]
           Hint = ApplyHint.empty }
 
-    /// Mirror of `CanonicalJson`'s string escape (only `"`, `\`, control chars
-    /// need escaping for our ASCII defect fields), kept local so the merge
-    /// package takes no extra dependency for the verdict codec.
+    /// A string as a JSON string literal, through Core's canonical escape
+    /// (Phase 2026) — the escape every other op-stream encoder uses.
     let private appendEscaped (sb: StringBuilder) (s: string) : unit =
         sb.Append '"' |> ignore
-
-        for ch in s do
-            match ch with
-            | '"' -> sb.Append "\\\"" |> ignore
-            | '\\' -> sb.Append "\\\\" |> ignore
-            | c when c < ' ' -> sb.Append(sprintf "\\u%04x" (int c)) |> ignore
-            | c -> sb.Append c |> ignore
-
+        Fuaran.Core.Json.escapeInto sb s
         sb.Append '"' |> ignore
 
     /// Canonical JSON of a gated-merge VERDICT: the introduced-defect set as a

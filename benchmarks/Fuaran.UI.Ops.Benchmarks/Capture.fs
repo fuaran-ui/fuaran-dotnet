@@ -271,8 +271,15 @@ let captureOp (reportPath: string) (appendCount: int) : Baseline.PerfBaseline =
               yield $"opstream.append.{s.Name}.mean_ns", meanNs
               yield $"opstream.append.{s.Name}.alloc_b", allocB ]
 
+    let escapes =
+        [ for c in EscapeRate.all do
+              let meanNs, allocB = EscapeRate.measure c 20000
+              yield $"opstream.escape.{c.Name}.mean_ns", meanNs
+              yield $"opstream.escape.{c.Name}.alloc_b", allocB ]
+
     let measured =
-        appends |> List.fold (fun m (k, v) -> Map.add k v m) (fromBdn opFamily rows)
+        appends @ escapes
+        |> List.fold (fun m (k, v) -> Map.add k v m) (fromBdn opFamily rows)
 
     finish "op-append" runtime (fill Baseline.PerfBaseline.opMetricCatalogue measured)
 
