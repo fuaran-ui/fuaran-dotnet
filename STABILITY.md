@@ -7818,6 +7818,33 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
+## 0.102.1 — the slot opened after v0.102.0 was released (DRAFT — untagged)
+
+_`v0.102.0` is TAGGED (2026-11-06), so nothing may ride it: the change below opens the next slot. Class: **additive**
+— no surface moves, and the floor scrubs more only for adversarial input. Set by Phase 2010. The `<Version>` advance
+and its ledger record are the release act's, recorded separately; this entry is the slot's account of what rides it._
+
+### What rides this slot — Phase 2010 (the markdown floor repeats to a fixed point, and indexes the string it edits)
+
+**Class: additive.** Package `Fuaran.UI.Renderer.Core` (`Sanitize.sanitizeMarkdownHtml`); every renderer that pours
+markdown or SVG markup through it inherits the change.
+
+- **Surface — none.** Two private helpers and a private single pass; the public function keeps its signature.
+- **Behaviour — adversarial input only.** The sweep now repeats until its output stops changing, the rule Core's
+  copy of the floor adopted. A single pass could rebuild a dangerous element from fragments an earlier step of the
+  same pass had already swept. And every scan compares one UTF-16 unit at a time under an ASCII case fold, on the
+  string it edits. Under Fable it used to take its index from a lowered copy, which is longer than the original when
+  the text holds certain non-ASCII letters, so the browser's floor could rewrite the wrong span or throw. The .NET
+  pipeline was not affected by the second point.
+- **Benign input — unchanged.** Output that one pass already left with nothing to sweep is returned as before: the
+  second pass finds nothing, and the fold is exact for every token the sweep looks for. Pinned by the existing
+  markdown, SVG and prose cases in `SanitizeTests.fs`, all unchanged, and by the law family's benign-text law.
+- **Certified.** The floor runs Core's `Conformance.sanitizeLawsAt` on .NET and under Fable, with a stated limit:
+  two of the family's six laws describe a broader floor than the renderer claims, by decision. See `docs/DECISIONS.md`
+  D25.
+
+---
+
 ## 0.102.0 (RELEASED — tagged v0.102.0 at 00225688, 2026-11-06)
 
 _Set by Phase 2576, the first change to ride the slot._

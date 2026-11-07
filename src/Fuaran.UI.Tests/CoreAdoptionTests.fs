@@ -254,6 +254,17 @@ let private containerResults = CoreConf.containerLaws nodew idw opGen 20260619 2
 let private containerRun =
     LawCases.adopt [ "Conformance.containerLaws" ] 200 (fun _ -> containerResults)
 
+// Phase 2010 — the renderer's sanitisation floor, held to Core's sanitisation family through a
+// witness that records every input the family hands it (`SanitizeCases.recordingWitness`); the
+// limit the run states, and why, is `SanitizeCases.judge`'s header.
+let private sanitizeRecording = SanitizeCases.recordingWitness ()
+
+let private sanitizeRecorder = snd sanitizeRecording
+
+let private sanitizeRun =
+    LawCases.adopt [ "Conformance.sanitizeLawsAt" ] 300 (fun n ->
+        CoreConf.sanitizeLawsAt (fst sanitizeRecording) 2010 n)
+
 // Phase 2304 — `TreeOpDiff.diff` lowers `Diff.toOpsContainedWith` under this container
 // predicate, so the contained diff's family runs over this witness.
 let private diffContainedResults =
@@ -397,6 +408,21 @@ let tests =
                       "never reached interior graft"
                       "the ONLY arm the guard may report unreached is the interior graft; any other unreached arm is a generator regression"
               | None -> failtest "a red adequacy law must say which arm it never reached"
+
+          testCase "the renderer's sanitisation floor certifies under Core's sanitizeLawsAt, with its stated limit"
+          <| fun _ ->
+              // Four of the family's six laws hold outright; the attribute law and the markdown
+              // floor law are red for the two decided narrowings (docs/DECISIONS.md D25) and are
+              // asserted red FOR THOSE and no other reason, and every input the family drew is held
+              // to the renderer's own claim instead.
+              let verdict = SanitizeCases.judge sanitizeRun.Value sanitizeRecorder
+
+              Expect.equal verdict.Laws 6 "the family's six laws"
+              Expect.isGreaterThan verdict.Inputs 0 "the family handed the floor its inputs"
+
+              Expect.isEmpty
+                  verdict.Refutations
+                  (sprintf "the renderer's floor under Core's family:\n%s" (String.concat "\n" verdict.Refutations))
 
           testCase "the Fuaran.UI witness certifies under Core's diffContainedLaws (TreeOpDiff's script)"
           <| fun _ ->

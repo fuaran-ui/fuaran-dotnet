@@ -150,6 +150,15 @@ let private laneFoldTest =
 let private laneFoldFableTest =
     "laneFoldLawsAt certifies through the Fable law harness over the tier's reducer and codec"
 
+/// Phase 2010 — the renderer's sanitisation floor at Core's sanitisation family, on .NET
+/// (`CoreAdoptionTests.fs`) and, over the same witness and cases, in the Fable law harness
+/// (`tests/fable-laws/SanitizeLaw.fs`), which prints the second name as its family label.
+let private sanitizeTest =
+    "the renderer's sanitisation floor certifies under Core's sanitizeLawsAt, with its stated limit"
+
+let private sanitizeFableTest =
+    "sanitizeLawsAt certifies through the Fable law harness over the renderer's floor"
+
 let private laneFoldWithTest =
     "lane folding survives the host hash swap under laneFoldLawsWith"
 
@@ -772,9 +781,14 @@ let census: (string * Adoption) list =
       "Conformance.keyedCaptureLaws",
       NotUsed
           "CapabilityRegistry.dispatchCaptured / dispatchReplayed and the keyed capture journal — no project here dispatches a capability through the capture seam"
+      // Phase 2010. Two ports, because the floor ships to the browser and the index defect it was
+      // measured for showed under Fable alone. Adopted WITH A STATED LIMIT both ports assert: the
+      // attribute law and the markdown floor law are red for the renderer's two decided narrowings
+      // (docs/DECISIONS.md D25), and every input the family draws is held to the renderer's own claim.
       "Conformance.sanitizeLawsAt",
-      CarriedBy
-          "unfiled — Fuaran.UI.Renderer's Sanitize is this host's copy of the sanitisation floor the family holds every host to (Fuaran.Core.Idl.Sanitize is the reference witness); adoption is one SanitizeWitness over the tier's sanitiser"
+      AdoptedAcross
+          [ sanitizeTest, "Conformance.sanitizeLawsAt (.NET)"
+            sanitizeFableTest, "Conformance.sanitizeLawsAt (Fable and Node)" ]
       "Conformance.streamConfigLaws",
       CarriedBy
           "unfiled — certify's stream laws run at the tier's StreamWitness under the kit's default chain parameters; this form runs them under a caller's genesis and hash (StreamConfig), and the tier pins SHA-256 (see reconcileLawsWith)"
@@ -1246,7 +1260,9 @@ let private measuredHere: Set<string> =
           "Conformance.columnarValidatorLaws"
           "Conformance.aggregateParityLaws"
           "Conformance.aggregateNullSkipLaws"
-          "Conformance.schemaWalkLaws" ]
+          "Conformance.schemaWalkLaws"
+          // Phase 2010 — the renderer's sanitisation floor (its Fable port runs in the law harness).
+          "Conformance.sanitizeLawsAt" ]
 
 /// The `Cases` cell for one row (roadmap-engine#619's contract): the count `LawCases` registered
 /// for a family this process measures, `—` for a row nothing in `Fuaran.UI.Tests` runs (whether

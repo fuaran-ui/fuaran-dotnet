@@ -158,3 +158,172 @@ let literalCases: (string * string * string) list =
       yield ("element joined after a scheme sweep", "<scr<form></form>ipt>x</script>", "")
 
       yield ("benign prose", "one only once onto online", "one only once onto online") ]
+
+// ============================================================================
+//  The certification: Core's sanitisation family over the renderer's floor.
+//
+//  `Conformance.sanitizeLawsAt` holds a host's six floor functions to the floor
+//  Core's own copy claims. The renderer's copy claims a NARROWER floor in two
+//  decided places (`docs/DECISIONS.md` D25), so two of the family's six laws are
+//  red for this witness BY DESIGN, and the adopting run states that limit
+//  rather than stepping around it (the `containerLaws` posture):
+//
+//   - the attribute law: `sanitizeExtraAttributes` emits the TRIMMED key
+//     (Phase 788: the gate judges `key.Trim()`, so emitting the original would
+//     emit a string the gate never inspected), where the law expects the key as
+//     given; and the key gate refuses any character outside `[A-Za-z0-9-]`,
+//     which Core's claim admits;
+//   - the markdown floor law: a scheme in body text is prose and survives
+//     (Phase 1523), and `<metadata>` is not `<meta>` (Phase 1546), where the law
+//     forbids every occurrence.
+//
+//  A red law records only its FIRST counterexample, so the two red cells alone
+//  could hide a genuine breach behind the decided one. The witness therefore
+//  RECORDS every input the family hands it, and `judge` holds each of them to
+//  the renderer's own claim: the floor above, and a key gate that admits only
+//  what Core's claim admits. The family's generator is reused rather than
+//  restated, so the inputs are exactly the ones Core's own floor is held to.
+// ============================================================================
+
+/// The inputs a run of the family handed the renderer's floor.
+type Recorder =
+    { Markdown: ResizeArray<string>
+      Keys: ResizeArray<string>
+      Maps: ResizeArray<Map<string, string>> }
+
+/// The renderer's six floor functions as a `SanitizeWitness`, each recording its input.
+let recordingWitness () : Fuaran.Core.SanitizeWitness * Recorder =
+    let r =
+        { Markdown = ResizeArray()
+          Keys = ResizeArray()
+          Maps = ResizeArray() }
+
+    let witness: Fuaran.Core.SanitizeWitness =
+        { SanitizeUrl = Fuaran.UI.Renderer.Sanitize.sanitizeUrl
+          SanitizeUrlOrBlank = Fuaran.UI.Renderer.Sanitize.sanitizeUrlOrBlank
+          IsAllowedAttributeKey =
+            fun k ->
+                r.Keys.Add k
+                Fuaran.UI.Renderer.Sanitize.isAllowedExtraAttributeKey k
+          IsSafeAttributeValue = Fuaran.UI.Renderer.Sanitize.isSafeExtraAttributeValue
+          SanitizeAttributes =
+            fun m ->
+                r.Maps.Add m
+                Fuaran.UI.Renderer.Sanitize.sanitizeExtraAttributes m
+          ScrubMarkdown =
+            fun s ->
+                r.Markdown.Add s
+                Fuaran.UI.Renderer.Sanitize.sanitizeMarkdownHtml s }
+
+    witness, r
+
+/// The laws the renderer's floor holds outright, by the opening of their statements.
+let heldLaws: string list =
+    [ "an accepted URL passes the floor"
+      "the URL floor is idempotent"
+      "the URL floor refuses every dangerous URL"
+      "the markdown scrub is idempotent" ]
+
+/// The laws red by design, each with the text its first counterexample must carry: the decided
+/// divergence, met on the family's fixed vectors at iteration 0, so the text is deterministic.
+let statedLimits: (string * string) list =
+    [ "the attribute floor is exactly its claim", "sanitizeAttributes"
+      "scrubbed markdown passes the floor", "a live javascript: scheme" ]
+
+/// Core's key claim, restated: a trimmed `data-` / `aria-` key that is not an `on*` handler and not
+/// `style`.
+let private coreKeyClaim (k: string) =
+    let t = k.Trim()
+
+    t.Length > 0
+    && (t.StartsWith("data-", System.StringComparison.Ordinal)
+        || t.StartsWith("aria-", System.StringComparison.Ordinal))
+    && not (t.Length >= 2 && fold t[0] = 'o' && fold t[1] = 'n')
+    && not (t.Length = 5 && foldedAt t "style" 0)
+
+let private isNameChar (c: char) =
+    (c >= 'a' && c <= 'z')
+    || (c >= 'A' && c <= 'Z')
+    || (c >= '0' && c <= '9')
+    || c = '-'
+
+/// What a run of the family proves about the renderer's floor.
+type Verdict =
+    { Laws: int
+      Held: int
+      StatedLimit: int
+      Inputs: int
+      Refutations: string list }
+
+/// Hold one run's results, and every input it handed the floor, to the renderer's claim.
+let judge (results: Fuaran.Core.LawResult list) (r: Recorder) : Verdict =
+    let starting (prefix: string) =
+        results
+        |> List.filter (fun x -> x.Law.StartsWith(prefix, System.StringComparison.Ordinal))
+
+    let refutations =
+        [ for prefix in heldLaws do
+              match starting prefix with
+              | [ x ] when x.Passed -> ()
+              | [ _ ] -> yield "held law went red: " + prefix
+              | xs -> yield "expected one law opening '" + prefix + "', found " + string (List.length xs)
+
+          for prefix, text in statedLimits do
+              match starting prefix with
+              | [ x ] when x.Passed -> yield "stated limit no longer reached, assert it held instead: " + prefix
+              | [ x ] ->
+                  match x.Counterexample with
+                  | Some c when c.Contains text -> ()
+                  | _ -> yield "red for a reason outside its stated limit: " + prefix
+              | xs -> yield "expected one law opening '" + prefix + "', found " + string (List.length xs)
+
+          if r.Markdown.Count = 0 || r.Keys.Count = 0 || r.Maps.Count = 0 then
+              yield "the family handed the floor no markdown, key or attribute map"
+
+          for i in 0 .. r.Markdown.Count - 1 do
+              match floorBreach (Fuaran.UI.Renderer.Sanitize.sanitizeMarkdownHtml r.Markdown[i]) with
+              | Some breach -> yield "markdown input " + string i + ": " + breach
+              | None -> ()
+
+          for i in 0 .. r.Keys.Count - 1 do
+              let k = r.Keys[i]
+              let allowed = Fuaran.UI.Renderer.Sanitize.isAllowedExtraAttributeKey k
+
+              if allowed && not (coreKeyClaim k) then
+                  yield "key " + string i + ": admitted a key Core's claim refuses"
+              elif not allowed && coreKeyClaim k && Seq.forall isNameChar (k.Trim()) then
+                  yield
+                      "key "
+                      + string i
+                      + ": refused a key Core's claim admits, with no character outside the name set"
+
+          for i in 0 .. r.Maps.Count - 1 do
+              let m = r.Maps[i]
+              let kept = Fuaran.UI.Renderer.Sanitize.sanitizeExtraAttributes m
+
+              let expected =
+                  m
+                  |> Map.fold
+                      (fun acc k v ->
+                          if
+                              Fuaran.UI.Renderer.Sanitize.isAllowedExtraAttributeKey k
+                              && Fuaran.UI.Renderer.Sanitize.isSafeExtraAttributeValue v
+                          then
+                              Map.add (k.Trim()) v acc
+                          else
+                              acc)
+                      Map.empty
+
+              if kept <> expected then
+                  yield
+                      "attribute map "
+                      + string i
+                      + ": kept other than the passing entries, re-keyed trimmed"
+              elif Fuaran.UI.Renderer.Sanitize.sanitizeExtraAttributes kept <> kept then
+                  yield "attribute map " + string i + ": not idempotent" ]
+
+    { Laws = List.length results
+      Held = List.length heldLaws
+      StatedLimit = List.length statedLimits
+      Inputs = r.Markdown.Count + r.Keys.Count + r.Maps.Count
+      Refutations = refutations }

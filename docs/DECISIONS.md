@@ -10,6 +10,56 @@ consequence.
 
 ---
 
+## 2026-11-07 — D25: the renderer keeps its own sanitisation floor, repeats it to a fixed point, and is certified by Core's family with a stated limit
+
+**Decided (Phase 2010).** `Fuaran.UI.Renderer.Sanitize` stays this tier's own copy of the sanitisation floor rather
+than calling `Fuaran.Core.Idl.Sanitize`, and the copy is held to Core's law family
+(`Conformance.sanitizeLawsAt`) on both pipelines it ships to.
+
+1. **Measured first.** Run over the renderer's six floor functions, the family's URL laws (three of six) held as
+   the copy stood. The markdown scrub was not idempotent: one pass could rebuild a dangerous element from fragments
+   an earlier step of the same pass had swept. Under Fable its scans also took an index from a lowered copy of the
+   string, which is longer than the original when the text holds U+0130, so the browser's floor rewrote the wrong
+   span or threw. Neither showed on .NET's own suite for the second defect, because .NET's lowercase is
+   length-preserving.
+2. **Fixed by Core's rule.** The sweep repeats until its output stops changing, and every scan folds one unit at a
+   time on the string it edits. That is the rule Core adopted, and the renderer's structure does not make another
+   one more honest. The termination argument differs from Core's, because a scheme in body text survives here, and
+   it is written beside the function.
+3. **Certified with a stated limit.** Two of the family's six laws describe a broader floor than this copy claims,
+   and the narrowing is decided, not a gap:
+   - The attribute law expects `sanitizeAttributes` to keep each key as given. This copy emits the trimmed key,
+     because the gate judges `key.Trim()` and emitting the original would emit a string nothing inspected
+     (Phase 788). It also refuses any key character outside `[A-Za-z0-9-]`, which the law's claim admits.
+   - The markdown floor law forbids every `javascript:` / `vbscript:` and every dangerous element prefix. This copy
+     rewrites a scheme only inside a tag, because in body text it is prose the renderer escaped by construction
+     (Phase 1523). It strips an element only at a tag-name boundary, because `<metadata>` is not `<meta>`
+     (Phase 1546).
+
+   Both adopting runs assert that those two laws are red for that reason and no other, by the first counterexample
+   each records. A red law reports one counterexample only, so the witness also records every input the family
+   draws, and the run holds each one to this copy's own claim: the floor with its two narrowings, and a key gate
+   that admits only what Core's claim admits. The other four laws hold outright.
+4. **Not consolidated, yet.** Calling Core's scrub would undo Phases 1523 and 1546, and Core's attribute filter does
+   not re-key. `Fuaran.UI.Renderer.Core` would also take its first package dependency beyond `FSharp.Core` and
+   `Fuaran.UI`. The copies consolidate once Core's floor claims what this one does: either Core adopts the three
+   narrowings, or the family takes the anchoring as a declared part of a witness. Either way the stated limit
+   becomes two more held laws, and this entry is what that change retires.
+
+**Rejected.** (a) Rewriting schemes in body text, so that the law passes, because a document explaining the hazard
+could then no longer state it. (b) A witness that projects the divergence away, such as filtering the attribute map
+the way the law expects. That would certify a function this package does not ship.
+
+**The copies, enumerated.** The .NET tier holds this copy; the browser playground calls it through Fable and through
+the TypeScript renderer. The TypeScript, Python, Go and Rust hosts each carry their own copy. Go carries no
+attribute floor because the wire omits extra attributes there. The Swift and Kotlin surfaces carry a narrower URL
+floor and no markdown floor, because neither renders markup as HTML.
+
+**Consequence.** `docs/core-conformance.md` lists the family as adopted across two ports. A change to the floor in
+either copy now fails a law here rather than a comment asking the two to stay in step.
+
+---
+
 ## 2026-11-03 — D24: a partial emitter claims a declared profile, and the hosts carry its old spellings under a written commitment
 
 **Decided (Phase 2451).** The wire gains a third role beside the codec host and the render projection: the
