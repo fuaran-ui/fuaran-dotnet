@@ -68,6 +68,21 @@ let private asStr (v: LiveValue) : string option =
 
 // ─── per-field flush ──────────────────────────────────────────────────────────
 
+/// What a `Local`'s `onCommit` answered, as the action to dispatch. An author's
+/// handler (`binding.local`) answers its boxed `Action<'Msg>`. A tree DECODED from
+/// the wire has no handler: where the document carried `"onCommit":"<closure>"`,
+/// both decoders keep the slot `Some` (so the tree re-encodes the member it read)
+/// with a stand-in that answers the sentinel string itself. That answer is "no
+/// handler here", never an action, so it flushes nothing; a decoded `Local`
+/// commits through its declared `commitTo` alone (the decoder refuses the two
+/// together). Phase 2431 — before, the `unbox` threw `InvalidCastException` and
+/// took the whole submit down with it, declared writes included. Any other
+/// answer is still unboxed, so an in-process handler of the wrong type stays loud.
+let private authoredCommit (answer: obj) : Action<'Msg> option =
+    match answer with
+    | :? string as s when s = "<closure>" -> None
+    | a -> Some(unbox<Action<'Msg>> a)
+
 /// The flush `Action` for one `Binding.Local` field given its buffered wire
 /// value. Recovers the author's typed flush handler from the field's `Local`
 /// binding (`OnCommit`, obj-erased the same way `Action.Call`'s `onResult` is —
@@ -97,7 +112,7 @@ let fieldFlushAction (field: FormField<'Msg>) (value: LiveValue) : Action<'Msg> 
         match parse s with
         | Error _ -> None
         | Ok t ->
-            let dispatched = onCommit |> Option.map (fun oc -> unbox<Action<'Msg>> (oc t))
+            let dispatched = onCommit |> Option.bind (fun oc -> authoredCommit (oc t))
 
             let declared =
                 commitTo
