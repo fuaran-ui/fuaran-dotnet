@@ -35,6 +35,8 @@
     <!-- Placement algebra — unit acceptance + FsCheck properties against the
          real apply engine. -->
     <Compile Include="PlacementTests.fs" />
+    <!-- Phase 2060: the walks through Fuaran.Core - repeated-id order, incremental limits. -->
+    <Compile Include="CoreWalkAdoptionTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

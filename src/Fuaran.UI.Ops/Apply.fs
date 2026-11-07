@@ -2445,12 +2445,41 @@ and private applyStructuralHere (op: StructuralOp<'Msg>) (root: Node<'Msg>) : Re
 
 // ─── Single-op apply ───────────────────────────────────────────────────────
 
+/// Resolve `target` and rewrite it in ONE pass (Phase 2060): Core's
+/// `Tree.updateNode` over the keyed walk (`Introspect.mapNode`), with `rewrite`
+/// handed the node exactly as the tree holds it. `rewrite` answers the
+/// replacement or refuses; a refusal is the op's answer and the tree is left as
+/// it was. An absent target is `NodeNotFound`.
+///
+/// Until 2060 the field ops located the node with `findNode` and then walked
+/// the tree again with `mapNode` to write it, carrying an unreachable
+/// `NodeNotFound` arm for a node the first walk had just found.
+let private rewriteNode
+    (target: NodeId)
+    (rewrite: Node<'Msg> -> Result<Node<'Msg>, ApplyError>)
+    (root: Node<'Msg>)
+    : Result<Node<'Msg>, ApplyError> =
+    let refusal = ref None
+
+    let write (node: Node<'Msg>) =
+        match rewrite node with
+        | Ok rewritten -> rewritten
+        | Error err ->
+            refusal.Value <- Some err
+            node
+
+    match mapNode target write root, refusal.Value with
+    | None, _ -> Error(nodeNotFound target)
+    | Some _, Some err -> Error err
+    | Some updated, None -> Ok updated
+
+/// `rewriteNode` for an edit that cannot refuse.
+let private setNode (target: NodeId) (edit: Node<'Msg> -> Node<'Msg>) (root: Node<'Msg>) =
+    rewriteNode target (edit >> Ok) root
+
 let rec private applyOne (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Msg>, ApplyError> =
     match op with
-    | TreeOp.EditNode(target, newKind) ->
-        match mapNode target (fun n -> { n with Kind = newKind }) root with
-        | Some updated -> Ok updated
-        | None -> Error(nodeNotFound target)
+    | TreeOp.EditNode(target, newKind) -> setNode target (fun n -> { n with Kind = newKind }) root
 
     | TreeOp.UpdateProp(target, path, value) ->
         let v = PropValue.toObj value
@@ -2473,13 +2502,9 @@ let rec private applyOne (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Ms
                         Field = canonicaliseField seg.Field })
                 |> stripKindPrefix
 
-            match findNode target root with
-            | None -> Error(nodeNotFound target)
-            | Some targetNode ->
-                let finish newKind =
-                    match mapNode target (fun n -> { n with Kind = newKind }) root with
-                    | Some updated -> Ok updated
-                    | None -> Error(nodeNotFound target)
+            root
+            |> rewriteNode target (fun targetNode ->
+                let finish newKind = Ok { targetNode with Kind = newKind }
 
                 let valueTypeMismatch (detail: string) =
                     Error(
@@ -2517,22 +2542,18 @@ let rec private applyOne (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Ms
                     | NestedFieldNotFound(failingSegment, availableAtSegment) ->
                         Error(nestedFieldNotFound targetNode.Kind target path failingSegment availableAtSegment)
                     | NestedNotSupported -> Error(pathNotSupportedYet targetNode.Kind target path)
-                    | NestedTypeMismatch detail -> valueTypeMismatch detail
+                    | NestedTypeMismatch detail -> valueTypeMismatch detail)
 
     | TreeOp.ReplaceBinding(target, slot, binding) ->
-        match findNode target root with
-        | None -> Error(nodeNotFound target)
-        | Some targetNode ->
+        root
+        |> rewriteNode target (fun targetNode ->
             match dispatchReplaceBinding slot binding targetNode.Kind with
-            | Ok newKind ->
-                match mapNode target (fun n -> { n with Kind = newKind }) root with
-                | Some updated -> Ok updated
-                | None -> Error(nodeNotFound target)
+            | Ok newKind -> Ok { targetNode with Kind = newKind }
             | Error err ->
                 // Repair the slotNotFound id placeholder with the real target id.
                 match err.Code with
                 | ApplyErrorCode.SlotNotFound -> Error(slotNotFound targetNode.Kind target slot)
-                | _ -> Error err
+                | _ -> Error err)
 
     | TreeOp.UpdateStyle(target, style) ->
         // `Node.Style` is an option since the swap; `None` is the canonical
@@ -2545,9 +2566,7 @@ let rec private applyOne (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Ms
             else
                 Some style
 
-        match mapNode target (fun n -> { n with Style = normalised }) root with
-        | Some updated -> Ok updated
-        | None -> Error(nodeNotFound target)
+        setNode target (fun n -> { n with Style = normalised }) root
 
     | TreeOp.PatchStyle(target, delta) ->
         // Phase 2291 — a patch over the node's CURRENT style (an absent style is
@@ -2564,9 +2583,7 @@ let rec private applyOne (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Ms
                     else
                         Some patched }
 
-        match mapNode target patch root with
-        | Some updated -> Ok updated
-        | None -> Error(nodeNotFound target)
+        setNode target patch root
 
     | TreeOp.UpdateState(target, state) ->
         // Same normalisation as UpdateStyle — an all-`None` StateBehaviour is
@@ -2577,9 +2594,7 @@ let rec private applyOne (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Ms
             else
                 Some state
 
-        match mapNode target (fun n -> { n with State = normalised }) root with
-        | Some updated -> Ok updated
-        | None -> Error(nodeNotFound target)
+        setNode target (fun n -> { n with State = normalised }) root
 
     | TreeOp.UpdateAccessibility(target, accessibility) ->
         // Phase 2527 — the same normalisation again: a record setting no field is
@@ -2596,14 +2611,9 @@ let rec private applyOne (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Ms
 
         let normalised = if empty then None else Some accessibility
 
-        match mapNode target (fun n -> { n with Accessibility = normalised }) root with
-        | Some updated -> Ok updated
-        | None -> Error(nodeNotFound target)
+        setNode target (fun n -> { n with Accessibility = normalised }) root
 
-    | TreeOp.UpdateTooltip(target, tooltip) ->
-        match mapNode target (fun n -> { n with Tooltip = tooltip }) root with
-        | Some updated -> Ok updated
-        | None -> Error(nodeNotFound target)
+    | TreeOp.UpdateTooltip(target, tooltip) -> setNode target (fun n -> { n with Tooltip = tooltip }) root
 
     // The structural legs run through `Fuaran.Core.Ops` (Phase 379). See the
     // Core.Ops delegation block above for the witnesses + rejection mapping.
@@ -2655,6 +2665,10 @@ let rec private applyOne (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Ms
 // witness's `Apply` IS this function, and `Streaming.applyFold` folds through it,
 // so the `Progressive` path is covered by the same guard rather than a second one.
 
+/// A tree's height in levels (the root alone is 1) and its node count — the
+/// two figures `WireLimits.MaxDepth` / `MaxNodes` bound.
+type private TreeMetrics = { Depth: int; Count: int }
+
 /// The tree's depth and node count in ONE walk — two walks would pay twice for
 /// the same traversal.
 ///
@@ -2663,13 +2677,82 @@ let rec private applyOne (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Ms
 /// `State` alternative is a node the decoder counts and this bound must too.
 /// `descendantNodes` is the same surface the §4g duplicate-id refusal walks
 /// (Core's keyed engine, through `Introspect.keyedWitness`), for the same reason.
-let rec private treeMetrics (node: Node<'Msg>) : int * int =
+/// Fuaran.Core.Tree has no height combinator to delegate this to.
+let rec private measure (node: Node<'Msg>) : TreeMetrics =
     Introspect.descendantNodes node
     |> List.fold
-        (fun (depth, count) child ->
-            let childDepth, childCount = treeMetrics child
-            (max depth (childDepth + 1), count + childCount))
-        (1, 1)
+        (fun acc child ->
+            let below = measure child
+
+            { Depth = max acc.Depth (below.Depth + 1)
+              Count = acc.Count + below.Count })
+        { Depth = 1; Count = 1 }
+
+// ─── Incremental limits (Phase 2060) ───────────────────────────────────────
+//
+// `measure` over the whole result after every insert made a progressive build
+// pay a walk of the tree per node. A tree's metrics are a property of the
+// (immutable) value, so they are remembered beside it, by reference, for as
+// long as the tree is alive: an `InsertChild` against a tree whose metrics are
+// known derives the result's from the inserted subtree's size and the resolved
+// parent's depth — exact, because an insert only adds — and the ops that cannot
+// change a node (field edits, a reorder) carry them across unchanged. Every
+// other op, and a tree met for the first time, is measured whole, so the
+// figures a refusal quotes are the ones the full walk would give.
+//
+// The ops that ALSO take nodes out — `EditNode` and `UpdateState` replace what
+// they hold, `MoveNode` relocates, a `Batch` composes — stay on the result
+// walk: an upper bound from what they put in cannot say exactly what is left,
+// and a bound that refused what the walk admits would be a new refusal.
+//
+// .NET keeps the record in a `ConditionalWeakTable`, keyed by the tree's
+// identity and dropped with it; a Fable build keeps none and measures every
+// time, which is what both builds did before.
+
+#if FABLE_COMPILER
+let private recall (_: Node<'Msg>) : TreeMetrics option = None
+
+let private remember (_: Node<'Msg>) (_: TreeMetrics) : unit = ()
+#else
+let private known =
+    System.Runtime.CompilerServices.ConditionalWeakTable<obj, TreeMetrics>()
+
+let private recall (tree: Node<'Msg>) : TreeMetrics option =
+    match known.TryGetValue(box tree) with
+    | true, metrics -> Some metrics
+    | _ -> None
+
+let private remember (tree: Node<'Msg>) (metrics: TreeMetrics) : unit = known.AddOrUpdate(box tree, metrics)
+#endif
+
+/// The metrics of `updated`, the tree `op` made of `root` — from `root`'s and
+/// the inserted subtree's where the op only adds, by a walk otherwise.
+let private metricsAfter (op: TreeOp<'Msg>) (root: Node<'Msg>) (updated: Node<'Msg>) : TreeMetrics =
+    match op with
+    | TreeOp.ReplaceRoot node -> measure node
+    | TreeOp.InsertChild(parentId, child) ->
+        match recall root, Introspect.depthOf parentId root with
+        | Some before, Some parentDepth ->
+            let added = measure child
+
+            { Depth = max before.Depth (parentDepth + 1 + added.Depth)
+              Count = before.Count + added.Count }
+        | _ -> measure updated
+    | _ -> measure updated
+
+/// True when `op` leaves every node where it was and adds none, so the result's
+/// metrics are `root`'s.
+let rec private keepsShape (op: TreeOp<'Msg>) : bool =
+    match op with
+    | TreeOp.UpdateProp _
+    | TreeOp.ReplaceBinding _
+    | TreeOp.UpdateStyle _
+    | TreeOp.PatchStyle _
+    | TreeOp.UpdateAccessibility _
+    | TreeOp.UpdateTooltip _
+    | TreeOp.ReorderChildren _ -> true
+    | TreeOp.Batch inner -> inner |> List.forall keepsShape
+    | _ -> false
 
 /// True when an op can increase the tree's depth or node count, and therefore
 /// when its result needs checking.
@@ -2708,28 +2791,26 @@ let private limitExceeded (message: string) : ApplyError =
                 Some
                     "Flatten the nesting, or split the emission across trees — the resulting tree would not decode on any host, including this one." } }
 
-/// Refuse a result breaching `WireLimits.MaxDepth` / `MaxNodes`. Run on the
-/// RESULT, because the op alone determines neither figure: the same
+/// Refuse a result breaching `WireLimits.MaxDepth` / `MaxNodes`. Judged on the
+/// RESULT's figures, because the op alone determines neither: the same
 /// `InsertChild` is fine under a shallow parent and over the line under a deep
-/// one.
-let private checkTreeLimits (tree: Node<'Msg>) : Result<Node<'Msg>, ApplyError> =
-    let depth, count = treeMetrics tree
-
-    if depth > Fuaran.UI.WireLimits.MaxDepth then
+/// one. The figures are `metricsAfter`'s — incremental where the op only adds.
+let private checkTreeLimits (metrics: TreeMetrics) (tree: Node<'Msg>) : Result<Node<'Msg>, ApplyError> =
+    if metrics.Depth > Fuaran.UI.WireLimits.MaxDepth then
         Error(
             limitExceeded (
                 sprintf
                     "Applying this op would nest nodes %d levels deep, past the wire limit MaxDepth = %d (WIRE_FORMAT §21)."
-                    depth
+                    metrics.Depth
                     Fuaran.UI.WireLimits.MaxDepth
             )
         )
-    elif count > Fuaran.UI.WireLimits.MaxNodes then
+    elif metrics.Count > Fuaran.UI.WireLimits.MaxNodes then
         Error(
             limitExceeded (
                 sprintf
                     "Applying this op would produce a tree of %d nodes, past the wire limit MaxNodes = %d (WIRE_FORMAT §21)."
-                    count
+                    metrics.Count
                     Fuaran.UI.WireLimits.MaxNodes
             )
         )
@@ -2744,9 +2825,10 @@ let private checkTreeLimits (tree: Node<'Msg>) : Result<Node<'Msg>, ApplyError> 
 // tree, after an apply has already built it. And an apply COULD build one from
 // parts that each decoded cleanly: a `ReplaceRoot` whose payload repeats an id,
 // an `EditNode` or `UpdateState` whose new nodes collide with the rest of the
-// tree (Phase 2172). `InsertChild` was already refused through Core's keyed
-// engine; it is checked here as well, because what follows is one rule over
-// what an op installs rather than a per-op list.
+// tree (Phase 2172). `InsertChild` is refused through Core's keyed engine,
+// which checks the graft against the whole tree before it is made, so what an
+// insert installs is never charged again here (Phase 2060: that second walk of
+// the result was one of a progressive build's per-node whole-tree walks).
 //
 // The check reads the RESULT and charges the op only for ids IT installed
 // (`TreeOp.inserted`, through every keyed position): an installed id the result
@@ -2755,39 +2837,43 @@ let private checkTreeLimits (tree: Node<'Msg>) : Result<Node<'Msg>, ApplyError> 
 // `UpdateState` replace an alternative with one of the same id - the old node
 // leaves as the new one arrives. A duplicate already present before the op is
 // not the op's: the decoder admits such a tree, and refusing every later edit
-// to it would strand a document the op did not break, the same posture the
-// limits guard takes toward a tree already over a limit.
+// to it would strand a document the op did not break.
 //
 // Cost: one walk of the result to count ids, plus one walk of the installed
-// subtrees, paid only by an op that installs nodes. This host keeps no id
-// index, so the rest of the tree has to be walked to know what an installed id
-// could collide with.
+// subtrees, paid only by an op that installs nodes other than by an insert.
+// This host keeps no id index, so the rest of the tree has to be walked to know
+// what an installed id could collide with.
 
-/// The first id an op installed that `tree` holds more than once.
+/// The nodes `op` installs that Core's insert check has not already judged:
+/// everything `TreeOp.inserted` names except an `InsertChild`'s child.
+let rec private uncheckedInstalls (op: TreeOp<'Msg>) : Node<'Msg> list =
+    match op with
+    | TreeOp.InsertChild _ -> []
+    | TreeOp.Batch inner -> inner |> List.collect uncheckedInstalls
+    | _ -> Fuaran.UI.Ops.TreeOp.inserted op
+
+/// The first id an op installed that `tree` holds more than once — counted over
+/// Core's keyed walk (`Introspect.allNodeIds`).
 let private firstInstalledDuplicate (installed: Node<'Msg> list) (tree: Node<'Msg>) : NodeId option =
-    let counts = Dictionary<string, int>()
+    let counts = Dictionary<NodeId, int>()
 
-    let rec count (node: Node<'Msg>) =
-        match counts.TryGetValue node.Id with
-        | true, n -> counts[node.Id] <- n + 1
-        | _ -> counts[node.Id] <- 1
+    for id in allNodeIds tree do
+        match counts.TryGetValue id with
+        | true, n -> counts[id] <- n + 1
+        | _ -> counts[id] <- 1
 
-        for child in descendantNodes node do
-            count child
-
-    count tree
-
-    let rec firstRepeated (node: Node<'Msg>) : NodeId option =
-        match counts.TryGetValue node.Id with
-        | true, n when n > 1 -> Some(NodeId node.Id)
-        | _ -> descendantNodes node |> List.tryPick firstRepeated
-
-    installed |> List.tryPick firstRepeated
+    installed
+    |> List.tryPick (fun node ->
+        allNodeIds node
+        |> List.tryFind (fun id ->
+            match counts.TryGetValue id with
+            | true, n -> n > 1
+            | _ -> false))
 
 /// Refuse a result in which an id the op installed is held twice. Runs after
 /// the limits guard, so an op breaching both reports `LimitExceeded`.
 let private checkInstalledIds (op: TreeOp<'Msg>) (tree: Node<'Msg>) : Result<Node<'Msg>, ApplyError> =
-    match Fuaran.UI.Ops.TreeOp.inserted op with
+    match uncheckedInstalls op with
     | [] -> Ok tree
     | installed ->
         match firstInstalledDuplicate installed tree with
@@ -2809,5 +2895,15 @@ let apply (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Msg>, ApplyError>
     match applyOne op root with
     | Error err -> Error err
     | Ok updated ->
-        let limited = if opCanGrow op then checkTreeLimits updated else Ok updated
+        let limited =
+            if opCanGrow op then
+                let metrics = metricsAfter op root updated
+                remember updated metrics
+                checkTreeLimits metrics updated
+            else
+                if keepsShape op then
+                    recall root |> Option.iter (remember updated)
+
+                Ok updated
+
         limited |> Result.bind (checkInstalledIds op)
