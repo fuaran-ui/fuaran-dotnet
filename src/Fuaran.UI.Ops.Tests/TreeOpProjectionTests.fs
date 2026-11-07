@@ -423,6 +423,24 @@ let tests =
               Expect.isFalse
                   (independentAt inPlaceBase (TreeOp.UpdateStyle(NodeId "k", Defaults.style)) (tone "k"))
                   "a whole restyle against a field"
+
+              // Phase 2527's trait ops are slots of their own: ordered against themselves,
+              // free against the kind and style slots and against each other.
+              let describe (v: string) =
+                  TreeOp.UpdateAccessibility(
+                      NodeId "k",
+                      { Defaults.Accessibility.empty with
+                          DescribedBy = Some v }
+                  )
+
+              let hint (v: string) =
+                  TreeOp.UpdateTooltip(NodeId "k", Some(TextSource.Literal v))
+
+              Expect.isFalse (independentAt inPlaceBase (describe "a") (describe "b")) "two accessibility edits"
+              Expect.isFalse (independentAt inPlaceBase (hint "a") (hint "b")) "two tooltip edits"
+              Expect.isTrue (independentAt inPlaceBase (describe "a") (hint "b")) "accessibility beside tooltip"
+              Expect.isTrue (independentAt inPlaceBase (describe "a") (prop "b")) "accessibility beside the kind slot"
+              Expect.isTrue (independentAt inPlaceBase (hint "a") (tone "k")) "tooltip beside a style field"
           }
 
           test "base-aware: a target the walk does not locate takes the pure arm" {

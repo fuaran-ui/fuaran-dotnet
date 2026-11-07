@@ -43,8 +43,9 @@ module Fuaran.UI.Ops.TreeOpFootprint
 //  names its parent, so a vertical op whose node the structural walk LOCATES
 //  needs no unknown-parent write, and is declared at the SLOT it changes —
 //  `kind` (EditNode, UpdateProp, ReplaceBinding), `state` (UpdateState),
-//  `style` (UpdateStyle) and `style.<field>` beside a read of `style`
-//  (PatchStyle) — plus every id it puts in or takes out. A kind edit and a
+//  `style` (UpdateStyle), `style.<field>` beside a read of `style`
+//  (PatchStyle), and `accessibility` / `tooltip` (UpdateAccessibility /
+//  UpdateTooltip, Phase 2527) — plus every id it puts in or takes out. A kind edit and a
 //  restyle of one node, a state edit beside a prop edit, and two in-place
 //  edits under different parents are independent; an in-place edit beside the
 //  removal of its ancestor is not (the node is in the removed set).
@@ -228,6 +229,10 @@ let private resolvedAt (state: Node<'Msg>) (after: Node<'Msg> option) (op: TreeO
 
             slotted [ "state" ] [] (key id) (Set.union (idsOf old) (idsOf (Fuaran.UI.Ops.TreeOp.inserted op))))
     | TreeOp.UpdateStyle(id, _) -> vertical id (fun node -> slotted [ "style" ] [] (key id) (heldChange id node))
+    // A trait of the envelope is its own slot (Phase 2527): neither holds a node.
+    | TreeOp.UpdateAccessibility(id, _) ->
+        vertical id (fun node -> slotted [ "accessibility" ] [] (key id) (heldChange id node))
+    | TreeOp.UpdateTooltip(id, _) -> vertical id (fun node -> slotted [ "tooltip" ] [] (key id) (heldChange id node))
     | TreeOp.PatchStyle(id, delta) ->
         vertical id (fun node ->
             slotted

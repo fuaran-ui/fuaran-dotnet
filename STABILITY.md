@@ -7831,7 +7831,7 @@ changes.
   the tree it applies to, over Fuaran.Core's `Ops.footprintIn` (fuaran-core Phase 500): a removal names the parent it
   writes and content-writes the subtree it destroys, and a vertical op whose node the structural walk locates carries
   no unknown-parent write and is declared at its SLOT — `kind` for `EditNode`, `UpdateProp` and `ReplaceBinding`,
-  `state` for `UpdateState`, `style` for `UpdateStyle`, `style.<field>` beside a read of `style` for `PatchStyle` —
+  `state` for `UpdateState`, `style` for `UpdateStyle`, `style.<field>` beside a read of `style` for `PatchStyle`, `accessibility` / `tooltip` for the two trait ops Phase 2527 added —
   plus every id it puts in or takes out. A script is threaded through `Apply.apply`; from an op that does not apply,
   and for a node held only in a keyed position, the pure arm stands. `ofOpIn` is the shape `Dag.conflictsIn` /
   `Dag.reconcileIn` take. The pure `ofOp` / `ofScript` are unchanged.
