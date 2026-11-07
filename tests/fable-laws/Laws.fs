@@ -510,6 +510,25 @@ let laneFoldResults (seed: int) (iterations: int) : Fuaran.Core.LawResult list =
     PortableRng.reseed seed
     FoldConfluence.laneFoldLawsAt coreSw footprintOfEqOp hashState laneGen 3 seed iterations
 
+/// The census enrolment name for the FABLE port of `Conformance.footprintInLawsAt` (Phase 2327),
+/// printed on both legs as `laneFoldFablePort` is.
+let footprintInFablePort =
+    "footprintInLawsAt certifies through the Fable law harness over the tier's base-aware footprint"
+
+/// The base-aware footprint laws over the transpiled projection: the same instantiation
+/// `CoreDagLawTests.fs` runs on .NET, with the generator drawn from `PortableRng`.
+let footprintInResults (seed: int) (iterations: int) : Fuaran.Core.LawResult list =
+    PortableRng.reseed seed
+
+    Fuaran.Core.Conformance.footprintInLawsAt
+        coreSw
+        footprintOfEqOp
+        footprintInOfEqOp
+        hashState
+        footprintGen
+        seed
+        iterations
+
 // ---------------------------------------------------------------------------
 //  law 3 — the raw-DEFLATE inflater, over a FOREIGN dynamic-Huffman stream
 // ---------------------------------------------------------------------------

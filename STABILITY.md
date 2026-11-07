@@ -7818,11 +7818,53 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.102.1 — the slot opened after v0.102.0 was released (DRAFT — untagged)
+## 0.103.0 — the slot opened after v0.102.0 was released (DRAFT — untagged)
 
-_`v0.102.0` is TAGGED (2026-11-06), so nothing may ride it: the change below opens the next slot. Class: **additive**
-— no surface moves, and the floor scrubs more only for adversarial input. Set by Phase 2010. The `<Version>` advance
-and its ledger record are the release act's, recorded separately; this entry is the slot's account of what rides it._
+_`v0.102.0` is TAGGED (2026-11-06, at `00225688`), so nothing may ride it: the changes below open the next slot.
+The slot was opened as `0.102.1` (additive) by Phases 2327 and 2010; Phase 2060 REMOVES two public `Introspect`
+functions, which is a higher class than the draft carried, so under the draft-slot rule the slot ADVANCES to the
+breaking number (`0.103.0` under the 0.x convention) rather than carrying a number that says "additive" over a
+removal. The `<Version>` advance and its ledger record are the release act's, recorded separately; this entry is
+the slot's account of what rides it. Landed together as tier 1 of the core-adoption campaign
+(`camp-obj-core-adoption-20261107T10162`), wave 1._
+
+### What rides this slot — Phase 2327 (the DAG fold arbitrates with the base-aware footprint)
+
+**Class: additive**, with a behaviour change in the new entries only.
+
+Packages `Fuaran.UI.Ops` and `Fuaran.UI.OpStream.Dag.Merge`. No wire byte moves, no hash moves, no existing verdict
+changes.
+
+- **Added — `TreeOpFootprint.ofOpIn` / `ofScriptIn` / `ofEachIn`** (`Fuaran.UI.Ops`). The footprint of a `TreeOp` at
+  the tree it applies to, over Fuaran.Core's `Ops.footprintIn` (fuaran-core Phase 500): a removal names the parent it
+  writes and content-writes the subtree it destroys, and a vertical op whose node the structural walk locates carries
+  no unknown-parent write and is declared at its SLOT — `kind` for `EditNode`, `UpdateProp` and `ReplaceBinding`,
+  `state` for `UpdateState`, `style` for `UpdateStyle`, `style.<field>` beside a read of `style` for `PatchStyle`, `accessibility` / `tooltip` for the two trait ops Phase 2527 added —
+  plus every id it puts in or takes out. A script is threaded through `Apply.apply`; from an op that does not apply,
+  and for a node held only in a keyed position, the pure arm stands. `ofOpIn` is the shape `Dag.conflictsIn` /
+  `Dag.reconcileIn` take. The pure `ofOp` / `ofScript` are unchanged.
+- **A prop is the `kind` slot, not a slot per path — decided.** A field's validity can read another field of the
+  same spec (a select's `Value` is checked against its `Multiple` in `Apply`), so two prop edits of one node are
+  ordered; a per-path slot would declare that pair independent and be unsound.
+- **Added — `BatchAccept.dependencyClosureIn` / `partialAcceptIn`** (`Fuaran.UI.OpStream.Dag.Merge`): the closure
+  over the per-op base-aware footprints where the batch's base tree is in hand. **Behaviour change, in the new
+  entries only:** Phase 2292's recorded loss — a selected vertical op, remove or move keeps every earlier non-empty
+  op — does not hold here: a selected restyle keeps only the ops it interferes with (pinned by a test, which also
+  checks the kept batch applies). `dependencyClosure` / `partialAccept` keep their verdicts.
+- **Certified** — `Conformance.footprintInLawsAt` is adopted on .NET and on the Fable law harness (soundness of every
+  pair `Dag.conflictsIn` frees, refinement of the pure projection, determinism, and a freed-pair adequacy guard), with
+  a falsifier test that turns the family red when the removal's destroyed set is taken out.
+- **Re-measured — `derivability-snapshot`** (seed 20261016, 20000 trials; the `.in` lines are new). The share of the
+  tier's auto-merges Core refuses while both apply orders reach the UI's tree:
+
+  | population | pure (Phase 2292) | base-aware | delta |
+  |---|---|---|---|
+  | generated | 0.8401 (7808 / 9294) | **0.2906** (2701 / 9294) | −0.5495 |
+  | corpus | 0.7143 (5 / 7) | **0.1429** (1 / 7) | −0.5714 |
+  | pooled | 0.8400 | **0.2905** | −0.5495 |
+
+  Every shape naming `MoveVsRemove` (7198 of the pure form's 7808) is gone under the base-aware form; what remains is
+  `ConcurrentUpdate`, `InsertPositionClash` and the slot clashes the form declares on purpose. No triad lands in `OrderSensitive` or `Fault` under either form.
 
 ### What rides this slot — Phase 2010 (the markdown floor repeats to a fixed point, and indexes the string it edits)
 
@@ -7842,6 +7884,40 @@ markdown or SVG markup through it inherits the change.
 - **Certified.** The floor runs Core's `Conformance.sanitizeLawsAt` on .NET and under Fable, with a stated limit:
   two of the family's six laws describe a broader floor than the renderer claims, by decision. See `docs/DECISIONS.md`
   D25.
+
+### What rides this slot — Phase 2060 (the tree walks run on Fuaran.Core; field ops apply in one pass)
+
+**Class: BREAKING** (removals). Packages `Fuaran.UI.Ops` and `Fuaran.UI` (`NodeChildren`).
+
+- **Removed — `Introspect.collectNodeIdsInto`, `Introspect.mapParentOf`** (`Fuaran.UI.Ops`). Both had no callers in
+  this repository or its known consumers; the keyed walks they served are now Fuaran.Core's (`Tree.idsKeyed`,
+  `Tree.path`).
+- **Added — `Introspect.depthOf`** (`Fuaran.UI.Ops`), over `Tree.depth`.
+- **Behaviour — keyed-first on a repeated id (decided).** `findNode`, `mapNode` and `allNodeIds` now locate a node
+  that appears both in a keyed position and in ordered children at its keyed position first, as Core's structural
+  ops already did; the tests pin it. On a well-formed tree (unique ids) nothing changes.
+- **Behaviour — limits.** `InsertChild` works its depth and node-count check out incrementally from the inserted
+  subtree and the parent's depth; every other growing op still measures the whole result, so no refusal changes.
+- **Streaming** delegates to Core's `Ops.shellOf`, `skeletonRoot` and `lower` through a witness that treats a
+  `FragmentDecl` as childless; outputs are unchanged.
+- **`NodeChildren`** reads keyed positions without building a label per ordered child; labels and order unchanged.
+- **Measured.** Per-insert walks removed from this tier cut allocation of a progressive build by ~58% (2.11 GB →
+  0.89 GB at 1,000 nodes). The build stays quadratic because Core's keyed `Ops.apply` scans every id on each insert
+  (filed as fuaran-core spillover). Single field ops on a 241-node deep tree allocate more (44 KB → 221 KB per op)
+  under Core's walk; kept because the shard requires Core's walk, and filed as fuaran spillover against `NodeChildren`.
+
+### What rides this slot — Phase 2028 (the stored-op unescapers copy only between escapes)
+
+**Class: additive — no surface moves, no behaviour moves.** Packages `Fuaran.UI.OpStream.Abstractions`,
+`Fuaran.UI.OpStream.Dag.Abstractions`, `Fuaran.UI.OpStream.Replay`, `Fuaran.UI.OpStream.Sqlite`,
+`Fuaran.UI.OpStream.Dag.Sqlite`.
+
+- Every stored-string reader returns the inner substring when the string holds no backslash, and otherwise copies the
+  runs between escapes; each escape and each failure (value, exception type and message) reads exactly as before, pinned
+  against a frozen copy of the old bodies over an edge table and a seeded 20,000-string fuzz. No corpus, fixture or
+  hash pin changes.
+- In-process A/B: 0.12–0.51× the old time on strings without a backslash, 0.83–0.97× with escapes; DAG-row decode
+  58.8 → 45.7 µs and 37.8 → 25.3 KB.
 
 ---
 
