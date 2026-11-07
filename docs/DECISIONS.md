@@ -10,6 +10,46 @@ consequence.
 
 ---
 
+## 2026-11-07 — D28: the wire-profile step stays here until a released Core carries the decode rule; a loosening or a widening moves the minor
+
+**Decided (Phase 2509).** fuaran-core Phase 587 taught Core's IDL diff classifier the profile's decode rule
+(`Versioning.DecodeRule.IgnoresUnknownMembers` and `Diff.bumpProfileUnder`), so the step `Fuaran.UI.WireProfile`
+computes for itself (Phase 1670) can be read off Core instead. The phase measured three things before moving it.
+
+1. **The re-point waits on a release.** This repository pins `Fuaran.Core.Idl.Codegen` 0.40.2 on the public restore
+   path. Neither 0.40.2 nor the latest tagged and published Core, 0.40.3, carries Phase 587: its commit is not an
+   ancestor of `v0.40.3`, and it sits in Core's untagged 0.41.0 draft. A pin must name a version its producer has
+   released, so `WireProfile` cannot call `Diff.bumpProfileUnder` yet. The host's `step` is deleted for that call in
+   the cohort raise that follows Core's next release, which is an operator act. The call then maps Core's `Bump`
+   back to this module's four-way `ProfileStep`, so the regeneration command keeps its advisory report.
+2. **Case 1: a required member loosened to optional, or an `int` slot widened to `float`, moves the minor.** Core
+   grades both `Additive`, because every old document still decodes. The host read any additive row other than a
+   new tag as no step, and that was wrong. A behind consumer requires the member, or reads an integer, so it refuses
+   a new document that omits the member or carries `2.5`, and §2 rule 2's must-ignore does not help it. That is the
+   minor's job, as for a new tag. The alternative the phase offered, showing the case cannot arise here, is false:
+   the vocabulary declares 317 required members and 43 `int` slots, and either change is ordinary authoring. The
+   host's step now answers minor for both, which is Core's answer under either decode rule.
+3. **Case 2: a wire break beside an undecided row stays a major here, and is the one remaining divergence.** Core
+   answers undecided, because it cannot decide the erased-slot row. The host answers major, because nothing an erased
+   slot does can soften a removal beside it. Which takes precedence is the open operator question in Core's D242.
+   Until it is ruled, the host keeps major, and a test pins the case so that closing it is a deliberate edit.
+
+Measured over the total `Change` match in Core's `absorbedWhenUnknownMembersIgnored` (Phase 587) against the host's
+step, those are the only two cases where the answers differed. An absorbed row, a host-surface row and an
+emitter-only row move nothing in both, and a tag, a break and an undecided row alone agree.
+
+**Rejected:** pinning the untagged 0.41.0 draft from the local feed to make the call now. This repository restores
+Core from the public feed, so that pin resolves on one machine only, and a reader of the published source could
+not reproduce the build. Also rejected: deleting the host's step and re-stating Core's rule in a comment until the
+release. That would leave the regeneration command with no answer.
+
+**Consequence:** the regeneration command now reports a minor for a loosening or a widening, where it reported no
+step before. It is advisory and fails no build. `WIRE_FORMAT.md` §15.4 needs a row saying the same; until it gains
+one, the table is silent on both changes and the derived answer is the one stated here. No published API and no
+document moves.
+
+---
+
 ## 2026-11-07 — D27: every document over a tree reads its demand through the demand view, and every posture through the fold view
 
 **Decided (Phase 2430).** `ServerAliases.fs` builds four documents from handlers, and they disagreed about what a tree
