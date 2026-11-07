@@ -137,7 +137,7 @@ module Actor =
         // The escape-bearing path: `s[first]` is the first backslash.
         let unescapeFrom (first: int) : (string * int) option =
             let sb = System.Text.StringBuilder()
-            sb.Append(s.Substring(i + 1, first - i - 1)) |> ignore
+            sb.Append(s, i + 1, first - i - 1) |> ignore
             let mutable j = first
             let mutable finished = false
             let mutable ok = true
@@ -177,7 +177,7 @@ module Actor =
                 else
                     // A run of ordinary characters, copied whole.
                     let stop = runEnd j
-                    sb.Append(s.Substring(j, stop - j)) |> ignore
+                    sb.Append(s, j, stop - j) |> ignore
                     j <- stop
 
             if ok && finished then Some(sb.ToString(), j) else None

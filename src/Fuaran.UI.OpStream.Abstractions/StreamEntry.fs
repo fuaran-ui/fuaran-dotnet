@@ -275,7 +275,7 @@ module StreamEntry =
     /// with nothing after it (kept as itself).
     and private unescapeFrom (inner: string) (firstEscape: int) : string =
         let sb = System.Text.StringBuilder(inner.Length)
-        sb.Append(inner.Substring(0, firstEscape)) |> ignore
+        sb.Append(inner, 0, firstEscape) |> ignore
         let mutable i = firstEscape
 
         let hexDigit (c: char) : int =
@@ -333,7 +333,7 @@ module StreamEntry =
                 // ordinary character or a trailing lone backslash; both stand as is.
                 let next = inner.IndexOf('\\', i + 1)
                 let stop = if next < 0 then inner.Length else next
-                sb.Append(inner.Substring(i, stop - i)) |> ignore
+                sb.Append(inner, i, stop - i) |> ignore
                 i <- stop
 
         sb.ToString()
