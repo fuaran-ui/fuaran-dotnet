@@ -140,8 +140,12 @@ let tests =
               let s1 = Encode.encode m1
               let m2 = decodeOk s1
               let s2 = Encode.encode m2
-              Expect.equal m1 m2 "decode is stable across a round-trip"
+              // The wire's token order is canonical path order, the example's is
+              // authoring order: the round trip keeps the token SET and the rest.
+              Expect.equal (Set.ofList m2.Tokens) (Set.ofList m1.Tokens) "the token set survives"
+              Expect.equal { m2 with Tokens = m1.Tokens } m1 "meta, roles and invariants survive"
               Expect.equal s1 s2 "re-encode is byte-identical"
+              Expect.equal (decodeOk s2) m2 "a canonical document round-trips exactly"
           }
 
           test "vanilla DTCG file decodes to tokens with empty Roles/Invariants" {
@@ -350,3 +354,220 @@ let chartPaletteTests =
               Expect.isEmpty passing.ChartPalette "the default palette reports nothing"
               Expect.isTrue (ThemeBridge.VerificationResult.passed passing) "and passes"
           } ]
+
+// ─── Phase 2133 — the byte law and the validation pass ──────────
+
+let private decodeInvariants (invariants: string) =
+    decodeOk ("""{"tokens":{},"invariants":[""" + invariants + "]}")
+
+let private codes (m: ThemeManifest) =
+    ThemeManifest.validate m |> List.map ManifestDefect.encode
+
+[<Tests>]
+let byteLawTests =
+    testList
+        "ThemeManifest — the cross-host byte law (Phase 2133)"
+        [ test "the empty manifest is tokens and nothing else" {
+              Expect.equal (Encode.encode ThemeManifest.empty) """{"tokens":{}}""" "only the shape selector"
+          }
+
+          test "a member at its default is omitted, and keys are Ordinal-sorted" {
+              // The same pins the Rust oracle and the TypeScript and Go encoders
+              // hold: a default-weight invariant carries no weight, a zero floor
+              // no minRatio, an anonymous binding no role.
+              let m =
+                  { ThemeManifest.empty with
+                      Roles =
+                          [ { Role = ManifestRole.Named ""
+                              TokenName = "t" } ]
+                      Invariants =
+                          [ Invariant.create (InvariantKind.MotionVoice { MaxDurationMs = 0; Easing = None })
+                            Invariant.createWeighted 2.0 (InvariantKind.ContrastFloor("x", 0.0)) ] }
+
+              Expect.equal
+                  (Encode.encode m)
+                  """{"invariants":[{"kind":"MotionVoice"},{"kind":"ContrastFloor","role":"x","weight":2}],"roles":[{"token":"t"}],"tokens":{}}"""
+                  "the omitted-default canonical form"
+          }
+
+          test "a token leaf omits an empty $type and keeps an empty $value" {
+              let m =
+                  { ThemeManifest.empty with
+                      Tokens =
+                          [ { Name = "b.z"
+                              Type = ""
+                              Value = ""
+                              Description = None
+                              Role = None }
+                            { Name = "a"
+                              Type = "color"
+                              Value = "#fff"
+                              Description = None
+                              Role = Some "r" } ] }
+
+              Expect.equal
+                  (Encode.encode m)
+                  """{"tokens":{"a":{"$extensions":{"fuaran":{"role":"r"}},"$type":"color","$value":"#fff"},"b":{"z":{"$value":""}}}}"""
+                  "sorted at every depth; $value is the leaf discriminator"
+          }
+
+          test "the omitted-default floor decodes tolerantly to a floor of 0" {
+              // Phase 2077 pinned this tolerant decode; the MEANING is checked by
+              // the validation pass (Phase 2133), not by the decoder.
+              let m = decodeInvariants """{"kind":"ContrastFloor","role":"x"}"""
+
+              Expect.equal m.Invariants [ Invariant.create (InvariantKind.ContrastFloor("x", 0.0)) ] "tolerant decode"
+
+              Expect.equal
+                  (Encode.encode m)
+                  """{"invariants":[{"kind":"ContrastFloor","role":"x"}],"tokens":{}}"""
+                  "and its canonical bytes"
+          }
+
+          test "an unknown invariant kind round-trips with its members and weight" {
+              let json =
+                  """{"invariants":[{"kind":"FocusRing","minWidthPx":2,"nested":{"b":1,"a":[true,"s"]},"weight":3}],"tokens":{}}"""
+
+              let m = decodeOk json
+
+              match m.Invariants with
+              | [ { Kind = InvariantKind.Unknown("FocusRing", members)
+                    Weight = 3.0 } ] ->
+                  Expect.equal (List.map fst members) [ "minWidthPx"; "nested" ] "members kept, weight lifted out"
+              | other -> failtestf "expected one unknown invariant, got %A" other
+
+              Expect.equal
+                  (Encode.encode m)
+                  """{"invariants":[{"kind":"FocusRing","minWidthPx":2,"nested":{"a":[true,"s"],"b":1},"weight":3}],"tokens":{}}"""
+                  "re-emitted canonically, never dropped"
+
+              Expect.equal (Invariant.kind m.Invariants.Head) "FocusRing" "the discriminator is the wire kind"
+          } ]
+
+[<Tests>]
+let validationTests =
+    testList
+        "ThemeManifest — validation pass (Phase 2133)"
+        [ test "a canonical omitted-default manifest that binds everything validates clean" {
+              let m =
+                  decodeOk
+                      """{"invariants":[{"kind":"ContrastFloor","minRatio":4.5,"role":"Brand"},{"kind":"UsageBudget","token":"color.brand"},{"kind":"MotionVoice"}],"roles":[{"role":{"tone":"Brand"},"token":"color.brand"}],"tokens":{"color":{"brand":{"$type":"color","$value":"#010203"}}}}"""
+
+              Expect.isEmpty (ThemeManifest.validate m) "no defect"
+          }
+
+          test "a zero floor (the member omitted) is out of range" {
+              Expect.equal
+                  (codes (decodeInvariants """{"kind":"ContrastFloor","role":"x"}"""))
+                  [ """{"code":"CONTRAST_FLOOR_OUT_OF_RANGE","index":0,"subject":"x"}"""
+                    """{"code":"CONTRAST_FLOOR_ROLE_UNBOUND","index":0,"subject":"x"}""" ]
+                  "the floor of 0 and the unbound role"
+          }
+
+          test "an explicit sub-1 floor is out of range; 1 and 21 are the inclusive bounds" {
+              let floorOf (ratio: string) =
+                  { decodeInvariants ("""{"kind":"ContrastFloor","role":"Brand","minRatio":""" + ratio + "}") with
+                      Roles =
+                          [ { Role = ManifestRole.Tone ToneVariant.Brand
+                              TokenName = "t" } ] }
+
+              Expect.equal
+                  (codes (floorOf "0.5"))
+                  [ """{"code":"CONTRAST_FLOOR_OUT_OF_RANGE","index":0,"subject":"Brand"}""" ]
+                  "0.5 passes every pair"
+
+              Expect.equal
+                  (codes (floorOf "21.5"))
+                  [ """{"code":"CONTRAST_FLOOR_OUT_OF_RANGE","index":0,"subject":"Brand"}""" ]
+                  "above 21 no pair can pass"
+
+              Expect.isEmpty (codes (floorOf "1")) "1 is in range"
+              Expect.isEmpty (codes (floorOf "21")) "21 is in range"
+          }
+
+          test "an empty role is reported as empty, not as unbound" {
+              Expect.equal
+                  (codes (decodeInvariants """{"kind":"ContrastFloor","minRatio":7}"""))
+                  [ """{"code":"CONTRAST_FLOOR_ROLE_EMPTY","index":0,"subject":""}""" ]
+                  "the floor checks nothing"
+          }
+
+          test "a role nothing binds is unbound; a named binding binds its name" {
+              let m =
+                  decodeInvariants """{"kind":"ContrastFloor","minRatio":7,"role":"body-text"}"""
+
+              Expect.equal
+                  (codes m)
+                  [ """{"code":"CONTRAST_FLOOR_ROLE_UNBOUND","index":0,"subject":"body-text"}""" ]
+                  "unbound"
+
+              let bound =
+                  { m with
+                      Roles =
+                          [ { Role = ManifestRole.Named "body-text"
+                              TokenName = "t" } ] }
+
+              Expect.isEmpty (codes bound) "bound by name"
+          }
+
+          test "a usage budget on an undeclared token is reported" {
+              Expect.equal
+                  (codes (decodeInvariants """{"kind":"UsageBudget","targetPct":10,"token":"color.ghost"}"""))
+                  [ """{"code":"USAGE_BUDGET_TOKEN_UNDECLARED","index":0,"subject":"color.ghost"}""" ]
+                  "names the missing token"
+          }
+
+          test "an unknown kind is reported unenforced, by index, after the known ones" {
+              Expect.equal
+                  (codes (decodeInvariants """{"kind":"MotionVoice"},{"kind":"FocusRing","minWidthPx":2}"""))
+                  [ """{"code":"INVARIANT_KIND_UNKNOWN","index":1,"subject":"FocusRing"}""" ]
+                  "kept and reported, never dropped"
+
+              let verified = ThemeBridge.verify (decodeInvariants """{"kind":"FocusRing"}""")
+
+              Expect.exists
+                  verified.Deferred
+                  (fun d -> d.Description.StartsWith "FocusRing")
+                  "the bridge's verification lists it as unenforced too"
+          }
+
+          test "the example manifest validates clean" {
+              Expect.isEmpty (ThemeManifest.validate (decodeOk exampleText)) "the shipped example means what it says"
+          } ]
+
+[<Tests>]
+let schemaByteLawTests =
+    let valid (json: string) =
+        use doc = JsonDocument.Parse(json)
+        manifestSchema.Value.Evaluate(doc.RootElement).IsValid
+
+    testList
+        "ThemeManifest — the schema agrees with the byte law (Phase 2133)"
+        [ test "every canonical omitted-default form the encoder writes satisfies the schema" {
+              for json in
+                  [ Encode.encode ThemeManifest.empty
+                    """{"invariants":[{"kind":"ContrastFloor","role":"x"}],"tokens":{}}"""
+                    """{"invariants":[{"kind":"UsageBudget"},{"kind":"MotionVoice"}],"roles":[{"token":"t"}],"tokens":{"t":{"$value":""}}}"""
+                    Encode.encode (decodeOk exampleText) ] do
+                  Expect.isTrue (valid json) $"the schema admits {json}"
+          }
+
+          test "the schema documents the floor's range and stays closed for authoring" {
+              Expect.isFalse
+                  (valid """{"invariants":[{"kind":"ContrastFloor","minRatio":0.5,"role":"x"}],"tokens":{}}""")
+                  "an explicit sub-1 floor is refused at authoring time"
+
+              Expect.isFalse
+                  (valid """{"invariants":[{"kind":"FocusRing"}],"tokens":{}}""")
+                  "an unknown kind is outside the authoring enum, though decoders keep it"
+          } ]
+
+[<Tests>]
+let kindlessTests =
+    test "an object with no non-empty string kind is still not an invariant (Phase 2133)" {
+        for src in
+            [ """{"role":"x","minRatio":7}"""
+              """{"kind":"","role":"x"}"""
+              """{"kind":3}""" ] do
+            Expect.isEmpty (decodeInvariants src).Invariants $"{src} is not an invariant of any kind"
+    }

@@ -9,8 +9,8 @@
     "meta": {
       "type": "object",
       "properties": {
-        "name": { "type": "string" },
-        "version": { "type": "string" },
+        "name": { "type": "string", "default": "" },
+        "version": { "type": "string", "default": "" },
         "description": { "type": "string" }
       },
       "additionalProperties": false
@@ -64,9 +64,10 @@
     },
     "roleBinding": {
       "type": "object",
-      "required": ["role", "token"],
+      "required": ["token"],
       "properties": {
         "role": {
+          "description": "The role bound. Absent decodes to the anonymous named role `{\"named\":\"\"}`, and the canonical encoding omits that one value.",
           "oneOf": [
             {
               "type": "object",
@@ -102,38 +103,45 @@
     },
     "invariant": {
       "type": "object",
+      "description": "One declared invariant. Every member but `kind` is OPTIONAL and carries its `default`: the canonical encoding every host writes omits a member at its default (the cross-host byte law), and a decoder supplies the default for an absent one. Whether a decoded invariant MEANS anything is not a schema question: a validation pass run after decode reports a contrast floor outside [1, 21], an empty or unbound role, a budget on an undeclared token and an unknown kind, with one shared code table (WIRE_FORMAT section 13, the style-observer family's `manifest-validation` tier).",
       "required": ["kind"],
       "properties": {
         "kind": {
           "type": "string",
-          "enum": ["ContrastFloor", "UsageBudget", "MotionVoice", "ChartSeriesDistinct"]
+          "enum": ["ContrastFloor", "UsageBudget", "MotionVoice", "ChartSeriesDistinct"],
+          "description": "Closed here for AUTHORING. A decoder does not close it: an invariant whose kind it does not know is kept with its members, round-trips, and is reported as unenforced (`INVARIANT_KIND_UNKNOWN`), never silently dropped."
         },
         "weight": {
           "type": "number",
-          "description": "Soft weight (default 1.0); learning of weights is deferred to a later phase."
+          "default": 1,
+          "description": "Soft weight; learning of weights is deferred to a later phase."
         },
-        "role": { "type": "string" },
-        "minRatio": { "type": "number" },
-        "token": { "type": "string" },
-        "targetPct": { "type": "number" },
-        "tolerancePct": { "type": "number" },
-        "maxDurationMs": { "type": "integer" },
+        "role": {
+          "type": "string",
+          "default": "",
+          "description": "ContrastFloor: the role (a tone name or a named role) whose contrast is floored. Must be non-empty and bound by a role binding."
+        },
+        "minRatio": {
+          "type": "number",
+          "default": 0,
+          "minimum": 1,
+          "maximum": 21,
+          "description": "ContrastFloor: the floor, within [1, 21], the range WCAG's contrast formula produces. The default 0 is the decoded value of an absent member and is out of range: a floor below 1 passes every pair."
+        },
+        "token": {
+          "type": "string",
+          "default": "",
+          "description": "UsageBudget: the dotted name of a token declared under `tokens`."
+        },
+        "targetPct": { "type": "number", "default": 0 },
+        "tolerancePct": { "type": "number", "default": 0 },
+        "maxDurationMs": {
+          "type": "integer",
+          "default": 0,
+          "description": "MotionVoice: 0 is legitimate and strict — no motion."
+        },
         "easing": { "type": "string" }
       },
-      "allOf": [
-        {
-          "if": { "properties": { "kind": { "const": "ContrastFloor" } } },
-          "then": { "required": ["role", "minRatio"] }
-        },
-        {
-          "if": { "properties": { "kind": { "const": "UsageBudget" } } },
-          "then": { "required": ["token", "targetPct", "tolerancePct"] }
-        },
-        {
-          "if": { "properties": { "kind": { "const": "MotionVoice" } } },
-          "then": { "required": ["maxDurationMs"] }
-        }
-      ],
       "additionalProperties": false
     }
   }

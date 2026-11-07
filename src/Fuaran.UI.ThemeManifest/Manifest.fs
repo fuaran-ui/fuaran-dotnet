@@ -104,6 +104,79 @@ type ThemeManifest =
       Roles: RoleBinding list
       Invariants: Invariant list }
 
+// ─── Validation — what the decoded values MEAN (Phase 2133) ─────
+//
+// Decoding is tolerant and total: the cross-host byte law omits a member at
+// its default, so `{"kind":"ContrastFloor","role":"x"}` IS the canonical
+// encoding of a floor of 0, and a decoder that refused it would refuse every
+// host's output. The defect is semantic, not syntactic — a floor of 0 (or an
+// explicit 0.5) passes every contrast ratio, an empty or unbound role and an
+// undeclared budget token check nothing, and an unknown kind would otherwise
+// go unenforced in silence. So one validation pass runs AFTER decode, on every
+// host that consumes manifests, with one shared code table (WIRE_FORMAT §13,
+// the style-observer family's `manifest-validation` tier):
+//
+//   | Code                            | Raised when                                        | `subject`   |
+//   |---------------------------------|----------------------------------------------------|-------------|
+//   | `CONTRAST_FLOOR_OUT_OF_RANGE`   | a `ContrastFloor`'s `minRatio` is outside [1, 21]   | the role    |
+//   | `CONTRAST_FLOOR_ROLE_EMPTY`     | a `ContrastFloor`'s `role` is empty                 | `""`        |
+//   | `CONTRAST_FLOOR_ROLE_UNBOUND`   | no role binding binds the floor's (non-empty) role  | the role    |
+//   | `USAGE_BUDGET_TOKEN_UNDECLARED` | a `UsageBudget`'s `token` names no declared token   | the token   |
+//   | `INVARIANT_KIND_UNKNOWN`        | an invariant's kind is outside this host's vocabulary — kept, and enforced by nothing | the kind |
+//
+// `index` is the invariant's position in the decoded `Invariants` list.
+// Defects are listed invariant by invariant, in list order, and within one
+// invariant in the table's order.
+
+/// One shared validation defect code (the table above).
+[<RequireQualifiedAccess>]
+type ManifestDefectCode =
+    | ContrastFloorOutOfRange
+    | ContrastFloorRoleEmpty
+    | ContrastFloorRoleUnbound
+    | UsageBudgetTokenUndeclared
+    | InvariantKindUnknown
+
+/// One validation finding: which rule, which invariant, and what it names.
+type ManifestDefect =
+    {
+        Code: ManifestDefectCode
+        /// The invariant's position in the decoded `Invariants` list.
+        Index: int
+        /// The role, token or kind the defect names (see the code table).
+        Subject: string
+    }
+
+module ManifestDefect =
+    /// The wire spelling of a defect code — the shared table's first column.
+    let code (c: ManifestDefectCode) : string =
+        match c with
+        | ManifestDefectCode.ContrastFloorOutOfRange -> "CONTRAST_FLOOR_OUT_OF_RANGE"
+        | ManifestDefectCode.ContrastFloorRoleEmpty -> "CONTRAST_FLOOR_ROLE_EMPTY"
+        | ManifestDefectCode.ContrastFloorRoleUnbound -> "CONTRAST_FLOOR_ROLE_UNBOUND"
+        | ManifestDefectCode.UsageBudgetTokenUndeclared -> "USAGE_BUDGET_TOKEN_UNDECLARED"
+        | ManifestDefectCode.InvariantKindUnknown -> "INVARIANT_KIND_UNKNOWN"
+
+    /// The canonical JSON of one defect — `{"code":…,"index":…,"subject":…}`,
+    /// keys Ordinal-sorted — the bytes the corpus's `manifest-validation`
+    /// vectors pin on every host.
+    let encode (d: ManifestDefect) : string =
+        Json.serialize (
+            JObj
+                [ "code", JStr(code d.Code)
+                  "index", JNum(float d.Index)
+                  "subject", JStr d.Subject ]
+        )
+
+    /// The lowest and highest contrast ratio WCAG's formula can produce — a
+    /// floor outside them is either vacuous (below 1, every pair passes) or
+    /// unsatisfiable (above 21).
+    [<Literal>]
+    let MinContrastRatio = 1.0
+
+    [<Literal>]
+    let MaxContrastRatio = 21.0
+
 module ThemeManifest =
     /// The empty manifest — no tokens, roles, or invariants.
     let empty: ThemeManifest =
@@ -204,3 +277,45 @@ module ThemeManifest =
         |> List.filter (fun t -> t.Type = "color")
         |> List.map _.Value
         |> Set.ofList
+
+    /// Does any role binding bind `role`? A tone binding binds its tone's wire
+    /// name (`"Brand"`); a named binding binds its name.
+    let private binds (role: string) (manifest: ThemeManifest) : bool =
+        manifest.Roles
+        |> List.exists (fun b ->
+            match b.Role with
+            | ManifestRole.Tone t -> ManifestRole.toneToString t = role
+            | ManifestRole.Named n -> n = role)
+
+    /// Phase 2133 — the validation pass, run after decode: every declared
+    /// invariant that cannot mean what it says, as one shared code (the table
+    /// above). `[]` for a manifest whose invariants all bind and are in range.
+    /// Never refuses, never repairs: a host decides what a defect costs it.
+    let validate (manifest: ThemeManifest) : ManifestDefect list =
+        let defect code index subject =
+            { Code = code
+              Index = index
+              Subject = subject }
+
+        manifest.Invariants
+        |> List.mapi (fun i inv ->
+            match inv.Kind with
+            | InvariantKind.ContrastFloor(role, minRatio) ->
+                [ if
+                      not (
+                          minRatio >= ManifestDefect.MinContrastRatio
+                          && minRatio <= ManifestDefect.MaxContrastRatio
+                      )
+                  then
+                      defect ManifestDefectCode.ContrastFloorOutOfRange i role
+                  if role = "" then
+                      defect ManifestDefectCode.ContrastFloorRoleEmpty i ""
+                  elif not (binds role manifest) then
+                      defect ManifestDefectCode.ContrastFloorRoleUnbound i role ]
+            | InvariantKind.UsageBudget(token, _, _) ->
+                [ if Option.isNone (tryGetToken token manifest) then
+                      defect ManifestDefectCode.UsageBudgetTokenUndeclared i token ]
+            | InvariantKind.Unknown(kind, _) -> [ defect ManifestDefectCode.InvariantKindUnknown i kind ]
+            | InvariantKind.MotionVoice _
+            | InvariantKind.ChartSeriesDistinct -> [])
+        |> List.concat
