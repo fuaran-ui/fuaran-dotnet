@@ -506,3 +506,131 @@ let tests =
 
               Expect.equal fields [ "name", JStr "Ada" ] "declared fields only, Null omitted"
           } ]
+
+// ─── Phase 2431: a DECODED `Local` flushes through `commitTo`, never a cast ───
+//
+// A tree decoded from the wire has no author closures. Its `Local.onCommit`, when
+// the document carried the `"<closure>"` sentinel, is a stand-in that answers the
+// sentinel string. The decoder keeps it as `Some` so the tree re-encodes the
+// member it read, which is why the flush cannot read presence as "an author
+// handler". These pin, for both decoders, what a decoded field flushes to: the
+// declared `commitTo` write, nothing, and nothing (never an `InvalidCastException`).
+
+let private decodedFormJson =
+    """{"id":"f","kind":{"$type":"Form","fields":[
+{"id":"committed","kind":{"$type":"Text","value":{"$type":"Local","commitTo":"profile.name","flushOn":{"$type":"OnBlur"},"format":"<closure>","initialFrom":{"$type":"State","defaultValue":"","key":"profile.name"},"parse":"<closure>"}},"label":"Name"},
+{"id":"inert","kind":{"$type":"Text","value":{"$type":"Local","flushOn":{"$type":"OnBlur"},"format":"<closure>","initialFrom":{"$type":"Static","value":""},"parse":"<closure>"}},"label":"Inert"},
+{"id":"closure","kind":{"$type":"Text","onChange":"<closure>","value":{"$type":"Local","flushOn":{"$type":"OnBlur"},"format":"<closure>","initialFrom":{"$type":"State","defaultValue":"","key":"salary"},"onCommit":"<closure>","parse":"<closure>"}},"label":"Salary"}],
+"onSubmit":{"$type":"Chain","ops":[]},"submitLabel":"Save"}}"""
+
+/// The two decoders a host can read a document through: the hand-written one in
+/// `Fuaran.UI.Ops` and the IDL-generated one in `Fuaran.UI`.
+let private decoders: (string * (string -> Result<Node<obj>, string>)) list =
+    [ "JsonDecode",
+      fun json ->
+          Fuaran.UI.Ops.JsonDecode.decodeNodeObj json
+          |> Result.mapError (fun e -> e.Code + " at " + e.Path)
+      "Generated", fun json -> Fuaran.UI.Generated.decodeNode json |> Result.mapError (fun e -> sprintf "%A" e) ]
+
+let private decodedForm (decode: string -> Result<Node<obj>, string>) : Node<obj> * FormSpec<obj> =
+    match decode decodedFormJson with
+    | Ok({ Kind = NodeKind.Form form } as node) -> node, form
+    | Ok other -> failtestf "expected a Form root, got %A" other.Kind
+    | Error e -> failtestf "the form failed to decode: %s" e
+
+let private decodedField (form: FormSpec<obj>) (id: string) : FormField<obj> =
+    match form.Fields |> List.tryFind (fun f -> f.Id = id) with
+    | Some f -> f
+    | None -> failtestf "no decoded field '%s'" id
+
+/// What the decoder put in the field's `onCommit` slot: `None`, or what the
+/// stand-in answers when called.
+let private onCommitOf (field: FormField<obj>) : obj option option =
+    match field.Kind with
+    | FormFieldKind.Text(FieldView.Text(Some(Binding.Local(_, _, _, oc, _, _, _))), _) ->
+        Some(oc |> Option.map (fun f -> f "x"))
+    | _ -> None
+
+[<Tests>]
+let decodedLocalTests =
+    testList
+        "Phase 2431: a decoded Local flushes without casting a placeholder"
+        [ for name, decode in decoders do
+              test $"{name}: what the decoder puts in onCommit" {
+                  let _, form = decodedForm decode
+                  Expect.equal (onCommitOf (decodedField form "committed")) (Some None) "commitTo field: onCommit None"
+                  Expect.equal (onCommitOf (decodedField form "inert")) (Some None) "no destination: onCommit None"
+
+                  match onCommitOf (decodedField form "closure") with
+                  | Some(Some(:? string as s)) ->
+                      Expect.equal s "<closure>" "the sentinel crosses as a stand-in answering the sentinel string"
+                  | other -> failtestf "expected the sentinel stand-in, got %A" other
+              }
+
+              test $"{name}: a commitTo field flushes to the declared SetState" {
+                  let _, form = decodedForm decode
+
+                  match fieldFlushAction (decodedField form "committed") (LiveValue.Str "Ada") with
+                  | Some(Action.SetState("profile.name", Some(JStr "Ada"), None)) -> ()
+                  | other -> failtestf "expected SetState(profile.name, Ada), got %A" other
+              }
+
+              test $"{name}: a field with neither destination flushes to nothing" {
+                  let _, form = decodedForm decode
+                  Expect.isNone (fieldFlushAction (decodedField form "inert") (LiveValue.Str "z")) "nothing to write"
+              }
+
+              test $"{name}: a field carrying the onCommit sentinel flushes to nothing, without a cast" {
+                  let _, form = decodedForm decode
+                  Expect.isNone (fieldFlushAction (decodedField form "closure") (LiveValue.Str "9")) "no handler to run"
+              }
+
+              test $"{name}: commitActions over every decoded field is the one declared write" {
+                  let _, form = decodedForm decode
+
+                  let actions =
+                      commitActions
+                          form
+                          (Map.ofList
+                              [ "committed", LiveValue.Str "Ada"
+                                "inert", LiveValue.Str "z"
+                                "closure", LiveValue.Str "9" ])
+
+                  match actions with
+                  | [ Action.SetState("profile.name", Some(JStr "Ada"), None) ] -> ()
+                  | other -> failtestf "expected the one declared write, got %A" other
+              }
+
+              test $"{name}: the server-driven submit of a decoded form performs the declared write" {
+                  let node, _ = decodedForm decode
+                  let mutable performed: Action<obj> list = []
+
+                  let services =
+                      { DriverServices.createPermissive (fun (n: Node<obj>) -> $"<n id='{n.Id}'/>") with
+                          InterpretHostEffect =
+                              fun action ->
+                                  performed <- performed @ [ action ]
+                                  None }
+
+                  let s = init services (fun (_: obj) (m: unit) -> m) (fun () -> node) ()
+
+                  let _, out =
+                      step
+                          None
+                          s
+                          { ConnId = "c"
+                            NodeId = "f"
+                            Event = "submit"
+                            Payload =
+                              Map.ofList
+                                  [ "committed", LiveValue.Str "Ada"
+                                    "inert", LiveValue.Str "z"
+                                    "closure", LiveValue.Str "9" ]
+                            LastSeq = 0 }
+
+                  Expect.isNone out.Rejected "a clean submit is not rejected"
+
+                  match performed with
+                  | [ Action.SetState("profile.name", Some(JStr "Ada"), None) ] -> ()
+                  | other -> failtestf "expected the declared write to reach the host, got %A" other
+              } ]
