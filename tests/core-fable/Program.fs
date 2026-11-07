@@ -20,7 +20,10 @@ module CoreFable.Program
 // against the 0.36.0 pin and the 0.37.0 candidate alike were retired when the pin was raised to
 // 0.38.1 (Phase 2226), and the 0.40.0 spellings (Text, the `IdlField` canonical-form slots) were
 // written unconditionally when it was raised to 0.40.2 (Phase 2286). A later candidate that breaks a spelling touched here gets a version constant
-// in `CoreFable.fsproj` (keyed off `CoreFableEffectiveCore`) the same way; none is defined today.
+// in `CoreFable.fsproj` (keyed off `CoreFableEffectiveCore`) the same way. One is defined today:
+// `CORE_0_41` (Core Phase 494 widens `IdlField` with `Keyed`, a record-widening break), under which
+// the three `IdlField` literals below carry `Keyed = false`; it retires with its arm when the pin is
+// raised to 0.41.0.
 //
 // With `CORE_PARITY` defined (see `core-fable.ps1`), the program is also the VALUE leg: `--vectors`
 // prints `Fuaran.Core.ParityVectors.lines ()` — the cross-pipeline table the conformance kit ships
@@ -432,7 +435,11 @@ let private idlTouch =
                       Opt = Required
                       Annotations = Annotations.Empty
                       Aliases = []
-                      Presence = None }
+                      Presence = None
+#if CORE_0_41
+                      Keyed = false
+#endif
+                    }
                     // Phase 113 — one ANNOTATED field, so the Fable leg actually reaches
                     // `Artifact.annotationsJson`. An empty set short-circuits before any of
                     // it runs, so an all-empty vocabulary would compile the type and prove
@@ -449,7 +456,11 @@ let private idlTouch =
                             InProcessOnly = false
                             Since = Some "0.18.0" }
                       Aliases = []
-                      Presence = None } ] }
+                      Presence = None
+#if CORE_0_41
+                      Keyed = false
+#endif
+                    } ] }
               { Tag = "Box"
                 Category = "container"
                 Annotations = Annotations.Empty
@@ -459,7 +470,11 @@ let private idlTouch =
                       Opt = Required
                       Annotations = Annotations.Empty
                       Aliases = []
-                      Presence = None } ] } ]
+                      Presence = None
+#if CORE_0_41
+                      Keyed = false
+#endif
+                    } ] } ]
           Unions = []
           Enums = [ Declare.enumOf "Tone" [ "Calm"; "Loud" ] ]
           Records = []
