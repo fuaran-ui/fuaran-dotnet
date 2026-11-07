@@ -747,10 +747,13 @@ let rec private modelNode (node: Node<obj>) : ProvedBudget.nd =
 /// `actionCascadeCost` makes. The wildcard here is production's wildcard: the
 /// fourteen arms `BoundedFold.fst` carries one for one are not this model's
 /// subject, because the function being modelled cannot tell them apart.
+/// A leaf's declared amount (fuaran#2261) is read only by the model's quantity
+/// walk, which this host does not compare; the cascade cost never reads it, so
+/// every leaf here declares zero.
 let rec private modelCascade (a: Action<obj>) : ProvedBudget.act =
     match a with
     | Action.Chain ops -> ProvedBudget.AChain(ops |> List.map modelCascade)
-    | _ -> ProvedBudget.ALeaf
+    | _ -> ProvedBudget.ALeaf 0I
 
 // ─── The comparison ─────────────────────────────────────────────────────────
 

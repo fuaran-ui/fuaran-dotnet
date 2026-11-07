@@ -271,7 +271,7 @@ let __proj__BParameter__item__hi : bound  ->  Prims.int = (fun ( projectee  :  b
      end))
 
 type act =
-| ALeaf
+| ALeaf of Prims.int
 | AChain of Prims.list<act>
 | AChoose of act * act
 | ARepeat of bound * act
@@ -279,11 +279,17 @@ type act =
 
 
 let uu___is_ALeaf : act  ->  Prims.bool = (fun ( projectee  :  act ) -> (match (projectee) with
-| ALeaf -> begin
+| ALeaf (amount) -> begin
      true
      end
 | uu___ -> begin
      false
+     end))
+
+
+let __proj__ALeaf__item__amount : act  ->  Prims.int = (fun ( projectee  :  act ) -> (match (projectee) with
+| ALeaf (amount) -> begin
+     amount
      end))
 
 
@@ -391,7 +397,7 @@ let rec action_cascade_cost : Prims.int  ->  act  ->  Prims.int = (fun ( mx  :  
 | AEach (elements) -> begin
      (cascade_fold mx (Prims.parse_int "0") elements)
      end
-| ALeaf -> begin
+| ALeaf (uu___) -> begin
      (Prims.parse_int "1")
      end))
 and cascade_fold : Prims.int  ->  Prims.int  ->  Prims.list<act>  ->  Prims.int = (fun ( mx  :  Prims.int ) ( acc  :  Prims.int ) ( ops  :  Prims.list<act> ) -> (match (ops) with
@@ -400,6 +406,45 @@ and cascade_fold : Prims.int  ->  Prims.int  ->  Prims.list<act>  ->  Prims.int 
      end
 | (x)::rest -> begin
      (cascade_fold mx (sat_add mx acc (action_cascade_cost mx x)) rest)
+     end))
+
+
+let rec quantity_cost : Prims.int  ->  act  ->  Prims.int = (fun ( mx  :  Prims.int ) ( a  :  act ) -> (match (a) with
+| AChain (ops) -> begin
+     (quantity_fold mx (Prims.parse_int "0") ops)
+     end
+| AChoose (when_true, when_false) -> begin
+     (max_int (quantity_cost mx when_true) (quantity_cost mx when_false))
+     end
+| ARepeat (BLiteral (count), body) -> begin
+     (sat_mul mx (clamp_nat count) (quantity_cost mx body))
+     end
+| ARepeat (BParameter (uu___, hi), body) -> begin
+     (sat_mul mx (clamp_nat hi) (quantity_cost mx body))
+     end
+| AEach (elements) -> begin
+     (quantity_fold mx (Prims.parse_int "0") elements)
+     end
+| ALeaf (amount) -> begin
+     (sat_add mx (Prims.parse_int "0") (clamp_nat amount))
+     end))
+and quantity_fold : Prims.int  ->  Prims.int  ->  Prims.list<act>  ->  Prims.int = (fun ( mx  :  Prims.int ) ( acc  :  Prims.int ) ( ops  :  Prims.list<act> ) -> (match (ops) with
+| [] -> begin
+     acc
+     end
+| (x)::rest -> begin
+     (quantity_fold mx (sat_add mx acc (quantity_cost mx x)) rest)
+     end))
+
+
+let quantity_gate : Prims.int  ->  Prims.int  ->  act  ->  opt<Prims.int> = (fun ( mx  :  Prims.int ) ( ceiling  :  Prims.int ) ( a  :  act ) -> (
+
+let worst = (quantity_cost mx a)
+in  
+if (worst > ceiling) then begin
+     OSome (worst)
+     end else begin
+     ONone
      end))
 
 type budget = {b_max_actions : Prims.int; b_max_nodes : Prims.int}
