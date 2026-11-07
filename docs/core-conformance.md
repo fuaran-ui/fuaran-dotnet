@@ -63,7 +63,7 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 | `Conformance.digestLaws` | Not used | — | Fuaran.Core.Ops.Diff's subtree digests and change partition — the tier diffs through `Diff.toOpsContainedWith` and classifies through `Diff.changes` (Phase 2304) but computes no subtree digest (WireProfile's Diff is Fuaran.Core.Idl's IDL diff, a different module) |
 | `Conformance.dirtyPropagationLaws` | Adopted | — | `dirtyPropagationLaws certifies the propagation seam's cone at this pin` — via `Conformance.dirtyPropagationLaws — beside the tier-shaped 'BindingGraph.dirty is sound and minimal on generated binding sets' over the production BindingGraph (Fuaran.UI.Renderer.Core)` |
 | `Conformance.encoderInjectivityLawsAt` | Adopted | — | `the FastPath memo-key encoder is collision-free (encoderInjectivityLawsAt)` — via `Conformance.encoderInjectivityLawsAt` |
-| `Conformance.footprintInLawsAt` | Not used | — | the base-aware footprint projection a domain folds with when it holds the tree (`footprintIn`) — the tier ships only the pure `TreeOp` projection (TreeOpFootprint), which footprintLawsAt certifies; it declares no base-aware one |
+| `Conformance.footprintInLawsAt` | Adopted | — | `the BASE-AWARE footprint is sound and refines the pure one (footprintInLawsAt)` — via `Conformance.footprintInLawsAt (.NET)`<br>`footprintInLawsAt certifies through the Fable law harness over the tier's base-aware footprint` — via `Conformance.footprintInLawsAt (Fable and Node)` |
 | `Conformance.footprintLaws` | Adopted | — | `the tier's tree footprints are sound, monotone and deterministic (footprintLaws)` — via `Conformance.footprintLaws` |
 | `Conformance.footprintLawsAt` | Adopted | — | `the SHIPPED footprint projection is sound at the tier's own ops (footprintLawsAt)` — via `Conformance.footprintLawsAt` |
 | `Conformance.freshIdLaws` | Adopted | — | `the Fuaran.UI witness certifies under Core's freshIdLaws (the clone verbs' renaming)` — via `Conformance.freshIdLaws` |
@@ -145,8 +145,8 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 
 | Status | Families |
 |---|---|
-| Adopted | 58 |
+| Adopted | 59 |
 | Carried by phase | 8 |
-| Not used | 50 |
+| Not used | 49 |
 | Sibling host | 1 |
 | **Total** | **117** |

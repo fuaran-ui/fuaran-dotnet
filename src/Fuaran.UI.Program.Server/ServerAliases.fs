@@ -228,17 +228,34 @@ module Replay =
         : DemandedProjection =
         Fuaran.Program.Server.Replay.withPostures query UiWitness.witness handlers projection
 
+    /// The demanded projection of a tree (`ServerDemanded.ofTreeAndHandlers`,
+    /// the DEMAND view) with each handler that demand reaches given its replay
+    /// posture, read through the FOLD view as `postureOf` reads it (D27). The
+    /// core's one call takes a single witness for both halves, so it is
+    /// composed here from the core's own steps, over one reachability.
     let ofTreeAndHandlers
         (query: QueryPosture)
         (handlers: Map<string, Handler>)
         (root: Node<obj>)
         : DemandedProjection =
-        Fuaran.Program.Server.Replay.ofTreeAndHandlers query UiWitness.witness handlers root
+        ServerDemanded.ofTreeAndHandlers handlers root
+        |> withPostures query (ServerDemanded.reachable handlers root)
 
 module Harvest =
 
+    /// The document for a program: `Replay.ofTreeAndHandlers` with each
+    /// reached handler's undo posture joined on, published. The demand reads
+    /// the demand view and both postures the fold view (D27).
     let ofProgram (query: QueryPosture) (handlers: Map<string, Handler>) (root: Node<obj>) : HarvestedDemand =
-        Fuaran.Program.Server.Harvest.ofProgram query UiWitness.witness handlers root
+        Replay.ofTreeAndHandlers query handlers root
+        |> Undo.withPostures query UiWitness.witness (ServerDemanded.reachable handlers root)
+        |> Fuaran.Program.Server.Harvest.publish
 
+    /// The document for a registration alone: `ServerDemanded.ofHandlers` (the
+    /// tree-free demand view, which still sees a confirm's continuations) with
+    /// both postures joined on through the fold view (D27).
     let ofRegistration (query: QueryPosture) (handlers: Handler seq) : HarvestedDemand =
-        Fuaran.Program.Server.Harvest.ofRegistration query UiWitness.witness handlers
+        ServerDemanded.ofHandlers handlers
+        |> Replay.withPostures query handlers
+        |> Undo.withPostures query UiWitness.witness handlers
+        |> Fuaran.Program.Server.Harvest.publish

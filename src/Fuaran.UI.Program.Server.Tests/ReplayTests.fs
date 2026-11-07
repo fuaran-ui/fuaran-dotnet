@@ -91,6 +91,79 @@ let private unsafeHandler =
           Effect(ServerEffect.HostCall("sendMail", jstr "x", None))
           Effect(ServerEffect.Notify("ops", jstr "n")) ]
 
+// ─── Phase 2430: a tree the demand view reads further than the fold view ─────
+
+/// One form, one buffered field whose `Local` binding commits to
+/// `profile.name`. DECODED, so the binding is the one a decoding host holds: a
+/// declared `commitTo`, no closure (the shape Phase 2198's flush resolves).
+let private profileForm: Node<obj> =
+    let json =
+        """{"id":"profile","kind":{"$type":"Form","fields":[{"id":"name-input","kind":{"$type":"Text","value":{"$type":"Local","commitTo":"profile.name","flushOn":{"$type":"OnCommitAction"},"format":"<closure>","initialFrom":{"$type":"State","defaultValue":"","key":"profile.name"},"parse":"<closure>"}},"label":"name-input","required":false}],"onSubmit":{"$type":"Chain","ops":[]},"submitLabel":"Save"}}"""
+
+    match Fuaran.UI.Ops.JsonDecode.decodeNodeObj json with
+    | Ok node -> node
+    | Error err -> failwithf "the profile form does not decode: %A" err
+
+/// The endpoint only a confirm's continuation names.
+let confirmedEndpoint = "/handlers/confirmed"
+
+/// A tree the fold view under-reads twice over: one button COMMITS the
+/// buffered field (the key it writes is a fact of the tree, Phase 2198) and one
+/// ASKS a question whose `onConfirm` calls `confirmedEndpoint` (a continuation
+/// is the demand view's, Phase 2106). Read through the fold view, the commit is
+/// a leaf that demands nothing and the confirmed handler is unreachable.
+let demandViewTree: Node<obj> =
+    let button (id: string) (action: Action<obj>) =
+        Fuaran.button
+            id
+            { Defaults.button<obj> with
+                Label = TextSource.Literal id
+                OnClick = action }
+
+    Fuaran.dashboard
+        "root"
+        { Defaults.dashboard<obj> with
+            Children =
+                [ profileForm
+                  button "apply" (Action.CommitLocal "name-input")
+                  button
+                      "ask"
+                      (Action.Confirm(TextSource.Literal "sure?", Action.Call(confirmedEndpoint, None, None), None)) ] }
+
+/// The handler behind `confirmedEndpoint`. Its compute stage holds a confirm of
+/// its own whose continuation writes from a binding and notifies a channel, so
+/// the DEMAND view reads further into it than its fold does: the continuation's
+/// channel is demanded only through the demand view, and the stage's replay
+/// reasons there carry `non-literal-write` beside the ask's
+/// `undecidable-action`. That is what lets the tests below tell which view a
+/// demand or a posture was read through.
+let confirmedHandler: Handler =
+    { Name = "confirmed"
+      Stages =
+        [ Compute(
+              Action.Confirm(
+                  TextSource.Literal "again?",
+                  Action.Chain
+                      [ Action.SetState("dest", None, Some(Binding.State("never.written", None)))
+                        Action.Notify("audit", jstr "a") ],
+                  None
+              )
+          )
+          Effect(ServerEffect.HostCall("sendMail", jstr "x", None)) ] }
+
+/// The registration behind `demandViewTree`.
+let demandViewHandlers: Map<string, Handler> =
+    Map.ofList [ confirmedEndpoint, confirmedHandler ]
+
+/// A projection with its postures cleared: what remains is the demand, which
+/// is the part the demanded projection and the posture-joined documents must
+/// agree on.
+let withoutPostures (projection: DemandedProjection) : DemandedProjection =
+    { projection with
+        Server =
+            projection.Server
+            |> Option.map (fun tier -> { tier with Replay = []; Undo = [] }) }
+
 // ─── the suite ───────────────────────────────────────────────────────────────
 
 [<Tests>]
@@ -410,4 +483,71 @@ let tests =
                   (Replay.admit QueryPosture.PureRead ReplayMode.Resume Replay.strict addressed).Admission
                   (ReplayAdmission.ReEvaluateReads [])
                   "the addressed one resumes with nothing to explain"
+          } ]
+
+// ─── Phase 2430: the replay document reads the demand view ──────────────────
+//
+// The demanded projection of a tree reads the DEMAND view (a commit names the
+// key it writes, a confirm demands both continuations); the replay document is
+// that projection with postures joined on, so it must name the same demand and
+// post a posture for every handler that demand reaches. The postures
+// themselves read the FOLD view, because a posture describes what re-running a
+// handler folds and the fold never reads the demand view (UiWitness's own
+// rule, DECISIONS D27).
+
+[<Tests>]
+let demandViewTests =
+    testList
+        "Phase 2430 — the replay document reads the demand view"
+        [ test "for one tree, the replay document names what the demanded projection names" {
+              let demanded = ServerDemanded.ofTreeAndHandlers demandViewHandlers demandViewTree
+
+              let replay =
+                  Replay.ofTreeAndHandlers QueryPosture.PureRead demandViewHandlers demandViewTree
+
+              // The precondition, so the equality below is about these two
+              // demands and not about an empty document agreeing with another.
+              Expect.isTrue
+                  (demanded.StateNamespaces |> List.exists (fun n -> n.Namespace = "profile"))
+                  "the demanded projection names the namespace the commit writes"
+
+              Expect.isNonEmpty
+                  (demanded.Server |> Option.map _.Functions |> Option.defaultValue [])
+                  "and the host functions of the handler only the confirm's continuation reaches"
+
+              Expect.equal (withoutPostures replay) demanded "the replay document's demand IS the demanded projection"
+          }
+
+          test "a posture is posted for every handler the demand view reaches, the continuation's included" {
+              let replay =
+                  Replay.ofTreeAndHandlers QueryPosture.PureRead demandViewHandlers demandViewTree
+
+              let reached =
+                  ServerDemanded.reachable demandViewHandlers demandViewTree |> List.map _.Name
+
+              Expect.equal reached [ "confirmed" ] "the precondition: reached through the confirm alone"
+
+              Expect.equal
+                  (replay.Server |> Option.map (fun t -> t.Replay |> List.map _.Handler))
+                  (Some reached)
+                  "the posture set and the demand set are one reachability"
+          }
+
+          test "the document's posture is the fold's posture, and the probe shows the two views differ" {
+              let replay =
+                  Replay.ofTreeAndHandlers QueryPosture.PureRead demandViewHandlers demandViewTree
+
+              let folded = Replay.postureOf QueryPosture.PureRead confirmedHandler
+
+              let demandRead =
+                  Fuaran.Program.Server.Replay.postureOf QueryPosture.PureRead UiWitness.demandWitness confirmedHandler
+
+              // The go-red half: were the two views to agree on this handler,
+              // the equality below could not tell which one a posture read.
+              Expect.notEqual demandRead folded "the demand view reads the untaken continuation's write"
+
+              Expect.equal
+                  (replay.Server |> Option.map _.Replay)
+                  (Some [ folded ])
+                  "the document posts the posture `Replay.postureOf` and `Replay.admit` decide by"
           } ]
