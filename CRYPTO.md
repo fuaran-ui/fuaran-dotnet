@@ -184,8 +184,8 @@ own key directory — no service, no database, no private key — and returns a 
 convenience for a verifier that has established those keys by another route; it is never read by
 verification, because a bundle carrying its own trust root proves only that it agrees with itself.
 
-Signing uses **platform implementations only** — the BCL's `ECDsa` on .NET (WebCrypto's ECDSA is the
-browser verification route when it lands). No hand-rolled ECDSA signer, ever: nonce generation stays
+Signing uses **platform implementations only** — the BCL's `ECDsa` on .NET. A browser verifies and never
+signs: `EcdsaP256`'s Fable arm checks the same signatures through WebCrypto's ECDSA (Phase 2570). No hand-rolled ECDSA signer, ever: nonce generation stays
 with the platform. The canonical descriptor/claim encodings are pinned cross-host artefacts with
 golden vectors in `wire-format-fixtures/attestation/descriptor-corpus.json`; the algorithm id is a
 field, so a future primitive (`ed25519-v1` is reserved) is a new registered id, never a format
@@ -269,6 +269,21 @@ the canonical claim payload passes through it with no new signing interface and 
 portable surface. The .NET verifier shares one curve check with the segment verifier rather than
 carrying a second copy: an algorithm id names one curve, a key size does not identify a curve, and two
 copies of that test are two places for the ends of an id to drift apart.
+
+## Page read-sets — a signature over a recomputed projection (opt-in)
+
+A stored page document (Phase 2522, WIRE_FORMAT §32; [`docs/PAGE-DOCUMENT.md`](docs/PAGE-DOCUMENT.md)) is
+signed over a canonical preimage of three things: the SHA-256 of its tree's canonical bytes, the SHA-256 of
+its request sidecar's canonical bytes, and the canonical bytes of its demanded document — what the page can
+ever reach. Signing goes through the same `Fuaran.Core.IAttestationSink` seam; verification takes a
+`ClaimVerifier` over the host's own key type, the bounded program core's signed-envelope pattern consumed as
+a package, so this tier holds no cryptography.
+
+Verification RECOMPUTES the demanded document from the page and checks the signature over the preimage it
+computed, never over the bytes it was handed. A verify with no key refuses; a foreign key, a drifted read-set
+and a bad signature are distinct refusals. Boundaries: the signature says the key holder paired this tree and
+this sidecar with this read-set, not that the reach is acceptable (a coverage check's question), and it does
+not cover the document's provenance, which is the writer's assertion.
 
 ## Lift receipts — a recomputation, not a signature
 

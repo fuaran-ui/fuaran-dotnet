@@ -485,7 +485,10 @@ let shown =
                       "Markdown"
                       (probe "Markdown" "Markdown whose text is a key with no entry." (fun () ->
                           { Fuaran.markdown "markdown-probe" "" with
-                              Kind = NodeKind.Markdown { Text = TextSource.I18n("probe.unknown", Map.empty) } }))
+                              Kind =
+                                  NodeKind.Markdown
+                                      { Citations = []
+                                        Text = TextSource.I18n("probe.unknown", Map.empty) } }))
 
               Expect.equal
                   (Bundle.check (Bundle.build Defaults.theme None options))

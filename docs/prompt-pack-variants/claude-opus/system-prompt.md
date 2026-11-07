@@ -292,7 +292,7 @@ LayoutKind =
 | ScrollArea { children:Node[]; orientation:"Vertical"|"Horizontal"|"Both"; maxHeight?:int; maxWidth?:int }
 DisplayKind =
 | Heading { level:int; text:TextSource; variant?:"Standard"|"Eyebrow"|"Caption"|"Lead" }
-| Markdown { text:TextSource }
+| Markdown { text:TextSource; citations?:MarkdownCitation[] }
 | Metric { label:TextSource; value:Binding_float; comparisons?:MetricComparison[]; emphasis?:Emphasis; format?:CellFormat; icon?:str; subtext?:TextSource; tone?:ToneVariant; trend?:Binding_float; trendFormat?:CellFormat; trendPolarity?:TrendPolarity; weight?:StyleWeight }
 | Badge { label:TextSource; variant?:"Neutral"|"Brand"|"Success"|"Warning"|"Critical"|"Info" }
 | Sparkline { source:Binding_list_float }
@@ -301,7 +301,7 @@ DisplayKind =
 | Skeleton { rows:int }
 | Icon { icon:str; label?:str; size?:"Small"|"Medium"|"Large"; tone?:ToneVariant }
 | LabelValueRow { label:TextSource; value:Binding_float; emphasis?:bool; format?:CellFormat; help?:TextSource }
-| Fact { label:TextSource; value:TextSource; emphasis?:bool; help?:TextSource; icon?:str; tone?:ToneVariant }
+| Fact { label:TextSource; value:TextSource; emphasis?:bool; help?:TextSource; icon?:str; reference?:str; tone?:ToneVariant }
 | Link { href:Binding_str; label:TextSource; download?:bool; protection?:"email"; rel?:str; target?:str }
 | Image { alt:TextSource; src:Binding_str; aspectRatio?:ImageAspect; caption?:TextSource; expandable?:bool; fit?:"Natural"|"Cover"|"Contain"; loading?:"Eager"|"Lazy"; srcSet?:SrcSetEntry[]; variant?:"Default"|"Avatar"|"Rounded" }
 | Media { kind:MediaKind; label:TextSource; src:Binding_str; controls?:bool; loop?:bool; tracks?:TrackEntry[]; transcript?:TextSource }
@@ -315,11 +315,11 @@ DisplayKind =
 InputKind =
 | Form { fields:FormField[]; onSubmit:Action; submitLabel:TextSource; disabled?:Binding_bool }
 | Filters { items:FilterSpec[] }
-| Button { label:TextSource; onClick:Action; disabled?:Binding_bool; icon?:str; variant?:"Primary"|"Secondary"|"Tertiary"|"Destructive" }
+| Button { label:TextSource; onClick:Action; affordance?:Affordance; disabled?:Binding_bool; icon?:str; variant?:"Primary"|"Secondary"|"Tertiary"|"Destructive" }
 | FileUpload { accept:str[]; label:TextSource; acceptPaste?:bool; capture?:"Camera"|"Microphone"; destination?:str; disabled?:Binding_bool; dropTarget?:bool; maxBytes?:int; maxFiles?:int; multiple?:bool }
-| Select { label:TextSource; source:Binding_list_SelectOption; disabled?:Binding_bool; multiple?:bool; placeholder?:TextSource; value?:Binding_str_choice; values?:Binding_list_str }
+| Select { label:TextSource; source:Binding_list_SelectOption; affordance?:Affordance; disabled?:Binding_bool; groups?:SelectOptionGroup[]; multiple?:bool; placeholder?:TextSource; value?:Binding_str_choice; values?:Binding_list_str }
 VisKind =
-| DataGrid { columns:ColumnErased[]; source:Binding_hosted; defaultSort?:{ column:int; direction:"asc"|"desc" }; editStateKey?:str; editable?:bool; exportable?:bool; keepRowsTogether?:bool; pageSize?:int; pageStateKey?:str; reorderable?:bool; repeatHeader?:bool; rowKeyField?:str; rowTotal?:Binding_int; sortStateKey?:str; staticRows?:{ headers:TextSource[]; rows:TextSource[][]; defaultSort?:{ column:int; direction:"asc"|"desc" }; sortable?:bool }; transferInKey?:str; transferOutKey?:str; windowStateKey?:str }
+| DataGrid { columns:ColumnErased[]; source:Binding_hosted; defaultSort?:{ column:int; direction:"asc"|"desc" }; editStateKey?:str; editable?:bool; exportable?:bool; keepRowsTogether?:bool; pageSize?:int; pageStateKey?:str; reorderable?:bool; repeatHeader?:bool; rowKeyField?:str; rowTotal?:Binding_int; sortStateKey?:str; staticRows?:{ headers:TextSource[]; rows:TextSource[][]; citations?:TableCitation[]; defaultSort?:{ column:int; direction:"asc"|"desc" }; sortable?:bool }; transferInKey?:str; transferOutKey?:str; windowStateKey?:str }
 | Chart { kind:"Line"|"Bar"|"Area"|"Pie"|"Scatter"|"Heatmap"; source:Binding_hosted; xField:str; yFields:str[]; annotations?:ChartAnnotation[]; dataLabels?:"Off"|"Ends"; legendPosition?:"Top"|"Right"|"Bottom"|"None"; stacked?:bool; subtitle?:TextSource; title?:TextSource; valueFormat?:Format; xScale?:"Category"|"Temporal"; xTitle?:TextSource; yTitle?:TextSource }
 | Map { centreLatitude:num; centreLongitude:num; source:Binding_list_MapMarker; zoom:int }
 TreeOp =
@@ -329,6 +329,8 @@ TreeOp =
 | UpdateStyle { style:SemanticStyle; target:str }
 | PatchStyle { style:StyleDelta; target:str }
 | UpdateState { state:StateBehaviour; target:str }
+| UpdateAccessibility { accessibility:Accessibility; target:str }
+| UpdateTooltip { target:str; tooltip?:TextSource }
 | InsertChild { child:Node; parentId:str }
 | RemoveNode { target:str }
 | MoveNode { newParentId:str; target:str }
@@ -641,7 +643,12 @@ TransformStep =
 | union { source:object }
 | intersect { source:object }
 | except { source:object }
+| define { body:object; name:str; params:{ name:str; default?:object }[] }
+| fit { control:{ maxIter:int | { $param:str }; tol:num | { $param:str } }; family:"gaussian"|"poisson"|"gamma"|"tweedie"|"quasiPoisson"|"binomial"|"quasiBinomial"|"inverseGaussian"|"negativeBinomial"; groupBy:str[]; intercept:bool; link:"identity"|"log"|"logit"|"probit"|"cloglog"|"inverse"|"inverseSquare"|"sqrt"; output:"coefficients"|"summary"|"fitted"|"residuals"; predictors:{ expr:object; name:str }[]; response:str; offset?:object; power?:num; ridge?:num | { $param:str }; stdErrors?:"classical"|"hc0"|"hc1"|"hc2"|"hc3"|"robust"; theta?:num; weights?:str }
+| predict { fit:TransformFitSpec; model:{ from:"training"|"coefficients"; source:object }; scale:"link"|"response"; interval?:{ kind:"confidence"|"prediction"; level:num | { $param:str } } }
 Accessibility { describedBy?:str; hidden?:Binding_bool; label?:Binding_str; labelledBy?:str; liveRegion?:"polite"|"assertive"|"off"; role?:str; speak?:TextSource }
+Affordance { aliases?:AffordanceAlias[]; clearable?:bool; description?:str; neverControllable?:bool; patterns?:str[]; readPatterns?:str[] }
+AffordanceAlias { alias:str; value:str }
 ColumnErased { kind:CellKindErased; label:str; editable?:bool; field?:str; format?:CellFormat; sortable?:bool; width?:ColumnWidth }
 CompareRule { against:Binding_json; op:"eq"|"neq"|"lt"|"lte"|"gt"|"gte" }
 ContentHash { algorithm:str; hash:str; strictness:"StrictReplay"|"AdvisoryWarning"|"Enforced" }
@@ -650,18 +657,22 @@ DrawStyle { emphasis?:Emphasis; fill?:Binding_str; fontFamily?:str; fontSize?:nu
 EffectClass { determinism:"Deterministic"|"Clock"|"Random"|"Network"; hostEffect:"Pure"|"ReadsHost"|"WritesHost" }
 FieldRule { compare?:CompareRule; format?:"email"|"url"|"tel"; maxLength?:int; message?:TextSource; minLength?:int; pattern?:str }
 FilterSpec { kind:FormFieldKind; label:TextSource; name:str }
-FormField { id:str; kind:FormFieldKind; label:TextSource; help?:TextSource; required?:bool; rule?:FieldRule }
+FormField { id:str; kind:FormFieldKind; label:TextSource; affordance?:Affordance; help?:TextSource; required?:bool; rule?:FieldRule }
 GuestChannel { direction:"OutOnly"|"TwoWay"; messageShape?:str }
 MapMarker { label:TextSource; latitude:num; longitude:num }
+MarkdownCitation { name:str; reference:str; label?:TextSource }
 MetricComparison { label:TextSource; value:Binding_float; format?:CellFormat; polarity?:TrendPolarity }
 SelectOption { label:TextSource; value:str }
+SelectOptionGroup { label:str; values:str[] }
 SemanticStyle { direction?:TextDirection; emphasis?:Emphasis; role?:StyleRole; tone?:ToneVariant; voice?:FontVoice; weight?:StyleWeight }
 SrcSetEntry { src:Binding_str; width:int }
 StateBehaviour { onEmpty?:Node; onLoading?:Node }
 StyleDelta { direction?:TextDirection; emphasis?:Emphasis; role?:StyleRole; tone?:ToneVariant; voice?:FontVoice; weight?:StyleWeight }
 TabHeader { label:TextSource; disabled?:Binding_bool; icon?:str }
+TableCitation { column:int; reference:str; row:int; label?:TextSource }
 TrackEntry { kind:"Subtitles"|"Captions"|"Descriptions"|"Chapters"; label:TextSource; src:Binding_str; srcLang:str; default?:bool }
 TransformAgg { fn:AggFn; name:str; of:str }
+TransformFitSpec { control:{ maxIter:int | { $param:str }; tol:num | { $param:str } }; family:"gaussian"|"poisson"|"gamma"|"tweedie"|"quasiPoisson"|"binomial"|"quasiBinomial"|"inverseGaussian"|"negativeBinomial"; groupBy:str[]; intercept:bool; link:"identity"|"log"|"logit"|"probit"|"cloglog"|"inverse"|"inverseSquare"|"sqrt"; output:"coefficients"|"summary"|"fitted"|"residuals"; predictors:{ expr:object; name:str }[]; response:str; offset?:object; power?:num; ridge?:num | { $param:str }; stdErrors?:"classical"|"hc0"|"hc1"|"hc2"|"hc3"|"robust"; theta?:num; weights?:str }
 TransformRename { a:str; b:str }
 TransformSortKey { column:str; dir?:"asc"|"desc" }
 TreeItem { id:str; label:TextSource; children?:TreeItem[]; icon?:str }

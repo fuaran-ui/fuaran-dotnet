@@ -108,14 +108,15 @@ public static partial class Fuaran
         new(FsFactory.factSpec<object>(
             options.Id,
             // Generated FactSpec ctor is Generated.fs declaration order (Emphasis, Help,
-            // Icon, Label, Tone, Value), not the old hand order.
+            // Icon, Label, Tone, Value, Reference), not the old hand order.
             new FsGen.FactSpec(
                 options.Emphasis,
                 options.Help is { } h ? Fs.Some(h.Inner) : Fs.None<FsGen.TextSource>(),
                 Icon(options.Icon),
                 options.Label.Inner,
                 options.Tone.ToFs(),
-                options.Value.Inner)));
+                options.Value.Inner,
+                options.Reference is { } r ? Fs.Some(r) : Fs.None<string>())));
 
     /// <summary>A crawlable hyperlink (a real <c>&lt;a href&gt;</c>).</summary>
     public static FuaranNode Link(LinkOptions options) =>
@@ -452,6 +453,10 @@ public sealed record FactOptions
 
     /// <summary>The fact's TEXT value ("Alice Smith") — literal, bound, or i18n.</summary>
     public required Text Value { get; init; }
+
+    /// <summary>The reference naming the Fact this figure cites; renderers stamp it as
+    /// <c>data-fact</c>. Opaque to the language.</summary>
+    public string? Reference { get; init; }
 
     /// <summary>Optional leading icon name.</summary>
     public string? Icon { get; init; }

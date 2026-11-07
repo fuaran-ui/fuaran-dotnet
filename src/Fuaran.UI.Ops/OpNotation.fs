@@ -42,6 +42,8 @@ module Fuaran.UI.Ops.OpNotation
 //                                                       a patch names fields,
 //                                                       a whole record does not)
 //    UpdateState      `<id>: state → <slot>=<node> …`  (or `(cleared)`)
+//    UpdateAccessibility `<id>: accessibility → <k>=<v> …` (or `(cleared)`)
+//    UpdateTooltip    `<id>: tooltip → <text>`         (or `(cleared)`)
 //    InsertChild      `<parentId>: + child <node>`
 //    RemoveNode       `<id>: - node`
 //    MoveNode         `<id>: move → parent <newParentId>`
@@ -218,25 +220,39 @@ let private bindingText (b: Binding<obj>) : string = bindingTextWith<obj> objTex
 
 // ─── Style / state / node summaries ─────────────────────────────────────────
 
+/// A wire value as a notation token: a bare string as itself, anything else in
+/// its canonical bytes.
+let private wireText (j: JVal) : string =
+    match j with
+    | JStr s -> s
+    | other -> Canonical.write Rendering.CrossHost other
+
 /// `k=v` pairs for the fields the style actually SETS. The set is taken from
 /// the generated canonical encoder, which already omits every field at its
 /// neutral default — so the notation's idea of "what this style says" cannot
 /// drift from the wire's, and a new style field is covered without an edit
 /// here.
 let private styleText (style: SemanticStyle) : string =
-    let scalar (j: JVal) : string =
-        match j with
-        | JStr s -> s
-        | other -> Canonical.write Rendering.CrossHost other
-
     match Fuaran.UI.Generated.encodeSemanticStyleJson style with
     | JObj [] -> "(defaults)"
     | JObj fields ->
         fields
         |> List.sortBy fst
-        |> List.map (fun (k, v) -> k + "=" + scalar v)
+        |> List.map (fun (k, v) -> k + "=" + wireText v)
         |> String.concat " "
-    | other -> Canonical.write Rendering.CrossHost other
+    | other -> wireText other
+
+/// `k=v` pairs for the fields the trait sets, taken from the generated encoder
+/// as `styleText` takes its own, each value in its canonical wire spelling.
+let private accessibilityText (accessibility: Accessibility) : string =
+    match Fuaran.UI.Generated.encodeAccessibilityJson accessibility with
+    | JObj [] -> "(cleared)"
+    | JObj fields ->
+        fields
+        |> List.sortBy fst
+        |> List.map (fun (k, v) -> k + "=" + wireText v)
+        |> String.concat " "
+    | other -> wireText other
 
 /// `<Kind> "<id>"`, plus the subtree size when it holds more than one node.
 /// Delta-only: an inserted or replacement subtree is SUMMARISED, never dumped —
@@ -290,6 +306,15 @@ let rec private opLines (depth: int) (op: TreeOp<'Msg>) : string list =
              |> List.map (fun (k, v) -> "style." + k + " → " + v)
              |> String.concat ", ") ]
     | TreeOp.UpdateState(id, state) -> [ pad + nodeIdText id + ": state → " + stateText state ]
+    | TreeOp.UpdateAccessibility(id, accessibility) ->
+        [ pad + nodeIdText id + ": accessibility → " + accessibilityText accessibility ]
+    | TreeOp.UpdateTooltip(id, tooltip) ->
+        [ pad
+          + nodeIdText id
+          + ": tooltip → "
+          + (match tooltip with
+             | Some text -> wireText (Fuaran.UI.Generated.encodeTextSourceJson text)
+             | None -> "(cleared)") ]
     | TreeOp.InsertChild(parentId, child) -> [ pad + nodeIdText parentId + ": + child " + nodeSummary child ]
     | TreeOp.RemoveNode id -> [ pad + nodeIdText id + ": - node" ]
     | TreeOp.MoveNode(id, newParentId) -> [ pad + nodeIdText id + ": move → parent " + nodeIdText newParentId ]

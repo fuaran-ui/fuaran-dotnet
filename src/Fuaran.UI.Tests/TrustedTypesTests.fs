@@ -14,17 +14,12 @@ module Fuaran.UI.Tests.TrustedTypesTests
 //      notice. `SANITIZATION.md`'s seam table is the prose form of the same
 //      inventory, and the doc-parity test below binds the two.
 //
-//   2. The policy's floor is INVARIANT over the renderer's own payloads. The
-//      floor is `Sanitize.sanitizeMarkdownHtml`, written for markdown and now
-//      running over drawing SVG, chart SVG, MathML and the theme stylesheet as
-//      well, on every host whether or not the browser enforces Trusted Types.
-//      That uniformity is what keeps the server renderer's SSR bytes and the
-//      client renderer's hydration bytes identical, and it only holds while the
-//      floor finds nothing to remove in those payloads. Each case here builds
-//      its payload from the REAL emitter, so a payload that grows a shape the
-//      sweep would rewrite fails here rather than presenting later as a React
-//      hydration mismatch or, in the chart provenance case, as a figure whose
-//      embedded document no longer parses.
+//   2. The floor `Sanitize.sanitizeMarkdownHtml` is INVARIANT over the renderer's
+//      ordinary payloads. Since Phase 2069 it runs at the producers that need it
+//      and not at the sink, so this no longer guards hydration
+//      (`RenderCostTests` does, over inputs the floor DOES change). It stays
+//      because a payload the sweep would rewrite is a payload whose shape reads
+//      as a threat, which is worth knowing when a builder grows one.
 //
 //   3. The floor still refuses what it always refused. Claim 2 is only worth
 //      having if the sweep is still doing something, so every invariance
@@ -246,9 +241,9 @@ let tests =
               [ let invariant name payload =
                     test name {
                         Expect.equal
-                            (TrustedTypes.createHtml payload)
+                            (Sanitize.sanitizeMarkdownHtml payload)
                             payload
-                            "the policy's floor must not rewrite a payload the renderer emitted: the client applies it and the SSR path does not, so any rewrite here is a hydration mismatch there"
+                            "the floor must find nothing to rewrite in an ordinary payload the renderer emitted"
                     }
 
                 yield invariant "rendered markdown" markdownHtml
@@ -278,26 +273,26 @@ let tests =
           testList
               "the floor still refuses what it always refused"
               [ test "a script element does not survive" {
-                    let clean = TrustedTypes.createHtml "<p>ok</p><script>alert(1)</script>"
+                    let clean = Sanitize.sanitizeMarkdownHtml "<p>ok</p><script>alert(1)</script>"
                     Expect.isFalse (clean.Contains "<script") "no live open script tag survives"
                     Expect.stringContains clean "<p>ok</p>" "the surrounding markup is left alone"
                 }
 
                 test "a meta refresh does not survive" {
                     let clean =
-                        TrustedTypes.createHtml "<meta http-equiv=\"refresh\" content=\"0;url=//evil\"><p>ok</p>"
+                        Sanitize.sanitizeMarkdownHtml "<meta http-equiv=\"refresh\" content=\"0;url=//evil\"><p>ok</p>"
 
                     Expect.isFalse (clean.Contains "<meta ") "the meta element is stripped"
                     Expect.stringContains clean "<p>ok</p>" "the surrounding markup is left alone"
                 }
 
                 test "an inline event handler does not survive" {
-                    let clean = TrustedTypes.createHtml "<a href=\"#\" onclick=\"alert(1)\">x</a>"
+                    let clean = Sanitize.sanitizeMarkdownHtml "<a href=\"#\" onclick=\"alert(1)\">x</a>"
                     Expect.isFalse (clean.Contains "onclick") "the handler attribute is stripped"
                 }
 
                 test "a javascript: URL does not survive" {
-                    let clean = TrustedTypes.createHtml "<a href=\"JaVaScRiPt:alert(1)\">x</a>"
+                    let clean = Sanitize.sanitizeMarkdownHtml "<a href=\"JaVaScRiPt:alert(1)\">x</a>"
                     Expect.isFalse (clean.ToLowerInvariant().Contains "javascript:") "the scheme is neutralised"
                     Expect.stringContains clean "about:blank" "and replaced with an inert one"
                 } ]
@@ -309,7 +304,7 @@ let tests =
                         "<svg><metadata data-fuaran-provenance=\"v1\">{\"a\":1}</metadata><rect /></svg>"
 
                     Expect.equal
-                        (TrustedTypes.createHtml svg)
+                        (Sanitize.sanitizeMarkdownHtml svg)
                         svg
                         "`<metadata>` is not `<meta>`: before Phase 1546 the sweep stripped its opening tag and left the document's text loose in the figure"
                 }
@@ -318,7 +313,7 @@ let tests =
                     let svg =
                         "<svg><defs><linearGradient id=\"g\"><stop /></linearGradient></defs></svg>"
 
-                    Expect.equal (TrustedTypes.createHtml svg) svg "`<linearGradient>` is not `<link>`"
+                    Expect.equal (Sanitize.sanitizeMarkdownHtml svg) svg "`<linearGradient>` is not `<link>`"
                 }
 
                 test "the boundary rule admits no real dangerous element" {
@@ -333,7 +328,7 @@ let tests =
                           "<script>x</script>"
                           "<script\n>x</script>"
                           "<iframe src=evil></iframe>" ] do
-                        let clean = TrustedTypes.createHtml payload
+                        let clean = Sanitize.sanitizeMarkdownHtml payload
 
                         Expect.isFalse
                             (clean.Contains "<meta"
@@ -344,7 +339,7 @@ let tests =
                 }
 
                 test "a truncated open tag at end of input is still stripped" {
-                    let clean = TrustedTypes.createHtml "<p>ok</p><script"
+                    let clean = Sanitize.sanitizeMarkdownHtml "<p>ok</p><script"
                     Expect.isFalse (clean.Contains "<script") "end of input counts as a tag-name boundary"
                 } ]
 
@@ -358,7 +353,7 @@ let tests =
                     for payload in [ markdownHtml; chartSvgWithProvenance; mathMl; themeCss ] do
                         Expect.equal
                             (TrustedTypes.html payload)
-                            (TrustedTypes.createHtml payload)
+                            (Sanitize.sanitizeMarkdownHtml payload)
                             "the .NET path is the floor with no wrapper"
                 } ]
 

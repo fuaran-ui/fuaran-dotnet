@@ -789,7 +789,11 @@ let private boundMarkdown (id: string) (key: string) : Node<obj> =
     let n = Fuaran.markdown id "placeholder"
 
     { n with
-        Kind = NodeKind.Markdown({ Text = TextSource.Bound(Binding.State(key, Some "init")) }) }
+        Kind =
+            NodeKind.Markdown(
+                { Citations = []
+                  Text = TextSource.Bound(Binding.State(key, Some "init")) }
+            ) }
 
 let private container (id: string) (children: Node<obj> list) : Node<obj> =
     Fuaran.dashboard

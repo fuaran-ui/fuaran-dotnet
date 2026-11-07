@@ -139,7 +139,11 @@ let private mkSpacer (id: string) : EqNode =
         { Id = id
           // Phase 459 — Spacer retired; a childless Markdown leaf serves the
           // same "leaf with no bindings/handlers" role this op-stream test needs.
-          Kind = NodeKind.Markdown({ Text = TextSource.Literal "" })
+          Kind =
+            NodeKind.Markdown(
+                { Citations = []
+                  Text = TextSource.Literal "" }
+            )
           State = None
           Style = None
           Accessibility = Option.None
@@ -1472,7 +1476,6 @@ module KeyedEnumeration =
               "Fuaran.UI/Generated.fs"
               "Fuaran.UI/HostLimits.fs"
               "Fuaran.UI/PreEmitValidate.fs"
-              "Fuaran.UI.Renderer/Render.fs"
               "Fuaran.UI.Renderer.Server/Email.fs"
               "Fuaran.UI.Renderer.Server/Speech.fs"
               "Fuaran.UI.Validator.Certification/RecipeCertification.fs" ]
@@ -1716,9 +1719,9 @@ module MemoGateConformance =
     /// A network-reading sub-fragment, honestly declared.
     let private ticker: Node<obj> =
         Fuaran.fragmentDecl
-            "ticker"
+            "network-ticker"
             { Defaults.fragmentDecl<obj> with
-                Name = "ticker"
+                Name = "network-ticker"
                 Effect =
                     { HostEffect = HostEffect.ReadsHost
                       Determinism = DeterminismSource.Network }
@@ -1737,6 +1740,7 @@ module MemoGateConformance =
                 Fuaran.dashboard
                     "card-root"
                     { Defaults.dashboard<obj> with
+                        // fuaran-validator: disable-next-line FUARAN057 — the reference names the card's own `content` slot, not a declared fragment
                         Children = [ md "card-title" "Title"; Fuaran.fragmentRef "content" "content" ] @ extra } }
 
     let private pureCard = card "card" EffectClass.pureDeterministic []

@@ -35,7 +35,7 @@ Fuaran.metric "metric-1" {
     Defaults.metric with
         Label = TextSource.Literal "Revenue"
         Value = Binding.Static(Some 1234.5)
-        Format = CellFormat.Currency "GBP"
+        Format = CellFormat.Currency("GBP", None, None)
         Tone = ToneVariant.Brand
         Icon = Some(IconSource.Named "trending-up")
         Subtext = Some(TextSource.Literal "vs last month")
@@ -282,6 +282,32 @@ The rule is **sentiment = sign(trend) × polarity**, and it applies to the trend
 **Do not reach for `tone` instead.** They are different statements about different subjects: `tone` says how the reading STANDS right now (this wait time is still bad), polarity says which way the quantity IMPROVES (down). The tile above is both at once — `"tone": "Warning"` because 80 minutes is still above target, `LowerIsBetter` because it is falling — and one slot could never have carried both. A host derives neither from the other, and nothing writes back to `tone`.
 
 There is no `"Neutral"`: the spelling is reserved and no conformant host accepts it. A quantity with no better direction simply omits `trend`.
+
+#### A figure cited in a sentence — `citations` on `Markdown` (Phase 2591)
+
+A `Fact` tile stands alone. A figure a sentence cites stays in the sentence: put the whole sentence in one `Markdown`, write the figure as a link whose destination is `cite:<name>`, and declare the name in `citations`. Never split a sentence into a row of `Markdown` fragments and `Fact` tiles.
+
+```json
+{ "id": "summary", "kind": { "$type": "Markdown",
+  "text": "Online.com took [23%](cite:share) of the category.",
+  "citations": [ { "name": "share", "reference": "fact:share-q3", "label": "Online share of category spend" } ] } }
+```
+
+The figure's display text is the link's text. `reference` names the Fact, as on `Fact.reference`. `label` says what the figure is for a screen reader and is never printed, so leave out what the sentence already says. A name is letters, digits, `-` and `_`, used once; a `cite:` link naming no declared citation is a dead link. A sentence citing nothing has no `citations` member at all.
+
+#### A figure cited in a table — `citations` on `staticRows` (Phase 2592)
+
+A table whose numbers are cited is still a table. Keep the cells' text in `rows`, and name each cited cell in `citations` by its zero-based `row` and `column`. Never lay a report table out as a `Box` grid of `Fact` tiles.
+
+```json
+{ "id": "spend", "kind": { "$type": "DataGrid", "columns": [], "source": { "$type": "Static", "value": [] },
+  "staticRows": {
+    "headers": [ "Channel", "Spend" ],
+    "rows": [ [ "Online", "£412k" ], [ "Retail", "£1.2m" ] ],
+    "citations": [ { "row": 0, "column": 1, "reference": "fact:online-spend", "label": "Online spend" } ] } } }
+```
+
+`reference` and `label` mean what they do on a `Markdown` citation, and the label is never printed. A coordinate names a cell that exists, and a cell is cited once. A table citing nothing has no `citations` member at all. A link or an image in a cell is not expressible here.
 
 #### A figure against two periods — `comparisons` (Phase 2472)
 
@@ -1050,6 +1076,8 @@ After the initial emission, subsequent turns can edit the tree via `Fuaran.UI.Op
 | **`UpdateStyle`** | Replace `SemanticStyle` wholesale – every field the payload leaves at its default is RESET to it. | "Restyle the callout as exactly: Warning tone, loud emphasis, nothing else." |
 | **`PatchStyle`** | Set only the style fields it names (`{"tone":"Warning"}`); every other style field is left as it is. A default token is an edit (`{"tone":"Default"}` sets it back). | "Change a callout from Tone.Info to Tone.Warning." |
 | **`UpdateState`** | Replace `StateBehaviour` wholesale. | "Update the Skeleton onLoading slot to use a different shape." |
+| **`UpdateAccessibility`** | Replace the node's `accessibility` record wholesale – a member the payload leaves out is cleared, and `{}` removes the trait. | "Describe this chart by its caption node." |
+| **`UpdateTooltip`** | Set the node's `tooltip`; leave the `tooltip` member out to clear it. | "Add a hint to this metric saying when it refreshes." |
 | **`InsertChild`** | **Append** a new child to a parent. | "Add a Markdown summary to the dashboard." |
 | **`RemoveNode`** | Remove a node. | "Drop the deprecated progress bar." |
 | **`MoveNode`** | Move a subtree to a different parent, **appending** it there. | "Move the Metric from the header into the sidebar." |

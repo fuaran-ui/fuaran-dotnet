@@ -122,8 +122,8 @@ not contain `</`; it is inlined into a `<style>` element.
 
 A figure has two routes, and the Metric, LabelValueRow, Fact and DataGrid cards name both. A figure
 kind's `Format` (a Metric's, a LabelValueRow's, a DataGrid column's) is a `CellFormat`, which is
-locale-free so every host renders the same text: `CellFormat.Currency "GBP"` reads `GBP 142500.00`
-and `Number (Some 0)` reads `3921`, ungrouped. A figure a reader reads, grouped and symbol-led in
+locale-free so every host renders the same text: `CellFormat.Currency("GBP", None, None)` reads `GBP 142500.00`
+and `Number(Some 0, None)` reads `3921`, ungrouped. A figure a reader reads, grouped and symbol-led in
 their locale, is `Binding.Format` with a `LocaleSource`. It yields text, so it fits a text slot (a
 Fact's value, a subtext, a heading) and never a figure kind's numeric value.
 

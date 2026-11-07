@@ -53,7 +53,8 @@ let private canonicalFields =
       // declines `CapabilityInvoker`: there is nothing to read off a function
       // or an interface, and an introspection surface that reported one as
       // present would be reporting the wiring rather than the values.
-      "LiveTransforms" ]
+      "LiveTransforms"
+      "ParameterDependents" ]
 
 let private introspectionSourcesType =
     FSharpType.GetRecordFields(typeof<IntrospectionContext>)

@@ -1033,8 +1033,7 @@ let nodeKindNearMiss (discriminator: string) : string option =
 
 /// Every recognised `TreeOp` `$type` discriminator with its WIRE field set, in
 /// the order `decodeTreeOpAstCore` matches them. Each field is `(name, required)`;
-/// every op field is required today, and the flag is carried anyway so a future
-/// optional field is expressible without a shape change to this export.
+/// the one optional op field is `UpdateTooltip.tooltip`, whose absence clears the trait.
 ///
 /// This is the vocabulary, not a description of it: `unknownOpKindHint` below is
 /// projected from it, and a test pins it field-for-field against the corpus's
@@ -1047,6 +1046,8 @@ let opWireFields: (string * (string * bool) list) list =
       "UpdateStyle", [ "target", true; "style", true ]
       "PatchStyle", [ "target", true; "style", true ]
       "UpdateState", [ "target", true; "state", true ]
+      "UpdateAccessibility", [ "target", true; "accessibility", true ]
+      "UpdateTooltip", [ "target", true; "tooltip", false ]
       "InsertChild", [ "parentId", true; "child", true ]
       "RemoveNode", [ "target", true ]
       "MoveNode", [ "target", true; "newParentId", true ]
@@ -1612,7 +1613,11 @@ let private decodeInvokeArgs (path: string) (j: Json) : Result<(string * string)
 
 let private placeholderClosureNode: Node<obj> =
     { Id = closureSentinel
-      Kind = NodeKind.Markdown({ Text = TextSource.Literal closureSentinel })
+      Kind =
+        NodeKind.Markdown(
+            { Citations = []
+              Text = TextSource.Literal closureSentinel }
+        )
       State = None
       Style = None
       Accessibility = None
@@ -2406,7 +2411,10 @@ let private scanExpr (expr: Fuaran.Compute.ColExpr) : struct (int * bool) =
             | Fuaran.Compute.ColExpr.Lit _
             | Fuaran.Compute.ColExpr.Param _
             // A `now` literal at a grain (Core 0.23.0) is a leaf: no column, no children.
-            | Fuaran.Compute.Now _ -> ()
+            | Fuaran.Compute.Now _
+            // A function body's read of its parameter (Fuaran.Compute 0.43.0) is a leaf too: it names a
+            // parameter, not a column, and the evaluator refuses one outside a definition by name.
+            | Fuaran.Compute.Arg _ -> ()
             | Fuaran.Compute.Binary(_, l, r) ->
                 walk l
                 walk r
@@ -2415,9 +2423,15 @@ let private scanExpr (expr: Fuaran.Compute.ColExpr) : struct (int * bool) =
             // A unit conversion (Fuaran.Compute 0.40.0): its operand is the one child, and the target
             // unit is a declaration, not a node.
             | Fuaran.Compute.Convert(x, _)
+            // A curve read (Fuaran.Compute 0.43.0): the operand is the one child; the knots, the kind
+            // and the outside rule are declarations, not nodes.
+            | Fuaran.Compute.Interpolate(x, _, _, _)
             | Fuaran.Compute.IsNull x -> walk x
             | Fuaran.Compute.Coalesce xs
-            | Fuaran.Compute.ApplyFn(_, xs) -> List.iter walk xs
+            | Fuaran.Compute.ApplyFn(_, xs)
+            // A call of a pipeline-defined function (Fuaran.Compute 0.43.0): its arguments are the
+            // children. The expansion's own size is bounded by the evaluator (`FnDef.expand`).
+            | Fuaran.Compute.Call(_, xs) -> List.iter walk xs
             | Fuaran.Compute.Case(cases, elseExpr) ->
                 cases
                 |> List.iter (fun (w, t) ->
@@ -2480,10 +2494,13 @@ let private exprAdmissible (path: string) (expr: Fuaran.Compute.ColExpr) : Resul
 /// Transform: a `derive`'s expression and a `filter`'s predicate reach the same
 /// evaluator and carried no ceiling on any host.
 ///
-/// `Filter` and `Derive` are the whole surface — the only `Fuaran.Core`
-/// `Transform` cases carrying a `ColExpr` — and a `join` / `union` / `intersect`
-/// / `except` operand is a `DataSource` (embedded table or named ref), never
-/// another pipeline, so there is no recursive axis to descend.
+/// The steps carrying a `ColExpr` are `Filter` and `Derive`, and from
+/// Fuaran.Compute 0.43.0 `Define` (its body), `Fit` (each predictor and the
+/// offset) and `Predict` (the same, inside its `fit` document). The match below
+/// names every step, so a step a later release adds stops this compiling rather
+/// than passing unbounded. A `join` / `union` / `intersect` / `except` operand,
+/// and a `predict` model's source, is a `DataSource` (embedded table or named
+/// ref), never another pipeline, so there is no recursive axis to descend.
 ///
 /// Counted per EMBEDDED EXPRESSION and against the SAME budget, per §21.8: the
 /// thing bounded is one evaluation either way. The refusal is `LIMIT_EXCEEDED`
@@ -2512,13 +2529,35 @@ let private pipelineExprsAdmissible
         else
             None
 
+    // A fit document's expressions, at their wire members under `prefix`: each
+    // predictor's `expr`, then the `offset`.
+    let fitBreach (prefix: string) (i: int) (spec: Fuaran.Compute.FitSpec) =
+        spec.Predictors
+        |> List.indexed
+        |> List.tryPick (fun (k, (_, expr)) -> breach (sprintf "%spredictors[%d].expr" prefix k) i expr)
+        |> Option.orElse (spec.Offset |> Option.bind (breach (prefix + "offset") i))
+
     pipeline
     |> List.indexed
     |> List.tryPick (fun (i, step) ->
         match step with
         | Fuaran.Compute.Filter pred -> breach "pred" i pred
         | Fuaran.Compute.Derive(_, expr) -> breach "expr" i expr
-        | _ -> None)
+        | Fuaran.Compute.Define fd -> breach "body" i fd.Body
+        | Fuaran.Compute.Fit spec -> fitBreach "" i spec
+        | Fuaran.Compute.Predict spec -> fitBreach "fit." i spec.Fit
+        | Fuaran.Compute.Project _
+        | Fuaran.Compute.GroupBy _
+        | Fuaran.Compute.Join _
+        | Fuaran.Compute.Window _
+        | Fuaran.Compute.Pivot _
+        | Fuaran.Compute.Unpivot _
+        | Fuaran.Compute.Sort _
+        | Fuaran.Compute.Distinct
+        | Fuaran.Compute.Limit _
+        | Fuaran.Compute.Union _
+        | Fuaran.Compute.Intersect _
+        | Fuaran.Compute.Except _ -> None)
     |> Option.map Error
     |> Option.defaultValue (Ok())
 
@@ -4232,21 +4271,29 @@ let private decodeFactSpec (path: string) (j: Json) : Result<FactSpec, DecodeErr
             | None -> Ok None
             | Some v -> requireString (path + ".icon") v |> Result.map Some
 
-        match labelR, valueR, toneR, emphasisR, helpR, iconR with
-        | Ok label, Ok value, Ok tone, Ok emphasis, Ok help, Ok icon ->
+        // Phase 2535 — the citation, opaque to the language (WIRE_FORMAT.md §3.6.31).
+        let referenceR =
+            match tryField fields "reference" with
+            | None -> Ok None
+            | Some v -> requireString (path + ".reference") v |> Result.map Some
+
+        match labelR, valueR, toneR, emphasisR, helpR, iconR, referenceR with
+        | Ok label, Ok value, Ok tone, Ok emphasis, Ok help, Ok icon, Ok reference ->
             Ok
                 { Label = label
                   Value = value
                   Icon = icon
                   Tone = tone
                   Emphasis = emphasis
-                  Help = help }
-        | Error e, _, _, _, _, _
-        | _, Error e, _, _, _, _
-        | _, _, Error e, _, _, _
-        | _, _, _, Error e, _, _
-        | _, _, _, _, Error e, _
-        | _, _, _, _, _, Error e -> Error e
+                  Help = help
+                  Reference = reference }
+        | Error e, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _
+        | _, _, Error e, _, _, _, _
+        | _, _, _, Error e, _, _, _
+        | _, _, _, _, Error e, _, _
+        | _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, Error e -> Error e
 
 let private decodeLabelValueRowSpec (path: string) (j: Json) : Result<LabelValueRowSpec, DecodeError> =
     match requireObject path j with
@@ -4297,13 +4344,80 @@ let private decodeLabelValueRowSpec (path: string) (j: Json) : Result<LabelValue
         | _, _, _, Error e, _
         | _, _, _, _, Error e -> Error e
 
+/// Phase 2591 — a citation's name is what a `cite:<name>` link destination says, so it is a
+/// token no Markdown destination needs escaping for (WIRE_FORMAT.md §3.6.32).
+let private isCitationName (name: string) : bool =
+    name <> ""
+    && name
+       |> Seq.forall (fun c ->
+           (c >= 'a' && c <= 'z')
+           || (c >= 'A' && c <= 'Z')
+           || (c >= '0' && c <= '9')
+           || c = '-'
+           || c = '_')
+
+let private decodeMarkdownCitation (path: string) (j: Json) : Result<MarkdownCitation, DecodeError> =
+    match requireObject path j with
+    | Error e -> Error e
+    | Ok fields ->
+        let nameR =
+            requireField path fields "name" "citation name"
+            |> Result.bind (requireString (path + ".name"))
+            |> Result.bind (fun name ->
+                if isCitationName name then
+                    Ok name
+                else
+                    wrongType (path + ".name") "a citation name of letters, digits, '-' and '_'")
+
+        let referenceR =
+            requireField path fields "reference" "citation reference"
+            |> Result.bind (requireString (path + ".reference"))
+
+        let labelR =
+            match tryField fields "label" with
+            | None -> Ok None
+            | Some v -> decodeTextSource (path + ".label") v |> Result.map Some
+
+        match nameR, referenceR, labelR with
+        | Error e, _, _
+        | _, Error e, _
+        | _, _, Error e -> Error e
+        | Ok name, Ok reference, Ok label ->
+            Ok
+                { Name = name
+                  Reference = reference
+                  Label = label }
+
+let private decodeMarkdownCitations (path: string) (j: Json) : Result<MarkdownCitation list, DecodeError> =
+    requireArray path j
+    |> Result.bind (fun els ->
+        if List.isEmpty els then
+            wrongType path "a non-empty citation list, or no member at all"
+        else
+            traverseIndexed (fun i el -> decodeMarkdownCitation (sprintf "%s[%d]" path i) el) els)
+    |> Result.bind (fun citations ->
+        let names = citations |> List.map (fun c -> c.Name)
+
+        match names |> List.countBy id |> List.tryFind (fun (_, n) -> n > 1) with
+        | Some(name, _) ->
+            let at = names |> List.findIndexBack ((=) name)
+            wrongType (sprintf "%s[%d].name" path at) "a citation name no other citation in this list uses"
+        | None -> Ok citations)
+
 let private decodeMarkdownSpec (path: string) (j: Json) : Result<MarkdownSpec, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
     | Ok fields ->
-        requireField path fields "text" "markdown TextSource"
-        |> Result.bind (decodeTextSource (path + ".text"))
-        |> Result.map (fun text -> { Text = text })
+        let citationsR =
+            match tryField fields "citations" with
+            | None -> Ok []
+            | Some v -> decodeMarkdownCitations (path + ".citations") v
+
+        citationsR
+        |> Result.bind (fun citations ->
+            requireField path fields "text" "markdown TextSource"
+            |> Result.bind (decodeTextSource (path + ".text"))
+            |> Result.map (fun text -> { Citations = citations; Text = text }))
 
 let private decodeBadgeSpec (path: string) (j: Json) : Result<BadgeSpec, DecodeError> =
     match requireObject path j with
@@ -4377,6 +4491,130 @@ let private decodeLinkSpec (path: string) (j: Json) : Result<LinkSpec, DecodeErr
         | _, _, _, Error e, _, _
         | _, _, _, _, Error e, _
         | _, _, _, _, _, Error e -> Error e
+
+/// Phase 2517 — what an affordance's SET patterns must say about the slot,
+/// decided by the kind that carries it (WIRE_FORMAT §31.2). A `Button` is a
+/// click: there is no value for a slot to name, so a pattern carrying one is
+/// refused. A `Select` or a `Form` field is a set: the instruction's value must
+/// go somewhere, so a pattern naming no slot is refused.
+[<RequireQualifiedAccess>]
+type AffordanceSlotRule =
+    | Forbidden
+    | Required
+
+/// The one slot token (§31.2). A pattern is literal text with at most one
+/// `{value}`; any other brace is refused, so the pattern grammar stays closed.
+[<Literal>]
+let private AffordanceSlotToken = "{value}"
+
+let private affordanceSlotCount (pattern: string) : int option =
+    let stripped = pattern.Replace(AffordanceSlotToken, "")
+
+    if stripped.Contains "{" || stripped.Contains "}" then
+        None
+    else
+        Some((pattern.Length - stripped.Length) / AffordanceSlotToken.Length)
+
+let private decodeAffordancePatterns
+    (path: string)
+    (fields: Map<string, Json>)
+    (key: string)
+    (slotsAllowed: int)
+    (expected: string)
+    : Result<string list, DecodeError> =
+    match tryField fields key with
+    | None -> Ok []
+    | Some v ->
+        requireArray (path + "." + key) v
+        |> Result.bind (
+            traverseIndexed (fun i el ->
+                let at = sprintf "%s.%s[%d]" path key i
+
+                requireString at el
+                |> Result.bind (fun pattern ->
+                    match affordanceSlotCount pattern with
+                    | Some n when n = slotsAllowed && pattern.Trim() <> "" -> Ok pattern
+                    | _ -> wrongType at expected))
+        )
+
+/// Phase 2517 — the `affordance` record on a field-bearing node (WIRE_FORMAT
+/// §31). Every member is omit-at-default, so `{}` decodes to the empty
+/// affordance. The slot rule is the carrying kind's (`AffordanceSlotRule`);
+/// `readPatterns` are questions and never carry a slot.
+let private decodeAffordance (slotRule: AffordanceSlotRule) (path: string) (j: Json) : Result<Affordance, DecodeError> =
+    match requireObject path j with
+    | Error e -> Error e
+    | Ok fields ->
+        let patternsR =
+            match slotRule with
+            | AffordanceSlotRule.Required ->
+                decodeAffordancePatterns path fields "patterns" 1 "a set pattern naming exactly one {value} slot"
+            | AffordanceSlotRule.Forbidden ->
+                decodeAffordancePatterns path fields "patterns" 0 "a click pattern naming no slot"
+
+        let readPatternsR =
+            decodeAffordancePatterns path fields "readPatterns" 0 "a read pattern naming no slot"
+
+        let aliasesR =
+            match tryField fields "aliases" with
+            | None -> Ok []
+            | Some v ->
+                requireArray (path + ".aliases") v
+                |> Result.bind (
+                    traverseIndexed (fun i el ->
+                        let at = sprintf "%s.aliases[%d]" path i
+
+                        match requireObject at el with
+                        | Error e -> Error e
+                        | Ok alias ->
+                            let aliasR =
+                                requireField at alias "alias" "string alias"
+                                |> Result.bind (requireString (at + ".alias"))
+
+                            let valueR =
+                                requireField at alias "value" "string option value"
+                                |> Result.bind (requireString (at + ".value"))
+
+                            match aliasR, valueR with
+                            | Ok a, Ok v -> Ok({ Alias = a; Value = v }: AffordanceAlias)
+                            | Error e, _
+                            | _, Error e -> Error e)
+                )
+
+        let descriptionR =
+            match tryField fields "description" with
+            | None -> Ok None
+            | Some v -> requireString (path + ".description") v |> Result.map Some
+
+        let boolOf key =
+            match tryField fields key with
+            | None -> Ok false
+            | Some v -> requireBool (path + "." + key) v
+
+        match patternsR, readPatternsR, aliasesR, descriptionR, boolOf "clearable", boolOf "neverControllable" with
+        | Ok patterns, Ok readPatterns, Ok aliases, Ok description, Ok clearable, Ok neverControllable ->
+            Ok
+                { Patterns = patterns
+                  ReadPatterns = readPatterns
+                  Aliases = aliases
+                  Description = description
+                  Clearable = clearable
+                  NeverControllable = neverControllable }
+        | Error e, _, _, _, _, _
+        | _, Error e, _, _, _, _
+        | _, _, Error e, _, _, _
+        | _, _, _, Error e, _, _
+        | _, _, _, _, Error e, _
+        | _, _, _, _, _, Error e -> Error e
+
+let private decodeOptionalAffordance
+    (slotRule: AffordanceSlotRule)
+    (path: string)
+    (fields: Map<string, Json>)
+    : Result<Affordance option, DecodeError> =
+    match tryField fields "affordance" with
+    | None -> Ok None
+    | Some v -> decodeAffordance slotRule (path + ".affordance") v |> Result.map Some
 
 /// Phase 1080 — one `srcSet` candidate. `width` is the intrinsic pixel width of
 /// this rendition and must be a POSITIVE integer; zero and negative values are a
@@ -6329,21 +6567,27 @@ let private decodeFormField (path: string) (j: Json) : Result<FormField<obj>, De
             | Error e, _ -> Error e
             | Ok(), r -> r
 
-        match idR, kindR, labelR, requiredR, helpR, ruleR with
-        | Ok id, Ok kind, Ok label, Ok required, Ok help, Ok rule ->
+        // Phase 2517 — the field's affordance; a form field is a SET, so a
+        // declared set pattern must name its slot (WIRE_FORMAT §31.2).
+        let affordanceR = decodeOptionalAffordance AffordanceSlotRule.Required path fields
+
+        match idR, kindR, labelR, requiredR, helpR, ruleR, affordanceR with
+        | Ok id, Ok kind, Ok label, Ok required, Ok help, Ok rule, Ok affordance ->
             Ok
                 { Id = id
                   Label = label
                   Kind = kind
                   Required = required
                   Help = help
-                  Rule = rule }
-        | Error e, _, _, _, _, _
-        | _, Error e, _, _, _, _
-        | _, _, Error e, _, _, _
-        | _, _, _, Error e, _, _
-        | _, _, _, _, Error e, _
-        | _, _, _, _, _, Error e -> Error e
+                  Rule = rule
+                  Affordance = affordance }
+        | Error e, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _
+        | _, _, Error e, _, _, _, _
+        | _, _, _, Error e, _, _, _
+        | _, _, _, _, Error e, _, _
+        | _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, Error e -> Error e
 
 let private decodeFormSpec (path: string) (j: Json) : Result<FormSpec<obj>, DecodeError> =
     match requireObject path j with
@@ -6440,8 +6684,12 @@ let private decodeButtonSpec (path: string) (j: Json) : Result<ButtonSpec<obj>, 
             | None -> Ok None
             | Some v -> decodeBindingBool (path + ".disabled") v |> Result.map Some
 
-        match labelR, onClickR, variantR, iconR, disabledR with
-        | Ok label, Ok onClick, Ok variant, Ok icon, Ok disabled ->
+        // Phase 2517 — a button is a CLICK: a declared pattern names no slot
+        // (WIRE_FORMAT §31.2).
+        let affordanceR = decodeOptionalAffordance AffordanceSlotRule.Forbidden path fields
+
+        match labelR, onClickR, variantR, iconR, disabledR, affordanceR with
+        | Ok label, Ok onClick, Ok variant, Ok icon, Ok disabled, Ok affordance ->
             // Tooltip is currently not emitted by the encoder; decode to
             // None. See `docs/migrations/12-E-0-json-decoder.md` "Encoder
             // gaps" for the tracked follow-up.
@@ -6451,12 +6699,95 @@ let private decodeButtonSpec (path: string) (j: Json) : Result<ButtonSpec<obj>, 
                   Variant = variant
                   Icon = icon
                   Tooltip = None
-                  Disabled = disabled }
-        | Error e, _, _, _, _
-        | _, Error e, _, _, _
-        | _, _, Error e, _, _
-        | _, _, _, Error e, _
-        | _, _, _, _, Error e -> Error e
+                  Disabled = disabled
+                  Affordance = affordance }
+        | Error e, _, _, _, _, _
+        | _, Error e, _, _, _, _
+        | _, _, Error e, _, _, _
+        | _, _, _, Error e, _, _
+        | _, _, _, _, Error e, _
+        | _, _, _, _, _, Error e -> Error e
+
+/// Phase 2571 — `Select.groups` (WIRE_FORMAT §3.6.30): an ordered list of
+/// `{label, values}`, omit-at-default (absent and `[]` are one fact). Two
+/// refusals, both `WRONG_TYPE` at the offending `values` element: a value named
+/// more than once (by two groups, or twice by one), and — over STATIC options
+/// only — a value naming no option. A bound source resolves at render, where a
+/// value its rows do not hold is reported, never here.
+let private decodeSelectOptionGroups
+    (path: string)
+    (fields: Map<string, Json>)
+    (source: Result<Binding<SelectOption list>, DecodeError>)
+    : Result<SelectOptionGroup list, DecodeError> =
+    let decodeGroup (p: string) (g: Json) : Result<SelectOptionGroup, DecodeError> =
+        match requireObject p g with
+        | Error e -> Error e
+        | Ok gf ->
+            both
+                (requireField p gf "label" "group label string"
+                 |> Result.bind (requireString (p + ".label")))
+                (requireField p gf "values" "array of option values"
+                 |> Result.bind (requireArray (p + ".values"))
+                 |> Result.bind (traverseIndexed (fun i v -> requireString (sprintf "%s.values[%d]" p i) v)))
+            |> Result.map (fun (label, values) -> { Label = label; Values = values })
+
+    match tryField fields "groups" with
+    | None -> Ok []
+    | Some v ->
+        let gp = path + ".groups"
+
+        match
+            requireArray gp v
+            |> Result.bind (traverseIndexed (fun i g -> decodeGroup (sprintf "%s[%d]" gp i) g))
+        with
+        | Error e -> Error e
+        | Ok groups ->
+            // Static options only: a bound source's rows are not in the document.
+            let known =
+                match source with
+                | Ok(Binding.Static(Some opts)) when not (opts |> List.exists (fun o -> o.Value = opaqueSentinel)) ->
+                    Some(opts |> List.map (fun o -> o.Value) |> Set.ofList)
+                | Ok(Binding.Static None) -> Some Set.empty
+                | _ -> None
+
+            let named =
+                groups
+                |> List.mapi (fun gi g -> g.Values |> List.mapi (fun vi value -> gi, vi, value))
+                |> List.concat
+
+            let rec check (seen: Map<string, int * string>) rest =
+                match rest with
+                | [] -> Ok groups
+                | (gi, vi, value) :: tail ->
+                    let at = sprintf "%s[%d].values[%d]" gp gi vi
+
+                    match Map.tryFind value seen with
+                    | Some(firstGroup, firstLabel) ->
+                        err
+                            DecodeErrorCode.WRONG_TYPE
+                            at
+                            (sprintf
+                                "option value '%s' is already named by group %d ('%s'): an option belongs to at most one group"
+                                value
+                                firstGroup
+                                firstLabel)
+                            (Some "a value no other group (and no earlier entry of this group) names")
+                    | None ->
+                        match known with
+                        | Some values when not (Set.contains value values) ->
+                            err
+                                DecodeErrorCode.WRONG_TYPE
+                                at
+                                (sprintf
+                                    "option value '%s' names no option of this Select: a group can only gather the options its Select carries"
+                                    value)
+                                (Some(
+                                    "the value of one of this Select's options: "
+                                    + (values |> Set.toList |> List.map (sprintf "'%s'") |> String.concat ", ")
+                                ))
+                        | _ -> check (Map.add value (gi, groups.[gi].Label) seen) tail
+
+            check Map.empty named
 
 let private decodeSelectSpec (path: string) (j: Json) : Result<SelectSpec<obj>, DecodeError> =
     match requireObject path j with
@@ -6520,8 +6851,15 @@ let private decodeSelectSpec (path: string) (j: Json) : Result<SelectSpec<obj>, 
             | None -> Ok Option.None
             | Some v -> decodeBindingStringList (path + ".values") v |> Result.map Some
 
-        match labelR, sourceR, valueR, placeholderR, disabledR, multipleR, valuesR with
-        | Ok label, Ok source, Ok value, Ok placeholder, Ok disabled, Ok multiple, Ok values ->
+        // Phase 2517 — a select is a SET: a declared set pattern must name its
+        // slot (WIRE_FORMAT §31.2).
+        let affordanceR = decodeOptionalAffordance AffordanceSlotRule.Required path fields
+
+        // Phase 2571 — the option groups, checked against the static options.
+        let groupsR = decodeSelectOptionGroups path fields sourceR
+
+        match labelR, sourceR, valueR, placeholderR, disabledR, multipleR, valuesR, both affordanceR groupsR with
+        | Ok label, Ok source, Ok value, Ok placeholder, Ok disabled, Ok multiple, Ok values, Ok(affordance, groups) ->
             // Handlers are optional (Phase 426): a present `"<closure>"`
             // sentinel decodes to the inert placeholder `Some`; an absent key
             // decodes to `None`, arming the renderer's write-back default
@@ -6541,14 +6879,17 @@ let private decodeSelectSpec (path: string) (j: Json) : Result<SelectSpec<obj>, 
                   OnChangeMulti =
                     (match tryField fields "onChangeMulti" with
                      | Some _ -> Some(fun _ -> Action.Chain [])
-                     | None -> Option.None) }
-        | Error e, _, _, _, _, _, _
-        | _, Error e, _, _, _, _, _
-        | _, _, Error e, _, _, _, _
-        | _, _, _, Error e, _, _, _
-        | _, _, _, _, Error e, _, _
-        | _, _, _, _, _, Error e, _
-        | _, _, _, _, _, _, Error e -> Error e
+                     | None -> Option.None)
+                  Affordance = affordance
+                  Groups = groups }
+        | Error e, _, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _, _
+        | _, _, Error e, _, _, _, _, _
+        | _, _, _, Error e, _, _, _, _
+        | _, _, _, _, Error e, _, _, _
+        | _, _, _, _, _, Error e, _, _
+        | _, _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, _, Error e -> Error e
 
 let private decodeFileUploadSpec (path: string) (j: Json) : Result<FileUploadSpec<obj>, DecodeError> =
     match requireObject path j with
@@ -7092,6 +7433,80 @@ let private decodeDefaultSort (path: string) (j: Json) : Result<DefaultSort, Dec
         | Error e, _
         | _, Error e -> Error e
 
+/// Phase 2592 — one cited cell. The coordinates are read as the header index is, and a row
+/// or column naming no cell is refused against the rows they address (WIRE_FORMAT.md §3.6.33).
+let private decodeTableCitation
+    (rows: TextSource list list)
+    (path: string)
+    (j: Json)
+    : Result<TableCitation, DecodeError> =
+    match requireObject path j with
+    | Error e -> Error e
+    | Ok fields ->
+        let coordinate (name: string) (expected: string) =
+            requireField path fields name expected
+            |> Result.bind (fun v ->
+                match v with
+                | JNumber n when n >= 0.0 && n = floor n -> Ok(int n)
+                | _ -> wrongType (path + "." + name) ("JSON number (" + expected + ")"))
+
+        let rowR =
+            coordinate "row" "non-negative row index"
+            |> Result.bind (fun row ->
+                if row < List.length rows then
+                    Ok row
+                else
+                    wrongType (path + ".row") "a row index this table has")
+
+        let columnR =
+            coordinate "column" "non-negative column index"
+            |> Result.bind (fun column ->
+                match rowR with
+                | Ok row when column >= List.length (List.item row rows) ->
+                    wrongType (path + ".column") "a column index the cited row has"
+                | _ -> Ok column)
+
+        let referenceR =
+            requireField path fields "reference" "citation reference"
+            |> Result.bind (requireString (path + ".reference"))
+
+        let labelR =
+            match tryField fields "label" with
+            | None -> Ok None
+            | Some v -> decodeTextSource (path + ".label") v |> Result.map Some
+
+        match rowR, columnR, referenceR, labelR with
+        | Error e, _, _, _
+        | _, Error e, _, _
+        | _, _, Error e, _
+        | _, _, _, Error e -> Error e
+        | Ok row, Ok column, Ok reference, Ok label ->
+            Ok
+                { Column = column
+                  Label = label
+                  Reference = reference
+                  Row = row }
+
+let private decodeTableCitations
+    (rows: TextSource list list)
+    (path: string)
+    (j: Json)
+    : Result<TableCitation list, DecodeError> =
+    requireArray path j
+    |> Result.bind (fun els ->
+        if List.isEmpty els then
+            wrongType path "a non-empty citation list, or no member at all"
+        else
+            traverseIndexed (fun i el -> decodeTableCitation rows (sprintf "%s[%d]" path i) el) els)
+    |> Result.bind (fun citations ->
+        let cells = citations |> List.map (fun c -> c.Row, c.Column)
+
+        match cells |> List.countBy id |> List.tryFind (fun (_, n) -> n > 1) with
+        | Some(cell, _) ->
+            let at = cells |> List.findIndexBack ((=) cell)
+            wrongType (sprintf "%s[%d]" path at) "a cell no other citation in this list names"
+        | None -> Ok citations)
+
 /// Phase 393 — decode the `{headers, rows}` static-rows object of a read-only grid
 /// (also the shape the legacy `Table` decode-upgrade reads). Cells are `TextSource`.
 ///
@@ -7136,17 +7551,26 @@ let private decodeStaticRows (path: string) (j: Json) : Result<StaticRows, Decod
             | None -> Ok None
             | Some v -> decodeDefaultSort (path + ".defaultSort") v |> Result.map Some
 
-        match headersR, rowsR, sortableR, defaultSortR with
-        | Ok headers, Ok rows, Ok sortable, Ok defaultSort ->
+        // Phase 2592 — read against the rows, so a bad row list is reported first.
+        let citationsR =
+            match tryField fields "citations", rowsR with
+            | None, _ -> Ok []
+            | Some v, Ok rows -> decodeTableCitations rows (path + ".citations") v
+            | Some _, Error e -> Error e
+
+        match citationsR, headersR, rowsR, sortableR, defaultSortR with
+        | Ok citations, Ok headers, Ok rows, Ok sortable, Ok defaultSort ->
             Ok
-                { DefaultSort = defaultSort
+                { Citations = citations
+                  DefaultSort = defaultSort
                   Headers = headers
                   Rows = rows
                   Sortable = sortable }
-        | Error e, _, _, _
-        | _, Error e, _, _
-        | _, _, Error e, _
-        | _, _, _, Error e -> Error e
+        | Error e, _, _, _, _
+        | _, Error e, _, _, _
+        | _, _, Error e, _, _
+        | _, _, _, Error e, _
+        | _, _, _, _, Error e -> Error e
 
 let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, DecodeError> =
     match requireObject path j with
@@ -9569,6 +9993,37 @@ and private decodeTreeOpAstCore (w: Walk) (path: string) (j: Json) : Result<Tree
 
             match targetR, stateR with
             | Ok target, Ok state -> Ok(TreeOp.UpdateState(target, state))
+            | Error e, _
+            | _, Error e -> Error e
+        | Ok "UpdateAccessibility" ->
+            let targetR =
+                requireField path fields "target" "target NodeId"
+                |> Result.bind (requireString (path + ".target"))
+                |> Result.map NodeId
+
+            let accessibilityR =
+                requireField path fields "accessibility" "Accessibility object"
+                |> Result.bind (decodeAccessibility (path + ".accessibility"))
+
+            match targetR, accessibilityR with
+            | Ok target, Ok accessibility -> Ok(TreeOp.UpdateAccessibility(target, accessibility))
+            | Error e, _
+            | _, Error e -> Error e
+        | Ok "UpdateTooltip" ->
+            let targetR =
+                requireField path fields "target" "target NodeId"
+                |> Result.bind (requireString (path + ".target"))
+                |> Result.map NodeId
+
+            // The node envelope's own slot and the same shared decoder (see
+            // `tooltipR` in the node decoder); an absent member clears the trait.
+            let tooltipR =
+                match tryField fields "tooltip" with
+                | None -> Ok None
+                | Some v -> decodeTextSource (path + ".tooltip") v |> Result.map Some
+
+            match targetR, tooltipR with
+            | Ok target, Ok tooltip -> Ok(TreeOp.UpdateTooltip(target, tooltip))
             | Error e, _
             | _, Error e -> Error e
         | Ok "InsertChild" ->

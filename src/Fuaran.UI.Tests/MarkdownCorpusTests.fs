@@ -66,12 +66,27 @@ let tests =
             | true, v -> v.GetString()
             | _ -> "permissive"
 
+        // Phase 2591 — a fixture may declare the `citations` its text cites, in their wire form.
+        // A label is already a literal here: the corpus pins the render, not the resolver.
+        let citationsOf (el: JsonElement) : Markdown.Citation list =
+            match el.TryGetProperty "citations" with
+            | true, v ->
+                [ for c in v.EnumerateArray() ->
+                      { Name = c.GetProperty("name").GetString()
+                        Reference = c.GetProperty("reference").GetString()
+                        Label =
+                          match c.TryGetProperty "label" with
+                          | true, l -> Some(l.GetString())
+                          | _ -> None } ]
+            | _ -> []
+
         let cases =
             [ for el in doc.RootElement.GetProperty("fixtures").EnumerateArray() ->
                   el.GetProperty("id").GetString(),
                   policyName el,
                   el.GetProperty("source").GetString(),
-                  el.GetProperty("html").GetString() ]
+                  el.GetProperty("html").GetString(),
+                  citationsOf el ]
 
         testList
             "Markdown render corpus (cross-host gate)"
@@ -85,21 +100,21 @@ let tests =
                   // path, and the gate would be green on a host that never
                   // implemented §14.1 at all.
                   let policied =
-                      cases |> List.filter (fun (_, p, _, _) -> p <> "permissive") |> List.length
+                      cases |> List.filter (fun (_, p, _, _, _) -> p <> "permissive") |> List.length
 
                   Expect.isGreaterThan policied 0 "corpus.json must carry policied fixtures (WIRE_FORMAT §14.1)"
               }
 
-              for (id, policy, source, html) in cases do
+              for (id, policy, source, html, citations) in cases do
                   test (sprintf "%s — F# render is byte-identical to the corpus" id) {
                       Expect.equal
-                          (Markdown.toHtmlWithEgress (policyByName policy) source)
+                          (Markdown.toHtmlCited (policyByName policy) citations source)
                           html
                           "renderer must reproduce the canonical corpus HTML"
                   }
 
-              for (id, policy, source, html) in cases do
-                  if policy = "permissive" then
+              for (id, policy, source, html, citations) in cases do
+                  if policy = "permissive" && List.isEmpty citations then
                       test (sprintf "%s — the pure toHtml IS the permissive case" id) {
                           Expect.equal
                               (Markdown.toHtml source)

@@ -231,6 +231,64 @@ let private record (required: string list) (props: (string * J) list) : J =
 let private invokeArgs: J =
     arrayOf (record [ "addr"; "value" ] [ "addr", str; "value", str ])
 
+/// A slot (Fuaran.Compute's `Slot<'T>`): the literal, or a `{"$param":"<name>"}`
+/// reference resolved against the binding's `params`.
+let private paramSlot (literal: J) : J =
+    JObj [ "anyOf", JArr [ literal; record [ "$param" ] [ "$param", str ] ] ]
+
+/// The members of a fit document (Fuaran.Compute 0.43.0, `DataFrameCodec`'s
+/// `fitFields`), which a `fit` step carries at its top level and a `predict`
+/// step nests under `fit` — one list, so the two positions cannot drift.
+/// Expressions (`predictors[].expr`, `offset`) stay structural objects, as
+/// `filter.pred` and `derive.expr` do. A slot (`ridge`, `control.maxIter` /
+/// `tol`) is a `paramSlot`. `power` is required by the decoder exactly when
+/// `family` is `tweedie`; that relation is left unstated, as `window.n`'s is,
+/// so the schema says less than the decoder and never something different.
+let private fitRequired: string list =
+    [ "control"
+      "family"
+      "groupBy"
+      "intercept"
+      "link"
+      "output"
+      "predictors"
+      "response" ]
+
+let private fitMembers: (string * J) list =
+    [ "control", record [ "maxIter"; "tol" ] [ "maxIter", paramSlot integer; "tol", paramSlot number ]
+      "family",
+      enumDef
+          [ "gaussian"
+            "poisson"
+            "gamma"
+            "tweedie"
+            "quasiPoisson"
+            "binomial"
+            "quasiBinomial"
+            "inverseGaussian"
+            "negativeBinomial" ]
+      "groupBy", arrayOf str
+      "intercept", boolean
+      "link",
+      enumDef
+          [ "identity"
+            "log"
+            "logit"
+            "probit"
+            "cloglog"
+            "inverse"
+            "inverseSquare"
+            "sqrt" ]
+      "offset", object_
+      "output", enumDef [ "coefficients"; "summary"; "fitted"; "residuals" ]
+      "power", number
+      "predictors", arrayOf (record [ "expr"; "name" ] [ "expr", object_; "name", str ])
+      "response", str
+      "ridge", paramSlot number
+      "stdErrors", enumDef [ "classical"; "hc0"; "hc1"; "hc2"; "hc3"; "robust" ]
+      "theta", number
+      "weights", str ]
+
 /// Phase 863 — forbid an ENUMERATED set of near-miss property names on a
 /// record, as `allOf: [{ "not": { "required": ["<name>"] } }, …]`.
 ///
@@ -731,7 +789,36 @@ let private defs: (string * J) list =
             duCase "limit" [ "n" ] [ "n", integer; "offset", integer ]
             duCase "union" [ "source" ] [ "source", object_ ]
             duCase "intersect" [ "source" ] [ "source", object_ ]
-            duCase "except" [ "source" ] [ "source", object_ ] ]
+            duCase "except" [ "source" ] [ "source", object_ ]
+            // Fuaran.Compute 0.43.0 — a named function the pipeline carries. A
+            // parameter's `default` is a typed cell (`{"$type":"Int","value":…}`)
+            // or a `{"$param":…}` reference: an object either way.
+            duCase
+                "define"
+                [ "body"; "name"; "params" ]
+                [ "body", object_
+                  "name", str
+                  "params", arrayOf (record [ "name" ] [ "default", object_; "name", str ]) ]
+            // Fuaran.Compute 0.43.0 — a regression fit; its members are the
+            // shared fit document (`TransformFitSpec`).
+            duCase "fit" fitRequired fitMembers
+            // Fuaran.Compute 0.43.0 — scoring rows against a fitted model. The
+            // interval's `level` is a slot, as `ridge` is.
+            duCase
+                "predict"
+                [ "fit"; "model"; "scale" ]
+                [ "fit", ref "TransformFitSpec"
+                  "interval",
+                  record
+                      [ "kind"; "level" ]
+                      [ "kind", enumDef [ "confidence"; "prediction" ]; "level", paramSlot number ]
+                  "model",
+                  record [ "from"; "source" ] [ "from", enumDef [ "training"; "coefficients" ]; "source", object_ ]
+                  "scale", enumDef [ "link"; "response" ] ] ]
+
+      // The fit document a `predict` step nests under `fit` — the `fit` step's
+      // own members without its `$type`.
+      "TransformFitSpec", record fitRequired fitMembers
 
       // A column rename pair — `project.columns` and `join.on` both carry it, and
       // both read `a` / `b` through the same `pairOf`. `a` / `b` name a POSITION in
@@ -1118,7 +1205,25 @@ let private defs: (string * J) list =
       // the IDL declares `omitDefault`) leaves `required` and stays in `props`.
       record [ "level"; "text" ] [ "level", integer; "text", ref "TextSource"; "variant", ref "HeadingVariant" ]
 
-      "MarkdownSpec", record [ "text" ] [ "text", ref "TextSource" ]
+      "MarkdownSpec",
+      record
+          [ "text" ]
+          [ "text", ref "TextSource"
+            // Phase 2591 - absent is the one spelling of none.
+            "citations", JObj [ "type", JStr "array"; "minItems", JInt 1; "items", ref "MarkdownCitation" ] ]
+      "TableCitation",
+      record
+          [ "column"; "reference"; "row" ]
+          [ "column", JObj [ "type", JStr "integer"; "minimum", JInt 0 ]
+            "label", ref "TextSource"
+            "reference", str
+            "row", JObj [ "type", JStr "integer"; "minimum", JInt 0 ] ]
+      "MarkdownCitation",
+      record
+          [ "name"; "reference" ]
+          [ "name", JObj [ "type", JStr "string"; "pattern", JStr "^[A-Za-z0-9_-]+$" ]
+            "reference", str
+            "label", ref "TextSource" ]
 
       "BadgeSpec", record [ "label" ] [ "label", ref "TextSource"; "variant", ref "BadgeVariant" ]
 
@@ -1341,7 +1446,8 @@ let private defs: (string * J) list =
             "tone", ref "ToneVariant"
             "emphasis", boolean
             "help", ref "TextSource"
-            "icon", str ]
+            "icon", str
+            "reference", str ]
 
       // ── Drawing (Phase 524) ───────────────────────────────────────────────
       // Geometry is static floats (a Drawing is a resolved artefact); only
@@ -1516,7 +1622,24 @@ let private defs: (string * J) list =
                 "label", ref "TextSource"
                 "required", boolean
                 "help", ref "TextSource"
-                "rule", ref "FieldRule" ])
+                "rule", ref "FieldRule"
+                // Phase 2517 — the field's operable surface (WIRE_FORMAT §31.1).
+                "affordance", ref "Affordance" ])
+
+      // Phase 2517 — the affordance a field-bearing node declares. Every member is
+      // omit-at-default, so nothing is required. The slot rule on `patterns` /
+      // `readPatterns` (§31.2) depends on the CARRYING kind and is the decoder's.
+      "Affordance",
+      record
+          []
+          [ "patterns", arrayOf str
+            "readPatterns", arrayOf str
+            "aliases", arrayOf (ref "AffordanceAlias")
+            "description", str
+            "clearable", boolean
+            "neverControllable", boolean ]
+
+      "AffordanceAlias", record [ "alias"; "value" ] [ "alias", str; "value", str ]
 
       "FormSpec",
       record
@@ -1536,7 +1659,8 @@ let private defs: (string * J) list =
             "onClick", ref "Action"
             "variant", ref "ButtonVariant"
             "icon", str
-            "disabled", binding "bool" ]
+            "disabled", binding "bool"
+            "affordance", ref "Affordance" ]
 
       "SelectSpec",
       record
@@ -1555,8 +1679,15 @@ let private defs: (string * J) list =
             // single-select), matching the decoder's tolerance.
             "multiple", boolean
             "values", binding "list_str"
-            "onChangeMulti", closure ]
+            "onChangeMulti", closure
+            "affordance", ref "Affordance"
+            // Phase 2571 — the option groups, omit-at-default. The two refusals
+            // (a value named twice, a value naming no static option) are
+            // relations across the document the schema cannot state.
+            "groups", arrayOf (ref "SelectOptionGroup") ]
       |> selectValueRule
+
+      "SelectOptionGroup", record [ "label"; "values" ] [ "label", str; "values", arrayOf str ]
 
       "FileUploadSpec",
       record
@@ -1698,7 +1829,9 @@ let private defs: (string * J) list =
             "staticRows",
             record
                 [ "headers"; "rows" ]
-                [ "defaultSort",
+                [ // Phase 2592 - absent is the one spelling of none.
+                  "citations", JObj [ "type", JStr "array"; "minItems", JInt 1; "items", ref "TableCitation" ]
+                  "defaultSort",
                   record
                       [ "column"; "direction" ]
                       [ "column", JObj [ "type", JStr "integer"; "minimum", JInt 0 ]
@@ -2195,6 +2328,12 @@ let private defs: (string * J) list =
             duCase "UpdateStyle" [ "style"; "target" ] [ "style", ref "SemanticStyle"; "target", str ]
             duCase "PatchStyle" [ "style"; "target" ] [ "style", ref "StyleDelta"; "target", str ]
             duCase "UpdateState" [ "state"; "target" ] [ "state", ref "StateBehaviour"; "target", str ]
+            duCase
+                "UpdateAccessibility"
+                [ "accessibility"; "target" ]
+                [ "accessibility", ref "Accessibility"; "target", str ]
+            // `tooltip` is optional: its absence is the edit that clears the trait.
+            duCase "UpdateTooltip" [ "target" ] [ "target", str; "tooltip", ref "TextSource" ]
             // `position` / `newPosition` are the RETIRED positional slots (Phase
             // 681 removed them, Phase 687 closed the accept-and-ignore window).
             // Forbidden BY NAME for the same reason the `FormField` near misses

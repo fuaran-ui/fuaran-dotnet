@@ -438,6 +438,8 @@ module GuestImport =
         | TreeOp.UpdateStyle(id, style) -> TreeOp.UpdateStyle(f id, style)
         | TreeOp.PatchStyle(id, delta) -> TreeOp.PatchStyle(f id, delta)
         | TreeOp.UpdateState(id, state) -> TreeOp.UpdateState(f id, state)
+        | TreeOp.UpdateAccessibility(id, accessibility) -> TreeOp.UpdateAccessibility(f id, accessibility)
+        | TreeOp.UpdateTooltip(id, tooltip) -> TreeOp.UpdateTooltip(f id, tooltip)
         | TreeOp.InsertChild(parentId, child) -> TreeOp.InsertChild(f parentId, mapTreeIds f child)
         | TreeOp.RemoveNode id -> TreeOp.RemoveNode(f id)
         | TreeOp.MoveNode(id, newParentId) -> TreeOp.MoveNode(f id, f newParentId)

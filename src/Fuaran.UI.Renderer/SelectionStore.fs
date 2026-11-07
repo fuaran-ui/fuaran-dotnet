@@ -28,10 +28,6 @@ module Fuaran.UI.Renderer.SelectionStore
 
 open Fuaran.UI.Renderer.StateStore
 
-#if FABLE_COMPILER
-open Feliz
-#endif
-
 [<Literal>]
 let private SelectionPersistPrefix = "fuaran.selection."
 
@@ -77,17 +73,7 @@ let overlayOntoBy (keyOf: string -> 'K) (target: Map<'K, obj>) : Map<'K, obj> =
 let reset () : unit = defaultInstance.Reset()
 
 #if FABLE_COMPILER
-/// React hook: subscribe a rendered surface to a *set* of selection node ids
-/// and force a re-render whenever any of them changes — the reactivity
-/// primitive behind the renderer's `Binding.Selection` re-render opt-in, so a
-/// row click re-paints every `Binding.Selection` reader of that grid. Returns
-/// a monotonically-increasing tick whose only purpose is to drive the
-/// re-render.
-let useSelectionKeys (nodeIds: Set<string>) : int =
-    let depKey = nodeIds |> Set.toSeq |> String.concat " "
-    let tick, setTick = React.useState 0
-
-    React.useEffect ((fun () -> subscribeKeys nodeIds (fun () -> setTick (tick + 1))), [| box depKey; box tick |])
-
-    tick
+/// React hook: `StateStore.useKeys` over this channel, so a write re-paints every
+/// reader in the rendered surface.
+let useSelectionKeys (nodeIds: Set<string>) : int = useKeys subscribeKeys nodeIds
 #endif

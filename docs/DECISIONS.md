@@ -10,6 +10,54 @@ consequence.
 
 ---
 
+## 2026-11-03 — D24: a partial emitter claims a declared profile, and the hosts carry its old spellings under a written commitment
+
+**Decided (Phase 2451).** The wire gains a third role beside the codec host and the render projection: the
+**constrained emitter**, a producer that writes a declared subset of the vocabulary in canonical bytes and reads none
+of this wire (WIRE_FORMAT §11.0, §11.4). It claims conformance under an **emitter profile** declared in the corpus
+manifest (`emitterProfiles`): a lineage of revisions, each naming its axes (`canonical-bytes`, and `integer-only` when
+claimed, in the program wire's profile vocabulary), its subset (the `kinds` / `formFieldKinds` / `ops` tags, in §23.2's
+allow-list form) and its vectors. Its bar is that every document and frame it writes is accepted by every codec host.
+Beside it, a **producer-support commitment** (§15.6): no field of a declared kind is made required on the wire, and no
+tag or field a declared revision writes is renamed or removed, without a §16 decode alias every codec host carries for
+the life of the wire major the revision names; each host's `oldestAccepted` entry is the record, and that host's leg
+reads every revision from it onward.
+
+This host's share of the change-set, decided with it:
+
+1. **The reference emitter writes the declaration.** `manifest.json` is written wholesale by `Corpus.writeManifest`,
+   so a hand-added top-level member would vanish at the next `--emit-corpus`. The declaration lives in
+   `Corpus.emitterProfiles`, and the emit refuses a revision naming a vector it did not author or one outside the
+   three admitted families, and an `oldestAccepted` entry naming no revision.
+2. **The vectors are ordinary rows.** The current revision's document and frames are `node-round-trip` /
+   `op-round-trip` fixtures authored as the bytes an emitter writes (`Fixtures.fs`, the Phase 2451 block); the old
+   revision's are `lenient-accept` fixtures in `LenientFixtures.fs`. So every codec host certifies acceptance through
+   the legs it already runs, and no new corpus family, capability-manifest entry or producer record is needed. A
+   family of their own, the obvious alternative, would have obliged all five hosts' capability manifests for no
+   assertion the existing legs do not already make.
+3. **The leg reads the corpus, not the F# values** (`SchemaConformanceTests.fs`, "the constrained-emitter acceptance
+   leg"): integer-only on the token, the node-kind subset through `DecodePolicy.admitting` (so nested and op-borne
+   nodes are gated exactly as §23 gates them), the control and op tags at their positions, acceptance, schema
+   validity of the canonical form, and that `oldestAccepted` names exactly the roster's codec hosts. Each check is
+   shown to go red on the corpus's own frames.
+4. **The axes bound the writer, never the reader.** A host reading an emitter's output decodes at its default (§23.1).
+   Unlike the program wire's profiles, nothing here narrows what a host accepts.
+
+**Rejected.** A sixth roster row for an emitter: it would let "five conformant hosts" be read as six, and a partial
+producer would sit beside codec hosts under a bar it does not meet. A calendar period for the shim: the life of the
+wire major is checkable from the profile id, and a major step that drops a shim must advance the record in its own
+change-set, which a date cannot force. Declaring every binding, action and enum value an emitter writes as part of
+the subset: those are fields of declared kinds, which §15.6 already protects, and enumerating them would make every
+profile a restatement of the IDL.
+
+**Consequence.** The corpus declares one lineage, `panel` (`panel@1.0`, the spelling before Phase 1811's
+`Date` → `DateTime` rename, whose shim is that rename's existing alias; `panel@1.1`, the current spelling), and every
+codec host records `panel@1.0` as the oldest it accepts. Phase 2452's emitter is the first to claim the role. A later
+rename touching a declared subset now lands with its alias, a `lenient-accept` vector naming the revision, and no
+movement of any host's record.
+
+---
+
 ## 2026-10-27 — D23: a chart's series palette stays literal in the lowering and is themed by installation, after a gate
 
 **Decided (Phase 2482).** A theme carries a chart series palette (`Theme.Charts`: up to eight series slots in

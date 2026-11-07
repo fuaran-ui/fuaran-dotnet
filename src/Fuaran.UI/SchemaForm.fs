@@ -1012,7 +1012,8 @@ let rec private deriveFields
                                         Help =
                                           nonEmptyString (member' "description" propSchema)
                                           |> Option.map TextSource.Literal
-                                        Rule = rule } ])
+                                        Rule = rule
+                                        Affordance = None } ])
 
 /// Derive a `Form` node from a JSON Schema. `Ok` carries the node; `Error`
 /// carries EVERY refusal in the schema (not only the first), each naming its

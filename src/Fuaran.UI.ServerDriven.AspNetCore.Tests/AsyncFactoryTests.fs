@@ -132,10 +132,18 @@ let tests =
               let config = defaultAsyncConfig<string, Msg> ()
               let factoryCalls = ref 0
 
+              // The first call to ENTER the factory is the one that never answers, and
+              // `firstEntered` is set from inside that call. The test starts the second
+              // request only after this fires, so which request is stuck is fixed by
+              // construction, not by the order two threads happened to reach the factory
+              // (the race that let the free request take the blocking call under load).
+              use firstEntered = new ManualResetEventSlim(false)
+
               let factory: AsyncSessionFactory<string, Msg> =
                   fun () ->
                       async {
                           if Interlocked.Increment factoryCalls = 1 then
+                              firstEntered.Set()
                               let! _ = Async.AwaitTask(TaskCompletionSource<unit>().Task)
                               ()
 
@@ -156,11 +164,16 @@ let tests =
               // factory would not RETURN, and this fails at the bound instead of
               // hanging the suite.
               let invoked = Task.Factory.StartNew(fun () -> stream.Invoke stuckCtx)
+              // Which request owns the blocking call is asserted before anything about
+              // headers is, so a wrong assignment fails on its cause, not on a symptom.
+              Expect.isTrue (firstEntered.Wait bound) "the stuck request entered the factory"
+              Expect.equal factoryCalls.Value 1 "and it was the first call: no other request had reached the factory"
               Expect.isTrue (invoked.Wait bound) "the handler returned without blocking on the factory"
               let stuck = invoked.Result
               let free = stream.Invoke freeCtx
 
               Expect.isTrue (eventually (fun () -> registry.Count = 1)) "the other connection opened meanwhile"
+              Expect.equal factoryCalls.Value 2 "through the factory's second call, which answered"
               Expect.isFalse stuck.IsCompleted "the stuck request is still waiting for its session"
               Expect.isFalse (stuckCtx.Response.Headers.ContainsKey "Set-Cookie") "and has written nothing"
 

@@ -97,7 +97,11 @@ let mkBox (id: string) (kids: EqNode list) : EqNode =
 let mkLeafText (id: string) (text: string) : EqNode =
     wrap
         { Id = id
-          Kind = NodeKind.Markdown({ Text = TextSource.Literal text })
+          Kind =
+            NodeKind.Markdown(
+                { Citations = []
+                  Text = TextSource.Literal text }
+            )
           State = None
           Style = None
           Accessibility = Option.None
@@ -120,7 +124,7 @@ let mkMetric (id: string) : EqNode =
     | Ok n -> wrap n
     | Error e -> failwithf "mkMetric %s: %A" id e
 
-/// The five vertical ops aimed at `target`, from the corpus fixtures' payloads (Phase 2004). Copied
+/// The vertical ops aimed at `target`, from the corpus fixtures' payloads (Phase 2004). Copied
 /// from `CoreLawSupport.verticalOps`.
 let verticalOps (NodeId target) : (string * TreeOp<obj>) list =
     [ "EditNode", """{"$type":"EditNode","newKind":{"$type":"Markdown","text":"Edited"},"target":"%T%"}"""
@@ -130,7 +134,9 @@ let verticalOps (NodeId target) : (string * TreeOp<obj>) list =
       "UpdateState",
       """{"$type":"UpdateState","state":{"onLoading":{"id":"skel-%T%","kind":{"$type":"Skeleton","rows":3}}},"target":"%T%"}"""
       "ReplaceBinding",
-      """{"$type":"ReplaceBinding","binding":{"$type":"Static","value":99.5},"slot":"Value","target":"%T%"}""" ]
+      """{"$type":"ReplaceBinding","binding":{"$type":"Static","value":99.5},"slot":"Value","target":"%T%"}"""
+      "UpdateAccessibility", """{"$type":"UpdateAccessibility","accessibility":{"role":"status"},"target":"%T%"}"""
+      "UpdateTooltip", """{"$type":"UpdateTooltip","target":"%T%","tooltip":"Updated nightly."}""" ]
     |> List.map (fun (name, json) ->
         match JsonDecode.decodeOp (json.Replace("%T%", target)) with
         | Ok op -> name, op
@@ -268,7 +274,7 @@ let private laneAncestors = [| NodeId "a"; NodeId "ab"; NodeId "b" |]
 let private genLane () : TreeOp<obj> list =
     let shape = PortableRng.below 8
     let k = PortableRng.below 3
-    let e = PortableRng.below 5
+    let e = PortableRng.below 7
 
     let edit () =
         verticalOps laneLeaves[k] |> List.item e |> snd

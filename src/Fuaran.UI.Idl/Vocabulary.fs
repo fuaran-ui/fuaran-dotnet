@@ -1909,11 +1909,45 @@ let private invokeArgRecord =
       Fields = [ req "addr" TStr; req "value" TStr ]
       Annotations = Annotations.Empty }
 
+/// Phase 2517 — the AFFORDANCE a field-bearing node declares: how an agent-initiated
+/// instruction may address it, over and above what `Operability.derive` reads off the
+/// node itself (its name, label and value space). Every member is omit-at-default, so
+/// `{}` is the "declares nothing extra" affordance and a node with no affordance at all
+/// is still derived from its label. `patterns` are SET forms (a `{value}` slot names
+/// where the instruction's value goes); `readPatterns` are question forms that resolve
+/// only to a `Read`; `aliases` map a spoken token onto a canonical option value.
+/// `neverControllable` withdraws the node from the operable surface entirely — the
+/// derivation yields nothing for it. WIRE_FORMAT §31.
+let private affordanceAliasRecord =
+    { Name = "AffordanceAlias"
+      Fields = [ req "alias" TStr; req "value" TStr ]
+      Annotations = Annotations.Empty }
+
+let private affordanceRecord =
+    { Name = "Affordance"
+      Fields =
+        [ omit "patterns" (TList TStr) (VList [])
+          omit "readPatterns" (TList TStr) (VList [])
+          omit "aliases" (TList(TRecord "AffordanceAlias")) (VList [])
+          opt "description" TStr
+          omit "clearable" TBool (VBool false)
+          omit "neverControllable" TBool (VBool false) ]
+      Annotations = Annotations.Empty }
+
 /// An option in a `Select` / `Choice` / `SegmentedChoice` payload (Fuaran-UI 0.2.x
 /// typed-Static: the choice `source` / `options` carry a real `SelectOption` list).
 let private selectOptionRecord =
     { Name = "SelectOption"
       Fields = [ req "label" TStr; req "value" TStr ]
+      Annotations = Annotations.Empty }
+
+/// Phase 2571 — a named group of a `Select`'s options (WIRE_FORMAT §3.6.30). The
+/// grouping lives on the `Select` spec and names options by `value`, never on
+/// `SelectOption`: `SelectOption` is built as a full record literal across the
+/// estate, so a member there would break every construction.
+let private selectOptionGroupRecord =
+    { Name = "SelectOptionGroup"
+      Fields = [ req "label" TStr; req "values" (TList TStr) ]
       Annotations = Annotations.Empty }
 
 /// A `Map.source` marker (Fuaran-UI 0.2.x typed-Static: the map source carries a real
@@ -1955,10 +1989,14 @@ let private defaultSortRecord =
 /// before the addition encodes byte-identically, which is the phase's hard
 /// constraint. The declaration is INTENT, not a behaviour guarantee — a host
 /// honours it with whatever sorting affordance it has.
+///
+/// Phase 2592 adds `citations`, the cells whose figures name their Facts (WIRE_FORMAT.md
+/// §3.6.33). Omitted when empty, so a table citing nothing is byte-unchanged.
 let private staticRowsRecord =
     { Name = "StaticRows"
       Fields =
-        [ opt "defaultSort" (TRecord "DefaultSort")
+        [ omit "citations" (TList(TRecord "TableCitation")) (VList [])
+          opt "defaultSort" (TRecord "DefaultSort")
           req "headers" (TList(TUnion("TextSource", [])))
           req "rows" (TList(TList(TUnion("TextSource", []))))
           opt "sortable" TBool ]
@@ -2018,7 +2056,10 @@ let private formFieldRecord =
           req "label" (TUnion("TextSource", []))
           omit "required" TBool (VBool false)
           opt "help" (TUnion("TextSource", []))
-          opt "rule" (TRecord "FieldRule") ]
+          opt "rule" (TRecord "FieldRule")
+          // Phase 2517 — appended, absent-at-`None`: every form written before it
+          // encodes to the bytes it always did. WIRE_FORMAT §31.
+          opt "affordance" (TRecord "Affordance") ]
       Annotations = Annotations.Empty }
 
 let private filterSpecRecord =
@@ -2089,6 +2130,35 @@ let private metricComparisonRecord =
           req "value" (TUnion("Binding", [ TFloat ]))
           omit "format" (TUnion("CellFormat", [])) (VUnion("None", []))
           omit "polarity" (TEnum "TrendPolarity") (VEnum "HigherIsBetter") ]
+      Annotations = Annotations.Empty }
+
+/// Phase 2591 — one figure a `Markdown` text cites. `name` is what the text's `cite:<name>`
+/// link destination says; `reference` is the same opaque value `Fact.reference` carries
+/// (WIRE_FORMAT.md §3.6.31); `label` says what the figure is, for a screen reader, and is
+/// never printed. The figure's display text is the link's own text, so it lives in the
+/// sentence. The name's grammar and uniqueness are refused at DECODE (the IDL has no refined
+/// string type), which is why those reject fixtures sit in the policy-only list.
+let private markdownCitationRecord =
+    { Name = "MarkdownCitation"
+      Fields =
+        [ opt "label" (TUnion("TextSource", []))
+          req "name" TStr
+          req "reference" TStr ]
+      Annotations = Annotations.Empty }
+
+/// Phase 2592 — one cell of a static table that cites its figure. `row` and `column` are
+/// zero-based coordinates into `StaticRows.rows`, so the cell's text stays exactly as `rows`
+/// holds it and no placeholder is needed; `reference` and `label` are the members of the same
+/// name on `MarkdownCitation`, with no record shared, since one would carry both a name and
+/// coordinates with one always absent. Range and uniqueness are refused at DECODE (the IDL has
+/// no relation across fields), which is why those reject fixtures sit in the policy-only list.
+let private tableCitationRecord =
+    { Name = "TableCitation"
+      Fields =
+        [ req "column" TInt
+          opt "label" (TUnion("TextSource", []))
+          req "reference" TStr
+          req "row" TInt ]
       Annotations = Annotations.Empty }
 
 /// A `DataGrid` column, row-erased. Fuaran-UI Phase 425: `value` (the projection
@@ -2263,6 +2333,11 @@ let private bindingOf (t: IdlType) = TUnion("Binding", [ t ])
 let private CF = TUnion("CellFormat", [])
 /// `IconSource` is a bare string on the wire (`"icon":"trending-up"`).
 let private icon = TStr
+/// Phase 2535 — the citation slot: the reference naming the Fact behind a figure, a bare
+/// string on the wire. The language carries it and never parses or resolves it; a renderer
+/// stamps it as `data-fact`. Its form and the reasoning are WIRE_FORMAT.md §3.6.31. A kind
+/// that cites a figure takes this member, so every citation shares one documented value.
+let private factReference = opt "reference" TStr
 
 // ─── The node envelope records (Phase 690, WIRE_FORMAT.md §3.1) ────────────
 //
@@ -2401,7 +2476,12 @@ let displayKinds: IdlKind list =
       { Tag = "Markdown"
         Category = "Display"
         Annotations = Annotations.Empty
-        Fields = [ req "text" TS ] }
+        // Phase 2591 — the figures the text cites, each placed by a `cite:<name>` link
+        // destination (WIRE_FORMAT.md §3.6.32). Omitted when empty, so a `Markdown` with
+        // nothing to cite is byte-unchanged.
+        Fields =
+          [ omit "citations" (TList(TRecord "MarkdownCitation")) (VList [])
+            req "text" TS ] }
       { Tag = "Math"
         Category = "Display"
         Annotations = Annotations.Empty
@@ -2665,7 +2745,8 @@ let displayKinds: IdlKind list =
             opt "icon" icon
             req "label" TS
             omit "tone" (TEnum "ToneVariant") (VEnum "Default")
-            req "value" TS ] }
+            req "value" TS
+            factReference ] }
       { Tag = "Sparkline"
         Category = "Display"
         Annotations = Annotations.Empty
@@ -2871,7 +2952,9 @@ let inputKinds: IdlKind list =
             // spec forbids — invisible to the corpus (no fixture carries it),
             // caught by the Phase 101 idempotence fuzz at the 694 collapse.
             hostOnly "tooltip" "TextSource option" "None"
-            opt "disabled" (bindingOf TBool) ] }
+            opt "disabled" (bindingOf TBool)
+            // Phase 2517 — appended, absent-at-`None`. WIRE_FORMAT §31.
+            opt "affordance" (TRecord "Affordance") ] }
       { Tag = "Select"
         Category = "Input"
         Annotations = Annotations.Empty
@@ -2899,7 +2982,12 @@ let inputKinds: IdlKind list =
             opt "placeholder" (TUnion("TextSource", []))
             opt "disabled" (bindingOf TBool)
             opt "multiple" TBool
-            opt "values" (bindingOf (TList TStr)) ] }
+            opt "values" (bindingOf (TList TStr))
+            // Phase 2517 — appended, absent-at-`None`. WIRE_FORMAT §31.
+            opt "affordance" (TRecord "Affordance")
+            // Phase 2571 — appended, omit-at-default (absent and `[]` are one
+            // fact: no grouping). WIRE_FORMAT §3.6.30.
+            omit "groups" (TList(TRecord "SelectOptionGroup")) (VList []) ] }
       { Tag = "FileUpload"
         Category = "Input"
         Annotations = Annotations.Empty
@@ -3187,6 +3275,10 @@ let visKinds: IdlKind list =
             // restores it, and the schema is optional by construction.
             omit "stacked" TBool (VBool false)
             req "xField" TStr
+            // Phase 2568 — the list may be EMPTY: the series are then every numeric column of the
+            // bound rows but `xField`, Ordinal-ordered and named by column (WIRE_FORMAT §3.6.29).
+            // A list already admits empty, so the projection does not move; the rule that an empty
+            // list is admitted only over a `Query` source is the validator's (FUARAN168).
             req "yFields" (TList TStr)
             opt "title" TS
             // Phase 876 — the VALUE axis's number format, reusing the existing
@@ -3719,7 +3811,16 @@ let private treeOps: IdlKind list =
       { Tag = "PatchStyle"
         Category = "op"
         Annotations = Annotations.Empty
-        Fields = [ req "style" (TRecord "StyleDelta"); req "target" TStr ] } ]
+        Fields = [ req "style" (TRecord "StyleDelta"); req "target" TStr ] }
+      { Tag = "UpdateAccessibility"
+        Category = "op"
+        Annotations = Annotations.Empty
+        Fields = [ req "accessibility" (TRecord "Accessibility"); req "target" TStr ] }
+      // The one optional op field: an absent `tooltip` is the edit that clears it.
+      { Tag = "UpdateTooltip"
+        Category = "op"
+        Annotations = Annotations.Empty
+        Fields = [ req "target" TStr; opt "tooltip" TS ] } ]
 
 let uiIdl: Idl =
     { Kinds = displayKinds @ layoutKinds @ inputKinds @ visKinds @ metaKinds
@@ -3805,7 +3906,10 @@ let uiIdl: Idl =
           viewBoxRecord
           drawStyle
           invokeArgRecord
+          affordanceAliasRecord
+          affordanceRecord
           selectOptionRecord
+          selectOptionGroupRecord
           mapMarkerRecord
           defaultSortRecord
           staticRowsRecord
@@ -3823,6 +3927,8 @@ let uiIdl: Idl =
           srcSetEntryRecord
           trackEntryRecord
           metricComparisonRecord
+          markdownCitationRecord
+          tableCitationRecord
           treeItemRecord
           effectClassRecord ]
       Defaults = []

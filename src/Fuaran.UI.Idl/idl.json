@@ -634,6 +634,16 @@
             ],
             "name": "Binding"
           }
+        },
+        {
+          "name": "affordance",
+          "optionality": {
+            "$type": "optional"
+          },
+          "type": {
+            "$type": "record",
+            "name": "Affordance"
+          }
         }
       ],
       "tag": "Button"
@@ -1541,6 +1551,15 @@
             "args": [],
             "name": "TextSource"
           }
+        },
+        {
+          "name": "reference",
+          "optionality": {
+            "$type": "optional"
+          },
+          "type": {
+            "$type": "str"
+          }
         }
       ],
       "tag": "Fact"
@@ -2325,6 +2344,23 @@
       "category": "Display",
       "fields": [
         {
+          "name": "citations",
+          "optionality": {
+            "$type": "omitDefault",
+            "default": {
+              "$type": "list",
+              "items": []
+            }
+          },
+          "type": {
+            "$type": "list",
+            "of": {
+              "$type": "record",
+              "name": "MarkdownCitation"
+            }
+          }
+        },
+        {
           "name": "text",
           "optionality": {
             "$type": "required"
@@ -3029,6 +3065,33 @@
               }
             ],
             "name": "Binding"
+          }
+        },
+        {
+          "name": "affordance",
+          "optionality": {
+            "$type": "optional"
+          },
+          "type": {
+            "$type": "record",
+            "name": "Affordance"
+          }
+        },
+        {
+          "name": "groups",
+          "optionality": {
+            "$type": "omitDefault",
+            "default": {
+              "$type": "list",
+              "items": []
+            }
+          },
+          "type": {
+            "$type": "list",
+            "of": {
+              "$type": "record",
+              "name": "SelectOptionGroup"
+            }
           }
         }
       ],
@@ -3806,6 +3869,31 @@
       "category": "op",
       "fields": [
         {
+          "name": "accessibility",
+          "optionality": {
+            "$type": "required"
+          },
+          "type": {
+            "$type": "record",
+            "name": "Accessibility"
+          }
+        },
+        {
+          "name": "target",
+          "optionality": {
+            "$type": "required"
+          },
+          "type": {
+            "$type": "str"
+          }
+        }
+      ],
+      "tag": "UpdateAccessibility"
+    },
+    {
+      "category": "op",
+      "fields": [
+        {
           "name": "path",
           "optionality": {
             "$type": "required"
@@ -3884,6 +3972,32 @@
         }
       ],
       "tag": "UpdateStyle"
+    },
+    {
+      "category": "op",
+      "fields": [
+        {
+          "name": "target",
+          "optionality": {
+            "$type": "required"
+          },
+          "type": {
+            "$type": "str"
+          }
+        },
+        {
+          "name": "tooltip",
+          "optionality": {
+            "$type": "optional"
+          },
+          "type": {
+            "$type": "union",
+            "args": [],
+            "name": "TextSource"
+          }
+        }
+      ],
+      "tag": "UpdateTooltip"
     }
   ],
   "records": [
@@ -3975,6 +4089,118 @@
         }
       ],
       "name": "Accessibility"
+    },
+    {
+      "fields": [
+        {
+          "name": "patterns",
+          "optionality": {
+            "$type": "omitDefault",
+            "default": {
+              "$type": "list",
+              "items": []
+            }
+          },
+          "type": {
+            "$type": "list",
+            "of": {
+              "$type": "str"
+            }
+          }
+        },
+        {
+          "name": "readPatterns",
+          "optionality": {
+            "$type": "omitDefault",
+            "default": {
+              "$type": "list",
+              "items": []
+            }
+          },
+          "type": {
+            "$type": "list",
+            "of": {
+              "$type": "str"
+            }
+          }
+        },
+        {
+          "name": "aliases",
+          "optionality": {
+            "$type": "omitDefault",
+            "default": {
+              "$type": "list",
+              "items": []
+            }
+          },
+          "type": {
+            "$type": "list",
+            "of": {
+              "$type": "record",
+              "name": "AffordanceAlias"
+            }
+          }
+        },
+        {
+          "name": "description",
+          "optionality": {
+            "$type": "optional"
+          },
+          "type": {
+            "$type": "str"
+          }
+        },
+        {
+          "name": "clearable",
+          "optionality": {
+            "$type": "omitDefault",
+            "default": {
+              "$type": "bool",
+              "value": false
+            }
+          },
+          "type": {
+            "$type": "bool"
+          }
+        },
+        {
+          "name": "neverControllable",
+          "optionality": {
+            "$type": "omitDefault",
+            "default": {
+              "$type": "bool",
+              "value": false
+            }
+          },
+          "type": {
+            "$type": "bool"
+          }
+        }
+      ],
+      "name": "Affordance"
+    },
+    {
+      "fields": [
+        {
+          "name": "alias",
+          "optionality": {
+            "$type": "required"
+          },
+          "type": {
+            "$type": "str"
+          }
+        },
+        {
+          "name": "value",
+          "optionality": {
+            "$type": "required"
+          },
+          "type": {
+            "$type": "str"
+          }
+        }
+      ],
+      "name": "AffordanceAlias"
     },
     {
       "fields": [
@@ -4561,6 +4787,16 @@
             "$type": "record",
             "name": "FieldRule"
           }
+        },
+        {
+          "name": "affordance",
+          "optionality": {
+            "$type": "optional"
+          },
+          "type": {
+            "$type": "record",
+            "name": "Affordance"
+          }
         }
       ],
       "name": "FormField"
@@ -4643,6 +4879,40 @@
         }
       ],
       "name": "MapMarker"
+    },
+    {
+      "fields": [
+        {
+          "name": "label",
+          "optionality": {
+            "$type": "optional"
+          },
+          "type": {
+            "$type": "union",
+            "args": [],
+            "name": "TextSource"
+          }
+        },
+        {
+          "name": "name",
+          "optionality": {
+            "$type": "required"
+          },
+          "type": {
+            "$type": "str"
+          }
+        },
+        {
+          "name": "reference",
+          "optionality": {
+            "$type": "required"
+          },
+          "type": {
+            "$type": "str"
+          }
+        }
+      ],
+      "name": "MarkdownCitation"
     },
     {
       "fields": [
@@ -4750,6 +5020,32 @@
         }
       ],
       "name": "SelectOption"
+    },
+    {
+      "fields": [
+        {
+          "name": "label",
+          "optionality": {
+            "$type": "required"
+          },
+          "type": {
+            "$type": "str"
+          }
+        },
+        {
+          "name": "values",
+          "optionality": {
+            "$type": "required"
+          },
+          "type": {
+            "$type": "list",
+            "of": {
+              "$type": "str"
+            }
+          }
+        }
+      ],
+      "name": "SelectOptionGroup"
     },
     {
       "fields": [
@@ -4909,6 +5205,23 @@
     },
     {
       "fields": [
+        {
+          "name": "citations",
+          "optionality": {
+            "$type": "omitDefault",
+            "default": {
+              "$type": "list",
+              "items": []
+            }
+          },
+          "type": {
+            "$type": "list",
+            "of": {
+              "$type": "record",
+              "name": "TableCitation"
+            }
+          }
+        },
         {
           "name": "defaultSort",
           "optionality": {
@@ -5104,6 +5417,49 @@
         }
       ],
       "name": "TabHeader"
+    },
+    {
+      "fields": [
+        {
+          "name": "column",
+          "optionality": {
+            "$type": "required"
+          },
+          "type": {
+            "$type": "int"
+          }
+        },
+        {
+          "name": "label",
+          "optionality": {
+            "$type": "optional"
+          },
+          "type": {
+            "$type": "union",
+            "args": [],
+            "name": "TextSource"
+          }
+        },
+        {
+          "name": "reference",
+          "optionality": {
+            "$type": "required"
+          },
+          "type": {
+            "$type": "str"
+          }
+        },
+        {
+          "name": "row",
+          "optionality": {
+            "$type": "required"
+          },
+          "type": {
+            "$type": "int"
+          }
+        }
+      ],
+      "name": "TableCitation"
     },
     {
       "fields": [

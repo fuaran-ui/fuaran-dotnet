@@ -737,6 +737,100 @@ let all: RejectFixture list =
       // on one deployment and not another — so it is refused at dispatch, where
       // the registry is. A decoder that judged it would make the same bytes
       // valid or invalid depending on who read them.
+      // Phase 2591 — what decode refuses of `Markdown.citations` (WIRE_FORMAT.md §3.6.32). The
+      // text is never read here: it may be bound, and §14 keeps Markdown out of decode, so an
+      // undeclared or unused name is a render fact, not a refusal.
+      // Phase 2592 — what decode refuses of `staticRows.citations` (WIRE_FORMAT.md §3.6.33).
+      { Id = "reject-table-citations-empty"
+        Json =
+          """{"id":"t","kind":{"$type":"DataGrid","columns":[],"source":{"$type":"Static","value":[]},"staticRows":{"citations":[],"headers":["A","B"],"rows":[["a","b"]]}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.staticRows.citations"
+        IsOp = false
+        Description = "an empty `citations` array — absent is the one spelling of none, so a document has one byte form" }
+      { Id = "reject-table-citation-row-range"
+        Json =
+          """{"id":"t","kind":{"$type":"DataGrid","columns":[],"source":{"$type":"Static","value":[]},"staticRows":{"citations":[{"column":0,"reference":"r","row":1}],"headers":["A","B"],"rows":[["a","b"]]}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.staticRows.citations[0].row"
+        IsOp = false
+        Description = "a citation whose row names no row of the table" }
+      { Id = "reject-table-citation-row-negative"
+        Json =
+          """{"id":"t","kind":{"$type":"DataGrid","columns":[],"source":{"$type":"Static","value":[]},"staticRows":{"citations":[{"column":0,"reference":"r","row":-1}],"headers":["A","B"],"rows":[["a","b"]]}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.staticRows.citations[0].row"
+        IsOp = false
+        Description = "a negative row — the schema says the same with minimum:0" }
+      { Id = "reject-table-citation-column-range"
+        Json =
+          """{"id":"t","kind":{"$type":"DataGrid","columns":[],"source":{"$type":"Static","value":[]},"staticRows":{"citations":[{"column":2,"reference":"r","row":0}],"headers":["A","B"],"rows":[["a","b"]]}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.staticRows.citations[0].column"
+        IsOp = false
+        Description = "a citation whose column names no cell of its row" }
+      { Id = "reject-table-citation-column-negative"
+        Json =
+          """{"id":"t","kind":{"$type":"DataGrid","columns":[],"source":{"$type":"Static","value":[]},"staticRows":{"citations":[{"column":-1,"reference":"r","row":0}],"headers":["A","B"],"rows":[["a","b"]]}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.staticRows.citations[0].column"
+        IsOp = false
+        Description = "a negative column — the schema says the same with minimum:0" }
+      { Id = "reject-table-citation-column-jagged"
+        Json =
+          """{"id":"t","kind":{"$type":"DataGrid","columns":[],"source":{"$type":"Static","value":[]},"staticRows":{"citations":[{"column":1,"reference":"r","row":1}],"headers":["A","B"],"rows":[["a","b"],["c"]]}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.staticRows.citations[0].column"
+        IsOp = false
+        Description = "the column is read against the cited row, so a column another row has is still no cell here" }
+      { Id = "reject-table-citation-cell-repeated"
+        Json =
+          """{"id":"t","kind":{"$type":"DataGrid","columns":[],"source":{"$type":"Static","value":[]},"staticRows":{"citations":[{"column":0,"reference":"r1","row":0},{"column":0,"reference":"r2","row":0}],"headers":["A","B"],"rows":[["a","b"]]}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.staticRows.citations[1]"
+        IsOp = false
+        Description =
+          "two citations for one cell — the cell would stamp whichever a host found first; the later occurrence is the path" }
+      { Id = "reject-table-citation-reference-missing"
+        Json =
+          """{"id":"t","kind":{"$type":"DataGrid","columns":[],"source":{"$type":"Static","value":[]},"staticRows":{"citations":[{"column":0,"row":0}],"headers":["A","B"],"rows":[["a","b"]]}}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.staticRows.citations[0].reference"
+        IsOp = false
+        Description = "a citation that cites nothing — `reference` is the member that makes it one" }
+      { Id = "reject-markdown-citations-empty"
+        Json = """{"id":"m","kind":{"$type":"Markdown","citations":[],"text":"x"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.citations"
+        IsOp = false
+        Description = "an empty `citations` array — absent is the one spelling of none, so a document has one byte form" }
+      { Id = "reject-markdown-citation-name-grammar"
+        Json = """{"id":"m","kind":{"$type":"Markdown","citations":[{"name":"a b","reference":"r"}],"text":"x"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.citations[0].name"
+        IsOp = false
+        Description =
+          "a citation name outside letters, digits, `-` and `_` — a `cite:` destination could not say it without escaping" }
+      { Id = "reject-markdown-citation-name-empty"
+        Json = """{"id":"m","kind":{"$type":"Markdown","citations":[{"name":"","reference":"r"}],"text":"x"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.citations[0].name"
+        IsOp = false
+        Description = "an empty citation name — no destination names it" }
+      { Id = "reject-markdown-citation-name-repeated"
+        Json =
+          """{"id":"m","kind":{"$type":"Markdown","citations":[{"name":"a","reference":"r1"},{"name":"a","reference":"r2"}],"text":"x"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.citations[1].name"
+        IsOp = false
+        Description =
+          "a citation name used twice — the figure would stamp whichever a host found first; the second occurrence is the path" }
+      { Id = "reject-markdown-citation-reference-missing"
+        Json = """{"id":"m","kind":{"$type":"Markdown","citations":[{"name":"a"}],"text":"x"}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.citations[0].reference"
+        IsOp = false
+        Description = "a citation that cites nothing — `reference` is the member that makes it one" }
       { Id = "reject-upload-destination-empty"
         Json =
           """{"id":"up","kind":{"$type":"FileUpload","accept":["video/*"],"destination":"","label":"Upload","multiple":true,"onSelect":"<closure>"}}"""
@@ -1593,6 +1687,41 @@ let all: RejectFixture list =
         IsOp = true
         Description = "UpdateStyle style.direction not a JSON string (Phase 1472)" }
 
+      // ─── Phase 2527 — the two trait ops ───────────────────────────────
+      //
+      // Each payload decodes through the shared decoder of the envelope slot it
+      // writes, so the trait's own refusals are pinned on the op too.
+      { Id = "reject-op-updateaccessibility-missing-accessibility"
+        Json = """{"$type":"UpdateAccessibility","target":"n1"}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.accessibility"
+        IsOp = true
+        Description = "UpdateAccessibility without its record: an absent trait is spelled {} (Phase 2527)" }
+      { Id = "reject-op-updateaccessibility-nonobject"
+        Json = """{"$type":"UpdateAccessibility","accessibility":"Revenue","target":"n1"}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.accessibility"
+        IsOp = true
+        Description = "UpdateAccessibility accessibility not a JSON object (Phase 2527)" }
+      { Id = "reject-op-updateaccessibility-near-miss"
+        Json = """{"$type":"UpdateAccessibility","accessibility":{"ariaLabel":"Revenue"},"target":"n1"}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.accessibility.ariaLabel"
+        IsOp = true
+        Description = "UpdateAccessibility near-miss member, refused as on the envelope (Phase 2527)" }
+      { Id = "reject-op-updatetooltip-missing-target"
+        Json = """{"$type":"UpdateTooltip","tooltip":"x"}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.target"
+        IsOp = true
+        Description = "UpdateTooltip without a target (Phase 2527)" }
+      { Id = "reject-op-updatetooltip-nontext"
+        Json = """{"$type":"UpdateTooltip","target":"n1","tooltip":7}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.tooltip"
+        IsOp = true
+        Description = "UpdateTooltip tooltip not a TextSource (Phase 2527)" }
+
       // ─── Phase 2291 — `PatchStyle`, the field-level style edit ────────
       //
       // The op's payload decodes through the same per-field token decoders as
@@ -2315,6 +2444,26 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "a single-select (`multiple` absent) with no `value`. `value` is the single-select binding and is required there; only a multi-select omits it (WIRE_FORMAT §3.2, Phase 1962)" }
+      // ─── Phase 2571 — the two option-group refusals (WIRE_FORMAT §3.6.30) ──
+      //
+      // Both are relations across the document: neither the IDL's per-field
+      // optionality nor the schema can state them, so the decoder does.
+      { Id = "reject-2571-select-group-value-twice"
+        Json =
+          """{"id":"x","kind":{"$type":"Select","groups":[{"label":"Trend","values":["revenue-trend"]},{"label":"Breakdown","values":["region-breakdown","revenue-trend"]}],"label":"Chart","source":{"$type":"Static","value":[{"label":"Revenue","value":"revenue-trend"},{"label":"By region","value":"region-breakdown"}]},"value":{"$type":"Static","value":"revenue-trend"}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.groups[1].values[1]"
+        IsOp = false
+        Description =
+          "a Select option group naming a value an earlier group already names. An option belongs to at most one group: drawn twice it would be two entries a reader cannot tell apart, and drawn once the document would not say which group holds it, so no rendering could be the one the author meant (WIRE_FORMAT §3.6.30, Phase 2571)" }
+      { Id = "reject-2571-select-group-value-unknown"
+        Json =
+          """{"id":"x","kind":{"$type":"Select","groups":[{"label":"Trend","values":["revenue-trend","orders-trend"]}],"label":"Chart","source":{"$type":"Static","value":[{"label":"Revenue","value":"revenue-trend"},{"label":"By region","value":"region-breakdown"}]},"value":{"$type":"Static","value":"revenue-trend"}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.groups[0].values[1]"
+        IsOp = false
+        Description =
+          "a Select option group naming a value no static option carries. A group gathers the Select's own options and adds none, so a value it cannot find is an author's typo the document would otherwise drop in silence. Over a BOUND source the options are not in the document, and the same miss is reported at render instead (WIRE_FORMAT §3.6.30, Phase 2571)" }
       { Id = "reject-limit-json-depth-at-max"
         Json =
           String.replicate Fuaran.UI.WireLimits.MaxJsonDepth "["

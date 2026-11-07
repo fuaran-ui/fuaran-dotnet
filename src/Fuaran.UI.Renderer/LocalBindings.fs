@@ -435,3 +435,64 @@ let dispatchFormCommit (formElement: Browser.Types.Element) : unit =
     // the form, so without bubbling nothing would hear it at all.
     evt.initEvent ("fuaran-form-commit", true, true)
     formElement.dispatchEvent (evt) |> ignore
+
+// ─── Query-bound sources re-resolve on a parameter write (Phase 2523) ───────
+//
+// The browser-driven twin of the server driver's re-resolution. A request
+// parameter lives in the State or Filter store, so the one place that sees every
+// admitted write to it - a `SetState` that passed `CanDispatch`, or a filter
+// chip - is the store's own subscription. Nothing here is a new action and the
+// dispatch gate is not consulted differently: a write that was refused never
+// reaches the store, so it never reaches this.
+//
+// The outcomes go into `QueryStore`, which the renderer already merges over the
+// host's `QueryResults` per render and re-paints readers of when a name is
+// written. A refused source is written as its `SourceRefusal`, which
+// `BindingResolver` answers with an error naming the source, so the stale value
+// under the host bag is hidden by the store rather than shown.
+
+/// Re-resolve, on every change to a request parameter named in
+/// `sources().ParameterDependents`, exactly the sources that depend on it.
+/// `check` is the typed check (`QueryBinding.check` over the tree the caller
+/// renders). Returns the unsubscribe thunk.
+let attachParameterReResolution
+    (sources: unit -> Fuaran.UI.BindingSources)
+    (resolve: Fuaran.UI.SourceResolver)
+    (check: string -> Fuaran.Core.Schema -> string list)
+    : unit -> unit =
+    let parameters = (sources ()).ParameterDependents |> Map.toList |> List.map fst
+
+    let current name =
+        FilterStore.get name |> Option.orElse (StateStore.get name)
+
+    let seen: Map<string, obj option> ref =
+        ref (parameters |> List.map (fun p -> p, current p) |> Map.ofList)
+
+    let onWrite () =
+        let changes =
+            parameters
+            |> List.filter (fun p -> Map.find p seen.Value <> current p)
+            |> List.map (fun p ->
+                seen.Value <- Map.add p (current p) seen.Value
+
+                let change: Fuaran.UI.ParameterChange =
+                    { Name = p
+                      Value =
+                        match current p with
+                        | Some(:? string as s) -> Some(Fuaran.Core.JStr s)
+                        | _ -> None }
+
+                change)
+
+        for outcome in Fuaran.UI.BindingSources.reResolve resolve check (sources ()) changes do
+            match outcome with
+            | Ok(name, value) -> QueryStore.set name value
+            | Error refusal -> QueryStore.set refusal.Source (Unchecked.nonNull (box refusal))
+
+    let keys = Set.ofList parameters
+    let stopState = StateStore.subscribeKeys keys onWrite
+    let stopFilter = FilterStore.subscribeKeys keys onWrite
+
+    fun () ->
+        stopState ()
+        stopFilter ()

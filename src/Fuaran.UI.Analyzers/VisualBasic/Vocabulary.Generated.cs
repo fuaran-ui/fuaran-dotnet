@@ -51,7 +51,7 @@ internal static partial class Vocabulary
         Add("Embed", "aspect-ratio", "id", "permissions", "src", "title");
         Add("ErrorBoundary", "id");
         Add("EventMarker", "category", "date", "label");
-        Add("Fact", "emphasis", "help", "icon", "id", "label", "tone", "value");
+        Add("Fact", "emphasis", "help", "icon", "id", "label", "reference", "tone", "value");
         Add("Field", "allowFreeText", "allowHalf", "help", "id", "initial", "kind", "label", "max", "required", "rows", "rule-compare-field", "rule-compare-op", "rule-format", "rule-max-length", "rule-message", "rule-min-length", "rule-pattern", "selected");
         Add("FileUpload", "accept", "accept-paste", "capture", "destination", "drop-target", "id", "label", "max-bytes", "max-files", "multiple");
         Add("Filter", "allowFreeText", "allowHalf", "kind", "label", "max", "name");

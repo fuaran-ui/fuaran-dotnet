@@ -49,6 +49,13 @@
     <Compile Include="Laws.fs" />
     <!-- Law 8 (Phase 1885): a board snapshot reproduces the same data on both pipelines. -->
     <Compile Include="BoardSnapshotLaw.fs" />
+    <!-- Law 9 (Phase 2517): the operable surface and the resolution contract. The cases are
+         the operability/ family's authored inputs, linked from the suite that emits it. -->
+    <Compile Include="..\..\src\Fuaran.UI.Operability.Tests\Cases.fs" Link="OperabilityCases.fs" />
+    <Compile Include="OperabilityLaw.fs" />
+    <!-- Law 10 (Phase 2570): a page signed by the .NET provider verifies through the published
+         ClaimVerifier on both pipelines - the BCL here, WebCrypto under Node. -->
+    <Compile Include="AttestationLaw.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
@@ -63,6 +70,8 @@
     <ProjectReference Include="..\..\src\Fuaran.UI.OpStream.Dag.Merge\Fuaran.UI.OpStream.Dag.Merge.fsproj" />
     <!-- Law 8's subject: the board snapshot, taken and reproduced on both pipelines. -->
     <ProjectReference Include="..\..\src\Fuaran.UI.ServerDriven\Fuaran.UI.ServerDriven.fsproj" />
+    <!-- Law 10's subject: UiWitness.ecdsaP256, the published page verifier. -->
+    <ProjectReference Include="..\..\src\Fuaran.UI.Program\Fuaran.UI.Program.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />

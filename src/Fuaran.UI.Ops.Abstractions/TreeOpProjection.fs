@@ -49,6 +49,8 @@ module TreeOp =
         | TreeOp.UpdateStyle _ -> "UpdateStyle"
         | TreeOp.PatchStyle _ -> "PatchStyle"
         | TreeOp.UpdateState _ -> "UpdateState"
+        | TreeOp.UpdateAccessibility _ -> "UpdateAccessibility"
+        | TreeOp.UpdateTooltip _ -> "UpdateTooltip"
         | TreeOp.InsertChild _ -> "InsertChild"
         | TreeOp.RemoveNode _ -> "RemoveNode"
         | TreeOp.MoveNode _ -> "MoveNode"
@@ -71,6 +73,8 @@ module TreeOp =
         | TreeOp.UpdateStyle(id, _)
         | TreeOp.PatchStyle(id, _)
         | TreeOp.UpdateState(id, _)
+        | TreeOp.UpdateAccessibility(id, _)
+        | TreeOp.UpdateTooltip(id, _)
         | TreeOp.RemoveNode id -> [ id ]
         | TreeOp.InsertChild(parentId, _)
         | TreeOp.ReorderChildren(parentId, _) -> [ parentId ]
@@ -115,6 +119,8 @@ module TreeOp =
         | TreeOp.ReplaceBinding _
         | TreeOp.UpdateStyle _
         | TreeOp.PatchStyle _
+        | TreeOp.UpdateAccessibility _
+        | TreeOp.UpdateTooltip _
         | TreeOp.RemoveNode _
         | TreeOp.MoveNode _
         | TreeOp.ReorderChildren _ -> []

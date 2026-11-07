@@ -442,9 +442,22 @@ let private stripEgressMarkers (html: string) : string =
 /// above. A digest is the surface where an undeclared markdown image IS the
 /// tracking pixel, so leaving this one unchecked would have been the largest
 /// remaining hole rather than the smallest.
-let private emailSafeMarkdown (policy: Sanitize.EgressPolicy) (markdownText: string) : string =
+let private emailSafeMarkdown
+    (policy: Sanitize.EgressPolicy)
+    (citations: MarkdownCitation list)
+    (markdownText: string)
+    : string =
+    // Phase 2591 — a mail client has no reference stylesheet, so a hidden label would be
+    // printed in the sentence. The figure stays in line with its reference, without one.
+    let cited: Markdown.Citation list =
+        citations
+        |> List.map (fun c ->
+            { Name = c.Name
+              Reference = c.Reference
+              Label = None })
+
     let html =
-        Sanitize.sanitizeMarkdownHtml (Markdown.toHtmlWithEgress policy markdownText)
+        Sanitize.sanitizeMarkdownHtml (Markdown.toHtmlCited policy cited markdownText)
         |> stripEgressMarkers
 
     html
@@ -695,7 +708,9 @@ and private renderKind
             [ Html.tr
                   [ Html.td
                         [ prop.custom ("style", textStyle opts "font-size:15px;line-height:22px;")
-                          prop.dangerouslySetInnerHTML (emailSafeMarkdown ctx.Policy.Egress (text spec.Text)) ] ] ]
+                          prop.dangerouslySetInnerHTML (
+                              emailSafeMarkdown ctx.Policy.Egress spec.Citations (text spec.Text)
+                          ) ] ] ]
 
     | NodeKind.Metric spec ->
         let resolution = BindingResolver.resolveScalarFloat ctx.Sources spec.Value
@@ -1058,9 +1073,9 @@ and private renderKind
                             prop.text (text h) ] ]
 
             let bodyRows =
-                [ for row in sr.Rows ->
+                [ for i, row in List.indexed sr.Rows ->
                       Html.tr
-                          [ for cell in row ->
+                          [ for j, cell in List.indexed row ->
                                 Html.td
                                     [ prop.custom (
                                           "style",
@@ -1069,6 +1084,11 @@ and private renderKind
                                           + ";"
                                           + textStyle opts "font-size:13px;line-height:18px;"
                                       )
+                                      // Phase 2592 — a mail client has no reference stylesheet, so a
+                                      // hidden label would be printed in the cell. The reference stays.
+                                      match sr.Citations |> List.tryFind (fun c -> c.Row = i && c.Column = j) with
+                                      | Some citation -> prop.custom ("data-fact", citation.Reference)
+                                      | None -> ()
                                       prop.text (text cell) ] ] ]
 
             Html.table (

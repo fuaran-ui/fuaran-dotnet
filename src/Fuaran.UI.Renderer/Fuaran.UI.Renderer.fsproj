@@ -119,6 +119,11 @@
          Depends on Renderer.Core's BindingResolver and nothing in this project. -->
     <Compile Include="AgGridPlan.fs" />
     <Compile Include="GridPaste.fs" />
+    <!-- Phase 2577: the browser rasterise performer for the two conventional
+         rendered-artefact export ids. Declarations over Fuaran.Core.Function, a
+         pure plan half, the browser half behind FABLE_COMPILER. Depends on
+         Fuaran.UI.Types and nothing in this project. -->
+    <Compile Include="RenderExport.fs" />
     <!-- Phase 1546: the `fuaran-renderer` Trusted Types policy. Every raw-HTML
          sink in this project mints through it, so it compiles before the two
          files that hold one (Render.fs and MathEnhance.fs). Depends on
@@ -160,5 +165,9 @@
     <PackageReference Include="FSharp.Core" />
     <PackageReference Include="Fable.Core" />
     <PackageReference Include="Feliz" />
+    <!-- Phase 2577: the `Capability` / registry surface RenderExport declares the
+         two export ids against. Already in the graph of every host that references
+         Fuaran.UI.AiTools; declared here because this project now opens it. -->
+    <PackageReference Include="Fuaran.Core.Function" />
   </ItemGroup>
 </Project>

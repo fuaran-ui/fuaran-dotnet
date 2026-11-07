@@ -792,6 +792,10 @@ let private updateFact (field: string) (v: obj) (spec: FactSpec) : UpdateResult<
         wrap (fun v ->
             coerceField JsonDecode.Coerce.tryStringOption v
             |> Result.map (fun x -> { spec with Icon = x }))
+    | "Reference" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryStringOption v
+            |> Result.map (fun x -> { spec with Reference = x }))
     | _ -> UnknownField
 
 let private updateFragmentDecl (field: string) (v: obj) (spec: FragmentDeclSpec<'Msg>) : UpdateResult<'Msg> =
@@ -2574,6 +2578,30 @@ let rec private applyOne (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Ms
                 Some state
 
         match mapNode target (fun n -> { n with State = normalised }) root with
+        | Some updated -> Ok updated
+        | None -> Error(nodeNotFound target)
+
+    | TreeOp.UpdateAccessibility(target, accessibility) ->
+        // Phase 2527 — the same normalisation again: a record setting no field is
+        // the absent trait, so an edit can remove one. Field by field, because a
+        // `Binding` carries closures and has no equality.
+        let empty =
+            accessibility.Label.IsNone
+            && accessibility.LabelledBy.IsNone
+            && accessibility.DescribedBy.IsNone
+            && accessibility.Role.IsNone
+            && accessibility.Speak.IsNone
+            && accessibility.LiveRegion.IsNone
+            && accessibility.Hidden.IsNone
+
+        let normalised = if empty then None else Some accessibility
+
+        match mapNode target (fun n -> { n with Accessibility = normalised }) root with
+        | Some updated -> Ok updated
+        | None -> Error(nodeNotFound target)
+
+    | TreeOp.UpdateTooltip(target, tooltip) ->
+        match mapNode target (fun n -> { n with Tooltip = tooltip }) root with
         | Some updated -> Ok updated
         | None -> Error(nodeNotFound target)
 

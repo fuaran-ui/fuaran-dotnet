@@ -48,7 +48,11 @@ let tests =
         [ test "motion and extraAttributes never reach the wire, however the record is filled" {
               let bare: Node<obj> =
                   { Id = "host-only-probe"
-                    Kind = NodeKind.Markdown({ Text = TextSource.Literal "probe" })
+                    Kind =
+                      NodeKind.Markdown(
+                          { Citations = []
+                            Text = TextSource.Literal "probe" }
+                      )
                     State = None
                     Style = None
                     Accessibility = None

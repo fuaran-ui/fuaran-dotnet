@@ -116,7 +116,109 @@ let private manifestFamilySize (kind: string) : int =
 let generatedLayerTests =
     testList
         "Phase 671 — the IDL-generated structural layer, tier-side"
-        [ test "the generated encoder reproduces a corpus fixture byte-for-byte" {
+        [ test "Phase 2535 — a Fact's reference crosses the canonical wire, and no reference is no member" {
+              let cited: Node<obj> =
+                  Fuaran.fact "f" "Revenue" "£412k" |> Fact.withReference "fact:revenue-q3"
+
+              let encoded = CanonicalJson.encodeNode cited
+
+              Expect.equal
+                  encoded
+                  "{\"id\":\"f\",\"kind\":{\"$type\":\"Fact\",\"label\":\"Revenue\",\"reference\":\"fact:revenue-q3\",\"value\":\"£412k\"}}"
+                  "the member sits in its canonical place"
+
+              match JsonDecode.decodeNodeObj encoded with
+              | Error e -> failtestf "decode refused the cited Fact: %A" e
+              | Ok decoded ->
+                  Expect.equal (CanonicalJson.encodeNode decoded) encoded "the round trip is byte-identical"
+
+                  match decoded.Kind with
+                  | NodeKind.Fact spec -> Expect.equal spec.Reference (Some "fact:revenue-q3") "the field is read back"
+                  | other -> failtestf "decoded to %A" other
+
+              Expect.isFalse
+                  ((CanonicalJson.encodeNode (Fuaran.fact "f" "Revenue" "£412k": Node<obj>)).Contains "reference")
+                  "an uncited Fact is byte-unchanged"
+
+              Expect.throws
+                  (fun () -> (Fuaran.markdown "m" "x": Node<obj>) |> Fact.withReference "r" |> ignore)
+                  "a reference on any other kind is refused rather than dropped"
+          }
+
+          test "Phase 2591 — a Markdown's citations cross the canonical wire, and none is no member" {
+              let cited: Node<obj> =
+                  Fuaran.markdown "m" "It took [23%](cite:share)."
+                  |> Markdown.withCitation "share" "fact:share-q3" (Some "Online share")
+
+              let encoded = CanonicalJson.encodeNode cited
+
+              Expect.equal
+                  encoded
+                  "{\"id\":\"m\",\"kind\":{\"$type\":\"Markdown\",\"citations\":[{\"label\":\"Online share\",\"name\":\"share\",\"reference\":\"fact:share-q3\"}],\"text\":\"It took [23%](cite:share).\"}}"
+                  "the member sits in its canonical place"
+
+              match JsonDecode.decodeNodeObj encoded with
+              | Error e -> failtestf "decode refused the cited Markdown: %A" e
+              | Ok decoded -> Expect.equal (CanonicalJson.encodeNode decoded) encoded "the round trip is byte-identical"
+
+              Expect.equal
+                  (CanonicalJson.encodeNode (Fuaran.markdown "m" "x": Node<obj>))
+                  "{\"id\":\"m\",\"kind\":{\"$type\":\"Markdown\",\"text\":\"x\"}}"
+                  "a Markdown citing nothing is byte-unchanged"
+
+              Expect.throws
+                  (fun () ->
+                      (Fuaran.fact "f" "Revenue" "£412k": Node<obj>)
+                      |> Markdown.withCitation "a" "r" None
+                      |> ignore)
+                  "a citation on any other kind is refused rather than dropped"
+          }
+
+          test "Phase 2592 — a table's citations cross the canonical wire, and none is no member" {
+              let spec: TableSpec<obj> =
+                  { Defaults.table<obj> with
+                      Headers = [ TextSource.Literal "A"; TextSource.Literal "B" ]
+                      Rows = [ [ TextSource.Literal "x"; TextSource.Literal "1" ] ] }
+
+              let cited: Node<obj> =
+                  Fuaran.table "t" spec |> Table.withCitation 0 1 "fact:one" (Some "One")
+
+              let encoded = CanonicalJson.encodeNode cited
+
+              Expect.stringContains
+                  encoded
+                  "\"staticRows\":{\"citations\":[{\"column\":1,\"label\":\"One\",\"reference\":\"fact:one\",\"row\":0}],\"headers\":[\"A\",\"B\"]"
+                  "the member sits in its canonical place"
+
+              match JsonDecode.decodeNodeObj encoded with
+              | Error e -> failtestf "decode refused the cited table: %A" e
+              | Ok decoded -> Expect.equal (CanonicalJson.encodeNode decoded) encoded "the round trip is byte-identical"
+
+              Expect.isFalse
+                  ((CanonicalJson.encodeNode (Fuaran.table "t" spec)).Contains "citations")
+                  "a table citing nothing is byte-unchanged"
+
+              Expect.throws
+                  (fun () -> Fuaran.table "t" spec |> Table.withCitation 1 0 "r" None |> ignore)
+                  "a row naming no cell is refused where the table is built"
+
+              Expect.throws
+                  (fun () -> Fuaran.table "t" spec |> Table.withCitation 0 2 "r" None |> ignore)
+                  "a column naming no cell is refused where the table is built"
+
+              Expect.throws
+                  (fun () -> cited |> Table.withCitation 0 1 "r" None |> ignore)
+                  "two citations for one cell are refused where the table is built"
+
+              Expect.throws
+                  (fun () ->
+                      (Fuaran.markdown "m" "x": Node<obj>)
+                      |> Table.withCitation 0 0 "r" None
+                      |> ignore)
+                  "a citation on any other kind is refused rather than dropped"
+          }
+
+          test "the generated encoder reproduces a corpus fixture byte-for-byte" {
               match fixture "heading-1" with
               | None -> skiptest "wire-format-fixtures/nodes/heading-1.json not found"
               | Some expected ->
@@ -732,6 +834,13 @@ let generatedLayerTests =
               Expect.equal
                   policyOwned
                   [ "reject-1962-select-missing-value.json"
+                    // Fuaran-UI Phase 2571 — the option-group refusals relate a
+                    // group's value to its siblings (every other group's values;
+                    // the static `source`'s option values). The IDL declares
+                    // `groups` a plain list of records, so the generated decoder
+                    // reads either document whole.
+                    "reject-2571-select-group-value-twice.json"
+                    "reject-2571-select-group-value-unknown.json"
                     "reject-action-print-with-payload.json"
                     "reject-box-masonry-nonpositive-cols.json"
                     "reject-chart-annotation-date-unparseable.json"
@@ -816,6 +925,13 @@ let generatedLayerTests =
                     // and the near misses do.
                     "reject-local-codec-no-inverse.json"
                     "reject-local-oncommit-and-committo.json"
+                    // Phase 2591 — the IDL has no refined string type and no list floor, so the
+                    // generated decoder reads these well-typed members and the policy decoder
+                    // refuses them.
+                    "reject-markdown-citation-name-empty.json"
+                    "reject-markdown-citation-name-grammar.json"
+                    "reject-markdown-citation-name-repeated.json"
+                    "reject-markdown-citations-empty.json"
                     "reject-nearmiss-a11y-aria-hidden.json"
                     "reject-nearmiss-a11y-arialabel.json"
                     "reject-nearmiss-a11y-live.json"
@@ -826,6 +942,15 @@ let generatedLayerTests =
                     "reject-nearmiss-grid-sortable.json"
                     "reject-switch-case-match-and-when.json"
                     "reject-switch-case-neither.json"
+                    // Phase 2592 — likewise: the generated decoder reads a well-typed coordinate
+                    // and the policy decoder reads it against the rows.
+                    "reject-table-citation-cell-repeated.json"
+                    "reject-table-citation-column-jagged.json"
+                    "reject-table-citation-column-negative.json"
+                    "reject-table-citation-column-range.json"
+                    "reject-table-citation-row-negative.json"
+                    "reject-table-citation-row-range.json"
+                    "reject-table-citations-empty.json"
                     "reject-upload-destination-empty.json"
                     // Fuaran-UI Phase 1548 — the two upload ceilings' POSITIVE
                     // floor, and the value-bound class exactly: the IDL declares

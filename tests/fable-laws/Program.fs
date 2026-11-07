@@ -121,6 +121,14 @@ let main _ =
     for line in boardSnapshot.Lines do
         printfn "%s" line
 
+    // ---- law 9: the operable surface and the resolution contract ----
+    // Phase 2517. The derived affordances and every recast instruction's outcome
+    // are printed, so the runner's line comparison is the cross-host claim.
+    let operability = OperabilityLaw.operabilityLaw ()
+
+    for line in operability.Lines do
+        printfn "%s" line
+
     let violations =
         Laws.mergeViolations mergeVerdict
         + laneFailures
@@ -132,9 +140,34 @@ let main _ =
         + Laws.checkpointViolations checkpointCases
         + Laws.numberFormatViolations numberFormatCases
         + boardSnapshot.Violations
+        + operability.Violations
 
-    printfn "TOTAL violations=%d" violations
+    // ---- law 10: a signed page verifies through the published provider ----
+    // Phase 2570. Asynchronous, as WebCrypto is: the TOTAL line is printed once
+    // this law has answered, on both pipelines, so it stays the last line.
+    let finish (attestation: AttestationLaw.AttestationLaw) : int =
+        for line in attestation.Lines do
+            printfn "%s" line
 
-    let exitCode = if violations = 0 then 0 else 1
-    setExitCode exitCode
-    exitCode
+        let total = violations + attestation.Violations
+        printfn "TOTAL violations=%d" total
+
+        let exitCode = if total = 0 then 0 else 1
+        setExitCode exitCode
+        exitCode
+
+#if FABLE_COMPILER
+    // Node cannot block on a promise: the law runs to completion on the event loop,
+    // and `finish` sets the exit status when it does. A law that never answers
+    // prints no TOTAL line, which the runner refuses.
+    Async.StartImmediate(
+        async {
+            let! attestation = AttestationLaw.attestationLaw ()
+            finish attestation |> ignore
+        }
+    )
+
+    0
+#else
+    AttestationLaw.attestationLaw () |> Async.RunSynchronously |> finish
+#endif

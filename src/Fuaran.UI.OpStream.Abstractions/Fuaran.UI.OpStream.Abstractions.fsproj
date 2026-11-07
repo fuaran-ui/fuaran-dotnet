@@ -26,8 +26,9 @@
     <Compile Include="HashChain.fs" />
     <!-- Phase 789: segment attestation — signed evidence beside the unkeyed
          chain. Attestation.fs is the portable vocabulary + seams (both
-         pipelines); AttestationEcdsa.fs is the .NET ECDSA P-256 provider,
-         fenced out of Fable entirely. -->
+         pipelines); AttestationEcdsa.fs is the ECDSA P-256 provider - on .NET
+         it signs and verifies through the BCL, under Fable (Phase 2570) it
+         verifies through WebCrypto and never signs. -->
     <Compile Include="Attestation.fs" />
     <!-- Phase 1549: document attestation — a signature over an emitted tree's
          canonical bytes, in an envelope OUTSIDE the document. Portable, so it
@@ -72,8 +73,9 @@
     <PackageReference Include="Fuaran.Core.Function" />
     <!-- Fable.Core: used only under `#if FABLE_COMPILER` for the `[<Emit>]`
          JS-`toString` shim in CanonicalJson.formatFiniteDouble (Fable does not
-         support the `Double.ToString("R")` round-trip specifier). Inert on
-         .NET — the Emit code is fenced out. (Phase 192 — cross-pipeline apply
+         support the `Double.ToString("R")` round-trip specifier), and for the
+         WebCrypto calls of AttestationEcdsa.fs's Fable arm (Phase 2570). Inert
+         on .NET — the Emit code is fenced out. (Phase 192 — cross-pipeline apply
          parity / Fable-portable canonical encoder.) -->
     <PackageReference Include="Fable.Core" />
   </ItemGroup>

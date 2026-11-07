@@ -79,6 +79,8 @@ module DagPrimacy =
         // Phase 2291 — a patch writes exactly the style sub-fields it names.
         | TreeOp.PatchStyle(id, delta) -> StyleDelta.fieldNames delta |> List.map (fun f -> rawId id, "style." + f)
         | TreeOp.UpdateState(id, _) -> [ rawId id, "state" ]
+        | TreeOp.UpdateAccessibility(id, _) -> [ rawId id, "accessibility" ]
+        | TreeOp.UpdateTooltip(id, _) -> [ rawId id, "tooltip" ]
         // The parent's child list changed, and the inserted node itself is the
         // subject of the `insert` cell — the one a same-id insert on both sides
         // contends (Phase 1497). The op carries the child, so unlike the
@@ -94,12 +96,7 @@ module DagPrimacy =
         // subject of the `node` cell a delete/modify contends (Phase 1526).
         | TreeOp.RemoveNode id -> [ rawId id, "node" ]
         // ReplaceRoot returns the supplied node outright, so it writes EVERY
-        // facet of the new root — not merely its kind and children. It is the
-        // only op that writes `accessibility` or `tooltip` at all, which is the
-        // `TreeOpDiff` expressiveness gap seen from the attribution side: a
-        // merge of those facets has no op that could have written them, so the
-        // merge node that carries it is refused at mint rather than attributed
-        // to a writer that does not exist (see `DagMerge.buildMergeRecord`).
+        // facet of the new root — not merely its kind and children.
         | TreeOp.ReplaceRoot node ->
             [ node.Id, "kind"
               node.Id, "children"

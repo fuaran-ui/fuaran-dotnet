@@ -1109,7 +1109,8 @@ let private boundGrid (nodeId: string) (rowAction: bool) : Node<obj> =
 /// input this assertion is about.
 let private staticGrid (nodeId: string) (rowAction: bool) : Node<obj> =
     let rows: StaticRows =
-        { Headers = [ TextSource.Literal "Reference" ]
+        { Citations = []
+          Headers = [ TextSource.Literal "Reference" ]
           Rows = [ [ TextSource.Literal "S-1" ] ]
           Sortable = Option.None
           DefaultSort = Option.None }

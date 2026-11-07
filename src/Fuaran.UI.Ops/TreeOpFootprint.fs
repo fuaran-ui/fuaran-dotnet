@@ -19,7 +19,8 @@ module Fuaran.UI.Ops.TreeOpFootprint
 //  slot argument is in the footprint exactly as one in an ordered child list.
 //
 //  A VERTICAL op (`EditNode`, `UpdateProp`, `ReplaceBinding`, `UpdateStyle`,
-//  `PatchStyle`, `UpdateState`) rewrites one node in place, and is Core's
+//  `PatchStyle`, `UpdateState`, `UpdateAccessibility`, `UpdateTooltip`)
+//  rewrites one node in place, and is Core's
 //  `UpdateNode` footprint: the node read and content-written, every id of a
 //  subtree the op puts in read and content-written, and an UNKNOWN-PARENT
 //  write of the node (Phase 2004). The third term is required for soundness,
@@ -127,7 +128,10 @@ let rec ofOp (op: TreeOp<'Msg>) : Fuaran.Core.Footprint =
     | TreeOp.UpdateStyle(id, _)
     // Writes the style fields the delta names (Phase 2291); the node, as
     // `UpdateProp`, for the same reason.
-    | TreeOp.PatchStyle(id, _) -> vertical id []
+    | TreeOp.PatchStyle(id, _)
+    // Replaces one trait of the node's envelope (Phase 2527); neither holds a node.
+    | TreeOp.UpdateAccessibility(id, _)
+    | TreeOp.UpdateTooltip(id, _) -> vertical id []
     // Replaces the node's `State` block, putting its `onLoading` / `onEmpty`
     // alternatives into the tree.
     | TreeOp.UpdateState(id, _) -> vertical id (Fuaran.UI.Ops.TreeOp.inserted op)

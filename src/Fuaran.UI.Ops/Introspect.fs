@@ -591,8 +591,8 @@ let nodesWithField (field: string) (root: Node<'Msg>) : NodeId list =
 /// found anywhere.
 ///
 /// The function is the workhorse for ops that mutate a single node in
-/// place (EditNode / UpdateProp / ReplaceBinding / UpdateStyle /
-/// UpdateState).
+/// place (EditNode / UpdateProp / ReplaceBinding / UpdateStyle / PatchStyle /
+/// UpdateState / UpdateAccessibility / UpdateTooltip).
 let rec mapNode (target: NodeId) (replace: Node<'Msg> -> Node<'Msg>) (node: Node<'Msg>) : Node<'Msg> option =
     if NodeId node.Id = target then
         Some(replace node)

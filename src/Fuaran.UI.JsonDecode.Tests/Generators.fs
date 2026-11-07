@@ -597,7 +597,7 @@ let private genLabelValueRowSpec: Gen<LabelValueRowSpec> =
 let private genDisplayKind: Gen<NodeKind<obj>> =
     Gen.oneof
         [ Gen.map NodeKind.Heading genHeadingSpec
-          Gen.map (fun t -> NodeKind.Markdown { Text = t }) genTextSource
+          Gen.map (fun t -> NodeKind.Markdown { Defaults.markdown with Text = t }) genTextSource
           Gen.map NodeKind.Metric genMetricSpec
           gen {
               let! label = genTextSource
@@ -969,7 +969,11 @@ let private genGridColumns: Gen<ColumnErased<obj> list> =
               CellKindErased.Progress((fun _ -> 0.5), Some(fun _ -> TextSource.Literal "p"))
               CellKindErased.Custom(fun _ ->
                   { Id = "cell-custom"
-                    Kind = NodeKind.Markdown({ Text = TextSource.Literal "x" })
+                    Kind =
+                      NodeKind.Markdown(
+                          { Defaults.markdown with
+                              Text = TextSource.Literal "x" }
+                      )
                     State = None
                     Style = None
                     Accessibility = None
@@ -1103,10 +1107,18 @@ let private genChartSpec: Gen<ChartSpec<obj>> =
         // property fail on a document the codec is correct to reject.
         let! annotations = genOption (genSmallList genChartAnnotation)
         let! stacked = genBool
+        // Phase 2568 — a query-bound source beside the inline one. `genSmallList`
+        // already draws the empty `yFields` a quarter of the time; over a `Query`
+        // that empty list is the derived-series form (WIRE_FORMAT §3.6.29), so the
+        // round-trip covers the shape a stored page's chart is written in.
+        let! source =
+            Gen.oneof
+                [ Gen.constant (Binding.Static(Some Seq.empty<Map<string, obj>>))
+                  Gen.map (fun n -> Binding.Query(n, (fun _ -> Seq.empty<Map<string, obj>>), None)) genNonEmptyString ]
 
         return
             { Defaults.chart with
-                Source = Binding.Static(Some Seq.empty)
+                Source = source
                 Kind = kind
                 XField = xField
                 YFields = yFields
@@ -1422,7 +1434,11 @@ and private genStateBehaviour (size: int) : Gen<StateBehaviour<obj>> =
 
 and private placeholderErrorNode: Node<obj> =
     { Id = "err"
-      Kind = NodeKind.Markdown({ Text = TextSource.Literal "err" })
+      Kind =
+        NodeKind.Markdown(
+            { Defaults.markdown with
+                Text = TextSource.Literal "err" }
+        )
       State = None
       Style = None
       Accessibility = None
@@ -1503,6 +1519,24 @@ let rec private genOpSized (size: int) : Gen<TreeOp<obj>> =
               let! target = genNonEmptyString
               let! state = genStateBehaviour 1
               return TreeOp.UpdateState(NodeId target, state)
+          }
+          gen {
+              let! target = genNonEmptyString
+              let! role = Gen.elements [ AriaRole.Status; AriaRole.Alert ]
+              let! describedBy = Gen.oneof [ Gen.constant None; Gen.map Some genNonEmptyString ]
+
+              return
+                  TreeOp.UpdateAccessibility(
+                      NodeId target,
+                      { Defaults.Accessibility.empty with
+                          Role = Some role
+                          DescribedBy = describedBy }
+                  )
+          }
+          gen {
+              let! target = genNonEmptyString
+              let! hint = Gen.oneof [ Gen.constant None; Gen.map Some genNonEmptyString ]
+              return TreeOp.UpdateTooltip(NodeId target, hint |> Option.map TextSource.Literal)
           }
           gen {
               let! parent = genNonEmptyString

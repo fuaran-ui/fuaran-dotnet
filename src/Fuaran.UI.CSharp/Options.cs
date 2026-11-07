@@ -211,6 +211,14 @@ public sealed record MetricComparison(
     CellFormat? Format = null,
     TrendPolarity Polarity = TrendPolarity.HigherIsBetter);
 
+/// <summary>One figure a markdown text cites (Phase 2591).</summary>
+/// <param name="Name">What the text's <c>cite:name</c> link destination says: letters,
+/// digits, <c>-</c> and <c>_</c>, unique in the list.</param>
+/// <param name="Reference">The reference naming the Fact; renderers stamp it as
+/// <c>data-fact</c>. Opaque to the language.</param>
+/// <param name="Label">What the figure is, for a screen reader; never printed.</param>
+public sealed record MarkdownCitation(string Name, string Reference, Text? Label = null);
+
 /// <summary>Options for <see cref="Fuaran.Heading"/>.</summary>
 public sealed record HeadingOptions
 {
@@ -235,6 +243,10 @@ public sealed record MarkdownOptions
 
     /// <summary>The markdown source text.</summary>
     public required Text Text { get; init; }
+
+    /// <summary>The figures the text cites (Phase 2591), each placed by a link whose
+    /// destination is <c>cite:name</c>; omitted on the wire when empty.</summary>
+    public IEnumerable<MarkdownCitation>? Citations { get; init; }
 }
 
 // ─── Input ──────────────────────────────────────────────────────────────────

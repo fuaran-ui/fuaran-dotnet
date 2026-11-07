@@ -38,7 +38,7 @@ had each written that pair by hand; both now call it.
 ## The refusal, and the one thing it does not cover
 
 `TreeOp.mapMsg : (obj -> 'Msg option) -> TreeOp<obj> -> Result<TreeOp<'Msg>, MapRefusal>` is total
-over all eleven op cases and **never substitutes a default** for a payload the mapper declines. A
+over every op case and **never substitutes a default** for a payload the mapper declines. A
 `MapRefusal` names the op case, the op's slot (`"child"`, `"kind"`, `"state"`, `"node"`, and
 `"ops[i]."`-prefixed inside a `Batch`), the addressed node, and each distinct payload declined;
 `MapRefusal.render` is the one-line form `OpJsonCodec.canonical` reports as its decode error.

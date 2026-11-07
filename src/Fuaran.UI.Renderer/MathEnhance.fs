@@ -126,11 +126,13 @@ let private renderInto (el: Element) (tex: string) (displayMode: bool) : unit =
 
         // Phase 1546: `innerHTML` is a Trusted Types sink like the renderer's
         // `dangerouslySetInnerHTML` seams, so KaTeX's output is minted through the
-        // same `fuaran-renderer` policy. KaTeX escapes its own output and this
-        // enhancement runs only on a container the renderer emitted, so the
-        // policy's floor finds nothing to remove; what it adds is the trusted
-        // value a host requiring the directive needs at this assignment.
-        el.innerHTML <- TrustedTypes.html (unbox<string> (katex?renderToString (tex, opts)))
+        // same `fuaran-renderer` policy, which adds the trusted value a host
+        // requiring the directive needs at this assignment. Phase 2069: minting
+        // checks nothing, so this producer applies the floor itself. KaTeX is
+        // the one markup source the renderer does not build, and it runs on the
+        // client alone, after hydration.
+        el.innerHTML <-
+            TrustedTypes.html (Sanitize.sanitizeMarkdownHtml (unbox<string> (katex?renderToString (tex, opts))))
     with ex ->
         // The container keeps its source text, which is the honest fallback.
         // Reported because unrendered LaTeX and LaTeX a reader chose to show

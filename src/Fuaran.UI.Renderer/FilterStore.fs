@@ -27,10 +27,6 @@ module Fuaran.UI.Renderer.FilterStore
 
 open Fuaran.UI.Renderer.StateStore
 
-#if FABLE_COMPILER
-open Feliz
-#endif
-
 // ── Process-global default filter store + module facade ─────────────────────
 //  Reuses `StateStoreInstance` (the shared machinery) with a `$filters`-scoped
 //  persist prefix, so a filter key and a same-named state key persist to
@@ -80,32 +76,7 @@ let overlayOnto (target: Map<string, obj>) : Map<string, obj> = defaultInstance.
 let reset () : unit = defaultInstance.Reset()
 
 #if FABLE_COMPILER
-/// React hook: subscribe a rendered surface to a *set* of filter keys and force
-/// a re-render whenever any of them changes. The filter twin of
-/// `StateStore.useStateKeys` — the reactivity primitive behind the renderer's
-/// `Binding.Filter` re-render opt-in, so a chip write re-paints every
-/// `Binding.Filter` reader of that name. Returns a monotonically-increasing
-/// tick whose only purpose is to drive the re-render.
-///
-/// SUBSCRIBED ONCE PER KEY SET. The effect deps are the key set alone. `tick`
-/// used to sit beside it, so every notification re-ran the effect: unsubscribe,
-/// re-subscribe, on every single write. That was churn rather than a leak — the
-/// cleanup did run — but it is churn proportional to write volume on every
-/// subscribed surface, and it made a subscription's lifetime depend on how often
-/// the value changed rather than on what the surface reads.
-///
-/// `tick` was in the deps to sidestep a stale-closure capture: the effect's
-/// `setTick (tick + 1)` closes over the `tick` of the render that created it, so
-/// a subscription that outlived one notification would keep incrementing from a
-/// stale base and stop advancing. `useStateWithUpdater` removes the capture
-/// instead of refreshing it — the updater is handed the CURRENT value, so the
-/// closure never reads a stale one and the subscription can live as long as the
-/// key set does.
-let useFilterKeys (keys: Set<string>) : int =
-    let depKey = keys |> Set.toSeq |> String.concat " "
-    let tick, setTick = React.useStateWithUpdater 0
-
-    React.useEffect ((fun () -> subscribeKeys keys (fun () -> setTick (fun current -> current + 1))), [| box depKey |])
-
-    tick
+/// React hook: `StateStore.useKeys` over this channel, so a write re-paints every
+/// reader in the rendered surface.
+let useFilterKeys (keys: Set<string>) : int = useKeys subscribeKeys keys
 #endif

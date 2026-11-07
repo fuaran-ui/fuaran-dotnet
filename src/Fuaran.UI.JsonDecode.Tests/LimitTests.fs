@@ -293,6 +293,58 @@ let tests =
                       (sprintf "the message should name the limit breached; got: %s" e.Message)
           }
 
+          // ─── The expression-carrying steps of Fuaran.Compute 0.43.0 ──────
+          // `define` (a function body), `fit` (each predictor and the offset) and
+          // `predict` (the same, inside its `fit` document) embed expressions the
+          // evaluator reads, so §21.8's bound must reach them as it reaches
+          // `derive` and `filter`, or wrapping an expression in one of them would
+          // reopen the bypass Phase 1662 closed. Each expression is a `coalesce`
+          // over `leaves` leaves: 511 leaves is 512 nodes (inside), 512 is 513.
+          test "a define body, a fit term, a fit offset and a predict term count toward the expression bound" {
+              let wide (leaf: Fuaran.Compute.ColExpr) (leaves: int) =
+                  Fuaran.Compute.Coalesce(List.replicate leaves leaf)
+
+              let node (step: Fuaran.Compute.Transform) =
+                  "{\"id\":\"x\",\"kind\":{\"$type\":\"DataGrid\",\"columns\":[],\"rowKeyField\":\"a\",\"source\":{\"$type\":\"Transform\",\"pipeline\":"
+                  + Fuaran.Compute.DataFrameCodec.encodePipeline [ step ]
+                  + ",\"source\":{\"columns\":{\"a\":{\"validity\":[true],\"values\":[1]}},\"schema\":[{\"name\":\"a\",\"type\":\"int\"}]}}}}"
+
+              let define leaves =
+                  Fuaran.Compute.Define
+                      { Name = "f"
+                        Params = [ { Name = "x"; Default = None } ]
+                        Body = wide (Fuaran.Compute.Arg "x") leaves }
+
+              let fitTerm leaves =
+                  Fuaran.Compute.FitSpec.ols "a" [ "t", wide (Fuaran.Compute.Col "a") leaves ]
+
+              let fitOffset leaves =
+                  { Fuaran.Compute.FitSpec.ols "a" [ "t", Fuaran.Compute.Col "a" ] with
+                      Offset = Some(wide (Fuaran.Compute.Col "a") leaves) }
+
+              let predict leaves =
+                  Fuaran.Compute.Predict(
+                      Fuaran.Compute.PredictSpec.ofTraining (fitTerm leaves) (Fuaran.Core.Ref "training")
+                  )
+
+              let cases =
+                  [ "define", define, "$.kind.source.pipeline[0].body"
+                    "fit term", (fitTerm >> Fuaran.Compute.Fit), "$.kind.source.pipeline[0].predictors[0].expr"
+                    "fit offset", (fitOffset >> Fuaran.Compute.Fit), "$.kind.source.pipeline[0].offset"
+                    "predict term", predict, "$.kind.source.pipeline[0].fit.predictors[0].expr" ]
+
+              for label, step, path in cases do
+                  match JsonDecode.decodeNodeObj (node (step 511)) with
+                  | Ok _ -> ()
+                  | Error e -> failtestf "%s: 512 nodes was refused: %s at %s — %s" label e.Code e.Path e.Message
+
+                  match JsonDecode.decodeNodeObj (node (step 512)) with
+                  | Ok _ -> failtestf "%s: 513 nodes decoded" label
+                  | Error e ->
+                      Expect.equal e.Code "LIMIT_EXCEEDED" (sprintf "%s: the limit code (%s)" label e.Message)
+                      Expect.equal e.Path path (sprintf "%s: the path names the offending member" label)
+          }
+
           // ─── The exact-decimal nodes are counted (Fuaran.Compute 0.36.0) ─
           // `rounded` and `quotient` are new `ColExpr` cases; §21.8's bound must
           // see their operands and their rounding scale (a slot: one leaf), or a

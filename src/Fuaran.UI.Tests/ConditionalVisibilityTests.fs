@@ -57,7 +57,11 @@ let private codesOf (n: Node<obj>) : string list =
 
 let private leaf (id: string) : Node<obj> =
     { Id = id
-      Kind = NodeKind.Markdown({ Text = TextSource.Literal id })
+      Kind =
+        NodeKind.Markdown(
+            { Citations = []
+              Text = TextSource.Literal id }
+        )
       State = None
       Style = None
       Accessibility = None

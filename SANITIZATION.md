@@ -28,7 +28,7 @@ Every place a string makes it to the DOM through `Fuaran.UI.Renderer`:
 | Seam | Source of string | Posture | Implementation |
 |---|---|---|---|
 | `TextSource.Literal` / `Bound` / `I18n` → `prop.text` | AI emission, query resolution, i18n catalog | **Escaped by React** (textContent assignment) | `Render.renderText` |
-| `Markdown.toHtml` → `prop.dangerouslySetInnerHTML` | AI-emitted markdown source | **Escaped by construction** (deterministic GFM renderer escapes every text run, escapes raw HTML, routes URLs through `sanitizeUrlOrBlank`) **+ sanitized at render-time** as defence-in-depth (strip `<script>`/`<iframe>`/`<object>`/`<embed>`/`<form>`/`<link>`/`<meta>` blocks + `on*=` attributes + `javascript:`/`vbscript:` URLs) | `Renderer.Core` `Markdown.toHtml` → `Sanitize.sanitizeMarkdownHtml` |
+| `Markdown.toHtml` → `prop.dangerouslySetInnerHTML` | AI-emitted markdown source | **Escaped by construction** (deterministic GFM renderer escapes every text run, escapes raw HTML, routes URLs through `sanitizeUrlOrBlank`) **+ sanitized once, by the producer, on both renderers** as defence-in-depth (strip `<script>`/`<iframe>`/`<object>`/`<embed>`/`<form>`/`<link>`/`<meta>` blocks + `on*=` attributes + `javascript:`/`vbscript:` URLs) | `Renderer.Core` `Markdown.toHtml` → `Sanitize.sanitizeMarkdownHtml` |
 | `Theme.toCss` → `prop.dangerouslySetInnerHTML` (via `themeStyleElement`) | Host-supplied `Theme` record | **Host-trusted** — Theme is a consumer-authored F# record; the wire-decode path strips it (Theme is not part of the §4d JSON contract) | `themeStyleElement` |
 | The **collected stylesheet** → `prop.dangerouslySetInnerHTML` inside one `<style>` element (Phase 1545, strict mode only) | The renderer's own per-node layout declarations — a resolved grid track list, a column count, a gap, a pane weight, a scroll ceiling, a progress width | **Renderer-owned, plus a raw-content floor.** Every value is a renderer-formatted number except the grid track list, which has already passed the §1523 emission grammar at its own site. On top of that, `Csp.isCollectableValue` re-applies `isSafeCssValue` (so a value cannot close its declaration or its rule) **and additionally refuses `<` and `>`**, which the shared grammar does not: those are safe in an attribute (React and ViewEngine escape them) and unsafe in raw `<style>` CONTENT, where the HTML parser looks for `</style` before any CSS parser reads the text. That is the Phase 1523 resume-envelope `</script` finding at a new sink. A declaration that fails the floor is dropped and its class registers no rule, so the element keeps a class that styles nothing — which is what a refused value should look like, and the emission site has already marked the refusal in the document | `Renderer.Core` `Csp.isCollectableValue` / `Csp.StyleCollector`; `Renderer.Server` `Render.collectedStyleHtml` |
 | Protected email `Link` (`protection: "email"`) → `prop.dangerouslySetInnerHTML` (SSR only) | Resolved link href (post-`sanitizeUrlOrBlank`) + rendered label | **Escaped by construction** — every character of the sanitised `mailto:` href and the label is emitted as a decimal HTML entity (`&#N;`), so no character can open a tag, attribute, or entity of its own; the href has additionally passed `sanitizeUrlOrBlank` before encoding. The CSR arm uses only typed props (no raw HTML) | `Renderer.Server` `Render.fs` `NodeKind.Link` protected arm (Phase 812) |
@@ -59,24 +59,23 @@ Content-Security-Policy: require-trusted-types-for 'script'; trusted-types fuara
 |---|---|
 | Policy name | `fuaran-renderer`. A stable public surface: a host writes this exact string into its `trusted-types` directive, so changing it breaks every such host and is a breaking change under [`STABILITY.md`](STABILITY.md). |
 | What it wraps | Every raw-HTML DOM sink in the client renderer: the markdown body, the `Drawing` SVG, the `Sparkline` SVG, the chart SVG, the MathML container, the theme `<style>` element, and the KaTeX enhancement's own `innerHTML` assignment. |
-| What `createHTML` does | Applies `Sanitize.sanitizeMarkdownHtml`, and nothing else. That is the same defence-in-depth floor the markdown seam always applied, now applied at every raw-HTML seam. |
+| What `createHTML` does | Nothing: it returns its input. The policy MINTS. Each producer has already made its markup safe, once, on both renderers (Phase 2069): markdown applies `Sanitize.sanitizeMarkdownHtml` inside `Markdown.toHtmlWithEgress`, the SVG, MathML and highlighter builders escape by construction, and `Theme.toCss` and the KaTeX enhancement apply the floor to their own output. |
 | What it refuses | Everything but HTML. The policy declares no `createScript` and no `createScriptURL`, so a caller reaching for either through it gets a `TypeError` from the browser. The renderer mints markup and never script. |
-| What it does NOT cover | A host-registered custom renderer's output. `NodeKind.Custom` remains the host trust boundary described below, and a registered closure reaching a raw-HTML sink of its own mints its own trusted value, through this policy or another. Trusted Types does not move that boundary; it makes the boundaries the renderer already declared enforceable at the browser instead of by review. |
+| What it does NOT cover | A host-registered custom renderer's output. `NodeKind.Custom` remains the host trust boundary described below, and a registered closure reaching a raw-HTML sink of its own makes its markup safe and mints its own trusted value, through this policy or another: minting vouches for the value and checks nothing. Trusted Types does not move that boundary; it makes the boundaries the renderer already declared enforceable at the browser instead of by review. |
 | Server renderer | Not covered, and not applicable. Trusted Types guards DOM sinks; `Fuaran.UI.Renderer.Server` emits an HTML string, so there is no sink to guard. Its seams keep the postures the table above gives them. |
 
 Three properties are worth stating precisely, because each is easy to over-read.
 
-**The floor runs whether or not the browser enforces anything.** `TrustedTypes.html` applies
-`createHtml` on every path, so a browser without the API, a host that sends no directive, the server
-renderer and the .NET build all produce the same bytes as a browser that does enforce. This is not
-tidiness. The server renderer emits these payloads into the SSR document and the client renderer
-hydrates over them, so a floor applied on one side only would surface as a React hydration mismatch
-at every seam whose bytes it changed. What the missing API costs is the trusted wrapper, which is
-inert where nothing enforces it, and that is the whole of the no-op fallback.
+**The sink changes no byte (Phase 2069).** `TrustedTypes.html` used to sweep every payload at the
+client's sink, which the server did not do, so any input the sweep changed was a hydration mismatch
+and left SSR the less protected tier, and markdown was swept twice per render. The floor now runs in
+the producers, which both renderers share, so a browser without the API, a host that sends no
+directive, the server renderer and the .NET build all carry the same bytes as a browser that does
+enforce. What the missing API costs is the trusted wrapper, which is inert where nothing enforces it.
+`Fuaran.UI.Tests/RenderCostTests.fs` and the server's `RendererAgreementTests.fs` pin this over inputs
+the sweep would change, and pin the SVG builders' escaping by parsing hostile output back as XML.
 
-**The floor is invariant over the renderer's own payloads, and that is a tested claim.** The sweep
-was written for markdown and now runs over SVG, MathML and CSS as well. It is safe there because
-each of those emitters escapes by construction, so the sweep finds nothing to remove.
+**The floor is invariant over the renderer's ordinary payloads, and that is a tested claim.**
 `Fuaran.UI.Tests/TrustedTypesTests.fs` pins the invariance against payloads built by the real
 emitters, paired with assertions that the sweep still refuses what it always refused. One live
 defect was found by that test and fixed in the same change: the sweep matched a dangerous element
@@ -88,7 +87,7 @@ to read it as that element at all.
 **A missing directive entry is reported, not swallowed.** If the host enforces Trusted Types but its
 `trusted-types` directive does not name `fuaran-renderer`, the browser refuses to create the policy.
 The renderer warns once on the console, naming the policy and the directive, and falls back to the
-sanitiser alone; the sinks are then refused by the browser, which is the host's own configuration
+plain string; the sinks are then refused by the browser, which is the host's own configuration
 speaking. Throwing there would break a host that is merely misconfigured, and failing silently would
 leave a blank page with no cause.
 
@@ -606,7 +605,7 @@ entire and leaves the tree as it was.
 
 **What is not claimed.**
 
-- **Ops that cannot grow the tree are not walked.** `UpdateProp`, `ReplaceBinding`, `UpdateStyle` and `PatchStyle`
+- **Ops that cannot grow the tree are not walked.** `UpdateProp`, `ReplaceBinding`, `UpdateStyle`, `PatchStyle`, `UpdateAccessibility` and `UpdateTooltip`
   carry no node (`UpdateProp` refuses every node-valued field), `RemoveNode` shrinks and
   `ReorderChildren` permutes. They apply to a tree that is already over a limit, deliberately:
   refusing them would strand a tree they did not create, and they are the ops that can bring it back.

@@ -61,6 +61,20 @@ class StubElement {
         return child;
     }
 
+    get firstElementChild() {
+        return this.children.length > 0 ? this.children[0] : null;
+    }
+
+    /** The DOM's rule: reading joins the subtree, writing replaces every child. */
+    get textContent() {
+        return (this._text ?? "") + this.children.map((c) => c.textContent).join("");
+    }
+
+    set textContent(value) {
+        this.children = [];
+        this._text = String(value);
+    }
+
     addEventListener(type, handler) {
         if (!this.listeners.has(type)) {
             this.listeners.set(type, []);

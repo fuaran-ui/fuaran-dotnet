@@ -275,3 +275,405 @@ let tests =
 
               Expect.isFalse (html.Contains "console.warn") "nothing disagrees, so nothing is said"
           } ]
+
+// ─── Phase 2523 — query-bound sources re-resolve on a parameter write ───────
+//
+// The browser-driven path: a write to a request parameter in the State or Filter
+// store re-asks exactly the dependent sources and writes the outcomes to the
+// query store, which the renderer merges over the host's results.
+
+module private ReResolution =
+    open Fuaran.UI
+    open Fuaran.UI.Renderer
+
+    let sources =
+        { BindingSources.empty with
+            ParameterDependents = Map.ofList [ "day", Set.ofList [ "a"; "b" ]; "site", Set.ofList [ "c" ] ] }
+
+    let attach (answer: string -> Result<ResolvedSource, string>) (asked: ResizeArray<string>) =
+        StateStore.reset ()
+        FilterStore.reset ()
+        QueryStore.reset ()
+
+        LocalBindings.attachParameterReResolution
+            (fun () -> sources)
+            (fun _ name ->
+                asked.Add name
+                answer name)
+            (fun _ _ -> [])
+
+    let ok (v: string) : Result<ResolvedSource, string> =
+        Ok
+            { Value = Unchecked.nonNull (box v)
+              Schema = None }
+
+[<Tests>]
+let reResolutionTests =
+    // Sequenced: the State, Filter and Query stores are process-global.
+    testSequenced
+    <| testList
+        "Fuaran.UI.Renderer.LocalBindings (Phase 2523)"
+        [ test "a state write to a parameter re-resolves exactly its dependents into the query store" {
+              let asked = ResizeArray()
+              let stop = ReResolution.attach (fun _ -> ReResolution.ok "fresh") asked
+              Fuaran.UI.Renderer.StateStore.set "day" (Unchecked.nonNull (box "d2"))
+              stop ()
+
+              Expect.equal (List.ofSeq asked) [ "a"; "b" ] "only the sources that depend on day"
+              Expect.equal (Fuaran.UI.Renderer.QueryStore.get "a") (Some(Unchecked.nonNull (box "fresh"))) "a written"
+              Expect.isNone (Fuaran.UI.Renderer.QueryStore.get "c") "c untouched"
+          }
+
+          test "a filter write counts, and an unchanged value does not" {
+              let asked = ResizeArray()
+              let stop = ReResolution.attach (fun _ -> ReResolution.ok "x") asked
+              Fuaran.UI.Renderer.FilterStore.set "site" (Unchecked.nonNull (box "s2"))
+              Fuaran.UI.Renderer.FilterStore.set "site" (Unchecked.nonNull (box "s2"))
+              stop ()
+
+              Expect.equal (List.ofSeq asked) [ "c" ] "asked once: the second write changed nothing"
+          }
+
+          test "a refusal is written as the source's refusal, replacing any value" {
+              let asked = ResizeArray()
+              let stop = ReResolution.attach (fun _ -> Error "no") asked
+              Fuaran.UI.Renderer.StateStore.set "site" (Unchecked.nonNull (box "s2"))
+              stop ()
+
+              match Fuaran.UI.Renderer.QueryStore.get "c" with
+              | Some(:? Fuaran.UI.SourceRefusal as r) -> Expect.equal r { Source = "c"; Reason = "no" } "named refusal"
+              | other -> failtestf "expected a refusal, got %A" other
+          }
+
+          test "after detaching, writes re-resolve nothing" {
+              let asked = ResizeArray()
+              let stop = ReResolution.attach (fun _ -> ReResolution.ok "x") asked
+              stop ()
+              Fuaran.UI.Renderer.StateStore.set "day" (Unchecked.nonNull (box "d3"))
+              Expect.isEmpty asked "detached"
+          } ]
+
+// ============================================================================
+//  Phase 2559 — the renderer's interpreter, reached by an agent operation.
+//
+//  A runtime whose gate is the subject records what the interpreter asked. The
+//  allowed arm of `Confirm` raises a browser dialogue, so on .NET only its
+//  refusal is observable; the suite here pins that a refused Confirm performs
+//  neither branch.
+// ============================================================================
+
+module private Operation =
+    open Fuaran.Core
+    open Fuaran.UI
+    open Fuaran.UI.Generated
+    open Fuaran.UI.Ops.ActionInvocation
+    open Fuaran.UI.Renderer
+    open Fuaran.UI.Renderer.Runtime
+
+    type Recording(gate: ActionDescriptor -> bool) =
+        let asked = ResizeArray<ActionDescriptor>()
+        let notified = ResizeArray<string>()
+
+        member _.Asked = List.ofSeq asked
+        member _.Notified = List.ofSeq notified
+
+        interface IFuaranRuntime with
+            member _.Call(e, o) = diagnostic.Call(e, o)
+
+            member _.Notify(channel, _) =
+                if channel = "boom" then
+                    failwith "the host effect threw"
+
+                notified.Add channel
+
+            member _.Navigate(r) = diagnostic.Navigate r
+            member _.SetState(k, v) = diagnostic.SetState(k, v)
+            member _.InvokeAiTool(t, a) = diagnostic.InvokeAiTool(t, a)
+            member _.Warn(_) = ()
+            member _.WriteToClipboard(text) = diagnostic.WriteToClipboard text
+            member _.ReadFileBody(f, e, o) = diagnostic.ReadFileBody(f, e, o)
+            member _.TryRenderCustom(m, c, p) = diagnostic.TryRenderCustom(m, c, p)
+            member _.TryGetCustomRenderer(m, c) = diagnostic.TryGetCustomRenderer(m, c)
+
+            member _.TryRenderCustomInScope(s, m, c, p) =
+                diagnostic.TryRenderCustomInScope(s, m, c, p)
+
+            member _.TryGetCustomRendererInScope(s, m, c) =
+                diagnostic.TryGetCustomRendererInScope(s, m, c)
+
+            member _.LayoutObserver = None
+
+            member _.CanDispatch(descriptor) =
+                asked.Add descriptor
+                gate descriptor
+
+            member _.TryLoadGuest(_) = None
+
+    let runWith sources (gate: ActionDescriptor -> bool) (action: Action<unit>) =
+        let runtime = Recording gate
+        let sink = ActionInvocationSink.Collector()
+
+        let ctx =
+            { Render.RenderContext.create sources ignore (Fuaran.divider "root") with
+                Runtime = runtime
+                ActionSink = Some(sink :> IActionInvocationSink) }
+
+        let outcome = Render.interpretOperation ctx "mount/n:click" "mount/n" action
+        outcome, runtime, sink.Recorded
+
+    let run (gate: ActionDescriptor -> bool) (action: Action<unit>) =
+        runWith BindingSources.empty gate action
+
+    let notify (channel: string) : Action<unit> = Action.Notify(channel, JStr "")
+
+[<Tests>]
+let interpretOperationTests =
+    let open_ = fun (_: Fuaran.UI.Renderer.Runtime.ActionDescriptor) -> true
+
+    testList
+        "Fuaran.UI.Renderer.Render.interpretOperation (Phase 2559)"
+        [ test "an allowed action dispatches and the record says an agent operated this affordance" {
+              let outcome, runtime, records = Operation.run open_ (Operation.notify "toast")
+
+              Expect.equal outcome Fuaran.UI.Ops.ActionInvocation.ActionOutcome.Dispatched "dispatched"
+              Expect.equal runtime.Notified [ "toast" ] "the effect ran"
+              Expect.hasLength records 1 "one record"
+              let record = records.Head
+
+              Expect.equal
+                  record.Provenance
+                  Fuaran.UI.Ops.ActionInvocation.AffordanceProvenance.AgentOperation
+                  "distinguishable from a gesture"
+
+              Expect.equal record.Event (Some "mount/n:click") "the affordance"
+              Expect.equal record.NodeId (Some "mount/n") "the node path"
+          }
+
+          test "Invoke meets the descriptor a gesture's Invoke meets" {
+              let outcome, runtime, _ =
+                  Operation.run (fun _ -> false) (Fuaran.UI.Generated.Action.Invoke("cap.publish", []))
+
+              // Phase 2576 — its OWN descriptor, no longer the borrowed `AiTool`.
+              Expect.equal runtime.Asked [ Fuaran.UI.Renderer.Runtime.ActionDescriptor.Invoke "cap.publish" ] "one gate"
+
+              match outcome with
+              | Fuaran.UI.Ops.ActionInvocation.ActionOutcome.Denied reason ->
+                  Expect.stringContains reason "denied by policy gate" "the gate's own reason"
+              | other -> failtestf "expected Denied, got %A" other
+          }
+
+          test "a permitted Invoke dispatches through the context's capability invoker (Phase 2576)" {
+              let calls = ResizeArray<string * (string * string) list>()
+
+              let sources =
+                  { Fuaran.UI.BindingSources.empty with
+                      CapabilityInvoker =
+                          fun capabilityId args ->
+                              calls.Add((capabilityId, args))
+                              Fuaran.UI.Types.Deferred.Ready("a value the tree never sees" :> obj) }
+
+              let arg: Fuaran.UI.Types.InvokeArg = { Addr = "node"; Value = "chart-1" }
+
+              let outcome, runtime, records =
+                  Operation.runWith sources (fun _ -> true) (Fuaran.UI.Generated.Action.Invoke("cap.publish", [ arg ]))
+
+              Expect.equal outcome Fuaran.UI.Ops.ActionInvocation.ActionOutcome.Dispatched "dispatched"
+
+              Expect.equal
+                  runtime.Asked
+                  [ Fuaran.UI.Renderer.Runtime.ActionDescriptor.Invoke "cap.publish" ]
+                  "one gate, its own descriptor"
+
+              Expect.equal
+                  (List.ofSeq calls)
+                  [ "cap.publish", [ "node", "chart-1" ] ]
+                  "the invoker saw the id and the args"
+
+              Expect.hasLength records 1 "one record"
+          }
+
+          test "a refused Confirm performs neither branch" {
+              let action: Fuaran.UI.Generated.Action<unit> =
+                  Fuaran.UI.Generated.Action.Confirm(
+                      Fuaran.UI.Generated.TextSource.Literal "sure?",
+                      Operation.notify "accepted",
+                      Some(Operation.notify "cancelled")
+                  )
+
+              let outcome, runtime, _ =
+                  Operation.run
+                      (function
+                      | Fuaran.UI.Renderer.Runtime.ActionDescriptor.Confirm _ -> false
+                      | _ -> true)
+                      action
+
+              Expect.isEmpty runtime.Notified "the reader was never asked, so neither answer happened"
+
+              Expect.isTrue
+                  (match outcome with
+                   | Fuaran.UI.Ops.ActionInvocation.ActionOutcome.Denied _ -> true
+                   | _ -> false)
+                  "reported as denied"
+          }
+
+          test "a chain with one refused arm runs the rest, and is one Denied record" {
+              let action: Fuaran.UI.Generated.Action<unit> =
+                  Fuaran.UI.Generated.Action.Chain [ Operation.notify "blocked"; Operation.notify "toast" ]
+
+              let outcome, runtime, records =
+                  Operation.run
+                      (function
+                      | Fuaran.UI.Renderer.Runtime.ActionDescriptor.Notify "blocked" -> false
+                      | _ -> true)
+                      action
+
+              Expect.equal runtime.Notified [ "toast" ] "the remaining arm ran"
+              Expect.hasLength records 1 "a chain is one invocation"
+              Expect.equal records.Head.Outcome outcome "the record and the answer agree"
+          }
+
+          test "a throwing effect is a Failed outcome and record, not an exception" {
+              let outcome, _, records = Operation.run open_ (Operation.notify "boom")
+
+              let failed =
+                  Fuaran.UI.Ops.ActionInvocation.ActionOutcome.Failed "the host effect threw"
+
+              Expect.equal outcome failed "returned"
+              Expect.equal (records |> List.map _.Outcome) [ failed ] "recorded once"
+          } ]
+
+// ============================================================================
+//  Phase 2577 — RenderExport: the declarations, the pure half, the registry's
+//  admission, and the effect route reaching the performer. The browser half runs
+//  only under Fable; here its .NET twin answers the typed no-canvas refusal,
+//  which proves the registry admitted the call and the body was reached.
+// ============================================================================
+
+[<Tests>]
+let renderExportTests =
+    let permitBoth (d: Fuaran.UI.Renderer.Runtime.ActionDescriptor) =
+        match d with
+        | Fuaran.UI.Renderer.Runtime.ActionDescriptor.Invoke id ->
+            id = Fuaran.UI.Renderer.RenderExport.CopyImageId
+            || id = Fuaran.UI.Renderer.RenderExport.SaveImageId
+        | _ -> false
+
+    let sources =
+        { Fuaran.UI.BindingSources.empty with
+            CapabilityInvoker = Fuaran.UI.Renderer.RenderExport.invoker }
+
+    let arg (addr: string) (value: string) : Fuaran.UI.Types.InvokeArg = { Addr = addr; Value = value }
+
+    testList
+        "Fuaran.UI.Renderer.RenderExport (Phase 2577)"
+        [ test "the two declarations carry the conventional ids, three holes and a client placement" {
+              let copy = Fuaran.UI.Renderer.RenderExport.copyImage
+              Expect.equal copy.Id "render.copy-image" "id"
+
+              Expect.equal
+                  (copy.Signature.Holes |> List.map (fun h -> h.Addr, h.Required))
+                  [ "node", true; "format", false; "scale", false ]
+                  "holes — node required, the rest defaulting"
+
+              Expect.equal copy.Placement (Fuaran.Core.ClientIsland Fuaran.Core.IslandKind.Js) "a client performer"
+              Expect.equal copy.Signature.Effect.Host Fuaran.Core.WritesHost "writes the host"
+              Expect.equal Fuaran.UI.Renderer.RenderExport.saveImage.Id "render.save-image" "id"
+          }
+
+          test "plan: the canvas is the on-screen size at the scale, the source a data URL, the name the node's" {
+              match
+                  Fuaran.UI.Renderer.RenderExport.plan
+                      "showcase-chart"
+                      "<svg xmlns='http://www.w3.org/2000/svg'/>"
+                      640.0
+                      400.0
+                      2.0
+              with
+              | Ok p ->
+                  Expect.equal (p.Width, p.Height) (1280, 800) "dimensions"
+                  Expect.stringStarts (Option.defaultValue "" p.Source) "data:image/svg+xml;charset=utf-8," "source"
+                  Expect.equal p.SuggestedName "showcase-chart.png" "name"
+              | Error e -> failtestf "expected a plan, got %s" e
+          }
+
+          test "plan refuses an empty document, a degenerate size, an out-of-range scale and a canvas past the ceiling" {
+              Expect.isError (Fuaran.UI.Renderer.RenderExport.plan "n" "" 10.0 10.0 1.0) "empty"
+              Expect.isError (Fuaran.UI.Renderer.RenderExport.plan "n" "<svg/>" 0.0 10.0 1.0) "degenerate"
+              Expect.isError (Fuaran.UI.Renderer.RenderExport.plan "n" "<svg/>" 10.0 10.0 9.0) "scale"
+              Expect.isError (Fuaran.UI.Renderer.RenderExport.plan "n" "<svg/>" 9000.0 10.0 4.0) "ceiling"
+          }
+
+          test "parseArgs: node is required, format and scale default, and the bounds hold without the registry" {
+              Expect.equal (Fuaran.UI.Renderer.RenderExport.parseArgs [ "node", "c" ]) (Ok("c", "png", 2.0)) "defaults"
+              Expect.isError (Fuaran.UI.Renderer.RenderExport.parseArgs [ "scale", "2" ]) "no node"
+              Expect.isError (Fuaran.UI.Renderer.RenderExport.parseArgs [ "node", "c"; "format", "svg" ]) "format"
+              Expect.isError (Fuaran.UI.Renderer.RenderExport.parseArgs [ "node", "c"; "scale", "x" ]) "not a number"
+              Expect.isError (Fuaran.UI.Renderer.RenderExport.parseArgs [ "node", "c"; "scale", "9" ]) "out of range"
+          }
+
+          test "the registry refuses an out-of-space scale, an unknown id and a missing node before any body" {
+              match Fuaran.UI.Renderer.RenderExport.invoker "render.copy-image" [ "node", "c"; "scale", "9" ] with
+              | Fuaran.UI.Types.Deferred.Error m -> Expect.stringContains m "scale" "names the argument"
+              | other -> failtestf "expected a refusal, got %A" other
+
+              match Fuaran.UI.Renderer.RenderExport.invoker "render.nope" [ "node", "c" ] with
+              | Fuaran.UI.Types.Deferred.Error _ -> ()
+              | other -> failtestf "expected an unknown-id refusal, got %A" other
+
+              match Fuaran.UI.Renderer.RenderExport.invoker "render.save-image" [] with
+              | Fuaran.UI.Types.Deferred.Error _ -> ()
+              | other -> failtestf "expected a missing-node refusal, got %A" other
+          }
+
+          test "on a host with no canvas the body answers the typed refusal, through the registry" {
+              match Fuaran.UI.Renderer.RenderExport.invoker "render.copy-image" [ "node", "showcase-chart" ] with
+              | Fuaran.UI.Types.Deferred.Error m -> Expect.stringContains m "browser host" "no canvas here"
+              | other -> failtestf "expected the no-canvas refusal, got %A" other
+          }
+
+          test
+              "an Invoke of render.copy-image reaches the performer under a per-name permit, and is refused under default-deny" {
+              let action =
+                  Fuaran.UI.Generated.Action.Invoke(
+                      Fuaran.UI.Renderer.RenderExport.CopyImageId,
+                      [ arg "node" "showcase-chart" ]
+                  )
+
+              let permitted, runtime, _ = Operation.runWith sources permitBoth action
+
+              match permitted with
+              | Fuaran.UI.Ops.ActionInvocation.ActionOutcome.Denied reason ->
+                  Expect.stringContains
+                      reason
+                      "browser host"
+                      "reached the performer, which refused for want of a canvas"
+              | other -> failtestf "expected the performer's refusal, got %A" other
+
+              Expect.equal
+                  runtime.Asked
+                  [ Fuaran.UI.Renderer.Runtime.ActionDescriptor.Invoke "render.copy-image" ]
+                  "its own descriptor"
+
+              let denied, _, _ = Operation.runWith sources (fun _ -> false) action
+
+              match denied with
+              | Fuaran.UI.Ops.ActionInvocation.ActionOutcome.Denied reason ->
+                  Expect.stringContains reason "denied by policy gate" "refused before the performer"
+              | other -> failtestf "expected the gate's refusal, got %A" other
+          } ]
+
+[<Tests>]
+let renderExportCanvasTests =
+    testList
+        "Fuaran.UI.Renderer.RenderExport — the canvas plan (Phase 2577)"
+        [ test "planCanvas carries no source and the same dimensions, name and refusals as plan" {
+              match Fuaran.UI.Renderer.RenderExport.planCanvas "showcase-chart" 600.0 300.0 2.0 with
+              | Ok p ->
+                  Expect.equal (p.Width, p.Height) (1200, 600) "dimensions"
+                  Expect.isNone p.Source "a canvas is drawn from its own pixels"
+                  Expect.equal p.SuggestedName "showcase-chart.png" "name"
+              | Error e -> failtestf "expected a plan, got %s" e
+
+              Expect.isError (Fuaran.UI.Renderer.RenderExport.planCanvas "n" 0.0 10.0 1.0) "degenerate"
+              Expect.isError (Fuaran.UI.Renderer.RenderExport.planCanvas "n" 10.0 10.0 9.0) "scale"
+          } ]

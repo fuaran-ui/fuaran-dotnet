@@ -320,6 +320,57 @@ let durabilityTests =
                   ()
           }
 
+          test "each provenance has its own token, and the two older tokens are unchanged (Phase 2559)" {
+              let path = freshDbPath ()
+
+              let sink =
+                  ActionInvocationSqliteSink(connStringFor path, ActionCaptureMode.Redacted, fun () -> fixedAt)
+
+              let action: Action<Msg> = Action.Print
+
+              let sites =
+                  [ ActionInvocation.clientSite AffordanceProvenance.TreeDeclared (Some "n") None
+                    ActionInvocation.clientSite AffordanceProvenance.RendererSynthesised (Some "n") None
+                    ActionInvocation.operationSite "mount/n:click" "mount/n" None ]
+
+              for s in sites do
+                  ActionInvocation.emit (Some(sink :> IActionInvocationSink)) s ActionOutcome.Dispatched action
+
+              let read = sink.Read() |> List.map _.Invocation
+
+              Expect.equal
+                  (read |> List.map _.Provenance)
+                  [ AffordanceProvenance.TreeDeclared
+                    AffordanceProvenance.RendererSynthesised
+                    AffordanceProvenance.AgentOperation ]
+                  "each case decodes back to itself"
+
+              Expect.equal read.[2].Event (Some "mount/n:click") "an operation names its affordance"
+              Expect.equal read.[2].NodeId (Some "mount/n") "and its node path"
+
+              let tokens =
+                  use conn = new Microsoft.Data.Sqlite.SqliteConnection(connStringFor path)
+                  conn.Open()
+                  use cmd = conn.CreateCommand()
+                  cmd.CommandText <- "SELECT provenance FROM action_invocation ORDER BY id"
+                  use reader = cmd.ExecuteReader()
+
+                  [ while reader.Read() do
+                        reader.GetString 0 ]
+
+              Expect.equal
+                  tokens
+                  [ "tree-declared"; "renderer-synthesised"; "agent-operation" ]
+                  "a log already on disk keeps decoding: the older tokens did not move"
+
+              Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools()
+
+              try
+                  File.Delete path
+              with _ ->
+                  ()
+          }
+
           test "the log outlives the sink instance — that is what durable means here" {
               let path = freshDbPath ()
               let conn = connStringFor path

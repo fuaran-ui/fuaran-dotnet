@@ -273,3 +273,103 @@ let enumerate (moduleId: string option) : AffordanceEnumeration =
         | Some wanted -> deduped |> List.filter (fun m -> m.Id = wanted)
 
     { Modules = filtered }
+
+// ─── The tree-derived provider (Phase 2517) ─────────────────────────────────
+//
+// The registry above derives nothing from the tree, by design, and still does
+// not: what follows is a PROVIDER, registered through the same seam as any host's
+// own. It answers from `Fuaran.UI.Operability.derive` — the specified projection
+// of a tree onto its operable surface (WIRE_FORMAT §31) — so a page whose host
+// registers it answers `__fuaran.getAffordances` and the relay's
+// `read.affordances` from the tree itself, with nothing declared by hand. A host
+// that declares by hand registers its own provider ahead of this one, and the
+// first-declaration-wins rule above lets it override the derived account.
+
+module private Derived =
+    open Fuaran.UI.Operability
+
+    let commandOf (affordance: OperableAffordance<'Msg>) (form: string) : DeclaredCommand =
+        { Phrase = form
+          Effect =
+            match affordance.Kind with
+            | AffordanceKind.Set
+            | AffordanceKind.Clear -> CommandEffect.Write
+            | AffordanceKind.Read -> CommandEffect.Read
+            | AffordanceKind.Click -> CommandEffect.Invoke
+            | AffordanceKind.Navigate -> CommandEffect.Navigate }
+
+    let shapeOf (slot: Slot option) : FieldShape =
+        match slot with
+        | Some(Slot.Enumeration _) -> FieldShape.Choice
+        | Some(Slot.Number _) -> FieldShape.Number
+        | Some Slot.Boolean -> FieldShape.Boolean
+        | Some(Slot.Text _) -> FieldShape.Text
+        | None -> FieldShape.Unknown
+
+    let valuesOf (slot: Slot option) : ValueHint option =
+        match slot with
+        | Some(Slot.Enumeration options) -> Some(ValueHint.OneOf(options |> List.map _.Value))
+        | Some Slot.Boolean -> Some(ValueHint.OneOf [ "true"; "false" ])
+        | Some(Slot.Number(min, max, integral)) ->
+            Some(ValueHint.NumberRange(min, max, (if integral then Some 1.0 else None)))
+        | Some(Slot.Text maxLength) -> Some(ValueHint.TextLength(None, Some maxLength))
+        | None -> None
+
+    let aliasesOf (slot: Slot option) : (string * string) list =
+        match slot with
+        | Some(Slot.Enumeration options) ->
+            options |> List.collect (fun o -> o.Aliases |> List.map (fun a -> a, o.Value))
+        | _ -> []
+
+/// One module's account, from a derivation: each VALUE node (it has a `read`)
+/// becomes a field — controllable when it has a `set` — and each button's click
+/// or navigation becomes a module-level command, which is what a button is in
+/// this vocabulary: a phrase that addresses the module rather than a field.
+let ofDerived (moduleId: string) (affordances: Fuaran.UI.Operability.OperableAffordance<'Msg> list) : ModuleAffordance =
+    let nodes = affordances |> List.map _.Node |> List.distinct
+
+    let fields =
+        nodes
+        |> List.choose (fun node ->
+            let mine = affordances |> List.filter (fun a -> a.Node = node)
+
+            if
+                mine
+                |> List.exists (fun a -> a.Kind = Fuaran.UI.Operability.AffordanceKind.Read)
+            then
+                let set =
+                    mine
+                    |> List.tryFind (fun a -> a.Kind = Fuaran.UI.Operability.AffordanceKind.Set)
+
+                let slot = set |> Option.bind _.Slot
+
+                Some
+                    { Id = node
+                      Shape = Derived.shapeOf slot
+                      Controllable = set.IsSome
+                      Commands = mine |> List.collect (fun a -> a.Forms |> List.map (Derived.commandOf a))
+                      Aliases = Derived.aliasesOf slot
+                      Values = Derived.valuesOf slot
+                      Description = mine |> List.tryPick _.Description }
+            else
+                None)
+
+    let commands =
+        affordances
+        |> List.filter (fun a ->
+            a.Kind = Fuaran.UI.Operability.AffordanceKind.Click
+            || a.Kind = Fuaran.UI.Operability.AffordanceKind.Navigate)
+        |> List.collect (fun a -> a.Forms |> List.map (Derived.commandOf a))
+
+    { Id = moduleId
+      Active = true
+      Fields = fields
+      Commands = commands
+      Scope = None }
+
+/// Register the tree-derived provider for one module: `tree ()` is read at each
+/// enumeration, so the answer follows the tree the page is showing. Returns the
+/// handle that removes it, like `registerProvider`.
+let registerDerivedProvider (moduleId: string) (tree: unit -> Fuaran.UI.Types.Node<'Msg>) : unit -> unit =
+    registerProvider (fun _ ->
+        { Modules = [ ofDerived moduleId (Fuaran.UI.Operability.Operability.derive None (tree ())) ] })

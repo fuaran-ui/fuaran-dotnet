@@ -374,6 +374,7 @@
     <!-- Phase 2067 — the one render-context builder, and the guard that no full
          RenderContext literal grows back outside it. -->
     <Compile Include="RenderContextBuilderTests.fs" />
+    <Compile Include="SubtreeMemoTests.fs" />
     <!-- Phase 2041 — the client half of the renderer-agreement fixtures. -->
     <!-- Phase 2244: the fragment registry tree, also linked into the server half. -->
     <Compile Include="FragmentRegistryFixture.fs" />
@@ -436,6 +437,10 @@
     <Compile Include="RatingModelTests.fs" />
     <Compile Include="TokensModelTests.fs" />
     <Compile Include="TrustedTypesTests.fs" />
+    <Compile Include="RenderCostTests.fs" />
+    <!-- Phase 2530 - the key-to-reader map and the boundaries a reactive render places; the
+         instrumented count is read in a browser by the renderer benchmark. -->
+    <Compile Include="ReaderBoundaryTests.fs" />
     <Compile Include="LocalWireTests.fs" />
     <!-- Phase 1667 - the write-back predicate is one definition, pinned behaviourally against
          FUARAN069 and structurally by a census over the two copied renderer sources. -->
@@ -492,8 +497,12 @@
     <Compile Include="RowCodecTests.fs" />
     <!-- Phase 1962 - a multi-select Select carries values and no value: the constructor rule, the lenient drop, FUARAN164. -->
     <Compile Include="SelectValueRuleTests.fs" />
+    <Compile Include="SelectOptionGroupsTests.fs" />
     <!-- Phase 2157 - a Warning / Critical callout nothing announces: FUARAN165. -->
     <Compile Include="SilentCalloutTests.fs" />
+    <!-- Phase 2522: the page document, its demanded projection and signed read-set, the
+         page-document validator mode, and the page-document/ corpus family (emits with FUARAN_REGEN=1). -->
+    <Compile Include="PageDocumentTests.fs" />
     <Compile Include="GateReadsCensusTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>

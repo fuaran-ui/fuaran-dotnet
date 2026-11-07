@@ -105,6 +105,8 @@ let private opKindName (op: TreeOp<obj>) : string =
     | TreeOp.UpdateStyle _ -> "UpdateStyle"
     | TreeOp.PatchStyle _ -> "PatchStyle"
     | TreeOp.UpdateState _ -> "UpdateState"
+    | TreeOp.UpdateAccessibility _ -> "UpdateAccessibility"
+    | TreeOp.UpdateTooltip _ -> "UpdateTooltip"
     | TreeOp.InsertChild _ -> "InsertChild"
     | TreeOp.RemoveNode _ -> "RemoveNode"
     | TreeOp.MoveNode _ -> "MoveNode"

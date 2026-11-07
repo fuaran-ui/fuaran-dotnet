@@ -319,11 +319,21 @@ let notChildAuthorable: (string * string) list =
       // Phase 2472 — the further comparisons; the VB <Metric> spells only its
       // primary trend, beside the icon / subtext / weight / emphasis gaps.
       "Metric.comparisons", "GAP — no VB spelling"
+      // Phase 2591 — a <Markdown> body is its element text; a citation list has no
+      // spelling beside it yet, and the wire form is what an emitter writes.
+      "Markdown.citations", "GAP — no VB spelling"
       // Labels are child-inferred. If <Tabs> gains header/tag authoring, port
       // FUARAN047/048 (header/tag-vs-children count) into the VB analyzer in
       // the same change.
       "Tabs.tabHeaders", "GAP — labels are child-inferred"
-      "Tabs.tabTags", "GAP — the tag half of the same gap" ]
+      "Tabs.tabTags", "GAP — the tag half of the same gap"
+      // Phase 2517 — the operability affordance is authored in F# / on the wire;
+      // the VB tier spells no agent-facing vocabulary yet.
+      "Button.affordance", "GAP — no VB spelling"
+      "Select.affordance", "GAP — no VB spelling"
+      // Phase 2571 — option groups are authored in F# / C# / on the wire; the VB
+      // <Select> spells its options as literal children and has no group element.
+      "Select.groups", "GAP — no VB spelling" ]
 
 /// One C# veneer enum and the IDL enum it mirrors. The C# DECLARATION stays
 /// hand-authored, because it carries per-member public documentation the IDL

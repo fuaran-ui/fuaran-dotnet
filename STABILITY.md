@@ -7818,10 +7818,10 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## Phase 2327 — the DAG fold arbitrates with the base-aware footprint (rides the slot opened after v0.99.1)
+## Phase 2327 — the DAG fold arbitrates with the base-aware footprint (rides the slot opened after v0.102.0)
 
-_`v0.99.1` is tagged at `9669dfb`, so this change cannot ride it. It rides the next slot the version ledger opens
-after v0.99.1; this commit does not move `<Version>` (the slot is opened by the ledger act, not by a phase commit).
+_`v0.102.0` is tagged at `00225688`, so this change cannot ride it. It rides the next slot the version ledger opens
+after v0.102.0; this commit does not move `<Version>` (the slot is opened by the ledger act, not by a phase commit).
 Class: **additive**, with a behaviour change in the new entries only._
 
 Packages `Fuaran.UI.Ops` and `Fuaran.UI.OpStream.Dag.Merge`. No wire byte moves, no hash moves, no existing verdict
@@ -7858,6 +7858,400 @@ changes.
   Every shape naming `MoveVsRemove` (7198 of the pure form's 7808) is gone under the base-aware form; what remains is
   `ConcurrentUpdate`, `InsertPositionClash` and the slot clashes the form declares on purpose. No triad lands in `OrderSensitive` or `Fault` under either form.
 
+---
+
+## 0.102.0 (RELEASED — tagged v0.102.0 at 00225688, 2026-11-06)
+
+_Set by Phase 2576, the first change to ride the slot._
+
+### What rides this slot — Phase 2592 (a table cell can cite its figure)
+
+**Class: additive on the wire; a record widening in the language tier, FS0764 at a full-literal `StaticRows` or
+`TableSpec`, the class pre-1.0 minor drafts carry, so it rides.** A full-literal `TableSpec` takes
+`{ Defaults.table with ... }`; `Fuaran.table` is unchanged. The positional C# `TableSpec` constructor gains a last
+argument and `StaticRows` a first; the C# `Fuaran.Table` facade is source-compatible. `WIRE_FORMAT.md` §3.6.33:
+`DataGrid.staticRows` gains the optional `citations`, omitted when empty, so every document already written is
+byte-unchanged and renders as it did.
+
+- **Language tier.** `TableCitation` (`Column`, `Label`, `Reference`, `Row`) and `StaticRows.Citations`, generated from
+  the IDL; `TableSpec.Citations` rides through `Fuaran.table`; `Table.withCitation` builds one, and `Table.requireCitations`
+  refuses what decode refuses, where a table is built. The C# `TableOptions.Citations` and `TableCitation` follow. The VB
+  `<Table>` has no spelling, and the wire form is what an emitter writes.
+- **Decoder.** Refuses an empty array, a negative or out-of-range row or column (a column reads against its own row) and
+  two entries for one cell as `WRONG_TYPE`, with `MISSING_FIELD` for a missing member.
+- **Renderer.** `VisPlan.staticGrid` stamps `data-fact` on a cited `<td>`, with a label as a `fuaran-cited-label` first
+  child. A table citing nothing emits exactly what it did. The email projection keeps `data-fact` and drops the label.
+- **Reference tables enhancement.** A sort keys on a cell's text without its label.
+- **Ops.** A change to `citations` diffs to `EditNode`, as `Markdown.citations` does.
+- **Ruling.** `docs/VOCABULARY.md`, Appendix A, Citation cluster.
+
+### What rides this slot — Phase 2591 (a cited figure reads inside a sentence)
+
+**Class: additive on the wire; a record widening in the language tier, FS0764 at a full-literal `MarkdownSpec`, the
+class pre-1.0 minor drafts carry, so it rides.** A full-literal `{ Text = x }` is now
+`{ Defaults.markdown with Text = x }`; `Fuaran.markdown` is unchanged. The positional C# `MarkdownSpec` constructor
+gains its first argument. `WIRE_FORMAT.md` §3.6.32: `Markdown` gains the optional `citations`, omitted when empty, so
+every document already written is byte-unchanged and renders as it did.
+
+- **Language tier.** `MarkdownCitation` (`Name`, `Reference`, `Label`) and `MarkdownSpec.Citations`, generated from the
+  IDL; `Markdown.withCitation` builds one; the C# `MarkdownOptions.Citations` and `MarkdownCitation` follow. The VB
+  element has no spelling, declared as a dialect gap.
+- **Decoder.** Refuses an empty array, a name outside `[A-Za-z0-9_-]+` and a repeated name as `WRONG_TYPE`. It does
+  not read the text: a name the text never uses and a name it uses undeclared are facts of the render.
+- **Renderer.** `Markdown.toHtmlCited` is new; `toHtmlWithEgress` is its no-citation case, byte-for-byte. A declared
+  `cite:` link draws `span.fuaran-cited[data-fact]`, with a label as a visually hidden first child. The email
+  projection keeps the span and drops the label, having no stylesheet to hide it with. Reference stylesheet:
+  `.fuaran-cited`, `.fuaran-cited-label`.
+- **Ops.** A change to `citations` diffs to `EditNode`, the floor every uncovered field takes, so it survives an op
+  stream with no `UpdateProp` field of its own.
+- **Ruling.** `docs/VOCABULARY.md`, Appendix A, Citation cluster, including the shape Phase 2592 takes.
+
+### What rides this slot — Phase 2535 (a `Fact` carries its reference on the wire)
+
+**Class: additive on the wire; a record widening in the language tier, FS0764 at a full-literal `FactSpec`, the class
+pre-1.0 minor drafts carry, so it rides.** `WIRE_FORMAT.md` §3.6.31: `Fact` gains the optional `reference`, the Fact
+its figure cites. A document without it is byte-unchanged.
+
+- **`FactSpec.Reference: string option`**, with `Defaults.fact` at `None`. Every construction through
+  `{ Defaults.fact with … }` compiles as before. The C# positional constructor gains the argument, and
+  `FactOptions.Reference` and the VB `reference` attribute carry it.
+- **`Fact.withReference`** is the builder: `Fuaran.fact "id" "Revenue" "£412k" |> Fact.withReference factId`. On any
+  other kind it throws rather than leaving the figure uncited in silence.
+- **Rendering.** `ElementPlan.DisplayPlan.fact` stamps `data-fact` on the tile's root, so the client and server
+  renderers emit it from one place. `citationProps` is the one spelling a later citing element reuses. The value goes
+  through the ordinary attribute encoder.
+- **The value is opaque.** Its documented form is a Fact id as the Fact wire specification states it (`FACT_WIRE.md`
+  §4: 64 lower-case hex digits, no prefix). No decoder refuses a value over its form, because references of other
+  shapes are carried today. **No as-of member:** no consumer asks for one, and an optional member can join later
+  additively. Recorded here because this repository keeps no decision record.
+- **`UpdateProp`.** `Reference` is an updatable `Fact` field, and the introspected props list it.
+
+### What rides this slot — Phase 2576 (the `Action.Invoke` effect arm dispatches through the capability invoker)
+
+**Class: additive, on `Fuaran.UI.Renderer`.** No wire event: `Action.Invoke` and its canonical shape are unchanged,
+so no codec host moves.
+
+- **`ActionDescriptor` gains a case.** `Invoke of capabilityId: string` — the descriptor an effect-route
+  `Action.Invoke` now meets at `IFuaranRuntime.CanDispatch`. Until now the arm borrowed `AiTool capabilityId`, so a
+  host policy permitting a tool of some name also permitted a capability of that name, and could not permit one
+  without the other. A policy that matches `ActionDescriptor` exhaustively reports `FS0025` under
+  `TreatWarningsAsErrors`; add the arm. A policy written `function | AiTool _ -> true | _ -> false` keeps permitting
+  tools and STOPS permitting invokes — that is the correction, and a host that relied on the borrowed permit adds
+  `| Invoke _ -> true` (or the per-id form) deliberately.
+- **Behaviour under a registered capability.** The arm dispatches through `BindingSources.CapabilityInvoker` — the
+  function `Fuaran.UI.AiTools.Capabilities.makeInvoker` builds (Phase 2311), the one the value route already uses —
+  where it used to warn `capability invoke (no host dispatch wired)` and do nothing. A host that wired an invoker for
+  `Binding.Invoke` now sees its effect-route invokes RUN. The settled value is discarded: an effect returns nothing
+  into tree-readable state. A `Deferred.Error` from the invoker (the registry's policy, an unknown id, a failed body)
+  is a dispatch refusal — `Denied` at the action-log emission point, carrying the invoker's sentence — and `Pending`
+  (the no-registry default) dispatches with a diagnostic naming the pending state.
+- **`Render.treeInvokeOutcome`** joins the public outcome helpers beside `treeCallOutcome` / `treeNavigateOutcome`.
+
+### What rides this slot — Phase 2577 (`RenderExport`, the browser rasterise performer)
+
+**Class: additive, on `Fuaran.UI.Renderer`.** No wire event.
+
+- **New public module `Fuaran.UI.Renderer.RenderExport`.** Two `Fuaran.Core.Capability` declarations —
+  `render.copy-image` and `render.save-image`: `node` required, `format` ∈ {`png`}, `scale` ∈ [0.5, 4] — the pure
+  `parseArgs` / `plan` half, the browser bodies behind `FABLE_COMPILER`, and `invoker`, a ready-made
+  `BindingSources.CapabilityInvoker` over the module's own registry. A .NET host's invoker answers the typed
+  no-canvas refusal; a browser host registers both ids by one assignment.
+- **`Fuaran.UI.Renderer` gains a package dependency on `Fuaran.Core.Function`** (the declarations' types). A
+  consumer's restore pulls it; it was already in the graph of every host that references `Fuaran.UI.AiTools`. No
+  API moves.
+
+### What rides this slot — the `Fuaran.Compute` pin raise to 0.43.0
+
+**Class: additive on this repository's own surface, union-widening through the dependency.** `FuaranCoreComputeVersion`
+moves 0.41.0 → 0.43.0 (0.42.0 was skipped here); `Fuaran.Compute.LinearAlgebra`, new in that release and a dependency of
+`Fuaran.Compute.DataFrame`, is pinned beside its siblings.
+
+- **What a consumer receives from the producer.** `Transform` gains `Define`, `Fit` and `Predict`; `ColExpr` gains
+  `Arg`, `Call` and `Interpolate`; `EvalError` gains `FunctionError`, `RecursiveFunction`, `ExpansionTooLarge`,
+  `InvalidKnots`, `UnsupportedFit` and `FitError`. A consumer matching any of them exhaustively reports `FS0025`; add
+  the arms. The evaluator's `exp` / `ln` / `log10` / float `pow` now run the producer's pinned routines, so a column they
+  compute may differ from the host library's answer in its last bit, and is the same bits on every host.
+- **`Binding.Transform` decoding.** The pipeline codec is the producer's, so a document's pipeline may now carry the
+  three new steps. WIRE_FORMAT §21.8's expression bound reaches every expression they embed — a `define` body, each
+  `fit` predictor and its `offset`, and the same inside a `predict` step's `fit` — refused as `LIMIT_EXCEEDED` at the
+  offending member, as `derive` and `filter` are. The bound's step match is now exhaustive, so a step a later release
+  adds stops it compiling rather than passing unbounded; `Call` arguments and the `Interpolate` operand are counted, and
+  `Arg` is a leaf.
+- **`schema.json`.** The `TransformStep` union gains the `define`, `fit` and `predict` arms, and a `TransformFitSpec`
+  definition the `predict` arm references (additive: a document valid before is valid now). The shared corpus copy is
+  re-emitted with it. The transform law vectors the release adds are NOT re-emitted into the corpus with this raise:
+  the other codec hosts do not yet evaluate the new steps, so that copy waits for them (fuaran#2588).
+
+## 0.101.0 (RELEASED — tagged v0.101.0 at 25dd3ecc, 2026-11-02)
+
+_Set by Phase 2527, the first change to ride the slot. The heading said DRAFT until 2026-11-03, a day after the tag._
+
+### What rides this slot — Phase 2527 (accessibility and tooltip edits are expressible TreeOps)
+
+**Class: additive, on the op vocabulary.** Packages `Fuaran.UI.Ops.Abstractions`, `Fuaran.UI.Ops`,
+`Fuaran.UI.OpStream.*`, `Fuaran.UI.ServerDriven`, `Fuaran.UI.Telemetry.Abstractions`,
+`Fuaran.UI.Ops.CleanRoom`. A wire event under `WIRE_FORMAT.md` §11; every codec host moves with it.
+
+- **`TreeOp` gains two cases.** `UpdateAccessibility of NodeId * Accessibility` replaces the whole trait, and a
+  record setting no field stores as the absent slot. `UpdateTooltip of NodeId * TextSource option` sets the trait, or
+  clears it on `None`. An exhaustive `match` over `TreeOp` in a consumer reports `FS0025`; add the two arms. Nothing
+  else about an existing case moves. `OpKind` gains the same two cases, appended.
+- **The wire.** `{"$type":"UpdateAccessibility","accessibility":{…},"target":"…"}` and
+  `{"$type":"UpdateTooltip","target":"…","tooltip":…}`. `tooltip` is the one optional member of any op: its absence
+  is the clear. The spec is `WIRE_FORMAT.md` §3.4, the vectors `ops/`, `reject/` and `diff/goldens.json`.
+- **`TreeOpDiff` — what a diff emits changes.** An accessibility-only edit, which diffed to nothing, is one
+  `UpdateAccessibility`. A tooltip-only edit, which fell to an `EditNode` that left the tooltip as it was, is one
+  `UpdateTooltip`. Each follows any style or state edit of the same node. A host asserting on a diff script of such a
+  pair sees the new ops; the script now round-trips.
+- **`DagMerge` — a merge that used to be refused now mints.** A merge taking a branch's accessibility or tooltip was
+  `DeltaNotReplayable`; its delta now reproduces the tree. A merge node's `Op` may carry the two cases, so an engine
+  on an older version refuses that node at decode.
+- **`Lowering`.** Both ops re-render the node (`ReplaceFragment`). A node's traits land on its wrapper unless the
+  kind forwards them, and a granular patch lands on the body, so no attribute patch can reach them. `DomPatch` is
+  unchanged, and a server-driven session now patches an accessibility-only edit it used to drop.
+- **`Generated`.** `encodeAccessibilityJson` joins the public encoders.
+
+`visible` and `fallback` are still set by no op (`TreeOpDiff.fs` documents it).
+
+### What rides this slot — Phase 2559 (an agent operation runs the renderer's interpreter)
+
+**Additive, with one exhaustive-match cost.** Packages `Fuaran.UI.Renderer`, `Fuaran.UI.Ops.Abstractions`,
+`Fuaran.UI.OpStream.Sqlite`.
+
+- **`Render.interpretOperation ctx affordanceId nodePath action : ActionOutcome`** interprets an agent-initiated
+  action through the interpreter a gesture runs, so every action case meets the same gates. It returns the outcome,
+  and a throwing effect is `Failed` rather than an exception. Whether the agent may operate the affordance stays the
+  caller's check, asked first.
+- **`AffordanceProvenance` gains `AgentOperation`.** An exhaustive `match` in a consumer reports `FS0025`; add the arm.
+  `ActionInvocation.operationSite` builds the site: the record's `Event` carries the affordance id and its `NodeId` the
+  node path.
+- **The durable log.** The token is `agent-operation`. `tree-declared` and `renderer-synthesised` do not move, so a log
+  already on disk keeps decoding. An older reader refuses a log holding the new token.
+
+### What rides this slot — Phase 2528 (the DomPatch frame is a certified contract)
+
+**Additive; no vocabulary change. Two behaviour corrections.** Packages `Fuaran.UI.ServerDriven` (the lowering and
+the shim it ships).
+
+- **The contract moved into the specification.** The `TreeOp → DomPatch` goldens, the frame envelope and the client
+  event bodies are the `server-driven/` corpus family (`WIRE_FORMAT.md` §33). `DomPatch`, `ClientEffect`, `Frame`
+  and their encoders are unchanged, byte for byte; the family now pins them.
+- **`Lowering` — a `ReplaceRoot` under a new root id now reaches the page.** In a script (`lowerScript`, what the
+  driver calls) the `ReplaceFragment` is addressed at the root the page holds, not the new root's id, which the page
+  did not hold, so the shim found nothing and the swap was dropped. Same-id swaps and `lower` are unchanged.
+- **`fuaran-live-patch.js` — a move keeps focus, caret and scroll.** `MoveNode` and `ReorderChildren` move the live
+  element with the browser's `moveBefore`, or, where it has none, insert it and put back the focused element, its
+  caret and scroll, and the moved element's scroll. A plain DOM move blurred the focused field and reset scroll,
+  which the claim beside `DomPatch.MoveNode` said it did not.
+
+### What rides this slot — Phase 2069 (one render pass)
+
+**BREAKING, `Fuaran.UI.Renderer`.** `TrustedTypes.createHtml` is removed and `TrustedTypes.html` only
+mints: it no longer sanitises. Each producer makes its own markup safe, once, on both renderers
+(`SANITIZATION.md`). A host minting its own markup through `TrustedTypes.html` must make it safe first.
+
+**BREAKING, `Fuaran.UI`.** `BindingWalk.TransformSiteFacts` gains `SourceReads`, so a full-literal
+construction no longer compiles (FS0764). The walk builds this record; no consumer is expected to.
+
+**Additive.** `BindingWalk.renderFacts` is one walk for a tree's seeds, fragments and reactive keys, with
+the records `RenderFacts<'Msg>` and `ReactiveKeys` and the projection `reactiveKeysOf`.
+`StateSeeds.applyFacts`, `FragmentExpansion.registryOf`, `Render.PreparedTree<'Msg>`,
+`Render.RenderContext.prepare` / `ofPrepared`, `Render.collectReactiveKeys`, and `StateStore.useKeys` /
+`useKeysWith`.
+
+**Behaviour.** `Render.collectKeys` is a projection of `BindingWalk`'s uses, and `Render.keysOfBinding` /
+`keysOfText` return their keys in sorted order. A surface now subscribes three slots it read and never
+followed: a node's `Visible`, a node's `Tooltip`, and a `Switch` case's `When`. `BindingWalk`'s analysis
+gains the slots only the reactive walk had: `Media` track `Src` and `Label`, `Media.Transcript`, and a
+`Tree`'s expanded and selection state keys. `Theme.toCss` applies the floor to its own output, so the
+server's stylesheet now gets what the client's sink used to do. `useSelectionKeys` no longer resubscribes
+on every change.
+
+### What rides this slot — Phase 2530 (a reactive write re-renders only its readers)
+
+**Class: additive.** Packages `Fuaran.UI`, `Fuaran.UI.Renderer`. No signature changes; no record gains a field.
+
+- **Surface — additive, `Fuaran.UI`.** `BindingWalk.reactiveRenderFacts` (the render pass with the reader
+  projection beside it, one walk), `BindingWalk.ReaderEntry<'Msg>`, `BindingWalk.readerMap` (the key-to-reader map by
+  node id) and `BindingWalk.unionKeys`.
+- **Surface — additive, `Fuaran.UI.Renderer`.** `Render.ReaderBoundary<'Msg>`, `Render.ReaderBoundaries.plan` /
+  `rerenderedBy` / `renderCount`, and `Render.prepareReactive`.
+- **Behaviour — `renderStateReactive`.** A write re-renders the nodes that read the written key, behind their own
+  boundaries, where it re-rendered the whole surface; the surface subscribes to nothing. A node's keys are what it
+  READS: a Transform param the pipeline does not reference no longer subscribes. A node now also re-renders when a key
+  its action slot reads is written, so its handler resolves the current value. The markup after a write is unchanged
+  (a fresh render of the same stores draws the same). A host that relied on a write repainting a node that reads none
+  of the written keys — a `Static` subtree, an unreferenced param's chip — sees it no longer repaint. On .NET nothing
+  moves: the entry is `renderWithSources` there.
+- **Behaviour — none elsewhere.** `renderFacts`, `collectReactiveKeys` and every analysis rule read the declared
+  projection exactly as before.
+
+---
+
+### What rides this slot — Phase 2568 (a chart whose series are read from its rows)
+
+**Class: additive.** Packages `Fuaran.UI`, `Fuaran.UI.Charts`, `Fuaran.UI.Renderer`, `Fuaran.UI.Renderer.Web`. No wire
+change: `yFields` was always a list and an empty one always decoded (WIRE_FORMAT §3.6.29 states what it means).
+
+- **Lowering.** `Charts.lower` / `tryLower*` given an EMPTY `YFields` plot one series per numeric column of the rows
+  other than `XField` (a `Numeric` or `Decimal` cell, no row carrying text, a boolean or a date there),
+  Ordinal-ordered and named by column, and lower exactly as the chart naming those columns would. More such columns
+  than `ChartLimits.MaxSeries` is `TooManySeries`, never a truncation; the point cap is applied first, since derived
+  series are counted once the rows are read. An authored list lowers to the bytes it lowered to before.
+- **Surface — additive.** `Charts.derivedSeriesFields` and `Charts.seriesFieldsOf`. The AG adapter derives the same
+  series, and declines (falling to the first-party refusal drawing) over the cap.
+- **`PreEmitDefect` gains `ChartSeriesUnnamed of nodeId * found`** — **FUARAN168 (Error)**: an empty `YFields` over a
+  source that is not a `Binding.Query`, naming the binding found. An exhaustive match over `PreEmitDefect` reports
+  `FS0025`; add the arm. `FUARAN088` no longer counts an empty pie (its series are counted at lowering).
+- **Embedded renderer.** `Fuaran.UI.Renderer.Web` re-synced: the bundled `@fuaran-ui/charts` lowers the same way.
+- **Corpus.** `chart-lowering/derived-series/` (six goldens), and `page-document/` gains `derived-series-page` and
+  `chart-derived-inline-rows`.
+
+---
+
+### What rides this slot — Phase 2570 (the browser verifies a signed page)
+
+**Class: additive.** Packages `Fuaran.UI.OpStream.Abstractions`, `Fuaran.UI.Program`, `Fuaran.UI`. No wire change.
+
+- **`EcdsaP256` gains a Fable arm.** Under Fable the module holds `verifier: IAttestationVerifier` and
+  `claimVerifier: IClaimSignatureVerifier` over WebCrypto (`crypto.subtle`), importing the same base64 SPKI public
+  half a `KeyDirectoryEntry` carries and checking the same base64 IEEE P1363 signature as the .NET arm. It does not
+  sign. Before, the module did not exist under Fable at all; the .NET arm is unchanged.
+- **New members.** `UiWitness.ecdsaP256 : ClaimVerifier<KeyDirectoryEntry>` (the published page verifier, one name on
+  both pipelines) and `SignedPage.refusalName : PageVerifyRefusal -> string` (a refusal's §32.5 name).
+- **No seam changes.** Every verification seam was already asynchronous; WebCrypto's promise is awaited inside the
+  provider.
+- **Corpus.** `attestation/page-corpus.json` (signed pages and their refusals), checked by `Fuaran.UI.Tests` on .NET
+  and by law 10 of the Fable law harness under Node.
+
+---
+
+### What rides this slot — Phase 2571 (a `Select` carries optional option groups)
+
+**Class: additive on the wire; a record widening on the surface (`FS0764` at a full-literal `SelectSpec`).**
+Packages `Fuaran.UI`, `Fuaran.UI.Ops`, `Fuaran.UI.Renderer.Core`, `Fuaran.UI.Renderer`, `Fuaran.UI.Renderer.Server`,
+`Fuaran.UI.Renderer.Web`, `Fuaran.UI.CSharp`. It rides the `0.101.0` draft: the slot is a minor, the class pre-1.0
+widenings have always ridden (the 0.50.0 entry is the worked case), and nothing has tagged it.
+
+- **Wire.** `Select` gains `groups`, a list of `SelectOptionGroup` (`{label, values}`), omit-at-default: absent and
+  `[]` are one fact and encode identically, so every ungrouped document is byte-unchanged (WIRE_FORMAT §3.6.30).
+  Two decode refusals, both `WRONG_TYPE` at the offending `values` element: a value named more than once, and over
+  STATIC options a value naming no option. `schema.json` carries the shape; the refusals are the decoder's.
+- **Surface — a record widening.** `SelectSpec` gains `Groups: SelectOptionGroup list` (appended), and the new record
+  `SelectOptionGroup` (`Label`, `Values`) is aliased in `Fuaran.UI.Types`. `Defaults.select` sets `Groups = []`, so a
+  spec built from it (`{ Defaults.select with … }`, the shape every constructor and sample uses) compiles unchanged;
+  a spec written as a FULL record literal reports `FS0764` — add `Groups = []`. **`SelectOption` is unchanged**: the
+  grouping names options by `value` from the `Select`, so every `{ Label = …; Value = … }` option literal compiles as
+  before (pinned by `SelectOptionGroupsTests`).
+- **Rendering.** `ElementPlan.InputPlan.select` (client and server share it) draws one `<optgroup label>` per group
+  in list order holding the options it names in `source` order, then the ungrouped remainder; no groups draws the
+  flat list exactly as before. A group value a bound source's rows do not hold is not drawn.
+- **Operability.** Unchanged by construction: a set slot enumerates options alone, so a group label is never an
+  alias (pinned in `Fuaran.UI.Operability.Tests`).
+- **C#.** `SelectOptions.Groups` (`(Label, Values)` tuples), threaded through the factory's positional `SelectSpec`
+  construction. **VB:** a declared GAP (`AuthoringDialect.notChildAuthorable`, `Select.groups`).
+- **Embedded renderer.** `Fuaran.UI.Renderer.Web` re-synced: the bundled `@fuaran-ui/renderer` draws the groups.
+- **Corpus.** `nodes/select-option-groups.json`, `nodes/select-option-groups-remainder.json`,
+  `reject/reject-2571-select-group-value-twice.json`, `reject/reject-2571-select-group-value-unknown.json`.
+
+## 0.100.1 — the slot opened after v0.100.0 was released (DRAFT — untagged)
+
+_`v0.100.0` is TAGGED (2026-10-31), so nothing may ride it: the change below opens the next slot. Class: **additive**
+on the surface, with one behaviour change on the shim, set by Phase 2526. The `<Version>` advance and its ledger
+record are the release act's, recorded separately; this entry is the slot's account of what rides it. The standing
+`<Version>` has since been raised to **0.101.0** for Phase 2527; the entries below ride that draft._
+
+### What rides this slot — Phase 2069 (one context walk, a stable raw-sink prop) and Phase 2547 (the subtree memo)
+
+**Class: additive, with one record field.** Packages `Fuaran.UI`, `Fuaran.UI.Renderer.Core`, `Fuaran.UI.Renderer`,
+`Fuaran.UI.Renderer.Server`.
+
+- **Surface — additive.** `StateStore.generation`. The render pass itself is the `0.101.0` entry above.
+- **Surface — `Render.RenderContext` gains `SubtreeMemo: bool`.** `RenderContext.create` sets it `false`, so a host
+  built through `create` plus `with` sees no change; a host that spelt the record out in full (the shape
+  `RENDER-ENTRIES.md` has asked hosts not to use since Phase 2067) takes `FS0764` and adds the field. The
+  surface guard classes a record gaining a field as breaking; it rides a draft that is already a minor advance.
+- **Behaviour — none on output.** Both context builders run one walk where they ran two, and read the same seeds
+  and the same registry (pinned over `FragmentRegistryFixture` by `RendererAgreementTests`). The client emitter
+  hands React one `dangerouslySetInnerHTML` object per markup string, so an unchanged raw sink is not reparsed on
+  re-render; the markup is unchanged. With `SubtreeMemo` on, a kept subtree under the same context and store
+  generation returns the element it built before; off, nothing moves.
+
+### What rides this slot — Phase 2526 (a changed prop or text patches the attribute, not the subtree)
+
+**Class: additive.** Package `Fuaran.UI.ServerDriven`. The `DomPatch` vocabulary is unchanged.
+
+- **Surface — additive.** `Lowering` gains `PropSlot` (the type and `slotOf` / `patches` / `textOnlyEdit`),
+  `lowerOpWith` and `lowerScriptWith`. `lowerOp`, `lower` and `lowerScript` keep their signatures.
+- **Lowering — what a write emits changes.** `UpdateProp` on a mapped field lowers to `SetAttr` / `RemoveAttr` /
+  `SetText` where it lowered to `ReplaceFragment`. In `lowerScript`, a text-only `EditNode` of a `Heading` or `Badge`
+  lowers to `SetText`, an `UpdateState` that leaves a stateless node stateless lowers to nothing, and adjacent
+  re-renders of one node ship the last. A host that asserts on a frame's patch list for those writes sees the new
+  patches. The resulting DOM is the same, which the phase's law states.
+- **Shim — behaviour.** `fuaran-live-patch.js` lands a node-addressed `SetText` / `SetAttr` / `RemoveAttr` on the
+  wrapper's first element child, the node's body, rather than on the wrapper. No lowering emitted those patches for
+  a node before this slot. A form field addressed by `data-fuaran-field` is still its own target. **A custom applier
+  of the frame takes the same rule**, or the granular patches erase the node's body.
+
+The reading and the decision: [`docs/SERVER-DRIVEN-FRAME-COST.md`](docs/SERVER-DRIVEN-FRAME-COST.md).
+
+---
+
+## 0.100.0 — the slot opened after v0.99.1 was released (DRAFT — untagged)
+
+_`v0.99.1` is TAGGED (2026-10-29), so under the draft-slot rule nothing may ride it: the change below opens the next
+slot. Class: **breaking** (source), set by Phase 2517 — a closed union gains a case. The slot sits at the minor number,
+where a pre-1.0 breaking change goes. The `<Version>` advance and its ledger record are the release act's, recorded
+separately; this entry is the slot's account of what rides it._
+
+### What rides this slot — Phase 2517 (a tree's operable surface is a specified projection of it)
+
+**Class: breaking (source); it sets this slot's class.** Packages `Fuaran.UI`, `Fuaran.UI.Ops`,
+`Fuaran.UI.Renderer.Core`, `Fuaran.UI.Renderer` and the C# facade; one NEW package, `Fuaran.UI.Operability`.
+
+- **Wire — additive.** An optional `affordance` member on `Select`, `Button` and every `Form` field (WIRE_FORMAT §31.1):
+  `{ patterns, readPatterns, aliases, description, clearable, neverControllable }`, every member omit-at-default, the
+  whole member absent at `None`. Every existing document decodes and re-encodes byte-for-byte as before. The decoder
+  refuses a set pattern naming no `{value}` slot on a `Select` or a field, a click pattern naming one on a `Button`, a
+  read pattern naming one anywhere, and any other brace (`WRONG_TYPE` at the pattern, §31.2). No `NodeKind` is added,
+  merged or retired, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s admission gates are not engaged; the
+  member is a field on three existing records.
+- **`ActionDescriptor.Operate of affordanceId: string * value: string option` — BREAKING for an exhaustive match.**
+  The descriptor an agent-initiated resolution dispatches under, distinct from a reader's own interaction with the same
+  node, decided by `IFuaranRuntime.CanDispatch` like every other case and refused by every shipped runtime (the 0.14.0
+  default-deny posture). It is the first of two gates: the resolved action then meets its own descriptor.
+  `ActionDescriptor.describe` withholds the slot value.
+- **`Fuaran.UI.Operability` (new).** `Operability.derive` (a pure, total function from a tree to its affordances),
+  `Operability.resolve` (the resolution contract's reference matcher, §31.4–31.5), their canonical corpus projection,
+  and the DOM annotation projection (§31.8). FSharp.Core + `Fuaran.UI` only; Fable-clean.
+- **Rendering.** A `Select`, `Button` or field that DECLARES an affordance is stamped with `data-ai-name` (its name),
+  `data-fuaran-shape` / `-controllable` / `-commands` / `-aliases` / `-values` / `-description` and `aria-description`
+  — on the semantic element where the kind forwards to one, else the wrapper; an attribute the author already set wins.
+  A node that declares nothing renders byte-for-byte as before on both pipelines. `Affordances.ofDerived` and
+  `Affordances.registerDerivedProvider` let a host answer `__fuaran.getAffordances` / `read.affordances` from the tree.
+- **Source-breaking, which is why the class matters.** (1) An exhaustive `match` over `ActionDescriptor` must gain an
+  `Operate` arm (FS0025 under warnings-as-errors). Every host runtime that matches the union exhaustively is named for
+  the change-set: in this repository, `ActionDescriptor.describe`; outside it, any consumer runtime whose
+  `CanDispatch` adapter enumerates the cases. (2) A full-literal construction of `SelectSpec`, `ButtonSpec` or
+  `FormField` gains `Affordance = None` (FS0764); `{ Defaults.select with … }` and every copy-update site are
+  untouched. (3) The C# generated-record constructors of the same three types take one more positional argument
+  (CS7036): pass `FSharpOption<Affordance>.None`.
+
+**What a consumer does.** Add the `Operate` arm (deny it, or allow the affordance ids a composition lists); add
+`Affordance = None` to a full record literal. A stored tree is unaffected.
+
+**Certified by** the corpus's `operability/` family (WIRE_FORMAT §31.7: the affordance's wire round-trips and
+refusals, the derivation over authored trees, and the resolution contract over instructions recast from the S1–S7
+calibration strata), emitted and asserted by `src/Fuaran.UI.Operability.Tests`; and
+`src/Fuaran.UI.Tests/DispatchGateTests.fs`, whose enumerated closed set now carries `Operate` (and `Confirm` and
+`Focus`, which it had been missing).
+
+**Escape hatch.** `Operate` is a new gated action class, so the escape-hatch inventory gains its entry (an
+agent-initiated resolution dispatching a node's own action; what mediates it; what is not claimed).
+
+**Phase 2522 — additive, rides this slot:** `Fuaran.UI` gains the page document (`PageDocument`, `PageRequest`, `PageProvenance`, the `PageDocument` / `PageRequest` modules), its demanded projection (`DemandedPage`, with `check` against a host's coverage) and the signed read-set (`SignedPage.sign` / `verify`, by recomputation), plus `QueryBinding.checkSources`, `PreEmitValidate.validatePage` / `pageRuleDefects` and two pre-emit defect cases, `PageSourceNotRequest` (FUARAN166) and `PageInlineRows` (FUARAN167) — a host matching `PreEmitDefect` exhaustively adds two arms; the package now references `Fuaran.Core.OpStream` and `Fuaran.Program.Bounded`; no existing wire byte moves (WIRE_FORMAT §32, the new self-enumerated `page-document/` family; `docs/PAGE-DOCUMENT.md`).
+
+**Also rides this slot, additive (Phase 2523):** `BindingSources` gains `ParameterDependents: Map<string, Set<string>>` (empty by default; `{ BindingSources.empty with … }` sites are untouched, a full record literal gains `ParameterDependents = Map.empty`, FS0764), plus `ParameterChange`, `ResolvedSource`, `SourceRefusal`, `SourceOutcome`, `SourceResolver`, `BindingSources.reResolve` / `applyOutcomes`, `DriverServices.ReResolution` (`create` sets `None`; a full `DriverServices` literal gains it) and `LocalBindings.attachParameterReResolution`; a `Binding.Query` over a refused source resolves `Errored`, naming the source.
 ---
 
 ## 0.99.1 — the slot opened after v0.98.1 was released (DRAFT — untagged)

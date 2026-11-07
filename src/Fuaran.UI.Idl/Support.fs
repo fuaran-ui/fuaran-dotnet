@@ -757,6 +757,7 @@ and private decI18nArg (j: JVal) : Result<Binding<JVal>, string> =
 // codec and the merge engine read them, so the vocabulary declares them here.
 let encodeStateBehaviourJson (s: StateBehaviour<'Msg>) : JVal = encStateBehaviour s
 let encodeSemanticStyleJson (s: SemanticStyle) : JVal = encSemanticStyle s
+let encodeAccessibilityJson (a: Accessibility) : JVal = encAccessibility a
 
 // Phase 818 — JVal-level accessor for a data-shaped Action (the
 // `encodeNodeKindJson` precedent): the server resume script re-encodes a

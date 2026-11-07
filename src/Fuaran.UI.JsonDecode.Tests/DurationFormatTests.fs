@@ -115,7 +115,8 @@ let wireRoundTrips =
                   { Id = "fmt-duration-1"
                     Kind =
                       NodeKind.Markdown(
-                          { Text =
+                          { Citations = []
+                            Text =
                               TextSource.Bound(
                                   Binding.Format(
                                       Binding.Static(Some 4830.0),

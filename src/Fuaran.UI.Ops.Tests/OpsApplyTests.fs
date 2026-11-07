@@ -34,6 +34,11 @@ let private idOf (rawId: string) = rawId
 // boxing in a small helper that asserts non-null via `Unchecked.nonNull`.
 let private nn (value: 'T) : obj = box value |> Unchecked.nonNull
 
+let private applyOk (op: TreeOp<Msg>) (tree: Node<Msg>) : Node<Msg> =
+    match Apply.apply op tree with
+    | Ok updated -> updated
+    | Error e -> failtestf "the op was refused: %A" e
+
 let private revenueMetric: Node<Msg> =
     Fuaran.metric
         "revenue-metric"
@@ -227,7 +232,11 @@ let tests =
           }
 
           test "EditNode swaps the addressed node's Kind wholesale, preserving Id" {
-              let newKind = NodeKind.Markdown({ Text = TextSource.Literal "Replaced" })
+              let newKind =
+                  NodeKind.Markdown(
+                      { Citations = []
+                        Text = TextSource.Literal "Replaced" }
+                  )
 
               match Apply.apply (TreeOp.EditNode(NodeId "revenue-metric", newKind)) dashboard with
               | Ok updated ->
@@ -863,6 +872,56 @@ let tests =
                   Expect.stringContains json "\"available_fields\"" "Available fields enumerated"
                   Expect.stringContains json "\"nodes_with_columns_field\"" "Dynamic field-search key present"
           }
+          // Phase 2527 — the two trait ops.
+          test "UpdateAccessibility replaces the whole trait, and an empty record removes it" {
+              let described =
+                  { Defaults.Accessibility.empty with
+                      DescribedBy = Some "help-1" }
+
+              let labelled =
+                  { Defaults.Accessibility.empty with
+                      LabelledBy = Some "heading-1" }
+
+              let target = NodeId revenueMetric.Id
+
+              let once = applyOk (TreeOp.UpdateAccessibility(target, described)) revenueMetric
+
+              Expect.equal (once.Accessibility |> Option.bind _.DescribedBy) (Some "help-1") "the trait is set"
+
+              let twice = applyOk (TreeOp.UpdateAccessibility(target, labelled)) once
+
+              Expect.equal
+                  (twice.Accessibility |> Option.map (fun a -> a.LabelledBy, a.DescribedBy))
+                  (Some(Some "heading-1", None))
+                  "the record replaces, it does not merge"
+
+              let cleared =
+                  applyOk (TreeOp.UpdateAccessibility(target, Defaults.Accessibility.empty)) twice
+
+              Expect.isNone cleared.Accessibility "a record setting no field stores as the absent trait"
+              Expect.isTrue (Option.isNone cleared.Tooltip) "the op writes no other slot"
+          }
+
+          test "UpdateTooltip sets and clears the trait" {
+              let target = NodeId revenueMetric.Id
+              let hint = TextSource.Literal "Updated nightly."
+
+              let set = applyOk (TreeOp.UpdateTooltip(target, Some hint)) revenueMetric
+              Expect.isTrue set.Tooltip.IsSome "the tooltip is set"
+
+              let cleared = applyOk (TreeOp.UpdateTooltip(target, None)) set
+              Expect.isNone cleared.Tooltip "None clears it"
+          }
+
+          test "an unknown target is NodeNotFound on both trait ops" {
+              for op in
+                  [ TreeOp.UpdateAccessibility(NodeId "ghost", Defaults.Accessibility.empty)
+                    TreeOp.UpdateTooltip(NodeId "ghost", None) ] do
+                  match Apply.apply op revenueMetric with
+                  | Error e -> Expect.equal e.Code ApplyErrorCode.NodeNotFound "the code"
+                  | Ok _ -> failtest "an unknown target applied"
+          }
+
           test "ErrorRender.render writes the canonical escape, the same bytes on every compile target" {
               // Phase 2064 — one implementation over `JVal`. The .NET writer used
               // to escape `<` as `\u003C` and non-ASCII as `\uXXXX` while the

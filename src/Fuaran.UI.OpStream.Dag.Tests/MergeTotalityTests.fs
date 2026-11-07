@@ -28,10 +28,10 @@ open Fuaran.UI.OpStream.TestSupport
 //
 //   2. A merge node commits to the merged tree by `OutcomeHash` and carries a
 //      replay delta that is supposed to reach it. `TreeOp` is not total over
-//      the node record — no op sets `Accessibility` or `Tooltip`, both of which
-//      `TreeMerge` merges as facets — so a merge of those facets minted a node
-//      whose delta reached a DIFFERENT tree, and mint, commit, replay and
-//      verify all accepted it.
+//      the node record, so a merge of a facet no op sets minted a node whose
+//      delta reached a DIFFERENT tree, and mint, commit, replay and verify all
+//      accepted it. That was `Accessibility` and `Tooltip` until Phase 2527; it
+//      is `Visible` and `Fallback` now.
 //
 //   3. `DagPrimacy.cellsOf` decides which branch's author owns a contended
 //      cell. A facet `TreeMerge` names but `cellsOf` does not attribute falls
@@ -63,10 +63,9 @@ let private buildNested () : Node<TestMsg> =
           container "boxb" []
           container "boxc" [] ]
 
-/// Rewrite one node in place by id, leaving the rest of the tree alone. The
-/// `Accessibility` and `Tooltip` facets have no `TreeOp` that sets them (which
-/// is claim 2 above), so a fixture that contends either has to build its trees
-/// directly rather than by applying ops.
+/// Rewrite one node in place by id, leaving the rest of the tree alone. For a
+/// fixture that sets a slot no `TreeOp` reaches (claim 2 above), or that wants
+/// its branches' trees built rather than applied.
 let private mapNodeById (targetId: string) (f: Node<TestMsg> -> Node<TestMsg>) (root: Node<TestMsg>) : Node<TestMsg> =
     let rec go (n: Node<TestMsg>) : Node<TestMsg> =
         let self = if n.Id = targetId then f n else n
@@ -279,7 +278,7 @@ let tests =
 
           // ── the merge node's delta reproduces its OutcomeHash ───────────
 
-          test "a merge that carries an accessibility facet is REFUSED at mint, not minted lossily" {
+          test "a merge that carries a slot no op sets is REFUSED at mint, not minted lossily" {
               let sink = InMemoryDagSink.create<TestMsg> ()
               let initial = buildDashboard ()
 
@@ -297,7 +296,7 @@ let tests =
               add sink seed
               let baseTree = initial |> applyOk seed.Op
 
-              let branchA =
+              let branchB =
                   stepRecord
                       "s"
                       (Some seed)
@@ -306,20 +305,18 @@ let tests =
                           { Defaults.style with
                               Tone = ToneVariant.Success }
                       ))
-                      2L
+                      3L
 
-              // `ReplaceRoot` is the ONLY op that can set `Accessibility` at all
-              // — which is the gap, seen from the authoring side.
-              let accessible =
+              // `ReplaceRoot` is the ONLY op that can set `Visible` at all — which
+              // is the gap, seen from the authoring side. On the PRIMARY branch: the
+              // delta runs from A's tree, and no op can take the slot off it.
+              let hidden =
                   baseTree
                   |> mapNodeById "right" (fun n ->
                       { n with
-                          Accessibility =
-                              Some
-                                  { Defaults.Accessibility.empty with
-                                      DescribedBy = Some "help-1" } })
+                          Visible = Some(Binding.Static(Some false)) })
 
-              let branchB = stepRecord "s" (Some seed) (TreeOp.ReplaceRoot accessible) 3L
+              let branchA = stepRecord "s" (Some seed) (TreeOp.ReplaceRoot hidden) 2L
               add sink branchA
               add sink branchB
 
@@ -343,6 +340,79 @@ let tests =
                   Expect.isNone mismatch.ApplyError "the delta applied cleanly; it simply arrived somewhere else"
               | other -> failtestf "expected DeltaNotReplayable, got %A" other
           }
+
+          // Phase 2527 — the facets the refusal above was written for. Every one of
+          // these merges was `DeltaNotReplayable` while no op could spell its delta.
+          for name, edit in
+              [ "accessibility",
+                (fun (n: Node<TestMsg>) ->
+                    { n with
+                        Accessibility =
+                            Some
+                                { Defaults.Accessibility.empty with
+                                    DescribedBy = Some "help-1" } })
+                "tooltip",
+                (fun n ->
+                    { n with
+                        Tooltip = Some(TextSource.Literal "Updated nightly.") }) ] do
+              test $"a merge that takes a branch's {name} mints, and replaying its delta reproduces the tree" {
+                  let sink = InMemoryDagSink.create<TestMsg> ()
+                  let initial = buildDashboard ()
+
+                  let seed =
+                      stepRecord
+                          "s"
+                          None
+                          (TreeOp.UpdateStyle(
+                              leftChildId,
+                              { Defaults.style with
+                                  Tone = ToneVariant.Brand }
+                          ))
+                          1L
+
+                  add sink seed
+                  let baseTree = initial |> applyOk seed.Op
+
+                  let branchA =
+                      stepRecord
+                          "s"
+                          (Some seed)
+                          (TreeOp.UpdateStyle(
+                              leftChildId,
+                              { Defaults.style with
+                                  Tone = ToneVariant.Success }
+                          ))
+                          2L
+
+                  let branchB =
+                      stepRecord "s" (Some seed) (TreeOp.ReplaceRoot(baseTree |> mapNodeById "right" edit)) 3L
+
+                  add sink branchA
+                  add sink branchB
+
+                  match
+                      DagMerge.merge recordAuthor sink "s" initial branchA.Hash branchB.Hash now
+                      |> Async.RunSynchronously
+                  with
+                  | MergeResult.Merged(record, tree) ->
+                      Expect.equal
+                          record.OutcomeHash
+                          (Some(canonical tree |> Fuaran.Core.Hash.sha256Hex))
+                          "the node commits to the merged tree"
+
+                      add sink record
+
+                      let byHash =
+                          [ seed; branchA; branchB; record ]
+                          |> List.map (fun r -> r.Hash, r)
+                          |> Map.ofList
+
+                      match DagReplay.replay (fun h -> Map.tryFind h byHash) initial record.Hash with
+                      | Ok replayed ->
+                          Expect.equal (canonical replayed) (canonical tree) "the spine reaches the merged tree"
+                      | Error e -> failtestf "replay refused the merge node: %A" e
+                  | other -> failtestf "expected Merged, got %A" other
+              }
 
           test "an ordinary merge still mints, and its delta reproduces its outcome hash" {
               let sink = InMemoryDagSink.create<TestMsg> ()
@@ -600,8 +670,7 @@ let tests =
                       )
                   )
 
-              // 4. accessibility and 5. tooltip — no op sets either, so the trees
-              //    are built directly.
+              // 4. accessibility and 5. tooltip
               let describedBy (v: string) (n: Node<TestMsg>) =
                   { n with
                       Accessibility =
@@ -682,6 +751,8 @@ let tests =
                             Tone = Some ToneVariant.Brand }
                     )
                     TreeOp.UpdateState(leftChildId, Defaults.stateBehaviour<TestMsg>)
+                    TreeOp.UpdateAccessibility(leftChildId, Defaults.Accessibility.empty)
+                    TreeOp.UpdateTooltip(leftChildId, None)
                     TreeOp.InsertChild(dashboardId, Fuaran.markdown "new" "x")
                     TreeOp.RemoveNode rightChildId
                     TreeOp.MoveNode(movableId, boxBId)

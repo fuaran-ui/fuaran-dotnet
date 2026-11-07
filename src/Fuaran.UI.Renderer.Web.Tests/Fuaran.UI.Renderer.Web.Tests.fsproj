@@ -18,6 +18,8 @@
          this reference: it is asset-serving and snippet-emitting only, and its
          dependency set is FSharp.Core plus the shared framework. -->
     <ProjectReference Include="..\Fuaran.UI.Renderer.Core\Fuaran.UI.Renderer.Core.fsproj" />
+    <!-- Only for the Phase 2523 client re-resolution test (`LocalBindings`). -->
+    <ProjectReference Include="..\Fuaran.UI.Renderer\Fuaran.UI.Renderer.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Expecto" />

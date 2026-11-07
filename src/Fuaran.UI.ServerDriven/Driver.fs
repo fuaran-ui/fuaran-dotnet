@@ -124,6 +124,27 @@ type DriverServices<'Msg> =
         /// `[i18n:<key>]` sentinel. Not a refusal: a driver resolving text
         /// differently from the renderer beside it would be the surprise.
         ResolveText: TextSource -> string
+        /// Phase 2523 - re-resolve query-bound sources when an admitted action
+        /// changes a request parameter. `None` (the `create` default) re-asks
+        /// nothing, which is the behaviour before the phase.
+        ReResolution: SourceReResolution<'Msg> option
+    }
+
+/// Phase 2523 - the seam through which the driver re-reads the sources that
+/// depend on a changed request parameter. The driver holds no `BindingSources`
+/// (its host does), so the host supplies the current record, its resolver, and
+/// the message that folds the outcomes into its model.
+and SourceReResolution<'Msg> =
+    {
+        /// The host's current sources. Its `ParameterDependents` says which
+        /// sources a parameter touches.
+        Sources: unit -> Fuaran.UI.BindingSources
+        /// The host's resolver for one source.
+        Resolve: Fuaran.UI.SourceResolver
+        /// Fold the outcomes into the host model (`BindingSources.applyOutcomes`
+        /// over the record `Sources` returns). Run before the view, so the
+        /// re-render reads the fresh values or the named refusals.
+        Accept: Fuaran.UI.SourceOutcome list -> 'Msg option
     }
 
 /// The Phase 889 user-action recording seam, as one optional field on
@@ -168,7 +189,8 @@ module DriverServices =
           OnReject = ignore
           ActionRecording = None
           EgressPolicy = Fuaran.UI.Renderer.Sanitize.denyNonLocalEgress
-          ResolveText = Fuaran.UI.Renderer.BindingResolver.resolveTextSource Fuaran.UI.Renderer.BindingResolver.empty }
+          ResolveText = Fuaran.UI.Renderer.BindingResolver.resolveTextSource Fuaran.UI.Renderer.BindingResolver.empty
+          ReResolution = None }
 
     /// **The named opt-in back to the pre-0.14.0 allow-everything gate**
     /// (Phase 782), and — since Phase 1026 — to unrestricted egress with it.
@@ -475,16 +497,70 @@ let rec private interpret
 
 #warnon "44"
 
-/// Fold already-produced messages through `update`, re-render, diff old→new,
+/// Phase 2523 - the request parameters an action writes: a `SetState` names its
+/// key, and a `Chain` carries its members'. `Value` is the literal the action
+/// holds, `None` when it derives the value at dispatch (`valueFrom`).
+let rec private parameterChangesOf (action: Action<'Msg>) : Fuaran.UI.ParameterChange list =
+    match action with
+    | Action.SetState(key, value, _) -> [ { Name = key; Value = value } ]
+    | Action.Chain actions -> List.collect parameterChangesOf actions
+    | _ -> []
+
+/// Phase 2523 - the typed check for a re-resolved source: `QueryBinding.check`
+/// over the tree, kept to the defects of the nodes that read the source. Run
+/// against the tree the session holds, since the check reads shape and not values.
+let private typedCheck (tree: Node<'Msg>) : string -> Schema -> string list =
+    let uses = (Fuaran.UI.BindingWalk.collect tree).Uses
+
+    fun source schema ->
+        let readers =
+            uses
+            |> List.choose (fun u ->
+                match u.Use with
+                | Fuaran.UI.BindingWalk.BindingUse.Query(name, _) when name = source -> Some u.Reader
+                | _ -> None)
+            |> Set.ofList
+
+        Fuaran.UI.QueryBinding.check schema tree
+        |> List.filter (fun d -> readers.Contains d.NodeId)
+        |> List.map (fun d -> d.Message)
+
+/// Phase 2523 - ask again for exactly the sources `changes` touch and return the
+/// message that folds their outcomes into the host model. Nothing happens for a
+/// host that wired no `ReResolution`, or a change no source depends on.
+let private reResolutionMessages
+    (session: LiveSession<'Model, 'Msg>)
+    (changes: Fuaran.UI.ParameterChange list)
+    : 'Msg list =
+    match session.Services.ReResolution with
+    | Some rr when not (List.isEmpty changes) ->
+        let outcomes =
+            Fuaran.UI.BindingSources.reResolve rr.Resolve (typedCheck session.Tree) (rr.Sources()) changes
+
+        if List.isEmpty outcomes then
+            []
+        else
+            rr.Accept outcomes |> Option.toList
+    | _ -> []
+
+/// Fold already-produced messages through `update`, re-render, diff old->new,
 /// emit the ops (FGP 5) and lower to patches, carrying `effects` through to the
 /// step output. The tail every apply path shares: `applyResolvedActionsWithSubmitBody`
 /// below and (Phase 2170) a message an awaited effect fed back to the connection.
-let internal applyMessages
+/// `changes` (Phase 2523) are the request parameters the step wrote: their
+/// dependent sources are re-resolved after `msgs` fold and before the view.
+let private applyMessagesResolving
     (session: LiveSession<'Model, 'Msg>)
     (msgs: 'Msg list)
     (effects: ClientEffect list)
+    (changes: Fuaran.UI.ParameterChange list)
     : LiveSession<'Model, 'Msg> * StepOutput =
-    let newModel = msgs |> List.fold (fun m msg -> session.Update msg m) session.Model
+    let folded = msgs |> List.fold (fun m msg -> session.Update msg m) session.Model
+
+    let newModel =
+        reResolutionMessages session changes
+        |> List.fold (fun m msg -> session.Update msg m) folded
+
     let newTree = session.View newModel
     let ops = TreeOpDiff.diff session.Tree newTree
     session.Services.OnApply ops
@@ -496,6 +572,13 @@ let internal applyMessages
     { Patches = patches
       Effects = effects
       Rejected = None }
+
+let internal applyMessages
+    (session: LiveSession<'Model, 'Msg>)
+    (msgs: 'Msg list)
+    (effects: ClientEffect list)
+    : LiveSession<'Model, 'Msg> * StepOutput =
+    applyMessagesResolving session msgs effects []
 
 /// Apply a list of already-resolved, already-gated `Action`s to the session in
 /// one step, each paired with the Phase 820 submit body to thread to any
@@ -520,7 +603,9 @@ let applyResolvedActionsWithSubmitBody
                 ms @ m2, es @ e2)
             ([], [])
 
-    applyMessages session msgs effects
+    let changes = actions |> List.collect (fst >> parameterChangesOf)
+
+    applyMessagesResolving session msgs effects changes
 
 /// `applyResolvedActionsWithSubmitBody` with no submit body on any action —
 /// the ordinary (non-form-submit) shape, byte-identical to the pre-820 fold.
@@ -580,6 +665,28 @@ let recordRejection (services: DriverServices<'Msg>) (ev: LiveEvent) (reason: Re
             description
     | _ -> ()
 
+/// Phase 2523 - the request parameter a declarative filter chip's change event
+/// writes. Such a chip has no server-side action (its write is the client store
+/// path), so the event itself names the parameter: `payload.name`, and
+/// `payload.value` where the chip carries one (an empty value clears it).
+let private filterChangeOf (tree: Node<'Msg>) (ev: LiveEvent) : Fuaran.UI.ParameterChange list =
+    let rec find (n: Node<'Msg>) =
+        if n.Id = ev.NodeId then
+            Some n
+        else
+            Fuaran.UI.NodeChildren.children Fuaran.UI.NodeChildren.Reach.kindHeld n
+            |> List.tryPick find
+
+    match find tree, Map.tryFind "name" ev.Payload with
+    | Some { Kind = NodeKind.Filters _ }, Some(LiveValue.Str name) when ev.Event = "change" ->
+        let value =
+            match Map.tryFind "value" ev.Payload with
+            | Some(LiveValue.Str v) when v <> "" -> Some(JStr v)
+            | _ -> None
+
+        [ { Name = name; Value = value } ]
+    | _ -> []
+
 /// Step the session with one untrusted inbound event. Validates (G1), runs the
 /// resolved action through `update`, re-renders, diffs, lowers — returning the
 /// updated session + the patch / effect output. On G1 rejection the session is
@@ -597,10 +704,16 @@ let step (session: LiveSession<'Model, 'Msg>) (ev: LiveEvent) : LiveSession<'Mod
         // Legitimate but no server-resolvable action (e.g. a browser-held file
         // select, or a buffered form-field change under policy (b)) — no state
         // change, no patches. Nothing to record: there is no action.
-        session,
-        { Patches = []
-          Effects = []
-          Rejected = None }
+        // Phase 2523 - a declarative filter chip is the exception: it writes a request
+        // parameter, so the sources depending on it are re-resolved. No action means
+        // no dispatch gate question, so `CanDispatch` is asked exactly as before.
+        match filterChangeOf session.Tree ev with
+        | [] ->
+            session,
+            { Patches = []
+              Effects = []
+              Rejected = None }
+        | changes -> applyMessagesResolving session [] [] changes
     | Ok { Action = Some action } ->
         // Phase 1537 — a confirm ANSWER is the originating event re-delivered
         // with two extra payload members, so it has already passed the whole G1
