@@ -198,7 +198,17 @@ module PerfBaseline =
               yield $"opstream.encode.{s.Name}.alloc_b", "B", "Allocated bytes per encodeOp."
               yield $"opstream.hash.{s.Name}.alloc_b", "B", "Allocated bytes per computeHash."
               yield $"opstream.build_record.{s.Name}.alloc_b", "B", "Allocated bytes per record build."
-              yield $"opstream.append.{s.Name}.alloc_b", "B", "Allocated bytes per durable append." ]
+              yield $"opstream.append.{s.Name}.alloc_b", "B", "Allocated bytes per durable append."
+          // Phase 2026: the string escape isolated — one encodeOp whose cost is
+          // dominated by the escape of a long clean string, an escape-heavy
+          // string, or an object of many short keys (`EscapeRate`).
+          for c in EscapeRate.all do
+              yield
+                  $"opstream.escape.{c.Name}.mean_ns",
+                  "ns",
+                  "CanonicalJson.encodeOp over the escape-isolating case (EscapeRate)."
+
+              yield $"opstream.escape.{c.Name}.alloc_b", "B", "Allocated bytes per escape-isolating encodeOp." ]
 
     /// The declared metric catalogue for the RENDER-SPINE baseline (Phase 207).
     /// The three families are the three allocators that phase removed from the

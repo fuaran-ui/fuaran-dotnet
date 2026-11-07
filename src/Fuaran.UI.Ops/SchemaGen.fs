@@ -69,16 +69,10 @@ type private J =
     | JArr of J list
     | JObj of (string * J) list
 
+/// A string as a JSON string literal, through Core's canonical escape (Phase 2026).
 let private appendEscaped (sb: StringBuilder) (s: string) : unit =
     sb.Append '"' |> ignore
-
-    for ch in s do
-        match ch with
-        | '"' -> sb.Append "\\\"" |> ignore
-        | '\\' -> sb.Append "\\\\" |> ignore
-        | c when c < ' ' -> sb.Append(sprintf "\\u%04x" (int c)) |> ignore
-        | c -> sb.Append c |> ignore
-
+    Fuaran.Core.Json.escapeInto sb s
     sb.Append '"' |> ignore
 
 let rec private writeJ (sb: StringBuilder) (indent: int) (j: J) : unit =

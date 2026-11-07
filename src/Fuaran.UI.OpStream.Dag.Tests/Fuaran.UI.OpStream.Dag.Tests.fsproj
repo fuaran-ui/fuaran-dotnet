@@ -52,6 +52,7 @@
     <Compile Include="TempDirGuardTests.fs" />
     <!-- Phase 2028 - the stored-op string readers equal their pre-2028 bodies on every input. -->
     <Compile Include="StoredOpUnescapeTests.fs" />
+    <Compile Include="EscapeCollapseTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

@@ -164,21 +164,9 @@ module DagOpRecord =
     // is tracked separately"). Introducing one is a separate design act with its
     // own cross-host concept, not a side-effect of typing the actor.
 
-    /// Canonical JSON string escaping — `"` / `\` / control chars, matching the
-    /// linear `StreamEntry` / `CanonicalJson` escaper so bytes align across hosts.
-    let private jstr (s: string) : string =
-        let sb = System.Text.StringBuilder()
-        sb.Append '"' |> ignore
-
-        for ch in s do
-            match ch with
-            | '"' -> sb.Append "\\\"" |> ignore
-            | '\\' -> sb.Append "\\\\" |> ignore
-            | c when c < ' ' -> sb.Append(sprintf "\\u%04x" (int c)) |> ignore
-            | c -> sb.Append c |> ignore
-
-        sb.Append '"' |> ignore
-        sb.ToString()
+    /// A string as a JSON string literal, through Core's canonical escape
+    /// (Phase 2026) — the linear chain's escape, so bytes align across hosts.
+    let private jstr (s: string) : string = Fuaran.Core.JsonString.quote s
 
     let private parentsJson (parents: string list) : string =
         sortedParents parents |> List.map jstr |> String.concat "," |> sprintf "[%s]"

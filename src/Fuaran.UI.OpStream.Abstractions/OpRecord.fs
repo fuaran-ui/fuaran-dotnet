@@ -62,22 +62,10 @@ type Actor =
 
 module Actor =
 
-    /// Canonical JSON encoding of a string — mirrors `CanonicalJson.appendRawString`
-    /// (quote / backslash escaped, control chars as `\u00xx`) so the actor's bytes
-    /// are identical across the F# and TypeScript hosts.
-    let private jstr (s: string) : string =
-        let sb = System.Text.StringBuilder()
-        sb.Append '"' |> ignore
-
-        for ch in s do
-            match ch with
-            | '"' -> sb.Append "\\\"" |> ignore
-            | '\\' -> sb.Append "\\\\" |> ignore
-            | c when c < ' ' -> sb.Append(sprintf "\\u%04x" (int c)) |> ignore
-            | c -> sb.Append c |> ignore
-
-        sb.Append '"' |> ignore
-        sb.ToString()
+    /// A string as a JSON string literal, through Core's canonical escape
+    /// (Phase 2026), so the actor's bytes are identical across the F# and
+    /// TypeScript hosts.
+    let private jstr (s: string) : string = Fuaran.Core.JsonString.quote s
 
     /// The canonical wire/hash encoding. Field order is pinned (kind first, then
     /// case fields) and MUST match the TS + Core encoders byte-for-byte.

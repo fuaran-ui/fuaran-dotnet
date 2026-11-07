@@ -101,6 +101,13 @@ let private printAppendRates (count: int) =
         printfn "opstream.append.%s.mean_ns = %.1f" s.Name meanNs
         printfn "opstream.append.%s.alloc_b = %.1f" s.Name allocB
 
+let private printEscapeRates (iterations: int) =
+    for c in EscapeRate.all do
+        let meanNs, allocB = EscapeRate.measure c iterations
+        printfn "opstream.escape.%s.bytes = %d" c.Name (EscapeRate.encodedLength c)
+        printfn "opstream.escape.%s.mean_ns = %.1f" c.Name meanNs
+        printfn "opstream.escape.%s.alloc_b = %.1f" c.Name allocB
+
 [<EntryPoint>]
 let main argv =
     match Array.toList argv with
@@ -273,6 +280,20 @@ let main argv =
             printfn "decode.%s.mean_us = %.1f" s.Name meanUs
             printfn "decode.%s.alloc_b = %.0f" s.Name allocB
 
+        0
+    // Phase 2026 — the canonical encoder's string escape, isolated: a long clean
+    // string, an escape-heavy string and an object of many short keys.
+    | "escape-rate" :: rest ->
+        let iterations =
+            rest
+            |> List.tryHead
+            |> Option.bind (fun s ->
+                match Int32.TryParse s with
+                | true, n -> Some n
+                | _ -> None)
+            |> Option.defaultValue 20000
+
+        printEscapeRates iterations
         0
     | "append-rate" :: rest ->
         let count =

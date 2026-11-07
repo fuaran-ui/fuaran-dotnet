@@ -7919,6 +7919,28 @@ markdown or SVG markup through it inherits the change.
 - In-process A/B: 0.12–0.51× the old time on strings without a backslash, 0.83–0.97× with escapes; DAG-row decode
   58.8 → 45.7 µs and 37.8 → 25.3 KB.
 
+### What rides this slot — Phase 2026 (the op-stream escapers are Core's)
+
+**Class: additive — no public surface moves, and no wire, hash or corpus byte moves.** Packages
+`Fuaran.UI.OpStream.Abstractions`, `Fuaran.UI.OpStream.Dag.Abstractions`, `Fuaran.UI.OpStream.Dag.Merge`,
+`Fuaran.UI.OpStream.Replay`, `Fuaran.UI.OpStream.Sqlite`, `Fuaran.UI.OpStream.Dag.Sqlite`, `Fuaran.UI.Ops`.
+
+- Every private copy of the canonical string escape in the op-stream tier — `CanonicalJson.appendRawString`, the
+  actor, chain-entry, attestation, DAG pre-image, DAG wire, merge-refusal, merge-verdict, guest-export and SQLite
+  envelope writers, and the schema generator — now spells a string through `Fuaran.Core.Json.escapeInto` /
+  `JsonString.quote`. The copies were private (`SegmentDescriptor.jstr` stays `internal`, now a call), so no
+  signature moves. Every collapsed site is held to a frozen copy of the old body over an edge table (every control
+  character, escapes at either end, runs between escapes, surrogate pairs and lone surrogates), Core's
+  `StringEscapeVectors` and a seeded fuzz; the content addresses over the same inputs hash to a digest pinned before
+  the change.
+- **One stored-byte change, in `Fuaran.UI.OpStream.Dag.Sqlite`:** its `result_envelope_json` column used to write a
+  control character raw (invalid JSON); it now writes `\u00xx`. The reader takes both spellings, so a database
+  written before reads unchanged. The column is not hashed; no content address moves.
+- Measured (`escape-rate`: a long clean string, an escape-heavy string, 256 short keys, per `encodeOp`; two runs
+  each side): .NET clean 45.7–48.1 → 32.3–36.8 µs, heavy 194.7–225.4 → 50.8–52.3 µs (130,824 → 32,520 B), keys
+  unchanged within noise (190–198 µs both sides); node (Fable) clean 0.80–0.92 → 0.08–0.09 ms, heavy 2.38–2.56 →
+  0.33–0.47 ms, keys 0.91–1.02 → 0.29–0.39 ms. Readings: `benchmarks/Fuaran.UI.Ops.Benchmarks/results/`.
+
 ---
 
 ## 0.102.0 (RELEASED — tagged v0.102.0 at 00225688, 2026-11-06)

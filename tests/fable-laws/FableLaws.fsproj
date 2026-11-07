@@ -60,6 +60,9 @@
          linked from the suite that runs them there. -->
     <Compile Include="..\..\src\Fuaran.UI.Tests\SanitizeCases.fs" Link="SanitizeCases.fs" />
     <Compile Include="SanitizeLaw.fs" />
+    <!-- Law 12 (Phase 2026): the op-stream tier spells a control character the same way on both
+         pipelines, now that every site escapes through Core. -->
+    <Compile Include="EscapeLaw.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
