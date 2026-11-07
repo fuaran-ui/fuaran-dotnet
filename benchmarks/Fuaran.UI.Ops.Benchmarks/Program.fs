@@ -171,6 +171,40 @@ let main argv =
         | other ->
             eprintfn "unknown capture target '%s' — expected apply | op | render" other
             2
+    | "apply-rate" :: rest ->
+        let iterations =
+            rest
+            |> List.tryHead
+            |> Option.bind (fun s ->
+                match Int32.TryParse s with
+                | true, n -> Some n
+                | _ -> None)
+            |> Option.defaultValue 5
+
+        // The progressive sizes, e.g. `1000,10000` (the default). Each build is timed
+        // `iterations` times at 1,000 nodes and proportionally fewer above, never fewer than once.
+        let sizes =
+            match rest with
+            | _ :: s :: _ -> s.Split ',' |> Array.map int |> Array.toList
+            | _ -> [ 1000; 10000 ]
+
+        for n in sizes do
+            let nodes, meanUs, perNodeUs, allocB =
+                ApplyRate.progressive n (max 1 (iterations * 1000 / n))
+
+            printfn "applyrate.progressive.%d.nodes = %d" n nodes
+            printfn "applyrate.progressive.%d.mean_us = %.1f" n meanUs
+            printfn "applyrate.progressive.%d.per_node_us = %.2f" n perNodeUs
+            printfn "applyrate.progressive.%d.alloc_b = %.0f" n allocB
+
+        let nodes, rows = ApplyRate.field (iterations * 1000)
+        printfn "applyrate.field.nodes = %d" nodes
+
+        for name, meanUs, allocB in rows do
+            printfn "applyrate.field.%s.mean_us = %.2f" name meanUs
+            printfn "applyrate.field.%s.alloc_b = %.0f" name allocB
+
+        0
     | "tree-diff" :: rest ->
         let iterations =
             rest

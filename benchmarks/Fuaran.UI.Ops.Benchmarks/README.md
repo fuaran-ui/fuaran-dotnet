@@ -101,6 +101,7 @@ dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- hit-rate
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- render-alloc 20000
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- append-rate 20000
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- tree-diff 20
+dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- apply-rate 5 1000,10000
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- decode-rate 50
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- merge-rate 5 1000,5000,20000
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- merge-snapshot merges.txt
@@ -118,6 +119,14 @@ replaced.
 over a 2,001-node tree for four single-edit shapes (none, one field, one container field,
 one cross-parent move), with the op count of each diff as a sanity line, so a change to
 the diff can quote before-and-after figures from one command.
+
+`apply-rate` (Phase 2060) is not a baseline metric: it prints what `Apply.apply` costs on a
+tree built progressively (`Streaming.lowerTree` folded through `Streaming.applyFold`, one
+`InsertChild` per node, over a balanced tree of each size given, 1,000 and 10,000 by default) and
+on single field ops addressed at the last preorder leaf of a `MaxDepth`-deep chain. Read the
+progressive `per_node_us` across sizes: flat is a linear build, rising with n is a whole-tree walk
+per insert. On a contended machine read `alloc_b`, which does not move with the load, before
+`mean_us`, which does.
 
 `core-diff` (Phase 2304) is not a baseline metric either: it prints the cost of
 `TreeOpDiff.diff` over one sweep of the corpus pairs (`diff/goldens.json` both ways, and
