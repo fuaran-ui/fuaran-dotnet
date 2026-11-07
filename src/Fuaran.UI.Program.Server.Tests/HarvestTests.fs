@@ -306,3 +306,70 @@ let contentAddressTests =
                           (sprintf "'%s' is still undeclared" claim)
                   | Ok _ -> failtestf "'%s' must be refused as undeclared" claim
           } ]
+
+// ─── Phase 2430: the harvested demand reads the demand view ─────────────────
+//
+// The harvest publishes the demanded projection with both postures joined on,
+// so for one program it must name the demand `ServerDemanded` names, and for a
+// registration alone the demand `ServerDemanded.ofHandlers` names. The tree
+// and its handler are `ReplayTests`' (one fixture, two documents).
+
+[<Tests>]
+let demandViewTests =
+    testList
+        "Phase 2430 — the harvested demand reads the demand view"
+        [ test "for one tree, the harvested demand names what the demanded projection names" {
+              let demanded =
+                  ServerDemanded.ofTreeAndHandlers ReplayTests.demandViewHandlers ReplayTests.demandViewTree
+
+              let harvested =
+                  Harvest.ofProgram QueryPosture.PureRead ReplayTests.demandViewHandlers ReplayTests.demandViewTree
+
+              Expect.equal
+                  (ReplayTests.withoutPostures harvested.Projection)
+                  (ReplayTests.withoutPostures (Demanded.union [ demanded ]))
+                  "the harvested demand IS the demanded projection, normalised"
+          }
+
+          test "the harvest posts both postures for every handler the demand view reaches, each the fold's" {
+              let harvested =
+                  Harvest.ofProgram QueryPosture.PureRead ReplayTests.demandViewHandlers ReplayTests.demandViewTree
+
+              let handler = ReplayTests.confirmedHandler
+
+              match harvested.Projection.Server with
+              | Some tier ->
+                  Expect.equal
+                      tier.Replay
+                      [ Replay.postureOf QueryPosture.PureRead handler ]
+                      "the fold's replay posture"
+
+                  Expect.equal
+                      tier.Undo
+                      [ Undo.postureOf QueryPosture.PureRead UiWitness.witness handler ]
+                      "the fold's undo posture"
+              | None -> failtest "a program with a registration publishes a server tier"
+          }
+
+          test "a registration's harvested demand names what ServerDemanded.ofHandlers names" {
+              let handlers = [ ReplayTests.confirmedHandler ]
+              let demanded = ServerDemanded.ofHandlers handlers
+              let harvested = Harvest.ofRegistration QueryPosture.PureRead handlers
+
+              // The go-red half: read through the fold view, the confirm's
+              // continuation is invisible, so the two demands differ.
+              let folded =
+                  Fuaran.Program.Server.ServerDemanded.ofHandlers UiWitness.witness handlers
+
+              Expect.notEqual folded demanded "the demand view reads the continuation's channel"
+
+              Expect.equal
+                  (ReplayTests.withoutPostures harvested.Projection)
+                  (ReplayTests.withoutPostures (Demanded.union [ demanded ]))
+                  "the registration's harvested demand IS the demand view's"
+
+              Expect.equal
+                  (harvested.Projection.Server |> Option.map _.Replay)
+                  (Some [ Replay.postureOf QueryPosture.PureRead ReplayTests.confirmedHandler ])
+                  "and its posture is still the fold's"
+          } ]
