@@ -35,7 +35,7 @@ Fuaran.metric "metric-1" {
     Defaults.metric with
         Label = TextSource.Literal "Revenue"
         Value = Binding.Static(Some 1234.5)
-        Format = CellFormat.Currency "GBP"
+        Format = CellFormat.Currency("GBP", None, None)
         Tone = ToneVariant.Brand
         Icon = Some(IconSource.Named "trending-up")
         Subtext = Some(TextSource.Literal "vs last month")
