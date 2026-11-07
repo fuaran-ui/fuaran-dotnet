@@ -82,7 +82,9 @@ let escapeLaw () : EscapeLaw =
               for name, s in cases do
                   let out = encode s
                   let ok = out.Contains(expectedQuoted s)
-                  yield ok, $"escape {site} {name} ok={ok} len={out.Length} sum={checksum out}" ]
+                  // Spelled out: a bool renders `True` on .NET and `true` under Fable.
+                  let verdict = if ok then "yes" else "no"
+                  yield ok, $"escape {site} {name} ok={verdict} len={out.Length} sum={checksum out}" ]
 
     { Lines = rows |> List.map snd
       Violations = rows |> List.filter (fst >> not) |> List.length }
