@@ -1,4 +1,4 @@
-module Fuaran.UI.Ops.Streaming
+﻿module Fuaran.UI.Ops.Streaming
 
 // ============================================================================
 //  Streaming / progressive partial-tree decode + apply (Phase 104).
@@ -30,10 +30,10 @@ module Fuaran.UI.Ops.Streaming
 //  its `NodeJson` payload is canonical `Node` wire, so no `WIRE_FORMAT.md` /
 //  corpus / cross-host forward-coupling is incurred.
 //
-//  Lowering builds on `Introspect.getChildren` / `withChildren` — the SAME
-//  shape every structural op traverses — so `lowerTree`'s `InsertChild` ops are
-//  exactly what `Apply.apply` consumes, closing the loop within one consistent
-//  introspection surface.
+//  Lowering is Fuaran.Core's (`Ops.lower`) over the tier's structural witness
+//  — the SAME shape every structural op traverses — so `lowerTree`'s
+//  `InsertChild` ops are exactly what `Apply.apply` consumes, closing the loop
+//  within one consistent introspection surface.
 // ============================================================================
 
 open Fuaran.UI
@@ -73,49 +73,49 @@ let decodeBatch (wire: string) : Result<WireTree, JsonDecode.DecodeError> = Json
 let isDecomposable (node: Node<'Msg>) : bool =
     Introspect.withChildren node.Kind [] |> Option.isSome
 
-/// The shell of `node`: a decomposable node with its children emptied; any
-/// other node unchanged (inserted whole as a streaming leaf).
-let shellOf (node: Node<'Msg>) : Node<'Msg> =
-    match Introspect.withChildren node.Kind [] with
-    | Some shellKind -> { node with Kind = shellKind }
-    | None -> node
+/// The streaming lowering's witness: the tier's structural `NodeWitness`, with
+/// a kept-whole node's children read as EMPTY. A `FragmentDecl` holds an ordered
+/// list of exactly one body, so `getChildren` answers `Some [ body ]` while its
+/// shell cannot be emptied; read through the structural witness, Core's
+/// lowering would leave the decl whole AND stream its body into it (Phase 2064
+/// checked this; the `StreamingProperties` suite pins it). Through this one a
+/// node is filled exactly when it is decomposable.
+let private keptWhole<'Msg> : Fuaran.Core.NodeWitness<Node<'Msg>, NodeId> =
+    { Introspect.nodeWitness with
+        Children =
+            fun node ->
+                if isDecomposable node then
+                    Introspect.nodeWitness.Children node
+                else
+                    [] }
 
-/// The children to fill for a node, or `None` when the node is a streaming leaf
-/// (childless kind, kept-whole kind, or a decomposable kind that is already
-/// empty — nothing to stream into).
-///
-/// The `isDecomposable` test is NOT implied by `getChildren` answering: a
-/// `FragmentDecl` holds an ordered list of exactly one body, so `getChildren`
-/// answers `Some [ body ]` while its shell cannot be emptied. Without the test
-/// the body would be streamed into a parent `shellOf` left whole (Phase 2064
-/// checked this; the `StreamingProperties` suite pins it).
-let private fillableChildren (node: Node<'Msg>) : Node<'Msg> list option =
-    match Introspect.getChildren node.Kind with
-    | Some children when isDecomposable node && not (List.isEmpty children) -> Some children
-    | _ -> None
+/// The shell of `node`: a decomposable node with its children emptied; any
+/// other node unchanged (inserted whole as a streaming leaf). Core's
+/// `Ops.shellOf` over `keptWhole` (Phase 2060).
+let shellOf (node: Node<'Msg>) : Node<'Msg> = Fuaran.Core.Ops.shellOf keptWhole node
 
 // ─── Canonical lowering (Task 1 contract + the shared batch/stream plan) ─────
+//
+// Fuaran.Core's lowering (`Ops.skeletonRoot` / `Ops.lower`, which the UI's
+// own lowering became when it moved there), over `keptWhole`. What stays here
+// is the witness and the frame protocol.
 
 /// The skeleton root for a tree: the root with its children emptied (a
 /// decomposable root), or the whole root unchanged (a leaf / kept-whole root).
 /// This is the genesis tree both the batch and streaming op-streams build from.
-let skeletonRoot (root: Node<'Msg>) : Node<'Msg> = shellOf root
+let skeletonRoot (root: Node<'Msg>) : Node<'Msg> =
+    Fuaran.Core.Ops.skeletonRoot keptWhole root
 
 /// The canonical lowering as data: each `(parent, shell)` an `InsertChild`
 /// carries, in pre-order. `lowerTree` states them as ops and `framesOf` as
-/// frames — one plan, so neither has to recover the other's shape.
+/// frames — one plan, so neither has to recover the other's shape. Core's
+/// `Ops.lower` emits only inserts.
 let private lowerInserts (root: Node<'Msg>) : (NodeId * Node<'Msg>) list =
-    let rec fill (node: Node<'Msg>) : (NodeId * Node<'Msg>) list =
-        match fillableChildren node with
-        | None -> []
-        | Some children ->
-            children
-            // `Node.Id` is a bare string since the swap; the op layer still
-            // addresses parents by the `NodeId` wrapper.
-            |> List.map (fun child -> (NodeId node.Id, shellOf child) :: fill child)
-            |> List.concat
-
-    fill root
+    Fuaran.Core.Ops.lower keptWhole root
+    |> List.choose (fun op ->
+        match op with
+        | Fuaran.Core.SkeletonOp.InsertChild(parentId, shell) -> Some(parentId, shell)
+        | _ -> None)
 
 /// Lower a fully-decoded tree into the canonical, deterministic
 /// `TreeOp.InsertChild` sequence that reconstructs it from its own
@@ -283,15 +283,13 @@ let pendingPlaceholder<'Msg> (nodeId: NodeId) : Node<'Msg> =
 /// rest. Hosts maintain the `pending` set as frames arrive and re-render the
 /// substituted tree; once a subtree's frame lands, its id leaves the set and
 /// the real node renders. This never touches the op stream.
-let rec withSkeletons (pending: Set<NodeId>) (node: Node<'Msg>) : Node<'Msg> =
-    if Set.contains (NodeId node.Id) pending then
-        pendingPlaceholder (NodeId node.Id)
-    else
-        match Introspect.getChildren node.Kind with
-        | Some children ->
-            let mapped = children |> List.map (withSkeletons pending)
-
-            match Introspect.withChildren node.Kind mapped with
-            | Some newKind -> { node with Kind = newKind }
-            | None -> node
-        | None -> node
+///
+/// Core's `Tree.map` over the structural witness (Phase 2060): a pending node is
+/// replaced whole, so what its subtree held never reaches the render.
+let withSkeletons (pending: Set<NodeId>) (node: Node<'Msg>) : Node<'Msg> =
+    node
+    |> Fuaran.Core.Tree.map Introspect.nodeWitness (fun n ->
+        if Set.contains (NodeId n.Id) pending then
+            pendingPlaceholder (NodeId n.Id)
+        else
+            n)
