@@ -10,6 +10,52 @@ consequence.
 
 ---
 
+## 2026-11-07 — D27: every document over a tree reads its demand through the demand view, and every posture through the fold view
+
+**Decided (Phase 2430).** `ServerAliases.fs` builds four documents from handlers, and they disagreed about what a tree
+demands. `ServerDemanded.ofTreeAndHandlers` read the **demand view** (`UiWitness.demandWitnessIn root`: a commit names
+the key its field's `commitTo` writes, D15; a confirm demands both continuations, D11), while `Replay.ofTreeAndHandlers`
+and `Harvest.ofProgram` handed the core the **fold view** (`UiWitness.witness`) for the whole document. For one tree
+the replay document and the harvested demand therefore named fewer state namespaces than the demanded projection, and
+posted no posture at all for a handler reachable only through a confirm's continuation. The registration-only
+`Harvest.ofRegistration` had the same divergence from `ServerDemanded.ofHandlers`, which reads the tree-free
+`UiWitness.demandWitness`.
+
+The rule now, alias by alias:
+
+1. **The demand, and the reachability the postures are posted for, read the demand view.** `Replay.ofTreeAndHandlers`
+   is this file's `ServerDemanded.ofTreeAndHandlers` with postures joined over this file's `ServerDemanded.reachable`;
+   `Harvest.ofProgram` adds the undo postures over the same reachability and publishes; `Harvest.ofRegistration` is
+   this file's `ServerDemanded.ofHandlers` with both postures joined. So the posture-joined documents ARE the demanded
+   projection plus postures, by construction, and pinned by tests that failed before the change.
+2. **A posture reads the fold view.** A replay or undo posture describes what re-running a handler FOLDS, and the fold
+   never reads `demandView` (its own doc comment: it would ask the question and run an arm in one event). The posture a
+   document posts is therefore exactly `Replay.postureOf` / `Undo.postureOf` under `UiWitness.witness`, the one
+   `Replay.admit` decides by. The two views differ on a server handler whose compute stage holds a confirm: the demand
+   view adds the continuations' defects (a `non-literal-write`, say) to a stage whose fold only asks. A document whose
+   posture disagreed with the admission decision would be a second, unenforced answer to the same question.
+3. **`Replay.withPostures` reads the fold view and stays as it was:** it joins postures and computes no demand, so
+   rule 2 is all that applies. It takes no tree because a posture needs none.
+4. **`Harvest.ofRegistration` takes no tree, yet still has a demand view to read**: the tree-free `demandWitness`. The
+   phase's premise that a tree-less alias has no demand view was half right: it has no `demandWitnessIn`, because
+   there is no tree for a commit to be resolved in, but a confirm's continuations are visible without one, and
+   `ServerDemanded.ofHandlers` already read them.
+
+**Rejected:** passing `demandWitnessIn root` to the core's one-call `Replay.ofTreeAndHandlers` / `Harvest.ofProgram`.
+The core reads one witness for both the demand and the postures, so the postures would have read the demand view and
+disagreed with `Replay.admit` on exactly the handlers rule 2 names. The aliases compose the core's own public steps
+instead (`ServerDemanded.*`, `Replay.withPostures`, `Undo.withPostures`, `Harvest.publish`), in the core's own order,
+so the documents still come from one reachability. A core signature taking the two witnesses separately would let the
+aliases call one function again; that is the core's change to make, not this adapter's.
+
+**Consequence:** for a tree with a commit or a confirm, the replay document and the harvested demand now name more:
+the commit's namespace, a confirm continuation's effects, and a posture for every handler the continuation reaches.
+That is additive on the published document and changes no signature: a consumer reading either document sees the
+same shape, with more entries for a tree that commits or confirms. It rides the next draft slot after 0.102.0 as an
+additive change.
+
+---
+
 ## 2026-11-03 — D24: a partial emitter claims a declared profile, and the hosts carry its old spellings under a written commitment
 
 **Decided (Phase 2451).** The wire gains a third role beside the codec host and the render projection: the
