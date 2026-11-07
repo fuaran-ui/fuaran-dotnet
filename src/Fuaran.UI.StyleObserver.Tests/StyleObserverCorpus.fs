@@ -65,11 +65,12 @@ let private inv = Globalization.CultureInfo.InvariantCulture
 
 // ─── The authored cases ─────────────────────────────────────────────────────
 
-/// One case of the family. The three arms are the three questions a host can be
-/// asked about resolved style, and they need different evidence: a manifest-free
-/// derivation takes a `StyleInput`, a manifest-aware per-node check takes an
-/// already-derived observation plus a manifest, and a usage-budget check takes a
-/// manifest plus a whole tree's worth of area.
+/// One case of the family. The first three arms are the three questions a host
+/// can be asked about resolved style, and they need different evidence: a
+/// manifest-free derivation takes a `StyleInput`, a manifest-aware per-node check
+/// takes an already-derived observation plus a manifest, and a usage-budget check
+/// takes a manifest plus a whole tree's worth of area. The fourth asks what the
+/// manifest itself means before any style is observed against it (Phase 2133).
 type Case =
     /// Manifest-free: `Flags.derive` + `Flags.toObservation` over a `StyleInput`.
     | Observation of
@@ -92,6 +93,10 @@ type Case =
         manifestJson: string *
         nodes: (StyleObservation * float) list *
         expectKinds: string list
+    /// Phase 2133 — the manifest validation pass: `ThemeManifest.validate`, run
+    /// after the tolerant decode. `expectCodes` is the defect-code list the case
+    /// exists to exhibit, in order; `[]` claims the manifest validates clean.
+    | ManifestValidation of id: string * description: string * manifestJson: string * expectCodes: string list
 
 [<AutoOpen>]
 module private Cases =
@@ -344,6 +349,54 @@ let cases: Case list =
           [ obs "a" (rgb 1.0 2.0 3.0) None 21.0, 60.0
             obs "b" (rgb 9.0 9.0 9.0) None 21.0, 40.0 ],
           [ "UsageBudgetExceeded" ]
+      )
+
+      // ─── Phase 2133 — what the manifest means, after a tolerant decode ──
+      // Every manifest here is in the CANONICAL form the byte law writes (keys
+      // sorted, members at their default omitted), so the family also pins that
+      // every host decodes the omitted-default form, and flags it only for its
+      // meaning.
+      ManifestValidation(
+          "manifest-validation-accepts-omitted-defaults",
+          "A canonical manifest whose invariants omit their defaulted members (a zero budget, a zero motion ceiling, a default weight) and bind every role and token: it validates clean.",
+          """{"invariants":[{"kind":"ContrastFloor","minRatio":7,"role":"Brand"},{"kind":"UsageBudget","token":"color.brand"},{"kind":"MotionVoice"}],"roles":[{"role":{"tone":"Brand"},"token":"color.brand"}],"tokens":{"color":{"brand":{"$type":"color","$value":"#010203"}}}}""",
+          []
+      )
+      ManifestValidation(
+          "manifest-validation-zero-floor",
+          "A contrast floor whose minRatio is omitted decodes to 0, a floor every pair passes: out of range.",
+          """{"invariants":[{"kind":"ContrastFloor","role":"Brand"}],"roles":[{"role":{"tone":"Brand"},"token":"color.brand"}],"tokens":{"color":{"brand":{"$type":"color","$value":"#010203"}}}}""",
+          [ "CONTRAST_FLOOR_OUT_OF_RANGE" ]
+      )
+      ManifestValidation(
+          "manifest-validation-explicit-sub-1-floor",
+          "A contrast floor written explicitly as 0.5 fails open exactly as an omitted one does: out of range.",
+          """{"invariants":[{"kind":"ContrastFloor","minRatio":0.5,"role":"Brand"}],"roles":[{"role":{"tone":"Brand"},"token":"color.brand"}],"tokens":{"color":{"brand":{"$type":"color","$value":"#010203"}}}}""",
+          [ "CONTRAST_FLOOR_OUT_OF_RANGE" ]
+      )
+      ManifestValidation(
+          "manifest-validation-empty-role",
+          "A contrast floor with its role omitted floors nothing: the role is empty.",
+          """{"invariants":[{"kind":"ContrastFloor","minRatio":7}],"tokens":{}}""",
+          [ "CONTRAST_FLOOR_ROLE_EMPTY" ]
+      )
+      ManifestValidation(
+          "manifest-validation-unbound-role",
+          "A contrast floor on a role no binding binds checks nothing: the role is unbound.",
+          """{"invariants":[{"kind":"ContrastFloor","minRatio":7,"role":"body-text"}],"roles":[{"role":{"tone":"Brand"},"token":"color.brand"}],"tokens":{"color":{"brand":{"$type":"color","$value":"#010203"}}}}""",
+          [ "CONTRAST_FLOOR_ROLE_UNBOUND" ]
+      )
+      ManifestValidation(
+          "manifest-validation-undeclared-token",
+          "A usage budget on a token the manifest does not declare can never be measured: the token is undeclared.",
+          """{"invariants":[{"kind":"UsageBudget","targetPct":10,"tolerancePct":5,"token":"color.ghost"}],"tokens":{"color":{"brand":{"$type":"color","$value":"#010203"}}}}""",
+          [ "USAGE_BUDGET_TOKEN_UNDECLARED" ]
+      )
+      ManifestValidation(
+          "manifest-validation-unknown-kind",
+          "An invariant kind outside the vocabulary is kept with its members and reported unenforced at its index, never dropped.",
+          """{"invariants":[{"kind":"MotionVoice"},{"kind":"FocusRing","minWidthPx":2}],"tokens":{}}""",
+          [ "INVARIANT_KIND_UNKNOWN" ]
       ) ]
 
 // ─── JSON writing (no dependency; the corpus is read by five languages) ─────
@@ -407,12 +460,14 @@ let caseId (case: Case) =
     | Observation(id, _, _, _, _) -> id
     | PerNode(id, _, _, _, _) -> id
     | UsageBudget(id, _, _, _, _) -> id
+    | ManifestValidation(id, _, _, _) -> id
 
 let private describe (case: Case) =
     match case with
     | Observation(_, d, _, _, _) -> d
     | PerNode(_, d, _, _, _) -> d
     | UsageBudget(_, d, _, _, _) -> d
+    | ManifestValidation(_, d, _, _) -> d
 
 let private decodeManifest (id: string) (json: string) =
     match Decode.decode json with
@@ -492,6 +547,24 @@ let render (case: Case) : string =
               "  \"nodeAreas\": [\n" + String.Join(",\n", areas) + "\n  ],"
               "  \"expectedBudgetFlags\": "
               + jarr (flags |> List.map (StyleFlag.encode >> jstr)) ]
+
+        | ManifestValidation(id, _, manifestJson, expect) ->
+            let defects = ThemeManifest.validate (decodeManifest id manifestJson)
+            let actual = defects |> List.map (fun d -> ManifestDefect.code d.Code)
+
+            if actual <> expect then
+                failwithf
+                    "style-observer case '%s' claims defects %A but the reference validation produced %A. Either the \
+                     case is mis-authored or the implementation has regressed — the emitter will not publish the \
+                     disagreement."
+                    id
+                    expect
+                    actual
+
+            [ "  \"tier\": \"manifest-validation\","
+              "  \"manifest\": " + jstr manifestJson + ","
+              "  \"expectedManifestDefects\": "
+              + jarr (defects |> List.map (ManifestDefect.encode >> jstr)) ]
 
     let header =
         [ "{"
