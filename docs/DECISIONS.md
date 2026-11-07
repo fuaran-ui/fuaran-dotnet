@@ -10,6 +10,41 @@ consequence.
 
 ---
 
+## 2026-11-07 — D26: a decoded `Local`'s `onCommit` stand-in flushes nothing; the server-driven flush commits through `commitTo` alone
+
+**Decided (Phase 2431).** The verification branch was **"it throws"**. A tree decoded from the wire, by either decoder
+(`Fuaran.UI.Ops.JsonDecode` and the generated `Fuaran.UI.Generated.decodeNode`), carries `onCommit = Some stand-in`
+whenever the document wrote `"onCommit":"<closure>"` (the corpus's `nodes/form-local-1.json` is that shape), and the
+stand-in answers the sentinel string `"<closure>"`. `FormBuffer.fieldFlushAction` unboxed that answer as
+`Action<'Msg>` and threw `InvalidCastException`; on a form submit the exception escaped `commitActions`, so one such
+field took down the whole flush, the declared `commitTo` writes of its sibling fields included. A field carrying
+`commitTo` or neither destination decodes with `onCommit = None` and was always safe. The decoder refuses the two
+destinations together, so a decoded `Local` has at most one.
+
+The flush now reads the stand-in's answer as **"no handler here"**: `FormBuffer.authoredCommit` maps the sentinel
+string to no action and unboxes anything else, so an in-process handler of the wrong type still fails loudly. A decoded
+`Local` therefore commits through its declared `commitTo` alone, and an `onCommit`-only decoded field flushes nothing,
+which is what the wire already says a decoding host can honour (the both-destinations refusal's own hint). The
+`FormBufferTests` "Phase 2431" list pins, for both decoders: what each decoder puts in `onCommit`, each field's flush,
+`commitActions` over all three, and a server-driven submit of a decoded form performing the declared write.
+
+**Rejected:**
+
+- **The decoder leaving `onCommit` as `None`**, the phase's preferred "unreachable by construction" route. The slot's
+  presence is what re-encodes the member the document wrote; `JsonDecode` was changed from an unconditional `Some` to
+  presence-tracking for exactly that reason, and the corpus round-trips `form-local-1`. `None` would make a decoded
+  tree drop a member on re-encode. Carrying presence somewhere other than the closure slot is a change to the `Binding`
+  type, which is wider than this phase.
+- **A type test on `Action<'Msg>`** (`:? Action<'Msg>`). It would also swallow a hand-built handler of the wrong type,
+  turning an author's bug into a silent no-op, and a generic type test does not carry to Fable.
+
+**Consequence.** The recognition is of the sentinel's spelling, which both decoders and WIRE_FORMAT's closure sentinel
+share; the pin that asserts what each decoder's stand-in answers goes red if either changes it. The client renderer
+(`Fuaran.UI.Renderer/Render.fs`, the `Local` field arms) performs the same unbox on the same stand-in and is not
+changed here.
+
+---
+
 ## 2026-11-03 — D24: a partial emitter claims a declared profile, and the hosts carry its old spellings under a written commitment
 
 **Decided (Phase 2451).** The wire gains a third role beside the codec host and the render projection: the
