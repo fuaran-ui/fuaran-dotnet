@@ -153,6 +153,9 @@
     <!-- Phase 2010: the markdown floor's cases, Fable-clean; tests/fable-laws links this file. -->
     <Compile Include="SanitizeCases.fs" />
     <Compile Include="SanitizeTests.fs" />
+    <!-- Phase 2318: the float-layout cases, Fable-clean; tests/fable-laws links this file. -->
+    <Compile Include="FloatLayoutCases.fs" />
+    <Compile Include="FloatLayoutTests.fs" />
     <Compile Include="SanitizationCorpusTests.fs" />
     <!-- MarkdownTests pins Phase 292's deterministic GFM renderer
          (Fuaran.UI.Renderer.Markdown.toHtml) — the canonical-HTML contract
@@ -522,6 +525,8 @@
     <!-- Phase 183 — FragmentMemoTests exercises the incremental re-derivation
          engine + the op-stream canonical-JSON encoder it keys over. -->
     <ProjectReference Include="..\Fuaran.UI.Memo\Fuaran.UI.Memo.fsproj" />
+    <!-- Phase 2318: the AI wire's number layout, pinned by FloatLayoutCases. -->
+    <ProjectReference Include="..\Fuaran.UI.AiWire\Fuaran.UI.AiWire.fsproj" />
     <ProjectReference Include="..\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
     <!-- Phase 443 — StructuralQueryTests wires the predicate library's
          delegation seam onto the REAL signature-searchable pattern bank, so the

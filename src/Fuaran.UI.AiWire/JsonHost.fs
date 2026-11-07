@@ -66,14 +66,17 @@ module JsonHost =
     /// Canonical number formatting. JSON has no NaN / ±∞ (they become
     /// `null`, as `JSON.stringify` does). Integral values in a safe range
     /// emit without a decimal point via int64 formatting (identical on both
-    /// hosts); other values fall back to the shortest round-trip string.
+    /// hosts); every other value takes `Fuaran.Core`'s finite float layout
+    /// (Phase 2318), the shortest round-trip digits laid out identically on
+    /// both hosts — a bare `string f` wrote `1E-07` on .NET and `1e-7` under
+    /// Fable, which broke the byte-parity claim above.
     let private writeNumber (sb: System.Text.StringBuilder) (f: float) : unit =
         if System.Double.IsNaN f || System.Double.IsInfinity f then
             sb.Append("null") |> ignore
         elif f = floor f && abs f < 1e15 then
             sb.Append(string (int64 f)) |> ignore
         else
-            sb.Append(string f) |> ignore
+            sb.Append(Fuaran.Core.FloatLayout.finite f) |> ignore
 
     let rec private writeValue (sb: System.Text.StringBuilder) (v: JsonValue) : unit =
         match v with

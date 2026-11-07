@@ -28,87 +28,6 @@ open System.Text
 open System.Globalization
 open Fuaran.UI.Types
 
-#if FABLE_COMPILER
-// Fable does not support the `Double.ToString("R", …)` round-trip specifier used
-// below for a fractional coordinate. This is the byte-identical Fable-safe shortest-
-// round-trip encoder, ported VERBATIM from
-// `Fuaran.UI.OpStream.Abstractions.CanonicalJson.formatFiniteDouble` (itself the
-// fuaran-ts `formatFiniteDouble` parity oracle). Both runtimes compute the same
-// shortest digits; this re-lays JS's layout into .NET's `"R"` form (fixed iff the
-// leading-digit exponent is in [-4, 16], else uppercase-`E` scientific with a
-// signed, ≥2-digit zero-padded exponent), so the Fable-client SVG bytes match the
-// SSR bytes. KEEP IN SYNC with `CanonicalJson.formatFiniteDouble`.
-[<Fable.Core.Emit("$0.toString()")>]
-let private jsNumberToString (n: float) : string = Fable.Core.Util.jsNative
-
-let private formatFiniteDouble (n: float) : string =
-    if n = 0.0 then
-        "0"
-    else
-        let neg = n < 0.0
-        let s = jsNumberToString (abs n)
-        let mutable digits = ""
-        let mutable exp = 0
-        let eIdx = s.IndexOf 'e'
-
-        if eIdx >= 0 then
-            let mant = s.Substring(0, eIdx)
-            let mantExp = int (s.Substring(eIdx + 1))
-            let dot = mant.IndexOf '.'
-
-            if dot < 0 then
-                digits <- mant
-                exp <- mantExp + (mant.Length - 1)
-            else
-                digits <- mant.Substring(0, dot) + mant.Substring(dot + 1)
-                exp <- mantExp + (dot - 1)
-        else
-            let dot = s.IndexOf '.'
-
-            if dot < 0 then
-                digits <- s
-                exp <- s.Length - 1
-            else
-                let intPart = s.Substring(0, dot)
-                let fracPart = s.Substring(dot + 1)
-
-                if intPart = "0" then
-                    let trimmed = fracPart.TrimStart('0')
-                    let leadingZeros = fracPart.Length - trimmed.Length
-                    digits <- fracPart.Substring(leadingZeros)
-                    exp <- -(leadingZeros + 1)
-                else
-                    digits <- intPart + fracPart
-                    exp <- intPart.Length - 1
-
-        digits <- digits.TrimEnd('0')
-
-        if digits = "" then
-            digits <- "0"
-
-        let out =
-            if exp >= -4 && exp <= 16 then
-                if exp >= 0 then
-                    if digits.Length <= exp + 1 then
-                        digits + String.replicate (exp + 1 - digits.Length) "0"
-                    else
-                        digits.Substring(0, exp + 1) + "." + digits.Substring(exp + 1)
-                else
-                    "0." + String.replicate (-exp - 1) "0" + digits
-            else
-                let mantissa =
-                    if digits.Length = 1 then
-                        digits
-                    else
-                        string digits[0] + "." + digits.Substring(1)
-
-                let expSign = if exp >= 0 then "+" else "-"
-                let expDigits = (abs exp).ToString().PadLeft(2, '0')
-                mantissa + "E" + expSign + expDigits
-
-        if neg then "-" + out else out
-#endif
-
 /// Canonical number form for an SVG coordinate/measure — a whole value drops the
 /// decimal (`10`), else the invariant shortest round-trip form (`1.5`).
 /// Culture-independent + deterministic, so every host agrees on the bytes.
@@ -118,11 +37,9 @@ let formatNum (n: float) : string =
     elif n = System.Math.Floor n && abs n < 1e15 then
         (int64 n).ToString(CultureInfo.InvariantCulture)
     else
-#if FABLE_COMPILER
-        formatFiniteDouble n
-#else
-        n.ToString("R", CultureInfo.InvariantCulture)
-#endif
+        // Phase 2318 — Core's one finite layout (.NET's "R" form, re-laid identically under
+        // Fable), so the client SVG bytes match the SSR bytes by construction.
+        Fuaran.Core.FloatLayout.finite n
 
 /// XML-escape text / attribute content.
 let escape (s: string) : string =

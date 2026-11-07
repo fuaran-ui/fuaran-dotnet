@@ -1,6 +1,5 @@
 module Fuaran.UI.Memo.FragmentKey
 
-open System.Globalization
 open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.OpStream.Abstractions
@@ -111,10 +110,17 @@ let describeUnrepresentable (us: Unrepresentable list) : string =
 /// `i:3` (int) and `s:3` (string) never collide. Mirrors the `CanonicalJson`
 /// `encodeScalar` vocabulary (Int / Float / Bool / Str) — key material only, all
 /// of which feeds the single `Fuaran.Core.Hash.sha256Hex`.
+///
+/// A float is laid out by Core's `FloatLayout.roundTrip` (Phase 2318): .NET's "R"
+/// spelling, which every stored key was minted under, re-laid identically under
+/// Fable — where a raw `ToString("R")` throws at run time. It is `roundTrip` and not
+/// the canonical wire rule on purpose: the canonical rule collapses `-0` to `0` and
+/// quotes the non-finite tokens, which would move existing keys and merge two
+/// applications a key must keep apart.
 let private scalarToken (v: obj) : string =
     match v with
     | :? int as n -> "i:" + string n
-    | :? float as f -> "f:" + f.ToString("R", CultureInfo.InvariantCulture)
+    | :? float as f -> "f:" + Fuaran.Core.FloatLayout.roundTrip f
     | :? bool as b -> "b:" + (if b then "1" else "0")
     | :? string as s -> "s:" + s
     | _ -> "o:opaque"
