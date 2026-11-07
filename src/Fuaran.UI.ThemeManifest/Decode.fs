@@ -12,6 +12,13 @@ module Fuaran.UI.ThemeManifest.Decode
 //      wrapper. Decodes to a manifest with the tokens populated and
 //      empty `Roles` / `Invariants` (so a DTCG file is not NIH-rejected).
 // Detection: presence of a top-level `tokens` key selects shape (1).
+//
+// **Tolerant, and total.** An absent member decodes to its default: the
+// cross-host byte law OMITS a member at its default value, so a strict decoder
+// would refuse every other host's canonical output. Whether the decoded values
+// MEAN anything — a contrast floor of 0, a role nothing binds, a budget on an
+// undeclared token, a kind this host does not know — is the validation pass's
+// question (`ThemeManifest.validate`, Phase 2133), asked after decode.
 
 open Fuaran.UI.Types
 open Fuaran.UI.ThemeManifest
@@ -133,6 +140,15 @@ let private parseInvariant (j: JsonValue) : Invariant option =
             Some
                 { Kind = InvariantKind.ChartSeriesDistinct
                   Weight = weight }
+        | Some other when other <> "" ->
+            // Phase 2133 — a kind this host does not know is KEPT with its
+            // members, never dropped: the validation pass reports it unenforced.
+            let members = fields |> List.filter (fun (k, _) -> k <> "kind" && k <> "weight")
+
+            Some
+                { Kind = InvariantKind.Unknown(other, members)
+                  Weight = weight }
+        // No non-empty string `kind`: not an invariant of any kind.
         | _ -> None
 
 let private parseMeta (fields: (string * JsonValue) list) : ManifestMeta =

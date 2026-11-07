@@ -18,6 +18,7 @@
     <Compile Include="QuerySchemaTests.fs" />
     <Compile Include="ServerParityTests.fs" />
     <Compile Include="ProgramWireConformanceTests.fs" />
+    <Compile Include="ClientEffectNonEmptyTests.fs" />
     <Compile Include="ReplayTests.fs" />
     <Compile Include="HarvestTests.fs" />
     <Compile Include="DurableInterpreterTests.fs" />

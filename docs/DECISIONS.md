@@ -10,6 +10,38 @@ consequence.
 
 ---
 
+## 2026-11-07 — D29: the client-effect decoder holds every member the program wire marks non-empty to it, on `missing-member`
+
+**Decided (Phase 2620).** The program wire specification's §2 states, once, that a member naming something a host
+acts on must not be empty, and tables the members per document. For the client effect they are `Navigate`'s and
+`PushState`'s `route`, `Focus`'s and `ReadFileBody`'s `nodeId`, `Download`'s `url` and `name`, and `Confirm`'s
+`prompt` and `token`. `UiWitness.decodeClientEffect` read all eight with `requireString`, so this host accepted
+documents the specification it certifies against calls malformed, and no vector said so.
+
+1. **One check, the program core's.** Each of the eight reads through `ProgramWire.requireNonEmpty`, the helper the
+   generic core already uses for its own non-empty members. A present-and-empty member is refused on
+   `missing-member`, the class an absent one is refused on, with the detail `member '<name>' is empty`, which names
+   the member and never echoes a value.
+2. **`WriteToClipboard`'s `text` stays readable empty.** It is content, not a name, and §2 lists it among the
+   members that may be empty; the single-member arm reader now takes its reader as an argument so that the one
+   content member says so at its call site.
+3. **The encoder does not refuse.** An empty member in a typed `ClientEffect` is the host's construction, not a
+   document it received; it encodes as it is, and the decoder refuses what it wrote, as the program core decided
+   for its own members.
+
+**Premises checked.** The specification's corpus had no vector for any of the eight empty values (its only
+`Confirm` reject is a token that is ABSENT), so the conformance suite stayed green. The program specification now
+carries one reject vector per member; this suite certifies all of them for their class.
+
+**Not moved here, and why.** The specification's rule also covers a `HostCall`'s `into`, an outcome's notification
+channel and every capability string in an outcome. This host reads those documents through the generic core's
+server package, pinned at a release that predates the rule, so their vectors land at the toy subject first and the
+referenced counterparts wait for this repository's raise of that pin.
+
+**Consequence:** a breaking narrowed decode, recorded on the open `0.103.0` draft in `STABILITY.md`.
+
+---
+
 ## 2026-11-07 — D28: the wire-profile step stays here until a released Core carries the decode rule; a loosening or a widening moves the minor
 
 **Decided (Phase 2509).** fuaran-core Phase 587 taught Core's IDL diff classifier the profile's decode rule

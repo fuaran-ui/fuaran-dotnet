@@ -10,25 +10,61 @@ module Fuaran.UI.ThemeManifest.Encode
 // values and a vanilla DTCG file decodes back through `Decode`. `roles`
 // + `invariants` are the Fuaran extensions DTCG lacks.
 //
-// `JObj` is an ordered pair list, so key order is the order written
-// here — encode is a pure, stable function of the manifest value.
+// **The cross-host byte law (Phase 2133).** The bytes are the canonical
+// manifest every manifest host writes: object keys Ordinal-sorted (UTF-16
+// code-unit order, WIRE_FORMAT §2 rule 2), no whitespace, and every member
+// the decoder tolerates the absence of OMITTED at its default — an empty
+// `$type`, `meta` name or version, an anonymous role, a zero number, a
+// default weight, an empty `meta` / `roles` / `invariants` block. `tokens` is
+// never omitted: its presence is what selects the wrapper shape at decode.
+// Omitting a member is not a weaker statement than writing its default; what
+// the decoded values MEAN is the validation pass's question
+// (`ThemeManifest.validate`), not the encoder's.
 
 open Fuaran.UI.Types
 open Fuaran.UI.ThemeManifest
 
-let private metaJson (meta: ManifestMeta) : JsonValue =
-    JObj(
-        [ Some("name", JStr meta.Name)
-          Some("version", JStr meta.Version)
-          meta.Description |> Option.map (fun d -> "description", JStr d) ]
-        |> List.choose id
-    )
+/// A member written only when it differs from the value the decoder supplies
+/// in its absence.
+let private str (key: string) (value: string) : (string * JsonValue) option =
+    if value = "" then None else Some(key, JStr value)
+
+let private num (key: string) (value: float) (dflt: float) : (string * JsonValue) option =
+    if value = dflt then None else Some(key, JNum value)
+
+/// Ordinal-sort every object's keys, at every depth — the canonical order the
+/// other hosts write, and the order an `Unknown` invariant's raw members are
+/// re-emitted in.
+let rec private canonical (v: JsonValue) : JsonValue =
+    match v with
+    | JObj pairs ->
+        pairs
+        |> List.map (fun (k, x) -> k, canonical x)
+        |> List.sortWith (fun (a, _) (b, _) -> System.String.CompareOrdinal(a, b))
+        |> JObj
+    | JArr items -> JArr(items |> List.map canonical)
+    | other -> other
+
+let private metaJson (meta: ManifestMeta) : JsonValue option =
+    if meta = ManifestMeta.anonymous then
+        None
+    else
+        Some(
+            JObj(
+                [ str "name" meta.Name
+                  str "version" meta.Version
+                  meta.Description |> Option.map (fun d -> "description", JStr d) ]
+                |> List.choose id
+            )
+        )
 
 // ─── DTCG token-tree emission ───────────────────────────────────
 
+/// One DTCG leaf. `$value` is the leaf discriminator the decoder's walk stops
+/// on, so it is written even when empty.
 let private leafJson (t: ManifestToken) : JsonValue =
     JObj(
-        [ Some("$type", JStr t.Type)
+        [ str "$type" t.Type
           Some("$value", JStr t.Value)
           t.Description |> Option.map (fun d -> "$description", JStr d)
           t.Role
@@ -65,45 +101,57 @@ let private roleJson (role: ManifestRole) : JsonValue =
     | ManifestRole.Tone t -> JObj [ "tone", JStr(ManifestRole.toneToString t) ]
     | ManifestRole.Named n -> JObj [ "named", JStr n ]
 
+/// `token` is required (a binding without one is dropped at decode); an absent
+/// `role` decodes to `Named ""`, so that one role is omitted.
 let private roleBindingJson (b: RoleBinding) : JsonValue =
-    JObj [ "role", roleJson b.Role; "token", JStr b.TokenName ]
+    JObj(
+        [ (if b.Role = ManifestRole.Named "" then
+               None
+           else
+               Some("role", roleJson b.Role))
+          Some("token", JStr b.TokenName) ]
+        |> List.choose id
+    )
 
+/// `kind` is the discriminator and is always written; every other member is
+/// omitted at the default the decoder supplies for it.
 let private invariantJson (inv: Invariant) : JsonValue =
-    let weight = "weight", JNum inv.Weight
+    let kind = Some("kind", JStr(Invariant.kind inv))
+    let weight = num "weight" inv.Weight Invariant.DefaultWeight
 
-    match inv.Kind with
-    | InvariantKind.ContrastFloor(role, minRatio) ->
-        JObj
-            [ "kind", JStr "ContrastFloor"
-              "role", JStr role
-              "minRatio", JNum minRatio
-              weight ]
-    | InvariantKind.UsageBudget(token, target, tol) ->
-        JObj
-            [ "kind", JStr "UsageBudget"
-              "token", JStr token
-              "targetPct", JNum target
-              "tolerancePct", JNum tol
-              weight ]
-    | InvariantKind.MotionVoice mb ->
-        JObj(
-            [ Some("kind", JStr "MotionVoice")
-              Some("maxDurationMs", JNum(float mb.MaxDurationMs))
-              mb.Easing |> Option.map (fun e -> "easing", JStr e)
-              Some weight ]
-            |> List.choose id
-        )
-    | InvariantKind.ChartSeriesDistinct -> JObj [ "kind", JStr "ChartSeriesDistinct"; weight ]
+    let members =
+        match inv.Kind with
+        | InvariantKind.ContrastFloor(role, minRatio) -> [ str "role" role; num "minRatio" minRatio 0.0 ]
+        | InvariantKind.UsageBudget(token, target, tol) ->
+            [ str "token" token; num "targetPct" target 0.0; num "tolerancePct" tol 0.0 ]
+        | InvariantKind.MotionVoice mb ->
+            [ num "maxDurationMs" (float mb.MaxDurationMs) 0.0
+              mb.Easing |> Option.map (fun e -> "easing", JStr e) ]
+        | InvariantKind.ChartSeriesDistinct -> []
+        | InvariantKind.Unknown(_, raw) -> raw |> List.map Some
+
+    JObj(kind :: members @ [ weight ] |> List.choose id)
 
 // ─── Top-level ──────────────────────────────────────────────────
 
-/// Build the `JsonValue` AST for a manifest (exposed for tests/tooling).
+/// Build the `JsonValue` AST for a manifest (exposed for tests/tooling), in
+/// canonical key order.
 let toJson (m: ThemeManifest) : JsonValue =
-    JObj
-        [ "meta", metaJson m.Meta
-          "tokens", tokensJson m.Tokens
-          "roles", JArr(m.Roles |> List.map roleBindingJson)
-          "invariants", JArr(m.Invariants |> List.map invariantJson) ]
+    let block key items =
+        if List.isEmpty items then None else Some(key, JArr items)
 
-/// Encode a manifest to canonical JSON.
+    JObj(
+        [ metaJson m.Meta |> Option.map (fun j -> "meta", j)
+          Some("tokens", tokensJson m.Tokens)
+          block "roles" (m.Roles |> List.map roleBindingJson)
+          block "invariants" (m.Invariants |> List.map invariantJson) ]
+        |> List.choose id
+    )
+    |> canonical
+
+/// Encode a manifest to canonical JSON — the bytes every manifest host writes
+/// for the same manifest. `decode (encode m)` returns `m` for a manifest whose
+/// tokens are in canonical path order (every decoded canonical document is
+/// one); for any other, `encode` is a fixpoint through decode:
+/// `encode (decode (encode m)) = encode m`.
 let encode (m: ThemeManifest) : string = Json.serialize (toJson m)
