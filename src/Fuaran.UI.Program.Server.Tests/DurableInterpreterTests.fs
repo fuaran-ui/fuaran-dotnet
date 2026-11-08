@@ -390,6 +390,7 @@ let private modelWitness: Staging.witness<Node<obj>, BindingSources, Fuaran.Core
       w_read_extent = fun _ _ -> failwith "the replay differential plans nothing"
       w_resolve = fun _ _ -> failwith "the replay differential plans nothing"
       w_assign = fun _ _ bindings -> bindings
+      w_land_query = fun _ _ bindings -> bindings
       w_slot_refused = fun _ -> failwith "the replay differential plans nothing" }
 
 let private modelRegistry: Staging.registry<Node<obj>, Fuaran.Core.JVal, TreeOp<obj>, obj, Token> =
@@ -397,7 +398,10 @@ let private modelRegistry: Staging.registry<Node<obj>, Fuaran.Core.JVal, TreeOp<
       r_policy = fun _ -> Staging.ONone
       r_lookup = fun _ -> Staging.ONone
       r_perf = fun token args -> token.Invoke args |> modelRes
-      r_op_perform = Staging.ONone }
+      r_op_perform = Staging.ONone
+      r_query_posture = Staging.PureRead
+      r_query_stage = fun _ _ -> failwith "the replay differential plans nothing"
+      r_record = fun _ -> failwith "the replay differential plans nothing" }
 
 /// The journal snapshot as the model reads it, from the production journal's
 /// own entries: `stepOf` for the three-state reading, `capabilityOf` and
@@ -430,7 +434,7 @@ let private modelStaged
               Idempotent = opDeclared
               Invoke = fun _ -> Ok(Fuaran.Core.JObj []) }
           Staging.sc_args = Fuaran.Core.JObj []
-          Staging.sc_into = Staging.ONone }
+          Staging.sc_into = Staging.LNowhere }
 
     let hostCall: Staging.staged_call<Fuaran.Core.JVal, Token> =
         { Staging.sc_capability = "host:audit"
@@ -439,7 +443,7 @@ let private modelStaged
               Idempotent = auditDeclared
               Invoke = audit }
           Staging.sc_args = jstr "edited"
-          Staging.sc_into = Staging.ONone }
+          Staging.sc_into = Staging.LNowhere }
 
     [ opStage removeRefresh; opStage removeReadout; hostCall ]
 

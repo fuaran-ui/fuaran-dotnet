@@ -120,6 +120,20 @@
 ///     an iteration is priced as the sequence of its elements, and
 ///     `each_member_within` / `chain_member_within` — a sequence or an
 ///     iteration admitted under a cap has every member admitted under it.
+///   * The declared quantity (Phase 2261, D54), `Budget.quantityCost`
+///     over the same `act` with its leaves carrying an amount:
+///     `quantity_saturates_exact` — the figure is the exact worst case
+///     clipped at the bound; `quantity_monotone` — a tree whose leaves
+///     declare more never prices cheaper, `sat_monotone` carried to the
+///     quantity; the per-shape laws again (`quantity_choose_covers_either_
+///     arm`, `quantity_repeat_parameter_covers_every_count`,
+///     `quantity_each_is_elements`, `quantity_chain_member_within`,
+///     `quantity_each_member_within`); `quantity_gate_exact` — a host's
+///     ceiling admits a program whose leaves can spend at most it and
+///     refuses one that can spend more, with the figure, deciding on a
+///     `Tot` function of the action alone so nothing has run; and
+///     `worked_example` — the acceptance's 30 + 3 × 20 + max(45, 0) = 135,
+///     refused at 120, as a proved instance.
 
 module Budget
 
@@ -409,10 +423,18 @@ type bound =
   | BLiteral : count: int -> bound
   | BParameter : lo: int -> hi: int -> bound
 
-/// F#: `ActionView`, projected onto what `actionCascadeCost` reads.
+/// F#: `ActionView`, projected onto what `actionCascadeCost` AND
+/// `quantityCost` read (Phase 2261). One tree carries both prices: the
+/// cascade cost reads the shape alone, and the quantity cost reads the
+/// amount each leaf carries.
 type act =
-  /// F#: the `Assign` / `Call` / `Require` / `Leaf` arms, each worth one.
-  | ALeaf : act
+  /// F#: the `Assign` / `Call` / `Require` / `Leaf` arms, each worth one
+  /// step. `amount` is what the leaf DECLARES of the one quantity being
+  /// priced (`LeafDeclaration.Quantities`, Phase 2261) — the host projects
+  /// a declaration under the name and unit in hand to its amount, summed
+  /// where a leaf declares the pair twice, and every other leaf to zero.
+  /// The cascade cost never reads it.
+  | ALeaf : amount: int -> act
   /// F#: `Sequence`.
   | AChain : ops: list act -> act
   /// F#: `Choose(_, whenTrue, whenFalse, _)`.
@@ -440,7 +462,7 @@ let rec action_cascade_cost (mx: int) (a: act) : Tot int (decreases %[a; 0]) =
   | ARepeat (BParameter _ hi) body ->
     sat_add mx 1 (sat_mul mx (clamp_nat hi) (action_cascade_cost mx body))
   | AEach elements -> cascade_fold mx 0 elements
-  | ALeaf -> 1
+  | ALeaf _ -> 1
 
 /// F#: `List.fold (fun acc x -> satAdd acc (cost x)) 0` — a LEFT fold with
 /// an accumulator, kept as production spells it rather than as a right
@@ -479,7 +501,7 @@ let rec exact_cascade_cost (a: act) : Tot int (decreases %[a; 0]) =
   | ARepeat (BLiteral count) body -> 1 + clamp_nat count * exact_cascade_cost body
   | ARepeat (BParameter _ hi) body -> 1 + clamp_nat hi * exact_cascade_cost body
   | AEach elements -> exact_sum elements
-  | ALeaf -> 1
+  | ALeaf _ -> 1
 
 and exact_sum (ops: list act) : Tot int (decreases %[ops; 1]) =
   match ops with
@@ -500,7 +522,7 @@ let rec exact_nonneg (a: act)
     exact_nonneg body;
     FStar.Math.Lemmas.nat_times_nat_is_nat (clamp_nat hi) (exact_cascade_cost body)
   | AEach elements -> exact_sum_nonneg elements
-  | ALeaf -> ()
+  | ALeaf _ -> ()
 
 and exact_sum_nonneg (ops: list act)
   : Lemma (ensures 0 <= exact_sum ops) (decreases %[ops; 1]) =
@@ -553,7 +575,7 @@ let rec cascade_saturates_exact (mx: int) (a: act)
     exact_nonneg body;
     sat_mul_clip mx (clamp_nat hi) (exact_cascade_cost body)
   | AEach elements -> cascade_fold_saturates_exact mx 0 elements
-  | ALeaf -> ()
+  | ALeaf _ -> ()
 
 /// The fold with an accumulator already inside the bound is the clipped
 /// sum of the accumulator and the exact figure of what remains.
@@ -680,6 +702,301 @@ let each_member_within (mx: int) (cap: int) (x: act) (rest: list act)
       (requires mx >= 1 /\ cap < mx /\ action_cascade_cost mx (AEach (x :: rest)) <= cap)
       (ensures action_cascade_cost mx x <= cap /\ action_cascade_cost mx (AEach rest) <= cap) =
   chain_member_within mx cap x rest
+
+(* ───────────────────────────────────────────────────────────────────
+   THE DECLARED QUANTITY — `Budget.quantityCost` (Phase 2261, D54).
+
+   A step is the one quantity every domain spends; a device spends
+   heater-minutes and a server spends money or egress bytes. A leaf
+   DECLARES what it spends of a named quantity, and the same walk prices
+   it with D35's rules and WITHOUT the step: a selection's condition, a
+   repeat's bound and a stored collection's read spend none of it. So the
+   model is `action_cascade_cost` with the `1`s removed and the leaf
+   reading its amount — clause for clause with the F#, over the same
+   `act`, so one translation of a tree serves both differentials.
+
+   The parameters, and what the theorems assume of them. The AMOUNT a
+   leaf carries is the witness's worst case for that leaf, read from the
+   leaf's arguments by `View` — a literal is the amount, a parameter is
+   the top of its range — and the core takes it as declared: nothing
+   below proves a witness read its arguments honestly, exactly as
+   nothing in the fold theorem proves a `View` is honest. The NAME and
+   UNIT being priced are the host's projection: one `act` is one
+   (name, unit), and a leaf declaring another pair is `ALeaf 0` here.
+   The SATURATION BOUND `mx` is the parameter it is everywhere in this
+   module. A negative amount is `clamp_nat`ed, as a negative bound is.
+   ─────────────────────────────────────────────────────────────────── *)
+
+/// F#: `Budget.quantityCost`'s inner `cost`, arm for arm. A leaf is the
+/// fold production performs over its declarations — `satAdd 0 (max amount 0)`
+/// — which is what keeps a leaf's own figure inside the bound.
+let rec quantity_cost (mx: int) (a: act) : Tot int (decreases %[a; 0]) =
+  match a with
+  | AChain ops -> quantity_fold mx 0 ops
+  | AChoose when_true when_false -> max_int (quantity_cost mx when_true) (quantity_cost mx when_false)
+  | ARepeat (BLiteral count) body -> sat_mul mx (clamp_nat count) (quantity_cost mx body)
+  | ARepeat (BParameter _ hi) body -> sat_mul mx (clamp_nat hi) (quantity_cost mx body)
+  | AEach elements -> quantity_fold mx 0 elements
+  | ALeaf amount -> sat_add mx 0 (clamp_nat amount)
+
+/// F#: `List.fold (fun acc x -> satAdd acc (cost x)) 0`, as `cascade_fold`.
+and quantity_fold (mx: int) (acc: int) (ops: list act) : Tot int (decreases %[ops; 1]) =
+  match ops with
+  | [] -> acc
+  | x :: rest -> quantity_fold mx (sat_add mx acc (quantity_cost mx x)) rest
+
+/// The exact worst case, with no bound: a sequence sums, a selection is
+/// its dearer arm, a repeat is its body times the top of its bound, an
+/// iteration is its elements, a leaf is what it declares. This is what
+/// the acceptance's worked example prices by hand — 30 + 3 × 20 +
+/// max(45, 0) = 135 — and what the gate decides on (`quantity_gate_exact`).
+[@@ noextract_to "FSharp"]
+let rec exact_quantity (a: act) : Tot int (decreases %[a; 0]) =
+  match a with
+  | AChain ops -> exact_quantity_sum ops
+  | AChoose when_true when_false -> max_int (exact_quantity when_true) (exact_quantity when_false)
+  | ARepeat (BLiteral count) body -> clamp_nat count * exact_quantity body
+  | ARepeat (BParameter _ hi) body -> clamp_nat hi * exact_quantity body
+  | AEach elements -> exact_quantity_sum elements
+  | ALeaf amount -> clamp_nat amount
+
+and exact_quantity_sum (ops: list act) : Tot int (decreases %[ops; 1]) =
+  match ops with
+  | [] -> 0
+  | x :: rest -> exact_quantity x + exact_quantity_sum rest
+
+let rec exact_quantity_nonneg (a: act)
+  : Lemma (ensures 0 <= exact_quantity a) (decreases %[a; 0]) =
+  match a with
+  | AChain ops -> exact_quantity_sum_nonneg ops
+  | AChoose when_true when_false -> exact_quantity_nonneg when_true; exact_quantity_nonneg when_false
+  | ARepeat (BLiteral count) body ->
+    exact_quantity_nonneg body;
+    FStar.Math.Lemmas.nat_times_nat_is_nat (clamp_nat count) (exact_quantity body)
+  | ARepeat (BParameter _ hi) body ->
+    exact_quantity_nonneg body;
+    FStar.Math.Lemmas.nat_times_nat_is_nat (clamp_nat hi) (exact_quantity body)
+  | AEach elements -> exact_quantity_sum_nonneg elements
+  | ALeaf _ -> ()
+
+and exact_quantity_sum_nonneg (ops: list act)
+  : Lemma (ensures 0 <= exact_quantity_sum ops) (decreases %[ops; 1]) =
+  match ops with
+  | [] -> ()
+  | x :: rest -> exact_quantity_nonneg x; exact_quantity_sum_nonneg rest
+
+/// **`quantity_saturates_exact`.** The quantity cost of every action shape
+/// is the exact worst case clipped at the bound — `cascade_saturates_exact`
+/// for the declared quantity. The gate's figure never reads BELOW what the
+/// leaves can spend, and a figure under the bound IS that figure.
+let rec quantity_saturates_exact (mx: int) (a: act)
+  : Lemma
+      (requires mx >= 1)
+      (ensures quantity_cost mx a == clip mx (exact_quantity a))
+      (decreases %[a; 0]) =
+  match a with
+  | AChain ops -> quantity_fold_saturates_exact mx 0 ops
+  | AChoose when_true when_false ->
+    quantity_saturates_exact mx when_true;
+    quantity_saturates_exact mx when_false;
+    exact_quantity_nonneg when_true;
+    exact_quantity_nonneg when_false
+  | ARepeat (BLiteral count) body ->
+    quantity_saturates_exact mx body;
+    exact_quantity_nonneg body;
+    sat_mul_clip mx (clamp_nat count) (exact_quantity body)
+  | ARepeat (BParameter _ hi) body ->
+    quantity_saturates_exact mx body;
+    exact_quantity_nonneg body;
+    sat_mul_clip mx (clamp_nat hi) (exact_quantity body)
+  | AEach elements -> quantity_fold_saturates_exact mx 0 elements
+  | ALeaf _ -> ()
+
+and quantity_fold_saturates_exact (mx: int) (acc: int) (ops: list act)
+  : Lemma
+      (requires mx >= 1 /\ 0 <= acc /\ acc <= mx)
+      (ensures quantity_fold mx acc ops == clip mx (acc + exact_quantity_sum ops))
+      (decreases %[ops; 1]) =
+  match ops with
+  | [] -> ()
+  | x :: rest ->
+    quantity_saturates_exact mx x;
+    exact_quantity_nonneg x;
+    exact_quantity_sum_nonneg rest;
+    quantity_fold_saturates_exact mx (sat_add mx acc (quantity_cost mx x)) rest
+
+/// A quantity price is never negative and never above the bound.
+let quantity_cost_bounds (mx: int) (a: act)
+  : Lemma (requires mx >= 1) (ensures 0 <= quantity_cost mx a /\ quantity_cost mx a <= mx) =
+  quantity_saturates_exact mx a;
+  exact_quantity_nonneg a
+
+/// `a` has `b`'s shape and every leaf of `a` declares at most what the same
+/// leaf of `b` declares — the order `quantity_monotone` is stated over.
+[@@ noextract_to "FSharp"]
+let rec declares_at_most (a: act) (b: act) : Tot bool (decreases %[a; 0]) =
+  match a, b with
+  | ALeaf x, ALeaf y -> x <= y
+  | AChain xs, AChain ys -> all_declare_at_most xs ys
+  | AChoose t f, AChoose t' f' -> declares_at_most t t' && declares_at_most f f'
+  | ARepeat c body, ARepeat c' body' -> c = c' && declares_at_most body body'
+  | AEach xs, AEach ys -> all_declare_at_most xs ys
+  | _, _ -> false
+
+and all_declare_at_most (xs: list act) (ys: list act) : Tot bool (decreases %[xs; 1]) =
+  match xs, ys with
+  | [], [] -> true
+  | x :: xr, y :: yr -> declares_at_most x y && all_declare_at_most xr yr
+  | _, _ -> false
+
+let rec exact_quantity_monotone (a: act) (b: act)
+  : Lemma
+      (requires declares_at_most a b)
+      (ensures exact_quantity a <= exact_quantity b)
+      (decreases %[a; 0]) =
+  match a, b with
+  | ALeaf _, ALeaf _ -> ()
+  | AChain xs, AChain ys -> exact_quantity_sum_monotone xs ys
+  | AChoose t f, AChoose t' f' -> exact_quantity_monotone t t'; exact_quantity_monotone f f'
+  | ARepeat (BLiteral count) body, ARepeat _ body' ->
+    exact_quantity_monotone body body';
+    FStar.Math.Lemmas.lemma_mult_le_left (clamp_nat count) (exact_quantity body) (exact_quantity body')
+  | ARepeat (BParameter _ hi) body, ARepeat _ body' ->
+    exact_quantity_monotone body body';
+    FStar.Math.Lemmas.lemma_mult_le_left (clamp_nat hi) (exact_quantity body) (exact_quantity body')
+  | AEach xs, AEach ys -> exact_quantity_sum_monotone xs ys
+
+and exact_quantity_sum_monotone (xs: list act) (ys: list act)
+  : Lemma
+      (requires all_declare_at_most xs ys)
+      (ensures exact_quantity_sum xs <= exact_quantity_sum ys)
+      (decreases %[xs; 1]) =
+  match xs, ys with
+  | [], [] -> ()
+  | x :: xr, y :: yr -> exact_quantity_monotone x y; exact_quantity_sum_monotone xr yr
+
+/// **`quantity_monotone`.** `sat_monotone` carried to the declared
+/// quantity: a tree whose leaves declare MORE never prices CHEAPER. This
+/// is what makes the worst case a comparand at all — a witness that
+/// raised a leaf's declared amount, or a host that read a dearer tree,
+/// cannot be answered a smaller figure — and it is the clause the shard
+/// asked the Phase 1716 theorem extended to.
+let quantity_monotone (mx: int) (a: act) (b: act)
+  : Lemma
+      (requires mx >= 1 /\ declares_at_most a b)
+      (ensures quantity_cost mx a <= quantity_cost mx b) =
+  quantity_saturates_exact mx a;
+  quantity_saturates_exact mx b;
+  exact_quantity_monotone a b
+
+(* One law per flow shape for the quantity, in a caller's terms — the
+   caller being a host's ceiling. The same side condition as the cascade
+   laws: a price AT the bound says only "at least this much". *)
+
+/// **`quantity_choose_covers_either_arm`.** A selection admitted under a
+/// ceiling has EITHER arm admitted under it — the whole ceiling, since a
+/// selection spends no quantity of its own.
+let quantity_choose_covers_either_arm (mx: int) (cap: int) (when_true: act) (when_false: act)
+  : Lemma
+      (requires mx >= 1 /\ cap < mx /\ quantity_cost mx (AChoose when_true when_false) <= cap)
+      (ensures quantity_cost mx when_true <= cap /\ quantity_cost mx when_false <= cap) =
+  quantity_saturates_exact mx (AChoose when_true when_false);
+  quantity_saturates_exact mx when_true;
+  quantity_saturates_exact mx when_false;
+  exact_quantity_nonneg when_true;
+  exact_quantity_nonneg when_false
+
+/// **`quantity_repeat_parameter_covers_every_count`.** A parameter repeat
+/// spends at least what the literal repeat of EVERY count in its range
+/// spends, so a figure read without the store bounds whatever the store
+/// answers within the range.
+let quantity_repeat_parameter_covers_every_count (mx: int) (lo: int) (hi: int) (count: int) (body: act)
+  : Lemma
+      (requires mx >= 1 /\ count <= hi)
+      (ensures
+        quantity_cost mx (ARepeat (BLiteral count) body) <=
+          quantity_cost mx (ARepeat (BParameter lo hi) body)) =
+  quantity_saturates_exact mx (ARepeat (BLiteral count) body);
+  quantity_saturates_exact mx (ARepeat (BParameter lo hi) body);
+  exact_quantity_nonneg body;
+  FStar.Math.Lemmas.lemma_mult_le_right (exact_quantity body) (clamp_nat count) (clamp_nat hi)
+
+/// **`quantity_each_is_elements`.** An iteration spends exactly what the
+/// sequence of its lowered elements spends.
+let quantity_each_is_elements (mx: int) (elements: list act)
+  : Lemma (ensures quantity_cost mx (AEach elements) == quantity_cost mx (AChain elements)) =
+  ()
+
+/// **`quantity_chain_member_within`** / **`quantity_each_member_within`.**
+/// A sequence or an iteration admitted under a ceiling has its first
+/// member, and the rest, admitted under it: by a caller's induction, every
+/// member — which is the refusal "before the first element" for a
+/// quantity, as `each_member_within` is for the step.
+let quantity_chain_member_within (mx: int) (cap: int) (x: act) (rest: list act)
+  : Lemma
+      (requires mx >= 1 /\ cap < mx /\ quantity_cost mx (AChain (x :: rest)) <= cap)
+      (ensures quantity_cost mx x <= cap /\ quantity_cost mx (AChain rest) <= cap) =
+  quantity_saturates_exact mx (AChain (x :: rest));
+  quantity_saturates_exact mx x;
+  quantity_saturates_exact mx (AChain rest);
+  exact_quantity_nonneg x;
+  exact_quantity_sum_nonneg rest
+
+let quantity_each_member_within (mx: int) (cap: int) (x: act) (rest: list act)
+  : Lemma
+      (requires mx >= 1 /\ cap < mx /\ quantity_cost mx (AEach (x :: rest)) <= cap)
+      (ensures quantity_cost mx x <= cap /\ quantity_cost mx (AEach rest) <= cap) =
+  quantity_chain_member_within mx cap x rest
+
+(* The gate. F#: the quantity arm of `Demanded.checkProjection` — the
+   demanded document carries `Budget.quantityCost`'s figure as the
+   quantity's worst case, a host declares a ceiling per (name, unit), and
+   the strict construction path compares the two BEFORE it builds a
+   session. The model's gate is a `Tot` function of the ceiling and the
+   action ALONE: it takes no session, no store and no effect, so there is
+   nothing it could have run or written — "before the first stage" is the
+   signature, not a lemma about it. The refusal carries the figure, as
+   `QuantityOverCeiling` does. *)
+
+/// F#: `d.WorstCase > ceiling.Ceiling` → `QuantityOverCeiling`, else
+/// nothing.
+let quantity_gate (mx: int) (ceiling: int) (a: act) : opt int =
+  let worst = quantity_cost mx a in
+  if worst > ceiling then OSome worst else ONone
+
+/// **`quantity_gate_exact`.** Under a ceiling below the bound the gate
+/// decides on the EXACT worst case, both ways: a program whose leaves can
+/// spend at most the ceiling is admitted, and one that can spend more is
+/// refused with the figure it can spend — exact while it is within the
+/// bound, the bound otherwise. Nothing has run either way (see above).
+let quantity_gate_exact (mx: int) (ceiling: int) (a: act)
+  : Lemma
+      (requires mx >= 1 /\ ceiling < mx)
+      (ensures
+        (match quantity_gate mx ceiling a with
+         | ONone -> exact_quantity a <= ceiling
+         | OSome worst -> exact_quantity a > ceiling /\ worst == clip mx (exact_quantity a))) =
+  quantity_saturates_exact mx a;
+  exact_quantity_nonneg a
+
+/// The acceptance's worked example, as a proved instance: a leaf spending
+/// 30, a repeat of 3 over a leaf spending 20, and a choice between a leaf
+/// spending 45 and nothing — 30 + 3 × 20 + max(45, 0) = 135, refused at a
+/// ceiling of 120 with the figure, admitted at 135.
+[@@ noextract_to "FSharp"]
+let worked_example_program : act =
+  AChain [ ALeaf 30; ARepeat (BLiteral 3) (ALeaf 20); AChoose (ALeaf 45) (AChain []) ]
+
+#push-options "--fuel 8 --ifuel 2"
+let worked_example (mx: int)
+  : Lemma
+      (requires mx >= 135)
+      (ensures
+        quantity_cost mx worked_example_program == 135 /\
+        quantity_gate mx 120 worked_example_program == OSome 135 /\
+        quantity_gate mx 135 worked_example_program == ONone) =
+  ()
+#pop-options
 
 (* ───────────────────────────────────────────────────────────────────
    THE G2 GATE — `BoundedDriver.step`, from the validation to the fold.

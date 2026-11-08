@@ -27,12 +27,12 @@
     },
     {
       "module": "Budget",
-      "budgetSeconds": 20,
-      "measuredSeconds": 3,
-      "fastestSeconds": 3,
-      "fastestPhase": "fuaran#2012",
+      "budgetSeconds": 60,
+      "measuredSeconds": 30,
+      "fastestSeconds": 30,
+      "fastestPhase": "fuaran#2458",
       "phase": "fuaran#2012",
-      "note": "The interaction budget (saturating arithmetic, the tree walk, the G2 gate), COPIED from the program repository. SEEDED from the same cold run: 3s. Budget 20s, the seeding rule's minimum (2 x 3 is inside process-start noise); floor 0 by floorSeeding's zeroBelowSeconds rule, an explicit zero rather than an absent one."
+      "note": "The interaction budget (saturating arithmetic, the tree walk, the G2 gate), COPIED from the program repository. SEEDED from the same cold run: 3s. Budget 20s, the seeding rule's minimum (2 x 3 is inside process-start noise); floor 0 by floorSeeding's zeroBelowSeconds rule, an explicit zero rather than an absent one. RE-SEEDED fuaran#2458: the copy was re-synced to the program repository's v0.13.0 model, which grew by the declared-quantity walk and its theorems (fuaran#2261, 944 to 1261 lines); one cold run of `check.ps1 -Leg program` measured 30s, every query 3/3, so the budget is 60s by the seeding rule (2 x 30). measuredSeconds and fastestSeconds record that run (the pre-growth 3s no longer describes the model); re-seed downwards as a recorded act when a faster cold run of the grown model is seen."
     }
   ]
 }

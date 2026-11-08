@@ -105,17 +105,29 @@ let private modelRes (value: Result<'T, string>) : Staging.res<'T> =
     | Ok v -> Staging.ROk v
     | Error e -> Staging.RErr e
 
-/// Production reduces an evaluation error to its DISCRIMINATOR before it
-/// reaches a diagnostic (`Handler.evalErrorKind`, private, one arm per case
-/// and every arm its case name). The case name IS that mapping, read off the
-/// union rather than restated arm by arm — so a production arm whose text
-/// stopped being its name would surface here as a diagnostic divergence
-/// rather than being copied into agreement.
-let private evalErrorKind (error: Fuaran.Compute.EvalError) : string =
-    let case, _ =
-        Microsoft.FSharp.Reflection.FSharpValue.GetUnionFields(error, typeof<Fuaran.Compute.EvalError>)
+/// The model's finding is production's, member for member (Program Phase 2212).
+let private modelFinding (finding: Finding) : Staging.finding =
+    { f_code = finding.Code
+      f_severity = finding.Severity
+      f_message = finding.Message }
 
-    case.Name
+let private productionFinding (finding: Staging.finding) : Finding =
+    { Code = finding.f_code
+      Severity = finding.f_severity
+      Message = finding.f_message }
+
+/// The host's query posture as the model reads it (Program Phase 2212, D44).
+let private modelPosture (posture: QueryPosture) : Staging.query_posture =
+    match posture with
+    | QueryPosture.PureRead -> Staging.PureRead
+    | QueryPosture.Reaching -> Staging.Reaching
+
+/// The evaluator production asks: the registry's, or the in-memory fold where
+/// the host registered none — the member `Handler.runEffect` reads, so a
+/// declared pure read is asked through the host's own evaluator here too, and
+/// a reaching one is what the staged call closes over.
+let private evaluatorOf (registry: ServerEffectRegistry) : QueryEvaluator =
+    registry.QueryEvaluator |> Option.defaultValue QueryEvaluator.inMemory
 
 let private witness = UiWitness.witness
 
@@ -136,8 +148,11 @@ let private guardedWitness: UiWitness.UiProgramWitness =
 
 let private modelWitness
     (witness: UiWitness.UiProgramWitness)
+    (registry: ServerEffectRegistry)
     (resolve: string -> Result<Fuaran.Core.Table, Fuaran.Compute.EvalError>)
     : ModelWitness =
+    let evaluator = evaluatorOf registry
+
     { w_compute =
         fun nodeId action bindings ->
             let outcome = BoundedActions.runInert witness nodeId action bindings
@@ -162,13 +177,30 @@ let private modelWitness
                     (BoundedActions.runReversed witness nodeId (BoundedActions.reverse witness action trace) b).Store)
             else
                 Staging.ONone
+      // The pure read: production's evaluator asked, its fault described as
+      // the halt reason, its table landed — `QueryFault.describe` is the one
+      // mapping, read from production rather than restated arm by arm, so an
+      // arm whose text moved would surface here as a divergence.
       w_query =
         fun name (source, pipeline) bindings ->
-            Fuaran.Compute.DataFrame.evalSource resolve source
-            |> Result.bind (Fuaran.Compute.DataFrame.evalPipelineWith resolve pipeline)
+            evaluator.Evaluate source pipeline resolve
             |> Result.map (fun table -> witness.Dispatch.Store.LandQuery name table bindings)
-            |> Result.mapError evalErrorKind
+            |> Result.mapError QueryFault.describe
             |> modelRes
+      // A staged read's answer landed (Program Phase 2212): the value the
+      // durable wrapper carries, decoded and landed in its query slot —
+      // production's `decodeAnswer` then `LandQuery`. The model's arrow is
+      // TOTAL, and a value that does not decode cannot reach it (a served
+      // record that does not decode is a snapshot refusal, the model's stated
+      // assumption), so the arm below is unreachable and says so rather than
+      // inventing a landing.
+      w_land_query =
+        fun slot value bindings ->
+            match QueryEvaluator.decodeAnswer (Ok value) with
+            | Ok table -> witness.Dispatch.Store.LandQuery slot table bindings
+            | Error _ ->
+                invalidOp
+                    "unreachable: a staged read's answer that does not decode is a snapshot refusal, never a landing"
       w_apply = fun op tree -> witness.State.Stream.Apply op tree |> modelRes
       // The production `View`, taken to exhaustion — the model's `w_op_view`
       // (Phase 1976): an edit and a guard carry the op the handler holds, a
@@ -230,10 +262,26 @@ let private modelEffect
     | ServerEffect.HostCall(fn, args, into) -> Staging.HostCall(fn, args, modelOpt into)
     | ServerEffect.EmitPatch ops -> Staging.EmitPatch ops
     | ServerEffect.Notify(channel, payload) -> Staging.Notify(channel, payload)
-    // The staging model has no report arm (Program DECISIONS D45): a finding
-    // stages nothing, trails nothing and moves no state, so the differential
-    // draws no program that reports one.
-    | ServerEffect.Report _ -> invalidArg (nameof effect) "the staging model has no Report arm (Program D45)"
+    | ServerEffect.Report finding -> Staging.Report(modelFinding finding)
+
+/// `modelEffect` reversed, for the checks whose vocabulary is production's.
+let private productionEffect
+    (effect: Staging.server_effect<Fuaran.Core.JVal, TreeOp<obj>, Query>)
+    : ServerEffect<TreeOp<obj>> =
+    match effect with
+    | Staging.RunQuery(name, (source, pipeline)) -> ServerEffect.RunQuery(name, source, pipeline)
+    | Staging.ApplyOps ops -> ServerEffect.ApplyOps ops
+    | Staging.HostCall(fn, args, into) ->
+        ServerEffect.HostCall(
+            fn,
+            args,
+            (match into with
+             | Staging.OSome key -> Some key
+             | Staging.ONone -> None)
+        )
+    | Staging.EmitPatch ops -> ServerEffect.EmitPatch ops
+    | Staging.Notify(channel, payload) -> ServerEffect.Notify(channel, payload)
+    | Staging.Report finding -> ServerEffect.Report(productionFinding finding)
 
 let private modelStage (stage: HandlerStage) : ModelStage =
     match stage with
@@ -246,31 +294,38 @@ let private modelStage (stage: HandlerStage) : ModelStage =
 /// vocabulary is production's.
 let private modelRegistry
     (performance: OpPerformance<Node<obj>, TreeOp<obj>>)
+    (resolve: string -> Result<Fuaran.Core.Table, Fuaran.Compute.EvalError>)
     (registry: ServerEffectRegistry)
     : ModelRegistry =
+    let evaluator = evaluatorOf registry
+
     { r_gate = registry.Gate
       r_policy =
         fun effect ->
-            let production =
-                match effect with
-                | Staging.RunQuery(name, (source, pipeline)) -> ServerEffect.RunQuery(name, source, pipeline)
-                | Staging.ApplyOps ops -> ServerEffect.ApplyOps ops
-                | Staging.HostCall(fn, args, into) ->
-                    ServerEffect.HostCall(
-                        fn,
-                        args,
-                        (match into with
-                         | Staging.OSome key -> Some key
-                         | Staging.ONone -> None)
-                    )
-                | Staging.EmitPatch ops -> ServerEffect.EmitPatch ops
-                | Staging.Notify(channel, payload) -> ServerEffect.Notify(channel, payload)
-
-            match ServerArgumentPolicy.check witness.State registry production with
+            match ServerArgumentPolicy.check witness.State registry (productionEffect effect) with
             | Ok() -> Staging.ONone
             | Error defect -> Staging.OSome(ServerArgumentPolicy.describe defect)
       r_lookup = fun fn -> Map.tryFind fn registry.HostFunctions |> modelOpt
       r_perf = fun performer args -> performer args |> modelRes
+      // The host's declaration, off the registry (Program Phase 2212, D44):
+      // the one fact the run and the static postures consult.
+      r_query_posture = modelPosture (ServerEffectRegistry.queryPosture registry)
+      // What a reaching read is staged AS (Program Phase 2212): production's
+      // own closure over the evaluator, the source, the pipeline and the
+      // resolver, answering through `encodeAnswer` — the value the durable
+      // wrapper journals — with an inert argument, the shape `r_op_perform`
+      // already takes.
+      r_query_stage =
+        fun _ (source, pipeline) ->
+            (fun (_: Fuaran.Core.JVal) -> QueryEvaluator.encodeAnswer (evaluator.Evaluate source pipeline resolve)),
+            Fuaran.Core.JObj []
+      // The recorder (Program Phase 2212, D45): production's own, over the
+      // model's finding.
+      r_record =
+        fun finding ->
+            registry.RecordFinding(productionFinding finding)
+            |> Result.map modelFinding
+            |> modelRes
       // The op performer, split as the model splits it (Phase 1967): the
       // TOKEN is production's own closure over the state as of the op and the
       // op (Phase 1974), the argument inert — the same shape production
@@ -320,8 +375,8 @@ let private productionShaped (outcome: ModelOutcome) : HandlerOutcome =
       // Nor any typed receipts (Program Phase 2197, D43): its performers
       // return a detail, and the projection does not compare them.
       Receipts = []
-      // Nor any findings (Program Phase 2195, D45): the model has no report arm.
-      Findings = [] }
+      // The findings, in program order (Program Phase 2212, D45).
+      Findings = outcome.oc_findings |> List.map productionFinding }
 
 /// The comparable projection — the same one the durable parity leg uses,
 /// for the same reason: a resolved tree's nodes carry handler slots, so the
@@ -336,7 +391,8 @@ let private projectionOf (outcome: HandlerOutcome) =
        Patches = outcome.Patches |> List.map (sprintf "%A")
        Notifications = outcome.Notifications
        Effects = outcome.ClientEffects |> List.map ClientEffect.encode
-       Diagnostics = outcome.Diagnostics |> List.map (sprintf "%A") |}
+       Diagnostics = outcome.Diagnostics |> List.map (sprintf "%A")
+       Findings = outcome.Findings |}
 
 let private runModel
     (witness: UiWitness.UiProgramWitness)
@@ -348,8 +404,8 @@ let private runModel
     (store: ServerStore)
     : HandlerOutcome =
     Staging.run
-        (modelWitness witness resolve)
-        (modelRegistry performance registry)
+        (modelWitness witness registry resolve)
+        (modelRegistry performance resolve registry)
         nodeId
         (handler.Stages |> List.map modelStage)
         { st_tree = store.Tree
@@ -1401,17 +1457,17 @@ type private UndoRun =
 let private runUndoCase (u: UndoCase) (failAt: int option) : UndoRun =
     let w = undoWitnessOf u
     let c = u.Case
-    let mw = modelWitness w c.Resolve
     let cls = modelUndoClass w
 
     // The forward run, on both sides, never failing.
     let forwardLog = Log()
     let forwardScript = scripted forwardLog None
+    let forwardRegistry = registryFor c forwardScript.Host
 
     let outcome, plan =
         Fuaran.Program.Server.Handler.runPlanned
             w
-            (registryFor c forwardScript.Host)
+            forwardRegistry
             (performanceOf c forwardScript)
             c.Resolve
             "call"
@@ -1420,11 +1476,13 @@ let private runUndoCase (u: UndoCase) (failAt: int option) : UndoRun =
 
     let modelForwardLog = Log()
     let modelForwardScript = scripted modelForwardLog None
+    let modelForwardRegistry = registryFor c modelForwardScript.Host
+    let mw = modelWitness w modelForwardRegistry c.Resolve
 
     let modelOutcome, modelSteps =
         Staging.run_planned
             mw
-            (modelRegistry (performanceOf c modelForwardScript) (registryFor c modelForwardScript.Host))
+            (modelRegistry (performanceOf c modelForwardScript) c.Resolve modelForwardRegistry)
             "call"
             (c.Handler.Stages |> List.map modelStage)
             { st_tree = c.Store.Tree
@@ -1452,7 +1510,7 @@ let private runUndoCase (u: UndoCase) (failAt: int option) : UndoRun =
         match
             global.Undo.undo_run
                 mw
-                (modelRegistry (performanceOf c modelUndoScript) (registryFor c modelUndoScript.Host))
+                (modelRegistry (performanceOf c modelUndoScript) c.Resolve (registryFor c modelUndoScript.Host))
                 "call"
                 cls
                 Fuaran.UI.OpStream.Abstractions.CanonicalJson.encodeNode
@@ -1464,12 +1522,17 @@ let private runUndoCase (u: UndoCase) (failAt: int option) : UndoRun =
         | Staging.ROk out -> Ok(productionShaped out)
         | Staging.RErr reason -> Error reason
 
+    // The static postures read the host's declaration off the registry the
+    // run is given (Program D44), on both sides.
+    let query = ServerEffectRegistry.queryPosture forwardRegistry
+    let modelQuery = modelPosture query
+    let modelStages = c.Handler.Stages |> List.map modelStage
+
     { Posture =
-        Fuaran.Program.Server.Undo.posture QueryPosture.PureRead w c.Handler,
-        Fuaran.Program.Server.Undo.reasons QueryPosture.PureRead w c.Handler
+        Fuaran.Program.Server.Undo.posture query w c.Handler, Fuaran.Program.Server.Undo.reasons query w c.Handler
       ModelPosture =
-        global.Undo.posture mw cls (BoundedActions.reversible w) (c.Handler.Stages |> List.map modelStage),
-        global.Undo.reasons mw cls (BoundedActions.reversible w) (c.Handler.Stages |> List.map modelStage)
+        global.Undo.posture mw modelQuery cls (BoundedActions.reversible w) modelStages,
+        global.Undo.reasons mw modelQuery cls (BoundedActions.reversible w) modelStages
       Plan = plan.Steps |> List.map projectStep
       ModelPlan = modelSteps |> List.map projectModelStep
       Production = production
@@ -1496,6 +1559,7 @@ let private modelDefectText (d: global.Undo.defect) =
     | global.Undo.OutboundNotification -> "outbound-notification"
     | global.Undo.EmittedPatch -> "emitted-patch"
     | global.Undo.ComputeOutsideFragment -> "compute-outside-fragment"
+    | global.Undo.StagedQuery -> "staged-query"
 
 /// The whole comparison, as a reported divergence or nothing.
 let private undoDivergence (u: UndoCase) (failAt: int option) (run: UndoRun) : string option =
@@ -1858,7 +1922,7 @@ let private gateModelRegistry (events: Events) (triple: Triple) : GateModelRegis
             events.Add("gate:" + cap)
             triple.Shape.Gate cap)
         |> triple.Shape.Narrow
-        |> modelRegistry OpPerformance.InMemory
+        |> modelRegistry OpPerformance.InMemory Fuaran.Compute.DataFrame.noResolve
 
     let contractOf ((fn, _): GateToken) : Staging.opt<EffectGate.contract<Fuaran.Core.JVal>> =
         contracts
@@ -1875,7 +1939,15 @@ let private gateModelRegistry (events: Events) (triple: Triple) : GateModelRegis
       r_policy = policyBearer.r_policy
       r_lookup = fun fn -> raw |> Map.tryFind fn |> Option.map (fun perf -> fn, perf) |> modelOpt
       r_perf = EffectGate.checked_by contractOf rawBehaviour
-      r_op_perform = Staging.ONone }
+      r_op_perform = Staging.ONone
+      r_query_posture = policyBearer.r_query_posture
+      // A staged read's token under this keying: the registry's closure,
+      // keyed as `RunQuery`, which no contract names.
+      r_query_stage =
+        fun name query ->
+            let token, args = policyBearer.r_query_stage name query
+            ("RunQuery", token), args
+      r_record = policyBearer.r_record }
 
 let private handlerOf (triple: Triple) : Handler =
     { Name = triple.Capability
@@ -1916,7 +1988,7 @@ let private runTripleWith
 
     let model =
         run
-            (modelWitness witness Fuaran.Compute.DataFrame.noResolve)
+            (modelWitness witness (productionRegistry (Events()) triple) Fuaran.Compute.DataFrame.noResolve)
             (gateModelRegistry modelEvents triple)
             "call"
             (triple.Stages |> List.map modelStage)
@@ -2106,25 +2178,7 @@ let private lookupFirstRun
         else
             Staging.perform w reg (Staging.rev planned.ac_staged) planned
 
-    let outcome: ModelOutcome =
-        if final.ac_halted then
-            { oc_store = store
-              oc_committed = false
-              oc_performed = Staging.rev final.ac_externally
-              oc_patches = []
-              oc_notifications = []
-              oc_client_effects = []
-              oc_diagnostics = Staging.rev final.ac_diagnostics }
-        else
-            { oc_store = final.ac_store
-              oc_committed = true
-              oc_performed = Staging.app (Staging.rev final.ac_performed) (Staging.rev final.ac_externally)
-              oc_patches = Staging.rev final.ac_patches
-              oc_notifications = Staging.rev final.ac_notifications
-              oc_client_effects = Staging.rev final.ac_client_effects
-              oc_diagnostics = Staging.rev final.ac_diagnostics }
-
-    productionShaped outcome
+    productionShaped (Staging.finish store final)
 
 // ─── Phase 1984 — the op contract at the handler, keyed on the op token ─────
 //
@@ -2336,7 +2390,7 @@ let private keyedModel
     let bridge =
         ServerEffectRegistry.denyAll
         |> ServerEffectRegistry.permissive
-        |> modelRegistry OpPerformance.InMemory
+        |> modelRegistry OpPerformance.InMemory Fuaran.Compute.DataFrame.noResolve
 
     let raw (token: KeyedToken) (args: Fuaran.Core.JVal) : Staging.res<Fuaran.Core.JVal> =
         match token with
@@ -2358,7 +2412,13 @@ let private keyedModel
             let answer = checkedBehaviour token args
             answers.Add answer
             answer
-      r_op_perform = Staging.OSome(fun state op -> OpToken(state, op), Fuaran.Core.JObj []) }
+      r_op_perform = Staging.OSome(fun state op -> OpToken(state, op), Fuaran.Core.JObj [])
+      r_query_posture = bridge.r_query_posture
+      r_query_stage =
+        fun name query ->
+            let token, args = bridge.r_query_stage name query
+            HostToken("RunQuery", token), args
+      r_record = bridge.r_record }
 
 let private keyedModelStore: Staging.store<Node<obj>, BindingSources> =
     { st_tree = durableStore.Tree
@@ -2394,7 +2454,7 @@ let private runKeyed (keying: OpKeying) (c: KeyedCase) : KeyedRun =
 
     let model =
         Staging.run
-            (modelWitness witness Fuaran.Compute.DataFrame.noResolve)
+            (modelWitness witness ServerEffectRegistry.denyAll Fuaran.Compute.DataFrame.noResolve)
             (keyedModel keyingFor modelSide (System.Collections.Generic.List<_>()))
             "call"
             (c.Stages |> List.map modelStage)
@@ -2504,7 +2564,10 @@ let private runKeyedDurably (c: KeyedCase) : DurableKeyedRun =
           d_reinvoke = services.ReinvokeIndeterminate }
 
     let keying = if c.Contracted then KeyedOnToken else Uncontracted
-    let mw = modelWitness witness Fuaran.Compute.DataFrame.noResolve
+
+    let mw =
+        modelWitness witness ServerEffectRegistry.denyAll Fuaran.Compute.DataFrame.noResolve
+
     let stages = c.Stages |> List.map modelStage
 
     let runProduction () =
@@ -3096,7 +3159,7 @@ let effectGateTests =
                   let staged =
                       let planned =
                           Staging.plan
-                              (modelWitness witness Fuaran.Compute.DataFrame.noResolve)
+                              (modelWitness witness ServerEffectRegistry.denyAll Fuaran.Compute.DataFrame.noResolve)
                               (keyedModel KeyedOnToken (keyedSide c.Behaviour) (System.Collections.Generic.List<_>()))
                               "call"
                               (c.Stages |> List.map modelStage)
