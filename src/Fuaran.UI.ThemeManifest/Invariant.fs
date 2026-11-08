@@ -77,7 +77,7 @@ type InvariantKind =
     /// `kind` is the wire discriminator as written; `members` are the
     /// invariant's other members except `weight` (carried on the `Invariant`),
     /// in document order.
-    | Unknown of kind: string * members: (string * JsonValue) list
+    | Unknown of kind: string * members: (string * Fuaran.Core.JVal) list
 
 /// One declared invariant + its soft weight. `Weight` defaults to
 /// `1.0` (via `Invariant.create`); Phase 150 will learn weights from a

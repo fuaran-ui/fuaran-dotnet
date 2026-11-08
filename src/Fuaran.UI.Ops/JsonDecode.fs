@@ -199,17 +199,20 @@ type DecodeError =
 /// the Core pin carries fuaran-core#460 they compile against this vocabulary.
 /// Since fuaran-core#541 (Core 0.39.0) they read every node, non-generic union,
 /// record and kind spec through one overridable record, `CollectingDecoders`,
-/// so a host decoder at one of those types applies at every depth. They are
-/// still not a substrate this module can layer on (Phase 2344): the record has
-/// no field at an enumeration, a JSON scalar or the generic `Binding` union,
-/// and those are where most of this module's policy is applied per type (the
-/// §3.6 static unwrap in every scalar reader, each enumeration's lenient
-/// aliases, the binding readings and checks). Their input, Core's `JVal`, has
-/// no null either, so the null reading has nowhere to run. Delegating a kind
-/// spec would drop that policy at each such member. The tests pinning these
-/// facts are in `GeneratedLayerTests` ("structural substrate", "collecting
-/// derivation", "the types a host overrides", "the positions this decoder's
-/// policy needs").
+/// so a host decoder at one of those types applies at every depth. Phase 2344
+/// found the record closed where most of this module's policy is applied per
+/// type (the §3.6 static unwrap in every scalar reader, each enumeration's
+/// lenient aliases, the binding readings and checks, the null reading). Since
+/// fuaran-core#562 (Core 0.41.0, Core D230) the record holds those positions
+/// too: a field per enumeration, one per JSON scalar, a generic seam for
+/// `Binding`, and `Absent`, asked at every declared member an object does not
+/// carry, which is where a member null this module reads is answered by its
+/// position. So every position is now reachable. This module has not moved onto
+/// it yet: Phase 2420 measured the policy still to move (its probe, 121
+/// divergences over the node corpus with nothing overridden) and the move is the
+/// layering's own work. The tests pinning these facts are in
+/// `GeneratedLayerTests` ("structural substrate", "collecting derivation", "the
+/// types a host overrides", "the positions this decoder's policy needs").
 //
 // Under Fable the slot is a plain static: a JS host runs one decode at a time on
 // its one thread, so a plain static IS per-thread there (Phase 2064 checked it).

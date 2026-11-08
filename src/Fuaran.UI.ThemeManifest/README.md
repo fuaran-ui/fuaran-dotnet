@@ -19,7 +19,21 @@ ThemeManifest = { Meta; Tokens: ManifestToken list; Roles: RoleBinding list; Inv
 - `InvariantKind` — `ContrastFloor of role * minRatio` / `UsageBudget of token * targetPct * tolerancePct` / `MotionVoice of MotionBudget`. **Additive-only post-ship** (parallel to `StyleFlag` / `LayoutFlag`).
 - `ThemeManifest.resolveRole : ToneVariant -> ThemeManifest -> ManifestToken option` — the lookup the StyleObserver consumes; `resolveNamedRole` is the named-role counterpart.
 
-The manifest is a **host/theme artefact, not part of the `Node` tree** — it travels *alongside* the tree, never inside it, preserving the "semantic, not CSS" tree posture. `FSharp.Core`-only and Fable-portable (a small dependency-free JSON parser ships in the package, so `encode`/`decode` run byte-identically under Fable and .NET — no `System.Text.Json`, no external JSON dependency).
+The manifest is a **host/theme artefact, not part of the `Node` tree** — it travels *alongside* the tree, never inside it, preserving the "semantic, not CSS" tree posture. Fable-portable, on `FSharp.Core` and `Fuaran.Core.Wire` only: `decode` reads through Core's portable JSON reader into Core's `JVal`, and `encode` writes through Core's cross-host canonical renderer (Ordinal-sorted keys, `\u00xx` control escapes, the canonical float layout), so the two run byte-identically under Fable and .NET with no `System.Text.Json` (Phase 2310).
+
+### Parse limits
+
+`decode` is bounded. A document past any of these is refused with an `Error` naming the bound and its value, before the part past it is read; it is never a stack overflow (`Decode.limits`, `Decode.readOptions`):
+
+| Bound | Value |
+|---|---|
+| nesting depth (every `{` and `[`) | 64 |
+| one string or member key | 65 536 code points |
+| one array | 10 000 items |
+| one object | 10 000 members |
+| the whole document | 4 194 304 UTF-8 bytes |
+
+A member `null` reads as the member's absence (its default); a bare or array-element `null` and a repeated member name are refused.
 
 A JSON schema (`theme-manifest.schema.json`) and a neutral example theme (`example-theme.manifest.json`) ship in the package as the machine-readable contract + the canonical fixture.
 

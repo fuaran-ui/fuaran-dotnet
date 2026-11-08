@@ -8025,6 +8025,44 @@ replay and undo posture for every handler a continuation reaches. Postures are u
 the one `Replay.postureOf` and `Replay.admit` read. A document whose tree and handler compute stages hold no commit and no confirm is
 byte-identical. Ruling: `docs/DECISIONS.md` D27.
 
+### What rides this slot — Phase 2420 (the Core pin is 0.41.0; the decoder's policy positions are open)
+
+**Class: dependency floor; no public surface of this tier moves.** Every `Fuaran.Core.*` pin moves from `0.40.3` to
+`0.41.0`, the release carrying fuaran-core#562 (Core D230): the generated collecting decoders take a host's decoder at
+every enumeration, at each JSON scalar, at the generic `Binding` union through one generic seam, and at every
+declared member an object does not carry (`Absent`). A consumer of these packages restores Core 0.41.0 or later.
+`Fuaran.Compute.*` (0.43.0) and `Fuaran.Program.*` stay on their current releases.
+
+Core 0.41.0 widens three IDL records (`IdlField.Keyed`, `IdlRecord.Inline`, `IdlUnion.Discrimination`). The
+vocabulary's literals take each field's default, so `idl.json`, `support.json` and `Generated.fs` are byte-identical
+and no wire byte moves; the Core-produced corpus families re-emit unchanged. The census gains
+`Conformance.witnessPairLawsAt`, carried until the vocabulary declares its keyed slots.
+
+`JsonDecode` is not yet layered over the collecting decoders: every decode verdict is the hand decoder's, as before.
+The three Phase 2344 tests that pinned the closed positions went red at this pin, as designed, and now pin the open
+shape. Not tagged.
+
+### What rides this slot — Phase 2310 (`ThemeManifest` reads and writes Core's `JVal`)
+
+**Class: BREAKING (surface guard: 30 removed or retyped, 1 added-but-breaking, 4 additive).**
+`Fuaran.UI.ThemeManifest` no longer carries a JSON implementation of its own: the `JsonValue` union and the `Json`
+module (`parse`, `serialize`, `asString`, `asNumber`, `asArray`, `asObject`, `field`) are removed, and the package
+references `Fuaran.Core.Wire`. `Decode.ofJson` takes and `Encode.toJson` returns Core's `JVal` (`toJson` now builds
+members in authored order; the bytes are sorted by the writer), and `InvariantKind.Unknown` carries
+`(string * Fuaran.Core.JVal) list`, so an exhaustive construction or match over it moves with the type. A caller
+holding a `JsonValue` moves to `JVal`: `JNum f` is `JFloat f` (or `JInt`), read numbers through `JVal.asFloat`, and
+`JNull` has no counterpart.
+
+`Decode.decode` keeps its signature and reads through `Json.read Decode.readOptions`: depth 64, 65 536 code points per
+string or key, 10 000 items per array and members per object, 4 194 304 UTF-8 bytes per document, and a member `null`
+erased to absence (`Decode.limits`, stated in the package README). A document past a bound is refused with an `Error`
+naming it, where a deeply nested one used to overflow the stack and kill the process. Two inputs the old parser took
+are now refused by Core's grammar: a repeated member name, and a bare or array-element `null`. `Encode.encode` renders
+through `Canonical.write Rendering.CrossHost`; every cross-host manifest byte pin (the sample manifest, the projected
+manifest, the omitted-default forms, the `manifest-validation` defects) is unchanged. Two spellings move to the
+cross-host form the other hosts already write: a control character in a string is `\u00xx` (was `\n` and the other
+short forms), and a non-finite number is the canonical string token (was `0`).
+
 ### What rides this slot — Phase 2293 (the reconciliation policy over Core's conflict report, first slice)
 
 **Class: additive.** `Fuaran.UI.OpStream.Dag.Merge` gains `DagReconcile` — `reconcile`, `reconcileGated`,

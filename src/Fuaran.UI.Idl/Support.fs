@@ -112,7 +112,8 @@ let private switchProjection: KindProjection =
               Opt = opt
               Annotations = Annotations.Empty
               Aliases = []
-              Presence = None }
+              Presence = None
+              Keyed = false }
 
         Some
             [ field "autoAdvanceMs" TInt Optional

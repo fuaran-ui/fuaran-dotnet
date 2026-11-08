@@ -2,9 +2,9 @@ module Fuaran.UI.ThemeManifest.Encode
 
 // ─── ThemeManifest → canonical JSON ─────────────────────────────
 //
-// Builds the portable `JsonValue` AST (`Json.fs`) and serialises it —
-// no external JSON dependency, so encode runs byte-identically under
-// Fable + .NET. The `tokens` block is emitted as a genuine DTCG group
+// Builds Core's `JVal` and renders it through Core's cross-host canonical
+// writer (`Fuaran.Core.Wire`, FSharp.Core-only and Fable-clean), so encode
+// runs byte-identically under Fable + .NET. The `tokens` block is emitted as a genuine DTCG group
 // tree (nested `$type`/`$value`/`$description` leaves, the SPEC `role`
 // tag under `$extensions.fuaran`), so a downstream DTCG tool reads the
 // values and a vanilla DTCG file decodes back through `Decode`. `roles`
@@ -21,31 +21,19 @@ module Fuaran.UI.ThemeManifest.Encode
 // the decoded values MEAN is the validation pass's question
 // (`ThemeManifest.validate`), not the encoder's.
 
+open Fuaran.Core
 open Fuaran.UI.Types
 open Fuaran.UI.ThemeManifest
 
 /// A member written only when it differs from the value the decoder supplies
 /// in its absence.
-let private str (key: string) (value: string) : (string * JsonValue) option =
+let private str (key: string) (value: string) : (string * JVal) option =
     if value = "" then None else Some(key, JStr value)
 
-let private num (key: string) (value: float) (dflt: float) : (string * JsonValue) option =
-    if value = dflt then None else Some(key, JNum value)
+let private num (key: string) (value: float) (dflt: float) : (string * JVal) option =
+    if value = dflt then None else Some(key, JFloat value)
 
-/// Ordinal-sort every object's keys, at every depth — the canonical order the
-/// other hosts write, and the order an `Unknown` invariant's raw members are
-/// re-emitted in.
-let rec private canonical (v: JsonValue) : JsonValue =
-    match v with
-    | JObj pairs ->
-        pairs
-        |> List.map (fun (k, x) -> k, canonical x)
-        |> List.sortWith (fun (a, _) (b, _) -> System.String.CompareOrdinal(a, b))
-        |> JObj
-    | JArr items -> JArr(items |> List.map canonical)
-    | other -> other
-
-let private metaJson (meta: ManifestMeta) : JsonValue option =
+let private metaJson (meta: ManifestMeta) : JVal option =
     if meta = ManifestMeta.anonymous then
         None
     else
@@ -62,7 +50,7 @@ let private metaJson (meta: ManifestMeta) : JsonValue option =
 
 /// One DTCG leaf. `$value` is the leaf discriminator the decoder's walk stops
 /// on, so it is written even when empty.
-let private leafJson (t: ManifestToken) : JsonValue =
+let private leafJson (t: ManifestToken) : JVal =
     JObj(
         [ str "$type" t.Type
           Some("$value", JStr t.Value)
@@ -75,7 +63,7 @@ let private leafJson (t: ManifestToken) : JsonValue =
 /// Rebuild the nested DTCG group tree from the flat dotted-name token
 /// list. Token names are assumed prefix-collision-free (DTCG forbids a
 /// group and a token sharing a path).
-let rec private buildGroup (entries: (string list * ManifestToken) list) : JsonValue =
+let rec private buildGroup (entries: (string list * ManifestToken) list) : JVal =
     let heads = entries |> List.map (fst >> List.head) |> List.distinct
 
     JObj
@@ -88,7 +76,7 @@ let rec private buildGroup (entries: (string list * ManifestToken) list) : JsonV
                   let deeper = members |> List.map (fun (segs, t) -> List.tail segs, t)
                   head, buildGroup deeper ]
 
-let private tokensJson (tokens: ManifestToken list) : JsonValue =
+let private tokensJson (tokens: ManifestToken list) : JVal =
     if List.isEmpty tokens then
         JObj []
     else
@@ -96,14 +84,14 @@ let private tokensJson (tokens: ManifestToken list) : JsonValue =
 
 // ─── roles + invariants ─────────────────────────────────────────
 
-let private roleJson (role: ManifestRole) : JsonValue =
+let private roleJson (role: ManifestRole) : JVal =
     match role with
     | ManifestRole.Tone t -> JObj [ "tone", JStr(ManifestRole.toneToString t) ]
     | ManifestRole.Named n -> JObj [ "named", JStr n ]
 
 /// `token` is required (a binding without one is dropped at decode); an absent
 /// `role` decodes to `Named ""`, so that one role is omitted.
-let private roleBindingJson (b: RoleBinding) : JsonValue =
+let private roleBindingJson (b: RoleBinding) : JVal =
     JObj(
         [ (if b.Role = ManifestRole.Named "" then
                None
@@ -115,7 +103,7 @@ let private roleBindingJson (b: RoleBinding) : JsonValue =
 
 /// `kind` is the discriminator and is always written; every other member is
 /// omitted at the default the decoder supplies for it.
-let private invariantJson (inv: Invariant) : JsonValue =
+let private invariantJson (inv: Invariant) : JVal =
     let kind = Some("kind", JStr(Invariant.kind inv))
     let weight = num "weight" inv.Weight Invariant.DefaultWeight
 
@@ -134,9 +122,10 @@ let private invariantJson (inv: Invariant) : JsonValue =
 
 // ─── Top-level ──────────────────────────────────────────────────
 
-/// Build the `JsonValue` AST for a manifest (exposed for tests/tooling), in
-/// canonical key order.
-let toJson (m: ThemeManifest) : JsonValue =
+/// Build the Core `JVal` for a manifest (exposed for tests/tooling), members in
+/// authored order; `encode` writes it under `Rendering.CrossHost`, which sorts
+/// every object's keys.
+let toJson (m: ThemeManifest) : JVal =
     let block key items =
         if List.isEmpty items then None else Some(key, JArr items)
 
@@ -147,11 +136,15 @@ let toJson (m: ThemeManifest) : JsonValue =
           block "invariants" (m.Invariants |> List.map invariantJson) ]
         |> List.choose id
     )
-    |> canonical
 
 /// Encode a manifest to canonical JSON — the bytes every manifest host writes
 /// for the same manifest. `decode (encode m)` returns `m` for a manifest whose
 /// tokens are in canonical path order (every decoded canonical document is
 /// one); for any other, `encode` is a fixpoint through decode:
 /// `encode (decode (encode m)) = encode m`.
-let encode (m: ThemeManifest) : string = Json.serialize (toJson m)
+///
+/// The bytes are Core's cross-host rendering (Phase 2310): Ordinal-sorted keys at
+/// every depth, every control character as `\u00xx`, and the canonical float
+/// layout, the renderer the other manifest hosts write through.
+let encode (m: ThemeManifest) : string =
+    Canonical.write Rendering.CrossHost (toJson m)

@@ -395,7 +395,8 @@ let private req (name: string) (t: IdlType) : IdlField =
       Opt = Required
       Annotations = Annotations.Empty
       Aliases = []
-      Presence = None }
+      Presence = None
+      Keyed = false }
 
 let private opt (name: string) (t: IdlType) : IdlField =
     { Name = name
@@ -403,7 +404,8 @@ let private opt (name: string) (t: IdlType) : IdlField =
       Opt = Optional
       Annotations = Annotations.Empty
       Aliases = []
-      Presence = None }
+      Presence = None
+      Keyed = false }
 
 // ─── Phase 691: function-typed slots carry their HOST signature ────────────
 //
@@ -434,7 +436,8 @@ let private hostOnly (name: string) (fs: string) (ph: string) : IdlField =
       Opt = HostOnly
       Annotations = Annotations.Empty
       Aliases = []
-      Presence = None }
+      Presence = None
+      Keyed = false }
 
 let private fn (fs: string) (ts: string) (ph: string) : IdlType =
     TFn
@@ -489,7 +492,8 @@ let private omit (name: string) (t: IdlType) (dflt: IdlValue) : IdlField =
       Opt = OmitDefault dflt
       Annotations = Annotations.Empty
       Aliases = []
-      Presence = None }
+      Presence = None
+      Keyed = false }
 
 /// `TextSource` — `Literal` (the corpus's only Display case) + `Bound`
 /// (`Binding<string>`) + `I18n` (a name-keyed `Binding<JVal>` argument bag,
@@ -540,7 +544,8 @@ let private textSource =
             Annotations = Annotations.Empty
             Hosted = None } ]
       Annotations = Annotations.Empty
-      TagRule = UnionTagRule.CaseName }
+      TagRule = UnionTagRule.CaseName
+      Discrimination = UnionDiscrimination.Tagged }
 
 /// `Binding<'T>` — the real recursive binding union, now at full case parity with
 /// the hand-written tier (the Phase 692 gap-closure): every case the hand-written
@@ -792,7 +797,8 @@ let private binding =
             Annotations = Annotations.Empty
             Hosted = None } ]
       Annotations = Annotations.Empty
-      TagRule = UnionTagRule.CaseName }
+      TagRule = UnionTagRule.CaseName
+      Discrimination = UnionDiscrimination.Tagged }
 
 /// `CellFormat` — the column / `Metric` display-format vocabulary. `Number` /
 /// `Percent` carry an *optional* `decimals` (omitted on `None`, rule 4); `Custom`
@@ -860,7 +866,8 @@ let private cellFormat =
             Annotations = Annotations.Empty
             Hosted = None } ]
       Annotations = Annotations.Empty
-      TagRule = UnionTagRule.CaseName }
+      TagRule = UnionTagRule.CaseName
+      Discrimination = UnionDiscrimination.Tagged }
 
 /// `Action<'Msg>` — the effect-typed action union. `Chain` recurses; `Dispatch`
 /// / `onRead` payloads are closures; `Invoke` / `ReadFileBody` carry data. The
@@ -1081,7 +1088,8 @@ let private action =
             Annotations = Annotations.Empty
             Hosted = None } ]
       Annotations = Annotations.Empty
-      TagRule = UnionTagRule.CaseName }
+      TagRule = UnionTagRule.CaseName
+      Discrimination = UnionDiscrimination.Tagged }
 
 /// Where a `Call`'s result lands, declaratively. NOTE the wire tags are `State` /
 /// `Query`, not the F# case names `IntoState` / `IntoQuery`.
@@ -1098,7 +1106,8 @@ let private callResultTarget =
             Annotations = Annotations.Empty
             Hosted = None } ]
       Annotations = Annotations.Empty
-      TagRule = UnionTagRule.CaseName }
+      TagRule = UnionTagRule.CaseName
+      Discrimination = UnionDiscrimination.Tagged }
 
 /// The locale-aware `Binding.Format` intent union (distinct from [[cellFormat]] —
 /// this one carries `isoCode` / `dateStyle` / `unit`, not `code`).
@@ -1160,7 +1169,8 @@ let private formatUnion =
             Annotations = Annotations.Empty
             Hosted = None } ]
       Annotations = Annotations.Empty
-      TagRule = UnionTagRule.CaseName }
+      TagRule = UnionTagRule.CaseName
+      Discrimination = UnionDiscrimination.Tagged }
 
 let private localeSource =
     { Name = "LocaleSource"
@@ -1175,7 +1185,8 @@ let private localeSource =
             Annotations = Annotations.Empty
             Hosted = None } ]
       Annotations = Annotations.Empty
-      TagRule = UnionTagRule.CaseName }
+      TagRule = UnionTagRule.CaseName
+      Discrimination = UnionDiscrimination.Tagged }
 
 let private localFlushTrigger =
     { Name = "LocalFlushTrigger"
@@ -1198,7 +1209,8 @@ let private localFlushTrigger =
             Annotations = Annotations.Empty
             Hosted = None } ]
       Annotations = Annotations.Empty
-      TagRule = UnionTagRule.CaseName }
+      TagRule = UnionTagRule.CaseName
+      Discrimination = UnionDiscrimination.Tagged }
 
 /// `Box.layout` — the container-layout mode (Fuaran-UI 0.2.0 Box unification). `Auto`
 /// (was `Dashboard`), `Flex` (was `Stack`, carries `direction` + `wrap`), `Grid` (was
@@ -1245,7 +1257,8 @@ let private boxLayout =
             Annotations = Annotations.Empty
             Hosted = None } ]
       Annotations = Annotations.Empty
-      TagRule = UnionTagRule.CaseName }
+      TagRule = UnionTagRule.CaseName
+      Discrimination = UnionDiscrimination.Tagged }
 
 /// `FormFieldKind<'Msg>` — the per-field input-shape union, shared by `Form`
 /// fields AND `Filters` chips (the 0.2.0 filters-unification — the separate
@@ -1586,7 +1599,8 @@ let private formFieldKind =
             Annotations = Annotations.Empty
             Hosted = None } ]
       Annotations = Annotations.Empty
-      TagRule = UnionTagRule.CaseName }
+      TagRule = UnionTagRule.CaseName
+      Discrimination = UnionDiscrimination.Tagged }
 
 // _(The separate `FilterKind` union this file carried until the Phase 692
 // gap-closure was pre-unification drift: the hand-written tier's `FilterSpec`
@@ -1631,7 +1645,8 @@ let private mediaKind =
             Annotations = Annotations.Empty
             Hosted = None } ]
       Annotations = Annotations.Empty
-      TagRule = UnionTagRule.CaseName }
+      TagRule = UnionTagRule.CaseName
+      Discrimination = UnionDiscrimination.Tagged }
 
 /// `TrackKind` — what a `Media` timed-text track IS (Fuaran-UI Phase 1110).
 ///
@@ -1668,7 +1683,8 @@ let private columnWidth =
             Annotations = Annotations.Empty
             Hosted = None } ]
       Annotations = Annotations.Empty
-      TagRule = UnionTagRule.CaseName }
+      TagRule = UnionTagRule.CaseName
+      Discrimination = UnionDiscrimination.Tagged }
 
 /// `CellKindErased<'Msg>` — the row-erased grid-cell shape union. Non-interactive
 /// cases (`Text` / `Numeric` / `Date`) are field-less; the interactive ones carry
@@ -1791,7 +1807,8 @@ let private cellKindErased =
             Annotations = Annotations.Empty
             Hosted = None } ]
       Annotations = Annotations.Empty
-      TagRule = UnionTagRule.CaseName }
+      TagRule = UnionTagRule.CaseName
+      Discrimination = UnionDiscrimination.Tagged }
 
 // ─── Meta-family unions (parameterised fragments) ───────────────────────────
 
@@ -1822,7 +1839,8 @@ let private holeValueSpace =
             Annotations = Annotations.Empty
             Hosted = None } ]
       Annotations = Annotations.Empty
-      TagRule = UnionTagRule.CaseName }
+      TagRule = UnionTagRule.CaseName
+      Discrimination = UnionDiscrimination.Tagged }
 
 /// A boxed scalar — a hole default or a `FragmentRef` value arg. Self-describing
 /// (`$type` pins the CLR shape).
@@ -1847,7 +1865,8 @@ let private scalar =
             Annotations = Annotations.Empty
             Hosted = None } ]
       Annotations = Annotations.Empty
-      TagRule = UnionTagRule.CaseName }
+      TagRule = UnionTagRule.CaseName
+      Discrimination = UnionDiscrimination.Tagged }
 
 /// A declared hole on a parameterised fragment (`FragmentDecl.holes`).
 let private holeDecl =
@@ -1871,7 +1890,8 @@ let private holeDecl =
             Annotations = Annotations.Empty
             Hosted = None } ]
       Annotations = Annotations.Empty
-      TagRule = UnionTagRule.CaseName }
+      TagRule = UnionTagRule.CaseName
+      Discrimination = UnionDiscrimination.Tagged }
 
 /// A bound argument at a `FragmentRef` — a scalar value or a slot subtree. Shares
 /// the scalar tags with [[scalar]] plus `SlotArg` (a `Node`-bearing tree).
@@ -1900,14 +1920,16 @@ let private fragmentArg =
             Annotations = Annotations.Empty
             Hosted = None } ]
       Annotations = Annotations.Empty
-      TagRule = UnionTagRule.CaseName }
+      TagRule = UnionTagRule.CaseName
+      Discrimination = UnionDiscrimination.Tagged }
 
 // ─── Records (non-discriminated objects — no `$type`) ───────────────────────
 
 let private invokeArgRecord =
     { Name = "InvokeArg"
       Fields = [ req "addr" TStr; req "value" TStr ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 /// Phase 2517 — the AFFORDANCE a field-bearing node declares: how an agent-initiated
 /// instruction may address it, over and above what `Operability.derive` reads off the
@@ -1921,7 +1943,8 @@ let private invokeArgRecord =
 let private affordanceAliasRecord =
     { Name = "AffordanceAlias"
       Fields = [ req "alias" TStr; req "value" TStr ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 let private affordanceRecord =
     { Name = "Affordance"
@@ -1932,14 +1955,16 @@ let private affordanceRecord =
           opt "description" TStr
           omit "clearable" TBool (VBool false)
           omit "neverControllable" TBool (VBool false) ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 /// An option in a `Select` / `Choice` / `SegmentedChoice` payload (Fuaran-UI 0.2.x
 /// typed-Static: the choice `source` / `options` carry a real `SelectOption` list).
 let private selectOptionRecord =
     { Name = "SelectOption"
       Fields = [ req "label" TStr; req "value" TStr ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 /// Phase 2571 — a named group of a `Select`'s options (WIRE_FORMAT §3.6.30). The
 /// grouping lives on the `Select` spec and names options by `value`, never on
@@ -1948,14 +1973,16 @@ let private selectOptionRecord =
 let private selectOptionGroupRecord =
     { Name = "SelectOptionGroup"
       Fields = [ req "label" TStr; req "values" (TList TStr) ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 /// A `Map.source` marker (Fuaran-UI 0.2.x typed-Static: the map source carries a real
 /// marker list instead of the opaque sentinel).
 let private mapMarkerRecord =
     { Name = "MapMarker"
       Fields = [ req "label" TStr; req "latitude" TFloat; req "longitude" TFloat ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 /// Sort direction on a static table's declared initial order — closed, and
 /// lower-case on the wire (Fuaran-UI Phase 801). Case↔wire mapping for the same
@@ -1975,7 +2002,8 @@ let private sortDirection =
 let private defaultSortRecord =
     { Name = "DefaultSort"
       Fields = [ req "column" TInt; req "direction" (TEnum "SortDirection") ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 /// A `DataGrid.staticRows` payload — the header/row grid a legacy `Table` decode-upgrades
 /// into (Fuaran-UI Phase 393: `Table` retired, becomes a static `DataGrid`). Cells are
@@ -2000,7 +2028,8 @@ let private staticRowsRecord =
           req "headers" (TList(TUnion("TextSource", [])))
           req "rows" (TList(TList(TUnion("TextSource", []))))
           opt "sortable" TBool ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 /// The comparison operand of a cross-field `FieldRule` (Fuaran-UI Phase 864).
 ///
@@ -2018,7 +2047,8 @@ let private staticRowsRecord =
 let private compareRuleRecord =
     { Name = "CompareRule"
       Fields = [ req "against" (TUnion("Binding", [ TJson ])); req "op" (TEnum "CompareOp") ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 /// A `FormField`'s declared constraint (Fuaran-UI Phase 864) — the accepted SET,
 /// where `FormFieldKind` names the CONTROL. Every slot is `Optional`, so a form
@@ -2043,7 +2073,8 @@ let private fieldRuleRecord =
           opt "message" (TUnion("TextSource", []))
           opt "minLength" TInt
           opt "pattern" TStr ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 /// Phase 864 adds one OPTIONAL `rule` slot. `required` stays where it is: it is
 /// the pre-existing degenerate rule, and moving it under `rule` would be a
@@ -2060,7 +2091,8 @@ let private formFieldRecord =
           // Phase 2517 — appended, absent-at-`None`: every form written before it
           // encodes to the bytes it always did. WIRE_FORMAT §31.
           opt "affordance" (TRecord "Affordance") ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 let private filterSpecRecord =
     { Name = "FilterSpec"
@@ -2068,7 +2100,8 @@ let private filterSpecRecord =
         [ req "kind" (TUnion("FormFieldKind", []))
           req "label" (TUnion("TextSource", []))
           req "name" TStr ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 /// One `Binding.Transform` parameter — binds a pipeline `ColExpr.Param` name to a
 /// scalar binding source. `from` instantiates `Binding` at `JVal` (the typed
@@ -2076,7 +2109,8 @@ let private filterSpecRecord =
 let private transformParamRecord =
     { Name = "TransformParam"
       Fields = [ req "from" (TUnion("Binding", [ TJson ])); req "name" TStr ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 /// The `{max, min}` payload of a `Range` control's value — the wire shape of the
 /// hand-written tier's `(min, max)` float pair (the IDL has no tuple type; the
@@ -2084,7 +2118,8 @@ let private transformParamRecord =
 let private rangePairRecord =
     { Name = "RangePair"
       Fields = [ req "max" TFloat; req "min" TFloat ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 /// The `{from, to}` payload of a `DateTimeRange` control's value (Fuaran-UI
 /// Phase 725; renamed from `DateRangePair` by Phase 1811) — the ordered
@@ -2095,7 +2130,8 @@ let private rangePairRecord =
 let private dateTimeRangePairRecord =
     { Name = "DateTimeRangePair"
       Fields = [ req "from" TStr; req "to" TStr ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 let private tabHeaderRecord =
     { Name = "TabHeader"
@@ -2103,7 +2139,8 @@ let private tabHeaderRecord =
         [ req "label" (TUnion("TextSource", []))
           opt "icon" TStr
           opt "disabled" (TUnion("Binding", [ TBool ])) ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 /// Fuaran-UI Phase 2472 — one further comparison on a `Metric`: a figure measured
 /// against a second (or third) period at once — yesterday against the same weekday
@@ -2130,7 +2167,8 @@ let private metricComparisonRecord =
           req "value" (TUnion("Binding", [ TFloat ]))
           omit "format" (TUnion("CellFormat", [])) (VUnion("None", []))
           omit "polarity" (TEnum "TrendPolarity") (VEnum "HigherIsBetter") ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 /// Phase 2591 — one figure a `Markdown` text cites. `name` is what the text's `cite:<name>`
 /// link destination says; `reference` is the same opaque value `Fact.reference` carries
@@ -2144,7 +2182,8 @@ let private markdownCitationRecord =
         [ opt "label" (TUnion("TextSource", []))
           req "name" TStr
           req "reference" TStr ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 /// Phase 2592 — one cell of a static table that cites its figure. `row` and `column` are
 /// zero-based coordinates into `StaticRows.rows`, so the cell's text stays exactly as `rows`
@@ -2159,7 +2198,8 @@ let private tableCitationRecord =
           opt "label" (TUnion("TextSource", []))
           req "reference" TStr
           req "row" TInt ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 /// A `DataGrid` column, row-erased. Fuaran-UI Phase 425: `value` (the projection
 /// closure) and `field` (the declarative row-property name) are SIBLING optional
@@ -2194,7 +2234,8 @@ let private columnErasedRecord =
                   "(row: unknown) => unknown"
                   "(fun _ -> Fuaran.UI.HostPrelude.CellValue.Empty)")
           omit "width" (TUnion("ColumnWidth", [])) (VUnion("Auto", [])) ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 /// One button of a `CellKindErased.ButtonGroup` (`onClick` is a closure over the row).
 let private buttonGroupItemRecord =
@@ -2202,7 +2243,8 @@ let private buttonGroupItemRecord =
       Fields =
         [ req "label" (TUnion("TextSource", []))
           opt "onClick" (handlerOf "Map<string, obj>" "unknown") ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 /// A `Custom` node's content-identity envelope (`strictness` is a bare-string DU).
 let private contentHashRecord =
@@ -2211,7 +2253,8 @@ let private contentHashRecord =
         [ req "algorithm" TStr
           req "hash" TStr
           req "strictness" (TEnum "HashStrictness") ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 /// Phase 1080 — one candidate source of a responsive `Image`. `width` is the
 /// intrinsic pixel width of THIS candidate (the `w` descriptor a browser picks
@@ -2232,7 +2275,8 @@ let private contentHashRecord =
 let private srcSetEntryRecord =
     { Name = "SrcSetEntry"
       Fields = [ req "src" (TUnion("Binding", [ TStr ])); req "width" TInt ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 /// Phase 1110 — one timed-text track of a `Media` node. The list-of-records shape
 /// follows the `SrcSetEntry` precedent above, and for the same reason: a repeated
@@ -2271,7 +2315,8 @@ let private trackEntryRecord =
           req "label" (TUnion("TextSource", []))
           req "src" (TUnion("Binding", [ TStr ]))
           req "srcLang" TStr ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 /// Phase 1120 — one row of a `Tree`, and the vocabulary's first SELF-REFERENTIAL
 /// record: `children` is a list of the record being declared. The IDL's record
@@ -2314,7 +2359,8 @@ let private treeItemRecord =
           opt "icon" TStr
           req "id" TStr
           req "label" (TUnion("TextSource", [])) ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 /// A `FragmentDecl`'s two-axis effect class (omitted on the wire when pure +
 /// deterministic — since Phase 1670 that is the KIND'S OMIT-AT-DEFAULT rather
@@ -2324,7 +2370,8 @@ let private effectClassRecord =
       Fields =
         [ req "determinism" (TEnum "DeterminismSource")
           req "hostEffect" (TEnum "HostEffect") ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 // ─── Type aliases for the field shapes (readability) ───────────────────────
 
@@ -2369,7 +2416,8 @@ let private semanticStyleRecord =
           omit "tone" (TEnum "ToneVariant") (VEnum "Default")
           omit "voice" (TEnum "FontVoice") (VEnum "Default")
           omit "weight" (TEnum "StyleWeight") (VEnum "Standard") ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 /// Phase 2291 — the `PatchStyle` payload. The same six members as
 /// `SemanticStyle`, each OPTIONAL with no default: absence means "leave this
@@ -2386,7 +2434,8 @@ let private styleDeltaRecord =
           opt "tone" (TEnum "ToneVariant")
           opt "voice" (TEnum "FontVoice")
           opt "weight" (TEnum "StyleWeight") ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 /// `{ "onEmpty"?: Node, "onError"?: "<closure>", "onLoading"?: Node }`.
 /// `onError` is the `ErrorPayload -> Node` callback — unobservable, so the
@@ -2405,7 +2454,8 @@ let private stateBehaviourRecord =
                   "(e: unknown) => Node"
                   "(fun _ -> Unchecked.defaultof<Node<obj>>)")
           opt "onLoading" TNode ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 /// `aria-live` politeness — closed, and lower-case on the wire. Phase 707: the
 /// lower-case half of the old "doesn't fit `TEnum`" excuse is gone, so this is a
@@ -2453,7 +2503,8 @@ let private accessibilityRecord =
                     Format = None
                     Refusal = HostedRefusal.Sentence })
           opt "speak" TS ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 // ─── Display kinds (flat `$type`-discriminated) ────────────────────────────
 
@@ -3337,7 +3388,8 @@ let private textAnchor = Declare.enumOf "TextAnchor" [ "Start"; "Middle"; "End" 
 let private drawPoint =
     { Name = "DrawPoint"
       Fields = [ req "x" TFloat; req "y" TFloat ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 let private viewBoxRecord =
     { Name = "ViewBox"
@@ -3346,7 +3398,8 @@ let private viewBoxRecord =
           req "minX" TFloat
           req "minY" TFloat
           req "width" TFloat ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 /// Every field optional — an empty `{}` is a legitimate style (see `drawing-empty`).
 let private drawStyle =
@@ -3372,7 +3425,8 @@ let private drawStyle =
           // Phase 883 — the mark's hover tip. A TextSource, so it carries the
           // same literal / bound / formatted vocabulary every other label does.
           opt "tip" TS ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 let private curveCommand =
     { Name = "CurveCommand"
@@ -3405,7 +3459,8 @@ let private curveCommand =
             Annotations = Annotations.Empty
             Hosted = None } ]
       Annotations = Annotations.Empty
-      TagRule = UnionTagRule.CaseName }
+      TagRule = UnionTagRule.CaseName
+      Discrimination = UnionDiscrimination.Tagged }
 
 /// Recursive: `Group` carries `Shape list`. Every case carries a `style`.
 let private shape =
@@ -3479,7 +3534,8 @@ let private shape =
             Annotations = Annotations.Empty
             Hosted = None } ]
       Annotations = Annotations.Empty
-      TagRule = UnionTagRule.CaseName }
+      TagRule = UnionTagRule.CaseName
+      Discrimination = UnionDiscrimination.Tagged }
 
 /// Phase 1490 — a chart's data-addressed annotations, §4l of
 /// `docs/CHARTS-DRAWING-PRIMITIVE-DESIGN.md`. ONE closed union rather than one
@@ -3523,7 +3579,8 @@ let private chartAnnotationX =
             Annotations = Annotations.Empty
             Hosted = None } ]
       Annotations = Annotations.Empty
-      TagRule = UnionTagRule.CaseName }
+      TagRule = UnionTagRule.CaseName
+      Discrimination = UnionDiscrimination.Tagged }
 
 /// Phase 1492 — a range band's PAIR (§4l "The three addressing forms", the
 /// third row). Two of the same address form, on one axis.
@@ -3555,7 +3612,8 @@ let private chartAnnotationRange =
             Annotations = Annotations.Empty
             Hosted = None } ]
       Annotations = Annotations.Empty
-      TagRule = UnionTagRule.CaseName }
+      TagRule = UnionTagRule.CaseName
+      Discrimination = UnionDiscrimination.Tagged }
 
 let private chartAnnotation =
     { Name = "ChartAnnotation"
@@ -3584,7 +3642,8 @@ let private chartAnnotation =
             Annotations = Annotations.Empty
             Hosted = None } ]
       Annotations = Annotations.Empty
-      TagRule = UnionTagRule.CaseName }
+      TagRule = UnionTagRule.CaseName
+      Discrimination = UnionDiscrimination.Tagged }
 
 /// Phase 679 — a `Switch` case: the match string plus the node it selects. The
 /// tier holds this as a `(string * Node) tuple list`, which the IDL has no type
@@ -3600,14 +3659,16 @@ let private chartAnnotation =
 let private switchCase =
     { Name = "SwitchCase"
       Fields = [ req "child" TNode; opt "match" TStr; opt "when" (bindingOf TBool) ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 /// Phase 679 — `Mount`'s guest channel. `messageShape` rides only on `TwoWay`
 /// in practice but is optional in the shape, not conditional on direction.
 let private guestChannel =
     { Name = "GuestChannel"
       Fields = [ req "direction" (TEnum "ChannelDirection"); opt "messageShape" TStr ]
-      Annotations = Annotations.Empty }
+      Annotations = Annotations.Empty
+      Inline = false }
 
 let private channelDirection =
     Declare.enumOf "ChannelDirection" [ "OutOnly"; "TwoWay" ]
