@@ -172,19 +172,11 @@ module MergeConflict =
         | MergeConflictClass.ReorderVsStructural -> "ReorderVsStructural"
         | MergeConflictClass.CombinedCycle -> "CombinedCycle"
 
-    /// Mirror of `CanonicalJson`'s string escape, kept local for the same reason
-    /// `ValidatorGate` keeps its own: the merge package takes no extra dependency
-    /// for a codec.
+    /// A string as a JSON string literal, through Core's canonical escape
+    /// (Phase 2026) — the escape every other op-stream encoder uses.
     let private appendEscaped (sb: StringBuilder) (s: string) : unit =
         sb.Append '"' |> ignore
-
-        for ch in s do
-            match ch with
-            | '"' -> sb.Append "\\\"" |> ignore
-            | '\\' -> sb.Append "\\\\" |> ignore
-            | c when c < ' ' -> sb.Append(sprintf "\\u%04x" (int c)) |> ignore
-            | c -> sb.Append c |> ignore
-
+        Fuaran.Core.Json.escapeInto sb s
         sb.Append '"' |> ignore
 
     let private appendSide (sb: StringBuilder) (side: MergeSide option) : unit =

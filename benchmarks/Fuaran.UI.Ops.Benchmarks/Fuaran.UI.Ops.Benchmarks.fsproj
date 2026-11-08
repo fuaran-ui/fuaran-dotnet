@@ -16,6 +16,8 @@
     <Compile Include="Corpus.fs" />
     <Compile Include="OpCorpus.fs" />
     <Compile Include="RenderAllocation.fs" />
+    <!-- Phase 2026: the string escape isolated (`escape-rate`); Fable-clean, shared with escape-node/. -->
+    <Compile Include="EscapeRate.fs" />
     <Compile Include="Baseline.fs" />
     <Compile Include="ApplyBenchmarks.fs" />
     <Compile Include="HitRate.fs" />

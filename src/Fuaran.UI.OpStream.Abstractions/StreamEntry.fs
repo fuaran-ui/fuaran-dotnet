@@ -57,22 +57,9 @@ module StreamEntry =
     [<Literal>]
     let chainFormatVersion = 2
 
-    /// Canonical JSON string escaping — mirrors `CanonicalJson.appendRawString`
-    /// (only `"` / `\` / control chars, control as `\u00xx`) so the bytes are
-    /// identical to the encoder the rest of the wire format uses.
-    let private jstr (s: string) : string =
-        let sb = System.Text.StringBuilder()
-        sb.Append '"' |> ignore
-
-        for ch in s do
-            match ch with
-            | '"' -> sb.Append "\\\"" |> ignore
-            | '\\' -> sb.Append "\\\\" |> ignore
-            | c when c < ' ' -> sb.Append(sprintf "\\u%04x" (int c)) |> ignore
-            | c -> sb.Append c |> ignore
-
-        sb.Append '"' |> ignore
-        sb.ToString()
+    /// A string as a JSON string literal, through Core's canonical escape
+    /// (Phase 2026) — the encoder the rest of the wire format uses.
+    let private jstr (s: string) : string = Fuaran.Core.JsonString.quote s
 
     /// Canonical encoding of the apply outcome. A `Success` is a bare tag; a
     /// `Failure` carries its code + message, so flipping outcome breaks the hash.

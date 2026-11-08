@@ -60,7 +60,10 @@
          linked from the suite that runs them there. -->
     <Compile Include="..\..\src\Fuaran.UI.Tests\SanitizeCases.fs" Link="SanitizeCases.fs" />
     <Compile Include="SanitizeLaw.fs" />
-    <!-- Law 12 (Phase 2318): the AI wire's and the SVG coordinate's float layout, over the cases
+    <!-- Law 12 (Phase 2026): the op-stream tier spells a control character the same way on both
+         pipelines, now that every site escapes through Core. -->
+    <Compile Include="EscapeLaw.fs" />
+    <!-- Law 13 (Phase 2318): the AI wire's and the SVG coordinate's float layout, over the cases
          the .NET suite pins, linked from the suite that runs them there. -->
     <Compile Include="..\..\src\Fuaran.UI.Tests\FloatLayoutCases.fs" Link="FloatLayoutCases.fs" />
     <Compile Include="FloatLayoutLaw.fs" />
@@ -80,7 +83,7 @@
     <ProjectReference Include="..\..\src\Fuaran.UI.ServerDriven\Fuaran.UI.ServerDriven.fsproj" />
     <!-- Law 10's subject: UiWitness.ecdsaP256, the published page verifier. -->
     <ProjectReference Include="..\..\src\Fuaran.UI.Program\Fuaran.UI.Program.fsproj" />
-    <!-- Law 12's subject: the AI wire writer (DrawingSvg comes with Renderer.Core above). -->
+    <!-- Law 13's subject: the AI wire writer (DrawingSvg comes with Renderer.Core above). -->
     <ProjectReference Include="..\..\src\Fuaran.UI.AiWire\Fuaran.UI.AiWire.fsproj" />
   </ItemGroup>
   <ItemGroup>

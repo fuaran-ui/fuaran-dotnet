@@ -144,7 +144,12 @@ let main _ =
     for line in sanitizeKit.Lines do
         printfn "%s" line
 
-    // ---- law 12: the tier's float layouts, on both pipelines ----
+    let escape = EscapeLaw.escapeLaw ()
+
+    for line in escape.Lines do
+        printfn "%s" line
+
+    // ---- law 13: the tier's float layouts, on both pipelines ----
     // Phase 2318. The AI wire wrote `1e-7` under Fable and `1E-07` on .NET.
     let floatLayout = FloatLayoutLaw.floatLayoutLaw ()
 
@@ -165,6 +170,7 @@ let main _ =
         + operability.Violations
         + sanitize.Violations
         + sanitizeKit.Violations
+        + escape.Violations
         + floatLayout.Violations
 
     // ---- law 10: a signed page verifies through the published provider ----

@@ -322,16 +322,8 @@ module GuestExport =
 
             sb.Append(OpRecordWire.encodeRecord r) |> ignore)
 
-        sb.Append "],\"scopeId\":" |> ignore
-        sb.Append('"') |> ignore
-
-        for ch in b.ScopeId do
-            match ch with
-            | '"' -> sb.Append "\\\"" |> ignore
-            | '\\' -> sb.Append "\\\\" |> ignore
-            | c when c < ' ' -> sb.Append(sprintf "\\u%04x" (int c)) |> ignore
-            | c -> sb.Append c |> ignore
-
+        sb.Append "],\"scopeId\":\"" |> ignore
+        Fuaran.Core.Json.escapeInto sb b.ScopeId
         sb.Append "\"}" |> ignore
         sb.ToString()
 

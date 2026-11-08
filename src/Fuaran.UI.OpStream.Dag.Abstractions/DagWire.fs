@@ -50,16 +50,10 @@ open Fuaran.UI.OpStream.Abstractions
 
 module DagWire =
 
+    /// A string as a JSON string literal, through Core's canonical escape (Phase 2026).
     let private escapeInto (sb: StringBuilder) (s: string) : unit =
         sb.Append '"' |> ignore
-
-        for ch in s do
-            match ch with
-            | '"' -> sb.Append "\\\"" |> ignore
-            | '\\' -> sb.Append "\\\\" |> ignore
-            | c when c < ' ' -> sb.Append(sprintf "\\u%04x" (int c)) |> ignore
-            | c -> sb.Append c |> ignore
-
+        Fuaran.Core.Json.escapeInto sb s
         sb.Append '"' |> ignore
 
     let private encodeEnvelope (sb: StringBuilder) (envelope: OpResultEnvelope) : unit =
