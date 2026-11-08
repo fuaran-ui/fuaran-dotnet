@@ -7957,6 +7957,31 @@ The slot is already breaking (Phase 2060), so this rides it. `docs/DECISIONS.md`
 
 ---
 
+### What rides this slot — Phase 2133 (theme-manifest invariants are validated, not decoded strictly)
+
+**Class: BREAKING on `Fuaran.UI.ThemeManifest` — the slot is already breaking (Phase 2060), so this rides it.** The
+decoder is tolerant: an invariant whose `kind` is unknown is KEPT with its members and weight and round-trips (an
+object with no non-empty string `kind` is still dropped); a validation pass after decode reports the shared code table
+`WIRE_FORMAT.md` §13 names — `CONTRAST_FLOOR_OUT_OF_RANGE` (`minRatio` outside [1, 21]), `CONTRAST_FLOOR_ROLE_EMPTY`,
+`CONTRAST_FLOOR_ROLE_UNBOUND`, `USAGE_BUDGET_TOKEN_UNDECLARED`, `INVARIANT_KIND_UNKNOWN` — each defect encoded as
+canonical `{code,index,subject}`. The encoder follows the byte law (keys sorted at every depth; every member at its
+default omitted), so a manifest's ENCODED BYTES can change where a default was previously written; the schema no longer
+requires the defaulted members and documents `minRatio`'s range. `ThemeBridge.verify` lists an unenforced kind as
+deferred. The `style-observer/` corpus family gains the `manifest-validation` tier (seven vectors, `since` 0.103.0),
+certified by this host and the TypeScript, Rust and Go hosts. Phase 2077's t6 is absorbed. Recorded by the campaign
+driver at the fold (the phase's commit did not carry this section); decisions in `docs/DECISIONS.md` where the phase
+recorded them.
+
+### What rides this slot — Phase 2430 (the replay document and the harvested demand read the demand view)
+
+**Class: additive on the published documents; no signature changes.** `Fuaran.UI.Program.Server`'s
+`Replay.ofTreeAndHandlers`, `Harvest.ofProgram` and `Harvest.ofRegistration` now name the demand the demanded
+projection names (`ServerDemanded.ofTreeAndHandlers` / `ServerDemanded.ofHandlers`): for a tree that commits a
+buffered field, the namespace the commit writes; for a confirm, its continuations' effects and host calls; and a
+replay and undo posture for every handler a continuation reaches. Postures are unchanged: each is still the fold's,
+the one `Replay.postureOf` and `Replay.admit` read. A document whose tree and handler compute stages hold no commit and no confirm is
+byte-identical. Ruling: `docs/DECISIONS.md` D27.
+
 ## 0.102.0 (RELEASED — tagged v0.102.0 at 00225688, 2026-11-06)
 
 _Set by Phase 2576, the first change to ride the slot._
