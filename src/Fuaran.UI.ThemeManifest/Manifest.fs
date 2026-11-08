@@ -161,12 +161,12 @@ module ManifestDefect =
     /// keys Ordinal-sorted — the bytes the corpus's `manifest-validation`
     /// vectors pin on every host.
     let encode (d: ManifestDefect) : string =
-        Json.serialize (
-            JObj
-                [ "code", JStr(code d.Code)
-                  "index", JNum(float d.Index)
-                  "subject", JStr d.Subject ]
-        )
+        Fuaran.Core.Canonical.write
+            Fuaran.Core.Rendering.CrossHost
+            (Fuaran.Core.JObj
+                [ "code", Fuaran.Core.JStr(code d.Code)
+                  "index", Fuaran.Core.JInt d.Index
+                  "subject", Fuaran.Core.JStr d.Subject ])
 
     /// The lowest and highest contrast ratio WCAG's formula can produce — a
     /// floor outside them is either vacuous (below 1, every pair passes) or

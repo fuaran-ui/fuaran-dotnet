@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
     <PackageId>Fuaran.UI.ThemeManifest</PackageId>
-    <Description>Fuaran declared token contract — a DTCG-compatible theme manifest extended with the two things DTCG lacks: a per-token role → ToneVariant mapping and a soft-weighted invariant block (contrast floors, colour-usage budgets, motion voice). The machine-readable contract an AI reasons against and the StyleObserver verifies against. FSharp.Core-only + Fable-portable (no Browser/renderer dep). Apache-2.0 licensed.</Description>
+    <Description>Fuaran declared token contract — a DTCG-compatible theme manifest extended with the two things DTCG lacks: a per-token role → ToneVariant mapping and a soft-weighted invariant block (contrast floors, colour-usage budgets, motion voice). The machine-readable contract an AI reasons against and the StyleObserver verifies against. FSharp.Core + Fuaran.Core.Wire, Fable-portable (no Browser/renderer dep). Apache-2.0 licensed.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageTags>fuaran;design-tokens;dtcg;theme;manifest;ai;invariants</PackageTags>
   </PropertyGroup>
@@ -18,7 +18,6 @@
     <Content Include="**\*.fsproj;**\*.fs" Exclude="**\*.fs.js;**\bin\**;**\obj\**" PackagePath="fable\" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Json.fs" />
     <Compile Include="Invariant.fs" />
     <Compile Include="Manifest.fs" />
     <Compile Include="Encode.fs" />
@@ -31,5 +30,6 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />
+    <PackageReference Include="Fuaran.Core.Wire" />
   </ItemGroup>
 </Project>

@@ -9,6 +9,7 @@
     <Compile Include="ManifestTests.fs" />
     <Compile Include="ProjectTests.fs" />
     <Compile Include="ThemeBridgeTests.fs" />
+    <Compile Include="BoundedReadTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
