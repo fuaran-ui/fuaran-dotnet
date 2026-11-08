@@ -1,7 +1,7 @@
 module FableLaws.FloatLayoutLaw
 
 // ============================================================================
-//  Law 12 (Phase 2318): the AI wire and the SVG coordinate lay a float out
+//  Law 13 (Phase 2318): the AI wire and the SVG coordinate lay a float out
 //  with the same bytes on both pipelines, over the cases
 //  `Fuaran.UI.Tests/FloatLayoutCases.fs` pins.
 //

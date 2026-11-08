@@ -7973,7 +7973,7 @@ The slot is already breaking (Phase 2060), so this rides it. `docs/DECISIONS.md`
   `-0` is `0`, a non-finite float is the quoted token (was a bare `NaN`, which no JSON parser read). A bound `Navigate`
   route and a bound `Confirm` prompt now escape `<` / `>` / `&`; the `Confirm` arm's escape was a no-op, so a
   `</script>` there reached the page.
-- Pinned by `FloatLayoutTests` (the shared `FloatLayoutCases`, which the Fable law harness runs as Law 12) and the
+- Pinned by `FloatLayoutTests` (the shared `FloatLayoutCases`, which the Fable law harness runs as Law 13) and the
   resume payload tests in `ResumeTests`.
 
 ---
