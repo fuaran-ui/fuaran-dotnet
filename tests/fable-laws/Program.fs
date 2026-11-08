@@ -149,6 +149,13 @@ let main _ =
     for line in escape.Lines do
         printfn "%s" line
 
+    // ---- law 13: the tier's float layouts, on both pipelines ----
+    // Phase 2318. The AI wire wrote `1e-7` under Fable and `1E-07` on .NET.
+    let floatLayout = FloatLayoutLaw.floatLayoutLaw ()
+
+    for line in floatLayout.Lines do
+        printfn "%s" line
+
     let violations =
         Laws.mergeViolations mergeVerdict
         + laneFailures
@@ -164,6 +171,7 @@ let main _ =
         + sanitize.Violations
         + sanitizeKit.Violations
         + escape.Violations
+        + floatLayout.Violations
 
     // ---- law 10: a signed page verifies through the published provider ----
     // Phase 2570. Asynchronous, as WebCrypto is: the TOTAL line is printed once

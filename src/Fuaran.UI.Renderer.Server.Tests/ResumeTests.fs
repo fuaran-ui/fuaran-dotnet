@@ -302,3 +302,53 @@ let resumeModelEscapeTests =
               let empty = Resume.encodeEnvelope "m" "" [] (Fuaran.markdown "t" "hi")
               Expect.stringContains empty "\"model\":{}" "and an absent model still falls back to the empty object"
           } ]
+
+// Phase 2318 — the resume payload is the canonical bytes. The hand-rolled `JVal` writer that stood
+// in `Resume.fs` claimed byte parity with the canonical codec and had none: short `\n` escapes,
+// `-0` kept, `NaN` written unquoted (invalid JSON) and a `{0:R}` that throws under Fable.
+[<Tests>]
+let resumeCanonicalPayloadTests =
+    testList
+        "Resume — the action payload is canonical JSON (Phase 2318)"
+        [ test "a payload with a control character, -0 and a non-finite float encodes to the canonical bytes" {
+              let payload =
+                  JObj
+                      [ "z", JFloat -0.0
+                        "text", JStr "a\nb\u0001<"
+                        "n", JFloat nan
+                        "inf", JFloat -infinity
+                        "f", JFloat 1e-7 ]
+
+              let action: Action<obj> = Action.Notify("ch\t", payload)
+
+              let canonical =
+                  (Canonical.write Rendering.CrossHost (Fuaran.UI.Generated.encodeActionJson action))
+                      .Replace("<", "\\u003c")
+                      .Replace(">", "\\u003e")
+                      .Replace("&", "\\u0026")
+
+              let encoded = Resume.encodeAction action
+              Expect.equal encoded canonical "the resume encoding is the canonical encoding, script-escaped"
+
+              Expect.equal
+                  encoded
+                  "{\"$type\":\"Notify\",\"channel\":\"ch\\u0009\",\"payload\":{\"f\":1E-07,\"inf\":\"-Infinity\",\"n\":\"NaN\",\"text\":\"a\\u000ab\\u0001\\u003c\",\"z\":0}}"
+                  "the pinned bytes: sorted members, \\u00xx escapes, quoted non-finite tokens, -0 collapsed"
+
+              use doc = System.Text.Json.JsonDocument.Parse encoded
+
+              Expect.equal
+                  (doc.RootElement.GetProperty("payload").GetProperty("text").GetString())
+                  "a\nb\u0001<"
+                  "and it is valid JSON whose string reads back intact"
+          }
+
+          test "a bound Confirm prompt carrying '</script>' cannot break out of the envelope" {
+              // This arm's escape was a no-op before Phase 2318 (`"\u003c"` in an F# literal IS `<`).
+              let action: Action<obj> =
+                  Action.Confirm(TextSource.I18n("</script><b>x", Map.empty), Action.Print, None)
+
+              let encoded = Resume.encodeAction action
+              Expect.isFalse (contains "</script>" encoded) "no literal closing tag survives"
+              Expect.isTrue (contains "\\u003c/script\\u003e" encoded) "the markup is unicode-escaped"
+          } ]

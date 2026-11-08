@@ -145,48 +145,23 @@ let rec disposition (action: Action<'Msg>) : ResumeDisposition =
 
 // ─── Bounded JSON helpers (spike-local; script-injection-safe) ──────────────
 
-/// Escape a string for a JSON string literal AND for safe embedding inside a
-/// `<script>` element (`<` / `>` / `&` → `\uXXXX`, same posture as
-/// `Hydration.escapeForScript`). JSON parsers read the escapes back, so the
-/// decoded value is byte-identical to the original.
-let private jsonString (s: string) : string =
-    let sb = System.Text.StringBuilder()
-    sb.Append '"' |> ignore
+/// A `JVal` as canonical cross-host JSON (`Fuaran.Core.Canonical`, WIRE_FORMAT §2:
+/// Ordinal-sorted members, `\u00xx` control escapes, the `-0` collapse, the
+/// quoted non-finite tokens and Core's one float layout), made inert inside a
+/// `<script>` by `Hydration.escapeForScript` — hydration's own `encodeNode` +
+/// `escapeForScript` shape, over a value rather than a node. In canonical JSON
+/// `<` / `>` / `&` occur only inside string literals, so that global escape is
+/// sound and every JSON parser reads it back as the characters it names.
+///
+/// Phase 2318 retired the hand-rolled writer that stood here: it claimed byte
+/// parity with the canonical codec and had none (short `\n` escapes, `-0`
+/// kept, `NaN` unquoted, and a `{0:R}` that throws under Fable).
+let private canonicalScript (v: Fuaran.Core.JVal) : string =
+    Fuaran.Core.Canonical.write Fuaran.Core.Rendering.CrossHost v
+    |> Hydration.escapeForScript
 
-    for ch in s do
-        match ch with
-        | '"' -> sb.Append "\\\"" |> ignore
-        | '\\' -> sb.Append "\\\\" |> ignore
-        | '\n' -> sb.Append "\\n" |> ignore
-        | '\r' -> sb.Append "\\r" |> ignore
-        | '\t' -> sb.Append "\\t" |> ignore
-        | '<' -> sb.Append "\\u003c" |> ignore
-        | '>' -> sb.Append "\\u003e" |> ignore
-        | '&' -> sb.Append "\\u0026" |> ignore
-        | c when c < ' ' -> sb.AppendFormat("\\u{0:x4}", int c) |> ignore
-        | c -> sb.Append c |> ignore
-
-    sb.Append '"' |> ignore
-    sb.ToString()
-
-/// Faithful `JVal` → JSON for the data-shaped payloads (`Notify` / `SetState`
-/// / `AiTool`): keys Ordinal-sorted, the pinned "R" float layout — matching
-/// the canonical codec byte-for-byte, nested payloads included (the old
-/// obj-erased version collapsed non-scalars to `"<opaque>"`).
-let rec private jsonValueLite (v: Fuaran.Core.JVal) : string =
-    match v with
-    | Fuaran.Core.JStr s -> jsonString s
-    | Fuaran.Core.JBool b -> (if b then "true" else "false")
-    | Fuaran.Core.JInt n -> string n
-    | Fuaran.Core.JFloat f -> System.String.Format(System.Globalization.CultureInfo.InvariantCulture, "{0:R}", f)
-    | Fuaran.Core.JArr xs -> "[" + (xs |> List.map jsonValueLite |> String.concat ",") + "]"
-    | Fuaran.Core.JObj fields ->
-        "{"
-        + (fields
-           |> List.sortWith (fun (a, _) (b, _) -> System.String.CompareOrdinal(a, b))
-           |> List.map (fun (k, v) -> jsonString k + ":" + jsonValueLite v)
-           |> String.concat ",")
-        + "}"
+/// A string as a script-safe canonical JSON string literal.
+let private jsonString (s: string) : string = canonicalScript (Fuaran.Core.JStr s)
 
 // Phase 1152 — see the note above `disposition`.
 #nowarn "44"
@@ -205,26 +180,22 @@ let rec encodeAction (action: Action<'Msg>) : string =
     // encoder too, so it is omitted at `Self` and the pre-1536 bytes stand.
     | Action.Navigate(TextSource.Literal route, NavigateTarget.Self) ->
         sprintf "{\"$type\":\"Navigate\",\"route\":%s}" (jsonString route)
-    | Action.Navigate _ ->
-        (Fuaran.Core.Canonical.write Fuaran.Core.Rendering.CrossHost (Fuaran.UI.Generated.encodeActionJson action))
+    | Action.Navigate _ -> canonicalScript (Fuaran.UI.Generated.encodeActionJson action)
     | Action.Notify(channel, payload) ->
-        sprintf "{\"$type\":\"Notify\",\"channel\":%s,\"payload\":%s}" (jsonString channel) (jsonValueLite payload)
+        sprintf "{\"$type\":\"Notify\",\"channel\":%s,\"payload\":%s}" (jsonString channel) (canonicalScript payload)
     // Phase 818 — the literal `value` keeps the existing lite shape
     // byte-identical; a `valueFrom` action re-encodes wholesale through the
     // canonical encoder (the binding shape is the codec's own vocabulary — a
     // second hand-rolled binding encoder here would only drift).
     | Action.SetState(key, Some value, _) ->
-        sprintf "{\"$type\":\"SetState\",\"key\":%s,\"value\":%s}" (jsonString key) (jsonValueLite value)
+        sprintf "{\"$type\":\"SetState\",\"key\":%s,\"value\":%s}" (jsonString key) (canonicalScript value)
     | Action.SetState(_, None, _) ->
-        // Script-embedding safety (the `jsonString` posture): `<` / `>` / `&`
+        // Script-embedding safety (`canonicalScript`): `<` / `>` / `&`
         // only ever occur inside JSON string literals, so the global escape is
         // sound and keeps the payload inert inside a `<script>` element.
-        (Fuaran.Core.Canonical.write Fuaran.Core.Rendering.CrossHost (Fuaran.UI.Generated.encodeActionJson action))
-            .Replace("<", "\\u003c")
-            .Replace(">", "\\u003e")
-            .Replace("&", "\\u0026")
+        canonicalScript (Fuaran.UI.Generated.encodeActionJson action)
     | Action.AiTool(name, args) ->
-        sprintf "{\"$type\":\"AiTool\",\"args\":%s,\"toolName\":%s}" (jsonValueLite args) (jsonString name)
+        sprintf "{\"$type\":\"AiTool\",\"args\":%s,\"toolName\":%s}" (canonicalScript args) (jsonString name)
     // Phase 1126 — the payload is a `TextSource`, and this follows the
     // `SetState` split directly above it, for the same reason. A LITERAL keeps
     // the existing lite shape byte-identical (a literal's canonical form IS the
@@ -238,10 +209,7 @@ let rec encodeAction (action: Action<'Msg>) : string =
         // Script-embedding safety, exactly as the `valueFrom` arm above: `<` /
         // `>` / `&` only ever occur inside JSON string literals, so the global
         // escape is sound and keeps the payload inert inside a `<script>`.
-        (Fuaran.Core.Canonical.write Fuaran.Core.Rendering.CrossHost (Fuaran.UI.Generated.encodeActionJson action))
-            .Replace("<", "\\u003c")
-            .Replace(">", "\\u003e")
-            .Replace("&", "\\u0026")
+        canonicalScript (Fuaran.UI.Generated.encodeActionJson action)
     | Action.CommitLocal nodeId -> sprintf "{\"$type\":\"CommitLocal\",\"nodeId\":%s}" (jsonString nodeId)
     // Phase 1124 — no members beside the discriminator, so the lite encoder and
     // the canonical codec agree with nothing to keep in step.
@@ -271,10 +239,7 @@ let rec encodeAction (action: Action<'Msg>) : string =
         // resume interpreter never reads it — it is written faithfully anyway,
         // because a payload that is present and wrong is worse than one that is
         // present and unread.
-        (Fuaran.Core.Canonical.write Fuaran.Core.Rendering.CrossHost (Fuaran.UI.Generated.encodeActionJson action))
-            .Replace("<", "\u003c")
-            .Replace(">", "\u003e")
-            .Replace("&", "\u0026")
+        canonicalScript (Fuaran.UI.Generated.encodeActionJson action)
     | Action.Chain inner ->
         let ops = inner |> List.map encodeAction |> String.concat ","
         sprintf "{\"$type\":\"Chain\",\"ops\":[%s]}" ops
@@ -433,7 +398,7 @@ let encodeEnvelope
         (jsonString (treeHash node))
         // Phase 1523 — the model is host-supplied JSON, and it is escaped with
         // the module's own `<` / `>` / `&` escape UNCONDITIONALLY, exactly as
-        // every other value the envelope embeds already is (`:174-178`).
+        // every other value the envelope embeds already is (`Hydration.escapeForScript`).
         //
         // It used to be embedded verbatim, on the reasoning that "the host owns
         // its escaping". A host serialising its own model does own its JSON —
@@ -456,7 +421,7 @@ let encodeEnvelope
         (if System.String.IsNullOrWhiteSpace modelJson then
              "{}"
          else
-             modelJson.Replace("<", "\\u003c").Replace(">", "\\u003e").Replace("&", "\\u0026"))
+             Hydration.escapeForScript modelJson)
         actions
         effects
 
