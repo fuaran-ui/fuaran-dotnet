@@ -7955,6 +7955,28 @@ The slot is already breaking (Phase 2060), so this rides it. `docs/DECISIONS.md`
 - Certified by the program specification's eight new `client-effect/reject-*-empty-*` vectors, which the conformance
   suite runs for their class, and by `ClientEffectNonEmptyTests`.
 
+### What rides this slot — Phase 2061 (the op-stream encoder is one design)
+
+**Class: additive surface, with five ruled byte changes to `CanonicalJson.encodeOp`.** Packages `Fuaran.UI` and
+`Fuaran.UI.OpStream.Abstractions`. The slot is already breaking (Phase 2060), so this rides it.
+
+- **Added:** `Fuaran.UI.Generated.encodeBindingJson : ('T -> JVal) -> Binding<'T> -> JVal`, the generated binding
+  encoder for a `Binding` slot outside a node, with the caller supplying the payload encoding (declared in the
+  vocabulary's accessor splice beside `encodeActionJson`).
+- **Unchanged:** every public signature of `CanonicalJson`; the chain format (`v` stays `2`); `chain-corpus.json`, the
+  op fixtures and the stored-emission corpus encode byte-identically.
+- **Internal:** `encodeOp` builds the op as a `JVal` over the generated layer and renders it once with
+  `Canonical.write Rendering.CrossHost`; the hand-written binding, format and action encoders and the appender DSL are
+  gone (the action encoder had no caller).
+- **Five bytes that move**, each pinned by name in `OpEncoderPinTests`:
+  - a `ReplaceBinding` whose `Local` binding carries `codec` or `commitTo` now carries them, as a node's binding and the
+    TypeScript op encoder already did; the old bytes dropped both, so the op hashed as if they were absent;
+  - a null `Filter` / `Selection` `defaultValue` is omitted rather than written as `null` (WIRE_FORMAT §2), as `Static`
+    and `State` already were;
+  - a null `PropValue.Native` is `"<opaque>"` rather than `null`;
+  - an `int64` payload past 2^53 renders as the double it rounds to, which is what a reader of the old integer token
+    re-encoded it as. Below 2^53 the digits are unchanged.
+
 ---
 
 ## 0.102.0 (RELEASED — tagged v0.102.0 at 00225688, 2026-11-06)

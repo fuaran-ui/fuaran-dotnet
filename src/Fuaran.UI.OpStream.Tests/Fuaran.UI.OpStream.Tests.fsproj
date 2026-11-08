@@ -71,6 +71,8 @@
          shipped reference codec, and a refusal that names the op and the slot. -->
     <Compile Include="TreeOpMapLawsTests.fs" />
     <Compile Include="CodecSeamTests.fs" />
+    <Compile Include="OpEncoderPinCases.fs" />
+    <Compile Include="OpEncoderPinTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

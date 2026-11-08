@@ -772,7 +772,14 @@ let encodeActionJson (a: Action<'Msg>) : JVal = encAction a
 // should grow a second hand-rolled `TextSource` encoder to replace it, because
 // `TextSource.Literal`'s bare-string canonical form (§3.6) is exactly the kind
 // of rule that two copies drift on.
-let encodeTextSourceJson (t: TextSource) : JVal = encTextSource t"""
+let encodeTextSourceJson (t: TextSource) : JVal = encTextSource t
+
+// Phase 2061 — a `Binding` slot OUTSIDE a node: the op-stream's `ReplaceBinding`
+// encodes through the same generated binding encoder a node's slots do, with
+// the caller supplying the encoding of the `'T` payload positions (`Static.value`,
+// the `defaultValue`s, recursively through `Local.initialFrom`) — the op codec's
+// own obj-erased payload policy rather than a second binding encoder.
+let encodeBindingJson (encodePayload: 'T -> JVal) (b: Binding<'T>) : JVal = encBinding encodePayload b"""
         CaseRefines =
             Map.ofList
                 [ "Action.SetState",
