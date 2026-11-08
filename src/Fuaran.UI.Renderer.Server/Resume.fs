@@ -145,22 +145,20 @@ let rec disposition (action: Action<'Msg>) : ResumeDisposition =
 
 // ─── Bounded JSON helpers (spike-local; script-injection-safe) ──────────────
 
-/// Make canonical JSON inert inside a `<script>` element: `<` / `>` / `&` →
-/// `\uXXXX`, the `Hydration.escapeForScript` posture. In canonical JSON those
-/// characters occur only inside string literals, so the global replace is sound
-/// and every JSON parser reads the escapes back as the characters they name.
-let private scriptSafe (json: string) : string =
-    json.Replace("<", "\\u003c").Replace(">", "\\u003e").Replace("&", "\\u0026")
-
 /// A `JVal` as canonical cross-host JSON (`Fuaran.Core.Canonical`, WIRE_FORMAT §2:
 /// Ordinal-sorted members, `\u00xx` control escapes, the `-0` collapse, the
-/// quoted non-finite tokens and Core's one float layout), made script-safe —
-/// `Hydration`'s `encodeNode` + `escapeForScript` shape, over a value rather
-/// than a node. Phase 2318 retired the hand-rolled writer that stood here: it
-/// claimed byte parity with the canonical codec and had none (short `\n`
-/// escapes, `-0` kept, `NaN` unquoted, and a `{0:R}` that throws under Fable).
+/// quoted non-finite tokens and Core's one float layout), made inert inside a
+/// `<script>` by `Hydration.escapeForScript` — hydration's own `encodeNode` +
+/// `escapeForScript` shape, over a value rather than a node. In canonical JSON
+/// `<` / `>` / `&` occur only inside string literals, so that global escape is
+/// sound and every JSON parser reads it back as the characters it names.
+///
+/// Phase 2318 retired the hand-rolled writer that stood here: it claimed byte
+/// parity with the canonical codec and had none (short `\n` escapes, `-0`
+/// kept, `NaN` unquoted, and a `{0:R}` that throws under Fable).
 let private canonicalScript (v: Fuaran.Core.JVal) : string =
-    Fuaran.Core.Canonical.write Fuaran.Core.Rendering.CrossHost v |> scriptSafe
+    Fuaran.Core.Canonical.write Fuaran.Core.Rendering.CrossHost v
+    |> Hydration.escapeForScript
 
 /// A string as a script-safe canonical JSON string literal.
 let private jsonString (s: string) : string = canonicalScript (Fuaran.Core.JStr s)
@@ -400,7 +398,7 @@ let encodeEnvelope
         (jsonString (treeHash node))
         // Phase 1523 — the model is host-supplied JSON, and it is escaped with
         // the module's own `<` / `>` / `&` escape UNCONDITIONALLY, exactly as
-        // every other value the envelope embeds already is (`scriptSafe`).
+        // every other value the envelope embeds already is (`Hydration.escapeForScript`).
         //
         // It used to be embedded verbatim, on the reasoning that "the host owns
         // its escaping". A host serialising its own model does own its JSON —
@@ -423,7 +421,7 @@ let encodeEnvelope
         (if System.String.IsNullOrWhiteSpace modelJson then
              "{}"
          else
-             scriptSafe modelJson)
+             Hydration.escapeForScript modelJson)
         actions
         effects
 
