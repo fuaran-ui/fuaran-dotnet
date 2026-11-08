@@ -53,7 +53,8 @@ let private withExtraField (opt: Optionality) : Idl =
           Opt = opt
           Annotations = Annotations.Empty
           Aliases = []
-          Presence = None }
+          Presence = None
+          Keyed = false }
 
     match baseIdl.Kinds with
     | k :: rest ->
@@ -74,7 +75,8 @@ let private withExtraKind: Idl =
                         Opt = Required
                         Annotations = Annotations.Empty
                         Aliases = []
-                        Presence = None } ]
+                        Presence = None
+                        Keyed = false } ]
                   Annotations = Annotations.Empty } ] }
 
 /// The vocabulary with the FIRST field matching `pick` (in declaration order, over

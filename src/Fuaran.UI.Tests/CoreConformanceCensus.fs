@@ -740,6 +740,14 @@ let census: (string * Adoption) list =
       CarriedBy "unfiled — runs at the same Introspect.keyedWitness keyedChildrenLawsAt is adopted at"
       "Conformance.keyedArbitrationLawsWith",
       CarriedBy "unfiled — runs at the same Introspect.keyedWitness keyedChildrenLawsAt is adopted at"
+      // Arrived with the 0.41.0 pin raise (Phase 2420; Core Phase 494). Its subject is a domain
+      // holding a GENERATED witness pair beside a HAND one. This tier holds the hand pair
+      // (`Introspect.nodeWitness` / `keyedWitness`) and the generated `nodeWitness`, but its
+      // vocabulary marks no member `Keyed`, so the generator emits no `keyedWitness` to pair: the
+      // adoption is the vocabulary declaring its keyed slots, which moves `idl.json`.
+      "Conformance.witnessPairLawsAt",
+      CarriedBy
+          "unfiled — the vocabulary declares its keyed node slots (IdlField.Keyed, Core Phase 494) so the generator emits keyedWitness, and the generated pair is certified against Introspect's hand pair"
       "Conformance.checkpointLaws",
       NotUsed
           "Fuaran.Core.OpStream.Dag's lane-DAG checkpoint (Dag.Checkpoint, Core 0.34.0, fuaran-core Phase 288) — the tier checkpoints its DAG through its own DagReplay.replayFromCheckpoint (Fuaran.UI.OpStream.Dag.Merge) and takes no Core DAG checkpoint"

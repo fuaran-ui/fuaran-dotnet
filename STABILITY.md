@@ -8025,6 +8025,23 @@ replay and undo posture for every handler a continuation reaches. Postures are u
 the one `Replay.postureOf` and `Replay.admit` read. A document whose tree and handler compute stages hold no commit and no confirm is
 byte-identical. Ruling: `docs/DECISIONS.md` D27.
 
+### What rides this slot — Phase 2420 (the Core pin is 0.41.0; the decoder's policy positions are open)
+
+**Class: dependency floor; no public surface of this tier moves.** Every `Fuaran.Core.*` pin moves from `0.40.3` to
+`0.41.0`, the release carrying fuaran-core#562 (Core D230): the generated collecting decoders take a host's decoder at
+every enumeration, at each JSON scalar, at the generic `Binding` union through one generic seam, and at every
+declared member an object does not carry (`Absent`). A consumer of these packages restores Core 0.41.0 or later.
+`Fuaran.Compute.*` (0.43.0) and `Fuaran.Program.*` stay on their current releases.
+
+Core 0.41.0 widens three IDL records (`IdlField.Keyed`, `IdlRecord.Inline`, `IdlUnion.Discrimination`). The
+vocabulary's literals take each field's default, so `idl.json`, `support.json` and `Generated.fs` are byte-identical
+and no wire byte moves; the Core-produced corpus families re-emit unchanged. The census gains
+`Conformance.witnessPairLawsAt`, carried until the vocabulary declares its keyed slots.
+
+`JsonDecode` is not yet layered over the collecting decoders: every decode verdict is the hand decoder's, as before.
+The three Phase 2344 tests that pinned the closed positions went red at this pin, as designed, and now pin the open
+shape. Not tagged.
+
 ## 0.102.0 (RELEASED — tagged v0.102.0 at 00225688, 2026-11-06)
 
 _Set by Phase 2576, the first change to ride the slot._

@@ -41,12 +41,9 @@
     the pin was raised to 0.36.0, and CORE_0_37 (a schema entry a `Field`, fuaran-core#423; a column a
     typed vector, fuaran-core#444) when it was raised to 0.38.1 (Phase 2226). The 0.40.0 spellings (the
     `IdlField` canonical-form slots, Core Phase 539; the Text and Relation packages) were written
-    unconditionally when the pin was raised to 0.40.2 (Phase 2286). One is defined today: CORE_0_41
-    (Core Phase 494 widens `IdlField` with `Keyed`), retired with its arm when the pin reaches 0.41.0.
+    unconditionally when the pin was raised to 0.40.2 (Phase 2286), and CORE_0_41 (Core Phase 494 widens
+    `IdlField` with `Keyed`) was retired when it was raised to 0.41.0 (Phase 2420). None is defined today.
   -->
-  <PropertyGroup Condition="'$(CoreFableEffectiveCore)' != '' And $([MSBuild]::VersionGreaterThanOrEquals('$(CoreFableEffectiveCore)', '0.41.0'))">
-    <DefineConstants>$(DefineConstants);CORE_0_41</DefineConstants>
-  </PropertyGroup>
   <!--
     `CoreFableSkipCompute=true` is set by the script for a Core-only cut, and only then: the compute
     packages ship from their own producer from 0.33.0 and pin an older Core until this Core release is
