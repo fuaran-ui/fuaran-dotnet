@@ -15,6 +15,9 @@
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Phase 1937: the SQLite plumbing the linear sinks share, linked rather than
+         referenced, so this package gains no reference to the linear one. -->
+    <Compile Include="..\Fuaran.UI.OpStream.Sqlite\SqliteStore.fs" Link="SqliteStore.fs" />
     <Compile Include="SqliteDagSink.fs" />
   </ItemGroup>
   <ItemGroup>

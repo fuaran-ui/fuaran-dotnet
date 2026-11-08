@@ -72,31 +72,21 @@ let tests =
 
           // ── InMemoryDagSink ─────────────────────────────────────────────
 
-          test "InMemoryDagSink.Records REFUSES a record whose address does not recompute" {
+          test "InMemoryDagSink: a record whose address does not recompute never reaches a read" {
+              // Phase 1937 — `Add` recomputes the address (`DagWriteAdmission`), so
+              // the corrupt record this read path used to be handed is refused at
+              // the write, by name, and every later read of the stream is clean.
               let sink = InMemoryDagSink.create<TestMsg> ()
               let g = stepRecord "s" None brand 1L
               add sink g
-              // Same hash, different content — `Add` only guards collisions, so
-              // this lands, which is exactly why the READ has to check.
-              add sink (corruptContent (stepRecord "s" (Some g) removeRight 2L))
+              let bad = corruptContent (stepRecord "s" (Some g) removeRight 2L)
 
-              let message =
-                  refusalMessage "InMemoryDagSink.Records" (fun () ->
-                      sink.Records "s" |> Async.RunSynchronously |> ignore)
+              let message = refusalMessage "InMemoryDagSink.Add" (fun () -> add sink bad)
 
               Expect.stringContains message "'s'" "names the stream"
               Expect.stringContains message "does not recompute" "names the violation"
-          }
-
-          test "InMemoryDagSink.TryGet REFUSES a corrupt record" {
-              let sink = InMemoryDagSink.create<TestMsg> ()
-              let good = stepRecord "s" None brand 1L
-              let bad = corruptContent good
-              add sink bad
-
-              refusalMessage "InMemoryDagSink.TryGet" (fun () ->
-                  sink.TryGet("s", bad.Hash) |> Async.RunSynchronously |> ignore)
-              |> ignore
+              Expect.equal (sink.Records "s" |> Async.RunSynchronously).Length 1 "the stream reads back clean"
+              Expect.isNone (sink.TryGet("s", bad.Hash) |> Async.RunSynchronously) "nothing is held at the address"
           }
 
           test "InMemoryDagSink.Records accepts a clean DAG" {
@@ -190,10 +180,20 @@ let tests =
           }
 
           test "LoadVerification.Off hands the corrupt record back — the opt-out is real, and named" {
-              let sink = InMemoryDagSink.createWith<TestMsg> LoadVerification.Off
-              add sink (corruptContent (stepRecord "s" None brand 1L))
+              // Over the database file: since Phase 1937 a corrupt record cannot be
+              // written through `Add`, so the corruption is made where it happens in
+              // the world — a row edited underneath the sink.
+              use db = TempDb.create "dagverify"
+              let path = db.Path
+              let sink = SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) testCodec
+              let g = stepRecord "s" None brand 1L
+              add sink g
+              corruptRowInDb path g.Hash
 
-              let records = sink.Records "s" |> Async.RunSynchronously
+              let unchecked' =
+                  SqliteDagSink.createWith<TestMsg> LoadVerification.Off (sprintf "Data Source=%s" path) testCodec
+
+              let records = unchecked'.Records "s" |> Async.RunSynchronously
               Expect.equal records.Length 1 "Off returns the record unchecked"
           }
 

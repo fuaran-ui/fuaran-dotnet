@@ -311,7 +311,7 @@ let private guestUnquote =
     lazy (reader replayAsm "Fuaran.UI.OpStream.Replay.OpRecordWire" "unquote")
 
 let private sqliteEnvelope =
-    lazy (reader sqliteAsm "Fuaran.UI.OpStream.Sqlite.ResultEnvelopeJson" "decode")
+    lazy (reader sqliteAsm "Fuaran.UI.OpStream.SqliteStore.ResultEnvelopeJson" "decode")
 
 let private dagParents =
     lazy (reader dagSqliteAsm "Fuaran.UI.OpStream.Dag.Sqlite.DagJson" "decodeParents")

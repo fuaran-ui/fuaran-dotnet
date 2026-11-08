@@ -21,6 +21,7 @@
     <Compile Include="DagOpRecord.fs" />
     <Compile Include="DagTopology.fs" />
     <Compile Include="DagVerify.fs" />
+    <Compile Include="DagWriteAdmission.fs" />
     <Compile Include="DagRetention.fs" />
     <Compile Include="DagWire.fs" />
     <Compile Include="IDagOpStreamSink.fs" />

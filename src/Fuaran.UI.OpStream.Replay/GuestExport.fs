@@ -468,39 +468,43 @@ module GuestImport =
     /// `Timestamp`, result envelopes, sequence order — carries over verbatim,
     /// so "which prompts/agent produced this guest?" survives the rebase; the
     /// ORIGINAL chain remains intact in the source bundle artefact.
-    let remap (newScopeId: string) (mapId: NodeId -> NodeId) (b: GuestExportBundle) : GuestExportBundle =
+    ///
+    /// The source chain is VERIFIED first (Phase 1937): the re-chain is Core's
+    /// `ChainShape.rehash`, which walks the source from genesis and refuses one
+    /// that does not verify, re-chaining nothing. Before, a corrupt or truncated
+    /// bundle was re-chained as faithfully as a sound one and came out verifying
+    /// — the remap laundered exactly the damage `reconstruct` exists to catch.
+    let remap
+        (newScopeId: string)
+        (mapId: NodeId -> NodeId)
+        (b: GuestExportBundle)
+        : Result<GuestExportBundle, string> =
         let streamId = GuestStream.streamId newScopeId
+        let shape = HashChain.recordShape<obj> ()
 
-        let records =
-            (([], HashChain.genesisPreviousHash), b.Records)
-            ||> List.fold (fun (acc, previousHash) record ->
-                let op = mapOpIds mapId record.Op
-
-                let hash =
-                    HashChain.computeHash
-                        previousHash
-                        op
-                        record.Sequence
-                        record.Timestamp
-                        record.Actor
-                        record.PromptId
-                        record.ResultEnvelope
-
-                let rebased =
-                    { record with
-                        StreamId = streamId
-                        PreviousHash = previousHash
-                        Hash = hash
-                        Op = op }
-
-                rebased :: acc, hash)
-            |> fst
-            |> List.rev
-
-        { b with
-            ScopeId = newScopeId
-            InitialTree = mapTreeIds mapId b.InitialTree
-            Records = records }
+        Fuaran.Core.ChainShape.rehash
+            shape
+            StreamEntry.hashFn
+            shape
+            StreamEntry.hashFn
+            { Seq = 0
+              PrevHash = HashChain.genesisPreviousHash }
+            HashChain.genesisPreviousHash
+            (fun record ->
+                { record with
+                    StreamId = streamId
+                    Op = mapOpIds mapId record.Op })
+            b.Records
+        |> Result.map (fun records ->
+            { b with
+                ScopeId = newScopeId
+                InitialTree = mapTreeIds mapId b.InitialTree
+                Records = records })
+        |> Result.mapError (fun chainBreak ->
+            sprintf
+                "GuestImport.remap: the source chain does not verify at record %d (%s), so it is not re-chained"
+                (chainBreak.Index + 1)
+                (Fuaran.Core.ChainBreakReason.toString chainBreak.Reason))
 
     /// Reconstruct the guest's state from the bundle alone: verify the hash
     /// chain (catching a corrupt or truncated bundle on arrival — the chain is

@@ -103,13 +103,20 @@ module Checkpoint =
                         match prev with
                         | r :: _ -> return r.Hash
                         | [] ->
-                            // LatestSequence reported >0 but the prior record is
-                            // missing — sink invariant violation. Best-effort: use
-                            // the genesis hash so the checkpoint is still
-                            // verifiable against a freshly-rebuilt chain; the
-                            // mismatch would surface at replay-from-checkpoint
-                            // boundary verification.
-                            return HashChain.genesisPreviousHash
+                            // The record at the head is gone: compaction truncated
+                            // it into a checkpoint AT the head, and the boundary is
+                            // read from that snapshot (Phase 1937) — not reset to
+                            // genesis, which made the new checkpoint claim a position
+                            // no chain holds. (A store with no such checkpoint
+                            // refuses the truncation, so there is no other way here;
+                            // the duplicate-sequence refusal of `AppendCheckpoint`
+                            // then names a second checkpoint at the same head.)
+                            let! boundary = sink.LatestCheckpointAtOrBefore(streamId, latest)
+
+                            return
+                                match boundary with
+                                | Some cp when cp.Sequence = latest -> cp.PreviousChainHead
+                                | _ -> HashChain.genesisPreviousHash
                 }
 
             let canonical = CanonicalJson.encodeNode tree
@@ -248,10 +255,25 @@ module CheckpointedReplay =
                                 else
                                     let! atSeq = sink.Replay(streamId, cp.Sequence, cp.Sequence)
 
-                                    return
-                                        match atSeq with
-                                        | r :: _ -> r.Hash
-                                        | [] -> HashChain.genesisPreviousHash
+                                    match atSeq with
+                                    | r :: _ -> return r.Hash
+                                    | [] ->
+                                        // Compaction truncated the record at
+                                        // `cp.Sequence` (Phase 1937). What still
+                                        // anchors the checkpoint is the record
+                                        // after it, which names the head it hangs
+                                        // from — or, when the checkpoint IS the head
+                                        // (`keep 1` at the head, then nothing
+                                        // appended), the store's own boundary, which
+                                        // is read from this very snapshot.
+                                        let! after = sink.Replay(streamId, cp.Sequence + 1, cp.Sequence + 1)
+                                        let! latest = sink.LatestSequence streamId
+
+                                        return
+                                            match after with
+                                            | r :: _ -> r.PreviousHash
+                                            | [] when latest = cp.Sequence -> cp.PreviousChainHead
+                                            | [] -> HashChain.genesisPreviousHash
                             }
 
                         if anchor <> cp.PreviousChainHead then

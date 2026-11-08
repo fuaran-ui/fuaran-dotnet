@@ -84,14 +84,12 @@ type Harness =
         RecordCount: unit -> int
         /// Offer the next trunk record with its op swapped AFTER its hash was
         /// computed, so the hash does not recompute from its content. Returns
-        /// what the write did, and the forged record's address.
-        OfferForgedHash: TreeOp<TestMsg> -> TreeOp<TestMsg> -> Outcome * string
+        /// what the write did.
+        OfferForgedHash: TreeOp<TestMsg> -> TreeOp<TestMsg> -> Outcome
         /// Offer a record linking to a predecessor the store does not hold.
         OfferDanglingLink: TreeOp<TestMsg> -> Outcome
         /// Offer the head record again.
         ReofferHead: unit -> Outcome
-        /// Read the record at `address` back through the store's read path.
-        ReadBack: string -> Outcome
         /// Compact the trunk through position `k` (the head is never compacted).
         Compact: int -> unit
         /// Checkpoint `tree` as the state at the current head.
@@ -196,7 +194,7 @@ let rec private linearHarness
       OfferForgedHash =
         fun op other ->
             let forged = { next (stamp ()) op with Op = other }
-            attempt (fun () -> sink.Append forged |> run), forged.Hash
+            attempt (fun () -> sink.Append forged |> run)
       OfferDanglingLink =
         fun op ->
             let r = linearRecord streamId (latest () + 1) nowhere op (stamp ())
@@ -205,11 +203,6 @@ let rec private linearHarness
         fun () ->
             let head = sink.Replay(streamId, latest (), latest ()) |> run |> List.exactlyOne
             attempt (fun () -> sink.Append head |> run)
-      ReadBack =
-        fun address ->
-            attempt (fun () ->
-                if not (records () |> List.exists (fun r -> r.Hash = address)) then
-                    invalidOp (sprintf "no record at %s" address))
       Compact = fun k -> compact.Compact(streamId, k) |> run |> ignore
       Checkpoint = fun tree -> Checkpoint.create sink streamId tree |> run |> ignore
       CheckpointVerifies =
@@ -305,7 +298,7 @@ let rec private dagHarness
                 { child (Option.toList (head ())) (stamp ()) op with
                     Op = other }
 
-            attempt (fun () -> sink.Add forged |> run), forged.Hash
+            attempt (fun () -> sink.Add forged |> run)
       OfferDanglingLink = fun op -> attempt (fun () -> sink.Add(child [ nowhere ] (stamp ()) op) |> run)
       ReofferHead =
         fun () ->
@@ -314,11 +307,6 @@ let rec private dagHarness
                 |> Option.defaultWith (fun () -> failwith "the head has no record")
 
             attempt (fun () -> sink.Add r |> run)
-      ReadBack =
-        fun address ->
-            attempt (fun () ->
-                if Option.isNone (getRecord address) then
-                    invalidOp (sprintf "no record at %s" address))
       Compact =
         fun k ->
             for r in trunk () |> List.truncate k do

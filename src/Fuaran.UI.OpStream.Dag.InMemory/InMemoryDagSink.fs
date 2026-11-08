@@ -1,5 +1,6 @@
 namespace Fuaran.UI.OpStream.Dag.InMemory
 
+open System
 open System.Collections.Generic
 open Fuaran.UI.Ops.Types
 open Fuaran.UI.OpStream.Abstractions
@@ -23,49 +24,27 @@ open Fuaran.UI.OpStream.Dag.Abstractions
 //  `Records` and `TryGet` re-verify what they hand back
 //  (`DagVerify.recordsResolving` / `DagVerify.record`) rather than trusting it
 //  because this sink wrote it.
-//  `Add`'s checks are a different question — the write path asks "does this hash
-//  already mean something else" and "does this record link to anything real";
-//  verification asks "does this record still hash to its address", and only the
-//  last catches a store that changed underneath the process. A host that has
-//  measured the cost passes `LoadVerification.Off` explicitly; there is no
-//  silent fast path.
+//  `Add`'s checks are a different question: they decide whether a record may
+//  ENTER the store; verification asks whether a stored record still hashes to
+//  its address, which only catches a store that changed underneath the process.
+//  A host that has measured the cost passes `LoadVerification.Off` explicitly;
+//  there is no silent fast path.
 //
-//  ── VERIFY ON WRITE (Phase 1525) ───────────────────────────────────────────
-//  Two checks run at the write choke point, both refusing BY NAME:
+//  ── VERIFY ON WRITE (Phase 1525; one admission since Phase 1937) ───────────
+//  `Add` runs `DagWriteAdmission.admit`, the check both DAG sinks share: the
+//  record's address is recomputed (a wrong `Hash` is refused by name), every
+//  parent must already be in this store, and an address the stream already
+//  holds is an idempotent no-op. Admission runs before the stream exists, so a
+//  refused first `Add` leaves no empty stream behind for `Streams` to list.
 //
-//   1. **Content-address collision.** A record arriving at an address the store
-//      already holds must BE the record already there. It is compared on
-//      `DagWire.contentFingerprint` — the digest of its full canonical wire form
-//      — rather than on a hand-picked pair of fields. The old check compared
-//      `Parents` and `OutcomeHash` only, so a record with the same hash and a
-//      DIFFERENT `Op` matched, was classified as an idempotent duplicate, and
-//      was silently dropped. That is the collision case, and dropping the
-//      newcomer is the one response that leaves no trace of it having happened.
-//   2. **Parent presence.** Every hash in `Parents` must already name a record
-//      somewhere in this store. A record admitted with a parent the store does
-//      not hold is a dangling edge nothing notices until a later `Records` read
-//      — or a replay — trips over it, by which time the write that caused it is
-//      long gone and unattributable. The read-path check stays as it was: it
-//      catches a store that lost a record AFTER the link was made, which no
-//      write-time check can see.
-//
-//  Fingerprints live in their own map and are deliberately NOT re-derived from
-//  the stored record: `Tombstone` prunes a record's payload, so the canonical
-//  bytes of what remains are not the bytes the address was minted over, and a
-//  check that recomputed them would call every post-compaction re-add of an
-//  unchanged record a collision.
+//  A record is stored with its timestamp as its content address reads it —
+//  whole unix seconds, UTC — which is what the SQLite DAG sink stores, so a
+//  record reads back the same from either (Phase 1937).
 // ============================================================================
 
 type private StreamState<'Msg> =
-    {
-        Records: Dictionary<string, DagOpRecord<'Msg>>
-        /// Content fingerprint per stored address, captured at first insert and
-        /// NEVER rewritten — not by a re-add, not by `Tombstone`. It is what makes
-        /// an identical re-add after a retention sweep still resolve as the
-        /// duplicate it is.
-        Fingerprints: Dictionary<string, string>
-        mutable Head: string option
-    }
+    { Records: Dictionary<string, DagOpRecord<'Msg>>
+      mutable Head: string option }
 
 type InMemoryDagSink<'Msg>(loadVerification: LoadVerification) =
 
@@ -93,7 +72,6 @@ type InMemoryDagSink<'Msg>(loadVerification: LoadVerification) =
         | false, _ ->
             let fresh =
                 { Records = Dictionary<string, DagOpRecord<'Msg>>()
-                  Fingerprints = Dictionary<string, string>()
                   Head = None }
 
             streams[streamId] <- fresh
@@ -121,53 +99,18 @@ type InMemoryDagSink<'Msg>(loadVerification: LoadVerification) =
         member _.Add(record: DagOpRecord<'Msg>) : Async<unit> =
             async {
                 lock lockObj (fun () ->
-                    let state = getOrCreate record.StreamId
-                    // Phase 1587 — `contentFingerprint` takes the op encoding
-                    // rather than choosing one. This sink holds no codec (it
-                    // stores typed records, not text), so it names the canonical
-                    // encoder directly: the same bytes the check has always
-                    // compared, and the same ones the Sqlite sink uses, so a
-                    // record's fingerprint does not depend on which store it
-                    // landed in.
-                    let fingerprint = DagWire.contentFingerprint CanonicalJson.encodeOp record
+                    let held (hash: string) =
+                        match streams.TryGetValue record.StreamId with
+                        | true, state -> state.Records.ContainsKey hash
+                        | false, _ -> false
 
-                    // ── Check 1: parent presence (Phase 1525) ───────────────
-                    // Store-wide, for the same reason the read path resolves
-                    // store-wide: a guest branch's genesis legitimately hangs off
-                    // a record in the HOST stream, so a stream-scoped universe
-                    // would refuse a healthy fork.
-                    record.Parents
-                    |> List.tryFind (knownHash >> not)
-                    |> Option.iter (fun missing ->
-                        invalidOp (
-                            sprintf
-                                "InMemoryDagSink: refused record %s in stream '%s' — parent-presence check failed: parent %s is not in the store."
-                                record.Hash
-                                record.StreamId
-                                missing
-                        ))
-
-                    // ── Check 2: content-address collision (Phase 1525) ─────
-                    match state.Fingerprints.TryGetValue record.Hash with
-                    | true, storedFingerprint ->
-                        // An identical re-append is a no-op; the SAME address
-                        // carrying DIFFERENT canonical content is a collision,
-                        // never a duplicate. Compared on the full canonical wire
-                        // form (`Tombstoned` normalised), so a differing `Op` —
-                        // which the pre-1525 parents+outcome comparison could not
-                        // see at all — is caught here rather than dropped.
-                        if storedFingerprint <> fingerprint then
-                            invalidOp (
-                                sprintf
-                                    "InMemoryDagSink: refused record %s in stream '%s' — content-address collision: the stored record at this address has different canonical content (stored fingerprint %s, incoming %s). Content addressing violated."
-                                    record.Hash
-                                    record.StreamId
-                                    storedFingerprint
-                                    fingerprint
-                            )
-                    | false, _ ->
-                        state.Records[record.Hash] <- record
-                        state.Fingerprints[record.Hash] <- fingerprint)
+                    match DagWriteAdmission.admit knownHash held record with
+                    | Error refusal -> invalidOp (DagWriteAdmission.describe "InMemoryDagSink" record refusal)
+                    | Ok DagAdmission.AlreadyHeld -> ()
+                    | Ok DagAdmission.Store ->
+                        (getOrCreate record.StreamId).Records[ record.Hash ] <-
+                            { record with
+                                Timestamp = DateTimeOffset.FromUnixTimeSeconds(record.Timestamp.ToUnixTimeSeconds()) })
             }
 
         member _.TryGet(streamId: string, hash: string) : Async<DagOpRecord<'Msg> option> =
@@ -293,8 +236,7 @@ type InMemoryDagSink<'Msg>(loadVerification: LoadVerification) =
                                 // is a 64-hex address, not payload. What it broke
                                 // was idempotence across a sweep: a re-add of the
                                 // unchanged record no longer matched what the
-                                // store held. The fingerprint map is likewise
-                                // untouched here, for the same reason.
+                                // store held.
                                 state.Records[hash] <-
                                     { r with
                                         Op = TreeOp.Batch []

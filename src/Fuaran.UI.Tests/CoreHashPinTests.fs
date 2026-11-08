@@ -74,7 +74,8 @@ let private chainHead () : string =
     ops
     |> List.indexed
     |> List.fold
-        (fun prev (i, op) -> HashChain.computeHash prev op (i + 1) ts (Human "u1") (Some "p1") OpResultEnvelope.Success)
+        (fun prev (i, op) ->
+            HashChain.computeHash prev op (i + 1) ts (Actor.Human "u1") (Some "p1") OpResultEnvelope.Success)
         HashChain.genesisPreviousHash
 
 let private teleport (bundle: TeleportBundle<unit>) : string =

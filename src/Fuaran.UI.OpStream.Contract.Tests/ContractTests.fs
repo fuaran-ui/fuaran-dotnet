@@ -21,13 +21,10 @@ open Fuaran.UI.OpStream.Contract.Tests.Cells
 //     duplicate; a tombstone keeps the node a linear compaction deletes; an
 //     in-memory store does not survive its process).
 //
-//   - PENDING Phase 1937: a defect that open phase owns. The case asserts
-//     TODAY's behaviour, so the phase's landing turns it red and the case is
-//     flipped to the shared expectation in the same change — "whichever lands
-//     second runs the other's cases". Three are pinned: neither DAG sink checks
-//     a record's hash at write; a refused first append leaves a phantom stream
-//     in both in-memory sinks; the SQLite sinks keep whole seconds of a
-//     timestamp the in-memory ones keep exactly.
+//   The three cells pinned PENDING Phase 1937 (a DAG sink admitting a record
+//   whose hash does not recompute; a refused first append leaving a phantom
+//   stream in the in-memory sinks; the backends disagreeing on a timestamp's
+//   precision) were flipped to the shared expectation by that phase.
 // ============================================================================
 
 let private restyle (id: NodeId) (style: SemanticStyle) : TreeOp<TestMsg> = TreeOp.UpdateStyle(id, style)
@@ -145,29 +142,13 @@ let tests =
           contract "a record whose hash does not recompute is refused at write" (fun h ->
               appendFirst h 2 |> ignore
               let head, trunk, count = snapshot h
-              let outcome, forged = h.OfferForgedHash ops[2] ops[3]
+              let outcome = h.OfferForgedHash ops[2] ops[3]
 
-              match h.Shape with
-              | Linear ->
-                  refused outcome "a record whose hash does not recompute"
-                  Expect.equal (h.RecordCount()) count "nothing was persisted"
-              | Dag ->
-                  // PENDING Phase 1937 (`DagWriteAdmission`: `DagVerify.record` at write).
-                  // Neither DAG sink recomputes a record's hash when it is added, so the
-                  // forged record is stored, and refused only when it is read back: by
-                  // address, and by every whole-stream read from then on, the poison pill
-                  // `WriteAdmission` exists to prevent on the linear sinks.
-                  ignore count
-                  accepted outcome "PENDING Phase 1937 - a DAG sink admits a record whose hash does not recompute"
-                  refused (h.ReadBack forged) "the read path refuses the forged record"
-
-                  refused
-                      (try
-                          h.RecordCount() |> ignore
-                          Outcome.Accepted
-                       with ex ->
-                           Outcome.Refused ex.Message)
-                      "PENDING Phase 1937 - every whole-stream read now refuses the stream"
+              // Every cell recomputes the address at write (the linear `WriteAdmission`,
+              // the DAG `DagWriteAdmission`, Phase 1937), so the forged record never
+              // reaches the store and no later read is poisoned by it.
+              refused outcome "a record whose hash does not recompute"
+              Expect.equal (h.RecordCount()) count "nothing was persisted"
 
               Expect.equal (h.Head()) head "the head did not move"
               Expect.equal (h.Read()) trunk "the trunk is as it was")
@@ -244,33 +225,20 @@ let tests =
 
           contract "a refused first append leaves no stream behind" (fun h ->
               refused (h.OfferDanglingLink ops[0]) "a dangling genesis record"
-              let listed = h.Streams() |> List.contains h.StreamId
+              // Every cell admits before it creates the stream's state (Phase 1937).
+              Expect.isFalse (h.Streams() |> List.contains h.StreamId) "no stream is listed for a refused append")
 
-              match h.Store with
-              | InMemory ->
-                  // PENDING Phase 1937 (`appendLocked` admits before creating the stream).
-                  // Both in-memory sinks create the stream's state, then refuse the
-                  // record, so `Streams` lists a stream that holds nothing. The task names
-                  // the linear `appendLocked`; `InMemoryDagSink.Add` calls `getOrCreate`
-                  // before its parent-presence check, the same defect in the DAG sink.
-                  Expect.isTrue listed "PENDING Phase 1937 - an in-memory sink lists a phantom stream"
-              | Sqlite -> Expect.isFalse listed "no stream is listed for a refused append")
-
-          contract "a sub-second timestamp reads back as it was written" (fun h ->
+          contract "a sub-second timestamp reads back as the whole second the hash covers" (fun h ->
               let written = DateTimeOffset(2026, 10, 12, 9, 30, 15, 250, TimeSpan.Zero)
               h.Append written ops[0] |> ignore
               let read = (h.Read() |> List.exactlyOne).Timestamp
 
-              match h.Store with
-              | InMemory -> Expect.equal read written "the in-memory store keeps the timestamp exactly"
-              | Sqlite ->
-                  // PENDING Phase 1937 ("backends agree on timestamp precision"): the
-                  // SQLite sinks store unix seconds. The chain hash covers whole seconds,
-                  // so the record still verifies, but it reads back different by backend.
-                  Expect.equal
-                      read
-                      (DateTimeOffset.FromUnixTimeSeconds(written.ToUnixTimeSeconds()))
-                      "PENDING Phase 1937 - a SQLite sink keeps whole seconds")
+              // Every cell stores what the hash folds — whole unix seconds, UTC
+              // (Phase 1937) — so a record reads back the same from either backend.
+              Expect.equal
+                  read
+                  (DateTimeOffset.FromUnixTimeSeconds(written.ToUnixTimeSeconds()))
+                  "every sink keeps whole seconds")
 
           contract "a store reopened over the same storage reads back the same stream" (fun h ->
               let addresses = appendFirst h 3

@@ -248,16 +248,16 @@ let private call<'T> (m: MethodInfo) (args: objnull array) : 'T =
     | v -> unbox<'T> v
 
 let private sqliteEncode =
-    lazy (method "Fuaran.UI.OpStream.Sqlite" "Fuaran.UI.OpStream.Sqlite.ResultEnvelopeJson" "encode")
+    lazy (method "Fuaran.UI.OpStream.Sqlite" "Fuaran.UI.OpStream.SqliteStore.ResultEnvelopeJson" "encode")
 
 let private sqliteDecode =
-    lazy (method "Fuaran.UI.OpStream.Sqlite" "Fuaran.UI.OpStream.Sqlite.ResultEnvelopeJson" "decode")
+    lazy (method "Fuaran.UI.OpStream.Sqlite" "Fuaran.UI.OpStream.SqliteStore.ResultEnvelopeJson" "decode")
 
 let private dagEncodeEnvelope =
-    lazy (method "Fuaran.UI.OpStream.Dag.Sqlite" "Fuaran.UI.OpStream.Dag.Sqlite.DagJson" "encodeEnvelope")
+    lazy (method "Fuaran.UI.OpStream.Dag.Sqlite" "Fuaran.UI.OpStream.SqliteStore.ResultEnvelopeJson" "encode")
 
 let private dagDecodeEnvelope =
-    lazy (method "Fuaran.UI.OpStream.Dag.Sqlite" "Fuaran.UI.OpStream.Dag.Sqlite.DagJson" "decodeEnvelope")
+    lazy (method "Fuaran.UI.OpStream.Dag.Sqlite" "Fuaran.UI.OpStream.SqliteStore.ResultEnvelopeJson" "decode")
 
 let private dagEncodeParents =
     lazy (method "Fuaran.UI.OpStream.Dag.Sqlite" "Fuaran.UI.OpStream.Dag.Sqlite.DagJson" "encodeParents")
@@ -352,9 +352,11 @@ let tests =
                   let json = call<string> dagEncodeEnvelope.Value [| box envelope |]
                   Expect.equal json (failureJson s ("m" + s)) $"SqliteDagSink envelope bytes on '{name}'"
 
+                  // Since Phase 1937 the DAG sink's column codec is the linear one,
+                  // linked into its assembly (`SqliteStore.ResultEnvelopeJson`).
                   Expect.equal
-                      (call<OpResultEnvelope> dagDecodeEnvelope.Value [| box json |])
-                      envelope
+                      (call<Result<OpResultEnvelope, string>> dagDecodeEnvelope.Value [| box json |])
+                      (Ok envelope)
                       $"SqliteDagSink envelope round trip on '{name}'"
 
                   // A row the pre-2026 writer stored: only `\` and `"` escaped,
@@ -366,8 +368,8 @@ let tests =
                       sprintf "{\"$type\":\"Failure\",\"code\":\"%s\",\"message\":\"%s\"}" (legacy s) (legacy ("m" + s))
 
                   Expect.equal
-                      (call<OpResultEnvelope> dagDecodeEnvelope.Value [| box oldRow |])
-                      envelope
+                      (call<Result<OpResultEnvelope, string>> dagDecodeEnvelope.Value [| box oldRow |])
+                      (Ok envelope)
                       $"SqliteDagSink reads a pre-2026 row on '{name}'"
 
           testCase "SqliteDagSink's parents column is unchanged for every hash-shaped parent"

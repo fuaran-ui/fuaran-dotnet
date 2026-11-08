@@ -15,6 +15,10 @@
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Phase 1937: the plumbing all three SQLite sinks share (connection, WAL,
+         contention, the result-envelope column). Internal; also compiled into
+         Fuaran.UI.OpStream.Dag.Sqlite by link, so neither package references the other. -->
+    <Compile Include="SqliteStore.fs" />
     <Compile Include="SqliteSink.fs" />
     <!-- Phase 889: the durable user-action log. Its own table, NOT op_stream —
          a user action is not a TreeOp (Phase 866 Q2), so it cannot ride an

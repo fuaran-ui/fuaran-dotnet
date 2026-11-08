@@ -6,6 +6,7 @@ open Microsoft.Data.Sqlite
 open Fuaran.UI.Ops.Types
 open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.OpStream.Dag.Abstractions
+open Fuaran.UI.OpStream.SqliteStore
 
 // ============================================================================
 //  SqliteDagSink — Microsoft.Data.Sqlite-backed IDagOpStreamSink<'Msg>.
@@ -44,9 +45,9 @@ open Fuaran.UI.OpStream.Dag.Abstractions
 //  (`DagVerify.recordsResolving` / `DagVerify.record`) rather than trusting the
 //  rows because this sink wrote them. This store outlives the process and is a file any other program can
 //  touch, so it is where "computed on write, never checked on read" actually
-//  costs something. `Add`'s collision check is a different question and stays
-//  as it was: it asks whether this hash already means something else, not
-//  whether a stored record still hashes to its address.
+//  costs something. `Add` runs the admission both DAG sinks share
+//  (`DagWriteAdmission.admit`, Phase 1937): the address recomputed, every parent
+//  present, a held address a no-op — so a forged record never reaches a row.
 //
 //  The topology reads (`Parents` / `Reachable` / `Lca` / `Heads`) deliberately
 //  do NOT verify: they read only (hash, parents) and never return a record, so
@@ -122,57 +123,6 @@ module private DagJson =
 
             List.ofSeq result
 
-    let encodeEnvelope (envelope: OpResultEnvelope) : string =
-        match envelope with
-        | OpResultEnvelope.Success -> "{\"$type\":\"Success\"}"
-        | OpResultEnvelope.Failure(code, message) ->
-            // Phase 2026: Core's canonical escape, so a control character is
-            // `\u00xx` and the column is valid JSON. A row written before it
-            // holds the control character raw; the reader below takes both.
-            "{\"$type\":\"Failure\",\"code\":"
-            + Fuaran.Core.JsonString.quote code
-            + ",\"message\":"
-            + Fuaran.Core.JsonString.quote message
-            + "}"
-
-    /// Inverse of `encodeEnvelope`. `Success` is the common case; a `Failure`
-    /// extracts the two quoted strings (the encoder is the only writer).
-    let decodeEnvelope (json: string) : OpResultEnvelope =
-        if json = "{\"$type\":\"Success\"}" then
-            OpResultEnvelope.Success
-        else
-            let extract (key: string) =
-                let needle = sprintf "\"%s\":\"" key
-
-                match json.IndexOf needle with
-                | -1 -> ""
-                | start ->
-                    let valueStart = start + needle.Length
-                    let sb = StringBuilder()
-                    let mutable i = valueStart
-                    let mutable closed = false
-
-                    while not closed && i < json.Length do
-                        let c = json[i]
-
-                        if c = '\\' && i + 5 < json.Length && json[i + 1] = 'u' then
-                            // `\uXXXX`: the writer's spelling of a control
-                            // character since Phase 2026.
-                            sb.Append(char (Convert.ToInt32(json.Substring(i + 2, 4), 16))) |> ignore
-                            i <- i + 6
-                        elif c = '\\' && i + 1 < json.Length then
-                            sb.Append json[i + 1] |> ignore
-                            i <- i + 2
-                        elif c = '"' then
-                            closed <- true
-                        else
-                            sb.Append c |> ignore
-                            i <- i + 1
-
-                    sb.ToString()
-
-            OpResultEnvelope.Failure(extract "code", extract "message")
-
 type SqliteDagSink<'Msg>(connectionString: string, codec: IOpJsonCodec<'Msg>, loadVerification: LoadVerification) =
 
     let emptyBatchJson = codec.EncodeOp(TreeOp.Batch [])
@@ -191,39 +141,13 @@ type SqliteDagSink<'Msg>(connectionString: string, codec: IOpJsonCodec<'Msg>, lo
             | Ok() -> ()
             | Error e -> invalidOp ("SqliteDagSink: " + DagVerify.describe streamId e)
 
-    /// How long a connection waits for a writer's lock before giving up with
-    /// SQLITE_BUSY. `busy_timeout` is CONNECTION-scoped, so it is set on every
-    /// connection this sink opens rather than once at schema time — a PRAGMA set
-    /// on the schema connection alone protects nothing afterwards.
-    let busyTimeoutMs = 5000
-
     let openConnection () : SqliteConnection =
-        let conn = new SqliteConnection(connectionString)
-        conn.Open()
-        use pragma = conn.CreateCommand()
-        pragma.CommandText <- sprintf "PRAGMA busy_timeout = %d;" busyTimeoutMs
-        pragma.ExecuteNonQuery() |> ignore
-        conn
-
-    /// `true` when `ex` is SQLite's contention signal — SQLITE_BUSY (5) or its
-    /// sibling SQLITE_LOCKED (6), raised once `busy_timeout` above has elapsed
-    /// without the lock coming free. It is not a corrupt store and it is not a
-    /// programming error: it means another writer holds the database right now.
-    let isContention (ex: SqliteException) =
-        ex.SqliteErrorCode = 5 || ex.SqliteErrorCode = 6
+        SqliteConnections.openConnection connectionString
 
     let ensureSchema () =
         use conn = openConnection ()
 
-        // WAL is a property of the DATABASE FILE, not of a connection, so it is
-        // set once here and persists across every later open. It is what lets a
-        // reader run concurrently with a writer instead of blocking on it —
-        // without it the verify-on-read path and a concurrent `Add` serialise
-        // against each other for no reason. It is a no-op (and reports its own
-        // mode back, never an error) for an in-memory or read-only database.
-        use walCmd = conn.CreateCommand()
-        walCmd.CommandText <- "PRAGMA journal_mode = WAL;"
-        walCmd.ExecuteScalar() |> ignore
+        SqliteConnections.useWriteAheadLog conn
 
         use cmd = conn.CreateCommand()
 
@@ -239,7 +163,6 @@ type SqliteDagSink<'Msg>(connectionString: string, codec: IOpJsonCodec<'Msg>, lo
     timestamp            INTEGER NOT NULL,
     result_envelope_json TEXT    NOT NULL,
     tombstoned           INTEGER NOT NULL,
-    content_fingerprint  TEXT    NULL,
     PRIMARY KEY (stream_id, hash)
 );
 CREATE TABLE IF NOT EXISTS dag_head (
@@ -250,28 +173,27 @@ CREATE INDEX IF NOT EXISTS idx_dag_op_record_hash ON dag_op_record (hash);"""
 
         cmd.ExecuteNonQuery() |> ignore
 
-        // A database written before Phase 1525 has no `content_fingerprint`
-        // column. Adding it is the whole migration — it is nullable, so every
-        // existing row reads back as "fingerprint unknown" and the collision
-        // check falls back to what those rows CAN answer (see `Add`).
-        let hasFingerprint =
-            use info = conn.CreateCommand()
-            info.CommandText <- "PRAGMA table_info(dag_op_record);"
-            use reader = info.ExecuteReader()
-            let mutable found = false
-
-            while reader.Read() do
-                if reader.GetString 1 = "content_fingerprint" then
-                    found <- true
-
-            found
-
-        if not hasFingerprint then
-            use alter = conn.CreateCommand()
-            alter.CommandText <- "ALTER TABLE dag_op_record ADD COLUMN content_fingerprint TEXT NULL;"
-            alter.ExecuteNonQuery() |> ignore
+    // A database written between Phase 1525 and Phase 1937 also carries a
+    // nullable `content_fingerprint` column. Nothing reads or writes it any
+    // more — admission recomputes the address instead (Phase 1937) — and it
+    // is left in place rather than rebuilt out of an existing table.
 
     do ensureSchema ()
+
+    /// The `result_envelope_json` column through the decoder the linear sink
+    /// uses (Phase 1937). A shape the writer never produced is refused by name;
+    /// the copy this sink carried read it as `Failure("", "")`.
+    let envelopeAt (streamId: string) (hash: string) (json: string) : OpResultEnvelope =
+        match ResultEnvelopeJson.decode json with
+        | Ok envelope -> envelope
+        | Error msg ->
+            invalidOp (
+                sprintf
+                    "SqliteDagSink: failed to decode the result envelope of record %s in stream '%s': %s"
+                    hash
+                    streamId
+                    msg
+            )
 
     /// Read all records for `streamId` (no decode of op — used by topology /
     /// Heads which only need (hash, parents)).
@@ -354,7 +276,7 @@ FROM dag_op_record WHERE stream_id = @s AND hash = @h;"""
                   PromptId = promptId
                   Actor = DagJson.readActor (reader.GetString 4)
                   Timestamp = DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64 5)
-                  ResultEnvelope = DagJson.decodeEnvelope (reader.GetString 6)
+                  ResultEnvelope = envelopeAt streamId hash (reader.GetString 6)
                   Tombstoned = reader.GetInt64 7 <> 0L }
 
     /// Bulk read of every record in a stream in ONE query + connection, replacing
@@ -402,7 +324,7 @@ FROM dag_op_record WHERE stream_id = @s ORDER BY hash;"""
                   PromptId = promptId
                   Actor = DagJson.readActor (reader.GetString 5)
                   Timestamp = DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64 6)
-                  ResultEnvelope = DagJson.decodeEnvelope (reader.GetString 7)
+                  ResultEnvelope = envelopeAt streamId (reader.GetString 0) (reader.GetString 7)
                   Tombstoned = reader.GetInt64 8 <> 0L }
 
         List.ofSeq acc
@@ -465,10 +387,9 @@ FROM dag_op_record WHERE stream_id = @s ORDER BY hash;"""
                 try
                     use conn = openConnection ()
 
-                    // `BEGIN IMMEDIATE` (Phase 1525). Every branch below is a
-                    // read-then-write over the same rows — the parent-presence SELECT
-                    // then the INSERT, and on conflict the fingerprint SELECT that
-                    // decides whether the insert was a duplicate or a collision. A
+                    // `BEGIN IMMEDIATE` (Phase 1525). The admission below is a
+                    // read-then-write over the same rows — the parent-presence and
+                    // held-address SELECTs, then the INSERT. A
                     // DEFERRED transaction takes its write lock only when the first
                     // write executes, so two writers can both pass their reads and
                     // one then fails to upgrade; the reads that justified the write
@@ -476,147 +397,85 @@ FROM dag_op_record WHERE stream_id = @s ORDER BY hash;"""
                     // up front, so the reads and the write see one state.
                     use tx = conn.BeginTransaction(false)
 
-                    // Phase 1587 — `contentFingerprint` takes the op encoding
-                    // rather than choosing one. `CanonicalJson.encodeOp` is what
-                    // this sink's stored fingerprints were minted under, so
-                    // naming it here keeps every existing database comparing
-                    // against the bytes it already holds; it is deliberately not
-                    // `codec.EncodeOp`, which would re-mint every fingerprint in
-                    // every store the moment a host supplied a different encoder.
-                    let fingerprint = DagWire.contentFingerprint CanonicalJson.encodeOp record
-
-                    // ── Check 1: parent presence ────────────────────────────────
-                    // Store-wide, for the same reason the read path resolves
-                    // store-wide: a guest branch's genesis legitimately hangs off a
-                    // record in the HOST stream, so a stream-scoped universe would
-                    // refuse a healthy fork. One batched `IN (...)` query, not one
-                    // per parent.
+                    // ── ADMISSION (Phase 1937): the check both DAG sinks share ──
+                    // The address recomputed, every parent present store-wide (one
+                    // batched `IN (...)` query, not one per parent: a guest branch's
+                    // genesis hangs off a record in the HOST stream), and an address
+                    // the stream already holds a no-op.
                     let present = presentHashesOn conn record.Parents
 
-                    record.Parents
-                    |> List.tryFind (present.Contains >> not)
-                    |> Option.iter (fun missing ->
-                        invalidOp (
-                            sprintf
-                                "SqliteDagSink: refused record %s in stream '%s' — parent-presence check failed: parent %s is not in the store."
-                                record.Hash
-                                record.StreamId
-                                missing
-                        ))
+                    let held (hash: string) =
+                        use probe = conn.CreateCommand()
+                        probe.CommandText <- "SELECT 1 FROM dag_op_record WHERE stream_id = @s AND hash = @h;"
+                        probe.Parameters.AddWithValue("@s", record.StreamId) |> ignore
+                        probe.Parameters.AddWithValue("@h", hash) |> ignore
+                        not (isNull (probe.ExecuteScalar()))
 
-                    use cmd = conn.CreateCommand()
+                    match DagWriteAdmission.admit present.Contains held record with
+                    | Error refusal -> invalidOp (DagWriteAdmission.describe "SqliteDagSink" record refusal)
+                    | Ok DagAdmission.AlreadyHeld -> ()
+                    | Ok DagAdmission.Store ->
 
-                    cmd.CommandText <-
-                        """INSERT INTO dag_op_record
-        (stream_id, hash, parents_json, op_json, outcome_hash, prompt_id, user_id, timestamp, result_envelope_json, tombstoned, content_fingerprint)
-    VALUES
-        (@s, @h, @parents, @op, @outcome, @prompt, @user, @ts, @env, @tomb, @fingerprint)
-    ON CONFLICT(stream_id, hash) DO NOTHING;"""
+                        use cmd = conn.CreateCommand()
 
-                    cmd.Parameters.AddWithValue("@s", record.StreamId) |> ignore
-                    cmd.Parameters.AddWithValue("@h", record.Hash) |> ignore
-                    cmd.Parameters.AddWithValue("@fingerprint", fingerprint) |> ignore
+                        cmd.CommandText <-
+                            """INSERT INTO dag_op_record
+            (stream_id, hash, parents_json, op_json, outcome_hash, prompt_id, user_id, timestamp, result_envelope_json, tombstoned)
+        VALUES
+            (@s, @h, @parents, @op, @outcome, @prompt, @user, @ts, @env, @tomb);"""
 
-                    cmd.Parameters.AddWithValue("@parents", DagJson.encodeParents record.Parents)
-                    |> ignore
+                        cmd.Parameters.AddWithValue("@s", record.StreamId) |> ignore
+                        cmd.Parameters.AddWithValue("@h", record.Hash) |> ignore
 
-                    cmd.Parameters.AddWithValue("@op", codec.EncodeOp record.Op) |> ignore
+                        cmd.Parameters.AddWithValue("@parents", DagJson.encodeParents record.Parents)
+                        |> ignore
 
-                    cmd.Parameters.AddWithValue(
-                        "@outcome",
-                        (match record.OutcomeHash with
-                         | Some o -> box o
-                         | None -> box DBNull.Value)
-                    )
-                    |> ignore
+                        cmd.Parameters.AddWithValue("@op", codec.EncodeOp record.Op) |> ignore
 
-                    cmd.Parameters.AddWithValue(
-                        "@prompt",
-                        (match record.PromptId with
-                         | Some p -> box p
-                         | None -> box DBNull.Value)
-                    )
-                    |> ignore
+                        cmd.Parameters.AddWithValue(
+                            "@outcome",
+                            (match record.OutcomeHash with
+                             | Some o -> box o
+                             | None -> box DBNull.Value)
+                        )
+                        |> ignore
 
-                    // Phase 1144 — the `user_id` column now holds the canonical typed-actor
-                    // JSON (`Actor.encode`), mirroring what the LINEAR sqlite sink has stored
-                    // since Phase 320. The column is reused rather than renamed: pre-1144 rows
-                    // hold a bare id string and read back via `Actor.ofLegacyString`, so an
-                    // existing database still OPENS. Its records' content addresses do not
-                    // carry forward, though — see docs/migrations/1144-typed-actor-dag-fold.md.
-                    cmd.Parameters.AddWithValue("@user", Actor.encode record.Actor) |> ignore
+                        cmd.Parameters.AddWithValue(
+                            "@prompt",
+                            (match record.PromptId with
+                             | Some p -> box p
+                             | None -> box DBNull.Value)
+                        )
+                        |> ignore
 
-                    cmd.Parameters.AddWithValue("@ts", record.Timestamp.ToUnixTimeSeconds())
-                    |> ignore
+                        // Phase 1144 — the `user_id` column now holds the canonical typed-actor
+                        // JSON (`Actor.encode`), mirroring what the LINEAR sqlite sink has stored
+                        // since Phase 320. The column is reused rather than renamed: pre-1144 rows
+                        // hold a bare id string and read back via `Actor.ofLegacyString`, so an
+                        // existing database still OPENS. Its records' content addresses do not
+                        // carry forward, though — see docs/migrations/1144-typed-actor-dag-fold.md.
+                        cmd.Parameters.AddWithValue("@user", Actor.encode record.Actor) |> ignore
 
-                    cmd.Parameters.AddWithValue("@env", DagJson.encodeEnvelope record.ResultEnvelope)
-                    |> ignore
+                        cmd.Parameters.AddWithValue("@ts", record.Timestamp.ToUnixTimeSeconds())
+                        |> ignore
 
-                    cmd.Parameters.AddWithValue("@tomb", (if record.Tombstoned then 1 else 0))
-                    |> ignore
+                        cmd.Parameters.AddWithValue("@env", ResultEnvelopeJson.encode record.ResultEnvelope)
+                        |> ignore
 
-                    let affected = cmd.ExecuteNonQuery()
+                        cmd.Parameters.AddWithValue("@tomb", (if record.Tombstoned then 1 else 0))
+                        |> ignore
 
-                    // ── Check 2: content-address collision ──────────────────────
-                    // A record arriving at an address the store already holds must BE
-                    // the record already there. It is compared on the stored
-                    // fingerprint — the digest of the full canonical wire form — not
-                    // on a hand-picked pair of fields. The pre-1525 check compared
-                    // `parents_json` and `outcome_hash` only, so a row with the SAME
-                    // hash and a DIFFERENT `op_json` matched, was classified as an
-                    // idempotent duplicate, and the newcomer was silently dropped.
-                    if affected = 0 then
-                        use check = conn.CreateCommand()
-
-                        check.CommandText <-
-                            "SELECT content_fingerprint, parents_json, outcome_hash FROM dag_op_record WHERE stream_id=@s AND hash=@h;"
-
-                        check.Parameters.AddWithValue("@s", record.StreamId) |> ignore
-                        check.Parameters.AddWithValue("@h", record.Hash) |> ignore
-                        use reader = check.ExecuteReader()
-
-                        if reader.Read() then
-                            if not (reader.IsDBNull 0) then
-                                let storedFingerprint = reader.GetString 0
-
-                                if storedFingerprint <> fingerprint then
-                                    invalidOp (
-                                        sprintf
-                                            "SqliteDagSink: refused record %s in stream '%s' — content-address collision: the stored row at this address has different canonical content (stored fingerprint %s, incoming %s). Content addressing violated."
-                                            record.Hash
-                                            record.StreamId
-                                            storedFingerprint
-                                            fingerprint
-                                    )
-                            else
-                                // A PRE-1525 row: written before the fingerprint
-                                // column existed, so the only content it can be
-                                // compared on is what it stored. This is the weaker
-                                // check the fingerprint replaced, applied honestly to
-                                // the rows that are all it can answer for — it cannot
-                                // see a differing `op`, and no read path can
-                                // retroactively give an old row a fingerprint it was
-                                // never written with.
-                                let existingParents = DagJson.decodeParents (reader.GetString 1)
-                                let existingOutcome = if reader.IsDBNull 2 then None else Some(reader.GetString 2)
-
-                                if existingParents <> record.Parents || existingOutcome <> record.OutcomeHash then
-                                    invalidOp (
-                                        sprintf
-                                            "SqliteDagSink: refused record %s in stream '%s' — content-address collision against a pre-fingerprint row: stored parents/outcome differ from the incoming record. Content addressing violated."
-                                            record.Hash
-                                            record.StreamId
-                                    )
+                        cmd.ExecuteNonQuery() |> ignore
 
                     tx.Commit()
-                with :? SqliteException as ex when isContention ex ->
+                with :? SqliteException as ex when SqliteConnections.isContention ex ->
                     invalidOp (
                         sprintf
                             "SqliteDagSink: could not append record %s to stream '%s' — SQLITE_BUSY (%d) after busy_timeout=%dms: another writer holds the database. This is contention, not corruption — retry the append."
                             record.Hash
                             record.StreamId
                             ex.SqliteErrorCode
-                            busyTimeoutMs
+                            SqliteConnections.busyTimeoutMs
                     )
             }
 
@@ -681,7 +540,7 @@ FROM dag_op_record WHERE stream_id = @s ORDER BY hash;"""
                         cmd.Parameters.AddWithValue("@new", newHead) |> ignore
                         cmd.Parameters.AddWithValue("@expected", e) |> ignore
                         return cmd.ExecuteNonQuery() = 1
-                with :? SqliteException as ex when isContention ex ->
+                with :? SqliteException as ex when SqliteConnections.isContention ex ->
                     return false
             }
 
@@ -727,16 +586,14 @@ FROM dag_op_record WHERE stream_id = @s ORDER BY hash;"""
                 // Drop the PAYLOAD (`op_json` → the placeholder), preserve hash +
                 // parent links so the chain still verifies.
                 //
-                // `outcome_hash` and `content_fingerprint` are KEPT (Phase 1525).
+                // `outcome_hash` is KEPT (Phase 1525).
                 // The outcome hash used to be nulled here, which cost the store
                 // the one field that tells a pruned merge node from a pruned
                 // ordinary one, for no retention gain — it is a 64-hex address,
                 // not payload. What it broke was idempotence across a sweep: a
                 // re-add of the unchanged record no longer matched what the store
                 // held, so it read as a collision under the new check and as a
-                // second copy under the old one. The fingerprint is untouched for
-                // the same reason and is why the check still works at all after a
-                // sweep — it summarises bytes the sweep has just deleted.
+                // second copy under the old one.
                 cmd.CommandText <-
                     """UPDATE dag_op_record
 SET op_json = @empty, tombstoned = 1

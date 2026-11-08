@@ -134,7 +134,21 @@ let private liftedAddressPin: (string * string) list =
       "5b7c55d6668e524aab6e1a6c8d443c54bba9c01deb521bc7460c28d3e1072a05",
       "c51ad58b87f8cb47359a6e1e701febf68e40d2fb0e2841fc7a9305dc722c3a63"
       "2b195656cc9bda16bdf52c4550ffde1c73a2b6ddb6c222aa3d64f19b231e9da4",
-      "a37e07d5e1bb9b27bf0f0d607c2c6a61080390742f90f6ff2d24e8c4dc319354" ]
+      "a37e07d5e1bb9b27bf0f0d607c2c6a61080390742f90f6ff2d24e8c4dc319354"
+      // Records 4 and 5 (fuaran#1937): actors carrying control characters, each
+      // spelled as a four-digit unicode escape on both paths.
+      "d95c3e444cf45135905627c5b587abb327faa8f7f6cd7b598c0c3f129ac794a7",
+      "68554c28452b4f8190209ab1cae64bb02260a3ef71b44c21a46edbb03577df79"
+      "f93575b7e39136ff96de8c1459197edb694eac7b797bb0bd53807182a2d18dfa",
+      "5368106ba72b60228321f6505818151b2d8017ce0d72c45f14eaac54e271ddd7" ]
+
+/// The pinned prefix of the corpus this checkout holds: the three records every
+/// corpus carries, and the two control-character records once the corpus has them
+/// (fuaran#1937) — so the corpus and this pin can land in either order.
+let private pinnedPrefix (corpusLength: int) : (string * string) list =
+    Expect.isGreaterThanOrEqual corpusLength 3 "the corpus carries at least its three original records"
+    Expect.isLessThanOrEqual corpusLength (List.length liftedAddressPin) "every corpus record is pinned"
+    List.truncate corpusLength liftedAddressPin
 
 let private sqliteSink (path: string) : IDagOpStreamSink<obj> =
     SqliteDagSink.create<obj> (sprintf "Data Source=%s" path) (OpJsonCodec.canonicalObj ())
@@ -146,12 +160,13 @@ let private assertPinThrough (sink: IDagOpStreamSink<obj>) =
     let linear = corpusRecords ()
     let lifted = liftOk (DagLift.ofLinearVerified linear)
 
-    Expect.equal (List.length lifted.Records) (List.length liftedAddressPin) "one lifted record per corpus record"
+    let pin = pinnedPrefix (List.length linear)
+    Expect.equal (List.length lifted.Records) (List.length pin) "one lifted record per corpus record"
 
     for r in lifted.Records do
         sink.Add r |> Async.RunSynchronously
 
-    for (linearRecord, (linearHash, liftedAddress)), dag in List.zip (List.zip linear liftedAddressPin) lifted.Records do
+    for (linearRecord, (linearHash, liftedAddress)), dag in List.zip (List.zip linear pin) lifted.Records do
         Expect.equal linearRecord.Hash linearHash "the corpus linear hash is the pinned one"
         Expect.equal dag.Hash liftedAddress "the lifted address is the pinned one"
 
@@ -166,8 +181,8 @@ let private assertPinThrough (sink: IDagOpStreamSink<obj>) =
             Expect.equal stored.Hash liftedAddress "the store keeps the lifted address"
             Expect.equal (DagOpRecord.recomputeHash stored) liftedAddress "the stored record recomputes its address"
 
-    Expect.equal lifted.Receipt.LinearHead (List.last liftedAddressPin |> fst) "the receipt's linear head"
-    Expect.equal lifted.Receipt.DagHead (List.last liftedAddressPin |> snd) "the receipt's DAG head"
+    Expect.equal lifted.Receipt.LinearHead (List.last pin |> fst) "the receipt's linear head"
+    Expect.equal lifted.Receipt.DagHead (List.last pin |> snd) "the receipt's DAG head"
 
 [<Tests>]
 let tests =

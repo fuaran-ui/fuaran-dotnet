@@ -143,7 +143,10 @@ type IOpStreamCheckpointSink<'Msg> =
     abstract member ListCheckpoints: streamId: string -> Async<Checkpoint<'Msg> list>
 
     /// Truncate ops with `Sequence ≤ throughSequence` from the live
-    /// stream. Returns the number of records removed. Callers responsible
+    /// stream. Returns the number of records removed. The head never moves: a
+    /// truncation that reaches the head record is refused unless a checkpoint at
+    /// the head holds the boundary, which `LatestSequence` / `Head` then read
+    /// (Phase 1937, D30); invocation keys of the removed records are kept. Callers responsible
     /// for archiving the truncated records first if integrity-verifiable
     /// archival is required (compaction-policy concern, not sink concern).
     abstract member TruncateOpsThrough: streamId: string * throughSequence: int -> Async<int>

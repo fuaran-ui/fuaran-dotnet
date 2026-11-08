@@ -206,7 +206,7 @@ let tests =
 
               let message = refusal "InMemoryDagSink.Add" (fun () -> add sink impostor)
 
-              Expect.stringContains message "content-address collision" "names the check that failed"
+              Expect.stringContains message "content-address check failed" "names the check that failed"
               Expect.stringContains message original.Hash "names the contested address"
               Expect.stringContains message "'s'" "names the stream"
 
@@ -235,7 +235,7 @@ let tests =
 
               let message = refusal "SqliteDagSink.Add" (fun () -> add sink impostor)
 
-              Expect.stringContains message "content-address collision" "names the check that failed"
+              Expect.stringContains message "content-address check failed" "names the check that failed"
               Expect.stringContains message original.Hash "names the contested address"
 
               // Read back under `LoadVerification.Off`: the verify-on-read
@@ -412,9 +412,9 @@ let tests =
 
               insert.CommandText <-
                   """INSERT INTO dag_op_record
-    (stream_id, hash, parents_json, op_json, outcome_hash, prompt_id, user_id, timestamp, result_envelope_json, tombstoned, content_fingerprint)
+    (stream_id, hash, parents_json, op_json, outcome_hash, prompt_id, user_id, timestamp, result_envelope_json, tombstoned)
 VALUES
-    (@s, @h, @parents, @op, NULL, NULL, @user, @ts, @env, 0, @fingerprint);"""
+    (@s, @h, @parents, @op, NULL, NULL, @user, @ts, @env, 0);"""
 
               insert.Parameters.AddWithValue("@s", a.StreamId) |> ignore
               insert.Parameters.AddWithValue("@h", a.Hash) |> ignore
@@ -425,9 +425,6 @@ VALUES
               insert.Parameters.AddWithValue("@ts", a.Timestamp.ToUnixTimeSeconds()) |> ignore
 
               insert.Parameters.AddWithValue("@env", "{\"$type\":\"Success\"}") |> ignore
-
-              insert.Parameters.AddWithValue("@fingerprint", DagWire.contentFingerprint CanonicalJson.encodeOp a)
-              |> ignore
 
               Expect.equal (insert.ExecuteNonQuery()) 1 "the external writer inserted `a` (uncommitted)"
 

@@ -51,9 +51,13 @@ let tests =
               | Error _ -> ()
           }
 
-          test "migrate re-chains a legacy stream into a valid new-format chain, fields preserved" {
+          test "migrateVerified re-chains a legacy stream into a valid new-format chain, fields preserved" {
               let legacy = buildLegacyChain ops
-              let migrated = ChainMigration.migrate legacy
+
+              let migrated =
+                  match ChainMigration.migrateVerified legacy with
+                  | Ok m -> m
+                  | Error e -> failtestf "a clean legacy stream must migrate: %s" e
 
               match Verify.chain migrated with
               | Ok() -> ()
@@ -84,8 +88,89 @@ let tests =
               | Ok _ -> failtest "a stream that does not verify under the legacy format must be refused"
           }
 
-          test "migrate is stable — re-migrating an already-new-format chain is a no-op on the hashes" {
-              let migrated = buildLegacyChain ops |> ChainMigration.migrate
-              let again = ChainMigration.migrate migrated
-              Expect.equal (again |> List.map _.Hash) (migrated |> List.map _.Hash) "idempotent"
+          test "migrateVerified refuses a stream already in the new format (Phase 1937)" {
+              // The unverified `migrate` re-chained anything it was handed; Core's `rehash`
+              // verifies the source first, so a stream that is not a legacy chain is named
+              // rather than silently re-blessed.
+              let migrated =
+                  match buildLegacyChain ops |> ChainMigration.migrateVerified with
+                  | Ok m -> m
+                  | Error e -> failtestf "a clean legacy stream must migrate: %s" e
+
+              match ChainMigration.migrateVerified migrated with
+              | Error _ -> ()
+              | Ok _ -> failtest "a new-format stream does not verify under the pre-406 format"
+          }
+
+          test "migrateLegacyEscape re-chains a pre-287 control-character actor stream (Phase 1937, D30)" {
+              let escapedActor = Actor.Agent("m\n", "1\t", "id\r")
+
+              let legacy =
+                  (([], HashChain.genesisPreviousHash, 1), ops)
+                  ||> List.fold (fun (acc, prev, seq) op ->
+                      let stub: OpRecord<TestMsg> =
+                          { StreamId = "escape"
+                            Sequence = seq
+                            PreviousHash = prev
+                            Hash = ""
+                            Op = op
+                            PromptId = None
+                            Actor = escapedActor
+                            Timestamp = timestamp (1_700_000_000L + int64 seq)
+                            ResultEnvelope = OpResultEnvelope.Success }
+
+                      let payload =
+                          Fuaran.Core.StreamConfig.legacyEscape.Payload
+                              (seq - 1)
+                              escapedActor
+                              (StreamEntry.encode (StreamEntry.ofRecord stub))
+
+                      let hash = StreamEntry.hashFn prev payload
+                      { stub with Hash = hash } :: acc, hash, seq + 1)
+                  |> fun (acc, _, _) -> List.rev acc
+
+              Expect.isError (Verify.chain legacy) "the old bytes do not verify under the canonical payload"
+
+              match ChainMigration.migrateLegacyEscape legacy with
+              | Error e -> failtestf "a pre-287 stream must migrate: %s" e
+              | Ok migrated ->
+                  Expect.isOk (Verify.chain migrated) "the migrated stream verifies"
+                  Expect.equal (migrated |> List.map _.Actor) (legacy |> List.map _.Actor) "actors preserved"
+          }
+
+          test "migrateLegacyEscape leaves a control-free stream's hashes unchanged (Phase 1937, D30)" {
+              let records =
+                  (([], HashChain.genesisPreviousHash, 1), ops)
+                  ||> List.fold (fun (acc, prev, seq) op ->
+                      let hash =
+                          HashChain.computeHash
+                              prev
+                              op
+                              seq
+                              (timestamp 1_700_000_000L)
+                              actor
+                              None
+                              OpResultEnvelope.Success
+
+                      let r: OpRecord<TestMsg> =
+                          { StreamId = "plain"
+                            Sequence = seq
+                            PreviousHash = prev
+                            Hash = hash
+                            Op = op
+                            PromptId = None
+                            Actor = actor
+                            Timestamp = timestamp 1_700_000_000L
+                            ResultEnvelope = OpResultEnvelope.Success }
+
+                      r :: acc, hash, seq + 1)
+                  |> fun (acc, _, _) -> List.rev acc
+
+              match ChainMigration.migrateLegacyEscape records with
+              | Error e -> failtestf "a control-free stream verifies under both payloads: %s" e
+              | Ok migrated ->
+                  Expect.equal
+                      (migrated |> List.map (fun r -> r.PreviousHash, r.Hash))
+                      (records |> List.map (fun r -> r.PreviousHash, r.Hash))
+                      "every link and hash unchanged"
           } ]
