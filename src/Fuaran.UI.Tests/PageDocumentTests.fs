@@ -794,7 +794,7 @@ let schemaTests =
               let defects = QueryBinding.checkSources schemas doc.Tree
 
               Expect.equal
-                  (defects |> List.map (fun d -> d.Code, d.NodeId, d.Column))
+                  (defects |> List.map (fun d -> d.Code, d.Location.NodeId, d.Location.Column))
                   [ QueryBinding.ColumnAbsentCode, "revenue-trend", "orders" ]
                   "only the chart's absent series is a fault"
           } ]

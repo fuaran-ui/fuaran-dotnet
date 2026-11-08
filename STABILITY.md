@@ -8089,6 +8089,31 @@ shard sized the cut on 94.5% derivable under an idealised footprint; at the ship
 refuse about a third of the concurrent edits the tree merge resolves today, which is why the cut waits on the footprint
 (see the phase outcome).
 
+### What rides this slot — Phase 2312 (one finding shape in the tier, one lowering into Core, Core's merge gate)
+
+**Class: breaking** (read from the surface by hand: the workspace surface guard runs on a pack, and none was cut
+here). `QueryBinding.Defect` is now `PreEmitValidate.Finding<QueryBoundRef>` — the tier's one finding shape, located
+at the query-bound reference it judged — so its `NodeId` / `Column` / `Sink` are read through `Location`, its
+`Suggestion` is `Remedy`, and `AvailableFields` is a `string list option` (always `Some` for this check). Codes,
+severities and messages are unchanged. FUARAN058's message now names the cycle's members (`(cycle: 'a', 'b')`), read
+from one `Fuaran.Core.Propagation.sort` pass over the fragment declaration graph that replaces a depth-first search
+from every declaration; which declarations are reported is unchanged.
+
+**Additive beside it.** `PreEmitValidate.Finding.toCore` is the one lowering of any UI finding into Core's guided
+finding (`Fuaran.Core.Validator.Finding`, fuaran-core#489): the code, severity and message as the `Defect`, the node
+kept, the remedy and available fields as the guidance. `Finding.withRecovery` moves here from the build-time
+validator (whose `Findings.withRecovery` now delegates to it). `PreEmitValidate.findingOf` puts a pre-emit defect in
+the finding shape at the node its code-table arguments name, `toDefect` lowers it, and `ruleFamily` is the pre-emit
+walk as one Core `RuleFamily` — the oracle the recipe certification and the fast-path law support now both read
+instead of a lowering each (the certification's oracle now keeps the node it dropped). `Fuaran.UI.Validator`
+references `Fuaran.Core.Propagation`. `ValidatorGate.introducedDefects` is Core's `Validator.introducedDefects` over
+the two parents, and the new `ValidatorGate.verdict` is Core's `Validator.verdict`; `DagMerge.mergeGated` gates
+through it and `DagReconcile.reconcileGated` through `introducedDefects`, with every verdict, order and encoding as
+before.
+
+**Not in this slot:** the pre-emit walk is still the tier's own walk — its rule modules are not yet Core rule
+families (the phase outcome records why and the decision it needs).
+
 ## 0.102.0 (RELEASED — tagged v0.102.0 at 00225688, 2026-11-06)
 
 _Set by Phase 2576, the first change to ride the slot._

@@ -167,12 +167,12 @@ let private negativeTests =
               | [ d ] ->
                   Expect.equal d.Code TypeMismatchCode "FUARAN066"
                   Expect.equal d.Code "FUARAN066" "stable code"
-                  Expect.equal d.NodeId "m1" "located on the Metric node"
-                  Expect.equal d.Column "category" "names the offending column"
-                  Expect.equal d.Sink BindingSinkClass.Numeric "names the sink class"
+                  Expect.equal d.Location.NodeId "m1" "located on the Metric node"
+                  Expect.equal d.Location.Column "category" "names the offending column"
+                  Expect.equal d.Location.Sink BindingSinkClass.Numeric "names the sink class"
                   // §4d recovery — the schema columns that WOULD type-check here.
-                  Expect.equal d.AvailableFields [ "revenue" ] "recovery lists the numeric column"
-                  Expect.isTrue d.Suggestion.IsSome "carries a repair suggestion"
+                  Expect.equal d.AvailableFields (Some [ "revenue" ]) "recovery lists the numeric column"
+                  Expect.isTrue d.Remedy.IsSome "carries a repair suggestion"
               | other -> failtestf "expected exactly one FUARAN066, got %A" other
 
           testCase "a String column bound to a chart Y-series is FUARAN066"
@@ -189,9 +189,9 @@ let private negativeTests =
               match check schema tree with
               | [ d ] ->
                   Expect.equal d.Code TypeMismatchCode "FUARAN066 on the chart Y-series"
-                  Expect.equal d.Column "category" "the string Y-field"
-                  Expect.equal d.Sink BindingSinkClass.Numeric "chart Y-series is numeric"
-                  Expect.equal d.AvailableFields [ "revenue" ] "recovery lists the numeric column"
+                  Expect.equal d.Location.Column "category" "the string Y-field"
+                  Expect.equal d.Location.Sink BindingSinkClass.Numeric "chart Y-series is numeric"
+                  Expect.equal d.AvailableFields (Some [ "revenue" ]) "recovery lists the numeric column"
               | other -> failtestf "expected one FUARAN066, got %A" other
 
           testCase "a binding to a column ABSENT from the schema is FUARAN067 (default-deny)"
@@ -202,8 +202,8 @@ let private negativeTests =
               match check schema tree with
               | [ d ] ->
                   Expect.equal d.Code ColumnAbsentCode "FUARAN067"
-                  Expect.equal d.Column "profit" "the absent column"
-                  Expect.equal d.AvailableFields [ "revenue" ] "recovery lists the available columns"
+                  Expect.equal d.Location.Column "profit" "the absent column"
+                  Expect.equal d.AvailableFields (Some [ "revenue" ]) "recovery lists the available columns"
               | other -> failtestf "expected one FUARAN067, got %A" other
 
           testCase "an empty schema denies every query binding (default-deny by shape)"

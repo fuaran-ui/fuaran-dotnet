@@ -3073,6 +3073,17 @@ module Finding =
     let withRemedy (remedy: string) (finding: Finding<'Location>) : Finding<'Location> =
         { finding with Remedy = Some remedy }
 
+    /// The finding with its §4d recovery stated: the names that would have
+    /// resolved, and the repair when there is one.
+    let withRecovery
+        (available: string list)
+        (remedy: string option)
+        (finding: Finding<'Location>)
+        : Finding<'Location> =
+        { finding with
+            AvailableFields = Some available
+            Remedy = remedy }
+
     /// The finding raised at `severity` rather than its code's default — for the two
     /// codes whose severity depends on how the check was run.
     let withSeverity (severity: Severity) (finding: Finding<'Location>) : Finding<'Location> =
@@ -3080,6 +3091,32 @@ module Finding =
 
     /// Whether the finding is a fault, the one severity that fails a run.
     let isError (finding: Finding<'Location>) : bool = finding.Severity = Severity.Error
+
+    /// Phase 2312 — THE lowering of a finding into Core's guided finding
+    /// (`Fuaran.Core.Validator.Finding`, fuaran-core#489): the code, severity and
+    /// message become the `Defect`, `locate` names its node (`None` for a finding
+    /// about the whole subject), and the §4d recovery fields ride as the guidance —
+    /// the remedy as its `Message` (`""` where none is stated), the available
+    /// fields as its `Alternatives`. A finding stating neither is unguided. Every
+    /// UI finding reaches Core's gates, judges and summaries through this one
+    /// function; a pre-emit defect enters it through `findingOf`.
+    let toCore (locate: 'Location -> 'Id option) (finding: Finding<'Location>) : Validator.Finding<'Id> =
+        let defect: Defect<'Id> =
+            { Code = finding.Code
+              Severity = finding.Severity
+              Message = finding.Message
+              Node = locate finding.Location
+              Family = ""
+              Related = [] }
+
+        match finding.Remedy, finding.AvailableFields with
+        | None, None -> Validator.Finding.ofDefect defect
+        | remedy, available ->
+            let guidance: RejectionGuidance =
+                { Message = defaultArg remedy ""
+                  Alternatives = defaultArg available [] }
+
+            Validator.Finding.guided guidance defect
 
 /// The codes of the lint, query-binding and build-time families — with
 /// `DefectCodes.table`, the one registry of `FUARAN*` codes. A check refers to the value;
@@ -6674,6 +6711,54 @@ let validateWithMeter (meter: HostLimitMeter) (node: Node<'Msg>) : Result<unit, 
 /// `HostLimits.unbounded` the result is byte-for-byte `validate`'s.
 let validateWithLimits (limits: HostLimits) (node: Node<'Msg>) : Result<unit, PreEmitDefect list> =
     validateWithMeter (HostLimitMeter limits) node
+
+// ── Phase 2312 — the pre-emit walk as Core sees it ──────────────────────────
+//
+// A pre-emit defect enters the tier's one finding shape (`Finding`) here, and
+// leaves for Core only through `Finding.toCore`. The recipe certification and
+// the fast-path law support drive Core's `verifyFunction` with this walk as
+// their validity oracle; both read it through `ruleFamily` / `toDefect`, never
+// through a lowering of their own.
+
+/// The code-table arguments that name the node a defect is about, most specific
+/// first. A defect naming none (an empty id, a duplicate write-back key judged
+/// across writers) is about the whole tree.
+let private nodeArguments =
+    [ "nodeId"; "readerNodeId"; "declaringNodeId"; "firstNodeId" ]
+
+/// A pre-emit defect in the tier's one finding shape, located at the node its
+/// code-table arguments name (`None` when it names none). The code, severity and
+/// message are exactly `describe`'s.
+let findingOf (d: PreEmitDefect) : Finding<string option> =
+    let _, args = describeArgs d
+    let code, severity, message = describe d
+
+    { Code = code
+      Severity = severity
+      Location =
+        nodeArguments
+        |> List.tryPick (fun name -> List.tryFind (fst >> (=) name) args |> Option.map snd)
+      Message = message
+      Remedy = None
+      AvailableFields = None }
+
+/// A pre-emit defect as Core's `Defect`, its node read through `locate` — the
+/// one lowering (`Finding.toCore` over `findingOf`), for a caller that keys
+/// nodes other than by the raw id string.
+let toDefect (locate: string option -> 'Id option) (d: PreEmitDefect) : Defect<'Id> =
+    (Finding.toCore locate (findingOf d)).Defect
+
+/// The pre-emit walk as ONE Core rule family over the tree, its findings lowered
+/// by `toDefect locate` — the validity oracle Core's `verifyFunction` drives. The
+/// witness is unused: the walk reaches every node the language holds, keyed
+/// positions included, which a structural witness does not report.
+let ruleFamily<'Msg, 'Id> (locate: string option -> 'Id option) : RuleFamily<Node<'Msg>, 'Id> =
+    { Id = "Fuaran.UI.PreEmitValidate"
+      Run =
+        fun _ root ->
+            match validate root with
+            | Ok() -> []
+            | Error defects -> defects |> List.map (toDefect locate) }
 
 // ── Phase 1889 — the binding-check report: every chart and grid, graded ──
 //

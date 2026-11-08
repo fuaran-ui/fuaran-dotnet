@@ -522,7 +522,7 @@ let private typedCheck (tree: Node<'Msg>) : string -> Schema -> string list =
             |> Set.ofList
 
         Fuaran.UI.QueryBinding.check schema tree
-        |> List.filter (fun d -> readers.Contains d.NodeId)
+        |> List.filter (fun d -> readers.Contains d.Location.NodeId)
         |> List.map (fun d -> d.Message)
 
 /// Phase 2523 - ask again for exactly the sources `changes` touch and return the

@@ -508,6 +508,8 @@
     <!-- Phase 2522: the page document, its demanded projection and signed read-set, the
          page-document validator mode, and the page-document/ corpus family (emits with FUARAN_REGEN=1). -->
     <Compile Include="PageDocumentTests.fs" />
+    <!-- Phase 2312 - the one lowering of a UI finding into Core's guided finding, and the walk as one Core rule family. -->
+    <Compile Include="CoreLoweringTests.fs" />
     <Compile Include="GateReadsCensusTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>

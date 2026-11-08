@@ -44,11 +44,9 @@
 //
 //  AI-RECOVERY DISCIPLINE (§4d). Each `Defect` carries a stable `Code`
 //  (FUARAN066 / FUARAN067), the offending node + column, and recovery fields
-//  (`AvailableFields` + `Suggestion`) — the same shape `Fuaran.UI.Validator`'s
-//  `Findings.withRecovery` populates. `Findings` lives in the downstream
-//  Validator package (it references `Fuaran.UI`), so the runtime defect type is
-//  *defined here* rather than imported, mirroring the discipline without the
-//  circular dependency.
+//  (`AvailableFields` + `Remedy`) in the tier's one finding shape,
+//  `PreEmitValidate.Finding` — the shape `Fuaran.UI.Validator`'s findings are
+//  (Phase 2312; until then this module defined a third copy of it).
 // ============================================================================
 
 open Fuaran.UI.Types
@@ -121,19 +119,13 @@ type QueryBoundRef =
       Sink: BindingSinkClass
       NodeId: string }
 
-/// A typed query-binding defect. Mirrors `Fuaran.UI.Validator.Findings.Finding`
-/// (+ `withRecovery`) without importing it (that type is downstream of this
-/// package). `AvailableFields` is the §4d AI-recovery hint — for a mismatch,
-/// the schema columns that WOULD type-check into this sink; for an absent
-/// column, the schema columns that exist.
-type Defect =
-    { Code: string
-      NodeId: string
-      Column: string
-      Sink: BindingSinkClass
-      Message: string
-      AvailableFields: string list
-      Suggestion: string option }
+/// A typed query-binding defect, in the tier's one finding shape
+/// (`PreEmitValidate.Finding`, Phase 2312) located at the query-bound reference
+/// it judged — the node, the column and the sink class. `Remedy` is the repair
+/// suggestion and `AvailableFields` the §4d AI-recovery hint: for a mismatch, the
+/// schema columns that WOULD type-check into this sink; for an absent column, the
+/// schema columns that exist. `PreEmitValidate.Finding.toCore` lowers it to Core.
+type Defect = PreEmitValidate.Finding<QueryBoundRef>
 
 /// **FUARAN066 (Error)** — a query column is bound into a sink whose scalar
 /// class it is not compatible with (e.g. a `string` column into a `numeric`
@@ -322,36 +314,32 @@ let private mismatchDefect (schema: Schema) (colType: ColumnType) (r: QueryBound
         | first :: _ ->
             Some(sprintf "bind a %s-compatible column instead, e.g. '%s'" (BindingSinkClass.label r.Sink) first)
 
-    { Code = TypeMismatchCode
-      NodeId = r.NodeId
-      Column = r.Column
-      Sink = r.Sink
-      Message =
-        sprintf
+    PreEmitValidate.Finding.create
+        PreEmitValidate.FindingCodes.queryColumnTypeMismatch
+        r
+        (sprintf
             "column '%s' is typed %s but is bound into a %s sink (incompatible)"
             r.Column
             (ColumnType.tag colType)
-            (BindingSinkClass.label r.Sink)
-      AvailableFields = compatibleCols
-      Suggestion = suggestion }
+            (BindingSinkClass.label r.Sink))
+    |> PreEmitValidate.Finding.withRecovery compatibleCols suggestion
 
 let private absentDefect (schema: Schema) (r: QueryBoundRef) : Defect =
     let available = columnNames schema
 
-    { Code = ColumnAbsentCode
-      NodeId = r.NodeId
-      Column = r.Column
-      Sink = r.Sink
-      Message =
-        sprintf
-            "column '%s' is bound into a %s sink but is absent from the resolved query schema"
-            r.Column
-            (BindingSinkClass.label r.Sink)
-      AvailableFields = available
-      Suggestion =
+    let suggestion =
         match available with
         | [] -> Some "the resolved schema has no columns — the query returned no schema"
-        | first :: _ -> Some(sprintf "bind a column that exists in the schema, e.g. '%s'" first) }
+        | first :: _ -> Some(sprintf "bind a column that exists in the schema, e.g. '%s'" first)
+
+    PreEmitValidate.Finding.create
+        PreEmitValidate.FindingCodes.queryColumnAbsent
+        r
+        (sprintf
+            "column '%s' is bound into a %s sink but is absent from the resolved query schema"
+            r.Column
+            (BindingSinkClass.label r.Sink))
+    |> PreEmitValidate.Finding.withRecovery available suggestion
 
 /// Check every query-bound column reference in `node` against the resolved
 /// query result `schema`. Returns `[]` when every binding types cleanly, else
