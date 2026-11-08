@@ -455,10 +455,15 @@ module CoreFunctionLawTests =
                               | Some(JArr items) -> items
                               | _ -> failtest "laws/capability-laws.json carries no `vectors` array"
 
+                          // Eight per iteration since fuaran-core Phase 568: validateArgs pins
+                          // the accept, both bounds at and past each (five), beside the
+                          // invocation key, the declaration round-trip and the registry
+                          // enumeration. The literal was six, and the stamp mismatch above
+                          // skipped this assertion until the Core pin reached 0.41.0.
                           Expect.equal
                               (List.length vectors)
-                              (6 * LawVectorExport.iterations)
-                              "six vectors per declared iteration"
+                              (8 * LawVectorExport.iterations)
+                              "eight vectors per declared iteration"
 
                           let failures = vectors |> List.choose LawVectorExport.checkVector
 

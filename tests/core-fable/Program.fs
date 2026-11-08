@@ -16,14 +16,13 @@ module CoreFable.Program
 // candidate alike were retired when the pin was raised to 0.34.0, so a cut-time run against an older
 // Core line is no longer a supported mode.
 //
-// The program is written for Fuaran.Core 0.40.2, the pin: the `CORE_0_37` arms that let it compile
+// The program is written for Fuaran.Core 0.41.0, the pin: the `CORE_0_37` arms that let it compile
 // against the 0.36.0 pin and the 0.37.0 candidate alike were retired when the pin was raised to
-// 0.38.1 (Phase 2226), and the 0.40.0 spellings (Text, the `IdlField` canonical-form slots) were
-// written unconditionally when it was raised to 0.40.2 (Phase 2286). A later candidate that breaks a spelling touched here gets a version constant
-// in `CoreFable.fsproj` (keyed off `CoreFableEffectiveCore`) the same way. One is defined today:
-// `CORE_0_41` (Core Phase 494 widens `IdlField` with `Keyed`, a record-widening break), under which
-// the three `IdlField` literals below carry `Keyed = false`; it retires with its arm when the pin is
-// raised to 0.41.0.
+// 0.38.1 (Phase 2226), the 0.40.0 spellings (Text, the `IdlField` canonical-form slots) were
+// written unconditionally when it was raised to 0.40.2 (Phase 2286), and the `CORE_0_41` arms
+// (`IdlField.Keyed`, Core Phase 494) were written unconditionally when it was raised to 0.41.0
+// (Phase 2420). A later candidate that breaks a spelling touched here gets a version constant in
+// `CoreFable.fsproj` (keyed off `CoreFableEffectiveCore`) the same way. None is defined today.
 //
 // With `CORE_PARITY` defined (see `core-fable.ps1`), the program is also the VALUE leg: `--vectors`
 // prints `Fuaran.Core.ParityVectors.lines ()` — the cross-pipeline table the conformance kit ships
@@ -436,10 +435,7 @@ let private idlTouch =
                       Annotations = Annotations.Empty
                       Aliases = []
                       Presence = None
-#if CORE_0_41
-                      Keyed = false
-#endif
-                    }
+                      Keyed = false }
                     // Phase 113 — one ANNOTATED field, so the Fable leg actually reaches
                     // `Artifact.annotationsJson`. An empty set short-circuits before any of
                     // it runs, so an all-empty vocabulary would compile the type and prove
@@ -457,10 +453,7 @@ let private idlTouch =
                             Since = Some "0.18.0" }
                       Aliases = []
                       Presence = None
-#if CORE_0_41
-                      Keyed = false
-#endif
-                    } ] }
+                      Keyed = false } ] }
               { Tag = "Box"
                 Category = "container"
                 Annotations = Annotations.Empty
@@ -471,10 +464,7 @@ let private idlTouch =
                       Annotations = Annotations.Empty
                       Aliases = []
                       Presence = None
-#if CORE_0_41
-                      Keyed = false
-#endif
-                    } ] } ]
+                      Keyed = false } ] } ]
           Unions = []
           Enums = [ Declare.enumOf "Tone" [ "Calm"; "Loud" ] ]
           Records = []
