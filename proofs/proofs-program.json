@@ -1,0 +1,8 @@
+{
+  "kind": "proofsAssetPin",
+  "$comment": "The program models this repository's program leg re-checks (Phase 2383): one release asset of https://github.com/Fuaran-Core/fuaran-program-dotnet, pinned by sha256. proofs/check.ps1 downloads it (or takes the local file -ProgramAsset / FUARAN_PROOFS_PROGRAM_ASSET names, for an offline run), refuses any other bytes, opens the models read-only from its models/ and holds the runtime floor and extractions committed under program/oracle/ to its oracle/. The asset is built reproducibly from that repository's proofs/asset.json, which commits this sha256, so a checkout of it builds exactly these bytes (pwsh proofs/check.ps1 -AssetOnly -AssetOutDir <dir>). Moving to a newer program release is changing these four values together, re-writing the committed oracle from the asset (check.ps1 -Leg program -Extract), then a cold run of the leg.",
+  "version": "0.14.0",
+  "asset": "proofs-program-0.14.0.tar",
+  "url": "https://github.com/Fuaran-Core/fuaran-program-dotnet/releases/download/v0.14.0/proofs-program-0.14.0.tar",
+  "sha256": "31c4e58af8d5af79c7539dc6be16aca92fbee7d9bca0efb42d8064a3925a4b1b"
+}

@@ -106,7 +106,7 @@
       "evidence": {
         "family": "Phase 1715 - the proved bounded fold as oracle",
         "host": "src/Fuaran.UI.Program.Parity.Tests/ProofOracleTests.fs",
-        "model": "proofs/program/BoundedFold.fst",
+        "model": "program:models/BoundedFold.fst",
         "cases": [
           "the driver-semantics family yields actions to compare",
           "the oracle agrees with production over the driver-semantics family",
@@ -114,8 +114,8 @@
           "the oracle agrees with production when the placement ANSWERS a call",
           "GO RED: a fold that invokes a carried closure loses the comparison"
         ],
-        "runner": "proofs/check.ps1 -Leg program: the kit's HOST step runs this family by name after re-checking the copied model and byte-diffing its extraction against the copied oracle",
-        "note": "fuaran#2012: MOVED HERE from the program repository with the UI adapter it is about. Production is the UI adapter package, src/Fuaran.UI.Program (the UI witness and the aliases over the generic core, which comes from the released Fuaran.Program.Bounded package); the model and its extraction are byte copies of the program repository's, declared in copies.json. The core's half of the claim — the extraction's generic run_action against BoundedActions.run at a non-UI witness — stays in the program repository, hosted at its toy witness. The list also carries the UI witness's flow-shape check (Phase 1976)."
+        "runner": "proofs/check.ps1 -Leg program: the kit's HOST step runs this family by name after re-checking the model read-only from the program repository's pinned release asset (proofs/proofs-program.json, Phase 2383), holding the committed extractions to the asset's bytes and byte-diffing a fresh extraction against them",
+        "note": "fuaran#2012: MOVED HERE from the program repository with the UI adapter it is about. Production is the UI adapter package, src/Fuaran.UI.Program (the UI witness and the aliases over the generic core, which comes from the released Fuaran.Program.Bounded package); the model and its extraction are the program repository's, taken from its release asset pinned by sha256 (Phase 2383; byte copies declared in copies.json before it). The core's half of the claim — the extraction's generic run_action against BoundedActions.run at a non-UI witness — stays in the program repository, hosted at its toy witness. The list also carries the UI witness's flow-shape check (Phase 1976)."
       }
     },
     {
@@ -126,7 +126,7 @@
       "evidence": {
         "family": "Phase 1716 - the proved budget as oracle",
         "host": "src/Fuaran.UI.Program.Parity.Tests/ProofOracleTests.fs",
-        "model": "proofs/program/Budget.fst",
+        "model": "program:models/Budget.fst",
         "cases": [
           "the generated corpus straddles the ceiling in both directions",
           "the oracle agrees with production on the bounded driver's own trees",
@@ -135,7 +135,7 @@
           "the oracle agrees with the driver's G2 gate, and a breach mutates nothing",
           "GO RED: an accumulator that wraps loses the ceiling comparison"
         ],
-        "runner": "proofs/check.ps1 -Leg program: the kit's HOST step runs this family by name after re-checking the copied model and byte-diffing its extraction against the copied oracle",
+        "runner": "proofs/check.ps1 -Leg program: the kit's HOST step runs this family by name after re-checking the model read-only from the program repository's pinned release asset (proofs/proofs-program.json, Phase 2383), holding the committed extractions to the asset's bytes and byte-diffing a fresh extraction against them",
         "note": "fuaran#2012: MOVED HERE from the program repository with the UI adapter it is about. The G2 stage compared is BoundedDriver.step in the UI adapter package, src/Fuaran.UI.Program; the pricing functions are the core's Budget, from the released Fuaran.Program.Bounded package. The comparison is of the INTEGER and not the verdict, which is what says the model kept production's explicit stack in production's push order. The go-red case commits a walk that accumulates with .NET's wrapping add and asserts BOTH that the harness reports it and that its ceiling comparison comes out the wrong way. The generic pricing is compared at the program repository's toy witness, which stays there."
       }
     }

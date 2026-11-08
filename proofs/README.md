@@ -192,16 +192,23 @@ The UI adapters of the bounded program core (`src/Fuaran.UI.Program`, `src/Fuara
 moved here from the program repository, and the two proof claims ABOUT them moved with them:
 `model-agrees-with-shipped-code` (the bounded fold over the UI witness's fourteen arms) and
 `budget-model-agrees-with-shipped-code` (the UI witness's weighing and the bounded driver's G2 gate).
-Their models are that repository's, so they live here as **byte copies** under `program/` —
-`program/BoundedFold.fst`, `program/Budget.fst`, and the extractions and runtime floor the
-differentials compile under `program/oracle/` — each declared in `../copies.json` with the program
-repository's file as canonical. `check.ps1 -Leg program` re-checks the two copied models on this
-repository's pin (at the program repository's `z3rlimit`, 60), re-extracts them and byte-diffs each
-extraction against its copied oracle, then runs the two differential families in
-`src/Fuaran.UI.Program.Parity.Tests` beside the adapter. Its cost declarations are
-`program/modules.json`. The other three extractions under `program/oracle/` (Staging, EffectGate,
-Undo) carry claims hosted in the program repository, whose leg holds them to a fresh extraction;
-they are compiled here only for the server UI suite's differentials at the UI witness.
+Their models are that repository's, and since Phase 2383 they arrive the way the kit does: as ONE
+release asset of the program repository, `proofs-program-<version>.tar`, pinned by sha256 in
+`proofs-program.json` and verified by `check.ps1` before the leg runs (or taken from the local file
+`-ProgramAsset` / `FUARAN_PROOFS_PROGRAM_ASSET` names — the offline path, built from a checkout of
+that repository with its `proofs/check.ps1 -AssetOnly -AssetOutDir <dir>`, and verified all the same).
+Nothing of it is a copy. `check.ps1 -Leg program` opens `BoundedFold` and `Budget` read-only from the
+asset's `models/` (`-ModelDirs`) and re-checks them on this repository's pin (at the program
+repository's `z3rlimit`, 60), re-extracts them and byte-diffs each extraction against the committed
+oracle, then runs the two differential families in `src/Fuaran.UI.Program.Parity.Tests` beside the
+adapter. The runtime floor and the five extractions the differentials compile ARE committed, under
+`program/oracle/`, because an oracle project compiles nothing outside its directory; the leg holds
+every one of them byte-identical to the asset's `oracle/` (`-FloorDir`), red on any difference and
+rewritten under `-Extract`, so they cannot drift either. Its cost declarations are
+`program/modules.json`. Three of those extractions (Staging, EffectGate, Undo) carry claims hosted in
+the program repository, whose leg holds them to a fresh extraction; they are compiled here only for
+the server UI suite's differentials at the UI witness. Moving to a newer program release is moving the
+pin's four values, then `check.ps1 -Leg program -Extract` and a cold run.
 
 ## What is not here, and why
 
@@ -232,7 +239,8 @@ holds to the asset).
 | `Vocabulary.fst` | **GENERATED** from `src/Fuaran.UI.Idl/idl.json`: the vocabulary's types, its discriminated encoder, its tag-dispatch decoder. |
 | `VocabularyProofs.fst` | **GENERATED** from the same walk: the round trip and totality over `Vocabulary`. |
 | `modules.json` | What the leg costs, per module: the budget (a smoke detector), with its seeding rule, and the one cached-read threshold (a gate). |
-| `program/` | The program models' leg (fuaran#2012): copied models, their copied extractions and runtime floor (`program/oracle/`, an oracle project), and `program/modules.json`. |
+| `proofs-program.json` | The program pin (Phase 2383): the program repository's release asset this leg's second half runs, and its sha256. The asset carries the models opened here (`BoundedFold`, `Budget`), the runtime floor and the extractions. |
+| `program/` | The program models' leg (fuaran#2012): the committed runtime floor and extractions the oracle project compiles (`program/oracle/`), each held to the program asset's bytes, and `program/modules.json`. No model is here: they are opened from the asset. |
 | `../proofs.json` | The claims ladder. Checked against this tree by `Proofs.Ladder`. |
 
 ### One template is deliberately not carried

@@ -362,17 +362,24 @@ let ladderTests =
                               r.Id
                               model)
 
-                      // A KIT model (`kit:models/<Model>.fst`) is opened read-only from the pinned proof-kit
-                      // asset and is not in this tree: its text is read from the verified asset when the
-                      // leg's host step names it (FUARAN_PROOFS_KIT_DIR, set by proofs/check.ps1), and the
-                      // roster clause above is what holds the row everywhere else.
+                      // A model from a PINNED ASSET is opened read-only from it and is not in this tree: a
+                      // kit model (`kit:models/<Model>.fst`, the proof kit's asset) or a program model
+                      // (`program:models/<Model>.fst`, the program repository's, Phase 2383). Its text is
+                      // read from the verified asset when the leg's host step names it
+                      // (FUARAN_PROOFS_KIT_DIR / FUARAN_PROOFS_PROGRAM_DIR, set by proofs/check.ps1), and
+                      // the roster clause above is what holds the row everywhere else.
+                      let fromAsset =
+                          [ "kit:", "FUARAN_PROOFS_KIT_DIR"; "program:", "FUARAN_PROOFS_PROGRAM_DIR" ]
+                          |> List.tryFind (fun (prefix, _) -> model.StartsWith prefix)
+
                       let text =
-                          if model.StartsWith "kit:" then
-                              match Environment.GetEnvironmentVariable "FUARAN_PROOFS_KIT_DIR" with
+                          match fromAsset with
+                          | Some(prefix, variable) ->
+                              match Environment.GetEnvironmentVariable variable with
                               | null
                               | "" -> None
-                              | kit -> Some(read (Path.Combine(kit, model.Substring 4)))
-                          else
+                              | dir -> Some(read (Path.Combine(dir, model.Substring prefix.Length)))
+                          | None ->
                               Some(
                                   read (Path.Combine(repoRoot, model.Replace("/", string Path.DirectorySeparatorChar)))
                               )
