@@ -4,20 +4,19 @@ module Fuaran.UI.OpStream.Tests.OpEncoderPinTests
 // (Phase 2061). Captured from the hand-written appender encoder immediately
 // before it was replaced by the JVal-plus-`Canonical.write` encoder over the
 // generated binding layer; every pin below is that encoder's output EXCEPT the
-// five ruled cases, each of which names its ruling:
+// two ruled cases, each of which names its ruling:
 //
 //   - `static-int64` — an integer beyond Int32 rides as a double. Below 2^53
 //     the digits are identical; past it (this case) the bytes are the double's,
 //     which is what any reader of the longer integer token re-encodes to.
-//   - `filter-default-null`, `selection-default-null` — a null payload is
-//     absence (WIRE_FORMAT §2, Phase 677), as it already was for `Static` and
-//     `State`; the old encoder's `"defaultValue":null` was the §2 violation.
-//   - `updateprop-native-null` — a null `Native` value is outside the
-//     encodable scalar set, so it is `"<opaque>"`; `null` is not a value in
-//     the wire model and no reader accepted the old `"value":null`.
 //   - `local-full` — `Local.codec` and `Local.commitTo` ride the op as they
 //     ride a node; the old encoder dropped both, so two `ReplaceBinding`s
 //     differing only there hashed identically and the persisted op lost them.
+//
+// The three null cases (`filter-default-null`, `selection-default-null`,
+// `updateprop-native-null`) keep the old bytes ON PURPOSE: a host-built null is
+// unencodable, and the bare `null` token no reader accepts is how a consumer
+// that parses the encoding learns so (the program loop's `unencodable-op`).
 
 open Expecto
 open Fuaran.UI.OpStream.Abstractions
@@ -72,13 +71,13 @@ let private pins: (string * string) list =
       "filter-default",
       """{"$type":"ReplaceBinding","binding":{"$type":"Filter","defaultValue":"open","name":"status"},"slot":"Source","target":"n"}"""
       "filter-default-null",
-      """{"$type":"ReplaceBinding","binding":{"$type":"Filter","name":"status"},"slot":"Source","target":"n"}"""
+      """{"$type":"ReplaceBinding","binding":{"$type":"Filter","defaultValue":null,"name":"status"},"slot":"Source","target":"n"}"""
       "selection-bare",
       """{"$type":"ReplaceBinding","binding":{"$type":"Selection","nodeId":"grid"},"slot":"Source","target":"n"}"""
       "selection-full",
       """{"$type":"ReplaceBinding","binding":{"$type":"Selection","defaultValue":7,"field":"id","nodeId":"grid"},"slot":"Source","target":"n"}"""
       "selection-default-null",
-      """{"$type":"ReplaceBinding","binding":{"$type":"Selection","nodeId":"grid"},"slot":"Source","target":"n"}"""
+      """{"$type":"ReplaceBinding","binding":{"$type":"Selection","defaultValue":null,"nodeId":"grid"},"slot":"Source","target":"n"}"""
       "state-bare", """{"$type":"ReplaceBinding","binding":{"$type":"State","key":"k"},"slot":"Source","target":"n"}"""
       "state-default",
       """{"$type":"ReplaceBinding","binding":{"$type":"State","defaultValue":1.25,"key":"k"},"slot":"Source","target":"n"}"""
@@ -201,7 +200,7 @@ let private pins: (string * string) list =
       "invoke-args",
       """{"$type":"ReplaceBinding","binding":{"$type":"Invoke","args":[{"addr":"b","value":"2"},{"addr":"a","value":"1\u000a"}],"capabilityId":"cap.x"},"slot":"Source","target":"n"}"""
       "editnode", """{"$type":"EditNode","newKind":{"$type":"Markdown","text":"Body"},"target":"m"}"""
-      "updateprop-native-null", """{"$type":"UpdateProp","path":"Label","target":"m","value":"<opaque>"}"""
+      "updateprop-native-null", """{"$type":"UpdateProp","path":"Label","target":"m","value":null}"""
       "updateprop-native-string", """{"$type":"UpdateProp","path":"Label","target":"m","value":"x\u0009y"}"""
       "updateprop-native-int", """{"$type":"UpdateProp","path":"Rows","target":"m","value":3}"""
       "updateprop-native-int64", """{"$type":"UpdateProp","path":"Rows","target":"m","value":5}"""

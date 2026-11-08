@@ -45,16 +45,26 @@ let private opaqueSentinel = "<opaque>"
 //
 // `PropValue.Native` and `ReplaceBinding`'s `Binding<obj>` payload positions
 // carry in-process values. The recognised primitives spell as their JSON value;
-// anything else — a host domain type, a list, a `JVal` boxed as `obj`, a null
-// reference — collapses to `"<opaque>"`, which preserves canonicalisation without
-// inventing content the encoder cannot see (the residual-opaque boundary,
-// WIRE_FORMAT.md §"Typed Static payloads").
+// anything else — a host domain type, a list, a `JVal` boxed as `obj` —
+// collapses to `"<opaque>"`, which preserves canonicalisation without inventing
+// content the encoder cannot see (the residual-opaque boundary, WIRE_FORMAT.md
+// §"Typed Static payloads").
 //
-// Two spellings follow from the `JVal` model having no `null` and one integer
-// width, each the bytes a reader of the old spelling would re-encode to (Phase
-// 2061's rulings, recorded in its outcome): an `int64` outside Int32 rides as a
-// double — exact, with the same digits, up to 2^53, which is all a reader keeps
-// of a longer integer token anyway — and a null reference is opaque.
+// A NULL reference in a position that writes one (`UpdateProp`'s value, a
+// `Filter` / `Selection` `defaultValue`) is NOT opaque: it is UNENCODABLE, and
+// the op's text carries the bare `null` token no reader accepts, so a consumer
+// that parses the encoding reports the op as one the codec cannot encode
+// (the program loop's `unencodable-op`) rather than receiving a value it would
+// read as data. The `JVal` model has no `null`, so the payload stands in as
+// `nullMarker` — a string carrying a lone surrogate, which no encodable string
+// holds — and `encodeOp` re-spells that one token. (`Static.value` and
+// `State.defaultValue` omit a null payload instead: Phase 677's absence rule.)
+//
+// An `int64` outside Int32 rides as a double — exact, with the same digits, up
+// to 2^53, which is all a reader keeps of a longer integer token anyway (Phase
+// 2061's ruling, recorded in its outcome).
+
+let private nullMarker = string (char 0xD800) + "null"
 
 let private floatJson (f: float) : JVal =
     // A non-finite double rides as its quoted sentinel string (WIRE_FORMAT §5),
@@ -72,7 +82,7 @@ let private int64Json (n: int64) : JVal =
 
 let private payloadJson (v: obj | null) : JVal =
     match v with
-    | null -> JStr opaqueSentinel
+    | null -> JStr nullMarker
     | :? string as s -> JStr s
     | :? bool as b -> JBool b
     | :? int as n -> JInt n
@@ -96,9 +106,10 @@ let private propValueJson (v: PropValue) : JVal =
 // node's binding are one encoder. Ahead of it, this projection spells two
 // in-process constructions as the canonical ABSENCE the format requires:
 //
-//   - a null payload in an optional position (`Static.value`, `State.` /
-//     `Filter.` / `Selection.defaultValue`) — absence is structural and `null`
-//     appears nowhere in a canonical emission (WIRE_FORMAT §2, Phase 677);
+//   - a null `Static.value` / `State.defaultValue` — absence is structural and
+//     `null` appears nowhere in a canonical emission (WIRE_FORMAT §2, Phase
+//     677). A null `Filter` / `Selection` `defaultValue` is left to the
+//     payload encoder, which spells it unencodable (see `nullMarker`);
 //   - an EMPTY `Query.dependsOn` / `Transform.params` / `Expr.params` list —
 //     each is "omitted when empty" (§3.3).
 //
@@ -126,9 +137,9 @@ let rec private canonicalBinding<'T> (b: Binding<'T>) : Binding<'T> =
     match b with
     | Binding.Static v -> Binding.Static(present v)
     | Binding.Query(name, accessor, dependsOn) -> Binding.Query(name, accessor, nonEmpty dependsOn)
-    | Binding.Filter(name, defaultValue) -> Binding.Filter(name, present defaultValue)
+    | Binding.Filter(name, defaultValue) -> Binding.Filter(name, defaultValue)
     | Binding.Selection(nodeId, accessor, defaultValue, field) ->
-        Binding.Selection(nodeId, accessor, present defaultValue, field)
+        Binding.Selection(nodeId, accessor, defaultValue, field)
     | Binding.State(key, defaultValue) -> Binding.State(key, present defaultValue)
     | Binding.Local(flushOn, format, initialFrom, onCommit, parse, codec, commitTo) ->
         Binding.Local(flushOn, format, canonicalBinding<'T> initialFrom, onCommit, parse, codec, commitTo)
@@ -256,6 +267,18 @@ let rec private treeOpJson<'Msg> (op: TreeOp<'Msg>) : JVal =
 
 let private render (v: JVal) : string = Canonical.write Rendering.CrossHost v
 
+/// The rendered `nullMarker` token, re-spelled as the bare `null` an
+/// unencodable payload writes. Only an op holding a null payload carries it.
+let private nullMarkerToken = render (JStr nullMarker)
+
+let private renderOp (v: JVal) : string =
+    let text = render v
+
+    if text.Contains nullMarkerToken then
+        text.Replace(nullMarkerToken, "null")
+    else
+        text
+
 // ─── Public surface ───────────────────────────────────────────────────────
 
 /// Encode a `Node<'Msg>` to its canonical JSON string. Fable-compatible —
@@ -346,7 +369,7 @@ let encodeNodeForTransport<'Msg> (node: Node<'Msg>) : Result<string, LossyPath l
 /// Encode a `TreeOp<'Msg>` to its canonical JSON string. Server-side hash
 /// chain calls this to feed SHA-256; the encoded form is also useful for
 /// op-stream sinks that persist as JSON text (Sqlite `op_json` column).
-let encodeOp<'Msg> (op: TreeOp<'Msg>) : string = render (treeOpJson op)
+let encodeOp<'Msg> (op: TreeOp<'Msg>) : string = renderOp (treeOpJson op)
 
 /// Encode an `OpResultEnvelope` to its canonical JSON string. Used by the
 /// Sqlite sink for the `result_envelope_json` column.

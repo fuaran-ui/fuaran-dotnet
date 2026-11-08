@@ -7957,7 +7957,7 @@ The slot is already breaking (Phase 2060), so this rides it. `docs/DECISIONS.md`
 
 ### What rides this slot — Phase 2061 (the op-stream encoder is one design)
 
-**Class: additive surface, with five ruled byte changes to `CanonicalJson.encodeOp`.** Packages `Fuaran.UI` and
+**Class: additive surface, with two ruled byte changes to `CanonicalJson.encodeOp`.** Packages `Fuaran.UI` and
 `Fuaran.UI.OpStream.Abstractions`. The slot is already breaking (Phase 2060), so this rides it.
 
 - **Added:** `Fuaran.UI.Generated.encodeBindingJson : ('T -> JVal) -> Binding<'T> -> JVal`, the generated binding
@@ -7968,14 +7968,14 @@ The slot is already breaking (Phase 2060), so this rides it. `docs/DECISIONS.md`
 - **Internal:** `encodeOp` builds the op as a `JVal` over the generated layer and renders it once with
   `Canonical.write Rendering.CrossHost`; the hand-written binding, format and action encoders and the appender DSL are
   gone (the action encoder had no caller).
-- **Five bytes that move**, each pinned by name in `OpEncoderPinTests`:
+- **Two bytes that move**, each pinned by name in `OpEncoderPinTests`:
   - a `ReplaceBinding` whose `Local` binding carries `codec` or `commitTo` now carries them, as a node's binding and the
     TypeScript op encoder already did; the old bytes dropped both, so the op hashed as if they were absent;
-  - a null `Filter` / `Selection` `defaultValue` is omitted rather than written as `null` (WIRE_FORMAT §2), as `Static`
-    and `State` already were;
-  - a null `PropValue.Native` is `"<opaque>"` rather than `null`;
   - an `int64` payload past 2^53 renders as the double it rounds to, which is what a reader of the old integer token
     re-encoded it as. Below 2^53 the digits are unchanged.
+- **Kept on purpose:** a host-built null payload (`PropValue.Native`, a `Filter` / `Selection` `defaultValue`) still
+  writes the bare `null` no reader accepts, so a consumer parsing the encoding reports the op unencodable (the program
+  loop's `unencodable-op`) rather than receiving a sentinel it would read as data.
 
 ### What rides this slot — Phase 2318 (every float layout in the tier is Core's)
 
