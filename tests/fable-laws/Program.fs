@@ -69,6 +69,12 @@ let main _ =
     let footprintInFailures =
         footprintInResults |> List.filter (fun r -> not r.Passed) |> List.length
 
+    // ---- law 2c: the reconciliation policy is symmetric (Phase 2293) ----
+    let reconcileLines, reconcileAsymmetric = Laws.reconcileSymmetry seed 300
+
+    for line in reconcileLines do
+        printfn "%s" line
+
     // ---- law 3: the raw-DEFLATE inflater over a foreign dynamic-Huffman stream ----
     // The block type no host of ours emits and every standard deflater does. Its .NET
     // conformance cross-check sits behind `#if !FABLE_COMPILER` (`System.IO.Compression`
@@ -160,6 +166,7 @@ let main _ =
         Laws.mergeViolations mergeVerdict
         + laneFailures
         + footprintInFailures
+        + reconcileAsymmetric
         + List.length mergeAdequacy
         + Laws.deflateViolations deflateCases
         + Laws.selectionFieldViolations selectionCases

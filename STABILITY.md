@@ -8025,6 +8025,32 @@ replay and undo posture for every handler a continuation reaches. Postures are u
 the one `Replay.postureOf` and `Replay.admit` read. A document whose tree and handler compute stages hold no commit and no confirm is
 byte-identical. Ruling: `docs/DECISIONS.md` D27.
 
+### What rides this slot — Phase 2293 (the reconciliation policy over Core's conflict report, first slice)
+
+**Class: additive.** `Fuaran.UI.OpStream.Dag.Merge` gains `DagReconcile` — `reconcile`, `reconcileGated`,
+`applyHeld`, `encodeEnvelope`, `sortCanonical` — and the types `ReconcileSide`, `RefusalClass`, `Refusal`,
+`ReconcileFault` and `Reconciled`, and now references `Fuaran.Core.OpStream.Dag` (the package it reads
+`Dag.conflictsIn` from). Nothing existing changes: `TreeMerge`, `DagMerge` and every DAG address are as they were.
+The merge-conformance corpus gains the `foldFixtures` family under its own manifest key, and `WIRE_FORMAT.md`
+gains §34, so no host's existing legs move. The policy is the merge model the announced breaking cut adopts (the
+remainder of Phase 2293: the DAG's identity, replay and retention onto Core, and the tree merge removed); until that
+cut lands the policy is a second, additive merge entry and the tree merge stays the DAG's merge.
+
+**The rules it declares** (normative in §34): an agreement (byte-identical ops) is applied as no change; two
+appends of distinct nodes under one parent are admitted and ordered by the child-order rule (the parent's other
+children first, then the two branches' append runs merged by comparing heads ordinally by NodeId); every other pair
+Core reports refuses, a removal against a concurrent touch of the removed node — a move included — as
+`DeleteModify`. Both fold orders are run and a disagreement refuses as `OrderSensitive`.
+
+**Measured** (`derivability-snapshot`, seed 20261016, 20000 trials): the `derivability.<population>.policy.*` lines
+report, for each triad the tree merge auto-merges, whether the fold derives the same tree. Taken with this slice:
+corpus 6 of 7 (0.8571; the seventh is a move out of a container beside a restyle of that container, which the shipped
+footprint content-writes); generated 5943 of 9294 (0.6394), with 135 derived to a different tree, 2860 refused as
+`Conflict`, 354 as `DeleteModify`, 2 other, and none order-sensitive; 142 triads the tree merge refuses derive. The
+shard sized the cut on 94.5% derivable under an idealised footprint; at the shipped base-aware footprint the fold would
+refuse about a third of the concurrent edits the tree merge resolves today, which is why the cut waits on the footprint
+(see the phase outcome).
+
 ## 0.102.0 (RELEASED — tagged v0.102.0 at 00225688, 2026-11-06)
 
 _Set by Phase 2576, the first change to ride the slot._

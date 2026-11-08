@@ -28,6 +28,7 @@
     <Compile Include="TreeMerge.fs" />
     <Compile Include="DagPrimacy.fs" />
     <Compile Include="ValidatorGate.fs" />
+    <Compile Include="DagReconcile.fs" />
     <!-- Phase 267: replay a mounted guest's interior from its own stream alone,
          bounded at the Mount anchor (§4o). Needs only DagReplayError + Apply. -->
     <Compile Include="GuestReplay.fs" />
@@ -45,5 +46,7 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />
+    <!-- Phase 2293: DagReconcile reads Core's conflict report (Dag.conflictsIn). -->
+    <PackageReference Include="Fuaran.Core.OpStream.Dag" />
   </ItemGroup>
 </Project>

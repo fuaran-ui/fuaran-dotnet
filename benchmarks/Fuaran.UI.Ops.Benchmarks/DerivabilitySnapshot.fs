@@ -29,6 +29,12 @@ open Fuaran.UI.OpStream.Dag.Merge
 //  the triad's base through `Apply.apply` — the `derivability.<population>.in.*`
 //  lines. The two shares side by side are what the base-aware form buys.
 //
+//  A third verdict (Phase 2293) is the reconciliation policy's —
+//  `DagReconcile.reconcile` over the same two deltas, the merge by fold that
+//  replaces the tree merge — under `derivability.<population>.policy.*`. Its
+//  `derived_share` is the share of UI auto-merges the fold derives to the UI's
+//  own tree; the remainder, by cell, is what the replacement refuses or moves.
+//
 //  Each triad lands in one cell. The number this exists to print is
 //  `derivability.overapprox_share`: of the triads the UI auto-merges, the share
 //  Core refuses although both apply orders reach the UI's merged tree — the
@@ -321,7 +327,57 @@ let private reportUnder
                else
                    sprintf "%.4f" (float (count ConflictButFoldAgrees) / float merged)) ]
 
-/// The lines `derivability-snapshot` prints for one population: the pure projection's, then the
-/// base-aware projection's under `<name>.in`.
+/// Where the reconciliation policy (Phase 2293, `DagReconcile.reconcile`) lands a triad, against the
+/// UI's tree merge: the verdict a fold-based merge would give each UI auto-merge and refusal.
+let private policyCell (b: Node<obj>) (a: Node<obj>) (bb: Node<obj>) (dA: TreeOp<obj> list) (dB: TreeOp<obj> list) =
+    match TreeMerge.merge3Way b a bb, DagReconcile.reconcile b dA dB with
+    | Ok merged, Ok r when canon r.Tree = canon merged -> "ui_merges.derived_identical"
+    | Ok _, Ok _ -> "ui_merges.derived_elsewhere"
+    | Ok _, Error(ReconcileFault.Refused rs) when rs |> List.exists (fun r -> r.Class = RefusalClass.DeleteModify) ->
+        "ui_merges.refused_delete_modify"
+    | Ok _, Error(ReconcileFault.Refused _) -> "ui_merges.refused_conflict"
+    | Ok _, Error(ReconcileFault.OrderSensitive _) -> "ui_merges.refused_order_sensitive"
+    | Ok _, Error _ -> "ui_merges.refused_other"
+    | Error _, Ok _ -> "ui_refuses.policy_derives"
+    | Error _, Error _ -> "ui_refuses.policy_refuses"
+
+/// The policy's lines for one population, keyed `derivability.<name>.policy.`: every cell's count,
+/// and `derived_share` — of the triads the UI auto-merges, the share the policy derives to the UI's
+/// own tree. One minus it is what replacing the tree merge with the fold would refuse or move.
+let private policyReport
+    (name: string)
+    (triads: (Node<obj> * Node<obj> * Node<obj> * TreeOp<obj> list * TreeOp<obj> list) list)
+    =
+    let cells = triads |> List.map (fun (b, a, bb, dA, dB) -> policyCell b a bb dA dB)
+
+    let count (c: string) =
+        cells |> List.filter ((=) c) |> List.length
+
+    let uiMerged =
+        cells |> List.filter (fun c -> c.StartsWith "ui_merges.") |> List.length
+
+    [ for c in
+          [ "ui_merges.derived_identical"
+            "ui_merges.derived_elsewhere"
+            "ui_merges.refused_delete_modify"
+            "ui_merges.refused_conflict"
+            "ui_merges.refused_order_sensitive"
+            "ui_merges.refused_other"
+            "ui_refuses.policy_derives"
+            "ui_refuses.policy_refuses" ] do
+          yield sprintf "derivability.%s.policy.%s = %d" name c (count c)
+      yield
+          sprintf
+              "derivability.%s.policy.derived_share = %s"
+              name
+              (if uiMerged = 0 then
+                   "n/a"
+               else
+                   sprintf "%.4f" (float (count "ui_merges.derived_identical") / float uiMerged)) ]
+
+/// The lines `derivability-snapshot` prints for one population: the pure projection's, the
+/// base-aware projection's under `<name>.in`, and the reconciliation policy's under `<name>.policy`.
 let report (name: string) (triads: (Node<obj> * Node<obj> * Node<obj> * TreeOp<obj> list * TreeOp<obj> list) list) =
-    reportUnder Pure name triads @ reportUnder BaseAware (name + ".in") triads
+    reportUnder Pure name triads
+    @ reportUnder BaseAware (name + ".in") triads
+    @ policyReport name triads

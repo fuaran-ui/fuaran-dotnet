@@ -81,6 +81,16 @@ projection, one rule for concurrent inserts under one parent, the validator gate
 tree). Until that cut ships, the two DAGs remain two implementations, and this document describes
 the current one.
 
+**The policy layer ships first** (Phase 2293). `DagReconcile` in `Fuaran.UI.OpStream.Dag.Merge` is
+that reconciliation policy, over Core's `Dag.conflictsIn` and the tier's base-aware footprint: an
+agreement is applied as no change, two appends of distinct nodes under one parent are ordered by one
+declared child-order rule (NodeId ordinal), every other reported pair refuses (a removal against a
+concurrent move or edit of the node as `DeleteModify`), and the fold is run in both orders so a pair
+outside Core's independence theorem cannot slip through. Its normative statement is
+`WIRE_FORMAT.md` §34 and its corpus the `foldFixtures` family, so every host can port it before the
+cut makes it the DAG's only merge. Until then it is an additive second entry: `DagMerge` still merges
+with the tree-level engine.
+
 What *did* transfer regardless: the provenance-hardening applied to the linear chain (folding the
 prompt id / actor / result outcome into the content hash, and delimiting the pre-image) was applied to
 the UI DAG's node hash too – so a DAG node's digest covers exactly what a linear record's does.

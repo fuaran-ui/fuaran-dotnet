@@ -16,6 +16,7 @@
     <Compile Include="TempDb.fs" />
     <Compile Include="DagCorpus.fs" />
     <Compile Include="MergeCorpus.fs" />
+    <Compile Include="FoldCorpus.fs" />
     <Compile Include="DegenerateTests.fs" />
     <Compile Include="CasAndTopologyTests.fs" />
     <Compile Include="MergeTests.fs" />
@@ -30,6 +31,7 @@
     <Compile Include="WireTests.fs" />
     <Compile Include="ConformanceTests.fs" />
     <Compile Include="MergeConformanceTests.fs" />
+    <Compile Include="FoldReconcileTests.fs" />
     <Compile Include="ValidatorGateTests.fs" />
     <Compile Include="MergeEntryPointTests.fs" />
     <Compile Include="OpenCoreInvariantTests.fs" />

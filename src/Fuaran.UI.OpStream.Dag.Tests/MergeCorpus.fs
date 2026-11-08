@@ -316,7 +316,10 @@ let totalityPairs
       flat |> withTooltip "left" "A hint",
       flat |> applyOk (tone ToneVariant.Success rightChildId) ]
 
-let emit (root: string) : unit =
+/// Emit the triad families and the manifest; `extra dir` writes a further
+/// family's payloads into `dir` and returns its manifest section (comma-led),
+/// appended after the triad keys (`FoldCorpus.emit` passes the fold family).
+let emitWith (extra: string -> string) (root: string) : unit =
     let dir = Path.Combine(root, "merge-conformance")
     Directory.CreateDirectory dir |> ignore
     let entries = ResizeArray<string>()
@@ -446,6 +449,8 @@ let emit (root: string) : unit =
         + System.String.Join(",\n", refusalEntries)
         + "\n  ],\n  \"totalityDescription\": \"merge-totality (Phase 1526, additive, SEPARATE key): each PAIR is a triad that must REFUSE, immediately followed by a corrected twin that must AUTO-MERGE. The refusal entry carries an envelopeFile + envelopeHash and is checked exactly as a `merge-refusal` entry is; the twin carries an expectedFile + outcomeHash and is checked exactly as a `merge-3way` entry is; `twin` and `refusal` cross-reference the two. The pair is the point: a host can pass the refusal by refusing every structural merge, and can pass an auto-merge suite by never growing the arm, and only the pair pins the boundary between them. Three cases are covered, each one merge behaviour a host can silently OMIT and still look conformant: DeleteModify (one side edits a node the other REMOVES) and ConcurrentMove (a node relocated by one side and moved or edited by the other), both declared since Phase 179 and constructed by nothing until 1526 — so a host that reproduced the reference exactly reproduced a silent loss; and the node-level `tooltip` trait, which the reference merges as a facet of its own since Phase 1112 and which no fixture in any other family reaches, so a host whose merge constructs its nodes with the trait hardcoded empty drops an uncontested hint and nothing notices. The tooltip pair fails on its TWIN rather than its refusal, because a dropped trait is a different TREE and not a different envelope. Two envelope spellings are specific to these classes and a host must not generalise either: a side that holds NO value for the cell — the removing side of a DeleteModify — carries the EMPTY STRING, which no node canonical-encodes to and which `base` already uses for a same-id insert; and a ConcurrentMove is TWO entries on one node, `move` whose side value is the parent id that side holds the node under (empty string at the root) and `node` whose side value is that side's canonical subtree, never one entry compounding position and content. Held under its own key for the reason refusalFixtures is: a host that iterates `fixtures` expecting every entry to auto-merge is correct to do so, and one that iterates `refusalFixtures` expecting every entry to refuse is correct too.\",\n  \"totalityFixtures\": [\n"
         + System.String.Join(",\n", totalityEntries)
-        + "\n  ]\n}\n"
+        + "\n  ]"
+        + extra dir
+        + "\n}\n"
 
     File.WriteAllText(Path.Combine(dir, "manifest.json"), manifest)

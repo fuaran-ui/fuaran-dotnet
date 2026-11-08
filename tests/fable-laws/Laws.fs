@@ -530,6 +530,78 @@ let footprintInResults (seed: int) (iterations: int) : Fuaran.Core.LawResult lis
         iterations
 
 // ---------------------------------------------------------------------------
+//  law 2c — the reconciliation policy is symmetric (Phase 2293)
+// ---------------------------------------------------------------------------
+//
+//  `DagReconcile.reconcile` over two generated deltas from the base, named both
+//  ways round. The policy admits pairs Core's independence theorem does not
+//  cover (agreements, interleaves), so its order-independence is the POLICY's
+//  rule, stated here: the two namings derive one tree, or refuse with envelopes
+//  that are each other's mirror (every entry's left and right swapped, re-sorted),
+//  or fail on the same fault class. The tallies print on both pipelines and are
+//  byte-compared, which also certifies that the policy reaches the same verdicts
+//  in a browser as on .NET.
+
+/// One reconcile verdict, rendered so the two namings can be compared: the derived tree's
+/// canonical bytes, the envelope with its sides swapped back when `mirror` is set, or the
+/// fault's case name.
+let private reconcileText (mirror: bool) (r: Result<Reconciled<obj>, ReconcileFault<obj>>) : string =
+    match r with
+    | Ok d -> "derived " + CanonicalJson.encodeNode d.Tree
+    | Error(ReconcileFault.Refused rs) ->
+        let rs =
+            if mirror then
+                rs
+                |> List.map (fun x ->
+                    { x with
+                        Conflict =
+                            { x.Conflict with
+                                Left = x.Conflict.Right
+                                Right = x.Conflict.Left } })
+            else
+                rs
+
+        "refused " + DagReconcile.encodeEnvelope rs
+    | Error(ReconcileFault.DeltaDoesNotApply _) -> "delta-does-not-apply"
+    | Error(ReconcileFault.OrderSensitive _) -> "order-sensitive"
+    | Error(ReconcileFault.FoldFaulted _) -> "fold-faulted"
+    | Error(ReconcileFault.IntroducedDefects _) -> "introduced-defects"
+
+/// The policy's symmetry over `iterations` generated delta pairs: the tally lines and the number
+/// of pairs whose two namings disagree.
+let reconcileSymmetry (seed: int) (iterations: int) : string list * int =
+    let b = unwrap baseTree
+    PortableRng.reseed seed
+    let mutable derived = 0
+    let mutable refused = 0
+    let mutable other = 0
+    let mutable asymmetric = 0
+
+    for _ in 1..iterations do
+        let a = genEdit ()
+        let c = genEdit ()
+
+        match applyEdit a b, applyEdit c b with
+        | Some _, Some _ ->
+            let ac = DagReconcile.reconcile b a c
+            let ca = DagReconcile.reconcile b c a
+
+            if reconcileText false ac <> reconcileText true ca then
+                asymmetric <- asymmetric + 1
+
+            match ac with
+            | Ok _ -> derived <- derived + 1
+            | Error(ReconcileFault.Refused _) -> refused <- refused + 1
+            | Error _ -> other <- other + 1
+        | _ -> ()
+
+    [ sprintf "reconcile.derived = %d" derived
+      sprintf "reconcile.refused = %d" refused
+      sprintf "reconcile.other = %d" other
+      sprintf "reconcile.asymmetric = %d" asymmetric ],
+    asymmetric
+
+// ---------------------------------------------------------------------------
 //  law 3 — the raw-DEFLATE inflater, over a FOREIGN dynamic-Huffman stream
 // ---------------------------------------------------------------------------
 //
