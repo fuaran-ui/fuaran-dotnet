@@ -595,10 +595,9 @@ let reconcileSymmetry (seed: int) (iterations: int) : string list * int =
             | Error _ -> other <- other + 1
         | _ -> ()
 
-    [ sprintf "reconcile.derived = %d" derived
-      sprintf "reconcile.refused = %d" refused
-      sprintf "reconcile.other = %d" other
-      sprintf "reconcile.asymmetric = %d" asymmetric ],
+    // One `MERGE ` line: the stage compares only lines of its declared shapes, so a line of
+    // any other prefix would print on both pipelines and be compared on neither.
+    [ sprintf "MERGE reconcile derived=%d refused=%d other=%d asymmetric=%d" derived refused other asymmetric ],
     asymmetric
 
 // ---------------------------------------------------------------------------
