@@ -35,6 +35,7 @@ module Fuaran.UI.OpStream.Abstractions.CanonicalJson
 // ============================================================================
 
 open System
+open System.Runtime.CompilerServices
 open Fuaran.Core
 open Fuaran.UI.Types
 open Fuaran.UI.Ops.Types
@@ -265,6 +266,11 @@ let rec private treeOpJson<'Msg> (op: TreeOp<'Msg>) : JVal =
     | TreeOp.ReplaceRoot node -> Canonical.typed "ReplaceRoot" [ "node", nodeJson node ]
     | TreeOp.Batch ops -> Canonical.typed "Batch" [ "ops", JArr(List.map treeOpJson ops) ]
 
+// The public entry points below are one-line calls into this renderer, which
+// the F# optimiser would otherwise inline into a CONSUMER's assembly, carrying a
+// reference to `Rendering.CrossHost` (in `Fuaran.Core.Text`) into code that never
+// referenced it: a consumer compiling against this package would then need a
+// reference it did not ask for. `NoInlining` on each keeps the dependency here.
 let private render (v: JVal) : string = Canonical.write Rendering.CrossHost v
 
 /// The rendered `nullMarker` token, re-spelled as the bare `null` an
@@ -300,6 +306,7 @@ let private renderOp (v: JVal) : string =
 /// (`SchemaForm.deriveWire` in `Fuaran.UI`), may use the structural encoder only
 /// over trees it constructs canonically, and pins that with a test comparing
 /// its bytes with this function's — `SchemaFormParityTests` is the instance.
+[<MethodImpl(MethodImplOptions.NoInlining)>]
 let encodeNode<'Msg> (node: Node<'Msg>) : string = render (nodeJson node)
 
 /// One place a tree would lose behaviour on the way to the wire (Phase 577):
@@ -369,10 +376,12 @@ let encodeNodeForTransport<'Msg> (node: Node<'Msg>) : Result<string, LossyPath l
 /// Encode a `TreeOp<'Msg>` to its canonical JSON string. Server-side hash
 /// chain calls this to feed SHA-256; the encoded form is also useful for
 /// op-stream sinks that persist as JSON text (Sqlite `op_json` column).
+[<MethodImpl(MethodImplOptions.NoInlining)>]
 let encodeOp<'Msg> (op: TreeOp<'Msg>) : string = renderOp (treeOpJson op)
 
 /// Encode an `OpResultEnvelope` to its canonical JSON string. Used by the
 /// Sqlite sink for the `result_envelope_json` column.
+[<MethodImpl(MethodImplOptions.NoInlining)>]
 let encodeResultEnvelopeShape (status: string) (errorCode: string option) (errorMessage: string option) : string =
     render (
         JObj(
