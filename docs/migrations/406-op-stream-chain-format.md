@@ -65,11 +65,12 @@ match ChainMigration.migrateVerified records with
     ()
 ```
 
-- `ChainMigration.migrate` – re-chains from genesis, preserving every field
-  (`op` / `actor` / `timestamp` / `promptId` / `result` are the source of truth).
 - `ChainMigration.verifyLegacy` – checks a stream under the frozen pre-406 formula.
-- `ChainMigration.migrateVerified` – `verifyLegacy` then `migrate`; `Error` on a
-  stream that does not verify as legacy.
+- `ChainMigration.migrateVerified` – verifies under the pre-406 formula, then re-chains
+  from genesis, preserving every field (`op` / `actor` / `timestamp` / `promptId` /
+  `result` are the source of truth); `Error` on a stream that does not verify as legacy.
+  Since Phase 1937 both steps are Core's `ChainShape.rehash`, and the unverified
+  `migrate` this list used to name is gone.
 
 The migrated stream `Verify.chain`s under the new format and **replays to the
 identical tree** (the ops are untouched).
@@ -77,9 +78,9 @@ identical tree** (the ops are untouched).
 ## Verification
 
 - `ChainMigrationTests` (`Fuaran.UI.OpStream.Tests`): a legacy stream verifies under
-  `verifyLegacy` but **not** under the new `Verify.chain`; after `migrate` it verifies,
-  fields preserved; `migrateVerified` refuses a legacy-tampered stream; `migrate` is
-  idempotent on an already-migrated chain.
+  `verifyLegacy` but **not** under the new `Verify.chain`; after `migrateVerified` it
+  verifies, fields preserved; `migrateVerified` refuses a legacy-tampered stream, and an
+  already-migrated one.
 - `HashChainTests`: `computeHash` differs when `promptId` or `resultEnvelope` differs
   (the hole is closed), alongside the existing prev / op / seq / ts / actor coverage.
 

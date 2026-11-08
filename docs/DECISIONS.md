@@ -10,6 +10,54 @@ consequence.
 
 ---
 
+## 2026-11-08 — D30: a compacted stream keeps its boundary and its keys; the chain format stays 2
+
+**Decided (Phase 1937).** Three rulings, one entry.
+
+**1. Compaction keeps the boundary, read from the snapshot.** Truncating a stream's ops never moves its head.
+While records remain, the head is the record at the highest sequence; once compaction has truncated every record,
+`LatestSequence` and `Head` are read from the checkpoint the truncation kept at the head — its `Sequence` and its
+`PreviousChainHead`, the hash of the record it replaced — and never reset to `0` / genesis. This is the rule Core's
+`Compacted` value states (Core Phase 301: the next sequence is the snapshot's plus the tail's length, the head of an
+empty tail is the snapshot's `PrevHash`), applied by every sink here. Before it, `CompactionPolicy.keep 1` with the
+newest checkpoint at the head (the ordinary case) truncated every op, the stream read as empty, and the next append
+restarted the chain at sequence 1 underneath a checkpoint that claimed 1..N. The consequence a sink now enforces: a
+truncation that would remove the head record with no checkpoint at the head, or drop the boundary checkpoint of a
+stream that holds no records, is refused by name, because there would be no snapshot to read the boundary from.
+`Streams` lists a stream compacted through its head (its boundary checkpoint is what lists it).
+
+Rejected: a UI-local watermark row beside the store. It would be a second record of the boundary that can disagree
+with the snapshot it summarises; the snapshot already carries both numbers, and Core's shape reads them from there.
+Not adopted literally: Core's `Compacted` value itself. The UI checkpoint's snapshot address is this tier's
+position-bound `HashChain.snapshotHash`, not Core's `Sealed` hash, so holding a `Compacted` would mean a second
+snapshot format; the rule is adopted, the format is not moved.
+
+**2. The invocation keys of the truncated prefix are KEPT.** A retried `AppendKeyed` whose first attempt landed
+below the compaction boundary answers `Duplicate` with the receipt that attempt produced, rather than appending the
+op a second time. This REVERSES Phase 1525 L-A15, which deleted the keys with the records they named so that a key
+could not answer with a receipt naming a sequence the stream no longer holds. Both horns are real: a kept key names a
+record `Replay` cannot return; a deleted key lets a retry write the same op twice. Core resolved it by keeping the keys
+(`Compacted.Keys`) and certifying the retry under a conformance law, and a duplicate op in the chain is a corruption
+of the history while a receipt below the boundary is not — the caller learns its op is durable, and the boundary
+says why it cannot be read back. The receipt is the original one (Core's `CompactedOutcome.Duplicate existing`);
+`KeyedAppendOutcome` gains no case.
+
+**3. `chainFormatVersion` stays 2.** From Core 0.30.0 to 0.32.0 the linear chain's payload spelled `\n`, `\r` and
+`\t` in an actor's strings as the short escapes; since 0.33.0 (fuaran-core#287) every control character is `\u00xx`,
+the spelling this tier's DAG address and the TypeScript twin always used. A UI store written at those pins whose
+actors carry such a character could hold the old bytes — nothing refuses a control character in an actor id — so
+"provably none" cannot be stated. The format is not bumped because a bump moves every record's hash (the version is
+inside the pre-image) in every host, in lock-step, for a change that touches only records whose actor holds one of
+three characters. Instead the migration is shipped on Core's `rehash` shape: `ChainMigration.migrateLegacyEscape`
+verifies a stream under Core's `StreamConfig.legacyEscape` payload and re-chains it to the canonical one, refusing a
+stream that verifies under neither; a control-free stream comes back with every hash unchanged. Rejected: bumping to
+3 (above); leaving it unrecorded (the change already happened, silently, at the 0.33.0 raise).
+
+**Consequence.** The actor this tier carries is `Fuaran.Core.Actor` (an alias); the control-character chain-corpus
+record hashes identically on the .NET linear path, the .NET DAG path's actor bytes and the TypeScript twin. The
+DAG sinks admit what they verify (`DagWriteAdmission`: the address recomputed, parents present, a held address a
+no-op), and the content fingerprint the Phase 2289 ruling retired is gone.
+
 ## 2026-11-07 — D29: the client-effect decoder holds every member the program wire marks non-empty to it, on `missing-member`
 
 **Decided (Phase 2620).** The program wire specification's §2 states, once, that a member naming something a host

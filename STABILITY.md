@@ -8089,6 +8089,47 @@ shard sized the cut on 94.5% derivable under an idealised footprint; at the ship
 refuse about a third of the concurrent edits the tree merge resolves today, which is why the cut waits on the footprint
 (see the phase outcome).
 
+### What rides this slot — Phase 1937 (the op-stream family hashes one way and survives compaction)
+
+**Class: BREAKING (surface guard: 30 removed or retyped, 3 added-but-breaking, 36 additive, over Abstractions, Dag.Abstractions and Replay; the four sink packages' surfaces are unchanged).** Packages `Fuaran.UI.OpStream.Abstractions`,
+`Fuaran.UI.OpStream.Dag.Abstractions`, `Fuaran.UI.OpStream.Replay`, `Fuaran.UI.OpStream.InMemory`,
+`Fuaran.UI.OpStream.Sqlite`, `Fuaran.UI.OpStream.Dag.InMemory`, `Fuaran.UI.OpStream.Dag.Sqlite`. Decision D30.
+
+- **`Actor` is `Fuaran.Core.Actor`.** `Fuaran.UI.OpStream.Abstractions.Actor` is now a type alias; the mirror union and
+  its converters are gone. `Actor.Human id` / `Actor.Agent(m, v, id)` construct and match as before, and the `Actor`
+  module (`encode`, `id`, `ofLegacyString`, `tryDecode`) keeps its compiled name `ActorModule`. Binary-breaking for the
+  type; a bare `Human "u"` with only this namespace open no longer resolves (an abbreviation brings no union cases into
+  scope) — write `Actor.Human "u"`, or open `Fuaran.Core`. No hash byte moves: both paths already spelled every control
+  character `\u00xx`.
+- **`chainFormatVersion` stays 2** (D30). A linear store written at Core 0.30.0–0.32.0 whose actors carry `\n`, `\r` or
+  `\t` holds the pre-287 bytes; `ChainMigration.migrateLegacyEscape` (new) verifies it under Core's
+  `StreamConfig.legacyEscape` payload and re-chains it to the canonical one, leaving a control-free stream unchanged.
+- **The re-chains are Core's.** `HashChain.recordShape` (new) is the record as a Core `ChainShape`; `Verify.segmentFrom`
+  is `ChainShape.walk` from an anchor and `Verify.admission` is `segmentFrom headHash (latest + 1) [ record ]`.
+  `ChainMigration.migrate` (the unverified re-chain) is REMOVED — `migrateVerified` is the route, through
+  `ChainShape.rehash`. `GuestImport.remap` now returns `Result<GuestExportBundle, string>` and refuses a bundle whose
+  chain does not verify, where it used to re-chain it into one that did.
+- **Compaction keeps the boundary and the keys** (D30, Core's `Compacted` rule). A stream compacted through its head
+  reports `LatestSequence` = N and `Head` = record N's hash, read from the checkpoint kept at the head, and the next
+  append continues at N+1; `Streams` still lists it. A truncation that would remove the head record with no checkpoint
+  at the head, or drop the boundary checkpoint of a stream holding no records, is refused by name. The invocation keys
+  of truncated records are KEPT, reversing Phase 1525 L-A15: a retried keyed append below the boundary is a `Duplicate`
+  with the first receipt.
+- **The DAG sinks admit what they verify.** `DagWriteAdmission.admit` (new, with `DagAdmission` and
+  `DagAdmissionRefusal`) recomputes the address (a wrong `Hash` is refused by name), requires every parent, and makes a
+  held address a no-op; both DAG sinks call it. `DagWire.contentFingerprint` is REMOVED (the Phase 2289 ruling retired
+  it); new SQLite DAG files carry no `content_fingerprint` column, and an existing file's column is left unread.
+- **Every sink admits before it creates a stream, and stores what the hash reads.** A refused first append leaves no
+  stream behind; both in-memory sinks store a record's timestamp as whole unix seconds (UTC), as the SQLite sinks always
+  have, so a record reads back the same from any backend.
+- **One SQLite helper.** Connection (`busy_timeout`), WAL and contention (SQLITE_BUSY and SQLITE_LOCKED) live in one
+  internal file compiled into both SQLite packages by link; the action-invocation sink gains `busy_timeout` and WAL, and
+  the DAG sink's result-envelope column codec is the linear one (an unknown shape is refused by name rather than read as
+  `Failure("", "")`). No public surface.
+
+The control-character records of the chain corpus (records 4 and 5) hash identically on the linear path, the DAG lift
+and the TypeScript twin. Line counts of the paired linear and DAG files are recorded in the phase outcome.
+
 ## 0.102.0 (RELEASED — tagged v0.102.0 at 00225688, 2026-11-06)
 
 _Set by Phase 2576, the first change to ride the slot._
