@@ -359,18 +359,19 @@ let private refNamesInExpr (root: SynExpr) : Set<string> =
 
     acc
 
-let private hasCycle (adjacency: Map<string, Set<string>>) (startName: string) : bool =
-    let rec walk (visited: Set<string>) (current: string) =
-        match Map.tryFind current adjacency with
-        | None -> false
-        | Some targets ->
-            targets
-            |> Set.exists (fun next ->
-                if next = startName then true
-                elif Set.contains next visited then false
-                else walk (Set.add next visited) next)
+/// The fragment names that lie on a reference cycle, each mapped to the cycle's
+/// members in ordinal order — one `Propagation.sort` pass over the declaration
+/// graph (Phase 2312; a depth-first search from every declaration before it).
+/// A name referencing itself is a cycle of one; a reference to an undeclared name
+/// is FUARAN057's, never a cycle.
+let private cyclesByName (adjacency: Map<string, Set<string>>) : Map<string, string list> =
+    (Fuaran.Core.Propagation.sort adjacency).Cycles
+    |> List.collect (fun members ->
+        let named =
+            List.sortWith (fun (a: string) b -> System.String.CompareOrdinal(a, b)) members
 
-    walk Set.empty startName
+        members |> List.map (fun name -> name, named))
+    |> Map.ofList
 
 /// Public entry — walks the supplied source files and returns findings.
 
@@ -420,7 +421,7 @@ let check (sources: ParsedSource list) : Finding list =
 
     // FUARAN058: cyclic fragment references. Build the directed graph
     // "decl name → set of fragment names referenced inside its body",
-    // then run a per-name reachability search back to itself.
+    // then find its cycles in one pass.
     let adjacency: Map<string, Set<string>> =
         allDecls
         |> List.choose (fun d ->
@@ -440,20 +441,26 @@ let check (sources: ParsedSource list) : Finding list =
                 Map.add name merged acc)
             Map.empty
 
+    let cycles = cyclesByName adjacency
+
     let cyclicFindings =
         allDecls
         |> List.choose (fun d ->
-            match d.Name with
-            | Some name when hasCycle adjacency name ->
+            match
+                d.Name
+                |> Option.bind (fun name -> Map.tryFind name cycles |> Option.map (fun c -> name, c))
+            with
+            | Some(name, members) ->
                 Some(
                     create
                         FindingCodes.fragmentCycle
                         d.DeclLocation
                         (sprintf
-                            "Fragment '%s' transitively references itself via Fuaran.fragmentRef. The renderer's runtime cycle-guard renders a labelled placeholder rather than recursing forever, but this defect should be fixed at the source — break the cycle by inlining one of the bodies or restructuring the reuse pattern."
-                            name)
+                            "Fragment '%s' transitively references itself via Fuaran.fragmentRef (cycle: %s). The renderer's runtime cycle-guard renders a labelled placeholder rather than recursing forever, but this defect should be fixed at the source — break the cycle by inlining one of the bodies or restructuring the reuse pattern."
+                            name
+                            (members |> List.map (sprintf "'%s'") |> String.concat ", "))
                 )
-            | _ -> None)
+            | None -> None)
 
     // FUARAN059 / FUARAN065: parameterised-hole defects (Phase 180), lifted
     // from the runtime `HoleDecl.isTotal` / `HoleValueSpace.validate`

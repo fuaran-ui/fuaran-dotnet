@@ -69,7 +69,7 @@ let private fastPathTests =
               match refineLocally salesTable dropRevenue dashboard with
               | Error(RefineError.TypeMismatch [ d ]) ->
                   Expect.equal d.Code ColumnAbsentCode "FUARAN067 — revenue gone after the refinement"
-                  Expect.equal d.Column "revenue" "names the now-absent column"
+                  Expect.equal d.Location.Column "revenue" "names the now-absent column"
               | other -> failtestf "expected a TypeMismatch RefineError, got %A" other
 
           testCase "a refinement over an unknown column is a typed Eval error"

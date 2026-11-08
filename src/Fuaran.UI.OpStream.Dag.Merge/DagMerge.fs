@@ -381,12 +381,11 @@ module DagMerge =
         match TreeMerge.merge3WayWithCellAuthor cellAuthor baseTree treeA treeB with
         | Error conflicts -> plain (MergeResult.NeedsManualMerge conflicts)
         | Ok merged ->
-            let defects =
-                match policy.Validator with
-                | None -> []
-                | Some validator -> ValidatorGate.introducedDefects validator treeA treeB merged
+            // Core's introduced-findings gate (Phase 2312): the defects the merge
+            // introduced against both parents, and whether the policy blocks.
+            let defects, blocked = ValidatorGate.verdict policy treeA treeB merged
 
-            if not (List.isEmpty defects) && policy.GateOnIntroducedDefect then
+            if blocked then
                 // A merge-introduced defect is a SEMANTIC conflict — refuse,
                 // naming the offending nodes + enumerated recovery. Decided
                 // BEFORE the mint (Phase 1526): a merge the gate refuses needs

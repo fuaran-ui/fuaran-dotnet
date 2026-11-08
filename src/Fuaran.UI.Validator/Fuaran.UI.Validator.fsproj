@@ -63,5 +63,8 @@
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />
     <PackageReference Include="FSharp.Compiler.Service" />
+    <!-- Phase 2312 - FUARAN058's cycle search is one Propagation.sort pass over the
+         fragment declaration graph (FSharp.Core-only). -->
+    <PackageReference Include="Fuaran.Core.Propagation" />
   </ItemGroup>
 </Project>

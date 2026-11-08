@@ -128,33 +128,13 @@ let private rawId (NodeId s) : string = s
 // ─── The validity ORACLE — PreEmitValidate as a Core Validator.RuleRegistry ─────
 
 /// The UI validity oracle as a `Fuaran.Core.Validator.RuleRegistry<Node<'Msg>,
-/// NodeId>`: one rule family that runs the shipped `PreEmitValidate` tree walk
-/// over the emitted tree and lowers each `PreEmitDefect` into a Core `Defect`.
-/// This is the oracle `verifyFunction` drives — the same rule bodies that gate
-/// a single emitted tree, now the per-binding validity check.
+/// NodeId>`: the shipped `PreEmitValidate` walk as its one rule family
+/// (`PreEmitValidate.ruleFamily`), each defect lowered through the tier's one
+/// lowering with its node kept. This is the oracle `verifyFunction` drives — the
+/// same rule bodies that gate a single emitted tree, now the per-binding
+/// validity check.
 let uiValidityRegistry<'Msg> : Fuaran.Core.Validator.RuleRegistry<Node<'Msg>, NodeId> =
-    let family: Fuaran.Core.RuleFamily<Node<'Msg>, NodeId> =
-        { Id = "Fuaran.UI.PreEmitValidate"
-          Run =
-            fun _w root ->
-                match PreEmitValidate.validate root with
-                | Ok() -> []
-                | Error defects ->
-                    defects
-                    |> List.map (fun d ->
-                        // `describe` (Phase 664) is the one projection every consumer
-                        // shares, and its severity is already `Fuaran.Core.Severity`
-                        // (Phase 2052), so the oracle lowers a defect with no mapping.
-                        let code, sev, msg = PreEmitValidate.describe d
-
-                        { Code = code
-                          Severity = sev
-                          Message = msg
-                          Node = None
-                          Family = ""
-                          Related = [] }) }
-
-    { Families = [ family ] }
+    { Families = [ PreEmitValidate.ruleFamily<'Msg, NodeId> (Option.map NodeId) ] }
 
 // ─── The certification witness ───────────────────────────────────────────────
 //

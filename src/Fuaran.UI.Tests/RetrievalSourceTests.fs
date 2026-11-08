@@ -119,7 +119,7 @@ let private oneContractTests =
               match checkDashboard hitSchema mistyped with
               | Error [ d ] ->
                   Expect.equal d.Code TypeMismatchCode "FUARAN066 — same defect as the relational plane"
-                  Expect.equal d.Column "title" "the string citation column"
+                  Expect.equal d.Location.Column "title" "the string citation column"
               | other -> failtestf "expected one FUARAN066, got %A" other
 
           testCase "end-to-end: retrieve → check → render-or-reject through the shared gate"

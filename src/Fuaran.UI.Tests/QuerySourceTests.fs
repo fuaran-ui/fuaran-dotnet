@@ -69,7 +69,7 @@ let private gateTests =
               match run (resolveAndCheck src aRequest false dashboard) with
               | Error(PortalError.TypeMismatch [ d ]) ->
                   Expect.equal d.Code TypeMismatchCode "FUARAN066 — rejected, not rendered"
-                  Expect.equal d.Column "category" "names the offending column"
+                  Expect.equal d.Location.Column "category" "names the offending column"
               | other -> failtestf "expected a TypeMismatch PortalError, got %A" other
 
           testCase "a source failure surfaces as PortalError.Source (no render)"
