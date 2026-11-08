@@ -146,12 +146,55 @@ let __proj__Mkstore__item__st_bindings = (fun ( projectee  :  store<'t, 'b> ) ->
      st_bindings
      end))
 
+type finding = {f_code : Prims.string; f_severity : Prims.string; f_message : Prims.string}
+
+
+let __proj__Mkfinding__item__f_code : finding  ->  Prims.string = (fun ( projectee  :  finding ) -> (match (projectee) with
+| {f_code = f_code; f_severity = f_severity; f_message = f_message} -> begin
+     f_code
+     end))
+
+
+let __proj__Mkfinding__item__f_severity : finding  ->  Prims.string = (fun ( projectee  :  finding ) -> (match (projectee) with
+| {f_code = f_code; f_severity = f_severity; f_message = f_message} -> begin
+     f_severity
+     end))
+
+
+let __proj__Mkfinding__item__f_message : finding  ->  Prims.string = (fun ( projectee  :  finding ) -> (match (projectee) with
+| {f_code = f_code; f_severity = f_severity; f_message = f_message} -> begin
+     f_message
+     end))
+
+type query_posture =
+| PureRead
+| Reaching
+
+
+let uu___is_PureRead : query_posture  ->  Prims.bool = (fun ( projectee  :  query_posture ) -> (match (projectee) with
+| PureRead -> begin
+     true
+     end
+| uu___ -> begin
+     false
+     end))
+
+
+let uu___is_Reaching : query_posture  ->  Prims.bool = (fun ( projectee  :  query_posture ) -> (match (projectee) with
+| Reaching -> begin
+     true
+     end
+| uu___ -> begin
+     false
+     end))
+
 type server_effect<'v, 'o, 'q> =
 | RunQuery of Prims.string * 'q
 | ApplyOps of Prims.list<'o>
 | HostCall of Prims.string * 'v * opt<Prims.string>
 | EmitPatch of Prims.list<'o>
 | Notify of Prims.string * 'v
+| Report of finding
 
 
 let uu___is_RunQuery = (fun ( projectee  :  server_effect<'v, 'o, 'q> ) -> (match (projectee) with
@@ -250,6 +293,21 @@ let __proj__Notify__item__channel = (fun ( projectee  :  server_effect<'v, 'o, '
 let __proj__Notify__item__payload = (fun ( projectee  :  server_effect<'v, 'o, 'q> ) -> (match (projectee) with
 | Notify (channel, payload) -> begin
      payload
+     end))
+
+
+let uu___is_Report = (fun ( projectee  :  server_effect<'v, 'o, 'q> ) -> (match (projectee) with
+| Report (report) -> begin
+     true
+     end
+| uu___ -> begin
+     false
+     end))
+
+
+let __proj__Report__item__report = (fun ( projectee  :  server_effect<'v, 'o, 'q> ) -> (match (projectee) with
+| Report (report) -> begin
+     report
      end))
 
 type stage<'a, 'v, 'o, 'q> =
@@ -399,6 +457,9 @@ let __proj__PerformFailed__item__reason = (fun ( projectee  :  diagnostic<'d> ) 
      end))
 
 
+let report_capability : Prims.string = "Report"
+
+
 let capability = (fun ( e  :  server_effect<'v, 'o, 'q> ) -> (match (e) with
 | RunQuery (uu___, uu___1) -> begin
      "RunQuery"
@@ -414,6 +475,9 @@ let capability = (fun ( e  :  server_effect<'v, 'o, 'q> ) -> (match (e) with
      end
 | Notify (uu___, uu___1) -> begin
      "Notify"
+     end
+| Report (uu___) -> begin
+     report_capability
      end))
 
 type bounded_outcome<'b, 'eff, 'd> = {bo_store : 'b; bo_effects : Prims.list<'eff>; bo_diagnostics : Prims.list<'d>}
@@ -604,95 +668,172 @@ let __proj__OLetOf__item__body = (fun ( projectee  :  op_view<'v, 'o> ) -> (matc
      body
      end))
 
-type witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> = {w_compute : Prims.string  ->  'a  ->  'b  ->  bounded_outcome<'b, 'eff, 'd>; w_query : Prims.string  ->  'q  ->  'b  ->  res<'b>; w_apply : 'o  ->  't  ->  res<'t>; w_op_view : 'o  ->  op_view<'v, 'o>; w_read_extent : Prims.string  ->  't  ->  opt<Prims.list<'v>>; w_resolve : Prims.string  ->  't  ->  resolution<'v>; w_assign : Prims.string  ->  'v  ->  'b  ->  'b; w_slot_refused : Prims.string  ->  opt<Prims.string>; w_undo_compute : Prims.string  ->  'a  ->  'b  ->  opt<('b  ->  'b)>}
+type witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> = {w_compute : Prims.string  ->  'a  ->  'b  ->  bounded_outcome<'b, 'eff, 'd>; w_query : Prims.string  ->  'q  ->  'b  ->  res<'b>; w_apply : 'o  ->  't  ->  res<'t>; w_op_view : 'o  ->  op_view<'v, 'o>; w_read_extent : Prims.string  ->  't  ->  opt<Prims.list<'v>>; w_resolve : Prims.string  ->  't  ->  resolution<'v>; w_assign : Prims.string  ->  'v  ->  'b  ->  'b; w_land_query : Prims.string  ->  'v  ->  'b  ->  'b; w_slot_refused : Prims.string  ->  opt<Prims.string>; w_undo_compute : Prims.string  ->  'a  ->  'b  ->  opt<('b  ->  'b)>}
 
 
 let __proj__Mkwitness__item__w_compute = (fun ( projectee  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) -> (match (projectee) with
-| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_resolve = w_resolve; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
+| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_resolve = w_resolve; w_assign = w_assign; w_land_query = w_land_query; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
      w_compute
      end))
 
 
 let __proj__Mkwitness__item__w_query = (fun ( projectee  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) -> (match (projectee) with
-| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_resolve = w_resolve; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
+| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_resolve = w_resolve; w_assign = w_assign; w_land_query = w_land_query; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
      w_query
      end))
 
 
 let __proj__Mkwitness__item__w_apply = (fun ( projectee  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) -> (match (projectee) with
-| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_resolve = w_resolve; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
+| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_resolve = w_resolve; w_assign = w_assign; w_land_query = w_land_query; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
      w_apply
      end))
 
 
 let __proj__Mkwitness__item__w_op_view = (fun ( projectee  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) -> (match (projectee) with
-| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_resolve = w_resolve; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
+| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_resolve = w_resolve; w_assign = w_assign; w_land_query = w_land_query; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
      w_op_view
      end))
 
 
 let __proj__Mkwitness__item__w_read_extent = (fun ( projectee  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) -> (match (projectee) with
-| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_resolve = w_resolve; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
+| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_resolve = w_resolve; w_assign = w_assign; w_land_query = w_land_query; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
      w_read_extent
      end))
 
 
 let __proj__Mkwitness__item__w_resolve = (fun ( projectee  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) -> (match (projectee) with
-| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_resolve = w_resolve; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
+| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_resolve = w_resolve; w_assign = w_assign; w_land_query = w_land_query; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
      w_resolve
      end))
 
 
 let __proj__Mkwitness__item__w_assign = (fun ( projectee  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) -> (match (projectee) with
-| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_resolve = w_resolve; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
+| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_resolve = w_resolve; w_assign = w_assign; w_land_query = w_land_query; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
      w_assign
      end))
 
 
+let __proj__Mkwitness__item__w_land_query = (fun ( projectee  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) -> (match (projectee) with
+| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_resolve = w_resolve; w_assign = w_assign; w_land_query = w_land_query; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
+     w_land_query
+     end))
+
+
 let __proj__Mkwitness__item__w_slot_refused = (fun ( projectee  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) -> (match (projectee) with
-| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_resolve = w_resolve; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
+| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_resolve = w_resolve; w_assign = w_assign; w_land_query = w_land_query; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
      w_slot_refused
      end))
 
 
 let __proj__Mkwitness__item__w_undo_compute = (fun ( projectee  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) -> (match (projectee) with
-| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_resolve = w_resolve; w_assign = w_assign; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
+| {w_compute = w_compute; w_query = w_query; w_apply = w_apply; w_op_view = w_op_view; w_read_extent = w_read_extent; w_resolve = w_resolve; w_assign = w_assign; w_land_query = w_land_query; w_slot_refused = w_slot_refused; w_undo_compute = w_undo_compute} -> begin
      w_undo_compute
      end))
 
-type registry<'t, 'v, 'o, 'q, 'p> = {r_gate : Prims.string  ->  Prims.bool; r_policy : server_effect<'v, 'o, 'q>  ->  opt<Prims.string>; r_lookup : Prims.string  ->  opt<'p>; r_perf : 'p  ->  'v  ->  res<'v>; r_op_perform : opt<('t  ->  'o  ->  ('p * 'v))>}
+type registry<'t, 'v, 'o, 'q, 'p> = {r_gate : Prims.string  ->  Prims.bool; r_policy : server_effect<'v, 'o, 'q>  ->  opt<Prims.string>; r_lookup : Prims.string  ->  opt<'p>; r_perf : 'p  ->  'v  ->  res<'v>; r_op_perform : opt<('t  ->  'o  ->  ('p * 'v))>; r_query_posture : query_posture; r_query_stage : Prims.string  ->  'q  ->  ('p * 'v); r_record : finding  ->  res<finding>}
 
 
 let __proj__Mkregistry__item__r_gate = (fun ( projectee  :  registry<'t, 'v, 'o, 'q, 'p> ) -> (match (projectee) with
-| {r_gate = r_gate; r_policy = r_policy; r_lookup = r_lookup; r_perf = r_perf; r_op_perform = r_op_perform} -> begin
+| {r_gate = r_gate; r_policy = r_policy; r_lookup = r_lookup; r_perf = r_perf; r_op_perform = r_op_perform; r_query_posture = r_query_posture; r_query_stage = r_query_stage; r_record = r_record} -> begin
      r_gate
      end))
 
 
 let __proj__Mkregistry__item__r_policy = (fun ( projectee  :  registry<'t, 'v, 'o, 'q, 'p> ) -> (match (projectee) with
-| {r_gate = r_gate; r_policy = r_policy; r_lookup = r_lookup; r_perf = r_perf; r_op_perform = r_op_perform} -> begin
+| {r_gate = r_gate; r_policy = r_policy; r_lookup = r_lookup; r_perf = r_perf; r_op_perform = r_op_perform; r_query_posture = r_query_posture; r_query_stage = r_query_stage; r_record = r_record} -> begin
      r_policy
      end))
 
 
 let __proj__Mkregistry__item__r_lookup = (fun ( projectee  :  registry<'t, 'v, 'o, 'q, 'p> ) -> (match (projectee) with
-| {r_gate = r_gate; r_policy = r_policy; r_lookup = r_lookup; r_perf = r_perf; r_op_perform = r_op_perform} -> begin
+| {r_gate = r_gate; r_policy = r_policy; r_lookup = r_lookup; r_perf = r_perf; r_op_perform = r_op_perform; r_query_posture = r_query_posture; r_query_stage = r_query_stage; r_record = r_record} -> begin
      r_lookup
      end))
 
 
 let __proj__Mkregistry__item__r_perf = (fun ( projectee  :  registry<'t, 'v, 'o, 'q, 'p> ) -> (match (projectee) with
-| {r_gate = r_gate; r_policy = r_policy; r_lookup = r_lookup; r_perf = r_perf; r_op_perform = r_op_perform} -> begin
+| {r_gate = r_gate; r_policy = r_policy; r_lookup = r_lookup; r_perf = r_perf; r_op_perform = r_op_perform; r_query_posture = r_query_posture; r_query_stage = r_query_stage; r_record = r_record} -> begin
      r_perf
      end))
 
 
 let __proj__Mkregistry__item__r_op_perform = (fun ( projectee  :  registry<'t, 'v, 'o, 'q, 'p> ) -> (match (projectee) with
-| {r_gate = r_gate; r_policy = r_policy; r_lookup = r_lookup; r_perf = r_perf; r_op_perform = r_op_perform} -> begin
+| {r_gate = r_gate; r_policy = r_policy; r_lookup = r_lookup; r_perf = r_perf; r_op_perform = r_op_perform; r_query_posture = r_query_posture; r_query_stage = r_query_stage; r_record = r_record} -> begin
      r_op_perform
      end))
 
-type staged_call<'v, 'p> = {sc_capability : Prims.string; sc_performer : 'p; sc_args : 'v; sc_into : opt<Prims.string>}
+
+let __proj__Mkregistry__item__r_query_posture = (fun ( projectee  :  registry<'t, 'v, 'o, 'q, 'p> ) -> (match (projectee) with
+| {r_gate = r_gate; r_policy = r_policy; r_lookup = r_lookup; r_perf = r_perf; r_op_perform = r_op_perform; r_query_posture = r_query_posture; r_query_stage = r_query_stage; r_record = r_record} -> begin
+     r_query_posture
+     end))
+
+
+let __proj__Mkregistry__item__r_query_stage = (fun ( projectee  :  registry<'t, 'v, 'o, 'q, 'p> ) -> (match (projectee) with
+| {r_gate = r_gate; r_policy = r_policy; r_lookup = r_lookup; r_perf = r_perf; r_op_perform = r_op_perform; r_query_posture = r_query_posture; r_query_stage = r_query_stage; r_record = r_record} -> begin
+     r_query_stage
+     end))
+
+
+let __proj__Mkregistry__item__r_record = (fun ( projectee  :  registry<'t, 'v, 'o, 'q, 'p> ) -> (match (projectee) with
+| {r_gate = r_gate; r_policy = r_policy; r_lookup = r_lookup; r_perf = r_perf; r_op_perform = r_op_perform; r_query_posture = r_query_posture; r_query_stage = r_query_stage; r_record = r_record} -> begin
+     r_record
+     end))
+
+type landing =
+| LNowhere
+| LState of Prims.string
+| LQuery of Prims.string
+
+
+let uu___is_LNowhere : landing  ->  Prims.bool = (fun ( projectee  :  landing ) -> (match (projectee) with
+| LNowhere -> begin
+     true
+     end
+| uu___ -> begin
+     false
+     end))
+
+
+let uu___is_LState : landing  ->  Prims.bool = (fun ( projectee  :  landing ) -> (match (projectee) with
+| LState (key) -> begin
+     true
+     end
+| uu___ -> begin
+     false
+     end))
+
+
+let __proj__LState__item__key : landing  ->  Prims.string = (fun ( projectee  :  landing ) -> (match (projectee) with
+| LState (key) -> begin
+     key
+     end))
+
+
+let uu___is_LQuery : landing  ->  Prims.bool = (fun ( projectee  :  landing ) -> (match (projectee) with
+| LQuery (slot) -> begin
+     true
+     end
+| uu___ -> begin
+     false
+     end))
+
+
+let __proj__LQuery__item__slot : landing  ->  Prims.string = (fun ( projectee  :  landing ) -> (match (projectee) with
+| LQuery (slot) -> begin
+     slot
+     end))
+
+
+let landing_of : opt<Prims.string>  ->  landing = (fun ( into  :  opt<Prims.string> ) -> (match (into) with
+| ONone -> begin
+     LNowhere
+     end
+| OSome (key) -> begin
+     LState (key)
+     end))
+
+type staged_call<'v, 'p> = {sc_capability : Prims.string; sc_performer : 'p; sc_args : 'v; sc_into : landing}
 
 
 let __proj__Mkstaged_call__item__sc_capability = (fun ( projectee  :  staged_call<'v, 'p> ) -> (match (projectee) with
@@ -790,117 +931,129 @@ let __proj__TEmitted__item__capability = (fun ( projectee  :  step<'t, 'b, 'o> )
      capability1
      end))
 
-type accumulator<'t, 'b, 'v, 'o, 'eff, 'd, 'p> = {ac_store : store<'t, 'b>; ac_halted : Prims.bool; ac_performed : Prims.list<Prims.string>; ac_externally : Prims.list<Prims.string>; ac_staged : Prims.list<staged_call<'v, 'p>>; ac_patches : Prims.list<'o>; ac_notifications : Prims.list<(Prims.string * 'v)>; ac_client_effects : Prims.list<'eff>; ac_diagnostics : Prims.list<diagnostic<'d>>; ac_trail : Prims.list<step<'t, 'b, 'o>>}
+type accumulator<'t, 'b, 'v, 'o, 'eff, 'd, 'p> = {ac_store : store<'t, 'b>; ac_halted : Prims.bool; ac_performed : Prims.list<Prims.string>; ac_externally : Prims.list<Prims.string>; ac_staged : Prims.list<staged_call<'v, 'p>>; ac_patches : Prims.list<'o>; ac_notifications : Prims.list<(Prims.string * 'v)>; ac_client_effects : Prims.list<'eff>; ac_diagnostics : Prims.list<diagnostic<'d>>; ac_trail : Prims.list<step<'t, 'b, 'o>>; ac_findings : Prims.list<finding>}
 
 
 let __proj__Mkaccumulator__item__ac_store = (fun ( projectee  :  accumulator<'t, 'b, 'v, 'o, 'eff, 'd, 'p> ) -> (match (projectee) with
-| {ac_store = ac_store; ac_halted = ac_halted; ac_performed = ac_performed; ac_externally = ac_externally; ac_staged = ac_staged; ac_patches = ac_patches; ac_notifications = ac_notifications; ac_client_effects = ac_client_effects; ac_diagnostics = ac_diagnostics; ac_trail = ac_trail} -> begin
+| {ac_store = ac_store; ac_halted = ac_halted; ac_performed = ac_performed; ac_externally = ac_externally; ac_staged = ac_staged; ac_patches = ac_patches; ac_notifications = ac_notifications; ac_client_effects = ac_client_effects; ac_diagnostics = ac_diagnostics; ac_trail = ac_trail; ac_findings = ac_findings} -> begin
      ac_store
      end))
 
 
 let __proj__Mkaccumulator__item__ac_halted = (fun ( projectee  :  accumulator<'t, 'b, 'v, 'o, 'eff, 'd, 'p> ) -> (match (projectee) with
-| {ac_store = ac_store; ac_halted = ac_halted; ac_performed = ac_performed; ac_externally = ac_externally; ac_staged = ac_staged; ac_patches = ac_patches; ac_notifications = ac_notifications; ac_client_effects = ac_client_effects; ac_diagnostics = ac_diagnostics; ac_trail = ac_trail} -> begin
+| {ac_store = ac_store; ac_halted = ac_halted; ac_performed = ac_performed; ac_externally = ac_externally; ac_staged = ac_staged; ac_patches = ac_patches; ac_notifications = ac_notifications; ac_client_effects = ac_client_effects; ac_diagnostics = ac_diagnostics; ac_trail = ac_trail; ac_findings = ac_findings} -> begin
      ac_halted
      end))
 
 
 let __proj__Mkaccumulator__item__ac_performed = (fun ( projectee  :  accumulator<'t, 'b, 'v, 'o, 'eff, 'd, 'p> ) -> (match (projectee) with
-| {ac_store = ac_store; ac_halted = ac_halted; ac_performed = ac_performed; ac_externally = ac_externally; ac_staged = ac_staged; ac_patches = ac_patches; ac_notifications = ac_notifications; ac_client_effects = ac_client_effects; ac_diagnostics = ac_diagnostics; ac_trail = ac_trail} -> begin
+| {ac_store = ac_store; ac_halted = ac_halted; ac_performed = ac_performed; ac_externally = ac_externally; ac_staged = ac_staged; ac_patches = ac_patches; ac_notifications = ac_notifications; ac_client_effects = ac_client_effects; ac_diagnostics = ac_diagnostics; ac_trail = ac_trail; ac_findings = ac_findings} -> begin
      ac_performed
      end))
 
 
 let __proj__Mkaccumulator__item__ac_externally = (fun ( projectee  :  accumulator<'t, 'b, 'v, 'o, 'eff, 'd, 'p> ) -> (match (projectee) with
-| {ac_store = ac_store; ac_halted = ac_halted; ac_performed = ac_performed; ac_externally = ac_externally; ac_staged = ac_staged; ac_patches = ac_patches; ac_notifications = ac_notifications; ac_client_effects = ac_client_effects; ac_diagnostics = ac_diagnostics; ac_trail = ac_trail} -> begin
+| {ac_store = ac_store; ac_halted = ac_halted; ac_performed = ac_performed; ac_externally = ac_externally; ac_staged = ac_staged; ac_patches = ac_patches; ac_notifications = ac_notifications; ac_client_effects = ac_client_effects; ac_diagnostics = ac_diagnostics; ac_trail = ac_trail; ac_findings = ac_findings} -> begin
      ac_externally
      end))
 
 
 let __proj__Mkaccumulator__item__ac_staged = (fun ( projectee  :  accumulator<'t, 'b, 'v, 'o, 'eff, 'd, 'p> ) -> (match (projectee) with
-| {ac_store = ac_store; ac_halted = ac_halted; ac_performed = ac_performed; ac_externally = ac_externally; ac_staged = ac_staged; ac_patches = ac_patches; ac_notifications = ac_notifications; ac_client_effects = ac_client_effects; ac_diagnostics = ac_diagnostics; ac_trail = ac_trail} -> begin
+| {ac_store = ac_store; ac_halted = ac_halted; ac_performed = ac_performed; ac_externally = ac_externally; ac_staged = ac_staged; ac_patches = ac_patches; ac_notifications = ac_notifications; ac_client_effects = ac_client_effects; ac_diagnostics = ac_diagnostics; ac_trail = ac_trail; ac_findings = ac_findings} -> begin
      ac_staged
      end))
 
 
 let __proj__Mkaccumulator__item__ac_patches = (fun ( projectee  :  accumulator<'t, 'b, 'v, 'o, 'eff, 'd, 'p> ) -> (match (projectee) with
-| {ac_store = ac_store; ac_halted = ac_halted; ac_performed = ac_performed; ac_externally = ac_externally; ac_staged = ac_staged; ac_patches = ac_patches; ac_notifications = ac_notifications; ac_client_effects = ac_client_effects; ac_diagnostics = ac_diagnostics; ac_trail = ac_trail} -> begin
+| {ac_store = ac_store; ac_halted = ac_halted; ac_performed = ac_performed; ac_externally = ac_externally; ac_staged = ac_staged; ac_patches = ac_patches; ac_notifications = ac_notifications; ac_client_effects = ac_client_effects; ac_diagnostics = ac_diagnostics; ac_trail = ac_trail; ac_findings = ac_findings} -> begin
      ac_patches
      end))
 
 
 let __proj__Mkaccumulator__item__ac_notifications = (fun ( projectee  :  accumulator<'t, 'b, 'v, 'o, 'eff, 'd, 'p> ) -> (match (projectee) with
-| {ac_store = ac_store; ac_halted = ac_halted; ac_performed = ac_performed; ac_externally = ac_externally; ac_staged = ac_staged; ac_patches = ac_patches; ac_notifications = ac_notifications; ac_client_effects = ac_client_effects; ac_diagnostics = ac_diagnostics; ac_trail = ac_trail} -> begin
+| {ac_store = ac_store; ac_halted = ac_halted; ac_performed = ac_performed; ac_externally = ac_externally; ac_staged = ac_staged; ac_patches = ac_patches; ac_notifications = ac_notifications; ac_client_effects = ac_client_effects; ac_diagnostics = ac_diagnostics; ac_trail = ac_trail; ac_findings = ac_findings} -> begin
      ac_notifications
      end))
 
 
 let __proj__Mkaccumulator__item__ac_client_effects = (fun ( projectee  :  accumulator<'t, 'b, 'v, 'o, 'eff, 'd, 'p> ) -> (match (projectee) with
-| {ac_store = ac_store; ac_halted = ac_halted; ac_performed = ac_performed; ac_externally = ac_externally; ac_staged = ac_staged; ac_patches = ac_patches; ac_notifications = ac_notifications; ac_client_effects = ac_client_effects; ac_diagnostics = ac_diagnostics; ac_trail = ac_trail} -> begin
+| {ac_store = ac_store; ac_halted = ac_halted; ac_performed = ac_performed; ac_externally = ac_externally; ac_staged = ac_staged; ac_patches = ac_patches; ac_notifications = ac_notifications; ac_client_effects = ac_client_effects; ac_diagnostics = ac_diagnostics; ac_trail = ac_trail; ac_findings = ac_findings} -> begin
      ac_client_effects
      end))
 
 
 let __proj__Mkaccumulator__item__ac_diagnostics = (fun ( projectee  :  accumulator<'t, 'b, 'v, 'o, 'eff, 'd, 'p> ) -> (match (projectee) with
-| {ac_store = ac_store; ac_halted = ac_halted; ac_performed = ac_performed; ac_externally = ac_externally; ac_staged = ac_staged; ac_patches = ac_patches; ac_notifications = ac_notifications; ac_client_effects = ac_client_effects; ac_diagnostics = ac_diagnostics; ac_trail = ac_trail} -> begin
+| {ac_store = ac_store; ac_halted = ac_halted; ac_performed = ac_performed; ac_externally = ac_externally; ac_staged = ac_staged; ac_patches = ac_patches; ac_notifications = ac_notifications; ac_client_effects = ac_client_effects; ac_diagnostics = ac_diagnostics; ac_trail = ac_trail; ac_findings = ac_findings} -> begin
      ac_diagnostics
      end))
 
 
 let __proj__Mkaccumulator__item__ac_trail = (fun ( projectee  :  accumulator<'t, 'b, 'v, 'o, 'eff, 'd, 'p> ) -> (match (projectee) with
-| {ac_store = ac_store; ac_halted = ac_halted; ac_performed = ac_performed; ac_externally = ac_externally; ac_staged = ac_staged; ac_patches = ac_patches; ac_notifications = ac_notifications; ac_client_effects = ac_client_effects; ac_diagnostics = ac_diagnostics; ac_trail = ac_trail} -> begin
+| {ac_store = ac_store; ac_halted = ac_halted; ac_performed = ac_performed; ac_externally = ac_externally; ac_staged = ac_staged; ac_patches = ac_patches; ac_notifications = ac_notifications; ac_client_effects = ac_client_effects; ac_diagnostics = ac_diagnostics; ac_trail = ac_trail; ac_findings = ac_findings} -> begin
      ac_trail
      end))
 
-type outcome<'t, 'b, 'v, 'o, 'eff, 'd> = {oc_store : store<'t, 'b>; oc_committed : Prims.bool; oc_performed : Prims.list<Prims.string>; oc_patches : Prims.list<'o>; oc_notifications : Prims.list<(Prims.string * 'v)>; oc_client_effects : Prims.list<'eff>; oc_diagnostics : Prims.list<diagnostic<'d>>}
+
+let __proj__Mkaccumulator__item__ac_findings = (fun ( projectee  :  accumulator<'t, 'b, 'v, 'o, 'eff, 'd, 'p> ) -> (match (projectee) with
+| {ac_store = ac_store; ac_halted = ac_halted; ac_performed = ac_performed; ac_externally = ac_externally; ac_staged = ac_staged; ac_patches = ac_patches; ac_notifications = ac_notifications; ac_client_effects = ac_client_effects; ac_diagnostics = ac_diagnostics; ac_trail = ac_trail; ac_findings = ac_findings} -> begin
+     ac_findings
+     end))
+
+type outcome<'t, 'b, 'v, 'o, 'eff, 'd> = {oc_store : store<'t, 'b>; oc_committed : Prims.bool; oc_performed : Prims.list<Prims.string>; oc_patches : Prims.list<'o>; oc_notifications : Prims.list<(Prims.string * 'v)>; oc_client_effects : Prims.list<'eff>; oc_diagnostics : Prims.list<diagnostic<'d>>; oc_findings : Prims.list<finding>}
 
 
 let __proj__Mkoutcome__item__oc_store = (fun ( projectee  :  outcome<'t, 'b, 'v, 'o, 'eff, 'd> ) -> (match (projectee) with
-| {oc_store = oc_store; oc_committed = oc_committed; oc_performed = oc_performed; oc_patches = oc_patches; oc_notifications = oc_notifications; oc_client_effects = oc_client_effects; oc_diagnostics = oc_diagnostics} -> begin
+| {oc_store = oc_store; oc_committed = oc_committed; oc_performed = oc_performed; oc_patches = oc_patches; oc_notifications = oc_notifications; oc_client_effects = oc_client_effects; oc_diagnostics = oc_diagnostics; oc_findings = oc_findings} -> begin
      oc_store
      end))
 
 
 let __proj__Mkoutcome__item__oc_committed = (fun ( projectee  :  outcome<'t, 'b, 'v, 'o, 'eff, 'd> ) -> (match (projectee) with
-| {oc_store = oc_store; oc_committed = oc_committed; oc_performed = oc_performed; oc_patches = oc_patches; oc_notifications = oc_notifications; oc_client_effects = oc_client_effects; oc_diagnostics = oc_diagnostics} -> begin
+| {oc_store = oc_store; oc_committed = oc_committed; oc_performed = oc_performed; oc_patches = oc_patches; oc_notifications = oc_notifications; oc_client_effects = oc_client_effects; oc_diagnostics = oc_diagnostics; oc_findings = oc_findings} -> begin
      oc_committed
      end))
 
 
 let __proj__Mkoutcome__item__oc_performed = (fun ( projectee  :  outcome<'t, 'b, 'v, 'o, 'eff, 'd> ) -> (match (projectee) with
-| {oc_store = oc_store; oc_committed = oc_committed; oc_performed = oc_performed; oc_patches = oc_patches; oc_notifications = oc_notifications; oc_client_effects = oc_client_effects; oc_diagnostics = oc_diagnostics} -> begin
+| {oc_store = oc_store; oc_committed = oc_committed; oc_performed = oc_performed; oc_patches = oc_patches; oc_notifications = oc_notifications; oc_client_effects = oc_client_effects; oc_diagnostics = oc_diagnostics; oc_findings = oc_findings} -> begin
      oc_performed
      end))
 
 
 let __proj__Mkoutcome__item__oc_patches = (fun ( projectee  :  outcome<'t, 'b, 'v, 'o, 'eff, 'd> ) -> (match (projectee) with
-| {oc_store = oc_store; oc_committed = oc_committed; oc_performed = oc_performed; oc_patches = oc_patches; oc_notifications = oc_notifications; oc_client_effects = oc_client_effects; oc_diagnostics = oc_diagnostics} -> begin
+| {oc_store = oc_store; oc_committed = oc_committed; oc_performed = oc_performed; oc_patches = oc_patches; oc_notifications = oc_notifications; oc_client_effects = oc_client_effects; oc_diagnostics = oc_diagnostics; oc_findings = oc_findings} -> begin
      oc_patches
      end))
 
 
 let __proj__Mkoutcome__item__oc_notifications = (fun ( projectee  :  outcome<'t, 'b, 'v, 'o, 'eff, 'd> ) -> (match (projectee) with
-| {oc_store = oc_store; oc_committed = oc_committed; oc_performed = oc_performed; oc_patches = oc_patches; oc_notifications = oc_notifications; oc_client_effects = oc_client_effects; oc_diagnostics = oc_diagnostics} -> begin
+| {oc_store = oc_store; oc_committed = oc_committed; oc_performed = oc_performed; oc_patches = oc_patches; oc_notifications = oc_notifications; oc_client_effects = oc_client_effects; oc_diagnostics = oc_diagnostics; oc_findings = oc_findings} -> begin
      oc_notifications
      end))
 
 
 let __proj__Mkoutcome__item__oc_client_effects = (fun ( projectee  :  outcome<'t, 'b, 'v, 'o, 'eff, 'd> ) -> (match (projectee) with
-| {oc_store = oc_store; oc_committed = oc_committed; oc_performed = oc_performed; oc_patches = oc_patches; oc_notifications = oc_notifications; oc_client_effects = oc_client_effects; oc_diagnostics = oc_diagnostics} -> begin
+| {oc_store = oc_store; oc_committed = oc_committed; oc_performed = oc_performed; oc_patches = oc_patches; oc_notifications = oc_notifications; oc_client_effects = oc_client_effects; oc_diagnostics = oc_diagnostics; oc_findings = oc_findings} -> begin
      oc_client_effects
      end))
 
 
 let __proj__Mkoutcome__item__oc_diagnostics = (fun ( projectee  :  outcome<'t, 'b, 'v, 'o, 'eff, 'd> ) -> (match (projectee) with
-| {oc_store = oc_store; oc_committed = oc_committed; oc_performed = oc_performed; oc_patches = oc_patches; oc_notifications = oc_notifications; oc_client_effects = oc_client_effects; oc_diagnostics = oc_diagnostics} -> begin
+| {oc_store = oc_store; oc_committed = oc_committed; oc_performed = oc_performed; oc_patches = oc_patches; oc_notifications = oc_notifications; oc_client_effects = oc_client_effects; oc_diagnostics = oc_diagnostics; oc_findings = oc_findings} -> begin
      oc_diagnostics
      end))
 
 
-let halt = (fun ( cap  :  Prims.string ) ( reason  :  Prims.string ) ( acc  :  accumulator<'t, 'b, 'v, 'o, 'eff, 'd, 'p> ) -> {ac_store = acc.ac_store; ac_halted = true; ac_performed = acc.ac_performed; ac_externally = acc.ac_externally; ac_staged = acc.ac_staged; ac_patches = acc.ac_patches; ac_notifications = acc.ac_notifications; ac_client_effects = acc.ac_client_effects; ac_diagnostics = (Failed (cap, reason))::acc.ac_diagnostics; ac_trail = acc.ac_trail})
+let __proj__Mkoutcome__item__oc_findings = (fun ( projectee  :  outcome<'t, 'b, 'v, 'o, 'eff, 'd> ) -> (match (projectee) with
+| {oc_store = oc_store; oc_committed = oc_committed; oc_performed = oc_performed; oc_patches = oc_patches; oc_notifications = oc_notifications; oc_client_effects = oc_client_effects; oc_diagnostics = oc_diagnostics; oc_findings = oc_findings} -> begin
+     oc_findings
+     end))
 
 
-let deny = (fun ( why  :  denial ) ( acc  :  accumulator<'t, 'b, 'v, 'o, 'eff, 'd, 'p> ) -> {ac_store = acc.ac_store; ac_halted = true; ac_performed = acc.ac_performed; ac_externally = acc.ac_externally; ac_staged = acc.ac_staged; ac_patches = acc.ac_patches; ac_notifications = acc.ac_notifications; ac_client_effects = acc.ac_client_effects; ac_diagnostics = (Denied (why))::acc.ac_diagnostics; ac_trail = acc.ac_trail})
+let halt = (fun ( cap  :  Prims.string ) ( reason  :  Prims.string ) ( acc  :  accumulator<'t, 'b, 'v, 'o, 'eff, 'd, 'p> ) -> {ac_store = acc.ac_store; ac_halted = true; ac_performed = acc.ac_performed; ac_externally = acc.ac_externally; ac_staged = acc.ac_staged; ac_patches = acc.ac_patches; ac_notifications = acc.ac_notifications; ac_client_effects = acc.ac_client_effects; ac_diagnostics = (Failed (cap, reason))::acc.ac_diagnostics; ac_trail = acc.ac_trail; ac_findings = acc.ac_findings})
+
+
+let deny = (fun ( why  :  denial ) ( acc  :  accumulator<'t, 'b, 'v, 'o, 'eff, 'd, 'p> ) -> {ac_store = acc.ac_store; ac_halted = true; ac_performed = acc.ac_performed; ac_externally = acc.ac_externally; ac_staged = acc.ac_staged; ac_patches = acc.ac_patches; ac_notifications = acc.ac_notifications; ac_client_effects = acc.ac_client_effects; ac_diagnostics = (Denied (why))::acc.ac_diagnostics; ac_trail = acc.ac_trail; ac_findings = acc.ac_findings})
 
 
 let staged_from = (fun ( cap  :  Prims.string ) ( f  :  't  ->  'o  ->  ('p * 'v) ) ( tree  :  't ) ( op  :  'o ) -> (
@@ -908,7 +1061,16 @@ let staged_from = (fun ( cap  :  Prims.string ) ( f  :  't  ->  'o  ->  ('p * 'v
 let uu___ = (f tree op)
 in (match (uu___) with
 | (tok, args) -> begin
-     {sc_capability = cap; sc_performer = tok; sc_args = args; sc_into = ONone}
+     {sc_capability = cap; sc_performer = tok; sc_args = args; sc_into = LNowhere}
+     end)))
+
+
+let staged_read = (fun ( cap  :  Prims.string ) ( f  :  Prims.string  ->  'q  ->  ('p * 'v) ) ( name  :  Prims.string ) ( query  :  'q ) -> (
+
+let uu___ = (f name query)
+in (match (uu___) with
+| (tok, args) -> begin
+     {sc_capability = cap; sc_performer = tok; sc_args = args; sc_into = LQuery (name)}
      end)))
 
 
@@ -1276,9 +1438,14 @@ if (not ((reg.r_gate cap))) then begin
 | ONone -> begin
      (
 
-let performed = {ac_store = acc.ac_store; ac_halted = acc.ac_halted; ac_performed = (cap)::acc.ac_performed; ac_externally = acc.ac_externally; ac_staged = acc.ac_staged; ac_patches = acc.ac_patches; ac_notifications = acc.ac_notifications; ac_client_effects = acc.ac_client_effects; ac_diagnostics = acc.ac_diagnostics; ac_trail = acc.ac_trail}
+let performed = {ac_store = acc.ac_store; ac_halted = acc.ac_halted; ac_performed = (cap)::acc.ac_performed; ac_externally = acc.ac_externally; ac_staged = acc.ac_staged; ac_patches = acc.ac_patches; ac_notifications = acc.ac_notifications; ac_client_effects = acc.ac_client_effects; ac_diagnostics = acc.ac_diagnostics; ac_trail = acc.ac_trail; ac_findings = acc.ac_findings}
 in (match (e) with
 | RunQuery (name, query) -> begin
+     (match (reg.r_query_posture) with
+| Reaching -> begin
+     {ac_store = acc.ac_store; ac_halted = acc.ac_halted; ac_performed = acc.ac_performed; ac_externally = acc.ac_externally; ac_staged = ((staged_read cap reg.r_query_stage name query))::acc.ac_staged; ac_patches = acc.ac_patches; ac_notifications = acc.ac_notifications; ac_client_effects = acc.ac_client_effects; ac_diagnostics = acc.ac_diagnostics; ac_trail = (TReached (cap))::acc.ac_trail; ac_findings = acc.ac_findings}
+     end
+| PureRead -> begin
      (match ((w.w_query name query performed.ac_store.st_bindings)) with
 | RErr (kind) -> begin
      (halt cap kind acc)
@@ -1287,7 +1454,8 @@ in (match (e) with
      {ac_store = (
 
 let uu___ = performed.ac_store
-in {st_tree = uu___.st_tree; st_bindings = bindings}); ac_halted = performed.ac_halted; ac_performed = performed.ac_performed; ac_externally = performed.ac_externally; ac_staged = performed.ac_staged; ac_patches = performed.ac_patches; ac_notifications = performed.ac_notifications; ac_client_effects = performed.ac_client_effects; ac_diagnostics = performed.ac_diagnostics; ac_trail = performed.ac_trail}
+in {st_tree = uu___.st_tree; st_bindings = bindings}); ac_halted = performed.ac_halted; ac_performed = performed.ac_performed; ac_externally = performed.ac_externally; ac_staged = performed.ac_staged; ac_patches = performed.ac_patches; ac_notifications = performed.ac_notifications; ac_client_effects = performed.ac_client_effects; ac_diagnostics = performed.ac_diagnostics; ac_trail = performed.ac_trail; ac_findings = performed.ac_findings}
+     end)
      end)
      end
 | ApplyOps (ops) -> begin
@@ -1304,13 +1472,13 @@ in (match (reg.r_op_perform) with
      {ac_store = (
 
 let uu___ = performed.ac_store
-in {st_tree = tree; st_bindings = uu___.st_bindings}); ac_halted = performed.ac_halted; ac_performed = performed.ac_performed; ac_externally = performed.ac_externally; ac_staged = performed.ac_staged; ac_patches = performed.ac_patches; ac_notifications = performed.ac_notifications; ac_client_effects = performed.ac_client_effects; ac_diagnostics = performed.ac_diagnostics; ac_trail = trail}
+in {st_tree = tree; st_bindings = uu___.st_bindings}); ac_halted = performed.ac_halted; ac_performed = performed.ac_performed; ac_externally = performed.ac_externally; ac_staged = performed.ac_staged; ac_patches = performed.ac_patches; ac_notifications = performed.ac_notifications; ac_client_effects = performed.ac_client_effects; ac_diagnostics = performed.ac_diagnostics; ac_trail = trail; ac_findings = performed.ac_findings}
      end
 | OSome (uu___) -> begin
      {ac_store = (
 
 let uu___1 = acc.ac_store
-in {st_tree = tree; st_bindings = uu___1.st_bindings}); ac_halted = acc.ac_halted; ac_performed = acc.ac_performed; ac_externally = acc.ac_externally; ac_staged = staged; ac_patches = acc.ac_patches; ac_notifications = acc.ac_notifications; ac_client_effects = acc.ac_client_effects; ac_diagnostics = acc.ac_diagnostics; ac_trail = trail}
+in {st_tree = tree; st_bindings = uu___1.st_bindings}); ac_halted = acc.ac_halted; ac_performed = acc.ac_performed; ac_externally = acc.ac_externally; ac_staged = staged; ac_patches = acc.ac_patches; ac_notifications = acc.ac_notifications; ac_client_effects = acc.ac_client_effects; ac_diagnostics = acc.ac_diagnostics; ac_trail = trail; ac_findings = acc.ac_findings}
      end))
      end)
      end
@@ -1325,15 +1493,24 @@ in {st_tree = tree; st_bindings = uu___1.st_bindings}); ac_halted = acc.ac_halte
      (halt cap reason acc)
      end
 | ONone -> begin
-     {ac_store = acc.ac_store; ac_halted = acc.ac_halted; ac_performed = acc.ac_performed; ac_externally = acc.ac_externally; ac_staged = ({sc_capability = cap; sc_performer = performer; sc_args = args; sc_into = into})::acc.ac_staged; ac_patches = acc.ac_patches; ac_notifications = acc.ac_notifications; ac_client_effects = acc.ac_client_effects; ac_diagnostics = acc.ac_diagnostics; ac_trail = (TReached (cap))::acc.ac_trail}
+     {ac_store = acc.ac_store; ac_halted = acc.ac_halted; ac_performed = acc.ac_performed; ac_externally = acc.ac_externally; ac_staged = ({sc_capability = cap; sc_performer = performer; sc_args = args; sc_into = (landing_of into)})::acc.ac_staged; ac_patches = acc.ac_patches; ac_notifications = acc.ac_notifications; ac_client_effects = acc.ac_client_effects; ac_diagnostics = acc.ac_diagnostics; ac_trail = (TReached (cap))::acc.ac_trail; ac_findings = acc.ac_findings}
      end)
      end)
      end
 | EmitPatch (ops) -> begin
-     {ac_store = performed.ac_store; ac_halted = performed.ac_halted; ac_performed = performed.ac_performed; ac_externally = performed.ac_externally; ac_staged = performed.ac_staged; ac_patches = (app (rev ops) performed.ac_patches); ac_notifications = performed.ac_notifications; ac_client_effects = performed.ac_client_effects; ac_diagnostics = performed.ac_diagnostics; ac_trail = (TEmitted (cap))::performed.ac_trail}
+     {ac_store = performed.ac_store; ac_halted = performed.ac_halted; ac_performed = performed.ac_performed; ac_externally = performed.ac_externally; ac_staged = performed.ac_staged; ac_patches = (app (rev ops) performed.ac_patches); ac_notifications = performed.ac_notifications; ac_client_effects = performed.ac_client_effects; ac_diagnostics = performed.ac_diagnostics; ac_trail = (TEmitted (cap))::performed.ac_trail; ac_findings = performed.ac_findings}
      end
 | Notify (channel, payload) -> begin
-     {ac_store = performed.ac_store; ac_halted = performed.ac_halted; ac_performed = performed.ac_performed; ac_externally = performed.ac_externally; ac_staged = performed.ac_staged; ac_patches = performed.ac_patches; ac_notifications = (((channel), (payload)))::performed.ac_notifications; ac_client_effects = performed.ac_client_effects; ac_diagnostics = performed.ac_diagnostics; ac_trail = (TReached (cap))::performed.ac_trail}
+     {ac_store = performed.ac_store; ac_halted = performed.ac_halted; ac_performed = performed.ac_performed; ac_externally = performed.ac_externally; ac_staged = performed.ac_staged; ac_patches = performed.ac_patches; ac_notifications = (((channel), (payload)))::performed.ac_notifications; ac_client_effects = performed.ac_client_effects; ac_diagnostics = performed.ac_diagnostics; ac_trail = (TReached (cap))::performed.ac_trail; ac_findings = performed.ac_findings}
+     end
+| Report (f) -> begin
+     (match ((reg.r_record f)) with
+| RErr (reason) -> begin
+     (halt cap reason acc)
+     end
+| ROk (recorded) -> begin
+     {ac_store = performed.ac_store; ac_halted = performed.ac_halted; ac_performed = performed.ac_performed; ac_externally = performed.ac_externally; ac_staged = performed.ac_staged; ac_patches = performed.ac_patches; ac_notifications = performed.ac_notifications; ac_client_effects = performed.ac_client_effects; ac_diagnostics = performed.ac_diagnostics; ac_trail = performed.ac_trail; ac_findings = (recorded)::performed.ac_findings}
+     end)
      end))
      end)
      end))
@@ -1347,7 +1524,7 @@ let out = (w.w_compute node_id action acc.ac_store.st_bindings)
 in {ac_store = (
 
 let uu___ = acc.ac_store
-in {st_tree = uu___.st_tree; st_bindings = out.bo_store}); ac_halted = acc.ac_halted; ac_performed = acc.ac_performed; ac_externally = acc.ac_externally; ac_staged = acc.ac_staged; ac_patches = acc.ac_patches; ac_notifications = acc.ac_notifications; ac_client_effects = (app (rev out.bo_effects) acc.ac_client_effects); ac_diagnostics = (app (map_bounded (rev out.bo_diagnostics)) acc.ac_diagnostics); ac_trail = (TCompute ((w.w_undo_compute node_id action acc.ac_store.st_bindings)))::acc.ac_trail})
+in {st_tree = uu___.st_tree; st_bindings = out.bo_store}); ac_halted = acc.ac_halted; ac_performed = acc.ac_performed; ac_externally = acc.ac_externally; ac_staged = acc.ac_staged; ac_patches = acc.ac_patches; ac_notifications = acc.ac_notifications; ac_client_effects = (app (rev out.bo_effects) acc.ac_client_effects); ac_diagnostics = (app (map_bounded (rev out.bo_diagnostics)) acc.ac_diagnostics); ac_trail = (TCompute ((w.w_undo_compute node_id action acc.ac_store.st_bindings)))::acc.ac_trail; ac_findings = acc.ac_findings})
      end
 | SEffect (e) -> begin
      (plan_effect w reg e acc)
@@ -1368,6 +1545,27 @@ if acc.ac_halted then begin
      end))
 
 
+let land1 = (fun ( w  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( call  :  staged_call<'v, 'p> ) ( result  :  'v ) ( acc  :  accumulator<'t, 'b, 'v, 'o, 'eff, 'd, 'p> ) -> (
+
+let recorded = {ac_store = acc.ac_store; ac_halted = acc.ac_halted; ac_performed = acc.ac_performed; ac_externally = (call.sc_capability)::acc.ac_externally; ac_staged = acc.ac_staged; ac_patches = acc.ac_patches; ac_notifications = acc.ac_notifications; ac_client_effects = acc.ac_client_effects; ac_diagnostics = acc.ac_diagnostics; ac_trail = acc.ac_trail; ac_findings = acc.ac_findings}
+in (match (call.sc_into) with
+| LNowhere -> begin
+     recorded
+     end
+| LState (key) -> begin
+     {ac_store = (
+
+let uu___ = recorded.ac_store
+in {st_tree = uu___.st_tree; st_bindings = (w.w_assign key result recorded.ac_store.st_bindings)}); ac_halted = recorded.ac_halted; ac_performed = recorded.ac_performed; ac_externally = recorded.ac_externally; ac_staged = recorded.ac_staged; ac_patches = recorded.ac_patches; ac_notifications = recorded.ac_notifications; ac_client_effects = recorded.ac_client_effects; ac_diagnostics = recorded.ac_diagnostics; ac_trail = recorded.ac_trail; ac_findings = recorded.ac_findings}
+     end
+| LQuery (slot) -> begin
+     {ac_store = (
+
+let uu___ = recorded.ac_store
+in {st_tree = uu___.st_tree; st_bindings = (w.w_land_query slot result recorded.ac_store.st_bindings)}); ac_halted = recorded.ac_halted; ac_performed = recorded.ac_performed; ac_externally = recorded.ac_externally; ac_staged = recorded.ac_staged; ac_patches = recorded.ac_patches; ac_notifications = recorded.ac_notifications; ac_client_effects = recorded.ac_client_effects; ac_diagnostics = recorded.ac_diagnostics; ac_trail = recorded.ac_trail; ac_findings = recorded.ac_findings}
+     end)))
+
+
 let rec perform = (fun ( w  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( reg  :  registry<'t, 'v, 'o, 'q, 'p> ) ( staged  :  Prims.list<staged_call<'v, 'p>> ) ( acc  :  accumulator<'t, 'b, 'v, 'o, 'eff, 'd, 'p> ) -> (match (staged) with
 | [] -> begin
      acc
@@ -1375,30 +1573,23 @@ let rec perform = (fun ( w  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( reg
 | (call)::rest -> begin
      (match ((reg.r_perf call.sc_performer call.sc_args)) with
 | RErr (reason) -> begin
-     {ac_store = acc.ac_store; ac_halted = true; ac_performed = acc.ac_performed; ac_externally = acc.ac_externally; ac_staged = acc.ac_staged; ac_patches = acc.ac_patches; ac_notifications = acc.ac_notifications; ac_client_effects = acc.ac_client_effects; ac_diagnostics = (PerformFailed (call.sc_capability, reason))::acc.ac_diagnostics; ac_trail = acc.ac_trail}
+     {ac_store = acc.ac_store; ac_halted = true; ac_performed = acc.ac_performed; ac_externally = acc.ac_externally; ac_staged = acc.ac_staged; ac_patches = acc.ac_patches; ac_notifications = acc.ac_notifications; ac_client_effects = acc.ac_client_effects; ac_diagnostics = (PerformFailed (call.sc_capability, reason))::acc.ac_diagnostics; ac_trail = acc.ac_trail; ac_findings = acc.ac_findings}
      end
 | ROk (result) -> begin
-     (
-
-let recorded = {ac_store = acc.ac_store; ac_halted = acc.ac_halted; ac_performed = acc.ac_performed; ac_externally = (call.sc_capability)::acc.ac_externally; ac_staged = acc.ac_staged; ac_patches = acc.ac_patches; ac_notifications = acc.ac_notifications; ac_client_effects = acc.ac_client_effects; ac_diagnostics = acc.ac_diagnostics; ac_trail = acc.ac_trail}
-in (
-
-let landed = (match (call.sc_into) with
-| ONone -> begin
-     recorded
-     end
-| OSome (key) -> begin
-     {ac_store = (
-
-let uu___ = recorded.ac_store
-in {st_tree = uu___.st_tree; st_bindings = (w.w_assign key result recorded.ac_store.st_bindings)}); ac_halted = recorded.ac_halted; ac_performed = recorded.ac_performed; ac_externally = recorded.ac_externally; ac_staged = recorded.ac_staged; ac_patches = recorded.ac_patches; ac_notifications = recorded.ac_notifications; ac_client_effects = recorded.ac_client_effects; ac_diagnostics = recorded.ac_diagnostics; ac_trail = recorded.ac_trail}
-     end)
-in (perform w reg rest landed)))
+     (perform w reg rest (land1 w call result acc))
      end)
      end))
 
 
-let start = (fun ( s  :  store<'t, 'b> ) -> {ac_store = s; ac_halted = false; ac_performed = []; ac_externally = []; ac_staged = []; ac_patches = []; ac_notifications = []; ac_client_effects = []; ac_diagnostics = []; ac_trail = []})
+let start = (fun ( s  :  store<'t, 'b> ) -> {ac_store = s; ac_halted = false; ac_performed = []; ac_externally = []; ac_staged = []; ac_patches = []; ac_notifications = []; ac_client_effects = []; ac_diagnostics = []; ac_trail = []; ac_findings = []})
+
+
+let finish = (fun ( s  :  store<'t, 'b> ) ( final  :  accumulator<'t, 'b, 'v, 'o, 'eff, 'd, 'p> ) ->  
+if final.ac_halted then begin
+     {oc_store = s; oc_committed = false; oc_performed = (rev final.ac_externally); oc_patches = []; oc_notifications = []; oc_client_effects = []; oc_diagnostics = (rev final.ac_diagnostics); oc_findings = (rev final.ac_findings)}
+     end else begin
+     {oc_store = final.ac_store; oc_committed = true; oc_performed = (app (rev final.ac_performed) (rev final.ac_externally)); oc_patches = (rev final.ac_patches); oc_notifications = (rev final.ac_notifications); oc_client_effects = (rev final.ac_client_effects); oc_diagnostics = (rev final.ac_diagnostics); oc_findings = (rev final.ac_findings)}
+     end)
 
 
 let run_planned = (fun ( w  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( reg  :  registry<'t, 'v, 'o, 'q, 'p> ) ( node_id  :  Prims.string ) ( stages  :  Prims.list<stage<'a, 'v, 'o, 'q>> ) ( s  :  store<'t, 'b> ) -> (
@@ -1412,30 +1603,15 @@ if planned.ac_halted then begin
      end else begin
      (perform w reg (rev planned.ac_staged) planned)
      end
-in  
-if final.ac_halted then begin
-     (({oc_store = s; oc_committed = false; oc_performed = (rev final.ac_externally); oc_patches = []; oc_notifications = []; oc_client_effects = []; oc_diagnostics = (rev final.ac_diagnostics)}), ((rev final.ac_trail)))
-     end else begin
-     (({oc_store = final.ac_store; oc_committed = true; oc_performed = (app (rev final.ac_performed) (rev final.ac_externally)); oc_patches = (rev final.ac_patches); oc_notifications = (rev final.ac_notifications); oc_client_effects = (rev final.ac_client_effects); oc_diagnostics = (rev final.ac_diagnostics)}), ((rev final.ac_trail)))
-     end)))
+in (((finish s final)), ((rev final.ac_trail))))))
 
 
 let run = (fun ( w  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( reg  :  registry<'t, 'v, 'o, 'q, 'p> ) ( node_id  :  Prims.string ) ( stages  :  Prims.list<stage<'a, 'v, 'o, 'q>> ) ( s  :  store<'t, 'b> ) -> (
 
-let planned = (plan w reg node_id stages (start s))
-in (
-
-let final =  
-if planned.ac_halted then begin
-     planned
-     end else begin
-     (perform w reg (rev planned.ac_staged) planned)
-     end
-in  
-if final.ac_halted then begin
-     {oc_store = s; oc_committed = false; oc_performed = (rev final.ac_externally); oc_patches = []; oc_notifications = []; oc_client_effects = []; oc_diagnostics = (rev final.ac_diagnostics)}
-     end else begin
-     {oc_store = final.ac_store; oc_committed = true; oc_performed = (app (rev final.ac_performed) (rev final.ac_externally)); oc_patches = (rev final.ac_patches); oc_notifications = (rev final.ac_notifications); oc_client_effects = (rev final.ac_client_effects); oc_diagnostics = (rev final.ac_diagnostics)}
+let uu___ = (run_planned w reg node_id stages s)
+in (match (uu___) with
+| (out, uu___1) -> begin
+     out
      end)))
 
 
@@ -1643,21 +1819,6 @@ if dur.d_reinvoke then begin
      end)
      end)))
 
-
-let land1 = (fun ( w  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( call  :  staged_call<'v, 'p> ) ( result  :  'v ) ( acc  :  accumulator<'t, 'b, 'v, 'o, 'eff, 'd, 'p> ) -> (
-
-let recorded = {ac_store = acc.ac_store; ac_halted = acc.ac_halted; ac_performed = acc.ac_performed; ac_externally = (call.sc_capability)::acc.ac_externally; ac_staged = acc.ac_staged; ac_patches = acc.ac_patches; ac_notifications = acc.ac_notifications; ac_client_effects = acc.ac_client_effects; ac_diagnostics = acc.ac_diagnostics; ac_trail = acc.ac_trail}
-in (match (call.sc_into) with
-| ONone -> begin
-     recorded
-     end
-| OSome (key) -> begin
-     {ac_store = (
-
-let uu___ = recorded.ac_store
-in {st_tree = uu___.st_tree; st_bindings = (w.w_assign key result recorded.ac_store.st_bindings)}); ac_halted = recorded.ac_halted; ac_performed = recorded.ac_performed; ac_externally = recorded.ac_externally; ac_staged = recorded.ac_staged; ac_patches = recorded.ac_patches; ac_notifications = recorded.ac_notifications; ac_client_effects = recorded.ac_client_effects; ac_diagnostics = recorded.ac_diagnostics; ac_trail = recorded.ac_trail}
-     end)))
-
 type replay_result<'t, 'b, 'v, 'o, 'eff, 'd, 'p> = {rp_acc : accumulator<'t, 'b, 'v, 'o, 'eff, 'd, 'p>; rp_replayed : Prims.list<Prims.nat>; rp_invoked : Prims.list<Prims.nat>; rp_indeterminate : Prims.list<Prims.nat>; rp_overrides : Prims.list<Prims.nat>}
 
 
@@ -1698,7 +1859,7 @@ let rec replay = (fun ( w  :  witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( reg 
 | (call)::rest -> begin
      (
 
-let failed = (fun ( reason  :  Prims.string ) -> {ac_store = acc.ac_store; ac_halted = true; ac_performed = acc.ac_performed; ac_externally = acc.ac_externally; ac_staged = acc.ac_staged; ac_patches = acc.ac_patches; ac_notifications = acc.ac_notifications; ac_client_effects = acc.ac_client_effects; ac_diagnostics = (PerformFailed (call.sc_capability, reason))::acc.ac_diagnostics; ac_trail = acc.ac_trail})
+let failed = (fun ( reason  :  Prims.string ) -> {ac_store = acc.ac_store; ac_halted = true; ac_performed = acc.ac_performed; ac_externally = acc.ac_externally; ac_staged = acc.ac_staged; ac_patches = acc.ac_patches; ac_notifications = acc.ac_notifications; ac_client_effects = acc.ac_client_effects; ac_diagnostics = (PerformFailed (call.sc_capability, reason))::acc.ac_diagnostics; ac_trail = acc.ac_trail; ac_findings = acc.ac_findings})
 in (match ((decide dur k call)) with
 | Diverged -> begin
      {rp_acc = (failed replay_divergence); rp_replayed = []; rp_invoked = []; rp_indeterminate = []; rp_overrides = []}
@@ -1736,14 +1897,6 @@ in {rp_acc = r.rp_acc; rp_replayed = r.rp_replayed; rp_invoked = (k)::r.rp_invok
      end))
      end))
      end))
-
-
-let finish = (fun ( s  :  store<'t, 'b> ) ( final  :  accumulator<'t, 'b, 'v, 'o, 'eff, 'd, 'p> ) ->  
-if final.ac_halted then begin
-     {oc_store = s; oc_committed = false; oc_performed = (rev final.ac_externally); oc_patches = []; oc_notifications = []; oc_client_effects = []; oc_diagnostics = (rev final.ac_diagnostics)}
-     end else begin
-     {oc_store = final.ac_store; oc_committed = true; oc_performed = (app (rev final.ac_performed) (rev final.ac_externally)); oc_patches = (rev final.ac_patches); oc_notifications = (rev final.ac_notifications); oc_client_effects = (rev final.ac_client_effects); oc_diagnostics = (rev final.ac_diagnostics)}
-     end)
 
 type durable_outcome<'t, 'b, 'v, 'o, 'eff, 'd> = {do_outcome : outcome<'t, 'b, 'v, 'o, 'eff, 'd>; do_replayed : Prims.list<Prims.nat>; do_invoked : Prims.list<Prims.nat>; do_indeterminate : Prims.list<Prims.nat>; do_overrides : Prims.list<Prims.nat>}
 
@@ -1829,6 +1982,67 @@ if diverged then begin
      end
 | JIndeterminate -> begin
      live
+     end)
+     end)))
+
+
+let diverged_refusal : (Prims.string * opt<Prims.string>)  ->  Prims.string = (fun ( recorded  :  (Prims.string * opt<Prims.string>) ) -> (
+
+let uu___ = recorded
+in (match (uu___) with
+| (cap, subject) -> begin
+      
+if (Prims.op_Equals cap read_entry_capability) then begin
+     (entry_read_refusal (match (subject) with
+| OSome (s) -> begin
+     s
+     end
+| ONone -> begin
+     ""
+     end))
+     end else begin
+     replay_divergence
+     end
+     end)))
+
+
+let journal_finding = (fun ( dur  :  journal<'v> ) ( k  :  Prims.nat ) ( subject  :  finding  ->  Prims.string ) ( enc  :  finding  ->  'v ) ( dec  :  'v  ->  res<finding> ) ( f  :  finding ) -> (
+
+let identity = ((report_capability), (OSome ((subject f))))
+in (match ((dur.j_recorded k)) with
+| OSome (recorded) -> begin
+      
+if (not ((Prims.op_Equals recorded identity))) then begin
+     RErr ((diverged_refusal recorded))
+     end else begin
+     (match ((dur.j_step k)) with
+| JValue (x) -> begin
+     (dec x)
+     end
+| JRefusal (r) -> begin
+     RErr (r)
+     end
+| JUnrun -> begin
+     (dec (enc f))
+     end
+| JIndeterminate -> begin
+     (dec (enc f))
+     end)
+     end
+     end
+| ONone -> begin
+     (match ((dur.j_step k)) with
+| JValue (x) -> begin
+     (dec x)
+     end
+| JRefusal (r) -> begin
+     RErr (r)
+     end
+| JUnrun -> begin
+     (dec (enc f))
+     end
+| JIndeterminate -> begin
+     (dec (enc f))
      end)
      end)))
 
