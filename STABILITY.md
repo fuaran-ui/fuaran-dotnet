@@ -7933,6 +7933,27 @@ The slot is already breaking (Phase 2060), so this rides it. `docs/DECISIONS.md`
 - Certified by the program specification's eight new `client-effect/reject-*-empty-*` vectors, which the conformance
   suite runs for their class, and by `ClientEffectNonEmptyTests`.
 
+### What rides this slot — Phase 2318 (every float layout in the tier is Core's)
+
+**Class: additive — no public type, member or signature moves.** Packages `Fuaran.UI.AiWire`,
+`Fuaran.UI.Renderer.Core`, `Fuaran.UI.Renderer.Server`, `Fuaran.UI.Memo`.
+
+- **`Fuaran.UI.AiWire` gains a package reference, `Fuaran.Core.Wire`** (FSharp.Core-only, Apache-2.0, ships its
+  `fable/` sources). `JsonHost.serialize` lays a non-integral number out with `FloatLayout.finite`. The .NET bytes do
+  not move; under Fable a number outside JS's fixed band now writes the .NET spelling (`1E-07` where JS wrote `1e-7`,
+  `1E+21` where it wrote `1e+21`), which is the writer's stated byte-parity claim made true.
+- **`Fuaran.UI.Renderer.Core`:** `DrawingSvg.formatNum` calls `FloatLayout.finite`; its private Fable re-lay copy is
+  deleted. No SVG byte moves on either pipeline.
+- **`Fuaran.UI.Memo`:** a value key's float token is `FloatLayout.roundTrip`, the bytes the raw `ToString("R")` wrote,
+  so no stored key moves; the raw specifier, which throws under Fable, is gone.
+- **`Fuaran.UI.Renderer.Server` — resume envelope BYTES move, never its meaning.** The action payloads and string
+  literals are the canonical cross-host bytes, script-escaped: a control character is `\u00xx` (was `\n` / `\r` / `\t`),
+  `-0` is `0`, a non-finite float is the quoted token (was a bare `NaN`, which no JSON parser read). A bound `Navigate`
+  route and a bound `Confirm` prompt now escape `<` / `>` / `&`; the `Confirm` arm's escape was a no-op, so a
+  `</script>` there reached the page.
+- Pinned by `FloatLayoutTests` (the shared `FloatLayoutCases`, which the Fable law harness runs as Law 12) and the
+  resume payload tests in `ResumeTests`.
+
 ---
 
 ## 0.102.0 (RELEASED — tagged v0.102.0 at 00225688, 2026-11-06)
