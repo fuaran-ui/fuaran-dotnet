@@ -1,7 +1,6 @@
 namespace Fuaran.UI.OpStream.Replay
 
 open Fuaran.UI.Types
-open Fuaran.UI.Ops
 open Fuaran.UI.Ops.Types
 open Fuaran.UI.OpStream.Abstractions
 
@@ -56,29 +55,25 @@ module Replay =
     /// has already verified these exact records, or when they are synthetic and
     /// were never chained. Otherwise use `applyTo`.
     ///
-    /// Records are consumed once; `records` may be lazy.
+    /// The fold is Core's `OpStream.replay` over the tier's stream witness
+    /// (`StreamEntry.coreWitness`, whose `Apply` is the apply engine), Phase 2305.
+    /// Core reports the failing op by its 0-based position in the list; the edge
+    /// maps it back to that record's own 1-based `Sequence`, so the error names
+    /// the record exactly as before. The records are materialised once.
     let applyToUnverified<'Msg>
         (initialTree: Node<'Msg>)
         (records: OpRecord<'Msg> seq)
         : Result<Node<'Msg>, ReplayError> =
-        let mutable tree: Node<'Msg> = initialTree
-        let mutable failure: ReplayError option = None
+        let recordList = List.ofSeq records
 
-        use enumerator = records.GetEnumerator()
-        let mutable stop = false
-
-        while not stop && enumerator.MoveNext() do
-            let record = enumerator.Current
-
-            match Apply.apply record.Op tree with
-            | Ok updated -> tree <- updated
-            | Error applyError ->
-                failure <- Some(ReplayError.ApplyFailed(record.Sequence, applyError))
-                stop <- true
-
-        match failure with
-        | Some err -> Error err
-        | None -> Ok tree
+        match
+            Fuaran.Core.OpStream.replay
+                (StreamEntry.coreWitness<'Msg> ())
+                initialTree
+                (recordList |> List.map StreamEntry.toCoreRecord)
+        with
+        | Ok tree -> Ok tree
+        | Error(index, applyError) -> Error(ReplayError.ApplyFailed((List.item index recordList).Sequence, applyError))
 
     /// Verify the chain, then apply every record to `initialTree` in source
     /// order. Returns the final tree, the first apply failure, or — before any
@@ -105,8 +100,7 @@ module Replay =
     ///     call site and it is legible in review, which a default that quietly
     ///     truncates is not.
     ///
-    /// The records are materialised — verification is a whole-segment walk — so
-    /// a lazy `records` is fully enumerated here, unlike in `applyToUnverified`.
+    /// The records are materialised — verification is a whole-segment walk.
     ///
     /// The segment is verified with `Verify.segment`, so a post-checkpoint tail
     /// or a compacted stream that legitimately starts above sequence 1 verifies

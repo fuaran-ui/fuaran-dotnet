@@ -94,9 +94,13 @@ let private artefactPins: (string * (unit -> string) * string) list =
       "a three-record stream head (HashChain.computeHash)",
       chainHead,
       "9f8710b8d7296c882092e5080e0a29c8ada3b20eebc0d520178378b19855d1e0"
-      "a checkpoint snapshot hash (HashChain.snapshotHash)",
-      (fun () -> HashChain.snapshotHash HashChain.genesisPreviousHash 3 (CanonicalJson.encodeNode tree)),
-      "7c9cbc21b040b6577dcae2714daa9ed390ccfdd04e2f9717788a68f65e3eec99"
+      // Phase 2305 moved this pin DELIBERATELY: the checkpoint seal is Core's strict
+      // snapshot seal (`"state"` where the tier's own seal had `"tree"`), so a stored
+      // checkpoint is re-sealed once (`CheckpointReseal`). The value recorded under the
+      // retired seal was 7c9cbc21b040b6577dcae2714daa9ed390ccfdd04e2f9717788a68f65e3eec99.
+      "a checkpoint snapshot hash (CheckpointSeal.seal, Core's strict seal)",
+      (fun () -> CheckpointSeal.seal HashChain.genesisPreviousHash 3 tree),
+      "1a062768eedaec579c9669f1ee619d5b4ae85687db722d8a10b0c8ce2d09eb63"
       "a teleport string (tree only)",
       (fun () -> teleport (TeleportBundle.ofTree tree)),
       "FT1.q1ZKKs1LyUlVslIqSc1JLcgvKnEwVNJRSslMTy0uAYqmJRqZmacmplgapRpbWqYYpFkmJqdaWqaaGBmYm1mYGVomG5inJVokGaeaGCQam6WYpCaaJ6YlJyYmJVoYGqQlAc0qKUoFml-tlJkCNC8XZHp2Zh6QXa2kUlJZALLaN7EoOyW_PA-kOLUCZG1Gak5OvlJtbS0A"

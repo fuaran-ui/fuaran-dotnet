@@ -847,3 +847,108 @@ module SqliteSink =
         (nodeCodec: INodeJsonCodec<'Msg>)
         : IOpStreamCheckpointSink<'Msg> =
         upcast SqliteSink<'Msg>(connectionString, codec, nodeCodec, loadVerification, writeAdmission)
+
+    /// The ONE-SHOT checkpoint re-seal for a store written before Phase 2305
+    /// (`docs/migrations/2305-core-snapshot.md`; removed in the release after the
+    /// one that ships it). Every row of `op_checkpoint`, in every stream, is read
+    /// in ONE immediate transaction, its snapshot decoded through `nodeCodec`, and
+    /// passed to `CheckpointReseal.reseal`: a checkpoint that verifies under the
+    /// pre-2305 seal has its `snapshot_hash` rewritten to Core's, one already under
+    /// Core's seal is left alone (so a re-run is a no-op), and ANY row that
+    /// verifies under neither — or whose snapshot does not decode — refuses the
+    /// whole migration by name with nothing written. Only the `snapshot_hash`
+    /// column moves: the ops, their chain, the checkpoints' boundaries and the
+    /// retained invocation keys are untouched. Returns the number of rows
+    /// re-sealed.
+    let resealCheckpoints<'Msg> (connectionString: string) (nodeCodec: INodeJsonCodec<'Msg>) : Result<int, string> =
+        use conn = SqliteConnections.openConnection connectionString
+        use tx = conn.BeginTransaction(deferred = false)
+
+        let hasTable =
+            use cmd = conn.CreateCommand()
+            cmd.Transaction <- tx
+            cmd.CommandText <- "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'op_checkpoint';"
+            Convert.ToInt64(cmd.ExecuteScalar()) > 0L
+
+        let rows =
+            if not hasTable then
+                []
+            else
+                use cmd = conn.CreateCommand()
+                cmd.Transaction <- tx
+
+                cmd.CommandText <-
+                    """SELECT stream_id, sequence, previous_chain_head, snapshot_hash, snapshot_json, timestamp
+FROM op_checkpoint
+ORDER BY stream_id, sequence;"""
+
+                use reader = cmd.ExecuteReader()
+                let acc = ResizeArray<string * int * string * string * string * int64>()
+
+                while reader.Read() do
+                    acc.Add(
+                        reader.GetString 0,
+                        reader.GetInt32 1,
+                        reader.GetString 2,
+                        reader.GetString 3,
+                        reader.GetString 4,
+                        reader.GetInt64 5
+                    )
+
+                List.ofSeq acc
+
+        let decided =
+            rows
+            |> List.map (fun (streamId, sequence, head, hash, json, ts) ->
+                match nodeCodec.DecodeNode json with
+                | Error error ->
+                    Error(
+                        sprintf
+                            "checkpoint re-seal refused for stream '%s' at sequence %d: its snapshot does not decode (%A), so its seal cannot be checked. Nothing was written."
+                            streamId
+                            sequence
+                            error
+                    )
+                | Ok snapshot ->
+                    let checkpoint: Checkpoint<'Msg> =
+                        { StreamId = streamId
+                          Sequence = sequence
+                          PreviousChainHead = head
+                          SnapshotHash = hash
+                          Snapshot = snapshot
+                          Timestamp = DateTimeOffset.FromUnixTimeSeconds ts }
+
+                    CheckpointReseal.reseal checkpoint |> Result.mapError CheckpointReseal.describe)
+
+        match
+            decided
+            |> List.tryPick (fun r ->
+                (match r with
+                 | Error e -> Some e
+                 | Ok _ -> None))
+        with
+        | Some refusal ->
+            tx.Rollback()
+            Error refusal
+        | None ->
+            let resealed =
+                decided
+                |> List.choose (fun r ->
+                    match r with
+                    | Ok(CheckpointReseal.Outcome.Resealed cp) -> Some cp
+                    | _ -> None)
+
+            for cp in resealed do
+                use cmd = conn.CreateCommand()
+                cmd.Transaction <- tx
+
+                cmd.CommandText <-
+                    "UPDATE op_checkpoint SET snapshot_hash = @hash WHERE stream_id = @stream_id AND sequence = @sequence;"
+
+                cmd.Parameters.AddWithValue("@hash", cp.SnapshotHash) |> ignore
+                cmd.Parameters.AddWithValue("@stream_id", cp.StreamId) |> ignore
+                cmd.Parameters.AddWithValue("@sequence", cp.Sequence) |> ignore
+                cmd.ExecuteNonQuery() |> ignore
+
+            tx.Commit()
+            Ok resealed.Length

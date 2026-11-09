@@ -194,9 +194,9 @@ module SessionJournal =
 
     /// Build (but do not persist) a checkpoint of `tree` at op-sequence `sequence`
     /// with chain head `headHash`. Mirrors `Replay.Checkpoint.create` but uses the
-    /// connection's tracked head instead of querying a sink — the snapshot hash is
-    /// `sha256Hex (CanonicalJson.encodeNode tree)` and `PreviousChainHead` is the
-    /// head at `sequence`.
+    /// connection's tracked head instead of querying a sink; the seal is Core's
+    /// strict snapshot seal through `CheckpointSeal.create` (Phase 2305), and
+    /// `PreviousChainHead` is the head at `sequence`.
     let makeCheckpoint<'Msg>
         (sessionId: string)
         (sequence: int)
@@ -204,16 +204,7 @@ module SessionJournal =
         (timestamp: DateTimeOffset)
         (tree: Node<'Msg>)
         : Checkpoint<'Msg> =
-        // Phase 412 (A2): chain-bound snapshot hash (head + seq + tree), not tree alone.
-        let snapshotHash =
-            HashChain.snapshotHash headHash sequence (CanonicalJson.encodeNode tree)
-
-        { StreamId = sessionId
-          Sequence = sequence
-          PreviousChainHead = headHash
-          SnapshotHash = snapshotHash
-          Snapshot = tree
-          Timestamp = timestamp }
+        CheckpointSeal.create sessionId sequence headHash timestamp tree
 
 /// Why session reconstruction refused to resume — every arm is an explicit
 /// integrity failure surfaced BEFORE the apply engine runs (default-deny).

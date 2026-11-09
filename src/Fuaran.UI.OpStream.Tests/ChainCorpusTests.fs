@@ -125,4 +125,112 @@ let tests =
                   StreamEntry.chainFormatVersion
                   2
                   "the shipped chain format is v2 (Phase 406/411 + chainVersion)"
+          }
+
+          // Phase 2305 — the checkpoint the corpus seals by Core's strict rule, and the tail-break
+          // vectors over the records above it. The reference seals and verifies through
+          // `CheckpointSeal`, which is Core's `Sealed.seal` / `Sealed.firstBreak`.
+          test "the corpus checkpoint reproduces Core's seal, and every tail-break vector breaks where it names" {
+              let chainDoc = JsonDocument.Parse(readFixture "chain/chain-corpus.json")
+              let cpDoc = JsonDocument.Parse(readFixture "chain/checkpoint-corpus.json")
+
+              let records =
+                  [ for r in chainDoc.RootElement.GetProperty("records").EnumerateArray() ->
+                        let op =
+                            match
+                                Fuaran.UI.Ops.JsonDecode.decodeOp (readFixture (r.GetProperty("opFixture").GetString()))
+                            with
+                            | Ok op -> op
+                            | Error e -> failtestf "decode failed: %A" e
+
+                        let record: OpRecord<obj> =
+                            { StreamId = "corpus"
+                              Sequence = r.GetProperty("sequence").GetInt32()
+                              PreviousHash = r.GetProperty("previousHash").GetString()
+                              Hash = r.GetProperty("hash").GetString()
+                              Op = op
+                              PromptId = promptOf (r.GetProperty("promptId"))
+                              Actor = actorOf (r.GetProperty("actor"))
+                              Timestamp =
+                                DateTimeOffset.FromUnixTimeSeconds(r.GetProperty("timestampUnixSeconds").GetInt64())
+                              ResultEnvelope = resultOf (r.GetProperty("result")) }
+
+                        record ]
+
+              let cpEl = cpDoc.RootElement.GetProperty("checkpoint")
+              let sequence = cpEl.GetProperty("sequence").GetInt32()
+              let head = cpEl.GetProperty("previousChainHead").GetString()
+
+              Expect.equal head records[sequence - 1].Hash "the checkpoint hangs from the record at its sequence"
+
+              let state =
+                  match Fuaran.UI.Ops.JsonDecode.decodeNodeObj (cpEl.GetProperty("state").GetRawText()) with
+                  | Ok n -> n
+                  | Error e -> failtestf "state decode failed: %A" e
+
+              let checkpoint =
+                  CheckpointSeal.create "corpus" sequence head (DateTimeOffset.FromUnixTimeSeconds 0L) state
+
+              Expect.equal
+                  checkpoint.SnapshotHash
+                  (cpEl.GetProperty("snapshotHash").GetString())
+                  "the corpus seal is Core's strict snapshot seal, byte for byte"
+
+              let tail = records |> List.skip sequence
+              let vectors = cpDoc.RootElement.GetProperty("vectors")
+              Expect.isGreaterThan (vectors.GetArrayLength()) 0 "the corpus carries vectors"
+
+              for v in vectors.EnumerateArray() do
+                  let id = v.GetProperty("id").GetString()
+                  let mutation = v.GetProperty("mutation")
+
+                  let index () =
+                      mutation.GetProperty("index").GetInt32()
+
+                  let cp, tail' =
+                      match mutation.GetProperty("kind").GetString() with
+                      | "none" -> checkpoint, tail
+                      | "snapshotHash" ->
+                          { checkpoint with
+                              SnapshotHash = mutation.GetProperty("value").GetString() },
+                          tail
+                      | "dropRecord" -> checkpoint, List.removeAt (index ()) tail
+                      | "recordMember" ->
+                          let i = index ()
+                          let value = mutation.GetProperty("value")
+
+                          let edited =
+                              match mutation.GetProperty("member").GetString() with
+                              | "previousHash" ->
+                                  { tail[i] with
+                                      PreviousHash = value.GetString() }
+                              | "timestampUnixSeconds" ->
+                                  { tail[i] with
+                                      Timestamp = DateTimeOffset.FromUnixTimeSeconds(value.GetInt64()) }
+                              | m -> failtestf "%s: unknown member %s" id m
+
+                          checkpoint, List.updateAt i edited tail
+                      | k -> failtestf "%s: unknown mutation %s" id k
+
+                  let expect = v.GetProperty("expect")
+                  let found = CheckpointSeal.firstBreak cp tail'
+
+                  match expect.GetProperty("break").GetString(), found with
+                  | "none", None -> ()
+                  | "seal", Some(Fuaran.Core.SnapshotBreak.SnapshotHash _) -> ()
+                  | "tail", Some(Fuaran.Core.SnapshotBreak.Tail b) ->
+                      Expect.equal
+                          b.Index
+                          (expect.GetProperty("index").GetInt32())
+                          (id + ": the break's index in the tail")
+
+                      let reason =
+                          match b.Reason with
+                          | Fuaran.Core.ChainBreakReason.SequenceMismatch -> "sequenceMismatch"
+                          | Fuaran.Core.ChainBreakReason.PrevHashLinkBroken -> "prevHashLinkBroken"
+                          | Fuaran.Core.ChainBreakReason.HashMismatch -> "hashMismatch"
+                          | Fuaran.Core.ChainBreakReason.Unrecognised r -> r
+
+                      Expect.equal reason (expect.GetProperty("reason").GetString()) (id + ": the break's reason")
+                  | want, got -> failtestf "%s: expected a %s break, found %A" id want got
           } ]

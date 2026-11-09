@@ -103,8 +103,7 @@ let tests =
                   | r :: _ -> r
                   | [] -> failtest "Expected record at sequence 3"
 
-              let canonical = CanonicalJson.encodeNode midTreeFromGenesis
-              let snapshotHash = HashChain.snapshotHash prevAt3.Hash 3 canonical
+              let snapshotHash = CheckpointSeal.seal prevAt3.Hash 3 midTreeFromGenesis
 
               let cpAt3: Checkpoint<TestMsg> =
                   { StreamId = "eq"
@@ -233,13 +232,12 @@ let tests =
               // real chain head at sequence 2), but whose snapshot hash is
               // self-consistent with that forged head. Empty tail (target = 2).
               let forgedHead = String.replicate 64 "e"
-              let canonical = CanonicalJson.encodeNode treeAt2
 
               let forged: Checkpoint<TestMsg> =
                   { StreamId = "a2anchor"
                     Sequence = 2
                     PreviousChainHead = forgedHead
-                    SnapshotHash = HashChain.snapshotHash forgedHead 2 canonical
+                    SnapshotHash = CheckpointSeal.seal forgedHead 2 treeAt2
                     Snapshot = treeAt2
                     Timestamp = DateTimeOffset.UtcNow }
 
@@ -267,11 +265,10 @@ let tests =
                   | Ok t -> t
                   | Error e -> failtestf "Replay failed: %A" e
 
-              let canonical = CanonicalJson.encodeNode treeAt2
               let bogusChainHead = String.replicate 64 "f"
               // A VALID snapshot hash (bound to the bogus head it will carry) so the
               // snapshot-hash check passes and the BOUNDARY check is what fails.
-              let snapshotHash = HashChain.snapshotHash bogusChainHead 2 canonical
+              let snapshotHash = CheckpointSeal.seal bogusChainHead 2 treeAt2
 
               let badCp: Checkpoint<TestMsg> =
                   { StreamId = "boundary"
@@ -316,8 +313,7 @@ let tests =
                       | r :: _ -> r.Hash
                       | [] -> failtestf "No record at sequence %d" seqNo
 
-                  let canonical = CanonicalJson.encodeNode tree
-                  let snapshotHash = HashChain.snapshotHash prevHash seqNo canonical
+                  let snapshotHash = CheckpointSeal.seal prevHash seqNo tree
 
                   { StreamId = "compact"
                     Sequence = seqNo

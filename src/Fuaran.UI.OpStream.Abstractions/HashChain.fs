@@ -1,7 +1,6 @@
 namespace Fuaran.UI.OpStream.Abstractions
 
 open System
-open System.Globalization
 open Fuaran.UI.Ops.Types
 
 // ============================================================================
@@ -62,32 +61,6 @@ module HashChain =
     let chainConfig: Fuaran.Core.StreamConfig =
         { Fuaran.Core.StreamConfig.canonical with
             Genesis = genesisPreviousHash }
-
-    /// The content address of a checkpoint snapshot (Phase 412 — A2). Binds the
-    /// snapshot to its **position in the chain**: `previousChainHead` (the chain
-    /// head at the checkpoint's op-index) + `sequence` + the canonical tree, in a
-    /// delimited pre-image — the discipline Core's Phase-244 `snapPayload` uses
-    /// (`hashFn prevHash {"snapshot":true,"seq":…,"state":…}`).
-    ///
-    /// Pre-412 the snapshot hash was `sha256(canonicalTree)` alone — position-free.
-    /// What the binding adds: a valid snapshot + hash from one `(head, seq)` no
-    /// longer validates at a different one, so **cross-position snapshot
-    /// substitution** (replaying a real older snapshot as a later checkpoint) is
-    /// caught, as is accidental corruption. Paired with the replay path anchoring
-    /// `previousChainHead` to the real op-chain (including the empty-tail case),
-    /// a checkpoint can only be trusted at a position the verified chain confirms.
-    /// This is defence-in-depth, not tamper-proofing against an adversary who
-    /// rewrites the whole checkpoint record consistently — that is the signed
-    /// attestation seam's job (Core `IAttestationSink`, Phase 320).
-    let snapshotHash (previousChainHead: string) (sequence: int) (canonicalTree: string) : string =
-        let payload =
-            "{\"snapshot\":true,\"seq\":"
-            + sequence.ToString(CultureInfo.InvariantCulture)
-            + ",\"tree\":"
-            + canonicalTree
-            + "}"
-
-        Fuaran.Core.OpStream.sha256Hash previousChainHead payload
 
     /// Compute the hash for an op-record. Identical algorithm on every host —
     /// verification re-derives this and compares.
@@ -219,8 +192,11 @@ module Verify =
     /// Map Core's `ChainBreak` (its `Index` relative to the segment, its
     /// sequences on Core's 0-based basis) onto the domain's 1-based absolute
     /// `VerificationError`. `firstSequence` is the domain sequence the segment's
-    /// first record should carry.
-    let private ofChainBreak (firstSequence: int) (b: Fuaran.Core.ChainBreak) : VerificationError =
+    /// first record should carry. Public since Phase 2305: a checkpoint's tail is
+    /// walked by Core's `Sealed.firstBreak` (`CheckpointSeal.firstBreak`), and its
+    /// break is presented through this same mapping, so the read paths and the
+    /// checkpoint path name a break the same way.
+    let ofChainBreak (firstSequence: int) (b: Fuaran.Core.ChainBreak) : VerificationError =
         let seq1 = b.Index + firstSequence
 
         match b.Reason with
