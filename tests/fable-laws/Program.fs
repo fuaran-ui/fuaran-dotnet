@@ -162,6 +162,58 @@ let main _ =
     for line in floatLayout.Lines do
         printfn "%s" line
 
+    // ---- law 14: the DAG batch capability probe, stated per pipeline ----
+    // Phase 2117. `DagSinkCapabilities.tryBatch` answers by type test on .NET and
+    // `None` under Fable for every sink (the JS runtime carries no interface
+    // identity). The expectation differs by pipeline and is asserted on each; the
+    // printed line is the same on both, so the byte comparison holds.
+    let dagBatchProbeViolations =
+        let notCalled () =
+            failwith "the probe law never calls the sink"
+
+        let plain =
+            { new Fuaran.UI.OpStream.Dag.Abstractions.IDagOpStreamSink<unit> with
+                member _.Add _ = notCalled ()
+                member _.TryGet(_, _) = notCalled ()
+                member _.Head _ = notCalled ()
+                member _.TryAdvanceHead(_, _, _) = notCalled ()
+                member _.Parents(_, _) = notCalled ()
+                member _.Reachable(_, _) = notCalled ()
+                member _.Lca(_, _, _) = notCalled ()
+                member _.Heads _ = notCalled ()
+                member _.Records _ = notCalled ()
+                member _.Tombstone(_, _) = notCalled ()
+                member _.Streams() = notCalled () }
+
+        let capable =
+            { new Fuaran.UI.OpStream.Dag.Abstractions.IDagOpStreamBatchSink<unit> with
+                member _.AddAll _ = notCalled ()
+                member _.Add _ = notCalled ()
+                member _.TryGet(_, _) = notCalled ()
+                member _.Head _ = notCalled ()
+                member _.TryAdvanceHead(_, _, _) = notCalled ()
+                member _.Parents(_, _) = notCalled ()
+                member _.Reachable(_, _) = notCalled ()
+                member _.Lca(_, _, _) = notCalled ()
+                member _.Heads _ = notCalled ()
+                member _.Records _ = notCalled ()
+                member _.Tombstone(_, _) = notCalled ()
+                member _.Streams() = notCalled () }
+
+        let probe (sink: Fuaran.UI.OpStream.Dag.Abstractions.IDagOpStreamSink<unit>) =
+            Fuaran.UI.OpStream.Dag.Abstractions.DagSinkCapabilities.tryBatch sink
+            |> Option.isSome
+
+#if FABLE_COMPILER
+        let capableExpected = false
+#else
+        let capableExpected = true
+#endif
+        let checks = [ probe plain = false; probe capable = capableExpected ]
+        let held = checks |> List.filter id |> List.length
+        printfn "law dag-batch-probe: stated %d/%d" held (List.length checks)
+        List.length checks - held
+
     let violations =
         Laws.mergeViolations mergeVerdict
         + laneFailures
@@ -179,6 +231,7 @@ let main _ =
         + sanitizeKit.Violations
         + escape.Violations
         + floatLayout.Violations
+        + dagBatchProbeViolations
 
     // ---- law 10: a signed page verifies through the published provider ----
     // Phase 2570. Asynchronous, as WebCrypto is: the TOTAL line is printed once

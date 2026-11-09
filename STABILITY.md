@@ -8155,6 +8155,33 @@ families (the phase outcome records why and the decision it needs).
 The control-character records of the chain corpus (records 4 and 5) hash identically on the linear path, the DAG lift
 and the TypeScript twin. Line counts of the paired linear and DAG files are recorded in the phase outcome.
 
+### What rides this slot — Phase 2117 (a linear stream promotes to a DAG in one atomic step)
+
+**Class: ADDITIVE (an optional capability interface, its probe, and one function with its outcome types; no existing
+member changes).** Packages `Fuaran.UI.OpStream.Dag.Abstractions`, `Fuaran.UI.OpStream.Dag.InMemory`,
+`Fuaran.UI.OpStream.Dag.Sqlite`. Rides the slot; `<Version>` does not move.
+
+- **`IDagOpStreamBatchSink<'Msg>` (new, optional).** `AddAll` is `Add`'s contract over a list, atomically: each record
+  passes `DagWriteAdmission.admit` with a parent satisfied by the store or by an earlier record of the batch, a held
+  address is a no-op, and a refusal of any record leaves the store exactly as it was. It does not touch the head. Both
+  shipped DAG sinks implement it (in memory: staged under the sink's lock; SQLite: one `BEGIN IMMEDIATE` transaction),
+  and `Add` is now the one-record case of the same path in each. `IDagOpStreamSink<'Msg>` gains no member, so an
+  implementor outside this repository is unaffected.
+- **`DagSinkCapabilities.tryBatch` (new)** is the one probe for the capability, fenced for Fable as the linear tier's
+  `SinkCapabilities` is: by type test on .NET, `None` for every sink under Fable. A sink without the capability is
+  reported as such; nothing emulates it with a loop of `Add`s.
+- **`DagLift.promote` / `DagLift.promoteWith` (new), with `Promotion` and `PromotionRefusal`.** Verify and lift
+  (`ofLinearVerified`), read the head, write the branch with `AddAll`, then advance the head from "no head" by
+  compare-and-swap; the receipt is the lift's. A second promotion of the same linear head into the same DAG stream is
+  **idempotent** while the head is still the promoted branch head (`AlreadyPromoted`, nothing written) and **refused**
+  once the stream has moved on (`HeadTaken`). A head another writer sets between the check and the swap is
+  `HeadAdvancedConcurrently`: the branch is stored whole and unheaded, the DAG's ordinary losing-writer outcome, never a
+  prefix. `promote` refuses a sink without the capability (`NoAtomicBatch`), and so refuses every sink under Fable;
+  `promoteWith` takes the capable sink by name and works on both pipelines.
+- **Sealing the linear stream is HOST policy.** A promotion reads the linear records and never writes them (pinned:
+  the linear SQLite file is byte-identical before and after). Whether the linear stream is closed to further appends
+  once promoted is for the host to decide and enforce; no sink enforces it.
+
 ### What rides this slot — Phase 2305 (the linear checkpoint is Core's `Snapshot`, and replay from it is Core's `Compacted` fold)
 
 **Class: BREAKING (surface guard: 9 removed or retyped in Abstractions, 1 added-but-breaking in Replay, 24 additive

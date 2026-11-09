@@ -369,35 +369,92 @@ FROM dag_op_record WHERE stream_id = @s ORDER BY hash;"""
             use conn = openConnection ()
             presentHashesOn conn hashes
 
-    /// Two-arg constructor — verifies every read (Phase 793).
-    new(connectionString: string, codec: IOpJsonCodec<'Msg>) =
-        SqliteDagSink<'Msg>(connectionString, codec, LoadVerification.Full)
+    /// Store `record`'s row on `conn`, inside the caller's transaction. The one
+    /// INSERT both `Add` and `AddAll` reach, after admission.
+    let insertOn (conn: SqliteConnection) (record: DagOpRecord<'Msg>) : unit =
+        use cmd = conn.CreateCommand()
 
-    interface IDagOpStreamSink<'Msg> with
+        cmd.CommandText <-
+            """INSERT INTO dag_op_record
+    (stream_id, hash, parents_json, op_json, outcome_hash, prompt_id, user_id, timestamp, result_envelope_json, tombstoned)
+VALUES
+    (@s, @h, @parents, @op, @outcome, @prompt, @user, @ts, @env, @tomb);"""
 
-        member _.Add(record: DagOpRecord<'Msg>) : Async<unit> =
-            async {
-                // A busy database is CONTENTION, not corruption (Phase 1525).
-                // `Add` has no "try again" channel — it returns unit, and a caller
-                // cannot tell a completed append from a swallowed one — so unlike
-                // the CAS below it is refused BY NAME rather than reported as
-                // success. The name is the point: a raw `SqliteException` escaping
-                // here reads as a store defect and sends the reader to the wrong
-                // question.
-                try
-                    use conn = openConnection ()
+        cmd.Parameters.AddWithValue("@s", record.StreamId) |> ignore
+        cmd.Parameters.AddWithValue("@h", record.Hash) |> ignore
 
-                    // `BEGIN IMMEDIATE` (Phase 1525). The admission below is a
-                    // read-then-write over the same rows — the parent-presence and
-                    // held-address SELECTs, then the INSERT. A
-                    // DEFERRED transaction takes its write lock only when the first
-                    // write executes, so two writers can both pass their reads and
-                    // one then fails to upgrade; the reads that justified the write
-                    // are stale by the time it lands. IMMEDIATE takes the write lock
-                    // up front, so the reads and the write see one state.
-                    use tx = conn.BeginTransaction(false)
+        cmd.Parameters.AddWithValue("@parents", DagJson.encodeParents record.Parents)
+        |> ignore
 
-                    // ── ADMISSION (Phase 1937): the check both DAG sinks share ──
+        cmd.Parameters.AddWithValue("@op", codec.EncodeOp record.Op) |> ignore
+
+        cmd.Parameters.AddWithValue(
+            "@outcome",
+            (match record.OutcomeHash with
+             | Some o -> box o
+             | None -> box DBNull.Value)
+        )
+        |> ignore
+
+        cmd.Parameters.AddWithValue(
+            "@prompt",
+            (match record.PromptId with
+             | Some p -> box p
+             | None -> box DBNull.Value)
+        )
+        |> ignore
+
+        // Phase 1144 — the `user_id` column now holds the canonical typed-actor
+        // JSON (`Actor.encode`), mirroring what the LINEAR sqlite sink has stored
+        // since Phase 320. The column is reused rather than renamed: pre-1144 rows
+        // hold a bare id string and read back via `Actor.ofLegacyString`, so an
+        // existing database still OPENS. Its records' content addresses do not
+        // carry forward, though — see docs/migrations/1144-typed-actor-dag-fold.md.
+        cmd.Parameters.AddWithValue("@user", Actor.encode record.Actor) |> ignore
+
+        cmd.Parameters.AddWithValue("@ts", record.Timestamp.ToUnixTimeSeconds())
+        |> ignore
+
+        cmd.Parameters.AddWithValue("@env", ResultEnvelopeJson.encode record.ResultEnvelope)
+        |> ignore
+
+        cmd.Parameters.AddWithValue("@tomb", (if record.Tombstoned then 1 else 0))
+        |> ignore
+
+        cmd.ExecuteNonQuery() |> ignore
+
+    /// Admit and store every record of `records`, in order, in ONE `BEGIN
+    /// IMMEDIATE` transaction (Phase 2117; `Add` is the one-record case). Each
+    /// record runs the admission both DAG sinks share (`DagWriteAdmission.admit`,
+    /// Phase 1937) on the transaction's own connection, so a parent stored earlier
+    /// in the batch is present and an address stored earlier is held. A refusal
+    /// throws before the commit and the transaction rolls back on dispose: every
+    /// record or none. `what` names the write in the contention refusal.
+    let addAll (what: string) (streamId: string) (records: DagOpRecord<'Msg> list) : unit =
+        match records with
+        | [] -> ()
+        | _ ->
+            // A busy database is CONTENTION, not corruption (Phase 1525).
+            // `Add` / `AddAll` have no "try again" channel — they return unit, and
+            // a caller cannot tell a completed append from a swallowed one — so
+            // unlike the CAS below a busy store is refused BY NAME rather than
+            // reported as success. The name is the point: a raw `SqliteException`
+            // escaping here reads as a store defect and sends the reader to the
+            // wrong question.
+            try
+                use conn = openConnection ()
+
+                // `BEGIN IMMEDIATE` (Phase 1525). The admission below is a
+                // read-then-write over the same rows — the parent-presence and
+                // held-address SELECTs, then the INSERT. A DEFERRED transaction
+                // takes its write lock only when the first write executes, so two
+                // writers can both pass their reads and one then fails to upgrade;
+                // the reads that justified the write are stale by the time it
+                // lands. IMMEDIATE takes the write lock up front, so the reads and
+                // the write see one state.
+                use tx = conn.BeginTransaction(false)
+
+                for record in records do
                     // The address recomputed, every parent present store-wide (one
                     // batched `IN (...)` query, not one per parent: a guest branch's
                     // genesis hangs off a record in the HOST stream), and an address
@@ -414,70 +471,27 @@ FROM dag_op_record WHERE stream_id = @s ORDER BY hash;"""
                     match DagWriteAdmission.admit present.Contains held record with
                     | Error refusal -> invalidOp (DagWriteAdmission.describe "SqliteDagSink" record refusal)
                     | Ok DagAdmission.AlreadyHeld -> ()
-                    | Ok DagAdmission.Store ->
+                    | Ok DagAdmission.Store -> insertOn conn record
 
-                        use cmd = conn.CreateCommand()
+                tx.Commit()
+            with :? SqliteException as ex when SqliteConnections.isContention ex ->
+                invalidOp (
+                    sprintf
+                        "SqliteDagSink: could not append %s to stream '%s' — SQLITE_BUSY (%d) after busy_timeout=%dms: another writer holds the database. This is contention, not corruption — retry the append."
+                        what
+                        streamId
+                        ex.SqliteErrorCode
+                        SqliteConnections.busyTimeoutMs
+                )
 
-                        cmd.CommandText <-
-                            """INSERT INTO dag_op_record
-            (stream_id, hash, parents_json, op_json, outcome_hash, prompt_id, user_id, timestamp, result_envelope_json, tombstoned)
-        VALUES
-            (@s, @h, @parents, @op, @outcome, @prompt, @user, @ts, @env, @tomb);"""
+    /// Two-arg constructor — verifies every read (Phase 793).
+    new(connectionString: string, codec: IOpJsonCodec<'Msg>) =
+        SqliteDagSink<'Msg>(connectionString, codec, LoadVerification.Full)
 
-                        cmd.Parameters.AddWithValue("@s", record.StreamId) |> ignore
-                        cmd.Parameters.AddWithValue("@h", record.Hash) |> ignore
+    interface IDagOpStreamSink<'Msg> with
 
-                        cmd.Parameters.AddWithValue("@parents", DagJson.encodeParents record.Parents)
-                        |> ignore
-
-                        cmd.Parameters.AddWithValue("@op", codec.EncodeOp record.Op) |> ignore
-
-                        cmd.Parameters.AddWithValue(
-                            "@outcome",
-                            (match record.OutcomeHash with
-                             | Some o -> box o
-                             | None -> box DBNull.Value)
-                        )
-                        |> ignore
-
-                        cmd.Parameters.AddWithValue(
-                            "@prompt",
-                            (match record.PromptId with
-                             | Some p -> box p
-                             | None -> box DBNull.Value)
-                        )
-                        |> ignore
-
-                        // Phase 1144 — the `user_id` column now holds the canonical typed-actor
-                        // JSON (`Actor.encode`), mirroring what the LINEAR sqlite sink has stored
-                        // since Phase 320. The column is reused rather than renamed: pre-1144 rows
-                        // hold a bare id string and read back via `Actor.ofLegacyString`, so an
-                        // existing database still OPENS. Its records' content addresses do not
-                        // carry forward, though — see docs/migrations/1144-typed-actor-dag-fold.md.
-                        cmd.Parameters.AddWithValue("@user", Actor.encode record.Actor) |> ignore
-
-                        cmd.Parameters.AddWithValue("@ts", record.Timestamp.ToUnixTimeSeconds())
-                        |> ignore
-
-                        cmd.Parameters.AddWithValue("@env", ResultEnvelopeJson.encode record.ResultEnvelope)
-                        |> ignore
-
-                        cmd.Parameters.AddWithValue("@tomb", (if record.Tombstoned then 1 else 0))
-                        |> ignore
-
-                        cmd.ExecuteNonQuery() |> ignore
-
-                    tx.Commit()
-                with :? SqliteException as ex when SqliteConnections.isContention ex ->
-                    invalidOp (
-                        sprintf
-                            "SqliteDagSink: could not append record %s to stream '%s' — SQLITE_BUSY (%d) after busy_timeout=%dms: another writer holds the database. This is contention, not corruption — retry the append."
-                            record.Hash
-                            record.StreamId
-                            ex.SqliteErrorCode
-                            SqliteConnections.busyTimeoutMs
-                    )
-            }
+        member _.Add(record: DagOpRecord<'Msg>) : Async<unit> =
+            async { addAll ("record " + record.Hash) record.StreamId [ record ] }
 
         member _.TryGet(streamId: string, hash: string) : Async<DagOpRecord<'Msg> option> =
             async {
@@ -617,6 +631,16 @@ WHERE stream_id = @s AND hash = @h;"""
                     acc.Add(reader.GetString 0)
 
                 return List.ofSeq acc
+            }
+
+    /// Phase 2117 — the atomic batch add: one `BEGIN IMMEDIATE` transaction
+    /// over every record, committed only when each was admitted.
+    interface IDagOpStreamBatchSink<'Msg> with
+        member _.AddAll(records: DagOpRecord<'Msg> list) : Async<unit> =
+            async {
+                match records with
+                | [] -> ()
+                | first :: _ -> addAll (sprintf "a batch of %d records" (List.length records)) first.StreamId records
             }
 
 module SqliteDagSink =

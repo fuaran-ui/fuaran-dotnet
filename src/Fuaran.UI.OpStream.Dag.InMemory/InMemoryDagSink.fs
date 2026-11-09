@@ -37,6 +37,10 @@ open Fuaran.UI.OpStream.Dag.Abstractions
 //  holds is an idempotent no-op. Admission runs before the stream exists, so a
 //  refused first `Add` leaves no empty stream behind for `Streams` to list.
 //
+//  `AddAll` (Phase 2117, `IDagOpStreamBatchSink`) is the same admission over a
+//  list, staged under the lock and stored only when every record is admitted;
+//  `Add` is its one-record case.
+//
 //  A record is stored with its timestamp as its content address reads it —
 //  whole unix seconds, UTC — which is what the SQLite DAG sink stores, so a
 //  record reads back the same from either (Phase 1937).
@@ -91,27 +95,46 @@ type InMemoryDagSink<'Msg>(loadVerification: LoadVerification) =
     let knownHash (hash: string) : bool =
         streams.Values |> Seq.exists (fun state -> state.Records.ContainsKey hash)
 
+    /// Admit every record of `records`, in order, against the store PLUS the
+    /// records staged before it, and store the staged set only when every one was
+    /// admitted (Phase 2117) — so a refusal anywhere leaves the store exactly as
+    /// it was. `Add` is the one-record case. An address already held, in the
+    /// store or earlier in the batch, is a no-op. Takes the lock.
+    let addAll (records: DagOpRecord<'Msg> list) : unit =
+        lock lockObj (fun () ->
+            let staged = Dictionary<string * string, DagOpRecord<'Msg>>()
+            let stagedHash = HashSet<string>()
+
+            for record in records do
+                let held (hash: string) =
+                    staged.ContainsKey((record.StreamId, hash))
+                    || (match streams.TryGetValue record.StreamId with
+                        | true, state -> state.Records.ContainsKey hash
+                        | false, _ -> false)
+
+                let present (hash: string) =
+                    stagedHash.Contains hash || knownHash hash
+
+                match DagWriteAdmission.admit present held record with
+                | Error refusal -> invalidOp (DagWriteAdmission.describe "InMemoryDagSink" record refusal)
+                | Ok DagAdmission.AlreadyHeld -> ()
+                | Ok DagAdmission.Store ->
+                    staged[(record.StreamId, record.Hash)] <-
+                        { record with
+                            Timestamp = DateTimeOffset.FromUnixTimeSeconds(record.Timestamp.ToUnixTimeSeconds()) }
+
+                    stagedHash.Add record.Hash |> ignore
+
+            // Every record admitted: only now does any stream's state change.
+            for KeyValue((streamId, hash), record) in staged do
+                (getOrCreate streamId).Records[ hash ] <- record)
+
     /// Default construction verifies every read (Phase 793).
     new() = InMemoryDagSink<'Msg>(LoadVerification.Full)
 
     interface IDagOpStreamSink<'Msg> with
 
-        member _.Add(record: DagOpRecord<'Msg>) : Async<unit> =
-            async {
-                lock lockObj (fun () ->
-                    let held (hash: string) =
-                        match streams.TryGetValue record.StreamId with
-                        | true, state -> state.Records.ContainsKey hash
-                        | false, _ -> false
-
-                    match DagWriteAdmission.admit knownHash held record with
-                    | Error refusal -> invalidOp (DagWriteAdmission.describe "InMemoryDagSink" record refusal)
-                    | Ok DagAdmission.AlreadyHeld -> ()
-                    | Ok DagAdmission.Store ->
-                        (getOrCreate record.StreamId).Records[ record.Hash ] <-
-                            { record with
-                                Timestamp = DateTimeOffset.FromUnixTimeSeconds(record.Timestamp.ToUnixTimeSeconds()) })
-            }
+        member _.Add(record: DagOpRecord<'Msg>) : Async<unit> = async { addAll [ record ] }
 
         member _.TryGet(streamId: string, hash: string) : Async<DagOpRecord<'Msg> option> =
             async {
@@ -247,6 +270,11 @@ type InMemoryDagSink<'Msg>(loadVerification: LoadVerification) =
 
         member _.Streams() : Async<string list> =
             async { return lock lockObj (fun () -> streams.Keys |> List.ofSeq) }
+
+    /// Phase 2117 — the atomic batch add. Admission and staging run under the
+    /// sink's one lock and nothing is stored until every record is admitted.
+    interface IDagOpStreamBatchSink<'Msg> with
+        member _.AddAll(records: DagOpRecord<'Msg> list) : Async<unit> = async { addAll records }
 
 module InMemoryDagSink =
     /// Fresh sink as the abstraction interface. Verifies every read (Phase 793).
