@@ -208,6 +208,8 @@
     <Compile Include="DefectListTests.fs" />
     <!-- Phase 2059: the JVal entry points decide exactly what render-then-decode decides. -->
     <Compile Include="JValEntryTests.fs" />
+    <!-- Phase 2639 — the decoder parity harness: every verdict of the node decoder against tests/decoder-parity/. -->
+    <Compile Include="DecoderParity.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
