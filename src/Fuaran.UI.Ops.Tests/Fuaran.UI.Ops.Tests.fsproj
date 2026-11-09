@@ -21,6 +21,8 @@
     <Compile Include="SubtreeTraversalTests.fs" />
     <!-- Phase 2044: TreeOp.kindName / targets / footprint. -->
     <Compile Include="TreeOpProjectionTests.fs" />
+    <!-- Phase 2651: Conformance.footprintInLawsAt over the move family. -->
+    <Compile Include="MoveFootprintLawTests.fs" />
     <Compile Include="WireDecodeApplyTests.fs" />
     <!-- Phase 192 — the shared, pipeline-neutral apply-parity core, linked from
          samples/apply-demo so the .NET test and the Fable host run byte-identical
@@ -50,5 +52,7 @@
     <!-- PlacementTests.fs — generated-tree properties over the placement algebra. -->
     <PackageReference Include="FsCheck" />
     <PackageReference Include="FSharp.Core" />
+    <!-- Phase 2651: the base-aware footprint law family (MoveFootprintLawTests.fs). -->
+    <PackageReference Include="Fuaran.Core.Conformance" />
   </ItemGroup>
 </Project>

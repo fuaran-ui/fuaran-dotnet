@@ -177,6 +177,10 @@ let private footprintAtTest =
 let private footprintInAtTest =
     "the BASE-AWARE footprint is sound and refines the pure one (footprintInLawsAt)"
 
+/// The same family over the MOVE family (Phase 2651), in `Fuaran.UI.Ops.Tests`: moves out of a
+/// container beside restyles of it, the pair the source parent's `kind` slot frees.
+let private footprintInMoveTest = "footprintInLawsAt holds over the move family"
+
 let private mergeConflictTest =
     "merge-conflict reporting is symmetric, deterministic and complete (mergeConflictLaws)"
 
@@ -892,6 +896,7 @@ let census: (string * Adoption) list =
       "Conformance.footprintInLawsAt",
       AdoptedAcross
           [ footprintInAtTest, "Conformance.footprintInLawsAt (.NET)"
+            footprintInMoveTest, "Conformance.footprintInLawsAt (.NET, move family)"
             footprintInFableTest, "Conformance.footprintInLawsAt (Fable and Node)" ]
       "Conformance.seamRefusalLaws",
       NotUsed

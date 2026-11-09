@@ -209,7 +209,23 @@ let private resolvedAt (state: Node<'Msg>) (after: Node<'Msg> option) (op: TreeO
     match op with
     | TreeOp.InsertChild(parent, child) -> structural (Fuaran.Core.SkeletonOp.InsertChild(parent, child))
     | TreeOp.RemoveNode target -> structural (Fuaran.Core.SkeletonOp.RemoveNode target)
-    | TreeOp.MoveNode(target, newParent) -> structural (Fuaran.Core.SkeletonOp.MoveNode(target, newParent))
+    // The SOURCE parent's child list is the only part of it the move changes,
+    // and the child list is held in the parent's `kind`: Core's whole-node read
+    // and structure write of the source parent become a read and a write of its
+    // `kind` slot (Phase 2651), so a restyle or a state edit of the container
+    // the node left commutes with the move. The destination keeps Core's named
+    // structure write — the address the fold interleaves two appends at — and
+    // a move within one parent (source = destination) is Core's arm unchanged.
+    | TreeOp.MoveNode(target, newParent) ->
+        let core = structural (Fuaran.Core.SkeletonOp.MoveNode(target, newParent))
+        let destination = key newParent
+
+        match Set.toList (Set.remove destination core.StructureWrites) with
+        | [ source ] when Set.isEmpty core.UnknownParentWrites ->
+            { CoreFootprint.union core (CoreFootprint.slotEdit source "kind") with
+                Reads = Set.remove source core.Reads
+                StructureWrites = Set.singleton destination }
+        | _ -> core
     | TreeOp.ReorderChildren(parent, order) -> structural (Fuaran.Core.SkeletonOp.ReorderChildren(parent, order))
     // The kind is rewritten whole: the nodes the old kind held are taken out
     // and the nodes the new kind holds put in.

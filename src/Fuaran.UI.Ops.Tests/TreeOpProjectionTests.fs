@@ -484,4 +484,46 @@ let tests =
                   (TreeOpFootprint.ofScriptIn inPlaceBase script)
                   (List.reduce Fuaran.Core.Footprint.union each)
                   "unioned"
+          }
+
+          test "base-aware: a move writes its source parent's kind slot, never the whole parent (Phase 2651)" {
+              let move = TreeOp.MoveNode(NodeId "k", NodeId "p2")
+              let f = TreeOpFootprint.ofOpIn inPlaceBase move
+
+              Expect.isEmpty f.UnknownParentWrites "the source parent is resolved"
+              Expect.equal f.StructureWrites (Set.singleton "p2") "only the destination is a named structure write"
+              Expect.isFalse (f.Reads.Contains "p1") "the source parent is not read whole"
+              Expect.isFalse (f.ContentWrites.Contains "p1") "nor content-written"
+              Expect.equal f.ContentWrites (Set.singleton "k") "the moved node alone is content-written"
+              Expect.isTrue (f.SlotWrites.Contains("p1", "kind")) "the source's child list, in its kind slot"
+              Expect.isTrue (f.SlotReads.Contains("p1", "kind")) "read as it is rewritten"
+
+              // the pair the phase frees: a restyle of the container the node left
+              for restyle in [ tone "p1"; TreeOp.UpdateStyle(NodeId "p1", Defaults.style) ] do
+                  Expect.isTrue (independentAt inPlaceBase move restyle) (sprintf "move beside %A" restyle)
+                  Expect.isTrue (bothOrdersApply inPlaceBase move restyle) "and both orders apply"
+
+              // still ordered: everything else that touches the source's child list or its kind
+              let independent other =
+                  Fuaran.Core.Ops.independent f (TreeOpFootprint.ofOpIn inPlaceBase other)
+
+              Expect.isFalse (independent (TreeOp.InsertChild(NodeId "p1", leaf "n"))) "an insert into the source"
+              Expect.isFalse (independent (TreeOp.RemoveNode(NodeId "p1"))) "the source's removal"
+              Expect.isFalse (independent (TreeOp.MoveNode(NodeId "p1", NodeId "p2"))) "a move of the source"
+              Expect.isFalse (independent (TreeOp.EditNode(NodeId "p1", (leaf "p1").Kind))) "a kind edit of the source"
+
+              Expect.isFalse
+                  (Fuaran.Core.Ops.independent f (Fuaran.Core.Footprint.slotEdit "p1" "kind"))
+                  "a prop edit of the source (its kind slot)"
+
+              Expect.isFalse
+                  (independent (tone "p2"))
+                  "a restyle of the destination stays ordered (Core's whole-node rule)"
+
+              // a move within one parent keeps Core's arm whole
+              let within =
+                  TreeOpFootprint.ofOpIn inPlaceBase (TreeOp.MoveNode(NodeId "k", NodeId "p1"))
+
+              Expect.isEmpty within.SlotWrites "no slot for a move within one parent"
+              Expect.equal within.StructureWrites (Set.singleton "p1") "the one parent, whole"
           } ]

@@ -97,9 +97,9 @@ let fixtures: (string * FoldExpectation * string * Node<TestMsg> * TreeOp<TestMs
       [ toneOf ToneVariant.Brand leftChildId ],
       [ toneOf ToneVariant.Brand leftChildId ]
 
-      "fold-refusal-move-and-source-edit",
-      Refuses,
-      "One branch moves a node out of a container while the other retones the container itself. The tree merge auto-merges this pair; the shipped base-aware footprint content-writes a move's source parent, so Core reports a ConcurrentUpdate at the container and the policy refuses it. Pinned as the reference refuses today, so a host matches the projection rather than the tree merge",
+      "fold-move-and-source-edit",
+      Derives,
+      "One branch moves a node out of a container while the other retones the container itself. The move writes only the container's child list, which the base-aware footprint declares as the container's kind slot (Phase 2651), and the retone writes its style: two slots, no conflict, so the fold composes them",
       nested,
       [ TreeOp.MoveNode(NodeId "m", NodeId "boxb") ],
       [ toneOf ToneVariant.Brand (NodeId "boxa") ]
