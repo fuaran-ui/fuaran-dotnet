@@ -7818,7 +7818,7 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.103.0 — the slot opened after v0.102.0 was released (DRAFT — untagged)
+## 0.103.0 (RELEASED — tagged v0.103.0 at 1b783c61, 2026-11-09)
 
 _`v0.102.0` is TAGGED (2026-11-06, at `00225688`), so nothing may ride it: the changes below open the next slot.
 The slot was opened as `0.102.1` (additive) by Phases 2327 and 2010; Phase 2060 REMOVES two public `Introspect`
