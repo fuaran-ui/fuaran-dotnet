@@ -38,6 +38,7 @@ open System
 open System.IO
 open System.Security.Cryptography
 open System.Text
+open System.Text.Json
 open Expecto
 open Fuaran.UI.Types
 open Fuaran.UI.KindPolicy
@@ -56,9 +57,16 @@ type Family =
     /// and `decodeOp` answers ONE error, so the order a decoder visits its
     /// members in is held here where the node families' §29 list sorts it away.
     | Ops
+    /// Every member of every kind object in every `nodes/` fixture, dropped, made
+    /// `null`, and retyped as a boolean, a string and a fractional number — the
+    /// corpus says little about most kinds' refusals, and a family that moves
+    /// onto the generated structure must refuse exactly as it did. Its rows hold
+    /// a digest of the verdict (the whole verdict, as the node families record
+    /// it), since there are thousands; a moved row prints the verdict it has now.
+    | Mutations
 
 module Family =
-    let all = [ Nodes; Lenient; Reject; Recovery; OverClose; Ops ]
+    let all = [ Nodes; Lenient; Reject; Recovery; OverClose; Ops; Mutations ]
 
     let name (family: Family) : string =
         match family with
@@ -68,6 +76,7 @@ module Family =
         | Recovery -> "recovery"
         | OverClose -> "overclose"
         | Ops -> "ops"
+        | Mutations -> "mutations"
 
 /// The policy every admission verdict is read under: the escape hatches and the
 /// most common display kind excluded, so the refusal reaches deep positions on
@@ -171,6 +180,70 @@ let columns =
       "refusedRecoveries"
       "admission" ]
 
+/// The mutations of one document: for every kind object in it (an object
+/// member `kind` carrying `$type`), each other member dropped, made `null`,
+/// and replaced by `true`, by `"x"` and by `1.5`, as (id suffix, text).
+let mutations (text: string) : (string * string) list =
+    let parse () =
+        // The corpus's deep fixtures nest past the reader's default 64.
+        match Nodes.JsonNode.Parse(text, Nullable(), JsonDocumentOptions(MaxDepth = 4096)) with
+        | null -> failwith "decoder parity: a fixture parsed to null"
+        | n -> n
+
+    let rec kindObjects (steps: string list) (n: Nodes.JsonNode) : string list list =
+        match n with
+        | :? Nodes.JsonObject as o ->
+            let own =
+                match o.["kind"] with
+                | :? Nodes.JsonObject as k when k.ContainsKey "$type" -> [ steps @ [ "kind" ] ]
+                | _ -> []
+
+            own
+            @ [ for kv in o do
+                    match kv.Value with
+                    | Null -> ()
+                    | NonNull v -> yield! kindObjects (steps @ [ kv.Key ]) v ]
+        | :? Nodes.JsonArray as a ->
+            [ for i in 0 .. a.Count - 1 do
+                  match a.[i] with
+                  | Null -> ()
+                  | NonNull v -> yield! kindObjects (steps @ [ string i ]) v ]
+        | _ -> []
+
+    let rec at (n: Nodes.JsonNode) (steps: string list) : Nodes.JsonObject =
+        match steps, n with
+        | [], (:? Nodes.JsonObject as o) -> o
+        | step :: rest, (:? Nodes.JsonObject as o) ->
+            match o.[step] with
+            | null -> failwith "decoder parity: a mutation path left the document"
+            | c -> at c rest
+        | step :: rest, (:? Nodes.JsonArray as a) ->
+            match a.[int step] with
+            | null -> failwith "decoder parity: a mutation path left the document"
+            | c -> at c rest
+        | _ -> failwith "decoder parity: a mutation path left the document"
+
+    let deep = JsonSerializerOptions(MaxDepth = 4096)
+
+    let edits: (string * (Nodes.JsonObject -> string -> unit)) list =
+        [ "drop", (fun o k -> o.Remove k |> ignore)
+          "null", (fun o k -> o.[k] <- null)
+          "bool", (fun o k -> o.[k] <- Nodes.JsonValue.Create true)
+          "string", (fun o k -> o.[k] <- Nodes.JsonValue.Create "x")
+          "float", (fun o k -> o.[k] <- Nodes.JsonValue.Create 1.5) ]
+
+    [ for steps in kindObjects [] (parse ()) do
+          let keys =
+              [ for kv in at (parse ()) steps do
+                    if kv.Key <> "$type" then
+                        yield kv.Key ]
+
+          for key in keys do
+              for name, edit in edits do
+                  let doc = parse ()
+                  edit (at doc steps) key
+                  yield sprintf "%s/%s:%s" (String.concat "/" steps) key name, doc.ToJsonString(deep) ]
+
 /// Every fixture of one family, as (id, document text), in a stable order.
 let fixtures (family: Family) : (string * string) list =
     let fromCorpusWith (decoder: string) (kinds: string list) =
@@ -196,6 +269,10 @@ let fixtures (family: Family) : (string * string) list =
     | Recovery -> fromProject "recovery-fixtures"
     | OverClose -> fromProject "overclose-fixtures"
     | Ops -> fromCorpusWith "op" [ "op-round-trip"; "reject" ]
+    | Mutations ->
+        [ for id, text in fromCorpus "node-round-trip" do
+              for suffix, mutated in mutations text do
+                  yield id + "#" + suffix, mutated ]
 
 /// One family's rows: id, then the verdict columns, tab-separated.
 let rows (family: Family) : (string * string) list =
@@ -204,12 +281,18 @@ let rows (family: Family) : (string * string) list =
         let columns =
             match family with
             | Ops -> opVerdict text
+            | Mutations -> [ digest (String.concat "\t" (verdict text)) ]
             | _ -> verdict text
 
         id, String.concat "\t" (id :: columns))
 
+let private headerOf (family: Family) : string list =
+    match family with
+    | Mutations -> [ "fixture"; "verdictDigest" ]
+    | _ -> columns
+
 let render (family: Family) : string =
-    let header = String.concat "\t" columns
+    let header = String.concat "\t" (headerOf family)
 
     (header :: (rows family |> List.map snd) |> String.concat "\n") + "\n"
 
@@ -261,11 +344,18 @@ let divergences (dir: string) (family: Family) : string list =
                 let a = row.Split('\t')
 
                 let fields =
-                    List.zip3 columns (List.ofArray e) (List.ofArray a)
+                    List.zip3 (headerOf family) (List.ofArray e) (List.ofArray a)
                     |> List.filter (fun (_, x, y) -> x <> y)
                     |> List.map (fun (c, x, y) -> sprintf "    %s\n      was %s\n      now %s" c x y)
 
-                Some(sprintf "%s:\n%s" id (String.concat "\n" fields)))
+                let now =
+                    match family with
+                    | Mutations ->
+                        let text = fixtures family |> List.find (fun (i, _) -> i = id) |> snd
+                        sprintf "\n    document %s\n    verdict now %s" text (String.concat " | " (verdict text))
+                    | _ -> ""
+
+                Some(sprintf "%s:\n%s%s" id (String.concat "\n" fields) now))
 
     missing @ moved
 
