@@ -1110,4 +1110,9 @@ let derivations: Derivation list =
       // Phase 2188 — `mapMsg`, the tree with its message type rewritten. It
       // replaces the hand-written structural map `NodeMap` carried, so a new
       // kind or field cannot leave the map behind.
-      Derivation.MapMsg ]
+      Derivation.MapMsg
+      // Phase 2639 — the collecting decoders and the public per-spec entries
+      // (Core's `CollectingDecoders` record). `JsonDecode` reads the kind specs
+      // it has moved off its own structure through them, supplying its policy
+      // as overrides of that record; the rest it still decodes by hand.
+      Derivation.SpecDecoders ]
