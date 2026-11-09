@@ -7828,6 +7828,11 @@ removal. The `<Version>` advance and its ledger record are the release act's, re
 the slot's account of what rides it. Landed together as tier 1 of the core-adoption campaign
 (`camp-obj-core-adoption-20261107T10162`), wave 1._
 
+_**Cut 2026-11-09.** `<Version>` advanced 0.102.0 → 0.103.0 (`version cut`, recorded in the workspace ledger) on the
+operator's D1 ruling B: the slot — seventeen rides, seven of them breaking, every `Fuaran.Core.*` pin at 0.41.0 — is
+released as it stands; the DAG cut (fuaran#2645) takes a later breaking slot. Consumers of the op-stream tier run the
+two one-shot re-seals, `docs/migrations/1937-*.md` and `docs/migrations/2305-core-snapshot.md`, once._
+
 ### What rides this slot — Phase 2327 (the DAG fold arbitrates with the base-aware footprint)
 
 **Class: additive**, with a behaviour change in the new entries only.
