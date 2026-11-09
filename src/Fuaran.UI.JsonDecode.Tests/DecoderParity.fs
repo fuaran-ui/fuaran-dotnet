@@ -52,9 +52,13 @@ type Family =
     | Reject
     | Recovery
     | OverClose
+    /// Every op-decoder fixture (round-trips and rejects): an op carries nodes,
+    /// and `decodeOp` answers ONE error, so the order a decoder visits its
+    /// members in is held here where the node families' §29 list sorts it away.
+    | Ops
 
 module Family =
-    let all = [ Nodes; Lenient; Reject; Recovery; OverClose ]
+    let all = [ Nodes; Lenient; Reject; Recovery; OverClose; Ops ]
 
     let name (family: Family) : string =
         match family with
@@ -63,6 +67,7 @@ module Family =
         | Reject -> "reject"
         | Recovery -> "recovery"
         | OverClose -> "overclose"
+        | Ops -> "ops"
 
 /// The policy every admission verdict is read under: the escape hatches and the
 /// most common display kind excluded, so the refusal reaches deep positions on
@@ -138,6 +143,25 @@ let verdict (text: string) : string list =
       "refused=" + String.concat "," lenient.Refused
       outcome admitted ]
 
+/// An op fixture's verdict: the op decoder's answer, its work, and its answer
+/// under the admission policy (the reliance columns do not apply to an op).
+let opVerdict (text: string) : string list =
+    let opOutcome (r: Result<Fuaran.UI.Ops.Types.TreeOp<obj>, DecodeError>) =
+        match r with
+        | Ok op ->
+            let bytes = CanonicalJson.encodeOp op
+            sprintf "ok %s %d" (digest bytes) bytes.Length
+        | Error e -> "refused " + cell (defect e)
+
+    let strict, work = DecodeWork.measure (fun () -> decodeOp text)
+
+    [ opOutcome strict
+      sprintf "steps=%d units=%d nesting=%d parses=%d" work.Steps work.Units work.MaxNesting work.Parses
+      "-"
+      "-"
+      "-"
+      opOutcome (decodeOpWithPolicy admissionPolicy text) ]
+
 let columns =
     [ "fixture"
       "strict"
@@ -149,13 +173,15 @@ let columns =
 
 /// Every fixture of one family, as (id, document text), in a stable order.
 let fixtures (family: Family) : (string * string) list =
-    let fromCorpus (kind: string) =
+    let fromCorpusWith (decoder: string) (kinds: string list) =
         let root, entries = Corpus.load ()
 
         entries
-        |> List.filter (fun e -> e.Kind = kind && e.Decoder = "node")
+        |> List.filter (fun e -> List.contains e.Kind kinds && e.Decoder = decoder)
         |> List.sortWith (fun a b -> String.CompareOrdinal(a.Id, b.Id))
         |> List.map (fun e -> e.Id, Corpus.readPayload root e.InputFile)
+
+    let fromCorpus (kind: string) = fromCorpusWith "node" [ kind ]
 
     let fromProject (dir: string) =
         Directory.GetFiles(Path.Combine(AppContext.BaseDirectory, dir), "*.txt")
@@ -169,11 +195,18 @@ let fixtures (family: Family) : (string * string) list =
     | Reject -> fromCorpus "reject"
     | Recovery -> fromProject "recovery-fixtures"
     | OverClose -> fromProject "overclose-fixtures"
+    | Ops -> fromCorpusWith "op" [ "op-round-trip"; "reject" ]
 
 /// One family's rows: id, then the verdict columns, tab-separated.
 let rows (family: Family) : (string * string) list =
     fixtures family
-    |> List.map (fun (id, text) -> id, String.concat "\t" (id :: verdict text))
+    |> List.map (fun (id, text) ->
+        let columns =
+            match family with
+            | Ops -> opVerdict text
+            | _ -> verdict text
+
+        id, String.concat "\t" (id :: columns))
 
 let render (family: Family) : string =
     let header = String.concat "\t" columns
