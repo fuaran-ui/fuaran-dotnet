@@ -8155,6 +8155,37 @@ families (the phase outcome records why and the decision it needs).
 The control-character records of the chain corpus (records 4 and 5) hash identically on the linear path, the DAG lift
 and the TypeScript twin. Line counts of the paired linear and DAG files are recorded in the phase outcome.
 
+### What rides this slot — Phase 2305 (the linear checkpoint is Core's `Snapshot`, and replay from it is Core's `Compacted` fold)
+
+**Class: BREAKING (surface guard: 9 removed or retyped in Abstractions, 1 added-but-breaking in Replay, 24 additive
+over Abstractions, Replay and Sqlite).** Packages `Fuaran.UI.OpStream.Abstractions`, `Fuaran.UI.OpStream.Replay`,
+`Fuaran.UI.OpStream.Sqlite`; `Fuaran.UI.ServerDriven` seals through the new constructor with no surface change. Every
+persisted linear checkpoint hash moves once, with a one-shot re-seal migration:
+[`docs/migrations/2305-core-snapshot.md`](docs/migrations/2305-core-snapshot.md).
+
+- **The seal is Core's.** A checkpoint IS a `Fuaran.Core.Snapshot<Node<'Msg>>` (`CheckpointSeal.toSnapshot`, new), and
+  `SnapshotHash` is `Sealed.seal SnapshotMode.Strict` over the canonical tree: the pre-image says `"state"` where the
+  tier's own seal said `"tree"`. `HashChain.snapshotHash` is REMOVED; `CheckpointSeal.create` / `CheckpointSeal.seal`
+  (new) are the one construction, used by `Checkpoint.create` and `SessionJournal.makeCheckpoint`. `CRYPTO.md` states
+  what the seal covers.
+- **Resume is Core's.** `CheckpointSeal.firstBreak` (new) is `Sealed.firstBreak`: the seal, then the WHOLE tail from
+  `(PreviousChainHead, Sequence)`. `applyFromCheckpoint` refuses a break anywhere in the tail before applying anything
+  and folds with `Compacted.replayFrom`. `CheckpointReplayError.TailBroken` (new, last case) names a break below the
+  tail's first link, which used to arrive as `TailApplyFailed(ChainBroken …)`; `BoundaryMismatch` and
+  `SnapshotHashMismatch` keep their meanings. `Verify.ofChainBreak` is public, so both paths name a break the same way.
+- **Replay is Core's.** `Replay.applyToUnverified` is `OpStream.replay` over `StreamEntry.coreWitness`, the 0-based
+  position mapped back to the record's own 1-based `Sequence` at the edge; the hand-written fold is gone.
+- **The re-seal is one-shot.** `CheckpointReseal.reseal` (new) verifies a checkpoint under the pre-2305 seal and
+  re-seals it under Core's, leaves one already under Core's alone, and refuses one under neither by name;
+  `SqliteSink.resealCheckpoints` (new) does it for a whole database in one transaction, all or nothing. Both are removed
+  in the release after this one.
+- **Removed, unused:** `CheckpointVerificationError`, which nothing produced or read.
+
+The `chain/` corpus gains `checkpoint-corpus.json` (a new file in the family's manifest; `chain-corpus.json` is
+byte-identical): a checkpoint sealed by the strict rule over the existing records, and six tail-break vectors, three of
+them below the tail's first link. The 1937 refusal (a truncation that would lose the boundary) and the keyed retry
+below the boundary answering `Duplicate` hold unchanged.
+
 ## 0.102.0 (RELEASED — tagged v0.102.0 at 00225688, 2026-11-06)
 
 _Set by Phase 2576, the first change to ride the slot._

@@ -27,7 +27,7 @@ here before it moves a stored hash:
   corpus and over ill-formed UTF-16 (lone and ill-ordered surrogates, which the platform encodes as
   U+FFFD) — the proof our bytes equal the platform's on .NET.
 - **Against digests recorded from the retired implementation** — padding-boundary lengths, ill-formed
-  UTF-16, and one of each hashed artefact (a stream head, a checkpoint snapshot hash, two teleport
+  UTF-16, and one of each hashed artefact (a stream head, a checkpoint snapshot hash — moved deliberately by Phase 2305, see below — two teleport
   strings, a document-attestation digest, a fragment memo key, two `Custom` body-shape hashes).
 
 They live in `Fuaran.UI.Tests` (`CustomContractTests.fs`, `CorePredicateTests.fs`,
@@ -76,6 +76,7 @@ property the code has, so every read path now verifies:
 | `Replay.applyTo` | `Verify.segment` | the segment's own first record (genesis when it starts at sequence 1) |
 | `SqliteSink.Replay` / `InMemorySink.Replay` | `Verify.segment` | as above |
 | `SessionReplay.reconstruct` | `Verify.segmentFrom` | the checkpoint's `PreviousChainHead` — a real anchor, so strictly stronger |
+| `CheckpointedReplay.applyFromCheckpoint` | `CheckpointSeal.firstBreak` (Core's `Sealed.firstBreak`) | the checkpoint's seal, then its `(PreviousChainHead, Sequence)` |
 | `SqliteDagSink` / `InMemoryDagSink` `.Records` | `DagVerify.recordsResolving` | parents resolved store-wide |
 | both DAG sinks' `.TryGet` | `DagVerify.record` | content address only |
 
@@ -135,6 +136,33 @@ recomputes the chain from that point, and every check here passes. Verifying on 
 between what the chain claims and what the code does; it does not change what the chain claims.
 These call sites are, however, exactly where a signature over the chain position plugs in — which is
 the next section.
+
+## The checkpoint seal — Core's strict snapshot (Phase 2305)
+
+A linear checkpoint is a Core `Snapshot<Node<'Msg>>` (`CheckpointSeal.toSnapshot`), and its
+`SnapshotHash` is Core's **strict** seal, `Sealed.seal SnapshotMode.Strict`, under the stream's own
+SHA-256 `HashFn`:
+
+```text
+SnapshotHash = sha256Hash PreviousChainHead {"snapshot":true,"seq":<Sequence>,"state":<canonical tree>}
+```
+
+**What the seal covers:** the boundary sequence (the number of records folded into the snapshot), the
+boundary hash (`PreviousChainHead`, the hash of record `Sequence`, or the genesis at sequence 0) and the
+canonical encoding of the snapshot tree (`CanonicalJson.encodeNode`). So a swapped tree, a moved
+sequence and a moved head each fail it, and a real snapshot lifted from one position does not verify at
+another. **What it does not cover:** `StreamId` and `Timestamp`, which are storage, as they are outside
+the record chain. Before 2305 the tier sealed the same shape under a `"tree"` key with its own
+function; the bytes moved, the property did not, and `CheckpointReseal` /
+`SqliteSink.resealCheckpoints` re-seal a store once (`docs/migrations/2305-core-snapshot.md`).
+
+**Resuming from a checkpoint verifies the seal and the WHOLE tail first** — `CheckpointSeal.firstBreak`,
+which is Core's `Sealed.firstBreak`: the seal, then every tail record walked from
+`(PreviousChainHead, Sequence)` by Core's chain walker. A break anywhere in the tail is refused by name
+(`BoundaryMismatch` at the first link, `TailBroken` below it) before the apply engine runs, and the fold
+is Core's `Compacted.replayFrom`. Like everything in this document, this detects corruption and
+cross-position substitution, not a writer who rewrites the checkpoint record consistently: the seal is
+unkeyed, so detecting that needs the attestation seams below.
 
 ## Segment attestation — a signature beside the chain (opt-in)
 
