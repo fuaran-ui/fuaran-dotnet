@@ -171,6 +171,31 @@ let tests =
 
               Expect.equal (snapshot h) before "the store is exactly as it was")
 
+          contract "an atomic batch appends every record, in order, and the head is its last" (fun h ->
+              appendFirst h 2 |> ignore
+              accepted (h.OfferBatch false (ops |> List.skip 2)) "a sound batch"
+              let trunk = h.Read()
+
+              Expect.equal (trunk |> List.map _.Position) [ 1 .. ops.Length ] "every record, genesis first"
+
+              Expect.equal
+                  (trunk |> List.map _.Op)
+                  (ops |> List.map CanonicalJson.encodeOp)
+                  "each op round-trips the store byte for byte"
+
+              Expect.equal (h.Head()) (trunk |> List.tryLast |> Option.map _.Address) "the head is the batch's last"
+              expectTree (h.ReplayFromGenesis(buildDashboard ())) (treeAfter ops.Length) "the replayed tree")
+
+          contract "an atomic batch with a refused record leaves the store exactly as it was" (fun h ->
+              appendFirst h 2 |> ignore
+              let before = snapshot h
+
+              // Every cell's batch is all-or-nothing (the linear `AppendAll`, Phase
+              // 1525; the DAG `AddAll`, Phase 2117): the records before the refused
+              // one are not kept, on either shape.
+              refused (h.OfferBatch true (ops |> List.skip 2)) "a batch whose last record does not recompute"
+              Expect.equal (snapshot h) before "the store is exactly as it was")
+
           contract "compaction keeps the head, the records above it, and the next append" (fun h ->
               appendFirst h 4 |> ignore
               let head = h.Head()

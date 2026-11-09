@@ -90,6 +90,11 @@ type Harness =
         OfferDanglingLink: TreeOp<TestMsg> -> Outcome
         /// Offer the head record again.
         ReofferHead: unit -> Outcome
+        /// Offer `ops` as the next trunk records in ONE atomic batch (linear
+        /// `IOpStreamBatchSink.AppendAll`; DAG `IDagOpStreamBatchSink.AddAll`,
+        /// then the head advanced to the last), with the last record's op swapped
+        /// after its hash was computed when `forgeLast` (Phase 2117).
+        OfferBatch: bool -> TreeOp<TestMsg> list -> Outcome
         /// Compact the trunk through position `k` (the head is never compacted).
         Compact: int -> unit
         /// Checkpoint `tree` as the state at the current head.
@@ -136,6 +141,10 @@ let rec private linearHarness
     let compact =
         SinkCapabilities.tryCompact baseSink
         |> Option.defaultWith (fun () -> failwithf "%A linear sink has no compaction" store)
+
+    let batch =
+        SinkCapabilities.tryBatch baseSink
+        |> Option.defaultWith (fun () -> failwithf "%A linear sink has no atomic batch append" store)
 
     let latest () = sink.LatestSequence streamId |> run
 
@@ -203,6 +212,31 @@ let rec private linearHarness
         fun () ->
             let head = sink.Replay(streamId, latest (), latest ()) |> run |> List.exactlyOne
             attempt (fun () -> sink.Append head |> run)
+      OfferBatch =
+        fun forgeLast batchOps ->
+            let start = latest ()
+
+            let records =
+                batchOps
+                |> List.mapi (fun i op -> i, op)
+                |> List.fold
+                    (fun (acc: OpRecord<TestMsg> list) (i, op) ->
+                        let previous =
+                            match acc with
+                            | r :: _ -> r.Hash
+                            | [] -> cas.Head streamId |> run
+
+                        let at = timestamp (1_800_000_000L + int64 (start + i))
+                        linearRecord streamId (start + i + 1) previous op at :: acc)
+                    []
+                |> List.rev
+
+            let offered =
+                match List.rev records, forgeLast with
+                | last :: rest, true -> List.rev ({ last with Op = List.head batchOps } :: rest)
+                | _ -> records
+
+            attempt (fun () -> batch.AppendAll offered |> run)
       Compact = fun k -> compact.Compact(streamId, k) |> run |> ignore
       Checkpoint = fun tree -> Checkpoint.create sink streamId tree |> run |> ignore
       CheckpointVerifies =
@@ -307,6 +341,42 @@ let rec private dagHarness
                 |> Option.defaultWith (fun () -> failwith "the head has no record")
 
             attempt (fun () -> sink.Add r |> run)
+      OfferBatch =
+        fun forgeLast batchOps ->
+            let addAll =
+                DagSinkCapabilities.tryBatch sink
+                |> Option.defaultWith (fun () -> failwithf "%A DAG sink has no atomic batch add" store)
+
+            let current = head ()
+            let depth = List.length (trunk ())
+
+            let records =
+                batchOps
+                |> List.mapi (fun i op -> i, op)
+                |> List.fold
+                    (fun (acc: DagOpRecord<TestMsg> list) (i, op) ->
+                        let parent =
+                            match acc with
+                            | previous :: _ -> Some previous.Hash
+                            | [] -> current
+
+                        child (Option.toList parent) (timestamp (1_800_000_000L + int64 (depth + i))) op
+                        :: acc)
+                    []
+                |> List.rev
+
+            let offered =
+                match List.rev records, forgeLast with
+                | last :: rest, true -> List.rev ({ last with Op = List.head batchOps } :: rest)
+                | _ -> records
+
+            attempt (fun () ->
+                addAll.AddAll offered |> run
+
+                match List.tryLast offered with
+                | Some last when not (sink.TryAdvanceHead(streamId, current, last.Hash) |> run) ->
+                    failwith "OfferBatch: the head moved under a single-threaded test"
+                | _ -> ())
       Compact =
         fun k ->
             for r in trunk () |> List.truncate k do

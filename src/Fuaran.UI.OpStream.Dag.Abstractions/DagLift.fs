@@ -21,6 +21,10 @@ open Fuaran.UI.OpStream.Abstractions
 //      it became (stream, head, DAG anchor).
 //    * `LiftReceipt.verify` recomputes the lift from the linear records and
 //      compares every field, the DAG head included.
+//    * `promote` / `promoteWith` (Phase 2117) write a verified lift into a DAG
+//      store in one atomic step — `IDagOpStreamBatchSink.AddAll`, then the head
+//      compare-and-swap from "no head" — so a failure part-way leaves no
+//      partial branch. Sealing the linear stream afterwards is host policy.
 //
 //  NO CRYPTOGRAPHY IS ADDED. Both hashes are unkeyed content digests. A receipt
 //  that recomputes proves that THESE linear records lift to THAT DAG head, and
@@ -126,6 +130,43 @@ type LiftVerdict =
     /// The receipt does not recompute from the supplied records.
     | DoesNotRecompute of mismatch: LiftMismatch
 
+/// Why `DagLift.promote` did not promote (Phase 2117). No case writes a linear
+/// record: a promotion only reads them.
+[<RequireQualifiedAccess>]
+type PromotionRefusal =
+    /// The linear segment did not lift. Nothing was written.
+    | NotLifted of LiftRefusal
+    /// The sink offers no atomic batch add (`DagSinkCapabilities.tryBatch`
+    /// answered `None`, which it always does under Fable). Nothing was written:
+    /// the branch is never emulated with a loop of `Add`s.
+    | NoAtomicBatch
+    /// The DAG stream already has a head, and it is not this promotion's branch
+    /// head. Seen before the write, so nothing was written.
+    | HeadTaken of head: string
+    /// The atomic add refused the branch (an admission refusal, or a busy
+    /// store). Nothing of the batch was written, and the head did not move.
+    | WriteRefused of message: string
+    /// Another writer set the head between this promotion's head check and its
+    /// compare-and-swap. The branch was written whole — every record or none,
+    /// never a prefix — and stays as an unheaded branch, which is the DAG's
+    /// ordinary losing-writer outcome; the head is the other writer's.
+    | HeadAdvancedConcurrently of head: string
+    /// The compare-and-swap lost to store contention with the head still unset.
+    /// The branch was written whole; re-running the promotion completes it, since
+    /// a re-add of a held address is a no-op.
+    | HeadContended
+
+/// What `DagLift.promote` did (Phase 2117).
+[<RequireQualifiedAccess>]
+type Promotion =
+    /// The branch was written atomically and the head advanced from "no head" to
+    /// its last record.
+    | Promoted of receipt: LiftReceipt
+    /// The stream's head already IS this promotion's branch head: a second
+    /// promotion of the same linear head into the same DAG stream. Nothing was
+    /// written; the receipt is the one the first promotion returned.
+    | AlreadyPromoted of receipt: LiftReceipt
+
 /// The verified lift from a linear segment to a DAG branch (Phase 2116).
 [<RequireQualifiedAccess>]
 module DagLift =
@@ -185,6 +226,95 @@ module DagLift =
         | LiftRefusal.MixedStreams(a, b) ->
             sprintf "the linear segment spans two streams ('%s' and '%s'); a lift reads one stream" a b
         | LiftRefusal.BrokenLinearSegment e -> "the linear segment does not re-walk as a chain: " + Verify.describe "" e
+
+    /// Promote a linear segment to a DAG stream in one atomic step (Phase 2117),
+    /// through a sink named as batch-capable — the entry point that works
+    /// identically on .NET and under Fable, since it makes no type test.
+    ///
+    /// Verify and lift (`ofLinearVerified`: a DAG genesis branch keyed under the
+    /// linear stream id), then read the head: the branch head already there is
+    /// `AlreadyPromoted` (idempotent; nothing written), any other head is
+    /// `HeadTaken` (refused; nothing written). Otherwise write the branch with
+    /// `AddAll` (every record or none) and advance the head from "no head" by
+    /// compare-and-swap. A second promotion of the same linear head is therefore
+    /// IDEMPOTENT while the stream's head is still the promoted branch head, and
+    /// REFUSED once the stream has moved on.
+    ///
+    /// The linear records are read, never written. Whether the linear stream is
+    /// sealed after a promotion is the host's policy; nothing here enforces it.
+    let promoteWith<'Msg>
+        (sink: IDagOpStreamBatchSink<'Msg>)
+        (records: OpRecord<'Msg> list)
+        : Async<Result<Promotion, PromotionRefusal>> =
+        async {
+            match ofLinearVerified records with
+            | Error refusal -> return Error(PromotionRefusal.NotLifted refusal)
+            | Ok lifted ->
+                let receipt = lifted.Receipt
+                let! head = sink.Head receipt.DagStreamId
+
+                match head with
+                | Some h when h = receipt.DagHead -> return Ok(Promotion.AlreadyPromoted receipt)
+                | Some h -> return Error(PromotionRefusal.HeadTaken h)
+                | None ->
+                    let! written =
+                        async {
+                            try
+                                do! sink.AddAll lifted.Records
+                                return Ok()
+                            with ex ->
+                                return Error ex.Message
+                        }
+
+                    match written with
+                    | Error message -> return Error(PromotionRefusal.WriteRefused message)
+                    | Ok() ->
+                        let! advanced = sink.TryAdvanceHead(receipt.DagStreamId, None, receipt.DagHead)
+
+                        if advanced then
+                            return Ok(Promotion.Promoted receipt)
+                        else
+                            // The CAS lost: re-read to say to whom.
+                            let! now = sink.Head receipt.DagStreamId
+
+                            match now with
+                            | Some h when h = receipt.DagHead -> return Ok(Promotion.AlreadyPromoted receipt)
+                            | Some h -> return Error(PromotionRefusal.HeadAdvancedConcurrently h)
+                            | None -> return Error PromotionRefusal.HeadContended
+        }
+
+    /// `promoteWith` over a sink of unknown capability: a sink without an atomic
+    /// batch add is refused as `NoAtomicBatch`, never emulated with a loop. Under
+    /// Fable the capability probe answers `None` for every sink, so this refuses
+    /// there after the lift; a Fable host holding a capable sink calls
+    /// `promoteWith`.
+    let promote<'Msg>
+        (sink: IDagOpStreamSink<'Msg>)
+        (records: OpRecord<'Msg> list)
+        : Async<Result<Promotion, PromotionRefusal>> =
+        async {
+            match ofLinearVerified records, DagSinkCapabilities.tryBatch sink with
+            | Error refusal, _ -> return Error(PromotionRefusal.NotLifted refusal)
+            | Ok _, None -> return Error PromotionRefusal.NoAtomicBatch
+            | Ok _, Some batch -> return! promoteWith batch records
+        }
+
+    /// One line naming why a promotion was refused, for an exception or a log.
+    let describePromotionRefusal (refusal: PromotionRefusal) : string =
+        match refusal with
+        | PromotionRefusal.NotLifted r -> "not promoted: " + describe r
+        | PromotionRefusal.NoAtomicBatch ->
+            "not promoted: the sink offers no atomic batch add (IDagOpStreamBatchSink); nothing was written"
+        | PromotionRefusal.HeadTaken h ->
+            sprintf "not promoted: the DAG stream already has head %s; nothing was written" h
+        | PromotionRefusal.WriteRefused m ->
+            "not promoted: the atomic add refused the branch, nothing was written: " + m
+        | PromotionRefusal.HeadAdvancedConcurrently h ->
+            sprintf
+                "not promoted: another writer set the head to %s before the compare-and-swap; the branch is stored whole and unheaded"
+                h
+        | PromotionRefusal.HeadContended ->
+            "not promoted: the head compare-and-swap lost to store contention; the branch is stored whole, re-run the promotion"
 
 /// Recompute a `LiftReceipt` from linear records (Phase 2116).
 [<RequireQualifiedAccess>]

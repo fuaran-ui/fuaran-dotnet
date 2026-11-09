@@ -83,3 +83,52 @@ type IDagOpStreamSink<'Msg> =
     /// Distinct stream ids the sink currently holds records for. Order
     /// unspecified.
     abstract member Streams: unit -> Async<string list>
+
+// ============================================================================
+//  Phase 2117 — an OPTIONAL extension interface, on the reasoning the linear
+//  tier's `IOpStreamBatchSink` records: `IDagOpStreamSink<'Msg>` is shipped and
+//  may be implemented outside this repo, so a new abstract member on it would
+//  break every implementor. A sink claims the capability; nothing is made to
+//  claim it, and nothing emulates it with a loop of `Add`s — a loop is exactly
+//  the partial branch the capability exists to rule out.
+// ============================================================================
+
+/// Extension of `IDagOpStreamSink<'Msg>` adding an ATOMIC multi-record add.
+///
+/// Promoting a linear stream writes a whole branch. Added one record at a time,
+/// a failure part-way leaves the first records stored and the rest absent — a
+/// partial branch with no head. One transaction removes that state: either
+/// every record is in the store or none of the batch was written.
+///
+/// `AddAll` is `Add`'s contract over a list: each record passes the admission
+/// `Add` applies (`DagWriteAdmission.admit`), with a parent satisfied by the
+/// store OR by a record earlier in the same batch, and an address already held
+/// is a no-op. A refusal of ANY record leaves the store exactly as it was. The
+/// head is not touched: advancing it stays `TryAdvanceHead`'s.
+type IDagOpStreamBatchSink<'Msg> =
+    inherit IDagOpStreamSink<'Msg>
+
+    /// Add every record in `records`, in list order, atomically. An empty list
+    /// is a no-op. Throws — leaving the store untouched — if any record is
+    /// refused.
+    abstract member AddAll: records: DagOpRecord<'Msg> list -> Async<unit>
+
+/// The ONE place a DAG sink is asked what it can do (Phase 2117), fenced for
+/// Fable exactly as the linear tier's `SinkCapabilities` is: `:? IInterface`
+/// does not compile under Fable (the JS runtime carries no interface identity
+/// to test against), so under Fable every probe answers `None`. A Fable host
+/// that HOLDS a capable sink reaches the contract by naming it — the `*With`
+/// entry points take the extension interface directly, which is not a type test.
+module DagSinkCapabilities =
+
+    /// The sink's atomic batch add, if it has one. `None` under Fable — always,
+    /// whatever the sink is.
+    let tryBatch<'Msg> (sink: IDagOpStreamSink<'Msg>) : IDagOpStreamBatchSink<'Msg> option =
+#if FABLE_COMPILER
+        ignore sink
+        None
+#else
+        match sink with
+        | :? IDagOpStreamBatchSink<'Msg> as batch -> Some batch
+        | _ -> None
+#endif
