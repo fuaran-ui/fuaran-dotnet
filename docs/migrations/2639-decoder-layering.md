@@ -42,7 +42,10 @@ its position answers it, as the hand structure did (Core D230.3).
 Moved: `Heading`, `Math`, `Icon`, `CodeBlock`, `Badge`, `Callout`, `List`, `Skeleton`. Each one's hand
 structure was deleted in the commit that moved it.
 
-Hand-written decoder size: 10,841 lines before; see the phase outcome for the figure after.
+Hand-written decoder size: `JsonDecode.fs` was 10,841 lines before and is 10,870 after (252 lines
+of hand structure deleted, 281 added). The addition is the bridge and the policy record (about 230
+lines with their documentation), which land once, with the first family; every later family only
+deletes structure and adds the policy entries it needs.
 
 ## What is not moved yet, and why
 
