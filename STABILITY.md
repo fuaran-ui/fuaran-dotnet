@@ -7918,6 +7918,36 @@ fold derives pairs it refused and refuses nothing it derived (measured over the 
 **The consumer cost:** a caller that pinned the refusal shape of a reorder pair, or the refusal of a move beside an
 edit of its target. Every pair that was independent stays independent.
 
+### What rides this slot — Phase 2671 (the reconciliation policy rebases a reorder over concurrent appends, and a node moved by both branches is listed once)
+
+**Class: breaking** (a verdict `DagReconcile.reconcile` gave becomes a different verdict; the fixture family moves),
+which the slot already carries. Package `Fuaran.UI.OpStream.Dag.Merge`; no public signature moves.
+
+- **Admitted — a reorder beside a change of the same child list.** A `ReorderChildren` of a parent on one branch
+  beside an append to it (an insert, a move in), or a removal or move of a child it lists, on the other was refused
+  (`Conflict`, or `DeleteModify` beside a removal). It now derives: the reorder is folded rebased to the children the
+  parent holds, the reordered run keeps its order, a removed or moved-out child drops out of it, and appends follow by
+  the child-order rule (WIRE_FORMAT §34.3–34.4). Two reorders of one parent that differ still refuse.
+- **Fixed — two agreeing moves of one node beside other appends.** The child-order rule listed the node once per
+  branch and the fold faulted (`FoldFaulted`); it is listed once, where the merged runs first reach it.
+- **Changed — an append a later reorder of the same parent on the same branch lists** leaves that branch's run, so
+  the reorder places it rather than the rule.
+- **`Reconciled.Interleaves`** counts the interleaved and the rebased parents; `Script` may hold a reorder for either.
+- **Snapshot (benchmarks).** `derivability.<population>.policy.derived_elsewhere` now counts only the different-tree
+  triads no ruling pins; the two classes ruled pinned on 2026-11-10 report as `derived_pinned_own_parent_move` and
+  `derived_pinned_append_order`.
+- **Corpus (merge-conformance `foldFixtures`).** `fold-refusal-reorder-and-insert` is retired and becomes the
+  derivation `fold-reorder-and-insert`; added: `fold-reorder-and-remove`, `fold-reorder-and-move-in`,
+  `fold-reorder-and-move-out`, `fold-double-move-and-appends`, `fold-agreed-move-and-edit`,
+  `fold-own-parent-move-and-insert`, `fold-pinned-own-parent-move`, `fold-pinned-append-order` and
+  `fold-refusal-two-reorders`. The totality entry `merge-totality-concurrent-move` keeps its tree-merge envelope; its
+  description names the fold's derivation of the same pair.
+
+**The consumer cost:** a caller that relied on the fold refusing a reorder beside an append, insert, move or removal
+in the same parent, or that read a `FoldFaulted` for the double move. Nothing the fold derived before is refused or
+derived differently (measured, `docs/DAG_STRATEGY.md`). **No kind is added, merged or retired; no escape hatch is
+created or widened.**
+
 ---
 
 ## 0.103.0 (RELEASED — tagged v0.103.0 at 1b783c61, 2026-11-09)
