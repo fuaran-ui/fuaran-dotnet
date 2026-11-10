@@ -39,6 +39,28 @@ let private mirrored (refusals: Refusal<TestMsg> list) : Refusal<TestMsg> list =
                     Left = r.Conflict.Right
                     Right = r.Conflict.Left } })
 
+let private byId id =
+    FoldCorpus.fixtures |> List.find (fun (i, _, _, _, _, _) -> i = id)
+
+/// The children of `parent` in `tree`, by id.
+let private childIds (tree: Node<TestMsg>) (parent: string) : string list =
+    let rec find (n: Node<TestMsg>) =
+        if n.Id = parent then
+            Some n
+        else
+            Fuaran.UI.Ops.Introspect.getChildren n.Kind
+            |> Option.defaultValue []
+            |> List.tryPick find
+
+    find tree
+    |> Option.bind (fun n -> Fuaran.UI.Ops.Introspect.getChildren n.Kind)
+    |> Option.defaultValue []
+    |> List.map _.Id
+
+/// A branch head: its delta applied from the base.
+let private headOf (baseT: Node<TestMsg>) (delta: TreeOp<TestMsg> list) : Node<TestMsg> =
+    delta |> List.fold (fun t op -> applyOk op t) baseT
+
 [<Tests>]
 let tests =
     testList
@@ -104,6 +126,74 @@ let tests =
                   Expect.equal r.Agreements 1 "one agreement"
                   Expect.isEmpty r.Script "an agreement needs no script"
               | Error e -> failtestf "expected a derivation, got %A" e
+          }
+
+          test "a rebased reorder keeps its declared order and the append follows it" {
+              let _, _, _, b, a, c = byId "fold-reorder-and-insert"
+
+              match DagReconcile.reconcile b a c with
+              | Ok r ->
+                  Expect.equal (childIds r.Tree "dash") [ "right"; "left"; "new" ] "reordered run, then the append"
+              | Error e -> failtestf "expected a derivation, got %A" e
+          }
+
+          test "a node both branches move into one parent beside other appends is listed once" {
+              let _, _, _, b, a, c = byId "fold-double-move-and-appends"
+
+              match DagReconcile.reconcile b a c with
+              | Ok r ->
+                  Expect.equal
+                      (childIds r.Tree "dash")
+                      [ "boxa"; "boxb"; "aa"; "m"; "zz" ]
+                      "the agreed node once, where the merged runs first reach it"
+
+                  for op in r.Script do
+                      match op with
+                      | TreeOp.ReorderChildren(_, order) ->
+                          Expect.equal (List.distinct order) order "the recorded reorder lists every child once"
+                      | other -> failtestf "a script holds reorders only, got %A" other
+              | Error e -> failtestf "expected a derivation, got %A" e
+          }
+
+          test "each pinned class differs from the tree merge by child order alone" {
+              for id in [ "fold-pinned-own-parent-move"; "fold-pinned-append-order" ] do
+                  let _, _, _, b, a, c = byId id
+
+                  match TreeMerge.merge3Way b (headOf b a) (headOf b c), DagReconcile.reconcile b a c with
+                  | Ok merged, Ok r ->
+                      Expect.notEqual
+                          (canonical r.Tree)
+                          (canonical merged)
+                          (sprintf "%s: the pin is a real difference" id)
+
+                      Expect.equal
+                          (Set.ofList (childIds r.Tree "dash"))
+                          (Set.ofList (childIds merged "dash"))
+                          (sprintf "%s: the same children" id)
+
+                      let aligned =
+                          r.Tree
+                          |> applyOk (TreeOp.ReorderChildren(dashboardId, childIds merged "dash" |> List.map NodeId))
+
+                      Expect.equal (canonical aligned) (canonical merged) (sprintf "%s: and nothing but their order" id)
+                  | x, y -> failtestf "%s: expected both to merge, got %A / %A" id x y
+          }
+
+          test "each accepted class is one the tree merge refuses and the fold derives" {
+              for id, cls in
+                  [ "fold-move-and-target-edit", MergeConflictClass.ConcurrentMove
+                    "fold-agreed-move-and-edit", MergeConflictClass.ConcurrentEdit
+                    "fold-reorder-and-insert", MergeConflictClass.ReorderVsStructural
+                    "fold-own-parent-move-and-insert", MergeConflictClass.ReorderVsStructural
+                    "fold-double-move-and-appends", MergeConflictClass.ReorderVsStructural ] do
+                  let _, _, _, b, a, c = byId id
+
+                  match TreeMerge.merge3Way b (headOf b a) (headOf b c), DagReconcile.reconcile b a c with
+                  | Error conflicts, Ok _ ->
+                      Expect.isTrue
+                          (conflicts |> List.exists (fun x -> x.Class = cls))
+                          (sprintf "%s: the tree merge refuses with %A" id cls)
+                  | x, y -> failtestf "%s: expected a tree-merge refusal and a derivation, got %A / %A" id x y
           }
 
           test "a delta that does not apply is refused before anything is folded" {

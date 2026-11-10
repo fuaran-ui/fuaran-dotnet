@@ -297,7 +297,7 @@ let totalityPairs
       flat |> applyOk (TreeOp.RemoveNode rightChildId)
 
       "merge-totality-concurrent-move",
-      "One side moves a node to another parent while the other restyles it in place — a ConcurrentMove refusal carrying both POSITIONS (the `move` facet) and both SUBTREES (the `node` facet), where the pre-1526 merge adopted the mover's copy and discarded the edit",
+      "One side moves a node to another parent while the other restyles it in place — a ConcurrentMove refusal carrying both POSITIONS (the `move` facet) and both SUBTREES (the `node` facet), where the pre-1526 merge adopted the mover's copy and discarded the edit. The tree merge's refusal stands for this key; the merge by fold (WIRE_FORMAT section 34) DERIVES the same pair with both the move and the retone kept, pinned as foldFixtures `fold-move-and-target-edit` and accepted as the policy's answer (Phase 2671, ruling 2026-11-10), so the cut that retires this key replaces this refusal with that derivation",
       "merge-totality-concurrent-move-twin",
       "The same move with the edit moved to the source container itself — auto-merges, so a host cannot pass the pair by refusing every move",
       nested,
