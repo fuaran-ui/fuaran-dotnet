@@ -50,6 +50,17 @@ open Fuaran.UI.OpStream.Dag.Merge
 //   - generated: seed 20261016, branches of one to three ops off a small tree,
 //     each op applied to the tree its branch has reached.
 //
+//  PROVENANCE of the generated population. Seed 20261016 and 20,000 trials
+//  since Phase 2292. Phase 2670 widened the draws, so its figures are not
+//  comparable with earlier ones (DAG_STRATEGY.md records both): a restyle
+//  draws either container as well as a child (the restyle of a container a
+//  move leaves, 2651's lever); a move draws the container `sub` as well as a
+//  child, and a reorder either container's current children (the restyle,
+//  edit or reorder of a moved node, F2); a reorder of `sub` beside an edit of
+//  its child joins the reorder of the root beside an edit of a listed child
+//  (F1). Before Phase 2670 a restyle drew a child only, a move a child only,
+//  and a reorder the root only.
+//
 //  `dotnet run -c Release -- derivability-snapshot [trials]` (default 20000).
 //  Deterministic: a seeded `System.Random` and no clock.
 // ============================================================================
@@ -223,6 +234,14 @@ let private baseTree () : Node<obj> =
 let private childIds = [| "c0"; "c1"; "c2"; "s0" |]
 let private containers = [| "root"; "sub" |]
 
+/// What a move draws: every child, and the container `sub`, so a reorder or restyle of a moved
+/// node is drawn (Phase 2670).
+let private movables = [| "c0"; "c1"; "c2"; "s0"; "sub" |]
+
+/// What a restyle draws: every child and both containers, so a restyle of a container a move
+/// leaves, or moves into, is drawn (Phase 2670).
+let private styled = [| "c0"; "c1"; "c2"; "s0"; "root"; "sub" |]
+
 let private tones =
     [| ToneVariant.Brand; ToneVariant.Success; ToneVariant.Critical |]
 
@@ -230,8 +249,22 @@ let private voices = [| FontVoice.Display; FontVoice.Structural |]
 let private freshIds = [| "i0"; "i1"; "i2"; "i3"; "i4"; "i5" |]
 let private freshTexts = [| ""; "alpha"; "beta" |]
 
-/// One op against `tree`: an insert, a field-level restyle (tone or voice), a removal, a move, a
-/// reorder of the root, or a kind edit.
+/// The ids of `parent`'s children in `tree`, in order; empty when it is absent.
+let private childrenOf (tree: Node<obj>) (parent: string) : string list =
+    let rec find (n: Node<obj>) =
+        if n.Id = parent then
+            Some n
+        else
+            Introspect.getChildren n.Kind |> Option.defaultValue [] |> List.tryPick find
+
+    find tree
+    |> Option.bind (fun n -> Introspect.getChildren n.Kind)
+    |> Option.defaultValue []
+    |> List.map (fun c -> c.Id)
+
+/// One op against `tree`: an insert, a field-level restyle (tone or voice) of a child or a
+/// container, a removal, a move of a child or of `sub`, a reorder of either container's current
+/// children, or a kind edit.
 let private genOp (rng: Random) (tree: Node<obj>) : TreeOp<obj> =
     let pick (arr: 'a[]) = arr[rng.Next arr.Length]
 
@@ -239,25 +272,25 @@ let private genOp (rng: Random) (tree: Node<obj>) : TreeOp<obj> =
     | 0 -> TreeOp.InsertChild(NodeId(pick containers), leaf (pick freshIds) (pick freshTexts))
     | 1 ->
         TreeOp.PatchStyle(
-            NodeId(pick childIds),
+            NodeId(pick styled),
             { StyleDelta.empty with
                 Tone = Some(pick tones) }
         )
     | 2 ->
         TreeOp.PatchStyle(
-            NodeId(pick childIds),
+            NodeId(pick styled),
             { StyleDelta.empty with
                 Voice = Some(pick voices) }
         )
     | 3 -> TreeOp.RemoveNode(NodeId(pick childIds))
-    | 4 -> TreeOp.MoveNode(NodeId(pick childIds), NodeId(pick containers))
+    | 4 -> TreeOp.MoveNode(NodeId(pick movables), NodeId(pick containers))
     | 5 ->
-        let kids =
-            Introspect.getChildren tree.Kind
-            |> Option.defaultValue []
-            |> List.map (fun c -> c.Id)
+        let parent = pick containers
 
-        TreeOp.ReorderChildren(NodeId "root", kids |> List.sortBy (fun _ -> rng.Next()) |> List.map NodeId)
+        TreeOp.ReorderChildren(
+            NodeId parent,
+            childrenOf tree parent |> List.sortBy (fun _ -> rng.Next()) |> List.map NodeId
+        )
     | _ ->
         let id = pick childIds
         TreeOp.EditNode(NodeId id, (leaf id (pick [| "p"; "q"; "r" |])).Kind)
