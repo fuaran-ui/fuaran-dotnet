@@ -38,12 +38,17 @@ let private box (id: string) (kids: Node<obj> list) : Node<obj> =
         { Defaults.box<obj> with
             Children = kids }
 
-/// root [ a [ a0; a1 ]; b [ b0 ]; c [] ] — three containers a leaf can move between.
+/// root [ a [ a0; a1; d [] ]; b [ b0 ]; c [] ] — four containers a leaf can move between, one of
+/// them nested, so a move into `d` reads an ancestor (`a`) that a concurrent op can restyle.
 let private moveBase: Node<obj> =
-    box "root" [ box "a" [ leaf "a0"; leaf "a1" ]; box "b" [ leaf "b0" ]; box "c" [] ]
+    box
+        "root"
+        [ box "a" [ leaf "a0"; leaf "a1"; box "d" [] ]
+          box "b" [ leaf "b0" ]
+          box "c" [] ]
 
 let private leaves = [| NodeId "a0"; NodeId "a1"; NodeId "b0" |]
-let private containers = [| NodeId "a"; NodeId "b"; NodeId "c" |]
+let private containers = [| NodeId "a"; NodeId "b"; NodeId "c"; NodeId "d" |]
 
 let private tones =
     [| ToneVariant.Brand; ToneVariant.Success; ToneVariant.Critical |]
@@ -60,19 +65,19 @@ let private sw: Fuaran.Core.StreamWitness<TreeOp<obj>, Node<obj>, ApplyError> =
 /// container or a reorder of the root (1 in 10), which supply the interfering pairs.
 let private genMoveOp (rng: CoreRng.T) : TreeOp<obj> * CoreRng.T =
     let shape, r1 = CoreRng.intBelow 10 rng
-    let i, r2 = CoreRng.intBelow 3 r1
-    let j, r3 = CoreRng.intBelow 3 r2
+    let i, r2 = CoreRng.intBelow 4 r1
+    let j, r3 = CoreRng.intBelow 4 r2
 
     match shape with
     | 0
     | 1
-    | 2 -> TreeOp.MoveNode(leaves[i], containers[j]), r3
+    | 2 -> TreeOp.MoveNode(leaves[i % 3], containers[j]), r3
     | 3
     | 4 ->
         TreeOp.PatchStyle(
             containers[i],
             { StyleDelta.empty with
-                Tone = Some tones[j] }
+                Tone = Some tones[j % 3] }
         ),
         r3
     | 5 -> TreeOp.UpdateStyle(containers[i], Defaults.style), r3

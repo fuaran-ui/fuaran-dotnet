@@ -209,23 +209,49 @@ let private resolvedAt (state: Node<'Msg>) (after: Node<'Msg> option) (op: TreeO
     match op with
     | TreeOp.InsertChild(parent, child) -> structural (Fuaran.Core.SkeletonOp.InsertChild(parent, child))
     | TreeOp.RemoveNode target -> structural (Fuaran.Core.SkeletonOp.RemoveNode target)
-    // The SOURCE parent's child list is the only part of it the move changes,
-    // and the child list is held in the parent's `kind`: Core's whole-node read
-    // and structure write of the source parent become a read and a write of its
-    // `kind` slot (Phase 2651), so a restyle or a state edit of the container
-    // the node left commutes with the move. The destination keeps Core's named
-    // structure write — the address the fold interleaves two appends at — and
-    // a move within one parent (source = destination) is Core's arm unchanged.
+    // A resolved move (Phase 2651) touches no parent WHOLE. The SOURCE
+    // parent's child list is the only part of it the move changes, and the
+    // child list is held in the parent's `kind`: Core's read and structure
+    // write of it become a read and a write of its `kind` slot, so a restyle
+    // or a state edit of the container the node left commutes with the move.
+    // The destination's ANCESTORS are read for the cycle check, which only a
+    // relocation or removal of one of them can change: each is read at its
+    // `parent` slot, which no op writes and every whole-node write of it hits,
+    // so a move beside an edit of a container above its destination commutes
+    // too. The destination keeps Core's named structure write and read — the
+    // address the fold interleaves two appends at — and the target its content
+    // write. A move within one parent keeps the parent whole; an unresolved
+    // move is Core's pure arm.
     | TreeOp.MoveNode(target, newParent) ->
         let core = structural (Fuaran.Core.SkeletonOp.MoveNode(target, newParent))
+        let moved = key target
         let destination = key newParent
 
-        match Set.toList (Set.remove destination core.StructureWrites) with
-        | [ source ] when Set.isEmpty core.UnknownParentWrites ->
-            { CoreFootprint.union core (CoreFootprint.slotEdit source "kind") with
-                Reads = Set.remove source core.Reads
-                StructureWrites = Set.singleton destination }
-        | _ -> core
+        if not (Set.isEmpty core.UnknownParentWrites) then
+            core
+        else
+            let source =
+                match Set.toList (Set.remove destination core.StructureWrites) with
+                | [ p ] -> Some p
+                | _ -> None
+
+            let named = [ Some moved; Some destination; source ] |> List.choose id |> Set.ofList
+
+            let ancestors =
+                Set.difference core.Reads named
+                |> Seq.map (fun a -> CoreFootprint.readingSlot a "parent")
+                |> Seq.fold CoreFootprint.union CoreFootprint.empty
+
+            let sourceSlot =
+                source
+                |> Option.map (fun p -> CoreFootprint.slotEdit p "kind")
+                |> Option.defaultValue CoreFootprint.empty
+
+            CoreFootprint.union
+                (CoreFootprint.union ancestors sourceSlot)
+                { core with
+                    Reads = Set.intersect core.Reads (Set.ofList [ moved; destination ])
+                    StructureWrites = Set.singleton destination }
     | TreeOp.ReorderChildren(parent, order) -> structural (Fuaran.Core.SkeletonOp.ReorderChildren(parent, order))
     // The kind is rewritten whole: the nodes the old kind held are taken out
     // and the nodes the new kind holds put in.

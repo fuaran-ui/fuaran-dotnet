@@ -497,6 +497,8 @@ let tests =
               Expect.equal f.ContentWrites (Set.singleton "k") "the moved node alone is content-written"
               Expect.isTrue (f.SlotWrites.Contains("p1", "kind")) "the source's child list, in its kind slot"
               Expect.isTrue (f.SlotReads.Contains("p1", "kind")) "read as it is rewritten"
+              Expect.isFalse (f.Reads.Contains "root") "the destination's ancestor is not read whole"
+              Expect.isTrue (f.SlotReads.Contains("root", "parent")) "it is read at its parent slot"
 
               // the pair the phase frees: a restyle of the container the node left
               for restyle in [ tone "p1"; TreeOp.UpdateStyle(NodeId "p1", Defaults.style) ] do
@@ -519,6 +521,29 @@ let tests =
               Expect.isFalse
                   (independent (tone "p2"))
                   "a restyle of the destination stays ordered (Core's whole-node rule)"
+
+              // the destination's ancestor: a restyle of it commutes, its relocation does not
+              Expect.isTrue (independent (tone "root")) "a restyle of the destination's ancestor"
+
+              Expect.isFalse
+                  (Fuaran.Core.Ops.independent f (Fuaran.Core.Footprint.contentEdit "root"))
+                  "a whole-node write of the ancestor"
+
+              // a move out of p1 beside a move WITHIN p2, whose cycle check reads root: the two
+              // collide only at the destination they share, the append the fold interleaves
+              let shapes =
+                  Fuaran.Core.Dag.conflictsIn
+                      TreeOpFootprint.ofOpIn
+                      Apply.apply
+                      inPlaceBase
+                      [ move ]
+                      [ TreeOp.MoveNode(NodeId "q", NodeId "p2") ]
+                  |> List.map (fun c -> c.Address, c.Shape)
+
+              Expect.equal
+                  shapes
+                  [ "p2", Fuaran.Core.MergeConflictShape.InsertPositionClash ]
+                  "only the shared destination's child list"
 
               // a move within one parent keeps Core's arm whole
               let within =
