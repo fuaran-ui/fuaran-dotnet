@@ -494,7 +494,9 @@ let tests =
               Expect.equal f.StructureWrites (Set.singleton "p2") "only the destination is a named structure write"
               Expect.isFalse (f.Reads.Contains "p1") "the source parent is not read whole"
               Expect.isFalse (f.ContentWrites.Contains "p1") "nor content-written"
-              Expect.equal f.ContentWrites (Set.singleton "k") "the moved node alone is content-written"
+              Expect.isEmpty f.ContentWrites "nothing is content-written (Phase 2670)"
+              Expect.isTrue (f.SlotWrites.Contains("k", "parent")) "the moved node, at its parent slot"
+              Expect.isFalse (f.Reads.Contains "k") "and not read whole"
               Expect.isTrue (f.SlotWrites.Contains("p1", "kind")) "the source's child list, in its kind slot"
               Expect.isTrue (f.SlotReads.Contains("p1", "kind")) "read as it is rewritten"
               Expect.isFalse (f.Reads.Contains "root") "the destination's ancestor is not read whole"
@@ -549,6 +551,115 @@ let tests =
               let within =
                   TreeOpFootprint.ofOpIn inPlaceBase (TreeOp.MoveNode(NodeId "k", NodeId "p1"))
 
-              Expect.isEmpty within.SlotWrites "no slot for a move within one parent"
+              Expect.equal
+                  within.SlotWrites
+                  (Set.singleton ("k", "parent"))
+                  "no kind slot for a move within one parent, only the moved node's position"
+
               Expect.equal within.StructureWrites (Set.singleton "p1") "the one parent, whole"
+          }
+
+          test "base-aware: a move writes its target's position, not its content (Phase 2670)" {
+              let move = TreeOp.MoveNode(NodeId "k", NodeId "p2")
+
+              // freed: an in-place edit of the moved node, and a reorder of its own children
+              for edit in
+                  [ tone "k"
+                    voice "k"
+                    TreeOp.UpdateStyle(NodeId "k", Defaults.style)
+                    TreeOp.EditNode(NodeId "k", (leaf "k").Kind)
+                    TreeOp.UpdateProp(NodeId "k", "Text", PropValue.Native(nn "edited")) ] do
+                  Expect.isTrue (independentAt inPlaceBase move edit) (sprintf "move beside %A" edit)
+                  Expect.isTrue (bothOrdersApply inPlaceBase move edit) "and both orders apply"
+
+              let container = TreeOp.MoveNode(NodeId "p1", NodeId "p2")
+
+              let reorderOwn = TreeOp.ReorderChildren(NodeId "p1", [ NodeId "k" ])
+
+              Expect.isTrue (independentAt inPlaceBase container reorderOwn) "a moved container beside its own reorder"
+              Expect.isTrue (bothOrdersApply inPlaceBase container reorderOwn) "and both orders apply"
+
+              // still ordered: what reads or writes the moved node's position or existence
+              Expect.isFalse (independentAt inPlaceBase move (TreeOp.RemoveNode(NodeId "k"))) "the moved node's removal"
+
+              Expect.isFalse
+                  (independentAt inPlaceBase move (TreeOp.RemoveNode(NodeId "p1")))
+                  "its source's removal (a whole-node write of the subtree)"
+
+              Expect.isFalse
+                  (independentAt inPlaceBase move (TreeOp.MoveNode(NodeId "k", NodeId "root")))
+                  "another move of it"
+
+              Expect.isFalse
+                  (independentAt inPlaceBase move (TreeOp.ReorderChildren(NodeId "p1", [ NodeId "k" ])))
+                  "a reorder of the parent it leaves (which lists it)"
+
+              Expect.isFalse
+                  (independentAt inPlaceBase move (TreeOp.InsertChild(NodeId "k", leaf "n")))
+                  "an insert into it (Core's whole-node read of the parent)"
+
+              // a move whose cycle check reads the moved container as an ancestor of its destination
+              Expect.isFalse
+                  (independentAt inPlaceBase container (TreeOp.MoveNode(NodeId "q", NodeId "k")))
+                  "a move into a node below the moved container"
+          }
+
+          test "base-aware: a reorder reads its children at a slot, not whole (Phase 2670)" {
+              let reorder = TreeOp.ReorderChildren(NodeId "root", [ NodeId "p2"; NodeId "p1" ])
+              let f = TreeOpFootprint.ofOpIn inPlaceBase reorder
+
+              Expect.isEmpty f.Reads "no whole-node read"
+              Expect.isEmpty f.StructureWrites "the child list is the parent's kind slot"
+              Expect.isEmpty f.ContentWrites "nothing content-written"
+              Expect.isEmpty f.UnknownParentWrites "resolved"
+              Expect.equal f.SlotWrites (Set.singleton ("root", "kind")) "the parent's kind slot, written"
+
+              Expect.equal
+                  f.SlotReads
+                  (Set.ofList [ "root", "kind"; "p1", "parent"; "p2", "parent" ])
+                  "the parent's kind slot and each listed child's parent slot, read"
+
+              // freed: an in-place edit of a listed child, and a restyle of the parent
+              for edit in
+                  [ tone "p1"
+                    voice "p2"
+                    TreeOp.UpdateStyle(NodeId "p1", Defaults.style)
+                    TreeOp.EditNode(NodeId "p1", (Fuaran.box "p1" Defaults.box<Msg>).Kind)
+                    tone "root" ] do
+                  Expect.isTrue (independentAt inPlaceBase reorder edit) (sprintf "reorder beside %A" edit)
+                  Expect.isTrue (bothOrdersApply inPlaceBase reorder edit) "and both orders apply"
+
+              // still ordered: everything that changes the child list or the parent's kind
+              for other in
+                  [ TreeOp.InsertChild(NodeId "root", leaf "n")
+                    TreeOp.RemoveNode(NodeId "p1")
+                    TreeOp.MoveNode(NodeId "q", NodeId "root")
+                    TreeOp.MoveNode(NodeId "p1", NodeId "p2")
+                    TreeOp.ReorderChildren(NodeId "root", [ NodeId "p1"; NodeId "p2" ])
+                    TreeOp.EditNode(NodeId "root", (leaf "root").Kind) ] do
+                  Expect.isFalse (independentAt inPlaceBase reorder other) (sprintf "reorder against %A" other)
+
+              Expect.isFalse
+                  (Fuaran.Core.Ops.independent f (Fuaran.Core.Footprint.slotEdit "root" "kind"))
+                  "a prop edit of the parent (its kind slot)"
+
+              // the shapes a refused pair now reports: the parent's child list as its kind slot
+              let shapes x y =
+                  Fuaran.Core.Dag.conflictsIn TreeOpFootprint.ofOpIn Apply.apply inPlaceBase [ x ] [ y ]
+                  |> List.map (fun c -> c.Address, c.Shape)
+
+              Expect.equal
+                  (shapes reorder (TreeOp.ReorderChildren(NodeId "root", [ NodeId "p1"; NodeId "p2" ])))
+                  [ "root", Fuaran.Core.MergeConflictShape.SlotClash "kind" ]
+                  "two reorders of one parent: its kind slot"
+
+              Expect.equal
+                  (shapes reorder (TreeOp.InsertChild(NodeId "root", leaf "n")))
+                  [ "root", Fuaran.Core.MergeConflictShape.ConcurrentUpdate ]
+                  "a reorder against an insert: the parent the insert touches whole"
+
+              // a reorder the tree does not resolve is Core's arm
+              let ghost = TreeOp.ReorderChildren(NodeId "ghost", [])
+
+              Expect.equal (TreeOpFootprint.ofOpIn inPlaceBase ghost) (TreeOpFootprint.ofOp ghost) "unresolved"
           } ]

@@ -219,9 +219,16 @@ let private resolvedAt (state: Node<'Msg>) (after: Node<'Msg> option) (op: TreeO
     // `parent` slot, which no op writes and every whole-node write of it hits,
     // so a move beside an edit of a container above its destination commutes
     // too. The destination keeps Core's named structure write and read — the
-    // address the fold interleaves two appends at — and the target its content
-    // write. A move within one parent keeps the parent whole; an unresolved
-    // move is Core's pure arm.
+    // address the fold interleaves two appends at. The TARGET changes its
+    // position and nothing of itself (Phase 2670): it is read and written at
+    // its `parent` slot, so a restyle, an edit or a reorder of the moved node
+    // commutes with the move, while its removal, a removal of an ancestor (a
+    // whole-node write), another move of it and a move whose cycle check reads
+    // it as an ancestor (a read of that slot) stay ordered. The cycle check
+    // needs no whole read of the target: whether the destination lies under it
+    // is a fact of the destination's ancestor chain, which is read above. A
+    // move within one parent keeps the parent whole; an unresolved move is
+    // Core's pure arm.
     | TreeOp.MoveNode(target, newParent) ->
         let core = structural (Fuaran.Core.SkeletonOp.MoveNode(target, newParent))
         let moved = key target
@@ -247,12 +254,29 @@ let private resolvedAt (state: Node<'Msg>) (after: Node<'Msg> option) (op: TreeO
                 |> Option.map (fun p -> CoreFootprint.slotEdit p "kind")
                 |> Option.defaultValue CoreFootprint.empty
 
-            CoreFootprint.union
-                (CoreFootprint.union ancestors sourceSlot)
-                { core with
-                    Reads = Set.intersect core.Reads (Set.ofList [ moved; destination ])
-                    StructureWrites = Set.singleton destination }
-    | TreeOp.ReorderChildren(parent, order) -> structural (Fuaran.Core.SkeletonOp.ReorderChildren(parent, order))
+            [ ancestors
+              sourceSlot
+              CoreFootprint.slotEdit moved "parent"
+              { core with
+                  Reads = Set.intersect core.Reads (Set.singleton destination)
+                  StructureWrites = Set.singleton destination
+                  ContentWrites = Set.remove moved core.ContentWrites } ]
+            |> List.fold CoreFootprint.union CoreFootprint.empty
+    // A resolved reorder (Phase 2670) permutes the parent's child list, which
+    // the parent holds in its `kind`, and touches no child: the parent is read
+    // and written at its `kind` slot, and each listed child is read at its
+    // `parent` slot — the one fact of it the reorder depends on (that it sits
+    // under this parent). So a restyle or an edit of a listed child, and a
+    // restyle of the parent, commute with the reorder; an insert into the
+    // parent, a removal or move of a child or of the parent, and an edit of the
+    // parent's kind stay ordered. An unresolved reorder is Core's arm.
+    | TreeOp.ReorderChildren(parent, order) ->
+        match after, find parent state with
+        | Some _, Some _ ->
+            order
+            |> List.map (fun c -> CoreFootprint.readingSlot (key c) "parent")
+            |> List.fold CoreFootprint.union (CoreFootprint.slotEdit (key parent) "kind")
+        | _ -> structural (Fuaran.Core.SkeletonOp.ReorderChildren(parent, order))
     // The kind is rewritten whole: the nodes the old kind held are taken out
     // and the nodes the new kind holds put in.
     | TreeOp.EditNode(id, _) ->
