@@ -118,7 +118,9 @@ let private switchProjection: KindProjection =
         Some
             [ field "autoAdvanceMs" TInt Optional
               field "cases" (TList(TRecord "SwitchCase")) Required
-              field "default" TNode Required
+              // Phase 2640 — the default branch is a keyed ARM, as the wire declaration says.
+              { field "default" TNode Required with
+                  Keyed = true }
               field "on" (TUnion("Binding", [ TStr ])) Required ] }
 
 /// The declared support for `Gen.fsharpModuleWith` — see the module doc above.
@@ -1115,4 +1117,10 @@ let derivations: Derivation list =
       // (Core's `CollectingDecoders` record). `JsonDecode` reads the kind specs
       // it has moved off its own structure through them, supplying its policy
       // as overrides of that record; the rest it still decodes by hand.
-      Derivation.SpecDecoders ]
+      Derivation.SpecDecoders
+      // Phase 2640 — `keyedChildren` / `withKeyedChildren` / `keyedWitness`: every node position
+      // the vocabulary declares that the structural `children` does not list — the keyed arms
+      // (`ErrorBoundary.child` / `.fallback`, `Switch.default`, each `Switch` case's child), slot
+      // arguments, and the envelope's `fallback` and `state` alternatives. Certified against
+      // `Introspect`'s hand pair under Core's `witnessPairLawsAt` (GeneratedLayerTests).
+      Derivation.KeyedPositions ]

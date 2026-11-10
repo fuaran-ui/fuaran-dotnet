@@ -398,6 +398,14 @@ let private req (name: string) (t: IdlType) : IdlField =
       Presence = None
       Keyed = false }
 
+/// Phase 2640 — a node slot the KIND holds in a named arm rather than in its ordered child list:
+/// a declared KEYED position (`IdlField.Keyed`, Core Phase 494). By the derived rule a node a kind
+/// always carries is a structural child; these slots are arms (`NodeChildren.Position.Arm`), which
+/// the structural ops never edit, so the generated `children` lists only the ordered positions and
+/// the generated `keyedWitness` holds the arm — the pair `Introspect` declares by hand. A
+/// declaration, not an encoding: no wire byte moves.
+let private keyedNode (name: string) : IdlField = { req name TNode with Keyed = true }
+
 let private opt (name: string) (t: IdlType) : IdlField =
     { Name = name
       Type = t
@@ -3689,7 +3697,7 @@ let metaKinds: IdlKind list =
       { Tag = "ErrorBoundary"
         Category = "Meta"
         Annotations = Annotations.Empty
-        Fields = [ req "child" TNode; req "fallback" TNode ] }
+        Fields = [ keyedNode "child"; keyedNode "fallback" ] }
       { Tag = "FragmentDecl"
         Category = "Meta"
         Annotations = Annotations.Empty
@@ -3780,7 +3788,7 @@ let metaKinds: IdlKind list =
         Fields =
           [ opt "autoAdvanceMs" TInt
             req "cases" (TList(TRecord "SwitchCase"))
-            req "default" TNode
+            keyedNode "default"
             opt "on" (bindingOf TStr)
             opt "stateKey" TStr ] }
       // Phase 679 — `Mount`: a guest fragment host. `inputs` is omitted when

@@ -119,7 +119,7 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 | `Conformance.transformLaws` | Not used | — | a host dataframe evaluator — QueryRefine consumes Fuaran.Compute.DataFrame.evalPipeline as the pinned reference rather than shipping a second evaluator, so the parity laws have no host implementation to compare against the reference |
 | `Conformance.verifyHonestyLawsAt` | Adopted | — | `verification over FastPath patterns claims structure only (verifyHonestyLawsAt)` — via `Conformance.verifyHonestyLawsAt` |
 | `Conformance.witnessLaws` | Adopted | 3400 | `the Fuaran.UI witness certifies end-to-end via the unified Conformance.certify` — via `Conformance.certify` |
-| `Conformance.witnessPairLawsAt` | Carried by phase | — | unfiled — the vocabulary declares its keyed node slots (IdlField.Keyed, Core Phase 494) so the generator emits keyedWitness, and the generated pair is certified against Introspect's hand pair |
+| `Conformance.witnessPairLawsAt` | Adopted | 400 | `the generated witness pair certifies against Introspect's hand pair under Core's witnessPairLawsAt` — via `Conformance.witnessPairLawsAt — the generated nodeWitness / keyedWitness against Introspect.nodeWitness / keyedWitness, ids re-spelt as the wire string` |
 | `Conformance.witnessSurfaceLaws` | Not used | — | the kit's own witness-record field freeze — it certifies Core's witness records and takes no domain witness, so it has no subject in a consumer |
 | `Conformance.writeGateLaws` | Not used | — | Fuaran.Core.Ops.WriteGate — no project here gates an op through a Core WriteGate or calls applyGated |
 | `DeriveTypingConformance.laws` | Not used | — | a host dataframe evaluator's derived-column typing — the tier ships no evaluator of its own and consumes the producer's (see transformLaws) |
@@ -146,8 +146,8 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 
 | Status | Families |
 |---|---|
-| Adopted | 60 |
-| Carried by phase | 8 |
+| Adopted | 61 |
+| Carried by phase | 7 |
 | Not used | 49 |
 | Sibling host | 1 |
 | **Total** | **118** |

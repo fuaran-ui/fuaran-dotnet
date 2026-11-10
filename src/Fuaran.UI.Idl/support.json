@@ -814,6 +814,7 @@
           }
         },
         {
+          "keyed": true,
           "name": "default",
           "optionality": {
             "$type": "required"

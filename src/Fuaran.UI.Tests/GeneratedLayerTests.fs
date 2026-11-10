@@ -1709,3 +1709,363 @@ let parseAgreementTests =
                   (Some("LIMIT_EXCEEDED", "$" + String.replicate WireLimits.MaxJsonDepth "[0]"))
                   "a depth breach is LIMIT_EXCEEDED at the breach's path (§21.2 rule 2)"
           } ]
+
+// ============================================================================
+//  Phase 2640 — the generated witness pair, certified against the hand pair.
+//
+//  The vocabulary declares its keyed node slots (`IdlField.Keyed`, Core Phase
+//  494): `ErrorBoundary.child` / `.fallback` and `Switch.default` are ARMS the
+//  kind holds by name, never an ordered child list the structural ops edit. With
+//  `Derivation.KeyedPositions` requested, the generator emits `keyedChildren` /
+//  `keyedWitness` over every position the vocabulary declares outside
+//  `children` — those arms, each `Switch` case's child, slot arguments, and the
+//  envelope's `fallback` and `state` alternatives.
+//
+//  Two things are pinned here:
+//   - Core's `witnessPairLawsAt` holds the generated pair (`Generated.nodeWitness`
+//     / `keyedWitness`) to `Introspect`'s hand pair: the same structural children
+//     at every node, and the same ids over the keyed walk. The hand pair is the
+//     PRODUCTION one; only its id type is re-spelt (`NodeId` -> the wire string),
+//     because the generated layer keys nodes by the bare string.
+//   - the declaration agrees with the hand walk: every kind slot the hand walk
+//     visits as an arm is declared `Keyed`, and every one it visits as an ordered
+//     child is not. Read off the corpus, so a new kind's slot is reached without
+//     a list here to update; each direction has its own falsifier.
+// ============================================================================
+
+module private WitnessPair =
+
+    module CoreConf = Fuaran.Core.Conformance
+    module CoreRng = Fuaran.Core.ConfRng
+
+    let family = "Conformance.witnessPairLawsAt"
+
+    /// The id witness over the wire string the generated layer keys nodes by.
+    let idw: Fuaran.Core.IdWitness<string> =
+        { ToString = id
+          OfString = id
+          Equals = (=) }
+
+    /// `Introspect.nodeWitness`, its id re-spelt as the wire string. Every lens is the production one.
+    let handNodes: Fuaran.Core.NodeWitness<Node<obj>, string> =
+        { Id = fun n -> n.Id
+          KindTag = Introspect.nodeWitness.KindTag
+          Children = Introspect.nodeWitness.Children
+          ReplaceChildren = Introspect.nodeWitness.ReplaceChildren }
+
+    /// `Introspect.keyedWitness`, its id re-spelt as the wire string. Every lens is the production one.
+    let handKeyed: Fuaran.Core.KeyedWitness<Node<obj>, string> =
+        let k: Fuaran.Core.KeyedWitness<Node<obj>, NodeId> = Introspect.keyedWitness
+
+        { Surface = k.Surface
+          KeyedChildren = k.KeyedChildren
+          ReplaceKeyedChildren = k.ReplaceKeyedChildren
+          PlaceKeyedChild = fun n id -> k.PlaceKeyedChild n (NodeId id)
+          IdsUnique = k.IdsUnique }
+
+    let private md (id: string) : Node<obj> = Fuaran.markdown id "x"
+
+    /// Trees holding every position class the hand walk distinguishes: ordered containers and a
+    /// fragment body (structural), error-boundary and switch arms and slot arguments (keyed by the
+    /// kind), and the envelope's `fallback` / `state` alternatives (keyed by the envelope). Ids are
+    /// fresh across the whole tree, so a drawn tree is lawful.
+    let private genTree (rng: CoreRng.T) : Node<obj> * CoreRng.T =
+        let mutable counter = 0
+        let mutable r = rng
+
+        let fresh () =
+            counter <- counter + 1
+            sprintf "w%d" counter
+
+        let roll n =
+            let v, r' = CoreRng.intBelow n r
+            r <- r'
+            v
+
+        let dress (node: Node<obj>) =
+            match roll 5 with
+            | 0
+            | 1 -> node
+            | 2 -> node |> Node.onEmpty (md (fresh ()))
+            | 3 -> node |> Node.onLoading (md (fresh ())) |> Node.onEmpty (md (fresh ()))
+            | _ ->
+                { node with
+                    Fallback = Some(md (fresh ())) }
+
+        /// A slot-argument bag of 0..2 entries, one value argument among them.
+        let args (sub: unit -> Node<obj>) =
+            let bag =
+                Map.ofList
+                    [ for i in 1 .. roll 3 ->
+                          sprintf "s%d" i,
+                          (if i = 2 then
+                               FragmentArg.Int i
+                           else
+                               FragmentArg.SlotArg(sub ())) ]
+
+            if Map.isEmpty bag then None else Some bag
+
+        let rec build depth : Node<obj> =
+            let nid = fresh ()
+            let sub () = build (depth - 1)
+
+            let node =
+                match roll (if depth <= 0 then 1 else 7) with
+                | 0 -> md nid
+                | 1 -> Generated.mkBox nid [ for _ in 1 .. roll 3 -> sub () ] BoxLayout.Auto BoxRole.Group
+                | 2 -> Generated.mkErrorBoundary nid (sub ()) (sub ())
+                | 3 ->
+                    let cases =
+                        [ for i in 1 .. roll 3 ->
+                              ({ Child = sub ()
+                                 Match = Some(string i)
+                                 When = None }
+                              : SwitchCase<obj>) ]
+
+                    Generated.mkSwitch nid cases (sub ()) "tab"
+                | 4 -> Generated.mkFragmentDecl nid (sub ()) "frag"
+                | 5 ->
+                    let n: Node<obj> = Generated.mkFragmentRef nid "frag"
+
+                    match n.Kind with
+                    | NodeKind.FragmentRef s ->
+                        { n with
+                            Kind = NodeKind.FragmentRef { s with Args = args sub } }
+                    | _ -> n
+                | _ ->
+                    let n: Node<obj> =
+                        Generated.mkMount
+                            nid
+                            []
+                            { Direction = ChannelDirection.OutOnly
+                              MessageShape = None }
+                            "guest"
+
+                    match n.Kind with
+                    | NodeKind.Mount s ->
+                        { n with
+                            Kind = NodeKind.Mount { s with Inputs = args sub } }
+                    | _ -> n
+
+            dress node
+
+        let rootId = fresh ()
+
+        let root =
+            Generated.mkBox rootId [ for _ in 1 .. 1 + roll 3 -> build 3 ] BoxLayout.Auto BoxRole.Group
+
+        root, r
+
+    let private genFresh (existing: Set<string>) (rng: CoreRng.T) : Node<obj> * CoreRng.T =
+        let mutable r = rng
+
+        let rec pick () =
+            let v, r' = CoreRng.next r
+            r <- r'
+            let id = sprintf "f%d" (v % 100000)
+            if existing.Contains id then pick () else id
+
+        md (pick ()), r
+
+    let opGen: Fuaran.Core.OpGen<Node<obj>, string> =
+        { Tree = genTree
+          FreshNode = genFresh
+          CanHold = Some(fun n -> Introspect.getChildren n.Kind |> Option.isSome) }
+
+    let seed = 20261110
+    let iterations = 200
+
+    /// The family over the generated pair and a hand pair.
+    let run
+        (hNodes: Fuaran.Core.NodeWitness<Node<obj>, string>)
+        (hKeyed: Fuaran.Core.KeyedWitness<Node<obj>, string>)
+        (n: int)
+        =
+        CoreConf.witnessPairLawsAt Generated.nodeWitness Generated.keyedWitness hNodes hKeyed idw opGen seed n
+
+    /// The enumeration the declaration retires on the generated side: the arms listed as ORDERED
+    /// children, as the generated `children` listed them before the vocabulary declared them keyed.
+    let staleNodes: Fuaran.Core.NodeWitness<Node<obj>, string> =
+        { handNodes with
+            Children =
+                fun n ->
+                    match n.Kind with
+                    | NodeKind.ErrorBoundary s -> [ s.Child; s.Fallback ]
+                    | NodeKind.Switch s -> [ s.Default ]
+                    | _ -> handNodes.Children n }
+
+    /// The keyed walk with those arms taken out, so the pair still reaches every id once.
+    let staleKeyed: Fuaran.Core.KeyedWitness<Node<obj>, string> =
+        { handKeyed with
+            KeyedChildren =
+                fun n ->
+                    let moved = staleNodes.Children n |> List.map _.Id |> Set.ofList
+                    handKeyed.KeyedChildren n |> List.filter (fun k -> not (moved.Contains k.Id)) }
+
+    let failed (results: Fuaran.Core.LawResult list) =
+        results
+        |> List.filter (fun r -> not r.Passed)
+        |> List.map (fun r -> r.Law, r.Counterexample)
+
+    // ---- the declaration against the hand walk ----
+
+    /// Every (kind, field) a kind declares as a node or node list it always carries — the slots
+    /// `Keyed` may mark (Core's `Declare.errors` refuses it anywhere else) — with its marker.
+    let declaredSlots (idl: Fuaran.Core.Idl.Idl) : Map<string * string, bool> =
+        idl.Kinds
+        |> List.collect (fun k ->
+            k.Fields
+            |> List.choose (fun f ->
+                match f.Type, f.Opt with
+                | Fuaran.Core.Idl.TNode, Fuaran.Core.Idl.Required
+                | Fuaran.Core.Idl.TList Fuaran.Core.Idl.TNode, Fuaran.Core.Idl.Required ->
+                    Some((k.Tag, f.Name), f.Keyed)
+                | _ -> None))
+        |> Map.ofList
+
+    /// What the hand walk says of each kind slot it visits under `roots`: `true` where it holds the
+    /// slot keyed (an arm), `false` where it holds it as an ordered child. A label names a kind's
+    /// own field when it is `<Kind>.<field>`, optionally indexed (`Box.children[0]`); a nested
+    /// record's slot (`Switch.cases[0].child`) and a map entry (`FragmentRef.args[k]`) name no
+    /// field the kind declares as a node, and `keyedMismatches` reads only declared keys.
+    let observedSlots (roots: Node<obj> list) : Map<string * string, bool> =
+        let label = System.Text.RegularExpressions.Regex(@"^([A-Z]\w*)\.(\w+)(\[\d+\])?$")
+
+        let rec walk (acc: Map<string * string, bool>) (n: Node<obj>) =
+            let here =
+                NodeChildren.slotsIn NodeChildren.Reach.keyed n
+                |> List.fold
+                    (fun (m: Map<string * string, bool>) (s: NodeChildren.Slot<obj>) ->
+                        let g = label.Match s.Label
+
+                        if g.Success then
+                            Map.add
+                                (g.Groups[1].Value, g.Groups[2].Value)
+                                (s.Position <> NodeChildren.Position.Ordered)
+                                m
+                        else
+                            m)
+                    acc
+
+            NodeChildren.children NodeChildren.Reach.keyed n |> List.fold walk here
+
+        roots |> List.fold walk Map.empty
+
+    /// Every disagreement between the declaration and the hand walk, as a sentence; empty when they
+    /// agree on every slot the vocabulary declares.
+    let keyedMismatches (declared: Map<string * string, bool>) (observed: Map<string * string, bool>) : string list =
+        declared
+        |> Map.toList
+        |> List.choose (fun ((kind, field), keyed) ->
+            match Map.tryFind (kind, field) observed with
+            | None ->
+                Some(sprintf "%s.%s: the hand walk never visited it — the sample does not reach the slot" kind field)
+            | Some arm when arm <> keyed ->
+                Some(
+                    sprintf
+                        "%s.%s: the hand walk holds it %s but the vocabulary declares it %s"
+                        kind
+                        field
+                        (if arm then "as a keyed arm" else "as an ordered child")
+                        (if keyed then "Keyed" else "not Keyed")
+                )
+            | Some _ -> None)
+
+    /// Every corpus node fixture the policy decoder accepts.
+    let corpusRoots () : Node<obj> list =
+        familyFixtures "nodes" "*.json"
+        |> List.choose (fun (_, json) ->
+            match JsonDecode.decodeNodeObj json with
+            | Ok n -> Some n
+            | Error _ -> None)
+
+    /// The vocabulary with the marker on one kind field set to `keyed`.
+    let withMarker (kind: string) (field: string) (keyed: bool) (idl: Fuaran.Core.Idl.Idl) : Fuaran.Core.Idl.Idl =
+        { idl with
+            Kinds =
+                idl.Kinds
+                |> List.map (fun k ->
+                    if k.Tag <> kind then
+                        k
+                    else
+                        { k with
+                            Fields =
+                                k.Fields
+                                |> List.map (fun f -> if f.Name = field then { f with Keyed = keyed } else f) }) }
+
+    // Registered at module initialisation (LawCases.fs's header says why).
+    let witnessPairRun =
+        Fuaran.UI.Tests.LawCases.adopt [ family ] iterations (run handNodes handKeyed)
+
+[<Tests>]
+let witnessPairTests =
+    testList
+        "Phase 2640 - the generated witness pair against Introspect's hand pair"
+        [ test "the generated witness pair certifies against Introspect's hand pair under Core's witnessPairLawsAt" {
+              let results = WitnessPair.witnessPairRun.Force()
+              Expect.isEmpty (WitnessPair.failed results) "every pair law holds, and the sample reached a keyed holder"
+
+              Expect.isFalse
+                  (results |> List.exists (fun r -> r.Law.Contains "BY DECLARATION"))
+                  "the run is MEASURED: the sample held keyed positions, so it is not vacuous by declaration"
+          }
+
+          test "RED: a hand pair listing the arms as ordered children fails, at the holding kind" {
+              let failed =
+                  WitnessPair.run WitnessPair.staleNodes WitnessPair.staleKeyed WitnessPair.iterations
+                  |> WitnessPair.failed
+
+              Expect.hasLength failed 1 "only the structural law reds — both pairs reach the same ids"
+              let law, counterexample = List.head failed
+              Expect.stringContains law "structural children" "the structural law"
+              let at = Option.defaultValue "" counterexample
+
+              Expect.isTrue
+                  (at.Contains "kind ErrorBoundary" || at.Contains "kind Switch")
+                  (sprintf "localised to a node holding an arm: %s" at)
+          }
+
+          test "every kind slot the hand walk holds as an arm is declared Keyed, and every ordered one is not" {
+              let roots = WitnessPair.corpusRoots ()
+
+              Expect.isGreaterThan roots.Length 100 "the corpus's node fixtures are read — is the corpus clone present?"
+
+              let declared = WitnessPair.declaredSlots Fuaran.UI.Vocabulary.uiIdl
+
+              let keyed =
+                  declared
+                  |> Map.filter (fun _ k -> k)
+                  |> Map.toList
+                  |> List.map fst
+                  |> Set.ofList
+
+              Expect.equal
+                  keyed
+                  (set [ "ErrorBoundary", "child"; "ErrorBoundary", "fallback"; "Switch", "default" ])
+                  "the vocabulary's keyed slots"
+
+              Expect.isEmpty
+                  (WitnessPair.keyedMismatches declared (WitnessPair.observedSlots roots))
+                  "the declaration and the hand walk agree on every slot"
+          }
+
+          test
+              "FALSIFIER: an arm declared unkeyed, and an ordered list declared keyed, each disagree with the hand walk" {
+              let observed = WitnessPair.observedSlots (WitnessPair.corpusRoots ())
+
+              let mismatchesWith kind field keyed =
+                  let declared =
+                      Fuaran.UI.Vocabulary.uiIdl
+                      |> WitnessPair.withMarker kind field keyed
+                      |> WitnessPair.declaredSlots
+
+                  WitnessPair.keyedMismatches declared observed
+
+              let unkeyedArm = mismatchesWith "Switch" "default" false
+              Expect.hasLength unkeyedArm 1 "an arm declared unkeyed is one disagreement"
+              Expect.stringContains unkeyedArm.Head "Switch.default" "named at the slot"
+
+              let keyedList = mismatchesWith "Box" "children" true
+              Expect.hasLength keyedList 1 "an ordered list declared keyed is one disagreement"
+              Expect.stringContains keyedList.Head "Box.children" "named at the slot"
+          } ]

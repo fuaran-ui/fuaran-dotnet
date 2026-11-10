@@ -7818,11 +7818,13 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.103.1 — the slot opened after v0.103.0 was released (DRAFT — untagged)
+## 0.104.0 — the slot opened after v0.103.0 was released; advanced from 0.103.1 on 2026-11-10 by Phase 2640, whose change is breaking (DRAFT — untagged)
 
-_`v0.103.0` is TAGGED (2026-11-09, at `1b783c61`), so nothing may ride it: the change below opens the next slot. Its
-class is ADDITIVE, so it opens at the patch number; a later breaking ride advances it. The `<Version>` advance and its
-ledger record are the release act's, recorded separately._
+_`v0.103.0` is TAGGED (2026-11-09, at `1b783c61`), so nothing may ride it: Phase 2639 opened the next slot at the
+patch number, its class being ADDITIVE. Phase 2640 changes what two existing public members of `Fuaran.UI.Generated`
+answer (below), a higher class than the draft carried, so it ADVANCES the slot to the next minor (the 0.x convention's
+breaking number) rather than riding a number that says "additive". The `<Version>` advance and its ledger record are
+the release act's, recorded separately._
 
 ### What rides this slot — Phase 2639 (`JsonDecode` becomes a policy record over the generated collecting decoders)
 
@@ -7858,6 +7860,38 @@ not engaged. **No escape hatch is created or widened**: the record is supplied b
 generated entry it calls, never selected or reached by a document, and `JsonDecode`'s own record is private.
 
 Migration note: [`docs/migrations/2639-decoder-layering.md`](docs/migrations/2639-decoder-layering.md).
+
+### What rides this slot — Phase 2640 (the vocabulary declares its keyed node slots)
+
+**Class: breaking (behavioural), in `Fuaran.UI.Generated` only.** No wire byte moves and no decode verdict moves: the
+`keyed` marker is a declaration the codec never reads (WIRE_FORMAT §15.4's classifier grades all three changes
+`HostSurfaceOnly`, NO profile step), and the corpus and the generated-layer pins are byte-identical either side.
+
+- **Declared — three keyed node slots** (`IdlField.Keyed`, Core Phase 494) in `src/Fuaran.UI.Idl/Vocabulary.fs`:
+  `ErrorBoundary.child`, `ErrorBoundary.fallback` and `Switch.default` (the last also on the `Switch` projection's
+  host fields in `Support.fs`). They are ARMS the kind holds by name (`NodeChildren.Position.Arm`), never an ordered
+  child list the structural ops edit; `idl.json` and `support.json` write `"keyed": true` on exactly those fields.
+- **Changed — `Generated.children`, `Generated.withChildren`, and so `Generated.nodeWitness` and
+  `Generated.runValidator`, no longer list those arms.** `children` of an `ErrorBoundary` was `[child; fallback]` and of
+  a `Switch` `[default]`; both are now `[]`, and `withChildren` leaves the arms alone. This is the structural
+  enumeration `Introspect.nodeWitness` (the one the apply path edits through) has always had, so the generated and
+  the hand structural witness now agree; a consumer that walked arms through the GENERATED `children` reads them
+  through `Generated.keyedChildren` instead (or walks `Fuaran.Core.Tree.traversal Generated.nodeWitness
+  Generated.keyedWitness`). No shipped package of this repository walks through it.
+- **Added — the keyed walk in `Fuaran.UI.Generated`.** The vocabulary requests Core's `KeyedPositions` derivation
+  (`Support.fs`), so the module carries `keyedChildren` (every node position outside `children`: the three arms, each
+  `Switch` case's child, `FragmentRef` / `Mount` slot arguments, the envelope's `fallback` and `state.onEmpty` /
+  `state.onLoading`), `withKeyedChildren` (arity-preserving) and `keyedWitness` (Core's `KeyedWitness`).
+- **Certified (tests).** `Conformance.witnessPairLawsAt` holds the generated pair to `Introspect`'s hand pair
+  (`GeneratedLayerTests.fs`, 200 iterations, measured: the sample holds keyed positions); the census row moves from
+  Carried by phase to Adopted. A pin reads the hand walk over the corpus and requires every kind slot it holds as an
+  arm to be declared `Keyed` and every ordered one not to be, with a falsifier in each direction.
+
+**The consumer cost:** a walk over `Generated.children` / `nodeWitness` that relied on reaching the error-boundary or
+switch arms. Additive otherwise: three new names.
+
+**No kind is added, merged or retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s admission gates are
+not engaged. **No escape hatch is created or widened.**
 
 ---
 
