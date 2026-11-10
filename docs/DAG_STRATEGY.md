@@ -110,7 +110,11 @@ recorded in `DerivabilitySnapshot.fs`), so the generated population has two edit
 No triad the policy derived before the change is refused after it, in either population; every pair
 the change frees is pinned in `TreeOpProjectionTests`, and both narrowings are certified by
 `Conformance.footprintInLawsAt` (`ReorderMoveFootprintLawTests`). The corpus population stays at
-1.0000.
+1.0000. The change also widens what the policy derives where the tree merge REFUSES (2292's draws:
+142 → 606 triads; 2670's: 158 → 441), each a pair whose ops the fold runs in both orders to one tree.
+One is a corpus fixture: `merge-totality-concurrent-move` (a move beside a restyle of the moved node),
+which the tree merge refuses because it cannot keep both the mover's position and the editor's
+subtree, and the fold now derives with both. The cut changes that fixture's verdict.
 
 The gate is **not met** on the population that draws the levers' pairs. The 2,851 refused auto-merges
 that remain, attributed by the pairs each refusal names (a triad counts under a class when every one of
