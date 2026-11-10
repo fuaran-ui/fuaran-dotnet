@@ -66,11 +66,9 @@ were re-examined against Core on 2026-10-16 (Phase 2289). The honest account is 
    *asserts* an outcome and carries a replay delta from its primary parent; replay follows one spine,
    and nothing on the read path checks the assertion against the secondary parent. Core *derives*
    state by folding a head's whole ancestor closure in a deterministic order, and refuses deltas that
-   interfere. Measured over the merge-conformance corpus and 18,597 generated triads, Core's fold
-   derives none of the UI merge's refusals and, once style edits carry the field they change and the
-   footprints are precise, 94.5% of its auto-merges; the remainder is an agreement the reconciler can
-   drop, a child-order convention, or a resolution the UI should not have made (a move winning over a
-   concurrent removal that the same engine refuses against an edit).
+   interfere. The 2026-10-16 estimate put the fold at 94.5% of the UI merge's auto-merges once the
+   footprints were precise. That figure was the footprint's over-approximation alone, measured before
+   the reconciliation policy existed. With the policy shipped, it is lower (see "The cut's gate" below).
 
 **Direction.** The UI DAG converges onto Core's. First, with no stored byte moving, the UI adopts
 Core's node-identity rule for order-swapped merges (Phase 2289). Then, at an announced breaking cut,
@@ -90,6 +88,43 @@ outside Core's independence theorem cannot slip through. Its normative statement
 `WIRE_FORMAT.md` §34 and its corpus the `foldFixtures` family, so every host can port it before the
 cut makes it the DAG's only merge. Until then it is an additive second entry: `DagMerge` still merges
 with the tree-level engine.
+
+### The cut's gate, and where it stands
+
+Removing the tree merge refuses every concurrent edit the policy cannot derive, so the cut (Phase 2645)
+is held behind a measured gate, set when the cut was ruled on 2026-11-09. Of the triads
+the tree merge auto-merges, the policy must derive at least 90% to the same tree
+(`derivability.generated.policy.derived_share` in the `derivability-snapshot` benchmark of
+`Fuaran.UI.Ops.Benchmarks`). It must also derive none to a different tree, unless each such case is
+pinned as a corpus fixture with a stated reason.
+
+Measured on 2026-11-10 (seed 20261016, 20,000 trials, after Phase 2651), the gate is **not met**:
+
+| Population | UI auto-merges | Policy derives the same tree | Different tree | Refused (Conflict / DeleteModify) |
+|---|---|---|---|---|
+| corpus | 7 | 7 (1.0000) | 0 | 0 / 0 |
+| generated | 9,294 | 5,943 (0.6394) | 135 | 2,860 / 354 |
+
+Phase 2651 moved the corpus figure (0.8571 to 1.0000) and not the generated one. Its generator draws
+no restyle of a container that a move leaves.
+
+What the policy refuses, by the conflicting pair (counted once per triad and pair):
+
+- **A reorder against an edit of one of the children** (`ReorderChildren` against `PatchStyle` or
+  `EditNode`): about 2,600 pairs. The base-aware footprint takes Core's `ReorderChildren` arm, which
+  reads every listed child WHOLE, so a restyle of one child collides with a reorder of its parent. Read
+  at a slot, as Phase 2651 did for a move's ancestors, these pairs commute. Clearing them alone puts
+  the generated share at no more than 0.8423.
+- **A move against an edit of the moved node** (`MoveNode` against `PatchStyle`, `EditNode` or
+  `ReorderChildren`): about 900 pairs. A move keeps a content write of the node it moves. Clearing
+  these as well raises the bound to 0.9002, which only just reaches the gate, and only if every
+  triad cleared then derives to the tree merge's own tree.
+- **The 135 triads derived to a different tree** each involve a `MoveNode` or `InsertChild`. They are
+  child-order differences between the two engines. Each needs a fixture with its reason, or the
+  policy's child-order rule aligned to the tree merge's.
+
+So the cut waits on these footprint changes and a re-measurement. Until it lands, `TreeMerge` stays the
+DAG's merge, and the two DAGs remain two implementations.
 
 What *did* transfer regardless: the provenance-hardening applied to the linear chain (folding the
 prompt id / actor / result outcome into the content hash, and delimiting the pre-image) was applied to
