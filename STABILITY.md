@@ -7818,6 +7818,49 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
+## 0.103.1 — the slot opened after v0.103.0 was released (DRAFT — untagged)
+
+_`v0.103.0` is TAGGED (2026-11-09, at `1b783c61`), so nothing may ride it: the change below opens the next slot. Its
+class is ADDITIVE, so it opens at the patch number; a later breaking ride advances it. The `<Version>` advance and its
+ledger record are the release act's, recorded separately._
+
+### What rides this slot — Phase 2639 (`JsonDecode` becomes a policy record over the generated collecting decoders)
+
+**Class: additive.** Packages `Fuaran.UI` (new public members) and `Fuaran.UI.Ops` (no surface change). No wire byte
+moves and no decode verdict moves: every accepted byte, every refusal's code, path, sentence and expected shape, every
+§29 defect list, every reliance event, the work meter and every admission verdict are held identical by the parity
+harness (below) over the whole node-decoder corpus and 9,255 mutations of it.
+
+- **Added — the collecting decoders in `Fuaran.UI.Generated`.** The vocabulary now requests Core's `SpecDecoders`
+  derivation (`src/Fuaran.UI.Idl/Support.fs`), so the generated module carries Core's `CollectingDecoders` record (a
+  field per node, union, record, kind spec, enumeration and JSON scalar, the `CollectingBinding` seam and `Absent`,
+  Core D175 / D230), its value `collectingDecoders`, and per kind spec `decode<Tag>Spec`, `decode<Tag>SpecAll` and
+  `decode<Tag>SpecAllWith`, plus `decodeNodeJson`, `decodeNodeJsonAll`, `decodeNodeJsonAllWith`, `decodeNodeAll` and
+  `decodeNodeAllWith`. Each answers Core's `DecodeError` (one, or every one in declaration order) with the structural
+  layer's own sentences, not `JsonDecode`'s; a consumer wanting this tier's policy keeps calling `JsonDecode`.
+- **Changed, internally — `JsonDecode` reads the kind specs it has moved through that record.** Its policy (each
+  reader it applied by hand, the sentence each required member's absence is reported in, the lenient member aliases,
+  the §21.9 bound) is a `CollectingDecoders` built with `{ collectingDecoders with … }`, and the hand structure of each
+  moved spec is deleted in the same commit. Moved by this slot: `Heading`, `Math`, `Icon`, `CodeBlock`, `Badge`,
+  `Callout`, `List` and `Skeleton`. The rest is still decoded by hand; see the migration note for what blocks which.
+- **Added (tests) — the decoder parity harness.** `tests/decoder-parity/<family>.tsv` records the full verdict of the
+  node and op decoders over every node-decoder fixture (279 nodes, 91 lenient, 219 reject), the op fixtures (38 + 21),
+  the two malformed recovery sets (36 + 42) and every member of every kind in the `nodes/` fixtures dropped, made null
+  and retyped (9,255 documents), recorded from the hand decoder before the first family moved;
+  `Fuaran.UI.JsonDecode.Tests` holds the decoder to it, and `-- --decoder-parity` re-records it as a deliberate act.
+
+**The consumer cost: none.** No existing member changes; the record, its value and the entries are new names in
+`Fuaran.UI.Generated`. The package grows by the generated collecting group (about 2,900 lines of emitted F#), which
+the Fable leg compiles like the rest of the module.
+
+**No kind is added, merged or retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s admission gates are
+not engaged. **No escape hatch is created or widened**: the record is supplied by the CALLING host's code to the
+generated entry it calls, never selected or reached by a document, and `JsonDecode`'s own record is private.
+
+Migration note: [`docs/migrations/2639-decoder-layering.md`](docs/migrations/2639-decoder-layering.md).
+
+---
+
 ## 0.103.0 (RELEASED — tagged v0.103.0 at 1b783c61, 2026-11-09)
 
 _`v0.102.0` is TAGGED (2026-11-06, at `00225688`), so nothing may ride it: the changes below open the next slot.

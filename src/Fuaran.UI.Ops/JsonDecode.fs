@@ -207,12 +207,15 @@ type DecodeError =
 /// too: a field per enumeration, one per JSON scalar, a generic seam for
 /// `Binding`, and `Absent`, asked at every declared member an object does not
 /// carry, which is where a member null this module reads is answered by its
-/// position. So every position is now reachable. This module has not moved onto
-/// it yet: Phase 2420 measured the policy still to move (its probe, 121
-/// divergences over the node corpus with nothing overridden) and the move is the
-/// layering's own work. The tests pinning these facts are in
-/// `GeneratedLayerTests` ("structural substrate", "collecting derivation", "the
-/// types a host overrides", "the positions this decoder's policy needs").
+/// position. So every position is now reachable, and since Phase 2639 this
+/// module moves onto it a family of kind specs at a time (the policy record,
+/// `policy`, beside `decodeDisplayKind`), each family's hand structure deleted as
+/// it moves. The sink is unchanged by it: a moved spec's refusals are constructed
+/// at the call site, at their full path, by `Bridge.decodeAt`. The tests pinning
+/// these facts are in `GeneratedLayerTests` ("structural substrate", "collecting
+/// derivation", "the types a host overrides", "the positions this decoder's
+/// policy needs"), and every verdict is held by the parity harness
+/// (`tests/decoder-parity/`).
 //
 // Under Fable the slot is a plain static: a JS host runs one decode at a time on
 // its one thread, so a plain static IS per-thread there (Phase 2064 checked it).
@@ -4212,31 +4215,6 @@ let private decodeMetricSpec (path: string) (j: Json) : Result<MetricSpec, Decod
         | _, _, _, _, _, _, _, _, _, _, Error e, _
         | _, _, _, _, _, _, _, _, _, _, _, Error e -> Error e
 
-let private decodeHeadingSpec (path: string) (j: Json) : Result<HeadingSpec, DecodeError> =
-    match requireObject path j with
-    | Error e -> Error e
-    | Ok fields ->
-        let levelR =
-            requireField path fields "level" "heading level integer"
-            |> Result.bind (requireInt (path + ".level"))
-
-        let textR =
-            requireField path fields "text" "heading TextSource"
-            |> Result.bind (decodeTextSource (path + ".text"))
-
-        let variantR =
-            fieldOrDefault fields "variant" HeadingVariant.Standard (decodeHeadingVariant (path + ".variant"))
-
-        match levelR, textR, variantR with
-        | Ok level, Ok text, Ok variant ->
-            Ok
-                { Level = level
-                  Text = text
-                  Variant = variant }
-        | Error e, _, _
-        | _, Error e, _
-        | _, _, Error e -> Error e
-
 let private decodeFactSpec (path: string) (j: Json) : Result<FactSpec, DecodeError> =
     // A labeled TEXT fact (2026-07-17 — the complementary kind the launch
     // eval showed missing: every model forced text facts into Metric's
@@ -4421,22 +4399,6 @@ let private decodeMarkdownSpec (path: string) (j: Json) : Result<MarkdownSpec, D
             requireField path fields "text" "markdown TextSource"
             |> Result.bind (decodeTextSource (path + ".text"))
             |> Result.map (fun text -> { Citations = citations; Text = text }))
-
-let private decodeBadgeSpec (path: string) (j: Json) : Result<BadgeSpec, DecodeError> =
-    match requireObject path j with
-    | Error e -> Error e
-    | Ok fields ->
-        let labelR =
-            requireField path fields "label" "badge label TextSource"
-            |> Result.bind (decodeTextSource (path + ".label"))
-
-        let variantR =
-            fieldOrDefault fields "variant" BadgeVariant.Neutral (decodeBadgeVariant (path + ".variant"))
-
-        match labelR, variantR with
-        | Ok label, Ok variant -> Ok { Label = label; Variant = variant }
-        | Error e, _
-        | _, Error e -> Error e
 
 let private decodeLinkSpec (path: string) (j: Json) : Result<LinkSpec, DecodeError> =
     match requireObject path j with
@@ -5115,26 +5077,6 @@ let private decodeTreeSpec (path: string) (j: Json) : Result<TreeSpec<obj>, Deco
         | _, Error e, _
         | _, _, Error e -> Error e
 
-let private decodeListSpec (path: string) (j: Json) : Result<ListSpec, DecodeError> =
-    match requireObject path j with
-    | Error e -> Error e
-    | Ok fields ->
-        let itemsR =
-            requireField path fields "items" "list items array"
-            |> Result.bind (requireArray (path + ".items"))
-            |> Result.bind (fun items ->
-                items
-                |> List.mapi (fun i it -> i, it)
-                |> traverse (fun (i, it) -> decodeTextSource (sprintf "%s.items[%d]" path i) it))
-
-        let orderedR =
-            fieldOrDefault fields "ordered" false (requireBool (path + ".ordered"))
-
-        match itemsR, orderedR with
-        | Ok items, Ok ordered -> Ok { Items = items; Ordered = ordered }
-        | Error e, _
-        | _, Error e -> Error e
-
 let private decodeToastSpec (path: string) (j: Json) : Result<ToastSpec, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
@@ -5170,64 +5112,6 @@ let private decodeToastSpec (path: string) (j: Json) : Result<ToastSpec, DecodeE
         | _, _, Error e, _
         | _, _, _, Error e -> Error e
 
-let private decodeCodeBlockSpec (path: string) (j: Json) : Result<CodeBlockSpec, DecodeError> =
-    match requireObject path j with
-    | Error e -> Error e
-    | Ok fields ->
-        let codeR =
-            requireField path fields "code" "code-block code string"
-            |> Result.bind (requireString (path + ".code"))
-
-        let languageR =
-            requireField path fields "language" "code-block language string"
-            |> Result.bind (requireString (path + ".language"))
-
-        let lineNumbersR =
-            fieldOrDefault fields "lineNumbers" false (requireBool (path + ".lineNumbers"))
-
-        // Phase 2300 — `copyable` omits when TRUE (a code block is copyable
-        // unless it says otherwise; `Defaults.codeBlock`).
-        let copyableR =
-            fieldOrDefault fields "copyable" true (requireBool (path + ".copyable"))
-
-        let highlightLinesR =
-            fieldOrDefault fields "highlightLines" [] (requireArray (path + ".highlightLines"))
-            |> Result.bind (fun items ->
-                items
-                |> List.mapi (fun i it -> i, it)
-                |> traverse (fun (i, it) -> requireInt (sprintf "%s.highlightLines[%d]" path i) it))
-
-        match codeR, languageR, lineNumbersR, copyableR, highlightLinesR with
-        | Ok code, Ok language, Ok lineNumbers, Ok copyable, Ok highlightLines ->
-            Ok
-                { Code = code
-                  Language = language
-                  LineNumbers = lineNumbers
-                  HighlightLines = highlightLines
-                  Copyable = copyable }
-        | Error e, _, _, _, _
-        | _, Error e, _, _, _
-        | _, _, Error e, _, _
-        | _, _, _, Error e, _
-        | _, _, _, _, Error e -> Error e
-
-let private decodeMathSpec (path: string) (j: Json) : Result<MathSpec, DecodeError> =
-    match requireObject path j with
-    | Error e -> Error e
-    | Ok fields ->
-        let sourceR =
-            requireField path fields "source" "math LaTeX source string"
-            |> Result.bind (requireString (path + ".source"))
-
-        let displayR =
-            requireField path fields "display" "MathDisplay"
-            |> Result.bind (decodeMathDisplay (path + ".display"))
-
-        match sourceR, displayR with
-        | Ok source, Ok display -> Ok { Source = source; Display = display }
-        | Error e, _
-        | _, Error e -> Error e
-
 let private decodeSparklineSpec (path: string) (j: Json) : Result<SparklineSpec, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
@@ -5235,40 +5119,6 @@ let private decodeSparklineSpec (path: string) (j: Json) : Result<SparklineSpec,
         requireFieldAliased path fields "source" [ "data" ] "sparkline Binding<float seq>"
         |> Result.bind (decodeBindingFloatSeq (path + ".source"))
         |> Result.map (fun source -> { Source = source })
-
-// Phase 1666 — `Skeleton.rows` is bounded by WIRE_FORMAT §21.9.
-//
-// `requireInt` decides FIRST, so §7.1's slot rule is untouched: a fractional,
-// non-finite or out-of-32-bit value is still a `WRONG_TYPE` and never a limit
-// breach. The bound then refuses a value the slot CAN hold but the format will
-// not carry the work of — the renderer emits one placeholder row per count, so
-// `{"rows":100000000}` names 10^8 rendered rows in a handful of bytes. The two
-// codes answer different questions and the ORDER is what keeps them apart.
-//
-// Upper bound only, deliberately: a negative count is an authoring defect, not
-// a resource breach, and `PreEmitValidate`'s `SkeletonRowsOutOfRange`
-// (FUARAN152) is where it belongs.
-let private decodeSkeletonSpec (path: string) (j: Json) : Result<SkeletonSpec, DecodeError> =
-    match requireObject path j with
-    | Error e -> Error e
-    | Ok fields ->
-        requireField path fields "rows" "skeleton row count integer"
-        |> Result.bind (requireInt (path + ".rows"))
-        |> Result.bind (fun rows ->
-            if rows > Fuaran.UI.WireLimits.MaxSkeletonRows then
-                Error(
-                    DecodeError.create
-                        DecodeErrorCode.LIMIT_EXCEEDED
-                        (path + ".rows")
-                        (sprintf
-                            "skeleton rows %d exceeds the maximum of %d (WIRE_FORMAT 21.9)"
-                            rows
-                            Fuaran.UI.WireLimits.MaxSkeletonRows)
-                        (Some(sprintf "at most %d rows on one Skeleton" Fuaran.UI.WireLimits.MaxSkeletonRows))
-                )
-            else
-                Ok rows)
-        |> Result.map (fun rows -> { Rows = rows })
 
 // Phase 821 — the standalone icon-only display kind.
 let private decodeIconSize (path: string) (j: Json) : Result<IconSize, DecodeError> =
@@ -5278,86 +5128,6 @@ let private decodeIconSize (path: string) (j: Json) : Result<IconSize, DecodeErr
     | JString "Large" -> Ok IconSize.Large
     | JString s -> unknownEnumCase path s "Small | Medium | Large"
     | _ -> wrongType path "JSON string (IconSize)"
-
-let private decodeIconSpec (path: string) (j: Json) : Result<IconSpec, DecodeError> =
-    match requireObject path j with
-    | Error e -> Error e
-    | Ok fields ->
-        let iconR =
-            requireField path fields "icon" "icon name string"
-            |> Result.bind (requireString (path + ".icon"))
-
-        // `size` omitted-when-`Medium`; `tone` omitted-when-default (the
-        // Phase 460 discipline); `label` omitted-when-decorative.
-        let sizeR =
-            match tryField fields "size" with
-            | None -> Ok IconSize.Medium
-            | Some v -> decodeIconSize (path + ".size") v
-
-        let toneR =
-            match tryField fields "tone" with
-            | None -> Ok ToneVariant.Default
-            | Some v -> decodeTone (path + ".tone") v
-
-        let labelR =
-            match tryField fields "label" with
-            | None -> Ok None
-            | Some v -> requireString (path + ".label") v |> Result.map Some
-
-        match iconR, sizeR, toneR, labelR with
-        | Ok icon, Ok size, Ok tone, Ok label ->
-            Ok
-                { Icon = icon
-                  Size = size
-                  Tone = tone
-                  Label = label }
-        | Error e, _, _, _
-        | _, Error e, _, _
-        | _, _, Error e, _
-        | _, _, _, Error e -> Error e
-
-let private decodeCalloutSpec (path: string) (j: Json) : Result<CalloutSpec, DecodeError> =
-    match requireObject path j with
-    | Error e -> Error e
-    | Ok fields ->
-        // Phase 460 — `tone` omitted-when-default (`ToneVariant.Default`).
-        let toneR =
-            match tryField fields "tone" with
-            | None -> Ok ToneVariant.Default
-            | Some v -> decodeTone (path + ".tone") v
-
-        let bodyR =
-            requireField path fields "body" "callout body TextSource"
-            |> Result.bind (decodeTextSource (path + ".body"))
-
-        let dismissableR =
-            match tryField fields "dismissable" with // 0.2.0 omitted-when-false
-            | None -> Ok false
-            | Some v -> requireBool (path + ".dismissable") v
-
-        let headingR =
-            match optFieldAliased fields "heading" [ "title" ] with
-            | None -> Ok None
-            | Some v -> decodeTextSource (path + ".heading") v |> Result.map Some
-
-        let iconR =
-            match tryField fields "icon" with
-            | None -> Ok None
-            | Some v -> requireString (path + ".icon") v |> Result.map Some
-
-        match toneR, bodyR, dismissableR, headingR, iconR with
-        | Ok tone, Ok body, Ok dismissable, Ok heading, Ok icon ->
-            Ok
-                { Tone = tone
-                  Heading = heading
-                  Body = body
-                  Icon = icon
-                  Dismissable = dismissable }
-        | Error e, _, _, _, _
-        | _, Error e, _, _, _
-        | _, _, Error e, _, _
-        | _, _, _, Error e, _
-        | _, _, _, _, Error e -> Error e
 
 let private decodeProgressSpec (path: string) (j: Json) : Result<ProgressSpec, DecodeError> =
     match requireObject path j with
@@ -5771,6 +5541,264 @@ let private decodeDrawingSpec (path: string) (j: Json) : Result<DrawingSpec, Dec
         | _, _, _, Error e, _
         | _, _, _, _, Error e -> Error e
 
+// ─── The policy record over the generated collecting decoders (Phase 2639) ──
+//
+// This decoder is becoming a POLICY over the IDL-generated collecting decoders
+// (`Fuaran.UI.Generated.CollectingDecoders`, Core D175 / D230): the structure —
+// which members a spec has, which are required, which default, in what order a
+// list is walked — is the vocabulary's, emitted from `idl.json`; what stays
+// here is what the vocabulary cannot say — the sentences, the lenient readings
+// (the §3.6 static unwrap, the enumeration aliases, the integral float at an
+// integer slot), the relational and limit checks. It moves one family of kind
+// specs at a time, each landing deleting the hand structure it replaces, gated
+// by the parity harness (`tests/decoder-parity/`), which holds every verdict of
+// this decoder to the one the hand decoder gave before the first family moved.
+//
+// Three things make a generated decode answer exactly what the hand one did:
+//
+//  1. The record's fields at the leaves are THIS decoder's readers. A scalar,
+//     an enumeration or a `TextSource` is read by the reader the hand structure
+//     called, so its sentence, its aliases and its leniency are unchanged.
+//  2. A refusal a reader makes travels through the generated walk as a Core
+//     `DecodeError` CARRYING this decoder's error (`Bridge.carry`), and the
+//     walk prefixes its path on the way out; `Bridge.decodeAt` turns it back at
+//     the call site, at the call site's path, into this decoder's `DecodeError`
+//     — constructed there, so the §29 defect sink collects it exactly once. A
+//     refusal the generated STRUCTURE makes (a member that should be an array)
+//     is spelled the way the hand structure spelled it.
+//  3. `Json` has `null` and `JVal` does not (Core D230.3). A member null rides
+//     the walk as a sentinel value no document can spell, and every reader
+//     lowers it back to `JNull` before reading — so a null is answered by the
+//     reader at its position, as the hand structure answered it. A required
+//     member that is absent is answered by `Absent`, from the table of what the
+//     hand structure said each one expected.
+
+module private Bridge =
+    /// The value a `null` rides the generated walk as. Compared by reference: a
+    /// document's own `{"\u0000null":true}` is a different instance.
+    let nullSentinel: JVal = JVal.JObj [ "\u0000null", JVal.JBool true ]
+
+    let isNullSentinel (j: JVal) : bool =
+        LanguagePrimitives.PhysicalEquality j nullSentinel
+
+    /// This decoder's value, for the generated walk. Every number rides as a
+    /// float — the generated structure reads none itself (each is read by this
+    /// decoder's own reader, below), so nothing is lost on the way back.
+    let rec toJVal (j: Json) : JVal =
+        match j with
+        | Json.JNull -> nullSentinel
+        | Json.JBool b -> JVal.JBool b
+        | Json.JNumber n -> JVal.JFloat n
+        | Json.JString s -> JVal.JStr s
+        | Json.JArray xs -> JVal.JArr(xs |> List.map toJVal)
+        | Json.JObject m -> JVal.JObj(m |> Map.toList |> List.map (fun (k, v) -> k, toJVal v))
+
+    /// The value back, for one of this decoder's readers.
+    let rec toJson (j: JVal) : Json =
+        if isNullSentinel j then
+            Json.JNull
+        else
+            match j with
+            | JVal.JBool b -> Json.JBool b
+            | JVal.JInt i -> Json.JNumber(float i)
+            | JVal.JFloat f -> Json.JNumber f
+            | JVal.JStr s -> Json.JString s
+            | JVal.JArr xs -> Json.JArray(xs |> List.map toJson)
+            | JVal.JObj fs -> Json.JObject(fs |> List.map (fun (k, v) -> k, toJson v) |> Map.ofList)
+
+    [<Literal>]
+    let private Mark = "\u0000"
+
+    /// One of this decoder's errors, carried through the generated walk. Its
+    /// path is relative to the value the reader was handed; the walk adds the
+    /// steps above it.
+    let carry (e: DecodeError) : Fuaran.Core.DecodeError =
+        { Code = Fuaran.Core.DecodeCode.SchemaFault
+          Path = []
+          Expected =
+            String.concat
+                Mark
+                [ ""
+                  e.Code
+                  e.Path
+                  (match e.ExpectedShape with
+                   | Some s -> "+" + s
+                   | None -> "-") ]
+          Message = e.Message }
+
+    /// Run one of this decoder's readers inside the generated walk: every error
+    /// it constructs is collected (not into the document's defect sink, whose
+    /// paths it does not know yet) and carried out.
+    let run (read: unit -> Result<'T, DecodeError>) : Result<'T, Fuaran.Core.DecodeError list> =
+        let outer = DefectSink.Current
+        let local = ResizeArray<DecodeError>()
+        DefectSink.Current <- local
+
+        let r =
+            try
+                read ()
+            finally
+                DefectSink.Current <- outer
+
+        match r with
+        | Ok v -> Ok v
+        | Error e when local.Count = 0 -> Error [ carry e ]
+        | Error _ -> Error [ for e in local -> carry e ]
+
+    /// A reader of this decoder as a field of the record.
+    let field
+        (read: string -> Json -> Result<'T, DecodeError>)
+        : Fuaran.UI.Generated.CollectingDecoders -> JVal -> Result<'T, Fuaran.Core.DecodeError list> =
+        fun _ j -> run (fun () -> read "" (toJson j))
+
+    /// A required member's absence, as the hand structure reported it.
+    let missing (name: string) (expected: string) : Fuaran.Core.DecodeError =
+        carry
+            { Code = DecodeErrorCode.toString DecodeErrorCode.MISSING_FIELD
+              Path = ""
+              Message = sprintf "missing required field '%s'" name
+              ExpectedShape = Some expected }
+
+    let private suffix (path: Fuaran.Core.PathSegment list) : string =
+        path
+        |> List.map (function
+            | Fuaran.Core.PathSegment.Key k -> "." + k
+            | Fuaran.Core.PathSegment.Index i -> "[" + string i + "]")
+        |> String.concat ""
+
+    /// A generated refusal, or a carried one, as this decoder's error at `path`.
+    let private settle (path: string) (e: Fuaran.Core.DecodeError) : DecodeError =
+        let at = path + suffix e.Path
+
+        match e.Expected.Split([| Mark |], StringSplitOptions.None) with
+        | [| ""; code; rel; shape |] ->
+            { Code = code
+              Path = at + rel
+              Message = e.Message
+              ExpectedShape =
+                if shape.StartsWith "+" then
+                    Some(shape.Substring 1)
+                else
+                    None }
+        | _ ->
+            // The generated structure's own refusal: the only one it can make at a
+            // member a reader of this decoder does not read is a container of
+            // the wrong kind, spelled as the hand structure spelled it.
+            let expected =
+                match e.Expected with
+                | "object" -> "JSON object"
+                | "array" -> "JSON array"
+                | other -> other
+
+            { Code = DecodeErrorCode.toString DecodeErrorCode.WRONG_TYPE
+              Path = at
+              Message = "expected " + expected
+              ExpectedShape = Some expected }
+
+    /// Decode `j` at `path` through a generated collecting decoder, answering as
+    /// this decoder answers: the first error, every error into the defect sink.
+    let decodeAt
+        (path: string)
+        (decode: JVal -> Result<'T, Fuaran.Core.DecodeError list>)
+        (j: Json)
+        : Result<'T, DecodeError> =
+        match decode (toJVal j) with
+        | Ok v -> Ok v
+        | Error es ->
+            let landed = es |> List.map (settle path)
+            let sink = DefectSink.Current
+
+            if not (obj.ReferenceEquals(sink, null)) then
+                sink.AddRange landed
+
+            Error(List.head landed)
+
+/// What each required member of a moved spec expected, in the words the hand
+/// structure used — keyed by the holder's F# name and the member's key. The
+/// generated structure knows the member is required; only this decoder knows
+/// how its absence is said.
+let private requiredMembers: Map<string * string, string> =
+    Map.ofList
+        [ ("HeadingSpec", "level"), "heading level integer"
+          ("HeadingSpec", "text"), "heading TextSource"
+          ("MathSpec", "source"), "math LaTeX source string"
+          ("MathSpec", "display"), "MathDisplay"
+          ("IconSpec", "icon"), "icon name string"
+          ("CodeBlockSpec", "code"), "code-block code string"
+          ("CodeBlockSpec", "language"), "code-block language string"
+          ("BadgeSpec", "label"), "badge label TextSource"
+          ("CalloutSpec", "body"), "callout body TextSource"
+          ("ListSpec", "items"), "list items array"
+          ("SkeletonSpec", "rows"), "skeleton row count integer" ]
+
+/// The lenient field-name aliases of a moved spec's members (decode-only, see
+/// `requireFieldAliased`): read when the canonical member is absent, the
+/// canonical name winning when both are present.
+let private memberAliases: Map<string * string, string list> =
+    Map.ofList [ ("CalloutSpec", "heading"), [ "title" ] ]
+
+// Phase 1666 — `Skeleton.rows` is bounded by WIRE_FORMAT §21.9.
+//
+// The integer reader decides FIRST, so §7.1's slot rule is untouched: a
+// fractional, non-finite or out-of-32-bit value is still a `WRONG_TYPE` and
+// never a limit breach. The bound then refuses a value the slot CAN hold but the
+// format will not carry the work of — the renderer emits one placeholder row per
+// count, so `{"rows":100000000}` names 10^8 rendered rows in a handful of bytes.
+// The two codes answer different questions and the ORDER is what keeps them
+// apart.
+//
+// Upper bound only, deliberately: a negative count is an authoring defect, not a
+// resource breach, and `PreEmitValidate`'s `SkeletonRowsOutOfRange` (FUARAN152)
+// is where it belongs.
+let private skeletonRowsBound (spec: SkeletonSpec) : Result<SkeletonSpec, Fuaran.Core.DecodeError list> =
+    if spec.Rows > Fuaran.UI.WireLimits.MaxSkeletonRows then
+        Error
+            [ Bridge.carry
+                  { Code = DecodeErrorCode.toString DecodeErrorCode.LIMIT_EXCEEDED
+                    Path = ".rows"
+                    Message =
+                      sprintf
+                          "skeleton rows %d exceeds the maximum of %d (WIRE_FORMAT 21.9)"
+                          spec.Rows
+                          Fuaran.UI.WireLimits.MaxSkeletonRows
+                    ExpectedShape = Some(sprintf "at most %d rows on one Skeleton" Fuaran.UI.WireLimits.MaxSkeletonRows) } ]
+    else
+        Ok spec
+
+/// This decoder's policy, as the generated record with its readers in place.
+/// Every field a moved spec reaches is overridden by the reader the hand
+/// structure called there; a field no moved spec reaches keeps its generated
+/// value, which nothing reads.
+let private policy: Fuaran.UI.Generated.CollectingDecoders =
+    { Fuaran.UI.Generated.collectingDecoders with
+        String = Bridge.field requireString
+        Int = Bridge.field requireInt
+        Float = Bridge.field requireFloat
+        Bool = Bridge.field requireBool
+        TextSource = Bridge.field decodeTextSource
+        HeadingVariant = Bridge.field decodeHeadingVariant
+        MathDisplay = Bridge.field decodeMathDisplay
+        IconSize = Bridge.field decodeIconSize
+        ToneVariant = Bridge.field decodeTone
+        BadgeVariant = Bridge.field decodeBadgeVariant
+        SkeletonSpec =
+            fun ov j ->
+                Fuaran.UI.Generated.collectingDecoders.SkeletonSpec ov j
+                |> Result.bind skeletonRowsBound
+        Absent =
+            fun _ holder name j ->
+                let alias =
+                    match memberAliases.TryFind(holder, name), j with
+                    | Some aliases, JVal.JObj fields ->
+                        aliases
+                        |> List.tryPick (fun a -> fields |> List.tryFind (fun (k, _) -> k = a) |> Option.map snd)
+                    | _ -> None
+
+                match alias, requiredMembers.TryFind(holder, name) with
+                | Some v, _ -> Ok(Some v)
+                | None, Some expected -> Error [ Bridge.missing name expected ]
+                | None, None -> Ok None }
+
 let private decodeDisplayKind (path: string) (j: Json) : Result<NodeKind<obj>, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
@@ -5788,8 +5816,7 @@ let private decodeDisplayKind (path: string) (j: Json) : Result<NodeKind<obj>, D
 
             match disc with
             | "Heading" ->
-                getSpec ()
-                |> Result.bind (decodeHeadingSpec specPath)
+                Bridge.decodeAt specPath (Fuaran.UI.Generated.decodeHeadingSpecAllWith policy) j
                 |> Result.map NodeKind.Heading
             | "Markdown" ->
                 getSpec ()
@@ -5800,26 +5827,25 @@ let private decodeDisplayKind (path: string) (j: Json) : Result<NodeKind<obj>, D
                 |> Result.bind (decodeMetricSpec specPath)
                 |> Result.map NodeKind.Metric
             | "Badge" ->
-                getSpec ()
-                |> Result.bind (decodeBadgeSpec specPath)
+                Bridge.decodeAt specPath (Fuaran.UI.Generated.decodeBadgeSpecAllWith policy) j
                 |> Result.map NodeKind.Badge
             | "Sparkline" ->
                 getSpec ()
                 |> Result.bind (decodeSparklineSpec specPath)
                 |> Result.map NodeKind.Sparkline
             | "Callout" ->
-                getSpec ()
-                |> Result.bind (decodeCalloutSpec specPath)
+                Bridge.decodeAt specPath (Fuaran.UI.Generated.decodeCalloutSpecAllWith policy) j
                 |> Result.map NodeKind.Callout
             | "Progress" ->
                 getSpec ()
                 |> Result.bind (decodeProgressSpec specPath)
                 |> Result.map NodeKind.Progress
             | "Skeleton" ->
-                getSpec ()
-                |> Result.bind (decodeSkeletonSpec specPath)
+                Bridge.decodeAt specPath (Fuaran.UI.Generated.decodeSkeletonSpecAllWith policy) j
                 |> Result.map NodeKind.Skeleton
-            | "Icon" -> getSpec () |> Result.bind (decodeIconSpec specPath) |> Result.map NodeKind.Icon
+            | "Icon" ->
+                Bridge.decodeAt specPath (Fuaran.UI.Generated.decodeIconSpecAllWith policy) j
+                |> Result.map NodeKind.Icon
             | "LabelValueRow" ->
                 getSpec ()
                 |> Result.bind (decodeLabelValueRowSpec specPath)
@@ -5839,16 +5865,19 @@ let private decodeDisplayKind (path: string) (j: Json) : Result<NodeKind<obj>, D
                 |> Result.bind (decodeEmbedSpec specPath)
                 |> Result.map NodeKind.Embed
             | "Tree" -> getSpec () |> Result.bind (decodeTreeSpec specPath) |> Result.map NodeKind.Tree
-            | "List" -> getSpec () |> Result.bind (decodeListSpec specPath) |> Result.map NodeKind.List
+            | "List" ->
+                Bridge.decodeAt specPath (Fuaran.UI.Generated.decodeListSpecAllWith policy) j
+                |> Result.map NodeKind.List
             | "Toast" ->
                 getSpec ()
                 |> Result.bind (decodeToastSpec specPath)
                 |> Result.map NodeKind.Toast
             | "CodeBlock" ->
-                getSpec ()
-                |> Result.bind (decodeCodeBlockSpec specPath)
+                Bridge.decodeAt specPath (Fuaran.UI.Generated.decodeCodeBlockSpecAllWith policy) j
                 |> Result.map NodeKind.CodeBlock
-            | "Math" -> getSpec () |> Result.bind (decodeMathSpec specPath) |> Result.map NodeKind.Math
+            | "Math" ->
+                Bridge.decodeAt specPath (Fuaran.UI.Generated.decodeMathSpecAllWith policy) j
+                |> Result.map NodeKind.Math
             | "Drawing" ->
                 getSpec ()
                 |> Result.bind (decodeDrawingSpec specPath)

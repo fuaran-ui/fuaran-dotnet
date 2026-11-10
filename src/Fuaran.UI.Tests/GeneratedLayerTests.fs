@@ -1160,13 +1160,17 @@ let private multiDefectRejectFixtures () : (string * string * (string * string) 
 let decoderSubstrateTests =
     testList
         "the generated decoder as a structural substrate (Phase 2040)"
-        [ test "the generated module exposes one decode entry point, over the whole node" {
-              // Precondition 2. F# `private` module bindings compile to non-public
-              // methods, so the public static surface of the module is exactly the
-              // set a policy layer in another assembly could compose over. Today
-              // that is `decodeNode` alone: a layer cannot delegate ONE family's
-              // structure and keep the rest by hand, because there is nothing to
-              // delegate to below the whole-node entry.
+        [ test "the generated module exposes a collecting entry per kind spec, which the policy decoder layers over" {
+              // Precondition 2, re-pointed by Phase 2639. F# `private` module
+              // bindings compile to non-public methods, so the public static
+              // surface of the module is exactly the set a policy layer in another
+              // assembly can compose over. Phase 2040 found it was `decodeNode`
+              // alone, so no layer could delegate ONE family's structure and keep
+              // the rest by hand. Since Phase 2639 the vocabulary requests
+              // `SpecDecoders` (Support.fs), so every kind spec has its
+              // `decode<Tag>SpecAllWith`, read through a host's
+              // `CollectingDecoders`, and `JsonDecode` moves onto them a family at
+              // a time. Losing an entry would strand the family that reads it.
               let generatedModule = typeof<Generated.Binding<obj>>.DeclaringType
 
               Expect.isNotNull generatedModule "the generated types are declared inside the Fuaran.UI.Generated module"
@@ -1176,15 +1180,24 @@ let decoderSubstrateTests =
                       System.Reflection.BindingFlags.Public ||| System.Reflection.BindingFlags.Static
                   )
                   |> Array.map _.Name
-                  |> Array.filter (fun name -> name.StartsWith "dec")
-                  |> Array.distinct
-                  |> Array.sort
-                  |> Array.toList
+                  |> Set.ofArray
 
-              Expect.equal
-                  publicDecoders
-                  [ "decodeNode" ]
-                  "the generated layer now exposes per-spec decoders — re-open the Phase 2040 layering on that evidence"
+              let specs =
+                  typeof<Generated.CollectingDecoders>.GetProperties()
+                  |> Array.map _.Name
+                  // `FilterSpec` is a record a kind holds (Filters' chips), not a
+                  // kind spec, so it has no per-kind entry.
+                  |> Array.filter (fun name -> name.EndsWith "Spec" && name <> "FilterSpec")
+
+              Expect.isNonEmpty specs "the collecting record holds a field per kind spec"
+
+              for spec in specs do
+                  Expect.contains
+                      publicDecoders
+                      ("decode" + spec + "AllWith")
+                      (sprintf "the generated layer exposes %s's collecting entry over a host's record" spec)
+
+              Expect.contains publicDecoders "decodeNodeJsonAllWith" "the whole node's collecting entry"
           }
 
           test "the generated decoder stops at the first defect where §29 asks for every one" {
