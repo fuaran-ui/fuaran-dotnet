@@ -91,6 +91,53 @@ outside Core's independence theorem cannot slip through. Its normative statement
 cut makes it the DAG's only merge. Until then it is an additive second entry: `DagMerge` still merges
 with the tree-level engine.
 
+**What the policy derives, measured (Phase 2670).** The cut's gate is the derivability snapshot's
+`derivability.generated.policy.derived_share` (the share of the tree merge's generated auto-merges the
+policy derives to the same tree) at 0.90 or above, with no triad derived to a different tree unless
+pinned. Phase 2670 narrowed two base-aware footprints: a reorder reads and writes its parent at the
+`kind` slot and reads each listed child only at its `parent` slot, and a move reads and writes its
+target at the target's `parent` slot rather than whole. It also widened the snapshot's generator to
+draw the pairs those levers and 2651's target (seed 20261016 and 20,000 trials unchanged; the draws are
+recorded in `DerivabilitySnapshot.fs`), so the generated population has two editions:
+
+| population | footprint | UI auto-merges | derived to the same tree | `derived_share` | different tree |
+|---|---|---|---|---|---|
+| 2292's draws (18,597 triads) | before 2670 | 9,294 | 5,943 | 0.6394 | 135 |
+| 2292's draws (18,597 triads) | after 2670 | 9,294 | 8,304 | 0.8935 | 180 |
+| 2670's draws (17,759 triads) | before 2670 | 10,890 | 5,956 | 0.5469 | 84 |
+| 2670's draws (17,759 triads) | after 2670 | 10,890 | 7,936 | **0.7287** | 100 |
+
+No triad the policy derived before the change is refused after it, in either population; every pair
+the change frees is pinned in `TreeOpProjectionTests`, and both narrowings are certified by
+`Conformance.footprintInLawsAt` (`ReorderMoveFootprintLawTests`). The corpus population stays at
+1.0000.
+
+The gate is **not met** on the population that draws the levers' pairs. The 2,851 refused auto-merges
+that remain, attributed by the pairs each refusal names (a triad counts under a class when every one of
+its refusals is in it):
+
+- **1,240 — a restyle of a container beside a structural write of its child list** (an insert into it,
+  a move into or out of it, a removal of its child). Core counts a named structure write as a
+  whole-node touch against a slot write, so the parent's `style.<field>` collides with the insert's
+  parent. The next lever is Core's: a structure write that is the node's child-list slot for the slot
+  rule (2651's finding F2-B). Cleared alone: 0.8426.
+- **766 — a reorder beside a concurrent change of the same child list.** The tree merge rebases the
+  reorder over the other branch's appends; the policy refuses, because the reorder's list is stale in
+  one order. The next lever is the policy's: a declared rule rebasing a reorder over concurrent
+  appends, as the interleave rule orders two appends. With the restyle lever: 0.9213.
+- **390 — a removal against a touch of the removed node** (`DeleteModify`), refused by design.
+- the rest — two moves of one node, two inserts of one id, one slot written twice, and mixtures;
+  and 3 fold faults, where both branches move the SAME node into one parent beside other appends
+  there: the child-order rule lists the agreed node once per branch, and the `ReorderChildren` it
+  records does not apply (a defect of the rule, recorded for the cut).
+
+The **100 different-tree triads** (180 on 2292's draws) are child orders, in two classes: 85 (159) are
+a **move to the node's own parent** — the policy's child-order rule takes it as an append and moves
+the node to the end of the run, where the tree merge keeps its base slot; and 15 (21) are an **append
+order** — the tree merge sorts every appended id by NodeId, where the policy keeps each branch's run in
+its own order and merges the runs by their heads (6 of them involve no move at all). Pinning each
+class as a fixture, or aligning one rule to the other, is a ruling the cut owes before it lands.
+
 What *did* transfer regardless: the provenance-hardening applied to the linear chain (folding the
 prompt id / actor / result outcome into the content hash, and delimiting the pre-image) was applied to
 the UI DAG's node hash too – so a DAG node's digest covers exactly what a linear record's does.

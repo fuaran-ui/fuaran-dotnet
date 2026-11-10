@@ -7893,6 +7893,31 @@ switch arms. Additive otherwise: three new names.
 **No kind is added, merged or retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s admission gates are
 not engaged. **No escape hatch is created or widened.**
 
+### What rides this slot — Phase 2670 (a reorder reads its children at a slot, a move writes its target's position)
+
+**Class: additive.** Package `Fuaran.UI.Ops`; no public signature moves. Two base-aware footprints narrow, so the
+fold derives pairs it refused and refuses nothing it derived (measured over the derivability snapshot's populations,
+`docs/DAG_STRATEGY.md`).
+
+- **Narrowed — `TreeOpFootprint.ofOpIn` / `ofScriptIn` / `ofEachIn` of a resolved `ReorderChildren`.** It reads and
+  writes the parent at its `kind` slot and reads each listed child at its `parent` slot, where it took Core's arm (a
+  whole-node read of the parent and of every child, and a named structure write of the parent). A reorder now commutes
+  with a restyle or edit of a listed child and with a restyle of the parent. An unresolved reorder keeps Core's arm.
+- **Narrowed — the same, of a resolved `MoveNode`.** The target is read and written at its `parent` slot, where it
+  was read and content-written whole; the source and destination rules of Phase 2651 are unchanged. A move now commutes
+  with a restyle, edit or reorder of the moved node.
+- **Moved — what a refused reorder reports.** `Dag.conflictsIn` over the tier's footprint names a reorder's collision
+  with an insert into, a move into or a removal from its parent as a `ConcurrentUpdate` at the parent (it was an
+  `InsertPositionClash`), and with another reorder of the parent as a `SlotClash` on `kind`; the policy's class is
+  unchanged (`Conflict`, or `DeleteModify` beside a removal). So `DagReconcile`'s refusal envelope for such a pair
+  changes bytes, and the hosts' fold ports follow with the corpus.
+- **Corpus (merge-conformance `foldFixtures`).** `fold-refusal-concurrent-move` becomes the derivation
+  `fold-move-and-target-edit`; `fold-reorder-and-child-edit` (a derivation) and `fold-refusal-reorder-and-insert`
+  (the shape a refused reorder now reports) are added.
+
+**The consumer cost:** a caller that pinned the refusal shape of a reorder pair, or the refusal of a move beside an
+edit of its target. Every pair that was independent stays independent.
+
 ---
 
 ## 0.103.0 (RELEASED — tagged v0.103.0 at 1b783c61, 2026-11-09)
