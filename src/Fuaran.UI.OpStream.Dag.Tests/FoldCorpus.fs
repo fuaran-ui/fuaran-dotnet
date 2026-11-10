@@ -104,6 +104,20 @@ let fixtures: (string * FoldExpectation * string * Node<TestMsg> * TreeOp<TestMs
       [ TreeOp.MoveNode(NodeId "m", NodeId "boxb") ],
       [ toneOf ToneVariant.Brand (NodeId "boxa") ]
 
+      "fold-move-and-target-edit",
+      Derives,
+      "One branch moves a node while the other retones it in place. The move writes the moved node's position, which the base-aware footprint declares as its parent slot (Phase 2670), and the retone writes its style: two slots, no conflict, so the fold composes them",
+      nested,
+      [ TreeOp.MoveNode(NodeId "m", NodeId "boxb") ],
+      [ toneOf ToneVariant.Brand (NodeId "m") ]
+
+      "fold-reorder-and-child-edit",
+      Derives,
+      "One branch reorders a parent's children while the other retones one of them. The reorder writes the parent's child list (its kind slot) and reads each listed child only at its parent slot (Phase 2670), so the retone commutes with it and the fold composes them",
+      flat,
+      [ TreeOp.ReorderChildren(dashboardId, [ rightChildId; leftChildId ]) ],
+      [ toneOf ToneVariant.Brand leftChildId ]
+
       "fold-refusal-concurrent-tone",
       Refuses,
       "Both branches set a different tone on the same pane — a SlotClash on style.tone, refused as a Conflict",
@@ -143,12 +157,12 @@ let fixtures: (string * FoldExpectation * string * Node<TestMsg> * TreeOp<TestMs
       [ TreeOp.RemoveNode(NodeId "m") ],
       [ TreeOp.MoveNode(NodeId "m", NodeId "boxb") ]
 
-      "fold-refusal-concurrent-move",
+      "fold-refusal-reorder-and-insert",
       Refuses,
-      "One branch moves a node while the other retones it in place — a Conflict on the moved node",
-      nested,
-      [ TreeOp.MoveNode(NodeId "m", NodeId "boxb") ],
-      [ toneOf ToneVariant.Brand (NodeId "m") ]
+      "One branch reorders a parent's children while the other appends a child to it — the reorder's list is stale in one order. The reorder writes the parent's kind slot and the insert touches the parent whole, so Core reports a ConcurrentUpdate at the parent, refused as a Conflict",
+      flat,
+      [ TreeOp.ReorderChildren(dashboardId, [ rightChildId; leftChildId ]) ],
+      [ TreeOp.InsertChild(dashboardId, Fuaran.markdown "new" "Appended") ]
 
       "fold-refusal-tooltip",
       Refuses,
