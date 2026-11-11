@@ -313,6 +313,22 @@ and a bad signature are distinct refusals. Boundaries: the signature says the ke
 this sidecar with this read-set, not that the reach is acceptable (a coverage check's question), and it does
 not cover the document's provenance, which is the writer's assertion.
 
+## The op-DAG address — one function, and it is Core's (Phase 2645)
+
+Until the cut the UI op-DAG minted its addresses with its own function — two of them, an ordinary node's
+delimited envelope and a merge node's outcome-tree envelope — beside Core's `Dag.nodeId` and the linear
+chain's hash. Since Phase 2645 there is ONE DAG address function: Core's `Dag.nodeId` under the tier's
+SHA-256 (`StreamEntry.hashFn`, the linear chain's hash function), over the sorted parents, the actor and
+the node's op — which is the linear chain's provenance entry (`StreamEntry.encode`), byte for byte.
+`DagOpRecord.nodeId` names it; the sinks' write admission, both read paths and `DagVerify` recompute it;
+nothing else in the tier mints or checks a DAG address. A merge node is an ordinary node whose op is its
+reconciliation script, so its address covers what the merge recorded and nothing it merely asserts.
+`WIRE_FORMAT.md` §5.3.3 gives the pre-image byte for byte.
+
+What that address is worth is unchanged: it is unkeyed, so it detects corruption and a broken link, and a
+writer who edits a node and re-addresses its descendants passes verification. A pruned node keeps its
+address in the sink's skeleton and is no longer verified — there is no payload left to recompute it from.
+
 ## Lift receipts — a recomputation, not a signature
 
 `Fuaran.UI.OpStream.Dag.Abstractions/DagLift.fs` (Phase 2116) lifts a linear op-stream segment to a

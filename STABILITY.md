@@ -264,32 +264,27 @@ path – a simple linear tree app carries zero DAG overhead.
   the DAG abstractions *do* reference the linear abstractions). A future edit
   that makes any light-path package reference a DAG package turns the contract
   red. This is the executable form of the opt-in posture.
-- **`Fuaran.UI.OpStream.Dag.Abstractions`** (stable surface): `DagOpRecord<'Msg>`
-  (multi-parent, content-addressed; merge nodes commit to an outcome-tree hash),
-  the lexicographically-sorted-parent hash algorithm, `DagTopology`
-  (`reachable` / `lca`, the `LcaResult` DU), `DagVerify`, `DagRetention` +
-  `ResumeCoordinate` + `DagCheckpoint`, the `RetentionPolicy` /
-  `DagRetentionPolicy` / `RejectionTombstone` decision-content-split policy tier
-  (Phase 179 – grace / auto-pin / purge-trigger over the mechanism; clocks only
-  for grace, never in the hash path), and the `IDagOpStreamSink<'Msg>`
-  superset interface (content-addressed `Add`, atomic `TryAdvanceHead` CAS,
-  topology queries, tombstone pruning). `FSharp.Core` + the linear abstractions
-  only – no orchestration-private dependency; Apache-2.0-clean.
-- **`Fuaran.UI.OpStream.Dag.Merge`** (stable surface): the M1 merge contract – 
-  fast-forward + disjoint-`(NodeId, facet)` auto-merge with a NodeId-canonical-
-  bytes tie-break (no wall-clock); overlapping changes refuse with the contended
-  cells; the merge-node hash commits to the canonical encoding of the resulting
-  tree so two conformant hosts agree iff they reach the same tree. The M2 human-
-  primacy additions (Phase 179) are additive: `TreeMerge.merge3WayWithCellAuthor`
-  (per-cell authorship) + the `DagPrimacy` backward-walk that derives it +
-  `ReassertPin` (KindSwapOrphansPin migration); the author-agnostic `merge3Way`
-  and per-side `merge3WayWithAuthor` entry points are unchanged.
-- **DagOpRecord wire shape** (Phase 178): the multi-parent record wire form is an
-  **additive** wire artifact – the *linear* `OpRecord` + corpus are untouched.
-  Its conformance fixtures live in `wire-format-fixtures/dag/`. Breakage of the
-  `DagOpRecord` wire shape (the `parents` array, `outcomeHash`, the sorted-parent
-  hash pre-image) is a major-version bump on the same axis as the linear wire
-  format.
+- **The DAG is Fuaran.Core's DAG (Phase 2645, the cut).** No node, address, verifier, topology,
+  retention, replay or merge of the tier's own remains in `Fuaran.UI.OpStream.Dag.*`.
+- **`Fuaran.UI.OpStream.Dag.Abstractions`** (stable surface): `DagOpRecord<'Msg>` — a Core
+  `DagNode<StreamEntry<'Msg>>` with its stream id, addressed by Core's `Dag.nodeId` under the tier's
+  SHA-256 (`DagOpRecord.nodeId`, `create`, `ofEntry`, `toDag`, `ofLinear`); `DagVerify` (Core's
+  `Dag.firstBreak`, and the store-resolved read-path form); `DagWriteAdmission`; `GcRoots` /
+  `ResumeCoordinate` and the `RetentionPolicy` / `DagRetentionPolicy` / `RejectionTombstone` policy tier over
+  Core's `Dag.prunable`; `DagLift` / `LiftReceipt`; `DagWire`; and the `IDagOpStreamSink<'Msg>` superset
+  interface (admission by address recompute and parent presence, atomic `TryAdvanceHead` CAS, `Reachable`
+  as Core's `Dag.ancestorsOf`, pruning into a `DagSkeletonNode` skeleton beside the live set).
+  `FSharp.Core` + the linear abstractions + `Fuaran.Core.OpStream.Dag` only; Apache-2.0-clean.
+- **`Fuaran.UI.OpStream.Dag.Merge`** (stable surface): the reconciliation policy (`DagReconcile`,
+  `WIRE_FORMAT.md` §34) over Core's conflict report, with an optional precedence side; the one merge
+  (`DagMerge.mergeDag` over a `MergeContext`, its sink wrappers and the trunk CAS), whose merge node is minted
+  by Core over the script and checked to replay to the derived tree; Core's replay, checkpoints and compaction
+  bound to the tier (`DagFold`); the validator gate (`ValidatorGate`, Core's introduced-findings gate);
+  `BatchAccept`; `GuestReplay` / `GuestConvergence`.
+- **DagOpRecord wire shape** (Phase 178; re-minted by Phase 2645): the multi-parent record wire form. Its
+  conformance fixtures live in `wire-format-fixtures/dag/`. Breakage of the `DagOpRecord` wire shape (the
+  `parents` array, the Core address pre-image of `WIRE_FORMAT.md` §5.3.3) is a major-version bump on the same
+  axis as the linear wire format.
 - **`ReplaceRoot` tree-op** (Phase 262): an **additive** `TreeOp` case – the
   whole-tree swap, `{ "$type": "ReplaceRoot", "node": <Node> }`, the only op that
   legally changes the root node id. Encoder + decoder + apply + schema + the
@@ -7998,6 +7993,64 @@ released as it stands; the DAG cut (fuaran#2645) takes a later breaking slot. Co
 two one-shot re-seals once: 1937's chain re-seal through `ChainMigration.migrateVerified` (its entry below) and the
 checkpoint re-seal in `docs/migrations/2305-core-snapshot.md`._
 
+### What rides this slot — Phase 2645 (the cut: the UI op-stream DAG is Core's DAG)
+
+**Class: breaking.** Packages `Fuaran.UI.OpStream.Dag.Abstractions`, `.Dag.InMemory`, `.Dag.Sqlite`,
+`.Dag.Merge` and `.Dag.Inspect`. **Every stored DAG address moves, once, at this landing**, and the merge-
+conformance corpus loses its tree-merge families. Nothing on the linear path moves: the linear chain, its
+corpus and every linear package are byte-unchanged.
+
+- **The node is Core's.** `DagOpRecord<'Msg>` is `{ StreamId; Node: Fuaran.Core.DagNode<StreamEntry<'Msg>> }`;
+  the old field names survive as read members (`Hash`, `Parents`, `Op`, `Actor`, `Timestamp`, `PromptId`,
+  `ResultEnvelope`, and `Entry`). Removed: the `OutcomeHash` and `Tombstoned` fields, `computeHash`,
+  `computeMergeHash`, `createMerge` and `sortedParents`. A record literal or `{ r with Hash = … }` no longer
+  compiles: build a record with `DagOpRecord.create` / `ofEntry`, and reach the node through `Node`.
+- **The address is Core's `Dag.nodeId`** under the tier's SHA-256 over the sorted parents, the actor and the
+  node's op — the linear chain's `StreamEntry.encode`, so a lifted node's op is byte-identical to its linear
+  op (`WIRE_FORMAT.md` §5.3.3, worked example included). A merge node is an ordinary node whose op is its
+  reconciliation script as a `Batch`; there is no outcome-tree identity. **No pre-cut address recomputes**, and
+  a store is re-addressed by the one-release re-mint tool (fuaran#2648), never dual-read: `DagWire.decodeRecord`
+  refuses a record carrying `outcomeHash` or `tombstoned` by name, and `SqliteDagSink` refuses a database
+  holding the pre-cut `dag_op_record` table by name.
+- **The SQLite schema is versioned** (`SqliteDagSchema.version` = 1, recorded in `dag_schema`): live nodes in
+  `dag_node` (no `outcome_hash`, `tombstoned` or `content_fingerprint`; the actor column is `actor_json`), and a
+  `dag_skeleton` table.
+- **Pruning is a skeleton.** `IDagOpStreamSink.Tombstone` moves a live node to the stream's skeleton (address
+  and parents, no payload): it leaves `Records` and `TryGet`, `Parents` still answers for it, and the read path
+  resolves a live node's pruned parent against it. New member: `Skeleton`. Removed member: `Lca`.
+- **Topology, verification, retention, replay and checkpoints are Core's.** Deleted: `DagTopology` and
+  `LcaResult` (Core's `Dag.ancestorsOf` / `Dag.mergeBase`), `DagRetention.liveSet` / `prunable` / `isProtected`
+  (Core's `Dag.prunable`; `DagRetentionPolicy.contentGcEligible` / `purgeBatch` take a Core DAG and answer
+  `Result<_, Dag.PruneFault>`), `DagCheckpoint` (Core's `Dag.Checkpoint`), `DagReplay` and `DagReplayError`
+  (Core's closure fold). New: `DagFold` (Core's `tryReplayTo`, `checkpointAt`, `sealAt`, `verifyCheckpoint`,
+  `replayFrom`, `compactAt`, `firstBreakFrom`, bound to the policy's replay witness, SHA-256 and the canonical
+  tree encoding).
+- **The merge is the reconciliation policy.** Deleted: `TreeMerge`, `DagPrimacy`, `ReassertPin`,
+  `MergeConflict` (with `MergeConflictClass`, `MergeChoice`, `MergeSide`, `MergeAuthor`),
+  `ValidatorGate.toConflict`, `DagMerge.mergeLookups` / `mergeGated` / `mergeGatedWith`, and the merge
+  entries' `recordAuthor` parameter. `DagMerge.mergeDag` is the one merge; `mergeWith`, `merge`,
+  `commitMerge`, `mergeIntoTrunkWith` and `mergeIntoTrunk` are its sink wrappers. `MergeContext` gains
+  `Precedence` (precedence as a script) and its `Checkpoint` is Core's. `MergeResult` and
+  `TrunkMergeOutcome` refuse with the policy's `ReconcileFault` (`Refused`), add `MintRefused`, and lose
+  `NeedsManualMerge`, `Conflicted` and the obsolete `NeedsThreeWayMerge`; `MergeDeltaMismatch` names the
+  derived and replayed hashes. `DagReconcile` gains `applyFold`, `reconcileWith` and `Reconciled.Reasserted`,
+  and its script now carries the child-order rule's reorder for EVERY interleaved or rebased parent (Core's
+  replay applies the branches in its own drain order, so the script fixes the order).
+- **Inspect reads Core's nodes and the skeleton.** `DagAudition` / `DagCoordinateDiff` take a Core DAG and
+  answer Core's `ReplayFault`; `DagGraphModel.tryBuildWith` draws the skeleton (`Tombstoned` nodes, `Actor` /
+  `Timestamp` now options, `OutcomeHash` removed) with Core's `Dag.ranks` as the depth; `DagOverlay.build`
+  answers `Result<_, Dag.PruneFault>`; `DagOverlay.parentsOf` and `primaryPinnedCells` are removed.
+- **The corpus.** `dag/` is re-minted (`dag-tombstone` retired, `dag-merge-script` added); `merge-conformance/`
+  is the `foldFixtures` family alone (manifest version 2; the `fixtures`, `refusalFixtures` and
+  `totalityFixtures` triad families retired). The `derivability-snapshot` benchmark, which measured the policy
+  against the tree merge for this cut's gate, is retired with the tree merge; its last figures are in
+  `docs/DAG_STRATEGY.md`.
+
+**The consumer cost.** A DAG host re-mints its store once (fuaran#2648 ships the tool and the migration note),
+replaces record literals with `DagOpRecord.create`, replaces tree-merge conflict handling with `ReconcileFault`,
+and moves any precedence classifier to `MergeContext.Precedence`. The other hosts re-port and certify against
+the re-emitted corpus at fuaran#2646.
+
 ### What rides this slot — Phase 2327 (the DAG fold arbitrates with the base-aware footprint)
 
 **Class: additive**, with a behaviour change in the new entries only.
@@ -9780,7 +9833,7 @@ and no hash moves.
   in the Core-conformance census, `footprintLawsAt`, over a generator that draws every op kind the projection
   has an arm for. The erased-term falsifier is now the shipped function minus the vertical unknown-parent
   write. `footprintLawsAt`'s soundness law refutes it, as `laneFoldLawsAt` does.
-- **The baseline the next projection change is measured against:** `derivability-snapshot` in
+- **The baseline the next projection change is measured against** (retired at Phase 2645 with the tree merge it compared against): `derivability-snapshot` in
   `benchmarks/Fuaran.UI.Ops.Benchmarks` (`dotnet run -c Release -- derivability-snapshot`). It reports the
   share of the tier's three-way auto-merges that Core's footprint refuses although both fold orders reach the
   UI's merged tree. Under this projection, at 20,000 trials with seed 20261016: **0.8401 generated** (7,808 of

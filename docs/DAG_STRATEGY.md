@@ -1,8 +1,8 @@
 # Op-stream shapes: linear chain vs. branching DAG
 
-Fuaran ships **two** op-stream persistence shapes, and a downstream repo (`Fuaran.Core`) ships a
-**third**, minimal one. This is deliberate, not unfinished convergence. This document says which to
-use and – for the curious contributor – why the UI's DAG is intentionally *not* built on the Core DAG.
+Fuaran ships **two** op-stream persistence shapes: a linear chain and a branching DAG. Since Phase 2645
+(the cut) the DAG **is** `Fuaran.Core`'s DAG, over the linear chain's own provenance entry. This document
+says which shape to use, how the cut was made, and how it was gated.
 
 ## Which one do I use?
 
@@ -15,9 +15,9 @@ use and – for the curious contributor – why the UI's DAG is intentionally *n
 for the DAG only when two writers genuinely diverge and must be merged – the DAG exists to make
 "two hosts that reached the same tree agree" a first-class, verifiable property.
 
-Both shapes share the same op vocabulary (`TreeOp`), the same canonical encoder, and the same
-host-side SHA-256 `HashFn`. Moving from linear to DAG is a persistence-layer choice, not a rewrite of
-your edit logic.
+Both shapes share the same op vocabulary (`TreeOp`), the same provenance entry (`StreamEntry`: the op,
+the timestamp, the prompt and the result), the same canonical encoder, and the same host-side SHA-256
+`HashFn`. Moving from linear to DAG is a persistence-layer choice, not a rewrite of your edit logic.
 
 ## Moving a linear stream onto a DAG branch
 
@@ -35,61 +35,55 @@ is the sanctioned route from linear to DAG, and it is one-way.
   [`../CRYPTO.md`](../CRYPTO.md#lift-receipts--a-recomputation-not-a-signature).
 
 The lifted DAG addresses are **not** the linear chain hashes. The linear pre-image folds the sequence and
-the previous hash; the DAG pre-image folds the parents. Nothing is re-addressed by a lift: the linear
+the previous hash; the DAG pre-image (Core's `Dag.nodeId`) folds the parents. The two share the entry byte
+for byte, so a lifted node's op IS the linear record's op. Nothing is re-addressed by a lift: the linear
 records are read, never written, and the DAG records are addressed exactly as any DAG record is.
 `DagOpRecord.ofLinear` remains as the unverified embedding, for callers that have already verified the
 segment and want no receipt.
 
-## Where the UI's DAG stands relative to `Fuaran.Core.OpStream.Dag`
+## The UI's DAG is `Fuaran.Core.OpStream.Dag` (Phase 2645, the cut)
 
-Today `Fuaran.UI.OpStream.Dag` does *not* build on Core's op-DAG: it mints its own content address,
-walks its own topology, verifies its own records, and merges with its own tree-level 3-way engine.
-That separation was a considered verdict (the "F15" verdict, Phase 408), and the four reasons it gave
-were re-examined against Core on 2026-10-16 (Phase 2289). The honest account is now this:
+A node is a Core `DagNode<StreamEntry<'Msg>>`. Its address is Core's `Dag.nodeId` under the tier's SHA-256,
+over the sorted parents, the actor and the entry (`WIRE_FORMAT.md` §5.3.3). Verification is Core's
+`Dag.firstBreak` (and, on the sinks' read paths, the same address recomputed with parents resolved
+store-wide). Topology is Core's (`Dag.ancestorsOf`, `Dag.mergeBase`), retention is Core's `Dag.prunable`,
+and replay, checkpoints and compaction are Core's (`Dag.tryReplayTo`, `Dag.Checkpoint`, `Dag.replayFrom`,
+`Dag.compactAt`), bound to the tier by `DagFold` in `Fuaran.UI.OpStream.Dag.Merge`.
 
-1. **Merge-outcome identity.** A UI merge node's content address folds the **outcome tree's hash**
-   under a `"merge"` tag, not the path that reached it. Core's node id is a hash over the sorted
-   parents, the actor and the *encoded op*, generic over the op, so the same identity is expressible
-   on Core as an op carrying the outcome hash and the record's provenance. This was never a reason to
-   stay apart.
-2. **Order-independent merge identity.** Both DAGs sort a merge node's parents before hashing, so
-   `merge(A, B)` and `merge(B, A)` are one node in either. An earlier version of this document said
-   Core joined parents in author order; that was wrong. Core goes further than the UI did: two
-   arrivals of an equal node (parents compared as a set, same actor, same op) are deduplicated rather
-   than refused, which is the rule Phase 2289 adopts here.
-3. **Retention.** Core has a position-sealed checkpoint with compaction, and names the nodes no
-   retained root needs (`prunable`). What Core has no notion of is an in-graph **tombstone**, a node
-   whose payload is withheld while its address stays; Core's verifier recomputes every node's id. A
-   pruned branch's skeleton is therefore a host-side record beside the verified live set, not a node
-   in it.
-4. **The merge model — the one genuine difference, and the one being retired.** A UI merge node
-   *asserts* an outcome and carries a replay delta from its primary parent; replay follows one spine,
-   and nothing on the read path checks the assertion against the secondary parent. Core *derives*
-   state by folding a head's whole ancestor closure in a deterministic order, and refuses deltas that
-   interfere. Measured over the merge-conformance corpus and 18,597 generated triads, Core's fold
-   derives none of the UI merge's refusals and, once style edits carry the field they change and the
-   footprints are precise, 94.5% of its auto-merges; the remainder is an agreement the reconciler can
-   drop, a child-order convention, or a resolution the UI should not have made (a move winning over a
-   concurrent removal that the same engine refuses against an edit).
+**The merge is the reconciliation policy.** `DagReconcile` (`WIRE_FORMAT.md` §34) consumes Core's conflict
+report: an agreement applies as no change, two appends under one parent are ordered by one declared
+child-order rule, a reorder beside a change of its list is rebased, and every other reported pair refuses —
+a removal against a concurrent touch of the removed node as `DeleteModify`. The fold runs in both orders and
+a disagreement refuses. `DagMerge.mergeDag` is the one merge: it derives with the policy, gates with the
+validator, and has Core mint the merge node — an ordinary node with the two heads as parents whose op is the
+script. Core's replay of that node folds both branches in Core's drain order and then the script, so before
+the node is handed back its replay is checked against the derived tree; and the script carries the child-
+order rule's reorder for every interleaved or rebased parent, whether or not the order a reconcile checked
+already matched (the reorder, not the drain order, fixes the children). A caller may name a precedence side:
+its refused ops are re-asserted as script, which settles two writes of one slot and nothing that one fold
+order cannot apply.
 
-**Direction.** The UI DAG converges onto Core's. First, with no stored byte moving, the UI adopts
-Core's node-identity rule for order-swapped merges (Phase 2289). Then, at an announced breaking cut,
-the UI DAG becomes Core's DAG over a UI op envelope: Core's `nodeId` is the address, Core's fold is
-the replay, Core's checkpoints and `prunable` are the retention, and the tree-level 3-way merge is
-removed in favour of Core's conflict report consumed by a thin UI reconciliation policy (a footprint
-projection, one rule for concurrent inserts under one parent, the validator gate on the derived
-tree). Until that cut ships, the two DAGs remain two implementations, and this document describes
-the current one.
+**What the cut retired.** The tree-level three-way merge (`TreeMerge`), its per-cell primacy
+(`DagPrimacy`, `ReassertPin`) and its conflict envelope (`MergeConflict`); the merge-outcome node identity
+and the third hash function; the primary-spine replay (`DagReplay`) and its own checkpoint seal
+(`DagCheckpoint`); the topology module (`DagTopology`, the virtual base); the in-record tombstone; and the
+merge-conformance corpus's triad families. A pruned node now leaves the live set for the sink's skeleton
+(address and parents, no payload). Every stored address moved once; the re-mint tool is fuaran#2648's.
 
-**The policy layer ships first** (Phase 2293). `DagReconcile` in `Fuaran.UI.OpStream.Dag.Merge` is
-that reconciliation policy, over Core's `Dag.conflictsIn` and the tier's base-aware footprint: an
-agreement is applied as no change, two appends of distinct nodes under one parent are ordered by one
-declared child-order rule (NodeId ordinal), every other reported pair refuses (a removal against a
-concurrent move or edit of the node as `DeleteModify`), and the fold is run in both orders so a pair
-outside Core's independence theorem cannot slip through. Its normative statement is
-`WIRE_FORMAT.md` §34 and its corpus the `foldFixtures` family, so every host can port it before the
-cut makes it the DAG's only merge. Until then it is an additive second entry: `DagMerge` still merges
-with the tree-level engine.
+**The tree merge's F15 reasons, re-examined (Phase 2289, kept as the record of why this was safe).**
+Merge-outcome identity was expressible on Core as an op; Core already sorted parents and deduplicated equal
+nodes; Core already had checkpoints, compaction and `prunable`; and the one genuine difference — the UI
+merge node asserted an outcome and replayed a delta along one spine, where Core derives state by folding
+the head's closure — was measured, and is what the gate below was for.
+
+### How the cut was gated (history)
+
+**The policy layer shipped first** (Phase 2293), as an additive second entry beside the tree merge, with
+the `foldFixtures` corpus so every host could port it before the cut made it the DAG's only merge. The cut
+was held behind the operator's D2-B ruling: dispatched only when the derivability snapshot reported the
+policy deriving at least 90% of the tree merge's generated auto-merges to the same tree, with no triad
+derived to a different tree unless pinned. The `derivability-snapshot` benchmark that measured it compared
+against the tree merge, and was retired with it at the cut; the figures below are its last.
 
 **What the policy derives, measured (Phase 2670).** The cut's gate is the derivability snapshot's
 `derivability.generated.policy.derived_share` (the share of the tree merge's generated auto-merges the
@@ -142,7 +136,7 @@ order** — the tree merge sorts every appended id by NodeId, where the policy k
 its own order and merges the runs by their heads (6 of them involve no move at all). Pinning each
 class as a fixture, or aligning one rule to the other, is a ruling the cut owes before it lands.
 
-### The reorder rebase and the pinned classes, measured (Phase 2671)
+#### The reorder rebase and the pinned classes, measured (Phase 2671)
 
 The operator ruled on 2026-11-10: pin both child-order classes to the policy's rule, accept the triads the fold
 derives where the tree merge refuses, and keep the 0.90 gate with no fallback to the tree merge. Phase 2671 added a
@@ -196,7 +190,7 @@ merge's refusal class, each pinned by one `foldFixtures` fixture:
 - `ConcurrentEdit` on `insert` (4; 8, plus 0; 2 mixed): both sides move a node to one parent and one edits it — the
   tree merge reads it as inserted twice with different content — `fold-agreed-move-and-edit`.
 
-### The Core 0.42.0 pin and the child-list slot, measured (Phase 2691)
+#### The Core 0.42.0 pin and the child-list slot, measured (Phase 2691)
 
 Core 0.42.0 (fuaran-core#625, Core D246) compares a structure write of `p` (an insert into it, a move into or out of
 it, a removal under it) against a slot access as a read and a write of `(p, Footprint.childListSlot)`, and a slot
@@ -225,7 +219,9 @@ and no triad the fold derives with no conflict reported reaches different trees 
 
 **The gate.** fuaran#2645's gate (D2-B, F4-A: `derived_share` at or above 0.90 on the widened population with no
 unpinned different-tree triad) is **met** on the Core 0.42.0 pin: 0.9325 on 2670's draws and 0.9094 on 2292's, with
-no unpinned different tree on either.
+no unpinned different tree on either. The campaign driver re-ran the snapshot from the primary clone at the landed
+tree (b052c482, the same seed and trials): 0.9325, no triad derived elsewhere, 183 and 37 in the two pinned classes.
+The cut was dispatched on that figure.
 
 What remains refused on 2670's draws (515 auto-merges of 10,890: 308 `DeleteModify`, 207 `Conflict`), by the kinds
 of the op pairs refused: a move beside a removal (234, `DeleteModify`, by design), two moves of one node or into one
@@ -235,17 +231,17 @@ already holds being no write), a reorder beside a removal or move it cannot reba
 parent (9), an edit or restyle beside a removal of its node (14, `DeleteModify`), two edits or retones of one slot
 (3), two other pairs, and 54 mixtures of these.
 
-What *did* transfer regardless: the provenance-hardening applied to the linear chain (folding the
-prompt id / actor / result outcome into the content hash, and delimiting the pre-image) was applied to
-the UI DAG's node hash too – so a DAG node's digest covers exactly what a linear record's does.
-(What that digest is worth is the same in both cases: it detects corruption and reordering, and it is
-unkeyed, so it is not evidence against a writer who re-chains – see [`../CRYPTO.md`](../CRYPTO.md).)
+The provenance-hardening applied to the linear chain (folding the prompt id, actor and result outcome into
+the content hash, and delimiting the pre-image) holds for a DAG node by construction since the cut: its op
+IS the chain's entry. What that digest is worth is the same in both cases: it detects corruption and
+reordering, and it is unkeyed, so it is not evidence against a writer who re-chains – see
+[`../CRYPTO.md`](../CRYPTO.md).
 
 ## In short
 
 - One stream, one writer → **linear chain**.
 - A linear stream that must continue as a branch → **lift it** with `DagLift`, never re-read it.
 - Diverging writers that must merge → **branching DAG**.
-- The UI DAG is converging onto the Core DAG by decision (identity rule now, the merge model at the
-  announced breaking cut). Until that cut, treat the two as two implementations and do not unify them
-  piecemeal – the migration is one recorded act with a re-mint, not a series of edits.
+- The UI DAG IS the Core DAG (Phase 2645): Core's node, address, verifier, topology, retention, replay
+  and checkpoints, with the reconciliation policy as its only merge. A store written before the cut is
+  re-minted once (fuaran#2648), never dual-read.
