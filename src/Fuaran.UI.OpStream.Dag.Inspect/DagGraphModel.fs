@@ -23,7 +23,7 @@ open Fuaran.UI.OpStream.Dag.Abstractions
 //   - `Depth` is the longest path from any root, so a merge node sits strictly
 //     below both of its parents and the layered layout reads top-to-bottom.
 //
-//  Edges carry `IsPrimary` (the parent is `Parents[0]`, the replay spine) so a
+//  Edges carry `IsPrimary` (the parent is `Parents[0]`, the first head named) so a
 //  renderer can draw the primary spine solid and secondary merge parents dashed.
 //
 //  Pure over the nodes + the parent relation only — no apply engine, no I/O.
@@ -63,7 +63,7 @@ type DagGraphNode =
       Actor: Actor option
       Timestamp: System.DateTimeOffset option }
 
-/// A parent→child link. `IsPrimary` marks the replay-spine edge (the parent is
+/// A parent→child link. `IsPrimary` marks the primary edge (the parent is
 /// the child's `Parents[0]`), so a renderer can draw the primary parent solid
 /// and the secondary merge parent(s) dashed.
 type DagGraphEdge =

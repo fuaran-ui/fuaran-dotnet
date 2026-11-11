@@ -7975,23 +7975,9 @@ list, or that reads a refusal envelope's `slot` / `shape` for a child-list confl
 (the four other hosts, fuaran#2646) owes the same arms. **No kind is added, merged or retired; no escape hatch is
 created or widened.**
 
----
-
-## 0.103.0 (RELEASED — tagged v0.103.0 at 1b783c61, 2026-11-09)
-
-_`v0.102.0` is TAGGED (2026-11-06, at `00225688`), so nothing may ride it: the changes below open the next slot.
-The slot was opened as `0.102.1` (additive) by Phases 2327 and 2010; Phase 2060 REMOVES two public `Introspect`
-functions, which is a higher class than the draft carried, so under the draft-slot rule the slot ADVANCES to the
-breaking number (`0.103.0` under the 0.x convention) rather than carrying a number that says "additive" over a
-removal. The `<Version>` advance and its ledger record are the release act's, recorded separately; this entry is
-the slot's account of what rides it. Landed together as tier 1 of the core-adoption campaign
-(`camp-obj-core-adoption-20261107T10162`), wave 1._
-
-_**Cut 2026-11-09.** `<Version>` advanced 0.102.0 → 0.103.0 (`version cut`, recorded in the workspace ledger) on the
-operator's D1 ruling B: the slot — seventeen rides, seven of them breaking, every `Fuaran.Core.*` pin at 0.41.0 — is
-released as it stands; the DAG cut (fuaran#2645) takes a later breaking slot. Consumers of the op-stream tier run the
-two one-shot re-seals once: 1937's chain re-seal through `ChainMigration.migrateVerified` (its entry below) and the
-checkpoint re-seal in `docs/migrations/2305-core-snapshot.md`._
+_Moved here from the 0.103.0 entry by Phase 2648: Phase 2645 landed on 2026-11-11, after `v0.103.0` was tagged
+(2026-11-09, at `1b783c61`, which does not contain it), so it rides this slot; its entry had been written while 0.103.0
+was the open draft._
 
 ### What rides this slot — Phase 2645 (the cut: the UI op-stream DAG is Core's DAG)
 
@@ -8050,6 +8036,43 @@ corpus and every linear package are byte-unchanged.
 replaces record literals with `DagOpRecord.create`, replaces tree-merge conflict handling with `ReconcileFault`,
 and moves any precedence classifier to `MergeContext.Precedence`. The other hosts re-port and certify against
 the re-emitted corpus at fuaran#2646.
+
+### What rides this slot — Phase 2648 (the one-release re-mint, the migration note, the re-baselined merge benchmarks)
+
+**Class: none on any package surface.** No package source moves. What lands is the tool and the record the cut owed:
+
+- **`tools/dag-remint`** (not packed; leaves in the release after this slot's): re-addresses a store written before
+  Phase 2645 — a SQLite database (`dag_op_record` → `dag_node` / `dag_skeleton`, schema version 1, in place, the
+  original kept as `<db>.pre-2645`) or a pre-cut wire record set. Every pre-cut address is recomputed under the rule
+  that minted it first, and a store that does not recompute is refused, never laundered. Outcome-hash merge nodes are
+  re-minted as script nodes by re-running `DagMerge.mergeDag` over their parents, and the re-run must reach the tree the
+  old node committed to. Tombstoned rows go to the skeleton with their address. The tool is idempotent and writes a
+  receipt (old head → new head, every old address → new). It is tested against a store and a wire set minted by the
+  pre-cut engine itself (`src/Fuaran.UI.OpStream.Dag.Tests/remint/`), and the pre-cut lift pin re-mints onto the
+  current one (`DagLiftTests`).
+- **`docs/migrations/2648-core-dag-identity.md`** — the migration note for the cut: what changes per consumer file, the
+  re-mint invocation, rollback. `CRYPTO.md` names the re-mint's provenance and what its receipt does and does not prove.
+- **Benchmarks.** `merge-rate` and `merge-snapshot` re-baselined over the fold
+  (`benchmarks/Fuaran.UI.Ops.Benchmarks/results/2026-11-11-phase-2648-dag-merge.md`). The derivability snapshot's
+  tree-merge comparison was retired with the tree merge at Phase 2645.
+
+---
+
+## 0.103.0 (RELEASED — tagged v0.103.0 at 1b783c61, 2026-11-09)
+
+_`v0.102.0` is TAGGED (2026-11-06, at `00225688`), so nothing may ride it: the changes below open the next slot.
+The slot was opened as `0.102.1` (additive) by Phases 2327 and 2010; Phase 2060 REMOVES two public `Introspect`
+functions, which is a higher class than the draft carried, so under the draft-slot rule the slot ADVANCES to the
+breaking number (`0.103.0` under the 0.x convention) rather than carrying a number that says "additive" over a
+removal. The `<Version>` advance and its ledger record are the release act's, recorded separately; this entry is
+the slot's account of what rides it. Landed together as tier 1 of the core-adoption campaign
+(`camp-obj-core-adoption-20261107T10162`), wave 1._
+
+_**Cut 2026-11-09.** `<Version>` advanced 0.102.0 → 0.103.0 (`version cut`, recorded in the workspace ledger) on the
+operator's D1 ruling B: the slot — seventeen rides, seven of them breaking, every `Fuaran.Core.*` pin at 0.41.0 — is
+released as it stands; the DAG cut (fuaran#2645) takes a later breaking slot. Consumers of the op-stream tier run the
+two one-shot re-seals once: 1937's chain re-seal through `ChainMigration.migrateVerified` (its entry below) and the
+checkpoint re-seal in `docs/migrations/2305-core-snapshot.md`._
 
 ### What rides this slot — Phase 2327 (the DAG fold arbitrates with the base-aware footprint)
 

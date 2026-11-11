@@ -203,9 +203,10 @@ rather than about convenience.
   event-bearing node's action is inlined into the served HTML so the page can hydrate. It is
   human-readable in view-source, but it is a *functional payload* the client is about to hold
   anyway — not a log, and not an artefact that outlives the page.
-- **Merge-conflict envelopes** (`Fuaran.UI.OpStream.Dag.Merge/TreeMerge.fs`). Canonical node JSON,
-  actions included, is handed to the host as a recovery envelope. Scrubbing it would make the
-  envelope useless for the one job it has, which is letting a human choose between two versions.
+- **Merge refusal envelopes** (`Fuaran.UI.OpStream.Dag.Merge/DagReconcile.fs`, `encodeEnvelope`; the
+  tree merge's conflict envelope until Phase 2645). Each refused pair's two ops, as canonical JSON with
+  actions included, are handed to the host. Scrubbing them would make the envelope useless for the one
+  job it has, which is letting a human choose between the two sides.
 - **`ActionDescriptor.ApplyTreeOp`'s summary** — the raw op JSON in a devtools apply-gate refusal.
   In the in-page REPL that op is the caller's own input being echoed back to the caller. It does
   also reach `DenyTelemetry.Reason`, which is the reason this entry exists rather than being

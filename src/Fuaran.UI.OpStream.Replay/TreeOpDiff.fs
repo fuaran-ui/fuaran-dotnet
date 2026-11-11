@@ -69,12 +69,11 @@ open Fuaran.UI.OpStream.Abstractions
 //  `EditNode` floor, which reinstates the kind and leaves the slot as it was.
 //  `ReplaceRoot` is the only op that reaches them, wholesale.
 //
-//  **What is NOT acceptable is a caller that cannot tell.** Phase 1526: the DAG
-//  merge takes this diff as the replay delta of a merge node that commits, by
-//  hash, to the merged tree, so the mint REPLAYS its own delta and refuses the
-//  node on a mismatch (`Fuaran.UI.OpStream.Dag.Merge.DagMerge.buildMergeRecord`),
-//  and `DagReplay` reports the same mismatch on a node an older engine already
-//  wrote.
+//  **What is NOT acceptable is a caller that cannot tell.** Phase 1526 set this
+//  rule for the DAG merge, which took this diff as a merge node's replay delta
+//  and replayed it before minting. Since Phase 2645 a merge node records its
+//  reconciliation script instead of a diff, and `DagMerge.mergeDag` replays that
+//  script and refuses the node when it does not reach the derived tree.
 //
 //  (`Motion` / `ExtraAttributes` are omitted from the canonical surface
 //  entirely, so they are invisible to the round-trip — no gap there.)

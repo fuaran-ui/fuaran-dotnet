@@ -908,7 +908,8 @@ let private registerTargets (args: string array) =
     // surfaced in a consumer's browser. And nothing anywhere said whether the
     // TRANSPILED algebra still behaves: `TreeMerge.merge3Way` ships in a package
     // that runs in a browser, and its order-independence was demonstrated by two
-    // examples on .NET and certified on neither pipeline.
+    // examples on .NET and certified on neither pipeline. (Since Phase 2645 the
+    // browser merge is `DagMerge.mergeDag`, and the law is restated over it.)
     //
     // The work is in `tests/fable-laws/fable-check.ps1` rather than here, the
     // same split `RendererWeb` takes and for the same reason: the stage shells a

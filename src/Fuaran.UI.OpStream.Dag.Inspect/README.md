@@ -13,14 +13,15 @@ it writes no op-stream records and no telemetry (the stream stays the source of 
 | Module | Role |
 |---|---|
 | `DagGraphModel` | Layered render model — nodes classified `Genesis`/`Linear`/`Merge`, branch-points + leaves, longest-path depth, primary-vs-secondary edges. |
-| `DagAudition` | Audition a node by its content-addressed coordinate — reconstruct its snapshot tree (primary-spine replay) + an optional host preview/playback hook. |
-| `DagOverlay` | Precedence (per-node + per-cell pins) and retention/tombstone overlay (live / prunable / tombstoned) over the graph. |
+| `DagAudition` | Audition a node by its content-addressed coordinate — reconstruct its snapshot tree (Core's closure fold, `DagFold.replayTo`) + an optional host preview/playback hook. |
+| `DagOverlay` | Precedence (the host's per-node predicate) and retention overlay (live / prunable / tombstoned, the last drawn from the sink's skeleton) over the graph. |
 | `DagCoordinateDiff` | Diff **any two** DAG coordinates (the generalisation of the linear adjacent-snapshot diff), plus an N-way baseline-vs-many fan-out. |
 
 ## Dependencies
 
 `Fuaran.UI` · `Fuaran.UI.Ops` · `Fuaran.UI.OpStream.Abstractions` · `Fuaran.UI.OpStream.Replay`
-(the linear `TreeDiff`) · `Fuaran.UI.OpStream.Dag.Abstractions` (topology + retention) ·
-`Fuaran.UI.OpStream.Dag.Merge` (`DagReplay` spine reconstruction + `DagPrimacy`).
+(the linear `TreeDiff`) · `Fuaran.UI.OpStream.Dag.Abstractions` (the records and the skeleton) ·
+`Fuaran.UI.OpStream.Dag.Merge` (`DagFold`, the closure-fold replay). Topology and retention are
+Fuaran.Core's (`Dag.ranks`, `Dag.prunable`, `Dag.mergeBase`).
 
 Layering: `Dag.Abstractions` ← `Dag.Merge` ← **`Dag.Inspect`**.

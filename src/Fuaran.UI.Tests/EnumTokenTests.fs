@@ -33,11 +33,10 @@ module Fuaran.UI.Tests.EnumTokenTests
 //      `render-fidelity.json`);
 //    * the corpus artefact `enum-tokens.json` itself.
 //
-//  Two surfaces are deliberately NOT pinned here, and both are named rather than
-//  left silent: `TreeMerge.directionToken` already has its own
-//  `StyleFacetTokenTests`, and the `CompareOp` match inlined in
-//  `Fuaran.UI.Renderer/Render.fs` renders a host-side DOM attribute from a
-//  private local with no reachable seam.
+//  One surface is deliberately NOT pinned here, and it is named rather than left
+//  silent: the `CompareOp` match inlined in `Fuaran.UI.Renderer/Render.fs`
+//  renders a host-side DOM attribute from a private local with no reachable seam.
+//  (A second, `TreeMerge.directionToken`, left with the tree merge at Phase 2645.)
 //
 //  THE GO-RED. Flip one token in `src/Fuaran.UI.Idl/Vocabulary.fs` (say
 //  `LiveRegionKind`'s `"assertive"` to `"loud"`) and regenerate: the corpus pin,
