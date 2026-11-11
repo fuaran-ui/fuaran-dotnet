@@ -196,6 +196,45 @@ merge's refusal class, each pinned by one `foldFixtures` fixture:
 - `ConcurrentEdit` on `insert` (4; 8, plus 0; 2 mixed): both sides move a node to one parent and one edits it — the
   tree merge reads it as inserted twice with different content — `fold-agreed-move-and-edit`.
 
+### The Core 0.42.0 pin and the child-list slot, measured (Phase 2691)
+
+Core 0.42.0 (fuaran-core#625, Core D246) compares a structure write of `p` (an insert into it, a move into or out of
+it, a removal under it) against a slot access as a read and a write of `(p, Footprint.childListSlot)`, and a slot
+access meets the node sets only at a content write. Phase 2691 raises the pin and, in the same commit, makes every
+arm of `TreeOpFootprint.ofOpIn` that reads or rewrites a child list declare that slot: a resolved reorder, a resolved
+move's source parent and `EditNode` (and, as a guard, any in-place edit whose held set moved). A resolved move also
+reads its destination's own `parent` slot, because the cycle check reads the whole chain and the destination's
+existence read no longer collides with a move of it. Without those declarations the 0.42.0 fold derives pairs that do
+not compose: run with the 2671 arms against Core 0.42.0, the probe below faults the fold on 572 triads of 2670's draws
+(25 of 2292's), which is the hole the slot closes.
+
+| population | policy | UI auto-merges | same tree | `derived_share` | pinned own-parent move | pinned append order | unpinned different tree |
+|---|---|---|---|---|---|---|---|
+| 2292's draws | Core 0.41.0, after 2671 | 9,294 | 8,452 | 0.9094 | 242 | 24 | 0 |
+| 2292's draws | **Core 0.42.0, after 2691** | 9,294 | 8,452 | **0.9094** | 242 | 24 | **0** |
+| 2670's draws | Core 0.41.0, after 2671 | 10,890 | 8,758 | 0.8042 | 147 | 31 | 0 |
+| 2670's draws | **Core 0.42.0, after 2691** | 10,890 | 10,155 | **0.9325** | 183 | 37 | **0** |
+
+The 2670's-draws rows are `derivability-snapshot`'s generated population (seed 20261016, 20,000 trials, the
+benchmark run on the pinned tree; the corpus population stays at 1.0000); the 2292's-draws rows are the per-triad
+probe 2670 and 2671 used, against the same libraries. Triad by triad on 2670's draws: 1,397 refused auto-merges now
+derive the same tree, 36 and 6 now derive in the pinned own-parent-move and append-order classes, and 233 triads the
+tree merge refuses now derive; nothing the policy derived before is refused or derived differently, and 2292's draws
+do not move (their generator draws no restyle of a container). No fold fault and no order-sensitive refusal remains,
+and no triad the fold derives with no conflict reported reaches different trees in its two sequential orders.
+
+**The gate.** fuaran#2645's gate (D2-B, F4-A: `derived_share` at or above 0.90 on the widened population with no
+unpinned different-tree triad) is **met** on the Core 0.42.0 pin: 0.9325 on 2670's draws and 0.9094 on 2292's, with
+no unpinned different tree on either.
+
+What remains refused on 2670's draws (515 auto-merges of 10,890: 308 `DeleteModify`, 207 `Conflict`), by the kinds
+of the op pairs refused: a move beside a removal (234, `DeleteModify`, by design), two moves of one node or into one
+parent (65), two inserts of one id (63), two reorders of one parent that differ (55, mostly a reorder that leaves its
+list as it was beside a real one: the policy lever named in the 2671 section, a reorder to the order the parent
+already holds being no write), a reorder beside a removal or move it cannot rebase (16), an insert beside a move in one
+parent (9), an edit or restyle beside a removal of its node (14, `DeleteModify`), two edits or retones of one slot
+(3), two other pairs, and 54 mixtures of these.
+
 What *did* transfer regardless: the provenance-hardening applied to the linear chain (folding the
 prompt id / actor / result outcome into the content hash, and delimiting the pre-image) was applied to
 the UI DAG's node hash too – so a DAG node's digest covers exactly what a linear record's does.

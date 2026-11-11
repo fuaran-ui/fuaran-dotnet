@@ -7948,6 +7948,38 @@ in the same parent, or that read a `FoldFaulted` for the double move. Nothing th
 derived differently (measured, `docs/DAG_STRATEGY.md`). **No kind is added, merged or retired; no escape hatch is
 created or widened.**
 
+### What rides this slot — Phase 2691 (the Fuaran.Core 0.42.0 pin, and the footprint writes Core's child-list slot)
+
+**Class: breaking, by dependency** (Core 0.42.0 is behaviourally breaking: `Ops.independent` answers `true` for pairs
+it answered `false` for, Core D246), which the slot already carries. Packages: every package that references
+`Fuaran.Core.*` takes the 0.42.0 floor; `Fuaran.UI.Ops` and `Fuaran.UI.OpStream.Dag.Merge` change behaviour. No
+public signature moves.
+
+- **Raised — all twenty `Fuaran.Core.*` pins, 0.41.0 → 0.42.0, together** (`Directory.Packages.props`); no
+  `Fuaran.Compute.*` or `Fuaran.Program.*` pin moves.
+- **Changed — `TreeOpFootprint.ofOpIn` declares Core's child-list slot** (`Footprint.childListSlot`, `"#children"`) on
+  every arm that reads or rewrites a node's child list: a resolved `ReorderChildren` (beside the parent's `kind`
+  slot), a resolved `MoveNode`'s source parent (likewise), `EditNode`, and any in-place edit whose held set moved (a
+  guard: no such op moves one today). A resolved `MoveNode` also reads its destination's `parent` slot. The
+  footprints grow; under Core 0.41.0 they would only collide more, and under 0.42.0 they keep ordered every pair
+  0.41.0 ordered except the ones D246 frees.
+- **Freed — a container's restyle, trait edit, state edit or prop edit beside an insert into it, a move into or out
+  of it, or a removal under it**, and an insert into a container beside a move of the container: each was refused by
+  `DagReconcile.reconcile` and `Dag.conflictsIn` reported the pair; each now derives. Measured on the snapshot's
+  population: `derived_share` 0.8042 → 0.9325, nothing derived before refused or derived differently
+  (`docs/DAG_STRATEGY.md`).
+- **Changed — the refusal envelope names the child list at Core's slot.** A refused pair whose conflict is the parent's
+  child list reports `SlotClash` at `#children` (two reorders of one parent: `#children` and `kind`; a removal beside a
+  move of the same node: `#children` at the parent where it was `ConcurrentUpdate`).
+- **Corpus (merge-conformance `foldFixtures`).** `fold-refusal-two-reorders` and `fold-refusal-remove-vs-move`
+  re-emitted (their envelopes move as above); added: `fold-insert-and-container-restyle`. The Core-produced `laws/`
+  and `apply/` families re-emit byte-identical from Core `v0.42.0`.
+
+**The consumer cost:** a caller that relied on the fold refusing a container's restyle beside a change of its child
+list, or that reads a refusal envelope's `slot` / `shape` for a child-list conflict. A host porting the footprint
+(the four other hosts, fuaran#2646) owes the same arms. **No kind is added, merged or retired; no escape hatch is
+created or widened.**
+
 ---
 
 ## 0.103.0 (RELEASED — tagged v0.103.0 at 1b783c61, 2026-11-09)
