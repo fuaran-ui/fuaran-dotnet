@@ -18,7 +18,7 @@
          Fuaran.Core 0.37.0's typed column; 0.41.0 is the first built on Fuaran.Core 0.40.2 (the
          0.40.0 assemblies bind Fuaran.Core.Canon, which Core 0.39 removed), which the Core pins
          below (0.40.2) meet (fuaran#2286). -->
-    <FuaranCoreComputeVersion>0.43.0</FuaranCoreComputeVersion>
+    <FuaranCoreComputeVersion>0.44.0</FuaranCoreComputeVersion>
     <!-- The THIRD producer (fuaran#2012): the bounded program core, consumed by the two program
          adapters that moved here (src/Fuaran.UI.Program, src/Fuaran.UI.Program.Server) and their
          suites. Released packages only, never a project reference: the adapters depend on the
