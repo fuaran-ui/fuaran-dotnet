@@ -34,6 +34,11 @@ open Fuaran.UI.OpStream.Dag.Merge
 //  replaces the tree merge — under `derivability.<population>.policy.*`. Its
 //  `derived_share` is the share of UI auto-merges the fold derives to the UI's
 //  own tree; the remainder, by cell, is what the replacement refuses or moves.
+//  A triad derived to a different tree is counted under one of the two classes
+//  the operator ruled to pin (2026-11-10, Phase 2671) when the difference is
+//  child order alone — `derived_pinned_own_parent_move`,
+//  `derived_pinned_append_order` — and as `derived_elsewhere` otherwise, so
+//  that cell is the unpinned different-tree count the cut's gate reads as zero.
 //
 //  Each triad lands in one cell. The number this exists to print is
 //  `derivability.overapprox_share`: of the triads the UI auto-merges, the share
@@ -49,6 +54,17 @@ open Fuaran.UI.OpStream.Dag.Merge
 //     branch's ops read off `TreeOpDiff.diffBatched base branch`;
 //   - generated: seed 20261016, branches of one to three ops off a small tree,
 //     each op applied to the tree its branch has reached.
+//
+//  PROVENANCE of the generated population. Seed 20261016 and 20,000 trials
+//  since Phase 2292. Phase 2670 widened the draws, so its figures are not
+//  comparable with earlier ones (DAG_STRATEGY.md records both): a restyle
+//  draws either container as well as a child (the restyle of a container a
+//  move leaves, 2651's lever); a move draws the container `sub` as well as a
+//  child, and a reorder either container's current children (the restyle,
+//  edit or reorder of a moved node, F2); a reorder of `sub` beside an edit of
+//  its child joins the reorder of the root beside an edit of a listed child
+//  (F1). Before Phase 2670 a restyle drew a child only, a move a child only,
+//  and a reorder the root only.
 //
 //  `dotnet run -c Release -- derivability-snapshot [trials]` (default 20000).
 //  Deterministic: a seeded `System.Random` and no clock.
@@ -223,6 +239,14 @@ let private baseTree () : Node<obj> =
 let private childIds = [| "c0"; "c1"; "c2"; "s0" |]
 let private containers = [| "root"; "sub" |]
 
+/// What a move draws: every child, and the container `sub`, so a reorder or restyle of a moved
+/// node is drawn (Phase 2670).
+let private movables = [| "c0"; "c1"; "c2"; "s0"; "sub" |]
+
+/// What a restyle draws: every child and both containers, so a restyle of a container a move
+/// leaves, or moves into, is drawn (Phase 2670).
+let private styled = [| "c0"; "c1"; "c2"; "s0"; "root"; "sub" |]
+
 let private tones =
     [| ToneVariant.Brand; ToneVariant.Success; ToneVariant.Critical |]
 
@@ -230,8 +254,22 @@ let private voices = [| FontVoice.Display; FontVoice.Structural |]
 let private freshIds = [| "i0"; "i1"; "i2"; "i3"; "i4"; "i5" |]
 let private freshTexts = [| ""; "alpha"; "beta" |]
 
-/// One op against `tree`: an insert, a field-level restyle (tone or voice), a removal, a move, a
-/// reorder of the root, or a kind edit.
+/// The ids of `parent`'s children in `tree`, in order; empty when it is absent.
+let private childrenOf (tree: Node<obj>) (parent: string) : string list =
+    let rec find (n: Node<obj>) =
+        if n.Id = parent then
+            Some n
+        else
+            Introspect.getChildren n.Kind |> Option.defaultValue [] |> List.tryPick find
+
+    find tree
+    |> Option.bind (fun n -> Introspect.getChildren n.Kind)
+    |> Option.defaultValue []
+    |> List.map (fun c -> c.Id)
+
+/// One op against `tree`: an insert, a field-level restyle (tone or voice) of a child or a
+/// container, a removal, a move of a child or of `sub`, a reorder of either container's current
+/// children, or a kind edit.
 let private genOp (rng: Random) (tree: Node<obj>) : TreeOp<obj> =
     let pick (arr: 'a[]) = arr[rng.Next arr.Length]
 
@@ -239,25 +277,25 @@ let private genOp (rng: Random) (tree: Node<obj>) : TreeOp<obj> =
     | 0 -> TreeOp.InsertChild(NodeId(pick containers), leaf (pick freshIds) (pick freshTexts))
     | 1 ->
         TreeOp.PatchStyle(
-            NodeId(pick childIds),
+            NodeId(pick styled),
             { StyleDelta.empty with
                 Tone = Some(pick tones) }
         )
     | 2 ->
         TreeOp.PatchStyle(
-            NodeId(pick childIds),
+            NodeId(pick styled),
             { StyleDelta.empty with
                 Voice = Some(pick voices) }
         )
     | 3 -> TreeOp.RemoveNode(NodeId(pick childIds))
-    | 4 -> TreeOp.MoveNode(NodeId(pick childIds), NodeId(pick containers))
+    | 4 -> TreeOp.MoveNode(NodeId(pick movables), NodeId(pick containers))
     | 5 ->
-        let kids =
-            Introspect.getChildren tree.Kind
-            |> Option.defaultValue []
-            |> List.map (fun c -> c.Id)
+        let parent = pick containers
 
-        TreeOp.ReorderChildren(NodeId "root", kids |> List.sortBy (fun _ -> rng.Next()) |> List.map NodeId)
+        TreeOp.ReorderChildren(
+            NodeId parent,
+            childrenOf tree parent |> List.sortBy (fun _ -> rng.Next()) |> List.map NodeId
+        )
     | _ ->
         let id = pick childIds
         TreeOp.EditNode(NodeId id, (leaf id (pick [| "p"; "q"; "r" |])).Kind)
@@ -327,12 +365,76 @@ let private reportUnder
                else
                    sprintf "%.4f" (float (count ConflictButFoldAgrees) / float merged)) ]
 
+/// Every parent in `tree` with its children's ids, in order.
+let rec private childLists (n: Node<obj>) : (string * string list) list =
+    let kids = Introspect.getChildren n.Kind |> Option.defaultValue []
+    (n.Id, kids |> List.map (fun c -> c.Id)) :: (kids |> List.collect childLists)
+
+/// The parents whose child ORDER is all that separates `derived` from `merged`, or `None` when the two
+/// trees differ in anything else: reordering those parents of `derived` to `merged`'s order must give
+/// `merged` byte for byte.
+let private orderOnly (merged: Node<obj>) (derived: Node<obj>) : string list option =
+    let target = childLists merged |> Map.ofList
+
+    let parents =
+        childLists derived
+        |> List.filter (fun (p, kids) ->
+            match Map.tryFind p target with
+            | Some t -> t <> kids && Set.ofList t = Set.ofList kids
+            | None -> false)
+        |> List.map fst
+
+    let aligned =
+        parents
+        |> List.fold
+            (fun acc p ->
+                acc
+                |> Result.bind (Apply.apply (TreeOp.ReorderChildren(NodeId p, target[p] |> List.map NodeId))))
+            (Ok derived)
+
+    match aligned with
+    | Ok t when not parents.IsEmpty && canon t = canon merged -> Some parents
+    | _ -> None
+
+/// The destination of each `MoveNode` in `delta` whose target already sat under it when it applied.
+let private ownParentMoves (b: Node<obj>) (delta: TreeOp<obj> list) : string list =
+    delta
+    |> List.fold
+        (fun (t: Node<obj>, acc) op ->
+            let acc' =
+                match op with
+                | TreeOp.MoveNode(NodeId c, NodeId p) when List.contains c (childrenOf t p) -> p :: acc
+                | _ -> acc
+
+            (Apply.apply op t |> Result.defaultValue t), acc')
+        (b, [])
+    |> snd
+
+/// The pinned class (operator ruling 2026-11-10, Phase 2671) of a triad the policy derives to a tree
+/// other than the tree merge's: `own_parent_move` when the two differ only in the child order of a
+/// parent some branch moved a node to while it already sat there (the policy appends it, as applying
+/// the op does); `append_order` when they differ only in child order otherwise (each branch's appends
+/// keep their order, where the tree merge sorts them by NodeId). `None` is a different tree no ruling
+/// covers.
+let private pinnedClass b dA dB (merged: Node<obj>) (derived: Node<obj>) : string option =
+    orderOnly merged derived
+    |> Option.map (fun parents ->
+        let own = Set.ofList (ownParentMoves b dA @ ownParentMoves b dB)
+
+        if parents |> List.exists own.Contains then
+            "ui_merges.derived_pinned_own_parent_move"
+        else
+            "ui_merges.derived_pinned_append_order")
+
 /// Where the reconciliation policy (Phase 2293, `DagReconcile.reconcile`) lands a triad, against the
-/// UI's tree merge: the verdict a fold-based merge would give each UI auto-merge and refusal.
+/// UI's tree merge: the verdict a fold-based merge would give each UI auto-merge and refusal. A
+/// different tree is split into the two pinned classes and the unpinned rest (Phase 2671).
 let private policyCell (b: Node<obj>) (a: Node<obj>) (bb: Node<obj>) (dA: TreeOp<obj> list) (dB: TreeOp<obj> list) =
     match TreeMerge.merge3Way b a bb, DagReconcile.reconcile b dA dB with
     | Ok merged, Ok r when canon r.Tree = canon merged -> "ui_merges.derived_identical"
-    | Ok _, Ok _ -> "ui_merges.derived_elsewhere"
+    | Ok merged, Ok r ->
+        pinnedClass b dA dB merged r.Tree
+        |> Option.defaultValue "ui_merges.derived_elsewhere"
     | Ok _, Error(ReconcileFault.Refused rs) when rs |> List.exists (fun r -> r.Class = RefusalClass.DeleteModify) ->
         "ui_merges.refused_delete_modify"
     | Ok _, Error(ReconcileFault.Refused _) -> "ui_merges.refused_conflict"
@@ -358,6 +460,8 @@ let private policyReport
 
     [ for c in
           [ "ui_merges.derived_identical"
+            "ui_merges.derived_pinned_own_parent_move"
+            "ui_merges.derived_pinned_append_order"
             "ui_merges.derived_elsewhere"
             "ui_merges.refused_delete_modify"
             "ui_merges.refused_conflict"

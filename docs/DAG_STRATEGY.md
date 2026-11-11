@@ -66,9 +66,11 @@ were re-examined against Core on 2026-10-16 (Phase 2289). The honest account is 
    *asserts* an outcome and carries a replay delta from its primary parent; replay follows one spine,
    and nothing on the read path checks the assertion against the secondary parent. Core *derives*
    state by folding a head's whole ancestor closure in a deterministic order, and refuses deltas that
-   interfere. The 2026-10-16 estimate put the fold at 94.5% of the UI merge's auto-merges once the
-   footprints were precise. That figure was the footprint's over-approximation alone, measured before
-   the reconciliation policy existed. With the policy shipped, it is lower (see "The cut's gate" below).
+   interfere. Measured over the merge-conformance corpus and 18,597 generated triads, Core's fold
+   derives none of the UI merge's refusals and, once style edits carry the field they change and the
+   footprints are precise, 94.5% of its auto-merges; the remainder is an agreement the reconciler can
+   drop, a child-order convention, or a resolution the UI should not have made (a move winning over a
+   concurrent removal that the same engine refuses against an edit).
 
 **Direction.** The UI DAG converges onto Core's. First, with no stored byte moving, the UI adopts
 Core's node-identity rule for order-swapped merges (Phase 2289). Then, at an announced breaking cut,
@@ -89,42 +91,149 @@ outside Core's independence theorem cannot slip through. Its normative statement
 cut makes it the DAG's only merge. Until then it is an additive second entry: `DagMerge` still merges
 with the tree-level engine.
 
-### The cut's gate, and where it stands
+**What the policy derives, measured (Phase 2670).** The cut's gate is the derivability snapshot's
+`derivability.generated.policy.derived_share` (the share of the tree merge's generated auto-merges the
+policy derives to the same tree) at 0.90 or above, with no triad derived to a different tree unless
+pinned. Phase 2670 narrowed two base-aware footprints: a reorder reads and writes its parent at the
+`kind` slot and reads each listed child only at its `parent` slot, and a move reads and writes its
+target at the target's `parent` slot rather than whole. It also widened the snapshot's generator to
+draw the pairs those levers and 2651's target (seed 20261016 and 20,000 trials unchanged; the draws are
+recorded in `DerivabilitySnapshot.fs`), so the generated population has two editions:
 
-Removing the tree merge refuses every concurrent edit the policy cannot derive, so the cut (Phase 2645)
-is held behind a measured gate, set when the cut was ruled on 2026-11-09. Of the triads
-the tree merge auto-merges, the policy must derive at least 90% to the same tree
-(`derivability.generated.policy.derived_share` in the `derivability-snapshot` benchmark of
-`Fuaran.UI.Ops.Benchmarks`). It must also derive none to a different tree, unless each such case is
-pinned as a corpus fixture with a stated reason.
+| population | footprint | UI auto-merges | derived to the same tree | `derived_share` | different tree |
+|---|---|---|---|---|---|
+| 2292's draws (18,597 triads) | before 2670 | 9,294 | 5,943 | 0.6394 | 135 |
+| 2292's draws (18,597 triads) | after 2670 | 9,294 | 8,304 | 0.8935 | 180 |
+| 2670's draws (17,759 triads) | before 2670 | 10,890 | 5,956 | 0.5469 | 84 |
+| 2670's draws (17,759 triads) | after 2670 | 10,890 | 7,936 | **0.7287** | 100 |
 
-Measured on 2026-11-10 (seed 20261016, 20,000 trials, after Phase 2651), the gate is **not met**:
+No triad the policy derived before the change is refused after it, in either population; every pair
+the change frees is pinned in `TreeOpProjectionTests`, and both narrowings are certified by
+`Conformance.footprintInLawsAt` (`ReorderMoveFootprintLawTests`). The corpus population stays at
+1.0000. The change also widens what the policy derives where the tree merge REFUSES (2292's draws:
+142 → 606 triads; 2670's: 158 → 441), each a pair whose ops the fold runs in both orders to one tree.
+One is a corpus fixture: `merge-totality-concurrent-move` (a move beside a restyle of the moved node),
+which the tree merge refuses because it cannot keep both the mover's position and the editor's
+subtree, and the fold now derives with both. The cut changes that fixture's verdict.
 
-| Population | UI auto-merges | Policy derives the same tree | Different tree | Refused (Conflict / DeleteModify) |
-|---|---|---|---|---|
-| corpus | 7 | 7 (1.0000) | 0 | 0 / 0 |
-| generated | 9,294 | 5,943 (0.6394) | 135 | 2,860 / 354 |
+The gate is **not met** on the population that draws the levers' pairs. The 2,851 refused auto-merges
+that remain, attributed by the pairs each refusal names (a triad counts under a class when every one of
+its refusals is in it):
 
-Phase 2651 moved the corpus figure (0.8571 to 1.0000) and not the generated one. Its generator draws
-no restyle of a container that a move leaves.
+- **1,240 — a restyle of a container beside a structural write of its child list** (an insert into it,
+  a move into or out of it, a removal of its child). Core counts a named structure write as a
+  whole-node touch against a slot write, so the parent's `style.<field>` collides with the insert's
+  parent. The next lever is Core's: a structure write that is the node's child-list slot for the slot
+  rule (2651's finding F2-B). Cleared alone: 0.8426.
+- **766 — a reorder beside a concurrent change of the same child list.** The tree merge rebases the
+  reorder over the other branch's appends; the policy refuses, because the reorder's list is stale in
+  one order. The next lever is the policy's: a declared rule rebasing a reorder over concurrent
+  appends, as the interleave rule orders two appends. With the restyle lever: 0.9213.
+- **390 — a removal against a touch of the removed node** (`DeleteModify`), refused by design.
+- the rest — two moves of one node, two inserts of one id, one slot written twice, and mixtures;
+  and 3 fold faults, where both branches move the SAME node into one parent beside other appends
+  there: the child-order rule lists the agreed node once per branch, and the `ReorderChildren` it
+  records does not apply (a defect of the rule, recorded for the cut).
 
-What the policy refuses, by the conflicting pair (counted once per triad and pair):
+The **100 different-tree triads** (180 on 2292's draws) are child orders, in two classes: 85 (159) are
+a **move to the node's own parent** — the policy's child-order rule takes it as an append and moves
+the node to the end of the run, where the tree merge keeps its base slot; and 15 (21) are an **append
+order** — the tree merge sorts every appended id by NodeId, where the policy keeps each branch's run in
+its own order and merges the runs by their heads (6 of them involve no move at all). Pinning each
+class as a fixture, or aligning one rule to the other, is a ruling the cut owes before it lands.
 
-- **A reorder against an edit of one of the children** (`ReorderChildren` against `PatchStyle` or
-  `EditNode`): about 2,600 pairs. The base-aware footprint takes Core's `ReorderChildren` arm, which
-  reads every listed child WHOLE, so a restyle of one child collides with a reorder of its parent. Read
-  at a slot, as Phase 2651 did for a move's ancestors, these pairs commute. Clearing them alone puts
-  the generated share at no more than 0.8423.
-- **A move against an edit of the moved node** (`MoveNode` against `PatchStyle`, `EditNode` or
-  `ReorderChildren`): about 900 pairs. A move keeps a content write of the node it moves. Clearing
-  these as well raises the bound to 0.9002, which only just reaches the gate, and only if every
-  triad cleared then derives to the tree merge's own tree.
-- **The 135 triads derived to a different tree** each involve a `MoveNode` or `InsertChild`. They are
-  child-order differences between the two engines. Each needs a fixture with its reason, or the
-  policy's child-order rule aligned to the tree merge's.
+### The reorder rebase and the pinned classes, measured (Phase 2671)
 
-So the cut waits on these footprint changes and a re-measurement. Until it lands, `TreeMerge` stays the
-DAG's merge, and the two DAGs remain two implementations.
+The operator ruled on 2026-11-10: pin both child-order classes to the policy's rule, accept the triads the fold
+derives where the tree merge refuses, and keep the 0.90 gate with no fallback to the tree merge. Phase 2671 added a
+policy class, the **rebase**: a reorder of a parent beside an append to it, or a removal or move of a child it lists,
+is admitted, and the fold applies the reorder rebased to the children the parent then holds (WIRE_FORMAT §34.3–34.4).
+It also lists a node both branches move into one parent once, which removes the 3 fold faults (5 on 2292's draws).
+
+**A premise corrected on the way.** The 766 refusals were recorded as pairs "the tree merge rebases". It does not:
+the tree merge refuses any reorder beside a structural change of the same list (`ReorderVsStructural`), and
+auto-merges only where the reorder leaves the list as the base had it — chiefly a reorder of `sub`, which has one
+child in the base and so usually shuffles to the same order (of the 1,158 refused auto-merges naming a reorder on
+2670's draws before this phase, 859 reorder only `sub`). The rebase frees those, and also derives the non-identity reorders the tree merge
+refuses, which the ruling accepts.
+
+| population | policy | UI auto-merges | same tree | `derived_share` | pinned own-parent move | pinned append order | unpinned different tree |
+|---|---|---|---|---|---|---|---|
+| 2292's draws | after 2670 | 9,294 | 8,304 | 0.8935 | 159 | 21 | 0 |
+| 2292's draws | after 2671 | 9,294 | 8,452 | **0.9094** | 242 | 24 | **0** |
+| 2670's draws | after 2670 | 10,890 | 7,936 | 0.7287 | 85 | 15 | 0 |
+| 2670's draws | after 2671 | 10,890 | 8,758 | **0.8042** | 147 | 31 | **0** |
+
+The corpus population stays at 1.0000. The 2670's-draws rows are `derivability-snapshot`'s generated population
+(seed 20261016, 20,000 trials), which now prints the two pinned cells beside `derived_elsewhere`; the 2292's-draws
+rows come from a probe running 2292's generator verbatim against the same libraries. Triad by triad, no triad the
+policy derived before is refused or derived elsewhere after; the moves are 820 refused and 2 faulted → same tree
+(2292's: 145 and 3), 77 refused and 1 faulted → a pinned order (84 and 2), and 1,112 refused and 9 faulted → derived
+where the tree merge refuses (2,131 and 14). No fault, order-sensitive refusal or unpinned different tree remains. Every
+different-tree triad differs from the tree merge in child order alone and falls in a pinned class.
+
+**The gate.** On 2292's draws it is **met** (0.9094, no unpinned different tree). On 2670's draws it is **not met**
+at the Core 0.41.0 pin: 0.8042. Of the 1,954 refused auto-merges left (786 `DeleteModify`, 1,168 `Conflict`), 1,346 are the restyle of a container beside a
+structural write of its child list (Core counts a named structure write as a whole-node touch against a slot write),
+which fuaran-core#625 (a structure write is the node's child-list slot) targets; with every one of them cleared the
+share is **0.9278**, an attribution bound from this phase's probe, not a measurement with 625 pinned. 625 is
+unreleased, so **the gate figure with 625 pinned is owed after its release** — it is fuaran#2645's dispatch check. The
+rest: 259 a removal against a touch of the removed node (DeleteModify, by design), 52 two moves of one node or into
+one parent, 47 two inserts of one id, 70 an insert beside a move in one parent, 54 two reorders of one parent that
+differ — mostly a reorder that leaves its list unchanged beside a real one, which the tree merge treats as no change
+(the next policy lever, if one is wanted: a reorder to the order the parent already holds is no write), and mixtures.
+
+**What the fold derives where the tree merge refuses** (1,562 triads on 2670's draws, 2,751 on 2292's), by the tree
+merge's refusal class, each pinned by one `foldFixtures` fixture:
+
+- `ReorderVsStructural` with a reorder in it (1,105; 2,131): a reorder beside a change of the same child list —
+  `fold-reorder-and-insert`.
+- `ReorderVsStructural` with no reorder (180; 197): a move to a node's own parent beside an append there (176; 191) —
+  `fold-own-parent-move-and-insert`; and an agreed append beside other appends (4; 6) —
+  `fold-double-move-and-appends`.
+- `ConcurrentMove` (273; 415, plus 14; 85 mixed with the above): a move beside an edit of the moved node —
+  `fold-move-and-target-edit`, the pair `merge-totality-concurrent-move` refuses.
+- `ConcurrentEdit` on `insert` (4; 8, plus 0; 2 mixed): both sides move a node to one parent and one edits it — the
+  tree merge reads it as inserted twice with different content — `fold-agreed-move-and-edit`.
+
+### The Core 0.42.0 pin and the child-list slot, measured (Phase 2691)
+
+Core 0.42.0 (fuaran-core#625, Core D246) compares a structure write of `p` (an insert into it, a move into or out of
+it, a removal under it) against a slot access as a read and a write of `(p, Footprint.childListSlot)`, and a slot
+access meets the node sets only at a content write. Phase 2691 raises the pin and, in the same commit, makes every
+arm of `TreeOpFootprint.ofOpIn` that reads or rewrites a child list declare that slot: a resolved reorder, a resolved
+move's source parent and `EditNode` (and, as a guard, any in-place edit whose held set moved). A resolved move also
+reads its destination's own `parent` slot, because the cycle check reads the whole chain and the destination's
+existence read no longer collides with a move of it. Without those declarations the 0.42.0 fold derives pairs that do
+not compose: run with the 2671 arms against Core 0.42.0, the probe below faults the fold on 572 triads of 2670's draws
+(25 of 2292's), which is the hole the slot closes.
+
+| population | policy | UI auto-merges | same tree | `derived_share` | pinned own-parent move | pinned append order | unpinned different tree |
+|---|---|---|---|---|---|---|---|
+| 2292's draws | Core 0.41.0, after 2671 | 9,294 | 8,452 | 0.9094 | 242 | 24 | 0 |
+| 2292's draws | **Core 0.42.0, after 2691** | 9,294 | 8,452 | **0.9094** | 242 | 24 | **0** |
+| 2670's draws | Core 0.41.0, after 2671 | 10,890 | 8,758 | 0.8042 | 147 | 31 | 0 |
+| 2670's draws | **Core 0.42.0, after 2691** | 10,890 | 10,155 | **0.9325** | 183 | 37 | **0** |
+
+The 2670's-draws rows are `derivability-snapshot`'s generated population (seed 20261016, 20,000 trials, the
+benchmark run on the pinned tree; the corpus population stays at 1.0000); the 2292's-draws rows are the per-triad
+probe 2670 and 2671 used, against the same libraries. Triad by triad on 2670's draws: 1,397 refused auto-merges now
+derive the same tree, 36 and 6 now derive in the pinned own-parent-move and append-order classes, and 233 triads the
+tree merge refuses now derive; nothing the policy derived before is refused or derived differently, and 2292's draws
+do not move (their generator draws no restyle of a container). No fold fault and no order-sensitive refusal remains,
+and no triad the fold derives with no conflict reported reaches different trees in its two sequential orders.
+
+**The gate.** fuaran#2645's gate (D2-B, F4-A: `derived_share` at or above 0.90 on the widened population with no
+unpinned different-tree triad) is **met** on the Core 0.42.0 pin: 0.9325 on 2670's draws and 0.9094 on 2292's, with
+no unpinned different tree on either.
+
+What remains refused on 2670's draws (515 auto-merges of 10,890: 308 `DeleteModify`, 207 `Conflict`), by the kinds
+of the op pairs refused: a move beside a removal (234, `DeleteModify`, by design), two moves of one node or into one
+parent (65), two inserts of one id (63), two reorders of one parent that differ (55, mostly a reorder that leaves its
+list as it was beside a real one: the policy lever named in the 2671 section, a reorder to the order the parent
+already holds being no write), a reorder beside a removal or move it cannot rebase (16), an insert beside a move in one
+parent (9), an edit or restyle beside a removal of its node (14, `DeleteModify`), two edits or retones of one slot
+(3), two other pairs, and 54 mixtures of these.
 
 What *did* transfer regardless: the provenance-hardening applied to the linear chain (folding the
 prompt id / actor / result outcome into the content hash, and delimiting the pre-image) was applied to

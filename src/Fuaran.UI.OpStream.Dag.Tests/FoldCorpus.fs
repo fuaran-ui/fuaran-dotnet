@@ -19,6 +19,11 @@ open Fuaran.UI.OpStream.TestSupport
 //  (style edits as `PatchStyle`, the field they change, per Phase 2291), so the
 //  footprint Core reads is the one a writer records.
 //
+//  The fixtures whose description starts PINNED fix a child order the policy
+//  gives and the tree merge does not (operator ruling 2026-11-10); the ones
+//  naming the tree merge's refusal pin a class the fold derives where the tree
+//  merge refuses, accepted by the same ruling (Phase 2671).
+//
 //  Held under its own manifest key, the Phase 1497 precedent: every host reads
 //  the keys it ports and ignores the rest, so adding the family moves no
 //  host's existing legs. The triad families beside it are retired by the
@@ -99,10 +104,98 @@ let fixtures: (string * FoldExpectation * string * Node<TestMsg> * TreeOp<TestMs
 
       "fold-move-and-source-edit",
       Derives,
-      "One branch moves a node out of a container while the other retones the container itself. The move writes only the container's child list, which the base-aware footprint declares as the container's kind slot (Phase 2651), and the retone writes its style: two slots, no conflict, so the fold composes them",
+      "One branch moves a node out of a container while the other retones the container itself. The move writes only the container's child list, which the base-aware footprint declares as the container's kind slot (Phase 2651) and Core's child-list slot (Phase 2691), and the retone writes its style: different slots, no conflict, so the fold composes them",
       nested,
       [ TreeOp.MoveNode(NodeId "m", NodeId "boxb") ],
       [ toneOf ToneVariant.Brand (NodeId "boxa") ]
+
+      "fold-insert-and-container-restyle",
+      Derives,
+      "One branch appends a child to a container while the other retones the container itself. Under Core D246 (the 0.42.0 pin, Phase 2691) the insert writes the container's child-list slot and the retone its style: different slots, no conflict, so the fold composes them. Before the pin a structure write collided with every slot write of its node and the pair was refused",
+      nested,
+      [ TreeOp.InsertChild(NodeId "boxa", Fuaran.markdown "new" "Appended") ],
+      [ toneOf ToneVariant.Brand (NodeId "boxa") ]
+
+      "fold-move-and-target-edit",
+      Derives,
+      "One branch moves a node while the other retones it in place. The move writes the moved node's position, which the base-aware footprint declares as its parent slot (Phase 2670), and the retone writes its style: two slots, no conflict, so the fold composes them",
+      nested,
+      [ TreeOp.MoveNode(NodeId "m", NodeId "boxb") ],
+      [ toneOf ToneVariant.Brand (NodeId "m") ]
+
+      "fold-reorder-and-child-edit",
+      Derives,
+      "One branch reorders a parent's children while the other retones one of them. The reorder writes the parent's child list (its kind slot and Core's child-list slot) and reads each listed child only at its parent slot (Phase 2670), so the retone commutes with it and the fold composes them",
+      flat,
+      [ TreeOp.ReorderChildren(dashboardId, [ rightChildId; leftChildId ]) ],
+      [ toneOf ToneVariant.Brand leftChildId ]
+
+      "fold-reorder-and-insert",
+      Derives,
+      "One branch reorders a parent's children while the other appends a child to it. Core reports the pair (the reorder writes the parent's child-list slot, which the insert writes too: a SlotClash, Core D246), and the policy admits it as a rebase (Phase 2671): the reorder is applied to the children the parent holds when the fold reaches it, so the reordered run keeps its declared order and the append follows it. The tree merge refuses this pair (ReorderVsStructural); the fold's answer is accepted by the 2026-11-10 ruling",
+      flat,
+      [ TreeOp.ReorderChildren(dashboardId, [ rightChildId; leftChildId ]) ],
+      [ TreeOp.InsertChild(dashboardId, Fuaran.markdown "new" "Appended") ]
+
+      "fold-reorder-and-remove",
+      Derives,
+      "One branch reorders a parent's children while the other removes one of them. Admitted as a rebase: the removed child is dropped from the reordered run, and the rest keep the declared order",
+      nested,
+      [ TreeOp.ReorderChildren(NodeId "dash", [ NodeId "boxb"; NodeId "boxa" ]) ],
+      [ TreeOp.RemoveNode(NodeId "boxa") ]
+
+      "fold-reorder-and-move-in",
+      Derives,
+      "One branch reorders a parent's children while the other moves a node into that parent. Admitted as a rebase: the moved node is an append, placed after the reordered run",
+      nested,
+      [ TreeOp.ReorderChildren(NodeId "dash", [ NodeId "boxb"; NodeId "boxa" ]) ],
+      [ TreeOp.MoveNode(NodeId "m", NodeId "dash") ]
+
+      "fold-reorder-and-move-out",
+      Derives,
+      "One branch reorders a parent's children while the other moves one of them to another parent. Admitted as a rebase: the moved child leaves the reordered run, as a removed one does",
+      nested,
+      [ TreeOp.ReorderChildren(NodeId "dash", [ NodeId "boxb"; NodeId "boxa" ]) ],
+      [ TreeOp.MoveNode(NodeId "boxb", NodeId "boxa") ]
+
+      "fold-double-move-and-appends",
+      Derives,
+      "Both branches move the same node into one parent, each beside an append of its own there. The two moves agree; the child-order rule lists the agreed node ONCE, where the merge of the two runs first reaches it, so the recorded reorder applies (before Phase 2671 it named the node twice and the fold faulted). The tree merge refuses this (ReorderVsStructural: the two child lists share a new id); the fold's answer is accepted by the 2026-11-10 ruling",
+      nested,
+      [ TreeOp.MoveNode(NodeId "m", NodeId "dash")
+        TreeOp.InsertChild(NodeId "dash", Fuaran.markdown "zz" "Z") ],
+      [ TreeOp.InsertChild(NodeId "dash", Fuaran.markdown "aa" "A")
+        TreeOp.MoveNode(NodeId "m", NodeId "dash") ]
+
+      "fold-agreed-move-and-edit",
+      Derives,
+      "Both branches move the same node to the same parent and one also retones it. The moves agree and the retone commutes with them. The tree merge refuses this (ConcurrentEdit on the moved node, which it reads as inserted by both sides with different content); the fold's answer is accepted by the 2026-11-10 ruling",
+      nested,
+      [ TreeOp.MoveNode(NodeId "m", NodeId "boxb")
+        toneOf ToneVariant.Brand (NodeId "m") ],
+      [ TreeOp.MoveNode(NodeId "m", NodeId "boxb") ]
+
+      "fold-own-parent-move-and-insert",
+      Derives,
+      "One branch moves a node to the parent it already sits under while the other appends a child there. Both are appends, interleaved by the child-order rule. The tree merge refuses this (ReorderVsStructural: the mover's list is not a pure addition); the fold's answer is accepted by the 2026-11-10 ruling",
+      flat,
+      [ TreeOp.MoveNode(leftChildId, dashboardId) ],
+      [ TreeOp.InsertChild(dashboardId, Fuaran.markdown "new" "Appended") ]
+
+      "fold-pinned-own-parent-move",
+      Derives,
+      "PINNED (operator ruling 2026-11-10): a MoveNode to the parent the node already sits under is an append, so the node goes last. One branch moves the last pane to its own parent (its own head is unchanged) while the other reorders the parent; the policy rebases the reorder and appends the moved node after it, the tree applying the move after the reorder. The tree merge sees no change on the mover's side and keeps the reorder's order, which no application of the two ops produces",
+      flat,
+      [ TreeOp.MoveNode(rightChildId, dashboardId) ],
+      [ TreeOp.ReorderChildren(dashboardId, [ rightChildId; leftChildId ]) ]
+
+      "fold-pinned-append-order",
+      Derives,
+      "PINNED (operator ruling 2026-11-10): a branch's appends keep the order the branch made them in, and the two runs merge by their heads (b1, a2 then c1). Where both branches append to one parent the tree merge sorts every appended id by NodeId (a2, b1, c1), which is not an order anyone authored",
+      flat,
+      [ TreeOp.InsertChild(dashboardId, Fuaran.markdown "b1" "B1")
+        TreeOp.InsertChild(dashboardId, Fuaran.markdown "a2" "A2") ],
+      [ TreeOp.InsertChild(dashboardId, Fuaran.markdown "c1" "C1") ]
 
       "fold-refusal-concurrent-tone",
       Refuses,
@@ -143,12 +236,12 @@ let fixtures: (string * FoldExpectation * string * Node<TestMsg> * TreeOp<TestMs
       [ TreeOp.RemoveNode(NodeId "m") ],
       [ TreeOp.MoveNode(NodeId "m", NodeId "boxb") ]
 
-      "fold-refusal-concurrent-move",
+      "fold-refusal-two-reorders",
       Refuses,
-      "One branch moves a node while the other retones it in place — a Conflict on the moved node",
-      nested,
-      [ TreeOp.MoveNode(NodeId "m", NodeId "boxb") ],
-      [ toneOf ToneVariant.Brand (NodeId "m") ]
+      "Both branches reorder one parent's children to different orders — each writes the parent's child-list and kind slots, SlotClashes no rule decides, refused as a Conflict",
+      flat,
+      [ TreeOp.ReorderChildren(dashboardId, [ rightChildId; leftChildId ]) ],
+      [ TreeOp.ReorderChildren(dashboardId, [ leftChildId; rightChildId ]) ]
 
       "fold-refusal-tooltip",
       Refuses,
@@ -192,7 +285,7 @@ let private kindOf expectation =
     | Gated -> "merge-fold-gated"
 
 let private description =
-    "merge-fold (Phase 2293, additive, SEPARATE key): decode base and the two branches' op deltas (aOpsFile, bOpsFile: canonical TreeOp arrays, each applying from base op by op), reconcile them by fold under the policy of WIRE_FORMAT.md section 34 (Core's conflict report over the base-aware footprint; agreements applied as no change; two appends of distinct nodes under one parent admitted and ordered by the declared child-order rule; every other reported pair refused, a removal against a concurrent touch of the removed node as DeleteModify). merge-fold-derive: the derived tree is byte-equal to expectedFile and sha256(expected) == outcomeHash. merge-fold-refusal: the policy refuses and the envelope is byte-equal to envelopeFile with sha256 == envelopeHash; swapping a and b swaps every entry's left and right and re-sorts. merge-fold-gated: the fold derives and the sample validator over the derived tree introduces defects neither branch head carries; the verdict is byte-equal to verdictFile with sha256 == verdictHash."
+    "merge-fold (Phase 2293, additive, SEPARATE key): decode base and the two branches' op deltas (aOpsFile, bOpsFile: canonical TreeOp arrays, each applying from base op by op), reconcile them by fold under the policy of WIRE_FORMAT.md section 34 (Core's conflict report over the base-aware footprint; agreements applied as no change; two appends of distinct nodes under one parent admitted and ordered by the declared child-order rule; a reorder of a parent beside an append to it or a removal or move of a child it lists admitted as a rebase (Phase 2671); every other reported pair refused, a removal against a concurrent touch of the removed node as DeleteModify). merge-fold-derive: the derived tree is byte-equal to expectedFile and sha256(expected) == outcomeHash. merge-fold-refusal: the policy refuses and the envelope is byte-equal to envelopeFile with sha256 == envelopeHash; swapping a and b swaps every entry's left and right and re-sorts. merge-fold-gated: the fold derives and the sample validator over the derived tree introduces defects neither branch head carries; the verdict is byte-equal to verdictFile with sha256 == verdictHash."
 
 /// Write the family's payloads into `dir` and return its manifest section (the
 /// `foldDescription` and `foldFixtures` members, comma-led).

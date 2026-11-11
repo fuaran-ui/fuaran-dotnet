@@ -32,19 +32,36 @@ open Fuaran.UI.OpStream.Abstractions
 //      different order depending on which applies first. Admitted, and ordered
 //      by ONE declared rule (below), which the merge records as a
 //      `ReorderChildren` script.
-//   3. Anything else. Refused, naming Core's shape and address. A removal
+//   3. A REBASE (Phase 2671). One op reorders a parent `p`'s children
+//      (`ReorderChildren`) and the other changes that child list: an append to
+//      `p` (an `InsertChild` under it or a `MoveNode` to it), or a removal or
+//      move of a child the reorder lists. Core reports the pair, because the
+//      reorder's list is stale in one fold order. Admitted: the fold applies
+//      the reorder REBASED to the children `p` holds when it is reached — the
+//      listed children still there, in the declared order, then the rest in
+//      the order they hold — and the child-order rule below places the appends.
+//   4. Anything else. Refused, naming Core's shape and address. A removal
 //      against any concurrent touch of the removed node — an edit, a move, an
 //      insert beneath it — is classed `DeleteModify`; every other pair is
-//      `Conflict`.
+//      `Conflict`. Two reorders of one parent that differ stay refused.
 //
-//  THE CHILD-ORDER RULE (declared). Under a parent the policy interleaves,
-//  the children neither branch appended keep the order the fold gives them,
-//  and the appended ones follow: each branch's appends in that branch's own
-//  order, the two runs merged by comparing their heads ordinally by NodeId,
-//  the smaller first. Two runs of distinct ids merge to one order whichever
-//  branch is named first, so the rule is symmetric by construction. It is the
-//  NodeId-byte tie-break the merge-conformance corpus already pins
-//  (`merge-insert-tiebreak`), extended from one append per side to a run.
+//  THE CHILD-ORDER RULE (declared). Under a parent the policy interleaves or
+//  rebases, the children neither branch appended keep the order the fold gives
+//  them (a rebased reorder's order, where a branch reordered the parent), and
+//  the appended ones follow: each branch's appends in that branch's own order,
+//  the two runs merged by comparing their heads ordinally by NodeId, the
+//  smaller first, and a node both runs hold (two agreeing moves of it) listed
+//  once, where the merge first reaches it. An append a later reorder of the
+//  same parent on the same branch lists is settled by that reorder and leaves
+//  the run. Two runs merge to one order whichever branch is named first, so
+//  the rule is symmetric by construction. It is the NodeId-byte tie-break the
+//  merge-conformance corpus already pins (`merge-insert-tiebreak`), extended
+//  from one append per side to a run.
+//
+//  The rule is the policy's, not the tree merge's, in two places the operator
+//  ruled to pin (2026-11-10): a `MoveNode` to the parent a node already sits
+//  under is an append (the tree applying the op puts it last), and appended
+//  ids keep their branch's order (a NodeId sort is no authored order).
 //
 //  WHAT IS CHECKED, not assumed. The policy admits pairs Core does not call
 //  independent, so Core's order-independence theorem does not cover them. The
@@ -102,9 +119,10 @@ type ReconcileFault<'Msg> =
     | IntroducedDefects of MergeDefect list
 
 /// A derived merge: the tree the fold reaches, the script the merge records
-/// (one `ReorderChildren` per interleaved parent whose fold order the rule
-/// changes, parents in ordinal order), how many distinct agreeing ops the fold
-/// applied as no change, and how many parents it interleaved.
+/// (one `ReorderChildren` per interleaved or rebased parent whose fold order
+/// the rule changes, parents in ordinal order), how many distinct agreeing ops
+/// the fold applied as no change, and how many parents it interleaved or
+/// rebased.
 type Reconciled<'Msg> =
     { Tree: Node<'Msg>
       Script: TreeOp<'Msg> list
@@ -154,8 +172,37 @@ module DagReconcile =
             | Error _ when held op tree -> Ok tree
             | Error e -> Error e
 
-    let private foldOps (ops: TreeOp<'Msg> list) (start: Node<'Msg>) : Result<Node<'Msg>, ApplyError> =
-        ops |> List.fold (fun acc o -> acc |> Result.bind (applyHeld o)) (Ok start)
+    /// A reorder of `parent` rebased to the children it holds in `tree`: the
+    /// listed children still there, in the declared order, then the others in
+    /// the order they hold. `op` itself where the parent is not in the tree.
+    let private rebased (tree: Node<'Msg>) (parent: string) (order: NodeId list) (op: TreeOp<'Msg>) : TreeOp<'Msg> =
+        match tryFind parent tree with
+        | Some p ->
+            let kids = childrenOf p |> List.map _.Id
+            let present = Set.ofList kids
+            let listed = order |> List.map (fun (NodeId c) -> c) |> List.filter present.Contains
+            let listedSet = Set.ofList listed
+            let rest = kids |> List.filter (listedSet.Contains >> not)
+            TreeOp.ReorderChildren(NodeId parent, listed @ rest |> List.map NodeId)
+        | None -> op
+
+    /// The fold: `applyHeld` op by op, with a reorder of a parent in `rebase`
+    /// applied rebased to the children the parent holds when the fold reaches it.
+    let private foldOps
+        (rebase: Set<string>)
+        (ops: TreeOp<'Msg> list)
+        (start: Node<'Msg>)
+        : Result<Node<'Msg>, ApplyError> =
+        ops
+        |> List.fold
+            (fun acc o ->
+                acc
+                |> Result.bind (fun t ->
+                    match o with
+                    | TreeOp.ReorderChildren(NodeId p, order) when rebase.Contains p ->
+                        applyHeld (rebased t p order o) t
+                    | _ -> applyHeld o t))
+            (Ok start)
 
     /// The first op of `delta` that does not apply from `baseTree`, with its index.
     let private firstFailure (delta: TreeOp<'Msg> list) (baseTree: Node<'Msg>) : Result<Node<'Msg>, int * ApplyError> =
@@ -180,9 +227,25 @@ module DagReconcile =
         | TreeOp.MoveNode(NodeId moved, NodeId p) when p = parent -> Some moved
         | _ -> None
 
+    /// The parent whose child list `reorder` and `other` both change, when one is
+    /// a `ReorderChildren` and the other an append to its parent or a removal or
+    /// move of a child it lists.
+    let private rebaseOf (reorder: TreeOp<'Msg>) (other: TreeOp<'Msg>) : string option =
+        match reorder with
+        | TreeOp.ReorderChildren(NodeId p, order) ->
+            let listed (c: string) = order |> List.contains (NodeId c)
+
+            match other with
+            | TreeOp.InsertChild(NodeId q, _) when q = p -> Some p
+            | TreeOp.MoveNode(NodeId c, NodeId q) when q = p || listed c -> Some p
+            | TreeOp.RemoveNode(NodeId c) when listed c -> Some p
+            | _ -> None
+        | _ -> None
+
     type private Verdict =
         | Agreement
         | Interleave of parent: string
+        | Rebase of parent: string
         | Refuse of RefusalClass
 
     let private judge (c: Fuaran.Core.MergeConflict<TreeOp<'Msg>>) : Verdict =
@@ -192,10 +255,13 @@ module DagReconcile =
             match c.Shape, appendInto c.Address c.Left, appendInto c.Address c.Right with
             | Fuaran.Core.MergeConflictShape.InsertPositionClash, Some l, Some r when l <> r -> Interleave c.Address
             | _ ->
-                if removes c.Left <> removes c.Right then
-                    Refuse RefusalClass.DeleteModify
-                else
-                    Refuse RefusalClass.Conflict
+                match rebaseOf c.Left c.Right |> Option.orElse (rebaseOf c.Right c.Left) with
+                | Some p -> Rebase p
+                | None ->
+                    if removes c.Left <> removes c.Right then
+                        Refuse RefusalClass.DeleteModify
+                    else
+                        Refuse RefusalClass.Conflict
 
     let private shapeText (s: Fuaran.Core.MergeConflictShape) : string =
         match s with
@@ -236,8 +302,9 @@ module DagReconcile =
         |> List.distinctBy orderKey
         |> List.sortWith (fun a b -> compareKeys (orderKey a) (orderKey b))
 
-    /// The run-merge of the child-order rule: two runs of distinct ids, each kept
-    /// in its own order, merged by comparing heads ordinally.
+    /// The run-merge of the child-order rule: two runs, each kept in its own
+    /// order, merged by comparing heads ordinally. An id both runs hold appears
+    /// twice; `reorderFor` keeps its first occurrence.
     let rec private interleave (a: string list) (b: string list) : string list =
         match a, b with
         | [], rest
@@ -266,16 +333,32 @@ module DagReconcile =
             let keep (run: string list) =
                 run |> List.filter present.Contains |> List.distinct
 
+            // A node both runs hold (two agreeing moves of it) is listed once,
+            // where the merge first reaches it: the merge of two runs is the same
+            // sequence whichever is named first, so its first occurrence is too.
             let prefix = kids |> List.filter (appended.Contains >> not)
-            let order = prefix @ interleave (keep runA) (keep runB)
+            let order = prefix @ (interleave (keep runA) (keep runB) |> List.distinct)
 
             if order = kids then
                 None
             else
                 Some(TreeOp.ReorderChildren(NodeId parent, order |> List.map NodeId)))
 
+    /// A branch's run of appends into `parent`, in branch order. An append a
+    /// later reorder of the same parent on the branch lists is settled by that
+    /// reorder: the branch placed it, so it leaves the run.
     let private appendsOf (parent: string) (delta: TreeOp<'Msg> list) : string list =
-        delta |> List.choose (appendInto parent)
+        delta
+        |> List.fold
+            (fun run op ->
+                match op with
+                | TreeOp.ReorderChildren(NodeId p, order) when p = parent ->
+                    run |> List.filter (fun id -> not (List.contains (NodeId id) order))
+                | _ ->
+                    match appendInto parent op with
+                    | Some id when not (List.contains id run) -> run @ [ id ]
+                    | _ -> run)
+            []
 
     let private scriptFor
         (tree: Node<'Msg>)
@@ -312,14 +395,20 @@ module DagReconcile =
             if not refusals.IsEmpty then
                 Error(ReconcileFault.Refused(sortCanonical refusals))
             else
-                let parents =
-                    verdicts
-                    |> List.choose (fun (_, v) ->
-                        match v with
-                        | Interleave p -> Some p
+                let parentsOf pick =
+                    verdicts |> List.choose (snd >> pick) |> List.distinct |> List.sortWith ordinal
+
+                let rebase =
+                    parentsOf (function
+                        | Rebase p -> Some p
                         | _ -> None)
-                    |> List.distinct
-                    |> List.sortWith ordinal
+                    |> Set.ofList
+
+                let parents =
+                    parentsOf (function
+                        | Interleave p
+                        | Rebase p -> Some p
+                        | _ -> None)
 
                 // A pair is reported once per address it collides on, so count the distinct
                 // agreeing ops, not the report's entries.
@@ -331,10 +420,10 @@ module DagReconcile =
                     |> List.length
 
                 let derive first second =
-                    foldOps (first @ second) baseTree
+                    foldOps rebase (first @ second) baseTree
                     |> Result.bind (fun t ->
                         let script = scriptFor t parents deltaA deltaB
-                        foldOps script t |> Result.map (fun t' -> t', script))
+                        foldOps Set.empty script t |> Result.map (fun t' -> t', script))
 
                 match derive deltaA deltaB, derive deltaB deltaA with
                 | Error e, _
@@ -364,7 +453,7 @@ module DagReconcile =
         |> Result.bind (fun r ->
             // Both deltas applied from the base inside `reconcile`, so the heads exist.
             let head delta =
-                foldOps delta baseTree |> Result.defaultValue baseTree
+                foldOps Set.empty delta baseTree |> Result.defaultValue baseTree
 
             match ValidatorGate.introducedDefects validator (head deltaA) (head deltaB) r.Tree with
             | [] -> Ok r

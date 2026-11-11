@@ -181,6 +181,12 @@ let private footprintInAtTest =
 /// container beside restyles of it, the pair the source parent's `kind` slot frees.
 let private footprintInMoveTest = "footprintInLawsAt holds over the move family"
 
+/// The same family over the INSERT family (Phase 2691), in `Fuaran.UI.Ops.Tests`: the 0.42.0 kit's
+/// child-list law (Core D246) over a container's restyle beside every change of its child list, the
+/// pairs the pin frees, and the kind edits, reorders and cross moves that must stay ordered.
+let private footprintInInsertTest =
+    "footprintInLawsAt holds over the insert family, with the child-list law"
+
 let private mergeConflictTest =
     "merge-conflict reporting is symmetric, deterministic and complete (mergeConflictLaws)"
 
@@ -904,6 +910,7 @@ let census: (string * Adoption) list =
       AdoptedAcross
           [ footprintInAtTest, "Conformance.footprintInLawsAt (.NET)"
             footprintInMoveTest, "Conformance.footprintInLawsAt (.NET, move family)"
+            footprintInInsertTest, "Conformance.footprintInLawsAt (.NET, insert family, child-list law)"
             footprintInFableTest, "Conformance.footprintInLawsAt (Fable and Node)" ]
       "Conformance.seamRefusalLaws",
       NotUsed

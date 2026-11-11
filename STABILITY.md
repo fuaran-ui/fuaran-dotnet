@@ -7893,6 +7893,93 @@ switch arms. Additive otherwise: three new names.
 **No kind is added, merged or retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s admission gates are
 not engaged. **No escape hatch is created or widened.**
 
+### What rides this slot — Phase 2670 (a reorder reads its children at a slot, a move writes its target's position)
+
+**Class: additive.** Package `Fuaran.UI.Ops`; no public signature moves. Two base-aware footprints narrow, so the
+fold derives pairs it refused and refuses nothing it derived (measured over the derivability snapshot's populations,
+`docs/DAG_STRATEGY.md`).
+
+- **Narrowed — `TreeOpFootprint.ofOpIn` / `ofScriptIn` / `ofEachIn` of a resolved `ReorderChildren`.** It reads and
+  writes the parent at its `kind` slot and reads each listed child at its `parent` slot, where it took Core's arm (a
+  whole-node read of the parent and of every child, and a named structure write of the parent). A reorder now commutes
+  with a restyle or edit of a listed child and with a restyle of the parent. An unresolved reorder keeps Core's arm.
+- **Narrowed — the same, of a resolved `MoveNode`.** The target is read and written at its `parent` slot, where it
+  was read and content-written whole; the source and destination rules of Phase 2651 are unchanged. A move now commutes
+  with a restyle, edit or reorder of the moved node.
+- **Moved — what a refused reorder reports.** `Dag.conflictsIn` over the tier's footprint names a reorder's collision
+  with an insert into, a move into or a removal from its parent as a `ConcurrentUpdate` at the parent (it was an
+  `InsertPositionClash`), and with another reorder of the parent as a `SlotClash` on `kind`; the policy's class is
+  unchanged (`Conflict`, or `DeleteModify` beside a removal). So `DagReconcile`'s refusal envelope for such a pair
+  changes bytes, and the hosts' fold ports follow with the corpus.
+- **Corpus (merge-conformance `foldFixtures`).** `fold-refusal-concurrent-move` becomes the derivation
+  `fold-move-and-target-edit`; `fold-reorder-and-child-edit` (a derivation) and `fold-refusal-reorder-and-insert`
+  (the shape a refused reorder now reports) are added.
+
+**The consumer cost:** a caller that pinned the refusal shape of a reorder pair, or the refusal of a move beside an
+edit of its target. Every pair that was independent stays independent.
+
+### What rides this slot — Phase 2671 (the reconciliation policy rebases a reorder over concurrent appends, and a node moved by both branches is listed once)
+
+**Class: breaking** (a verdict `DagReconcile.reconcile` gave becomes a different verdict; the fixture family moves),
+which the slot already carries. Package `Fuaran.UI.OpStream.Dag.Merge`; no public signature moves.
+
+- **Admitted — a reorder beside a change of the same child list.** A `ReorderChildren` of a parent on one branch
+  beside an append to it (an insert, a move in), or a removal or move of a child it lists, on the other was refused
+  (`Conflict`, or `DeleteModify` beside a removal). It now derives: the reorder is folded rebased to the children the
+  parent holds, the reordered run keeps its order, a removed or moved-out child drops out of it, and appends follow by
+  the child-order rule (WIRE_FORMAT §34.3–34.4). Two reorders of one parent that differ still refuse.
+- **Fixed — two agreeing moves of one node beside other appends.** The child-order rule listed the node once per
+  branch and the fold faulted (`FoldFaulted`); it is listed once, where the merged runs first reach it.
+- **Changed — an append a later reorder of the same parent on the same branch lists** leaves that branch's run, so
+  the reorder places it rather than the rule.
+- **`Reconciled.Interleaves`** counts the interleaved and the rebased parents; `Script` may hold a reorder for either.
+- **Snapshot (benchmarks).** `derivability.<population>.policy.derived_elsewhere` now counts only the different-tree
+  triads no ruling pins; the two classes ruled pinned on 2026-11-10 report as `derived_pinned_own_parent_move` and
+  `derived_pinned_append_order`.
+- **Corpus (merge-conformance `foldFixtures`).** `fold-refusal-reorder-and-insert` is retired and becomes the
+  derivation `fold-reorder-and-insert`; added: `fold-reorder-and-remove`, `fold-reorder-and-move-in`,
+  `fold-reorder-and-move-out`, `fold-double-move-and-appends`, `fold-agreed-move-and-edit`,
+  `fold-own-parent-move-and-insert`, `fold-pinned-own-parent-move`, `fold-pinned-append-order` and
+  `fold-refusal-two-reorders`. The totality entry `merge-totality-concurrent-move` keeps its tree-merge envelope; its
+  description names the fold's derivation of the same pair.
+
+**The consumer cost:** a caller that relied on the fold refusing a reorder beside an append, insert, move or removal
+in the same parent, or that read a `FoldFaulted` for the double move. Nothing the fold derived before is refused or
+derived differently (measured, `docs/DAG_STRATEGY.md`). **No kind is added, merged or retired; no escape hatch is
+created or widened.**
+
+### What rides this slot — Phase 2691 (the Fuaran.Core 0.42.0 pin, and the footprint writes Core's child-list slot)
+
+**Class: breaking, by dependency** (Core 0.42.0 is behaviourally breaking: `Ops.independent` answers `true` for pairs
+it answered `false` for, Core D246), which the slot already carries. Packages: every package that references
+`Fuaran.Core.*` takes the 0.42.0 floor; `Fuaran.UI.Ops` and `Fuaran.UI.OpStream.Dag.Merge` change behaviour. No
+public signature moves.
+
+- **Raised — all twenty `Fuaran.Core.*` pins, 0.41.0 → 0.42.0, together** (`Directory.Packages.props`); no
+  `Fuaran.Compute.*` or `Fuaran.Program.*` pin moves.
+- **Changed — `TreeOpFootprint.ofOpIn` declares Core's child-list slot** (`Footprint.childListSlot`, `"#children"`) on
+  every arm that reads or rewrites a node's child list: a resolved `ReorderChildren` (beside the parent's `kind`
+  slot), a resolved `MoveNode`'s source parent (likewise), `EditNode`, and any in-place edit whose held set moved (a
+  guard: no such op moves one today). A resolved `MoveNode` also reads its destination's `parent` slot. The
+  footprints grow; under Core 0.41.0 they would only collide more, and under 0.42.0 they keep ordered every pair
+  0.41.0 ordered except the ones D246 frees.
+- **Freed — a container's restyle, trait edit, state edit or prop edit beside an insert into it, a move into or out
+  of it, or a removal under it**, and an insert into a container beside a move of the container: each was refused by
+  `DagReconcile.reconcile` and `Dag.conflictsIn` reported the pair; each now derives. Measured on the snapshot's
+  population: `derived_share` 0.8042 → 0.9325, nothing derived before refused or derived differently
+  (`docs/DAG_STRATEGY.md`).
+- **Changed — the refusal envelope names the child list at Core's slot.** A refused pair whose conflict is the parent's
+  child list reports `SlotClash` at `#children` (two reorders of one parent: `#children` and `kind`; a removal beside a
+  move of the same node: `#children` at the parent where it was `ConcurrentUpdate`).
+- **Corpus (merge-conformance `foldFixtures`).** `fold-refusal-two-reorders` and `fold-refusal-remove-vs-move`
+  re-emitted (their envelopes move as above); added: `fold-insert-and-container-restyle`. The Core-produced `laws/`
+  and `apply/` families re-emit byte-identical from Core `v0.42.0`.
+
+**The consumer cost:** a caller that relied on the fold refusing a container's restyle beside a change of its child
+list, or that reads a refusal envelope's `slot` / `shape` for a child-list conflict. A host porting the footprint
+(the four other hosts, fuaran#2646) owes the same arms. **No kind is added, merged or retired; no escape hatch is
+created or widened.**
+
 ---
 
 ## 0.103.0 (RELEASED — tagged v0.103.0 at 1b783c61, 2026-11-09)
