@@ -411,4 +411,64 @@ let tests =
                 test "SQLite DAG sink" {
                     use db = TempDb.create "dag-lift"
                     assertPinThrough (sqliteSink db.Path)
+                }
+
+                // Phase 2648: the DAG column above moved once, at the cut. The column it
+                // replaced is the pre-cut lift's addresses, and the one-release re-mint
+                // must carry a store holding them onto this pin exactly. It leaves with
+                // the tool, in the release after the cut's.
+                test "the pre-cut lift re-mints onto this pin" {
+                    let preCutPin =
+                        [ "d67c35e006e9f2beee6edf58abcc5e95ba6904f94b336931bc4c84212c146355"
+                          "c51ad58b87f8cb47359a6e1e701febf68e40d2fb0e2841fc7a9305dc722c3a63"
+                          "a37e07d5e1bb9b27bf0f0d607c2c6a61080390742f90f6ff2d24e8c4dc319354"
+                          "68554c28452b4f8190209ab1cae64bb02260a3ef71b44c21a46edbb03577df79"
+                          "5368106ba72b60228321f6505818151b2d8017ce0d72c45f14eaac54e271ddd7" ]
+
+                    let linear = corpusRecords ()
+                    let pin = pinnedPrefix (List.length linear)
+
+                    // The pre-cut lift, minted under the pre-cut rule the tool carries.
+                    let legacy =
+                        linear
+                        |> List.fold
+                            (fun (acc: Fuaran.UI.OpStream.Dag.Remint.LegacyRecord<obj> list) r ->
+                                let unaddressed: Fuaran.UI.OpStream.Dag.Remint.LegacyRecord<obj> =
+                                    { StreamId = r.StreamId
+                                      Hash = ""
+                                      Parents =
+                                        match acc with
+                                        | [] -> []
+                                        | prev :: _ -> [ prev.Hash ]
+                                      Op = r.Op
+                                      OutcomeHash = None
+                                      PromptId = r.PromptId
+                                      Actor = r.Actor
+                                      Timestamp = r.Timestamp
+                                      ResultEnvelope = r.ResultEnvelope
+                                      Tombstoned = false }
+
+                                { unaddressed with
+                                    Hash = Fuaran.UI.OpStream.Dag.Remint.Legacy.address unaddressed }
+                                :: acc)
+                            []
+                        |> List.rev
+
+                    Expect.equal
+                        (legacy |> List.map _.Hash)
+                        (List.truncate (List.length linear) preCutPin)
+                        "the tool's pre-cut rule reproduces the pre-cut pin"
+
+                    match
+                        Fuaran.UI.OpStream.Dag.Remint.Remint.records
+                            Fuaran.UI.OpStream.Dag.Remint.RemintOptions.defaults
+                            Map.empty
+                            legacy
+                    with
+                    | Error f -> failtestf "refused: %s" (Fuaran.UI.OpStream.Dag.Remint.RemintFault.describe f)
+                    | Ok reminted ->
+                        Expect.equal
+                            (legacy |> List.map (fun r -> Map.find r.Hash reminted.Receipt.Addresses))
+                            (pin |> List.map snd)
+                            "every pre-cut address re-mints to this pin's address"
                 } ] ]
