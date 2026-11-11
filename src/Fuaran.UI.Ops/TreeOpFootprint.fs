@@ -54,6 +54,23 @@ module Fuaran.UI.Ops.TreeOpFootprint
 //  validity can read another field of the same spec (a select's `Value` is
 //  checked against its `Multiple`), so two prop edits of one node are ordered.
 //
+//  THE CHILD LIST (Phase 2691, Core D246). Core compares a structure write of
+//  `p` — an insert into `p`, a move into or out of it, a removal under it —
+//  against a slot access as a read and a write of `(p, childListSlot)`, and a
+//  slot write meets the node sets only at a content write. So every arm that
+//  reads or rewrites a node's structural children by slot declares that slot:
+//  a resolved reorder and a resolved move's source parent (beside the `kind`
+//  slot the tier holds the list in), an `EditNode` (a new kind can hold other
+//  children, or none), and any in-place edit whose held set moved. A restyle,
+//  a state edit, a trait edit and a prop edit write no child list — the props
+//  path refuses `Children`, and admission (`canHold`) reads the kind's case,
+//  which only `EditNode` changes — so each commutes with an insert into its
+//  node, a move into or out of it and a removal under it. A state alternative
+//  is a keyed position, not the child list, so `UpdateState` declares none.
+//  A resolved move reads its destination's `parent` slot with the ancestors
+//  above it: the cycle check reads the whole chain, and since D246 the
+//  destination's existence read no longer collides with a move of it.
+//
 //  The script is THREADED as Core threads it: each op is footprinted at the
 //  tree the ops before it reach under `Apply.apply`, and from an op that does
 //  not apply onwards every op takes the pure arm. A node held only in a keyed
@@ -179,6 +196,20 @@ let private slotted (writes: string list) (reads: string list) (target: string) 
         Reads = Set.union slots.Reads touched
         ContentWrites = Set.union slots.ContentWrites touched }
 
+/// Core's child-list slot (Phase 2691, Core D246).
+let private childListSlot = CoreFootprint.childListSlot
+
+/// `f` with a read and a write of `node`'s child-list slot beside it.
+let private childList (node: string) (f: Fuaran.Core.Footprint) =
+    CoreFootprint.union f (CoreFootprint.slotEdit node childListSlot)
+
+/// `slotted` for an op whose contract moves no node: where its held set moved
+/// anyway (`heldChange` non-empty), the child list is written too. Empty for
+/// every such op the engine has, so the slot is a guard, not an arm.
+let private guarded (writes: string list) (reads: string list) (target: string) (touched: Set<string>) =
+    let f = slotted writes reads target touched
+    if Set.isEmpty touched then f else childList target f
+
 /// The base-aware arm of one non-batch op at `state`, given the tree it
 /// reaches (`None` where it does not apply).
 let private resolvedAt (state: Node<'Msg>) (after: Node<'Msg> option) (op: TreeOp<'Msg>) : Fuaran.Core.Footprint =
@@ -212,13 +243,15 @@ let private resolvedAt (state: Node<'Msg>) (after: Node<'Msg> option) (op: TreeO
     // A resolved move (Phase 2651) touches no parent WHOLE. The SOURCE
     // parent's child list is the only part of it the move changes, and the
     // child list is held in the parent's `kind`: Core's read and structure
-    // write of it become a read and a write of its `kind` slot, so a restyle
-    // or a state edit of the container the node left commutes with the move.
-    // The destination's ANCESTORS are read for the cycle check, which only a
-    // relocation or removal of one of them can change: each is read at its
-    // `parent` slot, which no op writes and every whole-node write of it hits,
-    // so a move beside an edit of a container above its destination commutes
-    // too. The destination keeps Core's named structure write and read — the
+    // write of it become a read and a write of its `kind` slot and of Core's
+    // child-list slot (Phase 2691), so a restyle or a state edit of the
+    // container the node left commutes with the move, and an insert into it, a
+    // reorder or an edit of its kind does not. The destination and its
+    // ANCESTORS are read for the cycle check, which only a relocation or
+    // removal of one of them can change: each is read at its `parent` slot,
+    // which only a move writes and every whole-node write of it hits, so a
+    // move beside an edit of a container above its destination commutes too.
+    // The destination keeps Core's named structure write and read — the
     // address the fold interleaves two appends at. The TARGET changes its
     // position and nothing of itself (Phase 2670): it is read and written at
     // its `parent` slot, so a restyle, an edit or a reorder of the moved node
@@ -244,14 +277,18 @@ let private resolvedAt (state: Node<'Msg>) (after: Node<'Msg> option) (op: TreeO
 
             let named = [ Some moved; Some destination; source ] |> List.choose id |> Set.ofList
 
+            // The destination's own `parent` slot is part of the chain the
+            // cycle check reads (Phase 2691): until Core D246 its existence
+            // read collided with a move of it, and now nothing else does.
             let ancestors =
                 Set.difference core.Reads named
+                |> Set.add destination
                 |> Seq.map (fun a -> CoreFootprint.readingSlot a "parent")
                 |> Seq.fold CoreFootprint.union CoreFootprint.empty
 
             let sourceSlot =
                 source
-                |> Option.map (fun p -> CoreFootprint.slotEdit p "kind")
+                |> Option.map (fun p -> childList p (CoreFootprint.slotEdit p "kind"))
                 |> Option.defaultValue CoreFootprint.empty
 
             [ ancestors
@@ -264,7 +301,8 @@ let private resolvedAt (state: Node<'Msg>) (after: Node<'Msg> option) (op: TreeO
             |> List.fold CoreFootprint.union CoreFootprint.empty
     // A resolved reorder (Phase 2670) permutes the parent's child list, which
     // the parent holds in its `kind`, and touches no child: the parent is read
-    // and written at its `kind` slot, and each listed child is read at its
+    // and written at its `kind` slot and at Core's child-list slot (Phase
+    // 2691), where every structure write of it meets the reorder, and each listed child is read at its
     // `parent` slot — the one fact of it the reorder depends on (that it sits
     // under this parent). So a restyle or an edit of a listed child, and a
     // restyle of the parent, commute with the reorder; an insert into the
@@ -275,16 +313,22 @@ let private resolvedAt (state: Node<'Msg>) (after: Node<'Msg> option) (op: TreeO
         | Some _, Some _ ->
             order
             |> List.map (fun c -> CoreFootprint.readingSlot (key c) "parent")
-            |> List.fold CoreFootprint.union (CoreFootprint.slotEdit (key parent) "kind")
+            |> List.fold CoreFootprint.union (childList (key parent) (CoreFootprint.slotEdit (key parent) "kind"))
         | _ -> structural (Fuaran.Core.SkeletonOp.ReorderChildren(parent, order))
     // The kind is rewritten whole: the nodes the old kind held are taken out
-    // and the nodes the new kind holds put in.
+    // and the nodes the new kind holds put in, and the child list (and whether
+    // the node can hold one at all) with it.
     | TreeOp.EditNode(id, _) ->
         vertical id (fun node ->
             let old = Fuaran.UI.Ops.TreeOp.inserted (TreeOp.EditNode(id, node.Kind))
-            slotted [ "kind" ] [] (key id) (Set.union (idsOf old) (idsOf (Fuaran.UI.Ops.TreeOp.inserted op))))
+
+            slotted
+                [ "kind"; childListSlot ]
+                []
+                (key id)
+                (Set.union (idsOf old) (idsOf (Fuaran.UI.Ops.TreeOp.inserted op))))
     | TreeOp.UpdateProp(id, _, _)
-    | TreeOp.ReplaceBinding(id, _, _) -> vertical id (fun node -> slotted [ "kind" ] [] (key id) (heldChange id node))
+    | TreeOp.ReplaceBinding(id, _, _) -> vertical id (fun node -> guarded [ "kind" ] [] (key id) (heldChange id node))
     // The state block is replaced whole: its old alternatives out, the new in.
     | TreeOp.UpdateState(id, _) ->
         vertical id (fun node ->
@@ -294,14 +338,14 @@ let private resolvedAt (state: Node<'Msg>) (after: Node<'Msg> option) (op: TreeO
                 | None -> []
 
             slotted [ "state" ] [] (key id) (Set.union (idsOf old) (idsOf (Fuaran.UI.Ops.TreeOp.inserted op))))
-    | TreeOp.UpdateStyle(id, _) -> vertical id (fun node -> slotted [ "style" ] [] (key id) (heldChange id node))
+    | TreeOp.UpdateStyle(id, _) -> vertical id (fun node -> guarded [ "style" ] [] (key id) (heldChange id node))
     // A trait of the envelope is its own slot (Phase 2527): neither holds a node.
     | TreeOp.UpdateAccessibility(id, _) ->
-        vertical id (fun node -> slotted [ "accessibility" ] [] (key id) (heldChange id node))
-    | TreeOp.UpdateTooltip(id, _) -> vertical id (fun node -> slotted [ "tooltip" ] [] (key id) (heldChange id node))
+        vertical id (fun node -> guarded [ "accessibility" ] [] (key id) (heldChange id node))
+    | TreeOp.UpdateTooltip(id, _) -> vertical id (fun node -> guarded [ "tooltip" ] [] (key id) (heldChange id node))
     | TreeOp.PatchStyle(id, delta) ->
         vertical id (fun node ->
-            slotted
+            guarded
                 (StyleDelta.fieldNames delta |> List.map (fun f -> "style." + f))
                 [ "style" ]
                 (key id)

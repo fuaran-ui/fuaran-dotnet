@@ -17,6 +17,10 @@ module Fuaran.UI.Ops.Tests.ReorderMoveFootprintLawTests
 //  guard demanding freed pairs beside interfering ones. Each family has a
 //  falsifier: an understated footprint goes red, so the family is shown to see
 //  the pairs it certifies. 2651's `MoveFootprintLawTests` is the shape.
+//
+//  Since the Core 0.42.0 pin (Phase 2691) the reorder's parent is also read
+//  and written at Core's child-list slot, which is where an insert into it, a
+//  move into or out of it and a removal under it now meet the reorder.
 // ============================================================================
 
 open Expecto
@@ -181,18 +185,20 @@ let tests =
               laws reorderGen TreeOpFootprint.ofOpIn |> expectHolds "reorder"
           }
 
-          test "the reorder family sees a reorder pair (an erased kind-slot write is red)" {
-              // The parent's kind slot taken out of every reorder and nothing else changed: a
-              // reorder then reads as independent of an insert into its parent, though the insert
-              // makes the reorder's list stale in one order and not the other.
+          test "the reorder family sees a reorder pair (an erased child-list-slot write is red)" {
+              // The parent's child-list slot taken out of every reorder and nothing else changed
+              // (Phase 2691; until the Core 0.42.0 pin its kind slot carried this pair): a reorder
+              // then reads as independent of an insert into its parent, though the insert makes the
+              // reorder's list stale in one order and not the other.
               let erased (state: Node<obj>) (op: TreeOp<obj>) =
                   let f = TreeOpFootprint.ofOpIn state op
+                  let slot = Fuaran.Core.Footprint.childListSlot
 
                   match op with
                   | TreeOp.ReorderChildren(NodeId p, _) ->
                       { f with
-                          SlotWrites = Set.remove (p, "kind") f.SlotWrites
-                          SlotReads = Set.remove (p, "kind") f.SlotReads }
+                          SlotWrites = Set.remove (p, slot) f.SlotWrites
+                          SlotReads = Set.remove (p, slot) f.SlotReads }
                   | _ -> f
 
               Expect.isNonEmpty (laws reorderGen erased |> refutedBy) "an understated reorder refutes the family"

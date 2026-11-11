@@ -104,9 +104,16 @@ let fixtures: (string * FoldExpectation * string * Node<TestMsg> * TreeOp<TestMs
 
       "fold-move-and-source-edit",
       Derives,
-      "One branch moves a node out of a container while the other retones the container itself. The move writes only the container's child list, which the base-aware footprint declares as the container's kind slot (Phase 2651), and the retone writes its style: two slots, no conflict, so the fold composes them",
+      "One branch moves a node out of a container while the other retones the container itself. The move writes only the container's child list, which the base-aware footprint declares as the container's kind slot (Phase 2651) and Core's child-list slot (Phase 2691), and the retone writes its style: different slots, no conflict, so the fold composes them",
       nested,
       [ TreeOp.MoveNode(NodeId "m", NodeId "boxb") ],
+      [ toneOf ToneVariant.Brand (NodeId "boxa") ]
+
+      "fold-insert-and-container-restyle",
+      Derives,
+      "One branch appends a child to a container while the other retones the container itself. Under Core D246 (the 0.42.0 pin, Phase 2691) the insert writes the container's child-list slot and the retone its style: different slots, no conflict, so the fold composes them. Before the pin a structure write collided with every slot write of its node and the pair was refused",
+      nested,
+      [ TreeOp.InsertChild(NodeId "boxa", Fuaran.markdown "new" "Appended") ],
       [ toneOf ToneVariant.Brand (NodeId "boxa") ]
 
       "fold-move-and-target-edit",
@@ -118,14 +125,14 @@ let fixtures: (string * FoldExpectation * string * Node<TestMsg> * TreeOp<TestMs
 
       "fold-reorder-and-child-edit",
       Derives,
-      "One branch reorders a parent's children while the other retones one of them. The reorder writes the parent's child list (its kind slot) and reads each listed child only at its parent slot (Phase 2670), so the retone commutes with it and the fold composes them",
+      "One branch reorders a parent's children while the other retones one of them. The reorder writes the parent's child list (its kind slot and Core's child-list slot) and reads each listed child only at its parent slot (Phase 2670), so the retone commutes with it and the fold composes them",
       flat,
       [ TreeOp.ReorderChildren(dashboardId, [ rightChildId; leftChildId ]) ],
       [ toneOf ToneVariant.Brand leftChildId ]
 
       "fold-reorder-and-insert",
       Derives,
-      "One branch reorders a parent's children while the other appends a child to it. Core reports the pair (the reorder writes the parent's kind slot, the insert touches the parent whole), and the policy admits it as a rebase (Phase 2671): the reorder is applied to the children the parent holds when the fold reaches it, so the reordered run keeps its declared order and the append follows it. The tree merge refuses this pair (ReorderVsStructural); the fold's answer is accepted by the 2026-11-10 ruling",
+      "One branch reorders a parent's children while the other appends a child to it. Core reports the pair (the reorder writes the parent's child-list slot, which the insert writes too: a SlotClash, Core D246), and the policy admits it as a rebase (Phase 2671): the reorder is applied to the children the parent holds when the fold reaches it, so the reordered run keeps its declared order and the append follows it. The tree merge refuses this pair (ReorderVsStructural); the fold's answer is accepted by the 2026-11-10 ruling",
       flat,
       [ TreeOp.ReorderChildren(dashboardId, [ rightChildId; leftChildId ]) ],
       [ TreeOp.InsertChild(dashboardId, Fuaran.markdown "new" "Appended") ]
@@ -231,7 +238,7 @@ let fixtures: (string * FoldExpectation * string * Node<TestMsg> * TreeOp<TestMs
 
       "fold-refusal-two-reorders",
       Refuses,
-      "Both branches reorder one parent's children to different orders — each writes the parent's kind slot, a SlotClash no rule decides, refused as a Conflict",
+      "Both branches reorder one parent's children to different orders — each writes the parent's child-list and kind slots, SlotClashes no rule decides, refused as a Conflict",
       flat,
       [ TreeOp.ReorderChildren(dashboardId, [ rightChildId; leftChildId ]) ],
       [ TreeOp.ReorderChildren(dashboardId, [ leftChildId; rightChildId ]) ]
