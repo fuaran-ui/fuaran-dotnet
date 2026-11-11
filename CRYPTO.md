@@ -329,6 +329,27 @@ What that address is worth is unchanged: it is unkeyed, so it detects corruption
 writer who edits a node and re-addresses its descendants passes verification. A pruned node keeps its
 address in the sink's skeleton and is no longer verified — there is no payload left to recompute it from.
 
+### The re-mint — what carries a pre-cut store across, and what its receipt proves (Phase 2648)
+
+A store written before the cut holds addresses no current code mints. The one-release tool
+`tools/dag-remint` (`docs/migrations/2648-core-dag-identity.md`) carries it across, and it is the only
+place the pre-cut address rules survive. Before it moves anything it recomputes every live record's
+stored address under the rule that minted it, and refuses a store where one does not recompute. A broken
+store therefore stays broken and visibly so, and is never laundered into one that verifies under the new
+function. Each live record is then re-addressed under `Dag.nodeId` with its envelope carried byte for byte.
+A merge node is re-minted by re-running the cut's merge over its re-minted parents, and the tree that merge
+reaches must be the outcome tree the old node committed to, or the merge is refused by name. A pruned
+record keeps its old address in the skeleton: its payload is gone, so no new address can be computed for
+it, and its live children name it by that address.
+
+The receipt lists each stream's old head and new head and every old address beside its new one. It
+is the same kind of evidence as a lift receipt. Anyone holding the pre-cut store and the tool can
+recompute it, so it is a recomputation and not a signature. It shows that the new store is the old
+store's content under the new address function. It does not show that the old store was authentic,
+since the pre-cut addresses were unkeyed digests too. A signed segment attestation over the linear
+history a store was lifted from is still the only authorship claim. The original database is kept
+beside the re-minted one (`<db>.pre-2645`), so a reader can repeat the recomputation.
+
 ## Lift receipts — a recomputation, not a signature
 
 `Fuaran.UI.OpStream.Dag.Abstractions/DagLift.fs` (Phase 2116) lifts a linear op-stream segment to a

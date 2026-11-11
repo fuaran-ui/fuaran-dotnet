@@ -128,7 +128,8 @@ merge base alone (Core's `Dag.mergeBase`), the sink entry point, the sink entry 
 Core checkpoint at the fork, and `DagMerge.mergeDag` over the DAG loaded once. `merge-snapshot`
 writes one line per merge and per merge base over seeded random DAG histories (criss-cross, conflicting, trunk and
 guest cases included), so a change to the merge engine is diffed against the engine it
-replaced.
+replaced. Both were re-baselined over Core's fold after the Phase 2645 cut: the figures and the snapshot's digest
+are in `results/2026-11-11-phase-2648-dag-merge.md`.
 
 `tree-diff` (Phase 2063) is not a baseline metric: it prints the cost of `TreeOpDiff.diff`
 over a 2,001-node tree for four single-edit shapes (none, one field, one container field,
