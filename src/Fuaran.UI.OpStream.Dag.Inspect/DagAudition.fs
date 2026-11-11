@@ -1,6 +1,8 @@
 namespace Fuaran.UI.OpStream.Dag.Inspect
 
 open Fuaran.UI.Types
+open Fuaran.UI.Ops.Types
+open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.OpStream.Dag.Abstractions
 open Fuaran.UI.OpStream.Dag.Merge
 
@@ -10,11 +12,11 @@ open Fuaran.UI.OpStream.Dag.Merge
 //
 //  "Audition every variation by its content-addressed permalink" (the arranger
 //  frontier): select a node's hash, get back the tree AS IT STOOD at that node.
-//  The reconstruction is `DagReplay.replay` — fold ops along the node's
-//  primary-parent spine from genesis — so a coordinate's snapshot is fully
-//  determined by its hash + the records on its spine (no wall-clock, no head
-//  state). A merge node's snapshot is the merged tree (its op is the replay
-//  delta committing to the outcome).
+//  The reconstruction is Core's closure fold (`DagFold.replayTo`, Phase 2645)
+//  — every node of the coordinate's ancestor closure, in Core's deterministic
+//  order, from genesis — so a coordinate's snapshot is fully determined by its
+//  hash + its closure (no wall-clock, no head state). A merge node's snapshot is
+//  the merged tree: both branches folded, then its script.
 //
 //  The optional `previewHook` is the host's domain-specific render/playback
 //  seam: a `Node<'Msg> -> 'Preview` the host supplies (HTML for a UI host, an
@@ -34,28 +36,27 @@ type AuditionResult<'Msg, 'Preview> =
 
 module DagAudition =
 
-    /// Reconstruct the tree at `coordinate` by replaying its primary-parent
-    /// spine over `initial`. `getRecord` resolves a hash to its record
-    /// (typically a pre-loaded map of the stream). Errors (`UnknownHash`,
-    /// `TombstonedOnSpine`, `ApplyFailed`) surface verbatim from `DagReplay`.
+    /// Reconstruct the tree at `coordinate` by Core's closure fold over `dag`
+    /// from `initial`. Core's replay faults (`UnknownHead`, `Cyclic`,
+    /// `Rejected`) surface verbatim.
     let snapshotAt<'Msg>
-        (getRecord: string -> DagOpRecord<'Msg> option)
+        (dag: Fuaran.Core.Dag.T<StreamEntry<'Msg>>)
         (initial: Node<'Msg>)
         (coordinate: string)
-        : Result<Node<'Msg>, DagReplayError> =
-        DagReplay.replay getRecord initial coordinate
+        : Result<Node<'Msg>, Fuaran.Core.Dag.ReplayFault<ApplyError>> =
+        DagFold.replayTo initial dag coordinate
 
     /// Audition `coordinate`: reconstruct its snapshot and, if `previewHook` is
     /// supplied, render the host preview from that snapshot. The preview is
     /// computed only on a successful replay — a node that cannot be
     /// reconstructed (unknown / tombstoned-on-spine) produces no preview.
     let audition<'Msg, 'Preview>
-        (getRecord: string -> DagOpRecord<'Msg> option)
+        (dag: Fuaran.Core.Dag.T<StreamEntry<'Msg>>)
         (initial: Node<'Msg>)
         (previewHook: (Node<'Msg> -> 'Preview) option)
         (coordinate: string)
-        : Result<AuditionResult<'Msg, 'Preview>, DagReplayError> =
-        match DagReplay.replay getRecord initial coordinate with
+        : Result<AuditionResult<'Msg, 'Preview>, Fuaran.Core.Dag.ReplayFault<ApplyError>> =
+        match DagFold.replayTo initial dag coordinate with
         | Error e -> Error e
         | Ok snapshot ->
             Ok
@@ -72,12 +73,10 @@ module DagAudition =
         (initial: Node<'Msg>)
         (previewHook: (Node<'Msg> -> 'Preview) option)
         (coordinate: string)
-        : Async<Result<AuditionResult<'Msg, 'Preview>, DagReplayError>> =
+        : Async<Result<AuditionResult<'Msg, 'Preview>, Fuaran.Core.Dag.ReplayFault<ApplyError>>> =
         async {
             let! records = sink.Records streamId
 
-            let byHash = records |> List.map (fun r -> r.Hash, r) |> Map.ofList
-
-            let getRecord h = Map.tryFind h byHash
-            return audition getRecord initial previewHook coordinate
+            let dag = DagOpRecord.toDag records
+            return audition dag initial previewHook coordinate
         }

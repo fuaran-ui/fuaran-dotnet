@@ -91,7 +91,7 @@ let tests =
                   expected <- Some r.Hash
 
               let head = sink.Head "s" |> Async.RunSynchronously |> Option.get
-              let dagTree = replaySpine sink "s" initial head
+              let dagTree = replayHead sink "s" initial head
 
               Expect.equal (canonical dagTree) (canonical linearTree) "DAG replay must match the linear tree"
           }

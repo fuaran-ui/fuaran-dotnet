@@ -1,8 +1,6 @@
 namespace Fuaran.UI.OpStream.Dag.Abstractions
 
 open System
-open Fuaran.UI.Types
-open Fuaran.UI.OpStream.Abstractions
 
 // ============================================================================
 //  DagRetention — the retention MECHANISM (not policy).
@@ -10,23 +8,19 @@ open Fuaran.UI.OpStream.Abstractions
 //  Three primitives, all mechanism — grace periods, auto-pin rules, and purge
 //  triggers are host/domain POLICY layered over these and are out of scope:
 //
-//   1. Reachability GC roots. The live heads, the checkpoints, and any live
-//      resume-coordinate / permalink are the GC roots. A record reachable from
-//      a root (it is the root or one of its ancestors) MUST be kept live; a
-//      record reachable from NO root is prunable.
+//   1. Reachability GC roots. The live heads, the checkpoint nodes, and any live
+//      resume-coordinate / permalink are the GC roots. What no root needs is
+//      Core's `Dag.prunable` over the roots (Phase 2645): there is no second
+//      reachability walk here.
 //
-//   2. Tombstone-don't-excise pruning. Pruning drops a record's payload while
-//      preserving its hash + parent links, so the Merkle chain still verifies
-//      (`DagVerify` accepts a tombstoned node's stored hash). The sink method
-//      `Tombstone` performs the in-place mutation; this module decides WHICH
-//      records are prunable.
+//   2. Tombstone-don't-excise pruning. Pruning withdraws a node from the live
+//      set and keeps its address and parent links in the sink's SKELETON
+//      (`DagSkeletonNode`), so a reader can still name it. A node with a live
+//      child is never tombstoned, so the live set stays down-closed and Core's
+//      verifier, replay and checkpoints run over it unchanged.
 //
-//   3. Checkpoint-bounded replay. `DagCheckpoint` generalises the linear
-//      `Checkpoint` primitive from "head at op-index N" to "tree at DAG node
-//      H": a materialised snapshot of the apply-engine tree AT a content-
-//      addressed node, so replay starts from the nearest checkpoint rather than
-//      from genesis. (The checkpoint-bounded replay fold lives in
-//      `Fuaran.UI.OpStream.Dag.Merge.DagReplay`, which has the apply engine.)
+//   3. Checkpoints are Core's (`Dag.Checkpoint`, `Dag.checkpointAt`,
+//      `Dag.replayFrom`, `Dag.compactAt`) over the tier's stream.
 //
 //  A resume coordinate is content-addressed-forward-compatible: it is EITHER a
 //  linear op-index (the Phase-177 shape, against the linear stream) OR a DAG
@@ -52,64 +46,6 @@ module ResumeCoordinate =
         | ResumeCoordinate.DagNodeHash h -> Some h
         | ResumeCoordinate.LinearOpIndex _ -> None
 
-/// A materialised snapshot of the apply-engine tree AT a content-addressed DAG
-/// node — the DAG generalisation of the linear `Checkpoint`. `SnapshotHash` is
-/// `DagCheckpoint.snapshotHash AtHash (CanonicalJson.encodeNode Snapshot)` — the
-/// snapshot bound to its POSITION in the DAG, not merely to its own bytes.
-/// Replay can resume from `Snapshot` and fold only the tail descendants of
-/// `AtHash` (`DagReplay.replayFromCheckpoint`, which verifies the binding before
-/// trusting the snapshot).
-type DagCheckpoint<'Msg> =
-    { StreamId: string
-      AtHash: string
-      Snapshot: Node<'Msg>
-      SnapshotHash: string }
-
-/// The DAG analogue of the linear Phase-412 (A2) checkpoint binding. Pre-fix the
-/// DAG `SnapshotHash` was `sha256(canonicalTree)` alone — **position-free**, so a
-/// genuine snapshot taken at one node validated unchanged when presented as the
-/// checkpoint for a different one, and nothing on the replay path recomputed it
-/// anyway. Both halves are closed here: the hash binds `AtHash`, and
-/// `DagReplay.replayFromCheckpoint` verifies it before folding.
-///
-/// This is defence-in-depth, not tamper-proofing against an adversary who
-/// rewrites the whole checkpoint record consistently — that remains the signed
-/// attestation seam's job (Core `IAttestationSink`, Phase 320). The linear side
-/// says the same in `HashChain.snapshotHash`; the two stay in step.
-[<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
-module DagCheckpoint =
-
-    /// The content address of a DAG checkpoint snapshot: the canonical tree in a
-    /// delimited payload, hashed under the checkpoint's POSITION (`atHash`) —
-    /// exactly the shape of the linear `HashChain.snapshotHash`, with the DAG's
-    /// content-addressed node standing in for `(previousChainHead, sequence)`
-    /// (a DAG has no global sequence; the node hash IS the position).
-    let snapshotHash (atHash: string) (canonicalTree: string) : string =
-        Fuaran.Core.Hash.sha256Hex (atHash + "|" + "{\"snapshot\":true,\"tree\":" + canonicalTree + "}")
-
-    /// Materialise a checkpoint for `snapshot` — the tree AT DAG node `atHash`
-    /// (its op already applied) — with the position-bound `SnapshotHash`
-    /// computed. The construction surface callers should prefer over a record
-    /// literal, so the binding cannot be forgotten.
-    let create<'Msg> (streamId: string) (atHash: string) (snapshot: Node<'Msg>) : DagCheckpoint<'Msg> =
-        { StreamId = streamId
-          AtHash = atHash
-          Snapshot = snapshot
-          SnapshotHash = snapshotHash atHash (CanonicalJson.encodeNode snapshot) }
-
-    /// Recompute the position-bound hash of `checkpoint.Snapshot` and compare to
-    /// the stored `SnapshotHash`. Pure — touches no sink. `Ok ()` on match,
-    /// `Error (recomputed, stored)` on mismatch (the linear
-    /// `Checkpoint.verifySnapshotHash` shape).
-    let verifySnapshotHash<'Msg> (checkpoint: DagCheckpoint<'Msg>) : Result<unit, string * string> =
-        let recomputed =
-            snapshotHash checkpoint.AtHash (CanonicalJson.encodeNode checkpoint.Snapshot)
-
-        if recomputed = checkpoint.SnapshotHash then
-            Ok()
-        else
-            Error(recomputed, checkpoint.SnapshotHash)
-
 /// The GC roots that keep records live: branch heads, checkpoint nodes, and
 /// live resume coordinates / permalinks.
 type GcRoots =
@@ -126,30 +62,11 @@ module DagRetention =
 
         Set.ofList (roots.Heads @ roots.Checkpoints @ resumeHashes)
 
-    /// The set of records that MUST be kept live: the reachability closure of
-    /// every GC root over `getParents`. Anything outside this set is prunable.
-    let liveSet (getParents: string -> string list) (roots: GcRoots) : Set<string> =
-        rootHashes roots
-        |> Set.fold (fun acc r -> Set.union acc (DagTopology.reachable getParents r)) Set.empty
-
-    /// The hashes in `allHashes` that are reachable from NO GC root — the
-    /// prune candidates. (Pruning tombstones them; it never excises, so the
-    /// chain stays verifiable.)
-    let prunable (allHashes: string seq) (getParents: string -> string list) (roots: GcRoots) : Set<string> =
-        let live = liveSet getParents roots
-        allHashes |> Seq.filter (fun h -> not (live.Contains h)) |> Set.ofSeq
-
-    /// `true` when `hash` is protected by a GC root (reachable from one) — the
-    /// "a branch referenced by a live resume-coordinate/permalink is
-    /// GC-protected" invariant, as a direct predicate.
-    let isProtected (getParents: string -> string list) (roots: GcRoots) (hash: string) : bool =
-        (liveSet getParents roots).Contains hash
-
 // ============================================================================
 //  Retention POLICY tier (Phase 179) — the decision/content split layered over
 //  the Phase 178 reachability + tombstone MECHANISM above.
 //
-//  The MECHANISM (`DagRetention.prunable`) answers "is this record reachable
+//  The MECHANISM (Core's `Dag.prunable`) answers "is this record reachable
 //  from a GC root?" — a binary, time-free, deterministic question. The POLICY
 //  tier adds the two host/domain-configurable axes the phase calls for:
 //
@@ -209,7 +126,8 @@ module RetentionPolicy =
 module DagRetentionPolicy =
 
     /// The CONTENT hashes GC-eligible under `policy` at `now`: unreachable from
-    /// every GC root (the mechanism's `prunable`), AND — for a rejected proposal
+    /// every GC root (Core's `Dag.prunable`, refused by name for a root `dag`
+    /// does not hold), AND — for a rejected proposal
     /// — past the grace window since its `RejectedAt`, AND not auto-pinned.
     /// Content with no `RejectionTombstone` has no grace clock to start, so
     /// reachability + auto-pin alone gate it. Decisions (`RejectionTombstone`s)
@@ -219,19 +137,21 @@ module DagRetentionPolicy =
         (policy: RetentionPolicy)
         (now: DateTimeOffset)
         (rejections: RejectionTombstone list)
-        (allHashes: string seq)
-        (getParents: string -> string list)
+        (dag: Fuaran.Core.Dag.T<'Op>)
         (roots: GcRoots)
-        : Set<string> =
+        : Result<Set<string>, Fuaran.Core.Dag.PruneFault> =
         let rejectedAt =
             rejections |> List.map (fun r -> r.ProposalHash, r.RejectedAt) |> Map.ofList
 
-        DagRetention.prunable allHashes getParents roots
-        |> Set.filter (fun h ->
-            not (policy.AutoPin h)
-            && (match Map.tryFind h rejectedAt with
-                | Some rejAt -> now - rejAt >= policy.Grace
-                | None -> true))
+        Fuaran.Core.Dag.prunable (Fuaran.Core.Dag.Reach.ofDag dag) (DagRetention.rootHashes roots |> Set.toList)
+        |> Result.map (
+            Set.ofList
+            >> Set.filter (fun h ->
+                not (policy.AutoPin h)
+                && (match Map.tryFind h rejectedAt with
+                    | Some rejAt -> now - rejAt >= policy.Grace
+                    | None -> true))
+        )
 
     /// The content hashes to tombstone in THIS sweep — `contentGcEligible`
     /// gated by the policy's `PurgeWhen` trigger. Returns the eligible set when
@@ -242,9 +162,8 @@ module DagRetentionPolicy =
         (policy: RetentionPolicy)
         (now: DateTimeOffset)
         (rejections: RejectionTombstone list)
-        (allHashes: string seq)
-        (getParents: string -> string list)
+        (dag: Fuaran.Core.Dag.T<'Op>)
         (roots: GcRoots)
-        : Set<string> =
-        let eligible = contentGcEligible policy now rejections allHashes getParents roots
-        if policy.PurgeWhen eligible then eligible else Set.empty
+        : Result<Set<string>, Fuaran.Core.Dag.PruneFault> =
+        contentGcEligible policy now rejections dag roots
+        |> Result.map (fun eligible -> if policy.PurgeWhen eligible then eligible else Set.empty)

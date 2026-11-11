@@ -7,13 +7,12 @@ open Fuaran.UI.Ops.Types
 // ============================================================================
 //  ValidatorGate — semantic merge-conflict detection (Phase 184).
 //
-//  A structurally-clean, NodeId-disjoint merge (Phase 179) can still produce a
-//  DOMAIN-invalid tree: a range violation, a broken cross-ref, a parallel-fifth
-//  (music). Each of those is present in the MERGED tree but in NEITHER parent —
-//  the merge *introduced* it. That is a SEMANTIC conflict, not a clean merge,
-//  and it is surfaced through the existing Phase 179 `MergeConflict` recovery
-//  envelope (the `CombinedCycle` class, which already names exactly this: a
-//  post-merge whole-tree illegality no single op produced).
+//  A structurally clean merge can still produce a DOMAIN-invalid tree: a range
+//  violation, a broken cross-ref, a parallel-fifth (music). Each of those is
+//  present in the MERGED tree but in NEITHER parent — the merge *introduced*
+//  it. That is a SEMANTIC conflict, not a clean merge, and the merge refuses
+//  it with the introduced defects (`ReconcileFault.IntroducedDefects`; the
+//  tree merge's `MergeConflict` envelope retired with it at Phase 2645).
 //
 //  DOMAIN-AGNOSTIC by construction. The merge package never interprets a
 //  defect — it only DIFFS defect sets (merged vs each parent) and lifts the
@@ -185,30 +184,6 @@ module ValidatorGate =
 
         let v = Fuaran.Core.Validator.verdict gatePolicy (introduced |> List.map toDefect)
         v.Introduced |> List.map ofDefect |> MergeDefect.sortCanonical, v.Blocked
-
-    /// Lift an introduced defect into the Phase 179 `MergeConflict` envelope.
-    /// Class is `CombinedCycle` (post-merge whole-tree illegality); the
-    /// validator's `Code` rides in `Base` (so the recovery pattern-match reuses
-    /// it) and the human-readable description in `SecondaryTag`. There is no
-    /// three-up authorship — both parents are defect-free for this cell by
-    /// construction, so `KeepBase` (abandon the merge for this cell) is the
-    /// enumerated recovery. For the same reason the two-sided `A` / `B` slots
-    /// (Phase 1497) are empty: this refusal is a property of the MERGED tree that
-    /// neither branch exhibits, so there is no per-side value to report and
-    /// inventing one would name a side that did nothing wrong.
-    let toConflict (d: MergeDefect) : MergeConflict =
-        { NodeId = d.NodeId
-          Facet = d.Facet
-          Class = MergeConflictClass.CombinedCycle
-          Base = d.Code
-          A = None
-          B = None
-          Primary = None
-          Secondary = None
-          SecondaryTag = Some d.Message
-          PrimacyHeld = false
-          Choices = [ MergeChoice.KeepBase ]
-          Hint = ApplyHint.empty }
 
     /// A string as a JSON string literal, through Core's canonical escape
     /// (Phase 2026) — the escape every other op-stream encoder uses.

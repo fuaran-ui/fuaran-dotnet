@@ -158,30 +158,24 @@ let private visibleSites: (string * (string -> string)) list =
           DagWire.encodeRecord
               CanonicalJson.encodeOp
               { StreamId = s
-                Hash = s
-                Parents = [ s; s ]
-                Op = updateWith (JStr "v")
-                OutcomeHash = Some s
-                PromptId = Some s
-                Actor = Actor.Human s
-                Timestamp = ts
-                ResultEnvelope = OpResultEnvelope.Failure(s, s)
-                Tombstoned = false })
-      "MergeConflict.encodeEnvelope",
+                Node =
+                  { Id = s
+                    Parents = [ s; s ]
+                    Actor = Actor.Human s
+                    Op =
+                      { Op = updateWith (JStr "v")
+                        PromptId = Some s
+                        Timestamp = ts
+                        ResultEnvelope = OpResultEnvelope.Failure(s, s) } } })
+      "DagReconcile.encodeEnvelope",
       (fun s ->
-          MergeConflict.encodeEnvelope
-              [ { NodeId = "n"
-                  Facet = "f"
-                  Class = MergeConflictClass.ConcurrentEdit
-                  Base = "b"
-                  A = Some { Value = s; Tag = Some s }
-                  B = Some { Value = s; Tag = None }
-                  Primary = None
-                  Secondary = None
-                  SecondaryTag = None
-                  PrimacyHeld = false
-                  Choices = []
-                  Hint = ApplyHint.empty } ])
+          DagReconcile.encodeEnvelope
+              [ { Conflict =
+                    { Left = updateWith (JStr "v")
+                      Right = updateWith (JStr "w")
+                      Address = s
+                      Shape = MergeConflictShape.SlotClash s }
+                  Class = RefusalClass.Conflict } ])
       "ValidatorGate.encodeVerdict",
       (fun s ->
           ValidatorGate.encodeVerdict
@@ -209,23 +203,23 @@ let private hashSites: (string * (string -> string)) list =
               (Actor.Human s)
               (Some s)
               (OpResultEnvelope.Failure(s, s)))
-      "DagOpRecord.computeHash",
+      "DagOpRecord.nodeId",
       (fun s ->
-          DagOpRecord.computeHash
+          DagOpRecord.nodeId
               [ s ]
-              (updateWith (JStr s))
-              ts
               (Actor.Human s)
-              (Some s)
-              (OpResultEnvelope.Failure(s, s)))
-      "DagOpRecord.computeMergeHash",
-      (fun s -> DagOpRecord.computeMergeHash [ s; "p" ] s ts (Actor.Human s) (Some s) OpResultEnvelope.Success) ]
+              { Op = updateWith (JStr s)
+                Timestamp = ts
+                PromptId = Some s
+                ResultEnvelope = OpResultEnvelope.Failure(s, s) }) ]
 
 /// The digest of every hash site over every input, captured on the tree BEFORE
-/// the copies were deleted. A moved pre-image byte moves it.
+/// the copies were deleted; re-captured at Phase 2645, when the DAG address
+/// became Core's `Dag.nodeId` (the linear site's lines are unchanged). A moved
+/// pre-image byte moves it.
 [<Literal>]
 let private pinnedHashDigest =
-    "2ee99609ad42600e89b6efb033343e620890ddfb04663951a6d88473eca8537a"
+    "788c0ee642c7a94b878b0303fc5c6246f9f486643ceb4626bb9eb4db5a61dfda"
 
 // --- the private SQLite envelope codecs, by reflection --------------------------
 

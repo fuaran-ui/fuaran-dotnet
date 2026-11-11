@@ -17,8 +17,8 @@ open Fuaran.UI.OpStream.Dag.Abstractions
 //  more than the contract requires but keeps the in-memory sink's invariants
 //  obvious for tests.
 //
-//  Topology queries delegate to the pure `DagTopology` algorithms over the
-//  store's own parent lookup — no bespoke graph code here.
+//  Topology is Core's (`Dag.ancestorsOf` over the stream's nodes) — no bespoke
+//  graph code here. A pruned node moves to the stream's skeleton (Phase 2645).
 //
 //  ── VERIFY ON READ (Phase 793) ─────────────────────────────────────────────
 //  `Records` and `TryGet` re-verify what they hand back
@@ -48,6 +48,7 @@ open Fuaran.UI.OpStream.Dag.Abstractions
 
 type private StreamState<'Msg> =
     { Records: Dictionary<string, DagOpRecord<'Msg>>
+      Skeleton: Dictionary<string, DagSkeletonNode>
       mutable Head: string option }
 
 type InMemoryDagSink<'Msg>(loadVerification: LoadVerification) =
@@ -76,24 +77,29 @@ type InMemoryDagSink<'Msg>(loadVerification: LoadVerification) =
         | false, _ ->
             let fresh =
                 { Records = Dictionary<string, DagOpRecord<'Msg>>()
+                  Skeleton = Dictionary<string, DagSkeletonNode>()
                   Head = None }
 
             streams[streamId] <- fresh
             fresh
 
-    /// Parent lookup for `DagTopology`, reading the stream's record map under
-    /// the caller's lock.
+    /// The parents of a live or pruned node, reading the stream's maps under the
+    /// caller's lock.
     let parentsOf (state: StreamState<'Msg>) (hash: string) : string list =
         match state.Records.TryGetValue hash with
         | true, r -> r.Parents
-        | false, _ -> []
+        | false, _ ->
+            match state.Skeleton.TryGetValue hash with
+            | true, k -> k.Parents
+            | false, _ -> []
 
     /// Does `hash` name a record ANYWHERE in this store? Parent linkage is
     /// resolved store-wide, not within the stream being read: a guest branch's
     /// genesis is anchored on the `Mount` op in the HOST stream, so a
     /// stream-scoped set is not a closed parent universe. Caller holds the lock.
     let knownHash (hash: string) : bool =
-        streams.Values |> Seq.exists (fun state -> state.Records.ContainsKey hash)
+        streams.Values
+        |> Seq.exists (fun state -> state.Records.ContainsKey hash || state.Skeleton.ContainsKey hash)
 
     /// Admit every record of `records`, in order, against the store PLUS the
     /// records staged before it, and store the staged set only when every one was
@@ -109,7 +115,7 @@ type InMemoryDagSink<'Msg>(loadVerification: LoadVerification) =
                 let held (hash: string) =
                     staged.ContainsKey((record.StreamId, hash))
                     || (match streams.TryGetValue record.StreamId with
-                        | true, state -> state.Records.ContainsKey hash
+                        | true, state -> state.Records.ContainsKey hash || state.Skeleton.ContainsKey hash
                         | false, _ -> false)
 
                 let present (hash: string) =
@@ -121,7 +127,14 @@ type InMemoryDagSink<'Msg>(loadVerification: LoadVerification) =
                 | Ok DagAdmission.Store ->
                     staged[(record.StreamId, record.Hash)] <-
                         { record with
-                            Timestamp = DateTimeOffset.FromUnixTimeSeconds(record.Timestamp.ToUnixTimeSeconds()) }
+                            Node =
+                                { record.Node with
+                                    Op =
+                                        { record.Entry with
+                                            Timestamp =
+                                                DateTimeOffset.FromUnixTimeSeconds(
+                                                    record.Timestamp.ToUnixTimeSeconds()
+                                                ) } } }
 
                     stagedHash.Add record.Hash |> ignore
 
@@ -192,16 +205,7 @@ type InMemoryDagSink<'Msg>(loadVerification: LoadVerification) =
                     lock lockObj (fun () ->
                         match streams.TryGetValue streamId with
                         | false, _ -> Set.empty
-                        | true, state -> DagTopology.reachable (parentsOf state) hash)
-            }
-
-        member _.Lca(streamId: string, a: string, b: string) : Async<LcaResult> =
-            async {
-                return
-                    lock lockObj (fun () ->
-                        match streams.TryGetValue streamId with
-                        | false, _ -> LcaResult.None
-                        | true, state -> DagTopology.lca (parentsOf state) a b)
+                        | true, state -> Fuaran.Core.Dag.ancestorsOf (DagOpRecord.toDag state.Records.Values) hash)
             }
 
         member _.Heads(streamId: string) : Async<string list> =
@@ -248,24 +252,23 @@ type InMemoryDagSink<'Msg>(loadVerification: LoadVerification) =
                             match state.Records.TryGetValue hash with
                             | false, _ -> false
                             | true, r ->
-                                // Drop the PAYLOAD (reset op to a placeholder),
-                                // preserve hash + parents so the chain still
-                                // links + verifies.
-                                //
-                                // `OutcomeHash` is KEPT (Phase 1525). It used to
-                                // be cleared, which cost the store the one thing
-                                // that distinguishes a pruned merge node from a
-                                // pruned ordinary one, for no retention gain — it
-                                // is a 64-hex address, not payload. What it broke
-                                // was idempotence across a sweep: a re-add of the
-                                // unchanged record no longer matched what the
-                                // store held.
-                                state.Records[hash] <-
-                                    { r with
-                                        Op = TreeOp.Batch []
-                                        Tombstoned = true }
+                                state.Records.Remove hash |> ignore
+
+                                state.Skeleton[hash] <-
+                                    { StreamId = streamId
+                                      Hash = hash
+                                      Parents = r.Parents }
 
                                 true)
+            }
+
+        member _.Skeleton(streamId: string) : Async<DagSkeletonNode list> =
+            async {
+                return
+                    lock lockObj (fun () ->
+                        match streams.TryGetValue streamId with
+                        | false, _ -> []
+                        | true, state -> state.Skeleton.Values |> List.ofSeq)
             }
 
         member _.Streams() : Async<string list> =

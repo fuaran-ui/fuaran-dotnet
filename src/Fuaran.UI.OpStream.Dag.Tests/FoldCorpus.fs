@@ -9,8 +9,8 @@ open Fuaran.UI.OpStream.Dag.Merge
 open Fuaran.UI.OpStream.TestSupport
 
 // ============================================================================
-//  Merge-by-fold corpus (Phase 2293, additive: the `foldFixtures` key of the
-//  merge-conformance manifest).
+//  Merge-by-fold corpus (Phase 2293): the `foldFixtures` key of the
+//  merge-conformance manifest — since Phase 2645 (the cut) the whole of it.
 //
 //  Each fixture is a base tree and the two branches' OP DELTAS — the ops as
 //  recorded on each branch, never a diff of trees — with the verdict
@@ -24,12 +24,12 @@ open Fuaran.UI.OpStream.TestSupport
 //  naming the tree merge's refusal pin a class the fold derives where the tree
 //  merge refuses, accepted by the same ruling (Phase 2671).
 //
-//  Held under its own manifest key, the Phase 1497 precedent: every host reads
-//  the keys it ports and ignores the rest, so adding the family moves no
-//  host's existing legs. The triad families beside it are retired by the
-//  phase that makes the fold the DAG's only merge.
+//  The triad families that sat beside it (`fixtures`, `refusalFixtures`,
+//  `totalityFixtures`: the tree merge's 3-way verdicts) were retired at the cut,
+//  which made the fold the DAG's only merge; the manifest moved to version 2 and
+//  carries this family alone, and `emit` removes every file it did not write.
 //
-//  Regenerate (from fuaran-dotnet/), with the rest of the merge corpus:
+//  Regenerate (from fuaran-dotnet/):
 //      dotnet run --project src/Fuaran.UI.OpStream.Dag.Tests -- --emit-merge-corpus ..\wire-format-fixtures
 // ============================================================================
 
@@ -42,13 +42,39 @@ let private toneOf (t: ToneVariant) (id: NodeId) =
 let private nestedTree () : Node<TestMsg> =
     container "dash" [ container "boxa" [ Fuaran.markdown "m" "Movable" ]; container "boxb" [] ]
 
+/// The sample DOMAIN validator the gated fixtures certify against: "at most one
+/// `Brand`-toned pane per dashboard". Each offending child is a defect on its
+/// `style.tone` cell. A host MUST port this exact invariant to reproduce the
+/// verdict.
+let gatedValidator: MergeValidator<TestMsg> =
+    fun tree ->
+        match tree.Kind with
+        | NodeKind.Box(spec) ->
+            let brandKids =
+                spec.Children
+                |> List.filter (fun c -> (c.Style |> Option.defaultValue Defaults.style).Tone = ToneVariant.Brand)
+
+            if List.length brandKids > 1 then
+                brandKids
+                |> List.map (fun c ->
+                    { Code = "TESTBRAND001"
+                      NodeId = c.Id
+                      Facet = "style.tone"
+                      Message =
+                        sprintf
+                            "Pane '%s' shares Brand tone with a sibling — at most one Brand pane per dashboard."
+                            c.Id })
+            else
+                []
+        | _ -> []
+
 /// What a fixture asserts.
 type FoldExpectation =
     /// The fold derives a tree.
     | Derives
     /// The policy refuses, with an envelope.
     | Refuses
-    /// The fold derives, and the validator gate refuses (`MergeCorpus.gatedValidator`).
+    /// The fold derives, and the validator gate refuses (`gatedValidator`).
     | Gated
 
 /// `(id, expectation, description, base, ops a, ops b)`.
@@ -260,7 +286,7 @@ let fixtures: (string * FoldExpectation * string * Node<TestMsg> * TreeOp<TestMs
 /// The policy's verdict for a fixture.
 let verdictOf (expectation: FoldExpectation) baseT opsA opsB =
     match expectation with
-    | Gated -> DagReconcile.reconcileGated MergeCorpus.gatedValidator baseT opsA opsB
+    | Gated -> DagReconcile.reconcileGated gatedValidator baseT opsA opsB
     | Derives
     | Refuses -> DagReconcile.reconcile baseT opsA opsB
 
@@ -285,18 +311,24 @@ let private kindOf expectation =
     | Gated -> "merge-fold-gated"
 
 let private description =
-    "merge-fold (Phase 2293, additive, SEPARATE key): decode base and the two branches' op deltas (aOpsFile, bOpsFile: canonical TreeOp arrays, each applying from base op by op), reconcile them by fold under the policy of WIRE_FORMAT.md section 34 (Core's conflict report over the base-aware footprint; agreements applied as no change; two appends of distinct nodes under one parent admitted and ordered by the declared child-order rule; a reorder of a parent beside an append to it or a removal or move of a child it lists admitted as a rebase (Phase 2671); every other reported pair refused, a removal against a concurrent touch of the removed node as DeleteModify). merge-fold-derive: the derived tree is byte-equal to expectedFile and sha256(expected) == outcomeHash. merge-fold-refusal: the policy refuses and the envelope is byte-equal to envelopeFile with sha256 == envelopeHash; swapping a and b swaps every entry's left and right and re-sorts. merge-fold-gated: the fold derives and the sample validator over the derived tree introduces defects neither branch head carries; the verdict is byte-equal to verdictFile with sha256 == verdictHash."
+    "merge-fold (Phase 2293; the merge-conformance corpus's only family since Phase 2645, manifest version 2): decode base and the two branches' op deltas (aOpsFile, bOpsFile: canonical TreeOp arrays, each applying from base op by op), reconcile them by fold under the policy of WIRE_FORMAT.md section 34 (Core's conflict report over the base-aware footprint; agreements applied as no change; two appends of distinct nodes under one parent admitted and ordered by the declared child-order rule; a reorder of a parent beside an append to it or a removal or move of a child it lists admitted as a rebase (Phase 2671); every other reported pair refused, a removal against a concurrent touch of the removed node as DeleteModify). merge-fold-derive: the derived tree is byte-equal to expectedFile and sha256(expected) == outcomeHash. merge-fold-refusal: the policy refuses and the envelope is byte-equal to envelopeFile with sha256 == envelopeHash; swapping a and b swaps every entry's left and right and re-sorts. merge-fold-gated: the fold derives and the sample validator over the derived tree introduces defects neither branch head carries; the verdict is byte-equal to verdictFile with sha256 == verdictHash."
 
-/// Write the family's payloads into `dir` and return its manifest section (the
-/// `foldDescription` and `foldFixtures` members, comma-led).
-let emitInto (dir: string) : string =
+/// Write the family's payloads into `dir`, remove every other file there (the
+/// retired triad families), and write the manifest.
+let emitInto (dir: string) : unit =
+    let written = System.Collections.Generic.HashSet<string>()
+
+    let write (name: string) (bytes: string) =
+        File.WriteAllText(Path.Combine(dir, name), bytes)
+        written.Add name |> ignore
+
     let entries =
         [ for (id, expectation, desc, baseT, opsA, opsB) in fixtures do
               let suffix, bytes, fileKey, hashKey = artefactOf id expectation baseT opsA opsB
-              File.WriteAllText(Path.Combine(dir, id + ".base.json"), CanonicalJson.encodeNode baseT)
-              File.WriteAllText(Path.Combine(dir, id + ".a.ops.json"), encodeOps opsA)
-              File.WriteAllText(Path.Combine(dir, id + ".b.ops.json"), encodeOps opsB)
-              File.WriteAllText(Path.Combine(dir, id + suffix), bytes)
+              write (id + ".base.json") (CanonicalJson.encodeNode baseT)
+              write (id + ".a.ops.json") (encodeOps opsA)
+              write (id + ".b.ops.json") (encodeOps opsB)
+              write (id + suffix) bytes
 
               sprintf
                   "    {\n      \"id\": \"%s\",\n      \"kind\": \"%s\",\n      \"baseFile\": \"%s.base.json\",\n      \"aOpsFile\": \"%s.a.ops.json\",\n      \"bOpsFile\": \"%s.b.ops.json\",\n      \"%s\": \"%s%s\",\n      \"%s\": \"%s\",\n      \"description\": \"%s\"\n    }"
@@ -312,11 +344,20 @@ let emitInto (dir: string) : string =
                   (Fuaran.Core.Hash.sha256Hex bytes)
                   desc ]
 
-    ",\n  \"foldDescription\": \""
-    + description
-    + "\",\n  \"foldFixtures\": [\n"
-    + System.String.Join(",\n", entries)
-    + "\n  ]"
+    write
+        "manifest.json"
+        ("{\n  \"version\": 2,\n  \"description\": \"Fuaran merge-conformance corpus. Since Phase 2645 (the cut) the UI op-stream DAG is Fuaran.Core's DAG and its only merge is the fold (WIRE_FORMAT.md section 34), so this corpus is the foldFixtures family alone; the tree merge's triad families (fixtures, refusalFixtures, totalityFixtures) were retired with it.\",\n  \"foldDescription\": \""
+         + description
+         + "\",\n  \"foldFixtures\": [\n"
+         + System.String.Join(",\n", entries)
+         + "\n  ]\n}\n")
 
-/// Emit the whole merge-conformance corpus: the triad families and this one, in one manifest.
-let emit (root: string) : unit = MergeCorpus.emitWith emitInto root
+    for path in Directory.GetFiles dir do
+        if not (written.Contains(Path.GetFileName path |> Option.ofObj |> Option.defaultValue "")) then
+            File.Delete path
+
+/// Emit the merge-conformance corpus into `root`/merge-conformance.
+let emit (root: string) : unit =
+    let dir = Path.Combine(root, "merge-conformance")
+    Directory.CreateDirectory dir |> ignore
+    emitInto dir

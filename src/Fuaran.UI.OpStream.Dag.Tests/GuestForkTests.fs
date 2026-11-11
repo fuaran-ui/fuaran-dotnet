@@ -1,6 +1,5 @@
 module Fuaran.UI.OpStream.Dag.Tests.GuestForkTests
 
-open System.Collections.Generic
 open Expecto
 open Fuaran.UI
 open Fuaran.UI.Types
@@ -15,12 +14,13 @@ open Fuaran.UI.OpStream.TestSupport
 //  Phase 267 — guest op-stream fork + host-convergence anchor (§4o).
 //
 //  A mounted guest forks its own `guest-<scopeId>` stream, anchored to the host
-//  `Mount` creation op so the shipped Phase-179 merge reconciles the two with a
-//  well-defined LCA (the Mount op). These tests exercise every acceptance
-//  criterion: distinct guest stream / host stream untouched; genesis-as-DAG-
-//  child-of-Mount-op with the Mount op as the convergence LCA; interior replay
-//  from the guest stream alone; overlap → `MergeConflict`, never a silent
-//  overwrite; per-guest provenance.
+//  `Mount` creation op so the merge reconciles the two over a well-defined merge
+//  base (the Mount op, Core's `Dag.mergeBase`). These tests exercise every
+//  acceptance criterion: distinct guest stream / host stream untouched;
+//  genesis-as-DAG-child-of-Mount-op with the Mount op as the merge base;
+//  interior replay from the guest stream alone; an overlap is refused, or
+//  settled by the host's declared precedence, never silently; per-guest
+//  provenance.
 // ============================================================================
 
 /// Style the left / right dashboard pane to a tone (a `(NodeId, style.tone)` cell).
@@ -34,16 +34,6 @@ let private styleRight (t: ToneVariant) : TreeOp<TestMsg> =
 /// content hash is the anchor the guest genesis links to.
 let private insMount: TreeOp<TestMsg> =
     TreeOp.InsertChild(NodeId "dash", Fuaran.markdown "mount-g1" "guest region")
-
-/// A guest record lookup restricted to one stream's records (what interior
-/// replay is given — the anchor parent resolves to `None`, bounding the spine).
-let private lookupOf (records: DagOpRecord<TestMsg> list) : string -> DagOpRecord<TestMsg> option =
-    let byHash = records |> List.map (fun r -> r.Hash, r) |> dict
-
-    fun h ->
-        match byHash.TryGetValue h with
-        | true, r -> Some r
-        | false, _ -> None
 
 let private childIds (tree: Node<TestMsg>) : string list =
     match tree.Kind with
@@ -96,7 +86,7 @@ let tests =
                   "guest ops append to the distinct guest stream"
           }
 
-          test "convergence LCA of host + guest heads is the Mount creation op" {
+          test "the merge base of host + guest heads is the Mount creation op" {
               let sink = InMemoryDagSink.create<TestMsg> ()
               let mountOp = stepRecord "host" None insMount 1L
               add sink mountOp
@@ -115,13 +105,12 @@ let tests =
 
               add sink g0
 
-              let union = records sink "host" @ records sink "guest-g1"
+              let union = DagOpRecord.toDag (records sink "host" @ records sink "guest-g1")
 
-              let getParents = lookupOf union >> Option.map _.Parents >> Option.defaultValue []
-
-              match DagTopology.lca getParents hostHead.Hash g0.Hash with
-              | LcaResult.Unique h -> Expect.equal h mountOp.Hash "LCA of host + guest heads is the Mount op"
-              | other -> failtestf "expected Unique LCA = Mount op, got %A" other
+              Expect.equal
+                  (Fuaran.Core.Dag.mergeBase union hostHead.Hash g0.Hash)
+                  (Some mountOp.Hash)
+                  "the merge base of host + guest heads is the Mount op"
           }
 
           test "disjoint host + guest edits converge via the shipped merge into one tree" {
@@ -203,15 +192,56 @@ let tests =
               | other -> failtestf "expected FastForward, got %A" other
           }
 
-          test "overlapping host + guest edit to the same cell surfaces a MergeConflict, never a silent overwrite" {
+          test
+              "an overlapping host + guest edit to the same cell is refused without precedence, never silently overwritten" {
               let sink = InMemoryDagSink.create<TestMsg> ()
               let initial = buildDashboard ()
               let mountOp = stepRecord "host" None insMount 1L
               add sink mountOp
-              // Host edits the LEFT pane tone …
+              // Host edits the LEFT pane tone ...
               let hostHead = stepRecord "host" (Some mountOp) (styleLeft ToneVariant.Brand) 2L
               add sink hostHead
-              // … and the guest edits the SAME cell to a different value.
+              // ... and the guest edits the SAME cell to a different value.
+              let g0 =
+                  GuestFork.genesis
+                      "g1"
+                      mountOp.Hash
+                      (styleLeft ToneVariant.Critical)
+                      None
+                      (Actor.Human "guest")
+                      (timestamp 3L)
+                      OpResultEnvelope.Success
+
+              add sink g0
+
+              match
+                  GuestConvergence.convergeWith
+                      MergeContext.defaults
+                      sink
+                      "host"
+                      "g1"
+                      initial
+                      hostHead.Hash
+                      g0.Hash
+                      (timestamp 100L)
+                  |> Async.RunSynchronously
+              with
+              | MergeResult.Refused(ReconcileFault.Refused refusals) ->
+                  Expect.isTrue
+                      (refusals
+                       |> List.exists (fun r -> r.Class = RefusalClass.Conflict && r.Conflict.Address = "left"))
+                      "the contended left pane is named as a Conflict"
+              | other -> failtestf "expected Refused, got %A" other
+          }
+
+          test "under the host's precedence the overlap merges to the host's value, recorded in the script" {
+              let sink = InMemoryDagSink.create<TestMsg> ()
+              let initial = buildDashboard ()
+              let mountOp = stepRecord "host" None insMount 1L
+              add sink mountOp
+              let hostHead = stepRecord "host" (Some mountOp) (styleLeft ToneVariant.Brand) 2L
+              add sink hostHead
+
               let g0 =
                   GuestFork.genesis
                       "g1"
@@ -228,21 +258,18 @@ let tests =
                   GuestConvergence.converge sink "host" "g1" initial hostHead.Hash g0.Hash (timestamp 100L)
                   |> Async.RunSynchronously
               with
-              | MergeResult.NeedsManualMerge conflicts ->
-                  let contended =
-                      conflicts |> List.tryFind (fun c -> c.NodeId = "left" && c.Facet = "style.tone")
+              | MergeResult.Merged(record, tree) ->
+                  let expected = initial |> applyOk insMount |> applyOk (styleLeft ToneVariant.Brand)
+                  Expect.equal (canonical tree) (canonical expected) "the host's value wins"
 
-                  Expect.isSome contended "the contended (left, style.tone) cell is named"
-
-                  match contended with
-                  | Some c ->
-                      Expect.equal c.Class MergeConflictClass.ConcurrentEdit "classified ConcurrentEdit"
-
-                      Expect.isTrue
-                          (List.contains MergeChoice.KeepPrimary c.Choices)
-                          "keeping the host (Primary) value is an offered choice"
-                  | None -> ()
-              | other -> failtestf "expected NeedsManualMerge, got %A" other
+                  match record.Op with
+                  | TreeOp.Batch script ->
+                      Expect.contains
+                          (script |> List.map CanonicalJson.encodeOp)
+                          (CanonicalJson.encodeOp (styleLeft ToneVariant.Brand))
+                          "the re-asserted host op is in the merge node's script"
+                  | other -> failtestf "a merge node's op is its script, got %A" other
+              | other -> failtestf "expected Merged, got %A" other
           }
 
           test "a guest interior is reconstructed from its own stream alone" {
@@ -276,9 +303,8 @@ let tests =
 
               // The guest's OWN seed tree at instantiation (not the host tree).
               let initialGuestTree = buildDashboard ()
-              let getGuest = lookupOf (records sink "guest-g1")
 
-              match GuestReplay.replayInterior getGuest initialGuestTree g1.Hash with
+              match GuestReplay.replayInterior (records sink "guest-g1") initialGuestTree g1.Hash with
               | Ok tree ->
                   let expected =
                       initialGuestTree
@@ -293,14 +319,11 @@ let tests =
               | Error e -> failtestf "replayInterior failed: %A" e
           }
 
-          test "guest interior replay refuses a merge node whose delta does not reproduce its outcome hash" {
-              // Phase 2043 — the guest fold is the DAG fold, so the merge-node
-              // check `DagReplay` performs holds on a guest stream too. Before,
-              // the guest path folded bare `Apply.apply` and replayed this node
-              // cleanly into a tree the merge never produced.
-              let sink = InMemoryDagSink.create<TestMsg> ()
+          test "a guest-stream merge node replays through the interior fold to the merged tree" {
+              // Phase 2043 made the guest fold the DAG fold; since Phase 2645 that is
+              // Core's closure fold, so a merge node on a guest stream is addressed
+              // like any node and replays to exactly the tree the merge derived.
               let mountOp = stepRecord "host" None insMount 1L
-              add sink mountOp
 
               let g0 =
                   GuestFork.genesis
@@ -312,7 +335,7 @@ let tests =
                       (timestamp 2L)
                       OpResultEnvelope.Success
 
-              let g1 =
+              let ga =
                   GuestFork.step
                       "g1"
                       g0.Hash
@@ -322,27 +345,39 @@ let tests =
                       (timestamp 3L)
                       OpResultEnvelope.Success
 
-              let claimed = String.replicate 64 "0"
-
-              let bogus =
-                  DagOpRecord.createMerge
-                      g0.StreamId
-                      [ g0.Hash; g1.Hash ]
-                      (TreeOp.Batch [])
-                      claimed
+              let gb =
+                  GuestFork.step
+                      "g1"
+                      g0.Hash
+                      (TreeOp.InsertChild(NodeId "dash", Fuaran.markdown "extra" "Extra"))
                       None
                       (Actor.Human "guest")
                       (timestamp 4L)
                       OpResultEnvelope.Success
 
-              let getGuest = lookupOf [ g0; g1; bogus ]
+              let seed = buildDashboard ()
+              let guest = [ g0; ga; gb ]
 
-              match GuestReplay.replayInterior getGuest (buildDashboard ()) bogus.Hash with
-              | Error(DagReplayError.MergeOutcomeMismatch(hash, expected, actual)) ->
-                  Expect.equal hash bogus.Hash "the report names the offending node"
-                  Expect.equal expected claimed "…the hash it committed to"
-                  Expect.notEqual actual claimed "…and the one its delta actually reaches"
-              | other -> failtestf "expected MergeOutcomeMismatch, got %A" other
+              match
+                  (DagMerge.mergeDag
+                      MergeContext.defaults
+                      g0.StreamId
+                      seed
+                      (DagOpRecord.toDag guest)
+                      ga.Hash
+                      gb.Hash
+                      (timestamp 5L))
+                      .Result
+              with
+              | MergeResult.Merged(record, tree) ->
+                  Expect.equal (DagOpRecord.recomputeHash record) record.Hash "the merge node is content-addressed"
+                  Expect.equal record.Parents [ ga.Hash; gb.Hash ] "the merge node's parents are the two guest heads"
+
+                  match GuestReplay.replayInterior (guest @ [ record ]) seed record.Hash with
+                  | Ok replayed ->
+                      Expect.equal (canonical replayed) (canonical tree) "the interior fold reaches the merged tree"
+                  | Error e -> failtestf "replayInterior failed: %A" e
+              | other -> failtestf "expected Merged, got %A" other
           }
 
           test "a guest op resolves its (scope, prompt) provenance; a host op carries no guest scope" {

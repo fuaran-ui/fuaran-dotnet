@@ -84,13 +84,17 @@ let tests =
 
           test "the merge package derives nothing from `PromptId` (precedence is host-classified)" {
               // The merge layer must read no record field to decide precedence —
-              // the opaque `promptId` id stays on the wire, interpreted only by the
-              // host's `recordAuthor` classifier. Zero `PromptId` tokens in the
-              // package proves the None/Some authorship decode moved out.
+              // the opaque `promptId` id stays on the wire, and precedence is the
+              // host's `MergeContext.Precedence`. The one admitted `PromptId` token
+              // is the merge node's own attribution WRITE (the host-supplied
+              // `MergeContext.Attribution.Prompt`); any other proves a decode crept back.
+              let attributionWrite = Regex(@"PromptId\s*=\s*context\.Attribution\.Prompt\b")
+
               let offenders =
                   [ for file in mergeFiles () do
-                        if Regex.IsMatch(File.ReadAllText file, @"\bPromptId\b") then
-                            yield Path.GetFileName file ]
+                        for line in File.ReadAllLines file do
+                            if Regex.IsMatch(line, @"\bPromptId\b") && not (attributionWrite.IsMatch line) then
+                                yield sprintf "%s :: %s" (Path.GetFileName file) (line.Trim()) ]
 
               Expect.isEmpty offenders (sprintf "merge package still references PromptId: %A" offenders)
           } ]

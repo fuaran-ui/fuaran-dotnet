@@ -11,22 +11,32 @@ open Fuaran.UI.OpStream.SqliteStore
 // ============================================================================
 //  SqliteDagSink — Microsoft.Data.Sqlite-backed IDagOpStreamSink<'Msg>.
 //
-//  The durable counterpart of the in-memory DAG sink. Two tables:
+//  The durable counterpart of the in-memory DAG sink. The schema is VERSIONED
+//  (Phase 2645, the cut — `SqliteDagSchema.version`, recorded in `dag_schema`):
 //
-//      CREATE TABLE dag_op_record (
+//      CREATE TABLE dag_schema ( version INTEGER NOT NULL );
+//      CREATE TABLE dag_node (                       -- the live set: whole Core nodes
 //          stream_id            TEXT    NOT NULL,
-//          hash                 TEXT    NOT NULL,
-//          parents_json         TEXT    NOT NULL,   -- JSON array of parent hashes (author order)
+//          hash                 TEXT    NOT NULL,    -- Dag.nodeId (DagOpRecord.nodeId)
+//          parents_json         TEXT    NOT NULL,    -- JSON array of parent hashes (author order)
 //          op_json              TEXT    NOT NULL,
-//          outcome_hash         TEXT    NULL,        -- merge nodes only
 //          prompt_id            TEXT    NULL,
-//          user_id              TEXT    NOT NULL,   -- canonical typed-actor JSON (Actor.encode)
+//          actor_json           TEXT    NOT NULL,    -- canonical typed-actor JSON (Actor.encode)
 //          timestamp            INTEGER NOT NULL,
 //          result_envelope_json TEXT    NOT NULL,
-//          tombstoned           INTEGER NOT NULL,    -- 0 / 1
+//          PRIMARY KEY (stream_id, hash)
+//      );
+//      CREATE TABLE dag_skeleton (                   -- pruned nodes: address + links, no payload
+//          stream_id TEXT NOT NULL, hash TEXT NOT NULL, parents_json TEXT NOT NULL,
 //          PRIMARY KEY (stream_id, hash)
 //      );
 //      CREATE TABLE dag_head ( stream_id TEXT PRIMARY KEY, head TEXT NOT NULL );
+//
+//  The pre-cut table (`dag_op_record`, with its `outcome_hash`, `tombstoned`
+//  and retired `content_fingerprint` columns) is NOT read: its addresses do not
+//  recompute under the cut, so a database holding it is refused by name on
+//  open, and the one-release re-mint tool re-addresses it. A database recording
+//  another schema version is refused the same way.
 //
 //  The trunk-head CAS (`TryAdvanceHead`) is a CONDITIONAL UPDATE
 //  (`UPDATE dag_head SET head = @new WHERE stream_id = @s AND head = @expected`)
@@ -36,9 +46,8 @@ open Fuaran.UI.OpStream.SqliteStore
 //  rows-affected distinguishes "head was unset" (1) from "head already set" (0).
 //
 //  Op JSON goes through the host `IOpJsonCodec<'Msg>` (closure-bearing typed
-//  ops can't round-trip generically). Topology queries load the stream's
-//  (hash, parents) rows into memory and delegate to the pure `DagTopology`
-//  algorithms — a recursive-CTE implementation is a later optimisation.
+//  ops can't round-trip generically). `Reachable` is Core's `Dag.ancestorsOf`
+//  over the stream's live nodes.
 //
 //  ── VERIFY ON READ (Phase 793) ─────────────────────────────────────────────
 //  `Records` and `TryGet` re-verify what they hand back
@@ -49,7 +58,7 @@ open Fuaran.UI.OpStream.SqliteStore
 //  (`DagWriteAdmission.admit`, Phase 1937): the address recomputed, every parent
 //  present, a held address a no-op — so a forged record never reaches a row.
 //
-//  The topology reads (`Parents` / `Reachable` / `Lca` / `Heads`) deliberately
+//  The topology reads (`Parents` / `Heads`) deliberately
 //  do NOT verify: they read only (hash, parents) and never return a record, so
 //  there is no content address in scope to recompute — the check would have to
 //  load every payload to say nothing more than `Records` already says. A caller
@@ -123,9 +132,14 @@ module private DagJson =
 
             List.ofSeq result
 
+/// The DAG table schema this sink reads and writes (Phase 2645).
+module SqliteDagSchema =
+    /// Recorded in `dag_schema`; a database recording another version is refused.
+    [<Literal>]
+    let version = 1
+
 type SqliteDagSink<'Msg>(connectionString: string, codec: IOpJsonCodec<'Msg>, loadVerification: LoadVerification) =
 
-    let emptyBatchJson = codec.EncodeOp(TreeOp.Batch [])
 
     /// `IDagOpStreamSink` has no error channel — its reads return bare records —
     /// so a broken DAG is refused the way this sink already refuses an
@@ -149,34 +163,58 @@ type SqliteDagSink<'Msg>(connectionString: string, codec: IOpJsonCodec<'Msg>, lo
 
         SqliteConnections.useWriteAheadLog conn
 
+        let scalar (sql: string) =
+            use q = conn.CreateCommand()
+            q.CommandText <- sql
+            q.ExecuteScalar()
+
+        if not (isNull (scalar "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'dag_op_record';")) then
+            invalidOp
+                "SqliteDagSink: this database holds a pre-2645 DAG table (dag_op_record). Its addresses do not recompute under the cut (Core's Dag.nodeId); re-mint the store with the one-release re-mint tool before opening it."
+
         use cmd = conn.CreateCommand()
 
         cmd.CommandText <-
-            """CREATE TABLE IF NOT EXISTS dag_op_record (
+            """CREATE TABLE IF NOT EXISTS dag_schema (
+    version INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS dag_node (
     stream_id            TEXT    NOT NULL,
     hash                 TEXT    NOT NULL,
     parents_json         TEXT    NOT NULL,
     op_json              TEXT    NOT NULL,
-    outcome_hash         TEXT    NULL,
     prompt_id            TEXT    NULL,
-    user_id              TEXT    NOT NULL,
+    actor_json           TEXT    NOT NULL,
     timestamp            INTEGER NOT NULL,
     result_envelope_json TEXT    NOT NULL,
-    tombstoned           INTEGER NOT NULL,
+    PRIMARY KEY (stream_id, hash)
+);
+CREATE TABLE IF NOT EXISTS dag_skeleton (
+    stream_id    TEXT NOT NULL,
+    hash         TEXT NOT NULL,
+    parents_json TEXT NOT NULL,
     PRIMARY KEY (stream_id, hash)
 );
 CREATE TABLE IF NOT EXISTS dag_head (
     stream_id TEXT PRIMARY KEY,
     head      TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_dag_op_record_hash ON dag_op_record (hash);"""
+CREATE INDEX IF NOT EXISTS idx_dag_node_hash ON dag_node (hash);
+CREATE INDEX IF NOT EXISTS idx_dag_skeleton_hash ON dag_skeleton (hash);
+INSERT INTO dag_schema (version) SELECT @v WHERE NOT EXISTS (SELECT 1 FROM dag_schema);"""
 
+        cmd.Parameters.AddWithValue("@v", SqliteDagSchema.version) |> ignore
         cmd.ExecuteNonQuery() |> ignore
 
-    // A database written between Phase 1525 and Phase 1937 also carries a
-    // nullable `content_fingerprint` column. Nothing reads or writes it any
-    // more — admission recomputes the address instead (Phase 1937) — and it
-    // is left in place rather than rebuilt out of an existing table.
+        match scalar "SELECT version FROM dag_schema;" with
+        | :? int64 as v when v = int64 SqliteDagSchema.version -> ()
+        | v ->
+            invalidOp (
+                sprintf
+                    "SqliteDagSink: this database records DAG schema version %O; this sink reads version %d only."
+                    v
+                    SqliteDagSchema.version
+            )
 
     do ensureSchema ()
 
@@ -200,7 +238,7 @@ CREATE INDEX IF NOT EXISTS idx_dag_op_record_hash ON dag_op_record (hash);"""
     let loadParentMap (streamId: string) : Map<string, string list> =
         use conn = openConnection ()
         use cmd = conn.CreateCommand()
-        cmd.CommandText <- "SELECT hash, parents_json FROM dag_op_record WHERE stream_id = @s;"
+        cmd.CommandText <- "SELECT hash, parents_json FROM dag_node WHERE stream_id = @s;"
         cmd.Parameters.AddWithValue("@s", streamId) |> ignore
         use reader = cmd.ExecuteReader()
         let acc = System.Collections.Generic.Dictionary<string, string list>()
@@ -210,16 +248,6 @@ CREATE INDEX IF NOT EXISTS idx_dag_op_record_hash ON dag_op_record (hash);"""
 
         acc |> Seq.map (fun kv -> kv.Key, kv.Value) |> Map.ofSeq
 
-    /// One whole-stream load, shared by every lookup the CALLER then makes. The
-    /// traversals that use it (`reachable` / `lca`) walk an unbounded ancestor
-    /// cone, so a per-hash query would be the N+1 this closure exists to avoid;
-    /// the map is built once per call and thrown away, which is deliberate — the
-    /// store is a file another process may be writing (WAL, above), so a map
-    /// cached across calls would answer from a topology that has since moved.
-    let parentsLookup (streamId: string) : string -> string list =
-        let m = loadParentMap streamId
-        fun h -> Map.tryFind h m |> Option.defaultValue []
-
     /// The parents of ONE hash, by primary-key lookup. `Parents` used to answer
     /// this by loading the entire stream's parent map and indexing into it —
     /// every row of a stream read, decoded and discarded, to return one row's
@@ -228,7 +256,10 @@ CREATE INDEX IF NOT EXISTS idx_dag_op_record_hash ON dag_op_record (hash);"""
     let readParents (streamId: string) (hash: string) : string list =
         use conn = openConnection ()
         use cmd = conn.CreateCommand()
-        cmd.CommandText <- "SELECT parents_json FROM dag_op_record WHERE stream_id = @s AND hash = @h;"
+
+        cmd.CommandText <-
+            "SELECT parents_json FROM dag_node WHERE stream_id = @s AND hash = @h UNION ALL SELECT parents_json FROM dag_skeleton WHERE stream_id = @s AND hash = @h;"
+
         cmd.Parameters.AddWithValue("@s", streamId) |> ignore
         cmd.Parameters.AddWithValue("@h", hash) |> ignore
 
@@ -236,13 +267,29 @@ CREATE INDEX IF NOT EXISTS idx_dag_op_record_hash ON dag_op_record (hash);"""
         | :? string as json -> DagJson.decodeParents json
         | _ -> []
 
+    /// A record as a row stores it: the STORED address, never a recomputed one,
+    /// so the read path's verification can find a row whose address is wrong.
+    let stored
+        (streamId: string)
+        (hash: string)
+        (parents: string list)
+        (actor: Actor)
+        (entry: StreamEntry<'Msg>)
+        : DagOpRecord<'Msg> =
+        { StreamId = streamId
+          Node =
+            { Id = hash
+              Parents = parents
+              Actor = actor
+              Op = entry } }
+
     let readRecord (streamId: string) (hash: string) : DagOpRecord<'Msg> option =
         use conn = openConnection ()
         use cmd = conn.CreateCommand()
 
         cmd.CommandText <-
-            """SELECT parents_json, op_json, outcome_hash, prompt_id, user_id, timestamp, result_envelope_json, tombstoned
-FROM dag_op_record WHERE stream_id = @s AND hash = @h;"""
+            """SELECT parents_json, op_json, prompt_id, actor_json, timestamp, result_envelope_json
+FROM dag_node WHERE stream_id = @s AND hash = @h;"""
 
         cmd.Parameters.AddWithValue("@s", streamId) |> ignore
         cmd.Parameters.AddWithValue("@h", hash) |> ignore
@@ -264,20 +311,19 @@ FROM dag_op_record WHERE stream_id = @s AND hash = @h;"""
                         )
                     )
 
-            let outcomeHash = if reader.IsDBNull 2 then None else Some(reader.GetString 2)
-            let promptId = if reader.IsDBNull 3 then None else Some(reader.GetString 3)
+            let promptId = if reader.IsDBNull 2 then None else Some(reader.GetString 2)
 
-            Some
-                { StreamId = streamId
-                  Hash = hash
-                  Parents = DagJson.decodeParents (reader.GetString 0)
-                  Op = op
-                  OutcomeHash = outcomeHash
-                  PromptId = promptId
-                  Actor = DagJson.readActor (reader.GetString 4)
-                  Timestamp = DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64 5)
-                  ResultEnvelope = envelopeAt streamId hash (reader.GetString 6)
-                  Tombstoned = reader.GetInt64 7 <> 0L }
+            Some(
+                stored
+                    streamId
+                    hash
+                    (DagJson.decodeParents (reader.GetString 0))
+                    (DagJson.readActor (reader.GetString 3))
+                    { Op = op
+                      PromptId = promptId
+                      Timestamp = DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64 4)
+                      ResultEnvelope = envelopeAt streamId hash (reader.GetString 5) }
+            )
 
     /// Bulk read of every record in a stream in ONE query + connection, replacing
     /// the `Records` member's N+1 (a `readRecord` per hash, each opening its own
@@ -290,8 +336,8 @@ FROM dag_op_record WHERE stream_id = @s AND hash = @h;"""
         use cmd = conn.CreateCommand()
 
         cmd.CommandText <-
-            """SELECT hash, parents_json, op_json, outcome_hash, prompt_id, user_id, timestamp, result_envelope_json, tombstoned
-FROM dag_op_record WHERE stream_id = @s ORDER BY hash;"""
+            """SELECT hash, parents_json, op_json, prompt_id, actor_json, timestamp, result_envelope_json
+FROM dag_node WHERE stream_id = @s ORDER BY hash;"""
 
         cmd.Parameters.AddWithValue("@s", streamId) |> ignore
         use reader = cmd.ExecuteReader()
@@ -312,20 +358,19 @@ FROM dag_op_record WHERE stream_id = @s ORDER BY hash;"""
                         )
                     )
 
-            let outcomeHash = if reader.IsDBNull 3 then None else Some(reader.GetString 3)
-            let promptId = if reader.IsDBNull 4 then None else Some(reader.GetString 4)
+            let promptId = if reader.IsDBNull 3 then None else Some(reader.GetString 3)
 
-            acc.Add
-                { StreamId = streamId
-                  Hash = hash
-                  Parents = DagJson.decodeParents (reader.GetString 1)
-                  Op = op
-                  OutcomeHash = outcomeHash
-                  PromptId = promptId
-                  Actor = DagJson.readActor (reader.GetString 5)
-                  Timestamp = DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64 6)
-                  ResultEnvelope = envelopeAt streamId (reader.GetString 0) (reader.GetString 7)
-                  Tombstoned = reader.GetInt64 8 <> 0L }
+            acc.Add(
+                stored
+                    streamId
+                    hash
+                    (DagJson.decodeParents (reader.GetString 1))
+                    (DagJson.readActor (reader.GetString 4))
+                    { Op = op
+                      PromptId = promptId
+                      Timestamp = DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64 5)
+                      ResultEnvelope = envelopeAt streamId hash (reader.GetString 6) }
+            )
 
         List.ofSeq acc
 
@@ -346,9 +391,13 @@ FROM dag_op_record WHERE stream_id = @s ORDER BY hash;"""
             // statement cache on every distinct arity besides.
             let names = hashes |> List.mapi (fun i _ -> "@h" + string i)
 
+            let inList = String.concat "," names
+
             cmd.CommandText <-
-                "SELECT hash FROM dag_op_record WHERE hash IN ("
-                + String.concat "," names
+                "SELECT hash FROM dag_node WHERE hash IN ("
+                + inList
+                + ") UNION SELECT hash FROM dag_skeleton WHERE hash IN ("
+                + inList
                 + ");"
 
             hashes
@@ -375,10 +424,10 @@ FROM dag_op_record WHERE stream_id = @s ORDER BY hash;"""
         use cmd = conn.CreateCommand()
 
         cmd.CommandText <-
-            """INSERT INTO dag_op_record
-    (stream_id, hash, parents_json, op_json, outcome_hash, prompt_id, user_id, timestamp, result_envelope_json, tombstoned)
+            """INSERT INTO dag_node
+    (stream_id, hash, parents_json, op_json, prompt_id, actor_json, timestamp, result_envelope_json)
 VALUES
-    (@s, @h, @parents, @op, @outcome, @prompt, @user, @ts, @env, @tomb);"""
+    (@s, @h, @parents, @op, @prompt, @actor, @ts, @env);"""
 
         cmd.Parameters.AddWithValue("@s", record.StreamId) |> ignore
         cmd.Parameters.AddWithValue("@h", record.Hash) |> ignore
@@ -387,14 +436,6 @@ VALUES
         |> ignore
 
         cmd.Parameters.AddWithValue("@op", codec.EncodeOp record.Op) |> ignore
-
-        cmd.Parameters.AddWithValue(
-            "@outcome",
-            (match record.OutcomeHash with
-             | Some o -> box o
-             | None -> box DBNull.Value)
-        )
-        |> ignore
 
         cmd.Parameters.AddWithValue(
             "@prompt",
@@ -410,15 +451,12 @@ VALUES
         // hold a bare id string and read back via `Actor.ofLegacyString`, so an
         // existing database still OPENS. Its records' content addresses do not
         // carry forward, though — see docs/migrations/1144-typed-actor-dag-fold.md.
-        cmd.Parameters.AddWithValue("@user", Actor.encode record.Actor) |> ignore
+        cmd.Parameters.AddWithValue("@actor", Actor.encode record.Actor) |> ignore
 
         cmd.Parameters.AddWithValue("@ts", record.Timestamp.ToUnixTimeSeconds())
         |> ignore
 
         cmd.Parameters.AddWithValue("@env", ResultEnvelopeJson.encode record.ResultEnvelope)
-        |> ignore
-
-        cmd.Parameters.AddWithValue("@tomb", (if record.Tombstoned then 1 else 0))
         |> ignore
 
         cmd.ExecuteNonQuery() |> ignore
@@ -463,7 +501,10 @@ VALUES
 
                     let held (hash: string) =
                         use probe = conn.CreateCommand()
-                        probe.CommandText <- "SELECT 1 FROM dag_op_record WHERE stream_id = @s AND hash = @h;"
+
+                        probe.CommandText <-
+                            "SELECT 1 FROM dag_node WHERE stream_id = @s AND hash = @h UNION ALL SELECT 1 FROM dag_skeleton WHERE stream_id = @s AND hash = @h;"
+
                         probe.Parameters.AddWithValue("@s", record.StreamId) |> ignore
                         probe.Parameters.AddWithValue("@h", hash) |> ignore
                         not (isNull (probe.ExecuteScalar()))
@@ -562,10 +603,7 @@ VALUES
             async { return readParents streamId hash }
 
         member _.Reachable(streamId: string, hash: string) : Async<Set<string>> =
-            async { return DagTopology.reachable (parentsLookup streamId) hash }
-
-        member _.Lca(streamId: string, a: string, b: string) : Async<LcaResult> =
-            async { return DagTopology.lca (parentsLookup streamId) a b }
+            async { return Fuaran.Core.Dag.ancestorsOf (DagOpRecord.toDag (readAllRecords streamId)) hash }
 
         member _.Heads(streamId: string) : Async<string list> =
             async {
@@ -595,35 +633,58 @@ VALUES
         member _.Tombstone(streamId: string, hash: string) : Async<bool> =
             async {
                 use conn = openConnection ()
+                use tx = conn.BeginTransaction(false)
+
+                let parents =
+                    use cmd = conn.CreateCommand()
+                    cmd.CommandText <- "SELECT parents_json FROM dag_node WHERE stream_id = @s AND hash = @h;"
+                    cmd.Parameters.AddWithValue("@s", streamId) |> ignore
+                    cmd.Parameters.AddWithValue("@h", hash) |> ignore
+
+                    match cmd.ExecuteScalar() with
+                    | :? string as json -> Some json
+                    | _ -> None
+
+                match parents with
+                | Some json ->
+                    use move = conn.CreateCommand()
+
+                    move.CommandText <-
+                        """INSERT INTO dag_skeleton (stream_id, hash, parents_json) VALUES (@s, @h, @p);
+DELETE FROM dag_node WHERE stream_id = @s AND hash = @h;"""
+
+                    move.Parameters.AddWithValue("@s", streamId) |> ignore
+                    move.Parameters.AddWithValue("@h", hash) |> ignore
+                    move.Parameters.AddWithValue("@p", json) |> ignore
+                    move.ExecuteNonQuery() |> ignore
+                    tx.Commit()
+                    return true
+                | _ -> return false
+            }
+
+        member _.Skeleton(streamId: string) : Async<DagSkeletonNode list> =
+            async {
+                use conn = openConnection ()
                 use cmd = conn.CreateCommand()
-
-                // Drop the PAYLOAD (`op_json` → the placeholder), preserve hash +
-                // parent links so the chain still verifies.
-                //
-                // `outcome_hash` is KEPT (Phase 1525).
-                // The outcome hash used to be nulled here, which cost the store
-                // the one field that tells a pruned merge node from a pruned
-                // ordinary one, for no retention gain — it is a 64-hex address,
-                // not payload. What it broke was idempotence across a sweep: a
-                // re-add of the unchanged record no longer matched what the store
-                // held, so it read as a collision under the new check and as a
-                // second copy under the old one.
-                cmd.CommandText <-
-                    """UPDATE dag_op_record
-SET op_json = @empty, tombstoned = 1
-WHERE stream_id = @s AND hash = @h;"""
-
-                cmd.Parameters.AddWithValue("@empty", emptyBatchJson) |> ignore
+                cmd.CommandText <- "SELECT hash, parents_json FROM dag_skeleton WHERE stream_id = @s ORDER BY hash;"
                 cmd.Parameters.AddWithValue("@s", streamId) |> ignore
-                cmd.Parameters.AddWithValue("@h", hash) |> ignore
-                return cmd.ExecuteNonQuery() > 0
+                use reader = cmd.ExecuteReader()
+                let acc = ResizeArray<DagSkeletonNode>()
+
+                while reader.Read() do
+                    acc.Add
+                        { StreamId = streamId
+                          Hash = reader.GetString 0
+                          Parents = DagJson.decodeParents (reader.GetString 1) }
+
+                return List.ofSeq acc
             }
 
         member _.Streams() : Async<string list> =
             async {
                 use conn = openConnection ()
                 use cmd = conn.CreateCommand()
-                cmd.CommandText <- "SELECT DISTINCT stream_id FROM dag_op_record;"
+                cmd.CommandText <- "SELECT stream_id FROM dag_node UNION SELECT stream_id FROM dag_skeleton;"
                 use reader = cmd.ExecuteReader()
                 let acc = ResizeArray<string>()
 

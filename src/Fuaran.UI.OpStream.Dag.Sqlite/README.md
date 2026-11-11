@@ -13,11 +13,12 @@ head leave exactly one winner. The genesis advance (`expected = None`) is an
 from "head already set".
 
 Add is idempotent by content address; a hash collision with differing content
-is rejected. Topology queries (`Parents` / `Reachable` / `Lca`) load the
-stream's `(hash, parents)` rows and delegate to the pure `DagTopology`
-algorithms. Tombstone drops the op payload (`op_json` reset to an empty batch,
-`outcome_hash` cleared, `tombstoned = 1`) while preserving the hash + parent
-links, so the chain stays verifiable.
+is rejected, and admission recomputes the address (Core's `Dag.nodeId`) and
+checks every parent is present. `Reachable` is Core's `Dag.ancestorsOf`. The
+schema is versioned (`dag_schema`; a pre-2645 `dag_op_record` table is refused by
+name, to be re-minted): live nodes in `dag_node`, and a pruned node moves to
+`dag_skeleton` with its address and parent links, never while a live node names
+it as a parent.
 
 Opt-in (rung-4): a consumer that never references the DAG packages pulls none of
 this.

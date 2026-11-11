@@ -1,6 +1,5 @@
 namespace Fuaran.UI.OpStream.Dag.Inspect
 
-open System.Collections.Generic
 open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.OpStream.Dag.Abstractions
 
@@ -27,10 +26,13 @@ open Fuaran.UI.OpStream.Dag.Abstractions
 //  Edges carry `IsPrimary` (the parent is `Parents[0]`, the replay spine) so a
 //  renderer can draw the primary spine solid and secondary merge parents dashed.
 //
-//  Pure over `DagOpRecord` + the parent relation only — no apply engine, no I/O.
-//  A sink builds the input with one `Records streamId` call; `DagTopology`'s
-//  `parents`/`reachable`/`lca` are available on the same sink for the renderer's
-//  interactive queries (ancestor highlight, merge-base of two coordinates).
+//  Pure over the nodes + the parent relation only — no apply engine, no I/O.
+//  A sink builds the input with one `Records streamId` call and one `Skeleton
+//  streamId` call (Phase 2645): a pruned node is drawn from its skeleton, its
+//  links intact and its payload absent. Depth is Core's `Dag.ranks` (the longest
+//  path from a node with no held parent), and a cycle is Core's `Cyclic` answer;
+//  the renderer's interactive queries (ancestor highlight, merge base of two
+//  coordinates) are Core's `Dag.ancestorsOf` / `Dag.mergeBase`.
 // ============================================================================
 
 /// A node's shape by parent count — the branch/merge classification the
@@ -45,8 +47,9 @@ type DagNodeRole =
 /// One renderable DAG node — a `DagOpRecord`'s topology + provenance projected
 /// for display. `Depth` is the longest-path layer from a root (top-to-bottom
 /// layout); `ChildCount` / `IsBranchPoint` / `IsLeaf` describe the node's
-/// position in the fork/merge forest; `Tombstoned` / `OutcomeHash` / `PromptId`
-/// carry the provenance the overlay (`DagOverlay`) annotates further.
+/// position in the fork/merge forest. `Tombstoned` marks a pruned node drawn
+/// from the sink's skeleton, whose payload — and so its `PromptId`, `Actor` and
+/// `Timestamp` — is gone (`None`); a live node carries all three.
 type DagGraphNode =
     { Hash: string
       Parents: string list
@@ -56,10 +59,9 @@ type DagGraphNode =
       IsBranchPoint: bool
       IsLeaf: bool
       Tombstoned: bool
-      OutcomeHash: string option
       PromptId: string option
-      Actor: Actor
-      Timestamp: System.DateTimeOffset }
+      Actor: Actor option
+      Timestamp: System.DateTimeOffset option }
 
 /// A parent→child link. `IsPrimary` marks the replay-spine edge (the parent is
 /// the child's `Parents[0]`), so a renderer can draw the primary parent solid
@@ -109,143 +111,66 @@ module DagGraphModel =
         | [ _ ] -> DagNodeRole.Linear
         | _ -> DagNodeRole.Merge
 
-    /// Build the renderable graph from a stream's records, or report the CYCLE
-    /// that makes a layered layout meaningless (Phase 1525).
-    ///
-    /// A well-formed DAG is acyclic by construction — a content address folds its
-    /// parents in, so a node can never be its own ancestor — and the depth pass
-    /// used to rely on that being true of its INPUT. That is not the same claim.
-    /// This function is handed a record LIST, and a hand-built, replicated or
-    /// out-of-band-edited list can carry a cycle whose members are each perfectly
-    /// well-formed. The old pass recursed parent-wards with a memo written only
-    /// on the way out, so a cycle recursed until the stack ran out — a
-    /// `StackOverflowException`, which .NET does not let anyone catch, raised
-    /// from a pure projection function.
-    ///
-    /// The depths are unchanged: `Depth` is still the longest path from a root,
-    /// with a parent hash naming no record contributing -1, so a present node
-    /// with an absent parent still lands at 0. What changed is how they are
-    /// computed — one Kahn topological sweep, O(V+E), each node's depth settled
-    /// once its last present parent resolves — and what happens when they cannot
-    /// be: every node still unresolved when the queue drains is on or behind a
-    /// cycle, and all of them are named.
-    let tryBuild<'Msg> (streamId: string) (records: DagOpRecord<'Msg> list) : Result<DagGraph, DagGraphCycle> =
-        let byHash = Dictionary<string, DagOpRecord<'Msg>>()
+    /// Build the renderable graph from a stream's live records and its pruned
+    /// skeleton, or report the CYCLE that makes a layered layout meaningless
+    /// (Phase 1525). A record list can carry a cycle (a hand-built, replicated or
+    /// edited list); Core's `Dag.ranks` answers it as `Cyclic`, naming every node
+    /// the drain could not place, and that is the refusal.
+    let tryBuildWith<'Msg>
+        (streamId: string)
+        (records: DagOpRecord<'Msg> list)
+        (skeleton: DagSkeletonNode list)
+        : Result<DagGraph, DagGraphCycle> =
+        // The topology alone, as Core nodes: a live node's links and a pruned node's.
+        let topology =
+            (records |> List.map (fun r -> r.Hash, r.Parents))
+            @ (skeleton |> List.map (fun k -> k.Hash, k.Parents))
+            |> List.map (fun (h, ps) ->
+                h,
+                ({ Id = h
+                   Parents = ps
+                   Actor = Actor.ofLegacyString ""
+                   Op = () }
+                : Fuaran.Core.DagNode<unit>))
+            |> Map.ofList
 
-        for r in records do
-            byHash[r.Hash] <- r
+        let dag =
+            match Fuaran.Core.Dag.ofNodes topology with
+            | Ok d -> d
+            | Error m -> invalidOp ("DagGraphModel: node filed under another id: " + m.Key)
 
-        // Child count per hash — drives IsBranchPoint / IsLeaf.
-        let childCount = Dictionary<string, int>()
-
-        for r in records do
-            for p in r.Parents do
-                childCount[p] <-
-                    (match childCount.TryGetValue p with
-                     | true, c -> c + 1
-                     | false, _ -> 1)
-
-        // ── Kahn's algorithm over the parent→child relation ──────────────────
-        //
-        // `pending` counts a node's parents PRESENT in this set — only those can
-        // ever resolve, so a node whose parents are all absent is ready at once.
-        // `best` accumulates the running max over resolved parent depths, seeded
-        // at -1 for a node with at least one absent parent (the "absent
-        // contributes -1" rule) and left unseeded otherwise.
-        let pending = Dictionary<string, int>()
-        let best = Dictionary<string, int>()
-        let children = Dictionary<string, ResizeArray<string>>()
-        let depthOf = Dictionary<string, int>()
-
-        for r in records do
-            let presentParents = r.Parents |> List.filter byHash.ContainsKey
-            pending[r.Hash] <- List.length presentParents
-
-            if List.length presentParents <> List.length r.Parents then
-                best[r.Hash] <- -1
-
-            for p in presentParents do
-                match children.TryGetValue p with
-                | true, cs -> cs.Add r.Hash
-                | false, _ ->
-                    let cs = ResizeArray<string>()
-                    cs.Add r.Hash
-                    children[p] <- cs
-
-        let ready = Queue<string>()
-
-        // Seeded in the input's own order, so the sweep is deterministic for a
-        // deterministic input. The node order of the RESULT is sorted below
-        // regardless; this keeps a cycle report stable too.
-        for r in records do
-            if pending[r.Hash] = 0 then
-                ready.Enqueue r.Hash
-
-        while ready.Count > 0 do
-            let hash = ready.Dequeue()
-
-            let d =
-                match byHash[hash].Parents with
-                | [] -> 0
-                | _ ->
-                    match best.TryGetValue hash with
-                    | true, b -> 1 + b
-                    | false, _ -> 0
-
-            depthOf[hash] <- d
-
-            match children.TryGetValue hash with
-            | false, _ -> ()
-            | true, cs ->
-                for child in cs do
-                    best[child] <-
-                        (match best.TryGetValue child with
-                         | true, b -> max b d
-                         | false, _ -> d)
-
-                    pending[child] <- pending[child] - 1
-
-                    if pending[child] = 0 then
-                        ready.Enqueue child
-
-        let unresolved =
-            records
-            |> List.map _.Hash
-            |> List.distinct
-            |> List.filter (depthOf.ContainsKey >> not)
-            |> List.sortWith (fun a b -> System.String.CompareOrdinal(a, b))
-
-        if not (List.isEmpty unresolved) then
+        match Fuaran.Core.Dag.ranks dag with
+        | Error cyclic ->
             Error
                 { StreamId = streamId
-                  Unresolved = unresolved }
-        else
+                  Unresolved = cyclic.Unplaced }
+        | Ok ranks ->
+            let childCount =
+                topology
+                |> Map.toList
+                |> List.collect (fun (_, n) -> n.Parents)
+                |> List.countBy id
+                |> Map.ofList
 
-            let depth (hash: string) : int =
-                match depthOf.TryGetValue hash with
-                | true, d -> d
-                | false, _ -> -1
+            let node (hash: string) (parents: string list) (tombstoned: bool) (live: DagOpRecord<'Msg> option) =
+                let children = childCount |> Map.tryFind hash |> Option.defaultValue 0
+
+                { Hash = hash
+                  Parents = parents
+                  Role = roleOf parents
+                  Depth = ranks[hash]
+                  ChildCount = children
+                  IsBranchPoint = children >= 2
+                  IsLeaf = children = 0
+                  Tombstoned = tombstoned
+                  PromptId = live |> Option.bind _.PromptId
+                  Actor = live |> Option.map _.Actor
+                  Timestamp = live |> Option.map _.Timestamp }
 
             let nodes =
-                records
-                |> List.map (fun r ->
-                    let children =
-                        match childCount.TryGetValue r.Hash with
-                        | true, c -> c
-                        | false, _ -> 0
-
-                    { Hash = r.Hash
-                      Parents = r.Parents
-                      Role = roleOf r.Parents
-                      Depth = depth r.Hash
-                      ChildCount = children
-                      IsBranchPoint = children >= 2
-                      IsLeaf = children = 0
-                      Tombstoned = r.Tombstoned
-                      OutcomeHash = r.OutcomeHash
-                      PromptId = r.PromptId
-                      Actor = r.Actor
-                      Timestamp = r.Timestamp })
+                (records |> List.map (fun r -> node r.Hash r.Parents false (Some r)))
+                @ (skeleton |> List.map (fun k -> node k.Hash k.Parents true None))
+                |> List.distinctBy _.Hash
                 |> List.sortWith (fun a b ->
                     if a.Depth <> b.Depth then
                         compare a.Depth b.Depth
@@ -253,14 +178,14 @@ module DagGraphModel =
                         System.String.CompareOrdinal(a.Hash, b.Hash))
 
             let edges =
-                records
-                |> List.collect (fun r ->
-                    match r.Parents with
+                nodes
+                |> List.collect (fun n ->
+                    match n.Parents with
                     | [] -> []
                     | primary :: _ ->
-                        r.Parents
+                        n.Parents
                         |> List.map (fun p ->
-                            { Child = r.Hash
+                            { Child = n.Hash
                               Parent = p
                               IsPrimary = (p = primary) }))
 
@@ -275,6 +200,10 @@ module DagGraphModel =
                   Edges = edges
                   Roots = roots
                   Leaves = leaves }
+
+    /// `tryBuildWith` over live records only.
+    let tryBuild<'Msg> (streamId: string) (records: DagOpRecord<'Msg> list) : Result<DagGraph, DagGraphCycle> =
+        tryBuildWith streamId records []
 
     /// `tryBuild`, refusing BY NAME on a cyclic input — the idiom the DAG sinks
     /// use for a broken store, for the same reason: this returns a bare `DagGraph`

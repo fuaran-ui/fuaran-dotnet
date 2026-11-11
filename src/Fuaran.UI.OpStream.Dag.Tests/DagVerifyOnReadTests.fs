@@ -44,7 +44,11 @@ let private removeRight = TreeOp.RemoveNode rightChildId
 /// hand-run `UPDATE` leaves behind.
 let private corruptContent (r: DagOpRecord<TestMsg>) : DagOpRecord<TestMsg> =
     { r with
-        Timestamp = r.Timestamp.AddSeconds 1.0 }
+        Node =
+            { r.Node with
+                Op =
+                    { r.Entry with
+                        Timestamp = r.Timestamp.AddSeconds 1.0 } } }
 
 let private refusalMessage (what: string) (read: unit -> unit) : string =
     try
@@ -57,7 +61,7 @@ let private corruptRowInDb (path: string) (hash: string) =
     use conn = new SqliteConnection(sprintf "Data Source=%s" path)
     conn.Open()
     use cmd = conn.CreateCommand()
-    cmd.CommandText <- "UPDATE dag_op_record SET timestamp = timestamp + 1 WHERE hash = @h;"
+    cmd.CommandText <- "UPDATE dag_node SET timestamp = timestamp + 1 WHERE hash = @h;"
     cmd.Parameters.AddWithValue("@h", hash) |> ignore
     let affected = cmd.ExecuteNonQuery()
 
@@ -162,7 +166,7 @@ let tests =
                   use conn = new SqliteConnection(sprintf "Data Source=%s" path)
                   conn.Open()
                   use cmd = conn.CreateCommand()
-                  cmd.CommandText <- "DELETE FROM dag_op_record WHERE hash = @h;"
+                  cmd.CommandText <- "DELETE FROM dag_node WHERE hash = @h;"
                   cmd.Parameters.AddWithValue("@h", g.Hash) |> ignore
 
                   if cmd.ExecuteNonQuery() <> 1 then

@@ -75,6 +75,20 @@ open Fuaran.UI.OpStream.Abstractions
 //  `ValidatorGate.introducedDefects` over the two branch heads and the derived
 //  tree and refuses on any.
 //
+//  PRECEDENCE, AS A SCRIPT (Phase 2645, optional). A caller that names a side
+//  (`reconcileWith (Some side)`) admits the pairs the policy would refuse and
+//  re-asserts that side's refused ops after the fold, in its delta's order, as
+//  the tail of the script. Both fold orders still have to reach one tree with
+//  the script, so precedence settles a pair whose two ops both apply in either
+//  order (two writes of one slot); a pair one fold order cannot apply (an edit
+//  beside a removal of the node) still refuses, as `FoldFaulted`.
+//
+//  THE REPLAY WITNESS (Phase 2645, the cut). The policy is the DAG's only merge:
+//  a merge node records the script, and Core's closure fold replays it. That
+//  fold applies every op through `applyFold` — `applyHeld`, with a reorder whose
+//  list the tree no longer matches applied rebased — which is what lets an
+//  agreeing pair and a rebased reorder replay in Core's drain order.
+//
 //  Normative statement, envelope and fixtures: `WIRE_FORMAT.md` §"Merge by
 //  fold" and the `foldFixtures` family of the merge-conformance corpus. Every
 //  host certifies the same verdicts from the same deltas. Fable-clean: Map,
@@ -119,15 +133,19 @@ type ReconcileFault<'Msg> =
     | IntroducedDefects of MergeDefect list
 
 /// A derived merge: the tree the fold reaches, the script the merge records
-/// (one `ReorderChildren` per interleaved or rebased parent whose fold order
-/// the rule changes, parents in ordinal order), how many distinct agreeing ops
+/// (one `ReorderChildren` per interleaved or rebased parent, parents in ordinal
+/// order, then any re-asserted precedence ops), how many distinct agreeing ops
 /// the fold applied as no change, and how many parents it interleaved or
 /// rebased.
 type Reconciled<'Msg> =
-    { Tree: Node<'Msg>
-      Script: TreeOp<'Msg> list
-      Agreements: int
-      Interleaves: int }
+    {
+        Tree: Node<'Msg>
+        Script: TreeOp<'Msg> list
+        Agreements: int
+        Interleaves: int
+        /// How many refused ops a named precedence side re-asserted (0 without one).
+        Reasserted: int
+    }
 
 module DagReconcile =
 
@@ -203,6 +221,20 @@ module DagReconcile =
                         applyHeld (rebased t p order o) t
                     | _ -> applyHeld o t))
             (Ok start)
+
+    /// The replay witness's apply (Phase 2645): `applyHeld`, and a
+    /// `ReorderChildren` that does not apply as written — its list is stale
+    /// because a concurrent branch appended to the parent or took a child from
+    /// it — applied rebased to the children the parent holds. On a linear
+    /// history every op applies as written, so this is `Apply.apply` there.
+    let applyFold (op: TreeOp<'Msg>) (tree: Node<'Msg>) : Result<Node<'Msg>, ApplyError> =
+        match applyHeld op tree, op with
+        | Ok t, _ -> Ok t
+        | Error e, TreeOp.ReorderChildren(NodeId p, order) ->
+            match applyHeld (rebased tree p order op) tree with
+            | Ok t -> Ok t
+            | Error _ -> Error e
+        | Error e, _ -> Error e
 
     /// The first op of `delta` that does not apply from `baseTree`, with its index.
     let private firstFailure (delta: TreeOp<'Msg> list) (baseTree: Node<'Msg>) : Result<Node<'Msg>, int * ApplyError> =
@@ -316,8 +348,11 @@ module DagReconcile =
                 y :: interleave a ys
 
     /// The `ReorderChildren` the rule asks of `parent` in `tree`, given each
-    /// branch's appends into it in branch order; `None` when the fold's order is
-    /// already the rule's, or the parent is not in the tree.
+    /// branch's appends into it in branch order; `None` when the parent is not
+    /// in the tree. Recorded even where the sequential fold already gives the
+    /// rule's order (Phase 2645): a merge node's replay is Core's closure fold,
+    /// which applies the two branches in its own drain order, so the script —
+    /// not the fold order the policy happened to check — has to fix the order.
     let private reorderFor
         (tree: Node<'Msg>)
         (parent: string)
@@ -338,11 +373,7 @@ module DagReconcile =
             // sequence whichever is named first, so its first occurrence is too.
             let prefix = kids |> List.filter (appended.Contains >> not)
             let order = prefix @ (interleave (keep runA) (keep runB) |> List.distinct)
-
-            if order = kids then
-                None
-            else
-                Some(TreeOp.ReorderChildren(NodeId parent, order |> List.map NodeId)))
+            Some(TreeOp.ReorderChildren(NodeId parent, order |> List.map NodeId)))
 
     /// A branch's run of appends into `parent`, in branch order. An append a
     /// later reorder of the same parent on the branch lists is settled by that
@@ -369,10 +400,14 @@ module DagReconcile =
         parents
         |> List.choose (fun p -> reorderFor tree p (appendsOf p deltaA) (appendsOf p deltaB))
 
-    /// Reconcile two branch deltas from their common base under the policy: the
-    /// derived tree and the script a merge records, or a typed refusal. Both
-    /// deltas apply from `baseTree`, op by op, as recorded on their branches.
-    let reconcile
+    /// Reconcile two branch deltas from their common base under the policy, with
+    /// an optional precedence side: the derived tree and the script a merge
+    /// records, or a typed refusal. Both deltas apply from `baseTree`, op by op,
+    /// as recorded on their branches. With `precedence = Some side`, a pair the
+    /// policy refuses is admitted and `side`'s op of it is re-asserted at the end
+    /// of the script (see the header).
+    let reconcileWith
+        (precedence: ReconcileSide option)
         (baseTree: Node<'Msg>)
         (deltaA: TreeOp<'Msg> list)
         (deltaB: TreeOp<'Msg> list)
@@ -392,9 +427,25 @@ module DagReconcile =
                     | Refuse cls -> Some { Conflict = c; Class = cls }
                     | _ -> None)
 
-            if not refusals.IsEmpty then
-                Error(ReconcileFault.Refused(sortCanonical refusals))
-            else
+            match precedence with
+            | None when not refusals.IsEmpty -> Error(ReconcileFault.Refused(sortCanonical refusals))
+            | _ ->
+                // The winner's refused ops, in its delta's order, each once.
+                let reasserted =
+                    match precedence with
+                    | None -> []
+                    | Some side ->
+                        let mine (r: Refusal<'Msg>) =
+                            if side = ReconcileSide.A then
+                                r.Conflict.Left
+                            else
+                                r.Conflict.Right
+
+                        let named = refusals |> List.map (mine >> canon) |> Set.ofList
+                        let delta = if side = ReconcileSide.A then deltaA else deltaB
+
+                        delta |> List.filter (canon >> named.Contains) |> List.distinctBy canon
+
                 let parentsOf pick =
                     verdicts |> List.choose (snd >> pick) |> List.distinct |> List.sortWith ordinal
 
@@ -422,7 +473,7 @@ module DagReconcile =
                 let derive first second =
                     foldOps rebase (first @ second) baseTree
                     |> Result.bind (fun t ->
-                        let script = scriptFor t parents deltaA deltaB
+                        let script = scriptFor t parents deltaA deltaB @ reasserted
                         foldOps Set.empty script t |> Result.map (fun t' -> t', script))
 
                 match derive deltaA deltaB, derive deltaB deltaA with
@@ -439,7 +490,17 @@ module DagReconcile =
                             { Tree = ab
                               Script = script
                               Agreements = agreements
-                              Interleaves = parents.Length }
+                              Interleaves = parents.Length
+                              Reasserted = reasserted.Length }
+
+    /// `reconcileWith` with no precedence: every pair the policy does not admit
+    /// refuses.
+    let reconcile
+        (baseTree: Node<'Msg>)
+        (deltaA: TreeOp<'Msg> list)
+        (deltaB: TreeOp<'Msg> list)
+        : Result<Reconciled<'Msg>, ReconcileFault<'Msg>> =
+        reconcileWith None baseTree deltaA deltaB
 
     /// `reconcile`, then the validator gate on the derived tree: a defect the
     /// derived tree carries and neither branch head does refuses the merge.
@@ -449,7 +510,7 @@ module DagReconcile =
         (deltaA: TreeOp<'Msg> list)
         (deltaB: TreeOp<'Msg> list)
         : Result<Reconciled<'Msg>, ReconcileFault<'Msg>> =
-        reconcile baseTree deltaA deltaB
+        reconcileWith None baseTree deltaA deltaB
         |> Result.bind (fun r ->
             // Both deltas applied from the base inside `reconcile`, so the heads exist.
             let head delta =

@@ -20,8 +20,8 @@ open Fuaran.UI.OpStream.Dag.Abstractions
 //   2. byte-golden — a known record encodes to the exact canonical bytes the
 //      cross-host conformance corpus pins (the TS @fuaran-ui/ops codec must
 //      reproduce these byte-for-byte),
-//   3. optional outcomeHash / promptId omission, and the multi-parent +
-//      outcome-hash merge-node shape.
+//   3. optional promptId omission, the multi-parent merge-node shape, and the
+//      refusal of a pre-cut envelope (`tombstoned` / `outcomeHash`, Phase 2645).
 // ============================================================================
 
 /// The host op-decoder used to decode the nested canonical TreeOp.
@@ -33,21 +33,19 @@ let private mkRecord
     (hash: string)
     (parents: string list)
     (op: TreeOp<obj>)
-    (outcome: string option)
     (prompt: string option)
     (unix: int64)
-    (tombstoned: bool)
     : DagOpRecord<obj> =
     { StreamId = streamId
-      Hash = hash
-      Parents = parents
-      Op = op
-      OutcomeHash = outcome
-      PromptId = prompt
-      Actor = Actor.Human "u1"
-      Timestamp = DateTimeOffset.FromUnixTimeSeconds unix
-      ResultEnvelope = OpResultEnvelope.Success
-      Tombstoned = tombstoned }
+      Node =
+        { Id = hash
+          Parents = parents
+          Actor = Actor.Human "u1"
+          Op =
+            { Op = op
+              PromptId = prompt
+              Timestamp = DateTimeOffset.FromUnixTimeSeconds unix
+              ResultEnvelope = OpResultEnvelope.Success } } }
 
 [<Tests>]
 let tests =
@@ -55,7 +53,7 @@ let tests =
         "Dag.Wire"
         [ test "encode then decode round-trips an ordinary record" {
               let r =
-                  mkRecord "stream-1" "h1" [ "p0" ] (TreeOp.RemoveNode(NodeId "n1")) None None 1700000000L false
+                  mkRecord "stream-1" "h1" [ "p0" ] (TreeOp.RemoveNode(NodeId "n1")) None 1700000000L
 
               let json = DagWire.encodeRecord CanonicalJson.encodeOp r
 
@@ -64,36 +62,32 @@ let tests =
                   Expect.equal decoded.Hash r.Hash "hash"
                   Expect.equal decoded.Parents r.Parents "parents"
                   Expect.equal decoded.StreamId r.StreamId "streamId"
-                  Expect.equal decoded.OutcomeHash None "no outcome hash on an ordinary node"
                   Expect.equal (decoded.Timestamp.ToUnixTimeSeconds()) 1700000000L "timestamp"
-                  Expect.isFalse decoded.Tombstoned "live"
                   Expect.equal (DagWire.encodeRecord CanonicalJson.encodeOp decoded) json "re-encode is byte-stable"
               | Error e -> failtestf "decode failed: %s" e
           }
 
-          test "a multi-parent merge node round-trips its parents (author order) + outcome hash" {
+          test "a multi-parent merge node round-trips its parents (author order)" {
               let pa = String.replicate 64 "a"
               let pb = String.replicate 64 "b"
-              let oh = String.replicate 64 "c"
 
-              let merge =
-                  mkRecord "stream-1" "mh" [ pa; pb ] (TreeOp.Batch []) (Some oh) None 1700000001L false
+              let merge = mkRecord "stream-1" "mh" [ pa; pb ] (TreeOp.Batch []) None 1700000001L
 
               let json = DagWire.encodeRecord CanonicalJson.encodeOp merge
 
               match DagWire.decodeRecord decodeOp json with
               | Ok decoded ->
                   Expect.equal decoded.Parents [ pa; pb ] "parents in author order"
-                  Expect.equal decoded.OutcomeHash (Some oh) "outcome hash present"
+                  Expect.equal (DagWire.encodeRecord CanonicalJson.encodeOp decoded) json "re-encode is byte-stable"
               | Error e -> failtestf "merge decode failed: %s" e
           }
 
           test "byte-golden: a known ordinary record encodes to the pinned canonical bytes" {
               let r =
-                  mkRecord "s1" "h1" [ "p1"; "p2" ] (TreeOp.RemoveNode(NodeId "n1")) None None 1700000000L false
+                  mkRecord "s1" "h1" [ "p1"; "p2" ] (TreeOp.RemoveNode(NodeId "n1")) None 1700000000L
 
               let expected =
-                  """{"actor":{"kind":"human","id":"u1"},"hash":"h1","op":{"$type":"RemoveNode","target":"n1"},"parents":["p1","p2"],"resultEnvelope":{"$type":"Success"},"streamId":"s1","timestamp":1700000000,"tombstoned":false}"""
+                  """{"actor":{"kind":"human","id":"u1"},"hash":"h1","op":{"$type":"RemoveNode","target":"n1"},"parents":["p1","p2"],"resultEnvelope":{"$type":"Success"},"streamId":"s1","timestamp":1700000000}"""
 
               Expect.equal (DagWire.encodeRecord CanonicalJson.encodeOp r) expected "canonical bytes pinned"
           }
@@ -103,8 +97,12 @@ let tests =
               // Ordinal-sorted. The nested value embeds verbatim, exactly as the
               // nested op does, so this is what the TS host must reproduce.
               let r =
-                  { mkRecord "s1" "h1" [] (TreeOp.RemoveNode(NodeId "n1")) None None 1700000000L false with
-                      Actor = Actor.Agent("claude", "4.8", "planner") }
+                  let r0 = mkRecord "s1" "h1" [] (TreeOp.RemoveNode(NodeId "n1")) None 1700000000L
+
+                  { r0 with
+                      Node =
+                          { r0.Node with
+                              Actor = Actor.Agent("claude", "4.8", "planner") } }
 
               Expect.stringContains
                   (DagWire.encodeRecord CanonicalJson.encodeOp r)
@@ -117,13 +115,24 @@ let tests =
               // carry a stored hash no host can reproduce — a silent verification
               // failure instead of a clear refusal. Go-red proof for that refusal.
               let legacy =
-                  """{"hash":"h1","op":{"$type":"RemoveNode","target":"n1"},"parents":[],"resultEnvelope":{"$type":"Success"},"streamId":"s1","timestamp":1700000000,"tombstoned":false,"userId":"u1"}"""
+                  """{"hash":"h1","op":{"$type":"RemoveNode","target":"n1"},"parents":[],"resultEnvelope":{"$type":"Success"},"streamId":"s1","timestamp":1700000000,"userId":"u1"}"""
 
               match DagWire.decodeRecord decodeOp legacy with
               | Ok _ -> failtest "a pre-1144 envelope must not decode"
               | Error e ->
                   Expect.stringContains e "userId" "the refusal names the retired field"
                   Expect.stringContains e "do not carry forward" "the refusal states the consequence"
+          }
+
+          test "a pre-2645 envelope (tombstoned / outcomeHash) is REFUSED by name" {
+              // Its address folded a merge outcome or a pre-cut pre-image, so it
+              // cannot recompute under Core's `Dag.nodeId`.
+              for legacy in
+                  [ """{"actor":{"kind":"human","id":"u1"},"hash":"h1","op":{"$type":"RemoveNode","target":"n1"},"parents":[],"resultEnvelope":{"$type":"Success"},"streamId":"s1","timestamp":1700000000,"tombstoned":false}"""
+                    """{"actor":{"kind":"human","id":"u1"},"hash":"h1","op":{"$type":"Batch","ops":[]},"outcomeHash":"oh","parents":["a","b"],"resultEnvelope":{"$type":"Success"},"streamId":"s1","timestamp":1700000000}""" ] do
+                  match DagWire.decodeRecord decodeOp legacy with
+                  | Ok _ -> failtest "a pre-2645 envelope must not decode"
+                  | Error e -> Expect.stringContains e "pre-2645" "the refusal names the cut"
           }
 
           test "recomputeHash distinguishes a Human from an Agent with the SAME id" {
@@ -148,24 +157,19 @@ let tests =
               Expect.notEqual asHuman.Hash asAgent.Hash "the Human/Agent distinction is inside the address"
           }
 
-          test "optional fields are omitted when None and present when Some" {
+          test "the optional promptId is omitted when None and present when Some" {
               let withOpt =
-                  mkRecord "s1" "h1" [] (TreeOp.RemoveNode(NodeId "n1")) (Some "oh") (Some "prompt-7") 1700000000L false
+                  mkRecord "s1" "h1" [] (TreeOp.RemoveNode(NodeId "n1")) (Some "prompt-7") 1700000000L
 
               let json = DagWire.encodeRecord CanonicalJson.encodeOp withOpt
-              Expect.stringContains json "\"outcomeHash\":\"oh\"" "outcomeHash present"
               Expect.stringContains json "\"promptId\":\"prompt-7\"" "promptId present"
 
-              let bare =
-                  mkRecord "s1" "h1" [] (TreeOp.RemoveNode(NodeId "n1")) None None 1700000000L false
+              let bare = mkRecord "s1" "h1" [] (TreeOp.RemoveNode(NodeId "n1")) None 1700000000L
 
               let bareJson = DagWire.encodeRecord CanonicalJson.encodeOp bare
-              Expect.isFalse (bareJson.Contains "outcomeHash") "outcomeHash omitted when None"
               Expect.isFalse (bareJson.Contains "promptId") "promptId omitted when None"
 
               match DagWire.decodeRecord decodeOp json with
-              | Ok d ->
-                  Expect.equal d.OutcomeHash (Some "oh") "outcome round-trips"
-                  Expect.equal d.PromptId (Some "prompt-7") "prompt round-trips"
+              | Ok d -> Expect.equal d.PromptId (Some "prompt-7") "prompt round-trips"
               | Error e -> failtestf "decode failed: %s" e
           } ]

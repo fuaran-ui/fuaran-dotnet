@@ -1,28 +1,23 @@
 namespace Fuaran.UI.OpStream.Dag.Inspect
 
 open Fuaran.UI.OpStream.Dag.Abstractions
-open Fuaran.UI.OpStream.Dag.Merge
 
 // ============================================================================
-//  DagOverlay — the precedence + retention/tombstone overlay (Phase 186).
+//  DagOverlay — the precedence + retention overlay (Phase 186).
 //
 //  The render model (`DagGraphModel`) draws the branch/merge shape; this overlay
-//  colours it with the two provenance axes the DAG made first-class:
+//  colours it with two provenance axes:
 //
 //   1. **Precedence.** A node is `Primary` when the host's `isPrimary` predicate
-//      classifies it so (the same host classification `DagPrimacy` resolves
-//      per-cell precedence from — the overlay interprets no record field itself).
-//      The per-node flag is the coarse view; `primaryPinnedCells` exposes the
-//      fine view — the `(nodeId, facet)` cells whose MOST-RECENT writer on a
-//      branch's spine was `Primary` (a backward DAG walk, so a secondary-tipped
-//      branch still shows the earlier primary edits it preserved).
+//      classifies it so — the overlay interprets no record field itself. (The
+//      per-cell primacy view retired with the tree merge at Phase 2645: a merge's
+//      precedence is now a side named on the merge, re-asserted as script.)
 //
-//   2. **Retention.** A node is `Live` when reachable from a GC root (a head,
-//      checkpoint, or live resume-coordinate/permalink), `Prunable` when
-//      reachable from none, and `Tombstoned` when its payload has already been
-//      pruned (hash + parent links preserved so the chain still verifies). The
-//      classification routes through `DagRetention`'s reachability mechanism —
-//      grace/auto-pin POLICY is the host's, not shown here.
+//   2. **Retention.** A node is `Live` when a GC root (a head, checkpoint, or
+//      live resume-coordinate/permalink) needs it, `Prunable` when none does
+//      (Core's `Dag.prunable` over the graph's topology), and `Tombstoned` when
+//      it is already pruned — drawn from the sink's skeleton, links intact.
+//      Grace/auto-pin POLICY is the host's, not shown here.
 //
 //  Pure + derived: it joins the graph nodes against the topology + roots and
 //  writes nothing back (FGP 5).
@@ -55,62 +50,53 @@ type DagOverlay =
 
 module DagOverlay =
 
-    /// The parent lookup induced by a built graph (a node's `Parents`, or `[]`
-    /// for an unknown hash) — feeds the `DagRetention` / `DagTopology`
-    /// reachability walks without a second sink round-trip.
-    let parentsOf (graph: DagGraph) : string -> string list =
-        let byHash = graph.Nodes |> List.map (fun n -> n.Hash, n.Parents) |> Map.ofList
-
-        fun h ->
-            match Map.tryFind h byHash with
-            | Some ps -> ps
-            | None -> []
-
     /// Build the overlay for `graph` under the GC `roots`: per-node precedence
     /// (via the host's `isPrimary` predicate) + retention state, plus the
-    /// live/prunable partition.
-    let build (isPrimary: DagGraphNode -> bool) (graph: DagGraph) (roots: GcRoots) : DagOverlay =
-        let getParents = parentsOf graph
-        let live = DagRetention.liveSet getParents roots
-
-        let allHashes = graph.Nodes |> List.map _.Hash
-        let prunable = DagRetention.prunable allHashes getParents roots
-
-        let nodes =
+    /// live/prunable partition. A root the graph does not hold is refused by
+    /// name (Core's `PruneFault`), because it would otherwise retain nothing.
+    let build
+        (isPrimary: DagGraphNode -> bool)
+        (graph: DagGraph)
+        (roots: GcRoots)
+        : Result<DagOverlay, Fuaran.Core.Dag.PruneFault> =
+        let topology =
             graph.Nodes
             |> List.map (fun n ->
-                let retention =
-                    if n.Tombstoned then RetentionState.Tombstoned
-                    elif live.Contains n.Hash then RetentionState.Live
-                    else RetentionState.Prunable
+                n.Hash,
+                ({ Id = n.Hash
+                   Parents = n.Parents
+                   Actor = Fuaran.Core.Actor.ofLegacyString ""
+                   Op = () }
+                : Fuaran.Core.DagNode<unit>))
+            |> Map.ofList
 
-                { Node = n
-                  IsPrimary = isPrimary n
-                  Retention = retention })
+        let dag =
+            match Fuaran.Core.Dag.ofNodes topology with
+            | Ok d -> d
+            | Error m -> invalidOp ("DagOverlay: node filed under another id: " + m.Key)
 
-        { Nodes = nodes
-          Live = live
-          Prunable = prunable }
+        Fuaran.Core.Dag.prunable (Fuaran.Core.Dag.Reach.ofDag dag) (DagRetention.rootHashes roots |> Set.toList)
+        |> Result.map (fun prunableList ->
+            let prunable = Set.ofList prunableList
 
-    /// The `(nodeId, facet)` cells whose most-recent writer on `head`'s primary
-    /// spine (walking back to `stopAt`, exclusive, or genesis) was classified
-    /// `Primary` by `recordAuthor` — the primacy-pinned cells the overlay
-    /// highlights. Wraps `DagPrimacy.cellAuthors` and keeps only the
-    /// `Primary`-classified cells. A hole in the spine is the walk's
-    /// `DagReplayError` (Phase 2043): an overlay drawn from a partial walk
-    /// would omit every pin below the hole and look complete.
-    let primaryPinnedCells<'Msg>
-        (recordAuthor: DagOpRecord<'Msg> -> MergeAuthor)
-        (getRecord: string -> DagOpRecord<'Msg> option)
-        (stopAt: string option)
-        (head: string)
-        : Result<Set<string * string>, DagReplayError> =
-        DagPrimacy.cellAuthors recordAuthor getRecord stopAt head
-        |> Result.map (fun authors ->
-            authors
-            |> Map.toSeq
-            |> Seq.choose (fun (cell, author) ->
-                match author with
-                | MergeAuthor.Primary -> Some cell
-                | MergeAuthor.Secondary _ -> None)
-            |> Set.ofSeq)
+            let live =
+                graph.Nodes
+                |> List.map _.Hash
+                |> Set.ofList
+                |> fun all -> Set.difference all prunable
+
+            let nodes =
+                graph.Nodes
+                |> List.map (fun n ->
+                    let retention =
+                        if n.Tombstoned then RetentionState.Tombstoned
+                        elif live.Contains n.Hash then RetentionState.Live
+                        else RetentionState.Prunable
+
+                    { Node = n
+                      IsPrimary = isPrimary n
+                      Retention = retention })
+
+            { Nodes = nodes
+              Live = live
+              Prunable = prunable })

@@ -30,10 +30,14 @@ open Fuaran.UI.OpStream.TestSupport
 //   |--------------------|-----------------------------------------|-------------------------------------------------|
 //   | append             | `Append` at `LatestSequence + 1`        | `Add` a child of the head, then `TryAdvanceHead` |
 //   | compare-and-append | `IOpStreamCasSink.AppendIf`             | `Add`, then `TryAdvanceHead` from the expectation |
-//   | read the trunk     | `Replay(1, max)`                        | `TryGet` along the primary parents from the head |
-//   | compaction         | `IOpStreamCompactSink.Compact`          | `Tombstone` the trunk records at or below it     |
-//   | checkpoint         | `Checkpoint.create` into the sink       | `DagCheckpoint.create`, held by the caller       |
-//   | replay from it     | `CheckpointedReplay.applyFromCheckpoint`| `DagReplay.replayFromCheckpoint`                 |
+//   | read the trunk     | `Replay(1, max)`                        | `TryGet` / `Skeleton` along the primary parents   |
+//   | compaction         | `IOpStreamCompactSink.Compact`          | `Tombstone` the trunk records at or below it,     |
+//   |                    |                                         | a retained checkpoint's node kept (Core's rule)   |
+//   | checkpoint         | `Checkpoint.create` into the sink       | `DagFold.sealAt` (Core), held by the caller      |
+//   | replay from it     | `CheckpointedReplay.applyFromCheckpoint`| `DagFold.replayFrom` (Core)                      |
+//
+//  Since Phase 2645 a pruned DAG node leaves the live set for the sink's
+//  skeleton: the trunk walk reads it back from there, address and links only.
 // ============================================================================
 
 type Store =
@@ -266,41 +270,74 @@ let rec private dagHarness
     (streamId: string)
     : Harness =
     let sink = openSink ()
-    let checkpoints = ResizeArray<DagCheckpoint<TestMsg>>()
+    let checkpoints = ResizeArray<Fuaran.Core.Dag.Checkpoint<Node<TestMsg>>>()
     let head () = sink.Head streamId |> run
 
     let getRecord (hash: string) = sink.TryGet(streamId, hash) |> run
 
-    /// The primary-parent spine from the head, genesis first.
-    let trunk () : DagOpRecord<TestMsg> list =
-        let rec walk (hash: string) (acc: DagOpRecord<TestMsg> list) =
+    /// The stream's live records as a Core DAG.
+    let dag () =
+        sink.Records streamId |> run |> DagOpRecord.toDag
+
+    /// The primary-parent spine from the head, genesis first: each step a live
+    /// record, or the address and parents of a pruned one from the skeleton
+    /// (Phase 2645).
+    let spine () : Choice<DagOpRecord<TestMsg>, DagSkeletonNode> list =
+        let skeleton =
+            sink.Skeleton streamId |> run |> List.map (fun k -> k.Hash, k) |> Map.ofList
+
+        let rec walk (hash: string) acc =
+            let step parents node =
+                match parents with
+                | [] -> node :: acc
+                | primary :: _ -> walk primary (node :: acc)
+
             match getRecord hash with
-            | None -> acc
-            | Some r ->
-                match r.Parents with
-                | [] -> r :: acc
-                | primary :: _ -> walk primary (r :: acc)
+            | Some r -> step r.Parents (Choice1Of2 r)
+            | None ->
+                match Map.tryFind hash skeleton with
+                | Some k -> step k.Parents (Choice2Of2 k)
+                | None -> acc
 
         match head () with
         | None -> []
         | Some h -> walk h []
 
+    /// The live records on the spine.
+    let trunk () : DagOpRecord<TestMsg> list =
+        spine ()
+        |> List.choose (function
+            | Choice1Of2 r -> Some r
+            | Choice2Of2 _ -> None)
+
     let entries () =
-        trunk ()
-        |> List.mapi (fun i r ->
-            { Position = i + 1
-              Address = r.Hash
-              Op = CanonicalJson.encodeOp r.Op
-              Actor = r.Actor
-              PromptId = r.PromptId
-              Timestamp = r.Timestamp
-              Tombstoned = r.Tombstoned })
+        spine ()
+        |> List.mapi (fun i node ->
+            match node with
+            | Choice1Of2 r ->
+                { Position = i + 1
+                  Address = r.Hash
+                  Op = CanonicalJson.encodeOp r.Op
+                  Actor = r.Actor
+                  PromptId = r.PromptId
+                  Timestamp = r.Timestamp
+                  Tombstoned = false }
+            // A pruned node keeps its address and its links in the skeleton and
+            // nothing else: it reads back with no payload.
+            | Choice2Of2 k ->
+                { Position = i + 1
+                  Address = k.Hash
+                  Op = ""
+                  Actor = actor
+                  PromptId = None
+                  Timestamp = DateTimeOffset.MinValue
+                  Tombstoned = true })
 
     let child (parents: string list) (at: DateTimeOffset) (op: TreeOp<TestMsg>) =
         DagOpRecord.create streamId parents op None actor at OpResultEnvelope.Success
 
     let stamp () =
-        timestamp (1_800_000_000L + int64 (List.length (trunk ())))
+        timestamp (1_800_000_000L + int64 (List.length (spine ())))
 
     let headOrFail () =
         head () |> Option.defaultWith (fun () -> failwith "the stream has no head")
@@ -329,8 +366,12 @@ let rec private dagHarness
       OfferForgedHash =
         fun op other ->
             let forged =
-                { child (Option.toList (head ())) (stamp ()) op with
-                    Op = other }
+                let r = child (Option.toList (head ())) (stamp ()) op
+
+                { r with
+                    Node =
+                        { r.Node with
+                            Op = { r.Entry with Op = other } } }
 
             attempt (fun () -> sink.Add forged |> run)
       OfferDanglingLink = fun op -> attempt (fun () -> sink.Add(child [ nowhere ] (stamp ()) op) |> run)
@@ -348,7 +389,7 @@ let rec private dagHarness
                 |> Option.defaultWith (fun () -> failwithf "%A DAG sink has no atomic batch add" store)
 
             let current = head ()
-            let depth = List.length (trunk ())
+            let depth = List.length (spine ())
 
             let records =
                 batchOps
@@ -367,7 +408,16 @@ let rec private dagHarness
 
             let offered =
                 match List.rev records, forgeLast with
-                | last :: rest, true -> List.rev ({ last with Op = List.head batchOps } :: rest)
+                | last :: rest, true ->
+                    let forged =
+                        { last with
+                            Node =
+                                { last.Node with
+                                    Op =
+                                        { last.Entry with
+                                            Op = List.head batchOps } } }
+
+                    List.rev (forged :: rest)
                 | _ -> records
 
             attempt (fun () ->
@@ -377,22 +427,30 @@ let rec private dagHarness
                 | Some last when not (sink.TryAdvanceHead(streamId, current, last.Hash) |> run) ->
                     failwith "OfferBatch: the head moved under a single-threaded test"
                 | _ -> ())
+      // Core's compaction (`Dag.compactAt`): the history behind a retained
+      // checkpoint goes and the checkpoint's own node is KEPT, so the replay
+      // above it and its seal still resolve; every other covered node is pruned
+      // to the skeleton.
       Compact =
         fun k ->
+            let kept = checkpoints |> Seq.map _.Node |> Set.ofSeq
+
             for r in trunk () |> List.truncate k do
-                sink.Tombstone(streamId, r.Hash) |> run |> ignore
-      Checkpoint = fun tree -> checkpoints.Add(DagCheckpoint.create streamId (headOrFail ()) tree)
+                if not (kept.Contains r.Hash) && not (sink.Tombstone(streamId, r.Hash) |> run) then
+                    failwithf "Compact: the %A DAG sink did not prune trunk node %s" store r.Hash
+      Checkpoint = fun tree -> checkpoints.Add(DagFold.sealAt (headOrFail ()) tree)
       CheckpointVerifies =
         fun () ->
             checkpoints.Count > 0
-            && DagCheckpoint.verifySnapshotHash checkpoints[checkpoints.Count - 1] = Ok()
+            && DagFold.verifyCheckpoint checkpoints[checkpoints.Count - 1] (dag ())
+               |> Result.isOk
       ReplayFromCheckpoint =
         fun _ ->
-            DagReplay.replayFromCheckpoint getRecord checkpoints[checkpoints.Count - 1] (headOrFail ())
+            DagFold.replayFrom checkpoints[checkpoints.Count - 1] (dag ()) (headOrFail ())
             |> Result.mapError (sprintf "%A")
       ReplayFromGenesis =
         fun initial ->
-            DagReplay.replay getRecord initial (headOrFail ())
+            DagFold.replayTo initial (dag ()) (headOrFail ())
             |> Result.mapError (sprintf "%A")
       Streams = fun () -> sink.Streams() |> run
       Reopen =

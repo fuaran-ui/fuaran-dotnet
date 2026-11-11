@@ -21,8 +21,8 @@ open Fuaran.UI.OpStream.TestSupport
 //  Three defects, one suite. Each test states what the pre-1525 sink did with
 //  its input, because in every case the answer was "accepted it, quietly":
 //
-//   1. **A collision was mistaken for a duplicate.** `Add` compared `Parents` and
-//      `OutcomeHash` and nothing else, so a record with the SAME hash and a
+//   1. **A collision was mistaken for a duplicate.** `Add` compared the parents
+//      and the merge outcome hash and nothing else, so a record with the SAME hash and a
 //      DIFFERENT `Op` matched, was classified as an idempotent re-append, and was
 //      dropped. Two records claiming one address is the definition of a content-
 //      addressing violation; dropping the second is the one response that leaves
@@ -32,9 +32,10 @@ open Fuaran.UI.OpStream.TestSupport
 //      held went in, and the edge stayed broken until some later `Records` read
 //      — or a replay — tripped over it, long after the write that made it.
 //
-//   3. **A tombstone destroyed idempotence.** Retention pruned `outcome_hash`
-//      along with the payload, so an identical re-add of a swept record no longer
-//      matched what the store held.
+//   3. **A tombstone destroyed idempotence.** Retention pruned part of the
+//      address-bearing state with the payload, so an identical re-add of a swept
+//      record no longer matched what the store held. Since Phase 2645 a pruned
+//      node keeps its address in the sink's skeleton, and a re-add is a no-op.
 //
 //  Both sinks are tested for each, because "the in-memory one behaves like the
 //  durable one" is the property every other test in this suite quietly assumes.
@@ -63,10 +64,9 @@ let private removeRight = TreeOp.RemoveNode rightChildId
 /// used to auto-merge, silently discarding the edit, and it is now the
 /// `DeleteModify` refusal Phase 179 declared and nothing raised. The merge
 /// fixtures below need SOME auto-merging branch pair and are about checkpoints,
-/// attribution and tombstones rather than about conflict classes, so they take a
+/// attribution and pruning rather than about conflict classes, so they take a
 /// genuinely disjoint pair instead of one that only merged because a conflict
-/// was being dropped. (`MergeTotalityTests` is where the refusal itself is
-/// asserted, in both directions and with its corrected twin.)
+/// was being dropped.
 let private criticalLeft =
     TreeOp.UpdateStyle(
         leftChildId,
@@ -97,7 +97,24 @@ let private canonicalDecodeOp (s: string) : Result<TreeOp<obj>, string> =
     JsonDecode.decodeOp s |> Result.mapError (sprintf "%A")
 
 let private sameAddressDifferentOp (original: DagOpRecord<TestMsg>) (otherOp: TreeOp<TestMsg>) : DagOpRecord<TestMsg> =
-    { original with Op = otherOp }
+    { original with
+        Node =
+            { original.Node with
+                Op = { original.Entry with Op = otherOp } } }
+
+/// A wire record (the canonical op decoder's erased `'Msg`) with an arbitrary,
+/// non-recomputing address — what the envelope decode tests round-trip.
+let private wireRecord (envelope: OpResultEnvelope) : DagOpRecord<obj> =
+    { StreamId = "s"
+      Node =
+        { Id = "h1"
+          Parents = []
+          Actor = Actor.Human "tester"
+          Op =
+            { Op = TreeOp.RemoveNode(NodeId "right")
+              PromptId = None
+              Timestamp = timestamp 1L
+              ResultEnvelope = envelope } } }
 
 [<Tests>]
 let tests =
@@ -196,13 +213,11 @@ let tests =
               let original = stepRecord "s" None brand 1L
               add sink original
 
-              // Identical parents, identical (absent) outcome hash — everything
-              // the pre-1525 check looked at agrees. Only the OP differs, which is
-              // precisely what it could not see.
+              // Identical parents — everything the pre-1525 check looked at
+              // agrees. Only the OP differs, which is precisely what it could not see.
               let impostor = sameAddressDifferentOp original removeRight
               Expect.equal impostor.Hash original.Hash "the impostor claims the same address"
               Expect.equal impostor.Parents original.Parents "…with identical parents"
-              Expect.equal impostor.OutcomeHash original.OutcomeHash "…and an identical outcome hash"
 
               let message = refusal "InMemoryDagSink.Add" (fun () -> add sink impostor)
 
@@ -276,28 +291,31 @@ let tests =
 
           // ── 3. Idempotence across a retention sweep ──────────────────────
 
-          test "InMemoryDagSink: an identical re-add AFTER tombstoning is still a duplicate" {
+          test "InMemoryDagSink: an identical re-add AFTER pruning is still a duplicate" {
               let sink = InMemoryDagSink.create<TestMsg> ()
               let g = stepRecord "s" None brand 1L
               let a = stepRecord "s" (Some g) success 2L
               add sink g
               add sink a
 
-              Expect.isTrue (sink.Tombstone("s", a.Hash) |> Async.RunSynchronously) "a is tombstoned"
+              Expect.isTrue (sink.Tombstone("s", a.Hash) |> Async.RunSynchronously) "a is pruned"
 
-              // The re-add must neither throw (a false collision) nor append a
-              // second copy. Pre-1525 the tombstone cleared `OutcomeHash`, so what
-              // the check compared no longer described the record it summarised.
+              // The re-add must neither throw (a false collision) nor resurrect the
+              // pruned payload: the address is held, in the skeleton.
               add sink a
 
-              let records = sink.Records "s" |> Async.RunSynchronously
-              Expect.equal records.Length 2 "still exactly two records — the re-add did not append a copy"
+              Expect.equal
+                  (sink.Records "s" |> Async.RunSynchronously |> List.map _.Hash)
+                  [ g.Hash ]
+                  "the re-add did not resurrect the pruned payload"
 
-              let stored = records |> List.find (fun r -> r.Hash = a.Hash)
-              Expect.isTrue stored.Tombstoned "the re-add did not resurrect the pruned payload"
+              Expect.equal
+                  (sink.Skeleton "s" |> Async.RunSynchronously |> List.map _.Hash)
+                  [ a.Hash ]
+                  "a is still exactly one skeleton node"
           }
 
-          test "SqliteDagSink: an identical re-add AFTER tombstoning is still a duplicate" {
+          test "SqliteDagSink: an identical re-add AFTER pruning is still a duplicate" {
               use db = TempDb.create "dag-write"
               let path = db.Path
 
@@ -308,22 +326,24 @@ let tests =
               add sink g
               add sink a
 
-              Expect.isTrue (sink.Tombstone("s", a.Hash) |> Async.RunSynchronously) "a is tombstoned"
+              Expect.isTrue (sink.Tombstone("s", a.Hash) |> Async.RunSynchronously) "a is pruned"
 
               add sink a
 
-              let records = sink.Records "s" |> Async.RunSynchronously
-              Expect.equal records.Length 2 "still exactly two rows — the re-add did not append a copy"
+              Expect.equal
+                  (sink.Records "s" |> Async.RunSynchronously |> List.map _.Hash)
+                  [ g.Hash ]
+                  "the re-add did not resurrect the pruned payload"
 
-              let stored = records |> List.find (fun r -> r.Hash = a.Hash)
-              Expect.isTrue stored.Tombstoned "the re-add did not resurrect the pruned payload"
+              Expect.equal
+                  (sink.Skeleton "s" |> Async.RunSynchronously |> List.map _.Hash)
+                  [ a.Hash ]
+                  "a is still exactly one skeleton row"
           }
 
-          test "a tombstoned MERGE node keeps its outcome hash, so its re-add resolves too" {
-              // The instance that made the lost `outcome_hash` visible: a merge
-              // node's outcome hash is the only field distinguishing it from a
-              // pruned ordinary node, and clearing it bought no retention — it is
-              // a 64-hex address, not payload.
+          test "a pruned MERGE node's re-add resolves too" {
+              // A merge node is an ordinary node (Phase 2645): pruned, its address and
+              // both parent links stay in the skeleton, so its re-add is the duplicate it is.
               let sink = InMemoryDagSink.create<TestMsg> ()
               let initial = buildDashboard ()
               let a = stepRecord "s" None brand 1L
@@ -335,34 +355,29 @@ let tests =
 
               let mergeRecord =
                   match
-                      DagMerge.merge recordAuthor sink "s" initial branchA.Hash branchB.Hash (timestamp 9L)
+                      DagMerge.merge sink "s" initial branchA.Hash branchB.Hash (timestamp 9L)
                       |> Async.RunSynchronously
                   with
                   | MergeResult.Merged(record, _) -> record
                   | other -> failtestf "expected Merged, got %A" other
 
               add sink mergeRecord
-              Expect.isSome mergeRecord.OutcomeHash "the merge node carries an outcome hash"
 
-              Expect.isTrue
-                  (sink.Tombstone("s", mergeRecord.Hash) |> Async.RunSynchronously)
-                  "the merge node is tombstoned"
+              Expect.isTrue (sink.Tombstone("s", mergeRecord.Hash) |> Async.RunSynchronously) "the merge node is pruned"
 
-              let pruned =
-                  sink.Records "s"
-                  |> Async.RunSynchronously
-                  |> List.find (fun r -> r.Hash = mergeRecord.Hash)
+              Expect.equal
+                  (sink.Skeleton "s"
+                   |> Async.RunSynchronously
+                   |> List.map (fun n -> n.Hash, n.Parents))
+                  [ mergeRecord.Hash, mergeRecord.Parents ]
+                  "the merge node's address and both parent links survived the sweep"
 
-              Expect.equal pruned.OutcomeHash mergeRecord.OutcomeHash "the outcome hash survived the sweep"
-              Expect.isTrue pruned.Tombstoned "…and the payload did not"
-
-              // …which is what lets the re-add resolve as the duplicate it is.
               add sink mergeRecord
 
               Expect.equal
                   (sink.Records "s" |> Async.RunSynchronously |> List.length)
-                  4
-                  "a + branchA + branchB + merge — no second copy"
+                  3
+                  "a + branchA + branchB — the re-add neither resurrected the payload nor copied it"
           }
 
           // ── 4. The transaction MODE (deferred vs immediate) ──────────────
@@ -411,10 +426,10 @@ let tests =
               use insert = ext.CreateCommand()
 
               insert.CommandText <-
-                  """INSERT INTO dag_op_record
-    (stream_id, hash, parents_json, op_json, outcome_hash, prompt_id, user_id, timestamp, result_envelope_json, tombstoned)
+                  """INSERT INTO dag_node
+    (stream_id, hash, parents_json, op_json, prompt_id, actor_json, timestamp, result_envelope_json)
 VALUES
-    (@s, @h, @parents, @op, NULL, NULL, @user, @ts, @env, 0);"""
+    (@s, @h, @parents, @op, NULL, @user, @ts, @env);"""
 
               insert.Parameters.AddWithValue("@s", a.StreamId) |> ignore
               insert.Parameters.AddWithValue("@h", a.Hash) |> ignore
@@ -462,17 +477,7 @@ VALUES
               let poisoned =
                   OpResultEnvelope.Failure("APPLY_FAILED", "the \"Success\" branch was not taken")
 
-              let record: DagOpRecord<obj> =
-                  { StreamId = "s"
-                    Hash = "h1"
-                    Parents = []
-                    Op = TreeOp.RemoveNode(NodeId "right")
-                    OutcomeHash = None
-                    PromptId = None
-                    Actor = Actor.Human "tester"
-                    Timestamp = timestamp 1L
-                    ResultEnvelope = poisoned
-                    Tombstoned = false }
+              let record = wireRecord poisoned
 
               match DagWire.decodeRecord canonicalDecodeOp (DagWire.encodeRecord CanonicalJson.encodeOp record) with
               | Ok decoded -> Expect.equal decoded.ResultEnvelope poisoned "the failure round-trips as a FAILURE"
@@ -480,17 +485,7 @@ VALUES
           }
 
           test "DagWire REFUSES an envelope whose $type it does not recognise" {
-              let record: DagOpRecord<obj> =
-                  { StreamId = "s"
-                    Hash = "h1"
-                    Parents = []
-                    Op = TreeOp.RemoveNode(NodeId "right")
-                    OutcomeHash = None
-                    PromptId = None
-                    Actor = Actor.Human "tester"
-                    Timestamp = timestamp 1L
-                    ResultEnvelope = OpResultEnvelope.Success
-                    Tombstoned = false }
+              let record = wireRecord OpResultEnvelope.Success
 
               let encoded =
                   (DagWire.encodeRecord CanonicalJson.encodeOp record)
@@ -523,16 +518,7 @@ VALUES
                       Attribution = attribution }
 
               let outcome =
-                  DagMerge.mergeGatedWith
-                      recordAuthor
-                      sink
-                      "s"
-                      initial
-                      branchA.Hash
-                      branchB.Hash
-                      (timestamp 9L)
-                      MergePolicy.lenient
-                      context
+                  DagMerge.mergeWith context sink "s" initial branchA.Hash branchB.Hash (timestamp 9L)
                   |> Async.RunSynchronously
 
               match outcome.Result with
@@ -546,7 +532,7 @@ VALUES
                   // recording it beside the record.
                   let anonymous =
                       match
-                          DagMerge.merge recordAuthor sink "s" initial branchA.Hash branchB.Hash (timestamp 9L)
+                          DagMerge.merge sink "s" initial branchA.Hash branchB.Hash (timestamp 9L)
                           |> Async.RunSynchronously
                       with
                       | MergeResult.Merged(r, _) -> r
@@ -563,13 +549,13 @@ VALUES
               | other -> failtestf "expected Merged, got %A" other
           }
 
-          // ── 7. The trunk-merge conflict envelope ─────────────────────────
+          // ── 7. The trunk-merge refusal ───────────────────────────────────
 
-          test "mergeIntoTrunkWith hands back the conflict envelope a refusal built" {
+          test "mergeIntoTrunkWith hands back the refusal the policy built" {
               // `mergeIntoTrunk` answers `string option`, so a refusal, a missing
               // base, a replay failure and an exhausted retry budget all arrive as
-              // `None` — and the conflict envelopes, already built, were dropped
-              // one line before the caller could act on them.
+              // `None` — and the refusal, already built, was dropped one line
+              // before the caller could act on it.
               let sink = InMemoryDagSink.create<TestMsg> ()
               let initial = buildDashboard ()
 
@@ -590,39 +576,30 @@ VALUES
               Expect.isTrue (sink.TryAdvanceHead("s", None, trunk.Hash) |> Async.RunSynchronously) "trunk head set"
 
               let outcome =
-                  DagMerge.mergeIntoTrunkWith
-                      recordAuthor
-                      sink
-                      "s"
-                      initial
-                      branch.Hash
-                      (timestamp 9L)
-                      3
-                      MergeContext.defaults
+                  DagMerge.mergeIntoTrunkWith MergeContext.defaults sink "s" initial branch.Hash (timestamp 9L) 3
                   |> Async.RunSynchronously
 
               match outcome with
-              | TrunkMergeOutcome.Conflicted contended ->
-                  Expect.isNonEmpty contended "the refusal names its contended cells"
+              | TrunkMergeOutcome.Refused(ReconcileFault.Refused refusals) ->
+                  Expect.isNonEmpty refusals "the refusal names its contended pairs"
 
-                  let leftTone =
-                      contended |> List.tryFind (fun c -> c.NodeId = "left" && c.Facet = "style.tone")
-
-                  Expect.isSome leftTone "the contended (left, style.tone) cell is reported"
-              | other -> failtestf "expected Conflicted, got %A" other
+                  Expect.isTrue
+                      (refusals |> List.exists (fun r -> r.Conflict.Address = "left"))
+                      "the contended left pane is reported"
+              | other -> failtestf "expected Refused, got %A" other
 
               // The lossy face is unchanged — existing callers still see `None`.
               Expect.isNone
-                  (DagMerge.mergeIntoTrunk recordAuthor sink "s" initial branch.Hash (timestamp 9L) 3
+                  (DagMerge.mergeIntoTrunk sink "s" initial branch.Hash (timestamp 9L) 3
                    |> Async.RunSynchronously)
-                  "the pre-1525 projection still answers None"
+                  "the lossy projection still answers None"
           }
 
           // ── 8. Checkpoint-bounded merge replay ───────────────────────────
 
           test "a merge replayed FROM a checkpoint reaches the same tree as one replayed from genesis" {
               // The checkpoint is an optimisation, so the property that matters is
-              // that it changes nothing: same merged tree, same outcome hash. A
+              // that it changes nothing: same merged tree, same merge node. A
               // checkpoint that does not bound a head falls back to a full replay,
               // which this fixture also exercises — the checkpoint is taken on the
               // shared base, so it bounds both branch heads but the base replay
@@ -636,20 +613,15 @@ VALUES
               add sink branchA
               add sink branchB
 
-              let baseTree = initial |> applyOk a.Op
-              let checkpoint = DagCheckpoint.create "s" a.Hash baseTree
+              let dag = sink.Records "s" |> Async.RunSynchronously |> DagOpRecord.toDag
+
+              let checkpoint =
+                  match DagFold.checkpointAt initial dag a.Hash with
+                  | Ok cp -> cp
+                  | Error e -> failtestf "checkpointAt failed: %A" e
 
               let mergeWith context =
-                  DagMerge.mergeGatedWith
-                      recordAuthor
-                      sink
-                      "s"
-                      initial
-                      branchA.Hash
-                      branchB.Hash
-                      (timestamp 9L)
-                      MergePolicy.lenient
-                      context
+                  DagMerge.mergeWith context sink "s" initial branchA.Hash branchB.Hash (timestamp 9L)
                   |> Async.RunSynchronously
 
               let fromGenesis = mergeWith MergeContext.defaults
@@ -666,10 +638,10 @@ VALUES
               | a, b -> failtestf "expected both Merged, got %A and %A" a b
           }
 
-          test "a merge REFUSES a checkpoint whose snapshot fails its own position-bound hash" {
+          test "a merge REFUSES a checkpoint whose state fails its own position-bound seal" {
               // The one case that must NOT fall back to a full replay. A
               // checkpoint that does not bound a head is an optimisation missing
-              // its target; a checkpoint whose snapshot does not hash to its
+              // its target; a checkpoint whose state does not seal to its
               // claimed position is tamper evidence, and replaying around it would
               // discard the only signal the check exists to raise.
               let sink = InMemoryDagSink.create<TestMsg> ()
@@ -681,30 +653,32 @@ VALUES
               add sink branchA
               add sink branchB
 
-              let honest = DagCheckpoint.create "s" a.Hash (initial |> applyOk a.Op)
+              let dag = sink.Records "s" |> Async.RunSynchronously |> DagOpRecord.toDag
 
-              // A genuine snapshot of a DIFFERENT tree, presented under the honest
-              // checkpoint's stored hash.
+              let honest =
+                  match DagFold.checkpointAt initial dag a.Hash with
+                  | Ok cp -> cp
+                  | Error e -> failtestf "checkpointAt failed: %A" e
+
+              // A genuine tree of a DIFFERENT state, presented under the honest
+              // checkpoint's seal.
               let tampered =
                   { honest with
-                      Snapshot = initial |> applyOk branchA.Op }
+                      State = initial |> applyOk branchA.Op }
 
               let outcome =
-                  DagMerge.mergeGatedWith
-                      recordAuthor
+                  DagMerge.mergeWith
+                      { MergeContext.defaults<TestMsg> with
+                          Checkpoint = Some tampered }
                       sink
                       "s"
                       initial
                       branchA.Hash
                       branchB.Hash
                       (timestamp 9L)
-                      MergePolicy.lenient
-                      { MergeContext.defaults<TestMsg> with
-                          Checkpoint = Some tampered }
                   |> Async.RunSynchronously
 
               match outcome.Result with
-              | MergeResult.ReplayFailed(DagReplayError.SnapshotHashMismatch(atHash, _, _)) ->
-                  Expect.equal atHash a.Hash "the refusal names the checkpoint's claimed position"
-              | other -> failtestf "expected ReplayFailed (SnapshotHashMismatch), got %A" other
+              | MergeResult.ReplayFailed(MergeReplayFault.Checkpoint(Fuaran.Core.Dag.CheckpointBreak.Seal _)) -> ()
+              | other -> failtestf "expected ReplayFailed (Checkpoint Seal), got %A" other
           } ]

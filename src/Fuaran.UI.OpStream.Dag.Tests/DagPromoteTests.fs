@@ -105,10 +105,10 @@ let private withoutBatch (inner: IDagOpStreamSink<TestMsg>) : IDagOpStreamSink<T
         member _.TryAdvanceHead(s, e, n) = inner.TryAdvanceHead(s, e, n)
         member _.Parents(s, h) = inner.Parents(s, h)
         member _.Reachable(s, h) = inner.Reachable(s, h)
-        member _.Lca(s, a, b) = inner.Lca(s, a, b)
         member _.Heads s = inner.Heads s
         member _.Records s = inner.Records s
         member _.Tombstone(s, h) = inner.Tombstone(s, h)
+        member _.Skeleton s = inner.Skeleton s
         member _.Streams() = inner.Streams() }
 
 /// The batch sink, except that once its `AddAll` has written, ANOTHER writer
@@ -132,10 +132,10 @@ let private racedBy (rival: DagOpRecord<TestMsg>) (inner: IDagOpStreamBatchSink<
         member _.TryAdvanceHead(s, e, n) = inner.TryAdvanceHead(s, e, n)
         member _.Parents(s, h) = inner.Parents(s, h)
         member _.Reachable(s, h) = inner.Reachable(s, h)
-        member _.Lca(s, a, b) = inner.Lca(s, a, b)
         member _.Heads s = inner.Heads s
         member _.Records s = inner.Records s
         member _.Tombstone(s, h) = inner.Tombstone(s, h)
+        member _.Skeleton s = inner.Skeleton s
         member _.Streams() = inner.Streams() }
 
 /// A genesis record in stream `s` that is not part of the promoted branch.
@@ -216,7 +216,13 @@ let tests =
 
                     let forged =
                         match branch.Records with
-                        | [ a; b; c ] -> [ a; { b with Op = brand }; c ]
+                        | [ a; b; c ] ->
+                            [ a
+                              { b with
+                                  Node =
+                                      { b.Node with
+                                          Op = { b.Entry with Op = brand } } }
+                              c ]
                         | _ -> failtest "three records"
 
                     Expect.throws (fun () -> (batchOf sink).AddAll forged |> run) "the forged record refuses the batch"

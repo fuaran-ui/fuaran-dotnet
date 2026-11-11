@@ -16,7 +16,7 @@ open Fuaran.UI.OpStream.TestSupport
 //  forward-compat (task 6).
 //
 //  Fixture: a linear-ish DAG  g ── a ── b ── c  plus a side branch  a ── d
-//  off `a`. `getParents` reads the sink's record map.
+//  off `a`. Reachability and checkpoints are Core's, over the sink's records.
 // ============================================================================
 
 let private brand =
@@ -50,37 +50,75 @@ let private fixture () =
     add sink d
     sink, g, a, b, c, d
 
-/// Parent lookup over the sink's records (synchronous).
-let private getParentsOf (sink: IDagOpStreamSink<TestMsg>) : string -> string list =
-    let recs = sink.Records "s" |> Async.RunSynchronously
-    let m = recs |> List.map (fun r -> r.Hash, r.Parents) |> Map.ofList
-    fun h -> Map.tryFind h m |> Option.defaultValue []
+/// Core's DAG over the sink's live records (synchronous).
+let private dagOf (sink: IDagOpStreamSink<TestMsg>) : Fuaran.Core.Dag.T<StreamEntry<TestMsg>> =
+    sink.Records "s" |> Async.RunSynchronously |> DagOpRecord.toDag
+
+let private okOr (what: string) (r: Result<'T, 'E>) : 'T =
+    match r with
+    | Ok v -> v
+    | Error e -> failtestf "%s failed: %A" what e
 
 [<Tests>]
 let tests =
     testList
         "Dag.Retention"
-        [ test "tombstoning a non-root node leaves the chain verifiable" {
-              let sink, _, _, b, _, _ = fixture ()
+        [ test "pruning a leaf moves it to the skeleton and leaves the live set verifiable" {
+              let sink, _, a, _, _, d = fixture ()
 
-              // Tombstone `b` (an interior node). Its hash + parents survive, its
-              // payload is dropped.
-              Expect.isTrue (sink.Tombstone("s", b.Hash) |> Async.RunSynchronously) "tombstoned"
+              // Prune `d` (a side-branch tip). Its address + parents survive in the
+              // skeleton; its payload leaves the live set.
+              Expect.isTrue (sink.Tombstone("s", d.Hash) |> Async.RunSynchronously) "pruned"
 
               let recs = sink.Records "s" |> Async.RunSynchronously
-              let tombstoned = recs |> List.find (fun r -> r.Hash = b.Hash)
-              Expect.isTrue tombstoned.Tombstoned "b is marked tombstoned"
+              Expect.isFalse (recs |> List.exists (fun r -> r.Hash = d.Hash)) "d left the live records"
+
+              let skeleton = sink.Skeleton "s" |> Async.RunSynchronously
+
+              Expect.equal
+                  (skeleton |> List.map (fun n -> n.Hash, n.Parents))
+                  [ d.Hash, [ a.Hash ] ]
+                  "d is in the skeleton"
+
+              Expect.equal
+                  (sink.Parents("s", d.Hash) |> Async.RunSynchronously)
+                  [ a.Hash ]
+                  "Parents still answers for a pruned node"
 
               match DagVerify.records recs with
               | Ok() -> ()
-              | Error e -> failtestf "chain must still verify after tombstone: %A" e
+              | Error e -> failtestf "chain must still verify after pruning: %A" e
+          }
+
+          test "compaction: pruning the history behind a checkpoint keeps the live tail readable and replayable" {
+              let sink, g, a, b, c, _ = fixture ()
+
+              // A checkpoint at b, the history behind it pruned (Core's compaction keeps b).
+              let cp =
+                  DagFold.checkpointAt (buildDashboard ()) (dagOf sink) b.Hash
+                  |> okOr "checkpoint"
+
+              for h in [ g.Hash; a.Hash ] do
+                  Expect.isTrue (sink.Tombstone("s", h) |> Async.RunSynchronously) "pruned behind the checkpoint"
+
+              // Verify-on-read resolves b's pruned parent against the skeleton.
+              let live = sink.Records "s" |> Async.RunSynchronously
+              Expect.isFalse (live |> List.exists (fun r -> r.Hash = a.Hash)) "a left the live set"
+
+              let expected =
+                  DagFold.replayTo (buildDashboard ()) (DagOpRecord.toDag [ g; a; b; c ]) c.Hash
+                  |> okOr "full replay"
+
+              let fromCheckpoint =
+                  DagFold.replayFrom cp (DagOpRecord.toDag live) c.Hash
+                  |> okOr "replay from the checkpoint"
+
+              Expect.equal (canonical fromCheckpoint) (canonical expected) "the tail replays from the checkpoint"
           }
 
           test "reachability: GC roots keep their ancestors live, others are prunable" {
-              let sink, g, a, b, c, d = fixture ()
-              let getParents = getParentsOf sink
-
-              let allHashes = sink.Records "s" |> Async.RunSynchronously |> List.map _.Hash
+              let sink, _, _, _, c, d = fixture ()
+              let dag = dagOf sink
 
               // Keep only head `c` as a root: g,a,b,c are live; d is prunable.
               let roots =
@@ -88,18 +126,18 @@ let tests =
                     Checkpoints = []
                     ResumeCoordinates = [] }
 
-              let prunable = DagRetention.prunable allHashes getParents roots
-              Expect.equal prunable (Set.ofList [ d.Hash ]) "only the side branch d is prunable"
+              let prunable =
+                  Fuaran.Core.Dag.prunable
+                      (Fuaran.Core.Dag.Reach.ofDag dag)
+                      (DagRetention.rootHashes roots |> Set.toList)
+                  |> okOr "prunable"
 
-              let live = DagRetention.liveSet getParents roots
-              Expect.equal live (Set.ofList [ g.Hash; a.Hash; b.Hash; c.Hash ]) "c's ancestor closure is live"
+              Expect.equal prunable [ d.Hash ] "only the side branch d is prunable"
           }
 
           test "a branch referenced by a live resume-coordinate is GC-protected" {
               let sink, _, _, _, c, d = fixture ()
-              let getParents = getParentsOf sink
-
-              let allHashes = sink.Records "s" |> Async.RunSynchronously |> List.map _.Hash
+              let dag = dagOf sink
 
               // Head is `c`; a permalink / resume-coordinate pins the side
               // branch tip `d`. With only head `c`, d would be prunable; the
@@ -109,110 +147,63 @@ let tests =
                     Checkpoints = []
                     ResumeCoordinates = [ ResumeCoordinate.DagNodeHash d.Hash ] }
 
-              Expect.isTrue (DagRetention.isProtected getParents roots d.Hash) "d protected by resume coordinate"
-              let prunable = DagRetention.prunable allHashes getParents roots
-              Expect.isFalse (prunable.Contains d.Hash) "d is not prunable"
+              let prunable =
+                  Fuaran.Core.Dag.prunable
+                      (Fuaran.Core.Dag.Reach.ofDag dag)
+                      (DagRetention.rootHashes roots |> Set.toList)
+                  |> okOr "prunable"
+
+              Expect.isEmpty prunable "d is not prunable, and nothing else is"
           }
 
           test "checkpoint-bounded replay folds only the tail past the checkpoint node" {
               let sink, _, a, _, c, _ = fixture ()
               let initial = buildDashboard ()
+              let dag = dagOf sink
 
-              let getRec =
-                  let recs = sink.Records "s" |> Async.RunSynchronously
-                  let m = recs |> List.map (fun r -> r.Hash, r) |> Map.ofList
-                  fun h -> Map.tryFind h m
+              let full = DagFold.replayTo initial dag c.Hash |> okOr "full replay"
+              let checkpoint = DagFold.checkpointAt initial dag a.Hash |> okOr "checkpointAt"
+              Expect.isOk (DagFold.verifyCheckpoint checkpoint dag) "an honest checkpoint verifies"
 
-              // Full replay of head `c`.
-              let full =
-                  match DagReplay.replay getRec initial c.Hash with
-                  | Ok t -> t
-                  | Error e -> failtestf "full replay failed: %A" e
-
-              // Checkpoint AT `a` (snapshot = tree after g,a).
-              let snapshotAtA =
-                  match DagReplay.replay getRec initial a.Hash with
-                  | Ok t -> t
-                  | Error e -> failtestf "snapshot replay failed: %A" e
-
-              let checkpoint = DagCheckpoint.create "s" a.Hash snapshotAtA
-
-              match DagReplay.replayFromCheckpoint getRec checkpoint c.Hash with
-              | Ok bounded ->
-                  Expect.equal (canonical bounded) (canonical full) "checkpoint-bounded replay == full replay"
-              | Error e -> failtestf "checkpoint replay failed: %A" e
+              let bounded = DagFold.replayFrom checkpoint dag c.Hash |> okOr "replayFrom"
+              Expect.equal (canonical bounded) (canonical full) "checkpoint-bounded replay == full replay"
           }
 
-          test "TAMPER: a checkpoint whose Snapshot was swapped is REFUSED, not replayed" {
-              let sink, g, a, _, c, _ = fixture ()
+          test "TAMPER: a checkpoint whose State was swapped is REFUSED, not replayed" {
+              let sink, g, a, _, _, _ = fixture ()
               let initial = buildDashboard ()
+              let dag = dagOf sink
 
-              let getRec =
-                  let recs = sink.Records "s" |> Async.RunSynchronously
-                  let m = recs |> List.map (fun r -> r.Hash, r) |> Map.ofList
-                  fun h -> Map.tryFind h m
-
-              let snapshotAtA =
-                  match DagReplay.replay getRec initial a.Hash with
-                  | Ok t -> t
-                  | Error e -> failtestf "snapshot replay failed: %A" e
+              let honest = DagFold.checkpointAt initial dag a.Hash |> okOr "checkpointAt"
 
               // A DIFFERENT tree (the state at `g`, one op earlier) is substituted
-              // for the snapshot while the checkpoint keeps the honest
-              // `SnapshotHash` of the tree it claims to hold. Nothing about the
-              // record is internally consistent any more — and replaying from it
-              // silently yields a tree that never existed at `a`.
-              let forged =
-                  match DagReplay.replay getRec initial g.Hash with
-                  | Ok t -> t
-                  | Error e -> failtestf "forged-snapshot replay failed: %A" e
+              // for the state while the checkpoint keeps the honest seal.
+              let forged = DagFold.replayTo initial dag g.Hash |> okOr "forged replay"
 
-              Expect.notEqual
-                  (canonical forged)
-                  (canonical snapshotAtA)
-                  "the forged snapshot really is a different tree"
+              Expect.notEqual (canonical forged) (canonical honest.State) "the forged state really is a different tree"
 
-              let tampered =
-                  { StreamId = "s"
-                    AtHash = a.Hash
-                    Snapshot = forged
-                    SnapshotHash = DagCheckpoint.snapshotHash a.Hash (canonical snapshotAtA) }
+              let tampered = { honest with State = forged }
 
-              match DagReplay.replayFromCheckpoint getRec tampered c.Hash with
-              | Ok _ ->
-                  failtest "replayFromCheckpoint TRUSTED a tampered snapshot — the SnapshotHash was never verified"
-              | Error(DagReplayError.SnapshotHashMismatch(atHash, expected, actual)) ->
-                  Expect.equal atHash a.Hash "the refusal names the checkpoint node"
-                  Expect.notEqual expected actual "the stored and recomputed hashes differ"
-              | Error e -> failtestf "expected SnapshotHashMismatch, got %A" e
+              match DagFold.verifyCheckpoint tampered dag with
+              | Error(Fuaran.Core.Dag.CheckpointBreak.Seal(expected, got)) ->
+                  Expect.notEqual expected got "the stored and recomputed seals differ"
+              | other -> failtestf "expected a Seal break, got %A" other
           }
 
-          test "TAMPER: a genuine snapshot replayed at a DIFFERENT DAG node is REFUSED" {
-              // Cross-position substitution — the A2 hole on the DAG side. The
-              // snapshot and its hash are both genuine; only the `AtHash` moved.
-              // A tree-only hash cannot see this; a position-bound one must.
-              let sink, _, a, b, c, _ = fixture ()
+          test "TAMPER: a genuine checkpoint moved to a DIFFERENT DAG node is REFUSED" {
+              // Cross-position substitution: the state and seal are both genuine;
+              // only the `Node` moved. The seal binds the node, so it must fail.
+              let sink, _, a, b, _, _ = fixture ()
               let initial = buildDashboard ()
-
-              let getRec =
-                  let recs = sink.Records "s" |> Async.RunSynchronously
-                  let m = recs |> List.map (fun r -> r.Hash, r) |> Map.ofList
-                  fun h -> Map.tryFind h m
-
-              let genuineAtA =
-                  match DagReplay.replay getRec initial a.Hash with
-                  | Ok t -> t
-                  | Error e -> failtestf "snapshot replay failed: %A" e
+              let dag = dagOf sink
 
               let moved =
-                  { DagCheckpoint.create "s" a.Hash genuineAtA with
-                      AtHash = b.Hash }
+                  { (DagFold.checkpointAt initial dag a.Hash |> okOr "checkpointAt") with
+                      Node = b.Hash }
 
-              match DagReplay.replayFromCheckpoint getRec moved c.Hash with
-              | Ok _ -> failtest "replayFromCheckpoint accepted a snapshot at a position it does not hold"
-              | Error(DagReplayError.SnapshotHashMismatch(atHash, _, _)) ->
-                  Expect.equal atHash b.Hash "the refusal names the claimed position"
-              | Error e -> failtestf "expected SnapshotHashMismatch, got %A" e
+              match DagFold.verifyCheckpoint moved dag with
+              | Error(Fuaran.Core.Dag.CheckpointBreak.Seal _) -> ()
+              | other -> failtestf "expected a Seal break, got %A" other
           }
 
           test "resume coordinate is linear↔DAG forward-compatible behind one envelope shape" {
@@ -244,9 +235,7 @@ let tests =
 
           test "policy: rejected content is GC-eligible only after the grace window elapses" {
               let sink, _, a, _, c, d = fixture ()
-              let getParents = getParentsOf sink
-
-              let allHashes = sink.Records "s" |> Async.RunSynchronously |> List.map _.Hash
+              let dag = dagOf sink
 
               let roots =
                   { Heads = [ c.Hash ]
@@ -264,22 +253,22 @@ let tests =
 
               // 30s after rejection — still inside grace, NOT eligible.
               let early =
-                  DagRetentionPolicy.contentGcEligible policy (timestamp 130L) rejections allHashes getParents roots
+                  DagRetentionPolicy.contentGcEligible policy (timestamp 130L) rejections dag roots
+                  |> okOr "contentGcEligible"
 
               Expect.isFalse (early.Contains d.Hash) "within grace ⇒ content held live"
 
               // 90s after rejection — past grace, eligible.
               let late =
-                  DagRetentionPolicy.contentGcEligible policy (timestamp 190L) rejections allHashes getParents roots
+                  DagRetentionPolicy.contentGcEligible policy (timestamp 190L) rejections dag roots
+                  |> okOr "contentGcEligible"
 
               Expect.equal late (Set.ofList [ d.Hash ]) "past grace ⇒ content GC-eligible"
           }
 
           test "policy: auto-pin protects content from GC regardless of reachability or grace" {
               let sink, _, a, _, c, d = fixture ()
-              let getParents = getParentsOf sink
-
-              let allHashes = sink.Records "s" |> Async.RunSynchronously |> List.map _.Hash
+              let dag = dagOf sink
 
               let roots =
                   { Heads = [ c.Hash ]
@@ -298,16 +287,15 @@ let tests =
                       AutoPin = (fun h -> h = d.Hash) }
 
               let eligible =
-                  DagRetentionPolicy.contentGcEligible policy (timestamp 9_999L) rejections allHashes getParents roots
+                  DagRetentionPolicy.contentGcEligible policy (timestamp 9_999L) rejections dag roots
+                  |> okOr "contentGcEligible"
 
               Expect.isFalse (eligible.Contains d.Hash) "auto-pinned content is never GC-eligible"
           }
 
           test "policy: the purge trigger gates whether eligible content is swept this pass" {
               let sink, _, a, _, c, d = fixture ()
-              let getParents = getParentsOf sink
-
-              let allHashes = sink.Records "s" |> Async.RunSynchronously |> List.map _.Hash
+              let dag = dagOf sink
 
               let roots =
                   { Heads = [ c.Hash ]
@@ -326,24 +314,20 @@ let tests =
                       PurgeWhen = (fun s -> Set.count s >= 2) }
 
               Expect.isEmpty
-                  (DagRetentionPolicy.purgeBatch deferred (timestamp 200L) rejections allHashes getParents roots)
+                  (DagRetentionPolicy.purgeBatch deferred (timestamp 200L) rejections dag roots
+                   |> okOr "purgeBatch")
                   "below the purge threshold ⇒ candidates wait for a later sweep"
 
               // The default immediate trigger sweeps the single eligible record.
               Expect.equal
-                  (DagRetentionPolicy.purgeBatch
-                      RetentionPolicy.immediate
-                      (timestamp 200L)
-                      rejections
-                      allHashes
-                      getParents
-                      roots)
+                  (DagRetentionPolicy.purgeBatch RetentionPolicy.immediate (timestamp 200L) rejections dag roots
+                   |> okOr "purgeBatch")
                   (Set.ofList [ d.Hash ])
                   "immediate trigger sweeps the eligible content"
           }
 
           test
-              "decision/content split: tombstoning the content keeps the chain verifiable; the decision is a separate permanent record" {
+              "decision/content split: pruning the content keeps the chain verifiable; the decision is a separate permanent record" {
               let sink, _, a, _, _, d = fixture ()
 
               // The permanent DECISION half — a host-persisted side-record.
@@ -364,8 +348,14 @@ let tests =
 
               // The decision outlives the content: it still names the proposal +
               // reason though the node payload is gone.
-              let tombstoned = recs |> List.find (fun r -> r.Hash = d.Hash)
-              Expect.isTrue tombstoned.Tombstoned "content payload dropped"
+              Expect.isFalse (recs |> List.exists (fun r -> r.Hash = d.Hash)) "content payload dropped"
+
+              Expect.isTrue
+                  (sink.Skeleton "s"
+                   |> Async.RunSynchronously
+                   |> List.exists (fun n -> n.Hash = d.Hash))
+                  "the node's address survives in the skeleton"
+
               Expect.equal decision.ProposalHash d.Hash "decision still points at the (now content-less) proposal node"
               Expect.equal decision.Reason "human rejected the AI restyle" "decision reason preserved permanently"
           } ]

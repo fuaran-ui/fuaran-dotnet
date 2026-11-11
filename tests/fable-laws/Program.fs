@@ -179,10 +179,10 @@ let main _ =
                 member _.TryAdvanceHead(_, _, _) = notCalled ()
                 member _.Parents(_, _) = notCalled ()
                 member _.Reachable(_, _) = notCalled ()
-                member _.Lca(_, _, _) = notCalled ()
                 member _.Heads _ = notCalled ()
                 member _.Records _ = notCalled ()
                 member _.Tombstone(_, _) = notCalled ()
+                member _.Skeleton _ = notCalled ()
                 member _.Streams() = notCalled () }
 
         let capable =
@@ -194,10 +194,10 @@ let main _ =
                 member _.TryAdvanceHead(_, _, _) = notCalled ()
                 member _.Parents(_, _) = notCalled ()
                 member _.Reachable(_, _) = notCalled ()
-                member _.Lca(_, _, _) = notCalled ()
                 member _.Heads _ = notCalled ()
                 member _.Records _ = notCalled ()
                 member _.Tombstone(_, _) = notCalled ()
+                member _.Skeleton _ = notCalled ()
                 member _.Streams() = notCalled () }
 
         let probe (sink: Fuaran.UI.OpStream.Dag.Abstractions.IDagOpStreamSink<unit>) =

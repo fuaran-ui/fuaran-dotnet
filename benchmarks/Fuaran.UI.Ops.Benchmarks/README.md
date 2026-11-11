@@ -124,9 +124,9 @@ dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- merge-sna
 
 `merge-rate` (Phase 2062) prints what a DAG merge costs against the length of the history
 its two branches share: two ten-record branches over a trunk of n records, through the
-LCA alone, the sink entry point, the sink entry point with a checkpoint at the fork, and
-`DagMerge.mergeLookups` over records loaded once. `merge-snapshot` writes one line per
-merge and per LCA over seeded random DAG histories (criss-cross, conflicting, trunk and
+merge base alone (Core's `Dag.mergeBase`), the sink entry point, the sink entry point with a
+Core checkpoint at the fork, and `DagMerge.mergeDag` over the DAG loaded once. `merge-snapshot`
+writes one line per merge and per merge base over seeded random DAG histories (criss-cross, conflicting, trunk and
 guest cases included), so a change to the merge engine is diffed against the engine it
 replaced.
 

@@ -114,7 +114,11 @@ let tests =
               let x = records |> List.find (fun r -> r.Hash = c.BranchA.Hash)
               let y = records |> List.find (fun r -> r.Hash = c.BranchB.Hash)
 
-              let cyclic = [ { x with Parents = [ y.Hash ] }; { y with Parents = [ x.Hash ] } ]
+              let cyclic =
+                  [ { x with
+                        Node = { x.Node with Parents = [ y.Hash ] } }
+                    { y with
+                        Node = { y.Node with Parents = [ x.Hash ] } } ]
 
               match DagGraphModel.tryBuild "s" cyclic with
               | Ok graph -> failtestf "expected a cycle report, built a graph with %d nodes" graph.Nodes.Length
@@ -137,7 +141,11 @@ let tests =
               let x = records |> List.find (fun r -> r.Hash = c.BranchA.Hash)
               let y = records |> List.find (fun r -> r.Hash = c.BranchB.Hash)
 
-              let cyclic = [ { x with Parents = [ y.Hash ] }; { y with Parents = [ x.Hash ] } ]
+              let cyclic =
+                  [ { x with
+                        Node = { x.Node with Parents = [ y.Hash ] } }
+                    { y with
+                        Node = { y.Node with Parents = [ x.Hash ] } } ]
 
               let message =
                   try
@@ -164,8 +172,10 @@ let tests =
 
               let cyclic =
                   [ genesis
-                    { x with Parents = [ y.Hash ] }
-                    { y with Parents = [ x.Hash ] }
+                    { x with
+                        Node = { x.Node with Parents = [ y.Hash ] } }
+                    { y with
+                        Node = { y.Node with Parents = [ x.Hash ] } }
                     downstream ] // parents [branchA; branchB] — both in the cycle
 
               match DagGraphModel.tryBuild "s" cyclic with
@@ -192,8 +202,10 @@ let tests =
               let chain =
                   [ for i in 0..4999 ->
                         { seed with
-                            Hash = sprintf "n%04d" i
-                            Parents = (if i = 0 then [] else [ sprintf "n%04d" (i - 1) ]) } ]
+                            Node =
+                                { seed.Node with
+                                    Id = sprintf "n%04d" i
+                                    Parents = (if i = 0 then [] else [ sprintf "n%04d" (i - 1) ]) } } ]
 
               let g = DagGraphModel.build "deep" chain
               Expect.equal g.Nodes.Length 5000 "every node placed"

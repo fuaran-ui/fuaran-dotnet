@@ -22,11 +22,20 @@ namespace Fuaran.UI.OpStream.Dag.Abstractions
 //  DAG behaviour is structurally unreachable from the linear sink — a consumer
 //  that never references the DAG packages pays nothing (the rung-4 contract).
 //
-//  Topology queries (`Parents` / `Reachable` / `Lca`) are exposed on the sink
-//  and delegate to the pure `DagTopology` algorithms over the sink's own
-//  parent lookup, so a Sqlite sink can override them with a recursive-CTE
-//  implementation without changing the contract.
+//  Topology is Core's (Phase 2645): `Reachable` is `Dag.ancestorsOf` over the
+//  stream's nodes, and a merge base is `Dag.mergeBase` (the sink no longer
+//  answers an LCA of its own). A pruned node leaves the live set for the
+//  stream's SKELETON — its address and parent links, no payload — so `Records`
+//  returns whole nodes only and Core verifies, replays and checkpoints them.
 // ============================================================================
+
+/// A pruned node as the sink keeps it beside the live set: its address and its
+/// parent links, the payload withdrawn (Phase 2645). The skeleton lets a reader
+/// still name the node and the edges it stood on; it is never replayed.
+type DagSkeletonNode =
+    { StreamId: string
+      Hash: string
+      Parents: string list }
 
 /// The durable DAG sink contract. All methods are `Async`; concrete sinks
 /// implement either truly asynchronously (Sqlite I/O) or synchronously inside
@@ -59,26 +68,27 @@ type IDagOpStreamSink<'Msg> =
     /// Ancestor closure of `hash` (inclusive of `hash` itself).
     abstract member Reachable: streamId: string * hash: string -> Async<Set<string>>
 
-    /// Lowest-common-ancestor of two hashes in `streamId` (see `LcaResult`).
-    abstract member Lca: streamId: string * a: string * b: string -> Async<LcaResult>
 
     /// Leaf nodes of `streamId` — records that are no parent's parent. These
     /// are the live branch tips (GC roots together with the trunk head,
     /// checkpoints, and resume coordinates).
     abstract member Heads: streamId: string -> Async<string list>
 
-    /// All records held for `streamId`, order unspecified. Used by retention
-    /// (reachability GC) and integrity verification.
+    /// All LIVE records held for `streamId`, order unspecified — whole nodes,
+    /// never a pruned one. Used by replay, retention and integrity verification.
     abstract member Records: streamId: string -> Async<DagOpRecord<'Msg> list>
 
-    /// Tombstone the record at `hash`: drop its op payload (reset to a
-    /// placeholder) while PRESERVING its hash + parent links, so the chain
-    /// still verifies (`DagVerify` accepts a tombstoned node's stored hash).
-    /// Returns `true` if a record was tombstoned, `false` if absent. A
-    /// reachability-GC root (a live head / checkpoint / resume coordinate)
-    /// MUST NOT be tombstoned — that policy is the caller's (retention is a
-    /// mechanism, not a policy).
+    /// Prune the record at `hash`: withdraw it from the live set and keep its
+    /// address and parents in the stream's skeleton. Returns `true` if a live
+    /// record was pruned, `false` if it is absent or already pruned. Which
+    /// records to prune is the caller's policy: what no retained root needs
+    /// (Core's `Dag.prunable`), or the history behind a checkpoint (compaction,
+    /// Core's `Dag.compactAt`) — a live node whose ancestors are pruned replays
+    /// only from a checkpoint at or above them (`DagFold.replayFrom`), and the
+    /// read path resolves its pruned parents against the skeleton.
     abstract member Tombstone: streamId: string * hash: string -> Async<bool>
+    /// The pruned nodes of `streamId`, order unspecified.
+    abstract member Skeleton: streamId: string -> Async<DagSkeletonNode list>
 
     /// Distinct stream ids the sink currently holds records for. Order
     /// unspecified.

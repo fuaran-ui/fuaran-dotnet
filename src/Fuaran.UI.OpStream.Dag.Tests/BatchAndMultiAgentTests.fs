@@ -210,11 +210,11 @@ let tests =
 
               // Both reconcile into the trunk; the second rebases onto the first.
               let h1 =
-                  DagMerge.mergeIntoTrunk recordAuthor sink "s" initial agentX.Hash now 5
+                  DagMerge.mergeIntoTrunk sink "s" initial agentX.Hash now 5
                   |> Async.RunSynchronously
 
               let h2 =
-                  DagMerge.mergeIntoTrunk recordAuthor sink "s" initial agentY.Hash now 5
+                  DagMerge.mergeIntoTrunk sink "s" initial agentY.Hash now 5
                   |> Async.RunSynchronously
 
               Expect.isSome h1 "agent X reconciled"
@@ -223,7 +223,7 @@ let tests =
               // The final trunk replays to a tree carrying BOTH agents' edits
               // (no lost writes).
               let finalTrunk = sink.Head "s" |> Async.RunSynchronously |> Option.get
-              let tree = replaySpine sink "s" initial finalTrunk
+              let tree = replayHead sink "s" initial finalTrunk
 
               let toneOf (id: NodeId) =
                   match tree.Kind with

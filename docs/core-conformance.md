@@ -39,7 +39,7 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 | `Conformance.captureReplayLaws` | Sibling host | — | fuaran-ts / fuaran-go (fuaran#1482) |
 | `Conformance.casLaws` | Adopted | — | `casLaws certifies over the Fuaran.UI op-stream witness` — via `Conformance.casLaws — beside the store-shaped 'both durable stores refuse a stale-head append with a typed StaleHead naming the actual head' and 'the store-shaped compare-and-append and keyed-append laws hold over both durable stores' (fuaran#1485)` |
 | `Conformance.chainBreakReasonLaws` | Adopted | 1000 | `the kit's classified chain walkers never mint Unrecognised (chainBreakReasonLaws)` — via `Conformance.chainBreakReasonLaws` |
-| `Conformance.checkpointLaws` | Not used | — | Fuaran.Core.OpStream.Dag's lane-DAG checkpoint (Dag.Checkpoint, Core 0.34.0, fuaran-core Phase 288) — the tier checkpoints its DAG through its own DagReplay.replayFromCheckpoint (Fuaran.UI.OpStream.Dag.Merge) and takes no Core DAG checkpoint |
+| `Conformance.checkpointLaws` | Adopted | — | `the UI DAG checkpoints certify under Core's checkpointLaws` — via `Conformance.checkpointLaws — the tier checkpoints its DAG through Core (DagFold.checkpointAt / replayFrom / compactAt, Phase 2645)` |
 | `Conformance.codecInjectivityLaws` | Not used | — | op-codec injectivity over an `'Op : equality` witness — `TreeOp<obj>` is obj-erased and has no equality to state distinctness with; the codec round-trips byte-stably against the wire corpus (`JsonDecode.Tests`, fuaran-ts parity), which is the same claim in the form this op type admits |
 | `Conformance.codecLawsAt` | Not used | — | the premises a domain owes the Codec blocks for a Core Codec<'T> it builds — no project here builds a Core Codec<'T>; the tier's wire codecs are its generated layer and hand encoders, certified by the wire-format conformance corpus |
 | `Conformance.columnOwnershipLaws` | Not used | — | a pipeline that borrows (Vector.Unsafe.borrow) or adopts (Vector.adopt) column storage — no project here does either; tests/core-fable runs the family and its two Fable go-reds on Core's behalf |
@@ -102,7 +102,7 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 | `Conformance.propagationPriorLawsAt` | Not used | — | Fuaran.Core.Propagation's prior-aware evaluator seam (Propagation.evalWith / evalFromWith) — nothing in this tier hands Propagation an evaluator (see propagationEvaluatorLawsAt) |
 | `Conformance.queryLaws` | Not used | — | Fuaran.Core.Query's registry seam — QuerySource.fs is a deliberately thinner UI-facing sibling built on the Column / DataFrame types and explicitly NOT on the Core query registry, which no project here references |
 | `Conformance.queryLawsAt` | Not used | — | Fuaran.Core.Query's registry seam at a domain's QuerySeamWitness — no project here references the Core query registry or dispatches through QueryRegistry.dispatch (see queryLaws) |
-| `Conformance.reachLaws` | Not used | — | Fuaran.Core.OpStream.Dag's reachability index (Dag.Reach, fuaran-core Phase 289) — no project here builds a Reach index or calls an index-taking DAG overload |
+| `Conformance.reachLaws` | Adopted | — | `the UI DAG reach index certifies under Core's reachLaws` — via `Conformance.reachLaws — the tier's retention reads Core's reach index (Dag.prunable over Dag.Reach.ofDag, Phase 2645)` |
 | `Conformance.reconcileLaws` | Adopted | — | `two-branch reconciliation is order-pinned and conflict-honest (reconcileLaws)` — via `Conformance.reconcileLaws` |
 | `Conformance.reconcileLawsWith` | Carried by phase | — | unfiled — reconcileLaws is adopted above at the kit's hash; this form pins the domain's hash, and the tier ships one (SHA-256, as laneFoldLawsWith is instantiated with) |
 | `Conformance.reducer` | Adopted | 1200 | `the Phase-406 StreamEntry witness certifies via Conformance.certifyStream (consumption)` — via `Conformance.certifyStream` |
@@ -135,7 +135,7 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 | `ParityVectors.lawsWith` | Not used | — | the parity table's row laws at a caller's rows — the tier renders no parity rows of its own (see ParityVectors.laws) |
 | `PipelineQueryConformance.laws` | Not used | — | Fuaran.Compute.PipelineQuery's registered pipeline query — no shipped project here references the package (the Core Fable gate compiles it only because the compute conformance kit does) |
 | `StoredIdentity.captureLaws` | Not used | — | a stored Core effect-capture journal under a declared EncodingProfile — no project here journals a capture (see keyedCaptureLaws) |
-| `StoredIdentity.dagLaws` | Not used | — | a stored Fuaran.Core.OpStream.Dag node-id store under a declared EncodingProfile — no project here persists a Core DAG node id |
+| `StoredIdentity.dagLaws` | Adopted | — | `the stored DAG corpus's node ids recompute under StoredIdentity.dagLaws` — via `StoredIdentity.dagLaws — the committed dag/ corpus as Core nodes, under the current profile and the tier's SHA-256 (Phase 2645: the DAG sinks persist Core node ids)` |
 | `StoredIdentity.linearLaws` | Not used | — | a stored Fuaran.Core.OpStream chain under a declared EncodingProfile — the tier's chain is its own HashChain (SHA-256 over CanonicalJson) and it persists no Core-computed record id |
 | `StringEscapeVectors.laws` | Not used | — | the kit's pinned escape table over Core's own three escapers (Wire.Json.escape, Actor.encode, Dag.toJsonl) — a fixed Core corpus with no host implementation to hand it; the tier's canonical-JSON escaping is certified by the wire-format conformance corpus |
 | `StringEscapeVectors.lawsWith` | Not used | — | the kit's escape laws over Core's own three escapers, at a caller's vector set — no host escaper to hand it; the tier's canonical-JSON escaping is certified by the wire-format conformance corpus (see StringEscapeVectors.laws) |
@@ -146,8 +146,8 @@ see the `measuredHere` set in `CoreConformanceCensus.fs`.
 
 | Status | Families |
 |---|---|
-| Adopted | 61 |
+| Adopted | 64 |
 | Carried by phase | 7 |
-| Not used | 49 |
+| Not used | 46 |
 | Sibling host | 1 |
 | **Total** | **118** |

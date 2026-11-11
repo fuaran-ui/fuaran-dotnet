@@ -25,7 +25,7 @@ module Fuaran.UI.OpStream.Dag.Tests.CoreDagLawTests
 //  `reconcileMany`). No `IDagOpStreamSink` enters their construction, and
 //  neither does `Fuaran.UI.OpStream.Dag.Merge`. So they certify the tier's
 //  reducer, codec and footprint under multi-writer folding; they say nothing
-//  about the tier's own merge engine, which `MergeTests` / `MergeConformanceTests`
+//  about the tier's own merge policy, which `DagMergeTests` / `FoldReconcileTests`
 //  cover directly. The two-port question they CAN answer is the codec seam —
 //  the Sqlite sink round-trips every op through a host `IOpJsonCodec` and the
 //  in-memory sink's export path calls the same canonical pair — and the port
@@ -94,27 +94,23 @@ let private applyableScript (n: int) =
 
     ops, state
 
-/// Replay a sink head through the production fold, `DagReplay.replay` (Phase 2043 retired the
-/// suite's own copy of the spine walk), with the error rendered for the law's message.
+/// Replay a sink head through the production fold — Core's closure fold over the sink's
+/// live records (`DagFold.replayRecords`) — with the error rendered for the law's message.
 let private replayFromSink (sink: IDagOpStreamSink<obj>) (streamId: string) (head: string) =
-    Fuaran.UI.OpStream.Dag.Merge.DagReplay.replay
-        (fun hash -> sink.TryGet(streamId, hash) |> Async.RunSynchronously)
+    Fuaran.UI.OpStream.Dag.Merge.DagFold.replayRecords
         baseTree.Node
+        (sink.Records streamId |> Async.RunSynchronously)
         head
     |> Result.mapError (sprintf "%A")
 
-/// Write `ops` into `sink` as a fork+merge DAG — genesis, two branches off it, and a merge
-/// node whose primary parent is branch A — then replay the merge head back out of the sink.
-let private roundTripThroughPort (sink: IDagOpStreamSink<obj>) (ops: TreeOp<obj> list) =
+/// `ops` as a fork+merge DAG — genesis, two branches off it, and a two-parent node over the
+/// branch heads — with the head that closes it.
+let private forkMergeOf (ops: TreeOp<obj> list) : DagOpRecord<obj> list * string =
     let ts (i: int) =
         DateTimeOffset.FromUnixTimeSeconds(1_700_000_000L + int64 i)
 
     let step (parents: string list) (i: int) (op: TreeOp<obj>) =
-        let r =
-            DagOpRecord.create "laws" parents op None (Actor.Human "law") (ts i) OpResultEnvelope.Success
-
-        sink.Add r |> Async.RunSynchronously
-        r
+        DagOpRecord.create "laws" parents op None (Actor.Human "law") (ts i) OpResultEnvelope.Success
 
     match ops with
     | genesis :: rest when List.length rest >= 3 ->
@@ -122,11 +118,18 @@ let private roundTripThroughPort (sink: IDagOpStreamSink<obj>) (ops: TreeOp<obj>
         let a = step [ g.Hash ] 1 rest[0]
         let b = step [ g.Hash ] 2 rest[1]
         let m = step [ a.Hash; b.Hash ] 3 rest[2]
-        // Every read path re-verifies (LoadVerification.Full is the default), so a record that
-        // no longer hashes to its address is refused here rather than replayed.
-        sink.Records "laws" |> Async.RunSynchronously |> ignore
-        replayFromSink sink "laws" m.Hash
-    | _ -> failtest "roundTripThroughPort needs at least four applyable ops"
+        [ g; a; b; m ], m.Hash
+    | _ -> failtest "forkMergeOf needs at least four applyable ops"
+
+/// Write the fork+merge DAG into `sink`, then replay its head back out of the sink.
+let private roundTripThroughPort (sink: IDagOpStreamSink<obj>) (ops: TreeOp<obj> list) =
+    let records, head = forkMergeOf ops
+
+    for r in records do
+        sink.Add r |> Async.RunSynchronously
+    // Every read path re-verifies (LoadVerification.Full is the default), so a record that
+    // no longer hashes to its address is refused here rather than replayed.
+    replayFromSink sink "laws" head
 
 // ---------------------------------------------------------------------------
 //  Phase 2004 — a vertical edit beside a concurrent removal of its ancestor
@@ -199,6 +202,35 @@ let tests =
               // default — that is the hash the op-stream's chain actually uses.
               CoreConf.dagLaws coreSw streamGen uiHashFn seed 100
               |> assertAllPassed "dagLaws over the Fuaran.UI op-stream witness"
+
+          // ---- the DAG checkpoint, reach index and stored-identity families (Phase 2645) ----
+          // The cut made the UI DAG Core's: its checkpoints are Core's `Dag.Checkpoint`
+          // (`DagFold.checkpointAt` / `replayFrom`), its retention reads Core's reach index
+          // (`Dag.prunable` over `Dag.Reach.ofDag`), and its sinks persist Core node ids.
+          testCase "the UI DAG checkpoints certify under Core's checkpointLaws"
+          <| fun _ ->
+              CoreConf.checkpointLaws coreSw streamGen encodeNode uiHashFn seed 100
+              |> assertAllPassed "checkpointLaws over the Fuaran.UI op-stream witness"
+
+          testCase "the UI DAG reach index certifies under Core's reachLaws"
+          <| fun _ ->
+              CoreConf.reachLaws coreSw streamGen uiHashFn seed 100
+              |> assertAllPassed "reachLaws over the Fuaran.UI op-stream witness"
+
+          testCase "the stored DAG corpus's node ids recompute under StoredIdentity.dagLaws"
+          <| fun _ ->
+              // The committed `dag/` records are the tier's stored corpus: every id recomputes
+              // under the profile the tier declares, and survives the two-witness rehash.
+              let records = DagCorpus.fixtures |> List.map (fun (_, _, r) -> r)
+              let w = Fuaran.UI.OpStream.Dag.Merge.DagFold.witness<obj> ()
+
+              Fuaran.Core.StoredIdentity.dagLaws
+                  (Fuaran.Core.EncodingProfile.name Fuaran.Core.EncodingProfile.current)
+                  Fuaran.UI.OpStream.Abstractions.StreamEntry.hashFn
+                  w
+                  w
+                  (DagOpRecord.toDag records)
+              |> assertAllPassed "StoredIdentity.dagLaws over the committed DAG corpus"
 
           // ---- the fold-confluence family ---------------------------------
           testCase "N-lane folding is arrival-order-invariant under Core's laneFoldLawsAt"
@@ -283,20 +315,12 @@ let tests =
                   (ancestorPairs |> List.map (fun (name, _, _) -> name))
                   "erasing the unknown-parent term frees every ancestor pair"
 
-          testCase "the merge attributes a pinned vertical edit beside its ancestor's removal to no removed node"
+          testCase "the merge policy refuses a vertical edit beside its ancestor's removal, even under precedence"
           <| fun _ ->
-              // The same pair through the tier's three-way merge and its per-cell attribution
-              // (`DagPrimacy`). Branch A restyles `n` as a PRIMARY writer, then a secondary op
-              // restyles `s`; branch B removes `n`'s parent `p`. The merge must refuse at the
-              // removed ancestor, as one delete/modify, and must name no cell of `n` — a pin
-              // attributed to a facet of a node the merged tree no longer holds would name a
-              // writer that does not exist.
-              let ts (i: int) =
-                  DateTimeOffset.FromUnixTimeSeconds(1_700_000_000L + int64 i)
-
-              let record (parents: string list) (i: int) (actor: string) (op: TreeOp<obj>) =
-                  DagOpRecord.create "attr" parents op None (Actor.Human actor) (ts i) OpResultEnvelope.Success
-
+              // The same pair through the tier's merge policy (`DagReconcile`). Branch A restyles
+              // `n`, then restyles `s`; branch B removes `n`'s parent `p`. The merge must refuse:
+              // a precedence side cannot settle it either, because the edit cannot apply after the
+              // removal, so one fold order faults.
               let styled (id: string) (tone: ToneVariant) =
                   TreeOp.UpdateStyle(
                       NodeId id,
@@ -304,48 +328,31 @@ let tests =
                           Tone = tone }
                   )
 
-              let g = record [] 0 "base" (TreeOp.Batch [])
-              let a1 = record [ g.Hash ] 1 "primary" (styled "n" ToneVariant.Success)
-              let a2 = record [ a1.Hash ] 2 "secondary" (styled "s" ToneVariant.Critical)
-              let b1 = record [ g.Hash ] 3 "secondary" (TreeOp.RemoveNode(NodeId "p"))
+              let deltaA = [ styled "n" ToneVariant.Success; styled "s" ToneVariant.Critical ]
+              let deltaB = [ TreeOp.RemoveNode(NodeId "p") ]
+              let reconcile = Fuaran.UI.OpStream.Dag.Merge.DagReconcile.reconcile
 
-              let byHash = [ g; a1; a2; b1 ] |> List.map (fun r -> r.Hash, r) |> Map.ofList
-              let getRec h = Map.tryFind h byHash
+              match reconcile ancestryTree.Node deltaA deltaB with
+              | Error(Fuaran.UI.OpStream.Dag.Merge.ReconcileFault.Refused refusals) ->
+                  Expect.isTrue
+                      (refusals
+                       |> List.exists (fun r -> r.Class = Fuaran.UI.OpStream.Dag.Merge.RefusalClass.DeleteModify))
+                      "the pair is refused as a delete/modify"
+              | other -> failtestf "expected a refusal, got %A" other
 
-              let recordAuthor (r: DagOpRecord<obj>) =
-                  match r.Actor with
-                  | Actor.Human "primary" -> Fuaran.UI.OpStream.Dag.Merge.MergeAuthor.Primary
-                  | _ -> Fuaran.UI.OpStream.Dag.Merge.MergeAuthor.Secondary None
-
-              let tree (ops: TreeOp<obj> list) =
-                  ops
-                  |> List.fold (fun acc op -> acc |> Result.bind (UiApply.apply op)) (Ok ancestryTree.Node)
-                  |> Result.defaultWith (failwithf "a branch failed to apply: %A")
-
-              let authors (head: DagOpRecord<obj>) =
-                  Fuaran.UI.OpStream.Dag.Merge.DagPrimacy.cellAuthorFn
-                      recordAuthor
-                      getRec
-                      (Some g.Hash)
-                      head.Hash
-                      (recordAuthor head)
-                  |> Result.defaultWith (failwithf "the attribution walk failed: %A")
-
-              let authorsA, authorsB = authors a2, authors b1
-
-              match
-                  Fuaran.UI.OpStream.Dag.Merge.TreeMerge.merge3WayWithCellAuthor
-                      (fun id facet -> authorsA id facet, authorsB id facet)
-                      ancestryTree.Node
-                      (tree [ a1.Op; a2.Op ])
-                      (tree [ b1.Op ])
-              with
-              | Ok merged -> failtestf "the merge composed the pair: %s" (CanonicalJson.encodeNode merged)
-              | Error conflicts ->
-                  Expect.equal
-                      (conflicts |> List.map (fun c -> c.NodeId, c.Facet, c.Class))
-                      [ "p", "node", Fuaran.UI.OpStream.Dag.Merge.MergeConflictClass.DeleteModify ]
-                      "one delete/modify, at the removed ancestor — no cell of the removed descendant"
+              for side in
+                  [ Fuaran.UI.OpStream.Dag.Merge.ReconcileSide.A
+                    Fuaran.UI.OpStream.Dag.Merge.ReconcileSide.B ] do
+                  match
+                      Fuaran.UI.OpStream.Dag.Merge.DagReconcile.reconcileWith
+                          (Some side)
+                          ancestryTree.Node
+                          deltaA
+                          deltaB
+                  with
+                  | Ok merged ->
+                      failtestf "precedence %A composed the pair: %s" side (CanonicalJson.encodeNode merged.Tree)
+                  | Error _ -> ()
 
           // ---- the skeleton-op families -----------------------------------
           testCase "the tier's tree footprints are sound, monotone and deterministic (footprintLaws)"
@@ -531,19 +538,13 @@ let tests =
               // certifies above, now crossing a process-durable boundary.
               let ops, _ = applyableScript 4
 
-              // A merge node's op is the replay delta from its PRIMARY parent, so the spine is
-              // genesis → branch A → merge; branch B's op is reachable but not on it. The
-              // reference fold therefore skips B, which is what the sinks must reproduce.
-              let referenceSpine =
-                  match ops with
-                  | g :: a :: _ :: m :: _ ->
-                      [ g; a; m ]
-                      |> List.fold
-                          (fun acc op ->
-                              acc
-                              |> Result.bind (fun t -> UiApply.apply op t |> Result.mapError (sprintf "%A")))
-                          (Ok baseTree.Node)
-                  | _ -> failtest "expected at least four applyable ops"
+              // The reference is Core's closure fold over the same records held in process; the
+              // sinks must reproduce it exactly.
+              let referenceFold =
+                  let records, head = forkMergeOf ops
+
+                  Fuaran.UI.OpStream.Dag.Merge.DagFold.replayRecords baseTree.Node records head
+                  |> Result.mapError (sprintf "%A")
 
               let inMemory = Fuaran.UI.OpStream.Dag.InMemory.InMemoryDagSink.create<obj> ()
 
@@ -558,15 +559,15 @@ let tests =
 
                       roundTripThroughPort sqlite ops)
 
-              match referenceSpine, fromMemory, fromSqlite with
+              match referenceFold, fromMemory, fromSqlite with
               | Ok reference, Ok mem, Ok sql ->
                   Expect.equal
                       (CanonicalJson.encodeNode mem)
                       (CanonicalJson.encodeNode reference)
-                      "InMemoryDagSink replays the fork+merge spine to the in-process fold"
+                      "InMemoryDagSink replays the fork+merge DAG to the in-process fold"
 
                   Expect.equal
                       (CanonicalJson.encodeNode sql)
                       (CanonicalJson.encodeNode reference)
-                      "SqliteDagSink replays the same spine through the host op codec on disk"
+                      "SqliteDagSink replays the same DAG through the host op codec on disk"
               | r, m, s -> failtestf "a port leg failed to replay: reference=%A memory=%A sqlite=%A" r m s ]

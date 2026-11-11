@@ -14,9 +14,9 @@ open Fuaran.UI.OpStream.TestSupport
 // ============================================================================
 //  Validator-gated merge (Phase 184): a structurally-clean, NodeId-disjoint
 //  merge that nonetheless introduces a DOMAIN-validity defect is a semantic
-//  conflict, surfaced through the Phase 179 `MergeConflict` envelope
-//  (`CombinedCycle`). A defect already present in a parent is carried through,
-//  never flagged. Gating is policy-controlled.
+//  conflict, refused as `ReconcileFault.IntroducedDefects`. A defect already
+//  present in a parent is carried through, never flagged. Gating is the policy
+//  the merge context carries (`MergeContext.Policy`).
 // ============================================================================
 
 let private now = timestamp 9_000L
@@ -58,6 +58,11 @@ let private toneOp (id: NodeId) (tone: ToneVariant) : TreeOp<TestMsg> =
 let private weightOp (id: NodeId) (w: StyleWeight) : TreeOp<TestMsg> =
     TreeOp.UpdateStyle(id, { Defaults.style with Weight = w })
 
+/// The default merge context, gated by `policy`.
+let private withPolicy (policy: MergePolicy<TestMsg>) : MergeContext<TestMsg> =
+    { MergeContext.defaults with
+        Policy = policy }
+
 [<Tests>]
 let tests =
     testList
@@ -76,38 +81,30 @@ let tests =
               add sink branchB
 
               let outcome =
-                  DagMerge.mergeGated
-                      recordAuthor
+                  DagMerge.mergeWith
+                      (withPolicy (MergePolicy.gated brandSiblingValidator))
                       sink
                       "s"
                       initial
                       branchA.Hash
                       branchB.Hash
                       now
-                      (MergePolicy.gated brandSiblingValidator)
                   |> Async.RunSynchronously
 
               match outcome.Result with
-              | MergeResult.NeedsManualMerge cells ->
-                  Expect.equal cells.Length 2 "both offending panes named"
+              | MergeResult.Refused(ReconcileFault.IntroducedDefects defects) ->
+                  Expect.equal defects.Length 2 "both offending panes named"
 
-                  Expect.isTrue
-                      (cells |> List.forall (fun c -> c.Class = MergeConflictClass.CombinedCycle))
-                      "introduced defect lifts into the CombinedCycle conflict class"
-
-                  let ids = cells |> List.map _.NodeId |> List.sort
+                  let ids = defects |> List.map _.NodeId |> List.sort
                   Expect.equal ids [ "left"; "right" ] "the offending nodes are named (left + right)"
 
                   Expect.isTrue
-                      (cells |> List.forall (fun c -> c.Base = "TESTBRAND001"))
-                      "the validator's defect code rides in the conflict envelope"
+                      (defects
+                       |> List.forall (fun d -> d.Code = "TESTBRAND001" && d.Facet = "style.tone"))
+                      "the validator's defect code and cell ride in the refusal"
 
-                  Expect.isTrue
-                      (cells |> List.forall (fun c -> c.Choices = [ MergeChoice.KeepBase ]))
-                      "recovery is enumerated (KeepBase abandons the merge for the cell)"
-
-                  Expect.equal outcome.Diagnostics.Length 2 "the introduced defects are also reported as diagnostics"
-              | other -> failtestf "expected NeedsManualMerge (validator-gated refusal), got %A" other
+                  Expect.equal outcome.Diagnostics defects "the introduced defects are also reported as diagnostics"
+              | other -> failtestf "expected Refused(IntroducedDefects) (validator-gated refusal), got %A" other
           }
 
           test "clean merge (gating ON): a disjoint merge introducing NO defect proceeds normally" {
@@ -122,15 +119,14 @@ let tests =
               add sink branchB
 
               let outcome =
-                  DagMerge.mergeGated
-                      recordAuthor
+                  DagMerge.mergeWith
+                      (withPolicy (MergePolicy.gated brandSiblingValidator))
                       sink
                       "s"
                       initial
                       branchA.Hash
                       branchB.Hash
                       now
-                      (MergePolicy.gated brandSiblingValidator)
                   |> Async.RunSynchronously
 
               match outcome.Result with
@@ -161,15 +157,14 @@ let tests =
               add sink branchB
 
               let outcome =
-                  DagMerge.mergeGated
-                      recordAuthor
+                  DagMerge.mergeWith
+                      (withPolicy (MergePolicy.gated brandSiblingValidator))
                       sink
                       "s"
                       initial
                       branchA.Hash
                       branchB.Hash
                       now
-                      (MergePolicy.gated brandSiblingValidator)
                   |> Async.RunSynchronously
 
               match outcome.Result with
@@ -192,15 +187,14 @@ let tests =
               add sink branchB
 
               let outcome =
-                  DagMerge.mergeGated
-                      recordAuthor
+                  DagMerge.mergeWith
+                      (withPolicy (MergePolicy.diagnostic brandSiblingValidator))
                       sink
                       "s"
                       initial
                       branchA.Hash
                       branchB.Hash
                       now
-                      (MergePolicy.diagnostic brandSiblingValidator)
                   |> Async.RunSynchronously
 
               match outcome.Result with
@@ -212,7 +206,7 @@ let tests =
               | other -> failtestf "expected Merged + diagnostic (gating off), got %A" other
           }
 
-          test "lenient policy ≡ ungated merge: mergeGated with MergePolicy.lenient matches DagMerge.merge" {
+          test "lenient policy ≡ ungated merge: mergeWith under MergePolicy.lenient matches DagMerge.merge" {
               let sink = InMemoryDagSink.create<TestMsg> ()
               let initial = buildDashboard ()
               let a = stepRecord "s" None (toneOp rightChildId ToneVariant.Default) 1L
@@ -223,11 +217,11 @@ let tests =
               add sink branchB
 
               let gated =
-                  DagMerge.mergeGated recordAuthor sink "s" initial branchA.Hash branchB.Hash now MergePolicy.lenient
+                  DagMerge.mergeWith (withPolicy MergePolicy.lenient) sink "s" initial branchA.Hash branchB.Hash now
                   |> Async.RunSynchronously
 
               let ungated =
-                  DagMerge.merge recordAuthor sink "s" initial branchA.Hash branchB.Hash now
+                  DagMerge.merge sink "s" initial branchA.Hash branchB.Hash now
                   |> Async.RunSynchronously
 
               // No validator ⇒ the introduced sibling-invalid tree still auto-merges.

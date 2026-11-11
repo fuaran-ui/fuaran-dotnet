@@ -137,6 +137,17 @@ let private snapshotTest =
 /// a row and the test it enrols must not drift apart by a typo.
 let private dagLawsTest = "the UI op-stream witness certifies under Core's dagLaws"
 
+/// Phase 2645 (the cut) — the UI DAG IS Core's DAG, so the families over Core's DAG checkpoint,
+/// its reach index and its stored node ids now describe what the tier runs, in the same file.
+let private checkpointLawsTest =
+    "the UI DAG checkpoints certify under Core's checkpointLaws"
+
+let private reachLawsTest =
+    "the UI DAG reach index certifies under Core's reachLaws"
+
+let private storedDagTest =
+    "the stored DAG corpus's node ids recompute under StoredIdentity.dagLaws"
+
 let private laneFoldTest =
     "N-lane folding is arrival-order-invariant under Core's laneFoldLawsAt"
 
@@ -391,7 +402,7 @@ let census: (string * Adoption) list =
       // `laneFold` forms are parameterised by a StreamWitness — this tier's `Ops.Apply.apply`
       // reducer and its canonical op codec — driven through CORE's `Dag`; they certify the
       // tier's reducer, codec and footprint under multi-writer folding, and say nothing about
-      // `Fuaran.UI.OpStream.Dag.Merge`, which `MergeTests` / `MergeConformanceTests` cover
+      // `Fuaran.UI.OpStream.Dag.Merge`, which `DagMergeTests` / `FoldReconcileTests` cover
       // directly. The skeleton-op families are parameterised by the tier's NodeWitness /
       // IdWitness / OpGen and carry no persistence at all, so each runs once rather than
       // per-port; the port question they can pose — does an op survive each sink's codec seam —
@@ -766,11 +777,15 @@ let census: (string * Adoption) list =
           "Conformance.witnessPairLawsAt — the generated nodeWitness / keyedWitness against Introspect.nodeWitness / keyedWitness, ids re-spelt as the wire string"
       )
       "Conformance.checkpointLaws",
-      NotUsed
-          "Fuaran.Core.OpStream.Dag's lane-DAG checkpoint (Dag.Checkpoint, Core 0.34.0, fuaran-core Phase 288) — the tier checkpoints its DAG through its own DagReplay.replayFromCheckpoint (Fuaran.UI.OpStream.Dag.Merge) and takes no Core DAG checkpoint"
+      Adopted(
+          checkpointLawsTest,
+          "Conformance.checkpointLaws — the tier checkpoints its DAG through Core (DagFold.checkpointAt / replayFrom / compactAt, Phase 2645)"
+      )
       "Conformance.reachLaws",
-      NotUsed
-          "Fuaran.Core.OpStream.Dag's reachability index (Dag.Reach, fuaran-core Phase 289) — no project here builds a Reach index or calls an index-taking DAG overload"
+      Adopted(
+          reachLawsTest,
+          "Conformance.reachLaws — the tier's retention reads Core's reach index (Dag.prunable over Dag.Reach.ofDag, Phase 2645)"
+      )
       "Conformance.laneLaws",
       NotUsed
           "Fuaran.Core.OpStream.Dag's lane store and whole-DAG order (Dag.loadLanes / totalOrderBy / replayAllBy, fuaran-core Phase 311) — no project here loads lanes or orders a DAG through them"
@@ -835,8 +850,10 @@ let census: (string * Adoption) list =
       NotUsed
           "a stored Fuaran.Core.OpStream chain under a declared EncodingProfile — the tier's chain is its own HashChain (SHA-256 over CanonicalJson) and it persists no Core-computed record id"
       "StoredIdentity.dagLaws",
-      NotUsed
-          "a stored Fuaran.Core.OpStream.Dag node-id store under a declared EncodingProfile — no project here persists a Core DAG node id"
+      Adopted(
+          storedDagTest,
+          "StoredIdentity.dagLaws — the committed dag/ corpus as Core nodes, under the current profile and the tier's SHA-256 (Phase 2645: the DAG sinks persist Core node ids)"
+      )
       "StoredIdentity.captureLaws",
       NotUsed
           "a stored Core effect-capture journal under a declared EncodingProfile — no project here journals a capture (see keyedCaptureLaws)"

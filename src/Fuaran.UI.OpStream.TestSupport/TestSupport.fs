@@ -14,7 +14,7 @@ open Fuaran.UI.OpStream.Dag.Merge
 //
 //  The linear suite, the DAG suite and the DAG inspector suite each carried a
 //  copy of what is below — the message type, the two-pane dashboard, the child
-//  ids, the record builders, the host precedence classifier — and the first two
+//  ids, the record builders and the replay helper — and the first two
 //  each carried a test-only op codec of their own: compact single-letter
 //  formats covering four and three op shapes respectively, the DAG one lossy
 //  (it kept three tones and dropped weight and emphasis). The sinks are now
@@ -136,32 +136,19 @@ let stepRecord
 /// Add a record to the sink synchronously (the suites are single-threaded).
 let add (sink: IDagOpStreamSink<TestMsg>) (r: DagOpRecord<TestMsg>) : unit = sink.Add r |> Async.RunSynchronously
 
-/// The host-side precedence classifier the suites wire into `DagMerge` /
-/// `DagOverlay`: a record with no `PromptId` is `Primary` (the human pin in this
-/// host's chosen semantics), otherwise it is `Secondary`, carrying its prompt id
-/// as the opaque provenance tag. The merge layer does not bake this
-/// interpretation in (Phase 331); the host supplies it.
-let recordAuthor (r: DagOpRecord<TestMsg>) : MergeAuthor =
-    if Option.isNone r.PromptId then
-        MergeAuthor.Primary
-    else
-        MergeAuthor.Secondary r.PromptId
-
-/// Replay a sink head to its tree through the production fold, `DagReplay.replay`
-/// — the PRIMARY-parent spine, each merge node checked against the outcome hash
-/// it committed to — failing loudly on any replay error. The DAG suite kept its
-/// own copy of the spine walk until Phase 2043; a test oracle that is a second
-/// implementation of the code under test drifts from it silently, and that one
-/// had: it never checked a merge node's `OutcomeHash`.
-let replaySpine
+/// Replay a sink head to its tree through the production fold — Core's closure
+/// fold over the stream's live records with the merge policy's witness
+/// (`DagFold.replayRecords`, Phase 2645) — failing loudly on any replay error.
+/// A test oracle that is a second implementation of the code under test drifts
+/// from it silently, so this IS the production fold.
+let replayHead
     (sink: IDagOpStreamSink<TestMsg>)
     (streamId: string)
     (initial: Node<TestMsg>)
     (head: string)
     : Node<TestMsg> =
-    let getRecord (hash: string) =
-        sink.TryGet(streamId, hash) |> Async.RunSynchronously
+    let records = sink.Records streamId |> Async.RunSynchronously
 
-    match DagReplay.replay getRecord initial head with
+    match DagFold.replayRecords initial records head with
     | Ok tree -> tree
-    | Error e -> failwithf "replaySpine: %A" e
+    | Error e -> failwithf "replayHead: %A" e

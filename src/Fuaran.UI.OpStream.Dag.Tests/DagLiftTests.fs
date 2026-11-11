@@ -127,20 +127,21 @@ let private corpusRecords () : OpRecord<obj> list =
 /// the content address its DAG lift receives (genesis-rooted, `ofLinearVerified`).
 /// The two are different digests over different pre-images — the linear one
 /// folds the sequence and the previous hash, the DAG one the parents — and they
-/// are never equal. A change to either pre-image moves a column here.
+/// are never equal. A change to either pre-image moves a column here (the DAG
+/// column moved once, at Phase 2645, when the address became Core's `Dag.nodeId`).
 let private liftedAddressPin: (string * string) list =
     [ "914d7631416d77f24aeea88a63d5e0fa376073366f390ae718f0910ae45dee0c",
-      "d67c35e006e9f2beee6edf58abcc5e95ba6904f94b336931bc4c84212c146355"
+      "6b60513e1c8153d9818a11190c4c37b92a011de257735515f9a3acda61f96935"
       "5b7c55d6668e524aab6e1a6c8d443c54bba9c01deb521bc7460c28d3e1072a05",
-      "c51ad58b87f8cb47359a6e1e701febf68e40d2fb0e2841fc7a9305dc722c3a63"
+      "9a2c8df625020265e51b7c751e283ba7ad583c4bb049b567000f2c4ec71b4335"
       "2b195656cc9bda16bdf52c4550ffde1c73a2b6ddb6c222aa3d64f19b231e9da4",
-      "a37e07d5e1bb9b27bf0f0d607c2c6a61080390742f90f6ff2d24e8c4dc319354"
+      "55b49de89a49da94c57b9abcf70051b150edf85987432e43b69629c69183ec6a"
       // Records 4 and 5 (fuaran#1937): actors carrying control characters, each
       // spelled as a four-digit unicode escape on both paths.
       "d95c3e444cf45135905627c5b587abb327faa8f7f6cd7b598c0c3f129ac794a7",
-      "68554c28452b4f8190209ab1cae64bb02260a3ef71b44c21a46edbb03577df79"
+      "ff57864024b779f77baa00b4c039077084b36c9399678764d6604f8916564588"
       "f93575b7e39136ff96de8c1459197edb694eac7b797bb0bd53807182a2d18dfa",
-      "5368106ba72b60228321f6505818151b2d8017ce0d72c45f14eaac54e271ddd7" ]
+      "f05b0133d6b247079d6c8ff29f0d1340fc41d42a8151fc45ffc41300be6efa52" ]
 
 /// The pinned prefix of the corpus this checkout holds: the three records every
 /// corpus carries, and the two control-character records once the corpus has them
