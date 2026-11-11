@@ -215,8 +215,8 @@ does three things, and they answer different questions:
 2. **The laws.** [`tests/fable-laws/`](tests/fable-laws/) is a Fable-compilable law project. It runs
    on both pipelines and its output is compared byte for byte, so two pipelines that are each
    internally lawful and disagree about a result still fail. Its `.NET` leg is also a rostered suite
-   in `test-suites.json`. It currently states `TreeMerge.merge3Way`'s order-independence over
-   generated three-way edits, runs `FoldConfluence.laneFoldLaws` over this tier's reducer, op
+   in `test-suites.json`. It currently states `DagMerge.mergeDag`'s order-independence over
+   generated branch pairs, runs `FoldConfluence.laneFoldLaws` over this tier's reducer, op
    codec and footprint projection, and inflates a committed foreign **dynamic-Huffman** DEFLATE
    stream — the block type `Deflate.compress` never emits and every standard deflate library
    always does, whose .NET conformance check goes through `System.IO.Compression` and therefore

@@ -7,7 +7,8 @@
     a sample. A transpile proves the client tier COMPILES; it asserts nothing, so a claim about
     behaviour under Fable had nowhere to live and the browser merge — `TreeMerge.merge3Way`, which
     ships in `Fuaran.UI.OpStream.Dag.Merge` and runs in a browser — was demonstrated by example on
-    .NET and certified nowhere.
+    .NET and certified nowhere. Since Phase 2645 the browser merge is `DagMerge.mergeDag`, and law 1 is
+    restated over it.
 
     This project is the assertion side. It compiles on BOTH pipelines and prints the same
     fixed-shape lines on each, so `fable-check.ps1` beside it can run it twice and byte-compare:

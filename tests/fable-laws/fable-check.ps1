@@ -1650,7 +1650,7 @@ $lawsOut = Join-Path $PSScriptRoot 'output'
 $lineShape = '^(MERGE|MERGELAW|MERGEFINDING|MERGEFAIL|ADEQUACY|KIT|KITFAIL|DEFLATE|DEFLATEFAIL|SELECTIONFIELD|DATESENTINEL|DAGCHECKPOINT|NUMBERFORMAT|BOARD-SNAPSHOT|ATTESTATION|TOTAL) '
 
 if (-not $SkipLaws) {
-    Write-Stage 'laws — TreeMerge.merge3Way + FoldConfluence.laneFoldLaws + Deflate.inflate + Formatting.formatNumber, .NET vs Node'
+    Write-Stage 'laws — DagMerge.mergeDag + FoldConfluence.laneFoldLaws + Deflate.inflate + Formatting.formatNumber, .NET vs Node'
 
     # The laws stage is one addressed subject rather than two: its record stands for the whole
     # green — both legs run, byte-identical, zero violations — so honouring it skips exactly the
