@@ -42,6 +42,29 @@ let private toneOf (t: ToneVariant) (id: NodeId) =
 let private nestedTree () : Node<TestMsg> =
     container "dash" [ container "boxa" [ Fuaran.markdown "m" "Movable" ]; container "boxb" [] ]
 
+/// A dashboard holding a `Mount` whose slot inputs carry nodes no ordered child
+/// list reaches (Phase 2701): `hdr` sits AT the `header` input, `s1` and `s2`
+/// sit inside the container at the `body` input. A footprint that does not walk
+/// slot arguments cannot see an op on any of them.
+let private mountTree () : Node<TestMsg> =
+    let guest: MountSpec<TestMsg> =
+        { Capabilities = []
+          Channel = Fuaran.guestOutChannel
+          Inputs =
+            Some(
+                Map.ofList
+                    [ "header", FragmentArg.SlotArg(Fuaran.markdown "hdr" "Header")
+                      "body",
+                      FragmentArg.SlotArg(
+                          container "slotbody" [ Fuaran.markdown "s1" "First"; Fuaran.markdown "s2" "Second" ]
+                      )
+                      "title", FragmentArg.Str "Guest" ]
+            )
+          OnBubble = None
+          ScopeId = "guest-scope" }
+
+    container "dash" [ Fuaran.mount "guest" guest; container "boxb" [] ]
+
 /// The sample DOMAIN validator the gated fixtures certify against: "at most one
 /// `Brand`-toned pane per dashboard". Each offending child is a defect on its
 /// `style.tone` cell. A host MUST port this exact invariant to reproduce the
@@ -81,6 +104,7 @@ type FoldExpectation =
 let fixtures: (string * FoldExpectation * string * Node<TestMsg> * TreeOp<TestMsg> list * TreeOp<TestMsg> list) list =
     let flat = buildDashboard ()
     let nested = nestedTree ()
+    let mounted = mountTree ()
 
     [ "fold-disjoint",
       Derives,
@@ -208,6 +232,13 @@ let fixtures: (string * FoldExpectation * string * Node<TestMsg> * TreeOp<TestMs
       [ TreeOp.MoveNode(leftChildId, dashboardId) ],
       [ TreeOp.InsertChild(dashboardId, Fuaran.markdown "new" "Appended") ]
 
+      "fold-mount-input-insert",
+      Derives,
+      "One branch appends a child to a container held only in a Mount's slot input while the other retones a pane outside the Mount. The structural ops locate their parent through every position the tree holds a node in, slot arguments included (Phase 2701), so the insert is a structure write of that container and the retone a style write elsewhere: independent, and the fold composes them",
+      mounted,
+      [ TreeOp.InsertChild(NodeId "slotbody", Fuaran.markdown "s3" "Third") ],
+      [ toneOf ToneVariant.Brand (NodeId "boxb") ]
+
       "fold-pinned-own-parent-move",
       Derives,
       "PINNED (operator ruling 2026-11-10): a MoveNode to the parent the node already sits under is an append, so the node goes last. One branch moves the last pane to its own parent (its own head is unchanged) while the other reorders the parent; the policy rebases the reorder and appends the moved node after it, the tree applying the move after the reorder. The tree merge sees no change on the mover's side and keeps the reorder's order, which no application of the two ops produces",
@@ -254,6 +285,27 @@ let fixtures: (string * FoldExpectation * string * Node<TestMsg> * TreeOp<TestMs
       flat,
       [ toneOf ToneVariant.Success rightChildId ],
       [ TreeOp.RemoveNode rightChildId ]
+
+      "fold-refusal-mount-input-tone",
+      Refuses,
+      "Both branches set a different tone on the node held at a Mount's slot input, which no ordered child list reaches. A footprint's node walk includes slot arguments (Phase 2701), so the pair collides on that node and is refused as a Conflict; a host that does not walk them sees no collision and derives",
+      mounted,
+      [ toneOf ToneVariant.Brand (NodeId "hdr") ],
+      [ toneOf ToneVariant.Critical (NodeId "hdr") ]
+
+      "fold-refusal-mount-input-disjoint",
+      Refuses,
+      "Each branch retones a DIFFERENT node held only in one Mount's slot inputs (the node at its header input, and a node inside the container at its body input). A node no ordered child list reaches takes the footprint's pure arm, an in-place write under a parent the op cannot name, so the pair is reported MoveVsRemove on both nodes and refused as a Conflict: the policy's answer since Phase 2327, pinned by Phase 2701",
+      mounted,
+      [ toneOf ToneVariant.Brand (NodeId "hdr") ],
+      [ toneOf ToneVariant.Success (NodeId "s1") ]
+
+      "fold-refusal-mount-input-delete-modify",
+      Refuses,
+      "One branch removes a node inside a Mount's slot input while the other retones it — a DeleteModify refusal, as for a node any ordered child list reaches (Phase 2701)",
+      mounted,
+      [ TreeOp.RemoveNode(NodeId "s2") ],
+      [ toneOf ToneVariant.Success (NodeId "s2") ]
 
       "fold-refusal-remove-vs-move",
       Refuses,
