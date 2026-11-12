@@ -16,9 +16,10 @@ module Fuaran.UI.WireProfileTests
 //  §15.4 step. The two that matter most are the pair §15.4 used to conflate:
 //
 //    * a new optional field  → NO STEP   (Phase 1670's ruling; the substrate's
-//                                         own `profileBump` says `minor` here,
-//                                         which is why the step is computed in
-//                                         this repository and not read off it)
+//                                         default rule says `minor` here, and
+//                                         since Phase 2626 the step is read off
+//                                         the substrate under THIS format's
+//                                         decode rule, which absorbs it)
 //    * a new closed-vocabulary tag → MINOR
 //
 //  A classifier that cannot be made to disagree with itself is not evidence, so
@@ -34,14 +35,16 @@ open Fuaran.UI.WireProfile
 let private baseIdl = Fuaran.UI.Vocabulary.uiIdl
 let private baseText = Artifact.render baseIdl
 
+let private verdictOf (before: string) (after: string) : Verdict =
+    match Diff.parse before None, Diff.parse after None with
+    | Ok b, Ok a -> Diff.verdict b a
+    | Error e, _
+    | _, Error e -> failtestf "artifact did not parse: %s" e
+
 let private stepOf (before: string) (after: string) : ProfileStep =
     match reportBetween before after with
     | Error e -> failtestf "the §15.4 report refused a well-formed pair: %s" e
-    | Ok _ ->
-        match Diff.parse before None, Diff.parse after None with
-        | Ok b, Ok a -> Diff.changes b a |> List.map Diff.classify |> step |> fst
-        | Error e, _
-        | _, Error e -> failtestf "artifact did not parse: %s" e
+    | Ok _ -> verdictOf before after |> step |> fst
 
 /// The vocabulary with one extra field on the FIRST declared kind. `opt` is the
 /// case §15.4 now exempts; `Required` is the case that breaks emitters without
@@ -218,29 +221,63 @@ let tests =
                   Expect.stringContains r "MINOR" "the rendered report does not name the step it computed"
                   Expect.stringContains r "loosened to optional" (sprintf "the report does not say %s loosened" name))
 
-          // Phase 2509, case 2 (`docs/DECISIONS.md` D28) — the ONE recorded divergence from the
-          // substrate's classifier, pinned so that closing it is a deliberate edit. A wire break
-          // beside an undecided row is a major here; Core answers undecided, and which of the two
-          // takes precedence waits on an operator ruling. Until then a break is never softened.
-          testCase "a wire break beside an undecided row is a major (D28 case 2)" (fun _ ->
+          // Phase 2509, case 2 (`docs/DECISIONS.md` D28), as it stands after the Phase 2626
+          // re-point. The host kept MAJOR here while it computed its own step; the step is now
+          // Core's, and Core names no profile while a row is undecided (fuaran-core D242's open
+          // question). Pinned so that a ruling there is a deliberate edit here, and so that the
+          // break is still visible: the report carries the substrate's advice, which says major.
+          testCase "a wire break beside an undecided row is undecided, and the report says major (D28 case 2)" (fun _ ->
               let erased, _ =
                   withFirstField (fun f -> f.Type = TStr && f.Presence.IsNone) (fun f -> { f with Type = TJson })
 
               let before, after = Artifact.render withExtraKind, Artifact.render erased
+              let severities = (verdictOf before after).Changes |> List.map _.Severity
 
-              match Diff.parse before None, Diff.parse after None with
-              | Ok b, Ok a ->
-                  let severities = Diff.changes b a |> List.map (fun c -> (Diff.classify c).Severity)
-
-                  Expect.contains severities BreakingWire "the probe carries no wire break"
-                  Expect.contains severities Unclassifiable "the probe carries no undecided row"
-              | Error e, _
-              | _, Error e -> failtestf "artifact did not parse: %s" e
+              Expect.contains severities BreakingWire "the probe carries no wire break"
+              Expect.contains severities Unclassifiable "the probe carries no undecided row"
 
               Expect.equal
                   (stepOf before after)
-                  Major
-                  "a removed kind beside an erased-slot change did not read as a major")
+                  Undecided
+                  "a removed kind beside an erased-slot change did not read as undecided, which is Core's answer"
+
+              match reportBetween before after with
+              | Error e -> failtestf "the report refused a well-formed pair: %s" e
+              | Ok r ->
+                  Expect.stringContains
+                      r
+                      "A decided row already breaks the wire"
+                      "the undecided report hides the wire break beside it"
+
+                  Expect.stringContains r "MAJOR" "the undecided report does not carry the substrate's major advice")
+
+          // Phase 2626, the go-red for the decode rule (fuaran-core#127's adoption task): the step
+          // the host reads is Core's under THIS format's rule, and the rule is what absorbs an added
+          // optional field. Under `RefusesUnknownMembers` the same verdict bumps the minor, so a host
+          // that dropped the rule, or a Core that stopped honouring it, turns this red.
+          testCase
+              "an added optional field bumps the minor under RefusesUnknownMembers, and not under this format's rule"
+              (fun _ ->
+                  let v = verdictOf baseText (Artifact.render (withExtraField Optional))
+                  let base' = Fuaran.Core.Versioning.Capability.coreV1
+
+                  match Diff.bumpProfileUnder Fuaran.Core.Versioning.DecodeRule.RefusesUnknownMembers base' v with
+                  | Bump.Bumped p ->
+                      Expect.equal
+                          (p.Major, p.Minor)
+                          (base'.Major, base'.Minor + 1)
+                          "a strict reader absorbed an added member it cannot read"
+                  | Bump.Undecided _ -> failtest "an added string field read as undecided"
+
+                  match Diff.bumpProfileUnder decodeRule base' v with
+                  | Bump.Bumped p ->
+                      Expect.equal p base' "this format's decode rule did not absorb an added optional field"
+                  | Bump.Undecided _ -> failtest "an added string field read as undecided"
+
+                  Expect.equal
+                      decodeRule
+                      Fuaran.Core.Versioning.DecodeRule.IgnoresUnknownMembers
+                      "§2 rule 2 is must-ignore")
 
           // A malformed artifact is not a classification, and must not read as
           // "no change" — the failure mode a bare `try … with` would have.

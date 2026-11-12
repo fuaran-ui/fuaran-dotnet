@@ -128,6 +128,30 @@ step before. It is advisory and fails no build. `WIRE_FORMAT.md` §15.4 needs a 
 one, the table is silent on both changes and the derived answer is the one stated here. No published API and no
 document moves.
 
+**Amended 2026-11-12 (Phase 2626): the re-point has landed, and case 2 is now Core's answer.** Core 0.41.0 and
+0.42.0 are tagged and published, both carry Phase 587, and this repository has pinned `Fuaran.Core.*` 0.42.0 since
+Phase 2691, so item 1's precondition holds with no further raise. `WireProfile.step` now takes Core's `Verdict` and
+calls `Diff.bumpProfileUnder Versioning.DecodeRule.IgnoresUnknownMembers` from `core@1.0`; it reads which counter
+moved (major, minor, neither) or `Bump.Undecided`, and words the report. The host's own computation
+(`behindConsumerRefuses` and the severity ladder over it) is deleted. The report's shape and its sentences are
+unchanged; the minor's member list is now the rows Core does not absorb.
+
+- **Case 1 holds unchanged.** Core moves the minor for a loosening or a widening under either rule, which is the
+  answer the host already gave. `WIRE_FORMAT.md` §15.4 gains the row (Phase 2626), and its "new REQUIRED field"
+  row is corrected to **major**, the grading Core has given it since fuaran-core Phase 304 (`Fuaran.Core` 0.34.0).
+- **Case 2 is no longer a divergence, and its answer changed.** With no step of its own, the host cannot keep major
+  beside an undecided row: it answers **undecided**, as Core does. The wire break is not hidden, because Core's own
+  `Verdict.ProfileAdvice` already says major there, and the undecided report now prints that advice whenever a
+  decided row breaks the wire. Which answer `bumpProfile` should give is still Core D242's open question. If it is
+  ruled major, the host follows with no edit here beyond the test that pins case 2.
+- **The decode rule is held by a go-red.** The same verdict for an added optional field bumps the minor under
+  `RefusesUnknownMembers` and moves nothing under this format's rule; a host that dropped the rule, or a Core that
+  stopped honouring it, turns the suite red (`WireProfileTests`). This closes fuaran-core#127's adoption task.
+
+*Rejected:* keeping major for case 2 by a host-side precedence over Core's answer. That is a step computation of
+the host's own, the thing this re-point exists to remove, and it would re-open a second grading the moment Core
+rules.
+
 ---
 
 ## 2026-11-07 — D27: every document over a tree reads its demand through the demand view, and every posture through the fold view
