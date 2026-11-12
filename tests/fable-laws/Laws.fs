@@ -5,20 +5,15 @@ module FableLaws.Laws
 //
 //  THREE, and they are different kinds of claim.
 //
-//  1. THE BROWSER MERGE. `TreeMerge.merge3Way` is the tier's structural three-way
-//     merge, and it ships in a package that transpiles: it runs in a browser, on
-//     the JavaScript the client tier is compiled to. Its order-independence — the
-//     property the NodeId-canonical-byte tie-break exists to give it — was
-//     demonstrated by two examples in the .NET `MergeTests.fs` and certified
-//     nowhere, on either pipeline. Here it is a law over GENERATED three-way
-//     edits, run on both.
-//
-//     Order-independence is not a nicety of the merge; it is the whole promise.
-//     Two replicas that merge the same pair of branches in the opposite order
-//     must reach the same tree, or they have diverged while both believing they
-//     converged — and, because the merge node commits to the canonical encoding
-//     of the resulting tree, they would then also disagree about the outcome hash
-//     they each recorded as proof that they agreed.
+//  1. THE BROWSER MERGE. Since Phase 2645 the DAG's merge is the reconciliation
+//     policy over Core's fold, minted as a Core node and checked to replay
+//     (`DagMerge.mergeDag`), and it ships in a package that transpiles: it runs in
+//     a browser. Its order-independence is the whole promise — two replicas that
+//     merge the same pair of branches in the opposite order must reach the same
+//     tree AND mint the same node, or they have diverged while both believing they
+//     converged. Here it is a law over GENERATED branch pairs, run on both
+//     pipelines (it replaced the tree merge's `merge3Way` law at the cut), beside
+//     law 2c, the policy's own symmetry.
 //
 //  2. THE PINNED KIT, UNDER FABLE. `FoldConfluence.laneFoldLawsAt` is run over this
 //     tier's own reducer, op codec and footprint projection — the same
@@ -54,69 +49,6 @@ open FableLaws.TestSupport
 
 module FoldConfluence = Fuaran.Core.FoldConfluence
 module UiApply = Fuaran.UI.Ops.Apply
-
-// ---------------------------------------------------------------------------
-//  the merge outcome, canonicalised so two arrival orders are comparable
-// ---------------------------------------------------------------------------
-
-/// Spelled out rather than derived from `%A` or `string`: the conflict class is part of the
-/// compared line, and a runtime's rendering of a DU case is not a contract either pipeline owes
-/// the other. A new class fails to compile here, which is the right place to notice it.
-let private classString (c: MergeConflictClass) : string =
-    match c with
-    | MergeConflictClass.ConcurrentEdit -> "ConcurrentEdit"
-    | MergeConflictClass.ConcurrentMove -> "ConcurrentMove"
-    | MergeConflictClass.DeleteModify -> "DeleteModify"
-    | MergeConflictClass.KindSwapOrphansPin -> "KindSwapOrphansPin"
-    | MergeConflictClass.ReorderVsStructural -> "ReorderVsStructural"
-    | MergeConflictClass.CombinedCycle -> "CombinedCycle"
-
-/// The CONTENDED CELLS of a refusal — `nodeId|facet|class`, deduplicated and sorted. This is the
-/// part of a refusal that IS arrival-order-independent, and it is the same part the .NET
-/// `MergeTests.fs` asserts ("contended (left, style.tone) cell named").
-let private conflictCells (conflicts: MergeConflict list) : string =
-    conflicts
-    |> List.map (fun c -> c.NodeId + "|" + c.Facet + "|" + classString c.Class)
-    |> List.distinct
-    |> List.sort
-    |> String.concat ";"
-
-let private sideString (side: MergeSide option) : string =
-    match side with
-    | None -> "-"
-    | Some s -> s.Value + "~" + defaultArg s.Tag "-"
-
-/// The refusal's recorded VALUES, rendered EXACTLY as the two-sided envelope stands (Phase 1497):
-/// `nodeId|facet|class|base|A|B`, entries ordered by the cell key so the rendering never depends on
-/// the fold's emission order.
-///
-/// Until 1497 this had to compare the pair UNORDERED, because the engine recorded exactly ONE
-/// branch's value and which one depended on the argument order — so a faithful rendering would have
-/// diverged on every refusal for a reason that was the envelope's defect rather than a merge
-/// divergence. The envelope now carries both sides, so the faithful rendering is comparable and the
-/// claim below is the strong one: swapping the branches TRANSPOSES the envelope and changes nothing
-/// else in it.
-let private conflictValues (transpose: bool) (conflicts: MergeConflict list) : string =
-    conflicts
-    |> List.map (fun c ->
-        let a = sideString c.A
-        let b = sideString c.B
-
-        (c.NodeId + "|" + c.Facet + "|" + classString c.Class),
-        (c.Base + "|" + (if transpose then b else a) + "|" + (if transpose then a else b)))
-    |> List.distinct
-    |> List.sortBy fst
-    |> List.map (fun (key, body) -> key + "|" + body)
-    |> String.concat ";"
-
-type private Outcome =
-    | Merged of canonical: string
-    | Refused of cells: string * values: string * transposed: string
-
-let private mergeOutcome (b: Node<obj>) (x: Node<obj>) (y: Node<obj>) : Outcome =
-    match TreeMerge.merge3Way b x y with
-    | Ok tree -> Merged(CanonicalJson.encodeNode tree)
-    | Error conflicts -> Refused(conflictCells conflicts, conflictValues false conflicts, conflictValues true conflicts)
 
 // ---------------------------------------------------------------------------
 //  the branch generator
@@ -171,127 +103,106 @@ let private applyEdit (ops: TreeOp<obj> list) (start: Node<obj>) : Node<obj> opt
         (Some start)
 
 // ---------------------------------------------------------------------------
-//  law 1 — merge3Way order-independence
+//  law 1 — the merge node replays, whichever head is named first (Phase 2645)
 // ---------------------------------------------------------------------------
+//
+//  Restated over the fold at the cut. A merge is `DagMerge.mergeDag` over Core's
+//  DAG: the policy derives the tree, Core mints a node over the script, and the
+//  node is handed back only when Core's closure fold of it reaches that tree. The
+//  laws, over generated branch pairs off one genesis:
+//
+//    * ORDER — `merge(A, B)` and `merge(B, A)` agree on the verdict (both merge or
+//      both refuse), on the tree, and on the merge node's ADDRESS (Core sorts the
+//      parents; the script is a function of the pair, not of the naming);
+//    * REPLAY — Core's fold of a minted node reaches the derived tree (the merge
+//      never reports `DeltaNotReplayable` for a pair the policy derives);
+//    * SELF — a delta reconciled against itself is its own tree (every pair agrees);
+//    * FAST-FORWARD — a delta reconciled against the empty delta is its own tree;
+//    * SHARED INSERT — two same-id inserts that agree land once, and two that differ
+//      refuse at their parent.
+//
+//  The envelope's mirror law over a swapped naming is law 2c's. What this law adds
+//  under Fable is the whole minting path: SHA-256 node ids, Core's drain order and
+//  the replay witness, all on the transpiled code.
 
 type MergeVerdict =
-    {
-        Trials: int
-        Applied: int
-        Merged: int
-        Refused: int
-        // ---- refutations: each of these being non-zero means the law is FALSE ----
-        /// The two arrival orders reached different outcome CLASSES (one merged, one refused).
-        ClassDivergences: int
-        /// Both merged, to different trees. This is the tie-break claim: a perturbation of the
-        /// NodeId-canonical-byte ordering of disjoint inserts lands here.
-        TreeDivergences: int
-        /// Both refused, over different contended CELL SETS.
-        CellSetDivergences: int
-        /// `merge3Way base x x` returned a tree that was not `x`.
-        SelfMergeFailures: int
-        /// `merge3Way base base x` (or `base x base`) did not return `x`.
-        FastForwardFailures: int
-        /// The two fixed shared-insert claims (Phase 1497), refuted.
-        SharedInsertFailures: int
-        // ---- the two Phase 1488 FINDINGS, now claims: each must be 0 ----------
-        /// Both orders refused over the same cells, but the swapped run's envelope was not the
-        /// transposition of the forward run's. Phase 1488 measured 101 of 118 refusals here and
-        /// counted them; Phase 1497 widened the envelope so the count is a refutation.
-        ValueAsymmetries: int
-        /// `merge3Way base x x` REFUSED rather than returning `x`. Phase 1488 measured 223 of 300
-        /// and counted them; Phase 1497's shared-children guard makes the count a refutation.
-        SelfMergeRefusals: int
-        // ---- adequacy ---------------------------------------------------------
-        /// Self-merge trials whose branch actually CHANGED some node's children — the case the
-        /// shared-children guard exists for. A run with none of these would assert the self-merge
-        /// law only over branches that never reached the repaired path.
-        SelfMergeStructural: int
-        /// The first refutation seen, as a reproducer.
-        First: string option
-    }
+    { Trials: int
+      Applied: int
+      Merged: int
+      Refused: int
+      ClassDivergences: int
+      TreeDivergences: int
+      AddressDivergences: int
+      ReplayFailures: int
+      SelfMergeFailures: int
+      FastForwardFailures: int
+      SharedInsertFailures: int
+      SelfMergeStructural: int
+      First: string option }
 
-// ---------------------------------------------------------------------------
-//  the two Phase 1488 findings, now asserted (Phase 1497)
-// ---------------------------------------------------------------------------
-//
-//  1488 MEASURED both of these and deliberately did not fix either, because both touch the public
-//  conflict contract of a shipped package. It printed `MERGEFINDING valueAsymmetries=101
-//  selfMergeRefusals=223` on every gate run so the numbers lived in the log rather than in prose.
-//  1497 repaired both and the SAME two counters are now refutations: the line is still printed,
-//  under the same names, and it must read zero.
-//
-//  1. `ValueAsymmetries` — the envelope was documented three-up (base / primary / secondary) but
-//     populated `Primary` only under a primacy pin, so with two `Secondary` sides exactly ONE
-//     branch's value was recorded and which one depended on the argument order. Two replicas
-//     refusing the same merge agreed about every contended cell and disagreed about what the other
-//     side wanted. The envelope now carries `A` and `B` unconditionally, and the precedence slots
-//     are populated exactly when a pin is held — so the claim is the strong one: swapping the
-//     branches TRANSPOSES the envelope and changes nothing else in it.
-//
-//  2. `SelfMergeRefusals` — `merge3Way base a a` refused whenever `a` changed any node's children,
-//     because the children facet lacked the "both sides changed it to the same thing" guard every
-//     other facet has. The guard is in, and the case it opens — two branches inserting the SAME id
-//     with DIFFERENT content, where `recurseChild` used to take the A side unconditionally — is a
-//     refusal naming that id rather than an arrival-order-dependent tree. Both halves are asserted:
-//     the self-merge law here, and the two fixed claims in `sharedInsertFailures` below.
+/// A fixed actor and instant, so every node id is a pure function of the ops and both
+/// pipelines mint the same DAG.
+let private lawActor = Actor.Human "fable-laws"
 
-/// The two FIXED claims the shared-children guard has to satisfy, asserted directly rather than
-/// sampled: a generated run that happened to draw neither would report the repaired path green
-/// having exercised nothing. Returns the refutation count.
-///
-///   * two branches inserting the same id with the SAME content auto-merge, and the merged tree
-///     carries that child exactly once;
-///   * two branches inserting the same id with DIFFERENT content REFUSE, and the refusal NAMES the
-///     id — the outcome the A-side default silently produced a tree for.
+let private lawStamp =
+    System.DateTimeOffset(2026, 9, 12, 0, 0, 0, System.TimeSpan.Zero)
+
+let private lawRecord (parents: string list) (op: TreeOp<obj>) : DagOpRecord<obj> =
+    DagOpRecord.create "s" parents op None lawActor lawStamp OpResultEnvelope.Success
+
+/// Genesis (an empty Batch) and one branch node per op of each delta: the DAG and the two heads.
+let private forkOf (opsA: TreeOp<obj> list) (opsB: TreeOp<obj> list) =
+    let genesis = lawRecord [] (TreeOp.Batch [])
+
+    let chain (ops: TreeOp<obj> list) =
+        ops
+        |> List.fold
+            (fun (acc: DagOpRecord<obj> list) op ->
+                let parent = (List.head acc).Hash
+                lawRecord [ parent ] op :: acc)
+            [ genesis ]
+
+    let a = chain opsA
+    let b = chain opsB
+    DagOpRecord.toDag (a @ b), (List.head a).Hash, (List.head b).Hash
+
+let private canon (t: Node<obj>) : string = CanonicalJson.encodeNode t
+
+/// One naming's verdict: `Some (tree, node id)` for a merge, `None` for a refusal, and the
+/// replay law's own failure named.
+let private mergeOf b dag x y : Result<(string * string) option, string> =
+    match (DagMerge.mergeDag MergeContext.defaults "s" b dag x y lawStamp).Result with
+    | MergeResult.Merged(record, tree) -> Ok(Some(canon tree, record.Hash))
+    // One delta a prefix of the other: the node ids coincide and the merge fast-forwards.
+    | MergeResult.FastForward h -> Ok(Some("fast-forward", h))
+    | MergeResult.Refused _ -> Ok None
+    | MergeResult.DeltaNotReplayable _ -> Error "the minted node does not replay to the derived tree"
+    | other -> Error("an unexpected merge outcome: " + sprintf "%A" other)
+
 let sharedInsertFailures () : string list =
     let b = unwrap baseTree
 
     let ins (text: string) =
         TreeOp.InsertChild(NodeId "root", unwrap (mkLeafText "shared" text))
 
-    let branch (text: string) =
-        match UiApply.apply (ins text) b with
-        | Ok node -> Some node
-        | Error _ -> None
+    [ (match DagReconcile.reconcile b [ ins "alpha" ] [ ins "alpha" ] with
+       | Error _ -> [ "SHAREDINSERT agreeing same-id inserts refused instead of taking the shared value" ]
+       | Ok r ->
+           let copies =
+               Fuaran.UI.Ops.Introspect.getChildren r.Tree.Kind
+               |> Option.defaultValue []
+               |> List.filter (fun n -> n.Id = "shared")
+               |> List.length
 
-    match branch "alpha", branch "beta" with
-    | Some alpha1, Some beta ->
-        // The same insert applied twice off the base — two branches that AGREE.
-        let alpha2 = alpha1
-
-        [ (match TreeMerge.merge3Way b alpha1 alpha2 with
-           | Error _ -> [ "SHAREDINSERT agreeing same-id inserts refused instead of taking the shared value" ]
-           | Ok tree ->
-               let ids =
-                   Fuaran.UI.Ops.Introspect.getChildren tree.Kind
-                   |> Option.defaultValue []
-                   |> List.filter (fun n -> n.Id = "shared")
-
-               if List.length ids = 1 then
-                   []
-               else
-                   [ "SHAREDINSERT agreeing same-id inserts produced "
-                     + string (List.length ids)
-                     + " copies of the shared child" ])
-          (match TreeMerge.merge3Way b alpha1 beta with
-           | Ok _ -> [ "SHAREDINSERT differing same-id inserts merged instead of refusing" ]
-           | Error conflicts ->
-               if conflicts |> List.exists (fun c -> c.NodeId = "shared") then
-                   []
-               else
-                   [ "SHAREDINSERT differing same-id inserts refused without naming the contended id" ])
-          // The refusal must also be order-independent, in both halves: the same cells, and an
-          // envelope that is the transposition of the forward one.
-          (match TreeMerge.merge3Way b alpha1 beta, TreeMerge.merge3Way b beta alpha1 with
-           | Error f, Error r ->
-               [ if conflictCells f <> conflictCells r then
-                     "SHAREDINSERT differing same-id inserts named different cells by arrival order"
-                 if conflictValues false f <> conflictValues true r then
-                     "SHAREDINSERT differing same-id inserts recorded a non-transposed envelope by arrival order" ]
-           | _ -> [ "SHAREDINSERT differing same-id inserts did not refuse under both arrival orders" ]) ]
-        |> List.concat
-    | _ -> [ "SHAREDINSERT the fixed shared-insert scenario did not apply to the base tree" ]
+           if copies = 1 then
+               []
+           else
+               [ "SHAREDINSERT agreeing same-id inserts produced " + string copies + " copies" ])
+      (match DagReconcile.reconcile b [ ins "alpha" ] [ ins "beta" ] with
+       | Error(ReconcileFault.Refused rs) when rs |> List.exists (fun r -> r.Conflict.Address = "root") -> []
+       | Error _ -> [ "SHAREDINSERT differing same-id inserts refused without naming their parent" ]
+       | Ok _ -> [ "SHAREDINSERT differing same-id inserts merged instead of refusing" ]) ]
+    |> List.concat
 
 let mergeOrderLaws (seed: int) (iterations: int) : MergeVerdict =
     let b = unwrap baseTree
@@ -301,14 +212,11 @@ let mergeOrderLaws (seed: int) (iterations: int) : MergeVerdict =
     let mutable refused = 0
     let mutable classDiv = 0
     let mutable treeDiv = 0
-    let mutable cellDiv = 0
+    let mutable addressDiv = 0
+    let mutable replayFail = 0
     let mutable selfFail = 0
     let mutable ffFail = 0
-    let mutable valueAsym = 0
-    let mutable selfRefused = 0
     let mutable selfStructural = 0
-    // A ref rather than a `let mutable`, because the first-refutation note is written from more
-    // than one place and F# does not let a closure capture a mutable local.
     let first: string option ref = ref None
 
     let note (why: string) =
@@ -321,8 +229,6 @@ let mergeOrderLaws (seed: int) (iterations: int) : MergeVerdict =
     | msg :: _ -> note msg
     | [] -> ()
 
-    /// The root-level child ids of a tree — the generator only inserts and removes under `root`, so
-    /// this is exactly "did this branch change any node's children".
     let rootChildIds (n: Node<obj>) =
         Fuaran.UI.Ops.Introspect.getChildren n.Kind
         |> Option.defaultValue []
@@ -333,77 +239,45 @@ let mergeOrderLaws (seed: int) (iterations: int) : MergeVerdict =
         let opsB = genEdit ()
 
         match applyEdit opsA b, applyEdit opsB b with
-        | Some a, Some bb ->
+        | Some a, Some _ ->
             applied <- applied + 1
+            let dag, headA, headB = forkOf opsA opsB
 
-            match mergeOutcome b a bb, mergeOutcome b bb a with
-            | Merged f, Merged r ->
-                merged <- merged + 1
+            if headA <> headB then
+                match mergeOf b dag headA headB, mergeOf b dag headB headA with
+                | Error why, _
+                | _, Error why ->
+                    replayFail <- replayFail + 1
+                    note ("trial " + string i + ": " + why)
+                | Ok(Some(f, fid)), Ok(Some(r, rid)) ->
+                    merged <- merged + 1
 
-                if f <> r then
-                    treeDiv <- treeDiv + 1
-                    note ("trial " + string i + ": merged trees differ by arrival order")
-            | Refused(fc, fv, _), Refused(rc, _, rt) ->
-                refused <- refused + 1
+                    if f <> r then
+                        treeDiv <- treeDiv + 1
+                        note ("trial " + string i + ": merged trees differ by naming order")
 
-                if fc <> rc then
-                    cellDiv <- cellDiv + 1
+                    if fid <> rid then
+                        addressDiv <- addressDiv + 1
+                        note ("trial " + string i + ": the merge node's address differs by naming order")
+                | Ok None, Ok None -> refused <- refused + 1
+                | _ ->
+                    classDiv <- classDiv + 1
+                    note ("trial " + string i + ": one naming merged and the other refused")
 
-                    note (
-                        "trial "
-                        + string i
-                        + ": refusals name different contended cells by arrival order"
-                    )
-
-                // The swapped run's envelope, transposed, must BE the forward run's — the whole of
-                // finding 1, stated as an equality rather than as a canonicalised near-miss.
-                if fv <> rt then
-                    valueAsym <- valueAsym + 1
-
-                    note (
-                        "trial "
-                        + string i
-                        + ": the swapped refusal envelope is not the transposition of the forward one"
-                    )
-            | _ ->
-                classDiv <- classDiv + 1
-                note ("trial " + string i + ": one order merged and the other refused")
-
-            // Self-merge. UNCONDITIONAL since Phase 1497's shared-children guard: merging a branch
-            // with itself must RETURN that branch, whatever the branch did — a refusal is now a
-            // refutation, not a counted finding. `selfStructural` records how many of these trials
-            // actually reached the repaired path, so a generator that stopped producing structural
-            // edits could not report this green having asserted nothing about it.
             if rootChildIds a <> rootChildIds b then
                 selfStructural <- selfStructural + 1
 
-            match TreeMerge.merge3Way b a a with
-            | Ok tree ->
-                if CanonicalJson.encodeNode tree <> CanonicalJson.encodeNode a then
-                    selfFail <- selfFail + 1
-                    note ("trial " + string i + ": merge3Way base a a merged to a tree that is not a")
-            | Error _ ->
-                selfRefused <- selfRefused + 1
-                note ("trial " + string i + ": merge3Way base a a refused instead of returning a")
+            match DagReconcile.reconcile b opsA opsA with
+            | Ok r when canon r.Tree = canon a -> ()
+            | _ ->
+                selfFail <- selfFail + 1
+                note ("trial " + string i + ": a delta reconciled against itself is not its own tree")
 
-            // Fast-forward, both ways round: a side that did not move contributes nothing, so the
-            // merge is the side that did. Checked in BOTH positions, because a merge that
-            // fast-forwarded in one argument order only would be exactly the order-dependence
-            // this law is about, arriving through the degenerate case.
-            match TreeMerge.merge3Way b b a, TreeMerge.merge3Way b a b with
-            | Ok l, Ok r when
-                CanonicalJson.encodeNode l = CanonicalJson.encodeNode a
-                && CanonicalJson.encodeNode r = CanonicalJson.encodeNode a
-                ->
-                ()
+            match DagReconcile.reconcile b [] opsA, DagReconcile.reconcile b opsA [] with
+            | Ok l, Ok r when canon l.Tree = canon a && canon r.Tree = canon a -> ()
             | _ ->
                 ffFail <- ffFail + 1
-
-                note (
-                    "trial "
-                    + string i
-                    + ": merge3Way against an unchanged side did not fast-forward"
-                )
+                note ("trial " + string i + ": a delta against the empty delta is not its own tree")
         | _ -> ()
 
     { Trials = iterations
@@ -412,12 +286,11 @@ let mergeOrderLaws (seed: int) (iterations: int) : MergeVerdict =
       Refused = refused
       ClassDivergences = classDiv
       TreeDivergences = treeDiv
-      CellSetDivergences = cellDiv
+      AddressDivergences = addressDiv
+      ReplayFailures = replayFail
       SelfMergeFailures = selfFail
       FastForwardFailures = ffFail
       SharedInsertFailures = List.length sharedInsert
-      ValueAsymmetries = valueAsym
-      SelfMergeRefusals = selfRefused
       SelfMergeStructural = selfStructural
       First = first.Value }
 
@@ -437,8 +310,10 @@ let mergeVerdictLines (v: MergeVerdict) : string list =
         + string v.ClassDivergences
         + " tree="
         + string v.TreeDivergences
-        + " cells="
-        + string v.CellSetDivergences
+        + " address="
+        + string v.AddressDivergences
+        + " replay="
+        + string v.ReplayFailures
         + " self="
         + string v.SelfMergeFailures
         + " fastforward="
@@ -446,45 +321,26 @@ let mergeVerdictLines (v: MergeVerdict) : string list =
         + " sharedinsert="
         + string v.SharedInsertFailures
 
-    // The Phase 1488 finding line, kept VERBATIM under its own names. It carried the measurement of
-    // two defects on every gate run; it now carries the claim that both are repaired, and both
-    // counters feed `mergeViolations`. Keeping the line rather than renaming it is the point: the
-    // same log line that read `101` / `223` reads `0`.
-    let findings =
-        "MERGEFINDING valueAsymmetries="
-        + string v.ValueAsymmetries
-        + " selfMergeRefusals="
-        + string v.SelfMergeRefusals
-
     match v.First with
-    | Some why -> [ counts; laws; findings; "MERGEFAIL " + sanitise why ]
-    | None -> [ counts; laws; findings ]
+    | Some why -> [ counts; laws; "MERGEFAIL " + sanitise why ]
+    | None -> [ counts; laws ]
 
-/// Every way this law can be refuted, counted once.
 let mergeViolations (v: MergeVerdict) : int =
     v.ClassDivergences
     + v.TreeDivergences
-    + v.CellSetDivergences
+    + v.AddressDivergences
+    + v.ReplayFailures
     + v.SelfMergeFailures
     + v.FastForwardFailures
     + v.SharedInsertFailures
-    // Phase 1497: the two Phase 1488 measurements are refutations now.
-    + v.ValueAsymmetries
-    + v.SelfMergeRefusals
 
-/// A run that never auto-merged, or never refused, proves nothing about the case it missed. The
-/// kit guards its own families this way; the tier-shaped law beside them is held to it too.
 let mergeAdequacyFailures (v: MergeVerdict) : string list =
     [ if v.Merged = 0 then
-          "ADEQUACY merge: no trial auto-merged — the tie-break case was never sampled"
+          "ADEQUACY merge: no trial merged — the minting path was never sampled"
       if v.Refused = 0 then
-          "ADEQUACY merge: no trial refused — the conflict path was never sampled"
-      // Phase 1497: the self-merge law is unconditional now, so the guard that mattered moved. What
-      // it has to rule out is a run whose branches never touched children at all — the self-merge
-      // claim would then hold trivially, over exactly the branches that never reach the
-      // shared-children guard the claim exists to certify.
+          "ADEQUACY merge: no trial refused — the refusal path was never sampled"
       if v.SelfMergeStructural = 0 then
-          "ADEQUACY merge: no self-merge trial changed any children — the shared-children guard was never sampled" ]
+          "ADEQUACY merge: no trial changed any children — the structural agreement case was never sampled" ]
 
 // ---------------------------------------------------------------------------
 //  law 2 — the kit's lane-fold family, under this pipeline
@@ -509,6 +365,96 @@ let laneFoldResults (seed: int) (iterations: int) : Fuaran.Core.LawResult list =
     // `seed` argument still names the run in its verdicts, so a refutation stays quotable.
     PortableRng.reseed seed
     FoldConfluence.laneFoldLawsAt coreSw footprintOfEqOp hashState laneGen 3 seed iterations
+
+/// The census enrolment name for the FABLE port of `Conformance.footprintInLawsAt` (Phase 2327),
+/// printed on both legs as `laneFoldFablePort` is.
+let footprintInFablePort =
+    "footprintInLawsAt certifies through the Fable law harness over the tier's base-aware footprint"
+
+/// The base-aware footprint laws over the transpiled projection: the same instantiation
+/// `CoreDagLawTests.fs` runs on .NET, with the generator drawn from `PortableRng`.
+let footprintInResults (seed: int) (iterations: int) : Fuaran.Core.LawResult list =
+    PortableRng.reseed seed
+
+    Fuaran.Core.Conformance.footprintInLawsAt
+        coreSw
+        footprintOfEqOp
+        footprintInOfEqOp
+        hashState
+        footprintGen
+        seed
+        iterations
+
+// ---------------------------------------------------------------------------
+//  law 2c — the reconciliation policy is symmetric (Phase 2293)
+// ---------------------------------------------------------------------------
+//
+//  `DagReconcile.reconcile` over two generated deltas from the base, named both
+//  ways round. The policy admits pairs Core's independence theorem does not
+//  cover (agreements, interleaves), so its order-independence is the POLICY's
+//  rule, stated here: the two namings derive one tree, or refuse with envelopes
+//  that are each other's mirror (every entry's left and right swapped, re-sorted),
+//  or fail on the same fault class. The tallies print on both pipelines and are
+//  byte-compared, which also certifies that the policy reaches the same verdicts
+//  in a browser as on .NET.
+
+/// One reconcile verdict, rendered so the two namings can be compared: the derived tree's
+/// canonical bytes, the envelope with its sides swapped back when `mirror` is set, or the
+/// fault's case name.
+let private reconcileText (mirror: bool) (r: Result<Reconciled<obj>, ReconcileFault<obj>>) : string =
+    match r with
+    | Ok d -> "derived " + CanonicalJson.encodeNode d.Tree
+    | Error(ReconcileFault.Refused rs) ->
+        let rs =
+            if mirror then
+                rs
+                |> List.map (fun x ->
+                    { x with
+                        Conflict =
+                            { x.Conflict with
+                                Left = x.Conflict.Right
+                                Right = x.Conflict.Left } })
+            else
+                rs
+
+        "refused " + DagReconcile.encodeEnvelope rs
+    | Error(ReconcileFault.DeltaDoesNotApply _) -> "delta-does-not-apply"
+    | Error(ReconcileFault.OrderSensitive _) -> "order-sensitive"
+    | Error(ReconcileFault.FoldFaulted _) -> "fold-faulted"
+    | Error(ReconcileFault.IntroducedDefects _) -> "introduced-defects"
+
+/// The policy's symmetry over `iterations` generated delta pairs: the tally lines and the number
+/// of pairs whose two namings disagree.
+let reconcileSymmetry (seed: int) (iterations: int) : string list * int =
+    let b = unwrap baseTree
+    PortableRng.reseed seed
+    let mutable derived = 0
+    let mutable refused = 0
+    let mutable other = 0
+    let mutable asymmetric = 0
+
+    for _ in 1..iterations do
+        let a = genEdit ()
+        let c = genEdit ()
+
+        match applyEdit a b, applyEdit c b with
+        | Some _, Some _ ->
+            let ac = DagReconcile.reconcile b a c
+            let ca = DagReconcile.reconcile b c a
+
+            if reconcileText false ac <> reconcileText true ca then
+                asymmetric <- asymmetric + 1
+
+            match ac with
+            | Ok _ -> derived <- derived + 1
+            | Error(ReconcileFault.Refused _) -> refused <- refused + 1
+            | Error _ -> other <- other + 1
+        | _ -> ()
+
+    // One `MERGE ` line: the stage compares only lines of its declared shapes, so a line of
+    // any other prefix would print on both pipelines and be compared on neither.
+    [ sprintf "MERGE reconcile derived=%d refused=%d other=%d asymmetric=%d" derived refused other asymmetric ],
+    asymmetric
 
 // ---------------------------------------------------------------------------
 //  law 3 — the raw-DEFLATE inflater, over a FOREIGN dynamic-Huffman stream
@@ -871,34 +817,20 @@ let dateSentinelViolations (cases: DateSentinelCase list) : int =
 //  two independently-green runs.
 //
 //  The three cases, in the order a reader should meet them:
-//   - `honest`    — a checkpoint made by `DagCheckpoint.create` replays, and the
-//                   bounded replay equals the full replay from genesis. Without
-//                   this the two refusals below could both be produced by a
-//                   function that refuses everything.
-//   - `tampered`  — the Snapshot is swapped for a different tree while the
-//                   stored `SnapshotHash` stays honest. Pre-Phase-412 this was
-//                   folded over silently, yielding a tree that never existed.
-//   - `off-spine` — snapshot and hash are BOTH genuine; only the position moved.
-//                   A tree-only hash cannot see this, which is why the hash is
-//                   position-bound.
+//   - `honest`    — a Core checkpoint (`DagFold.checkpointAt`, Phase 2645) verifies,
+//                   and the bounded replay (`DagFold.replayFrom`) equals the full
+//                   replay from genesis. Without this the two refusals below could
+//                   both be produced by a function that refuses everything.
+//   - `tampered`  — the State is swapped for a different tree while the stored
+//                   seal stays honest; `DagFold.verifyCheckpoint` refuses it.
+//   - `off-spine` — state and seal are BOTH genuine; only the node moved. A
+//                   state-only seal cannot see this, which is why Core's seal
+//                   binds the node.
 
 type CheckpointCase =
     { Name: string
       Outcome: string
       Passed: bool }
-
-/// A fixed actor / envelope / timestamp, so the content hashes are a pure
-/// function of the ops and both pipelines compute the same DAG.
-let private ckActor = Actor.Human "fable-laws"
-
-/// Deliberately a fixed instant rather than `DateTimeOffset.UtcNow`: the record
-/// hash folds the timestamp, and a clock reading would make the DAG (and every
-/// line printed below) different on the two legs of a byte comparison.
-let private ckStamp =
-    System.DateTimeOffset(2026, 9, 12, 0, 0, 0, System.TimeSpan.Zero)
-
-let private ckRecord (parents: string list) (op: TreeOp<obj>) : DagOpRecord<obj> =
-    DagOpRecord.create "s" parents op None ckActor ckStamp OpResultEnvelope.Success
 
 /// Three ops that extend the shared base tree. Each inserts a DISTINCT leaf, so
 /// the three intermediate states are pairwise distinct by construction and the
@@ -912,59 +844,42 @@ let checkpointCases () : CheckpointCase list =
     let initial = unwrap baseTree
 
     // A linear DAG: genesis -> a -> b.
-    let g = ckRecord [] ckOps[0]
-    let a = ckRecord [ g.Hash ] ckOps[1]
-    let b = ckRecord [ a.Hash ] ckOps[2]
-
-    let records = [ g; a; b ]
-
-    let getRec (h: string) : DagOpRecord<obj> option =
-        records |> List.tryFind (fun r -> r.Hash = h)
+    let g = lawRecord [] ckOps[0]
+    let a = lawRecord [ g.Hash ] ckOps[1]
+    let b = lawRecord [ a.Hash ] ckOps[2]
+    let dag = DagOpRecord.toDag [ g; a; b ]
 
     let replayTo (head: string) : Node<obj> option =
-        match DagReplay.replay getRec initial head with
+        match DagFold.replayTo initial dag head with
         | Ok t -> Some t
         | Error _ -> None
 
-    match replayTo g.Hash, replayTo a.Hash, replayTo b.Hash with
-    | Some atG, Some atA, Some full ->
-        let honest = DagCheckpoint.create "s" a.Hash atA
-
+    match replayTo g.Hash, replayTo a.Hash, replayTo b.Hash, DagFold.checkpointAt initial dag a.Hash with
+    | Some atG, Some atA, Some full, Ok honest ->
         let honestOutcome =
-            match DagReplay.replayFromCheckpoint getRec honest b.Hash with
-            | Ok bounded when CanonicalJson.encodeNode bounded = CanonicalJson.encodeNode full ->
-                "replayed-equal-to-full"
-            | Ok _ -> "replayed-but-diverged"
-            | Error _ -> "refused"
+            match DagFold.verifyCheckpoint honest dag, DagFold.replayFrom honest dag b.Hash with
+            | Ok(), Ok bounded when canon bounded = canon full -> "replayed-equal-to-full"
+            | Ok(), Ok _ -> "replayed-but-diverged"
+            | _ -> "refused"
 
-        // The forged snapshot must really be a different tree, or the case
+        // The forged state must really be a different tree, or the case
         // certifies nothing — asserted rather than assumed, as its own line.
-        let forgedIsDistinct = CanonicalJson.encodeNode atG <> CanonicalJson.encodeNode atA
+        let forgedIsDistinct = canon atG <> canon atA
 
-        let tampered =
-            { honest with
-                Snapshot = atG
-                SnapshotHash = DagCheckpoint.snapshotHash a.Hash (CanonicalJson.encodeNode atA) }
-
-        let tamperedOutcome =
-            match DagReplay.replayFromCheckpoint getRec tampered b.Hash with
-            | Ok _ -> "TRUSTED"
-            | Error(DagReplayError.SnapshotHashMismatch(atHash, stored, recomputed)) when
-                atHash = a.Hash && stored <> recomputed
-                ->
-                "refused-snapshot-hash-mismatch"
+        let verdict (cp: Fuaran.Core.Dag.Checkpoint<Node<obj>>) =
+            match DagFold.verifyCheckpoint cp dag with
+            | Ok() -> "TRUSTED"
+            | Error(Fuaran.Core.Dag.CheckpointBreak.Seal _) -> "refused-seal-mismatch"
             | Error _ -> "refused-wrong-class"
 
-        // Genuine snapshot, genuine hash, WRONG position: the checkpoint for `g`
-        // presented as if it bounded `a`. Nothing in the record is forged.
-        let atGCheckpoint = DagCheckpoint.create "s" g.Hash atG
-        let moved = { atGCheckpoint with AtHash = a.Hash }
+        let tamperedOutcome = verdict { honest with State = atG }
 
+        // Genuine state, genuine seal, WRONG node: the checkpoint for `g` presented
+        // as if it stood at `a`. Nothing in the state is forged.
         let offSpineOutcome =
-            match DagReplay.replayFromCheckpoint getRec moved b.Hash with
-            | Ok _ -> "TRUSTED"
-            | Error(DagReplayError.SnapshotHashMismatch _) -> "refused-snapshot-hash-mismatch"
-            | Error _ -> "refused-wrong-class"
+            verdict
+                { DagFold.sealAt g.Hash atG with
+                    Node = a.Hash }
 
         [ { Name = "forged-snapshot-is-a-distinct-tree"
             Outcome = (if forgedIsDistinct then "distinct" else "IDENTICAL")
@@ -974,10 +889,10 @@ let checkpointCases () : CheckpointCase list =
             Passed = honestOutcome = "replayed-equal-to-full" }
           { Name = "tampered-snapshot"
             Outcome = tamperedOutcome
-            Passed = tamperedOutcome = "refused-snapshot-hash-mismatch" }
+            Passed = tamperedOutcome = "refused-seal-mismatch" }
           { Name = "genuine-snapshot-moved-position"
             Outcome = offSpineOutcome
-            Passed = offSpineOutcome = "refused-snapshot-hash-mismatch" } ]
+            Passed = offSpineOutcome = "refused-seal-mismatch" } ]
     | _ ->
         [ { Name = "fixture"
             Outcome = "REPLAY-FAILED"

@@ -23,38 +23,30 @@ module Fuaran.UI.Renderer.TrustedTypes
 //      Content-Security-Policy: require-trusted-types-for 'script';
 //                               trusted-types fuaran-renderer
 //
-//  WHAT THE POLICY IS. Its `createHTML` is `Sanitize.sanitizeMarkdownHtml`, the
-//  same substring floor the markdown seam has always applied, and nothing else.
-//  It declares no `createScript` and no `createScriptURL`, so a caller reaching
-//  for either through this policy gets a `TypeError` from the browser rather than
-//  a value: the renderer mints markup and never script, and the policy says so in
-//  the only way a policy can.
+//  WHAT THE POLICY IS. It MINTS. Its `createHTML` returns its input, because the
+//  renderer's markup is already safe when it gets here (Phase 2069): each
+//  producer makes its own output safe, once, and runs identically on the server.
+//  Markdown runs `Sanitize.sanitizeMarkdownHtml` inside `Markdown.toHtmlWithEgress`;
+//  the drawing and chart SVG builders, MathML and the code highlighter escape by
+//  construction; `Theme.toCss` and the KaTeX enhancement apply the floor to their
+//  own output. It declares no `createScript` and no `createScriptURL`, so a caller
+//  reaching for either through this policy gets a `TypeError` from the browser
+//  rather than a value: the renderer mints markup and never script, and the policy
+//  says so in the only way a policy can.
 //
-//  WHY THE FLOOR RUNS EVEN WITHOUT THE API. `html` applies `createHtml` on every
-//  path, so a browser with no Trusted Types support, a host that sends no
-//  directive, the server renderer and the .NET build all produce the SAME BYTES
-//  as a browser that does enforce. That uniformity is not a nicety. The server
-//  renderer emits these payloads into the SSR document and the client renderer
-//  hydrates over them, so a floor applied on one side only would present as a
-//  React hydration mismatch on every seam whose bytes it changed. What the
-//  missing API costs is the trusted WRAPPER, which is inert where nothing
-//  enforces it, and that is the whole of the no-op fallback.
-//
-//  WHY THAT IS SAFE FOR SVG, MathML AND CSS. The floor was written for markdown
-//  and now runs over drawing SVG, chart SVG, MathML and the theme stylesheet as
-//  well. It is safe there because each of those emitters escapes by construction
-//  already, so the floor finds nothing to remove: the invariance is pinned as a
-//  test (`TrustedTypesTests`) rather than assumed, and that test is what goes red
-//  if a payload ever grows a shape the sweep would rewrite. One such shape was
-//  found and fixed in the same change: the sweep matched a dangerous element name
-//  as a bare prefix, so the drawing builder's `<metadata>` provenance element read
-//  as `<meta>` and lost its opening tag. `Sanitize` now requires a tag-name
-//  boundary.
+//  WHY NOT SANITISE HERE. A pass at this sink runs on the client only, so any
+//  input it changed was a hydration mismatch and left SSR the less protected
+//  tier, and it ran over markdown a second time on every render. `TrustedTypes`
+//  therefore cannot change a byte: a browser with no Trusted Types support, a host
+//  that sends no directive, the server renderer and the .NET build all carry the
+//  same bytes as a browser that enforces. What the missing API costs is the
+//  trusted WRAPPER, which is inert where nothing enforces it.
 //
 //  WHAT THIS DOES NOT COVER. A host-registered custom renderer returns its own
 //  element and the renderer does not police its output (see `SANITIZATION.md`,
 //  "Custom-renderer trust boundary"). If such a renderer reaches a raw-HTML sink
-//  it must mint its own trusted value, through this policy or its own. The policy
+//  it must make its markup safe and mint its own trusted value, through this
+//  policy or its own: minting vouches for the value and checks nothing. The policy
 //  moves no trust boundary; it makes the boundaries the renderer already declared
 //  enforceable by the browser instead of by review.
 // ============================================================================
@@ -64,12 +56,6 @@ module Fuaran.UI.Renderer.TrustedTypes
 /// configures against, so it is versioned like any other public surface.
 [<Literal>]
 let policyName = "fuaran-renderer"
-
-/// The policy's `createHTML` body, callable directly so the fallback path and the
-/// enforced path cannot diverge. The floor is `Sanitize.sanitizeMarkdownHtml`,
-/// which is defence in depth over input that is already escaped by construction:
-/// see that binding's own doc comment for the precondition it rests on.
-let createHtml (markup: string) : string = Sanitize.sanitizeMarkdownHtml markup
 
 #if FABLE_COMPILER
 
@@ -100,7 +86,7 @@ let private policy: Lazy<obj> =
              null
          else
              try
-                 createPolicy policyName createHtml
+                 createPolicy policyName id
              with _ ->
                  // The host enforces Trusted Types but its `trusted-types`
                  // directive does not name this policy, so the browser refused to
@@ -118,9 +104,9 @@ let private policy: Lazy<obj> =
 
                  null)
 
-/// Mint a value for a raw-HTML sink: the sanitisation floor, wrapped as
-/// `TrustedHTML` where the browser offers the API and the host has named this
-/// policy.
+/// Mint a value for a raw-HTML sink: `markup`, wrapped as `TrustedHTML` where the
+/// browser offers the API and the host has named this policy. The caller vouches
+/// for `markup`; this only mints it.
 ///
 /// The return type is `string` because that is what both sinks take. Where the
 /// policy exists the value is a `TrustedHTML` object travelling under that type,
@@ -131,15 +117,11 @@ let private policy: Lazy<obj> =
 let html (markup: string) : string =
     let p = policy.Value
 
-    if isNull p then
-        createHtml markup
-    else
-        mintTrustedHtml p markup
+    if isNull p then markup else mintTrustedHtml p markup
 
 #else
 
-/// The .NET build has no DOM and no Trusted Types API, so `html` is the floor
-/// alone. Identical bytes to the Fable path: see the header's uniformity note.
-let html (markup: string) : string = createHtml markup
+/// The .NET build has no DOM and no Trusted Types API, so `html` is the identity.
+let html (markup: string) : string = markup
 
 #endif

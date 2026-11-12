@@ -53,7 +53,8 @@ let tests =
               | Some r ->
                   Expect.equal r.Hash a.Hash "hash round-trips"
                   Expect.equal r.Parents [ g.Hash ] "parents round-trip"
-                  Expect.isFalse r.Tombstoned "live record"
+                  Expect.equal (CanonicalJson.encodeOp r.Op) (CanonicalJson.encodeOp a.Op) "op round-trips"
+                  Expect.equal (DagOpRecord.recomputeHash r) a.Hash "the read record re-addresses to its hash"
               | None -> failtest "record not found after add"
           }
 
@@ -79,7 +80,7 @@ let tests =
               Expect.equal (sink.Head "s" |> Async.RunSynchronously) (Some a.Hash) "head is a"
           }
 
-          test "idempotent re-add; topology lca over the durable graph" {
+          test "idempotent re-add; Core's mergeBase over the durable graph" {
               use db = TempDb.create "dag"
               let sink = sinkAt db.Path
 
@@ -95,12 +96,11 @@ let tests =
 
               Expect.equal (sink.Records "s" |> Async.RunSynchronously |> List.length) 4 "re-add was a no-op"
 
-              match sink.Lca("s", b.Hash, c.Hash) |> Async.RunSynchronously with
-              | LcaResult.Unique h -> Expect.equal h a.Hash "lca(b,c) = a"
-              | other -> failtestf "expected Unique a, got %A" other
+              let dag = sink.Records "s" |> Async.RunSynchronously |> DagOpRecord.toDag
+              Expect.equal (Fuaran.Core.Dag.mergeBase dag b.Hash c.Hash) (Some a.Hash) "mergeBase(b,c) = a"
           }
 
-          test "tombstone drops the payload but the chain still verifies" {
+          test "pruning moves a leaf to the durable skeleton and the live set still verifies" {
               use db = TempDb.create "dag"
               let sink = sinkAt db.Path
 
@@ -109,12 +109,23 @@ let tests =
               add sink g
               add sink a
 
-              Expect.isTrue (sink.Tombstone("s", a.Hash) |> Async.RunSynchronously) "tombstoned"
+              Expect.isTrue (sink.Tombstone("s", a.Hash) |> Async.RunSynchronously) "pruned"
 
               let recs = sink.Records "s" |> Async.RunSynchronously
-              let ts = recs |> List.find (fun r -> r.Hash = a.Hash)
-              Expect.isTrue ts.Tombstoned "a is tombstoned"
-              Expect.equal ts.Parents [ g.Hash ] "parent link preserved through tombstone"
+              Expect.equal (recs |> List.map _.Hash) [ g.Hash ] "a left the live records"
+              Expect.isNone (sink.TryGet("s", a.Hash) |> Async.RunSynchronously) "TryGet no longer returns a"
+
+              let skeleton = sink.Skeleton "s" |> Async.RunSynchronously
+
+              Expect.equal
+                  (skeleton |> List.map (fun n -> n.Hash, n.Parents))
+                  [ a.Hash, [ g.Hash ] ]
+                  "a's address and parent link survive in the skeleton"
+
+              Expect.equal
+                  (sink.Parents("s", a.Hash) |> Async.RunSynchronously)
+                  [ g.Hash ]
+                  "Parents still answers for a"
 
               match DagVerify.records recs with
               | Ok() -> ()
@@ -133,7 +144,7 @@ let tests =
               add sink b
 
               let initial = buildDashboard ()
-              let replayed = replaySpine sink "s" initial b.Hash
+              let replayed = replayHead sink "s" initial b.Hash
               let expected = initial |> applyOk brand |> applyOk success |> applyOk removeRight
               Expect.equal (canonical replayed) (canonical expected) "Sqlite replay matches the linear fold"
           } ]

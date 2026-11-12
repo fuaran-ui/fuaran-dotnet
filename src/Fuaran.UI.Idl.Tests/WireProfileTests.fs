@@ -28,6 +28,7 @@ module Fuaran.UI.WireProfileTests
 
 open Expecto
 open Fuaran.Core.Idl
+open Fuaran.Core.Idl.Codegen.Types
 open Fuaran.UI.WireProfile
 
 let private baseIdl = Fuaran.UI.Vocabulary.uiIdl
@@ -52,7 +53,8 @@ let private withExtraField (opt: Optionality) : Idl =
           Opt = opt
           Annotations = Annotations.Empty
           Aliases = []
-          Presence = None }
+          Presence = None
+          Keyed = false }
 
     match baseIdl.Kinds with
     | k :: rest ->
@@ -73,8 +75,40 @@ let private withExtraKind: Idl =
                         Opt = Required
                         Annotations = Annotations.Empty
                         Aliases = []
-                        Presence = None } ]
+                        Presence = None
+                        Keyed = false } ]
                   Annotations = Annotations.Empty } ] }
+
+/// The vocabulary with the FIRST field matching `pick` (in declaration order, over
+/// every kind) rewritten by `edit`, and the name it found — so a perturbation is a
+/// real field of the real vocabulary, not one invented for the test.
+let private withFirstField (pick: IdlField -> bool) (edit: IdlField -> IdlField) : Idl * string =
+    let owner =
+        baseIdl.Kinds
+        |> List.tryFind (fun k -> k.Fields |> List.exists pick)
+        |> Option.defaultWith (fun () -> failtest "the vocabulary declares no field the perturbation can reach")
+
+    let field = owner.Fields |> List.find pick
+
+    { baseIdl with
+        Kinds =
+            baseIdl.Kinds
+            |> List.map (fun k ->
+                if k.Tag = owner.Tag then
+                    { k with
+                        Fields = k.Fields |> List.map (fun f -> if f.Name = field.Name then edit f else f) }
+                else
+                    k) },
+    owner.Tag + "." + field.Name
+
+/// A required string field, loosened to optional (Phase 2509, case 1).
+let private loosened =
+    withFirstField (fun f -> f.Opt = Required && f.Type = TStr && f.Presence.IsNone) (fun f ->
+        { f with Opt = Optional })
+
+/// An `int` field, widened to `float` (Phase 2509, case 1).
+let private widened =
+    withFirstField (fun f -> f.Type = TInt && f.Presence.IsNone) (fun f -> { f with Type = TFloat })
 
 [<Tests>]
 let tests =
@@ -147,6 +181,66 @@ let tests =
               | Ok r ->
                   Expect.stringContains r "MINOR" "the rendered report does not name the step it computed"
                   Expect.stringContains r "Phase1670Probe" "the rendered report does not name the tag that caused it")
+
+          // Phase 2509, case 1 (`docs/DECISIONS.md` D28). Both read as NO STEP before this phase,
+          // which is where the host's copy of the step and fuaran-core Phase 587's classifier
+          // disagreed. Every old document still decodes, which is why the substrate grades both
+          // additive; a behind consumer refuses a NEW document that omits the member or carries
+          // `2.5`, and must-ignore does not help it, so the profile has to name the gap.
+          testCase "a required field LOOSENED to optional bumps the minor" (fun _ ->
+              let idl, name = loosened
+
+              Expect.equal
+                  (stepOf baseText (Artifact.render idl))
+                  Minor
+                  (sprintf
+                      "loosening %s did not step the minor. A behind consumer requires the member and refuses a \
+                       new document that omits it"
+                      name))
+
+          testCase "an int field WIDENED to float bumps the minor" (fun _ ->
+              let idl, name = widened
+
+              Expect.equal
+                  (stepOf baseText (Artifact.render idl))
+                  Minor
+                  (sprintf
+                      "widening %s did not step the minor. A behind consumer reads an integer and refuses a new \
+                       document carrying 2.5"
+                      name))
+
+          testCase "the loosening report names the member that moved" (fun _ ->
+              let idl, name = loosened
+
+              match reportBetween baseText (Artifact.render idl) with
+              | Error e -> failtestf "the report refused a well-formed pair: %s" e
+              | Ok r ->
+                  Expect.stringContains r "MINOR" "the rendered report does not name the step it computed"
+                  Expect.stringContains r "loosened to optional" (sprintf "the report does not say %s loosened" name))
+
+          // Phase 2509, case 2 (`docs/DECISIONS.md` D28) — the ONE recorded divergence from the
+          // substrate's classifier, pinned so that closing it is a deliberate edit. A wire break
+          // beside an undecided row is a major here; Core answers undecided, and which of the two
+          // takes precedence waits on an operator ruling. Until then a break is never softened.
+          testCase "a wire break beside an undecided row is a major (D28 case 2)" (fun _ ->
+              let erased, _ =
+                  withFirstField (fun f -> f.Type = TStr && f.Presence.IsNone) (fun f -> { f with Type = TJson })
+
+              let before, after = Artifact.render withExtraKind, Artifact.render erased
+
+              match Diff.parse before None, Diff.parse after None with
+              | Ok b, Ok a ->
+                  let severities = Diff.changes b a |> List.map (fun c -> (Diff.classify c).Severity)
+
+                  Expect.contains severities BreakingWire "the probe carries no wire break"
+                  Expect.contains severities Unclassifiable "the probe carries no undecided row"
+              | Error e, _
+              | _, Error e -> failtestf "artifact did not parse: %s" e
+
+              Expect.equal
+                  (stepOf before after)
+                  Major
+                  "a removed kind beside an erased-slot change did not read as a major")
 
           // A malformed artifact is not a classification, and must not read as
           // "no change" — the failure mode a bare `try … with` would have.

@@ -15,8 +15,9 @@ provider mapping cannot be written without:
 | `Contract` | The provider value types: messages (text and multimodal), tool calls and results, tool definitions, token usage, the response record, capability flags, and a closed `AIProviderError` vocabulary. |
 | `IHttpTransport` | A one-method egress seam over host-agnostic `HttpRequest` / `HttpResponse` records. |
 
-`FSharp.Core` is the only dependency (plus `Fable.Core`, reached solely from the `#if FABLE_COMPILER`
-arm of the parser). No `System.Net.Http`, no host APIs — so the same source compiles to a .NET server
+`FSharp.Core` and `Fuaran.Core.Wire` are the only dependencies (plus `Fable.Core`, reached solely from
+the `#if FABLE_COMPILER` arm of the parser). `Fuaran.Core.Wire` is FSharp.Core-only and Fable-clean; the
+writer uses its finite float layout alone, so a number serializes to the same bytes on both hosts. No `System.Net.Http`, no host APIs — so the same source compiles to a .NET server
 host and to a Fable browser host, which is the whole point: one provider mapping, two hosts.
 
 ## Using it

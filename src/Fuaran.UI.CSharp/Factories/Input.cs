@@ -107,7 +107,11 @@ public static partial class Fuaran
                 options.Placeholder is { } p ? Fs.Some(p.Inner) : Fs.None<FsGen.TextSource>(),
                 Fs.None<global::Fuaran.UI.Generated.Binding<bool>>(),
                 Fs.None<bool>(),
-                Fs.None<global::Fuaran.UI.Generated.Binding<Microsoft.FSharp.Collections.FSharpList<string>>>())));
+                Fs.None<global::Fuaran.UI.Generated.Binding<Microsoft.FSharp.Collections.FSharpList<string>>>(),
+                Fs.None<FsGen.Affordance>(),
+                // Phase 2571 — the option groups, in authored order (empty: one flat list).
+                Fs.List((options.Groups ?? Enumerable.Empty<(string Label, IEnumerable<string> Values)>())
+                    .Select(g => new FsGen.SelectOptionGroup(g.Label, Fs.List(g.Values ?? Enumerable.Empty<string>())))))));
 
     /// <summary>A multi-select (<c>&lt;select multiple&gt;</c>).</summary>
     public static FuaranNode MultiSelect(MultiSelectOptions options) =>
@@ -184,7 +188,8 @@ public sealed class FormField
             label.Inner,
             required,
             help is { } h ? Fs.Some(h.Inner) : Fs.None<FsGen.TextSource>(),
-            rule is { } r ? Fs.Some(r.Inner) : Fs.None<FsGen.FieldRule>()));
+            rule is { } r ? Fs.Some(r.Inner) : Fs.None<FsGen.FieldRule>(),
+            Fs.None<FsGen.Affordance>()));
 
     /// <summary>A text field. <paramref name="rule"/> declares a constraint the host
     /// must enforce at submit (Phase 864).</summary>
@@ -429,6 +434,13 @@ public sealed record SelectOptions
 
     /// <summary>An optional placeholder.</summary>
     public Text? Placeholder { get; init; }
+
+    /// <summary>
+    /// Optional option groups (Phase 2571): each a label and the <c>Value</c>s of the
+    /// options it gathers, in order. Options no group names render after the groups,
+    /// ungrouped. A value named by two groups, or naming no option, is refused on decode.
+    /// </summary>
+    public IEnumerable<(string Label, IEnumerable<string> Values)>? Groups { get; init; }
 }
 
 /// <summary>Options for <see cref="Fuaran.MultiSelect"/>.</summary>

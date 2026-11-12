@@ -57,22 +57,9 @@ module StreamEntry =
     [<Literal>]
     let chainFormatVersion = 2
 
-    /// Canonical JSON string escaping — mirrors `CanonicalJson.appendRawString`
-    /// (only `"` / `\` / control chars, control as `\u00xx`) so the bytes are
-    /// identical to the encoder the rest of the wire format uses.
-    let private jstr (s: string) : string =
-        let sb = System.Text.StringBuilder()
-        sb.Append '"' |> ignore
-
-        for ch in s do
-            match ch with
-            | '"' -> sb.Append "\\\"" |> ignore
-            | '\\' -> sb.Append "\\\\" |> ignore
-            | c when c < ' ' -> sb.Append(sprintf "\\u%04x" (int c)) |> ignore
-            | c -> sb.Append c |> ignore
-
-        sb.Append '"' |> ignore
-        sb.ToString()
+    /// A string as a JSON string literal, through Core's canonical escape
+    /// (Phase 2026) — the encoder the rest of the wire format uses.
+    let private jstr (s: string) : string = Fuaran.Core.JsonString.quote s
 
     /// Canonical encoding of the apply outcome. A `Success` is a bare tag; a
     /// `Failure` carries its code + message, so flipping outcome breaks the hash.
@@ -250,15 +237,33 @@ module StreamEntry =
     /// is here because the pre-1525 `Substring(1, raw.Length - 2)` THREW on a
     /// shorter span, and a throw is precisely what a caller holding a `Result`
     /// has no way to handle.
-    let private unquote (raw: string) : string =
+    ///
+    /// Nearly every stored string holds no backslash, so that case returns the
+    /// inner substring itself: no builder and no second copy (Phase 2028). With a
+    /// backslash, `unescapeFrom` copies the runs between escapes whole.
+    let rec private unquote (raw: string) : string =
         let inner =
             if raw.Length < 2 then
                 raw
             else
                 raw.Substring(1, raw.Length - 2)
 
-        let sb = System.Text.StringBuilder()
-        let mutable i = 0
+        let firstEscape = inner.IndexOf '\\'
+
+        if firstEscape < 0 then
+            inner
+        else
+            unescapeFrom inner firstEscape
+
+    /// The escape-bearing path of `unquote`: `inner[firstEscape]` is the first
+    /// backslash. Every escape reads exactly as it did before Phase 2028,
+    /// including a bad `\u` (kept as its six literal characters), a `\u` too near
+    /// the end to hold four digits (read as the shorthand `u`) and a backslash
+    /// with nothing after it (kept as itself).
+    and private unescapeFrom (inner: string) (firstEscape: int) : string =
+        let sb = System.Text.StringBuilder(inner.Length)
+        sb.Append(inner, 0, firstEscape) |> ignore
+        let mutable i = firstEscape
 
         let hexDigit (c: char) : int =
             if c >= '0' && c <= '9' then int c - int '0'
@@ -311,8 +316,12 @@ module StreamEntry =
                     sb.Append other |> ignore
                     i <- i + 2
             else
-                sb.Append inner[i] |> ignore
-                i <- i + 1
+                // The run up to the next backslash, copied whole. `inner[i]` is an
+                // ordinary character or a trailing lone backslash; both stand as is.
+                let next = inner.IndexOf('\\', i + 1)
+                let stop = if next < 0 then inner.Length else next
+                sb.Append(inner, i, stop - i) |> ignore
+                i <- stop
 
         sb.ToString()
 
@@ -498,11 +507,6 @@ module StreamEntry =
     /// wrote by hand, so no persisted chain moved.
     let hashFn: Fuaran.Core.HashFn = Fuaran.Core.OpStream.sha256Hash
 
-    let private coreActor (a: Actor) : Fuaran.Core.Actor =
-        match a with
-        | Human id -> Fuaran.Core.Actor.Human id
-        | Agent(model, version, id) -> Fuaran.Core.Actor.Agent(model, version, id)
-
     /// The single chain-format authority (Phase 406, seq basis aligned Phase 411):
     /// the hash for one record, over Core's canonical `{seq,actor,op}` payload
     /// (`op = encode entry`) with the SHA-256 `HashFn`. `seq0` is **Core's 0-based
@@ -512,8 +516,7 @@ module StreamEntry =
     /// `Core.OpStream.firstChainBreak` verifies the chain directly (F14
     /// resolved: the pre-image speaks Core's basis; the API keeps the domain's).
     let chainHash (previousHash: string) (seq0: int) (actor: Actor) (entry: StreamEntry<'Msg>) : string =
-        let payload =
-            Fuaran.Core.StreamConfig.canonical.Payload seq0 (coreActor actor) (encode entry)
+        let payload = Fuaran.Core.StreamConfig.canonical.Payload seq0 actor (encode entry)
 
         hashFn previousHash payload
 
@@ -526,20 +529,15 @@ module StreamEntry =
           ResultEnvelope = r.ResultEnvelope }
 
     /// Project a domain record onto Core's record shape (Phase 411): the envelope
-    /// as the opaque op, the actor mapped, and `Seq = Sequence - 1` (Core's
+    /// as the opaque op, the actor as it is (it IS Core's, Phase 1937), and `Seq = Sequence - 1` (Core's
     /// 0-based index vs the domain's 1-based presentation). `StreamId` is the
     /// sink partition key and does not ride the Core record.
     let toCoreRecord (r: OpRecord<'Msg>) : Fuaran.Core.OpRecord<StreamEntry<'Msg>> =
         { Seq = r.Sequence - 1
-          Actor = coreActor r.Actor
+          Actor = r.Actor
           Op = ofRecord r
           PrevHash = r.PreviousHash
           Hash = r.Hash }
-
-    let private uiActor (a: Fuaran.Core.Actor) : Actor =
-        match a with
-        | Fuaran.Core.Actor.Human id -> Human id
-        | Fuaran.Core.Actor.Agent(model, version, id) -> Agent(model, version, id)
 
     /// The inverse of `toCoreRecord`: rehydrate a domain `OpRecord` from Core's
     /// record shape.
@@ -560,7 +558,7 @@ module StreamEntry =
           Hash = r.Hash
           Op = r.Op.Op
           PromptId = r.Op.PromptId
-          Actor = uiActor r.Actor
+          Actor = r.Actor
           Timestamp = r.Op.Timestamp
           ResultEnvelope = r.Op.ResultEnvelope }
 

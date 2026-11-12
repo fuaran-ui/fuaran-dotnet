@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
     <PackageId>Fuaran.UI.OpStream.Dag.Abstractions</PackageId>
-    <Description>Fuaran op-stream branching-DAG abstractions (opt-in, rung-4). Generalises the linear hash-chained op-stream into a content-addressed Merkle-DAG: DagOpRecord with multi-parent links + lexicographically-sorted-parent canonical hash, the IDagOpStreamSink superset interface (atomic tryAdvanceHead CAS + parents/reachable/lca topology), and DAG integrity verification with tombstone-aware pruning. The linear OpRecord / IOpStreamSink are untouched — a linear chain is a valid degenerate DAG. Apache-2.0 licensed.</Description>
+    <Description>Fuaran op-stream branching-DAG abstractions (opt-in, rung-4). The DAG is Fuaran.Core's: a DagOpRecord is a Core DagNode over the linear chain's provenance envelope (StreamEntry), addressed by Core's Dag.nodeId under the tier's SHA-256, verified by Core's Dag.firstBreak. The IDagOpStreamSink superset interface (atomic tryAdvanceHead CAS, admission by address recompute and parent presence, a pruned-node skeleton beside the live set), the verified lift from a linear segment, and the canonical record wire form. The linear OpRecord / IOpStreamSink are untouched. Apache-2.0 licensed.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageTags>fuaran;op-stream;dag;merkle;branching;content-addressed</PackageTags>
   </PropertyGroup>
@@ -19,8 +19,8 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="DagOpRecord.fs" />
-    <Compile Include="DagTopology.fs" />
     <Compile Include="DagVerify.fs" />
+    <Compile Include="DagWriteAdmission.fs" />
     <Compile Include="DagRetention.fs" />
     <Compile Include="DagWire.fs" />
     <Compile Include="IDagOpStreamSink.fs" />
@@ -38,5 +38,7 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />
+    <!-- Phase 2645: the node, its address, its verifier, its topology, retention and replay are Core's. -->
+    <PackageReference Include="Fuaran.Core.OpStream.Dag" />
   </ItemGroup>
 </Project>

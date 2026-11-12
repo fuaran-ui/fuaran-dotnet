@@ -1,7 +1,7 @@
 {
   "kind": "proofModules",
   "subject": "fuaran-dotnet / program models",
-  "$comment": "The cost declaration for this repository's SECOND proof leg (fuaran#2012): the program models COPIED from the program repository (BoundedFold, Budget — see ../check.ps1, DECLARATION 1b, and ../../copies.json). Same file shape, same rules and the same reading as ../modules.json beside the first leg — a budget is a smoke detector, a floor is a gate — kept separate because the kit takes one cost file per leg and coverage is checked both ways per leg. The numbers are SEEDED HERE, from cold runs of this leg on this repository's pin and flags; the program repository's own measurements are of a different leg on a different machine and load.",
+  "$comment": "The cost declaration for this repository's SECOND proof leg (fuaran#2012): the program repository's models (BoundedFold, Budget), opened read-only from its release asset pinned in ../proofs-program.json (Phase 2383; byte copies before it) — see ../check.ps1, DECLARATION 1b. Same file shape, same rules and the same reading as ../modules.json beside the first leg — a budget is a smoke detector, a floor is a gate — kept separate because the kit takes one cost file per leg and coverage is checked both ways per leg. The numbers are SEEDED HERE, from cold runs of this leg on this repository's pin and flags; the program repository's own measurements are of a different leg on a different machine and load.",
   "seeding": {
     "rule": "budgetSeconds = max(2 x the slowest observed cold-cache run, minimumBudgetSeconds), rounded up to the next 10s.",
     "toleranceFactor": 2,
@@ -23,16 +23,16 @@
       "fastestSeconds": 27,
       "fastestPhase": "fuaran#2012",
       "phase": "fuaran#2012",
-      "note": "The shared bounded fold over the action view, with the UI witness's fourteen arms, COPIED from the program repository (../../copies.json). Checked with z3rlimit 60 (the program repository's margin) and --quake 3. SEEDED from one cold run of `check.ps1 -Leg program` on this dev machine, idle tree: 86s, every query 3/3. Budget 180s by the seeding rule (2 x 86 rounded up to the next 10s); floor 43s by floorSeeding (86 halved, rounded down). ONE observation: re-seed the floor DOWNWARDS as a recorded act the first time a genuinely faster cold run is seen. A bump here means the copied model grew, which happens only when the program repository's model did — read its change first. Floor RE-SEEDED DOWNWARDS 2026-10-04, by operator decision (a recorded act under floorSeeding): cold runs of this leg on CI's hosted Windows runners measured 48s, 34s and 27s (proofs.yml runs 37187496364 and 37198038891 with its re-run; the last two failed the 43s floor). The job caches only the F* binary and verifies into a fresh per-run cache directory, and every other module sped up by the same ~1.8x on the faster runners, so these are genuine cold runs. floorSeeding's rule gives 13s (27s halved); the operator set 20s, which keeps a margin above a warm-cache run while clearing the fastest genuine cold run observed."
+      "note": "The shared bounded fold over the action view, with the UI witness's fourteen arms, the program repository's (opened from its pinned release asset since Phase 2383, a copy declared in ../../copies.json before it). Checked with z3rlimit 60 (the program repository's margin) and --quake 3. SEEDED from one cold run of `check.ps1 -Leg program` on this dev machine, idle tree: 86s, every query 3/3. Budget 180s by the seeding rule (2 x 86 rounded up to the next 10s); floor 43s by floorSeeding (86 halved, rounded down). ONE observation: re-seed the floor DOWNWARDS as a recorded act the first time a genuinely faster cold run is seen. A bump here means the model grew, which happens only when the program repository's model did and the pin moved — read its change first. Floor RE-SEEDED DOWNWARDS 2026-10-04, by operator decision (a recorded act under floorSeeding): cold runs of this leg on CI's hosted Windows runners measured 48s, 34s and 27s (proofs.yml runs 37187496364 and 37198038891 with its re-run; the last two failed the 43s floor). The job caches only the F* binary and verifies into a fresh per-run cache directory, and every other module sped up by the same ~1.8x on the faster runners, so these are genuine cold runs. floorSeeding's rule gives 13s (27s halved); the operator set 20s, which keeps a margin above a warm-cache run while clearing the fastest genuine cold run observed."
     },
     {
       "module": "Budget",
-      "budgetSeconds": 20,
-      "measuredSeconds": 3,
-      "fastestSeconds": 3,
-      "fastestPhase": "fuaran#2012",
+      "budgetSeconds": 60,
+      "measuredSeconds": 30,
+      "fastestSeconds": 30,
+      "fastestPhase": "fuaran#2458",
       "phase": "fuaran#2012",
-      "note": "The interaction budget (saturating arithmetic, the tree walk, the G2 gate), COPIED from the program repository. SEEDED from the same cold run: 3s. Budget 20s, the seeding rule's minimum (2 x 3 is inside process-start noise); floor 0 by floorSeeding's zeroBelowSeconds rule, an explicit zero rather than an absent one."
+      "note": "The interaction budget (saturating arithmetic, the tree walk, the G2 gate), the program repository's (opened from its pinned release asset since Phase 2383). SEEDED from the same cold run: 3s. Budget 20s, the seeding rule's minimum (2 x 3 is inside process-start noise); floor 0 by floorSeeding's zeroBelowSeconds rule, an explicit zero rather than an absent one. RE-SEEDED fuaran#2458: the copy was re-synced to the program repository's v0.13.0 model, which grew by the declared-quantity walk and its theorems (fuaran#2261, 944 to 1261 lines); one cold run of `check.ps1 -Leg program` measured 30s, every query 3/3, so the budget is 60s by the seeding rule (2 x 30). measuredSeconds and fastestSeconds record that run (the pre-growth 3s no longer describes the model); re-seed downwards as a recorded act when a faster cold run of the grown model is seen."
     }
   ]
 }

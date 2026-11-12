@@ -1522,6 +1522,92 @@ module drawStyle =
 
 // ─── Components — the `Fuaran.X` author surface ──────────────────────────────
 
+module Fact =
+    /// Phase 2535 — the reference naming the Fact a `Fact` node's figure cites:
+    /// `Fuaran.fact "id" "Revenue" "£412k" |> Fact.withReference factId`. Opaque to the language
+    /// (WIRE_FORMAT.md §3.6.31). Any other kind is a programming error, not a figure to leave
+    /// uncited in silence.
+    let withReference (reference: string) (node: Node<'Msg>) : Node<'Msg> =
+        match node.Kind with
+        | NodeKind.Fact spec ->
+            { node with
+                Kind = NodeKind.Fact { spec with Reference = Some reference } }
+        | other -> invalidArg (nameof node) $"Fact.withReference needs a Fact node, not {Kind.name other}"
+
+module Markdown =
+    /// Phase 2591 — a figure a `Markdown` text cites, placed by a `cite:<name>` link:
+    /// `Fuaran.markdown "m" "Revenue was [£412k](cite:rev)." |> Markdown.withCitation "rev" factId None`.
+    /// The label says what the figure is, for a screen reader. Any other kind is a
+    /// programming error, as for `Fact.withReference`.
+    let withCitation (name: string) (reference: string) (label: string option) (node: Node<'Msg>) : Node<'Msg> =
+        match node.Kind with
+        | NodeKind.Markdown spec ->
+            let citation: MarkdownCitation =
+                { Name = name
+                  Reference = reference
+                  Label = label |> Option.map TextSource.Literal }
+
+            { node with
+                Kind =
+                    NodeKind.Markdown
+                        { spec with
+                            Citations = spec.Citations @ [ citation ] } }
+        | other -> invalidArg (nameof node) $"Markdown.withCitation needs a Markdown node, not {Kind.name other}"
+
+module Table =
+    /// Phase 2592 — what decode refuses of a table's citations, refused where the table is
+    /// built: a coordinate naming no cell, or two citations for one cell. A bad citation
+    /// otherwise reaches no reader in-process and is a decode refusal on the wire.
+    let requireCitations (rows: TextSource list list) (citations: TableCitation list) : unit =
+        for c in citations do
+            let inRange =
+                c.Row >= 0
+                && c.Row < List.length rows
+                && c.Column >= 0
+                && c.Column < List.length (List.item c.Row rows)
+
+            if not inRange then
+                invalidArg (nameof citations) $"a table citation names no cell: row {c.Row}, column {c.Column}"
+
+        match
+            citations
+            |> List.countBy (fun c -> c.Row, c.Column)
+            |> List.tryFind (fun (_, n) -> n > 1)
+        with
+        | Some((row, column), _) ->
+            invalidArg (nameof citations) $"two table citations name one cell: row {row}, column {column}"
+        | None -> ()
+
+    /// Phase 2592 — a static table's cell cites its figure:
+    /// `Fuaran.table "t" spec |> Table.withCitation 0 1 factId (Some "Q3 revenue")`. Row and
+    /// column are zero-based into its rows, and the cell's text stays as the rows hold it. The
+    /// label says what the figure is, for a screen reader, and is never printed. Anything but a
+    /// static table, or a coordinate naming no cell, is a programming error.
+    let withCitation
+        (row: int)
+        (column: int)
+        (reference: string)
+        (label: string option)
+        (node: Node<'Msg>)
+        : Node<'Msg> =
+        match node.Kind with
+        | NodeKind.DataGrid({ StaticRows = Some sr } as grid) ->
+            let citation: TableCitation =
+                { Column = column
+                  Label = label |> Option.map TextSource.Literal
+                  Reference = reference
+                  Row = row }
+
+            let citations = sr.Citations @ [ citation ]
+            requireCitations sr.Rows citations
+
+            { node with
+                Kind =
+                    NodeKind.DataGrid
+                        { grid with
+                            StaticRows = Some { sr with Citations = citations } } }
+        | other -> invalidArg (nameof node) $"Table.withCitation needs a static table, not {Kind.name other}"
+
 module Fuaran =
     let private buildNode (id: string) (kind: NodeKind<'Msg>) (accessibility: Accessibility option) : Node<'Msg> =
         // `State = None` / `Style = None` since the swap — the canonical
@@ -1727,7 +1813,7 @@ module Fuaran =
             ))
             Defaults.Accessibility.none
 
-    /// Record-form `Fact` (tone / emphasis / icon / help).
+    /// Record-form `Fact` (tone / emphasis / icon / help / reference).
     let factSpec (id: string) (spec: FactSpec) : Node<'Msg> =
         buildNode id (NodeKind.Fact(spec)) Defaults.Accessibility.none
 
@@ -2069,6 +2155,8 @@ module Fuaran =
     /// `StaticRows` payload verbatim. Both `None` (the `Defaults.table` shape)
     /// emits the pre-801 wire byte-for-byte.
     let table (id: string) (spec: TableSpec<'Msg>) : Node<'Msg> =
+        Table.requireCitations spec.Rows spec.Citations
+
         // `StaticRows` cells are `TextSource` (stage 4b closed the transient
         // string-narrowing at the IDL seam) — `Bound` / `I18n` cells ride
         // through unchanged, exactly as the retired hand shape carried them.
@@ -2096,7 +2184,8 @@ module Fuaran =
                 // export (Phase 1125) and no total (Phase 1892).
                 StaticRows =
                     Some
-                        { DefaultSort = spec.DefaultSort
+                        { Citations = spec.Citations
+                          DefaultSort = spec.DefaultSort
                           Headers = spec.Headers
                           Rows = spec.Rows
                           Sortable = spec.Sortable } }

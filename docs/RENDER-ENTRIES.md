@@ -23,8 +23,9 @@ let ctx = Render.RenderContext.create sources dispatch node
 Render.render { ctx with Runtime = myRuntime; TelemetrySink = Some mySink } node
 ```
 
-`create` runs the two one-shot pre-render passes over `node` (its declared state seeds laid under
-`sources.State`, and its fragment registry) and pins every other field to its convenience default.
+`create` runs ONE pre-render walk over `node` (`BindingWalk.renderFacts`, Phase 2069) and
+reads two things off it: the declared state seeds, laid under `sources.State`, and the fragment
+registry. It pins every other field to its convenience default.
 Adjust what you need with `with`. Do **not** spell the record out in full: a full literal is a
 construction site that every new field breaks, and the builder is the one place a new field gets its
 default. `RenderContext.inScope scopeId ctx` renders under a runtime scope (below).
@@ -39,6 +40,28 @@ holds the same record, so a posture moves on both tiers together:
 | `CustomHashFloor` | This render's own `Custom` content-hash floor. Raise-only: the stricter of it and the process floor applies. | `None` (the process floor) |
 | `Csp` | The Content-Security-Policy posture: `Permissive` emits inline styles, `Strict nonce` emits generated classes. | `Csp.Permissive` |
 | `Scope` | The runtime scope this tree renders under. | `None` (the root scope) |
+
+## Subtree memoisation (Phase 2547)
+
+`SubtreeMemo: bool`, off in `create`. On, `render` returns the element it built last time for a node it
+has already rendered, when three keys hold: the **same `Node` value** (by identity, not structure), the
+**same `RenderContext`** (by identity: sources, runtime, policy, dispatch and the registries all live in
+it), and the **same store write generation** (`StateStore.generation ()`, advanced by every write,
+removal or reset on the state, filter, selection and query stores, because some kinds read a store at
+construction time). A node rendered under an `ActionSink` is never memoised, because its context is
+re-stamped per node there. React skips reconciling a subtree whose element is referentially the one it
+mounted, so a hit costs nothing in commit either.
+
+**The authoring rule.** The memo pays only a host that keeps unchanged `Node` values across dispatches.
+A view that rebuilds its whole tree from its model on every dispatch gets nothing from it, by design:
+every node is new. Build the subtrees that did not change once, keep them (in the model, or a cache keyed
+on what they depend on), and rebuild only what moved. Measured on a 200-row table that keeps its rows and
+rebuilds its heading: 15 to 16 ms a dispatch without the memo, under 1 ms with it.
+
+```fsharp
+let ctx = { Render.RenderContext.create sources dispatch root with SubtreeMemo = true }
+Render.render ctx root
+```
 
 ## The `RenderContext` axes a host cares about
 
@@ -77,7 +100,36 @@ Two wrappers compose over the above rather than adding axes:
 | Entry | What it adds |
 |---|---|
 | `renderWithTheme theme …` | `renderWithSources` plus a `<style>` element carrying the `Theme`'s CSS-variable bundle. Same pinned axes as `renderWithSources`. |
-| `renderStateReactive` | `renderWithSources` plus a subscription to every State / Filter / Selection / Query key the tree reads, so a store write re-renders the whole surface. Fable-only behaviour; on .NET it is `renderWithSources`. |
+| `renderStateReactive` | `renderWithSources` plus subscriptions, so a State / Filter / Selection / Query write re-renders every node that reads the written key, and only those (Phase 2530; see below). Fable-only behaviour; on .NET it is `renderWithSources`. |
+
+### What a write re-renders under `renderStateReactive`
+
+Since Phase 2530 the reactive entry re-renders the **readers** of a written key, not the surface. Each node that
+reads a reactive key renders behind its own component boundary, subscribed to the keys that node reads; the surface
+component subscribes to nothing and renders once per host render. One pass over the tree
+(`BindingWalk.reactiveRenderFacts`) yields the keys and the readers; `Render.prepareReactive` turns them into the
+boundaries (`ReaderBoundaries.plan`). What decides a node's keys:
+
+- **What it reads, not what it declares.** A Transform or Expr param the pipeline does not reference reads nothing, so
+  a write to it re-renders nothing. Its seed still seeds.
+- **Every slot the render resolves**, its action slots included: a handler resolves against the context its node was
+  last rendered under, so a node re-renders when a key its action reads moves.
+- **Subtrees the render does not reach on its own belong to the nearest node it does.** A slot argument and an
+  envelope `fallback` subscribe their owner; a `FragmentRef` subscribes everything its fragment's body reads, through
+  nested references, because the expansion it draws is a copy; an `ErrorBoundary` subscribes its child's keys, and no
+  boundary is placed inside its child (its catch is synchronous).
+- **An opaque reader subscribes everything the surface reads**: a `Computed` binding or a registered `Custom`
+  renderer may read any key.
+
+A boundary re-renders only for its own keys: a nested boundary whose keys did not move is skipped when an enclosing
+one re-renders. So the count of boundary renders one write costs is `ReaderBoundaries.rerenderedBy channel key`, and
+`ReaderBoundaries.renderCount ()` measures it in a browser (the renderer benchmark asserts the two agree on every
+sample). The markup is the markup a fresh render of the same stores draws, and focus held elsewhere on the page
+survives the write. Reconciliation keys are untouched: a node's wrapper carries none, and every key sits on an
+element enclosing a node's render.
+
+**Correction.** `renderWithSources` holds no subscription at all: a write there updates nothing until the host
+re-renders (Phase 2529's measurement). Reactivity on a write is this entry's alone.
 
 Server-side rendering is a different package with a deliberately smaller
 surface — `Fuaran.UI.Renderer.Server.Render.render` / `renderWithTheme` /

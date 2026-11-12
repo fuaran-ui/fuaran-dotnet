@@ -450,19 +450,11 @@ module CoreLawSupport =
                           []
                       else
 
+                          // The tier's one lowering; every finding is located at the
+                          // function that built the tree, the unit these laws judge.
                           match PreEmitValidate.validate (instantiate f) with
                           | Ok() -> []
-                          | Error defects ->
-                              defects
-                              |> List.map (fun d ->
-                                  let code, severity, message = PreEmitValidate.describe d
-
-                                  { Code = code
-                                    Severity = severity
-                                    Message = message
-                                    Node = Some f.Tag
-                                    Family = ""
-                                    Related = [] })) ]
+                          | Error defects -> defects |> List.map (PreEmitValidate.toDefect (fun _ -> Some f.Tag))) ]
         with
         | Ok registry -> registry
         | Error e -> failwithf "the pre-emit oracle did not register: %A" e

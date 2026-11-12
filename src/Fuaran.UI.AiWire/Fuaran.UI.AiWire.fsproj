@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
     <PackageId>Fuaran.UI.AiWire</PackageId>
-    <Description>Portable AI-connector wire substrate — the minimal surface a Fuaran host needs to speak an AI provider's own wire format without taking a dependency on any platform SDK: an insertion-ordered JsonValue model with a byte-stable canonical writer, a host-bridged parser (System.Text.Json on .NET, JSON.parse under Fable), the provider message / tool / response / error contract, and a one-method IHttpTransport egress seam. FSharp.Core only — no System.Net.Http, no host APIs — so the same source drives a .NET server host and a Fable browser host. Apache-2.0 licensed.</Description>
+    <Description>Portable AI-connector wire substrate — the minimal surface a Fuaran host needs to speak an AI provider's own wire format without taking a dependency on any platform SDK: an insertion-ordered JsonValue model with a byte-stable canonical writer, a host-bridged parser (System.Text.Json on .NET, JSON.parse under Fable), the provider message / tool / response / error contract, and a one-method IHttpTransport egress seam. FSharp.Core plus Fuaran.Core.Wire's float layout only — no System.Net.Http, no host APIs — so the same source drives a .NET server host and a Fable browser host. Apache-2.0 licensed.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
@@ -33,5 +33,9 @@
          bridge to the browser's own JSON.parse in JsonHost.fs. Harmless on
          .NET — that arm is fenced out and never compiled. -->
     <PackageReference Include="Fable.Core" />
+    <!-- Phase 2318: the one finite float layout (`FloatLayout.finite`) `JsonHost`'s
+         writer lays a non-integral number out with. FSharp.Core-only and Fable-clean
+         (it ships fable/ sources), so the package stays portable to both hosts. -->
+    <PackageReference Include="Fuaran.Core.Wire" />
   </ItemGroup>
 </Project>

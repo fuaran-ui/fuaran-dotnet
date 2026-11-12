@@ -137,6 +137,8 @@ let enforce (skeleton: Skeleton) (op: TreeOp<'Msg>) : StructuralGateDecision<'Ms
         // ── Withheld: off the structural allowlist (default-deny) ──
         | TreeOp.UpdateStyle _ -> StructuralGateDecision.Withheld(allowlistReason "UpdateStyle")
         | TreeOp.PatchStyle _ -> StructuralGateDecision.Withheld(allowlistReason "PatchStyle")
+        | TreeOp.UpdateAccessibility _ -> StructuralGateDecision.Withheld(contentReason "UpdateAccessibility")
+        | TreeOp.UpdateTooltip _ -> StructuralGateDecision.Withheld(contentReason "UpdateTooltip")
 
     go op
 

@@ -137,6 +137,17 @@ let private snapshotTest =
 /// a row and the test it enrols must not drift apart by a typo.
 let private dagLawsTest = "the UI op-stream witness certifies under Core's dagLaws"
 
+/// Phase 2645 (the cut) — the UI DAG IS Core's DAG, so the families over Core's DAG checkpoint,
+/// its reach index and its stored node ids now describe what the tier runs, in the same file.
+let private checkpointLawsTest =
+    "the UI DAG checkpoints certify under Core's checkpointLaws"
+
+let private reachLawsTest =
+    "the UI DAG reach index certifies under Core's reachLaws"
+
+let private storedDagTest =
+    "the stored DAG corpus's node ids recompute under StoredIdentity.dagLaws"
+
 let private laneFoldTest =
     "N-lane folding is arrival-order-invariant under Core's laneFoldLawsAt"
 
@@ -147,8 +158,21 @@ let private laneFoldTest =
 /// certify one witness on two pipelines rather than two witnesses. It is not an Expecto case (Expecto does
 /// not transpile); the harness prints this name as its family label, so the census row, the code
 /// and the gate log all name one thing.
+/// The FABLE port of `footprintInLawsAt` (Phase 2327), in the same harness, over the same re-export.
+let private footprintInFableTest =
+    "footprintInLawsAt certifies through the Fable law harness over the tier's base-aware footprint"
+
 let private laneFoldFableTest =
     "laneFoldLawsAt certifies through the Fable law harness over the tier's reducer and codec"
+
+/// Phase 2010 — the renderer's sanitisation floor at Core's sanitisation family, on .NET
+/// (`CoreAdoptionTests.fs`) and, over the same witness and cases, in the Fable law harness
+/// (`tests/fable-laws/SanitizeLaw.fs`), which prints the second name as its family label.
+let private sanitizeTest =
+    "the renderer's sanitisation floor certifies under Core's sanitizeLawsAt, with its stated limit"
+
+let private sanitizeFableTest =
+    "sanitizeLawsAt certifies through the Fable law harness over the renderer's floor"
 
 let private laneFoldWithTest =
     "lane folding survives the host hash swap under laneFoldLawsWith"
@@ -159,6 +183,20 @@ let private footprintTest =
 /// `footprintLaws`' domain-witness form (Phase 2292), over the SHIPPED `TreeOp` projection.
 let private footprintAtTest =
     "the SHIPPED footprint projection is sound at the tier's own ops (footprintLawsAt)"
+
+/// `footprintLawsAt`'s base-aware form (Phase 2327), over the shipped `TreeOpFootprint.ofOpIn`.
+let private footprintInAtTest =
+    "the BASE-AWARE footprint is sound and refines the pure one (footprintInLawsAt)"
+
+/// The same family over the MOVE family (Phase 2651), in `Fuaran.UI.Ops.Tests`: moves out of a
+/// container beside restyles of it, the pair the source parent's `kind` slot frees.
+let private footprintInMoveTest = "footprintInLawsAt holds over the move family"
+
+/// The same family over the INSERT family (Phase 2691), in `Fuaran.UI.Ops.Tests`: the 0.42.0 kit's
+/// child-list law (Core D246) over a container's restyle beside every change of its child list, the
+/// pairs the pin frees, and the kind edits, reorders and cross moves that must stay ordered.
+let private footprintInInsertTest =
+    "footprintInLawsAt holds over the insert family, with the child-list law"
 
 let private mergeConflictTest =
     "merge-conflict reporting is symmetric, deterministic and complete (mergeConflictLaws)"
@@ -298,6 +336,12 @@ let private columnarOpGridEditTest =
 let private incrementalGridEditTest =
     "incrementalLawsWith certifies op-driven equivalence at this tier's grid edits and pipelines"
 
+/// Phase 2640 — the vocabulary declares its keyed node slots, so the generator emits
+/// `keyedWitness`, and the generated pair is certified against `Introspect`'s hand pair
+/// (`GeneratedLayerTests.fs`).
+let private witnessPairTest =
+    "the generated witness pair certifies against Introspect's hand pair under Core's witnessPairLawsAt"
+
 /// The observer family (Phase 2307), enrolled from the two observer test projects: each in-memory
 /// observer threads Core's `ObserverWitness`, and its own suite certifies the witness it is built
 /// on. Named once each for the same reason every block above is.
@@ -358,7 +402,7 @@ let census: (string * Adoption) list =
       // `laneFold` forms are parameterised by a StreamWitness — this tier's `Ops.Apply.apply`
       // reducer and its canonical op codec — driven through CORE's `Dag`; they certify the
       // tier's reducer, codec and footprint under multi-writer folding, and say nothing about
-      // `Fuaran.UI.OpStream.Dag.Merge`, which `MergeTests` / `MergeConformanceTests` cover
+      // `Fuaran.UI.OpStream.Dag.Merge`, which `DagMergeTests` / `FoldReconcileTests` cover
       // directly. The skeleton-op families are parameterised by the tier's NodeWitness /
       // IdWitness / OpGen and carry no persistence at all, so each runs once rather than
       // per-port; the port question they can pose — does an op survive each sink's codec seam —
@@ -723,12 +767,25 @@ let census: (string * Adoption) list =
       CarriedBy "unfiled — runs at the same Introspect.keyedWitness keyedChildrenLawsAt is adopted at"
       "Conformance.keyedArbitrationLawsWith",
       CarriedBy "unfiled — runs at the same Introspect.keyedWitness keyedChildrenLawsAt is adopted at"
+      // Arrived with the 0.41.0 pin raise (Phase 2420; Core Phase 494). Its subject is a domain
+      // holding a GENERATED witness pair beside a HAND one. Adopted by Phase 2640: the vocabulary
+      // declares `ErrorBoundary.child` / `.fallback` and `Switch.default` keyed, the generator emits
+      // `keyedWitness` (`Derivation.KeyedPositions`), and the pair is held to `Introspect`'s.
+      "Conformance.witnessPairLawsAt",
+      Adopted(
+          witnessPairTest,
+          "Conformance.witnessPairLawsAt — the generated nodeWitness / keyedWitness against Introspect.nodeWitness / keyedWitness, ids re-spelt as the wire string"
+      )
       "Conformance.checkpointLaws",
-      NotUsed
-          "Fuaran.Core.OpStream.Dag's lane-DAG checkpoint (Dag.Checkpoint, Core 0.34.0, fuaran-core Phase 288) — the tier checkpoints its DAG through its own DagReplay.replayFromCheckpoint (Fuaran.UI.OpStream.Dag.Merge) and takes no Core DAG checkpoint"
+      Adopted(
+          checkpointLawsTest,
+          "Conformance.checkpointLaws — the tier checkpoints its DAG through Core (DagFold.checkpointAt / replayFrom / compactAt, Phase 2645)"
+      )
       "Conformance.reachLaws",
-      NotUsed
-          "Fuaran.Core.OpStream.Dag's reachability index (Dag.Reach, fuaran-core Phase 289) — no project here builds a Reach index or calls an index-taking DAG overload"
+      Adopted(
+          reachLawsTest,
+          "Conformance.reachLaws — the tier's retention reads Core's reach index (Dag.prunable over Dag.Reach.ofDag, Phase 2645)"
+      )
       "Conformance.laneLaws",
       NotUsed
           "Fuaran.Core.OpStream.Dag's lane store and whole-DAG order (Dag.loadLanes / totalOrderBy / replayAllBy, fuaran-core Phase 311) — no project here loads lanes or orders a DAG through them"
@@ -772,9 +829,14 @@ let census: (string * Adoption) list =
       "Conformance.keyedCaptureLaws",
       NotUsed
           "CapabilityRegistry.dispatchCaptured / dispatchReplayed and the keyed capture journal — no project here dispatches a capability through the capture seam"
+      // Phase 2010. Two ports, because the floor ships to the browser and the index defect it was
+      // measured for showed under Fable alone. Adopted WITH A STATED LIMIT both ports assert: the
+      // attribute law and the markdown floor law are red for the renderer's two decided narrowings
+      // (docs/DECISIONS.md D25), and every input the family draws is held to the renderer's own claim.
       "Conformance.sanitizeLawsAt",
-      CarriedBy
-          "unfiled — Fuaran.UI.Renderer's Sanitize is this host's copy of the sanitisation floor the family holds every host to (Fuaran.Core.Idl.Sanitize is the reference witness); adoption is one SanitizeWitness over the tier's sanitiser"
+      AdoptedAcross
+          [ sanitizeTest, "Conformance.sanitizeLawsAt (.NET)"
+            sanitizeFableTest, "Conformance.sanitizeLawsAt (Fable and Node)" ]
       "Conformance.streamConfigLaws",
       CarriedBy
           "unfiled — certify's stream laws run at the tier's StreamWitness under the kit's default chain parameters; this form runs them under a caller's genesis and hash (StreamConfig), and the tier pins SHA-256 (see reconcileLawsWith)"
@@ -788,8 +850,10 @@ let census: (string * Adoption) list =
       NotUsed
           "a stored Fuaran.Core.OpStream chain under a declared EncodingProfile — the tier's chain is its own HashChain (SHA-256 over CanonicalJson) and it persists no Core-computed record id"
       "StoredIdentity.dagLaws",
-      NotUsed
-          "a stored Fuaran.Core.OpStream.Dag node-id store under a declared EncodingProfile — no project here persists a Core DAG node id"
+      Adopted(
+          storedDagTest,
+          "StoredIdentity.dagLaws — the committed dag/ corpus as Core nodes, under the current profile and the tier's SHA-256 (Phase 2645: the DAG sinks persist Core node ids)"
+      )
       "StoredIdentity.captureLaws",
       NotUsed
           "a stored Core effect-capture journal under a declared EncodingProfile — no project here journals a capture (see keyedCaptureLaws)"
@@ -857,9 +921,14 @@ let census: (string * Adoption) list =
       NotUsed
           "the premises a domain owes the Codec blocks for a Core Codec<'T> it builds — no project here builds a Core Codec<'T>; the tier's wire codecs are its generated layer and hand encoders, certified by the wire-format conformance corpus"
       // ---- arriving with the Core 0.40.2 raise (Phase 2286) ----
+      // Phase 2327 — the tier ships the base-aware projection (`TreeOpFootprint.ofOpIn`), and this
+      // family certifies it against the pure one at the tier's own reducer and ops.
       "Conformance.footprintInLawsAt",
-      NotUsed
-          "the base-aware footprint projection a domain folds with when it holds the tree (`footprintIn`) — the tier ships only the pure `TreeOp` projection (TreeOpFootprint), which footprintLawsAt certifies; it declares no base-aware one"
+      AdoptedAcross
+          [ footprintInAtTest, "Conformance.footprintInLawsAt (.NET)"
+            footprintInMoveTest, "Conformance.footprintInLawsAt (.NET, move family)"
+            footprintInInsertTest, "Conformance.footprintInLawsAt (.NET, insert family, child-list law)"
+            footprintInFableTest, "Conformance.footprintInLawsAt (Fable and Node)" ]
       "Conformance.seamRefusalLaws",
       NotUsed
           "the capability / pipeline / query / field-change / rejection seams' refusal documents read through Core's derived seam codecs — no project here reads or writes one of those seam documents; the tier's design-provider seam has its own codec, certified by the corpus's design/ family"
@@ -1246,7 +1315,11 @@ let private measuredHere: Set<string> =
           "Conformance.columnarValidatorLaws"
           "Conformance.aggregateParityLaws"
           "Conformance.aggregateNullSkipLaws"
-          "Conformance.schemaWalkLaws" ]
+          "Conformance.schemaWalkLaws"
+          // Phase 2010 — the renderer's sanitisation floor (its Fable port runs in the law harness).
+          "Conformance.sanitizeLawsAt"
+          // Phase 2640 — the generated witness pair against Introspect's (GeneratedLayerTests.fs).
+          "Conformance.witnessPairLawsAt" ]
 
 /// The `Cases` cell for one row (roadmap-engine#619's contract): the count `LawCases` registered
 /// for a family this process measures, `—` for a row nothing in `Fuaran.UI.Tests` runs (whether

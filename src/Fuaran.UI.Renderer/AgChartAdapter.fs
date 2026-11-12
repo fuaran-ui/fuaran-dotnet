@@ -22,7 +22,8 @@ module Fuaran.UI.Renderer.AgChartAdapter
 //      `"area"` / `"scatter"`.
 //    Pie → AG Charts `type: "pie"` (single series, angleKey = first YField,
 //      legendItemKey = XField).
-//  YFields → one series per field with xKey = XField, yKey = field.
+//  YFields → one series per field with xKey = XField, yKey = field; an empty
+//    YFields → one series per numeric column but XField (Phase 2568).
 // ============================================================================
 
 #nowarn "1182"
@@ -256,9 +257,26 @@ let renderChartWithReady<'Msg>
             | BindingResolver.Resolved seq -> Seq.toList seq
             | _ -> []
 
-        match rows, context.State.OnEmpty with
-        | [], Some emptyNode -> Some(context.RecurseRender emptyNode)
+        // Phase 2568 — an empty `YFields` reads its series off the rows: one AG
+        // series per numeric column other than `XField`, Ordinal-ordered and named
+        // by the column, exactly the set the first-party lowering derives. A table
+        // with more such columns than the series cap is not truncated here: the
+        // adapter declines (`None`), and the first-party path draws the typed
+        // refusal. An authored list is passed through as before.
+        let derived =
+            match spec.YFields with
+            | [] -> Some(Fuaran.UI.Charts.derivedSeriesFields spec.XField rows)
+            | _ -> None
+
+        match rows, context.State.OnEmpty, derived with
+        | [], Some emptyNode, _ -> Some(context.RecurseRender emptyNode)
+        | _, _, Some fields when List.length fields > Fuaran.UI.Charts.ChartLimits.defaults.MaxSeries -> None
         | _ ->
+            let spec =
+                match derived with
+                | Some fields -> { spec with YFields = fields }
+                | None -> spec
+
             let series = buildSeries context.RunAction context.NodeId spec
 
             let titleObj =

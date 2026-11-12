@@ -153,7 +153,11 @@ let tests =
               // exactly the moment the data was empty.
               let fragment =
                   fragmentWith (fun slot ->
-                      { bare "stateful" (NodeKind.Markdown { Text = TextSource.Literal "body" }) with
+                      { bare
+                            "stateful"
+                            (NodeKind.Markdown
+                                { Citations = []
+                                  Text = TextSource.Literal "body" }) with
                           State =
                               Some
                                   { Defaults.stateBehaviour<unit> with
@@ -175,7 +179,11 @@ let tests =
               // alternative it never declared.
               let fragment =
                   fragmentWith (fun slot ->
-                      { bare "stateful" (NodeKind.Markdown { Text = TextSource.Literal "body" }) with
+                      { bare
+                            "stateful"
+                            (NodeKind.Markdown
+                                { Citations = []
+                                  Text = TextSource.Literal "body" }) with
                           State =
                               Some
                                   { Defaults.stateBehaviour<unit> with
@@ -223,7 +231,11 @@ let tests =
 
           test "a self-reference hidden in an OnEmpty arm is refused" {
               let hidden =
-                  { bare "wrap" (NodeKind.Markdown { Text = TextSource.Literal "x" }) with
+                  { bare
+                        "wrap"
+                        (NodeKind.Markdown
+                            { Citations = []
+                              Text = TextSource.Literal "x" }) with
                       State =
                           Some
                               { Defaults.stateBehaviour<unit> with

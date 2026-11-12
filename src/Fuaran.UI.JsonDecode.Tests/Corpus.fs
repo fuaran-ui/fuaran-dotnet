@@ -247,6 +247,138 @@ let private priorSince (outputDir: string) : Map<string * string, string> =
             |> Map.ofSeq
         | _ -> Map.empty
 
+// ─── Constrained-emitter profiles (Phase 2451, WIRE_FORMAT §11.4 / §15.6) ────
+
+/// One revision of a declared emitter profile: what an emitter claiming it writes.
+type EmitterRevision =
+    { RevisionId: string
+      WireProfile: string
+      Axes: string list
+      Kinds: string list
+      FormFieldKinds: string list
+      Ops: string list
+      Vectors: string list
+      Summary: string }
+
+/// A declared emitter-profile lineage: its revisions oldest first, and per codec
+/// host the oldest revision that host still accepts (§15.6).
+type EmitterLineage =
+    { Name: string
+      Summary: string
+      OldestAccepted: (string * string) list
+      Revisions: EmitterRevision list }
+
+/// The manifest's `emitterProfiles` member, written by this emitter so a
+/// regeneration cannot drop it. A vector id names a row this emit authors, of a
+/// family every codec host already reads; `writeManifest` refuses one that does
+/// not.
+let emitterProfiles: EmitterLineage list =
+    let subset = [ "Badge"; "Box"; "Button"; "Callout"; "Form"; "Heading"; "Metric" ]
+
+    let frameOps =
+        [ "InsertChild"; "RemoveNode"; "ReplaceBinding"; "ReplaceRoot"; "UpdateProp" ]
+
+    let unchangedFrames =
+        [ "op-emitter-insertchild"
+          "op-emitter-removenode"
+          "op-emitter-replacebinding"
+          "op-emitter-updateprop" ]
+
+    [ { Name = "panel"
+        Summary =
+          "A status-and-control panel: a heading, readings, a status badge, a command button, a schedule form and an alarm row that comes and goes. The corpus's declared lineage (WIRE_FORMAT 11.4), and the one whose old revision exercises the producer-support shim (15.6)."
+        OldestAccepted =
+          [ "fuaran", "panel@1.0"
+            "fuaran-go", "panel@1.0"
+            "fuaran-py", "panel@1.0"
+            "fuaran-rs", "panel@1.0"
+            "fuaran-ts", "panel@1.0" ]
+        Revisions =
+          [ { RevisionId = "panel@1.0"
+              WireProfile = "core@1.0"
+              Axes = [ "canonical-bytes"; "integer-only" ]
+              Kinds = subset
+              FormFieldKinds = [ "Date"; "Number" ]
+              Ops = frameOps
+              Vectors =
+                [ "lenient-2451-panel-1-0"; "lenient-2451-panel-schedule-1-0" ]
+                @ unchangedFrames
+              Summary =
+                "The panel as written before Phase 1811 renamed the form-field Date to DateTime. Its documents carrying the renamed tag are alias-shim vectors (lenient-accept); its frames carrying none are canonical today and are the same bytes as the current revision's." }
+            { RevisionId = "panel@1.1"
+              WireProfile = "core@1.0"
+              Axes = [ "canonical-bytes"; "integer-only" ]
+              Kinds = subset
+              FormFieldKinds = [ "DateTime"; "Number" ]
+              Ops = frameOps
+              Vectors = [ "emitter-panel"; "op-emitter-replaceroot" ] @ unchangedFrames
+              Summary =
+                "The panel in the current spelling: the first frame (the panel document, and the ReplaceRoot that carries it) and the four frames that follow it." } ] } ]
+
+/// The kinds of manifest row an emitter-profile vector may name: the families
+/// every codec host already certifies (WIRE_FORMAT §11.4).
+let emitterVectorKinds =
+    set [ "node-round-trip"; "op-round-trip"; "lenient-accept" ]
+
+let private writeEmitterProfiles (w: Utf8JsonWriter) (authored: Map<string, string>) : unit =
+    w.WriteStartObject("emitterProfiles")
+
+    for lineage in emitterProfiles do
+        w.WriteStartObject(lineage.Name)
+        w.WriteString("description", lineage.Summary)
+        w.WriteStartObject("oldestAccepted")
+
+        for (host, revision) in lineage.OldestAccepted do
+            if not (lineage.Revisions |> List.exists (fun r -> r.RevisionId = revision)) then
+                failwithf
+                    "emitter profile '%s': oldestAccepted[%s] names '%s', no revision of it"
+                    lineage.Name
+                    host
+                    revision
+
+            w.WriteString(host, revision)
+
+        w.WriteEndObject()
+        w.WriteStartArray("revisions")
+
+        for r in lineage.Revisions do
+            for v in r.Vectors do
+                match Map.tryFind v authored with
+                | Some kind when emitterVectorKinds.Contains kind -> ()
+                | Some kind ->
+                    failwithf
+                        "emitter profile %s names vector '%s', a %s row — not a family every codec host reads"
+                        r.RevisionId
+                        v
+                        kind
+                | None ->
+                    failwithf "emitter profile %s names vector '%s', which this emit does not author" r.RevisionId v
+
+            w.WriteStartObject()
+            w.WriteString("id", r.RevisionId)
+            w.WriteString("wire", r.WireProfile)
+            w.WriteStartArray("axes")
+            r.Axes |> List.iter w.WriteStringValue
+            w.WriteEndArray()
+            w.WriteStartObject("subset")
+
+            for (family, tags) in [ "kinds", r.Kinds; "formFieldKinds", r.FormFieldKinds; "ops", r.Ops ] do
+                w.WriteStartArray(family)
+                tags |> List.iter w.WriteStringValue
+                w.WriteEndArray()
+
+            w.WriteEndObject()
+            w.WriteStartArray("vectors")
+            r.Vectors |> List.iter w.WriteStringValue
+            w.WriteEndArray()
+            w.WriteString("description", r.Summary)
+            w.WriteEndObject()
+
+        w.WriteEndArray()
+        w.WriteEndObject()
+
+    w.WriteEndObject()
+
 let private writeManifest
     (outputDir: string)
     (kinds: string list)
@@ -380,7 +512,10 @@ let private writeManifest
         + "re-serialises it — run the manifest-aware per-node derivation over `observation`, assert the "
         + "encoded flags equal expectedManifestFlags. usage-budget: decode `manifest`, pair each "
         + "nodeAreas entry's observation with its area, run the tree-level budget verification, assert "
-        + "the encoded flags equal expectedBudgetFlags. A tier or flag kind outside a host's vocabulary "
+        + "the encoded flags equal expectedBudgetFlags. manifest-validation (Phase 2133): decode "
+        + "`manifest` with the host's tolerant decoder, run the manifest validation pass, assert the "
+        + "encoded defects ({code, index, subject}, canonical JSON) equal expectedManifestDefects, in "
+        + "order. A tier or flag kind outside a host's vocabulary "
         + "is REPORTED by name with the vector id, never skipped. "
         + "Palette attribution (Phase 1727): wherever a manifest-aware derivation attributes a rendered "
         + "fill to ONE token — the usage-budget arm's area share — it iterates the manifest's colour "
@@ -395,6 +530,12 @@ let private writeManifest
         + "seam's records; decode with the decoder-named entry point (design-system-ref, design-brief, "
         + "design-request, design-result, design-exchange), then either re-encode byte-equal to "
         + "expectedFile or assert the structured refusal (expectedErrorCode exactly at expectedPath). "
+        + "emitterProfiles (WIRE_FORMAT 11.4, 15.6): the declared constrained-emitter profiles, one lineage "
+        + "per name, revisions oldest first. A revision's vectors are rows of the families above "
+        + "(node-round-trip / op-round-trip / lenient-accept), so every codec host certifies them through "
+        + "the legs it already runs; a host's emitter-acceptance leg reads every revision from its own "
+        + "oldestAccepted entry onward and asserts each vector integer-only (when the revision claims it), "
+        + "inside the revision's declared subset, and accepted. "
         + "See WIRE_FORMAT.md at this corpus root."
     )
 
@@ -447,6 +588,13 @@ let private writeManifest
         w.WriteStringValue(o)
 
     w.WriteEndArray()
+
+    // Phase 2451 — the declared emitter profiles (WIRE_FORMAT §11.4). Every vector
+    // a revision names must be a row this emit authors, of a family every codec
+    // host reads; a preserved row is not this emitter's to vouch for.
+    let authored = entries |> List.map (fun e -> e.Id, e.Kind) |> Map.ofList
+
+    writeEmitterProfiles w authored
 
     w.WriteStartArray("fixtures")
 

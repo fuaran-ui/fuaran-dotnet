@@ -10,7 +10,7 @@ let main argv =
         printfn "DAG corpus emitted to %s/dag" root
         0
     | [| "--emit-merge-corpus"; root |] ->
-        MergeCorpus.emit root
+        FoldCorpus.emit root
         printfn "merge-conformance corpus emitted to %s/merge-conformance" root
         0
     | _ -> runTestsInAssemblyWithCLIArgs [] argv

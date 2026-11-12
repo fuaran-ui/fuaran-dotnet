@@ -112,12 +112,15 @@ let private switchProjection: KindProjection =
               Opt = opt
               Annotations = Annotations.Empty
               Aliases = []
-              Presence = None }
+              Presence = None
+              Keyed = false }
 
         Some
             [ field "autoAdvanceMs" TInt Optional
               field "cases" (TList(TRecord "SwitchCase")) Required
-              field "default" TNode Required
+              // Phase 2640 — the default branch is a keyed ARM, as the wire declaration says.
+              { field "default" TNode Required with
+                  Keyed = true }
               field "on" (TUnion("Binding", [ TStr ])) Required ] }
 
 /// The declared support for `Gen.fsharpModuleWith` — see the module doc above.
@@ -757,6 +760,7 @@ and private decI18nArg (j: JVal) : Result<Binding<JVal>, string> =
 // codec and the merge engine read them, so the vocabulary declares them here.
 let encodeStateBehaviourJson (s: StateBehaviour<'Msg>) : JVal = encStateBehaviour s
 let encodeSemanticStyleJson (s: SemanticStyle) : JVal = encSemanticStyle s
+let encodeAccessibilityJson (a: Accessibility) : JVal = encAccessibility a
 
 // Phase 818 — JVal-level accessor for a data-shaped Action (the
 // `encodeNodeKindJson` precedent): the server resume script re-encodes a
@@ -771,7 +775,14 @@ let encodeActionJson (a: Action<'Msg>) : JVal = encAction a
 // should grow a second hand-rolled `TextSource` encoder to replace it, because
 // `TextSource.Literal`'s bare-string canonical form (§3.6) is exactly the kind
 // of rule that two copies drift on.
-let encodeTextSourceJson (t: TextSource) : JVal = encTextSource t"""
+let encodeTextSourceJson (t: TextSource) : JVal = encTextSource t
+
+// Phase 2061 — a `Binding` slot OUTSIDE a node: the op-stream's `ReplaceBinding`
+// encodes through the same generated binding encoder a node's slots do, with
+// the caller supplying the encoding of the `'T` payload positions (`Static.value`,
+// the `defaultValue`s, recursively through `Local.initialFrom`) — the op codec's
+// own obj-erased payload policy rather than a second binding encoder.
+let encodeBindingJson (encodePayload: 'T -> JVal) (b: Binding<'T>) : JVal = encBinding encodePayload b"""
         CaseRefines =
             Map.ofList
                 [ "Action.SetState",
@@ -1101,4 +1112,15 @@ let derivations: Derivation list =
       // Phase 2188 — `mapMsg`, the tree with its message type rewritten. It
       // replaces the hand-written structural map `NodeMap` carried, so a new
       // kind or field cannot leave the map behind.
-      Derivation.MapMsg ]
+      Derivation.MapMsg
+      // Phase 2639 — the collecting decoders and the public per-spec entries
+      // (Core's `CollectingDecoders` record). `JsonDecode` reads the kind specs
+      // it has moved off its own structure through them, supplying its policy
+      // as overrides of that record; the rest it still decodes by hand.
+      Derivation.SpecDecoders
+      // Phase 2640 — `keyedChildren` / `withKeyedChildren` / `keyedWitness`: every node position
+      // the vocabulary declares that the structural `children` does not list — the keyed arms
+      // (`ErrorBoundary.child` / `.fallback`, `Switch.default`, each `Switch` case's child), slot
+      // arguments, and the envelope's `fallback` and `state` alternatives. Certified against
+      // `Introspect`'s hand pair under Core's `witnessPairLawsAt` (GeneratedLayerTests).
+      Derivation.KeyedPositions ]

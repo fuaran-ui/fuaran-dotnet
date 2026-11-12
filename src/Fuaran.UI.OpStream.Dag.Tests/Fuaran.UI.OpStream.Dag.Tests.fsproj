@@ -15,28 +15,25 @@
     <Compile Include="..\..\tests\temp-dir\TempDir.fs" Link="TempDir.fs" />
     <Compile Include="TempDb.fs" />
     <Compile Include="DagCorpus.fs" />
-    <Compile Include="MergeCorpus.fs" />
+    <Compile Include="FoldCorpus.fs" />
     <Compile Include="DegenerateTests.fs" />
     <Compile Include="CasAndTopologyTests.fs" />
-    <Compile Include="MergeTests.fs" />
-    <!-- Phase 1521 — the refusal envelope carries canonical wire tokens, not a runtime formatting. -->
-    <Compile Include="StyleFacetTokenTests.fs" />
-    <Compile Include="MergeTotalityTests.fs" />
-    <Compile Include="M2Tests.fs" />
     <Compile Include="BatchAndMultiAgentTests.fs" />
     <Compile Include="RetentionTests.fs" />
     <Compile Include="Rung4Tests.fs" />
     <Compile Include="SqliteDagTests.fs" />
     <Compile Include="WireTests.fs" />
     <Compile Include="ConformanceTests.fs" />
-    <Compile Include="MergeConformanceTests.fs" />
+    <Compile Include="FoldReconcileTests.fs" />
+    <!-- Phase 2645: the one merge, over Core's DAG - minted, checked against Core's fold, stored. -->
+    <Compile Include="DagMergeTests.fs" />
     <Compile Include="ValidatorGateTests.fs" />
-    <Compile Include="MergeEntryPointTests.fs" />
     <Compile Include="OpenCoreInvariantTests.fs" />
     <!-- Phase 267: guest op-stream fork + host-convergence anchor (§4o). -->
     <Compile Include="GuestForkTests.fs" />
     <!-- Phase 2116: the verified linear-to-DAG lift and its recomputable receipt. -->
     <Compile Include="DagLiftTests.fs" />
+    <Compile Include="DagPromoteTests.fs" />
     <!-- Phase 793: DagVerify wired at the sinks' read paths. Go-red proofs —
          each corrupts a real record, the Sqlite ones by UPDATEing the file. -->
     <Compile Include="DagVerifyOnReadTests.fs" />
@@ -50,7 +47,15 @@
     <Compile Include="CoreDagLawTests.fs" />
     <!-- Phase 2393 - the repository-wide guard: no test reaches the temp root except through TempDir. -->
     <Compile Include="TempDirGuardTests.fs" />
+    <!-- Phase 2028 - the stored-op string readers equal their pre-2028 bodies on every input. -->
+    <Compile Include="StoredOpUnescapeTests.fs" />
+    <Compile Include="EscapeCollapseTests.fs" />
+    <!-- Phase 2648 - the one-release re-mint, against a store the pre-cut engine minted (remint/). -->
+    <Compile Include="RemintTests.fs" />
     <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="remint\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
@@ -66,6 +71,8 @@
     <ProjectReference Include="..\Fuaran.UI.OpStream.Dag.Sqlite\Fuaran.UI.OpStream.Dag.Sqlite.fsproj" />
     <ProjectReference Include="..\Fuaran.UI.OpStream.Dag.Merge\Fuaran.UI.OpStream.Dag.Merge.fsproj" />
     <ProjectReference Include="..\Fuaran.UI.OpStream.TestSupport\Fuaran.UI.OpStream.TestSupport.fsproj" />
+    <!-- Phase 2648: the re-mint tool, tested here against the pre-cut fixture; it leaves with the tool. -->
+    <ProjectReference Include="..\..\tools\dag-remint\Fuaran.UI.OpStream.Dag.Remint.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Expecto" />

@@ -71,6 +71,20 @@ function loadInto(source, { document = new StubDocument(), extras = {} } = {}) {
 
 const read = (key) => readFileSync(SUBJECTS[key], "utf8");
 
+/** A rendered node with a tooltip: `<div marker><h2>before</h2><span>a hint</span></div>`. */
+function nodeWithHint() {
+    const document = new StubDocument();
+    const wrapper = new StubElement("div", { "data-fuaran-node-id": "n1", class: "fuaran-node" });
+    const body = new StubElement("h2", { class: "fuaran-heading" });
+    const hint = new StubElement("span", { role: "tooltip" });
+    body.textContent = "before";
+    hint.textContent = "a hint";
+    wrapper.appendChild(body);
+    wrapper.appendChild(hint);
+    document.body.appendChild(wrapper);
+    return { document, body, hint };
+}
+
 // ─── The cases ──────────────────────────────────────────────────────────────
 //
 // Each case is `{ name, run }`. `run` throws to fail. `mutate` (optional) is
@@ -214,6 +228,125 @@ const cases = [
             loadInto(source, { document });
             assert.equal(document.documentElement.getAttribute("data-fuaran-tables-observed"), "true");
         }
+    },
+
+    {
+        // Phase 2592 — a cited cell's label is the cell's first child. It is hidden, but
+        // textContent reads it, so a sort keyed on textContent would order by the label.
+        name: "the table sort keys on a cited cell's value, not its hidden label",
+        subject: "referenceTables",
+        mutate: (src) => src.replace("keyOf(cellText(c))", "keyOf(c.textContent)"),
+        run: (source) => {
+            const document = new StubDocument();
+            const cell = (text, label) => {
+                const td = new StubElement("td");
+                if (label) {
+                    const span = new StubElement("span", { class: "fuaran-cited-label" });
+                    span.textContent = label + " ";
+                    td.appendChild(span);
+                }
+                td.appendChild(Object.assign(new StubElement("span"), { _text: text }));
+                return td;
+            };
+            const row = (td) => {
+                const tr = new StubElement("tr");
+                tr.cells = [td];
+                return tr;
+            };
+            // The labels order the rows one way and the values the other.
+            const first = row(cell("20", "A figure"));
+            const second = row(cell("3", "Z figure"));
+            const th = new StubElement("th");
+            const tbody = new StubElement("tbody");
+            tbody.rows = [first, second];
+            const appended = [];
+            tbody.appendChild = (r) => appended.push(r);
+            const table = new StubElement("table", {
+                class: "fuaran-table",
+                "data-fuaran-sort-column": "0",
+                "data-fuaran-sort-direction": "asc"
+            });
+            table.tHead = { rows: [{ cells: [th] }] };
+            table.tBodies = [tbody];
+            document.documentElement.appendChild(table);
+            loadInto(source, { document });
+            assert.deepEqual(
+                appended.slice(-2),
+                [second, first],
+                "ascending by value puts 3 before 20, where the labels would put 20 first"
+            );
+        }
+    },
+
+    // ─── Phase 2526: the granular patches ───────────────────────────────────
+    //
+    // The markup both SSR hosts emit for a node: the marker on a wrapper, the
+    // body element first, the tooltip hint after it.
+    {
+        name: "SetText writes a node's body element and leaves its tooltip hint",
+        subject: "liveShim",
+        mutate: (src) => src.replace("bodyOf(e).textContent = p.text", "e.textContent = p.text"),
+        run: (source) => {
+            const { document, body, hint } = nodeWithHint();
+            loadInto(source, { document }).window.FuaranLive.applyPatches([
+                { kind: "SetText", nodeId: "n1", text: "after" }
+            ]);
+
+            assert.equal(body.textContent, "after");
+            assert.deepEqual(body.parentNode.children, [body, hint], "the wrapper keeps both children");
+            assert.equal(hint.textContent, "a hint", "the hint is untouched");
+        }
+    },
+    {
+        name: "SetAttr writes a node's body element, not its wrapper",
+        subject: "liveShim",
+        mutate: (src) => src.replace("bodyOf(e).setAttribute(p.name, p.value)", "e.setAttribute(p.name, p.value)"),
+        run: (source) => {
+            const { document, body } = nodeWithHint();
+            loadInto(source, { document }).window.FuaranLive.applyPatches([
+                { kind: "SetAttr", nodeId: "n1", name: "class", value: "fuaran-heading-lead" }
+            ]);
+
+            assert.equal(body.getAttribute("class"), "fuaran-heading-lead");
+            assert.equal(body.parentNode.getAttribute("class"), "fuaran-node", "the wrapper's class is its own");
+        }
+    },
+    {
+        name: "RemoveAttr clears a node's body element, not its wrapper",
+        subject: "liveShim",
+        mutate: (src) => src.replace("bodyOf(e).removeAttribute(p.name)", "e.removeAttribute(p.name)"),
+        run: (source) => {
+            const { document, body } = nodeWithHint();
+            body.setAttribute("rel", "noopener");
+            body.parentNode.setAttribute("rel", "the wrapper's");
+            loadInto(source, { document }).window.FuaranLive.applyPatches([
+                { kind: "RemoveAttr", nodeId: "n1", name: "rel" }
+            ]);
+
+            assert.equal(body.hasAttribute("rel"), false);
+            assert.equal(body.parentNode.getAttribute("rel"), "the wrapper's");
+        }
+    },
+    {
+        // Form validation addresses the field marker, and the field error is a
+        // property of that element whatever it holds (Phase 156).
+        name: "a form field's SetAttr stays on the field itself",
+        subject: "liveShim",
+        mutate: (src) => src.replace("(el.hasAttribute(ATTR) && el.firstElementChild) || el", "el.firstElementChild || el"),
+        run: (source) => {
+            const document = new StubDocument();
+            const field = new StubElement("div", { "data-fuaran-field": "name" });
+            const input = new StubElement("input", { type: "text" });
+            field.appendChild(input);
+            document.body.appendChild(field);
+
+            loadInto(source, { document }).window.FuaranLive.applyPatches([
+                { kind: "SetAttr", nodeId: "name", name: "data-fuaran-field-error", value: "Required." }
+            ]);
+
+            assert.equal(field.getAttribute("data-fuaran-field-error"), "Required.");
+            assert.equal(input.hasAttribute("data-fuaran-field-error"), false);
+        }
     }
 ];
 
@@ -257,6 +390,20 @@ for (const c of cases) {
     } catch (err) {
         console.log(`  ✗  ${c.name}`);
         console.log(`     ${err && err.message ? err.message : err}`);
+        failures += 1;
+    }
+}
+
+// Phase 2528: the shim's browser leg over the `server-driven/` corpus family runs a
+// real headless Chromium rather than the stub, so it is its own process; it rides
+// this entry point so every gate that runs the harness runs it, in the same mode.
+{
+    const { spawnSync } = await import("node:child_process");
+    const leg = spawnSync(process.execPath, [join(here, "browser-leg.mjs"), ...(selfTest ? ["--self-test"] : [])], {
+        stdio: "inherit"
+    });
+    if (leg.status !== 0) {
+        console.log(`  ✗  the browser leg over the server-driven family (exit ${leg.status})`);
         failures += 1;
     }
 }

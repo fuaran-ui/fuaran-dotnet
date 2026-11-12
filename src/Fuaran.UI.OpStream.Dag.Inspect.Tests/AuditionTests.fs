@@ -20,19 +20,19 @@ let tests =
         "DagAudition"
         [ test "auditioning the genesis coordinate reconstructs its snapshot" {
               let c = build ()
-              let getRecord = getRecordOf c
+              let dag = dagOf c
 
-              match DagAudition.audition getRecord c.Initial None c.A.Hash with
+              match DagAudition.audition dag c.Initial None c.A.Hash with
               | Ok r -> Expect.equal r.Coordinate c.A.Hash "coordinate echoed"
               | Error e -> failtestf "expected Ok, got %A" e
           }
 
           test "a branch and the merge audition to different snapshots" {
               let c = build ()
-              let getRecord = getRecordOf c
+              let dag = dagOf c
 
               let snap (h: string) =
-                  match DagAudition.snapshotAt getRecord c.Initial h with
+                  match DagAudition.snapshotAt dag c.Initial h with
                   | Ok t -> t
                   | Error e -> failtestf "replay failed for %s: %A" h e
 
@@ -48,10 +48,10 @@ let tests =
 
           test "the preview hook fires on a successful audition" {
               let c = build ()
-              let getRecord = getRecordOf c
+              let dag = dagOf c
               let previewHook = Some canon
 
-              match DagAudition.audition getRecord c.Initial previewHook c.Merge.Hash with
+              match DagAudition.audition dag c.Initial previewHook c.Merge.Hash with
               | Ok r ->
                   Expect.isSome r.Preview "preview produced"
                   Expect.equal r.Preview (Some(canon r.Snapshot)) "preview is the hook over the snapshot"
@@ -60,20 +60,20 @@ let tests =
 
           test "no preview hook ⇒ snapshot-only audition" {
               let c = build ()
-              let getRecord = getRecordOf c
+              let dag = dagOf c
 
-              match DagAudition.audition getRecord c.Initial None c.Merge.Hash with
+              match DagAudition.audition dag c.Initial None c.Merge.Hash with
               | Ok r -> Expect.isNone r.Preview "no hook ⇒ no preview"
               | Error e -> failtestf "expected Ok, got %A" e
           }
 
-          test "auditioning an unknown coordinate errors UnknownHash" {
+          test "auditioning an unknown coordinate errors UnknownHead" {
               let c = build ()
-              let getRecord = getRecordOf c
+              let dag = dagOf c
 
-              match DagAudition.audition getRecord c.Initial (Some canon) "deadbeef" with
-              | Error(DagReplayError.UnknownHash h) -> Expect.equal h "deadbeef" "the missing hash"
-              | other -> failtestf "expected UnknownHash, got %A" other
+              match DagAudition.audition dag c.Initial (Some canon) "deadbeef" with
+              | Error(Fuaran.Core.Dag.ReplayFault.UnknownHead h) -> Expect.equal h "deadbeef" "the missing hash"
+              | other -> failtestf "expected UnknownHead, got %A" other
           }
 
           test "auditionFromSink matches the explicit-lookup audition" {

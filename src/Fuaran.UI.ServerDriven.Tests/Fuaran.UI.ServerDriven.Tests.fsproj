@@ -20,7 +20,6 @@
     <Compile Include="NavigateBoundRouteTests.fs" />
     <Compile Include="ConfirmActionTests.fs" />
     <Compile Include="InteractionTelemetryTests.fs" />
-    <Compile Include="DomPatchCorpusTests.fs" />
     <!-- Phase 889: the server-driven user-action emission point (Driver.step
          + the form-submit leg's own G1 call). -->
     <Compile Include="ActionInvocationDriverTests.fs" />
@@ -38,6 +37,9 @@
     <!-- Phase 1761: state for parameterised Transform sites - the reuse law and the cost
          reading, which reads one corpus fixture through the ONE corpus-root resolver. -->
     <Compile Include="..\..\tests\corpus-root\CorpusRoot.fs" Link="CorpusRoot.fs" />
+    <!-- Phase 2528: the DomPatch frame contract reads the server-driven/ corpus family through
+         the ONE corpus-root resolver above, so it compiles after it. -->
+    <Compile Include="DomPatchCorpusTests.fs" />
     <Compile Include="ParameterisedSiteTests.fs" />
     <!-- Phase 2071: the tier resolves actions one way - one JSON string writer, one
          event policy, one route normaliser, one landed-index fallback. -->
@@ -58,6 +60,9 @@
     <ProjectReference Include="..\Fuaran.UI.OpStream.Replay\Fuaran.UI.OpStream.Replay.fsproj" />
     <!-- Phase 153: BoundedActionsTests use BindingResolver.BindingSources as the store. -->
     <ProjectReference Include="..\Fuaran.UI.Renderer.Core\Fuaran.UI.Renderer.Core.fsproj" />
+    <!-- Phase 2526: the frame-cost reading and the DOM-equivalence law run the REAL server
+         renderer; the lowering's own suites stay on the stub. -->
+    <ProjectReference Include="..\Fuaran.UI.Renderer.Server\Fuaran.UI.Renderer.Server.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- The conformance family's own bytes, vendored so these legs run in any

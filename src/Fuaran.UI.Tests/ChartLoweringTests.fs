@@ -5238,3 +5238,240 @@ let hostInstalledPaletteTests =
                    Charts.clearChartStyle ()
            } ]
          @ themedFixtureTests)
+
+// ── Phase 2568 — series read from the rows (`chart-lowering/derived-series/`) ──
+//
+// An EMPTY `yFields` plots every numeric column of the rows but `xField`,
+// Ordinal-ordered and named by column (WIRE_FORMAT §3.6.29). The vectors live in
+// a SUBFAMILY for the reason `themed/` does: the hosts that lower the top-level
+// family enumerate it non-recursively, so a host that does not derive series is
+// not reddened by a contract it has not adopted, and WIRE_FORMAT records each
+// host's stance by name. A case is a TABLE rather than a `Case`: its rows carry
+// columns `yFields` does not name — text, booleans, empty cells — which is the
+// whole of what the derivation reads.
+
+type private DerivedCase =
+    {
+        Name: string
+        Kind: ChartKind
+        XField: string
+        Title: string
+        /// The columns in the order the input writes them — deliberately NOT
+        /// Ordinal in most cases, so the golden pins that the order a host reads
+        /// is the Ordinal one and not the document's.
+        Columns: string list
+        /// One cell per column: a `string`, a `float`, a `bool`, or `null` (an
+        /// empty cell, which says nothing about its column).
+        Rows: obj list list
+    }
+
+let private emptyCell: obj = Unchecked.defaultof<obj>
+
+let private derivedCases: DerivedCase list =
+    [ // Trend-shaped: one column per subject, the resolver's names.
+      { Name = "derived-trend-subjects"
+        Kind = ChartKind.Line
+        XField = "day"
+        Title = "Revenue by store"
+        Columns = [ "day"; "store-c"; "store-a"; "store-b" ]
+        Rows =
+          [ [ box "2026-10-28"; box 120.0; box 80.0; box 45.0 ]
+            [ box "2026-10-29"; box 132.0; box 76.0; box 52.0 ]
+            [ box "2026-10-30"; box 128.0; box 90.0; box 61.0 ] ] }
+      // Comparison-shaped: the two columns are the two delivery dates, so the
+      // Ordinal order is the chronological one.
+      { Name = "derived-comparison-dates"
+        Kind = ChartKind.Bar
+        XField = "subject"
+        Title = "Sales, day on day"
+        Columns = [ "subject"; "2026-10-31"; "2026-10-30" ]
+        Rows =
+          [ [ box "North"; box 410.0; box 380.0 ]
+            [ box "South"; box 290.0; box 315.0 ]
+            [ box "West"; box 150.0; box 140.0 ] ] }
+      // Mixed: a text column and a boolean column are not series; an empty cell
+      // in a numeric column leaves it a series.
+      { Name = "derived-mixed-columns"
+        Kind = ChartKind.Bar
+        XField = "region"
+        Title = "Orders and revenue"
+        Columns = [ "region"; "label"; "revenue"; "flagged"; "orders" ]
+        Rows =
+          [ [ box "East"; box "steady"; box 52.0; box false; box 12.0 ]
+            [ box "Central"; box "rising"; box 61.0; box true; emptyCell ]
+            [ box "Coast"; box "flat"; box 47.0; box false; box 9.0 ] ] }
+      // One numeric column beside a text one: one series.
+      { Name = "derived-one-numeric"
+        Kind = ChartKind.Area
+        XField = "week"
+        Title = "Signups"
+        Columns = [ "week"; "note"; "signups" ]
+        Rows =
+          [ [ box "W1"; box "launch"; box 40.0 ]
+            [ box "W2"; box "-"; box 55.0 ]
+            [ box "W3"; box "promo"; box 70.0 ] ] }
+      // None: no column but x is numeric, so the chart has no series.
+      { Name = "derived-no-numeric"
+        Kind = ChartKind.Bar
+        XField = "day"
+        Title = "Notes"
+        Columns = [ "day"; "note" ]
+        Rows = [ [ box "Mon"; box "quiet" ]; [ box "Tue"; box "busy" ] ] }
+      // Over the series cap: a typed refusal, never the first 32 columns.
+      { Name = "derived-over-series-cap"
+        Kind = ChartKind.Line
+        XField = "day"
+        Title = "Too many subjects"
+        Columns = "day" :: List.init 33 (sprintf "s%02d")
+        Rows = [ box "Mon" :: List.init 33 (fun i -> box (float i)) ] } ]
+
+let private derivedRows (case: DerivedCase) : Row list =
+    case.Rows |> List.map (fun cells -> List.zip case.Columns cells |> Map.ofList)
+
+let private derivedSpecWith (case: DerivedCase) (yFields: string list) : ChartSpec<obj> =
+    { Defaults.chart with
+        Source = Binding.Query("table", (fun _ -> Seq.ofList (derivedRows case)), None)
+        Kind = case.Kind
+        XField = case.XField
+        YFields = yFields
+        Title = Some(TextSource.Literal case.Title) }
+
+let private derivedJsonWith (case: DerivedCase) (yFields: string list) : string =
+    let ds = Charts.lower (derivedSpecWith case yFields) (Seq.ofList (derivedRows case))
+    let node: Node<obj> = Fuaran.drawingSpec (sprintf "chart-%s" case.Name) ds
+    CanonicalJson.encodeNode node
+
+/// The neutral input: the top-level family's shape with `yFields` EMPTY and the
+/// table's own cells, in the column order the case writes.
+let private derivedInputJson (case: DerivedCase) : string =
+    let esc (s: string) =
+        s.Replace("\\", "\\\\").Replace("\"", "\\\"")
+
+    let cell (v: obj) =
+        if Object.ReferenceEquals(v, null) then
+            "null"
+        else
+            match v with
+            | :? string as s -> "\"" + esc s + "\""
+            | :? bool as b -> if b then "true" else "false"
+            | :? float as f -> DrawingSvg.formatNum f
+            | other -> failwithf "a derived-series cell is a string, float, bool or null, not %A" other
+
+    let kind =
+        match case.Kind with
+        | ChartKind.Bar -> "Bar"
+        | ChartKind.Line -> "Line"
+        | ChartKind.Area -> "Area"
+        | ChartKind.Pie -> "Pie"
+        | ChartKind.Scatter -> "Scatter"
+        | ChartKind.Heatmap -> "Heatmap"
+
+    let rows =
+        case.Rows
+        |> List.map (fun cells ->
+            List.zip case.Columns cells
+            |> List.map (fun (c, v) -> "\"" + esc c + "\":" + cell v)
+            |> String.concat ","
+            |> sprintf "{%s}")
+        |> String.concat ","
+
+    sprintf
+        "{\"kind\":\"%s\",\"xField\":\"%s\",\"yFields\":[],\"title\":\"%s\",\"stacked\":false,\"data\":[%s]}"
+        kind
+        (esc case.XField)
+        (esc case.Title)
+        rows
+
+[<Tests>]
+let derivedSeriesTests =
+    let find name =
+        derivedCases |> List.find (fun c -> c.Name = name)
+
+    let fixtureTests =
+        match tryFindFixtures () with
+        | None ->
+            [ test "derived-series fixtures absent — skipped (standalone checkout)" {
+                  Expect.isTrue true "wire-format-fixtures/ not found"
+              } ]
+        | Some fixturesRoot ->
+            let dir = Path.Combine(fixturesRoot, "chart-lowering", "derived-series")
+
+            if Environment.GetEnvironmentVariable "FUARAN_EMIT_CHART_LOWERING" = "1" then
+                Directory.CreateDirectory dir |> ignore
+
+                for case in derivedCases do
+                    File.WriteAllText(Path.Combine(dir, case.Name + ".input.json"), derivedInputJson case)
+                    File.WriteAllText(Path.Combine(dir, case.Name + ".expected.json"), derivedJsonWith case [])
+
+            [ test "every derived-series case lowers byte-identically to its committed golden" {
+                  for case in derivedCases do
+                      let expectedFile = Path.Combine(dir, case.Name + ".expected.json")
+
+                      Expect.isTrue
+                          (File.Exists expectedFile)
+                          (sprintf "%s: golden missing (regenerate with FUARAN_EMIT_CHART_LOWERING=1)" case.Name)
+
+                      Expect.equal
+                          (File.ReadAllText(Path.Combine(dir, case.Name + ".input.json")))
+                          (derivedInputJson case)
+                          (sprintf "%s: input drifted" case.Name)
+
+                      Expect.equal
+                          (derivedJsonWith case [])
+                          (File.ReadAllText expectedFile)
+                          (sprintf "%s: lowering drifted from golden" case.Name)
+              } ]
+
+    testList
+        "Chart lowering — series read from the rows (Phase 2568)"
+        ([ test "the derived series are the numeric columns but x, Ordinal-ordered" {
+               let fields name =
+                   let case = find name
+                   Charts.derivedSeriesFields case.XField (derivedRows case)
+
+               Expect.equal
+                   (fields "derived-trend-subjects")
+                   [ "store-a"; "store-b"; "store-c" ]
+                   "Ordinal, not written order"
+
+               Expect.equal
+                   (fields "derived-comparison-dates")
+                   [ "2026-10-30"; "2026-10-31" ]
+                   "dates read chronologically"
+
+               Expect.equal
+                   (fields "derived-mixed-columns")
+                   [ "orders"; "revenue" ]
+                   "text and boolean columns are not series; an empty cell does not disqualify"
+
+               Expect.equal (fields "derived-one-numeric") [ "signups" ] "one numeric column, one series"
+               Expect.isEmpty (fields "derived-no-numeric") "no numeric column, no series"
+           }
+
+           test "a derived chart lowers to the bytes of the authored chart naming the same columns" {
+               // Derivation is substitution and nothing else: the picture, the
+               // legend, the summary and every mark id are the authored chart's.
+               for case in derivedCases |> List.filter (fun c -> c.Name <> "derived-over-series-cap") do
+                   let named = Charts.derivedSeriesFields case.XField (derivedRows case)
+
+                   Expect.equal
+                       (derivedJsonWith case [])
+                       (derivedJsonWith case named)
+                       (sprintf "%s: derived and authored differ" case.Name)
+           }
+
+           test "a table over the series cap is a typed refusal, never a truncation" {
+               let case = find "derived-over-series-cap"
+
+               match Charts.tryLower (derivedSpecWith case []) (Seq.ofList (derivedRows case)) with
+               | Error(Charts.TooManySeries(series, limit)) ->
+                   Expect.equal (series, limit) (33, Charts.ChartLimits.defaults.MaxSeries) "all 33 counted"
+               | other -> failtestf "expected TooManySeries, got %A" other
+           }
+
+           test "an authored list is returned as written, whatever the rows hold" {
+               let case = find "derived-mixed-columns"
+               let spec = derivedSpecWith case [ "label"; "revenue" ]
+               Expect.equal (Charts.seriesFieldsOf spec (derivedRows case)) [ "label"; "revenue" ] "authored wins"
+           } ]
+         @ fixtureTests)

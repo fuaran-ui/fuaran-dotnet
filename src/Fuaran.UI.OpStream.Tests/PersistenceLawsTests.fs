@@ -117,7 +117,11 @@ let private mkStack (id: string) (kids: EqNode list) : EqNode =
 let private mkLeaf (id: string) : EqNode =
     wrap
         { Id = id
-          Kind = NodeKind.Markdown({ Text = TextSource.Literal "" })
+          Kind =
+            NodeKind.Markdown(
+                { Citations = []
+                  Text = TextSource.Literal "" }
+            )
           State = None
           Style = None
           Accessibility = Option.None
@@ -516,6 +520,204 @@ let tests =
                           fromGenesis
                           (sprintf "%s: replay from the retained checkpoint == replay from genesis" storeName)
                   | Error e -> failtestf "%s: replay from checkpoint failed: %A" storeName e)
+
+          testCase "compaction through the head keeps the boundary: the next append continues at N+1 (Phase 1937)"
+          <| fun _ ->
+              // The defect the case above never reached: with `keep 1` and the newest checkpoint AT
+              // the head (the ordinary case), compaction truncates every op. The boundary is then
+              // read from that checkpoint (D30) — `LatestSequence` is N, `Head` is record N's hash —
+              // so the next append continues at N+1 linked to it, and replay from the checkpoint
+              // folds the right ops. Before, the stream read as empty and the next append restarted
+              // the chain at 1 underneath a checkpoint claiming 1..N.
+              overBothStores (fun storeName sink ->
+                  let streamId = "head-" + storeName
+                  let baseSink = sink :> IOpStreamSink<obj>
+                  let ctx = PersistContext.create streamId "tester"
+                  let mutable tree = storeTree ()
+
+                  for i, op in storeOps |> List.truncate 4 |> List.indexed do
+                      match ApplyPersist.applyAndPersist baseSink ctx op tree |> Async.RunSynchronously with
+                      | Ok updated ->
+                          tree <- updated
+
+                          if i = 1 || i = 3 then
+                              Checkpoint.create sink streamId tree |> Async.RunSynchronously |> ignore
+                      | Error e -> failtestf "%s: apply+persist failed on %A: %A" storeName op e
+
+                  let headBefore =
+                      baseSink.Replay(streamId, 4, 4)
+                      |> Async.RunSynchronously
+                      |> List.exactlyOne
+                      |> _.Hash
+
+                  let truncated =
+                      Compaction.applyPolicy sink streamId (CompactionPolicy.keep 1)
+                      |> Async.RunSynchronously
+
+                  Expect.equal truncated 4 (sprintf "%s: every op was collapsed into the head checkpoint" storeName)
+
+                  Expect.equal
+                      (baseSink.LatestSequence streamId |> Async.RunSynchronously)
+                      4
+                      (sprintf "%s: the latest sequence is read from the boundary, not reset to 0" storeName)
+
+                  match SinkCapabilities.tryCas baseSink with
+                  | Some cas ->
+                      Expect.equal
+                          (cas.Head streamId |> Async.RunSynchronously)
+                          headBefore
+                          (sprintf "%s: the head is record 4's hash, not genesis" storeName)
+                  | None -> failtestf "%s: both shipped stores carry a compare-and-append" storeName
+
+                  Expect.contains
+                      (baseSink.Streams() |> Async.RunSynchronously)
+                      streamId
+                      (sprintf "%s: a stream compacted through its head is still listed" storeName)
+
+                  match
+                      CheckpointedReplay.applyFromCheckpoint sink (storeTree ()) streamId 4
+                      |> Async.RunSynchronously
+                  with
+                  | Ok atHead ->
+                      Expect.equal
+                          (CanonicalJson.encodeNode atHead)
+                          (CanonicalJson.encodeNode tree)
+                          (sprintf "%s: the head checkpoint answers for the head" storeName)
+                  | Error e -> failtestf "%s: replay at the compacted head failed: %A" storeName e
+
+                  let fifth = storeOps[4]
+
+                  match ApplyPersist.applyAndPersist baseSink ctx fifth tree |> Async.RunSynchronously with
+                  | Error e -> failtestf "%s: the append after compaction failed: %A" storeName e
+                  | Ok updated ->
+                      let appended = baseSink.Replay(streamId, 1, 100) |> Async.RunSynchronously
+
+                      Expect.equal
+                          (appended |> List.map (fun r -> r.Sequence, r.PreviousHash))
+                          [ 5, headBefore ]
+                          (sprintf "%s: the next record is sequence 5, linked to the boundary" storeName)
+
+                      match
+                          CheckpointedReplay.applyFromCheckpoint sink (storeTree ()) streamId 5
+                          |> Async.RunSynchronously
+                      with
+                      | Ok resumed ->
+                          Expect.equal
+                              (CanonicalJson.encodeNode resumed)
+                              (CanonicalJson.encodeNode updated)
+                              (sprintf "%s: replay from the checkpoint folds op 5 onto the head" storeName)
+                      | Error e -> failtestf "%s: replay after the append failed: %A" storeName e)
+
+          testCase "a truncation that would remove the head with no checkpoint holding it is refused (Phase 1937)"
+          <| fun _ ->
+              // The boundary is read from the snapshot (D30), so a truncation that leaves neither a
+              // record nor a checkpoint at the head would have nothing to read it from: refused, by
+              // name, and nothing removed.
+              overBothStores (fun storeName sink ->
+                  let streamId = "nohead-" + storeName
+                  let baseSink = sink :> IOpStreamSink<obj>
+
+                  let r1 =
+                      buildObjRecord streamId 1 storeOps[0] None (DateTimeOffset.FromUnixTimeSeconds 100L)
+
+                  let r2 =
+                      buildObjRecord streamId 2 storeOps[1] (Some r1) (DateTimeOffset.FromUnixTimeSeconds 101L)
+
+                  baseSink.Append r1 |> Async.RunSynchronously
+                  baseSink.Append r2 |> Async.RunSynchronously
+
+                  let refusal =
+                      try
+                          sink.TruncateOpsThrough(streamId, 2) |> Async.RunSynchronously |> ignore
+                          None
+                      with ex ->
+                          Some ex.Message
+
+                  match refusal with
+                  | Some message -> Expect.stringContains message "no checkpoint at the head" storeName
+                  | None -> failtestf "%s: a truncation through an unheld head was admitted" storeName
+
+                  Expect.equal
+                      (baseSink.Replay(streamId, 1, 100)
+                       |> Async.RunSynchronously
+                       |> List.map _.Sequence)
+                      [ 1; 2 ]
+                      (sprintf "%s: nothing was removed" storeName)
+
+                  Expect.equal
+                      (sink.TruncateOpsThrough(streamId, 1) |> Async.RunSynchronously)
+                      1
+                      (sprintf "%s: a truncation below the head needs no checkpoint" storeName))
+
+          testCase "a keyed retry whose first attempt was compacted is a Duplicate, not a second append (Phase 1937)"
+          <| fun _ ->
+              // D30, horn one: the invocation keys of a truncated prefix are KEPT (Core's
+              // `Compacted.Keys`, reversing Phase 1525 L-A15), so the retry is recognised and the op is
+              // not written twice. Horn two — the receipt names a record below the boundary, which
+              // `Replay` cannot return — is the stated cost: the test pins that the receipt is the
+              // original one and that the boundary is above it, so the caller can tell why.
+              let run (storeName: string) (sink: IOpStreamCheckpointSink<obj>) (keyed: IOpStreamKeyedSink<obj>) =
+                  let streamId = "keyed-compacted-" + storeName
+                  let baseSink = sink :> IOpStreamSink<obj>
+
+                  let first =
+                      buildAtHead
+                          streamId
+                          1
+                          storeOps[0]
+                          HashChain.genesisPreviousHash
+                          (DateTimeOffset.FromUnixTimeSeconds 100L)
+
+                  let receipt =
+                      match keyed.AppendKeyed(first, "invocation-A") |> Async.RunSynchronously with
+                      | KeyedAppendOutcome.Appended r -> r
+                      | KeyedAppendOutcome.Duplicate r ->
+                          failtestf "%s: a fresh key reported a duplicate (%A)" storeName r
+
+                  let second =
+                      buildAtHead streamId 2 storeOps[1] first.Hash (DateTimeOffset.FromUnixTimeSeconds 101L)
+
+                  baseSink.Append second |> Async.RunSynchronously
+
+                  let snapshot =
+                      match Replay.applyTo (storeTree ()) [ first; second ] with
+                      | Ok t -> t
+                      | Error e -> failtestf "%s: replay failed: %A" storeName e
+
+                  Checkpoint.create sink streamId snapshot |> Async.RunSynchronously |> ignore
+                  sink.TruncateOpsThrough(streamId, 2) |> Async.RunSynchronously |> ignore
+
+                  let retry =
+                      buildAtHead streamId 3 storeOps[0] second.Hash (DateTimeOffset.FromUnixTimeSeconds 999L)
+
+                  match keyed.AppendKeyed(retry, "invocation-A") |> Async.RunSynchronously with
+                  | KeyedAppendOutcome.Duplicate r ->
+                      Expect.equal r receipt (sprintf "%s: the retry is answered with the FIRST receipt" storeName)
+                  | KeyedAppendOutcome.Appended r ->
+                      failtestf "%s: the retry was appended a second time (%A)" storeName r
+
+                  Expect.equal
+                      (baseSink.LatestSequence streamId |> Async.RunSynchronously)
+                      2
+                      (sprintf "%s: nothing was appended; the boundary is above the receipt" storeName)
+
+                  Expect.isEmpty
+                      (baseSink.Replay(streamId, receipt.Sequence, receipt.Sequence)
+                       |> Async.RunSynchronously)
+                      (sprintf "%s: the receipt names a record below the boundary" storeName)
+
+              let mem = InMemorySink<obj>()
+              run "InMemory" mem mem
+              let path = freshDbPath ()
+
+              try
+                  let sq = SqliteSink<obj>(sprintf "Data Source=%s" path, opCodec, nodeCodec)
+                  run "Sqlite" sq sq
+              finally
+                  try
+                      File.Delete path
+                  with _ ->
+                      ()
 
           testCase "both durable stores refuse a stale-head append with a typed StaleHead naming the actual head"
           <| fun _ ->

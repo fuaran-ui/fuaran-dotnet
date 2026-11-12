@@ -62,13 +62,15 @@ open Fuaran.UI.Ops.ActionInvocation
 /// approximation.
 type ActionInvocationSqliteSink(connectionString: string, captureMode: ActionCaptureMode, now: unit -> DateTimeOffset) =
 
+    /// `busy_timeout` on every connection and WAL on the file (Phase 1937): the
+    /// Phase 1525 M-C1 fix the other two SQLite sinks carried, which this one did
+    /// not, through the one helper all three now share.
     let openConnection () : SqliteConnection =
-        let conn = new SqliteConnection(connectionString)
-        conn.Open()
-        conn
+        Fuaran.UI.OpStream.SqliteStore.SqliteConnections.openConnection connectionString
 
     let ensureSchema () =
         use conn = openConnection ()
+        Fuaran.UI.OpStream.SqliteStore.SqliteConnections.useWriteAheadLog conn
         use cmd = conn.CreateCommand()
 
         cmd.CommandText <-
@@ -134,6 +136,7 @@ ORDER BY id;"""
                 match reader.GetString 6 with
                 | "tree-declared" -> AffordanceProvenance.TreeDeclared
                 | "renderer-synthesised" -> AffordanceProvenance.RendererSynthesised
+                | "agent-operation" -> AffordanceProvenance.AgentOperation
                 | other -> invalidOp (sprintf "ActionInvocationSqliteSink: unknown provenance token '%s'." other)
 
             let path =
@@ -204,6 +207,7 @@ VALUES
                 match invocation.Provenance with
                 | AffordanceProvenance.TreeDeclared -> "tree-declared"
                 | AffordanceProvenance.RendererSynthesised -> "renderer-synthesised"
+                | AffordanceProvenance.AgentOperation -> "agent-operation"
 
             let pathToken =
                 match invocation.Path with

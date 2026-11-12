@@ -10,14 +10,17 @@ open Fuaran.UI.OpStream.Abstractions
 //  Three modules in this file:
 //
 //   1. `Checkpoint` — materialise a checkpoint from a tree + the sink's
-//      current chain head. Computes `SnapshotHash` + `PreviousChainHead`
-//      and calls `sink.AppendCheckpoint`.
+//      current chain head (`CheckpointSeal.create`, Core's strict seal) and
+//      call `sink.AppendCheckpoint`.
 //
 //   2. `CheckpointedReplay` — resolve the nearest checkpoint ≤ target and
-//      replay only the tail. Verifies the checkpoint→tail boundary up
-//      front (first tail record's `PreviousHash` must equal
-//      `checkpoint.PreviousChainHead`); falls back to replay-from-genesis
-//      when no checkpoint exists in range.
+//      replay only the tail. Since Phase 2305 the checkpoint IS a Core
+//      `Snapshot` and the resume IS Core's: the seal and the WHOLE tail are
+//      verified from `(PreviousChainHead, Sequence)` by `Sealed.firstBreak`
+//      before anything is applied (a break in the middle of the tail is refused,
+//      not only one at its first link), and the tail is folded by `Compacted`'s
+//      `replayFrom`. Falls back to replay-from-genesis when no checkpoint exists
+//      in range.
 //
 //   3. `Compaction` — apply a `CompactionPolicy` to a stream. Walks
 //      checkpoints, keeps the last K, truncates ops with sequence ≤
@@ -26,17 +29,17 @@ open Fuaran.UI.OpStream.Abstractions
 //      checkpoint's `PreviousChainHead` pins the chain head at its
 //      op-index.
 //
-//  ── WHAT THE CHECKPOINT HASH BINDS (post-412) ──────────────────────────────
-//  A snapshot hash is NOT `sha256(canonicalTree)`. Since Phase 412 (A2) it
-//  binds the snapshot to its POSITION — `previousChainHead` + `sequence` + the
-//  canonical tree in one delimited pre-image — so a real snapshot from one
-//  position no longer validates at a different one. `applyFromCheckpoint`
-//  additionally anchors `PreviousChainHead` against the actual op-chain,
-//  including on the empty-tail path, so a checkpoint is trusted only at a
-//  position the verified chain confirms. Both are defence-in-depth against
-//  accidental corruption and cross-position substitution, NOT tamper-proofing
-//  against a writer who rewrites the whole checkpoint record consistently —
-//  that is the signed attestation seam's job. See CRYPTO.md.
+//  ── WHAT THE CHECKPOINT HASH BINDS ─────────────────────────────────────────
+//  A snapshot hash is Core's strict seal (Phase 2305; position-bound since
+//  Phase 412): `previousChainHead` + `sequence` + the canonical tree in one
+//  delimited pre-image, so a real snapshot from one position does not validate
+//  at a different one. `applyFromCheckpoint` additionally anchors
+//  `PreviousChainHead` against the actual op-chain on the empty-tail path, so a
+//  checkpoint is trusted only at a position the verified chain confirms. Both
+//  are defence-in-depth against accidental corruption and cross-position
+//  substitution, NOT tamper-proofing against a writer who rewrites the whole
+//  checkpoint record consistently — that is the signed attestation seam's job.
+//  See CRYPTO.md.
 //
 //  ── FGP 2 / FGP 5 / FGP 6 (post-405 fence) ─────────────────────────────────
 //  SHA-256 no longer sits behind a `#if !FABLE_COMPILER` guard: since Phase 405
@@ -73,6 +76,13 @@ type CheckpointReplayError =
     /// that is not a lie, and `earliestRetainedSequence` says how far back the
     /// store CAN go, so the caller can ask a question it can answer.
     | BelowRetentionHorizon of targetSequence: int * earliestRetainedSequence: int option
+    /// The tail above the checkpoint breaks BELOW its first link (Phase 2305): a
+    /// record out of sequence, a `PreviousHash` that does not name its
+    /// predecessor, or a `Hash` that does not recompute, anywhere in the tail.
+    /// Carries the first violation, named by its sequence. Nothing was applied.
+    /// (A break AT the first link — the tail not hanging from the checkpoint —
+    /// is `BoundaryMismatch`.)
+    | TailBroken of checkpointSequence: int * verificationError: VerificationError
 
 module Checkpoint =
 
@@ -80,11 +90,10 @@ module Checkpoint =
 
     /// Materialise a checkpoint for `tree` at the sink's current latest
     /// sequence. The caller has already applied ops `1..LatestSequence`
-    /// to produce `tree`. Computes `SnapshotHash` (via
-    /// `Fuaran.Core.Hash.sha256Hex (CanonicalJson.encodeNode tree)`) and
-    /// `PreviousChainHead` (the latest op's `Hash`, or
-    /// `HashChain.genesisPreviousHash` for an empty stream), then
-    /// persists via `sink.AppendCheckpoint`.
+    /// to produce `tree`. `PreviousChainHead` is the latest op's `Hash` (or the
+    /// boundary a compaction kept, or `HashChain.genesisPreviousHash` for an
+    /// empty stream); the seal is Core's (`CheckpointSeal.create`). Persists via
+    /// `sink.AppendCheckpoint`.
     let create<'Msg>
         (sink: IOpStreamCheckpointSink<'Msg>)
         (streamId: string)
@@ -103,47 +112,37 @@ module Checkpoint =
                         match prev with
                         | r :: _ -> return r.Hash
                         | [] ->
-                            // LatestSequence reported >0 but the prior record is
-                            // missing — sink invariant violation. Best-effort: use
-                            // the genesis hash so the checkpoint is still
-                            // verifiable against a freshly-rebuilt chain; the
-                            // mismatch would surface at replay-from-checkpoint
-                            // boundary verification.
-                            return HashChain.genesisPreviousHash
+                            // The record at the head is gone: compaction truncated
+                            // it into a checkpoint AT the head, and the boundary is
+                            // read from that snapshot (Phase 1937) — not reset to
+                            // genesis, which made the new checkpoint claim a position
+                            // no chain holds. (A store with no such checkpoint
+                            // refuses the truncation, so there is no other way here;
+                            // the duplicate-sequence refusal of `AppendCheckpoint`
+                            // then names a second checkpoint at the same head.)
+                            let! boundary = sink.LatestCheckpointAtOrBefore(streamId, latest)
+
+                            return
+                                match boundary with
+                                | Some cp when cp.Sequence = latest -> cp.PreviousChainHead
+                                | _ -> HashChain.genesisPreviousHash
                 }
 
-            let canonical = CanonicalJson.encodeNode tree
-            // Phase 412 (A2): bind the snapshot to its chain position (head + seq),
-            // not just its tree — a forged snapshot can no longer self-certify.
-            let snapshotHash = HashChain.snapshotHash previousChainHead latest canonical
-
-            let cp: Checkpoint<'Msg> =
-                { StreamId = streamId
-                  Sequence = latest
-                  PreviousChainHead = previousChainHead
-                  SnapshotHash = snapshotHash
-                  Snapshot = tree
-                  Timestamp = currentTimestamp () }
+            let cp =
+                CheckpointSeal.create streamId latest previousChainHead (currentTimestamp ()) tree
 
             do! sink.AppendCheckpoint cp
             return cp
         }
 
-    /// Recompute the SnapshotHash of `checkpoint.Snapshot` and compare to
-    /// `checkpoint.SnapshotHash`. Pure verification — does not touch the
-    /// sink. Returns `Ok ()` on match, `Error (recomputed, stored)` on
-    /// mismatch.
+    /// Recompute the seal of `checkpoint.Snapshot` and compare to
+    /// `checkpoint.SnapshotHash` — Core's `Sealed.firstBreak` over an empty tail.
+    /// Pure verification — does not touch the sink. Returns `Ok ()` on match,
+    /// `Error (recomputed, stored)` on mismatch.
     let verifySnapshotHash<'Msg> (checkpoint: Checkpoint<'Msg>) : Result<unit, string * string> =
-        let canonical = CanonicalJson.encodeNode checkpoint.Snapshot
-        // Phase 412 (A2): recompute the chain-bound hash from the checkpoint's own
-        // PreviousChainHead + Sequence, so a swapped (snapshot, seq, head) triple fails.
-        let recomputed =
-            HashChain.snapshotHash checkpoint.PreviousChainHead checkpoint.Sequence canonical
-
-        if recomputed = checkpoint.SnapshotHash then
-            Ok()
-        else
-            Error(recomputed, checkpoint.SnapshotHash)
+        match CheckpointSeal.firstBreak checkpoint [] with
+        | Some(Fuaran.Core.SnapshotBreak.SnapshotHash(recomputed, stored)) -> Error(recomputed, stored)
+        | _ -> Ok()
 
 module CheckpointedReplay =
 
@@ -152,11 +151,13 @@ module CheckpointedReplay =
     /// checkpoint exists in range — equivalent to `Replay.applyTo
     /// initialTree (sink.Replay(streamId, 1, targetSequence))`.
     ///
-    /// Verifies the checkpoint→tail boundary up front: the first tail
-    /// record's `PreviousHash` must equal `checkpoint.PreviousChainHead`,
-    /// and the retained checkpoint's `SnapshotHash` must recompute against
-    /// its `Snapshot`. Either mismatch surfaces a
-    /// `CheckpointReplayError` without dispatching to the apply engine.
+    /// Verifies the checkpoint and the WHOLE tail up front, by Core's
+    /// `Sealed.firstBreak` from `(PreviousChainHead, Sequence)` (Phase 2305): the
+    /// seal must recompute (`SnapshotHashMismatch`), the first tail record must
+    /// hang from the checkpoint (`BoundaryMismatch`), and every later record must
+    /// sit in sequence, link and recompute (`TailBroken`). Any of them surfaces
+    /// without dispatching to the apply engine; the fold is then
+    /// `Compacted.replayFrom` from the checkpoint's snapshot.
     let applyFromCheckpoint<'Msg>
         (sink: IOpStreamCheckpointSink<'Msg>)
         (initialTree: Node<'Msg>)
@@ -219,28 +220,29 @@ module CheckpointedReplay =
                     | Ok tree -> return Ok tree
                     | Error e -> return Error(CheckpointReplayError.TailApplyFailed e)
             | Some cp ->
-                // Verify the snapshot first — if the stored hash doesn't
-                // recompute, the snapshot was tampered with, and replay
-                // from it is meaningless.
-                match Checkpoint.verifySnapshotHash cp with
-                | Error(recomputed, _) ->
-                    return Error(CheckpointReplayError.SnapshotHashMismatch(cp.Sequence, cp.SnapshotHash, recomputed))
-                | Ok() ->
-                    // Tail = ops (cp.Sequence + 1) .. targetSequence.
-                    let! tail = sink.Replay(streamId, cp.Sequence + 1, targetSequence)
+                // Tail = ops (cp.Sequence + 1) .. targetSequence.
+                let! tail = sink.Replay(streamId, cp.Sequence + 1, targetSequence)
 
-                    // Verify the checkpoint→tail boundary. When the tail is
-                    // empty (target ≤ cp.Sequence), the snapshot IS the answer —
-                    // but its `PreviousChainHead` must still be ANCHORED to the
-                    // real op-chain (Phase 412 / A2): the pre-412 path returned the
-                    // snapshot with no chain link, so a checkpoint claiming a
-                    // position it does not hold was trusted. We confirm the head
-                    // equals the actual chain head at `cp.Sequence` (record
-                    // `cp.Sequence`'s `Hash`, or the genesis hash at sequence 0).
-                    // Combined with the position-bound snapshot hash, a checkpoint
-                    // is trusted only at a position the verified chain confirms.
+                // The seal first, then the whole tail from the checkpoint's
+                // anchor — Core's one verifier (Phase 2305).
+                match CheckpointSeal.firstBreak cp tail with
+                | Some(Fuaran.Core.SnapshotBreak.SnapshotHash(recomputed, stored)) ->
+                    return Error(CheckpointReplayError.SnapshotHashMismatch(cp.Sequence, stored, recomputed))
+                | Some(Fuaran.Core.SnapshotBreak.Tail b) when
+                    b.Index = 0 && b.Reason = Fuaran.Core.ChainBreakReason.PrevHashLinkBroken
+                    ->
+                    return Error(CheckpointReplayError.BoundaryMismatch(cp.Sequence, b.Expected, b.Got))
+                | Some(Fuaran.Core.SnapshotBreak.Tail b) ->
+                    return Error(CheckpointReplayError.TailBroken(cp.Sequence, Verify.ofChainBreak (cp.Sequence + 1) b))
+                | None ->
                     match tail with
                     | [] ->
+                        // The tail is empty (target ≤ cp.Sequence): the snapshot
+                        // IS the answer — but its `PreviousChainHead` must still be
+                        // ANCHORED to the real op-chain (Phase 412 / A2), which the
+                        // seal alone cannot say. We confirm the head equals the
+                        // actual chain head at `cp.Sequence` (record `cp.Sequence`'s
+                        // `Hash`, or the genesis hash at sequence 0).
                         let! anchor =
                             async {
                                 if cp.Sequence = 0 then
@@ -248,10 +250,25 @@ module CheckpointedReplay =
                                 else
                                     let! atSeq = sink.Replay(streamId, cp.Sequence, cp.Sequence)
 
-                                    return
-                                        match atSeq with
-                                        | r :: _ -> r.Hash
-                                        | [] -> HashChain.genesisPreviousHash
+                                    match atSeq with
+                                    | r :: _ -> return r.Hash
+                                    | [] ->
+                                        // Compaction truncated the record at
+                                        // `cp.Sequence` (Phase 1937). What still
+                                        // anchors the checkpoint is the record
+                                        // after it, which names the head it hangs
+                                        // from — or, when the checkpoint IS the head
+                                        // (`keep 1` at the head, then nothing
+                                        // appended), the store's own boundary, which
+                                        // is read from this very snapshot.
+                                        let! after = sink.Replay(streamId, cp.Sequence + 1, cp.Sequence + 1)
+                                        let! latest = sink.LatestSequence streamId
+
+                                        return
+                                            match after with
+                                            | r :: _ -> r.PreviousHash
+                                            | [] when latest = cp.Sequence -> cp.PreviousChainHead
+                                            | [] -> HashChain.genesisPreviousHash
                             }
 
                         if anchor <> cp.PreviousChainHead then
@@ -259,19 +276,42 @@ module CheckpointedReplay =
                                 Error(CheckpointReplayError.BoundaryMismatch(cp.Sequence, anchor, cp.PreviousChainHead))
                         else
                             return Ok cp.Snapshot
-                    | first :: _ when first.PreviousHash <> cp.PreviousChainHead ->
-                        return
-                            Error(
-                                CheckpointReplayError.BoundaryMismatch(
-                                    cp.Sequence,
-                                    cp.PreviousChainHead,
-                                    first.PreviousHash
-                                )
-                            )
                     | _ ->
-                        match Replay.applyTo cp.Snapshot tail with
+                        // Core's `Compacted` fold from the checkpoint's snapshot.
+                        // The tail is already verified above, so the fold's own
+                        // seam check (`TailSeqMismatch`) cannot fire; its op
+                        // position maps back to the record's 1-based sequence.
+                        let compacted: Fuaran.Core.Compacted<StreamEntry<'Msg>, Node<'Msg>> =
+                            { Snapshot = CheckpointSeal.toSnapshot cp
+                              Tail = tail |> List.map StreamEntry.toCoreRecord
+                              Keys = Fuaran.Core.KeyIndex.empty }
+
+                        match Fuaran.Core.Compacted.replayFrom (StreamEntry.coreWitness<'Msg> ()) compacted with
                         | Ok tree -> return Ok tree
-                        | Error e -> return Error(CheckpointReplayError.TailApplyFailed e)
+                        | Error(Fuaran.Core.SnapshotFault.TailRejected(index, applyError))
+                        | Error(Fuaran.Core.SnapshotFault.PrefixRejected(index, applyError)) ->
+                            return
+                                Error(
+                                    CheckpointReplayError.TailApplyFailed(
+                                        ReplayError.ApplyFailed((List.item index tail).Sequence, applyError)
+                                    )
+                                )
+                        | Error(Fuaran.Core.SnapshotFault.TailSeqMismatch(expected, got)) ->
+                            return
+                                Error(
+                                    CheckpointReplayError.TailBroken(
+                                        cp.Sequence,
+                                        VerificationError.OutOfOrder(expected + 1, got + 1)
+                                    )
+                                )
+                        | Error(Fuaran.Core.SnapshotFault.SeqOutOfRange(atSeq, length)) ->
+                            return
+                                Error(
+                                    CheckpointReplayError.TailBroken(
+                                        cp.Sequence,
+                                        VerificationError.OutOfOrder(length + 1, atSeq + 1)
+                                    )
+                                )
         }
 
 module Compaction =

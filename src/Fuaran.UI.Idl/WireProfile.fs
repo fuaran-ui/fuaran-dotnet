@@ -20,21 +20,19 @@ module Fuaran.UI.WireProfile
 //
 // ── Why the profile step is computed HERE and not read off the diff ─────────
 //
-// `Fuaran.Core.Idl.Diff` carries its own `profileBump`, and it is deliberately
-// not used. Two reasons, and the first is decisive on its own:
+// Core's classifier learned this profile's decode rule in fuaran-core Phase 587
+// (`Versioning.DecodeRule.IgnoresUnknownMembers` and `Diff.bumpProfileUnder`),
+// and that is where the step belongs. It is still computed here for one reason:
+// the Core this repository pins does not carry it, and no released Core does
+// yet. The pin moves with the cohort raise after Core's next release, and this
+// module's `step` is then deleted for a call to Core's (`docs/DECISIONS.md` D28).
 //
-//   1. It is `internal` to the codegen assembly — public callers get `changes`
-//      and `classify`, which are the general-purpose halves.
-//
-//   2. It would give the WRONG ANSWER under §15.4 as amended. That function
-//      recommends `core@1.(x+1)` for any `Additive` severity, and an added
-//      OPTIONAL FIELD classifies as `Additive` — which is precisely the case
-//      Phase 1670's ruling exempts. The exemption is a fact about the Fuaran UI
-//      wire profile (§2 rule 2 ignores unknown keys on decode, so a behind
-//      consumer absorbs a new optional field without ever consulting the
-//      profile), not a fact about IDL diffing in general, so it belongs beside
-//      the vocabulary it governs rather than inside a substrate tool that
-//      classifies IDLs for domains with different decode rules.
+// Until then this copy answers what Core's does, case for case, with ONE
+// recorded exception: a wire break beside an undecided row is a major here and
+// undecided there (D28, case 2). Phase 2509 measured the other difference the
+// two had. A required member loosened to optional, or an `int` slot widened to
+// `float`, read as no step here, and Core was right: a behind consumer refuses
+// the new documents under §2 rule 2, so the minor moves (D28, case 1).
 //
 // ── Advisory, exactly as the diff is ────────────────────────────────────────
 //
@@ -63,20 +61,29 @@ type ProfileStep =
     /// not describe, so the artifact cannot decide it.
     | Undecided
 
-/// A change that introduces a TAG into a vocabulary an existing decoder already
-/// dispatches on — the four §15.4 names, exactly.
+/// A change whose new documents a behind consumer cannot read, though every old
+/// document still decodes: the rows that move the minor.
+///
+/// The four §15.4 TAG names are the first half: a tag arriving in a slot a
+/// behind decoder already dispatches on. The second half is lag on a member
+/// (Phase 2509, `docs/DECISIONS.md` D28): a required member loosened to
+/// optional, or an `int` slot widened to `float`. The substrate grades both
+/// `Additive`, and a behind consumer refuses a new document that omits the
+/// member or carries `2.5`, whatever its decoder does with an unknown key, so
+/// must-ignore absorbs neither.
 ///
 /// A new union, enum or record TYPE is not on this list and that is not an
 /// oversight: a type nothing points at is unreachable from the wire, and a type
 /// reached through a newly-ADDED optional field is absorbed by the same
-/// must-ignore rule the field itself is. What forces a minor is a tag arriving in
-/// a slot a behind decoder is already reading.
-let private introducesTag (c: Change) =
-    match c with
+/// must-ignore rule the field itself is.
+let private behindConsumerRefuses (c: Classification) =
+    match c.Change with
     | KindAdded _
     | OpAdded _
     | UnionCaseAdded _
     | EnumCaseAdded _ -> true
+    | FieldOptionalityChanged _
+    | FieldTypeChanged _ -> c.Severity = Additive
     | _ -> false
 
 /// The §15.4 step, plus the sentence that justifies it. Ordered by severity: a
@@ -85,16 +92,18 @@ let step (cs: Classification list) : ProfileStep * string =
     let sev s =
         cs |> List.exists (fun c -> c.Severity = s)
 
-    let tags = cs |> List.filter (fun c -> introducesTag c.Change)
+    let lagging = cs |> List.filter behindConsumerRefuses
 
     let names =
-        tags
+        lagging
         |> List.map (fun c ->
             match c.Change with
             | KindAdded t -> "kind " + t
             | OpAdded t -> "op " + t
             | UnionCaseAdded(u, k) -> u + "." + k
             | EnumCaseAdded(e, w) -> e + "." + w
+            | FieldOptionalityChanged(o, n, _, _) -> o.Describe + "." + n + " loosened to optional"
+            | FieldTypeChanged(o, n, _, _) -> o.Describe + "." + n + " widened from int to float"
             | _ -> "?")
         |> String.concat ", "
 
@@ -110,12 +119,13 @@ let step (cs: Classification list) : ProfileStep * string =
         "at least one change crosses an ERASED slot (`hosted` / `json` / `opaque`) whose admitted values the "
         + "artifact does not state, so the delta cannot be classified from the artifact alone. Resolve the rows "
         + "marked UNCLASSIFIABLE below by hand before declaring anything."
-    elif not (List.isEmpty tags) then
+    elif not (List.isEmpty lagging) then
         Minor,
-        "a new TAG lands in a vocabulary an existing decoder already dispatches on ("
+        "a behind consumer cannot read every new document ("
         + names
-        + "). A behind consumer meets a discriminator it cannot map, so it needs §15.3's transport-only `Unknown` "
-        + "and a profile that names what it is missing: `core@1.N` → `core@1.(N+1)`."
+        + "). A new TAG is a discriminator it cannot map, so it needs §15.3's transport-only `Unknown`; a member "
+        + "loosened to optional, or an `int` slot widened to `float`, carries a value its decoder refuses. Either "
+        + "way the profile names what it is missing: `core@1.N` → `core@1.(N+1)`."
         + (if sev BreakingForEmitters then
                " AND at least one change breaks EMITTERS, which the minor understates — see the rows below."
            else

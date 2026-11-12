@@ -368,6 +368,98 @@ let tests =
                   "style-only change does not re-send the kind via EditNode"
           }
 
+          // Phase 2527 — a trait-only edit is one op, and the trait survives the fold.
+          test "an accessibility-only edit diffs to one UpdateAccessibility, and removing the trait round-trips" {
+              let plain = Fuaran.markdown "m" "hello"
+
+              let described =
+                  { plain with
+                      Accessibility =
+                          Some
+                              { Defaults.Accessibility.empty with
+                                  DescribedBy = Some "help-1" } }
+
+              let a = container "dash" [ plain ]
+              let b = container "dash" [ described ]
+
+              match roundTrip a b with
+              | [ TreeOp.UpdateAccessibility(NodeId "m", record) ] ->
+                  Expect.equal record.DescribedBy (Some "help-1") "the whole record rides the op"
+              | other -> failtestf "expected one UpdateAccessibility, got %A" other
+
+              match roundTrip b a with
+              | [ TreeOp.UpdateAccessibility(NodeId "m", record) ] ->
+                  Expect.isNone record.DescribedBy "removal is the empty record"
+              | other -> failtestf "expected one UpdateAccessibility, got %A" other
+          }
+
+          test "a tooltip-only edit diffs to one UpdateTooltip, and clearing it round-trips" {
+              let plain = Fuaran.markdown "m" "hello"
+
+              let hinted =
+                  { plain with
+                      Tooltip = Some(TextSource.Literal "Updated nightly.") }
+
+              let a = container "dash" [ plain ]
+              let b = container "dash" [ hinted ]
+
+              match roundTrip a b with
+              | [ TreeOp.UpdateTooltip(NodeId "m", Some(TextSource.Literal "Updated nightly.")) ] -> ()
+              | other -> failtestf "expected one UpdateTooltip, got %A" other
+
+              match roundTrip b a with
+              | [ TreeOp.UpdateTooltip(NodeId "m", None) ] -> ()
+              | other -> failtestf "expected one clearing UpdateTooltip, got %A" other
+          }
+
+          test "the trait ops follow the style and state edits, and survive the EditNode floor" {
+              let a = container "dash" [ Fuaran.markdown "m" "hello" ]
+
+              let changed =
+                  { Fuaran.metric
+                        "m"
+                        { Defaults.metric with
+                            Label = TextSource.Literal "x"
+                            Value = Binding.Static(Some 1.0) } with
+                      Tooltip = Some(TextSource.Literal "hint")
+                      Accessibility =
+                          Some
+                              { Defaults.Accessibility.empty with
+                                  LabelledBy = Some "l" } }
+
+              let names =
+                  roundTrip a (container "dash" [ changed ])
+                  |> List.map Fuaran.UI.Ops.TreeOp.kindName
+
+              Expect.equal
+                  names
+                  [ "EditNode"; "UpdateState"; "UpdateAccessibility"; "UpdateTooltip" ]
+                  "the kind swap, then the traits it does not carry"
+          }
+
+          test "a visible-only edit still has no op, so the floor does not reach it" {
+              // The limitation the preamble documents, pinned: when an op sets
+              // `Visible` this goes red and the preamble's paragraph goes with it.
+              let plain = Fuaran.markdown "m" "hello"
+
+              let hidden =
+                  { plain with
+                      Visible = Some(Binding.Static(Some false)) }
+
+              let a = container "dash" [ plain ]
+
+              let folded =
+                  TreeOpDiff.diff a (container "dash" [ hidden ])
+                  |> List.fold
+                      (fun t op ->
+                          match Apply.apply op t with
+                          | Ok next -> next
+                          | Error e -> failtestf "apply: %A" e)
+                      a
+
+              Expect.equal (CanonicalJson.encodeNode folded) (CanonicalJson.encodeNode a) "the slot did not move"
+          }
+
           test "a style change that moves EVERY field round-trips as the whole-record UpdateStyle" {
               let start =
                   { Fuaran.markdown "m" "text" with

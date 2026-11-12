@@ -82,6 +82,9 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <!-- Phase 2517 — the operable-surface derivation (FSharp.Core + Fuaran.UI only):
+         a node that declares an affordance is annotated from it on both pipelines. -->
+    <ProjectReference Include="..\Fuaran.UI.Operability\Fuaran.UI.Operability.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />

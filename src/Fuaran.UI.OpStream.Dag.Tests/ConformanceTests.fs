@@ -56,5 +56,12 @@ let tests =
                               (DagWire.encodeRecord CanonicalJson.encodeOp decoded)
                               committed
                               (sprintf "%s decode→re-encode is byte-stable" id)
+
+                          // 3. The committed hash is Core's address of the record's own
+                          //    fields (Phase 2645): `Dag.nodeId` under the tier's stream.
+                          Expect.equal
+                              (DagOpRecord.recomputeHash decoded)
+                              decoded.Hash
+                              (sprintf "%s hash == Dag.nodeId of its fields" id)
                       | Error e -> failtestf "%s decode failed: %s" id e
           } ]

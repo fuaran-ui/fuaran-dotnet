@@ -267,6 +267,31 @@ module NodePlan =
             else
                 bidi @ a11y @ extras, []
 
+        // Phase 2517 — a node that DECLARES an affordance carries its operable
+        // surface (WIRE_FORMAT §31.8) on the element an agent operates: the
+        // semantic element where the kind forwards to one, else the wrapper. An
+        // attribute the author already set wins; a node declaring nothing gets
+        // nothing, so every pre-2517 document renders byte-for-byte as before.
+        let wrapperAttrs0, semanticAttrs0 =
+            match Fuaran.UI.Operability.Operability.nodeAnnotations node with
+            | [] -> wrapperAttrs0, semanticAttrs0
+            | annotations ->
+                let target, other =
+                    if Accessibility.forwardsToSemanticElement node.Kind then
+                        semanticAttrs0, wrapperAttrs0
+                    else
+                        wrapperAttrs0, semanticAttrs0
+
+                let taken = (target @ other) |> List.map fst |> Set.ofList
+
+                let stamped =
+                    target @ (annotations |> List.filter (fun (k, _) -> not (taken.Contains k)))
+
+                if Accessibility.forwardsToSemanticElement node.Kind then
+                    wrapperAttrs0, stamped
+                else
+                    stamped, semanticAttrs0
+
         let wrapperAttrs, semanticAttrs =
             match tooltipText with
             | None -> wrapperAttrs0, semanticAttrs0
@@ -424,7 +449,16 @@ module DisplayPlan =
         Plan.element
             "div"
             [ Prop.Attr("class", Css.Class.Markdown) ]
-            (Content.InnerHtml(Markdown.toHtmlWithEgress egress (BindingResolver.resolveTextSource sources spec.Text)))
+            (Content.InnerHtml(
+                Markdown.toHtmlCited
+                    egress
+                    (spec.Citations
+                     |> List.map (fun c ->
+                         { Markdown.Citation.Name = c.Name
+                           Markdown.Citation.Reference = c.Reference
+                           Markdown.Citation.Label = c.Label |> Option.map (BindingResolver.resolveTextSource sources) }))
+                    (BindingResolver.resolveTextSource sources spec.Text)
+            ))
 
     let badge (sources: BindingResolver.BindingSources) (spec: BadgeSpec) : Plan<'E> =
         Plan.classText
@@ -528,21 +562,30 @@ module DisplayPlan =
 
         Plan.classChildren "div" (Css.metric (Theme.toneVar spec.Tone)) (head @ comparisons @ [ subtext ])
 
+    /// Phase 2535 — the attribute a cited figure carries: `data-fact` holding the reference
+    /// (WIRE_FORMAT.md §3.6.31). Nothing when the figure cites nothing. Every citing element
+    /// stamps through this, so a reference reads the same wherever it is drawn. The value goes
+    /// through the attribute encoder like every other string attribute on this plan.
+    let citationProps (reference: string option) : Prop list =
+        reference |> Option.map (fun r -> Prop.Attr("data-fact", r)) |> Option.toList
+
     /// A labelled TEXT fact tile — Metric's chrome for a TextSource value.
     let fact (sources: BindingResolver.BindingSources) (spec: FactSpec) : Plan<'E> =
         let text = BindingResolver.resolveTextSource sources
 
-        Plan.classChildren
+        Plan.element
             "div"
-            (Css.fact (Theme.toneVar spec.Tone) (Css.factEmphasis spec.Emphasis))
-            [ Plan.classText "div" Css.Class.FactLabel (text spec.Label)
-              Plan.classChildren
-                  "div"
-                  Css.Class.FactValue
-                  [ spec.Icon |> Plan.ofOption (iconHook Css.Class.FactIcon)
-                    Plan.element "span" [] (Content.Text(text spec.Value)) ]
-              spec.Help
-              |> Plan.ofOption (fun h -> Plan.classText "div" Css.Class.FactHelp (text h)) ]
+            (Prop.Attr("class", Css.fact (Theme.toneVar spec.Tone) (Css.factEmphasis spec.Emphasis))
+             :: citationProps spec.Reference)
+            (Content.Children
+                [ Plan.classText "div" Css.Class.FactLabel (text spec.Label)
+                  Plan.classChildren
+                      "div"
+                      Css.Class.FactValue
+                      [ spec.Icon |> Plan.ofOption (iconHook Css.Class.FactIcon)
+                        Plan.element "span" [] (Content.Text(text spec.Value)) ]
+                  spec.Help
+                  |> Plan.ofOption (fun h -> Plan.classText "div" Css.Class.FactHelp (text h)) ])
 
     /// The dismiss affordance is inert on BOTH tiers — no handler is attached
     /// on the client either (Phase 2108 parity fix (a): the server omitted it).
@@ -1683,9 +1726,39 @@ module InputPlan =
              | Some icon -> Content.Children [ DisplayPlan.iconHook Css.Class.ButtonIcon icon; Plan.TextNode label ]
              | None -> Content.Text label)
 
+    /// Phase 2571 — a `Select`'s options under its `groups` (WIRE_FORMAT
+    /// §3.6.30): one `<optgroup label>` per group in list order, holding the
+    /// options it names in `source` order, then the options no group names,
+    /// ungrouped. No groups: the options as one flat list. A group value the
+    /// resolved options do not hold (a bound source) is simply not drawn.
+    let private groupedOptions
+        (groups: SelectOptionGroup list)
+        (options: SelectOption list)
+        (option: SelectOption -> Plan<'E>)
+        : Plan<'E> list =
+        match groups with
+        | [] -> [ for o in options -> option o ]
+        | _ ->
+            let named = groups |> List.collect (fun g -> g.Values) |> Set.ofList
+
+            [ for index, g in List.indexed groups ->
+                  Plan.Element
+                      { Tag = "optgroup"
+                        Key = Some(sprintf "optgroup:%d" index)
+                        Props = [ Prop.Attr("label", g.Label) ]
+                        Content =
+                          Content.Children
+                              [ for o in options do
+                                    if List.contains o.Value g.Values then
+                                        option o ] } ]
+            @ [ for o in options do
+                    if not (Set.contains o.Value named) then
+                        option o ]
+
     /// A `Select`. Single: the placeholder (when declared) and the options,
     /// the chosen one `Selected`; multi (Phase 291): `multiple`, the options
     /// alone, every chosen one `Selected`. The change is `Attach.SelectChange`.
+    /// Options are grouped per `groups` (Phase 2571); the placeholder stays first.
     let select (sources: BindingResolver.BindingSources) (spec: SelectSpec<'Msg>) : Plan<'E> =
         let options = BindingResolver.resolveOptions sources spec.Source
 
@@ -1697,7 +1770,7 @@ module InputPlan =
                     |> Option.defaultValue []
 
                 [ Prop.Flag "multiple"; Prop.Values values ],
-                [ for o in options -> optionPlan o.Value o.Label (List.contains o.Value values) ]
+                groupedOptions spec.Groups options (fun o -> optionPlan o.Value o.Label (List.contains o.Value values))
             else
                 // Phase 1962 — a single-select carries one `Value`.
                 let selected = spec.Value |> Option.bind (chosen sources)
@@ -1710,7 +1783,7 @@ module InputPlan =
                            [ Prop.Attr("value", "") ]
                            (Content.Text(BindingResolver.resolveTextSource sources placeholder)) ]
                  | None -> [])
-                @ [ for o in options -> optionPlan o.Value o.Label (selected = Some o.Value) ]
+                @ groupedOptions spec.Groups options (fun o -> optionPlan o.Value o.Label (selected = Some o.Value))
 
         Plan.classChildren
             "label"
@@ -1889,7 +1962,12 @@ module InputPlan =
     /// rating and `Binding.Local` controls are their no-script floors here;
     /// the client renders its own component for those.
     let fieldControl (sources: BindingResolver.BindingSources) (field: FormField<'Msg>) : Plan<'E> =
-        let ident = [ Prop.Attr("id", field.Id); Prop.Attr("data-fuaran-field", field.Id) ]
+        // Phase 2517 — a field that declares an affordance carries its operable
+        // surface (WIRE_FORMAT §31.8); `data-fuaran-field` is already the id.
+        let ident =
+            [ Prop.Attr("id", field.Id); Prop.Attr("data-fuaran-field", field.Id) ]
+            @ (Fuaran.UI.Operability.Operability.fieldAnnotations field
+               |> List.map (fun (k, v) -> Prop.Attr(k, v)))
 
         let required = if field.Required then [ Prop.Flag "required" ] else []
         let change key = Prop.Behaviour(Attach.FieldChange, key)
@@ -2613,6 +2691,11 @@ module VisPlan =
     /// (`StateSeeds.apply`) — carries `fuaran-grid-row-selected` and
     /// `aria-selected="true"`, so a designed selection survives into the static
     /// render. A table that is not selectable emits exactly what it did.
+    ///
+    /// Phase 2592 — a cited cell stamps `DisplayPlan.citationProps` on its `<td>`, and
+    /// a label is the `fuaran-cited-label` span as the cell's first child, the span a
+    /// cited figure in a sentence draws (WIRE_FORMAT.md §3.6.33). A table citing nothing
+    /// emits exactly what it did. Coordinates address `sr.Rows` as authored.
     let staticGrid
         (sources: BindingResolver.BindingSources)
         (nodeId: string)
@@ -2641,13 +2724,41 @@ module VisPlan =
                 |> Option.filter (fun k -> k <> "")
             | _ -> None
 
-        let keyed (tag: string) (className: string) (index: int) (content: Content<'E>) : Plan<'E> =
+        let citedAt = sr.Citations |> List.map (fun c -> (c.Row, c.Column), c) |> Map.ofList
+
+        let keyedWith
+            (extra: Prop list)
+            (tag: string)
+            (className: string)
+            (index: int)
+            (content: Content<'E>)
+            : Plan<'E> =
             Plan.Element
                 { Tag = tag
                   // A static table's rows are literals in document order.
                   Key = Some(reconciliationKey None index)
-                  Props = [ Prop.Attr("class", className) ]
+                  Props = Prop.Attr("class", className) :: extra
                   Content = content }
+
+        let keyed (tag: string) (className: string) (index: int) (content: Content<'E>) : Plan<'E> =
+            keyedWith [] tag className index content
+
+        let bodyCell (i: int) (j: int) (content: Content<'E>) : Plan<'E> =
+            match Map.tryFind (i, j) citedAt with
+            | None -> keyed "td" Css.Class.TableCell j content
+            | Some citation ->
+                let labelled =
+                    let labelSpan (label: string) =
+                        Plan.classText "span" "fuaran-cited-label" (label + " ")
+
+                    match citation.Label |> Option.map text, content with
+                    | Some label, Content.Text cellText when label <> "" ->
+                        Content.Children [ labelSpan label; Plan.TextNode cellText ]
+                    | Some label, Content.Children children when label <> "" ->
+                        Content.Children(labelSpan label :: children)
+                    | _ -> content
+
+                keyedWith (DisplayPlan.citationProps (Some citation.Reference)) "td" Css.Class.TableCell j labelled
 
         let table =
             Plan.element
@@ -2696,8 +2807,7 @@ module VisPlan =
                                   let cells =
                                       Content.Children(
                                           rowTexts
-                                          |> List.mapi (fun j cell ->
-                                              keyed "td" Css.Class.TableCell j (cellContent record j cell))
+                                          |> List.mapi (fun j cell -> bodyCell i j (cellContent record j cell))
                                       )
 
                                   match keyAt with

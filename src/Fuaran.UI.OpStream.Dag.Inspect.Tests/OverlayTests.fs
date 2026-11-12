@@ -10,13 +10,26 @@ open Fuaran.UI.OpStream.Dag.Inspect.Tests.InspectCorpus
 //  DagOverlay — human-primacy + retention/tombstone overlay (task 3).
 // ============================================================================
 
+/// The graph over the corpus sink's live records AND its skeleton, so a
+/// tombstoned node is drawn (pruned, links intact).
 let private graphOf (c: Corpus) : DagGraph =
-    DagGraphModel.build "s" (c.Sink.Records "s" |> Async.RunSynchronously)
+    let records = c.Sink.Records "s" |> Async.RunSynchronously
+    let skeleton = c.Sink.Skeleton "s" |> Async.RunSynchronously
+
+    match DagGraphModel.tryBuildWith "s" records skeleton with
+    | Ok g -> g
+    | Error cycle -> failtestf "corpus graph is cyclic: %s" (DagGraphCycle.describe cycle)
 
 /// The host's precedence predicate for the overlay: a graph node with no
 /// `PromptId` is `Primary` (this host's human-pin semantics). The overlay no
 /// longer decodes `PromptId` itself (Phase 331) — the consumer supplies this.
 let private isPrimary (n: DagGraphNode) : bool = Option.isNone n.PromptId
+
+/// The overlay under `roots`, failing the test on a refused root.
+let private overlayOf (graph: DagGraph) (roots: GcRoots) : DagOverlay =
+    match DagOverlay.build isPrimary graph roots with
+    | Ok o -> o
+    | Error fault -> failtestf "overlay refused: %A" fault
 
 /// GC roots holding only the merge head — branchC (off `a`, never merged) is
 /// then reachable from no root.
@@ -36,7 +49,7 @@ let tests =
         "DagOverlay"
         [ test "per-node human-primacy follows PromptId provenance" {
               let c = build ()
-              let o = DagOverlay.build isPrimary (graphOf c) (headOnlyRoots c)
+              let o = overlayOf (graphOf c) (headOnlyRoots c)
               Expect.isTrue (overlayNode o c.A.Hash).IsPrimary "a carried no PromptId"
               Expect.isTrue (overlayNode o c.BranchB.Hash).IsPrimary "branchB is human"
               Expect.isFalse (overlayNode o c.BranchA.Hash).IsPrimary "branchA is AI"
@@ -45,7 +58,7 @@ let tests =
 
           test "nodes reachable from the head are Live; the unmerged branch is Prunable" {
               let c = build ()
-              let o = DagOverlay.build isPrimary (graphOf c) (headOnlyRoots c)
+              let o = overlayOf (graphOf c) (headOnlyRoots c)
 
               for h in [ c.A.Hash; c.BranchA.Hash; c.BranchB.Hash; c.Merge.Hash ] do
                   Expect.equal (overlayNode o h).Retention RetentionState.Live "reachable from the merge head"
@@ -57,25 +70,17 @@ let tests =
 
           test "a tombstoned record overrides retention to Tombstoned" {
               let c = build ()
-              c.Sink.Tombstone("s", c.BranchC.Hash) |> Async.RunSynchronously |> ignore
-              let o = DagOverlay.build isPrimary (graphOf c) (headOnlyRoots c)
+              let pruned = c.Sink.Tombstone("s", c.BranchC.Hash) |> Async.RunSynchronously
+              Expect.isTrue pruned "branchC is a childless leaf, so the sink prunes it into the skeleton"
+              let o = overlayOf (graphOf c) (headOnlyRoots c)
 
               Expect.equal
                   (overlayNode o c.BranchC.Hash).Retention
                   RetentionState.Tombstoned
                   "payload pruned ⇒ Tombstoned"
-          }
 
-          test "human-pinned cells are the most-recent human writers on the spine" {
-              let c = build ()
-              let getRecord = getRecordOf c
-              // branchA's primary spine is branchA (AI, right pane) → a (human,
-              // left pane): the left cells are human-pinned, the right are not.
-              let pinned =
-                  match DagOverlay.primaryPinnedCells recordAuthor getRecord None c.BranchA.Hash with
-                  | Ok cells -> cells
-                  | Error e -> failtestf "the spine walk failed: %A" e
-
-              Expect.isTrue (pinned.Contains("left", "style.tone")) "left restyled by the human genesis"
-              Expect.isFalse (pinned.Contains("right", "style.tone")) "right restyled by the AI branch"
+              let drawn = (overlayNode o c.BranchC.Hash).Node
+              Expect.equal drawn.Parents [ c.A.Hash ] "the skeleton keeps the pruned node's links"
+              Expect.isNone drawn.Actor "the payload (and its actor) is gone"
+              Expect.isNone drawn.Timestamp "the payload (and its timestamp) is gone"
           } ]

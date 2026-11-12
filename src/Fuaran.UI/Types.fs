@@ -987,6 +987,7 @@ and HeadingVariant = Generated.HeadingVariant
 and HeadingSpec = Generated.HeadingSpec
 
 and MarkdownSpec = Generated.MarkdownSpec
+and MarkdownCitation = Generated.MarkdownCitation
 
 and BadgeSpec = Generated.BadgeSpec
 
@@ -1466,6 +1467,24 @@ and SelectSpec<'Msg> = Generated.SelectSpec<'Msg>
 /// `Label` is the displayed text.
 and SelectOption = Generated.SelectOption
 
+/// Phase 2571 — a named group of a `Select`'s options: `Values` names options of
+/// the same `Select` by their `Value`. Options no group names render after the
+/// groups, ungrouped (WIRE_FORMAT §3.6.30).
+and SelectOptionGroup = Generated.SelectOptionGroup
+
+/// Phase 2517 — the operability affordance a field-bearing node (`Select`,
+/// `Button`, a `Form` field) may declare: the set / read phrasings an
+/// agent-initiated instruction may use, the spoken aliases of its options, a
+/// description, whether it may be cleared, and the `NeverControllable` opt-out.
+/// Every member is omit-at-default on the wire (WIRE_FORMAT §31); what a node
+/// already says — its name, label and value space — is read by
+/// `Fuaran.UI.Operability.derive`, never restated here.
+and Affordance = Generated.Affordance
+
+/// Phase 2517 — one spoken alias of an option value: `Alias` resolves to the
+/// canonical option `Value`.
+and AffordanceAlias = Generated.AffordanceAlias
+
 /// Minimal viable FormSpec for session 3b. Per the §4k worked example: a
 /// Form is an ordered list of fields + a submit Action. `FormField` carries
 /// per-field `Kind` rather than a stringly-typed cell-type discriminator —
@@ -1797,12 +1816,16 @@ and ChartAnnotationRange = Generated.ChartAnnotationRange
 /// the table's INITIAL order — configuration, and deliberately distinct from the
 /// transform pipeline's one-shot data `sort`, which re-orders the data itself.
 /// Both `None` ⇒ the pre-801 wire, byte-for-byte.
+///
+/// Phase 2592 adds `Citations`: the cells whose figures name their Facts, by zero-based
+/// row and column into `Rows`. Empty ⇒ no member on the wire.
 and TableSpec<'Msg> =
     { Headers: TextSource list
       Rows: TextSource list list
       OnRowClick: (int -> Action<'Msg>) option
       Sortable: bool option
-      DefaultSort: DefaultSort option }
+      DefaultSort: DefaultSort option
+      Citations: TableCitation list }
 
 /// Minimal viable Map spec for session 3b. Coordinates are WGS-84 latitude /
 /// longitude in decimal degrees. The renderer defers to a host-provided map
@@ -1877,6 +1900,7 @@ and CustomSpec = Generated.CustomSpec
 /// as a record), plus the Phase 801 optional sort-intent slots `Sortable` and
 /// `DefaultSort` (both `None` ⇒ the pre-801 wire, byte-for-byte).
 and StaticRows = Generated.StaticRows
+and TableCitation = Generated.TableCitation
 
 /// A static table's declared INITIAL order (generated — Phase 801): `Column` is
 /// an index into `StaticRows.Headers`, `Direction` the two-value closed enum.

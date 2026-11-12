@@ -448,23 +448,21 @@ let private omitDefaultsBlock (idl: JsonElement) (ann: Annotations) : string * s
         |> List.groupBy (fun (key, ty, dflt, _) -> key, ty, dflt)
         |> List.map (fun ((key, ty, dflt), rs) ->
             key, ty, dflt, (rs |> List.map (fun (_, _, _, s) -> s) |> List.distinct |> List.sortWith ordinal))
+        // A field/default pair repeating at two DIFFERENT types (Phase 2592: `citations=[]`,
+        // on `Markdown` and on `StaticRows`) would hand one row another's annotation, so such
+        // a key carries its type as well.
+        |> fun rows' ->
+            let repeated =
+                rows'
+                |> List.countBy (fun (key, _, _, _) -> key)
+                |> List.filter (fun (_, n) -> n > 1)
+                |> List.map fst
+                |> Set.ofList
+
+            rows'
+            |> List.map (fun (key, ty, dflt, sites) ->
+                (if repeated.Contains key then key + " @" + ty else key), ty, dflt, sites)
         |> List.sortWith (fun (a, _, _, _) (b, _, _, _) -> ordinal a b)
-
-    // A key collision would hand one row another's annotation. It cannot happen
-    // over today's vocabulary; if a future field/default pair repeats at two
-    // DIFFERENT types, say so rather than picking one.
-    let dupes =
-        grouped
-        |> List.countBy (fun (key, _, _, _) -> key)
-        |> List.filter (fun (_, n) -> n > 1)
-        |> List.map (fun (key, n) ->
-            sprintf
-                "idl.json: the omit-at-default key '%s' resolves to %d distinct rows, so an annotation on it would be ambiguous. Widen the key (module SpecProjection.omitDefaultsBlock)."
-                key
-                n)
-
-    if not dupes.IsEmpty then
-        defect dupes
 
     let known = grouped |> List.map (fun (key, _, _, _) -> key) |> Set.ofList
     let sb = StringBuilder()

@@ -285,6 +285,15 @@ type TreeOp<'Msg> =
     /// OnError slots).
     | UpdateState of NodeId * StateBehaviour<'Msg>
 
+    /// Replace the addressed node's `Accessibility` trait — the WHOLE record,
+    /// as `UpdateStyle` replaces a style: a field the payload leaves absent is
+    /// cleared. A record setting no field stores as the absent trait, which is
+    /// how a node's accessibility is removed (Phase 2527).
+    | UpdateAccessibility of NodeId * Accessibility
+
+    /// Set the addressed node's `Tooltip`, or clear it with `None` (Phase 2527).
+    | UpdateTooltip of NodeId * tooltip: TextSource option
+
     /// Append a child to the addressed parent's `Children`. The op carries
     /// no ordinal — the 681–687 wave removed `position` from every
     /// structural op — so insertion is always an append; ordering is

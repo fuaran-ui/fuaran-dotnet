@@ -15,11 +15,16 @@ open Fuaran.UI.OpStream.Abstractions
 //  canonical `TreeOp`:
 //
 //      {"actor":{…canonical Actor…},"hash":"…","op":{…canonical TreeOp…},
-//       "outcomeHash":"…"?,"parents":["…","…"],"promptId":"…"?,
-//       "resultEnvelope":{…},"streamId":"…","timestamp":<unixSeconds>,
-//       "tombstoned":false}
+//       "parents":["…","…"],"promptId":"…"?,"resultEnvelope":{…},
+//       "streamId":"…","timestamp":<unixSeconds>}
 //
-//  `outcomeHash` / `promptId` are omitted when `None` (algorithm rule 4).
+//  `promptId` is omitted when `None` (algorithm rule 4). Phase 2645 (the cut)
+//  retired `outcomeHash` (a merge node is an ordinary node whose op is its
+//  script) and `tombstoned` (a pruned node leaves the live set for the sink's
+//  skeleton); `hash` is Core's `Dag.nodeId` (`DagOpRecord.nodeId`). Every other
+//  key is kept, so the record's wire shape is the pre-cut one less two members,
+//  and a pre-cut envelope — which carries `tombstoned` always — is refused by
+//  name, because its address does not recompute under the cut.
 //  `op` nests the HOST CODEC's op encoding verbatim, and `actor` nests
 //  `Actor.encode` verbatim, so the DAG envelope reuses the TreeOp and actor
 //  wire contracts rather than re-specifying either.
@@ -28,8 +33,9 @@ open Fuaran.UI.OpStream.Abstractions
 //  has always taken the host codec's `DecodeOp` for the nested `op`; the
 //  encoder hardwired the tier's own, so the envelope had a host-owned path one
 //  way and a tier-owned path the other, and there was a second op-encoding site
-//  beside the codec seam. `encodeRecord` and `contentFingerprint` now take the
-//  codec's `EncodeOp` as a parameter. The default a caller wants is
+//  beside the codec seam. `encodeRecord` now takes the codec's `EncodeOp` as a
+//  parameter (the content fingerprint that took it too is retired: a sink's
+//  admission recomputes the address instead, Phase 1937). The default a caller wants is
 //  `OpJsonCodec.canonical`'s encode, which is the same function this file used
 //  to name — so the bytes an existing store holds are unchanged.
 //
@@ -50,16 +56,10 @@ open Fuaran.UI.OpStream.Abstractions
 
 module DagWire =
 
+    /// A string as a JSON string literal, through Core's canonical escape (Phase 2026).
     let private escapeInto (sb: StringBuilder) (s: string) : unit =
         sb.Append '"' |> ignore
-
-        for ch in s do
-            match ch with
-            | '"' -> sb.Append "\\\"" |> ignore
-            | '\\' -> sb.Append "\\\\" |> ignore
-            | c when c < ' ' -> sb.Append(sprintf "\\u%04x" (int c)) |> ignore
-            | c -> sb.Append c |> ignore
-
+        Fuaran.Core.Json.escapeInto sb s
         sb.Append '"' |> ignore
 
     let private encodeEnvelope (sb: StringBuilder) (envelope: OpResultEnvelope) : unit =
@@ -73,7 +73,7 @@ module DagWire =
             sb.Append '}' |> ignore
 
     /// Encode a `DagOpRecord` to its canonical JSON wire form. Keys are emitted
-    /// in Ordinal-sorted order; `outcomeHash` / `promptId` are omitted when
+    /// in Ordinal-sorted order; `promptId` is omitted when
     /// `None`. `op` nests `encodeOp`'s output verbatim and `actor` nests
     /// `Actor.encode` verbatim (both pinned encodings, embedded as-is).
     ///
@@ -89,8 +89,8 @@ module DagWire =
         let sb = StringBuilder()
         sb.Append '{' |> ignore
 
-        // Ordinal key order: actor < hash < op < outcomeHash < parents <
-        // promptId < resultEnvelope < streamId < timestamp < tombstoned.
+        // Ordinal key order: actor < hash < op < parents < promptId <
+        // resultEnvelope < streamId < timestamp.
         sb.Append "\"actor\":" |> ignore
         sb.Append(Actor.encode record.Actor) |> ignore
 
@@ -99,12 +99,6 @@ module DagWire =
 
         sb.Append ",\"op\":" |> ignore
         sb.Append(encodeOp record.Op) |> ignore
-
-        match record.OutcomeHash with
-        | Some o ->
-            sb.Append ",\"outcomeHash\":" |> ignore
-            escapeInto sb o
-        | None -> ()
 
         sb.Append ",\"parents\":[" |> ignore
 
@@ -134,48 +128,8 @@ module DagWire =
         sb.Append(record.Timestamp.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture))
         |> ignore
 
-        sb.Append ",\"tombstoned\":" |> ignore
-        sb.Append(if record.Tombstoned then "true" else "false") |> ignore
-
         sb.Append '}' |> ignore
         sb.ToString()
-
-    // ── Content identity for the sinks' write path (Phase 1525) ───────────
-
-    /// The CONTENT IDENTITY of a DAG record: the SHA-256 of its canonical wire
-    /// form, with the retention-mutable `Tombstoned` flag normalised to `false`.
-    ///
-    /// This is what a sink's `Add` compares when a record arrives at an address
-    /// it already holds. It has to be a DIGEST of the canonical bytes rather
-    /// than the bytes themselves for one reason: retention drops a record's op
-    /// payload (`Tombstone`), so a sink that kept the bytes in order to compare
-    /// them would either have to retain the payload it was pruning — defeating
-    /// retention — or lose the ability to recognise an identical re-add after a
-    /// compaction. A fixed-size fingerprint survives the pruning that the
-    /// content it summarises does not.
-    ///
-    /// `Tombstoned` is normalised because it is retention STATE, not content: a
-    /// live record and its own tombstone are the same node at the same address,
-    /// and a re-add of the original after a sweep must resolve as the idempotent
-    /// duplicate it is, not as a collision.
-    ///
-    /// Everything else the record carries is inside these bytes — parents, op,
-    /// outcome hash, prompt id, actor, timestamp, result envelope, stream and
-    /// stored address — so two records that fingerprint alike differ in nothing
-    /// a host can observe, and two that differ anywhere at all fingerprint
-    /// apart. That is the property the collision refusal needs and that a
-    /// hand-picked field-by-field comparison cannot promise: the previous check
-    /// compared `Parents` and `OutcomeHash` only, so a record with a DIFFERENT
-    /// OP at the same address was admitted as a duplicate and silently dropped.
-    ///
-    /// `encodeOp` is the host's, for the reason `encodeRecord` states: a
-    /// fingerprint over bytes the host's codec did not produce is a digest of
-    /// something the host never wrote. Both sinks in this repo pass
-    /// the tier's canonical op encoder — the encoding their stored fingerprints
-    /// were minted under — so an existing store keeps comparing against the
-    /// bytes it already holds.
-    let contentFingerprint<'Msg> (encodeOp: TreeOp<'Msg> -> string) (record: DagOpRecord<'Msg>) : string =
-        Fuaran.Core.Hash.sha256Hex (encodeRecord encodeOp { record with Tombstoned = false })
 
     // ── Decode ────────────────────────────────────────────────────────────
     //
@@ -236,38 +190,53 @@ module DagWire =
         j
 
     /// Unescape a raw JSON string substring (including its surrounding quotes).
+    ///
+    /// A string with no backslash, nearly every stored one, comes back as the inner
+    /// substring itself (Phase 2028); otherwise the runs between escapes are copied
+    /// whole. Each escape reads as before, and a bad `\u` still throws from
+    /// `Convert.ToInt32`, so a caller catching it reports the same message.
     let private unquote (raw: string) : string =
         let inner = raw.Substring(1, raw.Length - 2)
-        let sb = StringBuilder()
-        let mutable i = 0
+        let firstEscape = inner.IndexOf '\\'
 
-        while i < inner.Length do
-            if inner[i] = '\\' && i + 1 < inner.Length then
-                match inner[i + 1] with
-                | '"' ->
-                    sb.Append '"' |> ignore
-                    i <- i + 2
-                | '\\' ->
-                    sb.Append '\\' |> ignore
-                    i <- i + 2
-                | 'n' ->
-                    sb.Append '\n' |> ignore
-                    i <- i + 2
-                | 't' ->
-                    sb.Append '\t' |> ignore
-                    i <- i + 2
-                | 'u' when i + 5 < inner.Length ->
-                    let code = System.Convert.ToInt32(inner.Substring(i + 2, 4), 16)
-                    sb.Append(char code) |> ignore
-                    i <- i + 6
-                | other ->
-                    sb.Append other |> ignore
-                    i <- i + 2
-            else
-                sb.Append inner[i] |> ignore
-                i <- i + 1
+        if firstEscape < 0 then
+            inner
+        else
+            let sb = StringBuilder(inner.Length)
+            sb.Append(inner, 0, firstEscape) |> ignore
+            let mutable i = firstEscape
 
-        sb.ToString()
+            while i < inner.Length do
+                if inner[i] = '\\' && i + 1 < inner.Length then
+                    match inner[i + 1] with
+                    | '"' ->
+                        sb.Append '"' |> ignore
+                        i <- i + 2
+                    | '\\' ->
+                        sb.Append '\\' |> ignore
+                        i <- i + 2
+                    | 'n' ->
+                        sb.Append '\n' |> ignore
+                        i <- i + 2
+                    | 't' ->
+                        sb.Append '\t' |> ignore
+                        i <- i + 2
+                    | 'u' when i + 5 < inner.Length ->
+                        let code = System.Convert.ToInt32(inner.Substring(i + 2, 4), 16)
+                        sb.Append(char code) |> ignore
+                        i <- i + 6
+                    | other ->
+                        sb.Append other |> ignore
+                        i <- i + 2
+                else
+                    // The run up to the next backslash, copied whole. `inner[i]` is an
+                    // ordinary character or a trailing lone backslash; both stand as is.
+                    let next = inner.IndexOf('\\', i + 1)
+                    let stop = if next < 0 then inner.Length else next
+                    sb.Append(inner, i, stop - i) |> ignore
+                    i <- stop
+
+            sb.ToString()
 
     /// Map of top-level key → raw value substring for a canonical envelope.
     let private topLevelFields (json: string) : Map<string, string> =
@@ -356,56 +325,63 @@ module DagWire =
             let f = topLevelFields json
             let req k = Map.tryFind k f
 
-            match req "hash", req "op", req "parents", req "streamId", req "timestamp", req "actor" with
-            | Some hashRaw, Some opRaw, Some parentsRaw, Some streamRaw, Some tsRaw, Some actorRaw ->
-                match Actor.tryDecode actorRaw, decodeOp opRaw with
-                | None, _ ->
-                    Error(
-                        sprintf
-                            "DagWire.decodeRecord: malformed 'actor' — not a canonical Actor.encode object: %s"
-                            actorRaw
-                    )
-                | _, Error e -> Error(sprintf "DagWire.decodeRecord: op decode failed: %s" e)
-                | Some actor, Ok op ->
-                    // An ABSENT `resultEnvelope` still defaults to `Success` — the
-                    // member is optional in the sense that a hand-written envelope
-                    // may omit it, and "not stated" has always meant success here.
-                    // A PRESENT but unrecognised one is refused: that is a shape
-                    // the writer meant something by, and guessing at it is exactly
-                    // the substring-sniffing this replaced.
-                    let envelopeResult =
-                        match Map.tryFind "resultEnvelope" f with
-                        | None -> Ok OpResultEnvelope.Success
-                        | Some raw -> parseEnvelope raw
+            if Map.containsKey "tombstoned" f || Map.containsKey "outcomeHash" f then
+                // A pre-2645 envelope. Refused BY NAME: its address folded a merge outcome
+                // or a pre-cut pre-image, so it cannot recompute under `Dag.nodeId`.
+                Error
+                    "DagWire.decodeRecord: pre-2645 envelope — 'tombstoned' / 'outcomeHash' were retired at the cut, and DAG content addresses do not carry forward (re-mint the store)"
+            else
 
-                    match envelopeResult with
-                    | Error e -> Error("DagWire.decodeRecord: " + e)
-                    | Ok envelope ->
-                        Ok
-                            { StreamId = unquote streamRaw
-                              Hash = unquote hashRaw
-                              Parents = parseStringArray parentsRaw
-                              Op = op
-                              OutcomeHash = f |> Map.tryFind "outcomeHash" |> Option.map unquote
-                              PromptId = f |> Map.tryFind "promptId" |> Option.map unquote
-                              Actor = actor
-                              // `int64 (s: string)` is FSharp.Core's invariant-culture
-                              // parse and is Fable-supported; the explicit
-                              // `Int64.Parse(s, provider)` overload is not (Fable
-                              // errors "provider argument is ignored"), and this file
-                              // ships in the Fable-packed abstractions.
-                              Timestamp = System.DateTimeOffset.FromUnixTimeSeconds(int64 tsRaw)
-                              ResultEnvelope = envelope
-                              Tombstoned = (f |> Map.tryFind "tombstoned") = Some "true" }
-            | _ when (Map.containsKey "userId" f) && not (Map.containsKey "actor" f) ->
-                // A pre-1144 envelope. Refused BY NAME rather than lifted: the actor
-                // is inside the content address, so a lifted record would carry a
-                // stored `hash` that `DagOpRecord.recomputeHash` cannot reproduce —
-                // a silent verification failure downstream instead of a clear one here.
-                Error
-                    "DagWire.decodeRecord: pre-1144 envelope — 'userId' was replaced by the typed 'actor', and DAG content addresses do not carry forward (docs/migrations/1144-typed-actor-dag-fold.md)"
-            | _ ->
-                Error
-                    "DagWire.decodeRecord: missing one of the required fields (hash/op/parents/streamId/timestamp/actor)"
+                match req "hash", req "op", req "parents", req "streamId", req "timestamp", req "actor" with
+                | Some hashRaw, Some opRaw, Some parentsRaw, Some streamRaw, Some tsRaw, Some actorRaw ->
+                    match Actor.tryDecode actorRaw, decodeOp opRaw with
+                    | None, _ ->
+                        Error(
+                            sprintf
+                                "DagWire.decodeRecord: malformed 'actor' — not a canonical Actor.encode object: %s"
+                                actorRaw
+                        )
+                    | _, Error e -> Error(sprintf "DagWire.decodeRecord: op decode failed: %s" e)
+                    | Some actor, Ok op ->
+                        // An ABSENT `resultEnvelope` still defaults to `Success` — the
+                        // member is optional in the sense that a hand-written envelope
+                        // may omit it, and "not stated" has always meant success here.
+                        // A PRESENT but unrecognised one is refused: that is a shape
+                        // the writer meant something by, and guessing at it is exactly
+                        // the substring-sniffing this replaced.
+                        let envelopeResult =
+                            match Map.tryFind "resultEnvelope" f with
+                            | None -> Ok OpResultEnvelope.Success
+                            | Some raw -> parseEnvelope raw
+
+                        match envelopeResult with
+                        | Error e -> Error("DagWire.decodeRecord: " + e)
+                        | Ok envelope ->
+                            Ok
+                                { StreamId = unquote streamRaw
+                                  Node =
+                                    { Id = unquote hashRaw
+                                      Parents = parseStringArray parentsRaw
+                                      Actor = actor
+                                      Op =
+                                        { Op = op
+                                          PromptId = f |> Map.tryFind "promptId" |> Option.map unquote
+                                          // `int64 (s: string)` is FSharp.Core's invariant-culture
+                                          // parse and is Fable-supported; the explicit
+                                          // `Int64.Parse(s, provider)` overload is not (Fable
+                                          // errors "provider argument is ignored"), and this file
+                                          // ships in the Fable-packed abstractions.
+                                          Timestamp = System.DateTimeOffset.FromUnixTimeSeconds(int64 tsRaw)
+                                          ResultEnvelope = envelope } } }
+                | _ when (Map.containsKey "userId" f) && not (Map.containsKey "actor" f) ->
+                    // A pre-1144 envelope. Refused BY NAME rather than lifted: the actor
+                    // is inside the content address, so a lifted record would carry a
+                    // stored `hash` that `DagOpRecord.recomputeHash` cannot reproduce —
+                    // a silent verification failure downstream instead of a clear one here.
+                    Error
+                        "DagWire.decodeRecord: pre-1144 envelope — 'userId' was replaced by the typed 'actor', and DAG content addresses do not carry forward (docs/migrations/1144-typed-actor-dag-fold.md)"
+                | _ ->
+                    Error
+                        "DagWire.decodeRecord: missing one of the required fields (hash/op/parents/streamId/timestamp/actor)"
         with ex ->
             Error(sprintf "DagWire.decodeRecord: %s" ex.Message)

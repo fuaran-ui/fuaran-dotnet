@@ -39,9 +39,10 @@
     Program.fs writes the new spelling under it. When the pin reaches that version, the constant and
     the old-pin arm it guards are deleted together. CORE_0_36 (Core Phases 398 and 390) was retired when
     the pin was raised to 0.36.0, and CORE_0_37 (a schema entry a `Field`, fuaran-core#423; a column a
-    typed vector, fuaran-core#444) when it was raised to 0.38.1 (Phase 2226). None is defined today: the
-    0.40.0 spellings (the `IdlField` canonical-form slots, Core Phase 539; the Text and Relation packages)
-    were written unconditionally when the pin was raised to 0.40.2 (Phase 2286).
+    typed vector, fuaran-core#444) when it was raised to 0.38.1 (Phase 2226). The 0.40.0 spellings (the
+    `IdlField` canonical-form slots, Core Phase 539; the Text and Relation packages) were written
+    unconditionally when the pin was raised to 0.40.2 (Phase 2286), and CORE_0_41 (Core Phase 494 widens
+    `IdlField` with `Keyed`) was retired when it was raised to 0.41.0 (Phase 2420). None is defined today.
   -->
   <!--
     `CoreFableSkipCompute=true` is set by the script for a Core-only cut, and only then: the compute
@@ -65,6 +66,8 @@
     <!-- Reached transitively through Fuaran.Compute.Conformance; referenced so the gate names every
          package the producer ships. -->
     <PackageReference Include="Fuaran.Compute.PipelineQuery" />
+    <!-- First shipped at 0.43.0 (fuaran-core#590), which Fuaran.Compute.DataFrame depends on. -->
+    <PackageReference Include="Fuaran.Compute.LinearAlgebra" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />

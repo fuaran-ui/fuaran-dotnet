@@ -1,7 +1,5 @@
 module Fuaran.UI.Ops.Benchmarks.MergeRate
 
-#nowarn "44" // the digest names every `MergeResult` case, the obsolete one included
-
 open System
 open System.Diagnostics
 open System.IO
@@ -25,21 +23,23 @@ open Fuaran.UI.OpStream.Dag.Merge
 //  measured is the same `Merged` over a divergence of twenty records; only the
 //  shared history below the fork grows. Scenarios:
 //
-//   - `lca`        — `DagTopology.lca` over the loaded parent relation alone.
-//   - `sink`       — `DagMerge.merge` through the sink: load, LCA, three replays
-//                    from genesis, the three-way merge and the mint.
-//   - `sink_ckpt`  — `DagMerge.mergeGatedWith` with a checkpoint AT the fork, so
-//                    replay folds only the divergence.
-//   - `lookups_ckpt` — `DagMerge.mergeLookups` over records loaded once, with the
+//   - `lca`        — Core's `Dag.mergeBase` over the DAG loaded once.
+//   - `sink`       — `DagMerge.merge` through the sink: load, merge base, three
+//                    replays from genesis, the reconciliation and the mint.
+//   - `sink_ckpt`  — `DagMerge.mergeWith` with a Core checkpoint AT the fork
+//                    (`DagFold.sealAt`), so replay folds only the divergence.
+//   - `lookups_ckpt` — `DagMerge.mergeDag` over the DAG loaded once, with the
 //                    same checkpoint: the merge alone, with no load in it.
+//                    (The key predates Phase 2645, when the loaded history was
+//                    a pair of lookup functions; what it times is unchanged.)
 //
 //  Stopwatch-based like `TreeDiffRate`, a warm-up first:
 //  `dotnet run -c Release -- merge-rate [iterations] [n,n,...]`.
 //
 //  `merge-snapshot <path>` writes one line per merge (and per LCA) over seeded
 //  random DAG histories, so a change to the merge engine is diffed against the
-//  engine it replaced: the result case, the merge node's content address and
-//  outcome hash, the merged tree's hash, the conflict envelope's hash.
+//  engine it replaced: the result case, the merge node's content address, the
+//  merged tree's hash, the refusal's hash.
 // ============================================================================
 
 type Msg = | NoOp
@@ -75,12 +75,6 @@ let private record (parents: string list) (op: TreeOp<Msg>) (prompt: string opti
 
 let private add (sink: IDagOpStreamSink<Msg>) (r: DagOpRecord<Msg>) = sink.Add r |> Async.RunSynchronously
 
-/// The host classifier the suites use: no prompt id ⇒ `Primary`.
-let recordAuthor (r: DagOpRecord<Msg>) : MergeAuthor =
-    match r.PromptId with
-    | None -> MergeAuthor.Primary
-    | Some p -> MergeAuthor.Secondary(Some p)
-
 let private now = stamp 9_000_000L
 
 let private sha (s: string) = Fuaran.Core.Hash.sha256Hex s
@@ -97,9 +91,8 @@ type Fixture =
         ForkTree: Node<Msg>
         HeadA: string
         HeadB: string
-        /// The fixture's records, loaded once outside every timed region.
-        GetRec: string -> DagOpRecord<Msg> option
-        GetParents: string -> string list
+        /// The fixture's records as a Core DAG, loaded once outside every timed region.
+        Dag: Fuaran.Core.Dag.T<StreamEntry<Msg>>
     }
 
 /// `n` shared trunk records, then two disjoint ten-record branches off the tip.
@@ -136,19 +129,7 @@ let fixture (n: int) : Fixture =
     let a = branch [ for i in 0..9 -> i % 6 ] ToneVariant.Brand 5_000_000L
     let b = branch [ for i in 0..9 -> 8 + i % 6 ] ToneVariant.Critical 6_000_000L
 
-    let byHash =
-        sink.Records streamId
-        |> Async.RunSynchronously
-        |> List.map (fun r -> r.Hash, r)
-        |> dict
-
-    let getRec h =
-        match byHash.TryGetValue h with
-        | true, r -> Some r
-        | false, _ -> None
-
-    let getParents h =
-        getRec h |> Option.map _.Parents |> Option.defaultValue []
+    let dag = sink.Records streamId |> Async.RunSynchronously |> DagOpRecord.toDag
 
     { Sink = sink
       Initial = initial
@@ -156,8 +137,7 @@ let fixture (n: int) : Fixture =
       ForkTree = tree
       HeadA = a
       HeadB = b
-      GetRec = getRec
-      GetParents = getParents }
+      Dag = dag }
 
 type Scenario = { Name: string; Run: Fixture -> unit }
 
@@ -170,13 +150,13 @@ let all: Scenario list =
     [ { Name = "lca"
         Run =
           fun f ->
-              match DagTopology.lca f.GetParents f.HeadA f.HeadB with
-              | LcaResult.Unique h when h = f.Fork -> ()
-              | other -> failwithf "merge-rate expected the fork as LCA, got %A" other }
+              match Fuaran.Core.Dag.mergeBase f.Dag f.HeadA f.HeadB with
+              | Some h when h = f.Fork -> ()
+              | other -> failwithf "merge-rate expected the fork as merge base, got %A" other }
       { Name = "sink"
         Run =
           fun f ->
-              DagMerge.merge recordAuthor f.Sink streamId f.Initial f.HeadA f.HeadB now
+              DagMerge.merge f.Sink streamId f.Initial f.HeadA f.HeadB now
               |> Async.RunSynchronously
               |> expectMerged }
       { Name = "sink_ckpt"
@@ -184,19 +164,10 @@ let all: Scenario list =
           fun f ->
               let context =
                   { MergeContext.defaults<Msg> with
-                      Checkpoint = Some(DagCheckpoint.create streamId f.Fork f.ForkTree) }
+                      Checkpoint = Some(DagFold.sealAt f.Fork f.ForkTree) }
 
               let outcome =
-                  DagMerge.mergeGatedWith
-                      recordAuthor
-                      f.Sink
-                      streamId
-                      f.Initial
-                      f.HeadA
-                      f.HeadB
-                      now
-                      MergePolicy.lenient
-                      context
+                  DagMerge.mergeWith context f.Sink streamId f.Initial f.HeadA f.HeadB now
                   |> Async.RunSynchronously
 
               expectMerged outcome.Result }
@@ -205,10 +176,9 @@ let all: Scenario list =
           fun f ->
               let context =
                   { MergeContext.defaults<Msg> with
-                      Checkpoint = Some(DagCheckpoint.create streamId f.Fork f.ForkTree) }
+                      Checkpoint = Some(DagFold.sealAt f.Fork f.ForkTree) }
 
-              (DagMerge.mergeLookups recordAuthor f.GetRec f.GetParents streamId f.Initial f.HeadA f.HeadB now context)
-                  .Result
+              (DagMerge.mergeDag context streamId f.Initial f.Dag f.HeadA f.HeadB now).Result
               |> expectMerged } ]
 
 /// Mean wall-time (ms) and allocation (bytes, all threads) per run.
@@ -235,21 +205,21 @@ let private digest (result: MergeResult<Msg>) : string =
     | MergeResult.AlreadyMerged h -> $"already {h}"
     | MergeResult.FastForward h -> $"ff {h}"
     | MergeResult.Merged(r, t) ->
-        let outcome = defaultArg r.OutcomeHash "-"
         let parents = String.Join(",", r.Parents)
-        $"merged {r.Hash} outcome={outcome} tree={treeHash t} parents={parents} op={sha (CanonicalJson.encodeOp r.Op)}"
-    | MergeResult.NeedsManualMerge cs -> $"conflict n={List.length cs} envelope={sha (MergeConflict.encodeEnvelope cs)}"
+        $"merged {r.Hash} tree={treeHash t} parents={parents} op={sha (CanonicalJson.encodeOp r.Op)}"
+    | MergeResult.Refused fault ->
+        let refusal = sprintf "%A" fault
+        $"refused {sha refusal}"
     | MergeResult.DeltaNotReplayable(t, m) ->
-        $"undeliverable tree={treeHash t} outcome={m.OutcomeHash} replayed=%A{m.ReplayedHash} apply=%A{m.ApplyError}"
-    | MergeResult.NeedsThreeWayMerge cs -> $"""threeway {String.Join(",", cs)}"""
+        $"undeliverable tree={treeHash t} derived={m.DerivedHash} replayed=%A{m.ReplayedHash} fault=%A{m.Fault}"
+    | MergeResult.MintRefused f -> $"mintrefused %A{f}"
     | MergeResult.NoCommonBase -> "nobase"
     | MergeResult.ReplayFailed e -> $"replayfailed %A{e}"
 
-let private lcaDigest (r: LcaResult) : string =
+let private lcaDigest (r: string option) : string =
     match r with
-    | LcaResult.None -> "none"
-    | LcaResult.Unique h -> $"unique {h}"
-    | LcaResult.Ambiguous cs -> $"""ambiguous {String.Join(",", cs)}"""
+    | None -> "none"
+    | Some h -> $"unique {h}"
 
 /// A seeded random DAG over `steps` acts: extend a head with a restyle, an
 /// insert or a remove valid on that head's tree, or merge two heads through the
@@ -327,10 +297,7 @@ let private randomHistory (seed: int) (steps: int) (out: StringBuilder) =
             let hb, _ = heads[j]
             let at = stamp (tick ())
 
-            match
-                DagMerge.merge recordAuthor sink streamId initial ha hb at
-                |> Async.RunSynchronously
-            with
+            match DagMerge.merge sink streamId initial ha hb at |> Async.RunSynchronously with
             | MergeResult.Merged(r, t) ->
                 add sink r
                 all.Add r.Hash
@@ -342,10 +309,7 @@ let private randomHistory (seed: int) (steps: int) (out: StringBuilder) =
                     // twin at the same instant would claim the same address.
                     let twinAt = stamp (tick ())
 
-                    match
-                        DagMerge.merge recordAuthor sink streamId initial hb ha twinAt
-                        |> Async.RunSynchronously
-                    with
+                    match DagMerge.merge sink streamId initial hb ha twinAt |> Async.RunSynchronously with
                     | MergeResult.Merged(twin, twinTree) ->
                         add sink twin
                         all.Add twin.Hash
@@ -369,29 +333,16 @@ let private randomHistory (seed: int) (steps: int) (out: StringBuilder) =
         if step % 50 = 0 then
             line $"history seed={seed} step={step} records={all.Count} heads={heads.Count}"
 
-    let records = sink.Records streamId |> Async.RunSynchronously
-    let byHash = records |> List.map (fun r -> r.Hash, r) |> dict
-
-    let getParents h =
-        match byHash.TryGetValue h with
-        | true, r -> r.Parents
-        | false, _ -> []
-
-    let getRec h =
-        match byHash.TryGetValue h with
-        | true, r -> Some r
-        | false, _ -> None
+    let dag = sink.Records streamId |> Async.RunSynchronously |> DagOpRecord.toDag
 
     let pick () = all[rng.Next all.Count]
 
     for q in 1..120 do
         let a = pick ()
         let b = if rng.Next 10 = 0 then a else pick ()
-        line $"lca {q} {a} {b} -> {lcaDigest (DagTopology.lca getParents a b)}"
+        line $"lca {q} {a} {b} -> {lcaDigest (Fuaran.Core.Dag.mergeBase dag a b)}"
 
-        let result =
-            DagMerge.merge recordAuthor sink streamId initial a b now
-            |> Async.RunSynchronously
+        let result = DagMerge.merge sink streamId initial a b now |> Async.RunSynchronously
 
         line $"merge {q} -> {digest result}"
 
@@ -399,14 +350,14 @@ let private randomHistory (seed: int) (steps: int) (out: StringBuilder) =
         if q % 5 = 0 then
             let at = pick ()
 
-            match DagReplay.replay getRec initial at with
+            match DagFold.replayTo initial dag at with
             | Ok snap ->
                 let context =
                     { MergeContext.defaults<Msg> with
-                        Checkpoint = Some(DagCheckpoint.create streamId at snap) }
+                        Checkpoint = Some(DagFold.sealAt at snap) }
 
                 let gated =
-                    DagMerge.mergeGatedWith recordAuthor sink streamId initial a b now MergePolicy.lenient context
+                    DagMerge.mergeWith context sink streamId initial a b now
                     |> Async.RunSynchronously
 
                 line $"merge-ckpt {q} at={at} -> {digest gated.Result}"
@@ -420,7 +371,7 @@ let private randomHistory (seed: int) (steps: int) (out: StringBuilder) =
 
     for (h, _) in Seq.toList heads do
         let outcome =
-            DagMerge.mergeIntoTrunkWith recordAuthor sink streamId initial h now 3 MergeContext.defaults
+            DagMerge.mergeIntoTrunkWith MergeContext.defaults sink streamId initial h now 3
             |> Async.RunSynchronously
 
         let trunk = sink.Head streamId |> Async.RunSynchronously
@@ -501,7 +452,7 @@ let private linearScenarios (out: StringBuilder) =
         let f = fixture n
 
         let r =
-            DagMerge.merge recordAuthor f.Sink streamId f.Initial f.HeadA f.HeadB now
+            DagMerge.merge f.Sink streamId f.Initial f.HeadA f.HeadB now
             |> Async.RunSynchronously
 
         out.AppendLine $"linear n={n} -> {digest r}" |> ignore

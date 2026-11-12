@@ -36,10 +36,6 @@ open Fuaran.UI.Ops.Benchmarks
 //        a 2,001-node tree and a 200-op history, per entry route (the text
 //        entry, the render-then-reparse route a secondary reader takes, and the
 //        `JVal` entry) — Phase 2059.
-//   - `derivability-snapshot [trials]` — (RUN) the share of the tier's
-//        three-way auto-merges Fuaran.Core's footprint refuses although the
-//        fold reaches the same tree in either order, over the merge corpus and
-//        seeded generated triads — Phase 2292.
 //   - (default / BDN args)   — (RUN — deferred) run the BenchmarkDotNet suite
 //        (both the apply and op-stream classes; filter with `--filter *OpStream*`).
 //        Capturing the numbers + refreshing the baseline to `captured` is the
@@ -100,6 +96,13 @@ let private printAppendRates (count: int) =
         let meanNs, allocB = AppendRate.measure s count
         printfn "opstream.append.%s.mean_ns = %.1f" s.Name meanNs
         printfn "opstream.append.%s.alloc_b = %.1f" s.Name allocB
+
+let private printEscapeRates (iterations: int) =
+    for c in EscapeRate.all do
+        let meanNs, allocB = EscapeRate.measure c iterations
+        printfn "opstream.escape.%s.bytes = %d" c.Name (EscapeRate.encodedLength c)
+        printfn "opstream.escape.%s.mean_ns = %.1f" c.Name meanNs
+        printfn "opstream.escape.%s.alloc_b = %.1f" c.Name allocB
 
 [<EntryPoint>]
 let main argv =
@@ -171,6 +174,40 @@ let main argv =
         | other ->
             eprintfn "unknown capture target '%s' — expected apply | op | render" other
             2
+    | "apply-rate" :: rest ->
+        let iterations =
+            rest
+            |> List.tryHead
+            |> Option.bind (fun s ->
+                match Int32.TryParse s with
+                | true, n -> Some n
+                | _ -> None)
+            |> Option.defaultValue 5
+
+        // The progressive sizes, e.g. `1000,10000` (the default). Each build is timed
+        // `iterations` times at 1,000 nodes and proportionally fewer above, never fewer than once.
+        let sizes =
+            match rest with
+            | _ :: s :: _ -> s.Split ',' |> Array.map int |> Array.toList
+            | _ -> [ 1000; 10000 ]
+
+        for n in sizes do
+            let nodes, meanUs, perNodeUs, allocB =
+                ApplyRate.progressive n (max 1 (iterations * 1000 / n))
+
+            printfn "applyrate.progressive.%d.nodes = %d" n nodes
+            printfn "applyrate.progressive.%d.mean_us = %.1f" n meanUs
+            printfn "applyrate.progressive.%d.per_node_us = %.2f" n perNodeUs
+            printfn "applyrate.progressive.%d.alloc_b = %.0f" n allocB
+
+        let nodes, rows = ApplyRate.field (iterations * 1000)
+        printfn "applyrate.field.nodes = %d" nodes
+
+        for name, meanUs, allocB in rows do
+            printfn "applyrate.field.%s.mean_us = %.2f" name meanUs
+            printfn "applyrate.field.%s.alloc_b = %.0f" name allocB
+
+        0
     | "tree-diff" :: rest ->
         let iterations =
             rest
@@ -239,6 +276,20 @@ let main argv =
             printfn "decode.%s.mean_us = %.1f" s.Name meanUs
             printfn "decode.%s.alloc_b = %.0f" s.Name allocB
 
+        0
+    // Phase 2026 — the canonical encoder's string escape, isolated: a long clean
+    // string, an escape-heavy string and an object of many short keys.
+    | "escape-rate" :: rest ->
+        let iterations =
+            rest
+            |> List.tryHead
+            |> Option.bind (fun s ->
+                match Int32.TryParse s with
+                | true, n -> Some n
+                | _ -> None)
+            |> Option.defaultValue 20000
+
+        printEscapeRates iterations
         0
     | "append-rate" :: rest ->
         let count =
@@ -310,33 +361,6 @@ let main argv =
     | "merge-snapshot" :: path :: _ ->
         MergeRate.writeSnapshot path
         printfn "Wrote merge snapshot: %s" path
-        0
-    // Phase 2292 — the footprint's over-approximation share over the merge
-    // corpus and seeded generated triads; the baseline is in STABILITY.md.
-    | "derivability-snapshot" :: rest ->
-        let trials =
-            rest
-            |> List.tryHead
-            |> Option.bind (fun s ->
-                match Int32.TryParse s with
-                | true, n -> Some n
-                | _ -> None)
-            |> Option.defaultValue 20000
-
-        let corpus = DerivabilitySnapshot.corpusTriads ()
-        let generated = DerivabilitySnapshot.generatedTriads trials
-
-        match corpus with
-        | Some triads -> DerivabilitySnapshot.report "corpus" triads |> List.iter (printfn "%s")
-        | None -> printfn "derivability.corpus NOT RUN: no wire-format corpus beside this repository"
-
-        printfn "derivability.generated.seed = %d" DerivabilitySnapshot.seed
-        printfn "derivability.generated.trials = %d" trials
-        DerivabilitySnapshot.report "generated" generated |> List.iter (printfn "%s")
-
-        DerivabilitySnapshot.report "pooled" (Option.defaultValue [] corpus @ generated)
-        |> List.iter (printfn "%s")
-
         0
     | "validate-snapshot" :: path :: _ ->
         ValidateRate.writeSnapshot path

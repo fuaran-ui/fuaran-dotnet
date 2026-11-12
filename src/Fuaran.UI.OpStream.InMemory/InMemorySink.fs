@@ -95,13 +95,23 @@ type InMemorySink<'Msg>(loadVerification: LoadVerification, writeAdmission: Writ
         | Ok() -> records
         | Error e -> invalidOp ("InMemorySink: " + Verify.describe streamId e)
 
-    let getOrCreateStream (streamId: string) : StreamState<'Msg> =
+    /// The boundary of a stream every write admits against and every reader
+    /// reports — `(latest sequence, head hash)` (Phase 1937, Core's `Compacted`
+    /// rule). While the stream holds records it is the record at `MaxSequence`.
+    /// Once compaction has truncated every record it is READ FROM THE SNAPSHOT
+    /// the truncation kept — the checkpoint at the boundary, whose
+    /// `PreviousChainHead` is the hash of the record it replaced — and never
+    /// reset to genesis; with neither, the stream is empty: `(0, genesis)`.
+    /// Callers hold `lockObj`.
+    let boundaryLocked (streamId: string) : int * string =
         match streams.TryGetValue streamId with
-        | true, existing -> existing
-        | false, _ ->
-            let fresh = StreamState<'Msg>.Create()
-            streams[streamId] <- fresh
-            fresh
+        | true, st when st.Records.Count > 0 -> st.MaxSequence, st.HeadHash
+        | _ ->
+            match checkpoints.TryGetValue streamId with
+            | true, bucket when bucket.Count > 0 ->
+                let boundary = bucket |> Seq.maxBy _.Sequence
+                boundary.Sequence, boundary.PreviousChainHead
+            | _ -> 0, HashChain.genesisPreviousHash
 
     /// The one place a record enters the log. Callers hold `lockObj`. Returns
     /// the receipt so the keyed and compare-and-append paths (Phase 1485) name
@@ -109,23 +119,32 @@ type InMemorySink<'Msg>(loadVerification: LoadVerification, writeAdmission: Writ
     /// three paths share ONE admission check, ONE duplicate-sequence guard and
     /// ONE metadata update, which is what keeps `Ascending` / `MaxSequence` /
     /// `HeadHash` from drifting between them.
+    ///
+    /// The record is stored with its timestamp as the chain hash reads it —
+    /// whole unix seconds, UTC (Phase 1937). The digest folds
+    /// `ToUnixTimeSeconds`, the SQLite sinks store exactly that, and an
+    /// in-memory store that kept the sub-second part read the same record back
+    /// differently by backend.
     let appendLocked (record: OpRecord<'Msg>) : AppendReceipt =
-        let st = getOrCreateStream record.StreamId
-
         // ── ADMISSION (Phase 1525, finding H-16) ────────────────────────────
         // The head and latest sequence come from the SAME locked state the
         // insert mutates, so this is not a second race in front of the one the
-        // lock exists to remove. An empty stream reads as (genesis, 0), so the
-        // first record of a stream needs no special case.
-        let admissionHead =
-            if st.Records.Count = 0 then
-                HashChain.genesisPreviousHash
-            else
-                st.HeadHash
+        // lock exists to remove. It runs BEFORE the stream's state exists
+        // (Phase 1937): a refused first append used to leave an empty stream
+        // that `Streams` listed and the SQLite sink did not.
+        let latest, head = boundaryLocked record.StreamId
 
-        match Verify.admission writeAdmission admissionHead st.MaxSequence record with
+        match Verify.admission writeAdmission head latest record with
         | Error e -> invalidOp (Verify.describeAdmission "InMemorySink" record.StreamId e)
         | Ok() -> ()
+
+        let st =
+            match streams.TryGetValue record.StreamId with
+            | true, existing -> existing
+            | false, _ ->
+                let fresh = StreamState<'Msg>.Create()
+                streams[record.StreamId] <- fresh
+                fresh
 
         // Duplicate (StreamId, Sequence) is a structural defect — the
         // host should have queried LatestSequence + 1 before assigning.
@@ -148,19 +167,17 @@ type InMemorySink<'Msg>(loadVerification: LoadVerification, writeAdmission: Writ
             st.MaxSequence <- record.Sequence
             st.HeadHash <- record.Hash
 
-        st.Records.Add record
+        st.Records.Add
+            { record with
+                Timestamp = System.DateTimeOffset.FromUnixTimeSeconds(record.Timestamp.ToUnixTimeSeconds()) }
 
         { StreamId = record.StreamId
           Sequence = record.Sequence
           Hash = record.Hash }
 
-    /// The chain head as `IOpStreamCasSink.Head` reports it: the hash at
-    /// `MaxSequence`, or the genesis anchor for a stream with no records.
-    let headLocked (streamId: string) : string =
-        match streams.TryGetValue streamId with
-        | false, _ -> HashChain.genesisPreviousHash
-        | true, st when st.Records.Count = 0 -> HashChain.genesisPreviousHash
-        | true, st -> st.HeadHash
+    /// The chain head as `IOpStreamCasSink.Head` reports it: the boundary's
+    /// hash (`boundaryLocked`).
+    let headLocked (streamId: string) : string = snd (boundaryLocked streamId)
 
     let getOrCreateCheckpointBucket (streamId: string) : ResizeArray<Checkpoint<'Msg>> =
         match checkpoints.TryGetValue streamId with
@@ -173,14 +190,40 @@ type InMemorySink<'Msg>(loadVerification: LoadVerification, writeAdmission: Writ
     /// Remove the ops at or below `throughSequence`. Callers hold `lockObj`.
     /// Hoisted out of the interface member (Phase 1525) so the atomic `Compact`
     /// runs exactly this code rather than a second copy of it.
+    ///
+    /// **The boundary survives (Phase 1937, D30).** Removing a prefix never
+    /// moves the head: once the truncation reaches the head record, the
+    /// boundary is read from the checkpoint at the head (`boundaryLocked`), so a
+    /// truncation that would leave no record AND no checkpoint at the head is
+    /// refused rather than resetting the stream to genesis. And the invocation
+    /// keys of the removed records are KEPT: a retried `AppendKeyed` whose first
+    /// attempt landed below the boundary answers `Duplicate` with the receipt
+    /// that attempt produced, rather than appending the op a second time (Core's
+    /// `Compacted.Keys`; this reverses Phase 1525 L-A15's deletion of them).
     let truncateOpsLocked (streamId: string) (throughSequence: int) : int =
         match streams.TryGetValue streamId with
         | false, _ -> 0
+        | true, st when st.Records.Count = 0 -> 0
         | true, st ->
+            let headHeld =
+                match checkpoints.TryGetValue streamId with
+                | true, bucket -> bucket |> Seq.exists (fun c -> c.Sequence = st.MaxSequence)
+                | false, _ -> false
+
+            if throughSequence >= st.MaxSequence && not headHeld then
+                invalidOp (
+                    sprintf
+                        "InMemorySink: refused to truncate stream '%s' through %d — that removes the head record (sequence %d), and no checkpoint at the head holds the boundary. Take a checkpoint at the head first. Nothing was removed."
+                        streamId
+                        throughSequence
+                        st.MaxSequence
+                )
+
             // Rebuild in one O(n) pass (the prior per-element
-            // ResizeArray.Remove loop was O(n²)), keeping Seen +
-            // MaxSequence consistent. Removing a sequence-prefix
-            // preserves the Ascending property, so it is left as-is.
+            // ResizeArray.Remove loop was O(n²)), keeping Seen consistent.
+            // Removing a sequence-prefix preserves the Ascending property, and
+            // `MaxSequence` / `HeadHash` name the boundary whether or not the
+            // record that carried them is still here, so all three stay.
             let kept = ResizeArray<OpRecord<'Msg>>()
             let mutable removed = 0
 
@@ -193,46 +236,32 @@ type InMemorySink<'Msg>(loadVerification: LoadVerification, writeAdmission: Writ
 
             st.Records.Clear()
             st.Records.AddRange kept
-
-            // Phase 1525 (finding L-A15) — the invocation-key index is compacted
-            // WITH the records it names. Left behind, a key whose record has
-            // been truncated answers a later `AppendKeyed` with
-            // `Duplicate receipt` naming a sequence the stream no longer holds:
-            // the caller is told its op is already durable, and `Replay` at that
-            // address returns nothing. A stale index entry is worse than no
-            // entry, because it is indistinguishable from a live one.
-            let staleKeys =
-                st.Keys
-                |> Seq.filter (fun kv -> kv.Value.Sequence <= throughSequence)
-                |> Seq.map _.Key
-                |> List.ofSeq
-
-            for key in staleKeys do
-                st.Keys.Remove key |> ignore
-
-            st.MaxSequence <-
-                if st.Records.Count = 0 then
-                    0
-                else
-                    st.Records |> Seq.map _.Sequence |> Seq.max
-
-            // The head moves only if truncation emptied the stream — a
-            // prefix removal leaves the record at MaxSequence in place.
-            // Recomputed rather than assumed, so a policy that ever
-            // removes a suffix cannot leave a head naming a gone record.
-            st.HeadHash <-
-                if st.Records.Count = 0 then
-                    HashChain.genesisPreviousHash
-                else
-                    st.Records |> Seq.maxBy _.Sequence |> _.Hash
-
             removed
 
     /// Remove the checkpoints below `beforeSequence`. Callers hold `lockObj`.
+    /// While the stream holds no records, the checkpoint at its boundary is the
+    /// only thing that says where it ends (Phase 1937), so a call that would
+    /// remove it is refused.
     let truncateCheckpointsLocked (streamId: string) (beforeSequence: int) : int =
         match checkpoints.TryGetValue streamId with
         | false, _ -> 0
         | true, bucket ->
+            let recordsHeld =
+                match streams.TryGetValue streamId with
+                | true, st -> st.Records.Count > 0
+                | false, _ -> false
+
+            let latest, _ = boundaryLocked streamId
+
+            if not recordsHeld && latest >= 1 && latest < beforeSequence then
+                invalidOp (
+                    sprintf
+                        "InMemorySink: refused to drop the checkpoints of stream '%s' before %d — the stream holds no records, and the checkpoint at %d is the boundary its head is read from. Nothing was removed."
+                        streamId
+                        beforeSequence
+                        latest
+                )
+
             let toRemove =
                 bucket |> Seq.filter (fun c -> c.Sequence < beforeSequence) |> Seq.toList
 
@@ -327,14 +356,7 @@ type InMemorySink<'Msg>(loadVerification: LoadVerification, writeAdmission: Writ
             }
 
         member _.LatestSequence(streamId: string) : Async<int> =
-            async {
-                return
-                    lock lockObj (fun () ->
-                        match streams.TryGetValue streamId with
-                        | false, _ -> 0
-                        | true, st when st.Records.Count = 0 -> 0
-                        | true, st -> st.MaxSequence)
-            }
+            async { return lock lockObj (fun () -> fst (boundaryLocked streamId)) }
 
         member _.Streams() : Async<string list> =
             async { return lock lockObj (fun () -> streams.Keys |> List.ofSeq) }
@@ -417,19 +439,25 @@ type InMemorySink<'Msg>(loadVerification: LoadVerification, writeAdmission: Writ
             async {
                 return
                     lock lockObj (fun () ->
-                        let st = getOrCreateStream record.StreamId
+                        let seen =
+                            match streams.TryGetValue record.StreamId with
+                            | true, st ->
+                                match st.Keys.TryGetValue invocationKey with
+                                | true, receipt -> Some receipt
+                                | false, _ -> None
+                            | false, _ -> None
 
-                        match st.Keys.TryGetValue invocationKey with
-                        | true, receipt ->
+                        match seen with
+                        | Some receipt ->
                             // The retry contract: the FIRST receipt, unchanged, and nothing
                             // written. The second call's `record` is not consulted at all —
                             // a caller that rebuilt it after a lost acknowledgement carries a
                             // fresh timestamp and a re-derived sequence, and must still be
                             // told about the record it already has.
                             KeyedAppendOutcome.Duplicate receipt
-                        | false, _ ->
+                        | None ->
                             let receipt = appendLocked record
-                            st.Keys[invocationKey] <- receipt
+                            streams[record.StreamId].Keys[ invocationKey ] <- receipt
                             KeyedAppendOutcome.Appended receipt)
             }
 

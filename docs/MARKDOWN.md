@@ -26,6 +26,13 @@ common-case correct**: implement the features below so the everyday cases match,
 CommonMark edge cases fall to the escaped-literal fallback. This is a real CommonMark+GFM parser, not
 a one-line fallback shim.
 
+## Citations (Phase 2591)
+
+A `Markdown` node may declare `citations`, the figures its text cites (`WIRE_FORMAT.md` §3.6.32). A link whose
+destination is `cite:` plus a declared name draws a span carrying `data-fact`, in the line of text, and asks no egress
+question. Anything else, an undeclared name included, is the link it always was. The entry point is
+`Markdown.toHtmlCited`; `toHtmlWithEgress` is its no-citation case. The corpus pins both.
+
 ## The three buckets
 
 ### IN – the GFM spec (rendered)

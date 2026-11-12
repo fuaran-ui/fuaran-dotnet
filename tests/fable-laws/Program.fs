@@ -60,6 +60,21 @@ let main _ =
 
     let laneFailures = laneResults |> List.filter (fun r -> not r.Passed) |> List.length
 
+    // ---- law 2b: the base-aware footprint, over the transpiled projection (Phase 2327) ----
+    let footprintInResults = Laws.footprintInResults seed 100
+
+    for line in renderResults Laws.footprintInFablePort footprintInResults do
+        printfn "%s" line
+
+    let footprintInFailures =
+        footprintInResults |> List.filter (fun r -> not r.Passed) |> List.length
+
+    // ---- law 2c: the reconciliation policy is symmetric (Phase 2293) ----
+    let reconcileLines, reconcileAsymmetric = Laws.reconcileSymmetry seed 300
+
+    for line in reconcileLines do
+        printfn "%s" line
+
     // ---- law 3: the raw-DEFLATE inflater over a foreign dynamic-Huffman stream ----
     // The block type no host of ours emits and every standard deflater does. Its .NET
     // conformance cross-check sits behind `#if !FABLE_COMPILER` (`System.IO.Compression`
@@ -112,9 +127,98 @@ let main _ =
     for line in boardSnapshot.Lines do
         printfn "%s" line
 
+    // ---- law 9: the operable surface and the resolution contract ----
+    // Phase 2517. The derived affordances and every recast instruction's outcome
+    // are printed, so the runner's line comparison is the cross-host claim.
+    let operability = OperabilityLaw.operabilityLaw ()
+
+    for line in operability.Lines do
+        printfn "%s" line
+
+    // ---- law 11: the renderer's markdown floor, on both pipelines ----
+    // Phase 2010. The U+0130 index defect shows under Fable alone, so the cases the
+    // .NET suite pins are run here too.
+    let sanitize = SanitizeLaw.sanitizeLaw ()
+
+    for line in sanitize.Lines do
+        printfn "%s" line
+
+    // The pinned kit's sanitisation family over the same floor, with the stated limit
+    // `SanitizeCases.judge` asserts on .NET.
+    let sanitizeKit = SanitizeLaw.sanitizeKitLaw seed 300
+
+    for line in sanitizeKit.Lines do
+        printfn "%s" line
+
+    let escape = EscapeLaw.escapeLaw ()
+
+    for line in escape.Lines do
+        printfn "%s" line
+
+    // ---- law 13: the tier's float layouts, on both pipelines ----
+    // Phase 2318. The AI wire wrote `1e-7` under Fable and `1E-07` on .NET.
+    let floatLayout = FloatLayoutLaw.floatLayoutLaw ()
+
+    for line in floatLayout.Lines do
+        printfn "%s" line
+
+    // ---- law 14: the DAG batch capability probe, stated per pipeline ----
+    // Phase 2117. `DagSinkCapabilities.tryBatch` answers by type test on .NET and
+    // `None` under Fable for every sink (the JS runtime carries no interface
+    // identity). The expectation differs by pipeline and is asserted on each; the
+    // printed line is the same on both, so the byte comparison holds.
+    let dagBatchProbeViolations =
+        let notCalled () =
+            failwith "the probe law never calls the sink"
+
+        let plain =
+            { new Fuaran.UI.OpStream.Dag.Abstractions.IDagOpStreamSink<unit> with
+                member _.Add _ = notCalled ()
+                member _.TryGet(_, _) = notCalled ()
+                member _.Head _ = notCalled ()
+                member _.TryAdvanceHead(_, _, _) = notCalled ()
+                member _.Parents(_, _) = notCalled ()
+                member _.Reachable(_, _) = notCalled ()
+                member _.Heads _ = notCalled ()
+                member _.Records _ = notCalled ()
+                member _.Tombstone(_, _) = notCalled ()
+                member _.Skeleton _ = notCalled ()
+                member _.Streams() = notCalled () }
+
+        let capable =
+            { new Fuaran.UI.OpStream.Dag.Abstractions.IDagOpStreamBatchSink<unit> with
+                member _.AddAll _ = notCalled ()
+                member _.Add _ = notCalled ()
+                member _.TryGet(_, _) = notCalled ()
+                member _.Head _ = notCalled ()
+                member _.TryAdvanceHead(_, _, _) = notCalled ()
+                member _.Parents(_, _) = notCalled ()
+                member _.Reachable(_, _) = notCalled ()
+                member _.Heads _ = notCalled ()
+                member _.Records _ = notCalled ()
+                member _.Tombstone(_, _) = notCalled ()
+                member _.Skeleton _ = notCalled ()
+                member _.Streams() = notCalled () }
+
+        let probe (sink: Fuaran.UI.OpStream.Dag.Abstractions.IDagOpStreamSink<unit>) =
+            Fuaran.UI.OpStream.Dag.Abstractions.DagSinkCapabilities.tryBatch sink
+            |> Option.isSome
+
+#if FABLE_COMPILER
+        let capableExpected = false
+#else
+        let capableExpected = true
+#endif
+        let checks = [ probe plain = false; probe capable = capableExpected ]
+        let held = checks |> List.filter id |> List.length
+        printfn "law dag-batch-probe: stated %d/%d" held (List.length checks)
+        List.length checks - held
+
     let violations =
         Laws.mergeViolations mergeVerdict
         + laneFailures
+        + footprintInFailures
+        + reconcileAsymmetric
         + List.length mergeAdequacy
         + Laws.deflateViolations deflateCases
         + Laws.selectionFieldViolations selectionCases
@@ -122,9 +226,39 @@ let main _ =
         + Laws.checkpointViolations checkpointCases
         + Laws.numberFormatViolations numberFormatCases
         + boardSnapshot.Violations
+        + operability.Violations
+        + sanitize.Violations
+        + sanitizeKit.Violations
+        + escape.Violations
+        + floatLayout.Violations
+        + dagBatchProbeViolations
 
-    printfn "TOTAL violations=%d" violations
+    // ---- law 10: a signed page verifies through the published provider ----
+    // Phase 2570. Asynchronous, as WebCrypto is: the TOTAL line is printed once
+    // this law has answered, on both pipelines, so it stays the last line.
+    let finish (attestation: AttestationLaw.AttestationLaw) : int =
+        for line in attestation.Lines do
+            printfn "%s" line
 
-    let exitCode = if violations = 0 then 0 else 1
-    setExitCode exitCode
-    exitCode
+        let total = violations + attestation.Violations
+        printfn "TOTAL violations=%d" total
+
+        let exitCode = if total = 0 then 0 else 1
+        setExitCode exitCode
+        exitCode
+
+#if FABLE_COMPILER
+    // Node cannot block on a promise: the law runs to completion on the event loop,
+    // and `finish` sets the exit status when it does. A law that never answers
+    // prints no TOTAL line, which the runner refuses.
+    Async.StartImmediate(
+        async {
+            let! attestation = AttestationLaw.attestationLaw ()
+            finish attestation |> ignore
+        }
+    )
+
+    0
+#else
+    AttestationLaw.attestationLaw () |> Async.RunSynchronously |> finish
+#endif

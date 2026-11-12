@@ -10,7 +10,7 @@ open Fuaran.UI.OpStream.Dag.InMemory
 open Fuaran.UI.OpStream.TestSupport
 
 // ============================================================================
-//  tryAdvanceHead CAS + DAG topology (parents / reachable / lca).
+//  tryAdvanceHead CAS + DAG topology (parents / reachable / Core's mergeBase).
 //
 //  A small branch fixture shared by these tests:
 //
@@ -18,7 +18,7 @@ open Fuaran.UI.OpStream.TestSupport
 //             └─── c        (branch off `a`: insert a pane)
 //
 //  `g` is the genesis op; `a` its child; `b` and `c` are two disjoint children
-//  of `a` (a branch point). The lca of `b` and `c` is `a`.
+//  of `a` (a branch point). The merge base of `b` and `c` is `a`.
 // ============================================================================
 
 // ─── Phase 408 — the DAG content hash folds provenance (the F13 hole, closed) ──
@@ -78,7 +78,11 @@ let provenanceInDagHash =
               let r =
                   DagOpRecord.create "s" [] op None (Actor.Human "alice") (timestamp 1L) OpResultEnvelope.Success
               // Re-attribute WITHOUT re-hashing — the stored hash no longer recomputes.
-              let tampered = { r with Actor = Actor.Human "mallory" }
+              let tampered =
+                  { r with
+                      Node =
+                          { r.Node with
+                              Actor = Actor.Human "mallory" } }
 
               Expect.notEqual
                   (DagOpRecord.recomputeHash tampered)
@@ -180,20 +184,18 @@ let tests =
               Expect.equal (Set.count reach) 3 "exactly g,a,b"
           }
 
-          test "lca of two disjoint branches is their branch point" {
+          test "the merge base of two disjoint branches is their branch point" {
               let sink, _, a, b, c = branchFixture ()
+              let dag = sink.Records "s" |> Async.RunSynchronously |> DagOpRecord.toDag
 
-              match sink.Lca("s", b.Hash, c.Hash) |> Async.RunSynchronously with
-              | LcaResult.Unique h -> Expect.equal h a.Hash "lca(b,c) = a"
-              | other -> failtestf "expected Unique a, got %A" other
+              Expect.equal (Fuaran.Core.Dag.mergeBase dag b.Hash c.Hash) (Some a.Hash) "mergeBase(b,c) = a"
           }
 
-          test "lca of an ancestor with its descendant is the ancestor (fast-forward shape)" {
+          test "the merge base of an ancestor with its descendant is the ancestor (fast-forward shape)" {
               let sink, _, a, b, _ = branchFixture ()
+              let dag = sink.Records "s" |> Async.RunSynchronously |> DagOpRecord.toDag
 
-              match sink.Lca("s", a.Hash, b.Hash) |> Async.RunSynchronously with
-              | LcaResult.Unique h -> Expect.equal h a.Hash "lca(a,b) = a"
-              | other -> failtestf "expected Unique a, got %A" other
+              Expect.equal (Fuaran.Core.Dag.mergeBase dag a.Hash b.Hash) (Some a.Hash) "mergeBase(a,b) = a"
           }
 
           test "heads enumerates the live branch tips" {

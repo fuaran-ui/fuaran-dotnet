@@ -86,6 +86,16 @@ let private rendererSourceDir: string =
 /// wire-corpus precedent) — found by climbing rather than pinned, since its
 /// depth above this repo is a checkout layout, not a contract.
 let private tryFindTsCssCopy () : string option =
+    // A worktree gate names its sibling: `FUARAN_TS_ROOT` beats the climb, which would find the
+    // primary clone and judge a change-set's stylesheet against the tree before it.
+    let declared =
+        match Environment.GetEnvironmentVariable "FUARAN_TS_ROOT" with
+        | null
+        | "" -> None
+        | root ->
+            let candidate = Path.Combine(root, "packages", "renderer", "css", "fuaran.css")
+            if File.Exists candidate then Some candidate else None
+
     let rec climb (dir: DirectoryInfo) =
         if isNull (box dir) then
             None
@@ -98,7 +108,8 @@ let private tryFindTsCssCopy () : string option =
             else
                 climb dir.Parent
 
-    climb (DirectoryInfo(AppContext.BaseDirectory))
+    declared
+    |> Option.orElseWith (fun () -> climb (DirectoryInfo(AppContext.BaseDirectory)))
 
 // ─── The stylesheet side ───────────────────────────────────────────────────
 

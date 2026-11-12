@@ -632,6 +632,12 @@ let private behaviour =
               Expect.isTrue (hasCode "FUARAN058" (findings (setup [ "FragmentCycle" ]))) "cycle"
           }
 
+          test "FUARAN058 names the cycle's members (Phase 2312: one Propagation.sort pass)" {
+              // The fixture's `loop` references itself: a cycle of one, reported once.
+              let f = single "FUARAN058" (findings (setup [ "FragmentCycle" ]))
+              Expect.stringContains f.Message "(cycle: 'loop')" "the members Core's sort returns"
+          }
+
           test "a bounded Repeat count raises no FUARAN059" {
               Expect.isFalse (hasCode "FUARAN059" (findings (setup [ "RepeatBounded" ]))) "bounded"
           }

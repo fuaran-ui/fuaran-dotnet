@@ -29,7 +29,9 @@ namespace Fuaran.UI.ThemeManifest
 // adding a new `InvariantKind` case is a minor bump (existing matches
 // gain an `FS0025` warning); redefining an existing case breaks every
 // manifest already authored against it and every AI prompt cache that
-// pattern-matched it.
+// pattern-matched it. A kind this host does not know decodes to
+// `InvariantKind.Unknown` (Phase 2133), so a manifest authored against a
+// newer vocabulary keeps its constraint and reports it unenforced.
 
 /// The motion-voice budget — the payload of `InvariantKind.MotionVoice`.
 /// Declares the ceiling a theme's animations must stay under so the
@@ -67,6 +69,15 @@ type InvariantKind =
     /// host installing that palette has it refused whether or not the manifest
     /// declares this — so declaring it explicitly only sets its `Weight`.
     | ChartSeriesDistinct
+    /// Phase 2133 — an invariant whose `kind` this host does not know: a newer
+    /// constraint, or one another host enforces. It is KEPT, never dropped, so it
+    /// round-trips through decode and encode with its members intact, and the
+    /// validation pass (`ThemeManifest.validate`) reports it as
+    /// `INVARIANT_KIND_UNKNOWN` — declared, and enforced by nothing here.
+    /// `kind` is the wire discriminator as written; `members` are the
+    /// invariant's other members except `weight` (carried on the `Invariant`),
+    /// in document order.
+    | Unknown of kind: string * members: (string * Fuaran.Core.JVal) list
 
 /// One declared invariant + its soft weight. `Weight` defaults to
 /// `1.0` (via `Invariant.create`); Phase 150 will learn weights from a
@@ -93,3 +104,4 @@ module Invariant =
         | InvariantKind.UsageBudget _ -> "UsageBudget"
         | InvariantKind.MotionVoice _ -> "MotionVoice"
         | InvariantKind.ChartSeriesDistinct -> "ChartSeriesDistinct"
+        | InvariantKind.Unknown(kind, _) -> kind

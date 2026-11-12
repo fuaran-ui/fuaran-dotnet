@@ -1,6 +1,8 @@
 namespace Fuaran.UI.OpStream.Dag.Inspect
 
 open Fuaran.UI.Types
+open Fuaran.UI.Ops.Types
+open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.OpStream.Replay
 open Fuaran.UI.OpStream.Dag.Abstractions
 open Fuaran.UI.OpStream.Dag.Merge
@@ -11,7 +13,7 @@ open Fuaran.UI.OpStream.Dag.Merge
 //  Phase 57's `TreeDiff` diffs two ADJACENT snapshots along a linear stream
 //  (tree-before vs tree-after one op). The DAG generalises this to ANY two
 //  content-addressed coordinates: reconstruct each node's snapshot
-//  (`DagReplay`, the same primary-spine fold `DagAudition` uses), then run the
+//  (Core's closure fold, `DagFold.replayTo`, as `DagAudition` uses), then run the
 //  identical structural `TreeDiff.diff` between them. The two coordinates need
 //  share no ancestry — diffing a branch tip against the trunk head, or two
 //  sibling variations against each other, is the load-bearing "what does THIS
@@ -36,19 +38,19 @@ type CoordinateDiff =
 module DagCoordinateDiff =
 
     /// Diff coordinate `a` (the from-state) against coordinate `b` (the
-    /// to-state). Each is reconstructed via `DagReplay.replay` over `initial`;
+    /// to-state). Each is reconstructed via `DagFold.replayTo` over `initial`;
     /// a replay error on EITHER endpoint surfaces verbatim. The endpoints need
     /// not be related — any two nodes in the stream diff.
     let diff<'Msg>
-        (getRecord: string -> DagOpRecord<'Msg> option)
+        (dag: Fuaran.Core.Dag.T<StreamEntry<'Msg>>)
         (initial: Node<'Msg>)
         (a: string)
         (b: string)
-        : Result<CoordinateDiff, DagReplayError> =
-        match DagReplay.replay getRecord initial a with
+        : Result<CoordinateDiff, Fuaran.Core.Dag.ReplayFault<ApplyError>> =
+        match DagFold.replayTo initial dag a with
         | Error e -> Error e
         | Ok treeA ->
-            match DagReplay.replay getRecord initial b with
+            match DagFold.replayTo initial dag b with
             | Error e -> Error e
             | Ok treeB ->
                 Ok
@@ -60,19 +62,19 @@ module DagCoordinateDiff =
     /// `baseline` is reconstructed once and reused; the first replay error on
     /// any endpoint aborts with that error. Results preserve `others` order.
     let diffMany<'Msg>
-        (getRecord: string -> DagOpRecord<'Msg> option)
+        (dag: Fuaran.Core.Dag.T<StreamEntry<'Msg>>)
         (initial: Node<'Msg>)
         (baseline: string)
         (others: string list)
-        : Result<CoordinateDiff list, DagReplayError> =
-        match DagReplay.replay getRecord initial baseline with
+        : Result<CoordinateDiff list, Fuaran.Core.Dag.ReplayFault<ApplyError>> =
+        match DagFold.replayTo initial dag baseline with
         | Error e -> Error e
         | Ok baseTree ->
             let rec loop (remaining: string list) (acc: CoordinateDiff list) =
                 match remaining with
                 | [] -> Ok(List.rev acc)
                 | coord :: rest ->
-                    match DagReplay.replay getRecord initial coord with
+                    match DagFold.replayTo initial dag coord with
                     | Error e -> Error e
                     | Ok tree ->
                         let cd =
@@ -93,12 +95,10 @@ module DagCoordinateDiff =
         (initial: Node<'Msg>)
         (a: string)
         (b: string)
-        : Async<Result<CoordinateDiff, DagReplayError>> =
+        : Async<Result<CoordinateDiff, Fuaran.Core.Dag.ReplayFault<ApplyError>>> =
         async {
             let! records = sink.Records streamId
 
-            let byHash = records |> List.map (fun r -> r.Hash, r) |> Map.ofList
-
-            let getRecord h = Map.tryFind h byHash
-            return diff getRecord initial a b
+            let dag = DagOpRecord.toDag records
+            return diff dag initial a b
         }

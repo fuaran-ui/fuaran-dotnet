@@ -619,7 +619,7 @@ module Stdlib =
                           { Defaults.heading with
                               Level = 3
                               Text = title }
-                      Fuaran.markdownSpec "empty-state-panel-body" { Text = body }
+                      Fuaran.markdownSpec "empty-state-panel-body" { Citations = []; Text = body }
                       // The slot marker stands in both the template and the
                       // materialised emission: certification varies value holes
                       // only, and the subtree here belongs to the caller.
@@ -733,7 +733,7 @@ module Stdlib =
                               Label = title
                               Value = value
                               Format = CellFormat.Number(Some 0, None) }
-                      Fuaran.markdownSpec "metric-card-caption" { Text = caption } ] }
+                      Fuaran.markdownSpec "metric-card-caption" { Citations = []; Text = caption } ] }
 
     let metricCard<'Msg> : StdlibFragment<'Msg> =
         { Name = MetricCard

@@ -6,7 +6,10 @@ module Fuaran.UI.Validator.Findings
 //  A `Finding` is what a check emits. The validator collects findings across
 //  every source file in the project and renders them per the §4d AI-recovery
 //  shape (`ErrorRender.fs`). Errors fail the FAKE `Validate` target; warnings
-//  print to stdout and do not fail the build.
+//  print to stdout and do not fail the build. The shape is the tier's one
+//  finding shape (`PreEmitValidate.Finding`), so the query-binding check and the
+//  dead-on-decode lint report in it too, and
+//  `PreEmitValidate.Finding.toCore` lowers any of them to Core.
 // ============================================================================
 
 open Fuaran.UI
@@ -29,10 +32,9 @@ type Finding = PreEmitValidate.Finding<Location>
 let create (code: PreEmitValidate.FindingCode) (location: Location) (message: string) : Finding =
     PreEmitValidate.Finding.create code location message
 
+/// The finding with its §4d recovery stated — the registered names and the best guess.
 let withRecovery (available: string list) (suggestion: string option) (finding: Finding) : Finding =
-    { finding with
-        AvailableFields = Some available
-        Remedy = suggestion }
+    PreEmitValidate.Finding.withRecovery available suggestion finding
 
 /// The finding raised at `severity` rather than its code's default (FUARAN062, FUARAN084).
 let withSeverity (severity: Fuaran.Core.Severity) (finding: Finding) : Finding =

@@ -221,11 +221,18 @@
       });
     }
 
+    /* A cited cell's label is for a screen reader; the cell's value is what sorts. */
+    function cellText(c) {
+      var label = c.querySelector('.fuaran-cited-label');
+
+      return label ? c.textContent.slice(label.textContent.length) : c.textContent;
+    }
+
     function sortBy(col, dir) {
       var keyed = original.map(function (r, i) {
         var c = r.cells[col];
 
-        return { row: r, i: i, key: c ? keyOf(c.textContent) : null };
+        return { row: r, i: i, key: c ? keyOf(cellText(c)) : null };
       });
 
       keyed.sort(function (x, y) {

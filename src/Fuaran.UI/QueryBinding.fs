@@ -44,11 +44,9 @@
 //
 //  AI-RECOVERY DISCIPLINE (§4d). Each `Defect` carries a stable `Code`
 //  (FUARAN066 / FUARAN067), the offending node + column, and recovery fields
-//  (`AvailableFields` + `Suggestion`) — the same shape `Fuaran.UI.Validator`'s
-//  `Findings.withRecovery` populates. `Findings` lives in the downstream
-//  Validator package (it references `Fuaran.UI`), so the runtime defect type is
-//  *defined here* rather than imported, mirroring the discipline without the
-//  circular dependency.
+//  (`AvailableFields` + `Remedy`) in the tier's one finding shape,
+//  `PreEmitValidate.Finding` — the shape `Fuaran.UI.Validator`'s findings are
+//  (Phase 2312; until then this module defined a third copy of it).
 // ============================================================================
 
 open Fuaran.UI.Types
@@ -121,19 +119,13 @@ type QueryBoundRef =
       Sink: BindingSinkClass
       NodeId: string }
 
-/// A typed query-binding defect. Mirrors `Fuaran.UI.Validator.Findings.Finding`
-/// (+ `withRecovery`) without importing it (that type is downstream of this
-/// package). `AvailableFields` is the §4d AI-recovery hint — for a mismatch,
-/// the schema columns that WOULD type-check into this sink; for an absent
-/// column, the schema columns that exist.
-type Defect =
-    { Code: string
-      NodeId: string
-      Column: string
-      Sink: BindingSinkClass
-      Message: string
-      AvailableFields: string list
-      Suggestion: string option }
+/// A typed query-binding defect, in the tier's one finding shape
+/// (`PreEmitValidate.Finding`, Phase 2312) located at the query-bound reference
+/// it judged — the node, the column and the sink class. `Remedy` is the repair
+/// suggestion and `AvailableFields` the §4d AI-recovery hint: for a mismatch, the
+/// schema columns that WOULD type-check into this sink; for an absent column, the
+/// schema columns that exist. `PreEmitValidate.Finding.toCore` lowers it to Core.
+type Defect = PreEmitValidate.Finding<QueryBoundRef>
 
 /// **FUARAN066 (Error)** — a query column is bound into a sink whose scalar
 /// class it is not compatible with (e.g. a `string` column into a `numeric`
@@ -278,14 +270,13 @@ let private queryBoundRefsOfNode (n: Node<'Msg>) : QueryBoundRef list =
 
     List.ofSeq acc
 
-/// Walk `node` (depth-first, pre-order) and surface every query-bound column
-/// reference, each tagged with the sink class its slot fixes. Descends through
-/// `NodeChildren.Reach.kindHeld`, so coverage tracks the tree shape.
-let queryBoundRefs (node: Node<'Msg>) : QueryBoundRef list =
-    let acc = ResizeArray<QueryBoundRef>()
+/// The one walk both checks read: every node at the kind-held reach, depth-first
+/// pre-order, beside the query-bound references its own slots hold.
+let private refsByNode (node: Node<'Msg>) : (Node<'Msg> * QueryBoundRef list) list =
+    let acc = ResizeArray<Node<'Msg> * QueryBoundRef list>()
 
     let rec walk (n: Node<'Msg>) =
-        acc.AddRange(queryBoundRefsOfNode n)
+        acc.Add((n, queryBoundRefsOfNode n))
 
         // The tier's one enumeration, at the kind-held reach: container
         // children, both error-boundary arms, every switch case and its
@@ -297,6 +288,11 @@ let queryBoundRefs (node: Node<'Msg>) : QueryBoundRef list =
 
     walk node
     List.ofSeq acc
+
+/// Walk `node` (depth-first, pre-order) and surface every query-bound column
+/// reference, each tagged with the sink class its slot fixes. Descends through
+/// `NodeChildren.Reach.kindHeld`, so coverage tracks the tree shape.
+let queryBoundRefs (node: Node<'Msg>) : QueryBoundRef list = refsByNode node |> List.collect snd
 
 // ─── The check ───────────────────────────────────────────────────────────────
 
@@ -318,36 +314,32 @@ let private mismatchDefect (schema: Schema) (colType: ColumnType) (r: QueryBound
         | first :: _ ->
             Some(sprintf "bind a %s-compatible column instead, e.g. '%s'" (BindingSinkClass.label r.Sink) first)
 
-    { Code = TypeMismatchCode
-      NodeId = r.NodeId
-      Column = r.Column
-      Sink = r.Sink
-      Message =
-        sprintf
+    PreEmitValidate.Finding.create
+        PreEmitValidate.FindingCodes.queryColumnTypeMismatch
+        r
+        (sprintf
             "column '%s' is typed %s but is bound into a %s sink (incompatible)"
             r.Column
             (ColumnType.tag colType)
-            (BindingSinkClass.label r.Sink)
-      AvailableFields = compatibleCols
-      Suggestion = suggestion }
+            (BindingSinkClass.label r.Sink))
+    |> PreEmitValidate.Finding.withRecovery compatibleCols suggestion
 
 let private absentDefect (schema: Schema) (r: QueryBoundRef) : Defect =
     let available = columnNames schema
 
-    { Code = ColumnAbsentCode
-      NodeId = r.NodeId
-      Column = r.Column
-      Sink = r.Sink
-      Message =
-        sprintf
-            "column '%s' is bound into a %s sink but is absent from the resolved query schema"
-            r.Column
-            (BindingSinkClass.label r.Sink)
-      AvailableFields = available
-      Suggestion =
+    let suggestion =
         match available with
         | [] -> Some "the resolved schema has no columns — the query returned no schema"
-        | first :: _ -> Some(sprintf "bind a column that exists in the schema, e.g. '%s'" first) }
+        | first :: _ -> Some(sprintf "bind a column that exists in the schema, e.g. '%s'" first)
+
+    PreEmitValidate.Finding.create
+        PreEmitValidate.FindingCodes.queryColumnAbsent
+        r
+        (sprintf
+            "column '%s' is bound into a %s sink but is absent from the resolved query schema"
+            r.Column
+            (BindingSinkClass.label r.Sink))
+    |> PreEmitValidate.Finding.withRecovery available suggestion
 
 /// Check every query-bound column reference in `node` against the resolved
 /// query result `schema`. Returns `[]` when every binding types cleanly, else
@@ -358,13 +350,45 @@ let private absentDefect (schema: Schema) (r: QueryBoundRef) : Defect =
 /// fields (`Name`, `Type`) — never any row data — so it types a complete
 /// dashboard against a schema with **zero rows** (the privacy-mode path,
 /// Phase 324). A schema-only fetch is sufficient to prove the UI contract.
+let private judge (schema: Schema) (r: QueryBoundRef) : Defect option =
+    match schema |> List.tryFind (fun f -> f.Name = r.Column) with
+    | None -> Some(absentDefect schema r)
+    | Some f ->
+        if compatible f.Type r.Sink then
+            None
+        else
+            Some(mismatchDefect schema f.Type r)
+
 let check (schema: Schema) (node: Node<'Msg>) : Defect list =
-    queryBoundRefs node
-    |> List.choose (fun r ->
-        match schema |> List.tryFind (fun f -> f.Name = r.Column) with
-        | None -> Some(absentDefect schema r)
-        | Some f ->
-            if compatible f.Type r.Sink then
-                None
-            else
-                Some(mismatchDefect schema f.Type r))
+    queryBoundRefs node |> List.choose (judge schema)
+
+/// The query that sources a reference: a chart's axis and series name columns
+/// of the chart's own `Source` query; every other reference IS its query (the
+/// scalar convention above — the binding's name is the column key).
+let private sourceOf (n: Node<'Msg>) (r: QueryBoundRef) : string =
+    match n.Kind with
+    | NodeKind.Chart spec ->
+        match spec.Source with
+        | Binding.Query(name, _, _) -> name
+        | _ -> r.Column
+    | _ -> r.Column
+
+/// Check a tree whose query-bound references read SEVERAL queries — a page
+/// document's tree, whose sources each name a request (Phase 2522) — holding
+/// each reference to the schema of the query that sources it: a chart's axis and
+/// series to its `Source` query's schema, a scalar sink to its own query's. One
+/// call replaces a `check` per query-scoped subtree, which a page cannot supply:
+/// its sources sit side by side, not in subtrees of their own.
+///
+/// `schemas` maps a query name to its resolved schema. A reference whose query
+/// has NO entry is not judged here — an unresolved request is the host's
+/// refusal to render that source, reported where it resolves, not a column
+/// fault — so a caller passes every query it resolved.
+let checkSources (schemas: Map<string, Schema>) (node: Node<'Msg>) : Defect list =
+    refsByNode node
+    |> List.collect (fun (n, refs) ->
+        refs
+        |> List.choose (fun r ->
+            match Map.tryFind (sourceOf n r) schemas with
+            | Some schema -> judge schema r
+            | None -> None))

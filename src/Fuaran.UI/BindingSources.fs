@@ -31,6 +31,7 @@ namespace Fuaran.UI
 //  two types again.
 // ============================================================================
 
+open Fuaran.Core
 open Fuaran.UI.Types
 
 /// A session-held store of PRIMED live-`Transform` evaluations — the seam the
@@ -178,7 +179,44 @@ type BindingSources =
         /// bound to a cell of the wrong shape) evaluates in full, so its error
         /// is the one it always was. A one-row `Binding.Expr` never consults it.
         LiveTransforms: ILiveTransformStore option
+        /// Request parameter name -> the names of the `QueryResults` sources whose
+        /// requests depend on it (Phase 2523). A host fills it from the page's
+        /// sidecar; this record only carries it.
+        ///
+        /// When an admitted `SetState` or filter write changes a named parameter,
+        /// exactly the sources listed under it are asked again (see
+        /// [[BindingSources.reResolve]]); every other source is left where it was.
+        /// The empty map — the default — means no source depends on a parameter,
+        /// which is today's behaviour exactly: a `Binding.Query` is resolved when
+        /// the host fills the record and never re-asked.
+        ParameterDependents: Map<string, Set<string>>
     }
+
+/// One request parameter whose value an admitted action changed (Phase 2523).
+/// `Value` is the literal the action carried; `None` when the new value is
+/// derived at dispatch (`SetState` with `valueFrom`), in which case the
+/// resolver reads it from wherever the host keeps it.
+type ParameterChange = { Name: string; Value: JVal option }
+
+/// What a host's resolver answers for one source (Phase 2523): the result it
+/// stores under the source's name, and the schema of that result when it has one.
+/// A `None` schema skips the typed check, exactly as a source with no schema does
+/// today.
+type ResolvedSource = { Value: obj; Schema: Schema option }
+
+/// A source the resolver refused, or whose result failed the typed check
+/// (Phase 2523). It is stored under the source's name in `QueryResults` in place
+/// of the value, so the stale value cannot be read back: `BindingResolver`
+/// answers a `Binding.Query` over it with an error naming the source and the
+/// reason.
+type SourceRefusal = { Source: string; Reason: string }
+
+/// One re-resolved source: its name and fresh value, or its named refusal.
+type SourceOutcome = Result<string * obj, SourceRefusal>
+
+/// The host's resolver for a query-bound source: given the parameters that
+/// changed and the source's name, the fresh result or the reason it cannot be had.
+type SourceResolver = ParameterChange list -> string -> Result<ResolvedSource, string>
 
 /// Companion values for [[BindingSources]]. Data-only: the identity defaults
 /// and the empty record. Resolution lives in the renderer.
@@ -208,4 +246,64 @@ module BindingSources =
           Locale = ""
           CapabilityInvoker = (fun _ _ -> Deferred.Pending)
           Now = ""
-          LiveTransforms = None }
+          LiveTransforms = None
+          ParameterDependents = Map.empty }
+
+    /// The sources whose requests depend on any of `changes` (Phase 2523), in
+    /// name order. A parameter nobody depends on contributes nothing.
+    let dependentsOf (sources: BindingSources) (changes: ParameterChange list) : string list =
+        changes
+        |> List.collect (fun c ->
+            match Map.tryFind c.Name sources.ParameterDependents with
+            | Some names -> Set.toList names
+            | None -> [])
+        |> List.distinct
+        |> List.sort
+
+    /// Ask the host's resolver again for exactly the sources that depend on
+    /// `changes` (Phase 2523) and say what became of each.
+    ///
+    /// `check` is the typed check (`QueryBinding.check` over the tree the caller
+    /// holds): it takes the source's name and its resolved schema and returns
+    /// the defects as messages. It is a function because this file compiles
+    /// before `QueryBinding` and holds no tree. A result with defects is refused
+    /// rather than rendered, and a source with no schema is not checked. A
+    /// resolver that throws refuses its source. Nothing beyond the dependents is
+    /// asked, so a source no changed parameter names is never touched.
+    let reResolve
+        (resolve: SourceResolver)
+        (check: string -> Schema -> string list)
+        (sources: BindingSources)
+        (changes: ParameterChange list)
+        : SourceOutcome list =
+        dependentsOf sources changes
+        |> List.map (fun name ->
+            let refuse reason =
+                Error { Source = name; Reason = reason }
+
+            let answer =
+                try
+                    resolve changes name
+                with ex ->
+                    Error ex.Message
+
+            match answer with
+            | Error reason -> refuse reason
+            | Ok r ->
+                match r.Schema |> Option.map (check name) |> Option.defaultValue [] with
+                | [] -> Ok(name, r.Value)
+                | defects -> refuse (String.concat "; " defects))
+
+    /// Fold `outcomes` into `sources` (Phase 2523): a fresh value replaces the
+    /// source's result; a refusal replaces it with the [[SourceRefusal]].
+    let applyOutcomes (sources: BindingSources) (outcomes: SourceOutcome list) : BindingSources =
+        let results =
+            outcomes
+            |> List.fold
+                (fun acc o ->
+                    match o with
+                    | Ok(name, value) -> Map.add name value acc
+                    | Error refusal -> Map.add refusal.Source (Unchecked.nonNull (box refusal)) acc)
+                sources.QueryResults
+
+        { sources with QueryResults = results }

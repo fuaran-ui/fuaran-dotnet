@@ -264,32 +264,27 @@ path – a simple linear tree app carries zero DAG overhead.
   the DAG abstractions *do* reference the linear abstractions). A future edit
   that makes any light-path package reference a DAG package turns the contract
   red. This is the executable form of the opt-in posture.
-- **`Fuaran.UI.OpStream.Dag.Abstractions`** (stable surface): `DagOpRecord<'Msg>`
-  (multi-parent, content-addressed; merge nodes commit to an outcome-tree hash),
-  the lexicographically-sorted-parent hash algorithm, `DagTopology`
-  (`reachable` / `lca`, the `LcaResult` DU), `DagVerify`, `DagRetention` +
-  `ResumeCoordinate` + `DagCheckpoint`, the `RetentionPolicy` /
-  `DagRetentionPolicy` / `RejectionTombstone` decision-content-split policy tier
-  (Phase 179 – grace / auto-pin / purge-trigger over the mechanism; clocks only
-  for grace, never in the hash path), and the `IDagOpStreamSink<'Msg>`
-  superset interface (content-addressed `Add`, atomic `TryAdvanceHead` CAS,
-  topology queries, tombstone pruning). `FSharp.Core` + the linear abstractions
-  only – no orchestration-private dependency; Apache-2.0-clean.
-- **`Fuaran.UI.OpStream.Dag.Merge`** (stable surface): the M1 merge contract – 
-  fast-forward + disjoint-`(NodeId, facet)` auto-merge with a NodeId-canonical-
-  bytes tie-break (no wall-clock); overlapping changes refuse with the contended
-  cells; the merge-node hash commits to the canonical encoding of the resulting
-  tree so two conformant hosts agree iff they reach the same tree. The M2 human-
-  primacy additions (Phase 179) are additive: `TreeMerge.merge3WayWithCellAuthor`
-  (per-cell authorship) + the `DagPrimacy` backward-walk that derives it +
-  `ReassertPin` (KindSwapOrphansPin migration); the author-agnostic `merge3Way`
-  and per-side `merge3WayWithAuthor` entry points are unchanged.
-- **DagOpRecord wire shape** (Phase 178): the multi-parent record wire form is an
-  **additive** wire artifact – the *linear* `OpRecord` + corpus are untouched.
-  Its conformance fixtures live in `wire-format-fixtures/dag/`. Breakage of the
-  `DagOpRecord` wire shape (the `parents` array, `outcomeHash`, the sorted-parent
-  hash pre-image) is a major-version bump on the same axis as the linear wire
-  format.
+- **The DAG is Fuaran.Core's DAG (Phase 2645, the cut).** No node, address, verifier, topology,
+  retention, replay or merge of the tier's own remains in `Fuaran.UI.OpStream.Dag.*`.
+- **`Fuaran.UI.OpStream.Dag.Abstractions`** (stable surface): `DagOpRecord<'Msg>` — a Core
+  `DagNode<StreamEntry<'Msg>>` with its stream id, addressed by Core's `Dag.nodeId` under the tier's
+  SHA-256 (`DagOpRecord.nodeId`, `create`, `ofEntry`, `toDag`, `ofLinear`); `DagVerify` (Core's
+  `Dag.firstBreak`, and the store-resolved read-path form); `DagWriteAdmission`; `GcRoots` /
+  `ResumeCoordinate` and the `RetentionPolicy` / `DagRetentionPolicy` / `RejectionTombstone` policy tier over
+  Core's `Dag.prunable`; `DagLift` / `LiftReceipt`; `DagWire`; and the `IDagOpStreamSink<'Msg>` superset
+  interface (admission by address recompute and parent presence, atomic `TryAdvanceHead` CAS, `Reachable`
+  as Core's `Dag.ancestorsOf`, pruning into a `DagSkeletonNode` skeleton beside the live set).
+  `FSharp.Core` + the linear abstractions + `Fuaran.Core.OpStream.Dag` only; Apache-2.0-clean.
+- **`Fuaran.UI.OpStream.Dag.Merge`** (stable surface): the reconciliation policy (`DagReconcile`,
+  `WIRE_FORMAT.md` §34) over Core's conflict report, with an optional precedence side; the one merge
+  (`DagMerge.mergeDag` over a `MergeContext`, its sink wrappers and the trunk CAS), whose merge node is minted
+  by Core over the script and checked to replay to the derived tree; Core's replay, checkpoints and compaction
+  bound to the tier (`DagFold`); the validator gate (`ValidatorGate`, Core's introduced-findings gate);
+  `BatchAccept`; `GuestReplay` / `GuestConvergence`.
+- **DagOpRecord wire shape** (Phase 178; re-minted by Phase 2645): the multi-parent record wire form. Its
+  conformance fixtures live in `wire-format-fixtures/dag/`. Breakage of the `DagOpRecord` wire shape (the
+  `parents` array, the Core address pre-image of `WIRE_FORMAT.md` §5.3.3) is a major-version bump on the same
+  axis as the linear wire format.
 - **`ReplaceRoot` tree-op** (Phase 262): an **additive** `TreeOp` case – the
   whole-tree swap, `{ "$type": "ReplaceRoot", "node": <Node> }`, the only op that
   legally changes the root node id. Encoder + decoder + apply + schema + the
@@ -7818,6 +7813,1046 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
+## 0.104.0 (RELEASED — tagged v0.104.0 at cc477007, 2026-11-11) — the slot opened after v0.103.0 was released; advanced from 0.103.1 on 2026-11-10 by Phase 2640, whose change is breaking
+
+_`v0.103.0` is TAGGED (2026-11-09, at `1b783c61`), so nothing may ride it: Phase 2639 opened the next slot at the
+patch number, its class being ADDITIVE. Phase 2640 changes what two existing public members of `Fuaran.UI.Generated`
+answer (below), a higher class than the draft carried, so it ADVANCES the slot to the next minor (the 0.x convention's
+breaking number) rather than riding a number that says "additive". The `<Version>` advance and its ledger record are
+the release act's, recorded separately._
+
+### What rides this slot — Phase 2639 (`JsonDecode` becomes a policy record over the generated collecting decoders)
+
+**Class: additive.** Packages `Fuaran.UI` (new public members) and `Fuaran.UI.Ops` (no surface change). No wire byte
+moves and no decode verdict moves: every accepted byte, every refusal's code, path, sentence and expected shape, every
+§29 defect list, every reliance event, the work meter and every admission verdict are held identical by the parity
+harness (below) over the whole node-decoder corpus and 9,255 mutations of it.
+
+- **Added — the collecting decoders in `Fuaran.UI.Generated`.** The vocabulary now requests Core's `SpecDecoders`
+  derivation (`src/Fuaran.UI.Idl/Support.fs`), so the generated module carries Core's `CollectingDecoders` record (a
+  field per node, union, record, kind spec, enumeration and JSON scalar, the `CollectingBinding` seam and `Absent`,
+  Core D175 / D230), its value `collectingDecoders`, and per kind spec `decode<Tag>Spec`, `decode<Tag>SpecAll` and
+  `decode<Tag>SpecAllWith`, plus `decodeNodeJson`, `decodeNodeJsonAll`, `decodeNodeJsonAllWith`, `decodeNodeAll` and
+  `decodeNodeAllWith`. Each answers Core's `DecodeError` (one, or every one in declaration order) with the structural
+  layer's own sentences, not `JsonDecode`'s; a consumer wanting this tier's policy keeps calling `JsonDecode`.
+- **Changed, internally — `JsonDecode` reads the kind specs it has moved through that record.** Its policy (each
+  reader it applied by hand, the sentence each required member's absence is reported in, the lenient member aliases,
+  the §21.9 bound) is a `CollectingDecoders` built with `{ collectingDecoders with … }`, and the hand structure of each
+  moved spec is deleted in the same commit. Moved by this slot: `Heading`, `Math`, `Icon`, `CodeBlock`, `Badge`,
+  `Callout`, `List` and `Skeleton`. The rest is still decoded by hand; see the migration note for what blocks which.
+- **Added (tests) — the decoder parity harness.** `tests/decoder-parity/<family>.tsv` records the full verdict of the
+  node and op decoders over every node-decoder fixture (279 nodes, 91 lenient, 219 reject), the op fixtures (38 + 21),
+  the two malformed recovery sets (36 + 42) and every member of every kind in the `nodes/` fixtures dropped, made null
+  and retyped (9,255 documents), recorded from the hand decoder before the first family moved;
+  `Fuaran.UI.JsonDecode.Tests` holds the decoder to it, and `-- --decoder-parity` re-records it as a deliberate act.
+
+**The consumer cost: none.** No existing member changes; the record, its value and the entries are new names in
+`Fuaran.UI.Generated`. The package grows by the generated collecting group (about 2,900 lines of emitted F#), which
+the Fable leg compiles like the rest of the module.
+
+**No kind is added, merged or retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s admission gates are
+not engaged. **No escape hatch is created or widened**: the record is supplied by the CALLING host's code to the
+generated entry it calls, never selected or reached by a document, and `JsonDecode`'s own record is private.
+
+Migration note: [`docs/migrations/2639-decoder-layering.md`](docs/migrations/2639-decoder-layering.md).
+
+### What rides this slot — Phase 2640 (the vocabulary declares its keyed node slots)
+
+**Class: breaking (behavioural), in `Fuaran.UI.Generated` only.** No wire byte moves and no decode verdict moves: the
+`keyed` marker is a declaration the codec never reads (WIRE_FORMAT §15.4's classifier grades all three changes
+`HostSurfaceOnly`, NO profile step), and the corpus and the generated-layer pins are byte-identical either side.
+
+- **Declared — three keyed node slots** (`IdlField.Keyed`, Core Phase 494) in `src/Fuaran.UI.Idl/Vocabulary.fs`:
+  `ErrorBoundary.child`, `ErrorBoundary.fallback` and `Switch.default` (the last also on the `Switch` projection's
+  host fields in `Support.fs`). They are ARMS the kind holds by name (`NodeChildren.Position.Arm`), never an ordered
+  child list the structural ops edit; `idl.json` and `support.json` write `"keyed": true` on exactly those fields.
+- **Changed — `Generated.children`, `Generated.withChildren`, and so `Generated.nodeWitness` and
+  `Generated.runValidator`, no longer list those arms.** `children` of an `ErrorBoundary` was `[child; fallback]` and of
+  a `Switch` `[default]`; both are now `[]`, and `withChildren` leaves the arms alone. This is the structural
+  enumeration `Introspect.nodeWitness` (the one the apply path edits through) has always had, so the generated and
+  the hand structural witness now agree; a consumer that walked arms through the GENERATED `children` reads them
+  through `Generated.keyedChildren` instead (or walks `Fuaran.Core.Tree.traversal Generated.nodeWitness
+  Generated.keyedWitness`). No shipped package of this repository walks through it.
+- **Added — the keyed walk in `Fuaran.UI.Generated`.** The vocabulary requests Core's `KeyedPositions` derivation
+  (`Support.fs`), so the module carries `keyedChildren` (every node position outside `children`: the three arms, each
+  `Switch` case's child, `FragmentRef` / `Mount` slot arguments, the envelope's `fallback` and `state.onEmpty` /
+  `state.onLoading`), `withKeyedChildren` (arity-preserving) and `keyedWitness` (Core's `KeyedWitness`).
+- **Certified (tests).** `Conformance.witnessPairLawsAt` holds the generated pair to `Introspect`'s hand pair
+  (`GeneratedLayerTests.fs`, 200 iterations, measured: the sample holds keyed positions); the census row moves from
+  Carried by phase to Adopted. A pin reads the hand walk over the corpus and requires every kind slot it holds as an
+  arm to be declared `Keyed` and every ordered one not to be, with a falsifier in each direction.
+
+**The consumer cost:** a walk over `Generated.children` / `nodeWitness` that relied on reaching the error-boundary or
+switch arms. Additive otherwise: three new names.
+
+**No kind is added, merged or retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s admission gates are
+not engaged. **No escape hatch is created or widened.**
+
+### What rides this slot — Phase 2670 (a reorder reads its children at a slot, a move writes its target's position)
+
+**Class: additive.** Package `Fuaran.UI.Ops`; no public signature moves. Two base-aware footprints narrow, so the
+fold derives pairs it refused and refuses nothing it derived (measured over the derivability snapshot's populations,
+`docs/DAG_STRATEGY.md`).
+
+- **Narrowed — `TreeOpFootprint.ofOpIn` / `ofScriptIn` / `ofEachIn` of a resolved `ReorderChildren`.** It reads and
+  writes the parent at its `kind` slot and reads each listed child at its `parent` slot, where it took Core's arm (a
+  whole-node read of the parent and of every child, and a named structure write of the parent). A reorder now commutes
+  with a restyle or edit of a listed child and with a restyle of the parent. An unresolved reorder keeps Core's arm.
+- **Narrowed — the same, of a resolved `MoveNode`.** The target is read and written at its `parent` slot, where it
+  was read and content-written whole; the source and destination rules of Phase 2651 are unchanged. A move now commutes
+  with a restyle, edit or reorder of the moved node.
+- **Moved — what a refused reorder reports.** `Dag.conflictsIn` over the tier's footprint names a reorder's collision
+  with an insert into, a move into or a removal from its parent as a `ConcurrentUpdate` at the parent (it was an
+  `InsertPositionClash`), and with another reorder of the parent as a `SlotClash` on `kind`; the policy's class is
+  unchanged (`Conflict`, or `DeleteModify` beside a removal). So `DagReconcile`'s refusal envelope for such a pair
+  changes bytes, and the hosts' fold ports follow with the corpus.
+- **Corpus (merge-conformance `foldFixtures`).** `fold-refusal-concurrent-move` becomes the derivation
+  `fold-move-and-target-edit`; `fold-reorder-and-child-edit` (a derivation) and `fold-refusal-reorder-and-insert`
+  (the shape a refused reorder now reports) are added.
+
+**The consumer cost:** a caller that pinned the refusal shape of a reorder pair, or the refusal of a move beside an
+edit of its target. Every pair that was independent stays independent.
+
+### What rides this slot — Phase 2671 (the reconciliation policy rebases a reorder over concurrent appends, and a node moved by both branches is listed once)
+
+**Class: breaking** (a verdict `DagReconcile.reconcile` gave becomes a different verdict; the fixture family moves),
+which the slot already carries. Package `Fuaran.UI.OpStream.Dag.Merge`; no public signature moves.
+
+- **Admitted — a reorder beside a change of the same child list.** A `ReorderChildren` of a parent on one branch
+  beside an append to it (an insert, a move in), or a removal or move of a child it lists, on the other was refused
+  (`Conflict`, or `DeleteModify` beside a removal). It now derives: the reorder is folded rebased to the children the
+  parent holds, the reordered run keeps its order, a removed or moved-out child drops out of it, and appends follow by
+  the child-order rule (WIRE_FORMAT §34.3–34.4). Two reorders of one parent that differ still refuse.
+- **Fixed — two agreeing moves of one node beside other appends.** The child-order rule listed the node once per
+  branch and the fold faulted (`FoldFaulted`); it is listed once, where the merged runs first reach it.
+- **Changed — an append a later reorder of the same parent on the same branch lists** leaves that branch's run, so
+  the reorder places it rather than the rule.
+- **`Reconciled.Interleaves`** counts the interleaved and the rebased parents; `Script` may hold a reorder for either.
+- **Snapshot (benchmarks).** `derivability.<population>.policy.derived_elsewhere` now counts only the different-tree
+  triads no ruling pins; the two classes ruled pinned on 2026-11-10 report as `derived_pinned_own_parent_move` and
+  `derived_pinned_append_order`.
+- **Corpus (merge-conformance `foldFixtures`).** `fold-refusal-reorder-and-insert` is retired and becomes the
+  derivation `fold-reorder-and-insert`; added: `fold-reorder-and-remove`, `fold-reorder-and-move-in`,
+  `fold-reorder-and-move-out`, `fold-double-move-and-appends`, `fold-agreed-move-and-edit`,
+  `fold-own-parent-move-and-insert`, `fold-pinned-own-parent-move`, `fold-pinned-append-order` and
+  `fold-refusal-two-reorders`. The totality entry `merge-totality-concurrent-move` keeps its tree-merge envelope; its
+  description names the fold's derivation of the same pair.
+
+**The consumer cost:** a caller that relied on the fold refusing a reorder beside an append, insert, move or removal
+in the same parent, or that read a `FoldFaulted` for the double move. Nothing the fold derived before is refused or
+derived differently (measured, `docs/DAG_STRATEGY.md`). **No kind is added, merged or retired; no escape hatch is
+created or widened.**
+
+### What rides this slot — Phase 2691 (the Fuaran.Core 0.42.0 pin, and the footprint writes Core's child-list slot)
+
+**Class: breaking, by dependency** (Core 0.42.0 is behaviourally breaking: `Ops.independent` answers `true` for pairs
+it answered `false` for, Core D246), which the slot already carries. Packages: every package that references
+`Fuaran.Core.*` takes the 0.42.0 floor; `Fuaran.UI.Ops` and `Fuaran.UI.OpStream.Dag.Merge` change behaviour. No
+public signature moves.
+
+- **Raised — all twenty `Fuaran.Core.*` pins, 0.41.0 → 0.42.0, together** (`Directory.Packages.props`); no
+  `Fuaran.Compute.*` or `Fuaran.Program.*` pin moves.
+- **Changed — `TreeOpFootprint.ofOpIn` declares Core's child-list slot** (`Footprint.childListSlot`, `"#children"`) on
+  every arm that reads or rewrites a node's child list: a resolved `ReorderChildren` (beside the parent's `kind`
+  slot), a resolved `MoveNode`'s source parent (likewise), `EditNode`, and any in-place edit whose held set moved (a
+  guard: no such op moves one today). A resolved `MoveNode` also reads its destination's `parent` slot. The
+  footprints grow; under Core 0.41.0 they would only collide more, and under 0.42.0 they keep ordered every pair
+  0.41.0 ordered except the ones D246 frees.
+- **Freed — a container's restyle, trait edit, state edit or prop edit beside an insert into it, a move into or out
+  of it, or a removal under it**, and an insert into a container beside a move of the container: each was refused by
+  `DagReconcile.reconcile` and `Dag.conflictsIn` reported the pair; each now derives. Measured on the snapshot's
+  population: `derived_share` 0.8042 → 0.9325, nothing derived before refused or derived differently
+  (`docs/DAG_STRATEGY.md`).
+- **Changed — the refusal envelope names the child list at Core's slot.** A refused pair whose conflict is the parent's
+  child list reports `SlotClash` at `#children` (two reorders of one parent: `#children` and `kind`; a removal beside a
+  move of the same node: `#children` at the parent where it was `ConcurrentUpdate`).
+- **Corpus (merge-conformance `foldFixtures`).** `fold-refusal-two-reorders` and `fold-refusal-remove-vs-move`
+  re-emitted (their envelopes move as above); added: `fold-insert-and-container-restyle`. The Core-produced `laws/`
+  and `apply/` families re-emit byte-identical from Core `v0.42.0`.
+
+**The consumer cost:** a caller that relied on the fold refusing a container's restyle beside a change of its child
+list, or that reads a refusal envelope's `slot` / `shape` for a child-list conflict. A host porting the footprint
+(the four other hosts, fuaran#2646) owes the same arms. **No kind is added, merged or retired; no escape hatch is
+created or widened.**
+
+_Moved here from the 0.103.0 entry by Phase 2648: Phase 2645 landed on 2026-11-11, after `v0.103.0` was tagged
+(2026-11-09, at `1b783c61`, which does not contain it), so it rides this slot; its entry had been written while 0.103.0
+was the open draft._
+
+### What rides this slot — Phase 2645 (the cut: the UI op-stream DAG is Core's DAG)
+
+**Class: breaking.** Packages `Fuaran.UI.OpStream.Dag.Abstractions`, `.Dag.InMemory`, `.Dag.Sqlite`,
+`.Dag.Merge` and `.Dag.Inspect`. **Every stored DAG address moves, once, at this landing**, and the merge-
+conformance corpus loses its tree-merge families. Nothing on the linear path moves: the linear chain, its
+corpus and every linear package are byte-unchanged.
+
+- **The node is Core's.** `DagOpRecord<'Msg>` is `{ StreamId; Node: Fuaran.Core.DagNode<StreamEntry<'Msg>> }`;
+  the old field names survive as read members (`Hash`, `Parents`, `Op`, `Actor`, `Timestamp`, `PromptId`,
+  `ResultEnvelope`, and `Entry`). Removed: the `OutcomeHash` and `Tombstoned` fields, `computeHash`,
+  `computeMergeHash`, `createMerge` and `sortedParents`. A record literal or `{ r with Hash = … }` no longer
+  compiles: build a record with `DagOpRecord.create` / `ofEntry`, and reach the node through `Node`.
+- **The address is Core's `Dag.nodeId`** under the tier's SHA-256 over the sorted parents, the actor and the
+  node's op — the linear chain's `StreamEntry.encode`, so a lifted node's op is byte-identical to its linear
+  op (`WIRE_FORMAT.md` §5.3.3, worked example included). A merge node is an ordinary node whose op is its
+  reconciliation script as a `Batch`; there is no outcome-tree identity. **No pre-cut address recomputes**, and
+  a store is re-addressed by the one-release re-mint tool (fuaran#2648), never dual-read: `DagWire.decodeRecord`
+  refuses a record carrying `outcomeHash` or `tombstoned` by name, and `SqliteDagSink` refuses a database
+  holding the pre-cut `dag_op_record` table by name.
+- **The SQLite schema is versioned** (`SqliteDagSchema.version` = 1, recorded in `dag_schema`): live nodes in
+  `dag_node` (no `outcome_hash`, `tombstoned` or `content_fingerprint`; the actor column is `actor_json`), and a
+  `dag_skeleton` table.
+- **Pruning is a skeleton.** `IDagOpStreamSink.Tombstone` moves a live node to the stream's skeleton (address
+  and parents, no payload): it leaves `Records` and `TryGet`, `Parents` still answers for it, and the read path
+  resolves a live node's pruned parent against it. New member: `Skeleton`. Removed member: `Lca`.
+- **Topology, verification, retention, replay and checkpoints are Core's.** Deleted: `DagTopology` and
+  `LcaResult` (Core's `Dag.ancestorsOf` / `Dag.mergeBase`), `DagRetention.liveSet` / `prunable` / `isProtected`
+  (Core's `Dag.prunable`; `DagRetentionPolicy.contentGcEligible` / `purgeBatch` take a Core DAG and answer
+  `Result<_, Dag.PruneFault>`), `DagCheckpoint` (Core's `Dag.Checkpoint`), `DagReplay` and `DagReplayError`
+  (Core's closure fold). New: `DagFold` (Core's `tryReplayTo`, `checkpointAt`, `sealAt`, `verifyCheckpoint`,
+  `replayFrom`, `compactAt`, `firstBreakFrom`, bound to the policy's replay witness, SHA-256 and the canonical
+  tree encoding).
+- **The merge is the reconciliation policy.** Deleted: `TreeMerge`, `DagPrimacy`, `ReassertPin`,
+  `MergeConflict` (with `MergeConflictClass`, `MergeChoice`, `MergeSide`, `MergeAuthor`),
+  `ValidatorGate.toConflict`, `DagMerge.mergeLookups` / `mergeGated` / `mergeGatedWith`, and the merge
+  entries' `recordAuthor` parameter. `DagMerge.mergeDag` is the one merge; `mergeWith`, `merge`,
+  `commitMerge`, `mergeIntoTrunkWith` and `mergeIntoTrunk` are its sink wrappers. `MergeContext` gains
+  `Precedence` (precedence as a script) and its `Checkpoint` is Core's. `MergeResult` and
+  `TrunkMergeOutcome` refuse with the policy's `ReconcileFault` (`Refused`), add `MintRefused`, and lose
+  `NeedsManualMerge`, `Conflicted` and the obsolete `NeedsThreeWayMerge`; `MergeDeltaMismatch` names the
+  derived and replayed hashes. `DagReconcile` gains `applyFold`, `reconcileWith` and `Reconciled.Reasserted`,
+  and its script now carries the child-order rule's reorder for EVERY interleaved or rebased parent (Core's
+  replay applies the branches in its own drain order, so the script fixes the order).
+- **Inspect reads Core's nodes and the skeleton.** `DagAudition` / `DagCoordinateDiff` take a Core DAG and
+  answer Core's `ReplayFault`; `DagGraphModel.tryBuildWith` draws the skeleton (`Tombstoned` nodes, `Actor` /
+  `Timestamp` now options, `OutcomeHash` removed) with Core's `Dag.ranks` as the depth; `DagOverlay.build`
+  answers `Result<_, Dag.PruneFault>`; `DagOverlay.parentsOf` and `primaryPinnedCells` are removed.
+- **The corpus.** `dag/` is re-minted (`dag-tombstone` retired, `dag-merge-script` added); `merge-conformance/`
+  is the `foldFixtures` family alone (manifest version 2; the `fixtures`, `refusalFixtures` and
+  `totalityFixtures` triad families retired). The `derivability-snapshot` benchmark, which measured the policy
+  against the tree merge for this cut's gate, is retired with the tree merge; its last figures are in
+  `docs/DAG_STRATEGY.md`.
+
+**The consumer cost.** A DAG host re-mints its store once (fuaran#2648 ships the tool and the migration note),
+replaces record literals with `DagOpRecord.create`, replaces tree-merge conflict handling with `ReconcileFault`,
+and moves any precedence classifier to `MergeContext.Precedence`. The other hosts re-port and certify against
+the re-emitted corpus at fuaran#2646.
+
+### What rides this slot — Phase 2648 (the one-release re-mint, the migration note, the re-baselined merge benchmarks)
+
+**Class: none on any package surface.** No package source moves. What lands is the tool and the record the cut owed:
+
+- **`tools/dag-remint`** (not packed; leaves in the release after this slot's): re-addresses a store written before
+  Phase 2645 — a SQLite database (`dag_op_record` → `dag_node` / `dag_skeleton`, schema version 1, in place, the
+  original kept as `<db>.pre-2645`) or a pre-cut wire record set. Every pre-cut address is recomputed under the rule
+  that minted it first, and a store that does not recompute is refused, never laundered. Outcome-hash merge nodes are
+  re-minted as script nodes by re-running `DagMerge.mergeDag` over their parents, and the re-run must reach the tree the
+  old node committed to. Tombstoned rows go to the skeleton with their address. The tool is idempotent and writes a
+  receipt (old head → new head, every old address → new). It is tested against a store and a wire set minted by the
+  pre-cut engine itself (`src/Fuaran.UI.OpStream.Dag.Tests/remint/`), and the pre-cut lift pin re-mints onto the
+  current one (`DagLiftTests`).
+- **`docs/migrations/2648-core-dag-identity.md`** — the migration note for the cut: what changes per consumer file, the
+  re-mint invocation, rollback. `CRYPTO.md` names the re-mint's provenance and what its receipt does and does not prove.
+- **Benchmarks.** `merge-rate` and `merge-snapshot` re-baselined over the fold
+  (`benchmarks/Fuaran.UI.Ops.Benchmarks/results/2026-11-11-phase-2648-dag-merge.md`). The derivability snapshot's
+  tree-merge comparison was retired with the tree merge at Phase 2645.
+
+---
+
+## 0.103.0 (RELEASED — tagged v0.103.0 at 1b783c61, 2026-11-09)
+
+_`v0.102.0` is TAGGED (2026-11-06, at `00225688`), so nothing may ride it: the changes below open the next slot.
+The slot was opened as `0.102.1` (additive) by Phases 2327 and 2010; Phase 2060 REMOVES two public `Introspect`
+functions, which is a higher class than the draft carried, so under the draft-slot rule the slot ADVANCES to the
+breaking number (`0.103.0` under the 0.x convention) rather than carrying a number that says "additive" over a
+removal. The `<Version>` advance and its ledger record are the release act's, recorded separately; this entry is
+the slot's account of what rides it. Landed together as tier 1 of the core-adoption campaign
+(`camp-obj-core-adoption-20261107T10162`), wave 1._
+
+_**Cut 2026-11-09.** `<Version>` advanced 0.102.0 → 0.103.0 (`version cut`, recorded in the workspace ledger) on the
+operator's D1 ruling B: the slot — seventeen rides, seven of them breaking, every `Fuaran.Core.*` pin at 0.41.0 — is
+released as it stands; the DAG cut (fuaran#2645) takes a later breaking slot. Consumers of the op-stream tier run the
+two one-shot re-seals once: 1937's chain re-seal through `ChainMigration.migrateVerified` (its entry below) and the
+checkpoint re-seal in `docs/migrations/2305-core-snapshot.md`._
+
+### What rides this slot — Phase 2327 (the DAG fold arbitrates with the base-aware footprint)
+
+**Class: additive**, with a behaviour change in the new entries only.
+
+Packages `Fuaran.UI.Ops` and `Fuaran.UI.OpStream.Dag.Merge`. No wire byte moves, no hash moves, no existing verdict
+changes.
+
+- **Added — `TreeOpFootprint.ofOpIn` / `ofScriptIn` / `ofEachIn`** (`Fuaran.UI.Ops`). The footprint of a `TreeOp` at
+  the tree it applies to, over Fuaran.Core's `Ops.footprintIn` (fuaran-core Phase 500): a removal names the parent it
+  writes and content-writes the subtree it destroys, and a vertical op whose node the structural walk locates carries
+  no unknown-parent write and is declared at its SLOT — `kind` for `EditNode`, `UpdateProp` and `ReplaceBinding`,
+  `state` for `UpdateState`, `style` for `UpdateStyle`, `style.<field>` beside a read of `style` for `PatchStyle`, `accessibility` / `tooltip` for the two trait ops Phase 2527 added —
+  plus every id it puts in or takes out. A script is threaded through `Apply.apply`; from an op that does not apply,
+  and for a node held only in a keyed position, the pure arm stands. `ofOpIn` is the shape `Dag.conflictsIn` /
+  `Dag.reconcileIn` take. The pure `ofOp` / `ofScript` are unchanged.
+- **A prop is the `kind` slot, not a slot per path — decided.** A field's validity can read another field of the
+  same spec (a select's `Value` is checked against its `Multiple` in `Apply`), so two prop edits of one node are
+  ordered; a per-path slot would declare that pair independent and be unsound.
+- **Added — `BatchAccept.dependencyClosureIn` / `partialAcceptIn`** (`Fuaran.UI.OpStream.Dag.Merge`): the closure
+  over the per-op base-aware footprints where the batch's base tree is in hand. **Behaviour change, in the new
+  entries only:** Phase 2292's recorded loss — a selected vertical op, remove or move keeps every earlier non-empty
+  op — does not hold here: a selected restyle keeps only the ops it interferes with (pinned by a test, which also
+  checks the kept batch applies). `dependencyClosure` / `partialAccept` keep their verdicts.
+- **Certified** — `Conformance.footprintInLawsAt` is adopted on .NET and on the Fable law harness (soundness of every
+  pair `Dag.conflictsIn` frees, refinement of the pure projection, determinism, and a freed-pair adequacy guard), with
+  a falsifier test that turns the family red when the removal's destroyed set is taken out.
+- **Re-measured — `derivability-snapshot`** (seed 20261016, 20000 trials; the `.in` lines are new). The share of the
+  tier's auto-merges Core refuses while both apply orders reach the UI's tree:
+
+  | population | pure (Phase 2292) | base-aware | delta |
+  |---|---|---|---|
+  | generated | 0.8401 (7808 / 9294) | **0.2906** (2701 / 9294) | −0.5495 |
+  | corpus | 0.7143 (5 / 7) | **0.1429** (1 / 7) | −0.5714 |
+  | pooled | 0.8400 | **0.2905** | −0.5495 |
+
+  Every shape naming `MoveVsRemove` (7198 of the pure form's 7808) is gone under the base-aware form; what remains is
+  `ConcurrentUpdate`, `InsertPositionClash` and the slot clashes the form declares on purpose. No triad lands in `OrderSensitive` or `Fault` under either form.
+
+### What rides this slot — Phase 2010 (the markdown floor repeats to a fixed point, and indexes the string it edits)
+
+**Class: additive.** Package `Fuaran.UI.Renderer.Core` (`Sanitize.sanitizeMarkdownHtml`); every renderer that pours
+markdown or SVG markup through it inherits the change.
+
+- **Surface — none.** Two private helpers and a private single pass; the public function keeps its signature.
+- **Behaviour — adversarial input only.** The sweep now repeats until its output stops changing, the rule Core's
+  copy of the floor adopted. A single pass could rebuild a dangerous element from fragments an earlier step of the
+  same pass had already swept. And every scan compares one UTF-16 unit at a time under an ASCII case fold, on the
+  string it edits. Under Fable it used to take its index from a lowered copy, which is longer than the original when
+  the text holds certain non-ASCII letters, so the browser's floor could rewrite the wrong span or throw. The .NET
+  pipeline was not affected by the second point.
+- **Benign input — unchanged.** Output that one pass already left with nothing to sweep is returned as before: the
+  second pass finds nothing, and the fold is exact for every token the sweep looks for. Pinned by the existing
+  markdown, SVG and prose cases in `SanitizeTests.fs`, all unchanged, and by the law family's benign-text law.
+- **Certified.** The floor runs Core's `Conformance.sanitizeLawsAt` on .NET and under Fable, with a stated limit:
+  two of the family's six laws describe a broader floor than the renderer claims, by decision. See `docs/DECISIONS.md`
+  D25.
+
+### What rides this slot — Phase 2060 (the tree walks run on Fuaran.Core; field ops apply in one pass)
+
+**Class: BREAKING** (removals). Packages `Fuaran.UI.Ops` and `Fuaran.UI` (`NodeChildren`).
+
+- **Removed — `Introspect.collectNodeIdsInto`, `Introspect.mapParentOf`** (`Fuaran.UI.Ops`). Both had no callers in
+  this repository or its known consumers; the keyed walks they served are now Fuaran.Core's (`Tree.idsKeyed`,
+  `Tree.path`).
+- **Added — `Introspect.depthOf`** (`Fuaran.UI.Ops`), over `Tree.depth`.
+- **Behaviour — keyed-first on a repeated id (decided).** `findNode`, `mapNode` and `allNodeIds` now locate a node
+  that appears both in a keyed position and in ordered children at its keyed position first, as Core's structural
+  ops already did; the tests pin it. On a well-formed tree (unique ids) nothing changes.
+- **Behaviour — limits.** `InsertChild` works its depth and node-count check out incrementally from the inserted
+  subtree and the parent's depth; every other growing op still measures the whole result, so no refusal changes.
+- **Streaming** delegates to Core's `Ops.shellOf`, `skeletonRoot` and `lower` through a witness that treats a
+  `FragmentDecl` as childless; outputs are unchanged.
+- **`NodeChildren`** reads keyed positions without building a label per ordered child; labels and order unchanged.
+- **Measured.** Per-insert walks removed from this tier cut allocation of a progressive build by ~58% (2.11 GB →
+  0.89 GB at 1,000 nodes). The build stays quadratic because Core's keyed `Ops.apply` scans every id on each insert
+  (filed as fuaran-core spillover). Single field ops on a 241-node deep tree allocate more (44 KB → 221 KB per op)
+  under Core's walk; kept because the shard requires Core's walk, and filed as fuaran spillover against `NodeChildren`.
+
+### What rides this slot — Phase 2028 (the stored-op unescapers copy only between escapes)
+
+**Class: additive — no surface moves, no behaviour moves.** Packages `Fuaran.UI.OpStream.Abstractions`,
+`Fuaran.UI.OpStream.Dag.Abstractions`, `Fuaran.UI.OpStream.Replay`, `Fuaran.UI.OpStream.Sqlite`,
+`Fuaran.UI.OpStream.Dag.Sqlite`.
+
+- Every stored-string reader returns the inner substring when the string holds no backslash, and otherwise copies the
+  runs between escapes; each escape and each failure (value, exception type and message) reads exactly as before, pinned
+  against a frozen copy of the old bodies over an edge table and a seeded 20,000-string fuzz. No corpus, fixture or
+  hash pin changes.
+- In-process A/B: 0.12–0.51× the old time on strings without a backslash, 0.83–0.97× with escapes; DAG-row decode
+  58.8 → 45.7 µs and 37.8 → 25.3 KB.
+
+### What rides this slot — Phase 2026 (the op-stream escapers are Core's)
+
+**Class: additive — no public surface moves, and no wire, hash or corpus byte moves.** Packages
+`Fuaran.UI.OpStream.Abstractions`, `Fuaran.UI.OpStream.Dag.Abstractions`, `Fuaran.UI.OpStream.Dag.Merge`,
+`Fuaran.UI.OpStream.Replay`, `Fuaran.UI.OpStream.Sqlite`, `Fuaran.UI.OpStream.Dag.Sqlite`, `Fuaran.UI.Ops`.
+
+- Every private copy of the canonical string escape in the op-stream tier — `CanonicalJson.appendRawString`, the
+  actor, chain-entry, attestation, DAG pre-image, DAG wire, merge-refusal, merge-verdict, guest-export and SQLite
+  envelope writers, and the schema generator — now spells a string through `Fuaran.Core.Json.escapeInto` /
+  `JsonString.quote`. The copies were private (`SegmentDescriptor.jstr` stays `internal`, now a call), so no
+  signature moves. Every collapsed site is held to a frozen copy of the old body over an edge table (every control
+  character, escapes at either end, runs between escapes, surrogate pairs and lone surrogates), Core's
+  `StringEscapeVectors` and a seeded fuzz; the content addresses over the same inputs hash to a digest pinned before
+  the change.
+- **One stored-byte change, in `Fuaran.UI.OpStream.Dag.Sqlite`:** its `result_envelope_json` column used to write a
+  control character raw (invalid JSON); it now writes `\u00xx`. The reader takes both spellings, so a database
+  written before reads unchanged. The column is not hashed; no content address moves.
+- Measured (`escape-rate`: a long clean string, an escape-heavy string, 256 short keys, per `encodeOp`; two runs
+  each side): .NET clean 45.7–48.1 → 32.3–36.8 µs, heavy 194.7–225.4 → 50.8–52.3 µs (130,824 → 32,520 B), keys
+  unchanged within noise (190–198 µs both sides); node (Fable) clean 0.80–0.92 → 0.08–0.09 ms, heavy 2.38–2.56 →
+  0.33–0.47 ms, keys 0.91–1.02 → 0.29–0.39 ms. Readings: `benchmarks/Fuaran.UI.Ops.Benchmarks/results/`.
+
+### What rides this slot — Phase 2620 (the client-effect decoder refuses the empty members the program wire forbids)
+
+**Class: breaking — a narrowed decode; no public type, member or signature moves.** Package `Fuaran.UI.Program`.
+The slot is already breaking (Phase 2060), so this rides it. `docs/DECISIONS.md` D29 records what was decided.
+
+- `UiWitness.decodeClientEffect` (and so `ProgramWire.decodeClientEffect` and every reader of a client effect) refuses,
+  on `missing-member` with the detail `member '<name>' is empty`, a present-and-empty `Navigate` / `PushState`
+  `route`, `Focus` / `ReadFileBody` `nodeId`, `Download` `url` and `name`, and `Confirm` `prompt` and `token`
+  (`PROGRAM_WIRE.md` §2's non-empty rule). A document carrying one decoded before and is refused now; no conformant
+  emitter writes one.
+- **What did not move:** the encoder, and `WriteToClipboard`'s `text`, which is content and may still be empty.
+- Certified by the program specification's eight new `client-effect/reject-*-empty-*` vectors, which the conformance
+  suite runs for their class, and by `ClientEffectNonEmptyTests`.
+
+### What rides this slot — Phase 2061 (the op-stream encoder is one design)
+
+**Class: additive surface, with two ruled byte changes to `CanonicalJson.encodeOp`.** Packages `Fuaran.UI` and
+`Fuaran.UI.OpStream.Abstractions`. The slot is already breaking (Phase 2060), so this rides it.
+
+- **Added:** `Fuaran.UI.Generated.encodeBindingJson : ('T -> JVal) -> Binding<'T> -> JVal`, the generated binding
+  encoder for a `Binding` slot outside a node, with the caller supplying the payload encoding (declared in the
+  vocabulary's accessor splice beside `encodeActionJson`).
+- **Unchanged:** every public signature of `CanonicalJson`; the chain format (`v` stays `2`); `chain-corpus.json`, the
+  op fixtures and the stored-emission corpus encode byte-identically.
+- **Internal:** `encodeOp` builds the op as a `JVal` over the generated layer and renders it once with
+  `Canonical.write Rendering.CrossHost`; the hand-written binding, format and action encoders and the appender DSL are
+  gone (the action encoder had no caller).
+- **Two bytes that move**, each pinned by name in `OpEncoderPinTests`:
+  - a `ReplaceBinding` whose `Local` binding carries `codec` or `commitTo` now carries them, as a node's binding and the
+    TypeScript op encoder already did; the old bytes dropped both, so the op hashed as if they were absent;
+  - an `int64` payload past 2^53 renders as the double it rounds to, which is what a reader of the old integer token
+    re-encoded it as. Below 2^53 the digits are unchanged.
+- **Kept on purpose:** a host-built null payload (`PropValue.Native`, a `Filter` / `Selection` `defaultValue`) still
+  writes the bare `null` no reader accepts, so a consumer parsing the encoding reports the op unencodable (the program
+  loop's `unencodable-op`) rather than receiving a sentinel it would read as data.
+
+### What rides this slot — Phase 2318 (every float layout in the tier is Core's)
+
+**Class: additive — no public type, member or signature moves.** Packages `Fuaran.UI.AiWire`,
+`Fuaran.UI.Renderer.Core`, `Fuaran.UI.Renderer.Server`, `Fuaran.UI.Memo`.
+
+- **`Fuaran.UI.AiWire` gains a package reference, `Fuaran.Core.Wire`** (FSharp.Core-only, Apache-2.0, ships its
+  `fable/` sources). `JsonHost.serialize` lays a non-integral number out with `FloatLayout.finite`. The .NET bytes do
+  not move; under Fable a number outside JS's fixed band now writes the .NET spelling (`1E-07` where JS wrote `1e-7`,
+  `1E+21` where it wrote `1e+21`), which is the writer's stated byte-parity claim made true.
+- **`Fuaran.UI.Renderer.Core`:** `DrawingSvg.formatNum` calls `FloatLayout.finite`; its private Fable re-lay copy is
+  deleted. No SVG byte moves on either pipeline.
+- **`Fuaran.UI.Memo`:** a value key's float token is `FloatLayout.roundTrip`, the bytes the raw `ToString("R")` wrote,
+  so no stored key moves; the raw specifier, which throws under Fable, is gone.
+- **`Fuaran.UI.Renderer.Server` — resume envelope BYTES move, never its meaning.** The action payloads and string
+  literals are the canonical cross-host bytes, script-escaped: a control character is `\u00xx` (was `\n` / `\r` / `\t`),
+  `-0` is `0`, a non-finite float is the quoted token (was a bare `NaN`, which no JSON parser read). A bound `Navigate`
+  route and a bound `Confirm` prompt now escape `<` / `>` / `&`; the `Confirm` arm's escape was a no-op, so a
+  `</script>` there reached the page.
+- Pinned by `FloatLayoutTests` (the shared `FloatLayoutCases`, which the Fable law harness runs as Law 13) and the
+  resume payload tests in `ResumeTests`.
+
+---
+
+### What rides this slot — Phase 2133 (theme-manifest invariants are validated, not decoded strictly)
+
+**Class: BREAKING on `Fuaran.UI.ThemeManifest` — the slot is already breaking (Phase 2060), so this rides it.** The
+decoder is tolerant: an invariant whose `kind` is unknown is KEPT with its members and weight and round-trips (an
+object with no non-empty string `kind` is still dropped); a validation pass after decode reports the shared code table
+`WIRE_FORMAT.md` §13 names — `CONTRAST_FLOOR_OUT_OF_RANGE` (`minRatio` outside [1, 21]), `CONTRAST_FLOOR_ROLE_EMPTY`,
+`CONTRAST_FLOOR_ROLE_UNBOUND`, `USAGE_BUDGET_TOKEN_UNDECLARED`, `INVARIANT_KIND_UNKNOWN` — each defect encoded as
+canonical `{code,index,subject}`. The encoder follows the byte law (keys sorted at every depth; every member at its
+default omitted), so a manifest's ENCODED BYTES can change where a default was previously written; the schema no longer
+requires the defaulted members and documents `minRatio`'s range. `ThemeBridge.verify` lists an unenforced kind as
+deferred. The `style-observer/` corpus family gains the `manifest-validation` tier (seven vectors, `since` 0.103.0),
+certified by this host and the TypeScript, Rust and Go hosts. Phase 2077's t6 is absorbed. Recorded by the campaign
+driver at the fold (the phase's commit did not carry this section); decisions in `docs/DECISIONS.md` where the phase
+recorded them.
+
+### What rides this slot — Phase 2430 (the replay document and the harvested demand read the demand view)
+
+**Class: additive on the published documents; no signature changes.** `Fuaran.UI.Program.Server`'s
+`Replay.ofTreeAndHandlers`, `Harvest.ofProgram` and `Harvest.ofRegistration` now name the demand the demanded
+projection names (`ServerDemanded.ofTreeAndHandlers` / `ServerDemanded.ofHandlers`): for a tree that commits a
+buffered field, the namespace the commit writes; for a confirm, its continuations' effects and host calls; and a
+replay and undo posture for every handler a continuation reaches. Postures are unchanged: each is still the fold's,
+the one `Replay.postureOf` and `Replay.admit` read. A document whose tree and handler compute stages hold no commit and no confirm is
+byte-identical. Ruling: `docs/DECISIONS.md` D27.
+
+### What rides this slot — Phase 2420 (the Core pin is 0.41.0; the decoder's policy positions are open)
+
+**Class: dependency floor; no public surface of this tier moves.** Every `Fuaran.Core.*` pin moves from `0.40.3` to
+`0.41.0`, the release carrying fuaran-core#562 (Core D230): the generated collecting decoders take a host's decoder at
+every enumeration, at each JSON scalar, at the generic `Binding` union through one generic seam, and at every
+declared member an object does not carry (`Absent`). A consumer of these packages restores Core 0.41.0 or later.
+`Fuaran.Compute.*` (0.43.0) and `Fuaran.Program.*` stay on their current releases.
+
+Core 0.41.0 widens three IDL records (`IdlField.Keyed`, `IdlRecord.Inline`, `IdlUnion.Discrimination`). The
+vocabulary's literals take each field's default, so `idl.json`, `support.json` and `Generated.fs` are byte-identical
+and no wire byte moves; the Core-produced corpus families re-emit unchanged. The census gains
+`Conformance.witnessPairLawsAt`, carried until the vocabulary declares its keyed slots.
+
+`JsonDecode` is not yet layered over the collecting decoders: every decode verdict is the hand decoder's, as before.
+The three Phase 2344 tests that pinned the closed positions went red at this pin, as designed, and now pin the open
+shape. Not tagged.
+
+### What rides this slot — Phase 2310 (`ThemeManifest` reads and writes Core's `JVal`)
+
+**Class: BREAKING (surface guard: 30 removed or retyped, 1 added-but-breaking, 4 additive).**
+`Fuaran.UI.ThemeManifest` no longer carries a JSON implementation of its own: the `JsonValue` union and the `Json`
+module (`parse`, `serialize`, `asString`, `asNumber`, `asArray`, `asObject`, `field`) are removed, and the package
+references `Fuaran.Core.Wire`. `Decode.ofJson` takes and `Encode.toJson` returns Core's `JVal` (`toJson` now builds
+members in authored order; the bytes are sorted by the writer), and `InvariantKind.Unknown` carries
+`(string * Fuaran.Core.JVal) list`, so an exhaustive construction or match over it moves with the type. A caller
+holding a `JsonValue` moves to `JVal`: `JNum f` is `JFloat f` (or `JInt`), read numbers through `JVal.asFloat`, and
+`JNull` has no counterpart.
+
+`Decode.decode` keeps its signature and reads through `Json.read Decode.readOptions`: depth 64, 65 536 code points per
+string or key, 10 000 items per array and members per object, 4 194 304 UTF-8 bytes per document, and a member `null`
+erased to absence (`Decode.limits`, stated in the package README). A document past a bound is refused with an `Error`
+naming it, where a deeply nested one used to overflow the stack and kill the process. Two inputs the old parser took
+are now refused by Core's grammar: a repeated member name, and a bare or array-element `null`. `Encode.encode` renders
+through `Canonical.write Rendering.CrossHost`; every cross-host manifest byte pin (the sample manifest, the projected
+manifest, the omitted-default forms, the `manifest-validation` defects) is unchanged. Two spellings move to the
+cross-host form the other hosts already write: a control character in a string is `\u00xx` (was `\n` and the other
+short forms), and a non-finite number is the canonical string token (was `0`).
+
+### What rides this slot — Phase 2293 (the reconciliation policy over Core's conflict report, first slice)
+
+**Class: additive.** `Fuaran.UI.OpStream.Dag.Merge` gains `DagReconcile` — `reconcile`, `reconcileGated`,
+`applyHeld`, `encodeEnvelope`, `sortCanonical` — and the types `ReconcileSide`, `RefusalClass`, `Refusal`,
+`ReconcileFault` and `Reconciled`, and now references `Fuaran.Core.OpStream.Dag` (the package it reads
+`Dag.conflictsIn` from). Nothing existing changes: `TreeMerge`, `DagMerge` and every DAG address are as they were.
+The merge-conformance corpus gains the `foldFixtures` family under its own manifest key, and `WIRE_FORMAT.md`
+gains §34, so no host's existing legs move. The policy is the merge model the announced breaking cut adopts (the
+remainder of Phase 2293: the DAG's identity, replay and retention onto Core, and the tree merge removed); until that
+cut lands the policy is a second, additive merge entry and the tree merge stays the DAG's merge.
+
+**The rules it declares** (normative in §34): an agreement (byte-identical ops) is applied as no change; two
+appends of distinct nodes under one parent are admitted and ordered by the child-order rule (the parent's other
+children first, then the two branches' append runs merged by comparing heads ordinally by NodeId); every other pair
+Core reports refuses, a removal against a concurrent touch of the removed node — a move included — as
+`DeleteModify`. Both fold orders are run and a disagreement refuses as `OrderSensitive`.
+
+**Measured** (`derivability-snapshot`, seed 20261016, 20000 trials): the `derivability.<population>.policy.*` lines
+report, for each triad the tree merge auto-merges, whether the fold derives the same tree. Taken with this slice:
+corpus 6 of 7 (0.8571; the seventh is a move out of a container beside a restyle of that container, which the shipped
+footprint content-writes); generated 5943 of 9294 (0.6394), with 135 derived to a different tree, 2860 refused as
+`Conflict`, 354 as `DeleteModify`, 2 other, and none order-sensitive; 142 triads the tree merge refuses derive. The
+shard sized the cut on 94.5% derivable under an idealised footprint; at the shipped base-aware footprint the fold would
+refuse about a third of the concurrent edits the tree merge resolves today, which is why the cut waits on the footprint
+(see the phase outcome).
+
+### What rides this slot — Phase 2312 (one finding shape in the tier, one lowering into Core, Core's merge gate)
+
+**Class: breaking** (read from the surface by hand: the workspace surface guard runs on a pack, and none was cut
+here). `QueryBinding.Defect` is now `PreEmitValidate.Finding<QueryBoundRef>` — the tier's one finding shape, located
+at the query-bound reference it judged — so its `NodeId` / `Column` / `Sink` are read through `Location`, its
+`Suggestion` is `Remedy`, and `AvailableFields` is a `string list option` (always `Some` for this check). Codes,
+severities and messages are unchanged. FUARAN058's message now names the cycle's members (`(cycle: 'a', 'b')`), read
+from one `Fuaran.Core.Propagation.sort` pass over the fragment declaration graph that replaces a depth-first search
+from every declaration; which declarations are reported is unchanged.
+
+**Additive beside it.** `PreEmitValidate.Finding.toCore` is the one lowering of any UI finding into Core's guided
+finding (`Fuaran.Core.Validator.Finding`, fuaran-core#489): the code, severity and message as the `Defect`, the node
+kept, the remedy and available fields as the guidance. `Finding.withRecovery` moves here from the build-time
+validator (whose `Findings.withRecovery` now delegates to it). `PreEmitValidate.findingOf` puts a pre-emit defect in
+the finding shape at the node its code-table arguments name, `toDefect` lowers it, and `ruleFamily` is the pre-emit
+walk as one Core `RuleFamily` — the oracle the recipe certification and the fast-path law support now both read
+instead of a lowering each (the certification's oracle now keeps the node it dropped). `Fuaran.UI.Validator`
+references `Fuaran.Core.Propagation`. `ValidatorGate.introducedDefects` is Core's `Validator.introducedDefects` over
+the two parents, and the new `ValidatorGate.verdict` is Core's `Validator.verdict`; `DagMerge.mergeGated` gates
+through it and `DagReconcile.reconcileGated` through `introducedDefects`, with every verdict, order and encoding as
+before.
+
+**Not in this slot:** the pre-emit walk is still the tier's own walk — its rule modules are not yet Core rule
+families (the phase outcome records why and the decision it needs).
+
+### What rides this slot — Phase 1937 (the op-stream family hashes one way and survives compaction)
+
+**Class: BREAKING (surface guard: 30 removed or retyped, 3 added-but-breaking, 36 additive, over Abstractions, Dag.Abstractions and Replay; the four sink packages' surfaces are unchanged).** Packages `Fuaran.UI.OpStream.Abstractions`,
+`Fuaran.UI.OpStream.Dag.Abstractions`, `Fuaran.UI.OpStream.Replay`, `Fuaran.UI.OpStream.InMemory`,
+`Fuaran.UI.OpStream.Sqlite`, `Fuaran.UI.OpStream.Dag.InMemory`, `Fuaran.UI.OpStream.Dag.Sqlite`. Decision D30.
+
+- **`Actor` is `Fuaran.Core.Actor`.** `Fuaran.UI.OpStream.Abstractions.Actor` is now a type alias; the mirror union and
+  its converters are gone. `Actor.Human id` / `Actor.Agent(m, v, id)` construct and match as before, and the `Actor`
+  module (`encode`, `id`, `ofLegacyString`, `tryDecode`) keeps its compiled name `ActorModule`. Binary-breaking for the
+  type; a bare `Human "u"` with only this namespace open no longer resolves (an abbreviation brings no union cases into
+  scope) — write `Actor.Human "u"`, or open `Fuaran.Core`. No hash byte moves: both paths already spelled every control
+  character `\u00xx`.
+- **`chainFormatVersion` stays 2** (D30). A linear store written at Core 0.30.0–0.32.0 whose actors carry `\n`, `\r` or
+  `\t` holds the pre-287 bytes; `ChainMigration.migrateLegacyEscape` (new) verifies it under Core's
+  `StreamConfig.legacyEscape` payload and re-chains it to the canonical one, leaving a control-free stream unchanged.
+- **The re-chains are Core's.** `HashChain.recordShape` (new) is the record as a Core `ChainShape`; `Verify.segmentFrom`
+  is `ChainShape.walk` from an anchor and `Verify.admission` is `segmentFrom headHash (latest + 1) [ record ]`.
+  `ChainMigration.migrate` (the unverified re-chain) is REMOVED — `migrateVerified` is the route, through
+  `ChainShape.rehash`. `GuestImport.remap` now returns `Result<GuestExportBundle, string>` and refuses a bundle whose
+  chain does not verify, where it used to re-chain it into one that did.
+- **Compaction keeps the boundary and the keys** (D30, Core's `Compacted` rule). A stream compacted through its head
+  reports `LatestSequence` = N and `Head` = record N's hash, read from the checkpoint kept at the head, and the next
+  append continues at N+1; `Streams` still lists it. A truncation that would remove the head record with no checkpoint
+  at the head, or drop the boundary checkpoint of a stream holding no records, is refused by name. The invocation keys
+  of truncated records are KEPT, reversing Phase 1525 L-A15: a retried keyed append below the boundary is a `Duplicate`
+  with the first receipt.
+- **The DAG sinks admit what they verify.** `DagWriteAdmission.admit` (new, with `DagAdmission` and
+  `DagAdmissionRefusal`) recomputes the address (a wrong `Hash` is refused by name), requires every parent, and makes a
+  held address a no-op; both DAG sinks call it. `DagWire.contentFingerprint` is REMOVED (the Phase 2289 ruling retired
+  it); new SQLite DAG files carry no `content_fingerprint` column, and an existing file's column is left unread.
+- **Every sink admits before it creates a stream, and stores what the hash reads.** A refused first append leaves no
+  stream behind; both in-memory sinks store a record's timestamp as whole unix seconds (UTC), as the SQLite sinks always
+  have, so a record reads back the same from any backend.
+- **One SQLite helper.** Connection (`busy_timeout`), WAL and contention (SQLITE_BUSY and SQLITE_LOCKED) live in one
+  internal file compiled into both SQLite packages by link; the action-invocation sink gains `busy_timeout` and WAL, and
+  the DAG sink's result-envelope column codec is the linear one (an unknown shape is refused by name rather than read as
+  `Failure("", "")`). No public surface.
+
+The control-character records of the chain corpus (records 4 and 5) hash identically on the linear path, the DAG lift
+and the TypeScript twin. Line counts of the paired linear and DAG files are recorded in the phase outcome.
+
+### What rides this slot — Phase 2117 (a linear stream promotes to a DAG in one atomic step)
+
+**Class: ADDITIVE (an optional capability interface, its probe, and one function with its outcome types; no existing
+member changes).** Packages `Fuaran.UI.OpStream.Dag.Abstractions`, `Fuaran.UI.OpStream.Dag.InMemory`,
+`Fuaran.UI.OpStream.Dag.Sqlite`. Rides the slot; `<Version>` does not move.
+
+- **`IDagOpStreamBatchSink<'Msg>` (new, optional).** `AddAll` is `Add`'s contract over a list, atomically: each record
+  passes `DagWriteAdmission.admit` with a parent satisfied by the store or by an earlier record of the batch, a held
+  address is a no-op, and a refusal of any record leaves the store exactly as it was. It does not touch the head. Both
+  shipped DAG sinks implement it (in memory: staged under the sink's lock; SQLite: one `BEGIN IMMEDIATE` transaction),
+  and `Add` is now the one-record case of the same path in each. `IDagOpStreamSink<'Msg>` gains no member, so an
+  implementor outside this repository is unaffected.
+- **`DagSinkCapabilities.tryBatch` (new)** is the one probe for the capability, fenced for Fable as the linear tier's
+  `SinkCapabilities` is: by type test on .NET, `None` for every sink under Fable. A sink without the capability is
+  reported as such; nothing emulates it with a loop of `Add`s.
+- **`DagLift.promote` / `DagLift.promoteWith` (new), with `Promotion` and `PromotionRefusal`.** Verify and lift
+  (`ofLinearVerified`), read the head, write the branch with `AddAll`, then advance the head from "no head" by
+  compare-and-swap; the receipt is the lift's. A second promotion of the same linear head into the same DAG stream is
+  **idempotent** while the head is still the promoted branch head (`AlreadyPromoted`, nothing written) and **refused**
+  once the stream has moved on (`HeadTaken`). A head another writer sets between the check and the swap is
+  `HeadAdvancedConcurrently`: the branch is stored whole and unheaded, the DAG's ordinary losing-writer outcome, never a
+  prefix. `promote` refuses a sink without the capability (`NoAtomicBatch`), and so refuses every sink under Fable;
+  `promoteWith` takes the capable sink by name and works on both pipelines.
+- **Sealing the linear stream is HOST policy.** A promotion reads the linear records and never writes them (pinned:
+  the linear SQLite file is byte-identical before and after). Whether the linear stream is closed to further appends
+  once promoted is for the host to decide and enforce; no sink enforces it.
+
+### What rides this slot — Phase 2305 (the linear checkpoint is Core's `Snapshot`, and replay from it is Core's `Compacted` fold)
+
+**Class: BREAKING (surface guard: 9 removed or retyped in Abstractions, 1 added-but-breaking in Replay, 24 additive
+over Abstractions, Replay and Sqlite).** Packages `Fuaran.UI.OpStream.Abstractions`, `Fuaran.UI.OpStream.Replay`,
+`Fuaran.UI.OpStream.Sqlite`; `Fuaran.UI.ServerDriven` seals through the new constructor with no surface change. Every
+persisted linear checkpoint hash moves once, with a one-shot re-seal migration:
+[`docs/migrations/2305-core-snapshot.md`](docs/migrations/2305-core-snapshot.md).
+
+- **The seal is Core's.** A checkpoint IS a `Fuaran.Core.Snapshot<Node<'Msg>>` (`CheckpointSeal.toSnapshot`, new), and
+  `SnapshotHash` is `Sealed.seal SnapshotMode.Strict` over the canonical tree: the pre-image says `"state"` where the
+  tier's own seal said `"tree"`. `HashChain.snapshotHash` is REMOVED; `CheckpointSeal.create` / `CheckpointSeal.seal`
+  (new) are the one construction, used by `Checkpoint.create` and `SessionJournal.makeCheckpoint`. `CRYPTO.md` states
+  what the seal covers.
+- **Resume is Core's.** `CheckpointSeal.firstBreak` (new) is `Sealed.firstBreak`: the seal, then the WHOLE tail from
+  `(PreviousChainHead, Sequence)`. `applyFromCheckpoint` refuses a break anywhere in the tail before applying anything
+  and folds with `Compacted.replayFrom`. `CheckpointReplayError.TailBroken` (new, last case) names a break below the
+  tail's first link, which used to arrive as `TailApplyFailed(ChainBroken …)`; `BoundaryMismatch` and
+  `SnapshotHashMismatch` keep their meanings. `Verify.ofChainBreak` is public, so both paths name a break the same way.
+- **Replay is Core's.** `Replay.applyToUnverified` is `OpStream.replay` over `StreamEntry.coreWitness`, the 0-based
+  position mapped back to the record's own 1-based `Sequence` at the edge; the hand-written fold is gone.
+- **The re-seal is one-shot.** `CheckpointReseal.reseal` (new) verifies a checkpoint under the pre-2305 seal and
+  re-seals it under Core's, leaves one already under Core's alone, and refuses one under neither by name;
+  `SqliteSink.resealCheckpoints` (new) does it for a whole database in one transaction, all or nothing. Both are removed
+  in the release after this one.
+- **Removed, unused:** `CheckpointVerificationError`, which nothing produced or read.
+
+The `chain/` corpus gains `checkpoint-corpus.json` (a new file in the family's manifest; `chain-corpus.json` is
+byte-identical): a checkpoint sealed by the strict rule over the existing records, and six tail-break vectors, three of
+them below the tail's first link. The 1937 refusal (a truncation that would lose the boundary) and the keyed retry
+below the boundary answering `Duplicate` hold unchanged.
+
+## 0.102.0 (RELEASED — tagged v0.102.0 at 00225688, 2026-11-06)
+
+_Set by Phase 2576, the first change to ride the slot._
+
+### What rides this slot — Phase 2592 (a table cell can cite its figure)
+
+**Class: additive on the wire; a record widening in the language tier, FS0764 at a full-literal `StaticRows` or
+`TableSpec`, the class pre-1.0 minor drafts carry, so it rides.** A full-literal `TableSpec` takes
+`{ Defaults.table with ... }`; `Fuaran.table` is unchanged. The positional C# `TableSpec` constructor gains a last
+argument and `StaticRows` a first; the C# `Fuaran.Table` facade is source-compatible. `WIRE_FORMAT.md` §3.6.33:
+`DataGrid.staticRows` gains the optional `citations`, omitted when empty, so every document already written is
+byte-unchanged and renders as it did.
+
+- **Language tier.** `TableCitation` (`Column`, `Label`, `Reference`, `Row`) and `StaticRows.Citations`, generated from
+  the IDL; `TableSpec.Citations` rides through `Fuaran.table`; `Table.withCitation` builds one, and `Table.requireCitations`
+  refuses what decode refuses, where a table is built. The C# `TableOptions.Citations` and `TableCitation` follow. The VB
+  `<Table>` has no spelling, and the wire form is what an emitter writes.
+- **Decoder.** Refuses an empty array, a negative or out-of-range row or column (a column reads against its own row) and
+  two entries for one cell as `WRONG_TYPE`, with `MISSING_FIELD` for a missing member.
+- **Renderer.** `VisPlan.staticGrid` stamps `data-fact` on a cited `<td>`, with a label as a `fuaran-cited-label` first
+  child. A table citing nothing emits exactly what it did. The email projection keeps `data-fact` and drops the label.
+- **Reference tables enhancement.** A sort keys on a cell's text without its label.
+- **Ops.** A change to `citations` diffs to `EditNode`, as `Markdown.citations` does.
+- **Ruling.** `docs/VOCABULARY.md`, Appendix A, Citation cluster.
+
+### What rides this slot — Phase 2591 (a cited figure reads inside a sentence)
+
+**Class: additive on the wire; a record widening in the language tier, FS0764 at a full-literal `MarkdownSpec`, the
+class pre-1.0 minor drafts carry, so it rides.** A full-literal `{ Text = x }` is now
+`{ Defaults.markdown with Text = x }`; `Fuaran.markdown` is unchanged. The positional C# `MarkdownSpec` constructor
+gains its first argument. `WIRE_FORMAT.md` §3.6.32: `Markdown` gains the optional `citations`, omitted when empty, so
+every document already written is byte-unchanged and renders as it did.
+
+- **Language tier.** `MarkdownCitation` (`Name`, `Reference`, `Label`) and `MarkdownSpec.Citations`, generated from the
+  IDL; `Markdown.withCitation` builds one; the C# `MarkdownOptions.Citations` and `MarkdownCitation` follow. The VB
+  element has no spelling, declared as a dialect gap.
+- **Decoder.** Refuses an empty array, a name outside `[A-Za-z0-9_-]+` and a repeated name as `WRONG_TYPE`. It does
+  not read the text: a name the text never uses and a name it uses undeclared are facts of the render.
+- **Renderer.** `Markdown.toHtmlCited` is new; `toHtmlWithEgress` is its no-citation case, byte-for-byte. A declared
+  `cite:` link draws `span.fuaran-cited[data-fact]`, with a label as a visually hidden first child. The email
+  projection keeps the span and drops the label, having no stylesheet to hide it with. Reference stylesheet:
+  `.fuaran-cited`, `.fuaran-cited-label`.
+- **Ops.** A change to `citations` diffs to `EditNode`, the floor every uncovered field takes, so it survives an op
+  stream with no `UpdateProp` field of its own.
+- **Ruling.** `docs/VOCABULARY.md`, Appendix A, Citation cluster, including the shape Phase 2592 takes.
+
+### What rides this slot — Phase 2535 (a `Fact` carries its reference on the wire)
+
+**Class: additive on the wire; a record widening in the language tier, FS0764 at a full-literal `FactSpec`, the class
+pre-1.0 minor drafts carry, so it rides.** `WIRE_FORMAT.md` §3.6.31: `Fact` gains the optional `reference`, the Fact
+its figure cites. A document without it is byte-unchanged.
+
+- **`FactSpec.Reference: string option`**, with `Defaults.fact` at `None`. Every construction through
+  `{ Defaults.fact with … }` compiles as before. The C# positional constructor gains the argument, and
+  `FactOptions.Reference` and the VB `reference` attribute carry it.
+- **`Fact.withReference`** is the builder: `Fuaran.fact "id" "Revenue" "£412k" |> Fact.withReference factId`. On any
+  other kind it throws rather than leaving the figure uncited in silence.
+- **Rendering.** `ElementPlan.DisplayPlan.fact` stamps `data-fact` on the tile's root, so the client and server
+  renderers emit it from one place. `citationProps` is the one spelling a later citing element reuses. The value goes
+  through the ordinary attribute encoder.
+- **The value is opaque.** Its documented form is a Fact id as the Fact wire specification states it (`FACT_WIRE.md`
+  §4: 64 lower-case hex digits, no prefix). No decoder refuses a value over its form, because references of other
+  shapes are carried today. **No as-of member:** no consumer asks for one, and an optional member can join later
+  additively. Recorded here because this repository keeps no decision record.
+- **`UpdateProp`.** `Reference` is an updatable `Fact` field, and the introspected props list it.
+
+### What rides this slot — Phase 2576 (the `Action.Invoke` effect arm dispatches through the capability invoker)
+
+**Class: additive, on `Fuaran.UI.Renderer`.** No wire event: `Action.Invoke` and its canonical shape are unchanged,
+so no codec host moves.
+
+- **`ActionDescriptor` gains a case.** `Invoke of capabilityId: string` — the descriptor an effect-route
+  `Action.Invoke` now meets at `IFuaranRuntime.CanDispatch`. Until now the arm borrowed `AiTool capabilityId`, so a
+  host policy permitting a tool of some name also permitted a capability of that name, and could not permit one
+  without the other. A policy that matches `ActionDescriptor` exhaustively reports `FS0025` under
+  `TreatWarningsAsErrors`; add the arm. A policy written `function | AiTool _ -> true | _ -> false` keeps permitting
+  tools and STOPS permitting invokes — that is the correction, and a host that relied on the borrowed permit adds
+  `| Invoke _ -> true` (or the per-id form) deliberately.
+- **Behaviour under a registered capability.** The arm dispatches through `BindingSources.CapabilityInvoker` — the
+  function `Fuaran.UI.AiTools.Capabilities.makeInvoker` builds (Phase 2311), the one the value route already uses —
+  where it used to warn `capability invoke (no host dispatch wired)` and do nothing. A host that wired an invoker for
+  `Binding.Invoke` now sees its effect-route invokes RUN. The settled value is discarded: an effect returns nothing
+  into tree-readable state. A `Deferred.Error` from the invoker (the registry's policy, an unknown id, a failed body)
+  is a dispatch refusal — `Denied` at the action-log emission point, carrying the invoker's sentence — and `Pending`
+  (the no-registry default) dispatches with a diagnostic naming the pending state.
+- **`Render.treeInvokeOutcome`** joins the public outcome helpers beside `treeCallOutcome` / `treeNavigateOutcome`.
+
+### What rides this slot — Phase 2577 (`RenderExport`, the browser rasterise performer)
+
+**Class: additive, on `Fuaran.UI.Renderer`.** No wire event.
+
+- **New public module `Fuaran.UI.Renderer.RenderExport`.** Two `Fuaran.Core.Capability` declarations —
+  `render.copy-image` and `render.save-image`: `node` required, `format` ∈ {`png`}, `scale` ∈ [0.5, 4] — the pure
+  `parseArgs` / `plan` half, the browser bodies behind `FABLE_COMPILER`, and `invoker`, a ready-made
+  `BindingSources.CapabilityInvoker` over the module's own registry. A .NET host's invoker answers the typed
+  no-canvas refusal; a browser host registers both ids by one assignment.
+- **`Fuaran.UI.Renderer` gains a package dependency on `Fuaran.Core.Function`** (the declarations' types). A
+  consumer's restore pulls it; it was already in the graph of every host that references `Fuaran.UI.AiTools`. No
+  API moves.
+
+### What rides this slot — the `Fuaran.Compute` pin raise to 0.43.0
+
+**Class: additive on this repository's own surface, union-widening through the dependency.** `FuaranCoreComputeVersion`
+moves 0.41.0 → 0.43.0 (0.42.0 was skipped here); `Fuaran.Compute.LinearAlgebra`, new in that release and a dependency of
+`Fuaran.Compute.DataFrame`, is pinned beside its siblings.
+
+- **What a consumer receives from the producer.** `Transform` gains `Define`, `Fit` and `Predict`; `ColExpr` gains
+  `Arg`, `Call` and `Interpolate`; `EvalError` gains `FunctionError`, `RecursiveFunction`, `ExpansionTooLarge`,
+  `InvalidKnots`, `UnsupportedFit` and `FitError`. A consumer matching any of them exhaustively reports `FS0025`; add
+  the arms. The evaluator's `exp` / `ln` / `log10` / float `pow` now run the producer's pinned routines, so a column they
+  compute may differ from the host library's answer in its last bit, and is the same bits on every host.
+- **`Binding.Transform` decoding.** The pipeline codec is the producer's, so a document's pipeline may now carry the
+  three new steps. WIRE_FORMAT §21.8's expression bound reaches every expression they embed — a `define` body, each
+  `fit` predictor and its `offset`, and the same inside a `predict` step's `fit` — refused as `LIMIT_EXCEEDED` at the
+  offending member, as `derive` and `filter` are. The bound's step match is now exhaustive, so a step a later release
+  adds stops it compiling rather than passing unbounded; `Call` arguments and the `Interpolate` operand are counted, and
+  `Arg` is a leaf.
+- **`schema.json`.** The `TransformStep` union gains the `define`, `fit` and `predict` arms, and a `TransformFitSpec`
+  definition the `predict` arm references (additive: a document valid before is valid now). The shared corpus copy is
+  re-emitted with it. The transform law vectors the release adds are NOT re-emitted into the corpus with this raise:
+  the other codec hosts do not yet evaluate the new steps, so that copy waits for them (fuaran#2588).
+
+## 0.101.0 (RELEASED — tagged v0.101.0 at 25dd3ecc, 2026-11-02)
+
+_Set by Phase 2527, the first change to ride the slot. The heading said DRAFT until 2026-11-03, a day after the tag._
+
+### What rides this slot — Phase 2527 (accessibility and tooltip edits are expressible TreeOps)
+
+**Class: additive, on the op vocabulary.** Packages `Fuaran.UI.Ops.Abstractions`, `Fuaran.UI.Ops`,
+`Fuaran.UI.OpStream.*`, `Fuaran.UI.ServerDriven`, `Fuaran.UI.Telemetry.Abstractions`,
+`Fuaran.UI.Ops.CleanRoom`. A wire event under `WIRE_FORMAT.md` §11; every codec host moves with it.
+
+- **`TreeOp` gains two cases.** `UpdateAccessibility of NodeId * Accessibility` replaces the whole trait, and a
+  record setting no field stores as the absent slot. `UpdateTooltip of NodeId * TextSource option` sets the trait, or
+  clears it on `None`. An exhaustive `match` over `TreeOp` in a consumer reports `FS0025`; add the two arms. Nothing
+  else about an existing case moves. `OpKind` gains the same two cases, appended.
+- **The wire.** `{"$type":"UpdateAccessibility","accessibility":{…},"target":"…"}` and
+  `{"$type":"UpdateTooltip","target":"…","tooltip":…}`. `tooltip` is the one optional member of any op: its absence
+  is the clear. The spec is `WIRE_FORMAT.md` §3.4, the vectors `ops/`, `reject/` and `diff/goldens.json`.
+- **`TreeOpDiff` — what a diff emits changes.** An accessibility-only edit, which diffed to nothing, is one
+  `UpdateAccessibility`. A tooltip-only edit, which fell to an `EditNode` that left the tooltip as it was, is one
+  `UpdateTooltip`. Each follows any style or state edit of the same node. A host asserting on a diff script of such a
+  pair sees the new ops; the script now round-trips.
+- **`DagMerge` — a merge that used to be refused now mints.** A merge taking a branch's accessibility or tooltip was
+  `DeltaNotReplayable`; its delta now reproduces the tree. A merge node's `Op` may carry the two cases, so an engine
+  on an older version refuses that node at decode.
+- **`Lowering`.** Both ops re-render the node (`ReplaceFragment`). A node's traits land on its wrapper unless the
+  kind forwards them, and a granular patch lands on the body, so no attribute patch can reach them. `DomPatch` is
+  unchanged, and a server-driven session now patches an accessibility-only edit it used to drop.
+- **`Generated`.** `encodeAccessibilityJson` joins the public encoders.
+
+`visible` and `fallback` are still set by no op (`TreeOpDiff.fs` documents it).
+
+### What rides this slot — Phase 2559 (an agent operation runs the renderer's interpreter)
+
+**Additive, with one exhaustive-match cost.** Packages `Fuaran.UI.Renderer`, `Fuaran.UI.Ops.Abstractions`,
+`Fuaran.UI.OpStream.Sqlite`.
+
+- **`Render.interpretOperation ctx affordanceId nodePath action : ActionOutcome`** interprets an agent-initiated
+  action through the interpreter a gesture runs, so every action case meets the same gates. It returns the outcome,
+  and a throwing effect is `Failed` rather than an exception. Whether the agent may operate the affordance stays the
+  caller's check, asked first.
+- **`AffordanceProvenance` gains `AgentOperation`.** An exhaustive `match` in a consumer reports `FS0025`; add the arm.
+  `ActionInvocation.operationSite` builds the site: the record's `Event` carries the affordance id and its `NodeId` the
+  node path.
+- **The durable log.** The token is `agent-operation`. `tree-declared` and `renderer-synthesised` do not move, so a log
+  already on disk keeps decoding. An older reader refuses a log holding the new token.
+
+### What rides this slot — Phase 2528 (the DomPatch frame is a certified contract)
+
+**Additive; no vocabulary change. Two behaviour corrections.** Packages `Fuaran.UI.ServerDriven` (the lowering and
+the shim it ships).
+
+- **The contract moved into the specification.** The `TreeOp → DomPatch` goldens, the frame envelope and the client
+  event bodies are the `server-driven/` corpus family (`WIRE_FORMAT.md` §33). `DomPatch`, `ClientEffect`, `Frame`
+  and their encoders are unchanged, byte for byte; the family now pins them.
+- **`Lowering` — a `ReplaceRoot` under a new root id now reaches the page.** In a script (`lowerScript`, what the
+  driver calls) the `ReplaceFragment` is addressed at the root the page holds, not the new root's id, which the page
+  did not hold, so the shim found nothing and the swap was dropped. Same-id swaps and `lower` are unchanged.
+- **`fuaran-live-patch.js` — a move keeps focus, caret and scroll.** `MoveNode` and `ReorderChildren` move the live
+  element with the browser's `moveBefore`, or, where it has none, insert it and put back the focused element, its
+  caret and scroll, and the moved element's scroll. A plain DOM move blurred the focused field and reset scroll,
+  which the claim beside `DomPatch.MoveNode` said it did not.
+
+### What rides this slot — Phase 2069 (one render pass)
+
+**BREAKING, `Fuaran.UI.Renderer`.** `TrustedTypes.createHtml` is removed and `TrustedTypes.html` only
+mints: it no longer sanitises. Each producer makes its own markup safe, once, on both renderers
+(`SANITIZATION.md`). A host minting its own markup through `TrustedTypes.html` must make it safe first.
+
+**BREAKING, `Fuaran.UI`.** `BindingWalk.TransformSiteFacts` gains `SourceReads`, so a full-literal
+construction no longer compiles (FS0764). The walk builds this record; no consumer is expected to.
+
+**Additive.** `BindingWalk.renderFacts` is one walk for a tree's seeds, fragments and reactive keys, with
+the records `RenderFacts<'Msg>` and `ReactiveKeys` and the projection `reactiveKeysOf`.
+`StateSeeds.applyFacts`, `FragmentExpansion.registryOf`, `Render.PreparedTree<'Msg>`,
+`Render.RenderContext.prepare` / `ofPrepared`, `Render.collectReactiveKeys`, and `StateStore.useKeys` /
+`useKeysWith`.
+
+**Behaviour.** `Render.collectKeys` is a projection of `BindingWalk`'s uses, and `Render.keysOfBinding` /
+`keysOfText` return their keys in sorted order. A surface now subscribes three slots it read and never
+followed: a node's `Visible`, a node's `Tooltip`, and a `Switch` case's `When`. `BindingWalk`'s analysis
+gains the slots only the reactive walk had: `Media` track `Src` and `Label`, `Media.Transcript`, and a
+`Tree`'s expanded and selection state keys. `Theme.toCss` applies the floor to its own output, so the
+server's stylesheet now gets what the client's sink used to do. `useSelectionKeys` no longer resubscribes
+on every change.
+
+### What rides this slot — Phase 2530 (a reactive write re-renders only its readers)
+
+**Class: additive.** Packages `Fuaran.UI`, `Fuaran.UI.Renderer`. No signature changes; no record gains a field.
+
+- **Surface — additive, `Fuaran.UI`.** `BindingWalk.reactiveRenderFacts` (the render pass with the reader
+  projection beside it, one walk), `BindingWalk.ReaderEntry<'Msg>`, `BindingWalk.readerMap` (the key-to-reader map by
+  node id) and `BindingWalk.unionKeys`.
+- **Surface — additive, `Fuaran.UI.Renderer`.** `Render.ReaderBoundary<'Msg>`, `Render.ReaderBoundaries.plan` /
+  `rerenderedBy` / `renderCount`, and `Render.prepareReactive`.
+- **Behaviour — `renderStateReactive`.** A write re-renders the nodes that read the written key, behind their own
+  boundaries, where it re-rendered the whole surface; the surface subscribes to nothing. A node's keys are what it
+  READS: a Transform param the pipeline does not reference no longer subscribes. A node now also re-renders when a key
+  its action slot reads is written, so its handler resolves the current value. The markup after a write is unchanged
+  (a fresh render of the same stores draws the same). A host that relied on a write repainting a node that reads none
+  of the written keys — a `Static` subtree, an unreferenced param's chip — sees it no longer repaint. On .NET nothing
+  moves: the entry is `renderWithSources` there.
+- **Behaviour — none elsewhere.** `renderFacts`, `collectReactiveKeys` and every analysis rule read the declared
+  projection exactly as before.
+
+---
+
+### What rides this slot — Phase 2568 (a chart whose series are read from its rows)
+
+**Class: additive.** Packages `Fuaran.UI`, `Fuaran.UI.Charts`, `Fuaran.UI.Renderer`, `Fuaran.UI.Renderer.Web`. No wire
+change: `yFields` was always a list and an empty one always decoded (WIRE_FORMAT §3.6.29 states what it means).
+
+- **Lowering.** `Charts.lower` / `tryLower*` given an EMPTY `YFields` plot one series per numeric column of the rows
+  other than `XField` (a `Numeric` or `Decimal` cell, no row carrying text, a boolean or a date there),
+  Ordinal-ordered and named by column, and lower exactly as the chart naming those columns would. More such columns
+  than `ChartLimits.MaxSeries` is `TooManySeries`, never a truncation; the point cap is applied first, since derived
+  series are counted once the rows are read. An authored list lowers to the bytes it lowered to before.
+- **Surface — additive.** `Charts.derivedSeriesFields` and `Charts.seriesFieldsOf`. The AG adapter derives the same
+  series, and declines (falling to the first-party refusal drawing) over the cap.
+- **`PreEmitDefect` gains `ChartSeriesUnnamed of nodeId * found`** — **FUARAN168 (Error)**: an empty `YFields` over a
+  source that is not a `Binding.Query`, naming the binding found. An exhaustive match over `PreEmitDefect` reports
+  `FS0025`; add the arm. `FUARAN088` no longer counts an empty pie (its series are counted at lowering).
+- **Embedded renderer.** `Fuaran.UI.Renderer.Web` re-synced: the bundled `@fuaran-ui/charts` lowers the same way.
+- **Corpus.** `chart-lowering/derived-series/` (six goldens), and `page-document/` gains `derived-series-page` and
+  `chart-derived-inline-rows`.
+
+---
+
+### What rides this slot — Phase 2570 (the browser verifies a signed page)
+
+**Class: additive.** Packages `Fuaran.UI.OpStream.Abstractions`, `Fuaran.UI.Program`, `Fuaran.UI`. No wire change.
+
+- **`EcdsaP256` gains a Fable arm.** Under Fable the module holds `verifier: IAttestationVerifier` and
+  `claimVerifier: IClaimSignatureVerifier` over WebCrypto (`crypto.subtle`), importing the same base64 SPKI public
+  half a `KeyDirectoryEntry` carries and checking the same base64 IEEE P1363 signature as the .NET arm. It does not
+  sign. Before, the module did not exist under Fable at all; the .NET arm is unchanged.
+- **New members.** `UiWitness.ecdsaP256 : ClaimVerifier<KeyDirectoryEntry>` (the published page verifier, one name on
+  both pipelines) and `SignedPage.refusalName : PageVerifyRefusal -> string` (a refusal's §32.5 name).
+- **No seam changes.** Every verification seam was already asynchronous; WebCrypto's promise is awaited inside the
+  provider.
+- **Corpus.** `attestation/page-corpus.json` (signed pages and their refusals), checked by `Fuaran.UI.Tests` on .NET
+  and by law 10 of the Fable law harness under Node.
+
+---
+
+### What rides this slot — Phase 2571 (a `Select` carries optional option groups)
+
+**Class: additive on the wire; a record widening on the surface (`FS0764` at a full-literal `SelectSpec`).**
+Packages `Fuaran.UI`, `Fuaran.UI.Ops`, `Fuaran.UI.Renderer.Core`, `Fuaran.UI.Renderer`, `Fuaran.UI.Renderer.Server`,
+`Fuaran.UI.Renderer.Web`, `Fuaran.UI.CSharp`. It rides the `0.101.0` draft: the slot is a minor, the class pre-1.0
+widenings have always ridden (the 0.50.0 entry is the worked case), and nothing has tagged it.
+
+- **Wire.** `Select` gains `groups`, a list of `SelectOptionGroup` (`{label, values}`), omit-at-default: absent and
+  `[]` are one fact and encode identically, so every ungrouped document is byte-unchanged (WIRE_FORMAT §3.6.30).
+  Two decode refusals, both `WRONG_TYPE` at the offending `values` element: a value named more than once, and over
+  STATIC options a value naming no option. `schema.json` carries the shape; the refusals are the decoder's.
+- **Surface — a record widening.** `SelectSpec` gains `Groups: SelectOptionGroup list` (appended), and the new record
+  `SelectOptionGroup` (`Label`, `Values`) is aliased in `Fuaran.UI.Types`. `Defaults.select` sets `Groups = []`, so a
+  spec built from it (`{ Defaults.select with … }`, the shape every constructor and sample uses) compiles unchanged;
+  a spec written as a FULL record literal reports `FS0764` — add `Groups = []`. **`SelectOption` is unchanged**: the
+  grouping names options by `value` from the `Select`, so every `{ Label = …; Value = … }` option literal compiles as
+  before (pinned by `SelectOptionGroupsTests`).
+- **Rendering.** `ElementPlan.InputPlan.select` (client and server share it) draws one `<optgroup label>` per group
+  in list order holding the options it names in `source` order, then the ungrouped remainder; no groups draws the
+  flat list exactly as before. A group value a bound source's rows do not hold is not drawn.
+- **Operability.** Unchanged by construction: a set slot enumerates options alone, so a group label is never an
+  alias (pinned in `Fuaran.UI.Operability.Tests`).
+- **C#.** `SelectOptions.Groups` (`(Label, Values)` tuples), threaded through the factory's positional `SelectSpec`
+  construction. **VB:** a declared GAP (`AuthoringDialect.notChildAuthorable`, `Select.groups`).
+- **Embedded renderer.** `Fuaran.UI.Renderer.Web` re-synced: the bundled `@fuaran-ui/renderer` draws the groups.
+- **Corpus.** `nodes/select-option-groups.json`, `nodes/select-option-groups-remainder.json`,
+  `reject/reject-2571-select-group-value-twice.json`, `reject/reject-2571-select-group-value-unknown.json`.
+
+## 0.100.1 — the slot opened after v0.100.0 was released (DRAFT — untagged)
+
+_`v0.100.0` is TAGGED (2026-10-31), so nothing may ride it: the change below opens the next slot. Class: **additive**
+on the surface, with one behaviour change on the shim, set by Phase 2526. The `<Version>` advance and its ledger
+record are the release act's, recorded separately; this entry is the slot's account of what rides it. The standing
+`<Version>` has since been raised to **0.101.0** for Phase 2527; the entries below ride that draft._
+
+### What rides this slot — Phase 2069 (one context walk, a stable raw-sink prop) and Phase 2547 (the subtree memo)
+
+**Class: additive, with one record field.** Packages `Fuaran.UI`, `Fuaran.UI.Renderer.Core`, `Fuaran.UI.Renderer`,
+`Fuaran.UI.Renderer.Server`.
+
+- **Surface — additive.** `StateStore.generation`. The render pass itself is the `0.101.0` entry above.
+- **Surface — `Render.RenderContext` gains `SubtreeMemo: bool`.** `RenderContext.create` sets it `false`, so a host
+  built through `create` plus `with` sees no change; a host that spelt the record out in full (the shape
+  `RENDER-ENTRIES.md` has asked hosts not to use since Phase 2067) takes `FS0764` and adds the field. The
+  surface guard classes a record gaining a field as breaking; it rides a draft that is already a minor advance.
+- **Behaviour — none on output.** Both context builders run one walk where they ran two, and read the same seeds
+  and the same registry (pinned over `FragmentRegistryFixture` by `RendererAgreementTests`). The client emitter
+  hands React one `dangerouslySetInnerHTML` object per markup string, so an unchanged raw sink is not reparsed on
+  re-render; the markup is unchanged. With `SubtreeMemo` on, a kept subtree under the same context and store
+  generation returns the element it built before; off, nothing moves.
+
+### What rides this slot — Phase 2526 (a changed prop or text patches the attribute, not the subtree)
+
+**Class: additive.** Package `Fuaran.UI.ServerDriven`. The `DomPatch` vocabulary is unchanged.
+
+- **Surface — additive.** `Lowering` gains `PropSlot` (the type and `slotOf` / `patches` / `textOnlyEdit`),
+  `lowerOpWith` and `lowerScriptWith`. `lowerOp`, `lower` and `lowerScript` keep their signatures.
+- **Lowering — what a write emits changes.** `UpdateProp` on a mapped field lowers to `SetAttr` / `RemoveAttr` /
+  `SetText` where it lowered to `ReplaceFragment`. In `lowerScript`, a text-only `EditNode` of a `Heading` or `Badge`
+  lowers to `SetText`, an `UpdateState` that leaves a stateless node stateless lowers to nothing, and adjacent
+  re-renders of one node ship the last. A host that asserts on a frame's patch list for those writes sees the new
+  patches. The resulting DOM is the same, which the phase's law states.
+- **Shim — behaviour.** `fuaran-live-patch.js` lands a node-addressed `SetText` / `SetAttr` / `RemoveAttr` on the
+  wrapper's first element child, the node's body, rather than on the wrapper. No lowering emitted those patches for
+  a node before this slot. A form field addressed by `data-fuaran-field` is still its own target. **A custom applier
+  of the frame takes the same rule**, or the granular patches erase the node's body.
+
+The reading and the decision: [`docs/SERVER-DRIVEN-FRAME-COST.md`](docs/SERVER-DRIVEN-FRAME-COST.md).
+
+---
+
+## 0.100.0 — the slot opened after v0.99.1 was released (DRAFT — untagged)
+
+_`v0.99.1` is TAGGED (2026-10-29), so under the draft-slot rule nothing may ride it: the change below opens the next
+slot. Class: **breaking** (source), set by Phase 2517 — a closed union gains a case. The slot sits at the minor number,
+where a pre-1.0 breaking change goes. The `<Version>` advance and its ledger record are the release act's, recorded
+separately; this entry is the slot's account of what rides it._
+
+### What rides this slot — Phase 2517 (a tree's operable surface is a specified projection of it)
+
+**Class: breaking (source); it sets this slot's class.** Packages `Fuaran.UI`, `Fuaran.UI.Ops`,
+`Fuaran.UI.Renderer.Core`, `Fuaran.UI.Renderer` and the C# facade; one NEW package, `Fuaran.UI.Operability`.
+
+- **Wire — additive.** An optional `affordance` member on `Select`, `Button` and every `Form` field (WIRE_FORMAT §31.1):
+  `{ patterns, readPatterns, aliases, description, clearable, neverControllable }`, every member omit-at-default, the
+  whole member absent at `None`. Every existing document decodes and re-encodes byte-for-byte as before. The decoder
+  refuses a set pattern naming no `{value}` slot on a `Select` or a field, a click pattern naming one on a `Button`, a
+  read pattern naming one anywhere, and any other brace (`WRONG_TYPE` at the pattern, §31.2). No `NodeKind` is added,
+  merged or retired, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s admission gates are not engaged; the
+  member is a field on three existing records.
+- **`ActionDescriptor.Operate of affordanceId: string * value: string option` — BREAKING for an exhaustive match.**
+  The descriptor an agent-initiated resolution dispatches under, distinct from a reader's own interaction with the same
+  node, decided by `IFuaranRuntime.CanDispatch` like every other case and refused by every shipped runtime (the 0.14.0
+  default-deny posture). It is the first of two gates: the resolved action then meets its own descriptor.
+  `ActionDescriptor.describe` withholds the slot value.
+- **`Fuaran.UI.Operability` (new).** `Operability.derive` (a pure, total function from a tree to its affordances),
+  `Operability.resolve` (the resolution contract's reference matcher, §31.4–31.5), their canonical corpus projection,
+  and the DOM annotation projection (§31.8). FSharp.Core + `Fuaran.UI` only; Fable-clean.
+- **Rendering.** A `Select`, `Button` or field that DECLARES an affordance is stamped with `data-ai-name` (its name),
+  `data-fuaran-shape` / `-controllable` / `-commands` / `-aliases` / `-values` / `-description` and `aria-description`
+  — on the semantic element where the kind forwards to one, else the wrapper; an attribute the author already set wins.
+  A node that declares nothing renders byte-for-byte as before on both pipelines. `Affordances.ofDerived` and
+  `Affordances.registerDerivedProvider` let a host answer `__fuaran.getAffordances` / `read.affordances` from the tree.
+- **Source-breaking, which is why the class matters.** (1) An exhaustive `match` over `ActionDescriptor` must gain an
+  `Operate` arm (FS0025 under warnings-as-errors). Every host runtime that matches the union exhaustively is named for
+  the change-set: in this repository, `ActionDescriptor.describe`; outside it, any consumer runtime whose
+  `CanDispatch` adapter enumerates the cases. (2) A full-literal construction of `SelectSpec`, `ButtonSpec` or
+  `FormField` gains `Affordance = None` (FS0764); `{ Defaults.select with … }` and every copy-update site are
+  untouched. (3) The C# generated-record constructors of the same three types take one more positional argument
+  (CS7036): pass `FSharpOption<Affordance>.None`.
+
+**What a consumer does.** Add the `Operate` arm (deny it, or allow the affordance ids a composition lists); add
+`Affordance = None` to a full record literal. A stored tree is unaffected.
+
+**Certified by** the corpus's `operability/` family (WIRE_FORMAT §31.7: the affordance's wire round-trips and
+refusals, the derivation over authored trees, and the resolution contract over instructions recast from the S1–S7
+calibration strata), emitted and asserted by `src/Fuaran.UI.Operability.Tests`; and
+`src/Fuaran.UI.Tests/DispatchGateTests.fs`, whose enumerated closed set now carries `Operate` (and `Confirm` and
+`Focus`, which it had been missing).
+
+**Escape hatch.** `Operate` is a new gated action class, so the escape-hatch inventory gains its entry (an
+agent-initiated resolution dispatching a node's own action; what mediates it; what is not claimed).
+
+**Phase 2522 — additive, rides this slot:** `Fuaran.UI` gains the page document (`PageDocument`, `PageRequest`, `PageProvenance`, the `PageDocument` / `PageRequest` modules), its demanded projection (`DemandedPage`, with `check` against a host's coverage) and the signed read-set (`SignedPage.sign` / `verify`, by recomputation), plus `QueryBinding.checkSources`, `PreEmitValidate.validatePage` / `pageRuleDefects` and two pre-emit defect cases, `PageSourceNotRequest` (FUARAN166) and `PageInlineRows` (FUARAN167) — a host matching `PreEmitDefect` exhaustively adds two arms; the package now references `Fuaran.Core.OpStream` and `Fuaran.Program.Bounded`; no existing wire byte moves (WIRE_FORMAT §32, the new self-enumerated `page-document/` family; `docs/PAGE-DOCUMENT.md`).
+
+**Also rides this slot, additive (Phase 2523):** `BindingSources` gains `ParameterDependents: Map<string, Set<string>>` (empty by default; `{ BindingSources.empty with … }` sites are untouched, a full record literal gains `ParameterDependents = Map.empty`, FS0764), plus `ParameterChange`, `ResolvedSource`, `SourceRefusal`, `SourceOutcome`, `SourceResolver`, `BindingSources.reResolve` / `applyOutcomes`, `DriverServices.ReResolution` (`create` sets `None`; a full `DriverServices` literal gains it) and `LocalBindings.attachParameterReResolution`; a `Binding.Query` over a refused source resolves `Errored`, naming the source.
+---
+
 ## 0.99.1 — the slot opened after v0.98.1 was released (DRAFT — untagged)
 
 _Released as **0.99.1**, not 0.99.0 (2026-10-29): the slot's surface moved after 0.99.0 was packed as a draft, and a
@@ -8821,7 +9856,7 @@ and no hash moves.
   in the Core-conformance census, `footprintLawsAt`, over a generator that draws every op kind the projection
   has an arm for. The erased-term falsifier is now the shipped function minus the vertical unknown-parent
   write. `footprintLawsAt`'s soundness law refutes it, as `laneFoldLawsAt` does.
-- **The baseline the next projection change is measured against:** `derivability-snapshot` in
+- **The baseline the next projection change is measured against** (retired at Phase 2645 with the tree merge it compared against): `derivability-snapshot` in
   `benchmarks/Fuaran.UI.Ops.Benchmarks` (`dotnet run -c Release -- derivability-snapshot`). It reports the
   share of the tier's three-way auto-merges that Core's footprint refuses although both fold orders reach the
   UI's merged tree. Under this projection, at 20,000 trials with seed 20261016: **0.8401 generated** (7,808 of

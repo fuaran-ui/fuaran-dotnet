@@ -393,13 +393,14 @@ let tests =
               | Ok t -> Expect.equal t.Id tree.Id "an empty stream replays to the initial tree, as it always did"
               | Error e -> failtestf "an empty stream was refused: %A" e
 
-          // ── L-A15. The invocation index compacts with the records ─────────
+          // ── L-A15, reversed by Phase 1937 (D30): the keys outlive compaction ──
 
-          testCase "a truncated record's invocation key stops answering as a duplicate"
+          testCase "a truncated record's invocation key still answers as a duplicate (Phase 1937, D30)"
           <| fun _ ->
-              // Left behind, the key answers a later append with a receipt naming
-              // a sequence the stream no longer holds — the caller is told its op
-              // is durable, and `Replay` at that address returns nothing.
+              // Phase 1525 deleted the key with the record, so a retry below the
+              // compaction boundary was written a SECOND time. Core keeps the keys
+              // (`Compacted.Keys`) and so does this sink: the retry is answered with
+              // the first attempt's receipt, which names a record below the boundary.
               let sink = InMemorySink<TestMsg>()
               let keyed = sink :> IOpStreamKeyedSink<TestMsg>
               let baseSink = sink :> IOpStreamSink<TestMsg>
@@ -408,25 +409,32 @@ let tests =
 
               let r1 = buildRecord streamId 1 removeRight None (timestamp 100L)
 
-              match keyed.AppendKeyed(r1, "invocation-A") |> Async.RunSynchronously with
-              | KeyedAppendOutcome.Appended _ -> ()
-              | KeyedAppendOutcome.Duplicate _ -> failtest "the first append under a fresh key is not a duplicate"
+              let first =
+                  match keyed.AppendKeyed(r1, "invocation-A") |> Async.RunSynchronously with
+                  | KeyedAppendOutcome.Appended receipt -> receipt
+                  | KeyedAppendOutcome.Duplicate _ -> failtest "the first append under a fresh key is not a duplicate"
+
+              checkpoints.AppendCheckpoint
+                  { StreamId = streamId
+                    Sequence = 1
+                    PreviousChainHead = r1.Hash
+                    SnapshotHash = "unused-here"
+                    Snapshot = buildDashboard ()
+                    Timestamp = timestamp 150L }
+              |> Async.RunSynchronously
 
               checkpoints.TruncateOpsThrough(streamId, 1) |> Async.RunSynchronously |> ignore
 
-              Expect.equal (baseSink.LatestSequence streamId |> Async.RunSynchronously) 0 "the record is gone"
+              Expect.equal (baseSink.LatestSequence streamId |> Async.RunSynchronously) 1 "the boundary is kept"
 
-              // The same key must now be writable again, not answered from a
-              // receipt naming a record that no longer exists.
-              let fresh = buildRecord streamId 1 removeLeft None (timestamp 200L)
+              let retry = buildRecord streamId 2 removeLeft (Some r1) (timestamp 200L)
 
-              match keyed.AppendKeyed(fresh, "invocation-A") |> Async.RunSynchronously with
+              match keyed.AppendKeyed(retry, "invocation-A") |> Async.RunSynchronously with
+              | KeyedAppendOutcome.Duplicate receipt -> Expect.equal receipt first "the retry gets the first receipt"
               | KeyedAppendOutcome.Appended receipt ->
-                  Expect.equal receipt.Sequence 1 "the key was free, and the record landed"
-              | KeyedAppendOutcome.Duplicate receipt ->
-                  failtestf
-                      "GO-RED FAILED: a truncated record's key still answered as a duplicate at sequence %d"
-                      receipt.Sequence
+                  failtestf "GO-RED FAILED: the retry was appended a second time at sequence %d" receipt.Sequence
+
+              Expect.equal (baseSink.LatestSequence streamId |> Async.RunSynchronously) 1 "nothing was appended"
 
           // ── L-A16 / M-C2. The atomic batch and the atomic compaction ──────
 
@@ -470,25 +478,41 @@ let tests =
 
               let r1 = buildRecord streamId 1 removeRight None (timestamp 100L)
               let r2 = buildRecord streamId 2 removeLeft (Some r1) (timestamp 200L)
-              baseSink.Append r1 |> Async.RunSynchronously
-              baseSink.Append r2 |> Async.RunSynchronously
+              let r3 = buildRecord streamId 3 removeRight (Some r2) (timestamp 300L)
 
-              let cp0: Checkpoint<TestMsg> =
+              for r in [ r1; r2; r3 ] do
+                  baseSink.Append r |> Async.RunSynchronously
+
+              let checkpointAt (sequence: int) (head: string) : Checkpoint<TestMsg> =
                   { StreamId = streamId
-                    Sequence = 1
-                    PreviousChainHead = r1.Hash
+                    Sequence = sequence
+                    PreviousChainHead = head
                     SnapshotHash = "unused-here"
                     Snapshot = buildDashboard ()
                     Timestamp = timestamp 150L }
 
-              checkpoints.AppendCheckpoint cp0 |> Async.RunSynchronously
+              checkpoints.AppendCheckpoint(checkpointAt 1 r1.Hash) |> Async.RunSynchronously
+              checkpoints.AppendCheckpoint(checkpointAt 2 r2.Hash) |> Async.RunSynchronously
+
+              // Through the head with no checkpoint holding it: refused WHOLE — the
+              // ops are not removed either, so the step stays one step (Phase 1937).
+              Expect.throws
+                  (fun () -> compact.Compact(streamId, 3) |> Async.RunSynchronously |> ignore)
+                  "a compaction that would lose the boundary is refused"
+
+              Expect.equal
+                  (baseSink.Replay(streamId, 1, 3) |> Async.RunSynchronously |> List.length)
+                  3
+                  "and nothing was removed"
 
               let ops, cps = compact.Compact(streamId, 2) |> Async.RunSynchronously
 
-              Expect.equal ops 2 "both ops were removed"
-              Expect.equal cps 1 "and the checkpoint below the horizon with them"
+              Expect.equal ops 2 "the ops at or below the retained checkpoint were removed"
+              Expect.equal cps 1 "and the checkpoint below it with them"
 
               Expect.equal
-                  (checkpoints.ListCheckpoints streamId |> Async.RunSynchronously |> List.length)
-                  0
+                  (checkpoints.ListCheckpoints streamId
+                   |> Async.RunSynchronously
+                   |> List.map _.Sequence)
+                  [ 2 ]
                   "no checkpoint is left claiming to cover records that are gone" ]

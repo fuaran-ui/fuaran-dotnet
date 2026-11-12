@@ -51,68 +51,66 @@ open Fuaran.UI.Ops.Types
 //  signed evidence that does catch that.
 // ============================================================================
 
-/// Who authored an op. The Human/Agent distinction is the load-bearing
-/// AI-accountability fact; `model`/`version` on the Agent case doubles as
-/// corpus-quality metadata. Mirrors the `Fuaran.Core.OpStream.Actor` contract
-/// (fuaran-core a15ad23) so the cross-host hashed pre-image is byte-identical —
-/// the canonical encoding is pinned by `Actor.encode`.
-type Actor =
-    | Human of id: string
-    | Agent of model: string * version: string * id: string
+/// Who authored an op — `Fuaran.Core.Actor` itself (Phase 1937). This tier
+/// used to carry a field-for-field mirror of it, with converters both ways and
+/// a private encoder kept byte-identical by hand; since fuaran-core#287 the two
+/// encoders agree on every string, so the mirror had nothing left to do. The
+/// alias keeps the name a caller already writes: `Actor.Human id` and
+/// `Actor.Agent(model, version, id)` construct and match exactly as before.
+type Actor = Fuaran.Core.Actor
 
+/// Compiled as `ActorModule`, the name it carried beside the mirror type, so a
+/// caller bound to the module's compiled name keeps resolving it.
+[<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
 module Actor =
 
-    /// Canonical JSON encoding of a string — mirrors `CanonicalJson.appendRawString`
-    /// (quote / backslash escaped, control chars as `\u00xx`) so the actor's bytes
-    /// are identical across the F# and TypeScript hosts.
-    let private jstr (s: string) : string =
-        let sb = System.Text.StringBuilder()
-        sb.Append '"' |> ignore
-
-        for ch in s do
-            match ch with
-            | '"' -> sb.Append "\\\"" |> ignore
-            | '\\' -> sb.Append "\\\\" |> ignore
-            | c when c < ' ' -> sb.Append(sprintf "\\u%04x" (int c)) |> ignore
-            | c -> sb.Append c |> ignore
-
-        sb.Append '"' |> ignore
-        sb.ToString()
-
-    /// The canonical wire/hash encoding. Field order is pinned (kind first, then
-    /// case fields) and MUST match the TS + Core encoders byte-for-byte.
-    let encode (a: Actor) : string =
-        match a with
-        | Human id -> "{\"kind\":\"human\",\"id\":" + jstr id + "}"
-        | Agent(model, version, id) ->
-            "{\"kind\":\"agent\",\"model\":"
-            + jstr model
-            + ",\"version\":"
-            + jstr version
-            + ",\"id\":"
-            + jstr id
-            + "}"
+    /// The canonical wire/hash encoding — Core's `Actor.encode`, the bytes the
+    /// linear chain's payload and the DAG's content address both fold.
+    let encode (a: Actor) : string = Fuaran.Core.Actor.encode a
 
     /// The stable attribution id — the user id (Human) or the agent id (Agent).
-    let id (a: Actor) : string =
-        match a with
-        | Human id -> id
-        | Agent(_, _, id) -> id
+    let id (a: Actor) : string = Fuaran.Core.Actor.id a
 
     /// Lift a pre-320 bare-string actor to the typed `Human` case — the migration
     /// path for legacy records / host APIs that still pass a user-id string.
-    let ofLegacyString (s: string) : Actor = Human s
+    let ofLegacyString (s: string) : Actor = Fuaran.Core.Actor.ofLegacyString s
 
     // --- Decoder (for sink persistence round-trips) -------------------------
 
     /// Read a canonical JSON string starting at `i` (`s[i]` must be '"').
     /// Returns the unescaped value + the index just past the closing quote.
+    ///
+    /// The first run of ordinary characters is scanned before anything is built,
+    /// so a value with no backslash comes back as one substring (Phase 2028); with
+    /// a backslash, the runs between escapes are copied whole. Every escape, and
+    /// every refusal (a bad `\u`, a backslash at the end of input, no closing
+    /// quote), reads exactly as before.
     let private readString (s: string) (i: int) : (string * int) option =
-        if i >= s.Length || s[i] <> '"' then
-            None
-        else
+        // The end of the run of ordinary characters starting at `j`.
+        let runEnd (j: int) : int =
+            let mutable k = j
+
+            while k < s.Length && s[k] <> '"' && s[k] <> '\\' do
+                k <- k + 1
+
+            k
+
+        // Manual 4-digit hex parse for the \uXXXX escape. Fable rejects the
+        // NumberStyles.HexNumber + culture TryParse overload ("provider argument
+        // is ignored"), and the single-arg overload can't read hex, so the four
+        // nibbles are parsed directly: pure char arithmetic, Fable-safe and
+        // .NET-identical, keeping the graceful-failure (ok <- false) path.
+        let hexDigit (c: char) : int =
+            if c >= '0' && c <= '9' then int c - int '0'
+            elif c >= 'a' && c <= 'f' then int c - int 'a' + 10
+            elif c >= 'A' && c <= 'F' then int c - int 'A' + 10
+            else -1
+
+        // The escape-bearing path: `s[first]` is the first backslash.
+        let unescapeFrom (first: int) : (string * int) option =
             let sb = System.Text.StringBuilder()
-            let mutable j = i + 1
+            sb.Append(s, i + 1, first - i - 1) |> ignore
+            let mutable j = first
             let mutable finished = false
             let mutable ok = true
 
@@ -134,19 +132,6 @@ module Actor =
                             sb.Append '\\' |> ignore
                             j <- j + 2
                         | 'u' when j + 5 < s.Length ->
-                            // Manual 4-digit hex parse for the \uXXXX escape.
-                            // Fable rejects the NumberStyles.HexNumber + culture
-                            // TryParse overload ("provider argument is ignored"),
-                            // and the single-arg overload can't read hex — so we
-                            // parse the four nibbles directly. Pure char
-                            // arithmetic, Fable-safe AND .NET-identical, and it
-                            // preserves the graceful-failure (ok <- false) path.
-                            let hexDigit (c: char) : int =
-                                if c >= '0' && c <= '9' then int c - int '0'
-                                elif c >= 'a' && c <= 'f' then int c - int 'a' + 10
-                                elif c >= 'A' && c <= 'F' then int c - int 'A' + 10
-                                else -1
-
                             let d0 = hexDigit s[j + 2]
                             let d1 = hexDigit s[j + 3]
                             let d2 = hexDigit s[j + 4]
@@ -162,10 +147,24 @@ module Actor =
                             sb.Append other |> ignore
                             j <- j + 2
                 else
-                    sb.Append c |> ignore
-                    j <- j + 1
+                    // A run of ordinary characters, copied whole.
+                    let stop = runEnd j
+                    sb.Append(s, j, stop - j) |> ignore
+                    j <- stop
 
             if ok && finished then Some(sb.ToString(), j) else None
+
+        if i >= s.Length || s[i] <> '"' then
+            None
+        else
+            let first = runEnd (i + 1)
+
+            if first >= s.Length then
+                None // no closing quote
+            elif s[first] = '"' then
+                Some(s.Substring(i + 1, first - i - 1), first + 1)
+            else
+                unescapeFrom first
 
     /// Extract the value of the first `"<key>":"<string>"` occurrence.
     let private field (key: string) (s: string) : string option =
@@ -182,10 +181,10 @@ module Actor =
     let tryDecode (s: string) : Actor option =
         if s.Contains "\"kind\":\"agent\"" then
             match field "model" s, field "version" s, field "id" s with
-            | Some m, Some v, Some i -> Some(Agent(m, v, i))
+            | Some m, Some v, Some i -> Some(Actor.Agent(m, v, i))
             | _ -> None
         elif s.Contains "\"kind\":\"human\"" then
-            field "id" s |> Option.map Human
+            field "id" s |> Option.map Actor.Human
         else
             None
 

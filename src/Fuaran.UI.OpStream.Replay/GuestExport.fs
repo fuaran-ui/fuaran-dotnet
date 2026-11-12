@@ -131,38 +131,53 @@ module OpRecordWire =
         j
 
     /// Unescape a raw JSON string substring (including its surrounding quotes).
+    ///
+    /// A string with no backslash, nearly every stored one, comes back as the inner
+    /// substring itself (Phase 2028); otherwise the runs between escapes are copied
+    /// whole. Each escape reads as before, and a bad `\u` still throws from
+    /// `Convert.ToInt32`, so a caller catching it reports the same message.
     let internal unquote (raw: string) : string =
         let inner = raw.Substring(1, raw.Length - 2)
-        let sb = StringBuilder()
-        let mutable i = 0
+        let firstEscape = inner.IndexOf '\\'
 
-        while i < inner.Length do
-            if inner[i] = '\\' && i + 1 < inner.Length then
-                match inner[i + 1] with
-                | '"' ->
-                    sb.Append '"' |> ignore
-                    i <- i + 2
-                | '\\' ->
-                    sb.Append '\\' |> ignore
-                    i <- i + 2
-                | 'n' ->
-                    sb.Append '\n' |> ignore
-                    i <- i + 2
-                | 't' ->
-                    sb.Append '\t' |> ignore
-                    i <- i + 2
-                | 'u' when i + 5 < inner.Length ->
-                    let code = Convert.ToInt32(inner.Substring(i + 2, 4), 16)
-                    sb.Append(char code) |> ignore
-                    i <- i + 6
-                | other ->
-                    sb.Append other |> ignore
-                    i <- i + 2
-            else
-                sb.Append inner[i] |> ignore
-                i <- i + 1
+        if firstEscape < 0 then
+            inner
+        else
+            let sb = StringBuilder(inner.Length)
+            sb.Append(inner, 0, firstEscape) |> ignore
+            let mutable i = firstEscape
 
-        sb.ToString()
+            while i < inner.Length do
+                if inner[i] = '\\' && i + 1 < inner.Length then
+                    match inner[i + 1] with
+                    | '"' ->
+                        sb.Append '"' |> ignore
+                        i <- i + 2
+                    | '\\' ->
+                        sb.Append '\\' |> ignore
+                        i <- i + 2
+                    | 'n' ->
+                        sb.Append '\n' |> ignore
+                        i <- i + 2
+                    | 't' ->
+                        sb.Append '\t' |> ignore
+                        i <- i + 2
+                    | 'u' when i + 5 < inner.Length ->
+                        let code = Convert.ToInt32(inner.Substring(i + 2, 4), 16)
+                        sb.Append(char code) |> ignore
+                        i <- i + 6
+                    | other ->
+                        sb.Append other |> ignore
+                        i <- i + 2
+                else
+                    // The run up to the next backslash, copied whole. `inner[i]` is an
+                    // ordinary character or a trailing lone backslash; both stand as is.
+                    let next = inner.IndexOf('\\', i + 1)
+                    let stop = if next < 0 then inner.Length else next
+                    sb.Append(inner, i, stop - i) |> ignore
+                    i <- stop
+
+            sb.ToString()
 
     /// Map of top-level key → raw value substring for a canonical envelope.
     let internal topLevelFields (json: string) : Map<string, string> =
@@ -307,16 +322,8 @@ module GuestExport =
 
             sb.Append(OpRecordWire.encodeRecord r) |> ignore)
 
-        sb.Append "],\"scopeId\":" |> ignore
-        sb.Append('"') |> ignore
-
-        for ch in b.ScopeId do
-            match ch with
-            | '"' -> sb.Append "\\\"" |> ignore
-            | '\\' -> sb.Append "\\\\" |> ignore
-            | c when c < ' ' -> sb.Append(sprintf "\\u%04x" (int c)) |> ignore
-            | c -> sb.Append c |> ignore
-
+        sb.Append "],\"scopeId\":\"" |> ignore
+        Fuaran.Core.Json.escapeInto sb b.ScopeId
         sb.Append "\"}" |> ignore
         sb.ToString()
 
@@ -438,6 +445,8 @@ module GuestImport =
         | TreeOp.UpdateStyle(id, style) -> TreeOp.UpdateStyle(f id, style)
         | TreeOp.PatchStyle(id, delta) -> TreeOp.PatchStyle(f id, delta)
         | TreeOp.UpdateState(id, state) -> TreeOp.UpdateState(f id, state)
+        | TreeOp.UpdateAccessibility(id, accessibility) -> TreeOp.UpdateAccessibility(f id, accessibility)
+        | TreeOp.UpdateTooltip(id, tooltip) -> TreeOp.UpdateTooltip(f id, tooltip)
         | TreeOp.InsertChild(parentId, child) -> TreeOp.InsertChild(f parentId, mapTreeIds f child)
         | TreeOp.RemoveNode id -> TreeOp.RemoveNode(f id)
         | TreeOp.MoveNode(id, newParentId) -> TreeOp.MoveNode(f id, f newParentId)
@@ -459,39 +468,43 @@ module GuestImport =
     /// `Timestamp`, result envelopes, sequence order — carries over verbatim,
     /// so "which prompts/agent produced this guest?" survives the rebase; the
     /// ORIGINAL chain remains intact in the source bundle artefact.
-    let remap (newScopeId: string) (mapId: NodeId -> NodeId) (b: GuestExportBundle) : GuestExportBundle =
+    ///
+    /// The source chain is VERIFIED first (Phase 1937): the re-chain is Core's
+    /// `ChainShape.rehash`, which walks the source from genesis and refuses one
+    /// that does not verify, re-chaining nothing. Before, a corrupt or truncated
+    /// bundle was re-chained as faithfully as a sound one and came out verifying
+    /// — the remap laundered exactly the damage `reconstruct` exists to catch.
+    let remap
+        (newScopeId: string)
+        (mapId: NodeId -> NodeId)
+        (b: GuestExportBundle)
+        : Result<GuestExportBundle, string> =
         let streamId = GuestStream.streamId newScopeId
+        let shape = HashChain.recordShape<obj> ()
 
-        let records =
-            (([], HashChain.genesisPreviousHash), b.Records)
-            ||> List.fold (fun (acc, previousHash) record ->
-                let op = mapOpIds mapId record.Op
-
-                let hash =
-                    HashChain.computeHash
-                        previousHash
-                        op
-                        record.Sequence
-                        record.Timestamp
-                        record.Actor
-                        record.PromptId
-                        record.ResultEnvelope
-
-                let rebased =
-                    { record with
-                        StreamId = streamId
-                        PreviousHash = previousHash
-                        Hash = hash
-                        Op = op }
-
-                rebased :: acc, hash)
-            |> fst
-            |> List.rev
-
-        { b with
-            ScopeId = newScopeId
-            InitialTree = mapTreeIds mapId b.InitialTree
-            Records = records }
+        Fuaran.Core.ChainShape.rehash
+            shape
+            StreamEntry.hashFn
+            shape
+            StreamEntry.hashFn
+            { Seq = 0
+              PrevHash = HashChain.genesisPreviousHash }
+            HashChain.genesisPreviousHash
+            (fun record ->
+                { record with
+                    StreamId = streamId
+                    Op = mapOpIds mapId record.Op })
+            b.Records
+        |> Result.map (fun records ->
+            { b with
+                ScopeId = newScopeId
+                InitialTree = mapTreeIds mapId b.InitialTree
+                Records = records })
+        |> Result.mapError (fun chainBreak ->
+            sprintf
+                "GuestImport.remap: the source chain does not verify at record %d (%s), so it is not re-chained"
+                (chainBreak.Index + 1)
+                (Fuaran.Core.ChainBreakReason.toString chainBreak.Reason))
 
     /// Reconstruct the guest's state from the bundle alone: verify the hash
     /// chain (catching a corrupt or truncated bundle on arrival — the chain is

@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using FsActor = Fuaran.UI.OpStream.Abstractions.Actor;
+using FsActor = Fuaran.Core.Actor;
 using FsEnvelope = Fuaran.UI.OpStream.Abstractions.OpResultEnvelope;
 using FsHashChain = Fuaran.UI.OpStream.Abstractions.HashChain;
 using FsOpRecord = Fuaran.UI.OpStream.Abstractions.OpRecord<object>;

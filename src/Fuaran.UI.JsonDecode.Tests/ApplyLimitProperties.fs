@@ -100,6 +100,12 @@ let rec private aim (op: TreeOp<obj>) : Gen<TreeOp<obj>> =
         | TreeOp.UpdateState(_, state) ->
             let! t = pick nodeTargets
             return TreeOp.UpdateState(t, state)
+        | TreeOp.UpdateAccessibility(_, accessibility) ->
+            let! t = pick nodeTargets
+            return TreeOp.UpdateAccessibility(t, accessibility)
+        | TreeOp.UpdateTooltip(_, tooltip) ->
+            let! t = pick nodeTargets
+            return TreeOp.UpdateTooltip(t, tooltip)
         | TreeOp.InsertChild(_, child) ->
             let! p = pick parents
             return TreeOp.InsertChild(p, child)

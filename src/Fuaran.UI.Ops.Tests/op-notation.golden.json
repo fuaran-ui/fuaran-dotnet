@@ -15,6 +15,31 @@
     "op": "{\u0022$type\u0022:\u0022EditNode\u0022,\u0022newKind\u0022:{\u0022$type\u0022:\u0022Button\u0022,\u0022label\u0022:\u0022Apply\u0022,\u0022onClick\u0022:{\u0022$type\u0022:\u0022CommitLocal\u0022,\u0022nodeId\u0022:\u0022salary-input\u0022},\u0022variant\u0022:\u0022Primary\u0022},\u0022target\u0022:\u0022btn-apply\u0022}"
   },
   {
+    "name": "op-emitter-insertchild",
+    "notation": "emitter-panel: \u002B child Callout \u0022panel-alarm\u0022",
+    "op": "{\u0022$type\u0022:\u0022InsertChild\u0022,\u0022child\u0022:{\u0022id\u0022:\u0022panel-alarm\u0022,\u0022kind\u0022:{\u0022$type\u0022:\u0022Callout\u0022,\u0022body\u0022:\u0022Door open\u0022,\u0022tone\u0022:\u0022Critical\u0022}},\u0022parentId\u0022:\u0022emitter-panel\u0022}"
+  },
+  {
+    "name": "op-emitter-removenode",
+    "notation": "panel-alarm: - node",
+    "op": "{\u0022$type\u0022:\u0022RemoveNode\u0022,\u0022target\u0022:\u0022panel-alarm\u0022}"
+  },
+  {
+    "name": "op-emitter-replacebinding",
+    "notation": "panel-temp: Value \u2192 static 5",
+    "op": "{\u0022$type\u0022:\u0022ReplaceBinding\u0022,\u0022binding\u0022:{\u0022$type\u0022:\u0022Static\u0022,\u0022value\u0022:5},\u0022slot\u0022:\u0022Value\u0022,\u0022target\u0022:\u0022panel-temp\u0022}"
+  },
+  {
+    "name": "op-emitter-replaceroot",
+    "notation": "\u003Croot\u003E: replace \u2192 Box \u0022emitter-panel\u0022 (6 nodes)",
+    "op": "{\u0022$type\u0022:\u0022ReplaceRoot\u0022,\u0022node\u0022:{\u0022id\u0022:\u0022emitter-panel\u0022,\u0022kind\u0022:{\u0022$type\u0022:\u0022Box\u0022,\u0022children\u0022:[{\u0022id\u0022:\u0022panel-title\u0022,\u0022kind\u0022:{\u0022$type\u0022:\u0022Heading\u0022,\u0022level\u0022:2,\u0022text\u0022:\u0022Cold room 3\u0022}},{\u0022id\u0022:\u0022panel-temp\u0022,\u0022kind\u0022:{\u0022$type\u0022:\u0022Metric\u0022,\u0022label\u0022:\u0022Temperature\u0022,\u0022value\u0022:{\u0022$type\u0022:\u0022Static\u0022,\u0022value\u0022:4}}},{\u0022id\u0022:\u0022panel-status\u0022,\u0022kind\u0022:{\u0022$type\u0022:\u0022Badge\u0022,\u0022label\u0022:\u0022Cooling\u0022,\u0022variant\u0022:\u0022Success\u0022}},{\u0022id\u0022:\u0022panel-defrost\u0022,\u0022kind\u0022:{\u0022$type\u0022:\u0022Button\u0022,\u0022label\u0022:\u0022Start defrost\u0022,\u0022onClick\u0022:{\u0022$type\u0022:\u0022Dispatch\u0022}}},{\u0022id\u0022:\u0022panel-schedule\u0022,\u0022kind\u0022:{\u0022$type\u0022:\u0022Form\u0022,\u0022fields\u0022:[{\u0022id\u0022:\u0022minutes\u0022,\u0022kind\u0022:{\u0022$type\u0022:\u0022Number\u0022,\u0022value\u0022:{\u0022$type\u0022:\u0022Static\u0022,\u0022value\u0022:45}},\u0022label\u0022:\u0022Minutes\u0022,\u0022required\u0022:true},{\u0022id\u0022:\u0022start\u0022,\u0022kind\u0022:{\u0022$type\u0022:\u0022DateTime\u0022,\u0022value\u0022:{\u0022$type\u0022:\u0022Static\u0022,\u0022value\u0022:\u002206:00\u0022},\u0022variant\u0022:\u0022Time\u0022},\u0022label\u0022:\u0022Start at\u0022}],\u0022onSubmit\u0022:{\u0022$type\u0022:\u0022Dispatch\u0022},\u0022submitLabel\u0022:\u0022Schedule\u0022}}],\u0022layout\u0022:{\u0022$type\u0022:\u0022Flex\u0022,\u0022direction\u0022:\u0022Vertical\u0022},\u0022role\u0022:\u0022Group\u0022}}}"
+  },
+  {
+    "name": "op-emitter-updateprop",
+    "notation": "panel-status: Label \u2192 \u0022Defrosting\u0022",
+    "op": "{\u0022$type\u0022:\u0022UpdateProp\u0022,\u0022path\u0022:\u0022Label\u0022,\u0022target\u0022:\u0022panel-status\u0022,\u0022value\u0022:\u0022Defrosting\u0022}"
+  },
+  {
     "name": "op-insertchild",
     "notation": "dash-empty: \u002B child Metric \u0022metric-1\u0022",
     "op": "{\u0022$type\u0022:\u0022InsertChild\u0022,\u0022child\u0022:{\u0022id\u0022:\u0022metric-1\u0022,\u0022kind\u0022:{\u0022$type\u0022:\u0022Metric\u0022,\u0022format\u0022:{\u0022$type\u0022:\u0022Currency\u0022,\u0022code\u0022:\u0022GBP\u0022},\u0022icon\u0022:\u0022trending-up\u0022,\u0022label\u0022:\u0022Revenue\u0022,\u0022subtext\u0022:\u0022vs last month\u0022,\u0022tone\u0022:\u0022Brand\u0022,\u0022trend\u0022:{\u0022$type\u0022:\u0022Static\u0022,\u0022value\u0022:0.07},\u0022trendFormat\u0022:{\u0022$type\u0022:\u0022Percent\u0022,\u0022decimals\u0022:1},\u0022value\u0022:{\u0022$type\u0022:\u0022Static\u0022,\u0022value\u0022:1234.5}}},\u0022parentId\u0022:\u0022dash-empty\u0022}"
@@ -63,6 +88,16 @@
     "name": "op-replaceroot",
     "notation": "\u003Croot\u003E: replace \u2192 Box \u0022composite-root\u0022 (7 nodes)",
     "op": "{\u0022$type\u0022:\u0022ReplaceRoot\u0022,\u0022node\u0022:{\u0022id\u0022:\u0022composite-root\u0022,\u0022kind\u0022:{\u0022$type\u0022:\u0022Box\u0022,\u0022children\u0022:[{\u0022id\u0022:\u0022composite-card\u0022,\u0022kind\u0022:{\u0022$type\u0022:\u0022Box\u0022,\u0022children\u0022:[{\u0022id\u0022:\u0022metric-2\u0022,\u0022kind\u0022:{\u0022$type\u0022:\u0022Metric\u0022,\u0022format\u0022:{\u0022$type\u0022:\u0022Currency\u0022,\u0022code\u0022:\u0022GBP\u0022},\u0022icon\u0022:\u0022trending-up\u0022,\u0022label\u0022:\u0022Revenue\u0022,\u0022subtext\u0022:\u0022vs last month\u0022,\u0022tone\u0022:\u0022Brand\u0022,\u0022trend\u0022:{\u0022$type\u0022:\u0022Static\u0022,\u0022value\u0022:0.07},\u0022trendFormat\u0022:{\u0022$type\u0022:\u0022Percent\u0022,\u0022decimals\u0022:1},\u0022value\u0022:{\u0022$type\u0022:\u0022Static\u0022,\u0022value\u0022:1234.5}}},{\u0022id\u0022:\u0022lvr-1\u0022,\u0022kind\u0022:{\u0022$type\u0022:\u0022LabelValueRow\u0022,\u0022emphasis\u0022:true,\u0022format\u0022:{\u0022$type\u0022:\u0022Number\u0022,\u0022decimals\u0022:2},\u0022help\u0022:\u0022Last 30 days\u0022,\u0022label\u0022:\u0022Total\u0022,\u0022value\u0022:{\u0022$type\u0022:\u0022Static\u0022,\u0022value\u0022:42}}}],\u0022heading\u0022:\u0022Composite\u0022,\u0022layout\u0022:{\u0022$type\u0022:\u0022Flex\u0022,\u0022direction\u0022:\u0022Vertical\u0022},\u0022role\u0022:\u0022Card\u0022}},{\u0022id\u0022:\u0022stack-1\u0022,\u0022kind\u0022:{\u0022$type\u0022:\u0022Box\u0022,\u0022children\u0022:[{\u0022id\u0022:\u0022metric-1\u0022,\u0022kind\u0022:{\u0022$type\u0022:\u0022Metric\u0022,\u0022format\u0022:{\u0022$type\u0022:\u0022Currency\u0022,\u0022code\u0022:\u0022GBP\u0022},\u0022icon\u0022:\u0022trending-up\u0022,\u0022label\u0022:\u0022Revenue\u0022,\u0022subtext\u0022:\u0022vs last month\u0022,\u0022tone\u0022:\u0022Brand\u0022,\u0022trend\u0022:{\u0022$type\u0022:\u0022Static\u0022,\u0022value\u0022:0.07},\u0022trendFormat\u0022:{\u0022$type\u0022:\u0022Percent\u0022,\u0022decimals\u0022:1},\u0022value\u0022:{\u0022$type\u0022:\u0022Static\u0022,\u0022value\u0022:1234.5}}},{\u0022id\u0022:\u0022markdown-1\u0022,\u0022kind\u0022:{\u0022$type\u0022:\u0022Markdown\u0022,\u0022text\u0022:\u0022Updated hourly.\u0022}}],\u0022layout\u0022:{\u0022$type\u0022:\u0022Flex\u0022,\u0022direction\u0022:\u0022Vertical\u0022},\u0022role\u0022:\u0022Group\u0022}}],\u0022layout\u0022:{\u0022$type\u0022:\u0022Auto\u0022},\u0022role\u0022:\u0022Dashboard\u0022}}}"
+  },
+  {
+    "name": "op-updateaccessibility",
+    "notation": "metric-1: accessibility \u2192 describedBy=metric-1-help label={\u0022$type\u0022:\u0022Static\u0022,\u0022value\u0022:\u0022Revenue, this quarter\u0022} liveRegion=polite role=status",
+    "op": "{\u0022$type\u0022:\u0022UpdateAccessibility\u0022,\u0022accessibility\u0022:{\u0022describedBy\u0022:\u0022metric-1-help\u0022,\u0022label\u0022:{\u0022$type\u0022:\u0022Static\u0022,\u0022value\u0022:\u0022Revenue, this quarter\u0022},\u0022liveRegion\u0022:\u0022polite\u0022,\u0022role\u0022:\u0022status\u0022},\u0022target\u0022:\u0022metric-1\u0022}"
+  },
+  {
+    "name": "op-updateaccessibility (phase 2527 empty record removes the trait)",
+    "notation": "metric-1: accessibility \u2192 (cleared)",
+    "op": "{\u0022$type\u0022:\u0022UpdateAccessibility\u0022,\u0022accessibility\u0022:{},\u0022target\u0022:\u0022metric-1\u0022}"
   },
   {
     "name": "op-updateprop",
@@ -138,5 +173,20 @@
     "name": "op-updatestyle (phase 1472 direction=ltr, the only style member)",
     "notation": "metric-1: style \u2192 direction=ltr",
     "op": "{\u0022$type\u0022:\u0022UpdateStyle\u0022,\u0022style\u0022:{\u0022direction\u0022:\u0022ltr\u0022},\u0022target\u0022:\u0022metric-1\u0022}"
+  },
+  {
+    "name": "op-updatetooltip",
+    "notation": "metric-1: tooltip \u2192 Updated nightly.",
+    "op": "{\u0022$type\u0022:\u0022UpdateTooltip\u0022,\u0022target\u0022:\u0022metric-1\u0022,\u0022tooltip\u0022:\u0022Updated nightly.\u0022}"
+  },
+  {
+    "name": "op-updatetooltip (phase 2527 absent member clears the trait)",
+    "notation": "metric-1: tooltip \u2192 (cleared)",
+    "op": "{\u0022$type\u0022:\u0022UpdateTooltip\u0022,\u0022target\u0022:\u0022metric-1\u0022}"
+  },
+  {
+    "name": "op-updatetooltip (phase 2527 i18n)",
+    "notation": "metric-1: tooltip \u2192 {\u0022$type\u0022:\u0022I18n\u0022,\u0022args\u0022:{},\u0022key\u0022:\u0022metric.help\u0022}",
+    "op": "{\u0022$type\u0022:\u0022UpdateTooltip\u0022,\u0022target\u0022:\u0022metric-1\u0022,\u0022tooltip\u0022:{\u0022$type\u0022:\u0022I18n\u0022,\u0022args\u0022:{},\u0022key\u0022:\u0022metric.help\u0022}}"
   }
 ]

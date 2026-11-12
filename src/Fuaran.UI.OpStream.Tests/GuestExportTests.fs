@@ -203,13 +203,19 @@ let bundleTests =
               | Ok _ -> failtest "a tampered record must not reconstruct"
           } ]
 
+/// The fresh-scope remap of a bundle whose chain verifies.
+let private remapOk (bundle: GuestExportBundle) : GuestExportBundle =
+    match GuestImport.remap "fresh" (GuestImport.prefixIds "fresh") bundle with
+    | Ok remapped -> remapped
+    | Error e -> failtestf "a verifying bundle must remap: %s" e
+
 [<Tests>]
 let importTests =
     testList
         "Phase274.GuestImport"
         [ test "remap rebases scope + every NodeId, re-derives the chain, and keeps the lineage verbatim" {
               let bundle = sourceBundle ()
-              let remapped = GuestImport.remap "fresh" (GuestImport.prefixIds "fresh") bundle
+              let remapped = remapOk bundle
 
               Expect.equal remapped.ScopeId "fresh" "the bundle carries the new scope id"
 
@@ -234,7 +240,7 @@ let importTests =
 
           test "replay commutes with the remap — the imported guest is the same tree under new ids" {
               let bundle = sourceBundle ()
-              let remapped = GuestImport.remap "fresh" (GuestImport.prefixIds "fresh") bundle
+              let remapped = remapOk bundle
 
               let viaRemappedReplay =
                   match GuestImport.reconstruct remapped with
@@ -259,8 +265,7 @@ let importTests =
                       { Defaults.dashboard<obj> with
                           Children = [ Fuaran.markdown "g-left" "host's own g-left" ] }
 
-              let remapped =
-                  GuestImport.remap "fresh" (GuestImport.prefixIds "fresh") (sourceBundle ())
+              let remapped = remapOk (sourceBundle ())
 
               let imported =
                   match GuestImport.reconstruct remapped with
@@ -278,8 +283,7 @@ let importTests =
           test "load appends the records into the importing sink and refuses an occupied scope" {
               let sink = InMemorySink<obj>() :> IOpStreamSink<obj>
 
-              let remapped =
-                  GuestImport.remap "fresh" (GuestImport.prefixIds "fresh") (sourceBundle ())
+              let remapped = remapOk (sourceBundle ())
 
               match GuestImport.load sink remapped |> Async.RunSynchronously with
               | Error e -> failtestf "first load must succeed: %s" e
@@ -291,4 +295,17 @@ let importTests =
               match GuestImport.load sink remapped |> Async.RunSynchronously with
               | Error e -> Expect.stringContains e "already holds" "the collision guard names the occupied stream"
               | Ok _ -> failtest "loading into an occupied scope must be refused"
+          }
+          test "remap refuses a bundle whose chain does not verify, re-chaining nothing (Phase 1937)" {
+              let bundle = sourceBundle ()
+
+              let tampered =
+                  { bundle with
+                      Records =
+                          bundle.Records
+                          |> List.mapi (fun i r -> if i = 1 then { r with PromptId = Some "forged" } else r) }
+
+              match GuestImport.remap "fresh" (GuestImport.prefixIds "fresh") tampered with
+              | Error e -> Expect.stringContains e "does not verify at record 2" "the refusal names the record"
+              | Ok _ -> failtest "a remap must not launder a broken chain into a verifying one"
           } ]

@@ -239,7 +239,14 @@ let private demoSelect (tone, weight, emphasis) : Node<unit> =
                 )
             Value = Some(Binding.Static None)
             OnChange = Some(fun _ -> Action.Chain [])
-            Placeholder = Some(TextSource.Literal "Choose a peer…") }
+            Placeholder = Some(TextSource.Literal "Choose a peer…")
+            // Phase 2571 — the card shows a grouped representative: two groups
+            // over the options, drawn as <optgroup>s on the web.
+            Groups =
+                [ { Label = "Trading"
+                    Values = [ "buyer-peer"; "seller-peer" ] }
+                  { Label = "Platform"
+                    Values = [ "portal-peer" ] } ] }
 
 let private demoForm (tone, weight, emphasis) : Node<unit> =
     Fuaran.form

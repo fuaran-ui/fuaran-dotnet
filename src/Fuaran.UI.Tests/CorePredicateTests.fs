@@ -169,7 +169,7 @@ let private queryChart (kind: ChartKind) (xScale: ChartXScale option) : Node<Msg
 
 let private xMismatch (kind: ChartKind) (xScale: ChartXScale option) (xType: ColumnType) : bool =
     QueryBinding.check [ Field.create "x" xType; Field.create "y" FloatType ] (queryChart kind xScale)
-    |> List.exists (fun d -> d.Code = QueryBinding.TypeMismatchCode && d.Column = "x")
+    |> List.exists (fun d -> d.Code = QueryBinding.TypeMismatchCode && d.Location.Column = "x")
 
 /// FUARAN087 / FUARAN097 on the x field, over an embedded table that has the
 /// same two columns.

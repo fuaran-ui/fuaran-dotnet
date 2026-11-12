@@ -1,7 +1,6 @@
 namespace Fuaran.UI.OpStream.Abstractions
 
 open System
-open System.Globalization
 open Fuaran.UI.Ops.Types
 
 // ============================================================================
@@ -63,32 +62,6 @@ module HashChain =
         { Fuaran.Core.StreamConfig.canonical with
             Genesis = genesisPreviousHash }
 
-    /// The content address of a checkpoint snapshot (Phase 412 — A2). Binds the
-    /// snapshot to its **position in the chain**: `previousChainHead` (the chain
-    /// head at the checkpoint's op-index) + `sequence` + the canonical tree, in a
-    /// delimited pre-image — the discipline Core's Phase-244 `snapPayload` uses
-    /// (`hashFn prevHash {"snapshot":true,"seq":…,"state":…}`).
-    ///
-    /// Pre-412 the snapshot hash was `sha256(canonicalTree)` alone — position-free.
-    /// What the binding adds: a valid snapshot + hash from one `(head, seq)` no
-    /// longer validates at a different one, so **cross-position snapshot
-    /// substitution** (replaying a real older snapshot as a later checkpoint) is
-    /// caught, as is accidental corruption. Paired with the replay path anchoring
-    /// `previousChainHead` to the real op-chain (including the empty-tail case),
-    /// a checkpoint can only be trusted at a position the verified chain confirms.
-    /// This is defence-in-depth, not tamper-proofing against an adversary who
-    /// rewrites the whole checkpoint record consistently — that is the signed
-    /// attestation seam's job (Core `IAttestationSink`, Phase 320).
-    let snapshotHash (previousChainHead: string) (sequence: int) (canonicalTree: string) : string =
-        let payload =
-            "{\"snapshot\":true,\"seq\":"
-            + sequence.ToString(CultureInfo.InvariantCulture)
-            + ",\"tree\":"
-            + canonicalTree
-            + "}"
-
-        Fuaran.Core.OpStream.sha256Hash previousChainHead payload
-
     /// Compute the hash for an op-record. Identical algorithm on every host —
     /// verification re-derives this and compares.
     ///
@@ -124,6 +97,24 @@ module HashChain =
               Timestamp = timestamp
               PromptId = promptId
               ResultEnvelope = resultEnvelope }
+
+    /// The domain record as a Core `ChainShape` (Phase 1937): where a record
+    /// sits on Core's 0-based basis (`Sequence - 1`), what it links to, what it
+    /// hashes to, and the payload `computeHash` folds. With it every chain verb
+    /// this tier needs is Core's — `ChainShape.walk` verifies a segment from any
+    /// anchor, and `ChainShape.rehash` verifies a source and re-chains it (mapped
+    /// or not) — rather than a hand-written fold beside each caller.
+    let recordShape<'Msg> () : Fuaran.Core.ChainShape<OpRecord<'Msg>> =
+        { SeqOf = fun r -> r.Sequence - 1
+          PrevOf = fun r -> r.PreviousHash
+          HashOf = fun r -> r.Hash
+          PayloadOf =
+            fun r -> chainConfig.Payload (r.Sequence - 1) r.Actor (StreamEntry.encode (StreamEntry.ofRecord r))
+          Link =
+            fun r previousHash hash ->
+                { r with
+                    PreviousHash = previousHash
+                    Hash = hash } }
 
 [<RequireQualifiedAccess>]
 type VerificationError =
@@ -198,18 +189,22 @@ type WriteAdmission =
 /// match the compiler checks; a reason Core adds later is a compile error here,
 /// not a quiet reclassification.
 module Verify =
-    /// Map Core's 0-based, segment-relative `ChainBreak` onto the domain's
-    /// 1-based absolute `VerificationError`. `offset0` is the Core-basis index
-    /// of the segment's first record (0 for a genesis-anchored stream).
-    let private ofChainBreak (offset0: int) (b: Fuaran.Core.ChainBreak) : VerificationError =
-        let seq1 = b.Index + offset0 + 1
+    /// Map Core's `ChainBreak` (its `Index` relative to the segment, its
+    /// sequences on Core's 0-based basis) onto the domain's 1-based absolute
+    /// `VerificationError`. `firstSequence` is the domain sequence the segment's
+    /// first record should carry. Public since Phase 2305: a checkpoint's tail is
+    /// walked by Core's `Sealed.firstBreak` (`CheckpointSeal.firstBreak`), and its
+    /// break is presented through this same mapping, so the read paths and the
+    /// checkpoint path name a break the same way.
+    let ofChainBreak (firstSequence: int) (b: Fuaran.Core.ChainBreak) : VerificationError =
+        let seq1 = b.Index + firstSequence
 
         match b.Reason with
         | Fuaran.Core.ChainBreakReason.SequenceMismatch ->
-            // Expected/Got are Core's stringified 0-based segment-relative seqs.
+            // Expected/Got are Core's stringified 0-based sequences.
             let parse (s: string) =
                 match System.Int32.TryParse s with
-                | true, v -> v + offset0 + 1
+                | true, v -> v + 1
                 | false, _ -> seq1
 
             VerificationError.OutOfOrder(parse b.Expected, parse b.Got)
@@ -217,8 +212,8 @@ module Verify =
             VerificationError.PreviousHashMismatch(seq1, b.Expected, b.Got)
         | Fuaran.Core.ChainBreakReason.HashMismatch
         // Core's `Unrecognised` is the honest arm for a reason that arrives from
-        // OUTSIDE its own walkers (a host verifier, a wire boundary); both walkers
-        // this module runs mint only the three named cases, which Core certifies
+        // OUTSIDE its own walkers (a host verifier, a wire boundary); the walker
+        // this module runs mints only the three named cases, which Core certifies
         // (`Conformance.chainBreakReasonLaws`). It still projects onto
         // `HashMismatch`, because `VerificationError` is a shipped closed DU and a
         // new case would break every exhaustive consumer match; a caller that needs
@@ -237,44 +232,28 @@ module Verify =
     /// cannot verify anything a real read path returns: a `Replay(from, to)`
     /// slice, a post-checkpoint journal tail, or a store whose prefix was
     /// truncated by compaction all legitimately begin above sequence 1 and would
-    /// be reported `OutOfOrder` by a genesis-anchored walker. Two call sites had
-    /// already discovered that and each was on its way to a bespoke walker; this
-    /// is the one definition, still delegating to Core's `firstChainBreakWith`
-    /// (the Phase-411 F14 posture — the domain owns the presentation, never the
-    /// walk).
+    /// be reported `OutOfOrder` by a genesis-anchored walker.
     ///
-    /// The mechanism: Core's walker anchors at index 0 / `cfg.Genesis`, so the
-    /// segment is re-based onto that origin (`Seq - offset0`) and the payload
-    /// binding shifts the real sequence back in — the hash pre-image is always
-    /// computed over the record's TRUE sequence, only the contiguity counter
-    /// moves.
+    /// The walk is Core's `ChainShape.walk` from the anchor
+    /// `{ Seq = expectedFirstSequence - 1; PrevHash = expectedPreviousHash }`
+    /// over `HashChain.recordShape` (Phase 1937): sequence, then prev-link, then
+    /// hash, in that order, the digest computed only after the two cheap checks
+    /// pass. The domain owns the presentation (1-based `VerificationError`),
+    /// never the walk.
     let segmentFrom<'Msg>
         (expectedPreviousHash: string)
         (expectedFirstSequence: int)
         (records: OpRecord<'Msg> seq)
         : Result<unit, VerificationError> =
-        let recordList = records |> Seq.map StreamEntry.toCoreRecord |> List.ofSeq
+        let anchor: Fuaran.Core.Anchor =
+            { Seq = expectedFirstSequence - 1
+              PrevHash = expectedPreviousHash }
 
-        if List.isEmpty recordList then
-            Ok()
-        else
-            // Core's 0-based index the segment's first record should occupy.
-            let offset0 = expectedFirstSequence - 1
-
-            let cfg: Fuaran.Core.StreamConfig =
-                { Fuaran.Core.StreamConfig.canonical with
-                    Payload = fun seq0 actor op -> Fuaran.Core.StreamConfig.canonical.Payload (seq0 + offset0) actor op
-                    Genesis = expectedPreviousHash }
-
-            let rebased = recordList |> List.map (fun r -> { r with Seq = r.Seq - offset0 })
-
-            match
-                Fuaran.Core.OpStream.firstChainBreak
-                    (Fuaran.Core.OpStream.ofConfig cfg StreamEntry.hashFn (StreamEntry.coreWitness<'Msg> ()))
-                    rebased
-            with
-            | None -> Ok()
-            | Some b -> Error(ofChainBreak offset0 b)
+        match
+            Fuaran.Core.ChainShape.walk (HashChain.recordShape<'Msg> ()) StreamEntry.hashFn anchor (List.ofSeq records)
+        with
+        | None -> Ok()
+        | Some b -> Error(ofChainBreak expectedFirstSequence b)
 
     /// Assert (a) the `PreviousHash` chain links, (b) each `Hash` recomputes to
     /// the stored value, and (c) contiguous 1-based sequence, from genesis.
@@ -348,7 +327,10 @@ module Verify =
     /// Three checks, in the order that gives the most useful refusal first:
     /// the record extends the stream (`Sequence = latestSequence + 1`), it links
     /// to the head the store actually holds, and its `Hash` recomputes from its
-    /// own fields. Deliberately the SAME `VerificationError` the read paths
+    /// own fields. Since Phase 1937 they are not written here: an admission is
+    /// `segmentFrom headHash (latestSequence + 1) [ record ]`, the segment walker
+    /// over a one-record segment, whose checks are exactly these three in this
+    /// order. Deliberately the SAME `VerificationError` the read paths
     /// report, so a refusal at write and the refusal a later read would have
     /// produced are the same finding named the same way — a second error type
     /// here is how the two descriptions come to disagree.
@@ -365,28 +347,7 @@ module Verify =
         : Result<unit, VerificationError> =
         match mode with
         | WriteAdmission.Off -> Ok()
-        | WriteAdmission.Full ->
-            let expectedSequence = latestSequence + 1
-
-            if record.Sequence <> expectedSequence then
-                Error(VerificationError.OutOfOrder(expectedSequence, record.Sequence))
-            elif record.PreviousHash <> headHash then
-                Error(VerificationError.PreviousHashMismatch(record.Sequence, headHash, record.PreviousHash))
-            else
-                let recomputed =
-                    HashChain.computeHash
-                        record.PreviousHash
-                        record.Op
-                        record.Sequence
-                        record.Timestamp
-                        record.Actor
-                        record.PromptId
-                        record.ResultEnvelope
-
-                if recomputed <> record.Hash then
-                    Error(VerificationError.HashMismatch(record.Sequence, recomputed, record.Hash))
-                else
-                    Ok()
+        | WriteAdmission.Full -> segmentFrom headHash (latestSequence + 1) [ record ]
 
     /// Human-readable rendering of a violation — the shape a read path that has
     /// no `Result` channel (the sink interfaces return a bare list) uses to

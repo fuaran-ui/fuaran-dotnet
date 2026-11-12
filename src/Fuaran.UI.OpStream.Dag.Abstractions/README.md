@@ -14,13 +14,16 @@ op-records **link**, never new `TreeOp` cases.
 
 ## What ships here
 
+Since the cut (Phase 2645) the DAG is `Fuaran.Core`'s: this package defines no
+node, address, verifier, topology or retention of its own.
+
 | Type / module | Role |
 |---|---|
-| `DagOpRecord<'Msg>` | Content-addressed, multi-parent op-record. `Parents` in author order (primary first); hash sorts them so merge identity is parent-order-independent. Merge nodes commit to an **outcome hash** (the canonical hash of the resulting tree), not the op-path. |
-| `DagOpRecord.ofLinear` | Embeds a linear `OpRecord` history as a single-parent DAG — the degenerate-equivalence path (same resulting tree, verifiable chain, no data migration). |
-| `DagTopology` | Pure `reachable` / `isAncestor` / `lca` over a `getParents` lookup. `LcaResult` is `None` / `Unique` / `Ambiguous` (the last = "needs 3-way merge — Phase 179"). |
-| `DagVerify` | Integrity check: parent-linkage + content-address recompute. Tombstoned records keep their hash (payload pruned) and the chain still verifies. |
-| `IDagOpStreamSink<'Msg>` | Durable superset interface: content-addressed `Add`, atomic `TryAdvanceHead` CAS on the trunk head, topology queries, and tombstone pruning. |
+| `DagOpRecord<'Msg>` | A Core `DagNode<StreamEntry<'Msg>>` with the stream it is stored in. The op is the linear chain's envelope (op, timestamp, prompt, result), so a lifted node's op is byte-identical to its linear op. The address is Core's `Dag.nodeId` under SHA-256 (`DagOpRecord.nodeId`). A merge node is an ordinary node whose op is its reconciliation script. |
+| `DagOpRecord.ofLinear` / `DagLift` | Embed a linear history as a single-parent branch; the lift verifies the segment first and returns a recomputable `LiftReceipt`. |
+| `DagVerify` | Integrity: Core's `Dag.firstBreak` over a closed set, or the store-resolved form the sinks' read paths use. |
+| `DagRetention` | GC roots and the retention policy over Core's `Dag.prunable`. |
+| `IDagOpStreamSink<'Msg>` | Durable superset interface: admission by address recompute and parent presence, an atomic `TryAdvanceHead` CAS on the trunk head, and a pruned-node skeleton (`DagSkeletonNode`) beside the live set. |
 
 ## Posture
 
@@ -29,7 +32,7 @@ op-records **link**, never new `TreeOp` cases.
   merge engine (`Fuaran.UI.OpStream.Dag.Merge`) *requires* `IDagOpStreamSink`,
   so DAG behaviour is structurally unreachable from the linear path.
 - **FGP 2 / FGP 6.** Depends on `FSharp.Core` + `Fuaran.UI` + `Fuaran.UI.Ops` +
-  the linear `Fuaran.UI.OpStream.Abstractions` only. No orchestration-private
+  the linear `Fuaran.UI.OpStream.Abstractions` + `Fuaran.Core.OpStream.Dag` only. No orchestration-private
   dependency; Apache-2.0-clean alongside the linear abstractions.
 
 Apache-2.0 licensed — see the repo [LICENSE](../../LICENSE).

@@ -10,6 +10,303 @@ consequence.
 
 ---
 
+## 2026-11-08 — D30: a compacted stream keeps its boundary and its keys; the chain format stays 2
+
+**Decided (Phase 1937).** Three rulings, one entry.
+
+**1. Compaction keeps the boundary, read from the snapshot.** Truncating a stream's ops never moves its head.
+While records remain, the head is the record at the highest sequence; once compaction has truncated every record,
+`LatestSequence` and `Head` are read from the checkpoint the truncation kept at the head — its `Sequence` and its
+`PreviousChainHead`, the hash of the record it replaced — and never reset to `0` / genesis. This is the rule Core's
+`Compacted` value states (Core Phase 301: the next sequence is the snapshot's plus the tail's length, the head of an
+empty tail is the snapshot's `PrevHash`), applied by every sink here. Before it, `CompactionPolicy.keep 1` with the
+newest checkpoint at the head (the ordinary case) truncated every op, the stream read as empty, and the next append
+restarted the chain at sequence 1 underneath a checkpoint that claimed 1..N. The consequence a sink now enforces: a
+truncation that would remove the head record with no checkpoint at the head, or drop the boundary checkpoint of a
+stream that holds no records, is refused by name, because there would be no snapshot to read the boundary from.
+`Streams` lists a stream compacted through its head (its boundary checkpoint is what lists it).
+
+Rejected: a UI-local watermark row beside the store. It would be a second record of the boundary that can disagree
+with the snapshot it summarises; the snapshot already carries both numbers, and Core's shape reads them from there.
+Not adopted literally: Core's `Compacted` value itself. The UI checkpoint's snapshot address is this tier's
+position-bound `HashChain.snapshotHash`, not Core's `Sealed` hash, so holding a `Compacted` would mean a second
+snapshot format; the rule is adopted, the format is not moved.
+
+**2. The invocation keys of the truncated prefix are KEPT.** A retried `AppendKeyed` whose first attempt landed
+below the compaction boundary answers `Duplicate` with the receipt that attempt produced, rather than appending the
+op a second time. This REVERSES Phase 1525 L-A15, which deleted the keys with the records they named so that a key
+could not answer with a receipt naming a sequence the stream no longer holds. Both horns are real: a kept key names a
+record `Replay` cannot return; a deleted key lets a retry write the same op twice. Core resolved it by keeping the keys
+(`Compacted.Keys`) and certifying the retry under a conformance law, and a duplicate op in the chain is a corruption
+of the history while a receipt below the boundary is not — the caller learns its op is durable, and the boundary
+says why it cannot be read back. The receipt is the original one (Core's `CompactedOutcome.Duplicate existing`);
+`KeyedAppendOutcome` gains no case.
+
+**3. `chainFormatVersion` stays 2.** From Core 0.30.0 to 0.32.0 the linear chain's payload spelled `\n`, `\r` and
+`\t` in an actor's strings as the short escapes; since 0.33.0 (fuaran-core#287) every control character is `\u00xx`,
+the spelling this tier's DAG address and the TypeScript twin always used. A UI store written at those pins whose
+actors carry such a character could hold the old bytes — nothing refuses a control character in an actor id — so
+"provably none" cannot be stated. The format is not bumped because a bump moves every record's hash (the version is
+inside the pre-image) in every host, in lock-step, for a change that touches only records whose actor holds one of
+three characters. Instead the migration is shipped on Core's `rehash` shape: `ChainMigration.migrateLegacyEscape`
+verifies a stream under Core's `StreamConfig.legacyEscape` payload and re-chains it to the canonical one, refusing a
+stream that verifies under neither; a control-free stream comes back with every hash unchanged. Rejected: bumping to
+3 (above); leaving it unrecorded (the change already happened, silently, at the 0.33.0 raise).
+
+**Consequence.** The actor this tier carries is `Fuaran.Core.Actor` (an alias); the control-character chain-corpus
+record hashes identically on the .NET linear path, the .NET DAG path's actor bytes and the TypeScript twin. The
+DAG sinks admit what they verify (`DagWriteAdmission`: the address recomputed, parents present, a held address a
+no-op), and the content fingerprint the Phase 2289 ruling retired is gone.
+
+## 2026-11-07 — D29: the client-effect decoder holds every member the program wire marks non-empty to it, on `missing-member`
+
+**Decided (Phase 2620).** The program wire specification's §2 states, once, that a member naming something a host
+acts on must not be empty, and tables the members per document. For the client effect they are `Navigate`'s and
+`PushState`'s `route`, `Focus`'s and `ReadFileBody`'s `nodeId`, `Download`'s `url` and `name`, and `Confirm`'s
+`prompt` and `token`. `UiWitness.decodeClientEffect` read all eight with `requireString`, so this host accepted
+documents the specification it certifies against calls malformed, and no vector said so.
+
+1. **One check, the program core's.** Each of the eight reads through `ProgramWire.requireNonEmpty`, the helper the
+   generic core already uses for its own non-empty members. A present-and-empty member is refused on
+   `missing-member`, the class an absent one is refused on, with the detail `member '<name>' is empty`, which names
+   the member and never echoes a value.
+2. **`WriteToClipboard`'s `text` stays readable empty.** It is content, not a name, and §2 lists it among the
+   members that may be empty; the single-member arm reader now takes its reader as an argument so that the one
+   content member says so at its call site.
+3. **The encoder does not refuse.** An empty member in a typed `ClientEffect` is the host's construction, not a
+   document it received; it encodes as it is, and the decoder refuses what it wrote, as the program core decided
+   for its own members.
+
+**Premises checked.** The specification's corpus had no vector for any of the eight empty values (its only
+`Confirm` reject is a token that is ABSENT), so the conformance suite stayed green. The program specification now
+carries one reject vector per member; this suite certifies all of them for their class.
+
+**Not moved here, and why.** The specification's rule also covers a `HostCall`'s `into`, an outcome's notification
+channel and every capability string in an outcome. This host reads those documents through the generic core's
+server package, pinned at a release that predates the rule, so their vectors land at the toy subject first and the
+referenced counterparts wait for this repository's raise of that pin.
+
+**Consequence:** a breaking narrowed decode, recorded on the open `0.103.0` draft in `STABILITY.md`.
+
+---
+
+## 2026-11-07 — D28: the wire-profile step stays here until a released Core carries the decode rule; a loosening or a widening moves the minor
+
+**Decided (Phase 2509).** fuaran-core Phase 587 taught Core's IDL diff classifier the profile's decode rule
+(`Versioning.DecodeRule.IgnoresUnknownMembers` and `Diff.bumpProfileUnder`), so the step `Fuaran.UI.WireProfile`
+computes for itself (Phase 1670) can be read off Core instead. The phase measured three things before moving it.
+
+1. **The re-point waits on a release.** This repository pins `Fuaran.Core.Idl.Codegen` 0.40.2 on the public restore
+   path. Neither 0.40.2 nor the latest tagged and published Core, 0.40.3, carries Phase 587: its commit is not an
+   ancestor of `v0.40.3`, and it sits in Core's untagged 0.41.0 draft. A pin must name a version its producer has
+   released, so `WireProfile` cannot call `Diff.bumpProfileUnder` yet. The host's `step` is deleted for that call in
+   the cohort raise that follows Core's next release, which is an operator act. The call then maps Core's `Bump`
+   back to this module's four-way `ProfileStep`, so the regeneration command keeps its advisory report.
+2. **Case 1: a required member loosened to optional, or an `int` slot widened to `float`, moves the minor.** Core
+   grades both `Additive`, because every old document still decodes. The host read any additive row other than a
+   new tag as no step, and that was wrong. A behind consumer requires the member, or reads an integer, so it refuses
+   a new document that omits the member or carries `2.5`, and §2 rule 2's must-ignore does not help it. That is the
+   minor's job, as for a new tag. The alternative the phase offered, showing the case cannot arise here, is false:
+   the vocabulary declares 317 required members and 43 `int` slots, and either change is ordinary authoring. The
+   host's step now answers minor for both, which is Core's answer under either decode rule.
+3. **Case 2: a wire break beside an undecided row stays a major here, and is the one remaining divergence.** Core
+   answers undecided, because it cannot decide the erased-slot row. The host answers major, because nothing an erased
+   slot does can soften a removal beside it. Which takes precedence is the open operator question in Core's D242.
+   Until it is ruled, the host keeps major, and a test pins the case so that closing it is a deliberate edit.
+
+Measured over the total `Change` match in Core's `absorbedWhenUnknownMembersIgnored` (Phase 587) against the host's
+step, those are the only two cases where the answers differed. An absorbed row, a host-surface row and an
+emitter-only row move nothing in both, and a tag, a break and an undecided row alone agree.
+
+**Rejected:** pinning the untagged 0.41.0 draft from the local feed to make the call now. This repository restores
+Core from the public feed, so that pin resolves on one machine only, and a reader of the published source could
+not reproduce the build. Also rejected: deleting the host's step and re-stating Core's rule in a comment until the
+release. That would leave the regeneration command with no answer.
+
+**Consequence:** the regeneration command now reports a minor for a loosening or a widening, where it reported no
+step before. It is advisory and fails no build. `WIRE_FORMAT.md` §15.4 needs a row saying the same; until it gains
+one, the table is silent on both changes and the derived answer is the one stated here. No published API and no
+document moves.
+
+---
+
+## 2026-11-07 — D27: every document over a tree reads its demand through the demand view, and every posture through the fold view
+
+**Decided (Phase 2430).** `ServerAliases.fs` builds four documents from handlers, and they disagreed about what a tree
+demands. `ServerDemanded.ofTreeAndHandlers` read the **demand view** (`UiWitness.demandWitnessIn root`: a commit names
+the key its field's `commitTo` writes, D15; a confirm demands both continuations, D11), while `Replay.ofTreeAndHandlers`
+and `Harvest.ofProgram` handed the core the **fold view** (`UiWitness.witness`) for the whole document. For one tree
+the replay document and the harvested demand therefore named fewer state namespaces than the demanded projection, and
+posted no posture at all for a handler reachable only through a confirm's continuation. The registration-only
+`Harvest.ofRegistration` had the same divergence from `ServerDemanded.ofHandlers`, which reads the tree-free
+`UiWitness.demandWitness`.
+
+The rule now, alias by alias:
+
+1. **The demand, and the reachability the postures are posted for, read the demand view.** `Replay.ofTreeAndHandlers`
+   is this file's `ServerDemanded.ofTreeAndHandlers` with postures joined over this file's `ServerDemanded.reachable`;
+   `Harvest.ofProgram` adds the undo postures over the same reachability and publishes; `Harvest.ofRegistration` is
+   this file's `ServerDemanded.ofHandlers` with both postures joined. So the posture-joined documents ARE the demanded
+   projection plus postures, by construction, and pinned by tests that failed before the change.
+2. **A posture reads the fold view.** A replay or undo posture describes what re-running a handler FOLDS, and the fold
+   never reads `demandView` (its own doc comment: it would ask the question and run an arm in one event). The posture a
+   document posts is therefore exactly `Replay.postureOf` / `Undo.postureOf` under `UiWitness.witness`, the one
+   `Replay.admit` decides by. The two views differ on a server handler whose compute stage holds a confirm: the demand
+   view adds the continuations' defects (a `non-literal-write`, say) to a stage whose fold only asks. A document whose
+   posture disagreed with the admission decision would be a second, unenforced answer to the same question.
+3. **`Replay.withPostures` reads the fold view and stays as it was:** it joins postures and computes no demand, so
+   rule 2 is all that applies. It takes no tree because a posture needs none.
+4. **`Harvest.ofRegistration` takes no tree, yet still has a demand view to read**: the tree-free `demandWitness`. The
+   phase's premise that a tree-less alias has no demand view was half right: it has no `demandWitnessIn`, because
+   there is no tree for a commit to be resolved in, but a confirm's continuations are visible without one, and
+   `ServerDemanded.ofHandlers` already read them.
+
+**Rejected:** passing `demandWitnessIn root` to the core's one-call `Replay.ofTreeAndHandlers` / `Harvest.ofProgram`.
+The core reads one witness for both the demand and the postures, so the postures would have read the demand view and
+disagreed with `Replay.admit` on exactly the handlers rule 2 names. The aliases compose the core's own public steps
+instead (`ServerDemanded.*`, `Replay.withPostures`, `Undo.withPostures`, `Harvest.publish`), in the core's own order,
+so the documents still come from one reachability. A core signature taking the two witnesses separately would let the
+aliases call one function again; that is the core's change to make, not this adapter's.
+
+**Consequence:** for a tree with a commit or a confirm, the replay document and the harvested demand now name more:
+the commit's namespace, a confirm continuation's effects, and a posture for every handler the continuation reaches.
+That is additive on the published document and changes no signature: a consumer reading either document sees the
+same shape, with more entries for a tree that commits or confirms. It rides the next draft slot after 0.102.0 as an
+additive change.
+
+## 2026-11-07 — D26: a decoded `Local`'s `onCommit` stand-in flushes nothing; the server-driven flush commits through `commitTo` alone
+
+**Decided (Phase 2431).** The verification branch was **"it throws"**. A tree decoded from the wire, by either decoder
+(`Fuaran.UI.Ops.JsonDecode` and the generated `Fuaran.UI.Generated.decodeNode`), carries `onCommit = Some stand-in`
+whenever the document wrote `"onCommit":"<closure>"` (the corpus's `nodes/form-local-1.json` is that shape), and the
+stand-in answers the sentinel string `"<closure>"`. `FormBuffer.fieldFlushAction` unboxed that answer as
+`Action<'Msg>` and threw `InvalidCastException`; on a form submit the exception escaped `commitActions`, so one such
+field took down the whole flush, the declared `commitTo` writes of its sibling fields included. A field carrying
+`commitTo` or neither destination decodes with `onCommit = None` and was always safe. The decoder refuses the two
+destinations together, so a decoded `Local` has at most one.
+
+The flush now reads the stand-in's answer as **"no handler here"**: `FormBuffer.authoredCommit` maps the sentinel
+string to no action and unboxes anything else, so an in-process handler of the wrong type still fails loudly. A decoded
+`Local` therefore commits through its declared `commitTo` alone, and an `onCommit`-only decoded field flushes nothing,
+which is what the wire already says a decoding host can honour (the both-destinations refusal's own hint). The
+`FormBufferTests` "Phase 2431" list pins, for both decoders: what each decoder puts in `onCommit`, each field's flush,
+`commitActions` over all three, and a server-driven submit of a decoded form performing the declared write.
+
+**Rejected:**
+
+- **The decoder leaving `onCommit` as `None`**, the phase's preferred "unreachable by construction" route. The slot's
+  presence is what re-encodes the member the document wrote; `JsonDecode` was changed from an unconditional `Some` to
+  presence-tracking for exactly that reason, and the corpus round-trips `form-local-1`. `None` would make a decoded
+  tree drop a member on re-encode. Carrying presence somewhere other than the closure slot is a change to the `Binding`
+  type, which is wider than this phase.
+- **A type test on `Action<'Msg>`** (`:? Action<'Msg>`). It would also swallow a hand-built handler of the wrong type,
+  turning an author's bug into a silent no-op, and a generic type test does not carry to Fable.
+
+**Consequence.** The recognition is of the sentinel's spelling, which both decoders and WIRE_FORMAT's closure sentinel
+share; the pin that asserts what each decoder's stand-in answers goes red if either changes it. The client renderer
+(`Fuaran.UI.Renderer/Render.fs`, the `Local` field arms) performs the same unbox on the same stand-in and is not
+changed here.
+
+---
+
+## 2026-11-07 — D25: the renderer keeps its own sanitisation floor, repeats it to a fixed point, and is certified by Core's family with a stated limit
+
+**Decided (Phase 2010).** `Fuaran.UI.Renderer.Sanitize` stays this tier's own copy of the sanitisation floor rather
+than calling `Fuaran.Core.Idl.Sanitize`, and the copy is held to Core's law family
+(`Conformance.sanitizeLawsAt`) on both pipelines it ships to.
+
+1. **Measured first.** Run over the renderer's six floor functions, the family's URL laws (three of six) held as
+   the copy stood. The markdown scrub was not idempotent: one pass could rebuild a dangerous element from fragments
+   an earlier step of the same pass had swept. Under Fable its scans also took an index from a lowered copy of the
+   string, which is longer than the original when the text holds U+0130, so the browser's floor rewrote the wrong
+   span or threw. Neither showed on .NET's own suite for the second defect, because .NET's lowercase is
+   length-preserving.
+2. **Fixed by Core's rule.** The sweep repeats until its output stops changing, and every scan folds one unit at a
+   time on the string it edits. That is the rule Core adopted, and the renderer's structure does not make another
+   one more honest. The termination argument differs from Core's, because a scheme in body text survives here, and
+   it is written beside the function.
+3. **Certified with a stated limit.** Two of the family's six laws describe a broader floor than this copy claims,
+   and the narrowing is decided, not a gap:
+   - The attribute law expects `sanitizeAttributes` to keep each key as given. This copy emits the trimmed key,
+     because the gate judges `key.Trim()` and emitting the original would emit a string nothing inspected
+     (Phase 788). It also refuses any key character outside `[A-Za-z0-9-]`, which the law's claim admits.
+   - The markdown floor law forbids every `javascript:` / `vbscript:` and every dangerous element prefix. This copy
+     rewrites a scheme only inside a tag, because in body text it is prose the renderer escaped by construction
+     (Phase 1523). It strips an element only at a tag-name boundary, because `<metadata>` is not `<meta>`
+     (Phase 1546).
+
+   Both adopting runs assert that those two laws are red for that reason and no other, by the first counterexample
+   each records. A red law reports one counterexample only, so the witness also records every input the family
+   draws, and the run holds each one to this copy's own claim: the floor with its two narrowings, and a key gate
+   that admits only what Core's claim admits. The other four laws hold outright.
+4. **Not consolidated, yet.** Calling Core's scrub would undo Phases 1523 and 1546, and Core's attribute filter does
+   not re-key. `Fuaran.UI.Renderer.Core` would also take its first package dependency beyond `FSharp.Core` and
+   `Fuaran.UI`. The copies consolidate once Core's floor claims what this one does: either Core adopts the three
+   narrowings, or the family takes the anchoring as a declared part of a witness. Either way the stated limit
+   becomes two more held laws, and this entry is what that change retires.
+
+**Rejected.** (a) Rewriting schemes in body text, so that the law passes, because a document explaining the hazard
+could then no longer state it. (b) A witness that projects the divergence away, such as filtering the attribute map
+the way the law expects. That would certify a function this package does not ship.
+
+**The copies, enumerated.** The .NET tier holds this copy; the browser playground calls it through Fable and through
+the TypeScript renderer. The TypeScript, Python, Go and Rust hosts each carry their own copy. Go carries no
+attribute floor because the wire omits extra attributes there. The Swift and Kotlin surfaces carry a narrower URL
+floor and no markdown floor, because neither renders markup as HTML.
+
+**Consequence.** `docs/core-conformance.md` lists the family as adopted across two ports. A change to the floor in
+either copy now fails a law here rather than a comment asking the two to stay in step.
+
+---
+
+## 2026-11-03 — D24: a partial emitter claims a declared profile, and the hosts carry its old spellings under a written commitment
+
+**Decided (Phase 2451).** The wire gains a third role beside the codec host and the render projection: the
+**constrained emitter**, a producer that writes a declared subset of the vocabulary in canonical bytes and reads none
+of this wire (WIRE_FORMAT §11.0, §11.4). It claims conformance under an **emitter profile** declared in the corpus
+manifest (`emitterProfiles`): a lineage of revisions, each naming its axes (`canonical-bytes`, and `integer-only` when
+claimed, in the program wire's profile vocabulary), its subset (the `kinds` / `formFieldKinds` / `ops` tags, in §23.2's
+allow-list form) and its vectors. Its bar is that every document and frame it writes is accepted by every codec host.
+Beside it, a **producer-support commitment** (§15.6): no field of a declared kind is made required on the wire, and no
+tag or field a declared revision writes is renamed or removed, without a §16 decode alias every codec host carries for
+the life of the wire major the revision names; each host's `oldestAccepted` entry is the record, and that host's leg
+reads every revision from it onward.
+
+This host's share of the change-set, decided with it:
+
+1. **The reference emitter writes the declaration.** `manifest.json` is written wholesale by `Corpus.writeManifest`,
+   so a hand-added top-level member would vanish at the next `--emit-corpus`. The declaration lives in
+   `Corpus.emitterProfiles`, and the emit refuses a revision naming a vector it did not author or one outside the
+   three admitted families, and an `oldestAccepted` entry naming no revision.
+2. **The vectors are ordinary rows.** The current revision's document and frames are `node-round-trip` /
+   `op-round-trip` fixtures authored as the bytes an emitter writes (`Fixtures.fs`, the Phase 2451 block); the old
+   revision's are `lenient-accept` fixtures in `LenientFixtures.fs`. So every codec host certifies acceptance through
+   the legs it already runs, and no new corpus family, capability-manifest entry or producer record is needed. A
+   family of their own, the obvious alternative, would have obliged all five hosts' capability manifests for no
+   assertion the existing legs do not already make.
+3. **The leg reads the corpus, not the F# values** (`SchemaConformanceTests.fs`, "the constrained-emitter acceptance
+   leg"): integer-only on the token, the node-kind subset through `DecodePolicy.admitting` (so nested and op-borne
+   nodes are gated exactly as §23 gates them), the control and op tags at their positions, acceptance, schema
+   validity of the canonical form, and that `oldestAccepted` names exactly the roster's codec hosts. Each check is
+   shown to go red on the corpus's own frames.
+4. **The axes bound the writer, never the reader.** A host reading an emitter's output decodes at its default (§23.1).
+   Unlike the program wire's profiles, nothing here narrows what a host accepts.
+
+**Rejected.** A sixth roster row for an emitter: it would let "five conformant hosts" be read as six, and a partial
+producer would sit beside codec hosts under a bar it does not meet. A calendar period for the shim: the life of the
+wire major is checkable from the profile id, and a major step that drops a shim must advance the record in its own
+change-set, which a date cannot force. Declaring every binding, action and enum value an emitter writes as part of
+the subset: those are fields of declared kinds, which §15.6 already protects, and enumerating them would make every
+profile a restatement of the IDL.
+
+**Consequence.** The corpus declares one lineage, `panel` (`panel@1.0`, the spelling before Phase 1811's
+`Date` → `DateTime` rename, whose shim is that rename's existing alias; `panel@1.1`, the current spelling), and every
+codec host records `panel@1.0` as the oldest it accepts. Phase 2452's emitter is the first to claim the role. A later
+rename touching a declared subset now lands with its alias, a `lenient-accept` vector naming the revision, and no
+movement of any host's record.
+
+---
+
 ## 2026-10-27 — D23: a chart's series palette stays literal in the lowering and is themed by installation, after a gate
 
 **Decided (Phase 2482).** A theme carries a chart series palette (`Theme.Charts`: up to eight series slots in

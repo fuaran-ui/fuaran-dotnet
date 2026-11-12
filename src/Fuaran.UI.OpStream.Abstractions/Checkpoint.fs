@@ -44,20 +44,25 @@ open Fuaran.UI.Types
 /// `HashChain.genesisPreviousHash` for a Sequence-0 checkpoint over an initial
 /// tree.
 ///
-/// `SnapshotHash` is `HashChain.snapshotHash PreviousChainHead Sequence
-/// (CanonicalJson.encodeNode Snapshot)` — a POSITION-BOUND content address
-/// (Phase 412). Corrected here in Phase 1525: this comment still described the
-/// pre-412 rule, `sha256Hex (CanonicalJson.encodeNode Snapshot)` alone, which a
-/// reader recomputing the field from it would have got wrong, and which
-/// understates what the field protects.
+/// `SnapshotHash` is Core's STRICT snapshot seal (Phase 2305): the checkpoint
+/// IS a `Fuaran.Core.Snapshot<Node<'Msg>>` — `Seq = Sequence`, `State =
+/// Snapshot`, `PrevHash = PreviousChainHead`, `Hash = SnapshotHash`, `Mode =
+/// Strict` (`CheckpointSeal.toSnapshot`) — and the hash is `Sealed.seal`'s, over
+/// `{"snapshot":true,"seq":Sequence,"state":<CanonicalJson.encodeNode Snapshot>}`
+/// chained from `PreviousChainHead` by the stream's SHA-256 `HashFn`. Before
+/// 2305 the tier sealed the same shape under a `"tree"` key with its own
+/// function; a store sealed that way is re-sealed once by `CheckpointReseal`.
+/// `StreamId` and `Timestamp` are storage, outside the seal, as they are outside
+/// the record chain.
 ///
-/// The binding is what the position adds: a valid snapshot and its hash, taken
-/// from one `(PreviousChainHead, Sequence)`, no longer validate at a different
-/// one — so replaying a real older snapshot as a later checkpoint
-/// (cross-position substitution) is caught, as is accidental corruption. It is
-/// defence in depth, not tamper-proofing: an adversary who rewrites the whole
-/// checkpoint record consistently recomputes this too. Catching that is the
-/// signed attestation seam's job (`Attestation.fs`).
+/// What the seal binds is the snapshot's POSITION as well as its bytes (the
+/// Phase-412 property, which Core's seal has by construction): a valid snapshot
+/// and its hash, taken from one `(PreviousChainHead, Sequence)`, no longer
+/// validate at a different one — so replaying a real older snapshot as a later
+/// checkpoint (cross-position substitution) is caught, as is accidental
+/// corruption. It is defence in depth, not tamper-proofing: an adversary who
+/// rewrites the whole checkpoint record consistently recomputes this too.
+/// Catching that is the signed attestation seam's job (`Attestation.fs`).
 type Checkpoint<'Msg> =
     { StreamId: string
       Sequence: int
@@ -65,6 +70,136 @@ type Checkpoint<'Msg> =
       SnapshotHash: string
       Snapshot: Node<'Msg>
       Timestamp: DateTimeOffset }
+
+/// The checkpoint as Core's linear snapshot (Phase 2305). Nothing here seals,
+/// walks or folds of its own: the seal is `Fuaran.Core.Sealed.seal` (Strict), the
+/// verification is `Sealed.firstBreak` — the seal, then the whole tail walked from
+/// `(PreviousChainHead, Sequence)` by Core's one chain walker over
+/// `HashChain.recordShape` — and the mapping between the two records is total and
+/// lossless for everything the seal covers.
+[<RequireQualifiedAccess>]
+module CheckpointSeal =
+
+    /// The checkpoint as the Core `Snapshot` it is. A UI checkpoint at
+    /// `Sequence = N` has folded records `1..N`, which is Core's boundary `Seq = N`
+    /// (the count folded, and so the 0-based `Seq` the tail's first record
+    /// carries); `PreviousChainHead` is record N's hash, Core's `PrevHash`. Every
+    /// UI checkpoint is `Strict`: the tree has a canonical encoder, so the seal
+    /// covers it.
+    let toSnapshot (checkpoint: Checkpoint<'Msg>) : Fuaran.Core.Snapshot<Node<'Msg>> =
+        { Seq = checkpoint.Sequence
+          State = checkpoint.Snapshot
+          PrevHash = checkpoint.PreviousChainHead
+          Hash = checkpoint.SnapshotHash
+          Mode = Fuaran.Core.SnapshotMode.Strict }
+
+    /// Core's strict seal of `tree` at `(previousChainHead, sequence)`.
+    let seal (previousChainHead: string) (sequence: int) (tree: Node<'Msg>) : string =
+        let atAnchor =
+            Fuaran.Core.Sealed.seal
+                Fuaran.Core.SnapshotMode.Strict
+                StreamEntry.hashFn
+                CanonicalJson.encodeNode
+                { Seq = sequence
+                  PrevHash = previousChainHead }
+                tree
+
+        atAnchor.Seal
+
+    /// A checkpoint of `tree` at `(previousChainHead, sequence)`, sealed by `seal`
+    /// — the one construction every producer goes through, so the seal cannot be
+    /// forgotten or computed a second way.
+    let create
+        (streamId: string)
+        (sequence: int)
+        (previousChainHead: string)
+        (timestamp: DateTimeOffset)
+        (tree: Node<'Msg>)
+        : Checkpoint<'Msg> =
+        { StreamId = streamId
+          Sequence = sequence
+          PreviousChainHead = previousChainHead
+          SnapshotHash = seal previousChainHead sequence tree
+          Snapshot = tree
+          Timestamp = timestamp }
+
+    /// Where a checkpoint and the tail above it fail to verify — Core's
+    /// `Sealed.firstBreak`: the seal first (`SnapshotBreak.SnapshotHash`, the
+    /// recomputed seal and the stored one; the tail is not walked), then the FIRST
+    /// break anywhere in `tail`, walked from the checkpoint's anchor
+    /// (`SnapshotBreak.Tail`, indexed by position in the tail) — so a break in the
+    /// middle of the tail is found, not only one at its first link. An empty tail
+    /// checks the seal alone. `None` for an intact boundary.
+    let firstBreak (checkpoint: Checkpoint<'Msg>) (tail: OpRecord<'Msg> list) : Fuaran.Core.SnapshotBreak option =
+        Fuaran.Core.Sealed.firstBreak
+            StreamEntry.hashFn
+            CanonicalJson.encodeNode
+            (HashChain.recordShape<'Msg> ())
+            (Fuaran.Core.Sealed.ofSnapshot (toSnapshot checkpoint))
+            tail
+
+/// The ONE-SHOT re-seal of a checkpoint sealed before Phase 2305 (the tier's own
+/// `"tree"`-keyed pre-image) under Core's seal. Migration scaffolding: it is the
+/// only place the old pre-image survives, nothing on a live path computes it, and
+/// it is removed in the release after the one that ships it
+/// (`docs/migrations/2305-core-snapshot.md`).
+[<RequireQualifiedAccess>]
+module CheckpointReseal =
+
+    /// The pre-2305 pre-image, frozen: Core's strict shape with `"tree"` where
+    /// Core has `"state"`, chained from `previousChainHead` by the same SHA-256.
+    let private legacySeal (previousChainHead: string) (sequence: int) (tree: Node<'Msg>) : string =
+        Fuaran.Core.OpStream.sha256Hash
+            previousChainHead
+            ("{\"snapshot\":true,\"seq\":"
+             + string sequence
+             + ",\"tree\":"
+             + CanonicalJson.encodeNode tree
+             + "}")
+
+    /// What a re-seal found.
+    [<RequireQualifiedAccess>]
+    type Outcome<'Msg> =
+        /// The checkpoint already verifies under Core's seal; nothing to do, so a
+        /// re-run of the migration is a no-op.
+        | AlreadySealed
+        /// It verified under the pre-2305 seal and is re-sealed under Core's.
+        | Resealed of Checkpoint<'Msg>
+
+    /// Why a checkpoint was refused: its stored hash verifies under NEITHER seal,
+    /// so it is corrupt (or of neither format) and is not re-blessed.
+    type Refusal =
+        { StreamId: string
+          Sequence: int
+          StoredHash: string }
+
+    /// Verify `checkpoint` under the old seal and re-seal it under Core's, or
+    /// refuse it by name. A checkpoint already under Core's seal is `AlreadySealed`.
+    let reseal (checkpoint: Checkpoint<'Msg>) : Result<Outcome<'Msg>, Refusal> =
+        if CheckpointSeal.firstBreak checkpoint [] |> Option.isNone then
+            Ok Outcome.AlreadySealed
+        elif
+            legacySeal checkpoint.PreviousChainHead checkpoint.Sequence checkpoint.Snapshot = checkpoint.SnapshotHash
+        then
+            Ok(
+                Outcome.Resealed
+                    { checkpoint with
+                        SnapshotHash =
+                            CheckpointSeal.seal checkpoint.PreviousChainHead checkpoint.Sequence checkpoint.Snapshot }
+            )
+        else
+            Error
+                { StreamId = checkpoint.StreamId
+                  Sequence = checkpoint.Sequence
+                  StoredHash = checkpoint.SnapshotHash }
+
+    /// The refusal as text, naming the checkpoint.
+    let describe (refusal: Refusal) : string =
+        sprintf
+            "checkpoint re-seal refused for stream '%s' at sequence %d: its stored hash %s verifies under neither the pre-2305 seal nor Core's, so it is not re-sealed. Nothing was written."
+            refusal.StreamId
+            refusal.Sequence
+            refusal.StoredHash
 
 /// Host-provided node codec for `Node<'Msg>` JSON serialisation. Sinks
 /// that persist checkpoints to text storage (Sqlite, future Postgres,
@@ -108,19 +243,6 @@ module CompactionPolicy =
     /// Single-knob constructor.
     let keep (n: int) : CompactionPolicy = { KeepCheckpoints = n }
 
-/// Outcome of the checkpoint→tail boundary integrity check performed by
-/// `Replay.applyFromCheckpoint`. `BoundaryMismatch` means the first tail
-/// record's `PreviousHash` does not link to the retained checkpoint;
-/// `SnapshotHashMismatch` means the snapshot's recomputed POSITION-BOUND
-/// address (`HashChain.snapshotHash`, Phase 412) no longer matches the recorded
-/// `SnapshotHash` — so it covers a snapshot that was tampered with AND one
-/// lifted from another position, which the pre-412 "canonical-JSON hash" this
-/// comment used to name could not distinguish (corrected Phase 1525).
-[<RequireQualifiedAccess>]
-type CheckpointVerificationError =
-    | BoundaryMismatch of checkpointSequence: int * expected: string * actual: string
-    | SnapshotHashMismatch of checkpointSequence: int * expected: string * actual: string
-
 /// Extension of `IOpStreamSink<'Msg>` adding checkpoint persistence +
 /// truncation primitives. Concrete sinks that ship as part of the
 /// language tier (InMemory, Sqlite) implement this interface in addition
@@ -143,7 +265,10 @@ type IOpStreamCheckpointSink<'Msg> =
     abstract member ListCheckpoints: streamId: string -> Async<Checkpoint<'Msg> list>
 
     /// Truncate ops with `Sequence ≤ throughSequence` from the live
-    /// stream. Returns the number of records removed. Callers responsible
+    /// stream. Returns the number of records removed. The head never moves: a
+    /// truncation that reaches the head record is refused unless a checkpoint at
+    /// the head holds the boundary, which `LatestSequence` / `Head` then read
+    /// (Phase 1937, D30); invocation keys of the removed records are kept. Callers responsible
     /// for archiving the truncated records first if integrity-verifiable
     /// archival is required (compaction-policy concern, not sink concern).
     abstract member TruncateOpsThrough: streamId: string * throughSequence: int -> Async<int>

@@ -44,11 +44,9 @@ type Corpus =
       BranchC: DagOpRecord<TestMsg>
       Merge: DagOpRecord<TestMsg> }
 
-/// `getRecord` over the corpus sink (synchronous; tests are single-threaded).
-let getRecordOf (c: Corpus) : string -> DagOpRecord<TestMsg> option =
-    let records = c.Sink.Records "s" |> Async.RunSynchronously
-    let byHash = records |> List.map (fun r -> r.Hash, r) |> Map.ofList
-    fun h -> Map.tryFind h byHash
+/// The corpus sink's records as a Core DAG (synchronous; tests are single-threaded).
+let dagOf (c: Corpus) : Fuaran.Core.Dag.T<StreamEntry<TestMsg>> =
+    c.Sink.Records "s" |> Async.RunSynchronously |> DagOpRecord.toDag
 
 /// Build the branch/merge DAG described in the module header.
 let build () : Corpus =
@@ -110,7 +108,7 @@ let build () : Corpus =
     // merge branchA ⋈ branchB (primary = branchA).
     let mergeRecord =
         match
-            DagMerge.merge recordAuthor sink "s" initial branchA.Hash branchB.Hash (timestamp 5L)
+            DagMerge.merge sink "s" initial branchA.Hash branchB.Hash (timestamp 5L)
             |> Async.RunSynchronously
         with
         | MergeResult.Merged(record, _) -> record

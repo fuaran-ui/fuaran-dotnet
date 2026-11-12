@@ -111,6 +111,10 @@ let tests =
                     TreeOp.UpdateState(NodeId "k", Fuaran.UI.Defaults.stateBehaviour<Msg>),
                     "UpdateState",
                     [ NodeId "k" ]
+                    TreeOp.UpdateAccessibility(NodeId "k", Fuaran.UI.Defaults.Accessibility.empty),
+                    "UpdateAccessibility",
+                    [ NodeId "k" ]
+                    TreeOp.UpdateTooltip(NodeId "k", None), "UpdateTooltip", [ NodeId "k" ]
                     TreeOp.InsertChild(NodeId "p", child), "InsertChild", [ NodeId "p" ]
                     TreeOp.RemoveNode(NodeId "k"), "RemoveNode", [ NodeId "k" ]
                     TreeOp.MoveNode(NodeId "k", NodeId "p"), "MoveNode", [ NodeId "k"; NodeId "p" ]

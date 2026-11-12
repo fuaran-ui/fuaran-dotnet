@@ -1409,6 +1409,72 @@ let fact: Node<obj> =
         ))
         None
 
+/// Phase 2535 — a cited figure: the reference names the Fact behind it. The value has the
+/// shape of a content-addressed Fact id, 64 lowercase hex digits (WIRE_FORMAT.md §3.6.31).
+[<NodeFixture "Display/Fact (Phase 2535 — a figure citing the Fact behind it)">]
+let factReference: Node<obj> =
+    node
+        "fact-cited"
+        (NodeKind.Fact(
+            { Defaults.fact with
+                Label = TextSource.Literal "Revenue"
+                Value = TextSource.Literal "£412k"
+                Reference = Some "9f04f29b27c86926a1c3e5d7b8f0a2c4e6d8f0a1b3c5d7e9f1a3b5c7d9e1f3a5" }
+        ))
+        None
+
+/// Phase 2591 — a sentence citing one figure, whose label says what the number is for a screen
+/// reader without being printed. The display text is the link's own (WIRE_FORMAT.md §3.6.32).
+[<NodeFixture "Display/Markdown (Phase 2591 — a sentence citing one figure)">]
+let markdownCitationOne: Node<obj> =
+    node
+        "markdown-citation-one"
+        (NodeKind.Markdown(
+            { Text = TextSource.Literal "Online.com took [23%](cite:share) of the category."
+              Citations =
+                [ { Name = "share"
+                    Reference = "9f04f29b27c86926a1c3e5d7b8f0a2c4e6d8f0a1b3c5d7e9f1a3b5c7d9e1f3a5"
+                    Label = Some(TextSource.Literal "Online share of category spend") } ] }
+        ))
+        None
+
+/// Phase 2591 — a sentence citing several figures, in the three reference forms that occur.
+[<NodeFixture "Display/Markdown (Phase 2591 — a sentence citing several figures)">]
+let markdownCitationSeveral: Node<obj> =
+    node
+        "markdown-citation-several"
+        (NodeKind.Markdown(
+            { Text =
+                TextSource.Literal
+                    "Online.com took [23%](cite:share) from [£412k](cite:spend) placed by **[17](cite:brands)** brands, against a forecast of [about 20](cite:forecast)."
+              Citations =
+                [ { Name = "share"
+                    Reference = "9f04f29b27c86926a1c3e5d7b8f0a2c4e6d8f0a1b3c5d7e9f1a3b5c7d9e1f3a5"
+                    Label = Some(TextSource.Literal "Online share of category spend") }
+                  { Name = "spend"
+                    Reference = "fact:spend-q3"
+                    Label = None }
+                  { Name = "brands"
+                    Reference = "fact:brands-q3"
+                    Label = Some(TextSource.Literal "Brands placing") }
+                  { Name = "forecast"
+                    Reference = "fcst:brands-q4@2026-11-01"
+                    Label = None } ] }
+        ))
+        None
+
+/// Phase 2591 — a sentence citing nothing: the member is absent, and a `cite:` link in the
+/// text is the dead link it has always been. The twin of `markdown-1` on the wire.
+[<NodeFixture "Display/Markdown (Phase 2591 — a sentence citing nothing)">]
+let markdownCitationNone: Node<obj> =
+    node
+        "markdown-citation-none"
+        (NodeKind.Markdown(
+            { Defaults.markdown with
+                Text = TextSource.Literal "Online.com took [23%](cite:share) of the category." }
+        ))
+        None
+
 /// Phase 819 — a duration Metric: the raw value counts MINUTES (80 → "1h
 /// 20m" under Compact), and the trend slot carries the cell-vocabulary
 /// RelativeTime parity case (a signed count of the unit).
@@ -3335,6 +3401,66 @@ let selectMultipleFalse: Node<obj> =
                 Value = Some(Binding.Static(Some "s"))
                 OnChange = Some(fun _ -> placeholderChain)
                 Multiple = Some false }
+        ))
+        None
+
+/// Phase 2571 — option groups, every option grouped (WIRE_FORMAT §3.6.30). Each
+/// group's `values` is written in an order other than `source`'s, so the vector
+/// pins that the wire keeps the authored order while a renderer draws a group's
+/// options in `source` order.
+[<NodeFixture "Input/Select (Phase 2571 — option groups, every option grouped)">]
+let selectOptionGroups: Node<obj> =
+    node
+        "select-option-groups"
+        (NodeKind.Select(
+            { Defaults.select with
+                Label = TextSource.Literal "Chart"
+                Source =
+                    Binding.Static(
+                        Some
+                            [ { Value = "revenue-trend"
+                                Label = "Revenue" }
+                              { Value = "orders-trend"
+                                Label = "Orders" }
+                              { Value = "region-breakdown"
+                                Label = "By region" }
+                              { Value = "channel-breakdown"
+                                Label = "By channel" } ]
+                    )
+                Value = Some(Binding.Static(Some "revenue-trend"))
+                Groups =
+                    [ { Label = "Trend"
+                        Values = [ "orders-trend"; "revenue-trend" ] }
+                      { Label = "Breakdown"
+                        Values = [ "region-breakdown"; "channel-breakdown" ] } ] }
+        ))
+        None
+
+/// Phase 2571 — option groups with an ungrouped remainder: the options no group
+/// names render after the groups, in `source` order (WIRE_FORMAT §3.6.30).
+[<NodeFixture "Input/Select (Phase 2571 — option groups, an ungrouped remainder)">]
+let selectOptionGroupsRemainder: Node<obj> =
+    node
+        "select-option-groups-remainder"
+        (NodeKind.Select(
+            { Defaults.select with
+                Label = TextSource.Literal "Chart"
+                Source =
+                    Binding.Static(
+                        Some
+                            [ { Value = "summary"; Label = "Summary" }
+                              { Value = "revenue-trend"
+                                Label = "Revenue" }
+                              { Value = "region-breakdown"
+                                Label = "By region" }
+                              { Value = "notes"; Label = "Notes" } ]
+                    )
+                Value = Some(Binding.State("chart", Some "summary"))
+                Groups =
+                    [ { Label = "Trend"
+                        Values = [ "revenue-trend" ] }
+                      { Label = "Breakdown"
+                        Values = [ "region-breakdown" ] } ] }
         ))
         None
 
@@ -6221,7 +6347,8 @@ let table: Node<obj> =
                         // Phase 801 — the sort-intent slots stay ABSENT here deliberately.
                         // `table-1.json` is the byte-identity anchor for the pre-801 wire:
                         // if this fixture's payload ever moves, the addition was not additive.
-                        { DefaultSort = None
+                        { Citations = []
+                          DefaultSort = None
                           Headers = [ TextSource.Literal "Term"; TextSource.Literal "Definition" ]
                           Rows =
                             [ [ TextSource.Literal "MVU"; TextSource.Literal "Model-View-Update" ]
@@ -6243,7 +6370,8 @@ let tableSortable: Node<obj> =
                 Source = Binding.Static(Some Seq.empty)
                 StaticRows =
                     Some
-                        { DefaultSort =
+                        { Citations = []
+                          DefaultSort =
                             Some
                                 { Column = 1
                                   Direction = SortDirection.Desc }
@@ -6277,6 +6405,111 @@ let tableTonedColumn: Node<obj> =
                 Rows =
                     [ [ TextSource.Literal "Retail"; TextSource.Literal "+4.1%" ]
                       [ TextSource.Literal "Wholesale"; TextSource.Literal "-2.3%" ] ] })
+            .Kind
+        None
+
+/// Phase 2592 — a report table with every figure cited, in the three reference forms that
+/// occur, its first column a row header that cites nothing. The cell text stays in `rows`; a
+/// citation only names a cell (WIRE_FORMAT.md §3.6.33).
+[<NodeFixture "Visualisation/Grid (Phase 2592 — static table with every figure cited)">]
+let tableCitationAll: Node<obj> =
+    let cited (row: int) (column: int) (reference: string) (label: string option) : TableCitation =
+        { Column = column
+          Label = label |> Option.map TextSource.Literal
+          Reference = reference
+          Row = row }
+
+    node
+        "table-citation-all"
+        (Fuaran.table
+            "table-citation-all"
+            { Defaults.table<obj> with
+                Headers =
+                    [ TextSource.Literal "Channel"
+                      TextSource.Literal "Spend"
+                      TextSource.Literal "Share"
+                      TextSource.Literal "Brands" ]
+                Rows =
+                    [ [ TextSource.Literal "Online"
+                        TextSource.Literal "£412k"
+                        TextSource.Literal "23%"
+                        TextSource.Literal "17" ]
+                      [ TextSource.Literal "Retail"
+                        TextSource.Literal "£1.2m"
+                        TextSource.Literal "67%"
+                        TextSource.Literal "41" ] ]
+                Citations =
+                    [ cited 0 1 "9f04f29b27c86926a1c3e5d7b8f0a2c4e6d8f0a1b3c5d7e9f1a3b5c7d9e1f3a5" (Some "Online spend")
+                      cited 0 2 "fact:online-share" (Some "Online share of category spend")
+                      cited 0 3 "fact:online-brands" None
+                      cited 1 1 "fact:retail-spend" (Some "Retail spend")
+                      cited 1 2 "fact:retail-share" None
+                      cited 1 3 "fcst:retail-brands@2026-11-01" None ] })
+            .Kind
+        None
+
+/// Phase 2592 — some cells cited, in a table declaring sort intent and a toned column, so a
+/// cited pill keeps its pill and a cited cell keeps its place under a declared column.
+[<NodeFixture "Visualisation/Grid (Phase 2592 — static table with some figures cited, beside a toned column and sort intent)">]
+let tableCitationSome: Node<obj> =
+    node
+        "table-citation-some"
+        (Fuaran.tableWithColumns
+            "table-citation-some"
+            [ TableColumn.text "segment"
+              TableColumn.text "revenue"
+              TableColumn.tonedPill
+                  "change"
+                  (Map.ofList [ "+4.1%", ToneVariant.Success; "-2.3%", ToneVariant.Critical ])
+                  ToneVariant.Default ]
+            { Defaults.table<obj> with
+                Headers =
+                    [ TextSource.Literal "Segment"
+                      TextSource.Literal "Revenue"
+                      TextSource.Literal "Change" ]
+                Rows =
+                    [ [ TextSource.Literal "Retail"
+                        TextSource.Literal "1200"
+                        TextSource.Literal "+4.1%" ]
+                      [ TextSource.Literal "Wholesale"
+                        TextSource.Literal "980"
+                        TextSource.Literal "-2.3%" ] ]
+                Sortable = Some true
+                Citations =
+                    [ { Column = 1
+                        Label = Some(TextSource.Literal "Retail revenue")
+                        Reference = "fact:retail-revenue"
+                        Row = 0 }
+                      { Column = 2
+                        Label = Some(TextSource.Literal "Wholesale change")
+                        Reference = "fact:wholesale-change"
+                        Row = 1 } ] })
+            .Kind
+        None
+
+/// Phase 2592 — the uncited twin of `table-citation-all`: the member is absent, and the table
+/// is what it has always been on the wire and on the page.
+[<NodeFixture "Visualisation/Grid (Phase 2592 — static table citing nothing)">]
+let tableCitationNone: Node<obj> =
+    node
+        "table-citation-none"
+        (Fuaran.table
+            "table-citation-none"
+            { Defaults.table<obj> with
+                Headers =
+                    [ TextSource.Literal "Channel"
+                      TextSource.Literal "Spend"
+                      TextSource.Literal "Share"
+                      TextSource.Literal "Brands" ]
+                Rows =
+                    [ [ TextSource.Literal "Online"
+                        TextSource.Literal "£412k"
+                        TextSource.Literal "23%"
+                        TextSource.Literal "17" ]
+                      [ TextSource.Literal "Retail"
+                        TextSource.Literal "£1.2m"
+                        TextSource.Literal "67%"
+                        TextSource.Literal "41" ] ] })
             .Kind
         None
 
@@ -7225,6 +7458,41 @@ let opPatchStyleDirectionAuto: TreeOp<obj> =
         { StyleDelta.empty with
             Direction = Some TextDirection.Auto }
     )
+
+/// Phase 2527 — the accessibility trait edit: the whole record, in the same
+/// member order the node envelope's `accessibility` slot writes.
+[<OpFixture "UpdateAccessibility">]
+let opUpdateAccessibility: TreeOp<obj> =
+    TreeOp.UpdateAccessibility(
+        NodeId "metric-1",
+        { Defaults.Accessibility.empty with
+            Label = Some(Binding.Static(Some "Revenue, this quarter"))
+            DescribedBy = Some "metric-1-help"
+            Role = Some AriaRole.Status
+            LiveRegion = Some LiveRegionKind.Polite }
+    )
+
+/// Phase 2527 — a record setting no field is on the wire as `{}`: the edit that
+/// removes the trait, since the absent slot has no other spelling on this op.
+[<OpFixture "UpdateAccessibility (Phase 2527 empty record removes the trait)">]
+let opUpdateAccessibilityEmpty: TreeOp<obj> =
+    TreeOp.UpdateAccessibility(NodeId "metric-1", Defaults.Accessibility.empty)
+
+/// Phase 2527 — the tooltip trait edit. A literal hint is the bare string, the
+/// canonical form the node envelope's `tooltip` slot writes.
+[<OpFixture "UpdateTooltip">]
+let opUpdateTooltip: TreeOp<obj> =
+    TreeOp.UpdateTooltip(NodeId "metric-1", Some(TextSource.Literal "Updated nightly."))
+
+/// Phase 2527 — a non-literal `TextSource` rides the same member.
+[<OpFixture "UpdateTooltip (Phase 2527 i18n)">]
+let opUpdateTooltipI18n: TreeOp<obj> =
+    TreeOp.UpdateTooltip(NodeId "metric-1", Some(TextSource.I18n("metric.help", Map.empty)))
+
+/// Phase 2527 — an absent `tooltip` member is the edit that clears the trait.
+[<OpFixture "UpdateTooltip (Phase 2527 absent member clears the trait)">]
+let opUpdateTooltipClear: TreeOp<obj> =
+    TreeOp.UpdateTooltip(NodeId "metric-1", None)
 
 /// Phase 2291 — every member at once, pinning the alphabetical member order
 /// and `direction`'s lower-case token on this arm.
@@ -8786,6 +9054,62 @@ let gridTonedPillUngrounded: Node<obj> =
         [ columnKindColumn "Department" (Some "dept") CellKindErased.Text
           columnKindColumn "Status" (Some "dept") (columnKindPill "status") ]
 
+
+// ─── Constrained-emitter vectors (Phase 2451 — WIRE_FORMAT §11.4) ────────────
+//
+// What a constrained emitter writes is BYTES: a device compiles its panel in as a
+// constant string of canonical JSON and emits it as its first frame, then emits
+// small ops for the readings that change. So these vectors are authored as the
+// bytes such an emitter writes, and decoded here only so the ordinary registry
+// carries them: the reference encoder re-encodes each one into the corpus, and a
+// vector that is not already canonical changes on that re-encode, which the
+// round-trip leg of every codec host then reports. They are the `panel@1.1`
+// revision's vectors, declared in `Corpus.emitterProfiles`; the `panel@1.0`
+// revision's alias-shim vectors are the `lenient-2451-*` entries of
+// `LenientFixtures.all`. Integers only, and inside the revision's declared subset:
+// the emitter-acceptance leg (`SchemaConformanceTests`) checks both on the
+// committed bytes.
+
+let private emittedNode (bytes: string) : Node<obj> =
+    match Fuaran.UI.Ops.JsonDecode.decodeNodeObj bytes with
+    | Ok n -> n
+    | Error e -> failwithf "emitter vector does not decode: %s at %s (%s)" e.Code e.Path e.Message
+
+let private emittedOp (bytes: string) : TreeOp<obj> =
+    match Fuaran.UI.Ops.JsonDecode.decodeOp bytes with
+    | Ok op -> op
+    | Error e -> failwithf "emitter frame does not decode: %s at %s (%s)" e.Code e.Path e.Message
+
+/// The panel a constrained emitter writes as its first frame: a heading, one
+/// reading, a status badge, a command button and a two-field schedule form.
+[<Literal>]
+let private emitterPanelBytes =
+    """{"id":"emitter-panel","kind":{"$type":"Box","children":[{"id":"panel-title","kind":{"$type":"Heading","level":2,"text":"Cold room 3"}},{"id":"panel-temp","kind":{"$type":"Metric","label":"Temperature","value":{"$type":"Static","value":4}}},{"id":"panel-status","kind":{"$type":"Badge","label":"Cooling","variant":"Success"}},{"id":"panel-defrost","kind":{"$type":"Button","label":"Start defrost","onClick":{"$type":"Dispatch"}}},{"id":"panel-schedule","kind":{"$type":"Form","fields":[{"id":"minutes","kind":{"$type":"Number","value":{"$type":"Static","value":45}},"label":"Minutes","required":true},{"id":"start","kind":{"$type":"DateTime","value":{"$type":"Static","value":"06:00"},"variant":"Time"},"label":"Start at"}],"onSubmit":{"$type":"Dispatch"},"submitLabel":"Schedule"}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}"""
+
+[<NodeFixture "Emitter/panel@1.1 (Phase 2451 — the panel document a constrained emitter writes as its first frame: integers only, inside the declared subset)">]
+let emitterPanel: Node<obj> = emittedNode emitterPanelBytes
+
+[<OpFixture "Emitter-ReplaceRoot">]
+let opEmitterReplaceRoot: TreeOp<obj> =
+    emittedOp ("""{"$type":"ReplaceRoot","node":""" + emitterPanelBytes + "}")
+
+[<OpFixture "Emitter-ReplaceBinding">]
+let opEmitterReplaceBinding: TreeOp<obj> =
+    emittedOp
+        """{"$type":"ReplaceBinding","binding":{"$type":"Static","value":5},"slot":"Value","target":"panel-temp"}"""
+
+[<OpFixture "Emitter-UpdateProp">]
+let opEmitterUpdateProp: TreeOp<obj> =
+    emittedOp """{"$type":"UpdateProp","path":"Label","target":"panel-status","value":"Defrosting"}"""
+
+[<OpFixture "Emitter-InsertChild">]
+let opEmitterInsertChild: TreeOp<obj> =
+    emittedOp
+        """{"$type":"InsertChild","child":{"id":"panel-alarm","kind":{"$type":"Callout","body":"Door open","tone":"Critical"}},"parentId":"emitter-panel"}"""
+
+[<OpFixture "Emitter-RemoveNode">]
+let opEmitterRemoveNode: TreeOp<obj> =
+    emittedOp """{"$type":"RemoveNode","target":"panel-alarm"}"""
 
 /// Every node fixture, read off the `[<NodeFixture>]` attributes on the declarations above
 /// (Phase 2066): a fixture registers where it is declared, so adding one is one edit and this

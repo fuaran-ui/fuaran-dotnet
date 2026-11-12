@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- Package-excluded, like its sibling Fuaran.UI.Ops.Benchmarks: nothing here reaches a pack.
+         The surfaces compile on both pipelines so the solution build keeps them honest; the
+         measurement itself is Fable-only (Bench.fs) and runs in a browser from run.ps1. -->
+    <IsPackable>false</IsPackable>
+    <!-- Feliz sits under the renderer's nullness opt-out, and a Fable entry project's properties
+         govern the whole transpiled graph (the fable-laws rule). -->
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" />
+    <None Include="run.ps1" />
+    <None Include="index.html" />
+    <None Include="main.js" />
+    <None Include="drive.mjs" />
+    <None Include="compare.mjs" />
+    <None Include="vite.config.mts" />
+    <None Include="package.json" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The catalog's own surface declaration, linked rather than copied. -->
+    <Compile Include="..\..\samples\catalog\Matrix.fs" Link="Matrix.fs" />
+    <Compile Include="Surfaces.fs" />
+    <Compile Include="Bench.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.Renderer\Fuaran.UI.Renderer.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <PackageReference Include="Fable.Core" />
+    <PackageReference Include="Feliz" />
+  </ItemGroup>
+</Project>

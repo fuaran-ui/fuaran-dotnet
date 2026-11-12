@@ -7,7 +7,8 @@
     a sample. A transpile proves the client tier COMPILES; it asserts nothing, so a claim about
     behaviour under Fable had nowhere to live and the browser merge — `TreeMerge.merge3Way`, which
     ships in `Fuaran.UI.OpStream.Dag.Merge` and runs in a browser — was demonstrated by example on
-    .NET and certified nowhere.
+    .NET and certified nowhere. Since Phase 2645 the browser merge is `DagMerge.mergeDag`, and law 1 is
+    restated over it.
 
     This project is the assertion side. It compiles on BOTH pipelines and prints the same
     fixed-shape lines on each, so `fable-check.ps1` beside it can run it twice and byte-compare:
@@ -49,6 +50,24 @@
     <Compile Include="Laws.fs" />
     <!-- Law 8 (Phase 1885): a board snapshot reproduces the same data on both pipelines. -->
     <Compile Include="BoardSnapshotLaw.fs" />
+    <!-- Law 9 (Phase 2517): the operable surface and the resolution contract. The cases are
+         the operability/ family's authored inputs, linked from the suite that emits it. -->
+    <Compile Include="..\..\src\Fuaran.UI.Operability.Tests\Cases.fs" Link="OperabilityCases.fs" />
+    <Compile Include="OperabilityLaw.fs" />
+    <!-- Law 10 (Phase 2570): a page signed by the .NET provider verifies through the published
+         ClaimVerifier on both pipelines - the BCL here, WebCrypto under Node. -->
+    <Compile Include="AttestationLaw.fs" />
+    <!-- Law 11 (Phase 2010): the renderer's markdown floor over the cases the .NET suite pins,
+         linked from the suite that runs them there. -->
+    <Compile Include="..\..\src\Fuaran.UI.Tests\SanitizeCases.fs" Link="SanitizeCases.fs" />
+    <Compile Include="SanitizeLaw.fs" />
+    <!-- Law 12 (Phase 2026): the op-stream tier spells a control character the same way on both
+         pipelines, now that every site escapes through Core. -->
+    <Compile Include="EscapeLaw.fs" />
+    <!-- Law 13 (Phase 2318): the AI wire's and the SVG coordinate's float layout, over the cases
+         the .NET suite pins, linked from the suite that runs them there. -->
+    <Compile Include="..\..\src\Fuaran.UI.Tests\FloatLayoutCases.fs" Link="FloatLayoutCases.fs" />
+    <Compile Include="FloatLayoutLaw.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
@@ -63,6 +82,10 @@
     <ProjectReference Include="..\..\src\Fuaran.UI.OpStream.Dag.Merge\Fuaran.UI.OpStream.Dag.Merge.fsproj" />
     <!-- Law 8's subject: the board snapshot, taken and reproduced on both pipelines. -->
     <ProjectReference Include="..\..\src\Fuaran.UI.ServerDriven\Fuaran.UI.ServerDriven.fsproj" />
+    <!-- Law 10's subject: UiWitness.ecdsaP256, the published page verifier. -->
+    <ProjectReference Include="..\..\src\Fuaran.UI.Program\Fuaran.UI.Program.fsproj" />
+    <!-- Law 13's subject: the AI wire writer (DrawingSvg comes with Renderer.Core above). -->
+    <ProjectReference Include="..\..\src\Fuaran.UI.AiWire\Fuaran.UI.AiWire.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />

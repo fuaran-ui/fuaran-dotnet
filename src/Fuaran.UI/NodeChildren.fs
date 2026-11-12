@@ -134,22 +134,25 @@ let private putSlotArgs
 /// holds here in the same change that adds it, or the build fails rather than
 /// every walk silently missing a subtree.
 let private held (kind: NodeKind<'Msg>) : Held<'Msg> =
-    let container (name: string) (children: Node<'Msg> list) (rebuild: Node<'Msg> list -> NodeKind<'Msg>) =
-        Container(name + ".children", children, rebuild >> Some)
+    // The label is passed whole, not built per call: `held` runs at every node a
+    // walk visits.
+    let container (label: string) (children: Node<'Msg> list) (rebuild: Node<'Msg> list -> NodeKind<'Msg>) =
+        Container(label, children, rebuild >> Some)
 
     match kind with
-    | NodeKind.Box s -> container "Box" s.Children (fun cs -> NodeKind.Box { s with Children = cs })
+    | NodeKind.Box s -> container "Box.children" s.Children (fun cs -> NodeKind.Box { s with Children = cs })
     | NodeKind.SplitPanel s ->
-        container "SplitPanel" s.Children (fun cs -> NodeKind.SplitPanel { s with Children = cs })
-    | NodeKind.Tabs s -> container "Tabs" s.Children (fun cs -> NodeKind.Tabs { s with Children = cs })
-    | NodeKind.Stepper s -> container "Stepper" s.Children (fun cs -> NodeKind.Stepper { s with Children = cs })
+        container "SplitPanel.children" s.Children (fun cs -> NodeKind.SplitPanel { s with Children = cs })
+    | NodeKind.Tabs s -> container "Tabs.children" s.Children (fun cs -> NodeKind.Tabs { s with Children = cs })
+    | NodeKind.Stepper s ->
+        container "Stepper.children" s.Children (fun cs -> NodeKind.Stepper { s with Children = cs })
     | NodeKind.SummaryList s ->
-        container "SummaryList" s.Children (fun cs -> NodeKind.SummaryList { s with Children = cs })
+        container "SummaryList.children" s.Children (fun cs -> NodeKind.SummaryList { s with Children = cs })
     | NodeKind.Disclosure s ->
-        container "Disclosure" s.Children (fun cs -> NodeKind.Disclosure { s with Children = cs })
-    | NodeKind.Modal s -> container "Modal" s.Children (fun cs -> NodeKind.Modal { s with Children = cs })
+        container "Disclosure.children" s.Children (fun cs -> NodeKind.Disclosure { s with Children = cs })
+    | NodeKind.Modal s -> container "Modal.children" s.Children (fun cs -> NodeKind.Modal { s with Children = cs })
     | NodeKind.ScrollArea s ->
-        container "ScrollArea" s.Children (fun cs -> NodeKind.ScrollArea { s with Children = cs })
+        container "ScrollArea.children" s.Children (fun cs -> NodeKind.ScrollArea { s with Children = cs })
     | NodeKind.FragmentDecl s ->
         Container(
             "FragmentDecl.body",
@@ -280,7 +283,11 @@ let withOrdered (kind: NodeKind<'Msg>) (children: Node<'Msg> list) : NodeKind<'M
 /// `fallback`, then the kind's arms or arguments. (`StateBehaviour.OnError` is
 /// a function from an error to a node, so there is no node to enumerate until
 /// it is applied.)
-let slots (node: Node<'Msg>) : Slot<'Msg> list =
+///
+/// `withOrdered = false` leaves the ordered list's slots out, so a read that
+/// does not reach the ordered list pays nothing for their labels — the keyed
+/// walk reads a node's non-structural positions at every node it visits.
+let private slotsOf (withOrdered: bool) (node: Node<'Msg>) : Slot<'Msg> list =
     let envelope =
         [ match node.State |> Option.bind _.OnLoading with
           | Some n ->
@@ -302,13 +309,14 @@ let slots (node: Node<'Msg>) : Slot<'Msg> list =
           | None -> () ]
 
     match held node.Kind with
-    | Container(label, children, _) ->
+    | Container(label, children, _) when withOrdered ->
         (children
          |> List.mapi (fun i c ->
-             { Label = sprintf "%s[%d]" label i
+             { Label = label + "[" + string i + "]"
                Position = Position.Ordered
                Node = c }))
         @ envelope
+    | Container _ -> envelope
     | Positions(positions, _) ->
         envelope
         @ (positions
@@ -317,6 +325,9 @@ let slots (node: Node<'Msg>) : Slot<'Msg> list =
                  Position = position
                  Node = n }))
     | Nothing -> envelope
+
+/// Every position `node` holds another node in, in the canonical order above.
+let slots (node: Node<'Msg>) : Slot<'Msg> list = slotsOf true node
 
 /// Rebuild `node` with `replacements` in exactly the positions `slots` names,
 /// in its order. Arity-preserving: a list of any other length answers `node`
@@ -364,7 +375,8 @@ let private replaceAll (node: Node<'Msg>) (replacements: Node<'Msg> list) : Node
 
 /// The positions of `node` inside `reach`, in the canonical order.
 let slotsIn (reach: Reach) (node: Node<'Msg>) : Slot<'Msg> list =
-    slots node |> List.filter (fun s -> Set.contains s.Position reach)
+    slotsOf (Set.contains Position.Ordered reach) node
+    |> List.filter (fun s -> Set.contains s.Position reach)
 
 /// The children of `node` under `reach`, in the canonical order.
 let children (reach: Reach) (node: Node<'Msg>) : Node<'Msg> list = slotsIn reach node |> List.map _.Node

@@ -7,13 +7,12 @@ open Fuaran.UI.Ops.Types
 // ============================================================================
 //  ValidatorGate — semantic merge-conflict detection (Phase 184).
 //
-//  A structurally-clean, NodeId-disjoint merge (Phase 179) can still produce a
-//  DOMAIN-invalid tree: a range violation, a broken cross-ref, a parallel-fifth
-//  (music). Each of those is present in the MERGED tree but in NEITHER parent —
-//  the merge *introduced* it. That is a SEMANTIC conflict, not a clean merge,
-//  and it is surfaced through the existing Phase 179 `MergeConflict` recovery
-//  envelope (the `CombinedCycle` class, which already names exactly this: a
-//  post-merge whole-tree illegality no single op produced).
+//  A structurally clean merge can still produce a DOMAIN-invalid tree: a range
+//  violation, a broken cross-ref, a parallel-fifth (music). Each of those is
+//  present in the MERGED tree but in NEITHER parent — the merge *introduced*
+//  it. That is a SEMANTIC conflict, not a clean merge, and the merge refuses
+//  it with the introduced defects (`ReconcileFault.IntroducedDefects`; the
+//  tree merge's `MergeConflict` envelope retired with it at Phase 2645).
 //
 //  DOMAIN-AGNOSTIC by construction. The merge package never interprets a
 //  defect — it only DIFFS defect sets (merged vs each parent) and lifts the
@@ -114,65 +113,83 @@ module MergePolicy =
         | Some v, false -> MergePolicy.Diagnostic v
 
 module ValidatorGate =
-    /// Diff identity for the introduced-defect test — a defect is "the same"
-    /// across trees iff its `(Code, NodeId, Facet)` matches.
-    let private identity (d: MergeDefect) = d.Code, d.NodeId, d.Facet
+    // Phase 2312 — the diff and the verdict are Core's introduced-findings gate
+    // (`Fuaran.Core.Validator.introducedDefects` / `verdict`), the gate every
+    // other domain's merge reads. A merge defect enters it as a Core `Defect`
+    // whose node is its cell — `(NodeId, Facet)` — so Core's `(code, node)`
+    // identity is this gate's `(Code, NodeId, Facet)`, and as an Error, so an
+    // introduced defect blocks under `Gated` exactly as it always has.
+
+    /// A cell's id key: the node id length-prefixed, then the facet — injective
+    /// and invertible whatever either part contains.
+    let private cellWitness: Fuaran.Core.IdWitness<string * string> =
+        { ToString = fun (nodeId, facet) -> string nodeId.Length + ":" + nodeId + facet
+          OfString =
+            fun key ->
+                let colon = key.IndexOf ':'
+                let length = int (key.Substring(0, colon))
+                key.Substring(colon + 1, length), key.Substring(colon + 1 + length)
+          Equals = fun a b -> a = b }
+
+    let private toDefect (d: MergeDefect) : Fuaran.Core.Defect<string * string> =
+        { Code = d.Code
+          Severity = Fuaran.Core.Severity.Error
+          Message = d.Message
+          Node = Some(d.NodeId, d.Facet)
+          Family = ""
+          Related = [] }
+
+    let private ofDefect (d: Fuaran.Core.Defect<string * string>) : MergeDefect =
+        let nodeId, facet = d.Node |> Option.defaultValue ("", "")
+
+        { Code = d.Code
+          NodeId = nodeId
+          Facet = facet
+          Message = d.Message }
 
     /// Defects present in `merged` but in NEITHER parent — the ones the merge
     /// INTRODUCED (a defect already present in a parent was not caused by the
-    /// merge, so it is carried through, never flagged). Sorted canonically.
+    /// merge, so it is carried through, never flagged), diffed by Core's
+    /// `introducedDefects` with both parents as the baselines. Sorted
+    /// canonically.
     let introducedDefects<'Msg>
         (validator: MergeValidator<'Msg>)
         (parentA: Node<'Msg>)
         (parentB: Node<'Msg>)
         (merged: Node<'Msg>)
         : MergeDefect list =
-        let parentKeys =
-            Set.union
-                (validator parentA |> List.map identity |> Set.ofList)
-                (validator parentB |> List.map identity |> Set.ofList)
+        let run tree = validator tree |> List.map toDefect
 
-        validator merged
-        |> List.filter (fun d -> not (Set.contains (identity d) parentKeys))
+        Fuaran.Core.Validator.introducedDefects cellWitness [ run parentA; run parentB ] (run merged)
+        |> List.map ofDefect
         |> MergeDefect.sortCanonical
 
-    /// Lift an introduced defect into the Phase 179 `MergeConflict` envelope.
-    /// Class is `CombinedCycle` (post-merge whole-tree illegality); the
-    /// validator's `Code` rides in `Base` (so the recovery pattern-match reuses
-    /// it) and the human-readable description in `SecondaryTag`. There is no
-    /// three-up authorship — both parents are defect-free for this cell by
-    /// construction, so `KeepBase` (abandon the merge for this cell) is the
-    /// enumerated recovery. For the same reason the two-sided `A` / `B` slots
-    /// (Phase 1497) are empty: this refusal is a property of the MERGED tree that
-    /// neither branch exhibits, so there is no per-side value to report and
-    /// inventing one would name a side that did nothing wrong.
-    let toConflict (d: MergeDefect) : MergeConflict =
-        { NodeId = d.NodeId
-          Facet = d.Facet
-          Class = MergeConflictClass.CombinedCycle
-          Base = d.Code
-          A = None
-          B = None
-          Primary = None
-          Secondary = None
-          SecondaryTag = Some d.Message
-          PrimacyHeld = false
-          Choices = [ MergeChoice.KeepBase ]
-          Hint = ApplyHint.empty }
+    /// Core's gate verdict over a merge under `policy`: `Lenient` runs no
+    /// validator and blocks nothing; `Diagnostic` reports the introduced defects
+    /// and blocks nothing; `Gated` reports them and blocks on any. The defects
+    /// are `introducedDefects`'s, in canonical order.
+    let verdict<'Msg>
+        (policy: MergePolicy<'Msg>)
+        (parentA: Node<'Msg>)
+        (parentB: Node<'Msg>)
+        (merged: Node<'Msg>)
+        : MergeDefect list * bool =
+        let gatePolicy, introduced =
+            match policy with
+            | MergePolicy.Lenient -> Fuaran.Core.Validator.GatePolicy.Lenient, []
+            | MergePolicy.Gated validator ->
+                Fuaran.Core.Validator.GatePolicy.Gated, introducedDefects validator parentA parentB merged
+            | MergePolicy.Diagnostic validator ->
+                Fuaran.Core.Validator.GatePolicy.Diagnostic, introducedDefects validator parentA parentB merged
 
-    /// Mirror of `CanonicalJson`'s string escape (only `"`, `\`, control chars
-    /// need escaping for our ASCII defect fields), kept local so the merge
-    /// package takes no extra dependency for the verdict codec.
+        let v = Fuaran.Core.Validator.verdict gatePolicy (introduced |> List.map toDefect)
+        v.Introduced |> List.map ofDefect |> MergeDefect.sortCanonical, v.Blocked
+
+    /// A string as a JSON string literal, through Core's canonical escape
+    /// (Phase 2026) — the escape every other op-stream encoder uses.
     let private appendEscaped (sb: StringBuilder) (s: string) : unit =
         sb.Append '"' |> ignore
-
-        for ch in s do
-            match ch with
-            | '"' -> sb.Append "\\\"" |> ignore
-            | '\\' -> sb.Append "\\\\" |> ignore
-            | c when c < ' ' -> sb.Append(sprintf "\\u%04x" (int c)) |> ignore
-            | c -> sb.Append c |> ignore
-
+        Fuaran.Core.Json.escapeInto sb s
         sb.Append '"' |> ignore
 
     /// Canonical JSON of a gated-merge VERDICT: the introduced-defect set as a

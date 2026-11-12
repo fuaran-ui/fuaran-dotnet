@@ -52,7 +52,8 @@ let private gridWithStaticRows (id: string) (rows: int) : Node<Msg> =
                     { spec with
                         StaticRows =
                             Some
-                                { DefaultSort = None
+                                { Citations = []
+                                  DefaultSort = None
                                   Headers = [ TextSource.Literal "n" ]
                                   Rows = [ for i in 1..rows -> [ TextSource.Literal(string i) ] ]
                                   Sortable = None } } }

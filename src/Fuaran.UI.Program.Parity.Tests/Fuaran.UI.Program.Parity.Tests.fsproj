@@ -17,9 +17,10 @@
   <ItemGroup>
     <Compile Include="ParityTests.fs" />
     <!-- Phase 1715 — the differential host for the proved bounded fold and budget. It
-         references the oracle project under proofs/program/, which holds the copied F*
-         extractions (declared in copies.json); nothing packs it and nothing but this suite
-         consumes it. -->
+         references the oracle project under proofs/program/, which holds the program
+         repository's F* extractions, held byte-identical to its pinned release asset by
+         proofs/check.ps1 -Leg program (Phase 2383); nothing packs it and nothing but the
+         program suites consume it. -->
     <Compile Include="ProofOracleTests.fs" />
     <!-- Phase 2103 - the tree wire corpus's lowers-to/ family (WIRE_FORMAT.md section 30): every UI
          action arm's lowering onto the bounded core, read through the UI witness's view. -->

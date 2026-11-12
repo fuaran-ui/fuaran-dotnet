@@ -301,6 +301,15 @@ type PreEmitDefect =
     /// mistake: plot one share column, or switch kind. Carries the node id and
     /// the series count.
     | ChartPieSeriesShape of nodeId: string * seriesCount: int
+    /// **FUARAN168 (Error)**. A `Chart` leaves `YFields` EMPTY over a source
+    /// that is not a `Binding.Query` (Phase 2568, WIRE_FORMAT §3.6.29). An empty
+    /// list means "every numeric column of the bound rows but `XField`, named by
+    /// column" — the shape a stored page's chart takes when its resolver names the
+    /// series (the subjects of a trend, the dates of a comparison). Over inline
+    /// rows, or any binding the tree feeds itself, the columns are the author's
+    /// own and are named by writing them: an empty list there is a chart whose
+    /// series nobody stated. Carries the node id and the source's binding case.
+    | ChartSeriesUnnamed of nodeId: string * found: string
     /// **FUARAN089 (Warning)**. `Stacked = true` on a `ChartKind` where
     /// stacking is meaningless (`Line` / `Scatter` / `Pie`) — the lowering
     /// ignores the flag (Phase 637), so the emission carries dead intent;
@@ -1679,6 +1688,29 @@ type PreEmitDefect =
     ///
     /// Carries the callout node's id and its tone name.
     | SilentUrgentCallout of nodeId: string * tone: string
+    /// **FUARAN166 (Error)**. Inside a page document (Phase 2522, WIRE_FORMAT
+    /// §32), a data-bearing slot whose binding is not a `Binding.Query` naming
+    /// one of the page's requests. The data-bearing slots are a `Chart`'s
+    /// `source`, a `DataGrid`'s `source` and `rowTotal`, a `Metric`'s `value`,
+    /// `trend` and each comparison's `value`, and a `Sparkline`'s `source`. A
+    /// page's numbers come from its request sidecar, resolved by the host at
+    /// render, so a source bound to state, a selection, a transform or a query
+    /// the sidecar does not hold is a number the page's signed read-set does
+    /// not describe. Raised only by the page-document mode (`validatePage`,
+    /// `pageRuleDefects`); an ordinary tree is not judged.
+    ///
+    /// Carries the node id, its wire kind, the slot, and what was found there
+    /// (the binding's case, or the query and the fact that no request holds it).
+    | PageSourceNotRequest of nodeId: string * kind: string * slot: string * found: string
+    /// **FUARAN167 (Error)**. Inside a page document (Phase 2522, WIRE_FORMAT
+    /// §32), a data-bearing slot carrying inline data: a `Binding.Static` with a
+    /// value, or a `DataGrid`'s `staticRows`. Refused because inline rows are
+    /// numbers the tree carries itself, outside every request, so the host
+    /// resolves nothing for them and the read-set cannot name them. Raised only
+    /// by the page-document mode.
+    ///
+    /// Carries the node id, its wire kind and the slot.
+    | PageInlineRows of nodeId: string * kind: string * slot: string
 
     /// **FUARAN137 (Error)**. A chart annotation whose value is NON-FINITE —
     /// NaN, or either infinity (Phase 1490, §4l).
@@ -2340,6 +2372,13 @@ module DefectCodes =
               "Phases 638, 640"
           )
           row (
+              "ChartSeriesUnnamed",
+              "FUARAN168",
+              Severity.Error,
+              "chart '{nodeId}' leaves yFields empty over {found} — an empty yFields reads its series off a Query's rows (every numeric column but xField, named by column), so it is admitted only over a Binding.Query; name the series this source carries in yFields (Phase 2568)",
+              "Phase 2568"
+          )
+          row (
               "ChartStackedMeaningless",
               "FUARAN089",
               Severity.Warning,
@@ -2870,6 +2909,20 @@ module DefectCodes =
               Severity.Warning,
               "{tone} callout '{nodeId}' will not be announced — it declares no live region or announcing role (or switches the live region off, or is hidden), so a screen-reader user is never told about it; give it accessibility.liveRegion = assertive and role = alert (Defaults.Accessibility.callout), or build it with Fuaran.callout (Phase 2157)",
               "Phase 2157"
+          )
+          row (
+              "PageSourceNotRequest",
+              "FUARAN166",
+              Severity.Error,
+              "{kind} '{nodeId}' {slot} is {found}, not a Binding.Query naming one of the page's requests — inside a page document every data-bearing source names a request in the sidecar, which the host resolves and the signed read-set describes; bind the slot as a Binding.Query on a request key and add the request (Phase 2522)",
+              "Phase 2522"
+          )
+          row (
+              "PageInlineRows",
+              "FUARAN167",
+              Severity.Error,
+              "{kind} '{nodeId}' {slot} carries inline data — a page document's numbers come from its requests, never from the tree, so the read-set cannot name inline rows; move the data behind a request and bind the slot as a Binding.Query on its key (Phase 2522)",
+              "Phase 2522"
           ) ]
 
     let private byVariant: Map<string, DefectCodeRow> =
@@ -3020,6 +3073,17 @@ module Finding =
     let withRemedy (remedy: string) (finding: Finding<'Location>) : Finding<'Location> =
         { finding with Remedy = Some remedy }
 
+    /// The finding with its §4d recovery stated: the names that would have
+    /// resolved, and the repair when there is one.
+    let withRecovery
+        (available: string list)
+        (remedy: string option)
+        (finding: Finding<'Location>)
+        : Finding<'Location> =
+        { finding with
+            AvailableFields = Some available
+            Remedy = remedy }
+
     /// The finding raised at `severity` rather than its code's default — for the two
     /// codes whose severity depends on how the check was run.
     let withSeverity (severity: Severity) (finding: Finding<'Location>) : Finding<'Location> =
@@ -3027,6 +3091,32 @@ module Finding =
 
     /// Whether the finding is a fault, the one severity that fails a run.
     let isError (finding: Finding<'Location>) : bool = finding.Severity = Severity.Error
+
+    /// Phase 2312 — THE lowering of a finding into Core's guided finding
+    /// (`Fuaran.Core.Validator.Finding`, fuaran-core#489): the code, severity and
+    /// message become the `Defect`, `locate` names its node (`None` for a finding
+    /// about the whole subject), and the §4d recovery fields ride as the guidance —
+    /// the remedy as its `Message` (`""` where none is stated), the available
+    /// fields as its `Alternatives`. A finding stating neither is unguided. Every
+    /// UI finding reaches Core's gates, judges and summaries through this one
+    /// function; a pre-emit defect enters it through `findingOf`.
+    let toCore (locate: 'Location -> 'Id option) (finding: Finding<'Location>) : Validator.Finding<'Id> =
+        let defect: Defect<'Id> =
+            { Code = finding.Code
+              Severity = finding.Severity
+              Message = finding.Message
+              Node = locate finding.Location
+              Family = ""
+              Related = [] }
+
+        match finding.Remedy, finding.AvailableFields with
+        | None, None -> Validator.Finding.ofDefect defect
+        | remedy, available ->
+            let guidance: RejectionGuidance =
+                { Message = defaultArg remedy ""
+                  Alternatives = defaultArg available [] }
+
+            Validator.Finding.guided guidance defect
 
 /// The codes of the lint, query-binding and build-time families — with
 /// `DefectCodes.table`, the one registry of `FUARAN*` codes. A check refers to the value;
@@ -3271,6 +3361,7 @@ let private describeArgs (d: PreEmitDefect) : string * (string * string) list =
         [ "nodeId", nodeId; "subject", subject; "fromText", fromText; "toText", toText ]
     | PreEmitDefect.ChartPieSeriesShape(nodeId, seriesCount) ->
         "ChartPieSeriesShape", [ "nodeId", nodeId; "seriesCount", string seriesCount ]
+    | PreEmitDefect.ChartSeriesUnnamed(nodeId, found) -> "ChartSeriesUnnamed", [ "nodeId", nodeId; "found", found ]
     | PreEmitDefect.ChartStackedMeaningless(nodeId, kind) ->
         "ChartStackedMeaningless", [ "nodeId", nodeId; "kind", kind ]
     | PreEmitDefect.InertEditableGrid nodeId -> "InertEditableGrid", [ "nodeId", nodeId ]
@@ -3475,6 +3566,10 @@ let private describeArgs (d: PreEmitDefect) : string * (string * string) list =
         "ActionColumnField", [ "nodeId", nodeId; "columnLabel", columnLabel; "field", field ]
     | PreEmitDefect.MultiSelectValueIgnored nodeId -> "MultiSelectValueIgnored", [ "nodeId", nodeId ]
     | PreEmitDefect.SilentUrgentCallout(nodeId, tone) -> "SilentUrgentCallout", [ "nodeId", nodeId; "tone", tone ]
+    | PreEmitDefect.PageSourceNotRequest(nodeId, kind, slot, found) ->
+        "PageSourceNotRequest", [ "nodeId", nodeId; "kind", kind; "slot", slot; "found", found ]
+    | PreEmitDefect.PageInlineRows(nodeId, kind, slot) ->
+        "PageInlineRows", [ "nodeId", nodeId; "kind", kind; "slot", slot ]
 
 /// Render a defect as its stable (code, severity, message) triple — the ONE
 /// projection every consumer shares (the .NET validator oracle, certification
@@ -4974,6 +5069,24 @@ module private FormRules =
             defects.Add(PreEmitDefect.CaptureAcceptMismatch(n.Id, string source, spec.Accept))
         | _ -> ()
 
+/// A binding's case as a finding names it ("a State binding", "inline rows").
+let private bindingCaseName (b: Binding<'T>) : string =
+    match b with
+    | Binding.Static(Some _) -> "inline rows (a Static binding)"
+    | Binding.Static None -> "an empty Static binding"
+    | Binding.Query _ -> "a Query binding"
+    | Binding.Filter _ -> "a Filter binding"
+    | Binding.Selection _ -> "a Selection binding"
+    | Binding.State _ -> "a State binding"
+    | Binding.Now _ -> "a Now binding"
+    | Binding.Computed _ -> "a Computed binding"
+    | Binding.Local _ -> "a Local binding"
+    | Binding.Format _ -> "a Format binding"
+    | Binding.I18n _ -> "an I18n binding"
+    | Binding.Transform _ -> "a Transform binding"
+    | Binding.Expr _ -> "an Expr binding"
+    | Binding.Invoke _ -> "an Invoke binding"
+
 /// `Chart`: schema grounding of fields and annotations against the source it lowers.
 module private ChartRules =
 
@@ -4995,10 +5108,20 @@ module private ChartRules =
             | ChartKind.Scatter -> "Scatter"
             | ChartKind.Heatmap -> "Heatmap"
 
+        // FUARAN168 — an empty YFields derives its series from a Query's rows
+        // (Phase 2568) and is admitted over nothing else.
+        (match spec.YFields, spec.Source with
+         | [], Binding.Query _ -> ()
+         | [], other -> defects.Add(PreEmitDefect.ChartSeriesUnnamed(nodeIdStr, bindingCaseName other))
+         | _ -> ())
+
         // FUARAN088 — pie needs exactly one series (the 638 lowering
-        // refuses multi-series geometry rather than truncating).
+        // refuses multi-series geometry rather than truncating). A derived list
+        // (an empty YFields, Phase 2568) is counted only when the rows arrive,
+        // so it is not judged here: the lowering refuses a pie it derives
+        // other than one series for.
         (match spec.Kind with
-         | ChartKind.Pie when spec.YFields.Length <> 1 ->
+         | ChartKind.Pie when spec.YFields.Length > 1 ->
              defects.Add(PreEmitDefect.ChartPieSeriesShape(nodeIdStr, spec.YFields.Length))
          | _ -> ())
 
@@ -6412,6 +6535,82 @@ let validateWithFacts
 let validateWith (options: ValidateOptions) (node: Node<'Msg>) : Result<unit, PreEmitDefect list> =
     validateLocated options (BindingWalk.collect node) node |> fst |> asResult
 
+// ─── The page-document mode (Phase 2522, WIRE_FORMAT §32) ────────────────────
+//
+// A page document is a tree plus a sidecar of requests keyed by string, and its
+// safety rests on two rules the ordinary walk does not judge, because an
+// ordinary tree may legitimately carry its own rows: every data-bearing slot is
+// a `Binding.Query` naming a request in the sidecar (FUARAN166), and no
+// data-bearing slot carries inline data (FUARAN167). The data-bearing slots are
+// the four kinds' value-carrying positions and no others; a `Text` bound to a
+// query is a label, and the document's decoder already holds every query in the
+// tree to the sidecar.
+
+/// What a binding is, as the page rules name it.
+/// A `Static` here is the empty one: `pageSlotDefects` judges a valued `Static`
+/// as inline rows (FUARAN167) before asking this.
+let private pageBindingFound (b: Binding<'T>) : string =
+    match b with
+    | Binding.Static _ -> "an empty Static binding"
+    | Binding.Query(name, _, _) -> "a Query on '" + name + "', which names no request in the sidecar"
+    | other -> bindingCaseName other
+
+/// The page rules over ONE node's data-bearing slots.
+let private pageSlotDefects (requestKeys: Set<string>) (n: Node<'Msg>) : PreEmitDefect list =
+    let kind = wireKindName n.Kind
+
+    let judge (slot: string) (b: Binding<'T>) : PreEmitDefect list =
+        match b with
+        | Binding.Query(name, _, _) when Set.contains name requestKeys -> []
+        | Binding.Static(Some _) -> [ PreEmitDefect.PageInlineRows(n.Id, kind, slot) ]
+        | other -> [ PreEmitDefect.PageSourceNotRequest(n.Id, kind, slot, pageBindingFound other) ]
+
+    match n.Kind with
+    | NodeKind.Chart spec -> judge "source" spec.Source
+    | NodeKind.Sparkline spec -> judge "source" spec.Source
+    | NodeKind.Metric spec ->
+        judge "value" spec.Value
+        @ (spec.Trend |> Option.map (judge "trend") |> Option.defaultValue [])
+        @ (spec.Comparisons
+           |> List.mapi (fun i c -> judge (sprintf "comparisons[%d].value" i) c.Value)
+           |> List.concat)
+    | NodeKind.DataGrid spec ->
+        // A grid holding `staticRows` is one inline-data finding, not two: its
+        // `source` is then the empty slot the static form leaves.
+        let rows =
+            match spec.StaticRows with
+            | Some _ -> [ PreEmitDefect.PageInlineRows(n.Id, kind, "staticRows") ]
+            | None -> judge "source" spec.Source
+
+        rows
+        @ (spec.RowTotal |> Option.map (judge "rowTotal") |> Option.defaultValue [])
+    | _ -> []
+
+/// The two page-document rules alone (FUARAN166, FUARAN167), over every node the
+/// tree holds at any position — the ordered children, the arms, the state
+/// alternatives, the fallback and slot arguments — in depth-first pre-order.
+/// `requestKeys` is the page's sidecar key set.
+let pageRuleDefects (requestKeys: Set<string>) (node: Node<'Msg>) : PreEmitDefect list =
+    let acc = ResizeArray<PreEmitDefect>()
+
+    let rec walk (n: Node<'Msg>) =
+        acc.AddRange(pageSlotDefects requestKeys n)
+        NodeChildren.children NodeChildren.Reach.keyed n |> List.iter walk
+
+    walk node
+    List.ofSeq acc
+
+/// The page-document mode: `validateWith options` over the tree, then the two
+/// page rules (`pageRuleDefects`) under the page's sidecar key set, every
+/// defect of both in one list.
+let validatePage
+    (options: ValidateOptions)
+    (requestKeys: Set<string>)
+    (node: Node<'Msg>)
+    : Result<unit, PreEmitDefect list> =
+    let ordinary = validateLocated options (BindingWalk.collect node) node |> fst
+    asResult (ordinary @ pageRuleDefects requestKeys node)
+
 
 /// Walk `node` (depth-first, pre-order) and surface every pre-emit defect.
 /// Returns `Ok ()` on a clean tree; `Error defects` carries every defect
@@ -6512,6 +6711,54 @@ let validateWithMeter (meter: HostLimitMeter) (node: Node<'Msg>) : Result<unit, 
 /// `HostLimits.unbounded` the result is byte-for-byte `validate`'s.
 let validateWithLimits (limits: HostLimits) (node: Node<'Msg>) : Result<unit, PreEmitDefect list> =
     validateWithMeter (HostLimitMeter limits) node
+
+// ── Phase 2312 — the pre-emit walk as Core sees it ──────────────────────────
+//
+// A pre-emit defect enters the tier's one finding shape (`Finding`) here, and
+// leaves for Core only through `Finding.toCore`. The recipe certification and
+// the fast-path law support drive Core's `verifyFunction` with this walk as
+// their validity oracle; both read it through `ruleFamily` / `toDefect`, never
+// through a lowering of their own.
+
+/// The code-table arguments that name the node a defect is about, most specific
+/// first. A defect naming none (an empty id, a duplicate write-back key judged
+/// across writers) is about the whole tree.
+let private nodeArguments =
+    [ "nodeId"; "readerNodeId"; "declaringNodeId"; "firstNodeId" ]
+
+/// A pre-emit defect in the tier's one finding shape, located at the node its
+/// code-table arguments name (`None` when it names none). The code, severity and
+/// message are exactly `describe`'s.
+let findingOf (d: PreEmitDefect) : Finding<string option> =
+    let _, args = describeArgs d
+    let code, severity, message = describe d
+
+    { Code = code
+      Severity = severity
+      Location =
+        nodeArguments
+        |> List.tryPick (fun name -> List.tryFind (fst >> (=) name) args |> Option.map snd)
+      Message = message
+      Remedy = None
+      AvailableFields = None }
+
+/// A pre-emit defect as Core's `Defect`, its node read through `locate` — the
+/// one lowering (`Finding.toCore` over `findingOf`), for a caller that keys
+/// nodes other than by the raw id string.
+let toDefect (locate: string option -> 'Id option) (d: PreEmitDefect) : Defect<'Id> =
+    (Finding.toCore locate (findingOf d)).Defect
+
+/// The pre-emit walk as ONE Core rule family over the tree, its findings lowered
+/// by `toDefect locate` — the validity oracle Core's `verifyFunction` drives. The
+/// witness is unused: the walk reaches every node the language holds, keyed
+/// positions included, which a structural witness does not report.
+let ruleFamily<'Msg, 'Id> (locate: string option -> 'Id option) : RuleFamily<Node<'Msg>, 'Id> =
+    { Id = "Fuaran.UI.PreEmitValidate"
+      Run =
+        fun _ root ->
+            match validate root with
+            | Ok() -> []
+            | Error defects -> defects |> List.map (toDefect locate) }
 
 // ── Phase 1889 — the binding-check report: every chart and grid, graded ──
 //

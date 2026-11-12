@@ -131,7 +131,9 @@ type IOpStreamSink<'Msg> =
     abstract member Replay: streamId: string * fromSequence: int * toSequence: int -> Async<OpRecord<'Msg> list>
 
     /// Highest sequence number observed in `streamId`; `0` if the stream
-    /// has no records yet. (Sequences begin at `1`.)
+    /// has no records yet. (Sequences begin at `1`.) A stream compacted through
+    /// its head still reports the head's sequence, read from the checkpoint the
+    /// compaction kept there (Phase 1937, D30) — never `0`.
     abstract member LatestSequence: streamId: string -> Async<int>
 
     /// Distinct stream ids the sink currently holds records for. Order
@@ -191,7 +193,9 @@ type IOpStreamCasSink<'Msg> =
     inherit IOpStreamSink<'Msg>
 
     /// The chain hash of the record at `LatestSequence`, or
-    /// `HashChain.genesisPreviousHash` when the stream is empty. This is the
+    /// `HashChain.genesisPreviousHash` when the stream is empty. A stream
+    /// compacted through its head reports the hash that record had, read from
+    /// the checkpoint the compaction kept at the head (Phase 1937, D30). This is the
     /// value a caller passes as `expectedHead` below, and the value
     /// `CasAppendOutcome.StaleHead` reports as `actual`.
     abstract member Head: streamId: string -> Async<string>
@@ -277,10 +281,11 @@ type IOpStreamCompactSink<'Msg> =
     /// with `Sequence < throughSequence`, in one atomic step. Returns
     /// `(opsRemoved, checkpointsRemoved)`.
     ///
-    /// Any index the sink keeps beside the log — an invocation-key map, a
-    /// content index — is compacted with the records it names, so a key whose
-    /// record is gone cannot answer a later lookup with a receipt naming
-    /// nothing.
+    /// The invocation keys of the removed records are KEPT (Phase 1937, D30,
+    /// reversing Phase 1525 L-A15): a retried keyed append whose first attempt
+    /// landed below the boundary answers `Duplicate` with that attempt's receipt
+    /// rather than writing the op twice. Removing the head record is refused
+    /// unless a checkpoint at the head holds the boundary.
     abstract member Compact: streamId: string * throughSequence: int -> Async<int * int>
 
 // ============================================================================

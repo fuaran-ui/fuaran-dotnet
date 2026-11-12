@@ -27,7 +27,6 @@
 //  the AI from speculatively addressing fields the engine can't apply.
 // ============================================================================
 
-open System.Collections.Generic
 open Fuaran.UI.Types
 
 module NodeChildren = Fuaran.UI.NodeChildren
@@ -332,8 +331,6 @@ let getChildren (kind: NodeKind<'Msg>) : Node<'Msg> list option = NodeChildren.o
 let withChildren (kind: NodeKind<'Msg>) (children: Node<'Msg> list) : NodeKind<'Msg> option =
     NodeChildren.withOrdered kind children
 
-// ─── Tree traversal ────────────────────────────────────────────────────────
-
 // ─── Non-structural node positions ─────────────────────────────────────────
 //
 // `getChildren` answers ONE question — which kinds accept the structural ops —
@@ -426,92 +423,6 @@ let replaceNonStructuralPosition (node: Node<'Msg>) (label: string) (replacement
     else
         None
 
-let rec findNode (target: NodeId) (node: Node<'Msg>) : Node<'Msg> option =
-    // The op layer addresses by `NodeId`; `Node.Id` is a bare string since the
-    // swap — unwrap at the comparison.
-    let (NodeId targetRaw) = target
-
-    if node.Id = targetRaw then
-        Some node
-    else
-        descendantNodes node |> List.tryPick (findNode target)
-
-/// The OUTERMOST non-structural position on the path from `root` down to
-/// `target` (Phase 1666): the holder's id, the slot label, the position's own
-/// subtree, and whether `target` IS that subtree's root.
-///
-/// `None` means `target` is reachable from `root` through structural children
-/// alone OR is absent from the tree entirely — the two are told apart by
-/// `findNode`, and callers need that distinction because they report different
-/// errors. Outermost rather than nearest, deliberately: a caller descending into
-/// the position and re-running its own walk reaches a nested position on the
-/// next turn, so one level per call composes; naming the innermost would
-/// require the caller to know the path it was about to take.
-let nonStructuralAncestor (target: NodeId) (root: Node<'Msg>) : (NodeId * string * Node<'Msg> * bool) option =
-    let (NodeId targetRaw) = target
-
-    let rec walk (node: Node<'Msg>) : (NodeId * string * Node<'Msg> * bool) option =
-        // Structural children FIRST: a target reachable structurally has no
-        // non-structural ancestor, whatever this node's own positions hold.
-        match getChildren node.Kind |> Option.defaultValue [] |> List.tryPick walk with
-        | Some hit -> Some hit
-        | None ->
-            nonStructuralPositions node
-            |> List.tryPick (fun (label, positioned) ->
-                if findNode target positioned |> Option.isSome then
-                    Some(NodeId node.Id, label, positioned, positioned.Id = targetRaw)
-                else
-                    None)
-
-    walk root
-
-/// The node whose STRUCTURAL child list holds `target`, and `target`'s index in
-/// it — searched through every node `reach` descends to. `None` for the root, for
-/// a target not present, and for a target held directly in a keyed position
-/// (it has no structural parent).
-///
-/// The reach decides only how far the SEARCH goes; the parent found is always a
-/// structural container, so an index names a place in its own child list.
-/// `NodeChildren.Reach.structural` walks the structural spine alone;
-/// `NodeChildren.Reach.keyed` also finds a container held below a keyed
-/// position — a `Box` in a `Switch` case, say — which the structural ops reach
-/// by descending into the position.
-let findParentWithin (reach: NodeChildren.Reach) (target: NodeId) (root: Node<'Msg>) : (Node<'Msg> * int) option =
-    let (NodeId targetRaw) = target
-
-    let rec walk (node: Node<'Msg>) =
-        let here =
-            getChildren node.Kind
-            |> Option.bind (fun children ->
-                children
-                |> List.tryFindIndex (fun c -> c.Id = targetRaw)
-                |> Option.map (fun i -> node, i))
-
-        match here with
-        | Some hit -> Some hit
-        | None -> NodeChildren.children reach node |> List.tryPick walk
-
-    walk root
-
-/// `findParentWithin` over the structural spine alone: `Some (parent,
-/// indexOfTarget)` when `target` is a structural child of a node reachable from
-/// `root` through structural children.
-let findParent (target: NodeId) (root: Node<'Msg>) : (Node<'Msg> * int) option =
-    findParentWithin NodeChildren.Reach.structural target root
-
-let rec allNodeIds (node: Node<'Msg>) : NodeId list =
-    // `descendantNodes`, not `getChildren`: id enumeration must see the WHOLE
-    // tree, including nodes held in positions the structural ops cannot edit.
-    NodeId node.Id :: (descendantNodes node |> List.collect allNodeIds)
-
-/// DFS-add every NodeId in `node`'s subtree to `acc`, over the whole
-/// traversal surface (`descendantNodes`). No intermediate list.
-let rec collectNodeIdsInto (acc: HashSet<NodeId>) (node: Node<'Msg>) : unit =
-    acc.Add(NodeId node.Id) |> ignore
-
-    for c in descendantNodes node do
-        collectNodeIdsInto acc c
-
 // ─── The tier's Fuaran.Core witnesses (Phase 2038) ────────────────────────
 //
 // The structural apply delegates to Fuaran.Core.Ops, which reads the tree
@@ -543,6 +454,14 @@ let idWitness: Fuaran.Core.IdWitness<NodeId> =
       OfString = NodeId
       Equals = (=) }
 
+/// A READ-ONLY witness whose `Children` is `reach` — for Core's read walks
+/// (`Tree.ids`, `Tree.tryPick`) at a reach the two witnesses above do not
+/// spell. Its `ReplaceChildren` is the structural one, which does not
+/// round-trip this `Children`, so it is never handed to a rebuild.
+let private readingAt (reach: NodeChildren.Reach) : Fuaran.Core.NodeWitness<Node<'Msg>, NodeId> =
+    { nodeWitness with
+        Children = NodeChildren.children reach }
+
 /// The tier's `KeyedWitness`: every position `nodeWitness.Children` does not
 /// report — the `state` alternatives, the envelope `fallback`, the
 /// error-boundary and switch arms, slot arguments — read and written through
@@ -562,132 +481,137 @@ let keyedWitness<'Msg> : Fuaran.Core.KeyedWitness<Node<'Msg>, NodeId> =
                 Some(NodeChildren.replace NodeChildren.Reach.nonStructural n ({ first with Id = id } :: rest))
       IdsUnique =
         fun n ->
-            let ids = allNodeIds n
+            let ids = Fuaran.Core.Tree.ids (readingAt NodeChildren.Reach.keyed) n
             List.length (List.distinct ids) = List.length ids }
 
-/// DFS collect every NodeId whose kind reports `field` in its
-/// `availableFields` list. Used to populate the §4d
-/// `hint.nodes_with_<field>_field` payload so the AI can pivot to a
-/// different addressable node.
-let nodesWithField (field: string) (root: Node<'Msg>) : NodeId list =
-    let rec walk (node: Node<'Msg>) =
-        let here =
-            if availableFields node.Kind |> List.contains field then
-                [ NodeId node.Id ]
-            else
-                []
+// ─── The whole-tree walks are Fuaran.Core's (Phase 2060) ──────────────────
+//
+// Every lookup below is a Fuaran.Core.Tree combinator over `walk`, Core's
+// `Tree.traversal` of the two witnesses above — the same walk Core's keyed
+// engine locates through when it applies a structural op. None of them is a
+// walker of its own: what stays local is the witnesses and the questions.
+//
+// ORDER (decided in Phase 2060). Core's traversal visits a node's KEYED
+// positions before its structural children; the tier's own walks visited them
+// the other way round. On a tree whose ids are unique — every tree §8.1
+// admits — the order is unobservable. On a tree that holds one id twice (the
+// decoder judges shape and admits one) it decides WHICH node an id names, and
+// the structural ops, which locate through Core, already answered keyed-first
+// while `findNode` and `mapNode` answered structural-first: one op stream could
+// edit one copy with `UpdateProp` and move the other with `MoveNode`. So every
+// lookup here answers as Core does, keyed-first — one answer per tree to "which
+// node is this id", pinned by the repeated-id case in `CoreWalkAdoptionTests`.
 
-        let below =
-            match getChildren node.Kind with
-            | None -> []
-            | Some children -> children |> List.collect walk
+/// Core's keyed walk over the tier's witnesses: a node's children are its
+/// keyed positions, then its structural list.
+let private walk<'Msg> : Fuaran.Core.NodeWitness<Node<'Msg>, NodeId> =
+    Fuaran.Core.Tree.traversal nodeWitness keyedWitness
 
-        here @ below
+/// The node carrying `target`, over every position the tree holds a node in.
+let findNode (target: NodeId) (node: Node<'Msg>) : Node<'Msg> option =
+    Fuaran.Core.Tree.tryFind walk idWitness target node
 
-    walk root
-
-/// DFS map over the tree, replacing the node with `target` id by applying
-/// `replace` to it. Returns the new root, or `None` if `target` was not
-/// found anywhere.
+/// The OUTERMOST non-structural position on the path from `root` down to
+/// `target` (Phase 1666): the holder's id, the slot label, the position's own
+/// subtree, and whether `target` IS that subtree's root.
 ///
-/// The function is the workhorse for ops that mutate a single node in
-/// place (EditNode / UpdateProp / ReplaceBinding / UpdateStyle /
-/// UpdateState).
-let rec mapNode (target: NodeId) (replace: Node<'Msg> -> Node<'Msg>) (node: Node<'Msg>) : Node<'Msg> option =
-    if NodeId node.Id = target then
-        Some(replace node)
-    else
-        // Structural children first, then the non-list positions. Both are
-        // walked so that anything `findNode` can reach, `mapNode` can edit —
-        // an addressable-but-uneditable node would be a trap of its own.
-        let mutable found = false
+/// `None` means `target` is reachable from `root` through structural children
+/// alone OR is absent from the tree entirely — the two are told apart by
+/// `findNode`, and callers need that distinction because they report different
+/// errors. Outermost rather than nearest, deliberately: a caller descending into
+/// the position and re-running its own walk reaches a nested position on the
+/// next turn, so one level per call composes; naming the innermost would
+/// require the caller to know the path it was about to take.
+///
+/// One walk (Phase 2060): Core's `Tree.path` finds the id-path to `target`, and
+/// this follows that path down from `root` one step at a time, asking at each
+/// step only whether the next node on it is a structural child or a keyed
+/// position. Until 2060 it walked the structural spine and ran a whole
+/// `findNode` inside every keyed position at every level.
+let nonStructuralAncestor (target: NodeId) (root: Node<'Msg>) : (NodeId * string * Node<'Msg> * bool) option =
+    let (NodeId targetRaw) = target
 
-        let mapInto (nodes: Node<'Msg> list) =
-            nodes
-            |> List.map (fun child ->
-                if found then
-                    child
-                else
-                    match mapNode target replace child with
-                    | Some replaced ->
-                        found <- true
-                        replaced
-                    | None -> child)
+    let rec follow (node: Node<'Msg>) (below: NodeId list) =
+        match below with
+        | [] -> None
+        | NodeId next :: rest ->
+            match getChildren node.Kind |> Option.bind (List.tryFind (fun c -> c.Id = next)) with
+            | Some child -> follow child rest
+            | None ->
+                nonStructuralPositions node
+                |> List.tryFind (fun (_, positioned) -> positioned.Id = next)
+                |> Option.map (fun (label, positioned) -> NodeId node.Id, label, positioned, positioned.Id = targetRaw)
 
-        let structuralResult =
-            match getChildren node.Kind with
-            | None -> None
-            | Some children ->
-                let newChildren = mapInto children
+    match Fuaran.Core.Tree.path walk idWitness target root with
+    | Some(_ :: below) -> follow root below
+    | _ -> None
 
-                if found then withChildren node.Kind newChildren else None
+/// The node whose STRUCTURAL child list holds `target`, and `target`'s index in
+/// it — searched through every node `reach` descends to. `None` for the root, for
+/// a target not present, and for a target held directly in a keyed position
+/// (it has no structural parent).
+///
+/// The reach decides only how far the SEARCH goes; the parent found is always a
+/// structural container, so an index names a place in its own child list.
+/// `NodeChildren.Reach.structural` walks the structural spine alone;
+/// `NodeChildren.Reach.keyed` also finds a container held below a keyed
+/// position — a `Box` in a `Switch` case, say — which the structural ops reach
+/// by descending into the position. The search is Core's `Tree.tryPick` over
+/// the reach (Phase 2060).
+let findParentWithin (reach: NodeChildren.Reach) (target: NodeId) (root: Node<'Msg>) : (Node<'Msg> * int) option =
+    let (NodeId targetRaw) = target
 
-        match structuralResult with
-        | Some newKind -> Some { node with Kind = newKind }
-        | None when found ->
-            // Found in a structural child but the kind refused to rebuild —
-            // preserve the original contract (None) rather than silently
-            // dropping the edit.
-            None
-        | None ->
-            let slots, put = nonStructuralSlots node
+    root
+    |> Fuaran.Core.Tree.tryPick (readingAt reach) (fun node ->
+        getChildren node.Kind
+        |> Option.bind (List.tryFindIndex (fun c -> c.Id = targetRaw))
+        |> Option.map (fun i -> node, i))
 
-            if List.isEmpty slots then
-                None
-            else
-                let replaced = mapInto (slots |> List.map snd)
-                if found then Some(put replaced) else None
+/// `findParentWithin` over the structural spine alone: `Some (parent,
+/// indexOfTarget)` when `target` is a structural child of a node reachable from
+/// `root` through structural children.
+let findParent (target: NodeId) (root: Node<'Msg>) : (Node<'Msg> * int) option =
+    findParentWithin NodeChildren.Reach.structural target root
 
-/// DFS map over the parent of `target`, applying `replaceChildren` to that
-/// parent's children list. Returns the new root, or `None` if `target` was
-/// not found (or is the root itself, which has no parent).
-let mapParentOf
-    (target: NodeId)
-    (replaceChildren: Node<'Msg> list -> Node<'Msg> list)
-    (root: Node<'Msg>)
-    : Node<'Msg> option =
-    let rec walk (node: Node<'Msg>) =
-        match getChildren node.Kind with
-        | None -> None
-        | Some children ->
-            if children |> List.exists (fun c -> NodeId c.Id = target) then
-                match withChildren node.Kind (replaceChildren children) with
-                | Some newKind -> Some { node with Kind = newKind }
-                | None -> None
-            else
-                let mutable found = false
+/// Every id in the tree, over the WHOLE traversal surface — including nodes held
+/// in positions the structural ops cannot edit — in Core's keyed-walk preorder
+/// (`Tree.idsKeyed`).
+let allNodeIds (node: Node<'Msg>) : NodeId list =
+    Fuaran.Core.Tree.idsKeyed nodeWitness keyedWitness node
 
-                let newChildren =
-                    children
-                    |> List.map (fun child ->
-                        if found then
-                            child
-                        else
-                            match walk child with
-                            | Some replaced ->
-                                found <- true
-                                replaced
-                            | None -> child)
+/// Every NodeId whose kind reports `field` in its `availableFields` list, over
+/// the structural spine in preorder. Used to populate the §4d
+/// `hint.nodes_with_<field>_field` payload so the AI can pivot to a different
+/// addressable node.
+let nodesWithField (field: string) (root: Node<'Msg>) : NodeId list =
+    root
+    |> Fuaran.Core.Tree.filter nodeWitness (fun node -> availableFields node.Kind |> List.contains field)
+    |> List.map (fun node -> NodeId node.Id)
 
-                if found then
-                    match withChildren node.Kind newChildren with
-                    | Some newKind -> Some { node with Kind = newKind }
-                    | None -> None
-                else
-                    None
+/// Replace the node with `target` id by `replace` applied to it. Returns the new
+/// root, or `None` if `target` is held nowhere in the tree.
+///
+/// Core's `Tree.updateNode` over the keyed walk (Phase 2060): ONE pass that
+/// locates the target, iteratively, and rebuilds only the root-to-target path,
+/// sharing every other subtree. It is the workhorse for the ops that rewrite a
+/// single node in place (EditNode / UpdateProp / ReplaceBinding / UpdateStyle /
+/// PatchStyle / UpdateState / UpdateAccessibility / UpdateTooltip), and it
+/// reaches every node `findNode` does — an addressable-but-uneditable node
+/// would be a trap of its own.
+let mapNode (target: NodeId) (replace: Node<'Msg> -> Node<'Msg>) (node: Node<'Msg>) : Node<'Msg> option =
+    Fuaran.Core.Tree.updateNode walk idWitness target replace node
 
-    walk root
+/// The depth of `target` (the root is 0) over the keyed walk — Core's
+/// `Tree.depth`, one early-exit pass. `None` when the tree holds no `target`.
+let depthOf (target: NodeId) (root: Node<'Msg>) : int option =
+    Fuaran.Core.Tree.depth walk idWitness target root
 
-/// True when `ancestorId` reaches `descendantId` via getChildren traversal.
+/// True when `ancestorId` is `descendantId` or lies on the path from the root
+/// down to it — Core's `Tree.path` over the keyed walk, one early-exit pass.
 /// Used to prevent MoveNode cycles.
 let isAncestorOf (ancestorId: NodeId) (descendantId: NodeId) (root: Node<'Msg>) : bool =
-    match findNode ancestorId root with
-    | None -> false
-    | Some ancestor ->
-        if NodeId ancestor.Id = descendantId then
-            true
-        else
-            allNodeIds ancestor |> List.contains descendantId
+    Fuaran.Core.Tree.path walk idWitness descendantId root
+    |> Option.exists (List.contains ancestorId)
 
 // ─── §16 canonical-form projection (Phase 694) ─────────────────────────────
 //
@@ -699,10 +623,10 @@ let isAncestorOf (ancestorId: NodeId) (descendantId: NodeId) (root: Node<'Msg>) 
 // all-`None` `StateBehaviour`. `canonicalForm` rewrites a tree into that
 // canonical shape so the structural (generated) encoder emits canonical bytes;
 // the tier's policy encoder (`CanonicalJson.encodeNode`) applies it, and
-// `JsonDecode`'s decode-side collapses mirror it. It lives HERE because the
-// traversal reuses this module's kind-complete lens — no second per-kind walk.
+// `JsonDecode`'s decode-side collapses mirror it. It lives HERE because it maps
+// through this module's keyed walk — Core's `Tree.map`, no second per-kind walk.
 
-let rec private canonicalFormField (field: FormField<'Msg>) : FormField<'Msg> =
+let private canonicalFormField (field: FormField<'Msg>) : FormField<'Msg> =
     // A value slot that spells the field's exact auto-binding collapses to
     // `None` (the canonical omitted form). Any other value passes through.
     let collapse
@@ -824,7 +748,7 @@ let rec private canonicalFormField (field: FormField<'Msg>) : FormField<'Msg> =
 
     { field with Kind = kind }
 
-and private canonicalFilterItem (item: FilterSpec<'Msg>) : FilterSpec<'Msg> =
+let private canonicalFilterItem (item: FilterSpec<'Msg>) : FilterSpec<'Msg> =
     // A chip value that spells the chip's own auto-binding collapses to `None`.
     let collapse (value: Binding<'v> option) : Binding<'v> option =
         match value with
@@ -857,10 +781,9 @@ and private canonicalFilterItem (item: FilterSpec<'Msg>) : FilterSpec<'Msg> =
 
     { item with Kind = kind }
 
-/// Rewrite a whole tree into §16 canonical form. Identity on trees that are
-/// already canonical (every decoded tree is, since the decode-side collapses).
-and canonicalForm (node: Node<'Msg>) : Node<'Msg> =
-    // Kind-level value-slot collapses.
+/// One node's own §16 collapses — its kind's value slots, its `state` and
+/// `style` envelopes — with everything it holds left as it is.
+let private canonicalNode (node: Node<'Msg>) : Node<'Msg> =
     let kind =
         match node.Kind with
         | NodeKind.Form spec ->
@@ -873,28 +796,8 @@ and canonicalForm (node: Node<'Msg>) : Node<'Msg> =
                     Items = spec.Items |> List.map canonicalFilterItem }
         | k -> k
 
-    // Structural children.
-    let kind =
-        match getChildren kind with
-        | Some children ->
-            match withChildren kind (children |> List.map canonicalForm) with
-            | Some rewritten -> rewritten
-            | None -> kind
-        | None -> kind
-
-    let node = { node with Kind = kind }
-
-    // Non-structural slots (state OnLoading/OnEmpty + kind-held nodes the
-    // structural-children walk cannot reach) recurse through the shared lens.
-    let slots, put = nonStructuralSlots node
-
-    let node =
-        if List.isEmpty slots then
-            node
-        else
-            put (slots |> List.map (snd >> canonicalForm))
-
     { node with
+        Kind = kind
         State =
             node.State
             |> Option.bind (fun s ->
@@ -905,6 +808,17 @@ and canonicalForm (node: Node<'Msg>) : Node<'Msg> =
         Style =
             node.Style
             |> Option.bind (fun s -> if s = Fuaran.UI.Defaults.style then None else Some s) }
+
+/// Rewrite a whole tree into §16 canonical form. Identity on trees that are
+/// already canonical (every decoded tree is, since the decode-side collapses).
+///
+/// Core's `Tree.map` over the keyed walk (Phase 2060): every node the tree
+/// holds — structural children, `state` alternatives, kind-held arms — is
+/// rewritten bottom-up by `canonicalNode`, iteratively. A node's own collapses
+/// read nothing below it, so bottom-up is the same answer the top-down
+/// recursion this replaces gave.
+let canonicalForm (node: Node<'Msg>) : Node<'Msg> =
+    Fuaran.Core.Tree.map walk canonicalNode node
 
 /// Rewrite a bare `NodeKind` into §16 canonical form (the op codec's
 /// `EditNode.newKind` splice). Routed through `canonicalForm` on a scratch

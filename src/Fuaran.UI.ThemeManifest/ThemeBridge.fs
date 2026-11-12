@@ -681,6 +681,10 @@ let verify (manifest: ThemeManifest) : VerificationResult =
                 Some
                     { Description = $"MotionVoice maxDurationMs={mb.MaxDurationMs}"
                       Reason = "needs a runtime — motion is keyframe-class-based, not a bridged variable" }
+            | InvariantKind.Unknown(kind, _) ->
+                Some
+                    { Description = $"{kind} (an invariant kind this host does not know)"
+                      Reason = "unenforced — kept from the manifest and reported, never dropped (Phase 2133)" }
             | InvariantKind.ContrastFloor _
             | InvariantKind.ChartSeriesDistinct -> None)
 

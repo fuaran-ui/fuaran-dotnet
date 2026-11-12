@@ -52,6 +52,20 @@ InMemory is the floor — a Sqlite sink layers I/O on top, but the in-process
 append (Dictionary insert + per-stream lock + async-state-machine cost) is the
 bookkeeping core every sink shares.
 
+The canonical encoder's **string escape** has its own cases (Phase 2026), because the
+op shapes above carry strings a few characters long and the escape is an unseparated
+sliver of their encode. `EscapeRate.fs` times one `CanonicalJson.encodeOp` per case,
+each dominated by the escape: `clean` (one 4,096-character string with nothing to
+escape), `heavy` (4,096 characters, every fourth escaped) and `keys` (an object of 256
+short keys and values). `capture op` fills `opstream.escape.<case>.mean_ns` / `.alloc_b`
+in-process, and `escape-rate [iterations]` prints them. The same file is Fable-clean:
+`escape-node/run-escape-node.ps1 [-Iterations n]` compiles it with Fable and runs it
+under node, printing `opstream.escape.<case>.node.mean_ns`, so the cost on the browser
+pipeline is measured by the same loop. The node leg is outside `Fuaran.sln` and the
+gate (it needs a Node runtime), declared so in `gate-reads.json`. Every line beside a
+timing prints the encoded length, so two runs are seen to have encoded the same bytes.
+Recorded readings: [`results/`](results/).
+
 ## Build (this opener — done)
 
 ```powershell
@@ -100,7 +114,9 @@ keyed by metric id:
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- hit-rate
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- render-alloc 20000
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- append-rate 20000
+dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- escape-rate 20000
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- tree-diff 20
+dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- apply-rate 5 1000,10000
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- decode-rate 50
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- merge-rate 5 1000,5000,20000
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- merge-snapshot merges.txt
@@ -108,16 +124,25 @@ dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- merge-sna
 
 `merge-rate` (Phase 2062) prints what a DAG merge costs against the length of the history
 its two branches share: two ten-record branches over a trunk of n records, through the
-LCA alone, the sink entry point, the sink entry point with a checkpoint at the fork, and
-`DagMerge.mergeLookups` over records loaded once. `merge-snapshot` writes one line per
-merge and per LCA over seeded random DAG histories (criss-cross, conflicting, trunk and
+merge base alone (Core's `Dag.mergeBase`), the sink entry point, the sink entry point with a
+Core checkpoint at the fork, and `DagMerge.mergeDag` over the DAG loaded once. `merge-snapshot`
+writes one line per merge and per merge base over seeded random DAG histories (criss-cross, conflicting, trunk and
 guest cases included), so a change to the merge engine is diffed against the engine it
-replaced.
+replaced. Both were re-baselined over Core's fold after the Phase 2645 cut: the figures and the snapshot's digest
+are in `results/2026-11-11-phase-2648-dag-merge.md`.
 
 `tree-diff` (Phase 2063) is not a baseline metric: it prints the cost of `TreeOpDiff.diff`
 over a 2,001-node tree for four single-edit shapes (none, one field, one container field,
 one cross-parent move), with the op count of each diff as a sanity line, so a change to
 the diff can quote before-and-after figures from one command.
+
+`apply-rate` (Phase 2060) is not a baseline metric: it prints what `Apply.apply` costs on a
+tree built progressively (`Streaming.lowerTree` folded through `Streaming.applyFold`, one
+`InsertChild` per node, over a balanced tree of each size given, 1,000 and 10,000 by default) and
+on single field ops addressed at the last preorder leaf of a `MaxDepth`-deep chain. Read the
+progressive `per_node_us` across sizes: flat is a linear build, rising with n is a whole-tree walk
+per insert. On a contended machine read `alloc_b`, which does not move with the load, before
+`mean_us`, which does.
 
 `core-diff` (Phase 2304) is not a baseline metric either: it prints the cost of
 `TreeOpDiff.diff` over one sweep of the corpus pairs (`diff/goldens.json` both ways, and

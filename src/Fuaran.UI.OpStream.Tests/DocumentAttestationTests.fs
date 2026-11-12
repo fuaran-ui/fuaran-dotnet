@@ -89,7 +89,10 @@ let private now () =
 
 let private sampleTree: Node<obj> =
     { Id = "markdown-1"
-      Kind = NodeKind.Markdown { Text = TextSource.Literal "Updated hourly." }
+      Kind =
+        NodeKind.Markdown
+            { Citations = []
+              Text = TextSource.Literal "Updated hourly." }
       Accessibility = None
       Fallback = None
       ExtraAttributes = None
@@ -212,7 +215,10 @@ let tests =
 
               let edited =
                   { sampleTree with
-                      Kind = NodeKind.Markdown { Text = TextSource.Literal "Updated daily." } }
+                      Kind =
+                          NodeKind.Markdown
+                              { Citations = []
+                                Text = TextSource.Literal "Updated daily." } }
 
               // The attestation is untouched and still authentic; only the
               // document beneath it moved.

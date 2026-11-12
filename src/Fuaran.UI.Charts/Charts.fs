@@ -1884,6 +1884,58 @@ let private numericOf (row: Row) (field: string) : float =
     | CellValue.Bool b -> if b then 1.0 else 0.0
     | _ -> 0.0
 
+// ─── Series read from the rows (Phase 2568, WIRE_FORMAT §3.6.29) ──────────────
+//
+// An EMPTY `YFields` means the chart's series are its rows' numeric columns: every
+// column other than `XField` that at least one row carries as a number (a
+// `Numeric` or a `Decimal` cell) and no row carries as anything else, one series
+// per column, named by the column. An empty cell — a null, or a key the row does
+// not hold — says nothing either way, so a ragged feed's sparse column still
+// plots. A text, boolean or date cell disqualifies the column: a boolean is a flag
+// and a date is an axis, and plotting either as a series would draw a number the
+// table never stated.
+//
+// ORDER IS ORDINAL BY COLUMN NAME. A row reaches the lowering as a `Map`, and the
+// canonical wire writes an object's members Ordinal-sorted, so no host holds a
+// column order other than that one; Ordinal is therefore the only order every
+// host derives alike. It is also the order a comparison's ISO-dated columns read
+// in — chronologically.
+//
+// A non-empty `YFields` is returned as authored, so every authored chart lowers to
+// the bytes it lowered to before.
+
+/// The numeric columns of `rows` other than `xField`, Ordinal-ordered — the series
+/// an empty `YFields` derives (Phase 2568).
+let derivedSeriesFields (xField: string) (rows: Row seq) : string list =
+    let numeric, disqualified =
+        rows
+        |> Seq.fold
+            (fun (numeric: Set<string>, disqualified: Set<string>) (row: Row) ->
+                row
+                |> Map.fold
+                    (fun (numeric: Set<string>, disqualified: Set<string>) column _ ->
+                        if column = xField then
+                            numeric, disqualified
+                        else
+                            match BindingResolver.projectRowFieldValue row column with
+                            | CellValue.Numeric _
+                            | CellValue.Decimal _ -> Set.add column numeric, disqualified
+                            | CellValue.Empty -> numeric, disqualified
+                            | _ -> numeric, Set.add column disqualified)
+                    (numeric, disqualified))
+            (Set.empty, Set.empty)
+
+    Set.difference numeric disqualified
+    |> Set.toList
+    |> List.sortWith (fun a b -> System.String.CompareOrdinal(a, b))
+
+/// The series a chart plots over `rows`: its authored `YFields`, or — when the
+/// list is empty — the columns `derivedSeriesFields` reads off the rows.
+let seriesFieldsOf<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) : string list =
+    match spec.YFields with
+    | [] -> derivedSeriesFields spec.XField rows
+    | authored -> authored
+
 
 // ─── Phase 933 — mark identity, read backwards ────────────────────────────────
 //
@@ -4379,11 +4431,7 @@ let tryLowerWithStyle<'Msg>
     (spec: ChartSpec<'Msg>)
     (rows: Row seq)
     : Result<DrawingSpec, ChartRefusal> =
-    let seriesCount = List.length spec.YFields
-
-    if seriesCount > limits.MaxSeries then
-        Error(TooManySeries(seriesCount, limits.MaxSeries))
-    else
+    let capRows () =
         let capped =
             if limits.MaxPointsPerSeries = System.Int32.MaxValue then
                 rows |> Seq.toList
@@ -4395,7 +4443,30 @@ let tryLowerWithStyle<'Msg>
         if observed > limits.MaxPointsPerSeries then
             Error(TooManyPoints(observed, limits.MaxPointsPerSeries))
         else
-            Ok(lowerRows style spec capped)
+            Ok capped
+
+    let capSeries (fields: string list) =
+        let seriesCount = List.length fields
+
+        if seriesCount > limits.MaxSeries then
+            Error(TooManySeries(seriesCount, limits.MaxSeries))
+        else
+            Ok fields
+
+    match spec.YFields with
+    // Phase 2568 — derived series are counted only once the rows are read, so the
+    // point cap is applied first; a table with more numeric columns than
+    // `MaxSeries` is the same typed refusal an authored list that long is, never a
+    // truncation to the first `MaxSeries` columns.
+    | [] ->
+        capRows ()
+        |> Result.bind (fun capped ->
+            capSeries (derivedSeriesFields spec.XField capped)
+            |> Result.map (fun fields -> lowerRows style { spec with YFields = fields } capped))
+    | authored ->
+        capSeries authored
+        |> Result.bind (fun _ -> capRows ())
+        |> Result.map (lowerRows style spec)
 
 /// Lower under explicit cost caps and the shipped default style, refusing rather
 /// than doing unbounded work (Phase 790).

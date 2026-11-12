@@ -56,6 +56,7 @@ type defect =
 | OutboundNotification
 | EmittedPatch
 | ComputeOutsideFragment
+| StagedQuery
 
 
 let uu___is_CompensatedOp : defect  ->  Prims.bool = (fun ( projectee  :  defect ) -> (match (projectee) with
@@ -105,6 +106,15 @@ let uu___is_EmittedPatch : defect  ->  Prims.bool = (fun ( projectee  :  defect 
 
 let uu___is_ComputeOutsideFragment : defect  ->  Prims.bool = (fun ( projectee  :  defect ) -> (match (projectee) with
 | ComputeOutsideFragment -> begin
+     true
+     end
+| uu___ -> begin
+     false
+     end))
+
+
+let uu___is_StagedQuery : defect  ->  Prims.bool = (fun ( projectee  :  defect ) -> (match (projectee) with
+| StagedQuery -> begin
      true
      end
 | uu___ -> begin
@@ -172,6 +182,9 @@ let grade : defect  ->  verdict = (fun ( d  :  defect ) -> (match (d) with
      end
 | ComputeOutsideFragment -> begin
      Unknown
+     end
+| StagedQuery -> begin
+     OneWayVerdict
      end))
 
 
@@ -308,7 +321,7 @@ if (mem d seen) then begin
      end))
 
 
-let stage_defects = (fun ( w  :  Staging.witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( cls  :  'o  ->  undo_class<'t, 'o> ) ( reversible  :  'a  ->  Prims.bool ) ( s  :  Staging.stage<'a, 'v, 'o, 'q> ) -> (match (s) with
+let stage_defects = (fun ( w  :  Staging.witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( query  :  Staging.query_posture ) ( cls  :  'o  ->  undo_class<'t, 'o> ) ( reversible  :  'a  ->  Prims.bool ) ( s  :  Staging.stage<'a, 'v, 'o, 'q> ) -> (match (s) with
 | Staging.SCompute (action) -> begin
       
 if (reversible action) then begin
@@ -320,7 +333,13 @@ if (reversible action) then begin
 | Staging.SEffect (e) -> begin
      (match (e) with
 | Staging.RunQuery (uu___, uu___1) -> begin
+     (match (query) with
+| Staging.Reaching -> begin
+     (StagedQuery)::[]
+     end
+| Staging.PureRead -> begin
      []
+     end)
      end
 | Staging.ApplyOps (ops) -> begin
      (distinct_from [] (view_defects cls (Staging.views w ops)))
@@ -333,7 +352,69 @@ if (reversible action) then begin
      end
 | Staging.Notify (uu___, uu___1) -> begin
      (OutboundNotification)::[]
+     end
+| Staging.Report (uu___) -> begin
+     []
      end)
+     end))
+
+type replay_defect =
+| ReplayStagedQuery
+| ReplayOpaqueHostCall
+| ReplayOutboundNotification
+
+
+let uu___is_ReplayStagedQuery : replay_defect  ->  Prims.bool = (fun ( projectee  :  replay_defect ) -> (match (projectee) with
+| ReplayStagedQuery -> begin
+     true
+     end
+| uu___ -> begin
+     false
+     end))
+
+
+let uu___is_ReplayOpaqueHostCall : replay_defect  ->  Prims.bool = (fun ( projectee  :  replay_defect ) -> (match (projectee) with
+| ReplayOpaqueHostCall -> begin
+     true
+     end
+| uu___ -> begin
+     false
+     end))
+
+
+let uu___is_ReplayOutboundNotification : replay_defect  ->  Prims.bool = (fun ( projectee  :  replay_defect ) -> (match (projectee) with
+| ReplayOutboundNotification -> begin
+     true
+     end
+| uu___ -> begin
+     false
+     end))
+
+
+let replay_defects_of_effect = (fun ( query  :  Staging.query_posture ) ( e  :  Staging.server_effect<'v, 'o, 'q> ) -> (match (e) with
+| Staging.RunQuery (uu___, uu___1) -> begin
+     (match (query) with
+| Staging.Reaching -> begin
+     (ReplayStagedQuery)::[]
+     end
+| Staging.PureRead -> begin
+     []
+     end)
+     end
+| Staging.ApplyOps (uu___) -> begin
+     []
+     end
+| Staging.EmitPatch (uu___) -> begin
+     []
+     end
+| Staging.HostCall (uu___, uu___1, uu___2) -> begin
+     (ReplayOpaqueHostCall)::[]
+     end
+| Staging.Notify (uu___, uu___1) -> begin
+     (ReplayOutboundNotification)::[]
+     end
+| Staging.Report (uu___) -> begin
+     []
      end))
 
 
@@ -346,16 +427,16 @@ let rec positioned : Prims.nat  ->  Prims.list<defect>  ->  Prims.list<(Prims.na
      end))
 
 
-let rec reasons_from = (fun ( w  :  Staging.witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( cls  :  'o  ->  undo_class<'t, 'o> ) ( reversible  :  'a  ->  Prims.bool ) ( stages  :  Prims.list<Staging.stage<'a, 'v, 'o, 'q>> ) ( k  :  Prims.nat ) -> (match (stages) with
+let rec reasons_from = (fun ( w  :  Staging.witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( query  :  Staging.query_posture ) ( cls  :  'o  ->  undo_class<'t, 'o> ) ( reversible  :  'a  ->  Prims.bool ) ( stages  :  Prims.list<Staging.stage<'a, 'v, 'o, 'q>> ) ( k  :  Prims.nat ) -> (match (stages) with
 | [] -> begin
      []
      end
 | (s)::rest -> begin
-     (Staging.app (positioned k (stage_defects w cls reversible s)) (reasons_from w cls reversible rest (k + (Prims.parse_int "1"))))
+     (Staging.app (positioned k (stage_defects w query cls reversible s)) (reasons_from w query cls reversible rest (k + (Prims.parse_int "1"))))
      end))
 
 
-let reasons = (fun ( w  :  Staging.witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( cls  :  'o  ->  undo_class<'t, 'o> ) ( reversible  :  'a  ->  Prims.bool ) ( stages  :  Prims.list<Staging.stage<'a, 'v, 'o, 'q>> ) -> (reasons_from w cls reversible stages (Prims.parse_int "0")))
+let reasons = (fun ( w  :  Staging.witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( query  :  Staging.query_posture ) ( cls  :  'o  ->  undo_class<'t, 'o> ) ( reversible  :  'a  ->  Prims.bool ) ( stages  :  Prims.list<Staging.stage<'a, 'v, 'o, 'q>> ) -> (reasons_from w query cls reversible stages (Prims.parse_int "0")))
 
 
 let rec defects_of : Prims.list<(Prims.nat * defect)>  ->  Prims.list<defect> = (fun ( rs  :  Prims.list<(Prims.nat * defect)> ) -> (match (rs) with
@@ -367,7 +448,7 @@ let rec defects_of : Prims.list<(Prims.nat * defect)>  ->  Prims.list<defect> = 
      end))
 
 
-let posture = (fun ( w  :  Staging.witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( cls  :  'o  ->  undo_class<'t, 'o> ) ( reversible  :  'a  ->  Prims.bool ) ( stages  :  Prims.list<Staging.stage<'a, 'v, 'o, 'q>> ) -> (verdict_of (defects_of (reasons w cls reversible stages))))
+let posture = (fun ( w  :  Staging.witness<'t, 'b, 'v, 'o, 'q, 'a, 'eff, 'd> ) ( query  :  Staging.query_posture ) ( cls  :  'o  ->  undo_class<'t, 'o> ) ( reversible  :  'a  ->  Prims.bool ) ( stages  :  Prims.list<Staging.stage<'a, 'v, 'o, 'q>> ) -> (verdict_of (defects_of (reasons w query cls reversible stages))))
 
 type refusal = {rf_code : Prims.string; rf_step : Prims.nat; rf_reason : Prims.string}
 
@@ -522,7 +603,7 @@ if out.oc_committed then begin
      Staging.ROk ({Staging.oc_store = (
 
 let uu___ = out.oc_store
-in {Staging.st_tree = uu___.st_tree; Staging.st_bindings = (restore steps out.oc_store.st_bindings)}); Staging.oc_committed = out.oc_committed; Staging.oc_performed = out.oc_performed; Staging.oc_patches = out.oc_patches; Staging.oc_notifications = out.oc_notifications; Staging.oc_client_effects = out.oc_client_effects; Staging.oc_diagnostics = out.oc_diagnostics})
+in {Staging.st_tree = uu___.st_tree; Staging.st_bindings = (restore steps out.oc_store.st_bindings)}); Staging.oc_committed = out.oc_committed; Staging.oc_performed = out.oc_performed; Staging.oc_patches = out.oc_patches; Staging.oc_notifications = out.oc_notifications; Staging.oc_client_effects = out.oc_client_effects; Staging.oc_diagnostics = out.oc_diagnostics; Staging.oc_findings = out.oc_findings})
      end else begin
      Staging.ROk (out)
      end)

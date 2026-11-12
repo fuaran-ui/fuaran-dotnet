@@ -170,7 +170,7 @@ let vocabularyFingerprintMarker = "fuaran-vocabulary-fingerprint:"
 // `fuaran-form-field-label` (the server's field-label span) left with the
 // served field wrapper the driver ruled away; a field's label is
 // `fuaran-form-label` on both tiers. The sheet still styles the old name.
-let vocabularyFingerprint = "fv1:7107ead40c2f7960"
+let vocabularyFingerprint = "fv1:984e63f4c4bdfab0"
 
 /// parity: format a float invariantly across both pipelines. The .NET branch
 /// pins InvariantCulture so a comma-decimal locale can't corrupt the CSS/JSON;
@@ -761,12 +761,17 @@ let toCssVariables (theme: Theme) : (string * string) list =
 /// reference CSS doesn't expose it as its own variable yet (button font
 /// size routes through `--fuaran-text-base` on `.fuaran-button`). Consumers
 /// who want a per-component override can read it off the Theme directly.
+///
+/// Phase 2069 — the stylesheet rides a raw `<style>` sink and most of a theme's
+/// values are host strings, so this producer applies the floor to its own output
+/// and both renderers mount the same bytes.
 let toCss (theme: Theme) : string =
     let lines =
         toCssVariables theme
         |> List.map (fun (name, value) -> sprintf "  %s: %s;" name value)
 
     String.concat "\n" ([ ":root {" ] @ lines @ [ "}" ])
+    |> Sanitize.sanitizeMarkdownHtml
 
 // ─── Theme JSON round-trip ─────────────────────────────────────────────────
 //

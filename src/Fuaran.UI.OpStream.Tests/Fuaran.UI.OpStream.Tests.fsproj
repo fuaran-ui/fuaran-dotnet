@@ -11,6 +11,8 @@
          so a git worktree resolves it through FUARAN_WIRE_FIXTURES rather than skipping silently.
          Must compile FIRST: the resolvers below delegate to it. -->
     <Compile Include="..\..\tests\corpus-root\CorpusRoot.fs" Link="CorpusRoot.fs" />
+    <!-- Phase 2393 - the ONE temp-directory helper, DECLARED ONCE at tests/temp-dir/TempDir.fs. -->
+    <Compile Include="..\..\tests\temp-dir\TempDir.fs" Link="TempDir.fs" />
     <Compile Include="HashChainTests.fs" />
     <!-- Phase 409 tail: StreamEntry.decode — the inverse of the pinned
          provenance envelope, and the Core witness's decode leg. -->
@@ -42,6 +44,7 @@
     <Compile Include="TreeOpDiffPre2063.fs" />
     <Compile Include="TreeOpDiffEquivalenceTests.fs" />
     <Compile Include="CheckpointTests.fs" />
+    <Compile Include="CoreSnapshotTests.fs" />
     <Compile Include="ChainMigrationTests.fs" />
     <Compile Include="ChainCorpusTests.fs" />
     <!-- Phase 437: teleport state-bundle codec. -->
@@ -71,6 +74,8 @@
          shipped reference codec, and a refusal that names the op and the slot. -->
     <Compile Include="TreeOpMapLawsTests.fs" />
     <Compile Include="CodecSeamTests.fs" />
+    <Compile Include="OpEncoderPinCases.fs" />
+    <Compile Include="OpEncoderPinTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

@@ -23,11 +23,15 @@
 #   -CacheDir <dir>  put the checked-module cache somewhere you name
 #   -KitAsset <file> the kit asset as a local file instead of the pin's url (verified all the same)
 #
-# And one of this caller's own (fuaran#2012), because this repository now runs TWO legs:
+# And two of this caller's own (fuaran#2012, Phase 2383), because this repository runs TWO legs:
 #   -Leg all|vocabulary|program   which leg to run; `all` (the default) runs both, in that order.
 #                    `program` alone is minutes; `vocabulary` alone is the hour-and-a-half
 #                    VocabularyProofs check (see modules.json) — a session that touched only the
 #                    program models re-checks them without paying for the other.
+#   -ProgramAsset <file>  the program repository's proof asset as a local file instead of the url
+#                    `proofs-program.json` pins (or FUARAN_PROOFS_PROGRAM_ASSET): the OFFLINE path,
+#                    verified against the pin's sha256 all the same. Build it from a checkout of the
+#                    program repository with `pwsh proofs/check.ps1 -AssetOnly -AssetOutDir <dir>`.
 [CmdletBinding()]
 param(
     [ValidateSet('all', 'vocabulary', 'program')]
@@ -37,7 +41,8 @@ param(
     [switch] $Strict,
     [string] $CacheDir,
     [int]    $Runs = 1,
-    [string] $KitAsset
+    [string] $KitAsset,
+    [string] $ProgramAsset
 )
 
 $ErrorActionPreference = 'Stop'
@@ -63,14 +68,17 @@ $ErrorActionPreference = 'Stop'
 $modules = @('WireDecode', 'Vocabulary', 'VocabularyProofs')
 $kitShared = @('Twin')
 
-# ---- DECLARATION 1b: the program models (fuaran#2012) — a SECOND leg ------------------------------
+# ---- DECLARATION 1b: the program models (fuaran#2012, Phase 2383) — a SECOND leg -----------------
 # The bounded program core's UI adapter (src/Fuaran.UI.Program, src/Fuaran.UI.Program.Server) moved
 # here from the program repository, and the two proof claims that are ABOUT that adapter moved with
 # it (../proofs.json `model-agrees-with-shipped-code`, `budget-model-agrees-with-shipped-code`).
-# Their models are COPIES: proofs/program/<Module>.fst and the extractions under
-# proofs/program/oracle/ are byte copies of the program repository's, declared in ../copies.json
-# with that repository's files as canonical. This leg re-checks the copied models on the shared pin,
-# re-extracts them and byte-diffs each extraction against its copied oracle, then runs the two
+# Their models are the program repository's, and they arrive as its RELEASE ASSET, pinned by sha256
+# in proofs-program.json and verified before anything runs (below), never as copies: the models are
+# opened read-only from the asset's `models/`, and the runtime floor and extractions the oracle
+# project under proofs/program/oracle/ compiles are committed there (an oracle project compiles
+# nothing outside its directory) and held byte-identical to the asset's `oracle/` (-FloorDir), so
+# none of them is a copy that can drift. This leg re-checks the models on the shared pin,
+# re-extracts them and byte-diffs each extraction against the committed oracle, then runs the two
 # differential hosts beside the adapter. A second invocation of the kit rather than more entries in
 # the first, because the kit takes one proofs directory and one host project, and these models have
 # their own of each — and their own runtime floor (oracle/Prims.fs), which is the program
@@ -141,47 +149,86 @@ $programHostFilters = @(
 
 # ---- nothing below here is per-repository --------------------------------------------------------
 
-# ---- the kit: the pinned release asset, verified before anything runs ------------------------------
-$kitPinFile = Join-Path $PSScriptRoot 'proofs-kit.json'
-$kitPin = if (Test-Path $kitPinFile) { Get-Content $kitPinFile -Raw | ConvertFrom-Json } else { $null }
-if ($null -eq $kitPin -or $kitPin.kind -ne 'proofsKitPin' -or -not $kitPin.asset -or -not $kitPin.url -or $kitPin.sha256 -notmatch '^[0-9a-f]{64}$') {
-    Write-Host "==== proofs: $kitPinFile is not a kit pin (kind proofsKitPin, kit, asset, url, a 64-hex sha256)" -ForegroundColor Red
-    exit 2
-}
-$kitRoot = Join-Path $PSScriptRoot '.kit'
-New-Item -ItemType Directory -Force $kitRoot | Out-Null
-$archive = Join-Path $kitRoot $kitPin.asset
-if (-not $KitAsset) { $KitAsset = $env:FUARAN_PROOFS_KIT_ASSET }
-if ($KitAsset) {
-    $kitSource = [System.IO.Path]::GetFullPath($KitAsset)
-    Copy-Item $kitSource $archive -Force
-}
-else {
-    $kitSource = $kitPin.url
-    $held = (Test-Path $archive) -and (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -eq $kitPin.sha256
-    if (-not $held) { Invoke-WebRequest -Uri $kitPin.url -OutFile $archive -UseBasicParsing }
-}
-$kitSha = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
-if ($kitSha -ne $kitPin.sha256) {
-    Remove-Item $archive -Force
-    Write-Host "==== proofs: REFUSED the kit asset from $kitSource — its sha256 is $kitSha, the pin ($kitPinFile) is $($kitPin.sha256). Nothing ran." -ForegroundColor Red
-    exit 2
-}
-# Unpacked fresh per invocation, so this run reads exactly the verified bytes; dead runs' trees are swept.
-foreach ($stale in @(Get-ChildItem $kitRoot -Directory -Filter 'run-*' -ErrorAction SilentlyContinue)) {
-    $stalePid = 0
-    if ([int]::TryParse($stale.Name.Substring(4), [ref] $stalePid) -and $stalePid -ne $PID -and -not (Get-Process -Id $stalePid -ErrorAction SilentlyContinue)) {
-        Remove-Item $stale.FullName -Recurse -Force -ErrorAction SilentlyContinue
+# ---- the pinned release assets, each verified before anything runs -------------------------------
+#
+# Two pins, one mechanism: the kit (proofs-kit.json, from the kit's repository) and, for the program
+# leg, the program models (proofs-program.json, from the program repository). Each asset is fetched
+# from its pin's url into its cache directory — or taken from the local file an override names: the
+# offline path — REFUSED unless its sha256 is the pin's, and unpacked fresh for this invocation, so a
+# run reads exactly the verified bytes. Answers the unpacked directory; a pin that is not one, an
+# unreachable url or bytes that are not the pin's exit 2 with nothing run.
+function Expand-PinnedAsset([string] $what, [string] $pinFile, [string] $kind, [string] $override, [string] $cacheRoot, [string] $offline) {
+    $pin = if (Test-Path $pinFile) { Get-Content $pinFile -Raw | ConvertFrom-Json } else { $null }
+    if ($null -eq $pin -or $pin.kind -ne $kind -or -not $pin.asset -or -not $pin.url -or $pin.sha256 -notmatch '^[0-9a-f]{64}$') {
+        Write-Host "==== proofs: $pinFile is not a $what pin (kind $kind, asset, url, a 64-hex sha256)" -ForegroundColor Red
+        exit 2
     }
+    New-Item -ItemType Directory -Force $cacheRoot | Out-Null
+    $archive = Join-Path $cacheRoot $pin.asset
+    if ($override) {
+        $source = [System.IO.Path]::GetFullPath($override)
+        if (-not (Test-Path $source -PathType Leaf)) {
+            Write-Host "==== proofs: the local $what asset $source does not exist. Nothing ran." -ForegroundColor Red
+            exit 2
+        }
+        # The cache itself is a legitimate local file to name; it is verified below like any other.
+        if ($source -ne $archive) { Copy-Item $source $archive -Force }
+    }
+    else {
+        $source = $pin.url
+        $held = (Test-Path $archive) -and (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -eq $pin.sha256
+        if (-not $held) {
+            try { Invoke-WebRequest -Uri $pin.url -OutFile $archive -UseBasicParsing }
+            catch {
+                Write-Host "==== proofs: could not fetch the $what asset from $($pin.url): $($_.Exception.Message.TrimEnd('.')). Offline: $offline. Nothing ran." -ForegroundColor Red
+                exit 2
+            }
+        }
+    }
+    $sha = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($sha -ne $pin.sha256) {
+        Remove-Item $archive -Force
+        Write-Host "==== proofs: REFUSED the $what asset from $source — its sha256 is $sha, the pin ($pinFile) is $($pin.sha256). Nothing ran." -ForegroundColor Red
+        exit 2
+    }
+    # Unpacked fresh per invocation; dead runs' trees are swept.
+    foreach ($stale in @(Get-ChildItem $cacheRoot -Directory -Filter 'run-*' -ErrorAction SilentlyContinue)) {
+        $stalePid = 0
+        if ([int]::TryParse($stale.Name.Substring(4), [ref] $stalePid) -and $stalePid -ne $PID -and -not (Get-Process -Id $stalePid -ErrorAction SilentlyContinue)) {
+            Remove-Item $stale.FullName -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+    $dir = Join-Path $cacheRoot "run-$PID"
+    if (Test-Path $dir) { Remove-Item $dir -Recurse -Force }
+    New-Item -ItemType Directory -Force $dir | Out-Null
+    [System.Formats.Tar.TarFile]::ExtractToDirectory($archive, $dir, $false)
+    Write-Host "==== proofs: $what $($pin.asset) (sha256 $sha) from $source" -ForegroundColor Cyan
+    $dir
 }
-$kit = Join-Path $kitRoot "run-$PID"
-if (Test-Path $kit) { Remove-Item $kit -Recurse -Force }
-New-Item -ItemType Directory -Force $kit | Out-Null
-[System.Formats.Tar.TarFile]::ExtractToDirectory($archive, $kit, $false)
-Write-Host "==== proofs: kit $($kitPin.kit) ($($kitPin.asset), sha256 $kitSha) from $kitSource" -ForegroundColor Cyan
+
+if (-not $KitAsset) { $KitAsset = $env:FUARAN_PROOFS_KIT_ASSET }
+$kit = Expand-PinnedAsset 'kit' (Join-Path $PSScriptRoot 'proofs-kit.json') 'proofsKitPin' $KitAsset (Join-Path $PSScriptRoot '.kit') `
+    'build it from a checkout of the kit repository (pwsh proofs/kit/build-kit-asset.ps1 -OutDir <dir>) and pass -KitAsset <file>'
 # The host step inherits this: a ladder family holding a row about a kit model reads that model's text
 # from the verified asset here, since the model is not in this tree (kit/README.md, "Importing a theorem").
 $env:FUARAN_PROOFS_KIT_DIR = $kit
+
+# The program asset only where the program leg runs: the vocabulary leg reads nothing of it.
+$programAssetDir = $null
+if ($Leg -in @('all', 'program')) {
+    if (-not $ProgramAsset) { $ProgramAsset = $env:FUARAN_PROOFS_PROGRAM_ASSET }
+    $programAssetDir = Expand-PinnedAsset 'program' (Join-Path $PSScriptRoot 'proofs-program.json') 'proofsAssetPin' $ProgramAsset (Join-Path $PSScriptRoot 'obj/program-asset') `
+        'build it from a checkout of the program repository (pwsh proofs/check.ps1 -AssetOnly -AssetOutDir <dir>) and pass -ProgramAsset <file>'
+    # The same for a ladder row about a program model (`program:models/<Model>.fst`).
+    $env:FUARAN_PROOFS_PROGRAM_DIR = $programAssetDir
+}
+
+# Every exit below leaves no unpacked tree behind.
+function Exit-Leg([int] $code) {
+    Remove-Item $kit -Recurse -Force -ErrorAction SilentlyContinue
+    if ($programAssetDir) { Remove-Item $programAssetDir -Recurse -Force -ErrorAction SilentlyContinue }
+    exit $code
+}
 
 
 $common = @{ Runs = $Runs }
@@ -203,12 +250,15 @@ $vocabularyArgs = @{
 
 # The program leg: its own proofs directory, oracle and cost declarations, the kit's prover pin,
 # and the program repository's z3rlimit (60: the margin its leg runs these models under, so a green
-# check here is the same claim as a green check there).
+# check here is the same claim as a green check there). The models are opened read-only from the
+# program asset, and every committed .fs in the oracle directory is held to the asset's bytes.
 $programArgs = @{
     Modules         = $programModules
     ProofsDir       = (Join-Path $PSScriptRoot 'program')
     RepoRoot        = (Split-Path $PSScriptRoot -Parent)
     PinFile         = (Join-Path $kit 'fstar-pin.json')
+    ModelDirs       = @(if ($programAssetDir) { Join-Path $programAssetDir 'models' })
+    FloorDir        = $(if ($programAssetDir) { Join-Path $programAssetDir 'oracle' })
     ZRlimit         = 60
     HostProject     = $programHostProject
     HostProjectFile = $programHostProjectFile
@@ -221,7 +271,7 @@ $programArgs = @{
 # The first red leg stops the run and its exit code is this script's.
 if ($Leg -in @('all', 'vocabulary')) {
     & (Join-Path $kit 'kit/check-proof-leg.ps1') @vocabularyArgs
-    if ($LASTEXITCODE -ne 0) { $code = $LASTEXITCODE; Remove-Item $kit -Recurse -Force -ErrorAction SilentlyContinue; exit $code }
+    if ($LASTEXITCODE -ne 0) { Exit-Leg $LASTEXITCODE }
 }
 if ($Leg -in @('all', 'program')) {
     # The program leg's two differential families compare over the program specification's
@@ -234,11 +284,9 @@ if ($Leg -in @('all', 'program')) {
         else { Join-Path (Split-Path $PSScriptRoot -Parent) '../fuaran-program-spec' }
     if (-not $SkipOracleHost -and -not (Test-Path (Join-Path $programSpecRoot 'wire-fixtures/manifest.json'))) {
         Write-Host "==== proofs: program leg - RED: the program specification corpus is ABSENT at $programSpecRoot, so the two differential hosts cannot run. Clone https://github.com/Fuaran-Core/fuaran-program-specification beside this repository as 'fuaran-program-spec', or point FUARAN_PROGRAM_SPEC at a clone of it." -ForegroundColor Red
-        Remove-Item $kit -Recurse -Force -ErrorAction SilentlyContinue
-        exit 1
+        Exit-Leg 1
     }
     & (Join-Path $kit 'kit/check-proof-leg.ps1') @programArgs
-    if ($LASTEXITCODE -ne 0) { $code = $LASTEXITCODE; Remove-Item $kit -Recurse -Force -ErrorAction SilentlyContinue; exit $code }
+    if ($LASTEXITCODE -ne 0) { Exit-Leg $LASTEXITCODE }
 }
-Remove-Item $kit -Recurse -Force -ErrorAction SilentlyContinue
-exit 0
+Exit-Leg 0

@@ -99,6 +99,20 @@ let main argv =
                 eprintfn "PROJECTION DEFECT — %s" m
 
             1
+    // Phase 2639 — re-record the decoder parity baseline (tests/decoder-parity/)
+    // from the node decoder as it stands. A deliberate act: a landing that needs
+    // it has moved a verdict, and says so in its own change.
+    //   dotnet run --project src/Fuaran.UI.JsonDecode.Tests -- --decoder-parity [<dir>]
+    | "--decoder-parity" :: rest ->
+        let dir =
+            match rest with
+            | d :: _ -> d
+            | [] -> DecoderParity.baselineDir ()
+
+        for path in DecoderParity.write dir do
+            printfn "Recorded %s" path
+
+        0
     | "--emit-fidelity" :: dir :: _ ->
         RenderFidelityArtifact.write dir
         printfn "Emitted %s to %s" RenderFidelityArtifact.fileName dir

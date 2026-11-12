@@ -27,7 +27,7 @@ here before it moves a stored hash:
   corpus and over ill-formed UTF-16 (lone and ill-ordered surrogates, which the platform encodes as
   U+FFFD) — the proof our bytes equal the platform's on .NET.
 - **Against digests recorded from the retired implementation** — padding-boundary lengths, ill-formed
-  UTF-16, and one of each hashed artefact (a stream head, a checkpoint snapshot hash, two teleport
+  UTF-16, and one of each hashed artefact (a stream head, a checkpoint snapshot hash — moved deliberately by Phase 2305, see below — two teleport
   strings, a document-attestation digest, a fragment memo key, two `Custom` body-shape hashes).
 
 They live in `Fuaran.UI.Tests` (`CustomContractTests.fs`, `CorePredicateTests.fs`,
@@ -76,6 +76,7 @@ property the code has, so every read path now verifies:
 | `Replay.applyTo` | `Verify.segment` | the segment's own first record (genesis when it starts at sequence 1) |
 | `SqliteSink.Replay` / `InMemorySink.Replay` | `Verify.segment` | as above |
 | `SessionReplay.reconstruct` | `Verify.segmentFrom` | the checkpoint's `PreviousChainHead` — a real anchor, so strictly stronger |
+| `CheckpointedReplay.applyFromCheckpoint` | `CheckpointSeal.firstBreak` (Core's `Sealed.firstBreak`) | the checkpoint's seal, then its `(PreviousChainHead, Sequence)` |
 | `SqliteDagSink` / `InMemoryDagSink` `.Records` | `DagVerify.recordsResolving` | parents resolved store-wide |
 | both DAG sinks' `.TryGet` | `DagVerify.record` | content address only |
 
@@ -136,6 +137,33 @@ between what the chain claims and what the code does; it does not change what th
 These call sites are, however, exactly where a signature over the chain position plugs in — which is
 the next section.
 
+## The checkpoint seal — Core's strict snapshot (Phase 2305)
+
+A linear checkpoint is a Core `Snapshot<Node<'Msg>>` (`CheckpointSeal.toSnapshot`), and its
+`SnapshotHash` is Core's **strict** seal, `Sealed.seal SnapshotMode.Strict`, under the stream's own
+SHA-256 `HashFn`:
+
+```text
+SnapshotHash = sha256Hash PreviousChainHead {"snapshot":true,"seq":<Sequence>,"state":<canonical tree>}
+```
+
+**What the seal covers:** the boundary sequence (the number of records folded into the snapshot), the
+boundary hash (`PreviousChainHead`, the hash of record `Sequence`, or the genesis at sequence 0) and the
+canonical encoding of the snapshot tree (`CanonicalJson.encodeNode`). So a swapped tree, a moved
+sequence and a moved head each fail it, and a real snapshot lifted from one position does not verify at
+another. **What it does not cover:** `StreamId` and `Timestamp`, which are storage, as they are outside
+the record chain. Before 2305 the tier sealed the same shape under a `"tree"` key with its own
+function; the bytes moved, the property did not, and `CheckpointReseal` /
+`SqliteSink.resealCheckpoints` re-seal a store once (`docs/migrations/2305-core-snapshot.md`).
+
+**Resuming from a checkpoint verifies the seal and the WHOLE tail first** — `CheckpointSeal.firstBreak`,
+which is Core's `Sealed.firstBreak`: the seal, then every tail record walked from
+`(PreviousChainHead, Sequence)` by Core's chain walker. A break anywhere in the tail is refused by name
+(`BoundaryMismatch` at the first link, `TailBroken` below it) before the apply engine runs, and the fold
+is Core's `Compacted.replayFrom`. Like everything in this document, this detects corruption and
+cross-position substitution, not a writer who rewrites the checkpoint record consistently: the seal is
+unkeyed, so detecting that needs the attestation seams below.
+
 ## Segment attestation — a signature beside the chain (opt-in)
 
 `Fuaran.UI.OpStream.Abstractions/Attestation.fs` (Phase 789) adds the property the unkeyed chain
@@ -184,8 +212,8 @@ own key directory — no service, no database, no private key — and returns a 
 convenience for a verifier that has established those keys by another route; it is never read by
 verification, because a bundle carrying its own trust root proves only that it agrees with itself.
 
-Signing uses **platform implementations only** — the BCL's `ECDsa` on .NET (WebCrypto's ECDSA is the
-browser verification route when it lands). No hand-rolled ECDSA signer, ever: nonce generation stays
+Signing uses **platform implementations only** — the BCL's `ECDsa` on .NET. A browser verifies and never
+signs: `EcdsaP256`'s Fable arm checks the same signatures through WebCrypto's ECDSA (Phase 2570). No hand-rolled ECDSA signer, ever: nonce generation stays
 with the platform. The canonical descriptor/claim encodings are pinned cross-host artefacts with
 golden vectors in `wire-format-fixtures/attestation/descriptor-corpus.json`; the algorithm id is a
 field, so a future primitive (`ed25519-v1` is reserved) is a new registered id, never a format
@@ -269,6 +297,58 @@ the canonical claim payload passes through it with no new signing interface and 
 portable surface. The .NET verifier shares one curve check with the segment verifier rather than
 carrying a second copy: an algorithm id names one curve, a key size does not identify a curve, and two
 copies of that test are two places for the ends of an id to drift apart.
+
+## Page read-sets — a signature over a recomputed projection (opt-in)
+
+A stored page document (Phase 2522, WIRE_FORMAT §32; [`docs/PAGE-DOCUMENT.md`](docs/PAGE-DOCUMENT.md)) is
+signed over a canonical preimage of three things: the SHA-256 of its tree's canonical bytes, the SHA-256 of
+its request sidecar's canonical bytes, and the canonical bytes of its demanded document — what the page can
+ever reach. Signing goes through the same `Fuaran.Core.IAttestationSink` seam; verification takes a
+`ClaimVerifier` over the host's own key type, the bounded program core's signed-envelope pattern consumed as
+a package, so this tier holds no cryptography.
+
+Verification RECOMPUTES the demanded document from the page and checks the signature over the preimage it
+computed, never over the bytes it was handed. A verify with no key refuses; a foreign key, a drifted read-set
+and a bad signature are distinct refusals. Boundaries: the signature says the key holder paired this tree and
+this sidecar with this read-set, not that the reach is acceptable (a coverage check's question), and it does
+not cover the document's provenance, which is the writer's assertion.
+
+## The op-DAG address — one function, and it is Core's (Phase 2645)
+
+Until the cut the UI op-DAG minted its addresses with its own function — two of them, an ordinary node's
+delimited envelope and a merge node's outcome-tree envelope — beside Core's `Dag.nodeId` and the linear
+chain's hash. Since Phase 2645 there is ONE DAG address function: Core's `Dag.nodeId` under the tier's
+SHA-256 (`StreamEntry.hashFn`, the linear chain's hash function), over the sorted parents, the actor and
+the node's op — which is the linear chain's provenance entry (`StreamEntry.encode`), byte for byte.
+`DagOpRecord.nodeId` names it; the sinks' write admission, both read paths and `DagVerify` recompute it;
+nothing else in the tier mints or checks a DAG address. A merge node is an ordinary node whose op is its
+reconciliation script, so its address covers what the merge recorded and nothing it merely asserts.
+`WIRE_FORMAT.md` §5.3.3 gives the pre-image byte for byte.
+
+What that address is worth is unchanged: it is unkeyed, so it detects corruption and a broken link, and a
+writer who edits a node and re-addresses its descendants passes verification. A pruned node keeps its
+address in the sink's skeleton and is no longer verified — there is no payload left to recompute it from.
+
+### The re-mint — what carries a pre-cut store across, and what its receipt proves (Phase 2648)
+
+A store written before the cut holds addresses no current code mints. The one-release tool
+`tools/dag-remint` (`docs/migrations/2648-core-dag-identity.md`) carries it across, and it is the only
+place the pre-cut address rules survive. Before it moves anything it recomputes every live record's
+stored address under the rule that minted it, and refuses a store where one does not recompute. A broken
+store therefore stays broken and visibly so, and is never laundered into one that verifies under the new
+function. Each live record is then re-addressed under `Dag.nodeId` with its envelope carried byte for byte.
+A merge node is re-minted by re-running the cut's merge over its re-minted parents, and the tree that merge
+reaches must be the outcome tree the old node committed to, or the merge is refused by name. A pruned
+record keeps its old address in the skeleton: its payload is gone, so no new address can be computed for
+it, and its live children name it by that address.
+
+The receipt lists each stream's old head and new head and every old address beside its new one. It
+is the same kind of evidence as a lift receipt. Anyone holding the pre-cut store and the tool can
+recompute it, so it is a recomputation and not a signature. It shows that the new store is the old
+store's content under the new address function. It does not show that the old store was authentic,
+since the pre-cut addresses were unkeyed digests too. A signed segment attestation over the linear
+history a store was lifted from is still the only authorship claim. The original database is kept
+beside the re-minted one (`<db>.pre-2645`), so a reader can repeat the recomputation.
 
 ## Lift receipts — a recomputation, not a signature
 

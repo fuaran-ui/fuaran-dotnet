@@ -32,7 +32,11 @@ let private sources (state: (string * obj) list) : BindingResolver.BindingSource
 
 let private leaf (id: string) (text: string) : Node<obj> =
     { Id = id
-      Kind = NodeKind.Markdown({ Text = TextSource.Literal text })
+      Kind =
+        NodeKind.Markdown(
+            { Citations = []
+              Text = TextSource.Literal text }
+        )
       State = None
       Style = None
       Accessibility = None

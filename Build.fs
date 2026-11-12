@@ -138,6 +138,10 @@ let private packableProjects =
       // Phase 512 — the public signature-searchable pattern bank (a Fable-clean
       // façade over Fuaran.Core.FunctionRegistry + a domain-neutral seed catalogue).
       "Fuaran.UI.FastPath"
+      // Phase 2517 — the operable-surface derivation and the resolution contract's
+      // reference matcher. Renderer.Core project-references it (the DOM stamp), so
+      // its nupkg declares a dependency on it; it must pack alongside.
+      "Fuaran.UI.Operability"
       "Fuaran.UI.Validator"
       // Phase 2058 — recipe / fragment certification, moved out of the validator executable
       // into a library it references; the validator nupkg declares a dependency on it.
@@ -904,7 +908,8 @@ let private registerTargets (args: string array) =
     // surfaced in a consumer's browser. And nothing anywhere said whether the
     // TRANSPILED algebra still behaves: `TreeMerge.merge3Way` ships in a package
     // that runs in a browser, and its order-independence was demonstrated by two
-    // examples on .NET and certified on neither pipeline.
+    // examples on .NET and certified on neither pipeline. (Since Phase 2645 the
+    // browser merge is `DagMerge.mergeDag`, and the law is restated over it.)
     //
     // The work is in `tests/fable-laws/fable-check.ps1` rather than here, the
     // same split `RendererWeb` takes and for the same reason: the stage shells a

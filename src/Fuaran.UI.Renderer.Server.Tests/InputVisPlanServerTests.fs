@@ -279,7 +279,8 @@ let tests =
                             BindingResolver.empty
                             "t"
                             Defaults.dataGrid
-                            { Headers = [ lit "H" ]
+                            { Citations = []
+                              Headers = [ lit "H" ]
                               Rows = [ [ lit "c" ]; [ lit "d" ] ]
                               Sortable = None
                               DefaultSort = None }
@@ -392,6 +393,87 @@ let tests =
                             html)
                         html
                 }
+                test "Phase 2591 — a cited figure is a span in the sentence, with no tile, and the label is hidden" {
+                    let out =
+                        Render.renderStatic (
+                            (Fuaran.markdown "m" "It took [23%](cite:share) of [£412k](cite:spend).": Node<obj>)
+                            |> Markdown.withCitation "share" "fact:share" (Some "Online share")
+                            |> Markdown.withCitation "spend" "fact:spend" None
+                        )
+
+                    Expect.stringContains
+                        out
+                        "<p>It took <span class=\"fuaran-cited\" data-fact=\"fact:share\"><span class=\"fuaran-cited-label\">Online share </span>23%</span> of <span class=\"fuaran-cited\" data-fact=\"fact:spend\">£412k</span>.</p>"
+                        "one paragraph, each figure inline and carrying its reference"
+
+                    Expect.isFalse (contains "fuaran-kind-fact" out) "no tile"
+                    Expect.isFalse (contains "<a " out) "a declared citation is not a link"
+                }
+
+                test
+                    "Phase 2535 — a cited Fact is served with data-fact on its tile, encoded, and an uncited one without" {
+                    let cited (reference: string) =
+                        Render.renderStatic (
+                            (Fuaran.fact "f" "Revenue" "£412k": Node<obj>) |> Fact.withReference reference
+                        )
+
+                    Expect.isTrue
+                        (contains
+                            "<div class=\"fuaran-fact fuaran-fact-default\" data-fact=\"fact:revenue-q3\">"
+                            (cited "fact:revenue-q3"))
+                        (cited "fact:revenue-q3")
+
+                    Expect.isFalse
+                        (contains "<script" (cited "\"><script>x</script>"))
+                        "the value goes through the attribute encoder"
+
+                    Expect.isFalse
+                        (contains "data-fact" (Render.renderStatic ((Fuaran.fact "f" "Revenue" "£412k": Node<obj>))))
+                        "no reference, no attribute"
+                }
+
+                test "Phase 2571 — option groups are served as optgroups, the ungrouped remainder after them" {
+                    let html =
+                        Render.renderStatic (
+                            Fuaran.select
+                                "s"
+                                { Defaults.select with
+                                    Source =
+                                        Binding.Static(
+                                            Some
+                                                [ { Value = "a"; Label = "A" }
+                                                  { Value = "b"; Label = "B" }
+                                                  { Value = "c"; Label = "C" }
+                                                  { Value = "d"; Label = "D" } ]
+                                        )
+                                    Value = Some(Binding.Static(Some "b"))
+                                    Groups =
+                                        [ { Label = "Second"
+                                            Values = [ "d"; "b" ] }
+                                          { Label = "First"; Values = [ "a" ] } ] }
+                        )
+
+                    // Groups in list order; a group's options in `source` order;
+                    // `c` (named by no group) after the last group.
+                    Expect.isTrue
+                        (contains
+                            "<select class=\"fuaran-select-control\"><optgroup label=\"Second\"><option value=\"b\" selected=\"selected\">B</option><option value=\"d\">D</option></optgroup><optgroup label=\"First\"><option value=\"a\">A</option></optgroup><option value=\"c\">C</option></select>"
+                            html)
+                        html
+                }
+                test "Phase 2571 — no groups serve the flat option list unchanged" {
+                    let html =
+                        Render.renderStatic (
+                            Fuaran.select
+                                "s"
+                                { Defaults.select with
+                                    Source = options
+                                    Value = Some(Binding.Static(Some "b"))
+                                    Groups = [] }
+                        )
+
+                    Expect.isFalse (contains "optgroup" html) html
+                }
                 test "R1 — data-fuaran-commit is served; the unwired cue is not" {
                     let html =
                         Render.renderStatic (
@@ -443,7 +525,8 @@ let tests =
                                         Exportable = true
                                         StaticRows =
                                             Some
-                                                { Headers = [ lit "H" ]
+                                                { Citations = []
+                                                  Headers = [ lit "H" ]
                                                   Rows = [ [ lit "c" ]; [ lit "d" ] ]
                                                   Sortable = None
                                                   DefaultSort = None } })

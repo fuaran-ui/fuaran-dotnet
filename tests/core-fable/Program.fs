@@ -16,11 +16,13 @@ module CoreFable.Program
 // candidate alike were retired when the pin was raised to 0.34.0, so a cut-time run against an older
 // Core line is no longer a supported mode.
 //
-// The program is written for Fuaran.Core 0.40.2, the pin: the `CORE_0_37` arms that let it compile
+// The program is written for Fuaran.Core 0.41.0, the pin: the `CORE_0_37` arms that let it compile
 // against the 0.36.0 pin and the 0.37.0 candidate alike were retired when the pin was raised to
-// 0.38.1 (Phase 2226), and the 0.40.0 spellings (Text, the `IdlField` canonical-form slots) were
-// written unconditionally when it was raised to 0.40.2 (Phase 2286). A later candidate that breaks a spelling touched here gets a version constant
-// in `CoreFable.fsproj` (keyed off `CoreFableEffectiveCore`) the same way; none is defined today.
+// 0.38.1 (Phase 2226), the 0.40.0 spellings (Text, the `IdlField` canonical-form slots) were
+// written unconditionally when it was raised to 0.40.2 (Phase 2286), and the `CORE_0_41` arms
+// (`IdlField.Keyed`, Core Phase 494) were written unconditionally when it was raised to 0.41.0
+// (Phase 2420). A later candidate that breaks a spelling touched here gets a version constant in
+// `CoreFable.fsproj` (keyed off `CoreFableEffectiveCore`) the same way. None is defined today.
 //
 // With `CORE_PARITY` defined (see `core-fable.ps1`), the program is also the VALUE leg: `--vectors`
 // prints `Fuaran.Core.ParityVectors.lines ()` — the cross-pipeline table the conformance kit ships
@@ -432,7 +434,8 @@ let private idlTouch =
                       Opt = Required
                       Annotations = Annotations.Empty
                       Aliases = []
-                      Presence = None }
+                      Presence = None
+                      Keyed = false }
                     // Phase 113 — one ANNOTATED field, so the Fable leg actually reaches
                     // `Artifact.annotationsJson`. An empty set short-circuits before any of
                     // it runs, so an all-empty vocabulary would compile the type and prove
@@ -449,7 +452,8 @@ let private idlTouch =
                             InProcessOnly = false
                             Since = Some "0.18.0" }
                       Aliases = []
-                      Presence = None } ] }
+                      Presence = None
+                      Keyed = false } ] }
               { Tag = "Box"
                 Category = "container"
                 Annotations = Annotations.Empty
@@ -459,7 +463,8 @@ let private idlTouch =
                       Opt = Required
                       Annotations = Annotations.Empty
                       Aliases = []
-                      Presence = None } ] } ]
+                      Presence = None
+                      Keyed = false } ] } ]
           Unions = []
           Enums = [ Declare.enumOf "Tone" [ "Calm"; "Loud" ] ]
           Records = []
@@ -618,6 +623,14 @@ let private columnOpsTouch =
         (ColumnOps.changeOf op)
         (ColumnOps.streamWitness.Apply op t |> Result.mapError ColumnOps.rejectionString)
 
+// LinearAlgebra (fuaran-core#590, from compute 0.43.0) — the matrix type, and the pinned elementary and
+// normal-distribution routines (#593, #600) whose Fable bytes the package promises.
+let private linAlgTouch =
+    let open' = Fuaran.Compute.LinearAlgebra.Matrix.identity 2
+    let e = Fuaran.Compute.LinearAlgebra.Elementary.exp 1.0
+    let p = Fuaran.Compute.LinearAlgebra.Elementary.normalCdf 0.0
+    sprintf "%A|%.17g|%.17g" open' e p
+
 // The compute touches, consumed by `main` below. Empty when the compute packages are not compiled
 // (a Core-only cut), so nothing outside this block names a compute type or module.
 let private computeTouches =
@@ -627,7 +640,8 @@ let private computeTouches =
       (sprintf "%A" deltaTouch)
       (sprintf "%A" incrementalTouch)
       slotAndClockTouch
-      columnOpsTouch ]
+      columnOpsTouch
+      linAlgTouch ]
 #else
 let private computeTouches: string list = []
 #endif

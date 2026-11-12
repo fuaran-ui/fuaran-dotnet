@@ -2048,6 +2048,17 @@ let private leniencyFamilies: LeniencyFamily list =
           + "four bytes, which is precisely why it must not be taught: teaching it would resurrect the "
           + "name the rename exists to retire, and the pack's whole point is that the emitted spelling "
           + "SAYS what the control accepts. Accepted on decode, never taught, never emitted." }
+      { Name = "Producer-support shims of a declared emitter profile (Phase 2451)"
+        Class = NeverTaught
+        FixtureIds = [ "lenient-2451-panel-1-0"; "lenient-2451-panel-schedule-1-0" ]
+        Evidence =
+          "The `panel@1.0` emitter-profile revision's documents in the spelling before Phase 1811 "
+          + "(a form-field Date tag), pinned as the producer-support shim WIRE_FORMAT 15.6 obliges every "
+          + "codec host to carry for a declared revision. The alias is the Phase 1811 pre-rename one "
+          + "above, so the judgement is that family's: a total, loss-free tag swap kept for a producer "
+          + "that already writes it, never an admission on 16's own ground. Teaching it would resurrect "
+          + "the retired name for every author to serve one declared device lineage. Accepted on decode, "
+          + "never taught, never emitted." }
       { Name = "Invented time-input $type spellings (Phase 1811)"
         Class = SafeNotTaught
         FixtureIds = [ "lenient-1811-form-time-invented"; "lenient-1811-form-timerange-invented" ]

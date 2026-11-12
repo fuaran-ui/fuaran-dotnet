@@ -677,7 +677,12 @@ let resolveOwnFields (sources: BindingSources) (node: Node<obj>) : Node<obj> =
         | NodeKind.Markdown s ->
             NodeKind.Markdown
                 { s with
-                    Text = resolveText sources s.Text }
+                    Text = resolveText sources s.Text
+                    Citations =
+                        s.Citations
+                        |> List.map (fun c ->
+                            { c with
+                                Label = resolveTextOpt sources c.Label }) }
         | NodeKind.Badge s ->
             NodeKind.Badge
                 { s with
@@ -964,9 +969,14 @@ let decodeClientEffect (value: JVal) : Result<ClientEffect, WireRefusal> =
 
     kind
     |> Result.bind (fun kind ->
-        let one name ctor =
+        // §2's non-empty rule (Phase 2620, D29): a member that NAMES something
+        // a surface acts on — a route, a node, a url, a file name, a token —
+        // and `Confirm`'s prompt are refused present and empty, on
+        // `missing-member`. `WriteToClipboard`'s `text` is content and may be
+        // empty, which is why `one` takes the reader as an argument.
+        let one read name ctor =
             ProgramWire.declaredOnly [ "kind"; name ] value
-            |> Result.bind (fun () -> ProgramWire.requireString name value)
+            |> Result.bind (fun () -> read name value)
             |> Result.map ctor
 
         match kind with
@@ -991,7 +1001,7 @@ let decodeClientEffect (value: JVal) : Result<ClientEffect, WireRefusal> =
         // browsing context it has no rule for.
         | "Navigate" ->
             ProgramWire.declaredOnly [ "kind"; "route"; "target" ] value
-            |> Result.bind (fun () -> ProgramWire.requireString "route" value)
+            |> Result.bind (fun () -> ProgramWire.requireNonEmpty "route" value)
             |> Result.bind (fun route ->
                 // `ProgramWire.tryMember`, not `ProgramWire.tryString`: the latter reads a present
                 // non-string member as absence, which would silently
@@ -1005,17 +1015,17 @@ let decodeClientEffect (value: JVal) : Result<ClientEffect, WireRefusal> =
                         RefusalClass.UndeclaredMember
                         ("target '" + other + "' is neither 'Self' nor 'Blank'")
                 | Some _ -> ProgramWire.refuse RefusalClass.UndeclaredMember "member 'target' is not a string")
-        | "PushState" -> one "route" ClientEffect.PushState
-        | "WriteToClipboard" -> one "text" ClientEffect.WriteToClipboard
-        | "Focus" -> one "nodeId" ClientEffect.Focus
+        | "PushState" -> one ProgramWire.requireNonEmpty "route" ClientEffect.PushState
+        | "WriteToClipboard" -> one ProgramWire.requireString "text" ClientEffect.WriteToClipboard
+        | "Focus" -> one ProgramWire.requireNonEmpty "nodeId" ClientEffect.Focus
         | "Download" ->
             ProgramWire.declaredOnly [ "kind"; "url"; "name" ] value
-            |> Result.bind (fun () -> ProgramWire.requireString "url" value)
-            |> Result.bind (fun url -> ProgramWire.requireString "name" value |> Result.map (fun name -> url, name))
+            |> Result.bind (fun () -> ProgramWire.requireNonEmpty "url" value)
+            |> Result.bind (fun url -> ProgramWire.requireNonEmpty "name" value |> Result.map (fun name -> url, name))
             |> Result.map ClientEffect.Download
         | "ReadFileBody" ->
             ProgramWire.declaredOnly [ "kind"; "nodeId"; "encoding" ] value
-            |> Result.bind (fun () -> ProgramWire.requireString "nodeId" value)
+            |> Result.bind (fun () -> ProgramWire.requireNonEmpty "nodeId" value)
             |> Result.bind (fun nodeId ->
                 ProgramWire.requireString "encoding" value
                 |> Result.bind (fun encoding ->
@@ -1055,9 +1065,9 @@ let decodeClientEffect (value: JVal) : Result<ClientEffect, WireRefusal> =
         // the reader's own continuation meeting the gate on its own.
         | "Confirm" ->
             ProgramWire.declaredOnly [ "kind"; "prompt"; "token" ] value
-            |> Result.bind (fun () -> ProgramWire.requireString "prompt" value)
+            |> Result.bind (fun () -> ProgramWire.requireNonEmpty "prompt" value)
             |> Result.bind (fun prompt ->
-                ProgramWire.requireString "token" value
+                ProgramWire.requireNonEmpty "token" value
                 |> Result.map (fun token -> prompt, token))
             |> Result.map ClientEffect.Confirm
         | other ->
@@ -1079,6 +1089,14 @@ let claimVerifier
     : ClaimVerifier<Fuaran.UI.OpStream.Abstractions.KeyDirectoryEntry> =
     { KeyId = fun key -> key.KeyId
       Verify = fun payload signature key -> crypto.VerifyClaim payload signature key }
+
+/// The published `ecdsa-p256-sha256-v1` `ClaimVerifier` (Phase 2570): the
+/// tier's `EcdsaP256.claimVerifier` through `claimVerifier`. One name on both
+/// pipelines — the BCL on .NET, WebCrypto under Fable — so a host's stored
+/// page verifier names this and holds no crypto of its own. Asynchronous as
+/// the seam is: WebCrypto's promise is awaited inside the provider.
+let ecdsaP256: ClaimVerifier<Fuaran.UI.OpStream.Abstractions.KeyDirectoryEntry> =
+    claimVerifier Fuaran.UI.OpStream.Abstractions.EcdsaP256.claimVerifier
 
 // ─── the witness, assembled ─────────────────────────────────────────────────
 

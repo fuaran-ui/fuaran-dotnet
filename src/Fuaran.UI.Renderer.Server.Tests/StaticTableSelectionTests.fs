@@ -144,7 +144,8 @@ let tests =
                       BindingResolver.empty
                       "countries"
                       grid
-                      { Headers = countries.Headers
+                      { Citations = []
+                        Headers = countries.Headers
                         Rows = countries.Rows
                         Sortable = None
                         DefaultSort = None }

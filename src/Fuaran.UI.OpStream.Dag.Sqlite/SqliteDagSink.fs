@@ -6,26 +6,37 @@ open Microsoft.Data.Sqlite
 open Fuaran.UI.Ops.Types
 open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.OpStream.Dag.Abstractions
+open Fuaran.UI.OpStream.SqliteStore
 
 // ============================================================================
 //  SqliteDagSink — Microsoft.Data.Sqlite-backed IDagOpStreamSink<'Msg>.
 //
-//  The durable counterpart of the in-memory DAG sink. Two tables:
+//  The durable counterpart of the in-memory DAG sink. The schema is VERSIONED
+//  (Phase 2645, the cut — `SqliteDagSchema.version`, recorded in `dag_schema`):
 //
-//      CREATE TABLE dag_op_record (
+//      CREATE TABLE dag_schema ( version INTEGER NOT NULL );
+//      CREATE TABLE dag_node (                       -- the live set: whole Core nodes
 //          stream_id            TEXT    NOT NULL,
-//          hash                 TEXT    NOT NULL,
-//          parents_json         TEXT    NOT NULL,   -- JSON array of parent hashes (author order)
+//          hash                 TEXT    NOT NULL,    -- Dag.nodeId (DagOpRecord.nodeId)
+//          parents_json         TEXT    NOT NULL,    -- JSON array of parent hashes (author order)
 //          op_json              TEXT    NOT NULL,
-//          outcome_hash         TEXT    NULL,        -- merge nodes only
 //          prompt_id            TEXT    NULL,
-//          user_id              TEXT    NOT NULL,   -- canonical typed-actor JSON (Actor.encode)
+//          actor_json           TEXT    NOT NULL,    -- canonical typed-actor JSON (Actor.encode)
 //          timestamp            INTEGER NOT NULL,
 //          result_envelope_json TEXT    NOT NULL,
-//          tombstoned           INTEGER NOT NULL,    -- 0 / 1
+//          PRIMARY KEY (stream_id, hash)
+//      );
+//      CREATE TABLE dag_skeleton (                   -- pruned nodes: address + links, no payload
+//          stream_id TEXT NOT NULL, hash TEXT NOT NULL, parents_json TEXT NOT NULL,
 //          PRIMARY KEY (stream_id, hash)
 //      );
 //      CREATE TABLE dag_head ( stream_id TEXT PRIMARY KEY, head TEXT NOT NULL );
+//
+//  The pre-cut table (`dag_op_record`, with its `outcome_hash`, `tombstoned`
+//  and retired `content_fingerprint` columns) is NOT read: its addresses do not
+//  recompute under the cut, so a database holding it is refused by name on
+//  open, and the one-release re-mint tool re-addresses it. A database recording
+//  another schema version is refused the same way.
 //
 //  The trunk-head CAS (`TryAdvanceHead`) is a CONDITIONAL UPDATE
 //  (`UPDATE dag_head SET head = @new WHERE stream_id = @s AND head = @expected`)
@@ -35,20 +46,19 @@ open Fuaran.UI.OpStream.Dag.Abstractions
 //  rows-affected distinguishes "head was unset" (1) from "head already set" (0).
 //
 //  Op JSON goes through the host `IOpJsonCodec<'Msg>` (closure-bearing typed
-//  ops can't round-trip generically). Topology queries load the stream's
-//  (hash, parents) rows into memory and delegate to the pure `DagTopology`
-//  algorithms — a recursive-CTE implementation is a later optimisation.
+//  ops can't round-trip generically). `Reachable` is Core's `Dag.ancestorsOf`
+//  over the stream's live nodes.
 //
 //  ── VERIFY ON READ (Phase 793) ─────────────────────────────────────────────
 //  `Records` and `TryGet` re-verify what they hand back
 //  (`DagVerify.recordsResolving` / `DagVerify.record`) rather than trusting the
 //  rows because this sink wrote them. This store outlives the process and is a file any other program can
 //  touch, so it is where "computed on write, never checked on read" actually
-//  costs something. `Add`'s collision check is a different question and stays
-//  as it was: it asks whether this hash already means something else, not
-//  whether a stored record still hashes to its address.
+//  costs something. `Add` runs the admission both DAG sinks share
+//  (`DagWriteAdmission.admit`, Phase 1937): the address recomputed, every parent
+//  present, a held address a no-op — so a forged record never reaches a row.
 //
-//  The topology reads (`Parents` / `Reachable` / `Lca` / `Heads`) deliberately
+//  The topology reads (`Parents` / `Heads`) deliberately
 //  do NOT verify: they read only (hash, parents) and never return a record, so
 //  there is no content address in scope to recompute — the check would have to
 //  load every payload to say nothing more than `Records` already says. A caller
@@ -66,22 +76,12 @@ module private DagJson =
         Actor.tryDecode raw |> Option.defaultValue (Actor.ofLegacyString raw)
 
     /// JSON array of parent hashes. Hashes are 64-hex / opaque tokens with no
-    /// JSON-special characters, but we quote + escape defensively.
+    /// JSON-special characters, but each is spelled through Core's canonical
+    /// escape all the same (Phase 2026).
     let encodeParents (parents: string list) : string =
-        let esc (s: string) =
-            let sb = StringBuilder()
-            sb.Append '"' |> ignore
-
-            for ch in s do
-                match ch with
-                | '"' -> sb.Append "\\\"" |> ignore
-                | '\\' -> sb.Append "\\\\" |> ignore
-                | c -> sb.Append c |> ignore
-
-            sb.Append '"' |> ignore
-            sb.ToString()
-
-        "[" + (parents |> List.map esc |> String.concat ",") + "]"
+        "["
+        + (parents |> List.map Fuaran.Core.JsonString.quote |> String.concat ",")
+        + "]"
 
     /// Inverse of `encodeParents`. The writer is the only producer, so a small
     /// scanner over the quoted tokens is enough.
@@ -94,72 +94,52 @@ module private DagJson =
             // Strip the surrounding [ ], split top-level quoted strings.
             let inner = trimmed.Trim('[', ']')
             let result = ResizeArray<string>()
-            let sb = StringBuilder()
-            let mutable inStr = false
-            let mutable escaped = false
 
-            for ch in inner do
-                if escaped then
-                    sb.Append ch |> ignore
-                    escaped <- false
-                elif ch = '\\' then
-                    escaped <- true
-                elif ch = '"' then
-                    if inStr then
-                        result.Add(sb.ToString())
-                        sb.Clear() |> ignore
+            // Phase 2028: the parents are 64-hex hashes, so a row holds no escape
+            // and each parent is the substring between a pair of quotes. A row
+            // with a backslash anywhere takes the escape-aware scanner, unchanged.
+            if inner.IndexOf '\\' < 0 then
+                let mutable openQuote = inner.IndexOf '"'
 
-                    inStr <- not inStr
-                elif inStr then
-                    sb.Append ch |> ignore
+                while openQuote >= 0 do
+                    let closeQuote = inner.IndexOf('"', openQuote + 1)
+
+                    if closeQuote < 0 then
+                        // An unterminated last string: the scanner drops it too.
+                        openQuote <- -1
+                    else
+                        result.Add(inner.Substring(openQuote + 1, closeQuote - openQuote - 1))
+                        openQuote <- inner.IndexOf('"', closeQuote + 1)
+            else
+                let sb = StringBuilder()
+                let mutable inStr = false
+                let mutable escaped = false
+
+                for ch in inner do
+                    if escaped then
+                        sb.Append ch |> ignore
+                        escaped <- false
+                    elif ch = '\\' then
+                        escaped <- true
+                    elif ch = '"' then
+                        if inStr then
+                            result.Add(sb.ToString())
+                            sb.Clear() |> ignore
+
+                        inStr <- not inStr
+                    elif inStr then
+                        sb.Append ch |> ignore
 
             List.ofSeq result
 
-    let encodeEnvelope (envelope: OpResultEnvelope) : string =
-        match envelope with
-        | OpResultEnvelope.Success -> "{\"$type\":\"Success\"}"
-        | OpResultEnvelope.Failure(code, message) ->
-            let esc (s: string) =
-                s.Replace("\\", "\\\\").Replace("\"", "\\\"")
-
-            sprintf "{\"$type\":\"Failure\",\"code\":\"%s\",\"message\":\"%s\"}" (esc code) (esc message)
-
-    /// Inverse of `encodeEnvelope`. `Success` is the common case; a `Failure`
-    /// extracts the two quoted strings (the encoder is the only writer).
-    let decodeEnvelope (json: string) : OpResultEnvelope =
-        if json = "{\"$type\":\"Success\"}" then
-            OpResultEnvelope.Success
-        else
-            let extract (key: string) =
-                let needle = sprintf "\"%s\":\"" key
-
-                match json.IndexOf needle with
-                | -1 -> ""
-                | start ->
-                    let valueStart = start + needle.Length
-                    let sb = StringBuilder()
-                    let mutable i = valueStart
-                    let mutable closed = false
-
-                    while not closed && i < json.Length do
-                        let c = json[i]
-
-                        if c = '\\' && i + 1 < json.Length then
-                            sb.Append json[i + 1] |> ignore
-                            i <- i + 2
-                        elif c = '"' then
-                            closed <- true
-                        else
-                            sb.Append c |> ignore
-                            i <- i + 1
-
-                    sb.ToString()
-
-            OpResultEnvelope.Failure(extract "code", extract "message")
+/// The DAG table schema this sink reads and writes (Phase 2645).
+module SqliteDagSchema =
+    /// Recorded in `dag_schema`; a database recording another version is refused.
+    [<Literal>]
+    let version = 1
 
 type SqliteDagSink<'Msg>(connectionString: string, codec: IOpJsonCodec<'Msg>, loadVerification: LoadVerification) =
 
-    let emptyBatchJson = codec.EncodeOp(TreeOp.Batch [])
 
     /// `IDagOpStreamSink` has no error channel — its reads return bare records —
     /// so a broken DAG is refused the way this sink already refuses an
@@ -175,94 +155,90 @@ type SqliteDagSink<'Msg>(connectionString: string, codec: IOpJsonCodec<'Msg>, lo
             | Ok() -> ()
             | Error e -> invalidOp ("SqliteDagSink: " + DagVerify.describe streamId e)
 
-    /// How long a connection waits for a writer's lock before giving up with
-    /// SQLITE_BUSY. `busy_timeout` is CONNECTION-scoped, so it is set on every
-    /// connection this sink opens rather than once at schema time — a PRAGMA set
-    /// on the schema connection alone protects nothing afterwards.
-    let busyTimeoutMs = 5000
-
     let openConnection () : SqliteConnection =
-        let conn = new SqliteConnection(connectionString)
-        conn.Open()
-        use pragma = conn.CreateCommand()
-        pragma.CommandText <- sprintf "PRAGMA busy_timeout = %d;" busyTimeoutMs
-        pragma.ExecuteNonQuery() |> ignore
-        conn
-
-    /// `true` when `ex` is SQLite's contention signal — SQLITE_BUSY (5) or its
-    /// sibling SQLITE_LOCKED (6), raised once `busy_timeout` above has elapsed
-    /// without the lock coming free. It is not a corrupt store and it is not a
-    /// programming error: it means another writer holds the database right now.
-    let isContention (ex: SqliteException) =
-        ex.SqliteErrorCode = 5 || ex.SqliteErrorCode = 6
+        SqliteConnections.openConnection connectionString
 
     let ensureSchema () =
         use conn = openConnection ()
 
-        // WAL is a property of the DATABASE FILE, not of a connection, so it is
-        // set once here and persists across every later open. It is what lets a
-        // reader run concurrently with a writer instead of blocking on it —
-        // without it the verify-on-read path and a concurrent `Add` serialise
-        // against each other for no reason. It is a no-op (and reports its own
-        // mode back, never an error) for an in-memory or read-only database.
-        use walCmd = conn.CreateCommand()
-        walCmd.CommandText <- "PRAGMA journal_mode = WAL;"
-        walCmd.ExecuteScalar() |> ignore
+        SqliteConnections.useWriteAheadLog conn
+
+        let scalar (sql: string) =
+            use q = conn.CreateCommand()
+            q.CommandText <- sql
+            q.ExecuteScalar()
+
+        if not (isNull (scalar "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'dag_op_record';")) then
+            invalidOp
+                "SqliteDagSink: this database holds a pre-2645 DAG table (dag_op_record). Its addresses do not recompute under the cut (Core's Dag.nodeId); re-mint the store with the one-release re-mint tool before opening it."
 
         use cmd = conn.CreateCommand()
 
         cmd.CommandText <-
-            """CREATE TABLE IF NOT EXISTS dag_op_record (
+            """CREATE TABLE IF NOT EXISTS dag_schema (
+    version INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS dag_node (
     stream_id            TEXT    NOT NULL,
     hash                 TEXT    NOT NULL,
     parents_json         TEXT    NOT NULL,
     op_json              TEXT    NOT NULL,
-    outcome_hash         TEXT    NULL,
     prompt_id            TEXT    NULL,
-    user_id              TEXT    NOT NULL,
+    actor_json           TEXT    NOT NULL,
     timestamp            INTEGER NOT NULL,
     result_envelope_json TEXT    NOT NULL,
-    tombstoned           INTEGER NOT NULL,
-    content_fingerprint  TEXT    NULL,
+    PRIMARY KEY (stream_id, hash)
+);
+CREATE TABLE IF NOT EXISTS dag_skeleton (
+    stream_id    TEXT NOT NULL,
+    hash         TEXT NOT NULL,
+    parents_json TEXT NOT NULL,
     PRIMARY KEY (stream_id, hash)
 );
 CREATE TABLE IF NOT EXISTS dag_head (
     stream_id TEXT PRIMARY KEY,
     head      TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_dag_op_record_hash ON dag_op_record (hash);"""
+CREATE INDEX IF NOT EXISTS idx_dag_node_hash ON dag_node (hash);
+CREATE INDEX IF NOT EXISTS idx_dag_skeleton_hash ON dag_skeleton (hash);
+INSERT INTO dag_schema (version) SELECT @v WHERE NOT EXISTS (SELECT 1 FROM dag_schema);"""
 
+        cmd.Parameters.AddWithValue("@v", SqliteDagSchema.version) |> ignore
         cmd.ExecuteNonQuery() |> ignore
 
-        // A database written before Phase 1525 has no `content_fingerprint`
-        // column. Adding it is the whole migration — it is nullable, so every
-        // existing row reads back as "fingerprint unknown" and the collision
-        // check falls back to what those rows CAN answer (see `Add`).
-        let hasFingerprint =
-            use info = conn.CreateCommand()
-            info.CommandText <- "PRAGMA table_info(dag_op_record);"
-            use reader = info.ExecuteReader()
-            let mutable found = false
-
-            while reader.Read() do
-                if reader.GetString 1 = "content_fingerprint" then
-                    found <- true
-
-            found
-
-        if not hasFingerprint then
-            use alter = conn.CreateCommand()
-            alter.CommandText <- "ALTER TABLE dag_op_record ADD COLUMN content_fingerprint TEXT NULL;"
-            alter.ExecuteNonQuery() |> ignore
+        match scalar "SELECT version FROM dag_schema;" with
+        | :? int64 as v when v = int64 SqliteDagSchema.version -> ()
+        | v ->
+            invalidOp (
+                sprintf
+                    "SqliteDagSink: this database records DAG schema version %O; this sink reads version %d only."
+                    v
+                    SqliteDagSchema.version
+            )
 
     do ensureSchema ()
+
+    /// The `result_envelope_json` column through the decoder the linear sink
+    /// uses (Phase 1937). A shape the writer never produced is refused by name;
+    /// the copy this sink carried read it as `Failure("", "")`.
+    let envelopeAt (streamId: string) (hash: string) (json: string) : OpResultEnvelope =
+        match ResultEnvelopeJson.decode json with
+        | Ok envelope -> envelope
+        | Error msg ->
+            invalidOp (
+                sprintf
+                    "SqliteDagSink: failed to decode the result envelope of record %s in stream '%s': %s"
+                    hash
+                    streamId
+                    msg
+            )
 
     /// Read all records for `streamId` (no decode of op — used by topology /
     /// Heads which only need (hash, parents)).
     let loadParentMap (streamId: string) : Map<string, string list> =
         use conn = openConnection ()
         use cmd = conn.CreateCommand()
-        cmd.CommandText <- "SELECT hash, parents_json FROM dag_op_record WHERE stream_id = @s;"
+        cmd.CommandText <- "SELECT hash, parents_json FROM dag_node WHERE stream_id = @s;"
         cmd.Parameters.AddWithValue("@s", streamId) |> ignore
         use reader = cmd.ExecuteReader()
         let acc = System.Collections.Generic.Dictionary<string, string list>()
@@ -272,16 +248,6 @@ CREATE INDEX IF NOT EXISTS idx_dag_op_record_hash ON dag_op_record (hash);"""
 
         acc |> Seq.map (fun kv -> kv.Key, kv.Value) |> Map.ofSeq
 
-    /// One whole-stream load, shared by every lookup the CALLER then makes. The
-    /// traversals that use it (`reachable` / `lca`) walk an unbounded ancestor
-    /// cone, so a per-hash query would be the N+1 this closure exists to avoid;
-    /// the map is built once per call and thrown away, which is deliberate — the
-    /// store is a file another process may be writing (WAL, above), so a map
-    /// cached across calls would answer from a topology that has since moved.
-    let parentsLookup (streamId: string) : string -> string list =
-        let m = loadParentMap streamId
-        fun h -> Map.tryFind h m |> Option.defaultValue []
-
     /// The parents of ONE hash, by primary-key lookup. `Parents` used to answer
     /// this by loading the entire stream's parent map and indexing into it —
     /// every row of a stream read, decoded and discarded, to return one row's
@@ -290,7 +256,10 @@ CREATE INDEX IF NOT EXISTS idx_dag_op_record_hash ON dag_op_record (hash);"""
     let readParents (streamId: string) (hash: string) : string list =
         use conn = openConnection ()
         use cmd = conn.CreateCommand()
-        cmd.CommandText <- "SELECT parents_json FROM dag_op_record WHERE stream_id = @s AND hash = @h;"
+
+        cmd.CommandText <-
+            "SELECT parents_json FROM dag_node WHERE stream_id = @s AND hash = @h UNION ALL SELECT parents_json FROM dag_skeleton WHERE stream_id = @s AND hash = @h;"
+
         cmd.Parameters.AddWithValue("@s", streamId) |> ignore
         cmd.Parameters.AddWithValue("@h", hash) |> ignore
 
@@ -298,13 +267,29 @@ CREATE INDEX IF NOT EXISTS idx_dag_op_record_hash ON dag_op_record (hash);"""
         | :? string as json -> DagJson.decodeParents json
         | _ -> []
 
+    /// A record as a row stores it: the STORED address, never a recomputed one,
+    /// so the read path's verification can find a row whose address is wrong.
+    let stored
+        (streamId: string)
+        (hash: string)
+        (parents: string list)
+        (actor: Actor)
+        (entry: StreamEntry<'Msg>)
+        : DagOpRecord<'Msg> =
+        { StreamId = streamId
+          Node =
+            { Id = hash
+              Parents = parents
+              Actor = actor
+              Op = entry } }
+
     let readRecord (streamId: string) (hash: string) : DagOpRecord<'Msg> option =
         use conn = openConnection ()
         use cmd = conn.CreateCommand()
 
         cmd.CommandText <-
-            """SELECT parents_json, op_json, outcome_hash, prompt_id, user_id, timestamp, result_envelope_json, tombstoned
-FROM dag_op_record WHERE stream_id = @s AND hash = @h;"""
+            """SELECT parents_json, op_json, prompt_id, actor_json, timestamp, result_envelope_json
+FROM dag_node WHERE stream_id = @s AND hash = @h;"""
 
         cmd.Parameters.AddWithValue("@s", streamId) |> ignore
         cmd.Parameters.AddWithValue("@h", hash) |> ignore
@@ -326,20 +311,19 @@ FROM dag_op_record WHERE stream_id = @s AND hash = @h;"""
                         )
                     )
 
-            let outcomeHash = if reader.IsDBNull 2 then None else Some(reader.GetString 2)
-            let promptId = if reader.IsDBNull 3 then None else Some(reader.GetString 3)
+            let promptId = if reader.IsDBNull 2 then None else Some(reader.GetString 2)
 
-            Some
-                { StreamId = streamId
-                  Hash = hash
-                  Parents = DagJson.decodeParents (reader.GetString 0)
-                  Op = op
-                  OutcomeHash = outcomeHash
-                  PromptId = promptId
-                  Actor = DagJson.readActor (reader.GetString 4)
-                  Timestamp = DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64 5)
-                  ResultEnvelope = DagJson.decodeEnvelope (reader.GetString 6)
-                  Tombstoned = reader.GetInt64 7 <> 0L }
+            Some(
+                stored
+                    streamId
+                    hash
+                    (DagJson.decodeParents (reader.GetString 0))
+                    (DagJson.readActor (reader.GetString 3))
+                    { Op = op
+                      PromptId = promptId
+                      Timestamp = DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64 4)
+                      ResultEnvelope = envelopeAt streamId hash (reader.GetString 5) }
+            )
 
     /// Bulk read of every record in a stream in ONE query + connection, replacing
     /// the `Records` member's N+1 (a `readRecord` per hash, each opening its own
@@ -352,8 +336,8 @@ FROM dag_op_record WHERE stream_id = @s AND hash = @h;"""
         use cmd = conn.CreateCommand()
 
         cmd.CommandText <-
-            """SELECT hash, parents_json, op_json, outcome_hash, prompt_id, user_id, timestamp, result_envelope_json, tombstoned
-FROM dag_op_record WHERE stream_id = @s ORDER BY hash;"""
+            """SELECT hash, parents_json, op_json, prompt_id, actor_json, timestamp, result_envelope_json
+FROM dag_node WHERE stream_id = @s ORDER BY hash;"""
 
         cmd.Parameters.AddWithValue("@s", streamId) |> ignore
         use reader = cmd.ExecuteReader()
@@ -374,20 +358,19 @@ FROM dag_op_record WHERE stream_id = @s ORDER BY hash;"""
                         )
                     )
 
-            let outcomeHash = if reader.IsDBNull 3 then None else Some(reader.GetString 3)
-            let promptId = if reader.IsDBNull 4 then None else Some(reader.GetString 4)
+            let promptId = if reader.IsDBNull 3 then None else Some(reader.GetString 3)
 
-            acc.Add
-                { StreamId = streamId
-                  Hash = hash
-                  Parents = DagJson.decodeParents (reader.GetString 1)
-                  Op = op
-                  OutcomeHash = outcomeHash
-                  PromptId = promptId
-                  Actor = DagJson.readActor (reader.GetString 5)
-                  Timestamp = DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64 6)
-                  ResultEnvelope = DagJson.decodeEnvelope (reader.GetString 7)
-                  Tombstoned = reader.GetInt64 8 <> 0L }
+            acc.Add(
+                stored
+                    streamId
+                    hash
+                    (DagJson.decodeParents (reader.GetString 1))
+                    (DagJson.readActor (reader.GetString 4))
+                    { Op = op
+                      PromptId = promptId
+                      Timestamp = DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64 5)
+                      ResultEnvelope = envelopeAt streamId hash (reader.GetString 6) }
+            )
 
         List.ofSeq acc
 
@@ -408,9 +391,13 @@ FROM dag_op_record WHERE stream_id = @s ORDER BY hash;"""
             // statement cache on every distinct arity besides.
             let names = hashes |> List.mapi (fun i _ -> "@h" + string i)
 
+            let inList = String.concat "," names
+
             cmd.CommandText <-
-                "SELECT hash FROM dag_op_record WHERE hash IN ("
-                + String.concat "," names
+                "SELECT hash FROM dag_node WHERE hash IN ("
+                + inList
+                + ") UNION SELECT hash FROM dag_skeleton WHERE hash IN ("
+                + inList
                 + ");"
 
             hashes
@@ -431,6 +418,113 @@ FROM dag_op_record WHERE stream_id = @s ORDER BY hash;"""
             use conn = openConnection ()
             presentHashesOn conn hashes
 
+    /// Store `record`'s row on `conn`, inside the caller's transaction. The one
+    /// INSERT both `Add` and `AddAll` reach, after admission.
+    let insertOn (conn: SqliteConnection) (record: DagOpRecord<'Msg>) : unit =
+        use cmd = conn.CreateCommand()
+
+        cmd.CommandText <-
+            """INSERT INTO dag_node
+    (stream_id, hash, parents_json, op_json, prompt_id, actor_json, timestamp, result_envelope_json)
+VALUES
+    (@s, @h, @parents, @op, @prompt, @actor, @ts, @env);"""
+
+        cmd.Parameters.AddWithValue("@s", record.StreamId) |> ignore
+        cmd.Parameters.AddWithValue("@h", record.Hash) |> ignore
+
+        cmd.Parameters.AddWithValue("@parents", DagJson.encodeParents record.Parents)
+        |> ignore
+
+        cmd.Parameters.AddWithValue("@op", codec.EncodeOp record.Op) |> ignore
+
+        cmd.Parameters.AddWithValue(
+            "@prompt",
+            (match record.PromptId with
+             | Some p -> box p
+             | None -> box DBNull.Value)
+        )
+        |> ignore
+
+        // Phase 1144 — the `user_id` column now holds the canonical typed-actor
+        // JSON (`Actor.encode`), mirroring what the LINEAR sqlite sink has stored
+        // since Phase 320. The column is reused rather than renamed: pre-1144 rows
+        // hold a bare id string and read back via `Actor.ofLegacyString`, so an
+        // existing database still OPENS. Its records' content addresses do not
+        // carry forward, though — see docs/migrations/1144-typed-actor-dag-fold.md.
+        cmd.Parameters.AddWithValue("@actor", Actor.encode record.Actor) |> ignore
+
+        cmd.Parameters.AddWithValue("@ts", record.Timestamp.ToUnixTimeSeconds())
+        |> ignore
+
+        cmd.Parameters.AddWithValue("@env", ResultEnvelopeJson.encode record.ResultEnvelope)
+        |> ignore
+
+        cmd.ExecuteNonQuery() |> ignore
+
+    /// Admit and store every record of `records`, in order, in ONE `BEGIN
+    /// IMMEDIATE` transaction (Phase 2117; `Add` is the one-record case). Each
+    /// record runs the admission both DAG sinks share (`DagWriteAdmission.admit`,
+    /// Phase 1937) on the transaction's own connection, so a parent stored earlier
+    /// in the batch is present and an address stored earlier is held. A refusal
+    /// throws before the commit and the transaction rolls back on dispose: every
+    /// record or none. `what` names the write in the contention refusal.
+    let addAll (what: string) (streamId: string) (records: DagOpRecord<'Msg> list) : unit =
+        match records with
+        | [] -> ()
+        | _ ->
+            // A busy database is CONTENTION, not corruption (Phase 1525).
+            // `Add` / `AddAll` have no "try again" channel — they return unit, and
+            // a caller cannot tell a completed append from a swallowed one — so
+            // unlike the CAS below a busy store is refused BY NAME rather than
+            // reported as success. The name is the point: a raw `SqliteException`
+            // escaping here reads as a store defect and sends the reader to the
+            // wrong question.
+            try
+                use conn = openConnection ()
+
+                // `BEGIN IMMEDIATE` (Phase 1525). The admission below is a
+                // read-then-write over the same rows — the parent-presence and
+                // held-address SELECTs, then the INSERT. A DEFERRED transaction
+                // takes its write lock only when the first write executes, so two
+                // writers can both pass their reads and one then fails to upgrade;
+                // the reads that justified the write are stale by the time it
+                // lands. IMMEDIATE takes the write lock up front, so the reads and
+                // the write see one state.
+                use tx = conn.BeginTransaction(false)
+
+                for record in records do
+                    // The address recomputed, every parent present store-wide (one
+                    // batched `IN (...)` query, not one per parent: a guest branch's
+                    // genesis hangs off a record in the HOST stream), and an address
+                    // the stream already holds a no-op.
+                    let present = presentHashesOn conn record.Parents
+
+                    let held (hash: string) =
+                        use probe = conn.CreateCommand()
+
+                        probe.CommandText <-
+                            "SELECT 1 FROM dag_node WHERE stream_id = @s AND hash = @h UNION ALL SELECT 1 FROM dag_skeleton WHERE stream_id = @s AND hash = @h;"
+
+                        probe.Parameters.AddWithValue("@s", record.StreamId) |> ignore
+                        probe.Parameters.AddWithValue("@h", hash) |> ignore
+                        not (isNull (probe.ExecuteScalar()))
+
+                    match DagWriteAdmission.admit present.Contains held record with
+                    | Error refusal -> invalidOp (DagWriteAdmission.describe "SqliteDagSink" record refusal)
+                    | Ok DagAdmission.AlreadyHeld -> ()
+                    | Ok DagAdmission.Store -> insertOn conn record
+
+                tx.Commit()
+            with :? SqliteException as ex when SqliteConnections.isContention ex ->
+                invalidOp (
+                    sprintf
+                        "SqliteDagSink: could not append %s to stream '%s' — SQLITE_BUSY (%d) after busy_timeout=%dms: another writer holds the database. This is contention, not corruption — retry the append."
+                        what
+                        streamId
+                        ex.SqliteErrorCode
+                        SqliteConnections.busyTimeoutMs
+                )
+
     /// Two-arg constructor — verifies every read (Phase 793).
     new(connectionString: string, codec: IOpJsonCodec<'Msg>) =
         SqliteDagSink<'Msg>(connectionString, codec, LoadVerification.Full)
@@ -438,171 +532,7 @@ FROM dag_op_record WHERE stream_id = @s ORDER BY hash;"""
     interface IDagOpStreamSink<'Msg> with
 
         member _.Add(record: DagOpRecord<'Msg>) : Async<unit> =
-            async {
-                // A busy database is CONTENTION, not corruption (Phase 1525).
-                // `Add` has no "try again" channel — it returns unit, and a caller
-                // cannot tell a completed append from a swallowed one — so unlike
-                // the CAS below it is refused BY NAME rather than reported as
-                // success. The name is the point: a raw `SqliteException` escaping
-                // here reads as a store defect and sends the reader to the wrong
-                // question.
-                try
-                    use conn = openConnection ()
-
-                    // `BEGIN IMMEDIATE` (Phase 1525). Every branch below is a
-                    // read-then-write over the same rows — the parent-presence SELECT
-                    // then the INSERT, and on conflict the fingerprint SELECT that
-                    // decides whether the insert was a duplicate or a collision. A
-                    // DEFERRED transaction takes its write lock only when the first
-                    // write executes, so two writers can both pass their reads and
-                    // one then fails to upgrade; the reads that justified the write
-                    // are stale by the time it lands. IMMEDIATE takes the write lock
-                    // up front, so the reads and the write see one state.
-                    use tx = conn.BeginTransaction(false)
-
-                    // Phase 1587 — `contentFingerprint` takes the op encoding
-                    // rather than choosing one. `CanonicalJson.encodeOp` is what
-                    // this sink's stored fingerprints were minted under, so
-                    // naming it here keeps every existing database comparing
-                    // against the bytes it already holds; it is deliberately not
-                    // `codec.EncodeOp`, which would re-mint every fingerprint in
-                    // every store the moment a host supplied a different encoder.
-                    let fingerprint = DagWire.contentFingerprint CanonicalJson.encodeOp record
-
-                    // ── Check 1: parent presence ────────────────────────────────
-                    // Store-wide, for the same reason the read path resolves
-                    // store-wide: a guest branch's genesis legitimately hangs off a
-                    // record in the HOST stream, so a stream-scoped universe would
-                    // refuse a healthy fork. One batched `IN (...)` query, not one
-                    // per parent.
-                    let present = presentHashesOn conn record.Parents
-
-                    record.Parents
-                    |> List.tryFind (present.Contains >> not)
-                    |> Option.iter (fun missing ->
-                        invalidOp (
-                            sprintf
-                                "SqliteDagSink: refused record %s in stream '%s' — parent-presence check failed: parent %s is not in the store."
-                                record.Hash
-                                record.StreamId
-                                missing
-                        ))
-
-                    use cmd = conn.CreateCommand()
-
-                    cmd.CommandText <-
-                        """INSERT INTO dag_op_record
-        (stream_id, hash, parents_json, op_json, outcome_hash, prompt_id, user_id, timestamp, result_envelope_json, tombstoned, content_fingerprint)
-    VALUES
-        (@s, @h, @parents, @op, @outcome, @prompt, @user, @ts, @env, @tomb, @fingerprint)
-    ON CONFLICT(stream_id, hash) DO NOTHING;"""
-
-                    cmd.Parameters.AddWithValue("@s", record.StreamId) |> ignore
-                    cmd.Parameters.AddWithValue("@h", record.Hash) |> ignore
-                    cmd.Parameters.AddWithValue("@fingerprint", fingerprint) |> ignore
-
-                    cmd.Parameters.AddWithValue("@parents", DagJson.encodeParents record.Parents)
-                    |> ignore
-
-                    cmd.Parameters.AddWithValue("@op", codec.EncodeOp record.Op) |> ignore
-
-                    cmd.Parameters.AddWithValue(
-                        "@outcome",
-                        (match record.OutcomeHash with
-                         | Some o -> box o
-                         | None -> box DBNull.Value)
-                    )
-                    |> ignore
-
-                    cmd.Parameters.AddWithValue(
-                        "@prompt",
-                        (match record.PromptId with
-                         | Some p -> box p
-                         | None -> box DBNull.Value)
-                    )
-                    |> ignore
-
-                    // Phase 1144 — the `user_id` column now holds the canonical typed-actor
-                    // JSON (`Actor.encode`), mirroring what the LINEAR sqlite sink has stored
-                    // since Phase 320. The column is reused rather than renamed: pre-1144 rows
-                    // hold a bare id string and read back via `Actor.ofLegacyString`, so an
-                    // existing database still OPENS. Its records' content addresses do not
-                    // carry forward, though — see docs/migrations/1144-typed-actor-dag-fold.md.
-                    cmd.Parameters.AddWithValue("@user", Actor.encode record.Actor) |> ignore
-
-                    cmd.Parameters.AddWithValue("@ts", record.Timestamp.ToUnixTimeSeconds())
-                    |> ignore
-
-                    cmd.Parameters.AddWithValue("@env", DagJson.encodeEnvelope record.ResultEnvelope)
-                    |> ignore
-
-                    cmd.Parameters.AddWithValue("@tomb", (if record.Tombstoned then 1 else 0))
-                    |> ignore
-
-                    let affected = cmd.ExecuteNonQuery()
-
-                    // ── Check 2: content-address collision ──────────────────────
-                    // A record arriving at an address the store already holds must BE
-                    // the record already there. It is compared on the stored
-                    // fingerprint — the digest of the full canonical wire form — not
-                    // on a hand-picked pair of fields. The pre-1525 check compared
-                    // `parents_json` and `outcome_hash` only, so a row with the SAME
-                    // hash and a DIFFERENT `op_json` matched, was classified as an
-                    // idempotent duplicate, and the newcomer was silently dropped.
-                    if affected = 0 then
-                        use check = conn.CreateCommand()
-
-                        check.CommandText <-
-                            "SELECT content_fingerprint, parents_json, outcome_hash FROM dag_op_record WHERE stream_id=@s AND hash=@h;"
-
-                        check.Parameters.AddWithValue("@s", record.StreamId) |> ignore
-                        check.Parameters.AddWithValue("@h", record.Hash) |> ignore
-                        use reader = check.ExecuteReader()
-
-                        if reader.Read() then
-                            if not (reader.IsDBNull 0) then
-                                let storedFingerprint = reader.GetString 0
-
-                                if storedFingerprint <> fingerprint then
-                                    invalidOp (
-                                        sprintf
-                                            "SqliteDagSink: refused record %s in stream '%s' — content-address collision: the stored row at this address has different canonical content (stored fingerprint %s, incoming %s). Content addressing violated."
-                                            record.Hash
-                                            record.StreamId
-                                            storedFingerprint
-                                            fingerprint
-                                    )
-                            else
-                                // A PRE-1525 row: written before the fingerprint
-                                // column existed, so the only content it can be
-                                // compared on is what it stored. This is the weaker
-                                // check the fingerprint replaced, applied honestly to
-                                // the rows that are all it can answer for — it cannot
-                                // see a differing `op`, and no read path can
-                                // retroactively give an old row a fingerprint it was
-                                // never written with.
-                                let existingParents = DagJson.decodeParents (reader.GetString 1)
-                                let existingOutcome = if reader.IsDBNull 2 then None else Some(reader.GetString 2)
-
-                                if existingParents <> record.Parents || existingOutcome <> record.OutcomeHash then
-                                    invalidOp (
-                                        sprintf
-                                            "SqliteDagSink: refused record %s in stream '%s' — content-address collision against a pre-fingerprint row: stored parents/outcome differ from the incoming record. Content addressing violated."
-                                            record.Hash
-                                            record.StreamId
-                                    )
-
-                    tx.Commit()
-                with :? SqliteException as ex when isContention ex ->
-                    invalidOp (
-                        sprintf
-                            "SqliteDagSink: could not append record %s to stream '%s' — SQLITE_BUSY (%d) after busy_timeout=%dms: another writer holds the database. This is contention, not corruption — retry the append."
-                            record.Hash
-                            record.StreamId
-                            ex.SqliteErrorCode
-                            busyTimeoutMs
-                    )
-            }
+            async { addAll ("record " + record.Hash) record.StreamId [ record ] }
 
         member _.TryGet(streamId: string, hash: string) : Async<DagOpRecord<'Msg> option> =
             async {
@@ -665,7 +595,7 @@ FROM dag_op_record WHERE stream_id = @s ORDER BY hash;"""
                         cmd.Parameters.AddWithValue("@new", newHead) |> ignore
                         cmd.Parameters.AddWithValue("@expected", e) |> ignore
                         return cmd.ExecuteNonQuery() = 1
-                with :? SqliteException as ex when isContention ex ->
+                with :? SqliteException as ex when SqliteConnections.isContention ex ->
                     return false
             }
 
@@ -673,10 +603,7 @@ FROM dag_op_record WHERE stream_id = @s ORDER BY hash;"""
             async { return readParents streamId hash }
 
         member _.Reachable(streamId: string, hash: string) : Async<Set<string>> =
-            async { return DagTopology.reachable (parentsLookup streamId) hash }
-
-        member _.Lca(streamId: string, a: string, b: string) : Async<LcaResult> =
-            async { return DagTopology.lca (parentsLookup streamId) a b }
+            async { return Fuaran.Core.Dag.ancestorsOf (DagOpRecord.toDag (readAllRecords streamId)) hash }
 
         member _.Heads(streamId: string) : Async<string list> =
             async {
@@ -706,37 +633,58 @@ FROM dag_op_record WHERE stream_id = @s ORDER BY hash;"""
         member _.Tombstone(streamId: string, hash: string) : Async<bool> =
             async {
                 use conn = openConnection ()
+                use tx = conn.BeginTransaction(false)
+
+                let parents =
+                    use cmd = conn.CreateCommand()
+                    cmd.CommandText <- "SELECT parents_json FROM dag_node WHERE stream_id = @s AND hash = @h;"
+                    cmd.Parameters.AddWithValue("@s", streamId) |> ignore
+                    cmd.Parameters.AddWithValue("@h", hash) |> ignore
+
+                    match cmd.ExecuteScalar() with
+                    | :? string as json -> Some json
+                    | _ -> None
+
+                match parents with
+                | Some json ->
+                    use move = conn.CreateCommand()
+
+                    move.CommandText <-
+                        """INSERT INTO dag_skeleton (stream_id, hash, parents_json) VALUES (@s, @h, @p);
+DELETE FROM dag_node WHERE stream_id = @s AND hash = @h;"""
+
+                    move.Parameters.AddWithValue("@s", streamId) |> ignore
+                    move.Parameters.AddWithValue("@h", hash) |> ignore
+                    move.Parameters.AddWithValue("@p", json) |> ignore
+                    move.ExecuteNonQuery() |> ignore
+                    tx.Commit()
+                    return true
+                | _ -> return false
+            }
+
+        member _.Skeleton(streamId: string) : Async<DagSkeletonNode list> =
+            async {
+                use conn = openConnection ()
                 use cmd = conn.CreateCommand()
-
-                // Drop the PAYLOAD (`op_json` → the placeholder), preserve hash +
-                // parent links so the chain still verifies.
-                //
-                // `outcome_hash` and `content_fingerprint` are KEPT (Phase 1525).
-                // The outcome hash used to be nulled here, which cost the store
-                // the one field that tells a pruned merge node from a pruned
-                // ordinary one, for no retention gain — it is a 64-hex address,
-                // not payload. What it broke was idempotence across a sweep: a
-                // re-add of the unchanged record no longer matched what the store
-                // held, so it read as a collision under the new check and as a
-                // second copy under the old one. The fingerprint is untouched for
-                // the same reason and is why the check still works at all after a
-                // sweep — it summarises bytes the sweep has just deleted.
-                cmd.CommandText <-
-                    """UPDATE dag_op_record
-SET op_json = @empty, tombstoned = 1
-WHERE stream_id = @s AND hash = @h;"""
-
-                cmd.Parameters.AddWithValue("@empty", emptyBatchJson) |> ignore
+                cmd.CommandText <- "SELECT hash, parents_json FROM dag_skeleton WHERE stream_id = @s ORDER BY hash;"
                 cmd.Parameters.AddWithValue("@s", streamId) |> ignore
-                cmd.Parameters.AddWithValue("@h", hash) |> ignore
-                return cmd.ExecuteNonQuery() > 0
+                use reader = cmd.ExecuteReader()
+                let acc = ResizeArray<DagSkeletonNode>()
+
+                while reader.Read() do
+                    acc.Add
+                        { StreamId = streamId
+                          Hash = reader.GetString 0
+                          Parents = DagJson.decodeParents (reader.GetString 1) }
+
+                return List.ofSeq acc
             }
 
         member _.Streams() : Async<string list> =
             async {
                 use conn = openConnection ()
                 use cmd = conn.CreateCommand()
-                cmd.CommandText <- "SELECT DISTINCT stream_id FROM dag_op_record;"
+                cmd.CommandText <- "SELECT stream_id FROM dag_node UNION SELECT stream_id FROM dag_skeleton;"
                 use reader = cmd.ExecuteReader()
                 let acc = ResizeArray<string>()
 
@@ -744,6 +692,16 @@ WHERE stream_id = @s AND hash = @h;"""
                     acc.Add(reader.GetString 0)
 
                 return List.ofSeq acc
+            }
+
+    /// Phase 2117 — the atomic batch add: one `BEGIN IMMEDIATE` transaction
+    /// over every record, committed only when each was admitted.
+    interface IDagOpStreamBatchSink<'Msg> with
+        member _.AddAll(records: DagOpRecord<'Msg> list) : Async<unit> =
+            async {
+                match records with
+                | [] -> ()
+                | first :: _ -> addAll (sprintf "a batch of %d records" (List.length records)) first.StreamId records
             }
 
 module SqliteDagSink =
