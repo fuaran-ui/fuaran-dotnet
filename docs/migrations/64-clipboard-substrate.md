@@ -52,7 +52,7 @@ The canonical-JSON wire shape for `Action.WriteToClipboard "Hello"`:
 { "$type": "WriteToClipboard", "text": "Hello" }
 ```
 
-`Fuaran.UI.OpStream.Abstractions.CanonicalJson.encodeAction` emits this shape; `Fuaran.UI.Ops.JsonDecode.decodeAction` accepts it. The `text` field is required; missing or wrong-type fields raise `DecodeError.MISSING_FIELD` / `WRONG_TYPE` per the existing decoder convention. **Wire-shape lock:** per `STABILITY.md` Phase 64, the `$type` discriminator + `text` field shape is part of the structural-decoder stability surface – JsonDecode breakage on either is a major-version bump from `1.0.0` onward.
+The generated encoder (`Fuaran.UI.Generated.encodeActionJson`, which the op codec splices) emits this shape; `Fuaran.UI.Ops.JsonDecode.decodeAction` accepts it. The `text` field is required; missing or wrong-type fields raise `DecodeError.MISSING_FIELD` / `WRONG_TYPE` per the existing decoder convention. **Wire-shape lock:** per `STABILITY.md` Phase 64, the `$type` discriminator + `text` field shape is part of the structural-decoder stability surface – JsonDecode breakage on either is a major-version bump from `1.0.0` onward.
 
 ### 5. Catalog page + Expecto fixture
 

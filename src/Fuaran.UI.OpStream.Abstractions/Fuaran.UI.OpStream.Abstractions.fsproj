@@ -71,10 +71,9 @@
          ValueSpace type system + Space.validate semantics + the capability
          codec's $type-tagged space wire form (FSharp.Core-only, Fable-clean). -->
     <PackageReference Include="Fuaran.Core.Function" />
-    <!-- Fable.Core: used only under `#if FABLE_COMPILER` for the `[<Emit>]`
-         JS-`toString` shim in CanonicalJson.formatFiniteDouble (Fable does not
-         support the `Double.ToString("R")` round-trip specifier), and for the
-         WebCrypto calls of AttestationEcdsa.fs's Fable arm (Phase 2570). Inert
+    <!-- Fable.Core: used only under `#if FABLE_COMPILER`, for the WebCrypto calls
+         of AttestationEcdsa.fs's Fable arm (Phase 2570) — the float layout is
+         Core's `FloatLayout` since Phase 2318, so no float shim remains here. Inert
          on .NET — the Emit code is fenced out. (Phase 192 — cross-pipeline apply
          parity / Fable-portable canonical encoder.) -->
     <PackageReference Include="Fable.Core" />

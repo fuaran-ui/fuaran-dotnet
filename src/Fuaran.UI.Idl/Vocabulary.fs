@@ -19,7 +19,7 @@ open Fuaran.Core.Idl
 // encoder renders through `Fuaran.Core.Canon.render`, which Ordinal-sorts object
 // keys recursively, escapes control chars as `\u00xx` (no `\n`/`\r`/`\t`
 // shortcuts), and pins the `ToString("R")` float layout — byte-for-byte the rules
-// `CanonicalJson.appendObject` / `appendRawString` / `appendFloat` apply. So the
+// the canonical op encoder applies through that same writer. So the
 // only work to reach the real tier was *modelling the field classes* the mini IDL
 // lacked, all landed in `Idl.fs`:
 //   * closure-typed fields (`TClosure` → `"<closure>"`) — `Binding.Query`'s

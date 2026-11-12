@@ -20,9 +20,9 @@ module ApplyParity
 //  A divergence between the two is a defect — the canonical contract
 //  (WIRE_FORMAT.md + the fixtures) is the oracle. The high-risk seam this
 //  pins: the Phase-191 Fable-safe coercion (`coerceField` / the constructor-ref
-//  Map detection) AND the Phase-192 Fable-safe float formatter
-//  (`CanonicalJson.formatFiniteDouble`) — both replace .NET-only mechanisms
-//  whose Fable mirror must produce byte-identical output. The base-tree floats
+//  Map detection) AND the Phase-192 cross-host float layout
+//  (Core's `FloatLayout` since Phase 2318) — the first replaces a .NET-only
+//  mechanism, and both must produce byte-identical output under Fable. The base-tree floats
 //  (1234.5 / 0.07) + the `ReplaceBinding` value (99.5) exercise the float path
 //  in every successful re-encode.
 //

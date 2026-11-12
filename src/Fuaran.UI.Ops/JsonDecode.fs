@@ -2320,7 +2320,7 @@ let private decodeFormat (path: string) (j: Json) : Result<Format, DecodeError> 
 
 // ─── obj best-effort decoder (Binding<obj> static seam ONLY) ─────────────
 //
-// Symmetric with `CanonicalJson.appendObj`: the encoder writes recognised
+// Symmetric with the canonical op encoder's obj payload policy (`CanonicalJson`): it writes recognised
 // primitives as JSON natively + everything else as the `"<opaque>"`
 // sentinel. The decoder rebuilds the obj structurally from the JSON AST;
 // `"<opaque>"` stays as the sentinel string (the encoder explicitly threw
