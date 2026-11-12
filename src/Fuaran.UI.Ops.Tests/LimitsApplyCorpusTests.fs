@@ -8,7 +8,9 @@ module Fuaran.UI.Tests.LimitsApplyCorpus
 //  leaves an id it installed held twice is refused with `DuplicateNodeId`;
 //  and against `apply/style-normalise-apply.json` (Phase 2313): a style result
 //  equal to the default record is stored as the absent slot, so the applied
-//  tree encodes with no `style` member. A vector that pins `expected.tree`
+//  tree encodes with no `style` member; and against `apply/update-prop-apply.json`
+//  (Phase 1925): an `UpdateProp` value is read by the field's own decode rule,
+//  bound and declared default included. A vector that pins `expected.tree`
 //  also requires the applied tree to re-encode to exactly those bytes.
 //
 //  Each vector's tree and op are decoded by this host's own wire decoder and
@@ -116,4 +118,5 @@ let tests =
         "Fuaran.UI.Ops apply/ corpus families"
         [ test "every limitsApply vector holds on this host" { certify "limitsApply" }
           test "every duplicateIdsApply vector holds on this host" { certify "duplicateIdsApply" }
-          test "every styleNormaliseApply vector holds on this host" { certify "styleNormaliseApply" } ]
+          test "every styleNormaliseApply vector holds on this host" { certify "styleNormaliseApply" }
+          test "every updatePropApply vector holds on this host" { certify "updatePropApply" } ]

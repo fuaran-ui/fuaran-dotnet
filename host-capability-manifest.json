@@ -37,6 +37,7 @@
       "pending": "the reference apply engine's suite does not yet run the skeleton-apply vectors"
     },
     "apply/styleNormaliseApply": "covered",
+    "apply/updatePropApply": "covered",
     "binding-propagation": "covered",
     "chain": "covered",
     "contract-card-reject": "covered",
