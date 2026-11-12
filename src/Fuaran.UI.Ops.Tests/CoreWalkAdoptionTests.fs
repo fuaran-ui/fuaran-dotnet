@@ -14,8 +14,14 @@ module Fuaran.UI.Tests.CoreWalkAdoption
 //     keyed positions before structural children, for every lookup and edit;
 //   - that limits carried across ops refuse exactly what a whole-tree walk
 //     would.
+//
+//  Phase 2623 adds what the keyed walk costs per node it visits: one field op
+//  on the 24-deep tree allocates no more than it did before the walk was
+//  Core's, and `NodeChildren`'s unlabelled read names the nodes its labelled
+//  slots name, in the same order, at every reach.
 // ============================================================================
 
+open System
 open Expecto
 open Fuaran.UI
 open Fuaran.UI.Types
@@ -59,6 +65,104 @@ let rec private chain (prefix: string) (depth: int) : Node<unit> =
         box (prefix + "1") []
     else
         box (sprintf "%s%d" prefix depth) [ chain prefix (depth - 1) ]
+
+/// The `apply-rate` benchmark's deep tree: a chain of `depth` boxes, each holding
+/// nine leaves and then the next level; the deepest node is the leaf `target`,
+/// last in preorder, so a walk that finds it visits the whole tree.
+let private deepTree (depth: int) : Node<unit> =
+    let rec level (d: int) : Node<unit> =
+        let siblings = [ for s in 1..9 -> markdown (sprintf "d%d-s%d" d s) "leaf" ]
+
+        if d = depth then
+            box (sprintf "d%d" d) (siblings @ [ markdown "target" "leaf" ])
+        else
+            box (sprintf "d%d" d) (siblings @ [ level (d + 1) ])
+
+    level 1
+
+/// Mean bytes allocated on this thread per call of `run`, after a warm-up.
+let private allocatedPerCall (run: unit -> unit) : int64 =
+    for _ in 1..50 do
+        run ()
+
+    let iterations = 200
+    let before = GC.GetAllocatedBytesForCurrentThread()
+
+    for _ in 1..iterations do
+        run ()
+
+    (GC.GetAllocatedBytesForCurrentThread() - before) / int64 iterations
+
+/// One node holding a node in every envelope position: two ordered children,
+/// both `state` alternatives and an envelope `fallback`.
+let private envelopeHolder: Node<unit> =
+    { box "holder" [ markdown "c0" "a"; markdown "c1" "b" ] with
+        State =
+            Some
+                { Defaults.stateBehaviour<unit> with
+                    OnLoading = Some(markdown "loading" "l")
+                    OnEmpty = Some(markdown "empty" "e") }
+        Fallback = Some(markdown "fb" "f") }
+
+/// A node of every kind that holds a node, each with its positions filled, and
+/// the labels `NodeChildren.slots` gave it before Phase 2623.
+let private holders: (Node<unit> * string list) list =
+    [ envelopeHolder,
+      [ "Box.children[0]"
+        "Box.children[1]"
+        "state.onLoading"
+        "state.onEmpty"
+        "fallback" ]
+      Fuaran.errorBoundary
+          "eb"
+          { Child = markdown "eb-child" "c"
+            Fallback = markdown "eb-fallback" "f" },
+      [ "ErrorBoundary.child"; "ErrorBoundary.fallback" ]
+      { Fuaran.switch
+            "sw"
+            { Defaults.switch<unit> with
+                Cases =
+                    [ { Child = markdown "case0" "0"
+                        Match = Some "a"
+                        When = None }
+                      { Child = markdown "case1" "1"
+                        Match = Some "b"
+                        When = None } ]
+                Default = markdown "sw-default" "d" } with
+          Fallback = Some(markdown "sw-fb" "f") },
+      [ "fallback"
+        "Switch.cases[0].child"
+        "Switch.cases[1].child"
+        "Switch.default" ]
+      { Fuaran.fragmentRef "ref" "frag" with
+          Kind =
+              NodeKind.FragmentRef
+                  { Defaults.fragmentRef with
+                      Name = "frag"
+                      Args =
+                          Some(
+                              Map.ofList
+                                  [ "zeta", FragmentArg.SlotArg(markdown "arg-z" "z")
+                                    "count", FragmentArg.Int 3
+                                    "alpha", FragmentArg.SlotArg(markdown "arg-a" "a") ]
+                          ) } },
+      [ "FragmentRef.args[alpha]"; "FragmentRef.args[zeta]" ]
+      Fuaran.fragmentDecl
+          "decl"
+          { Defaults.fragmentDecl<unit> with
+              Name = "frag"
+              Body = markdown "body" "b" },
+      [ "FragmentDecl.body[0]" ]
+      { markdown "leaf" "x" with
+          Fallback = Some(markdown "leaf-fb" "f") },
+      [ "fallback" ] ]
+
+let private reaches: (string * NodeChildren.Reach) list =
+    [ "structural", NodeChildren.Reach.structural
+      "kindHeld", NodeChildren.Reach.kindHeld
+      "fragmentScope", NodeChildren.Reach.fragmentScope
+      "keyed", NodeChildren.Reach.keyed
+      "nonStructural", NodeChildren.Reach.nonStructural ]
 
 let private applyAll (ops: TreeOp<unit> list) (root: Node<unit>) =
     ops |> List.fold (fun acc op -> acc |> Result.bind (Apply.apply op)) (Ok root)
@@ -198,4 +302,87 @@ let coreWalkAdoptionTests =
                     match Apply.apply (TreeOp.InsertChild(NodeId "shallow", box "leaf" [])) overDeep with
                     | Error e -> Expect.equal e.Code ApplyErrorCode.LimitExceeded "the result is past MaxDepth"
                     | Ok _ -> failtest "an insert into an over-deep tree was applied"
+                } ]
+
+          testList
+              "what the keyed walk costs per node it visits (Phase 2623)"
+              [ test "one field op on the 24-deep tree allocates what Core's rewrite costs, not a slot record per visit" {
+                    let tree = deepTree WireLimits.MaxDepth
+                    let op = TreeOp.UpdateTooltip(NodeId "target", Some(TextSource.Literal "hint"))
+
+                    Expect.equal
+                        (List.length (Introspect.allNodeIds tree))
+                        241
+                        "the benchmark's tree: 24 levels of ten, and the target"
+
+                    Expect.isOk (Apply.apply op tree) "the op applies"
+
+                    let perOp = allocatedPerCall (fun () -> Apply.apply op tree |> ignore)
+
+                    // Phase 2060 measured 221 KB per op once the walks were Core's
+                    // (44 KB before). Phase 2623 measured 62 KB: the keyed read and
+                    // the unchanged keyed write-back now allocate nothing per
+                    // node, and what remains is Core's `Tree.updateNode` itself,
+                    // which allocates 61 KB on this tree over the STRUCTURAL
+                    // witness alone. The bound sits just above that floor, so a
+                    // per-visit cost coming back fails here.
+                    Expect.isLessThanOrEqual perOp (64L * 1024L) (sprintf "bytes per op: %d" perOp)
+                }
+
+                test "the unlabelled read allocates nothing at a node holding only an ordered list" {
+                    let node = box "plain" [ markdown "a" "a"; markdown "b" "b" ]
+
+                    let perRead =
+                        allocatedPerCall (fun () ->
+                            NodeChildren.children NodeChildren.Reach.keyed node |> ignore
+                            NodeChildren.children NodeChildren.Reach.nonStructural node |> ignore)
+
+                    Expect.equal perRead 0L "no slot record, label or closure per visit"
+                }
+
+                test "the labelled slots keep their labels and their order" {
+                    for node, labels in holders do
+                        Expect.equal
+                            (NodeChildren.slots node |> List.map _.Label)
+                            labels
+                            (sprintf "the labels of %s" node.Id)
+                }
+
+                test "the unlabelled read names the labelled slots' nodes, in order, at every reach" {
+                    for node, _ in holders do
+                        for name, reach in reaches do
+                            let read = NodeChildren.children reach node
+                            let labelled = NodeChildren.slotsIn reach node |> List.map _.Node
+
+                            Expect.equal
+                                (read |> List.map _.Id)
+                                (labelled |> List.map _.Id)
+                                (sprintf "%s at %s" node.Id name)
+
+                            Expect.isTrue
+                                (List.forall2 (fun a b -> LanguagePrimitives.PhysicalEquality a b) read labelled)
+                                (sprintf "%s at %s: the same node objects" node.Id name)
+                }
+
+                test "putting the read back answers the node, and a changed list is written" {
+                    for node, _ in holders do
+                        for name, reach in reaches do
+                            let read = NodeChildren.children reach node
+
+                            Expect.isTrue
+                                (LanguagePrimitives.PhysicalEquality (NodeChildren.replace reach node read) node)
+                                (sprintf "%s at %s: unchanged positions answer the node" node.Id name)
+
+                            let renamed = read |> List.map (fun n -> { n with Id = n.Id + "-renamed" })
+                            let written = NodeChildren.replace reach node renamed
+
+                            Expect.equal
+                                (NodeChildren.children reach written |> List.map _.Id)
+                                (renamed |> List.map _.Id)
+                                (sprintf "%s at %s: a changed list is written back" node.Id name)
+
+                            Expect.equal
+                                (NodeChildren.slots written |> List.length)
+                                (NodeChildren.slots node |> List.length)
+                                (sprintf "%s at %s: arity preserved" node.Id name)
                 } ] ]

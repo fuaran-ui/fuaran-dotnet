@@ -134,8 +134,8 @@ let private putSlotArgs
 /// holds here in the same change that adds it, or the build fails rather than
 /// every walk silently missing a subtree.
 let private held (kind: NodeKind<'Msg>) : Held<'Msg> =
-    // The label is passed whole, not built per call: `held` runs at every node a
-    // walk visits.
+    // The labelled read and the write. A walk that only reads the nodes goes
+    // through `reads` below and never builds these labels or closures.
     let container (label: string) (children: Node<'Msg> list) (rebuild: Node<'Msg> list -> NodeKind<'Msg>) =
         Container(label, children, rebuild >> Some)
 
@@ -256,16 +256,85 @@ let private held (kind: NodeKind<'Msg>) : Held<'Msg> =
     | NodeKind.Map _
     | NodeKind.Custom _ -> Nothing
 
+/// The nodes of `slotArgs bag`, in the same key order, built back to front so
+/// no intermediate key/value list is made.
+let private slotArgNodes (bag: Map<string, FragmentArg<'Msg>> option) : Node<'Msg> list =
+    match bag with
+    | None -> []
+    | Some m ->
+        Map.foldBack
+            (fun _ v acc ->
+                match v with
+                | FragmentArg.SlotArg n -> n :: acc
+                | _ -> acc)
+            m
+            []
+
+/// The READ half of the match above, for the walks that only need the nodes
+/// (Phase 2623): the ordered list, then the kind's arms or arguments with the
+/// one class they all share. No label, no rebuild closure, no record per slot,
+/// and no allocation at all for a leaf or a container — every keyed walk runs
+/// this at every node it visits. It must name the same nodes, in the same
+/// order, as `held`; `CoreWalkAdoptionTests` pins the two against each other
+/// for every kind that holds a node.
+let private reads (kind: NodeKind<'Msg>) : struct (Node<'Msg> list voption * Position * Node<'Msg> list) =
+    match kind with
+    | NodeKind.Box s -> struct (ValueSome s.Children, Position.Arm, [])
+    | NodeKind.SplitPanel s -> struct (ValueSome s.Children, Position.Arm, [])
+    | NodeKind.Tabs s -> struct (ValueSome s.Children, Position.Arm, [])
+    | NodeKind.Stepper s -> struct (ValueSome s.Children, Position.Arm, [])
+    | NodeKind.SummaryList s -> struct (ValueSome s.Children, Position.Arm, [])
+    | NodeKind.Disclosure s -> struct (ValueSome s.Children, Position.Arm, [])
+    | NodeKind.Modal s -> struct (ValueSome s.Children, Position.Arm, [])
+    | NodeKind.ScrollArea s -> struct (ValueSome s.Children, Position.Arm, [])
+    | NodeKind.FragmentDecl s -> struct (ValueSome [ s.Body ], Position.Arm, [])
+    | NodeKind.ErrorBoundary s -> struct (ValueNone, Position.Arm, [ s.Child; s.Fallback ])
+    | NodeKind.Switch s ->
+        struct (ValueNone,
+                Position.Arm,
+                List.foldBack (fun (c: SwitchCase<'Msg>) acc -> c.Child :: acc) s.Cases [ s.Default ])
+    | NodeKind.FragmentRef s -> struct (ValueNone, Position.Argument, slotArgNodes s.Args)
+    | NodeKind.Mount s -> struct (ValueNone, Position.Argument, slotArgNodes s.Inputs)
+    | NodeKind.Heading _
+    | NodeKind.Markdown _
+    | NodeKind.Metric _
+    | NodeKind.Badge _
+    | NodeKind.Sparkline _
+    | NodeKind.Callout _
+    | NodeKind.Progress _
+    | NodeKind.Skeleton _
+    | NodeKind.Icon _
+    | NodeKind.LabelValueRow _
+    | NodeKind.Fact _
+    | NodeKind.Link _
+    | NodeKind.Image _
+    | NodeKind.Media _
+    | NodeKind.Embed _
+    | NodeKind.List _
+    | NodeKind.Tree _
+    | NodeKind.Toast _
+    | NodeKind.CodeBlock _
+    | NodeKind.Math _
+    | NodeKind.Drawing _
+    | NodeKind.Form _
+    | NodeKind.Filters _
+    | NodeKind.Button _
+    | NodeKind.FileUpload _
+    | NodeKind.Select _
+    | NodeKind.DataGrid _
+    | NodeKind.Chart _
+    | NodeKind.Map _
+    | NodeKind.Custom _ -> struct (ValueNone, Position.Arm, [])
+
 // ── the structural surface ─────────────────────────────────────────────────
 
 /// The ordered child list of a container kind, or `None` for a kind that holds
 /// no ordered list (a leaf, or a kind holding only arms or arguments). `Some []`
 /// is an EMPTY container, which the structural ops may still insert into.
 let ordered (kind: NodeKind<'Msg>) : Node<'Msg> list option =
-    match held kind with
-    | Container(_, children, _) -> Some children
-    | Positions _
-    | Nothing -> None
+    match reads kind with
+    | struct (ValueSome children, _, _) -> Some children
+    | struct (ValueNone, _, _) -> None
 
 /// The kind with exactly this ordered child list — any length for a container,
 /// exactly one node for a `FragmentDecl` body — or `None` where the kind holds
@@ -282,12 +351,9 @@ let withOrdered (kind: NodeKind<'Msg>) (children: Node<'Msg> list) : NodeKind<'M
 /// ordered list, then `state.onLoading`, `state.onEmpty`, the envelope
 /// `fallback`, then the kind's arms or arguments. (`StateBehaviour.OnError` is
 /// a function from an error to a node, so there is no node to enumerate until
-/// it is applied.)
-///
-/// `withOrdered = false` leaves the ordered list's slots out, so a read that
-/// does not reach the ordered list pays nothing for their labels — the keyed
-/// walk reads a node's non-structural positions at every node it visits.
-let private slotsOf (withOrdered: bool) (node: Node<'Msg>) : Slot<'Msg> list =
+/// it is applied.) The labelled read: a walk that wants only the nodes reads
+/// `children`, which builds no slot record.
+let slots (node: Node<'Msg>) : Slot<'Msg> list =
     let envelope =
         [ match node.State |> Option.bind _.OnLoading with
           | Some n ->
@@ -309,14 +375,13 @@ let private slotsOf (withOrdered: bool) (node: Node<'Msg>) : Slot<'Msg> list =
           | None -> () ]
 
     match held node.Kind with
-    | Container(label, children, _) when withOrdered ->
+    | Container(label, children, _) ->
         (children
          |> List.mapi (fun i c ->
              { Label = label + "[" + string i + "]"
                Position = Position.Ordered
                Node = c }))
         @ envelope
-    | Container _ -> envelope
     | Positions(positions, _) ->
         envelope
         @ (positions
@@ -325,9 +390,6 @@ let private slotsOf (withOrdered: bool) (node: Node<'Msg>) : Slot<'Msg> list =
                  Position = position
                  Node = n }))
     | Nothing -> envelope
-
-/// Every position `node` holds another node in, in the canonical order above.
-let slots (node: Node<'Msg>) : Slot<'Msg> list = slotsOf true node
 
 /// Rebuild `node` with `replacements` in exactly the positions `slots` names,
 /// in its order. Arity-preserving: a list of any other length answers `node`
@@ -375,11 +437,47 @@ let private replaceAll (node: Node<'Msg>) (replacements: Node<'Msg> list) : Node
 
 /// The positions of `node` inside `reach`, in the canonical order.
 let slotsIn (reach: Reach) (node: Node<'Msg>) : Slot<'Msg> list =
-    slotsOf (Set.contains Position.Ordered reach) node
-    |> List.filter (fun s -> Set.contains s.Position reach)
+    slots node |> List.filter (fun s -> Set.contains s.Position reach)
 
-/// The children of `node` under `reach`, in the canonical order.
-let children (reach: Reach) (node: Node<'Msg>) : Node<'Msg> list = slotsIn reach node |> List.map _.Node
+/// The children of `node` under `reach`, in the canonical order — the nodes
+/// `slotsIn reach node` names, read from the node's own fields without a slot
+/// record, a label or a closure (Phase 2623). The list is built back to front,
+/// and a position class is looked up in `reach` only where the node holds
+/// something in it, so a leaf costs nothing and a container answers its own
+/// child list unless an envelope position follows it.
+let children (reach: Reach) (node: Node<'Msg>) : Node<'Msg> list =
+    let struct (orderedList, armClass, arms) = reads node.Kind
+
+    let tail =
+        if not arms.IsEmpty && Set.contains armClass reach then
+            arms
+        else
+            []
+
+    let tail =
+        match node.Fallback with
+        | Some n when Set.contains Position.Fallback reach -> n :: tail
+        | _ -> tail
+
+    let tail =
+        match node.State with
+        | Some st when
+            (st.OnLoading.IsSome || st.OnEmpty.IsSome)
+            && Set.contains Position.StateArm reach
+            ->
+            let tail =
+                match st.OnEmpty with
+                | Some n -> n :: tail
+                | None -> tail
+
+            match st.OnLoading with
+            | Some n -> n :: tail
+            | None -> tail
+        | _ -> tail
+
+    match orderedList with
+    | ValueSome cs when Set.contains Position.Ordered reach -> if tail.IsEmpty then cs else cs @ tail
+    | _ -> tail
 
 /// The children of `node` under `reach` and the function that puts a list of
 /// the same length back in exactly those positions, leaving every position
@@ -410,5 +508,21 @@ let lens (reach: Reach) (node: Node<'Msg>) : Node<'Msg> list * (Node<'Msg> list 
 
 /// Rebuild `node` with `replacements` in the positions `children reach node`
 /// enumerates — the write half of `lens`.
+///
+/// A list that puts back exactly the nodes already there — the same objects,
+/// position for position, including the empty list where `reach` holds nothing
+/// — answers `node` itself (Phase 2623). That is the rebuild `lens` would make,
+/// field for field, without enumerating the labelled slots twice to make it:
+/// Core's path-copying rewrite hands every ancestor on the path its keyed
+/// positions back unchanged.
 let replace (reach: Reach) (node: Node<'Msg>) (replacements: Node<'Msg> list) : Node<'Msg> =
-    (snd (lens reach node)) replacements
+    let rec unchanged (current: Node<'Msg> list) (given: Node<'Msg> list) =
+        match current, given with
+        | [], [] -> true
+        | c :: cs, g :: gs -> LanguagePrimitives.PhysicalEquality c g && unchanged cs gs
+        | _ -> false
+
+    if unchanged (children reach node) replacements then
+        node
+    else
+        (snd (lens reach node)) replacements

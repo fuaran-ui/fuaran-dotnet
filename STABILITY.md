@@ -7813,6 +7813,49 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
+## 0.104.1 — the slot opened after v0.104.0 was released (DRAFT — untagged)
+
+_`v0.104.0` is TAGGED (2026-11-11, at `cc477007`), so nothing may ride it. Phase 2623 opens the next slot at the
+patch number: its change moves no public surface. The `<Version>` advance and its ledger record are the release
+act's, recorded separately._
+
+### What rides this slot — Phase 2623 (`NodeChildren` reads keyed positions without slot records or closures)
+
+**Class: no surface change.** Package `Fuaran.UI` (internal); `Fuaran.UI.Ops` is unchanged and gets cheaper. No
+signature moves, no wire byte moves, and every walk names the same nodes in the same order: `NodeChildren.slots`
+keeps its labels and its canonical order, and `NodeChildren.children` / `replace` answer what they answered.
+
+**What changed.** `NodeChildren.children` (and `ordered`, which the structural witness reads) now read a node's
+positions from its own fields through one allocation-free match, instead of building a labelled `Slot` record per
+position and a `Container` / `Positions` value with rebuild closures per node. A leaf or a plain container costs
+nothing to read. `NodeChildren.replace` answers the node itself when it is handed back the nodes already there (the
+same objects, position for position, including the empty list where the reach holds nothing): that is the rebuild
+the lens made, field for field, without enumerating the labelled slots twice. Core's path-copying rewrite hands
+every ancestor on the path its keyed positions back unchanged, and that write-back, not the read, was most of the
+cost. `slots` no longer takes the internal "leave the ordered list out" switch Phase 2060 added for the keyed walk;
+the walk no longer reads labelled slots at all.
+
+**Measured** (`dotnet run -c Release -- apply-rate 5 1000` in `benchmarks/Fuaran.UI.Ops.Benchmarks`, same machine,
+before and after). A single field op on the 241-node, 24-deep tree:
+
+| op | bytes before | bytes after | µs before | µs after |
+|---|---|---|---|---|
+| `update_prop` | 221,952 | 62,381 | 641 | 241 |
+| `update_style` | 220,552 | 61,000 | 351 | 133 |
+| `edit_node` | 220,768 | 61,168 | 344 | 139 |
+| `update_tooltip` | 220,528 | 60,976 | 728 | 117 |
+
+The progressive build of 1,000 nodes fell from 1.242 GB to 1.090 GB per build (3.62 s to 2.25 s; the wall figure
+is noisy on this machine, the allocation is the stable one). Allocation is the figure to read: the walk now adds
+0.8 KB per op over Core's `Tree.updateNode` run on the STRUCTURAL witness alone, which allocates 61 KB on this
+tree by itself. Phase 2060's 44 KB pre-Core figure is therefore not reached by this repository: the rest is the
+find stack of Core's `Tree.updateNode`, filed as a Core finding. `CoreWalkAdoptionTests` pins the op at 64 KB, so
+a per-visit read or write-back cost coming back fails there.
+
+**Consumer action: none.**
+
+---
+
 ## 0.104.0 (RELEASED — tagged v0.104.0 at cc477007, 2026-11-11) — the slot opened after v0.103.0 was released; advanced from 0.103.1 on 2026-11-10 by Phase 2640, whose change is breaking
 
 _`v0.103.0` is TAGGED (2026-11-09, at `1b783c61`), so nothing may ride it: Phase 2639 opened the next slot at the
