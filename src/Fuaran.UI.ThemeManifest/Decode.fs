@@ -5,9 +5,9 @@ module Fuaran.UI.ThemeManifest.Decode
 // Parses through Core's portable reader (`Fuaran.Core.Json.read`, FSharp.Core-only
 // and Fable-clean) into Core's `JVal`, the AST every package in the tier decodes
 // from, so decode runs under both the Fable browser pipeline and the pure-.NET
-// Expecto runner (FGP 4). The read is BOUNDED (Phase 2310) by the manifest-shaped
-// `limits` below: a document past any bound is refused by name, never a stack
-// overflow.
+// Expecto runner (FGP 4). The read is BOUNDED (Phase 2310) by `limits` below,
+// which are WIRE_FORMAT §21.1's syntactic limits (Phase 2653): a document past
+// any bound is refused by name, never a stack overflow.
 //
 // Two top-level shapes are accepted:
 //   1. A Fuaran manifest wrapper — `{ meta, tokens, roles, invariants }`.
@@ -29,17 +29,19 @@ open Fuaran.UI.ThemeManifest
 
 // ─── The bounded read ───────────────────────────────────────────
 
-/// The bounds a manifest read enforces (Phase 2310), each checked by Core's
-/// reader before the recursion or allocation it guards. Manifest-shaped: a DTCG
-/// token tree nests a handful of groups deep inside a four-level wrapper, so the
-/// depth bound admits far more than any real theme while refusing a hostile one
-/// long before the stack is at risk. Stated in the package README.
+/// The bounds a manifest read enforces, each checked by Core's reader before the
+/// recursion or allocation it guards: WIRE_FORMAT §21.1's SYNTACTIC limits, the
+/// same values a document is read under (Phase 2653). A manifest travels between
+/// hosts as a string every host decodes (the Phase 2133 byte law), so its bounds
+/// are the format's and not this host's: JSON depth 256, strings 1,048,576 code
+/// points, arrays and objects 100,000, the document 33,554,432 UTF-8 bytes. The
+/// node bounds do not apply; a manifest has no nodes.
 let limits: JsonLimits =
-    { MaxDepth = 64
-      MaxStringLength = 65536
-      MaxArrayLength = 10000
-      MaxObjectMembers = 10000
-      MaxDocumentBytes = 4194304 }
+    { MaxDepth = Fuaran.UI.WireLimits.MaxJsonDepth
+      MaxStringLength = Fuaran.UI.WireLimits.MaxStringLength
+      MaxArrayLength = Fuaran.UI.WireLimits.MaxArrayLength
+      MaxObjectMembers = Fuaran.UI.WireLimits.MaxArrayLength
+      MaxDocumentBytes = Fuaran.UI.WireLimits.MaxDocumentBytes }
 
 /// What a manifest read reads under: `limits`, and a member `null` erased to
 /// absence. The decoder reads an absent member as its default, and a `null`
