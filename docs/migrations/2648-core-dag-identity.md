@@ -35,10 +35,12 @@ match DagMerge.merge sink s initial a b now |> Async.RunSynchronously with
 
 ## Re-minting a store (once, before the first open under 0.104.0)
 
-`tools/dag-remint` re-addresses a pre-cut store. It is built from this repository and leaves in the release after
-0.104.0.
+`tools/dag-remint` re-addresses a pre-cut store. It shipped in the source tree at `v0.104.0` and is **not in any later
+tree** (Phase 2697 removed it): check out the `v0.104.0` tag, run it there, and then move to a later release. A store
+not re-minted before that move cannot be re-addressed by this repository again.
 
 ```powershell
+# from a checkout of tag v0.104.0
 dotnet run --project tools/dag-remint -- sqlite app.db --initial initial.json --receipt remint-receipt.json
 dotnet run --project tools/dag-remint -- wire records.jsonl records-0.104.jsonl --initial initial.json
 ```

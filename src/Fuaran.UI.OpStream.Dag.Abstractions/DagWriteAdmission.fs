@@ -25,8 +25,10 @@ namespace Fuaran.UI.OpStream.Dag.Abstractions
 //      passes it at a held address IS the record held there; the content
 //      fingerprint that used to decide this is retired.
 //
-//  The address recomputed is this tier's (`DagOpRecord.recomputeHash`); when the
-//  DAG's node identity moves onto Core's, this body is the one that changes.
+//  The address recomputed is Core's `Dag.nodeId` over the record's fields
+//  (`DagOpRecord.recomputeHash`, the cut of Phase 2645). A record carrying an
+//  address of any earlier rule fails check 1 and is refused by name; this
+//  repository holds no code that reads such an address.
 // ============================================================================
 
 /// Why a DAG sink refused to store a record.

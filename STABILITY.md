@@ -7854,6 +7854,21 @@ a per-visit read or write-back cost coming back fails there.
 
 **Consumer action: none.**
 
+### What rides this slot — Phase 2697 (the one-release DAG re-mint tool is removed)
+
+**Class: no surface change.** No shipped package's surface moves: `tools/dag-remint` was never packed (`IsPackable`
+false, an `Exe`), no package or other project referenced it, and the only code that did was its own test file and the
+pre-cut bridge test in `DagLiftTests`.
+
+**What changed.** `tools/dag-remint`, its two solution entries (and the then-empty `tools` folder), `RemintTests.fs`,
+the `remint/` pre-cut fixtures and the test project's reference to the tool are removed, with the bridge test that fed
+the tool the pre-cut lift pin. The re-mint ran once, at the `v0.104.0` tool; `docs/migrations/2648-core-dag-identity.md`
+and `CRYPTO.md` stay and now say the tool exists in the `v0.104.0` tree only. `DagWriteAdmission`'s header describes the
+module as it is after the cut.
+
+**Consumer action: a store not yet re-minted must be re-minted from a `v0.104.0` checkout before moving to this release
+or later; nothing else.**
+
 ### What rides this slot — Phase 2692 (the DAG merge over Core's reachability index)
 
 **Class: additive.** Package `Fuaran.UI.OpStream.Dag.Merge` gains public members; no member is removed or changes
