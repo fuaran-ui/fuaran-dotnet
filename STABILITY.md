@@ -7949,6 +7949,30 @@ Python hosts read manifests under the same values.
 
 **Consumer action: none.** Code that read `Decode.limits` to size its own input reads the new values.
 
+### What rides this slot — Phase 2696 (a reorder that leaves the order unchanged writes nothing)
+
+**Class: additive.** Package `Fuaran.UI.Ops` (`TreeOpFootprint.ofOpIn` / `ofScriptIn` / `ofEachIn`); no signature
+moves and no wire byte moves. Pairs that refused now derive; nothing derived before refuses or derives a different
+tree.
+
+**What changed.** A resolved `ReorderChildren` whose list is its parent's child order in the tree it applies to (the
+same ids, in the same order, of the same length) reads the parent's `kind` slot and Core's child-list slot and writes
+neither; every other reorder is as before. So two reorders of one parent that each restate the order their own branch
+holds are no longer reported against each other, and the fold derives the pair (WIRE_FORMAT §34.3, fixture
+`fold-two-restated-orders`). Every op that changes the child list, a real reorder among them, is still reported
+against the unchanged reorder, so a real reorder beside a restated one still refuses (`fold-refusal-two-reorders`):
+the two do not commute under replay, because the restated reorder applied second puts the old order back.
+
+**Measured** (the derivability snapshot on the last tree that holds the tree merge, `docs/DAG_STRATEGY.md`, Phase
+2696): `derived_share` 0.9325 → 0.9345 on the widened population and 0.9094 unchanged on 2292's, no unpinned
+different-tree triad on either, and no triad derived before refused or moved.
+
+**Host spillovers (not edited here).** The `fuaran-ts`, `fuaran-py`, `fuaran-go` and `fuaran-rs` footprints still
+write the child list for every resolved reorder, so each refuses `fold-two-restated-orders` and each host's
+`foldFixtures` leg is red on it until that host's footprint follows the arm.
+
+**Consumer action: none.**
+
 ---
 
 ## 0.104.0 (RELEASED — tagged v0.104.0 at cc477007, 2026-11-11) — the slot opened after v0.103.0 was released; advanced from 0.103.1 on 2026-11-10 by Phase 2640, whose change is breaking
