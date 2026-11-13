@@ -23,15 +23,7 @@ The manifest is a **host/theme artefact, not part of the `Node` tree** — it tr
 
 ### Parse limits
 
-`decode` is bounded. A document past any of these is refused with an `Error` naming the bound and its value, before the part past it is read; it is never a stack overflow (`Decode.limits`, `Decode.readOptions`):
-
-| Bound | Value |
-|---|---|
-| nesting depth (every `{` and `[`) | 64 |
-| one string or member key | 65 536 code points |
-| one array | 10 000 items |
-| one object | 10 000 members |
-| the whole document | 4 194 304 UTF-8 bytes |
+`decode` is bounded by the wire format's syntactic limits, [WIRE_FORMAT §21.1](https://github.com/fuaran-ui/fuaran-ui-specification/blob/main/WIRE_FORMAT.md#211-the-limits): JSON depth, string length, array and object size, and document bytes, at the values every conformant host reads a document under (the node bounds do not apply; a manifest has no nodes). A manifest is decoded on every host from the same string, so its bounds are the format's, not this package's (Phase 2653). A document past any of them is refused with an `Error` naming the bound and its value, before the part past it is read; it is never a stack overflow. `Decode.limits` and `Decode.readOptions` expose the values this host reads under.
 
 A member `null` reads as the member's absence (its default); a bare or array-element `null` and a repeated member name are refused.
 

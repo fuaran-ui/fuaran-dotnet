@@ -7869,6 +7869,86 @@ module as it is after the cut.
 **Consumer action: a store not yet re-minted must be re-minted from a `v0.104.0` checkout before moving to this release
 or later; nothing else.**
 
+### What rides this slot — Phase 2692 (the DAG merge over Core's reachability index)
+
+**Class: additive.** Package `Fuaran.UI.OpStream.Dag.Merge` gains public members; no member is removed or changes
+what it answers, and no hash, address or wire byte moves. That is a higher class than the slot's opening entry
+(no surface change), and under this repository's 0.x convention an additive change still rides the patch number, so
+the slot does not advance.
+
+- `DagMerge.mergeIndexed context streamId initial reach headA headB now` — `mergeDag` over Core's
+  `Dag.Reach<StreamEntry<'Msg>>`: the base, the deltas and the replays read from the index and the merge node minted
+  by `Dag.mergeIndexed`. Its outcome is `mergeDag`'s on `Reach.dag reach`, exactly.
+- `IndexedMergeOutcome<'Msg>` — `{ Outcome: GatedMergeOutcome<'Msg>; Reach: Dag.Reach<StreamEntry<'Msg>> }`, the
+  index extended with the merge node when the outcome is `Merged`, the given index otherwise.
+- `DagFold.replayToWith initial reach head` and `DagFold.replayFromWith checkpoint reach head` — Core's
+  `Dag.tryReplayToWith` / `Dag.replayFromWith` with the tier's witness.
+
+`mergeDag`, `mergeWith`, `merge`, `mergeIntoTrunkWith` and both sinks are unchanged in signature and answer; `mergeDag`
+now runs the same body as `mergeIndexed` over Core's unindexed walks. **Measured** (`merge-rate`, Release): with a
+checkpoint at the fork, `mergeIndexed` allocates 59.2 MB at 20,000 records of shared history where `mergeDag`
+allocates 864.5 MB; the table and what still grows with the history (Core's indexed checkpoint replay) are in
+`docs/DAG_STRATEGY.md`. `merge-bound` pins the 20,000 / 1,000 allocation ratio at 20x.
+
+**Consumer action: none.** A caller that carries a DAG across merges may carry `Reach.ofDag dag` beside it and merge
+through `mergeIndexed`, keeping the `Reach` it hands back.
+
+### What rides this slot — Phase 2659 (the Binding-free display kinds move onto the decoder's policy record)
+
+**Class: no surface change.** Package `Fuaran.UI.Ops` (private members of `JsonDecode` only). `Fuaran.UI` and its
+generated layer are untouched. No signature moves, no wire byte moves, and every verdict `JsonDecode` gives is
+unchanged: the decoder-parity harness (`tests/decoder-parity/`) reports zero divergences over every node-decoder
+fixture, the op fixtures, both malformed recovery sets and the 9,255 mutations, verdicts and sentences alike.
+
+**What changed.** `Fact`, `Markdown` (with its citations), `Tree` (with its rows) and `Custom` (with its content
+hash) are now decoded through the generated collecting decoders under `JsonDecode`'s policy record, as Phase 2639's
+first family was; their hand structure is deleted. The rules those kinds carry beyond their types are holder-level
+overrides on the record: `Fact.emphasis` reads the `Emphasis` aliases at its `bool` slot, a citation's name token and
+the citation list's non-empty and unique-name rules, the `Tree` row-depth bound and the presence-read `onSelect`
+sentinel, and `Custom.props`, which is verbatim JSON and is read by the decoder's own reader. A member `null` at a
+record position is refused before the generated walk reads it. See `docs/migrations/2639-decoder-layering.md`.
+
+**Consumer action: none.**
+
+### What rides this slot — Phase 2652 (one checkpoint seal, specified; the DAG case of the re-seal)
+
+**Class: no surface change.** No package source moves and no hash moves in this slot. The phase was filed as
+breaking ("every persisted DAG checkpoint hash moves"); that move already shipped, in `0.104.0`, with the cut
+(Phase 2645), which deleted `DagCheckpoint` and its `{"snapshot":true,"tree":…}` pre-image and made the DAG
+checkpoint Core's `Dag.Checkpoint`, sealed by the same strict `Sealed.seal` as the linear checkpoint (Phase 2305,
+`0.103.0`). What lands here is the record of that:
+
+- **One seal, pinned.** `RetentionTests` (`Fuaran.UI.OpStream.Dag.Tests`) pins that a DAG checkpoint's hash is Core's
+  strict seal at the anchor `(0, node)` and equals `CheckpointSeal.seal node 0` over the same state, for a sealed and
+  for a folded checkpoint, against a fixed vector. `Conformance.checkpointLaws` is already enrolled in the
+  Core-conformance census (Phase 2645).
+- **Specified.** `WIRE_FORMAT.md` §5.3.6 states the seal (pre-image, strict rule, the linear and DAG anchors, worked
+  examples) and the verifier's refusal classes; `corpus-producers.json` names the producer of
+  `chain/checkpoint-corpus.json`. No corpus file changes.
+- **The DAG case of the 2305 re-seal is a re-take** (`docs/DECISIONS.md` D31). A checkpoint stored before `0.104.0`
+  names a node the cut re-addressed, so a re-seal in place would seal a dangling anchor. A host that persisted DAG
+  checkpoints re-mints its store (fuaran#2648) and re-takes each one at the re-minted node with
+  `DagFold.checkpointAt`, or `DagFold.sealAt` over a state it verified under the old seal where the history behind
+  it was compacted away. No shipped DAG sink persists checkpoints.
+
+**Consumer action: none** beyond what `0.104.0` already asked of a host persisting DAG checkpoints.
+
+### What rides this slot — Phase 2653 (the theme manifest is read under WIRE_FORMAT §21.1's syntactic limits)
+
+**Class: additive.** Package `Fuaran.UI.ThemeManifest`. `Decode.limits` stays published with the same shape; its
+VALUES move from this host's own figures (Phase 2310: depth 64, strings 65,536 code points, arrays and objects 10,000,
+documents 4,194,304 bytes) to §21.1's syntactic limits, read from `Fuaran.UI.WireLimits`: JSON depth 256, strings
+1,048,576 code points, arrays and objects 100,000, documents 33,554,432 UTF-8 bytes. Every bound is looser, so a
+manifest the 0.103.0 and 0.104.0 bounds refused now decodes, and nothing that decoded before is refused. The refusal
+is the same Core decode-error sentence, naming the bound and its value.
+
+**Why.** A manifest travels between hosts as a string each host decodes for itself (the Phase 2133 byte law), so a
+bound only this host enforces makes a manifest vetted on one host undecodable on another, which §21.2 rule 1 names as
+the failure the limits exist to prevent. WIRE_FORMAT now states the rule beside the byte law, and the TypeScript and
+Python hosts read manifests under the same values.
+
+**Consumer action: none.** Code that read `Decode.limits` to size its own input reads the new values.
+
 ### What rides this slot — Phase 2696 (a reorder that leaves the order unchanged writes nothing)
 
 **Class: additive.** Package `Fuaran.UI.Ops` (`TreeOpFootprint.ofOpIn` / `ofScriptIn` / `ofEachIn`); no signature

@@ -83,6 +83,25 @@ module DagFold =
         : Result<Node<'Msg>, Fuaran.Core.Dag.CheckpointFault<ApplyError>> =
         Fuaran.Core.Dag.replayFrom (witness ()) checkpoint dag head
 
+    /// `replayTo` over Core's reachability index (`Dag.tryReplayToWith`, Phase
+    /// 2692): the same answer on `Reach.dag reach`, the head's order read from
+    /// the index instead of drained from the node map.
+    let replayToWith<'Msg>
+        (initial: Node<'Msg>)
+        (reach: Fuaran.Core.Dag.Reach<StreamEntry<'Msg>>)
+        (head: string)
+        : Result<Node<'Msg>, Fuaran.Core.Dag.ReplayFault<ApplyError>> =
+        Fuaran.Core.Dag.tryReplayToWith (witness ()) initial reach head
+
+    /// `replayFrom` over Core's reachability index (`Dag.replayFromWith`, Phase
+    /// 2692): the same answer on `Reach.dag reach`. The seal is not checked here.
+    let replayFromWith<'Msg>
+        (checkpoint: Fuaran.Core.Dag.Checkpoint<Node<'Msg>>)
+        (reach: Fuaran.Core.Dag.Reach<StreamEntry<'Msg>>)
+        (head: string)
+        : Result<Node<'Msg>, Fuaran.Core.Dag.CheckpointFault<ApplyError>> =
+        Fuaran.Core.Dag.replayFromWith (witness ()) checkpoint reach head
+
     /// Compact at `node` (Core's `Dag.compactAt`): the checkpoint taken there and
     /// the DAG truncated behind it.
     let compactAt<'Msg>

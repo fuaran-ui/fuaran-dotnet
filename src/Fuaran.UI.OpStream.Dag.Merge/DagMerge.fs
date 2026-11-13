@@ -30,6 +30,14 @@ open Fuaran.UI.OpStream.Dag.Abstractions
 //      derived in both sequential orders but that does not replay in Core's is
 //      refused as `DeltaNotReplayable`, never recorded.
 //
+//  Every ancestry question above is asked through ONE body (Phase 2692):
+//  `mergeDag` answers it with Core's unindexed walks over a `Dag.T`;
+//  `mergeIndexed` answers it from Core's reachability index (`Dag.Reach`) and
+//  mints through `Dag.mergeIndexed`, handing back the index extended with the
+//  merge node, so a caller that carries the index never rebuilds it. The tier
+//  holds no ancestry code of its own: both are Core's, held equal by Core's
+//  `Conformance.reachLaws`.
+//
 //  There is no tree-level 3-way merge, no merge-outcome identity, no replay
 //  spine and no virtual base (`TreeMerge`, `DagReplay`, `DagPrimacy` and the
 //  recursive base retired at the cut). A criss-cross takes Core's `mergeBase`;
@@ -89,6 +97,13 @@ type MergeResult<'Msg> =
 type GatedMergeOutcome<'Msg> =
     { Result: MergeResult<'Msg>
       Diagnostics: MergeDefect list }
+
+/// The outcome of a merge over Core's reachability index (Phase 2692): the
+/// merge's outcome, and the index of the DAG after it — extended with the merge
+/// node when the outcome is `Merged`, the index merged over otherwise.
+type IndexedMergeOutcome<'Msg> =
+    { Outcome: GatedMergeOutcome<'Msg>
+      Reach: Fuaran.Core.Dag.Reach<StreamEntry<'Msg>> }
 
 /// Who a minted merge node is attributed to, and the telemetry context it
 /// carries (Phase 1525). The actor, the prompt and the result envelope are the
@@ -168,39 +183,94 @@ module DagMerge =
     let private canonicalHash (tree: Node<'Msg>) : string =
         Fuaran.Core.Hash.sha256Hex (CanonicalJson.encodeNode tree)
 
+    /// The ancestry a merge asks about one DAG (Phase 2692): its merge base, a
+    /// branch delta, the replays, and the mint of the merge node — answered by
+    /// Core's unindexed walks over a `Dag.T` (`ofDag`) or by Core's
+    /// reachability index (`ofReach`). The merge body below is written once over
+    /// it, so the two entry points are one definition of a merge and differ only
+    /// in what each question costs. Core's `Conformance.reachLaws` hold every
+    /// indexed answer equal to the unindexed one.
+    type private Ancestry<'Msg> =
+        {
+            Dag: Fuaran.Core.Dag.T<StreamEntry<'Msg>>
+            MergeBase: string -> string -> string option
+            BetweenOps: string -> string -> StreamEntry<'Msg> list
+            ReplayTo: Node<'Msg> -> string -> Result<Node<'Msg>, Fuaran.Core.Dag.ReplayFault<ApplyError>>
+            ReplayFrom:
+                Fuaran.Core.Dag.Checkpoint<Node<'Msg>>
+                    -> string
+                    -> Result<Node<'Msg>, Fuaran.Core.Dag.CheckpointFault<ApplyError>>
+            /// Mint the merge node of the two heads: what Core wrote, and the
+            /// ancestry of the DAG holding it.
+            Mint:
+                Actor
+                    -> StreamEntry<'Msg>
+                    -> string
+                    -> string
+                    -> Result<Fuaran.Core.Dag.Written<StreamEntry<'Msg>> * Ancestry<'Msg>, Fuaran.Core.DagAppendFault>
+            /// The index this ancestry answers from, when it is indexed.
+            Reach: Fuaran.Core.Dag.Reach<StreamEntry<'Msg>> option
+        }
+
+    let rec private ofDag<'Msg> (dag: Fuaran.Core.Dag.T<StreamEntry<'Msg>>) : Ancestry<'Msg> =
+        { Dag = dag
+          MergeBase = Fuaran.Core.Dag.mergeBase dag
+          BetweenOps = Fuaran.Core.Dag.betweenOps dag
+          ReplayTo = fun initial head -> DagFold.replayTo initial dag head
+          ReplayFrom = fun cp head -> DagFold.replayFrom cp dag head
+          Mint =
+            fun actor entry headA headB ->
+                Fuaran.Core.Dag.merge (DagOpRecord.stream ()) actor entry headA headB dag
+                |> Result.map (fun written -> written, ofDag written.Dag)
+          Reach = None }
+
+    let rec private ofReach<'Msg> (reach: Fuaran.Core.Dag.Reach<StreamEntry<'Msg>>) : Ancestry<'Msg> =
+        { Dag = Fuaran.Core.Dag.Reach.dag reach
+          MergeBase = Fuaran.Core.Dag.Reach.mergeBase reach
+          BetweenOps = fun baseId head -> Fuaran.Core.Dag.Reach.between reach baseId head |> List.map _.Op
+          ReplayTo = fun initial head -> DagFold.replayToWith initial reach head
+          ReplayFrom = fun cp head -> DagFold.replayFromWith cp reach head
+          Mint =
+            fun actor entry headA headB ->
+                Fuaran.Core.Dag.mergeIndexed (DagOpRecord.stream ()) actor entry headA headB reach
+                |> Result.map (fun indexed -> indexed.Written, ofReach indexed.Reach)
+          Reach = Some reach }
+
     /// The tree at `head`: above the context's checkpoint where it bounds the
     /// head, else Core's fold from `initial`.
     let private replayAt
         (checkpoint: Fuaran.Core.Dag.Checkpoint<Node<'Msg>> option)
         (initial: Node<'Msg>)
-        (dag: Fuaran.Core.Dag.T<StreamEntry<'Msg>>)
+        (ancestry: Ancestry<'Msg>)
         (head: string)
         : Result<Node<'Msg>, MergeReplayFault> =
         let full () =
-            DagFold.replayTo initial dag head
+            ancestry.ReplayTo initial head
             |> Result.mapError (Fuaran.Core.Dag.CheckpointFault.Replay >> MergeReplayFault.Replay)
 
         match checkpoint with
         | None -> full ()
         | Some cp ->
-            match DagFold.replayFrom cp dag head with
+            match ancestry.ReplayFrom cp head with
             | Ok tree -> Ok tree
             | Error(Fuaran.Core.Dag.CheckpointFault.Unreached _)
             | Error(Fuaran.Core.Dag.CheckpointFault.Uncovered _) -> full ()
             | Error f -> Error(MergeReplayFault.Replay f)
 
-    /// THE merge (Phase 2645): two heads of `dag` merged under `context`, the
-    /// merge node minted by Core into `streamId`. Pure — nothing is stored; the
-    /// caller adds the record and advances its head (`commitMerge`).
-    let mergeDag<'Msg>
+    /// The merge body both entry points share: the outcome, and the ancestry of
+    /// the DAG after it (the merge node's, when one was handed back).
+    let private mergeOver<'Msg>
         (context: MergeContext<'Msg>)
         (streamId: string)
         (initial: Node<'Msg>)
-        (dag: Fuaran.Core.Dag.T<StreamEntry<'Msg>>)
+        (ancestry: Ancestry<'Msg>)
         (headA: string)
         (headB: string)
         (now: DateTimeOffset)
-        : GatedMergeOutcome<'Msg> =
+        : GatedMergeOutcome<'Msg> * Ancestry<'Msg> =
+        let dag = ancestry.Dag
+        let unchanged (outcome: GatedMergeOutcome<'Msg>) = outcome, ancestry
+
         let unknown =
             [ headA; headB ] |> List.tryFind (fun h -> not (dag.Nodes.ContainsKey h))
 
@@ -215,43 +285,49 @@ module DagMerge =
                 | Error b -> Some b)
 
         if headA = headB then
-            plain (MergeResult.AlreadyMerged headA)
+            unchanged (plain (MergeResult.AlreadyMerged headA))
         else
             match unknown, sealFault with
             | Some h, _ ->
-                plain (
-                    MergeResult.ReplayFailed(
-                        MergeReplayFault.Replay(
-                            Fuaran.Core.Dag.CheckpointFault.Replay(Fuaran.Core.Dag.ReplayFault.UnknownHead h)
+                unchanged (
+                    plain (
+                        MergeResult.ReplayFailed(
+                            MergeReplayFault.Replay(
+                                Fuaran.Core.Dag.CheckpointFault.Replay(Fuaran.Core.Dag.ReplayFault.UnknownHead h)
+                            )
                         )
                     )
                 )
-            | None, Some b -> plain (MergeResult.ReplayFailed(MergeReplayFault.Checkpoint b))
+            | None, Some b -> unchanged (plain (MergeResult.ReplayFailed(MergeReplayFault.Checkpoint b)))
             | None, None ->
-                match Fuaran.Core.Dag.mergeBase dag headA headB with
-                | None -> plain MergeResult.NoCommonBase
-                | Some b when b = headA -> plain (MergeResult.FastForward headB)
-                | Some b when b = headB -> plain (MergeResult.FastForward headA)
+                // The fast-forward test is the merge base's: a head that is the
+                // other's ancestor is exactly the base the rule picks (its closure
+                // is the largest common one), so one question answers both.
+                match ancestry.MergeBase headA headB with
+                | None -> unchanged (plain MergeResult.NoCommonBase)
+                | Some b when b = headA -> unchanged (plain (MergeResult.FastForward headB))
+                | Some b when b = headB -> unchanged (plain (MergeResult.FastForward headA))
                 | Some baseId ->
-                    let replay = replayAt context.Checkpoint initial dag
+                    let replay = replayAt context.Checkpoint initial ancestry
 
                     match replay baseId, replay headA, replay headB with
                     | Error f, _, _
                     | _, Error f, _
-                    | _, _, Error f -> plain (MergeResult.ReplayFailed f)
+                    | _, _, Error f -> unchanged (plain (MergeResult.ReplayFailed f))
                     | Ok baseTree, Ok treeA, Ok treeB ->
                         let delta head =
-                            Fuaran.Core.Dag.betweenOps dag baseId head |> List.map _.Op
+                            ancestry.BetweenOps baseId head |> List.map _.Op
 
                         match DagReconcile.reconcileWith context.Precedence baseTree (delta headA) (delta headB) with
-                        | Error fault -> plain (MergeResult.Refused fault)
+                        | Error fault -> unchanged (plain (MergeResult.Refused fault))
                         | Ok derived ->
                             let diagnostics, blocked =
                                 ValidatorGate.verdict context.Policy treeA treeB derived.Tree
 
                             if blocked then
-                                { Result = MergeResult.Refused(ReconcileFault.IntroducedDefects diagnostics)
-                                  Diagnostics = diagnostics }
+                                unchanged
+                                    { Result = MergeResult.Refused(ReconcileFault.IntroducedDefects diagnostics)
+                                      Diagnostics = diagnostics }
                             else
                                 let entry =
                                     { Op = TreeOp.Batch derived.Script
@@ -259,30 +335,22 @@ module DagMerge =
                                       PromptId = context.Attribution.Prompt
                                       ResultEnvelope = context.Attribution.ResultEnvelope }
 
-                                let minted =
-                                    Fuaran.Core.Dag.merge
-                                        (DagOpRecord.stream ())
-                                        context.Attribution.Actor
-                                        entry
-                                        headA
-                                        headB
-                                        dag
-
-                                let result =
-                                    match minted with
-                                    | Error fault -> MergeResult.MintRefused fault
-                                    | Ok written ->
+                                let result, after =
+                                    match ancestry.Mint context.Attribution.Actor entry headA headB with
+                                    | Error fault -> MergeResult.MintRefused fault, ancestry
+                                    | Ok(written, minted) ->
                                         let mismatch replayed fault =
                                             MergeResult.DeltaNotReplayable(
                                                 derived.Tree,
                                                 { DerivedHash = canonicalHash derived.Tree
                                                   ReplayedHash = replayed
                                                   Fault = fault }
-                                            )
+                                            ),
+                                            ancestry
 
                                         // Above the context's checkpoint where it bounds the new head,
                                         // so the check costs the divergence, not the whole history.
-                                        match replayAt context.Checkpoint initial written.Dag written.Id with
+                                        match replayAt context.Checkpoint initial minted written.Id with
                                         | Error f -> mismatch None (Some f)
                                         | Ok replayed when
                                             CanonicalJson.encodeNode replayed <> CanonicalJson.encodeNode derived.Tree
@@ -293,10 +361,52 @@ module DagMerge =
                                                 { StreamId = streamId
                                                   Node = written.Dag.Nodes[written.Id] },
                                                 derived.Tree
-                                            )
+                                            ),
+                                            minted
 
                                 { Result = result
-                                  Diagnostics = diagnostics }
+                                  Diagnostics = diagnostics },
+                                after
+
+    /// THE merge (Phase 2645): two heads of `dag` merged under `context`, the
+    /// merge node minted by Core into `streamId`. Pure — nothing is stored; the
+    /// caller adds the record and advances its head (`commitMerge`). Asks Core's
+    /// unindexed walks, so it builds nothing it does not use; a caller that
+    /// holds Core's reachability index merges through `mergeIndexed` instead,
+    /// with the same answer.
+    let mergeDag<'Msg>
+        (context: MergeContext<'Msg>)
+        (streamId: string)
+        (initial: Node<'Msg>)
+        (dag: Fuaran.Core.Dag.T<StreamEntry<'Msg>>)
+        (headA: string)
+        (headB: string)
+        (now: DateTimeOffset)
+        : GatedMergeOutcome<'Msg> =
+        mergeOver context streamId initial (ofDag dag) headA headB now |> fst
+
+    /// `mergeDag` over Core's reachability index (Phase 2692): the merge base,
+    /// the two deltas and the replays read from `reach` (`Reach.mergeBase`,
+    /// `Reach.between`, `Dag.tryReplayToWith` / `Dag.replayFromWith`) and the
+    /// merge node minted by `Dag.mergeIndexed`, so the index travels with the DAG
+    /// and is never rebuilt. The outcome is `mergeDag`'s on `Reach.dag reach`,
+    /// exactly. The answer's `Reach` is the index extended with the merge node
+    /// when the outcome is `Merged` (the DAG a caller holds once it adds that
+    /// record), and `reach` itself otherwise.
+    let mergeIndexed<'Msg>
+        (context: MergeContext<'Msg>)
+        (streamId: string)
+        (initial: Node<'Msg>)
+        (reach: Fuaran.Core.Dag.Reach<StreamEntry<'Msg>>)
+        (headA: string)
+        (headB: string)
+        (now: DateTimeOffset)
+        : IndexedMergeOutcome<'Msg> =
+        let outcome, after =
+            mergeOver context streamId initial (ofReach reach) headA headB now
+
+        { Outcome = outcome
+          Reach = after.Reach |> Option.defaultValue reach }
 
     /// `mergeDag` over `streamId`'s live records in `sink`.
     let mergeWith<'Msg>
