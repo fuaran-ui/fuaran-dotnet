@@ -106,6 +106,13 @@ let fixtures: (string * FoldExpectation * string * Node<TestMsg> * TreeOp<TestMs
     let nested = nestedTree ()
     let mounted = mountTree ()
 
+    let row =
+        container
+            "row"
+            [ Fuaran.markdown "r0" "Zero"
+              Fuaran.markdown "r1" "One"
+              Fuaran.markdown "r2" "Two" ]
+
     [ "fold-disjoint",
       Derives,
       "Retones of two different panes — independent under Core's footprint, so the fold composes them",
@@ -232,6 +239,14 @@ let fixtures: (string * FoldExpectation * string * Node<TestMsg> * TreeOp<TestMs
       [ TreeOp.MoveNode(leftChildId, dashboardId) ],
       [ TreeOp.InsertChild(dashboardId, Fuaran.markdown "new" "Appended") ]
 
+      "fold-two-restated-orders",
+      Derives,
+      "One branch lists a parent's children in the order it holds; the other appends a child to the parent and then lists the children in the order they then hold. Each reorder changes nothing where it applies, so each reads the parent's child-list and kind slots and writes neither (Phase 2696): the two are not reported against each other, the first is admitted beside the append as a rebase (Phase 2671), and the fold derives the append",
+      nested,
+      [ TreeOp.ReorderChildren(NodeId "dash", [ NodeId "boxa"; NodeId "boxb" ]) ],
+      [ TreeOp.InsertChild(NodeId "dash", Fuaran.markdown "new" "Appended")
+        TreeOp.ReorderChildren(NodeId "dash", [ NodeId "boxa"; NodeId "boxb"; NodeId "new" ]) ]
+
       "fold-mount-input-insert",
       Derives,
       "One branch appends a child to a container held only in a Mount's slot input while the other retones a pane outside the Mount. The structural ops locate their parent through every position the tree holds a node in, slot arguments included (Phase 2701), so the insert is a structure write of that container and the retone a style write elsewhere: independent, and the fold composes them",
@@ -316,10 +331,17 @@ let fixtures: (string * FoldExpectation * string * Node<TestMsg> * TreeOp<TestMs
 
       "fold-refusal-two-reorders",
       Refuses,
-      "Both branches reorder one parent's children to different orders — each writes the parent's child-list and kind slots, SlotClashes no rule decides, refused as a Conflict",
+      "One branch reorders a parent's children while the other lists them in the order the parent already holds. The second reorder changes nothing where it applies, so it reads the parent's child-list and kind slots and writes neither (Phase 2696); its reads meet the first reorder's writes, SlotClashes no rule decides, refused as a Conflict. The pair does not commute under replay: applied after the real reorder, the restated one puts the old order back",
       flat,
       [ TreeOp.ReorderChildren(dashboardId, [ rightChildId; leftChildId ]) ],
       [ TreeOp.ReorderChildren(dashboardId, [ leftChildId; rightChildId ]) ]
+
+      "fold-refusal-two-real-reorders",
+      Refuses,
+      "Both branches reorder one parent's three children, each to an order the parent does not hold and to different orders from each other — each writes the parent's child-list and kind slots, SlotClashes no rule decides, refused as a Conflict (Phase 2696: the case that stays refused)",
+      row,
+      [ TreeOp.ReorderChildren(NodeId "row", [ NodeId "r2"; NodeId "r1"; NodeId "r0" ]) ],
+      [ TreeOp.ReorderChildren(NodeId "row", [ NodeId "r1"; NodeId "r0"; NodeId "r2" ]) ]
 
       "fold-refusal-tooltip",
       Refuses,
@@ -363,7 +385,7 @@ let private kindOf expectation =
     | Gated -> "merge-fold-gated"
 
 let private description =
-    "merge-fold (Phase 2293; the merge-conformance corpus's only family since Phase 2645, manifest version 2): decode base and the two branches' op deltas (aOpsFile, bOpsFile: canonical TreeOp arrays, each applying from base op by op), reconcile them by fold under the policy of WIRE_FORMAT.md section 34 (Core's conflict report over the base-aware footprint; agreements applied as no change; two appends of distinct nodes under one parent admitted and ordered by the declared child-order rule; a reorder of a parent beside an append to it or a removal or move of a child it lists admitted as a rebase (Phase 2671); every other reported pair refused, a removal against a concurrent touch of the removed node as DeleteModify). merge-fold-derive: the derived tree is byte-equal to expectedFile and sha256(expected) == outcomeHash. merge-fold-refusal: the policy refuses and the envelope is byte-equal to envelopeFile with sha256 == envelopeHash; swapping a and b swaps every entry's left and right and re-sorts. merge-fold-gated: the fold derives and the sample validator over the derived tree introduces defects neither branch head carries; the verdict is byte-equal to verdictFile with sha256 == verdictHash."
+    "merge-fold (Phase 2293; the merge-conformance corpus's only family since Phase 2645, manifest version 2): decode base and the two branches' op deltas (aOpsFile, bOpsFile: canonical TreeOp arrays, each applying from base op by op), reconcile them by fold under the policy of WIRE_FORMAT.md section 34 (Core's conflict report over the base-aware footprint, in which a reorder to the order its parent already holds reads the child list and writes nothing (Phase 2696); agreements applied as no change; two appends of distinct nodes under one parent admitted and ordered by the declared child-order rule; a reorder of a parent beside an append to it or a removal or move of a child it lists admitted as a rebase (Phase 2671); every other reported pair refused, a removal against a concurrent touch of the removed node as DeleteModify). merge-fold-derive: the derived tree is byte-equal to expectedFile and sha256(expected) == outcomeHash. merge-fold-refusal: the policy refuses and the envelope is byte-equal to envelopeFile with sha256 == envelopeHash; swapping a and b swaps every entry's left and right and re-sorts. merge-fold-gated: the fold derives and the sample validator over the derived tree introduces defects neither branch head carries; the verdict is byte-equal to verdictFile with sha256 == verdictHash."
 
 /// Write the family's payloads into `dir`, remove every other file there (the
 /// retired triad families), and write the manifest.

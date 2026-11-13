@@ -60,7 +60,8 @@ module Fuaran.UI.Ops.TreeOpFootprint
 //  slot write meets the node sets only at a content write. So every arm that
 //  reads or rewrites a node's structural children by slot declares that slot:
 //  a resolved reorder and a resolved move's source parent (beside the `kind`
-//  slot the tier holds the list in), an `EditNode` (a new kind can hold other
+//  slot the tier holds the list in; a reorder that leaves the order as it is
+//  only reads both, Phase 2696), an `EditNode` (a new kind can hold other
 //  children, or none), and any in-place edit whose held set moved. A restyle,
 //  a state edit, a trait edit and a prop edit write no child list — the props
 //  path refuses `Children`, and admission (`canHold`) reads the kind's case,
@@ -308,12 +309,36 @@ let private resolvedAt (state: Node<'Msg>) (after: Node<'Msg> option) (op: TreeO
     // restyle of the parent, commute with the reorder; an insert into the
     // parent, a removal or move of a child or of the parent, and an edit of the
     // parent's kind stay ordered. An unresolved reorder is Core's arm.
+    //
+    // An UNCHANGED reorder (Phase 2696) — its list is the parent's child order
+    // in `state`: the same ids, in the same order, of the same length — changes
+    // nothing where it applies, so it declares the reads above and no write.
+    // Every op that changes the child list writes one of the two slots it still
+    // reads, so the reorder stays ordered against it: a real reorder of the same
+    // parent among them, which does not commute with it under replay (applied
+    // second, the unchanged reorder restores the order it lists). What it frees
+    // is a pair of reorders that each leave their own list as it was, and an op
+    // that only reads the list. A list naming a missing child or omitting a
+    // present one is not unchanged, and does not apply.
     | TreeOp.ReorderChildren(parent, order) ->
         match after, find parent state with
-        | Some _, Some _ ->
+        | Some _, Some node ->
+            let p = key parent
+
+            let unchanged =
+                Introspect.getChildren node.Kind
+                |> Option.defaultValue []
+                |> List.map (fun c -> NodeId c.Id) = order
+
+            let listSlots =
+                if unchanged then
+                    CoreFootprint.union (CoreFootprint.readingSlot p "kind") (CoreFootprint.readingSlot p childListSlot)
+                else
+                    childList p (CoreFootprint.slotEdit p "kind")
+
             order
             |> List.map (fun c -> CoreFootprint.readingSlot (key c) "parent")
-            |> List.fold CoreFootprint.union (childList (key parent) (CoreFootprint.slotEdit (key parent) "kind"))
+            |> List.fold CoreFootprint.union listSlots
         | _ -> structural (Fuaran.Core.SkeletonOp.ReorderChildren(parent, order))
     // The kind is rewritten whole: the nodes the old kind held are taken out
     // and the nodes the new kind holds put in, and the child list (and whether
