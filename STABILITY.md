@@ -7854,6 +7854,62 @@ a per-visit read or write-back cost coming back fails there.
 
 **Consumer action: none.**
 
+### What rides this slot — Phase 2697 (the one-release DAG re-mint tool is removed)
+
+**Class: no surface change.** No shipped package's surface moves: `tools/dag-remint` was never packed (`IsPackable`
+false, an `Exe`), no package or other project referenced it, and the only code that did was its own test file and the
+pre-cut bridge test in `DagLiftTests`.
+
+**What changed.** `tools/dag-remint`, its two solution entries (and the then-empty `tools` folder), `RemintTests.fs`,
+the `remint/` pre-cut fixtures and the test project's reference to the tool are removed, with the bridge test that fed
+the tool the pre-cut lift pin. The re-mint ran once, at the `v0.104.0` tool; `docs/migrations/2648-core-dag-identity.md`
+and `CRYPTO.md` stay and now say the tool exists in the `v0.104.0` tree only. `DagWriteAdmission`'s header describes the
+module as it is after the cut.
+
+**Consumer action: a store not yet re-minted must be re-minted from a `v0.104.0` checkout before moving to this release
+or later; nothing else.**
+
+### What rides this slot — Phase 2692 (the DAG merge over Core's reachability index)
+
+**Class: additive.** Package `Fuaran.UI.OpStream.Dag.Merge` gains public members; no member is removed or changes
+what it answers, and no hash, address or wire byte moves. That is a higher class than the slot's opening entry
+(no surface change), and under this repository's 0.x convention an additive change still rides the patch number, so
+the slot does not advance.
+
+- `DagMerge.mergeIndexed context streamId initial reach headA headB now` — `mergeDag` over Core's
+  `Dag.Reach<StreamEntry<'Msg>>`: the base, the deltas and the replays read from the index and the merge node minted
+  by `Dag.mergeIndexed`. Its outcome is `mergeDag`'s on `Reach.dag reach`, exactly.
+- `IndexedMergeOutcome<'Msg>` — `{ Outcome: GatedMergeOutcome<'Msg>; Reach: Dag.Reach<StreamEntry<'Msg>> }`, the
+  index extended with the merge node when the outcome is `Merged`, the given index otherwise.
+- `DagFold.replayToWith initial reach head` and `DagFold.replayFromWith checkpoint reach head` — Core's
+  `Dag.tryReplayToWith` / `Dag.replayFromWith` with the tier's witness.
+
+`mergeDag`, `mergeWith`, `merge`, `mergeIntoTrunkWith` and both sinks are unchanged in signature and answer; `mergeDag`
+now runs the same body as `mergeIndexed` over Core's unindexed walks. **Measured** (`merge-rate`, Release): with a
+checkpoint at the fork, `mergeIndexed` allocates 59.2 MB at 20,000 records of shared history where `mergeDag`
+allocates 864.5 MB; the table and what still grows with the history (Core's indexed checkpoint replay) are in
+`docs/DAG_STRATEGY.md`. `merge-bound` pins the 20,000 / 1,000 allocation ratio at 20x.
+
+**Consumer action: none.** A caller that carries a DAG across merges may carry `Reach.ofDag dag` beside it and merge
+through `mergeIndexed`, keeping the `Reach` it hands back.
+
+### What rides this slot — Phase 2659 (the Binding-free display kinds move onto the decoder's policy record)
+
+**Class: no surface change.** Package `Fuaran.UI.Ops` (private members of `JsonDecode` only). `Fuaran.UI` and its
+generated layer are untouched. No signature moves, no wire byte moves, and every verdict `JsonDecode` gives is
+unchanged: the decoder-parity harness (`tests/decoder-parity/`) reports zero divergences over every node-decoder
+fixture, the op fixtures, both malformed recovery sets and the 9,255 mutations, verdicts and sentences alike.
+
+**What changed.** `Fact`, `Markdown` (with its citations), `Tree` (with its rows) and `Custom` (with its content
+hash) are now decoded through the generated collecting decoders under `JsonDecode`'s policy record, as Phase 2639's
+first family was; their hand structure is deleted. The rules those kinds carry beyond their types are holder-level
+overrides on the record: `Fact.emphasis` reads the `Emphasis` aliases at its `bool` slot, a citation's name token and
+the citation list's non-empty and unique-name rules, the `Tree` row-depth bound and the presence-read `onSelect`
+sentinel, and `Custom.props`, which is verbatim JSON and is read by the decoder's own reader. A member `null` at a
+record position is refused before the generated walk reads it. See `docs/migrations/2639-decoder-layering.md`.
+
+**Consumer action: none.**
+
 ### What rides this slot — Phase 2652 (one checkpoint seal, specified; the DAG case of the re-seal)
 
 **Class: no surface change.** No package source moves and no hash moves in this slot. The phase was filed as

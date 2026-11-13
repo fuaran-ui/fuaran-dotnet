@@ -333,7 +333,7 @@ address in the sink's skeleton and is no longer verified — there is no payload
 
 A store written before the cut holds addresses no current code mints. The one-release tool
 `tools/dag-remint` (`docs/migrations/2648-core-dag-identity.md`) carries it across, and it is the only
-place the pre-cut address rules survive. Before it moves anything it recomputes every live record's
+place the pre-cut address rules survived. It exists in the `v0.104.0` tree only and is not in later trees. Before it moves anything it recomputes every live record's
 stored address under the rule that minted it, and refuses a store where one does not recompute. A broken
 store therefore stays broken and visibly so, and is never laundered into one that verifies under the new
 function. Each live record is then re-addressed under `Dag.nodeId` with its envelope carried byte for byte.
