@@ -7854,6 +7854,23 @@ a per-visit read or write-back cost coming back fails there.
 
 **Consumer action: none.**
 
+### What rides this slot — Phase 2659 (the Binding-free display kinds move onto the decoder's policy record)
+
+**Class: no surface change.** Package `Fuaran.UI.Ops` (private members of `JsonDecode` only). `Fuaran.UI` and its
+generated layer are untouched. No signature moves, no wire byte moves, and every verdict `JsonDecode` gives is
+unchanged: the decoder-parity harness (`tests/decoder-parity/`) reports zero divergences over every node-decoder
+fixture, the op fixtures, both malformed recovery sets and the 9,255 mutations, verdicts and sentences alike.
+
+**What changed.** `Fact`, `Markdown` (with its citations), `Tree` (with its rows) and `Custom` (with its content
+hash) are now decoded through the generated collecting decoders under `JsonDecode`'s policy record, as Phase 2639's
+first family was; their hand structure is deleted. The rules those kinds carry beyond their types are holder-level
+overrides on the record: `Fact.emphasis` reads the `Emphasis` aliases at its `bool` slot, a citation's name token and
+the citation list's non-empty and unique-name rules, the `Tree` row-depth bound and the presence-read `onSelect`
+sentinel, and `Custom.props`, which is verbatim JSON and is read by the decoder's own reader. A member `null` at a
+record position is refused before the generated walk reads it. See `docs/migrations/2639-decoder-layering.md`.
+
+**Consumer action: none.**
+
 ---
 
 ## 0.104.0 (RELEASED — tagged v0.104.0 at cc477007, 2026-11-11) — the slot opened after v0.103.0 was released; advanced from 0.103.1 on 2026-11-10 by Phase 2640, whose change is breaking
