@@ -27,6 +27,7 @@
     <Compile Include="FoldReconcileTests.fs" />
     <!-- Phase 2645: the one merge, over Core's DAG - minted, checked against Core's fold, stored. -->
     <Compile Include="DagMergeTests.fs" />
+    <Compile Include="IndexedMergeTests.fs" />
     <Compile Include="ValidatorGateTests.fs" />
     <Compile Include="OpenCoreInvariantTests.fs" />
     <!-- Phase 267: guest op-stream fork + host-convergence anchor (§4o). -->
@@ -50,12 +51,7 @@
     <!-- Phase 2028 - the stored-op string readers equal their pre-2028 bodies on every input. -->
     <Compile Include="StoredOpUnescapeTests.fs" />
     <Compile Include="EscapeCollapseTests.fs" />
-    <!-- Phase 2648 - the one-release re-mint, against a store the pre-cut engine minted (remint/). -->
-    <Compile Include="RemintTests.fs" />
     <Compile Include="Program.fs" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="remint\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
@@ -71,8 +67,6 @@
     <ProjectReference Include="..\Fuaran.UI.OpStream.Dag.Sqlite\Fuaran.UI.OpStream.Dag.Sqlite.fsproj" />
     <ProjectReference Include="..\Fuaran.UI.OpStream.Dag.Merge\Fuaran.UI.OpStream.Dag.Merge.fsproj" />
     <ProjectReference Include="..\Fuaran.UI.OpStream.TestSupport\Fuaran.UI.OpStream.TestSupport.fsproj" />
-    <!-- Phase 2648: the re-mint tool, tested here against the pre-cut fixture; it leaves with the tool. -->
-    <ProjectReference Include="..\..\tools\dag-remint\Fuaran.UI.OpStream.Dag.Remint.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Expecto" />

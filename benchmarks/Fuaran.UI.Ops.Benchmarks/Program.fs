@@ -357,7 +357,41 @@ let main argv =
                 printfn "merge.%s.%d.mean_ms = %.3f" s.Name n meanMs
                 printfn "merge.%s.%d.alloc_b = %.0f" s.Name n allocB
 
+            // Phase 2692 — the same merge, callee by callee.
+            for s in MergeRate.callees do
+                let meanMs, allocB = MergeRate.measure s f iterations
+                printfn "merge.callee.%s.%d.mean_ms = %.3f" s.Name n meanMs
+                printfn "merge.callee.%s.%d.alloc_b = %.0f" s.Name n allocB
+
         0
+    // Phase 2692 — the cost pin: red (exit 1) when the indexed merge's allocation
+    // at 20,000 records of shared history exceeds `boundFactor` times its
+    // allocation at 1,000.
+    | "merge-bound" :: rest ->
+        let iterations =
+            rest
+            |> List.tryHead
+            |> Option.bind (fun s ->
+                match Int32.TryParse s with
+                | true, n -> Some n
+                | _ -> None)
+            |> Option.defaultValue 5
+
+        let (smallMs, smallB), (largeMs, largeB), ratio = MergeRate.bound iterations
+        let smallN, largeN = MergeRate.boundSizes
+        printfn "merge.bound.indexed_ckpt.%d.mean_ms = %.3f" smallN smallMs
+        printfn "merge.bound.indexed_ckpt.%d.alloc_b = %.0f" smallN smallB
+        printfn "merge.bound.indexed_ckpt.%d.mean_ms = %.3f" largeN largeMs
+        printfn "merge.bound.indexed_ckpt.%d.alloc_b = %.0f" largeN largeB
+        printfn "merge.bound.wall_ratio = %.2f (reported, not pinned)" (largeMs / smallMs)
+        printfn "merge.bound.alloc_ratio = %.2f (pinned at <= %.1f)" ratio MergeRate.boundFactor
+
+        if ratio <= MergeRate.boundFactor then
+            printfn "merge-bound: PASS"
+            0
+        else
+            printfn "merge-bound: FAIL - the merge's cost grows with history faster than the pinned factor"
+            1
     | "merge-snapshot" :: path :: _ ->
         MergeRate.writeSnapshot path
         printfn "Wrote merge snapshot: %s" path

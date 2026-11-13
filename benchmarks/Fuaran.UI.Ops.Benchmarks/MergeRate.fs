@@ -141,6 +141,22 @@ let fixture (n: int) : Fixture =
 
 type Scenario = { Name: string; Run: Fixture -> unit }
 
+/// A fixture's Core checkpoint at the fork.
+let private forkCheckpoint (f: Fixture) = DagFold.sealAt f.Fork f.ForkTree
+
+/// The default merge context with the fork checkpoint.
+let private checkpointed (f: Fixture) : MergeContext<Msg> =
+    { MergeContext.defaults<Msg> with
+        Checkpoint = Some(forkCheckpoint f) }
+
+let private reachCache =
+    System.Runtime.CompilerServices.ConditionalWeakTable<Fixture, Fuaran.Core.Dag.Reach<StreamEntry<Msg>>>()
+
+/// The fixture's index, built once per fixture and reused by every indexed scenario: the index a caller carries (`reach.ofDag` times its one build).
+let reachOf (f: Fixture) : Fuaran.Core.Dag.Reach<StreamEntry<Msg>> =
+    reachCache.GetValue(f, fun f -> Fuaran.Core.Dag.Reach.ofDag f.Dag)
+
+
 let private expectMerged (outcome: MergeResult<Msg>) =
     match outcome with
     | MergeResult.Merged _ -> ()
@@ -162,9 +178,7 @@ let all: Scenario list =
       { Name = "sink_ckpt"
         Run =
           fun f ->
-              let context =
-                  { MergeContext.defaults<Msg> with
-                      Checkpoint = Some(DagFold.sealAt f.Fork f.ForkTree) }
+              let context = checkpointed f
 
               let outcome =
                   DagMerge.mergeWith context f.Sink streamId f.Initial f.HeadA f.HeadB now
@@ -174,12 +188,102 @@ let all: Scenario list =
       { Name = "lookups_ckpt"
         Run =
           fun f ->
-              let context =
-                  { MergeContext.defaults<Msg> with
-                      Checkpoint = Some(DagFold.sealAt f.Fork f.ForkTree) }
+              let context = checkpointed f
 
               (DagMerge.mergeDag context streamId f.Initial f.Dag f.HeadA f.HeadB now).Result
+              |> expectMerged }
+      // Phase 2692: the same merge over the index the caller carries.
+      { Name = "indexed"
+        Run =
+          fun f ->
+              (DagMerge.mergeIndexed MergeContext.defaults streamId f.Initial (reachOf f) f.HeadA f.HeadB now)
+                  .Outcome.Result
+              |> expectMerged }
+      { Name = "indexed_ckpt"
+        Run =
+          fun f ->
+              let context = checkpointed f
+
+              (DagMerge.mergeIndexed context streamId f.Initial (reachOf f) f.HeadA f.HeadB now).Outcome.Result
               |> expectMerged } ]
+
+// ─── The attribution (Phase 2692) ────────────────────────────────────────────
+//
+// What one merge spends, callee by callee, over the same fixture: each line
+// times ONE call of a function the merge path makes (or could make), so the
+// table in docs/DAG_STRATEGY.md can say where the cost of a merge goes. The
+// `reach.*` lines ask Core's reachability index (`Dag.Reach`) the same
+// question as the unindexed line beside them, over an index built once
+// outside the timed region (`reach.ofDag` is that build, timed on its own;
+// `reach.extend` is the per-write step a sink pays to keep it current).
+
+let private ok (what: string) (r: Result<'T, 'E>) =
+    match r with
+    | Ok _ -> ()
+    | Error e -> failwithf "merge-rate %s: %A" what e
+
+let private expectSome (what: string) (o: 'T option) =
+    if Option.isNone o then
+        failwithf "merge-rate %s: None" what
+
+let private mintEntry: StreamEntry<Msg> =
+    { Op = TreeOp.Batch []
+      Timestamp = now
+      PromptId = None
+      ResultEnvelope = OpResultEnvelope.Success }
+
+let callees: Scenario list =
+    [ { Name = "load"
+        Run = fun f -> f.Sink.Records streamId |> Async.RunSynchronously |> DagOpRecord.toDag |> ignore }
+      { Name = "mergeBase"
+        Run = fun f -> Fuaran.Core.Dag.mergeBase f.Dag f.HeadA f.HeadB |> expectSome "mergeBase" }
+      { Name = "betweenOps"
+        Run = fun f -> Fuaran.Core.Dag.betweenOps f.Dag f.Fork f.HeadA |> ignore }
+      { Name = "ancestorsOf"
+        Run = fun f -> Fuaran.Core.Dag.ancestorsOf f.Dag f.HeadA |> ignore }
+      { Name = "verifyCheckpoint"
+        Run = fun f -> DagFold.verifyCheckpoint (forkCheckpoint f) f.Dag |> ok "verifyCheckpoint" }
+      { Name = "replayTo"
+        Run = fun f -> DagFold.replayTo f.Initial f.Dag f.HeadA |> ok "replayTo" }
+      { Name = "replayFrom"
+        Run = fun f -> DagFold.replayFrom (forkCheckpoint f) f.Dag f.HeadA |> ok "replayFrom" }
+      { Name = "mint"
+        Run =
+          fun f ->
+              Fuaran.Core.Dag.merge (DagOpRecord.stream ()) (Actor.Human "bench") mintEntry f.HeadA f.HeadB f.Dag
+              |> ok "mint" }
+      { Name = "reach.ofDag"
+        Run = fun f -> Fuaran.Core.Dag.Reach.ofDag f.Dag |> ignore }
+      { Name = "reach.mergeBase"
+        Run =
+          fun f ->
+              Fuaran.Core.Dag.Reach.mergeBase (reachOf f) f.HeadA f.HeadB
+              |> expectSome "reach.mergeBase" }
+      { Name = "reach.between"
+        Run = fun f -> Fuaran.Core.Dag.Reach.between (reachOf f) f.Fork f.HeadA |> ignore }
+      { Name = "reach.ancestors"
+        Run = fun f -> Fuaran.Core.Dag.Reach.ancestors (reachOf f) f.HeadA |> ignore }
+      { Name = "reach.replayTo"
+        Run =
+          fun f ->
+              Fuaran.Core.Dag.tryReplayToWith (DagFold.witness ()) f.Initial (reachOf f) f.HeadA
+              |> ok "reach.replayTo" }
+      { Name = "reach.replayFrom"
+        Run =
+          fun f ->
+              Fuaran.Core.Dag.replayFromWith (DagFold.witness ()) (forkCheckpoint f) (reachOf f) f.HeadA
+              |> ok "reach.replayFrom" }
+      { Name = "reach.extend"
+        Run =
+          fun f ->
+              Fuaran.Core.Dag.mergeIndexed
+                  (DagOpRecord.stream ())
+                  (Actor.Human "bench")
+                  mintEntry
+                  f.HeadA
+                  f.HeadB
+                  (reachOf f)
+              |> ok "reach.extend" } ]
 
 /// Mean wall-time (ms) and allocation (bytes, all threads) per run.
 let measure (scenario: Scenario) (f: Fixture) (iterations: int) : float * float =
@@ -197,6 +301,43 @@ let measure (scenario: Scenario) (f: Fixture) (iterations: int) : float * float 
     sw.Stop()
     let allocAfter = GC.GetTotalAllocatedBytes true
     sw.Elapsed.TotalMilliseconds / float iterations, float (allocAfter - allocBefore) / float iterations
+
+// ─── The bound (merge-bound, Phase 2692) ─────────────────────────────────────
+//
+// The cost pin: the indexed, checkpointed merge (`indexed_ckpt`) at 20,000
+// records of shared history against the same merge at 1,000, over the same
+// twenty-record divergence. The pin is on ALLOCATION, which repeats to within a
+// few bytes on any machine; wall time is printed beside it and not pinned,
+// because the hosts this runs on are rarely idle (docs/DAG_STRATEGY.md records
+// runs whose wall figures moved 2x between two passes).
+//
+// The factor is the table's, not a target: measured 17.9x (3.30 MB -> 59.2 MB)
+// at the Phase 2692 landing, against 26.3x (32.9 MB -> 864.5 MB) for the same
+// merge through the unindexed walks (`lookups_ckpt`). So 20x passes the indexed
+// merge and fails a merge path that falls back to the walks. It is NOT flat:
+// what remains linear in the history is Core's indexed checkpoint replay
+// (`Dag.replayFromWith` reads the checkpoint's whole closure as a set and the
+// head's whole order), a Core finding the same document records.
+
+/// The largest allocation ratio, 20,000 records over 1,000, the indexed merge may show.
+let boundFactor = 20.0
+
+/// The shared-history sizes the bound compares.
+let boundSizes = 1_000, 20_000
+
+/// The bound's measurement: (small, large) as (mean ms, bytes) each, and the
+/// allocation ratio large / small.
+let bound (iterations: int) : (float * float) * (float * float) * float =
+    let scenario = all |> List.find (fun s -> s.Name = "indexed_ckpt")
+    let smallN, largeN = boundSizes
+    let small = fixture smallN
+    let large = fixture largeN
+    // The index is the caller's, built once outside the timed region.
+    reachOf small |> ignore
+    reachOf large |> ignore
+    let s = measure scenario small iterations
+    let l = measure scenario large iterations
+    s, l, snd l / snd s
 
 // ─── The identity snapshot (merge-snapshot) ──────────────────────────────────
 
