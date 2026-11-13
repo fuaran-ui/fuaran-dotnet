@@ -120,6 +120,7 @@ dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- apply-rat
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- decode-rate 50
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- merge-rate 5 1000,5000,20000
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- merge-snapshot merges.txt
+dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- merge-bound 10
 ```
 
 `merge-rate` (Phase 2062) prints what a DAG merge costs against the length of the history
@@ -130,6 +131,12 @@ writes one line per merge and per merge base over seeded random DAG histories (c
 guest cases included), so a change to the merge engine is diffed against the engine it
 replaced. Both were re-baselined over Core's fold after the Phase 2645 cut: the figures and the snapshot's digest
 are in `results/2026-11-11-phase-2648-dag-merge.md`.
+
+Phase 2692 adds `DagMerge.mergeIndexed` (the merge over Core's reachability index) to `merge-rate` as `indexed` and
+`indexed_ckpt`, and prints the merge callee by callee (`merge.callee.*`: the load, Core's walks, the replays, the
+mint, and the same questions asked of `Dag.Reach`). `merge-bound` is the cost pin: it exits 1 when the indexed,
+checkpointed merge allocates more than 20x at 20,000 records of shared history than at 1,000. The tables are in
+`results/2026-11-13-phase-2692-dag-merge-indexed.md` and `docs/DAG_STRATEGY.md`.
 
 `tree-diff` (Phase 2063) is not a baseline metric: it prints the cost of `TreeOpDiff.diff`
 over a 2,001-node tree for four single-edit shapes (none, one field, one container field,

@@ -4215,67 +4215,6 @@ let private decodeMetricSpec (path: string) (j: Json) : Result<MetricSpec, Decod
         | _, _, _, _, _, _, _, _, _, _, Error e, _
         | _, _, _, _, _, _, _, _, _, _, _, Error e -> Error e
 
-let private decodeFactSpec (path: string) (j: Json) : Result<FactSpec, DecodeError> =
-    // A labeled TEXT fact (2026-07-17 — the complementary kind the launch
-    // eval showed missing: every model forced text facts into Metric's
-    // numeric source). New kind, so its wire is minimal from day one:
-    // only `label` + `value` required; `tone` / `emphasis` are
-    // omitted-when-default on BOTH boundaries; `help` / `icon` optional.
-    match requireObject path j with
-    | Error e -> Error e
-    | Ok fields ->
-        let labelR =
-            requireField path fields "label" "fact TextSource label"
-            |> Result.bind (decodeTextSource (path + ".label"))
-
-        let valueR =
-            requireField path fields "value" "fact TextSource value"
-            |> Result.bind (decodeTextSource (path + ".value"))
-
-        let toneR =
-            match tryField fields "tone" with
-            | None -> Ok ToneVariant.Default
-            | Some v -> decodeTone (path + ".tone") v
-
-        let emphasisR =
-            match tryField fields "emphasis" with
-            | None -> Ok false
-            | Some v -> decodeEmphasisFlag (path + ".emphasis") v
-
-        let helpR =
-            match tryField fields "help" with
-            | None -> Ok None
-            | Some v -> decodeTextSource (path + ".help") v |> Result.map Some
-
-        let iconR =
-            match tryField fields "icon" with
-            | None -> Ok None
-            | Some v -> requireString (path + ".icon") v |> Result.map Some
-
-        // Phase 2535 — the citation, opaque to the language (WIRE_FORMAT.md §3.6.31).
-        let referenceR =
-            match tryField fields "reference" with
-            | None -> Ok None
-            | Some v -> requireString (path + ".reference") v |> Result.map Some
-
-        match labelR, valueR, toneR, emphasisR, helpR, iconR, referenceR with
-        | Ok label, Ok value, Ok tone, Ok emphasis, Ok help, Ok icon, Ok reference ->
-            Ok
-                { Label = label
-                  Value = value
-                  Icon = icon
-                  Tone = tone
-                  Emphasis = emphasis
-                  Help = help
-                  Reference = reference }
-        | Error e, _, _, _, _, _, _
-        | _, Error e, _, _, _, _, _
-        | _, _, Error e, _, _, _, _
-        | _, _, _, Error e, _, _, _
-        | _, _, _, _, Error e, _, _
-        | _, _, _, _, _, Error e, _
-        | _, _, _, _, _, _, Error e -> Error e
-
 let private decodeLabelValueRowSpec (path: string) (j: Json) : Result<LabelValueRowSpec, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
@@ -4336,69 +4275,6 @@ let private isCitationName (name: string) : bool =
            || (c >= '0' && c <= '9')
            || c = '-'
            || c = '_')
-
-let private decodeMarkdownCitation (path: string) (j: Json) : Result<MarkdownCitation, DecodeError> =
-    match requireObject path j with
-    | Error e -> Error e
-    | Ok fields ->
-        let nameR =
-            requireField path fields "name" "citation name"
-            |> Result.bind (requireString (path + ".name"))
-            |> Result.bind (fun name ->
-                if isCitationName name then
-                    Ok name
-                else
-                    wrongType (path + ".name") "a citation name of letters, digits, '-' and '_'")
-
-        let referenceR =
-            requireField path fields "reference" "citation reference"
-            |> Result.bind (requireString (path + ".reference"))
-
-        let labelR =
-            match tryField fields "label" with
-            | None -> Ok None
-            | Some v -> decodeTextSource (path + ".label") v |> Result.map Some
-
-        match nameR, referenceR, labelR with
-        | Error e, _, _
-        | _, Error e, _
-        | _, _, Error e -> Error e
-        | Ok name, Ok reference, Ok label ->
-            Ok
-                { Name = name
-                  Reference = reference
-                  Label = label }
-
-let private decodeMarkdownCitations (path: string) (j: Json) : Result<MarkdownCitation list, DecodeError> =
-    requireArray path j
-    |> Result.bind (fun els ->
-        if List.isEmpty els then
-            wrongType path "a non-empty citation list, or no member at all"
-        else
-            traverseIndexed (fun i el -> decodeMarkdownCitation (sprintf "%s[%d]" path i) el) els)
-    |> Result.bind (fun citations ->
-        let names = citations |> List.map (fun c -> c.Name)
-
-        match names |> List.countBy id |> List.tryFind (fun (_, n) -> n > 1) with
-        | Some(name, _) ->
-            let at = names |> List.findIndexBack ((=) name)
-            wrongType (sprintf "%s[%d].name" path at) "a citation name no other citation in this list uses"
-        | None -> Ok citations)
-
-let private decodeMarkdownSpec (path: string) (j: Json) : Result<MarkdownSpec, DecodeError> =
-    match requireObject path j with
-    | Error e -> Error e
-    | Ok fields ->
-        let citationsR =
-            match tryField fields "citations" with
-            | None -> Ok []
-            | Some v -> decodeMarkdownCitations (path + ".citations") v
-
-        citationsR
-        |> Result.bind (fun citations ->
-            requireField path fields "text" "markdown TextSource"
-            |> Result.bind (decodeTextSource (path + ".text"))
-            |> Result.map (fun text -> { Citations = citations; Text = text }))
 
 let private decodeLinkSpec (path: string) (j: Json) : Result<LinkSpec, DecodeError> =
     match requireObject path j with
@@ -4960,122 +4836,6 @@ let private decodeEmbedSpec (path: string) (j: Json) : Result<EmbedSpec, DecodeE
         | _, Error e, _, _
         | _, _, Error e, _
         | _, _, _, Error e -> Error e
-
-/// Phase 1120 — one `Tree` row, and the FOURTH recursive entry point in this
-/// decoder (nodes, ops, JSON values, and now rows).
-///
-/// **`depth` is a bound on its own axis, and `WIRE_FORMAT.md` §21.5's
-/// implementers' note is why.** That note records what it cost this host to
-/// learn once already: bounding the node decoder was not sufficient, because
-/// `TreeOp.Batch` recurses on a separate axis and the syntactic bound looked
-/// like adequate cover for it and was not. `TreeItem` is exactly that shape
-/// again. Item nesting consumes no NODE depth at all — an entire hierarchy
-/// lives inside one node — and while the syntactic bound does cap it at roughly
-/// 127 levels, these frames are as heavy as the node decoder's, whose measured
-/// unoptimised overflow is 31. So the bound is applied HERE, on the way down,
-/// before the recursion it exists to refuse.
-///
-/// The FIGURE is `MaxDepth`, reused rather than minted, on the `Batch`
-/// precedent recorded in the same section: op nesting is bounded by the node
-/// figure counted on its own axis, and this is the third axis under the same
-/// number. A separate limit row would be a sixth protocol number for a
-/// structure with the same per-frame cost, and every host would then have to
-/// carry two figures where one is enough.
-let rec private decodeTreeItem (depth: int) (path: string) (j: Json) : Result<TreeItem, DecodeError> =
-    if depth > Fuaran.UI.WireLimits.MaxDepth then
-        err
-            DecodeErrorCode.LIMIT_EXCEEDED
-            path
-            (sprintf
-                "tree item nesting depth %d exceeds the wire limit MaxDepth = %d"
-                depth
-                Fuaran.UI.WireLimits.MaxDepth)
-            (Some(sprintf "a tree nesting items no more than %d levels deep" Fuaran.UI.WireLimits.MaxDepth))
-    else
-
-        match requireObject path j with
-        | Error e -> Error e
-        | Ok fields ->
-            let idR =
-                requireField path fields "id" "tree item id string"
-                |> Result.bind (requireString (path + ".id"))
-
-            let labelR =
-                requireField path fields "label" "tree item label TextSource"
-                |> Result.bind (decodeTextSource (path + ".label"))
-
-            // Omitted at the empty list, so a LEAF carries no `children` key at all
-            // — which is most of a tree, and is why the omission was chosen over an
-            // always-present array.
-            let childrenR =
-                match tryField fields "children" with
-                | None -> Ok []
-                | Some v ->
-                    match requireArray (path + ".children") v with
-                    | Error e -> Error e
-                    | Ok items ->
-                        items
-                        |> traverseIndexed (fun i el ->
-                            decodeTreeItem (depth + 1) (sprintf "%s.children[%d]" path i) el)
-
-            let iconR =
-                match tryField fields "icon" with
-                | None -> Ok Option.None
-                | Some v -> requireString (path + ".icon") v |> Result.map Some
-
-            match idR, labelR, childrenR, iconR with
-            | Ok id, Ok label, Ok children, Ok icon ->
-                Ok
-                    { Children = children
-                      Icon = icon
-                      Id = id
-                      Label = label }
-            | Error e, _, _, _
-            | _, Error e, _, _
-            | _, _, Error e, _
-            | _, _, _, Error e -> Error e
-
-/// Phase 1120 — the tree. `items` is required; both State keys are ordinary
-/// optional strings on `sortStateKey`'s shape, and `onSelect` is the closure
-/// sentinel on `Tabs`' — a present key reconstructs a no-op `Some` that
-/// re-encodes to the same sentinel, an absent one decodes `None`.
-///
-/// The root row list starts the item-depth count at 1, matching how the node
-/// walk counts its root.
-let private decodeTreeSpec (path: string) (j: Json) : Result<TreeSpec<obj>, DecodeError> =
-    match requireObject path j with
-    | Error e -> Error e
-    | Ok fields ->
-        let itemsR =
-            requireField path fields "items" "tree items array"
-            |> Result.bind (requireArray (path + ".items"))
-            |> Result.bind (fun items ->
-                items
-                |> traverseIndexed (fun i el -> decodeTreeItem 1 (sprintf "%s.items[%d]" path i) el))
-
-        let expandedR =
-            match tryField fields "expandedStateKey" with
-            | None -> Ok Option.None
-            | Some v -> requireString (path + ".expandedStateKey") v |> Result.map Some
-
-        let selectionR =
-            match tryField fields "selectionStateKey" with
-            | None -> Ok Option.None
-            | Some v -> requireString (path + ".selectionStateKey") v |> Result.map Some
-
-        match itemsR, expandedR, selectionR with
-        | Ok items, Ok expandedKey, Ok selectionKey ->
-            Ok
-                { ExpandedStateKey = expandedKey
-                  Items = items
-                  OnSelect =
-                    (match tryField fields "onSelect" with
-                     | Some _ -> Some(fun (_: string) -> Action.Chain [])
-                     | None -> Option.None)
-                  SelectionStateKey = selectionKey }
-        | Error e, _, _
-        | _, Error e, _
-        | _, _, Error e -> Error e
 
 let private decodeToastSpec (path: string) (j: Json) : Result<ToastSpec, DecodeError> =
     match requireObject path j with
@@ -5733,6 +5493,23 @@ module private Bridge =
 
             Error(List.head landed)
 
+    /// A record position the generated structure reads. A member `null` rides
+    /// the walk as an object (the sentinel), so it is refused here as the hand
+    /// structure's `requireObject` refused it, before the walk reads it as one.
+    let record
+        (decode: Fuaran.UI.Generated.CollectingDecoders -> JVal -> Result<'T, Fuaran.Core.DecodeError list>)
+        : Fuaran.UI.Generated.CollectingDecoders -> JVal -> Result<'T, Fuaran.Core.DecodeError list> =
+        fun ov j ->
+            if isNullSentinel j then
+                Error
+                    [ carry
+                          { Code = DecodeErrorCode.toString DecodeErrorCode.WRONG_TYPE
+                            Path = ""
+                            Message = "expected JSON object"
+                            ExpectedShape = Some "JSON object" } ]
+            else
+                decode ov j
+
 /// What each required member of a moved spec expected, in the words the hand
 /// structure used — keyed by the holder's F# name and the member's key. The
 /// generated structure knows the member is required; only this decoder knows
@@ -5749,7 +5526,21 @@ let private requiredMembers: Map<string * string, string> =
           ("BadgeSpec", "label"), "badge label TextSource"
           ("CalloutSpec", "body"), "callout body TextSource"
           ("ListSpec", "items"), "list items array"
-          ("SkeletonSpec", "rows"), "skeleton row count integer" ]
+          ("SkeletonSpec", "rows"), "skeleton row count integer"
+          ("FactSpec", "label"), "fact TextSource label"
+          ("FactSpec", "value"), "fact TextSource value"
+          ("MarkdownSpec", "text"), "markdown TextSource"
+          ("MarkdownCitation", "name"), "citation name"
+          ("MarkdownCitation", "reference"), "citation reference"
+          ("TreeSpec", "items"), "tree items array"
+          ("TreeItem", "id"), "tree item id string"
+          ("TreeItem", "label"), "tree item label TextSource"
+          ("CustomSpec", "moduleId"), "Custom moduleId string"
+          ("CustomSpec", "componentId"), "Custom componentId string"
+          ("CustomSpec", "props"), "Custom props JSON object"
+          ("ContentHash", "algorithm"), "ContentHash algorithm string"
+          ("ContentHash", "hash"), "ContentHash hash hex string"
+          ("ContentHash", "strictness"), "ContentHash strictness 'StrictReplay' | 'AdvisoryWarning' | 'Enforced'" ]
 
 /// The lenient field-name aliases of a moved spec's members (decode-only, see
 /// `requireFieldAliased`): read when the canonical member is absent, the
@@ -5775,6 +5566,164 @@ let private skeletonRowsBound (spec: SkeletonSpec) : Result<SkeletonSpec, Fuaran
     | Some e -> Error [ Bridge.carry e ]
     | None -> Ok spec
 
+// Phase 2659 — the Binding-free display specs that carry a rule of their own
+// (2639 finding 4): each is a HOLDER-level override that hands the generated
+// structure the reader the member needs, or checks what the structure cannot.
+
+/// `Fact.emphasis` reads the `Emphasis` aliases at its `bool` slot
+/// (`decodeEmphasisFlag`). It is the spec's only `bool`, so the holder hands its
+/// walk that reader at `Bool`.
+let private factSpec (ov: Fuaran.UI.Generated.CollectingDecoders) (j: JVal) =
+    Fuaran.UI.Generated.collectingDecoders.FactSpec
+        { ov with
+            Bool = Bridge.field decodeEmphasisFlag }
+        j
+
+/// Phase 2591 — a citation's name is a `cite:<name>` token (WIRE_FORMAT.md §3.6.32).
+let private markdownCitation =
+    Bridge.record (fun ov j ->
+        Fuaran.UI.Generated.collectingDecoders.MarkdownCitation ov j
+        |> Result.bind (fun c ->
+            Bridge.run (fun () ->
+                if isCitationName c.Name then
+                    Ok c
+                else
+                    wrongType ".name" "a citation name of letters, digits, '-' and '_'")))
+
+let private isCitationsStep (e: Fuaran.Core.DecodeError) : bool =
+    match e.Path with
+    | Fuaran.Core.PathSegment.Key "citations" :: _ -> true
+    | _ -> false
+
+/// `Markdown.citations`: present, the list is non-empty and its names are
+/// unique; a defect in it is answered before `text` is read, as the hand
+/// structure answered it.
+let private markdownSpec (ov: Fuaran.UI.Generated.CollectingDecoders) (j: JVal) =
+    let citations =
+        match j with
+        | JVal.JObj fs -> fs |> List.tryFind (fun (k, _) -> k = "citations") |> Option.map snd
+        | _ -> None
+
+    match citations with
+    | Some(JVal.JArr []) ->
+        Bridge.run (fun () -> wrongType ".citations" "a non-empty citation list, or no member at all")
+    | _ ->
+        match Fuaran.UI.Generated.collectingDecoders.MarkdownSpec ov j with
+        | Error es when List.exists isCitationsStep es -> Error(List.filter isCitationsStep es)
+        | Error es -> Error es
+        | Ok spec ->
+            let names = spec.Citations |> List.map (fun c -> c.Name)
+
+            match names |> List.countBy id |> List.tryFind (fun (_, n) -> n > 1) with
+            | Some(name, _) ->
+                let at = names |> List.findIndexBack ((=) name)
+
+                Bridge.run (fun () ->
+                    wrongType (sprintf ".citations[%d].name" at) "a citation name no other citation in this list uses")
+            | None -> Ok spec
+
+/// Phase 1120 — one `Tree` row at item depth `depth`. Item nesting consumes no
+/// NODE depth (a whole hierarchy lives inside one node), so it is bounded on its
+/// own axis, on the way down, before the recursion it exists to refuse — the
+/// `TreeOp.Batch` lesson of `WIRE_FORMAT.md` §21.5. The figure is `MaxDepth`,
+/// reused rather than minted, on that section's `Batch` precedent. The root row
+/// list starts the count at 1, as the node walk counts its root.
+let rec private treeItemAt
+    (depth: int)
+    : Fuaran.UI.Generated.CollectingDecoders -> JVal -> Result<TreeItem, Fuaran.Core.DecodeError list> =
+    fun ov j ->
+        if depth > Fuaran.UI.WireLimits.MaxDepth then
+            Error
+                [ Bridge.carry
+                      { Code = DecodeErrorCode.toString DecodeErrorCode.LIMIT_EXCEEDED
+                        Path = ""
+                        Message =
+                          sprintf
+                              "tree item nesting depth %d exceeds the wire limit MaxDepth = %d"
+                              depth
+                              Fuaran.UI.WireLimits.MaxDepth
+                        ExpectedShape =
+                          Some(sprintf "a tree nesting items no more than %d levels deep" Fuaran.UI.WireLimits.MaxDepth) } ]
+        else
+            Bridge.record
+                (fun ov j ->
+                    Fuaran.UI.Generated.collectingDecoders.TreeItem
+                        { ov with
+                            TreeItem = treeItemAt (depth + 1) }
+                        j)
+                ov
+                j
+
+/// `Tree.onSelect` is the closure sentinel on `Tabs`' shape: ANY present value
+/// reconstructs a no-op `Some` that re-encodes to the sentinel, an absent one
+/// decodes `None`. The holder reads it by presence and hands the rest to the walk.
+let private treeSpec (ov: Fuaran.UI.Generated.CollectingDecoders) (j: JVal) =
+    let onSelect, rest =
+        match j with
+        | JVal.JObj fs ->
+            List.exists (fun (k, _) -> k = "onSelect") fs, JVal.JObj(fs |> List.filter (fun (k, _) -> k <> "onSelect"))
+        | _ -> false, j
+
+    Fuaran.UI.Generated.collectingDecoders.TreeSpec { ov with TreeItem = treeItemAt 1 } rest
+    |> Result.map (fun spec ->
+        if onSelect then
+            { spec with
+                OnSelect = Some(fun (_: string) -> Action.Chain []) }
+        else
+            spec)
+
+let private decodeHashStrictness (path: string) (j: Json) : Result<HashStrictness, DecodeError> =
+    requireString path j
+    |> Result.bind (fun s ->
+        match s with
+        | "StrictReplay" -> Ok HashStrictness.StrictReplay
+        | "AdvisoryWarning" -> Ok HashStrictness.AdvisoryWarning
+        | "Enforced" -> Ok HashStrictness.Enforced
+        | other -> unknownEnumCase path other "StrictReplay | AdvisoryWarning | Enforced")
+
+/// `Custom.props` is verbatim JSON, which the generated structure reads past the
+/// record (no field reaches it) and so cannot be handed a `null`: the holder
+/// reads it with this decoder's own reader (`decodeJValMap`) and hands the walk
+/// an empty object in its place. Its defects land in declaration order, after
+/// `moduleId` and `componentId`. An absent or empty `exposedNodeIds` is `None`,
+/// omitted on the wire.
+let private customSpec (ov: Fuaran.UI.Generated.CollectingDecoders) (j: JVal) =
+    let props, rest =
+        match j with
+        | JVal.JObj fs when List.exists (fun (k, _) -> k = "props") fs ->
+            fs |> List.tryPick (fun (k, v) -> if k = "props" then Some v else None),
+            JVal.JObj(fs |> List.map (fun (k, v) -> if k = "props" then k, JVal.JObj [] else k, v))
+        | _ -> None, j
+
+    let propsR =
+        match props with
+        | Some v -> Bridge.run (fun () -> decodeJValMap ".props" (Bridge.toJson v))
+        | None -> Ok Map.empty
+
+    match Fuaran.UI.Generated.collectingDecoders.CustomSpec ov rest, propsR with
+    | Ok spec, Ok props ->
+        Ok
+            { spec with
+                Props = props
+                ExposedNodeIds =
+                    match spec.ExposedNodeIds with
+                    | Some [] -> None
+                    | ids -> ids }
+    | spec, props ->
+        let errors =
+            function
+            | Ok _ -> []
+            | Error es -> es
+
+        let before, after =
+            errors spec
+            |> List.partition (fun e ->
+                match e.Path with
+                | Fuaran.Core.PathSegment.Key("moduleId" | "componentId") :: _ -> true
+                | _ -> false)
+
+        Error(before @ errors props @ after)
+
 /// This decoder's policy, as the generated record with its readers in place.
 /// Every field a moved spec reaches is overridden by the reader the hand
 /// structure called there; a field no moved spec reaches keeps its generated
@@ -5791,6 +5740,13 @@ let private policy: Fuaran.UI.Generated.CollectingDecoders =
         IconSize = Bridge.field decodeIconSize
         ToneVariant = Bridge.field decodeTone
         BadgeVariant = Bridge.field decodeBadgeVariant
+        FactSpec = factSpec
+        CustomSpec = customSpec
+        ContentHash = Bridge.record Fuaran.UI.Generated.collectingDecoders.ContentHash
+        HashStrictness = Bridge.field decodeHashStrictness
+        MarkdownSpec = markdownSpec
+        MarkdownCitation = markdownCitation
+        TreeSpec = treeSpec
         SkeletonSpec =
             fun ov j ->
                 Fuaran.UI.Generated.collectingDecoders.SkeletonSpec ov j
@@ -5829,8 +5785,7 @@ let private decodeDisplayKind (path: string) (j: Json) : Result<NodeKind<obj>, D
                 Bridge.decodeAt specPath (Fuaran.UI.Generated.decodeHeadingSpecAllWith policy) j
                 |> Result.map NodeKind.Heading
             | "Markdown" ->
-                getSpec ()
-                |> Result.bind (decodeMarkdownSpec specPath)
+                Bridge.decodeAt specPath (Fuaran.UI.Generated.decodeMarkdownSpecAllWith policy) j
                 |> Result.map NodeKind.Markdown
             | "Metric" ->
                 getSpec ()
@@ -5860,7 +5815,9 @@ let private decodeDisplayKind (path: string) (j: Json) : Result<NodeKind<obj>, D
                 getSpec ()
                 |> Result.bind (decodeLabelValueRowSpec specPath)
                 |> Result.map NodeKind.LabelValueRow
-            | "Fact" -> getSpec () |> Result.bind (decodeFactSpec specPath) |> Result.map NodeKind.Fact
+            | "Fact" ->
+                Bridge.decodeAt specPath (Fuaran.UI.Generated.decodeFactSpecAllWith policy) j
+                |> Result.map NodeKind.Fact
             | "Link" -> getSpec () |> Result.bind (decodeLinkSpec specPath) |> Result.map NodeKind.Link
             | "Image" ->
                 getSpec ()
@@ -5874,7 +5831,9 @@ let private decodeDisplayKind (path: string) (j: Json) : Result<NodeKind<obj>, D
                 getSpec ()
                 |> Result.bind (decodeEmbedSpec specPath)
                 |> Result.map NodeKind.Embed
-            | "Tree" -> getSpec () |> Result.bind (decodeTreeSpec specPath) |> Result.map NodeKind.Tree
+            | "Tree" ->
+                Bridge.decodeAt specPath (Fuaran.UI.Generated.decodeTreeSpecAllWith policy) j
+                |> Result.map NodeKind.Tree
             | "List" ->
                 Bridge.decodeAt specPath (Fuaran.UI.Generated.decodeListSpecAllWith policy) j
                 |> Result.map NodeKind.List
@@ -8384,32 +8343,6 @@ let private decodeScalarTyped (path: string) (j: Json) : Result<Scalar, DecodeEr
             |> Result.map Scalar.Str
         | Ok s -> unknownDuCase path s "Int | Float | Bool | Str"
 
-let private decodeScalar (path: string) (j: Json) : Result<obj, DecodeError> =
-    match requireObject path j with
-    | Error e -> Error e
-    | Ok fields ->
-        match requireDiscriminator path fields with
-        | Error e -> Error e
-        | Ok disc ->
-            match disc with
-            | "Int" ->
-                requireField path fields "value" "Int value"
-                |> Result.bind (requireInt (path + ".value"))
-                |> Result.map box
-            | "Float" ->
-                requireField path fields "value" "Float value"
-                |> Result.bind (requireFloat (path + ".value"))
-                |> Result.map box
-            | "Bool" ->
-                requireField path fields "value" "Bool value"
-                |> Result.bind (requireBool (path + ".value"))
-                |> Result.map box
-            | "Str" ->
-                requireField path fields "value" "Str value"
-                |> Result.bind (requireString (path + ".value"))
-                |> Result.map box
-            | s -> unknownDuCase path s "Int | Float | Bool | Str"
-
 let private decodeHoleDecl (path: string) (j: Json) : Result<HoleDecl, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
@@ -9055,94 +8988,8 @@ and private decodeNodeKind (w: Walk) (path: string) (j: Json) : Result<NodeKind<
         | Ok s when List.contains s inputNodeKinds -> decodeInputKind path j
         | Ok s when List.contains s visNodeKinds -> decodeVisKind path j
         | Ok "Custom" ->
-            let moduleIdR =
-                requireField path fields "moduleId" "Custom moduleId string"
-                |> Result.bind (requireString (path + ".moduleId"))
-
-            let componentIdR =
-                requireField path fields "componentId" "Custom componentId string"
-                |> Result.bind (requireString (path + ".componentId"))
-
-            let propsR =
-                requireField path fields "props" "Custom props JSON object"
-                |> Result.bind (decodeJValMap (path + ".props"))
-
-            // Optional contentHash + exposedNodeIds
-            // — absent = None / [] (preserves the prior round-trip).
-            let contentHashR =
-                match tryField fields "contentHash" with
-                | None -> Ok None
-                | Some j ->
-                    match requireObject (path + ".contentHash") j with
-                    | Error e -> Error e
-                    | Ok hashFields ->
-                        let algR =
-                            requireField (path + ".contentHash") hashFields "algorithm" "ContentHash algorithm string"
-                            |> Result.bind (requireString (path + ".contentHash.algorithm"))
-
-                        let hashR =
-                            requireField (path + ".contentHash") hashFields "hash" "ContentHash hash hex string"
-                            |> Result.bind (requireString (path + ".contentHash.hash"))
-
-                        let strictR =
-                            requireField
-                                (path + ".contentHash")
-                                hashFields
-                                "strictness"
-                                "ContentHash strictness 'StrictReplay' | 'AdvisoryWarning' | 'Enforced'"
-                            |> Result.bind (requireString (path + ".contentHash.strictness"))
-                            |> Result.bind (fun s ->
-                                match s with
-                                | "StrictReplay" -> Ok HashStrictness.StrictReplay
-                                | "AdvisoryWarning" -> Ok HashStrictness.AdvisoryWarning
-                                | "Enforced" -> Ok HashStrictness.Enforced
-                                | other ->
-                                    unknownEnumCase
-                                        (path + ".contentHash.strictness")
-                                        other
-                                        "StrictReplay | AdvisoryWarning | Enforced")
-
-                        match algR, hashR, strictR with
-                        | Ok alg, Ok h, Ok strict ->
-                            Ok(
-                                Some(
-                                    { Algorithm = alg
-                                      Hash = h
-                                      Strictness = strict }
-                                    : ContentHash
-                                )
-                            )
-                        | Error e, _, _
-                        | _, Error e, _
-                        | _, _, Error e -> Error e
-
-            let exposedNodeIdsR =
-                match tryField fields "exposedNodeIds" with
-                | None -> Ok []
-                | Some j ->
-                    // Every element decoded, each defect collected (§29.1), as its
-                    // sibling arrays are.
-                    requireArray (path + ".exposedNodeIds") j
-                    |> Result.bind (
-                        traverseIndexed (fun i item -> requireString (sprintf "%s.exposedNodeIds[%d]" path i) item)
-                    )
-
-            match moduleIdR, componentIdR, propsR, contentHashR, exposedNodeIdsR with
-            | Ok moduleId, Ok componentId, Ok props, Ok hash, Ok exposedIds ->
-                Ok(
-                    NodeKind.Custom
-                        { ModuleId = moduleId
-                          ComponentId = componentId
-                          Props = props
-                          ContentHash = hash
-                          // An absent/empty list stays `None` (omitted on the wire).
-                          ExposedNodeIds = (if List.isEmpty exposedIds then None else Some exposedIds) }
-                )
-            | Error e, _, _, _, _
-            | _, Error e, _, _, _
-            | _, _, Error e, _, _
-            | _, _, _, Error e, _
-            | _, _, _, _, Error e -> Error e
+            Bridge.decodeAt path (Fuaran.UI.Generated.decodeCustomSpecAllWith policy) j
+            |> Result.map NodeKind.Custom
         | Ok "ErrorBoundary" ->
             // Mirror the encoder's `child` +
             // `fallback` field pair back into the typed

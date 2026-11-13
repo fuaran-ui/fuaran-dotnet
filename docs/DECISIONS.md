@@ -10,6 +10,42 @@ consequence.
 
 ---
 
+## 2026-11-13 — D31: there is one checkpoint seal, Core's strict seal, and the format DID move
+
+**Decided (Phase 2652).** This supersedes the last sentence of D30's ruling 1, "the rule is adopted, the format is
+not moved". Two phases after D30 moved it, and this entry records what they moved.
+
+1. **The linear checkpoint is sealed by Core (Phase 2305).** `HashChain.snapshotHash`, the pre-image D30 cited as
+   the reason not to hold a `Compacted`, is removed. A checkpoint IS a `Fuaran.Core.Snapshot<Node<'Msg>>`: its
+   `SnapshotHash` is Core's strict `Sealed.seal` at the anchor `(Sequence, PreviousChainHead)`, over
+   `{"snapshot":true,"seq":N,"state":<canonical tree>}` where the old pre-image said `"tree"`. The key moved, so
+   every persisted linear checkpoint hash moved once. The migration was a one-shot re-seal
+   (`CheckpointReseal.reseal`, `SqliteSink.resealCheckpoints`, `docs/migrations/2305-core-snapshot.md`): a
+   checkpoint that verifies under the old seal is re-sealed, and one that does not is refused as already corrupt.
+   With the format moved, replay from a checkpoint is Core's `Compacted` fold, which is what D30 declined.
+2. **The DAG checkpoint is sealed by the same rule (Phase 2645).** The cut deleted `DagCheckpoint` and its own
+   pre-image (`{"snapshot":true,"tree":…}` under the node). A DAG checkpoint is Core's `Dag.Checkpoint`, sealed by
+   the same strict `Sealed.seal` at the anchor `(0, node)`: the linear seal of a history that begins at the node.
+   The tier holds one seal, and `RetentionTests` pins that a DAG checkpoint's hash equals both Core's seal and
+   `CheckpointSeal.seal node 0` over the same state. `Conformance.checkpointLaws` certifies the tier's DAG
+   checkpoints (`CoreDagLawTests`, enrolled in the census).
+3. **The DAG case of the migration is a re-take, not a re-seal.** A DAG checkpoint stands at a node address, and the
+   cut re-addressed every node (`WIRE_FORMAT.md` §5.3.3). A pre-cut DAG checkpoint therefore names a node that no
+   longer exists under that address, so re-sealing it in place would produce a valid seal over a dangling anchor. A
+   host that persisted DAG checkpoints re-mints its store (fuaran#2648) and re-takes each checkpoint at the
+   re-minted node: `DagFold.checkpointAt` where the history behind it is held, `DagFold.sealAt` over a state it
+   verified under the old seal where it is not. No shipped sink persists a DAG checkpoint, so the library has no
+   store of its own to migrate.
+
+**Specified.** `WIRE_FORMAT.md` §5.3.6 states the seal (its pre-image, the strict rule, both anchors, worked
+examples) and the refusal classes a verifier reports over the tail (`seal`, then `sequenceMismatch`,
+`prevHashLinkBroken`, `hashMismatch` per tail record), and `corpus-producers.json` names the producer of
+`chain/checkpoint-corpus.json`.
+
+Rejected: a format tag on the checkpoint. The chain format stays 2 (D30 ruling 3 stands): the records did not move,
+only the seal beside them, and a seal made under an earlier rule simply does not recompute, which is the refusal a
+reader needs.
+
 ## 2026-11-08 — D30: a compacted stream keeps its boundary and its keys; the chain format stays 2
 
 **Decided (Phase 1937).** Three rulings, one entry.

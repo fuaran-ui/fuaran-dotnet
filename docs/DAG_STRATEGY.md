@@ -237,6 +237,100 @@ IS the chain's entry. What that digest is worth is the same in both cases: it de
 reordering, and it is unkeyed, so it is not evidence against a writer who re-chains – see
 [`../CRYPTO.md`](../CRYPTO.md).
 
+## The merge over Core's reachability index, measured (Phase 2692)
+
+The cut made every ancestry question of a merge Core's (`Dag.mergeBase`, `Dag.betweenOps`, the closure fold), and
+those walk the whole ancestor set on every call, so Phase 2062's claim that merge cost tracks the divergence stopped
+holding (fuaran#2645 finding F6, accepted 2026-11-11 with this phase as the remedy). Core has carried a reachability
+index since fuaran-core#289: `Dag.Reach`, built once by `Reach.ofDag`, extended per node by `Dag.appendIndexed` /
+`Dag.mergeIndexed`, and asked through `Reach.mergeBase` / `Reach.between` / `Dag.tryReplayToWith` /
+`Dag.replayFromWith`. Every symbol named here is in the pinned Core 0.42.0.
+
+**What changed.** `DagMerge.mergeIndexed` is `mergeDag` over that index: the base, the fast-forward test (the base
+IS the ancestor head when one head reaches the other), the two deltas and the replays are read from the index, and
+the merge node is minted by `Dag.mergeIndexed`, which hands back the index extended with it
+(`IndexedMergeOutcome.Reach`). `DagFold.replayToWith` / `replayFromWith` bind Core's indexed replays. Both entry
+points run ONE merge body over a record of the ancestry questions, answered by Core's walks (`mergeDag`) or by Core's
+index (`mergeIndexed`); the tier holds no ancestry code of its own. `mergeDag`, `mergeWith` and the sinks are
+unchanged, so nothing public is removed and no merge result, address or stored byte moves (`IndexedMergeTests`
+holds the two equal on every `foldFixtures` triad under six contexts and on generated DAGs with criss-cross twins and
+guest forks; the `merge-snapshot` digest is unchanged).
+
+**Where the index lives: with the caller that carries the DAG.** The shard expected the sinks to own it. Checked
+against the tree, no sink holds a `Dag.T` across calls: `mergeWith`, `Reachable` and replay rebuild the DAG from
+`Records` on every call, and `Records` re-verifies every record it hands back (Phase 793's read contract). A
+sink-held index would either skip that verification (a store changed underneath the process would go unseen) or pay
+the O(N) verification per read anyway, and `Reach.extend` costs O(N) per `Add` and the index N^2/16 bytes. That is a
+contract decision, not a cost change, so it is escalated rather than taken here; the sink path keeps the unindexed
+merge, and a caller that carries the DAG carries the index beside it through `mergeIndexed`. Retention and the
+inspector overlay build one index per call over data they do not keep, which is what an index is for.
+
+**Measured** (`dotnet run -c Release -- merge-rate 3 1000,5000,20000` in `benchmarks/Fuaran.UI.Ops.Benchmarks`;
+Intel Core i7-8650U, 8 logical processors, Windows 11, SDK 10.0.203; the host was NOT idle, sibling sessions were
+building, so wall times moved up to 2x between runs and the allocation column is the stable one). The fixture is
+`merge-rate`'s: a linear trunk of n records, two disjoint ten-record branches off its tip, a checkpoint at the fork.
+
+The attribution, one call of each callee (before the change; the `reach.*` lines ask the index Core already ships,
+built once outside the timed region):
+
+| callee | ms at 1,000 | ms at 5,000 | ms at 20,000 | MB at 20,000 |
+|---|---|---|---|---|
+| load (`Records` + verify + `toDag`) | 30.5 | 237.5 | 588.5 | 219.9 |
+| `Dag.mergeBase` | 21.6 | 188.2 | 559.0 | 168.1 |
+| `Dag.betweenOps` (one branch) | 12.9 | 281.1 | 390.5 | 115.8 |
+| `Dag.ancestorsOf` | 1.3 | 21.6 | 51.7 | 14.6 |
+| `DagFold.verifyCheckpoint` | 0.3 | 0.3 | 0.2 | 0.2 |
+| `DagFold.replayTo` (from genesis) | 20.3 | 152.7 | 671.5 | 179.5 |
+| `DagFold.replayFrom` (the fork checkpoint) | 18.2 | 121.9 | 507.2 | 115.9 |
+| mint (`Dag.merge`) | 0.03 | 0.04 | 0.07 | 0.0 |
+| `Reach.ofDag` (the cold build) | 17.2 | 168.5 | 599.3 | 115.0 |
+| `Reach.mergeBase` | 0.06 | 0.9 | 0.3 | 0.0 |
+| `Reach.between` | 0.14 | 0.3 | 0.6 | 0.0 |
+| `Reach.ancestors` | 2.5 | 33.5 | 71.9 | 13.7 |
+| `Dag.tryReplayToWith` | 6.5 | 93.6 | 210.1 | 78.9 |
+| `Dag.replayFromWith` | 2.9 | 42.8 | 82.9 | 14.5 |
+| `Dag.mergeIndexed` (mint + extend) | 0.13 | 21.9 | 0.5 | 0.6 |
+
+A merge asks the base once, a branch delta twice, and replays four times (the base, both heads, and the minted node,
+which is checked against the derived tree). Unindexed, the walks (`mergeBase` plus two `betweenOps`) were about a third
+of a checkpointed merge and the four replays most of the rest; the fold's apply work is small beside them.
+
+The merge, before and after (`lookups_ckpt` is `mergeDag` over a DAG loaded once with the fork checkpoint;
+`indexed` / `indexed_ckpt` are `mergeIndexed` over an index the caller carries):
+
+| scenario | MB at 1,000 | MB at 5,000 | MB at 20,000 | 20,000 / 1,000 | ms at 1,000 | ms at 20,000 |
+|---|---|---|---|---|---|---|
+| `sink` (unchanged path) | 56.9 | 309.7 | 1,339.0 | 23.5x | 180.5 / 197.5 | 6,882 / 6,216 |
+| `sink_ckpt` (unchanged path) | 43.4 | 244.1 | 1,084.4 | 25.0x | 156.3 / 149.9 | 5,750 / 6,092 |
+| `lookups_ckpt` (`mergeDag`, unchanged) | 32.9 | 190.6 | 864.5 | 26.3x | 103.6 / 101.9 | 4,342 / 8,885 |
+| `indexed` (`mergeIndexed`, no checkpoint) | 16.9 | 80.1 | 317.2 | 18.8x | 38.0 | 1,134 |
+| `indexed_ckpt` (`mergeIndexed`, fork checkpoint) | 3.3 | 13.8 | 59.2 | 17.9x | 20.9 | 742 |
+
+(Wall pairs are the before and after runs of the unchanged paths: the same code, so their spread is the host's noise.)
+
+**Phase 2062's claim, restated as it now holds.** The merge BASE and the two DELTAS now cost the divergence: one
+bitset intersection and two filtered drains, flat at well under a millisecond from 1,000 to 20,000 records. The merge
+as a whole does not yet: with the caller's index and a checkpoint at the fork it allocates 14.6x less than the
+unindexed merge at 20,000 records, but it still grows linearly with the history (17.9x from 1,000 to 20,000). The
+linear term is Core's, and the tier cannot remove it without a second index:
+
+- **Core finding (for fuaran-core).** `Dag.replayFromWith` reads the checkpoint's closure as a `Set` through
+  `Reach.ancestors` (13.7 MB of its 14.5 MB at 20,000) and the head's whole topological order through
+  `Reach.tryTopoOrder`, then filters the region above the checkpoint out of both. The index already answers that
+  region directly, as `Reach.between` does from the checkpoint's bitset (0.6 ms and nothing allocated at 20,000).
+  A `replayFromWith` that took its delta that way would make a checkpointed merge cost the divergence, which is what
+  Phase 2062 had bought.
+- **Without a checkpoint, cost tracks the history by definition**: the replay folds every op from genesis. The index
+  removes the drain and the closure walks from it (`tryReplayToWith`, 3x cheaper at 20,000), not the folding.
+- **The cold build is quadratic**: `Reach.ofDag` holds a bitset per node, N^2/16 bytes in all (115 MB at 20,000),
+  and a store loaded cold pays it once. That is why `mergeDag` keeps the unindexed walks rather than building an
+  index per call, and why an index belongs to a caller that keeps it.
+
+**The pin.** `dotnet run -c Release -- merge-bound [iterations]` measures `indexed_ckpt` at 1,000 and 20,000 and
+exits 1 when its allocation ratio exceeds 20x (measured 17.9x; the unindexed merge is 26.3x, so a merge path that falls
+back to the walks fails it). Allocation is pinned and wall time reported, for the reason above. When the Core finding
+lands, the factor falls and is re-stated from the new table.
+
 ## In short
 
 - One stream, one writer → **linear chain**.
