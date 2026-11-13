@@ -7854,6 +7854,21 @@ a per-visit read or write-back cost coming back fails there.
 
 **Consumer action: none.**
 
+### What rides this slot — Phase 2697 (the one-release DAG re-mint tool is removed)
+
+**Class: no surface change.** No shipped package's surface moves: `tools/dag-remint` was never packed (`IsPackable`
+false, an `Exe`), no package or other project referenced it, and the only code that did was its own test file and the
+pre-cut bridge test in `DagLiftTests`.
+
+**What changed.** `tools/dag-remint`, its two solution entries (and the then-empty `tools` folder), `RemintTests.fs`,
+the `remint/` pre-cut fixtures and the test project's reference to the tool are removed, with the bridge test that fed
+the tool the pre-cut lift pin. The re-mint ran once, at the `v0.104.0` tool; `docs/migrations/2648-core-dag-identity.md`
+and `CRYPTO.md` stay and now say the tool exists in the `v0.104.0` tree only. `DagWriteAdmission`'s header describes the
+module as it is after the cut.
+
+**Consumer action: a store not yet re-minted must be re-minted from a `v0.104.0` checkout before moving to this release
+or later; nothing else.**
+
 ---
 
 ## 0.104.0 (RELEASED — tagged v0.104.0 at cc477007, 2026-11-11) — the slot opened after v0.103.0 was released; advanced from 0.103.1 on 2026-11-10 by Phase 2640, whose change is breaking
