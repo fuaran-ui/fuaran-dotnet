@@ -60,8 +60,9 @@ script. Core's replay of that node folds both branches in Core's drain order and
 the node is handed back its replay is checked against the derived tree; and the script carries the child-
 order rule's reorder for every interleaved or rebased parent, whether or not the order a reconcile checked
 already matched (the reorder, not the drain order, fixes the children). A caller may name a precedence side:
-its refused ops are re-asserted as script, which settles two writes of one slot and nothing that one fold
-order cannot apply.
+its refused ops are re-asserted as script, which settles two writes of one slot and, per `WIRE_FORMAT.md`
+§34.4, nothing else — an edit beside a removal of its node refuses as `DeleteModify`, before the fold, under
+either side (Phase 2695, below).
 
 **What the cut retired.** The tree-level three-way merge (`TreeMerge`), its per-cell primacy
 (`DagPrimacy`, `ReassertPin`) and its conflict envelope (`MergeConflict`); the merge-outcome node identity
@@ -330,6 +331,39 @@ linear term is Core's, and the tier cannot remove it without a second index:
 exits 1 when its allocation ratio exceeds 20x (measured 17.9x; the unindexed merge is 26.3x, so a merge path that falls
 back to the walks fails it). Allocation is pinned and wall time reported, for the reason above. When the Core finding
 lands, the factor falls and is re-stated from the new table.
+
+## Precedence refuses an edit beside a removal of its node by class (Phase 2695)
+
+`WIRE_FORMAT.md` §34.4 lets a host name the delta that takes precedence and bounds it: precedence settles a pair
+whose two ops both apply in either order, "and nothing else — an edit beside a removal of its node still refuses".
+Until this phase the precedence path admitted every pair the policy refused, and a removal beside an edit of the
+removed node reached the fold, where the edit met a node that was gone: the caller got `FoldFaulted NodeNotFound`.
+The verdict was right and the reason was not — a fault says the merge broke, a class says what the two authors did.
+
+**The rule, and the one place the two contexts differ.** Both contexts class every reported pair through the same
+`judge`. The default refuses every pair it does not admit. A named side refuses, before anything is folded and with
+the entries the default context gives them, the `DeleteModify` pairs whose removal takes the other op's node: one of
+the ids the other op addresses (`TreeOp.targets`: the edited node, an insert's or reorder's parent, a moved node and
+its destination) is held by the base and absent from the removing branch's head. That covers an edit, a restyle, an
+insert beneath and a move of the removed node, and the same touches of a node whose ancestor was removed, whichever
+side is named. Every other pair a named side admits and re-asserts, as before. The fold never classes a pair.
+
+**Why not every `DeleteModify` pair (a premise the shard got wrong, measured).** The shard asked precedence to admit
+the `Conflict` class only. `judge` classes a pair `DeleteModify` whenever exactly one of its ops removes something,
+which is wider than §34.4's pair: an insert under a parent beside the removal of a SIBLING is reported as an
+`InsertPositionClash` on the parent and classed `DeleteModify`, yet both ops apply in either order. Over the fold
+fixtures and 1,500 generated branch pairs (seed 2695, three contexts each), refusing the whole class turned 283
+precedence merges that derived into refusals. The node-scoped rule leaves all 2,364 precedence derivations of that
+population byte-identical, turns 580 fold faults into `DeleteModify` refusals, and leaves the default context's
+1,531 answers unchanged.
+
+**What still faults under precedence (a recorded finding, not this rule).** 118 of that population still reach the
+fold and fault, in two shapes that are not an edit beside a removal: two inserts of one id with different content
+(`fold-refusal-same-id-insert`; a `Conflict` whose ops apply in neither order, so §34.4 says it refuses, yet the class
+is admitted), and a re-asserted op that no longer applies at the script's tail (its own branch later removed or moved
+what it addresses, or the other branch changed the child list a re-asserted reorder names). Both need a ruling on
+what precedence owes such a pair. `FoldReconcileTests` pins that nothing else faults: never the default context, and
+never an edit beside a removal of its node.
 
 ## In short
 

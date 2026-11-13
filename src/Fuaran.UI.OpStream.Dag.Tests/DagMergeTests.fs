@@ -174,21 +174,26 @@ let tests =
                       "the re-asserted op is the script"
           }
 
-          test "precedence cannot resurrect: an edit beside a removal still refuses" {
+          test "precedence cannot resurrect: an edit beside a removal refuses as DeleteModify" {
+              // Phase 2695: refused by class before the fold, under either side, never as a fault.
               let sink, _, a, b =
                   fork [ TreeOp.RemoveNode leftChildId ] [ tone ToneVariant.Success leftChildId ]
 
-              match
-                  (run
-                      { MergeContext.defaults with
-                          Precedence = Some ReconcileSide.B }
-                      sink
-                      a
-                      b)
-                      .Result
-              with
-              | MergeResult.Refused(ReconcileFault.FoldFaulted _) -> ()
-              | other -> failtestf "expected FoldFaulted, got %A" other
+              for side in [ ReconcileSide.A; ReconcileSide.B ] do
+                  match
+                      (run
+                          { MergeContext.defaults with
+                              Precedence = Some side }
+                          sink
+                          a
+                          b)
+                          .Result
+                  with
+                  | MergeResult.Refused(ReconcileFault.Refused [ r ]) ->
+                      Expect.equal r.Class RefusalClass.DeleteModify (sprintf "%A: the pair's class" side)
+                      Expect.equal (op r.Conflict.Left) (op (TreeOp.RemoveNode leftChildId)) "the removal"
+                      Expect.equal (op r.Conflict.Right) (op (tone ToneVariant.Success leftChildId)) "the edit"
+                  | other -> failtestf "%A: expected one DeleteModify refusal, got %A" side other
           }
 
           test "the validator gate refuses a derived tree with an introduced defect" {

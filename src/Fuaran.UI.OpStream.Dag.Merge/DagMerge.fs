@@ -19,7 +19,9 @@ open Fuaran.UI.OpStream.Dag.Abstractions
 //      `DagFold.replayFrom` above the context's checkpoint).
 //   3. The policy (`DagReconcile.reconcileWith`, WIRE_FORMAT §34) derives the
 //      merged tree and the script, or refuses with a typed fault; the context's
-//      `Precedence` side, when named, re-asserts its refused ops as script.
+//      `Precedence` side, when named, re-asserts its ops of each pair it settles
+//      as script, and an edit beside a removal of its node refuses under it as
+//      without it (§34.4).
 //   4. The validator gate (`ValidatorGate.verdict`, Core's introduced-findings
 //      gate) runs over the two branch trees and the derived one.
 //   5. The merge node is minted by Core (`Dag.merge`): a node with the two heads
@@ -143,9 +145,12 @@ type MergeContext<'Msg> =
         Checkpoint: Fuaran.Core.Dag.Checkpoint<Node<'Msg>> option
         /// The validator gate over a derived merge (Phase 184).
         Policy: MergePolicy<'Msg>
-        /// Precedence as a script (Phase 2645): the side whose refused ops the
-        /// merge re-asserts (`A` is the first head named, `B` the second). `None`
-        /// refuses every pair the policy does not admit.
+        /// Precedence as a script (Phase 2645): the side whose ops of a refused
+        /// pair the merge re-asserts (`A` is the first head named, `B` the
+        /// second). An edit beside a removal of its node refuses as
+        /// `DeleteModify` under either side, as it does under `None` (Phase
+        /// 2695, WIRE_FORMAT §34.4). `None` refuses every pair the policy does
+        /// not admit.
         Precedence: ReconcileSide option
     }
 

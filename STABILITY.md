@@ -7893,6 +7893,21 @@ allocates 864.5 MB; the table and what still grows with the history (Core's inde
 **Consumer action: none.** A caller that carries a DAG across merges may carry `Reach.ofDag dag` beside it and merge
 through `mergeIndexed`, keeping the `Reach` it hands back.
 
+### What rides this slot — Phase 2695 (a precedence merge refuses an edit beside a removal of its node by class)
+
+**Class: additive.** Package `Fuaran.UI.OpStream.Dag.Merge`; no signature moves, and no derived tree, script, address
+or wire byte moves. A precedence merge (`reconcileWith (Some side)`, `MergeContext.Precedence`, `GuestConvergence`)
+that refused with `ReconcileFault.FoldFaulted` because an edit, restyle, insert beneath or move met a node the other
+branch removed (or whose ancestor it removed) now refuses with `ReconcileFault.Refused` and a `DeleteModify` entry
+naming both ops: the envelope the default context gives the same pair, under either named side, on `mergeDag` and
+`mergeIndexed` alike (WIRE_FORMAT §34.4). Every merge a precedence context derived before, it derives byte-identically
+(measured over the fold fixtures and 1,500 generated pairs, `docs/DAG_STRATEGY.md`). The default context is unchanged.
+
+**Consumer action: a caller that matched `FoldFaulted` to detect this pair matches `Refused` with a `DeleteModify`
+entry instead.** `FoldFaulted` still reaches a precedence caller in two recorded shapes outside this rule (two inserts
+of one id with different content; a re-asserted op that no longer applies at the script's tail), described in
+`docs/DAG_STRATEGY.md`.
+
 ---
 
 ## 0.104.0 (RELEASED — tagged v0.104.0 at cc477007, 2026-11-11) — the slot opened after v0.103.0 was released; advanced from 0.103.1 on 2026-11-10 by Phase 2640, whose change is breaking

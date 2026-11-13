@@ -75,13 +75,19 @@ open Fuaran.UI.OpStream.Abstractions
 //  `ValidatorGate.introducedDefects` over the two branch heads and the derived
 //  tree and refuses on any.
 //
-//  PRECEDENCE, AS A SCRIPT (Phase 2645, optional). A caller that names a side
-//  (`reconcileWith (Some side)`) admits the pairs the policy would refuse and
-//  re-asserts that side's refused ops after the fold, in its delta's order, as
-//  the tail of the script. Both fold orders still have to reach one tree with
-//  the script, so precedence settles a pair whose two ops both apply in either
-//  order (two writes of one slot); a pair one fold order cannot apply (an edit
-//  beside a removal of the node) still refuses, as `FoldFaulted`.
+//  PRECEDENCE, AS A SCRIPT (Phase 2645, optional; bounded by §34.4 at Phase
+//  2695). A caller that names a side (`reconcileWith (Some side)`) admits the
+//  pairs the policy would refuse, but for one kind below, and re-asserts that
+//  side's ops of them after the fold, in its delta's order, as the tail of the script. Both fold
+//  orders still have to reach one tree with the script, so precedence settles a
+//  pair whose two ops both apply in either order (two writes of one slot), and
+//  nothing else: a `DeleteModify` pair whose removal takes the other op's node
+//  (an edit, restyle, move or insert beside a removal of the node or of an
+//  ancestor) refuses before the fold, with the entries the default context
+//  gives it, whichever side is named. A `DeleteModify` pair whose removal is of
+//  another node (an insert beside the removal of a sibling) applies in either
+//  order and is settled. The classifier is `judge` in both contexts; the fold
+//  never classes a pair.
 //
 //  THE REPLAY WITNESS (Phase 2645, the cut). The policy is the DAG's only merge:
 //  a merge node records the script, and Core's closure fold replays it. That
@@ -405,7 +411,8 @@ module DagReconcile =
     /// records, or a typed refusal. Both deltas apply from `baseTree`, op by op,
     /// as recorded on their branches. With `precedence = Some side`, a pair the
     /// policy refuses is admitted and `side`'s op of it is re-asserted at the end
-    /// of the script (see the header).
+    /// of the script, except a `DeleteModify` pair whose removal takes the other
+    /// op's node, which still refuses (see the header).
     let reconcileWith
         (precedence: ReconcileSide option)
         (baseTree: Node<'Msg>)
@@ -415,7 +422,7 @@ module DagReconcile =
         match firstFailure deltaA baseTree, firstFailure deltaB baseTree with
         | Error(i, e), _ -> Error(ReconcileFault.DeltaDoesNotApply(ReconcileSide.A, i, e))
         | _, Error(i, e) -> Error(ReconcileFault.DeltaDoesNotApply(ReconcileSide.B, i, e))
-        | Ok _, Ok _ ->
+        | Ok headA, Ok headB ->
             let verdicts =
                 Fuaran.Core.Dag.conflictsIn TreeOpFootprint.ofOpIn Apply.apply baseTree deltaA deltaB
                 |> List.map (fun c -> c, judge c)
@@ -427,9 +434,40 @@ module DagReconcile =
                     | Refuse cls -> Some { Conflict = c; Class = cls }
                     | _ -> None)
 
-            match precedence with
-            | None when not refusals.IsEmpty -> Error(ReconcileFault.Refused(sortCanonical refusals))
-            | _ ->
+            // THE ONE PLACE the two contexts differ (Phase 2695, WIRE_FORMAT §34.4). Both class
+            // every pair through `judge`; the default refuses every pair it does not admit. A
+            // named side settles two writes of one slot and nothing else, so it refuses here,
+            // before anything is folded and with the entries the default context gives them,
+            // the `DeleteModify` pairs whose removal takes the other op's node: a node the other
+            // op addresses that the base holds and the removing branch's head does not. The
+            // class still decides the pair is a delete beside a modify; which node the removal
+            // took is read from the branch head, and the fold is never the classifier. A
+            // `DeleteModify` pair whose removal is of another node (an insert beside the removal
+            // of a sibling, both changing the parent's child list) applies in either order, and
+            // precedence settles it as it does a `Conflict`.
+            let unsettled =
+                match precedence with
+                | None -> refusals
+                | Some _ ->
+                    let takesItsNode (r: Refusal<'Msg>) =
+                        let other, removingHead =
+                            if removes r.Conflict.Left then
+                                r.Conflict.Right, headA
+                            else
+                                r.Conflict.Left, headB
+
+                        Fuaran.UI.Ops.TreeOp.targets other
+                        |> List.exists (fun id ->
+                            // `findNode` reaches every position the engine addresses, a mount's
+                            // slot arguments included.
+                            (findNode id baseTree).IsSome && (findNode id removingHead).IsNone)
+
+                    refusals
+                    |> List.filter (fun r -> r.Class = RefusalClass.DeleteModify && takesItsNode r)
+
+            match unsettled with
+            | _ :: _ -> Error(ReconcileFault.Refused(sortCanonical unsettled))
+            | [] ->
                 // The winner's refused ops, in its delta's order, each once.
                 let reasserted =
                     match precedence with

@@ -57,6 +57,76 @@ let private childIds (tree: Node<TestMsg>) (parent: string) : string list =
     |> Option.defaultValue []
     |> List.map _.Id
 
+// ---- precedence (Phase 2695) ------------------------------------------------
+
+let private canonOp (op: TreeOp<TestMsg>) = CanonicalJson.encodeOp op
+
+/// A dashboard holding two panes and a container with one child, so every touch of a
+/// removed node (an edit, a restyle, an insert beneath, a move) has a node to land on.
+let private precedenceBase () : Node<TestMsg> =
+    container
+        "dash"
+        [ Fuaran.markdown "left" "Left pane"
+          Fuaran.markdown "right" "Right pane"
+          container "box" [ Fuaran.markdown "inner" "Inner" ] ]
+
+let private restyle (id: string) (tone: ToneVariant) : TreeOp<TestMsg> =
+    TreeOp.UpdateStyle(NodeId id, { Defaults.style with Tone = tone })
+
+/// Each touch of a removed node §34.4 names: the touch's name, the removal, and the
+/// other branch's op on the removed node.
+let private removalPairs: (string * TreeOp<TestMsg> * TreeOp<TestMsg>) list =
+    [ "an edit", TreeOp.RemoveNode leftChildId, TreeOp.EditNode(leftChildId, (Fuaran.markdown "left" "Edited").Kind)
+      "a restyle", TreeOp.RemoveNode leftChildId, restyle "left" ToneVariant.Success
+      "an insert beneath",
+      TreeOp.RemoveNode(NodeId "box"),
+      TreeOp.InsertChild(NodeId "box", Fuaran.markdown "new" "New")
+      "a move", TreeOp.RemoveNode leftChildId, TreeOp.MoveNode(leftChildId, NodeId "box") ]
+
+/// A deterministic population of branch-delta pairs off `precedenceBase`: each branch draws
+/// one to three ops, keeping only those that apply to what the branch holds so far, so
+/// every delta applies from the base and no fault the reconcile meets is the delta's own.
+/// Fresh ids are drawn from a small set, so two branches inserting one id is common.
+let private generatedPairs (seed: int) (count: int) : (TreeOp<TestMsg> list * TreeOp<TestMsg> list) list =
+    let mutable state = uint32 seed
+
+    let below (n: int) =
+        state <- state * 1664525u + 1013904223u
+        int ((state >>> 8) % uint32 n)
+
+    let pick (xs: 'T list) = xs |> List.item (below xs.Length)
+    let panes = [ "left"; "right"; "inner" ]
+    let containers = [ "dash"; "box" ]
+    let tones = [ ToneVariant.Brand; ToneVariant.Success; ToneVariant.Critical ]
+
+    let drawOp () : TreeOp<TestMsg> =
+        match below 6 with
+        | 0 -> TreeOp.InsertChild(NodeId(pick containers), Fuaran.markdown (sprintf "n%d" (below 3)) (pick panes))
+        | 1 -> restyle (pick (panes @ containers)) (pick tones)
+        | 2 -> TreeOp.EditNode(NodeId(pick panes), (Fuaran.markdown "x" (sprintf "text %d" (below 3))).Kind)
+        | 3 -> TreeOp.RemoveNode(NodeId(pick (panes @ [ "box" ])))
+        | 4 -> TreeOp.MoveNode(NodeId(pick panes), NodeId(pick containers))
+        | _ ->
+            TreeOp.ReorderChildren(
+                NodeId "dash",
+                pick [ [ "right"; "left"; "box" ]; [ "box"; "left"; "right" ] ]
+                |> List.map NodeId
+            )
+
+    let drawDelta () =
+        let n = 1 + below 3
+
+        ((precedenceBase (), []), [ 1..n ])
+        ||> List.fold (fun (tree, ops) _ ->
+            let op = drawOp ()
+
+            match Fuaran.UI.Ops.Apply.apply op tree with
+            | Ok t -> t, ops @ [ op ]
+            | Error _ -> tree, ops)
+        |> snd
+
+    [ for _ in 1..count -> drawDelta (), drawDelta () ]
+
 [<Tests>]
 let tests =
     testList
@@ -181,4 +251,141 @@ let tests =
               Expect.isError
                   (DagReconcile.applyHeld (TreeOp.InsertChild(dashboardId, Fuaran.markdown "new" "B")) inserted)
                   "an insert under a held id with DIFFERENT content is still the engine's DuplicateNodeId"
+          }
+
+          test "under precedence, a touch beside a removal of its node refuses as DeleteModify, never as a fold fault" {
+              let baseT = precedenceBase ()
+
+              for name, removal, touch in removalPairs do
+                  for removalOn in [ ReconcileSide.A; ReconcileSide.B ] do
+                      let left, right =
+                          if removalOn = ReconcileSide.A then
+                              removal, touch
+                          else
+                              touch, removal
+
+                      let deleteModify (rs: Refusal<TestMsg> list) =
+                          rs |> List.filter (fun r -> r.Class = RefusalClass.DeleteModify)
+
+                      let byDefault =
+                          match DagReconcile.reconcile baseT [ left ] [ right ] with
+                          | Error(ReconcileFault.Refused rs) -> deleteModify rs
+                          | other -> failtestf "%s: the default context must refuse, got %A" name other
+
+                      for side in [ ReconcileSide.A; ReconcileSide.B ] do
+                          let what = sprintf "%s, removal on %A, precedence %A" name removalOn side
+
+                          match DagReconcile.reconcileWith (Some side) baseT [ left ] [ right ] with
+                          | Error(ReconcileFault.Refused rs) ->
+                              Expect.isTrue
+                                  (rs
+                                   |> List.exists (fun r ->
+                                       r.Class = RefusalClass.DeleteModify
+                                       && canonOp r.Conflict.Left = canonOp left
+                                       && canonOp r.Conflict.Right = canonOp right))
+                                  (sprintf "%s: a DeleteModify entry naming both ops" what)
+
+                              Expect.equal
+                                  (DagReconcile.encodeEnvelope rs)
+                                  (DagReconcile.encodeEnvelope byDefault)
+                                  (sprintf "%s: the envelope the default context gives the pair" what)
+                          | other -> failtestf "%s: expected a DeleteModify refusal, got %A" what other
+          }
+
+          test "no DeleteModify answer is a fold fault: fixtures and a generated population, under every context" {
+              let contexts = [ None; Some ReconcileSide.A; Some ReconcileSide.B ]
+
+              let fixturePairs =
+                  FoldCorpus.fixtures
+                  |> List.map (fun (id, _, _, baseT, opsA, opsB) -> id, baseT, opsA, opsB)
+
+              let generated =
+                  generatedPairs 2695 1500
+                  |> List.mapi (fun i (a, b) -> sprintf "generated #%d" i, precedenceBase (), a, b)
+
+              let mutable refused = 0
+              let mutable derived = 0
+
+              let mutable editsBesideRemovals = 0
+              let mutable recordedFaults = 0
+
+              for id, baseT, opsA, opsB in fixturePairs @ generated do
+                  let what context =
+                      sprintf
+                          "%s under %A\nA: %s\nB: %s"
+                          id
+                          context
+                          (FoldCorpus.encodeOps opsA)
+                          (FoldCorpus.encodeOps opsB)
+
+                  let head ops =
+                      ops
+                      |> List.fold (fun t op -> t |> Result.bind (Fuaran.UI.Ops.Apply.apply op)) (Ok baseT)
+
+                  // §34.4's pair, stated from the deltas alone: one op removes, and the other
+                  // addresses a node the base holds and the removing branch's head does not.
+                  let besideItsRemoval =
+                      match DagReconcile.reconcile baseT opsA opsB, head opsA, head opsB with
+                      | Error(ReconcileFault.Refused rs), Ok headA, Ok headB ->
+                          rs
+                          |> List.exists (fun r ->
+                              let removes =
+                                  function
+                                  | TreeOp.RemoveNode _ -> true
+                                  | _ -> false
+
+                              let other, removingHead =
+                                  match removes r.Conflict.Left, removes r.Conflict.Right with
+                                  | true, false -> Some r.Conflict.Right, headA
+                                  | false, true -> Some r.Conflict.Left, headB
+                                  | _ -> None, headA
+
+                              other
+                              |> Option.exists (fun o ->
+                                  Fuaran.UI.Ops.TreeOp.targets o
+                                  |> List.exists (fun n ->
+                                      (Fuaran.UI.Ops.Introspect.findNode n baseT).IsSome
+                                      && (Fuaran.UI.Ops.Introspect.findNode n removingHead).IsNone)))
+                      | _ -> false
+
+                  for context in contexts do
+                      match DagReconcile.reconcileWith context baseT opsA opsB with
+                      | Ok _ ->
+                          derived <- derived + 1
+
+                          if besideItsRemoval then
+                              failtestf "%s: an edit beside a removal of its node derived" (what context)
+                      | Error(ReconcileFault.Refused rs) ->
+                          refused <- refused + 1
+
+                          if besideItsRemoval then
+                              editsBesideRemovals <- editsBesideRemovals + 1
+
+                              Expect.isTrue
+                                  (rs |> List.exists (fun r -> r.Class = RefusalClass.DeleteModify))
+                                  (sprintf "%s: refused with a DeleteModify entry" (what context))
+
+                          Expect.isNonEmpty rs (sprintf "%s: a refusal names its pairs" (what context))
+                      | Error(ReconcileFault.FoldFaulted e) ->
+                          // THE RECORDED FINDING (Phase 2695; not this phase's rule, awaiting a
+                          // ruling). Under a named side, two shapes still reach the fold and fault:
+                          // (1) two inserts of one id with different content
+                          // (`fold-refusal-same-id-insert`), a `Conflict` whose ops apply in
+                          // NEITHER order, so §34.4 says it refuses, yet precedence admits the
+                          // class; (2) a re-asserted op that no longer applies at the script's
+                          // tail: its own branch later removed or moved what it addresses, or
+                          // the other branch changed the child list a re-asserted reorder names.
+                          // This arm pins that nothing ELSE faults: never under the default
+                          // context, and never on an edit beside a removal of its node.
+                          if context.IsNone || besideItsRemoval then
+                              failtestf "%s: a fold fault outside the recorded finding (%A)" (what context) e
+
+                          recordedFaults <- recordedFaults + 1
+                      | Error _ -> ()
+
+              // The population must reach every answer, or the checks above asked nothing.
+              Expect.isGreaterThan derived 0 "some pair derived"
+              Expect.isGreaterThan refused 0 "some pair refused"
+              Expect.isGreaterThan editsBesideRemovals 0 "some edit beside a removal of its node was drawn"
+              printfn "Phase 2695 finding: %d precedence merges fault outside the DeleteModify rule" recordedFaults
           } ]
