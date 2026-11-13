@@ -27,6 +27,7 @@
     <Compile Include="FoldReconcileTests.fs" />
     <!-- Phase 2645: the one merge, over Core's DAG - minted, checked against Core's fold, stored. -->
     <Compile Include="DagMergeTests.fs" />
+    <Compile Include="IndexedMergeTests.fs" />
     <Compile Include="ValidatorGateTests.fs" />
     <Compile Include="OpenCoreInvariantTests.fs" />
     <!-- Phase 267: guest op-stream fork + host-convergence anchor (§4o). -->

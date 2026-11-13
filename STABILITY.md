@@ -7854,6 +7854,30 @@ a per-visit read or write-back cost coming back fails there.
 
 **Consumer action: none.**
 
+### What rides this slot — Phase 2692 (the DAG merge over Core's reachability index)
+
+**Class: additive.** Package `Fuaran.UI.OpStream.Dag.Merge` gains public members; no member is removed or changes
+what it answers, and no hash, address or wire byte moves. That is a higher class than the slot's opening entry
+(no surface change), and under this repository's 0.x convention an additive change still rides the patch number, so
+the slot does not advance.
+
+- `DagMerge.mergeIndexed context streamId initial reach headA headB now` — `mergeDag` over Core's
+  `Dag.Reach<StreamEntry<'Msg>>`: the base, the deltas and the replays read from the index and the merge node minted
+  by `Dag.mergeIndexed`. Its outcome is `mergeDag`'s on `Reach.dag reach`, exactly.
+- `IndexedMergeOutcome<'Msg>` — `{ Outcome: GatedMergeOutcome<'Msg>; Reach: Dag.Reach<StreamEntry<'Msg>> }`, the
+  index extended with the merge node when the outcome is `Merged`, the given index otherwise.
+- `DagFold.replayToWith initial reach head` and `DagFold.replayFromWith checkpoint reach head` — Core's
+  `Dag.tryReplayToWith` / `Dag.replayFromWith` with the tier's witness.
+
+`mergeDag`, `mergeWith`, `merge`, `mergeIntoTrunkWith` and both sinks are unchanged in signature and answer; `mergeDag`
+now runs the same body as `mergeIndexed` over Core's unindexed walks. **Measured** (`merge-rate`, Release): with a
+checkpoint at the fork, `mergeIndexed` allocates 59.2 MB at 20,000 records of shared history where `mergeDag`
+allocates 864.5 MB; the table and what still grows with the history (Core's indexed checkpoint replay) are in
+`docs/DAG_STRATEGY.md`. `merge-bound` pins the 20,000 / 1,000 allocation ratio at 20x.
+
+**Consumer action: none.** A caller that carries a DAG across merges may carry `Reach.ofDag dag` beside it and merge
+through `mergeIndexed`, keeping the `Reach` it hands back.
+
 ---
 
 ## 0.104.0 (RELEASED — tagged v0.104.0 at cc477007, 2026-11-11) — the slot opened after v0.103.0 was released; advanced from 0.103.1 on 2026-11-10 by Phase 2640, whose change is breaking
