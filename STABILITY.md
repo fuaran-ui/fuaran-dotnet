@@ -7869,6 +7869,22 @@ module as it is after the cut.
 **Consumer action: a store not yet re-minted must be re-minted from a `v0.104.0` checkout before moving to this release
 or later; nothing else.**
 
+### What rides this slot — Phase 2653 (the theme manifest is read under WIRE_FORMAT §21.1's syntactic limits)
+
+**Class: additive.** Package `Fuaran.UI.ThemeManifest`. `Decode.limits` stays published with the same shape; its
+VALUES move from this host's own figures (Phase 2310: depth 64, strings 65,536 code points, arrays and objects 10,000,
+documents 4,194,304 bytes) to §21.1's syntactic limits, read from `Fuaran.UI.WireLimits`: JSON depth 256, strings
+1,048,576 code points, arrays and objects 100,000, documents 33,554,432 UTF-8 bytes. Every bound is looser, so a
+manifest the 0.103.0 and 0.104.0 bounds refused now decodes, and nothing that decoded before is refused. The refusal
+is the same Core decode-error sentence, naming the bound and its value.
+
+**Why.** A manifest travels between hosts as a string each host decodes for itself (the Phase 2133 byte law), so a
+bound only this host enforces makes a manifest vetted on one host undecodable on another, which §21.2 rule 1 names as
+the failure the limits exist to prevent. WIRE_FORMAT now states the rule beside the byte law, and the TypeScript and
+Python hosts read manifests under the same values.
+
+**Consumer action: none.** Code that read `Decode.limits` to size its own input reads the new values.
+
 ---
 
 ## 0.104.0 (RELEASED — tagged v0.104.0 at cc477007, 2026-11-11) — the slot opened after v0.103.0 was released; advanced from 0.103.1 on 2026-11-10 by Phase 2640, whose change is breaking
