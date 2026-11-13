@@ -7893,6 +7893,86 @@ allocates 864.5 MB; the table and what still grows with the history (Core's inde
 **Consumer action: none.** A caller that carries a DAG across merges may carry `Reach.ofDag dag` beside it and merge
 through `mergeIndexed`, keeping the `Reach` it hands back.
 
+### What rides this slot — Phase 2659 (the Binding-free display kinds move onto the decoder's policy record)
+
+**Class: no surface change.** Package `Fuaran.UI.Ops` (private members of `JsonDecode` only). `Fuaran.UI` and its
+generated layer are untouched. No signature moves, no wire byte moves, and every verdict `JsonDecode` gives is
+unchanged: the decoder-parity harness (`tests/decoder-parity/`) reports zero divergences over every node-decoder
+fixture, the op fixtures, both malformed recovery sets and the 9,255 mutations, verdicts and sentences alike.
+
+**What changed.** `Fact`, `Markdown` (with its citations), `Tree` (with its rows) and `Custom` (with its content
+hash) are now decoded through the generated collecting decoders under `JsonDecode`'s policy record, as Phase 2639's
+first family was; their hand structure is deleted. The rules those kinds carry beyond their types are holder-level
+overrides on the record: `Fact.emphasis` reads the `Emphasis` aliases at its `bool` slot, a citation's name token and
+the citation list's non-empty and unique-name rules, the `Tree` row-depth bound and the presence-read `onSelect`
+sentinel, and `Custom.props`, which is verbatim JSON and is read by the decoder's own reader. A member `null` at a
+record position is refused before the generated walk reads it. See `docs/migrations/2639-decoder-layering.md`.
+
+**Consumer action: none.**
+
+### What rides this slot — Phase 2652 (one checkpoint seal, specified; the DAG case of the re-seal)
+
+**Class: no surface change.** No package source moves and no hash moves in this slot. The phase was filed as
+breaking ("every persisted DAG checkpoint hash moves"); that move already shipped, in `0.104.0`, with the cut
+(Phase 2645), which deleted `DagCheckpoint` and its `{"snapshot":true,"tree":…}` pre-image and made the DAG
+checkpoint Core's `Dag.Checkpoint`, sealed by the same strict `Sealed.seal` as the linear checkpoint (Phase 2305,
+`0.103.0`). What lands here is the record of that:
+
+- **One seal, pinned.** `RetentionTests` (`Fuaran.UI.OpStream.Dag.Tests`) pins that a DAG checkpoint's hash is Core's
+  strict seal at the anchor `(0, node)` and equals `CheckpointSeal.seal node 0` over the same state, for a sealed and
+  for a folded checkpoint, against a fixed vector. `Conformance.checkpointLaws` is already enrolled in the
+  Core-conformance census (Phase 2645).
+- **Specified.** `WIRE_FORMAT.md` §5.3.6 states the seal (pre-image, strict rule, the linear and DAG anchors, worked
+  examples) and the verifier's refusal classes; `corpus-producers.json` names the producer of
+  `chain/checkpoint-corpus.json`. No corpus file changes.
+- **The DAG case of the 2305 re-seal is a re-take** (`docs/DECISIONS.md` D31). A checkpoint stored before `0.104.0`
+  names a node the cut re-addressed, so a re-seal in place would seal a dangling anchor. A host that persisted DAG
+  checkpoints re-mints its store (fuaran#2648) and re-takes each one at the re-minted node with
+  `DagFold.checkpointAt`, or `DagFold.sealAt` over a state it verified under the old seal where the history behind
+  it was compacted away. No shipped DAG sink persists checkpoints.
+
+**Consumer action: none** beyond what `0.104.0` already asked of a host persisting DAG checkpoints.
+
+### What rides this slot — Phase 2653 (the theme manifest is read under WIRE_FORMAT §21.1's syntactic limits)
+
+**Class: additive.** Package `Fuaran.UI.ThemeManifest`. `Decode.limits` stays published with the same shape; its
+VALUES move from this host's own figures (Phase 2310: depth 64, strings 65,536 code points, arrays and objects 10,000,
+documents 4,194,304 bytes) to §21.1's syntactic limits, read from `Fuaran.UI.WireLimits`: JSON depth 256, strings
+1,048,576 code points, arrays and objects 100,000, documents 33,554,432 UTF-8 bytes. Every bound is looser, so a
+manifest the 0.103.0 and 0.104.0 bounds refused now decodes, and nothing that decoded before is refused. The refusal
+is the same Core decode-error sentence, naming the bound and its value.
+
+**Why.** A manifest travels between hosts as a string each host decodes for itself (the Phase 2133 byte law), so a
+bound only this host enforces makes a manifest vetted on one host undecodable on another, which §21.2 rule 1 names as
+the failure the limits exist to prevent. WIRE_FORMAT now states the rule beside the byte law, and the TypeScript and
+Python hosts read manifests under the same values.
+
+**Consumer action: none.** Code that read `Decode.limits` to size its own input reads the new values.
+
+### What rides this slot — Phase 2696 (a reorder that leaves the order unchanged writes nothing)
+
+**Class: additive.** Package `Fuaran.UI.Ops` (`TreeOpFootprint.ofOpIn` / `ofScriptIn` / `ofEachIn`); no signature
+moves and no wire byte moves. Pairs that refused now derive; nothing derived before refuses or derives a different
+tree.
+
+**What changed.** A resolved `ReorderChildren` whose list is its parent's child order in the tree it applies to (the
+same ids, in the same order, of the same length) reads the parent's `kind` slot and Core's child-list slot and writes
+neither; every other reorder is as before. So two reorders of one parent that each restate the order their own branch
+holds are no longer reported against each other, and the fold derives the pair (WIRE_FORMAT §34.3, fixture
+`fold-two-restated-orders`). Every op that changes the child list, a real reorder among them, is still reported
+against the unchanged reorder, so a real reorder beside a restated one still refuses (`fold-refusal-two-reorders`):
+the two do not commute under replay, because the restated reorder applied second puts the old order back.
+
+**Measured** (the derivability snapshot on the last tree that holds the tree merge, `docs/DAG_STRATEGY.md`, Phase
+2696): `derived_share` 0.9325 → 0.9345 on the widened population and 0.9094 unchanged on 2292's, no unpinned
+different-tree triad on either, and no triad derived before refused or moved.
+
+**Host spillovers (not edited here).** The `fuaran-ts`, `fuaran-py`, `fuaran-go` and `fuaran-rs` footprints still
+write the child list for every resolved reorder, so each refuses `fold-two-restated-orders` and each host's
+`foldFixtures` leg is red on it until that host's footprint follows the arm.
+
+**Consumer action: none.**
+
 ### What rides this slot — Phase 2695 (a precedence merge refuses an edit beside a removal of its node by class)
 
 **Class: additive.** Package `Fuaran.UI.OpStream.Dag.Merge`; no signature moves, and no derived tree, script, address

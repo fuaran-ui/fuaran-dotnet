@@ -21,6 +21,13 @@ module Fuaran.UI.Ops.Tests.ReorderMoveFootprintLawTests
 //  Since the Core 0.42.0 pin (Phase 2691) the reorder's parent is also read
 //  and written at Core's child-list slot, which is where an insert into it, a
 //  move into or out of it and a removal under it now meet the reorder.
+//
+//  Phase 2696: a reorder whose list is the order its parent already holds
+//  reads those two slots and writes neither. The unchanged-reorder family
+//  certifies it, and two falsifiers bound it: put the writes back and a pair of
+//  reorders that each restate their own order is reported again; take the
+//  reads away too and soundness is refuted, because a real reorder beside an
+//  unchanged one does not commute under replay.
 // ============================================================================
 
 open Expecto
@@ -177,6 +184,171 @@ let private moveEditGen: Fuaran.Core.StreamGen<TreeOp<obj>, Node<obj>> =
     { State0 = moveBase
       Op = genMoveEditOp }
 
+// ---- the unchanged-reorder family (Phase 2696) ----
+
+/// `a`'s children in the base, in the base order: a reorder to this list is UNCHANGED at the base
+/// (same ids, same order, same length) and a real reorder everywhere a branch has moved the list.
+let private baseOrder = [ NodeId "a0"; NodeId "a1"; NodeId "a2" ]
+
+/// One op of the unchanged-reorder family. A reorder of `a` to the base order (2 in 10) beside a
+/// real reorder of `a` (2 in 10), an insert into `a` or `b` (two inserts under different parents
+/// are the class even the pure footprint frees), a removal of a listed child, a move of one
+/// out of `a` or of `b0` into it, and restyles of a listed child or of `a`: every op that reads
+/// or changes `a`'s child list, so a footprint that freed the unchanged reorder from any of them
+/// is tested against both replays.
+let private genUnchangedReorderOp (rng: CoreRng.T) : TreeOp<obj> * CoreRng.T =
+    let shape, r1 = CoreRng.intBelow 10 rng
+    let i, r2 = CoreRng.intBelow 3 r1
+    let j, r3 = CoreRng.intBelow 3 r2
+
+    match shape with
+    | 0
+    | 1 -> TreeOp.ReorderChildren(NodeId "a", baseOrder), r3
+    | 2
+    | 3 -> TreeOp.ReorderChildren(NodeId "a", orders[i % 2]), r3
+    | 4 ->
+        let v, r4 = CoreRng.next r3
+        TreeOp.InsertChild((if i = 0 then NodeId "b" else NodeId "a"), leaf (sprintf "n%d" (v % 1000))), r4
+    | 5 -> TreeOp.RemoveNode listed[i], r3
+    | 6 -> TreeOp.MoveNode(listed[i], NodeId "b"), r3
+    | 7 -> TreeOp.MoveNode(NodeId "b0", NodeId "a"), r3
+    | 8 -> restyle listed[i] j, r3
+    | _ -> restyle (NodeId "a") j, r3
+
+let private unchangedReorderGen: Fuaran.Core.StreamGen<TreeOp<obj>, Node<obj>> =
+    { State0 = reorderBase
+      Op = genUnchangedReorderOp }
+
+/// The ids of `parent`'s children in `tree`, in order; `None` when it is absent.
+let private childOrder (tree: Node<obj>) (parent: string) : NodeId list option =
+    Fuaran.Core.Tree.tryFind Introspect.nodeWitness Introspect.idWitness (NodeId parent) tree
+    |> Option.map (fun n ->
+        Introspect.getChildren n.Kind
+        |> Option.defaultValue []
+        |> List.map (fun c -> NodeId c.Id))
+
+/// The shipped footprint with an unchanged reorder's parent slots changed: `withWrites` puts back the
+/// write of the parent's `kind` slot and of Core's child-list slot that it carried before Phase 2696;
+/// `dropReads` also takes its reads of them away. Every other op as shipped.
+let private reshaped (withWrites: bool) (dropReads: bool) (state: Node<obj>) (op: TreeOp<obj>) =
+    let f = TreeOpFootprint.ofOpIn state op
+
+    match op with
+    | TreeOp.ReorderChildren(NodeId p, order) when childOrder state p = Some order ->
+        let slots = Set.ofList [ p, "kind"; p, Fuaran.Core.Footprint.childListSlot ]
+
+        { f with
+            SlotWrites =
+                if withWrites then
+                    Set.union f.SlotWrites slots
+                else
+                    f.SlotWrites
+            SlotReads =
+                if dropReads then
+                    Set.difference f.SlotReads slots
+                else
+                    f.SlotReads }
+    | _ -> f
+
+let private applyAll (ops: TreeOp<obj> list) (start: Node<obj>) =
+    ops |> List.fold (fun acc op -> acc |> Result.bind (Apply.apply op)) (Ok start)
+
+let private conflictsAt footprintIn (dA: TreeOp<obj> list) (dB: TreeOp<obj> list) =
+    Fuaran.Core.Dag.conflictsIn footprintIn Apply.apply reorderBase dA dB
+
+/// The pairs of a conflict report in which both ops are reorders.
+let private reorderPairs (conflicts: Fuaran.Core.MergeConflict<TreeOp<obj>> list) =
+    conflicts
+    |> List.filter (fun c ->
+        match c.Left, c.Right with
+        | TreeOp.ReorderChildren _, TreeOp.ReorderChildren _ -> true
+        | _ -> false)
+
+/// A reorder of `a` to the order it holds in the base, and a real one.
+let private unchanged = TreeOp.ReorderChildren(NodeId "a", baseOrder)
+let private real = TreeOp.ReorderChildren(NodeId "a", orders[0])
+
+/// A branch that moves `a2` out of `a` and then lists `a`'s remaining children in the order they
+/// hold: its reorder is unchanged where IT applies, and its list differs from `unchanged`'s.
+let private movedOutThenRestated =
+    [ TreeOp.MoveNode(NodeId "a2", NodeId "b")
+      TreeOp.ReorderChildren(NodeId "a", [ NodeId "a0"; NodeId "a1" ]) ]
+
+let private unchangedReorderTests =
+    [ test "footprintInLawsAt holds over the unchanged-reorder family" {
+          laws unchangedReorderGen TreeOpFootprint.ofOpIn
+          |> expectHolds "unchanged-reorder"
+      }
+
+      test "an unchanged reorder declares no write of its parent's list" {
+          let f = TreeOpFootprint.ofOpIn reorderBase unchanged
+          let slot = Fuaran.Core.Footprint.childListSlot
+          Expect.isFalse (f.SlotWrites.Contains("a", slot)) "no child-list slot write"
+          Expect.isFalse (f.SlotWrites.Contains("a", "kind")) "no kind slot write"
+          Expect.isTrue (f.SlotReads.Contains("a", slot)) "the child-list slot is read"
+          Expect.isTrue (f.SlotReads.Contains("a", "kind")) "the kind slot is read"
+
+          let g = TreeOpFootprint.ofOpIn reorderBase real
+          Expect.isTrue (g.SlotWrites.Contains("a", slot)) "a real reorder still writes the list"
+      }
+
+      test "a list that omits a present child is not unchanged" {
+          // It does not apply, so it is the pure arm, which writes the parent's structure.
+          let short = TreeOp.ReorderChildren(NodeId "a", [ NodeId "a0"; NodeId "a1" ])
+          let f = TreeOpFootprint.ofOpIn reorderBase short
+          Expect.isTrue (f.StructureWrites.Contains "a") "the parent's structure is written"
+      }
+
+      test "an unchanged reorder and a real reorder of one parent do not commute under replay" {
+          // Why a real reorder beside an unchanged one stays refused (fuaran#2696's first premise,
+          // refuted): replay is `Apply.apply`, which reads an op's list against the tree it
+          // reaches, not the base it was authored at. Applied after the real reorder, the
+          // "unchanged" one restores the order it lists.
+          let uThenR =
+              applyAll [ unchanged; real ] reorderBase |> Result.map CanonicalJson.encodeNode
+
+          let rThenU =
+              applyAll [ real; unchanged ] reorderBase |> Result.map CanonicalJson.encodeNode
+
+          Expect.isOk uThenR "the unchanged reorder, then the real one, applies"
+          Expect.isOk rThenU "the real reorder, then the unchanged one, applies"
+          Expect.notEqual uThenR rThenU "the two replays reach different trees"
+      }
+
+      test "an unchanged reorder beside a real reorder is still reported" {
+          Expect.isNonEmpty
+              (conflictsAt TreeOpFootprint.ofOpIn [ unchanged ] [ real ] |> reorderPairs)
+              "its read of the list meets the real reorder's write"
+      }
+
+      test "an unchanged reorder beside a removal of a child it names is still reported" {
+          Expect.isNonEmpty
+              (conflictsAt TreeOpFootprint.ofOpIn [ unchanged ] [ TreeOp.RemoveNode(NodeId "a1") ])
+              "the removal of a listed child is seen"
+      }
+
+      test "two reorders that each leave their own list as it was are not reported against each other" {
+          Expect.isEmpty
+              (conflictsAt TreeOpFootprint.ofOpIn [ unchanged ] movedOutThenRestated
+               |> reorderPairs)
+              "the pair is freed"
+
+          Expect.isNonEmpty
+              (conflictsAt (reshaped true false) [ unchanged ] movedOutThenRestated
+               |> reorderPairs)
+              "with the writes put back, the pair is reported (the falsifier sees the pair)"
+      }
+
+      test "an unchanged reorder that also stopped reading its parent's list refutes the family" {
+          // The narrowing that would free a real reorder beside it frees pairs whose two replays
+          // differ, so the reads are what keep the arm sound.
+          Expect.isEmpty (conflictsAt (reshaped false true) [ unchanged ] [ real ]) "the pair is freed"
+
+          Expect.isNonEmpty
+              (laws unchangedReorderGen (reshaped false true) |> refutedBy)
+              "a reorder that read nothing of its list refutes soundness"
+      } ]
+
 [<Tests>]
 let tests =
     testList
@@ -224,3 +396,7 @@ let tests =
 
               Expect.isNonEmpty (laws moveEditGen erased |> refutedBy) "an understated move refutes the family"
           } ]
+
+[<Tests>]
+let unchangedReorder =
+    testList "TreeOpFootprint unchanged-reorder family (Phase 2696)" unchangedReorderTests

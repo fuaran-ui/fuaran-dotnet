@@ -232,6 +232,58 @@ already holds being no write), a reorder beside a removal or move it cannot reba
 parent (9), an edit or restyle beside a removal of its node (14, `DeleteModify`), two edits or retones of one slot
 (3), two other pairs, and 54 mixtures of these.
 
+#### A reorder that leaves the order unchanged, measured (Phase 2696)
+
+The operator ruled on 2026-11-11 that a reorder whose list is the order its parent already holds writes nothing.
+The derivability snapshot was retired with the tree merge at the cut, so this phase measured on the last tree that
+holds both (b052c482, the 2691 landing; `TreeOpFootprint` is byte-identical there and on the landed tree), with the
+snapshot restored in a probe worktree that is not committed. Seed 20261016, 20,000 trials, as above; the 2292's-draws
+rows use 2292's generator verbatim.
+
+**Before the change.** The refused UI auto-merges in which two reorders of one parent are refused against each
+other, split by what the two lists are where each applies:
+
+| population | refused two-reorder triads | one side unchanged (both) | one side unchanged (one) | both equal | both real and different |
+|---|---|---|---|---|---|
+| 2670's draws | 56 (55 alone, 1 beside another refusal) | 24 | 30 | 0 | 2 |
+| 2292's draws | 84 (83 alone, 1 beside another refusal) | 0 | 66 | 0 | 18 |
+
+"Both equal" is zero by construction: two identical reorders are an agreement (§34.3) and never refused. Of the 54
+triads with a side unchanged on 2670's draws, 24 are pairs in which BOTH reorders leave their own list as it was,
+the lists differing only because one branch changed the child list first (an append or a move, then the order
+restated); the other 30 are an unchanged reorder beside a real one. All 66 on 2292's draws are the latter (it
+reorders only the root, and draws no restated order after a change of it).
+
+**The premise that did not hold.** The shard expected the unchanged reorder beside a real one to derive. It cannot,
+because the two do not commute under replay: replay is `Apply.apply`, which reads an op's list against the tree it
+reaches, so the unchanged reorder applied after the real one puts the base order back. Freeing that pair takes a
+footprint that does not READ the list either, and that footprint is unsound — measured with it (the probe's `all`
+mode), 2670's draws fall from 0.9325 to 0.8852, with 584 fold faults and 12 order-sensitive refusals, and
+`ReorderMoveFootprintLawTests` pins the refutation with Core's `footprintInLawsAt`. The real-against-unchanged
+pair stays refused (`fold-refusal-two-reorders` pins it). What the ruling's rule does free, soundly, is the arm
+shipped here: the unchanged reorder READS its parent's `kind` and child-list slots and writes neither, so two reorders
+that each restate their own order are no longer reported against each other, and every op that changes the list is
+still reported against the unchanged reorder, by the write it makes of a slot the reorder reads.
+
+**After the change** (the shipped arm, against the same libraries):
+
+| population | policy | UI auto-merges | same tree | `derived_share` | pinned own-parent move | pinned append order | unpinned different tree | refused two-reorder |
+|---|---|---|---|---|---|---|---|---|
+| 2292's draws | after 2691 | 9,294 | 8,452 | 0.9094 | 242 | 24 | 0 | 84 |
+| 2292's draws | **after 2696** | 9,294 | 8,452 | **0.9094** | 242 | 24 | **0** | 84 |
+| 2670's draws | after 2691 | 10,890 | 10,155 | 0.9325 | 183 | 37 | 0 | 56 |
+| 2670's draws | **after 2696** | 10,890 | 10,177 | **0.9345** | 184 | 37 | **0** | 32 |
+
+Triad by triad, against the before run: on 2670's draws the 24 pairs of restated reorders are freed — 22 now derive
+the tree merge's tree, 1 derives in the pinned own-parent-move class, and the 1 that also carried a delete-modify
+refusal still refuses (as `DeleteModify`) — and 6 triads
+the tree merge refuses now derive; no triad the policy derived before is refused or derives a different tree, and no
+unpinned different-tree triad appears. 2292's draws do not move by a single triad. The 32 two-reorder refusals left
+on 2670's draws are 30 an unchanged reorder beside a real one and 2 two real, different reorders
+(`fold-refusal-two-real-reorders`); a merge that wants the unchanged-beside-real pair to derive needs the POLICY to
+drop an op that is no change on its own branch and record the other side's order in the merge script, which is a
+change to `DagReconcile` and to §34.3, not to the footprint.
+
 The provenance-hardening applied to the linear chain (folding the prompt id, actor and result outcome into
 the content hash, and delimiting the pre-image) holds for a DAG node by construction since the cut: its op
 IS the chain's entry. What that digest is worth is the same in both cases: it detects corruption and

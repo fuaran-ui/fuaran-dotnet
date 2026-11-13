@@ -63,3 +63,39 @@ deletes structure and adds the policy entries it needs.
   holding nodes, `Action`, `Shape`, `FormFieldKind`, …): the depth bound, the kind admission policy,
   the near-miss member sets and the discriminator aliases are read at those positions, and each is
   its own landing.
+
+## Phase 2659 — the Binding-free display kinds
+
+**Package:** `Fuaran.UI.Ops` (private members of `JsonDecode` only). **Rides the 0.104.1 draft slot** with no
+surface change. Every verdict is unchanged; the parity harness is identical.
+
+Moved: `Fact`, `Markdown` (and `MarkdownCitation`), `Tree` (and `TreeItem`), `Custom` (and `ContentHash`). Each one's
+hand structure is deleted in the same commit. The rules they carry beyond their types are HOLDER-level overrides on
+the policy record (2639 finding 4, ruled A):
+
+| Holder | Rule | How the record carries it |
+|---|---|---|
+| `FactSpec` | `emphasis` reads the `Emphasis` aliases at a `bool` slot | the holder hands its walk `decodeEmphasisFlag` at `Bool` (its only `bool`) |
+| `MarkdownCitation` | `name` is a `cite:` token | a check on the decoded citation |
+| `MarkdownSpec` | `citations`, when present, is non-empty with unique names, and is answered before `text` | an empty list is refused before the walk; a citation defect drops the later members' defects; uniqueness is checked on the decoded list |
+| `TreeItem` | row nesting is bounded by `MaxDepth` on its own axis | the holder threads the depth through the record it hands each row's children |
+| `TreeSpec` | `onSelect` is the closure sentinel, read by presence | the holder reads the member's presence and hands the walk the rest |
+| `CustomSpec` | `props` is verbatim JSON, which no record field reaches | the holder reads it with `decodeJValMap` and hands the walk an empty object; `exposedNodeIds: []` reads as absent |
+| `ContentHash`, `HashStrictness` | the hand sentences | `Absent`'s table and the enumeration reader |
+
+The bridge gains one helper, `Bridge.record`: a member `null` rides the walk as an object sentinel, so a record
+position refuses it before the generated walk reads it as one.
+
+Hand-written decoder size: `JsonDecode.fs` was 10,885 lines before and is 10,758 after (333 lines deleted, 206
+added). The 2639 bridge's 29-line net growth is now accounted: the decoder is 83 lines below the
+10,841 lines it held before the bridge landed, though phases between the two landings added 15.
+
+### What is still not moved, and why
+
+Every remaining kind spec, and the node envelope itself, reaches a `Binding`: the node envelope through
+`Accessibility`, every container through `Node`, `Action`, `FormFieldKind` and every control directly, `Drawing`
+through `DrawStyle` (and so `Shape`), `FragmentRef` and `Mount` through `FragmentArg`'s `Node`. They move once the
+`Binding` seam carries a per-instantiation witness (fuaran-core#635, ruled A on 2026-11-11). That change is in the
+untagged `Fuaran.Core` 0.43.0 draft, and this repository restores Core from nuget.org, so it waits on that release
+and the pin raise.
+

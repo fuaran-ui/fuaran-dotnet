@@ -206,6 +206,52 @@ let tests =
               | other -> failtestf "expected a Seal break, got %A" other
           }
 
+          // Phase 2652 — one checkpoint seal in the tier. A DAG checkpoint is Core's strict
+          // `Sealed.seal` at the anchor `{ Seq = 0; PrevHash = node }`: the linear seal
+          // (`CheckpointSeal.seal`) at sequence zero hung from the node, with no second pre-image.
+          // The fixed vector is WIRE_FORMAT.md §5.3.6's worked example.
+          test "a DAG checkpoint's hash is Core's strict seal, the linear seal at sequence zero from its node" {
+              let node = "4624bd23859bd2de3ccdfebaa9f460cc4a8a962e8630a2ce2baa6f543f646192"
+
+              let state =
+                  match
+                      Fuaran.UI.Ops.JsonDecode.decodeNodeObj
+                          """{"id":"markdown-1","kind":{"$type":"Markdown","text":"Updated hourly."}}"""
+                  with
+                  | Ok n -> n
+                  | Error e -> failtestf "state decode failed: %A" e
+
+              let atNode = DagFold.sealAt node state
+
+              let core =
+                  Fuaran.Core.Sealed.seal
+                      Fuaran.Core.SnapshotMode.Strict
+                      StreamEntry.hashFn
+                      CanonicalJson.encodeNode
+                      { Seq = 0; PrevHash = node }
+                      state
+
+              Expect.equal atNode.Hash core.Seal "the DAG seal is Core's strict Sealed.seal at (0, node)"
+              Expect.equal atNode.Hash (CheckpointSeal.seal node 0 state) "the DAG seal is the linear seal"
+
+              Expect.equal
+                  atNode.Hash
+                  "8d28ad3ab53318a0d6e15e809b12c1415bfbf514b8aca952ec5427cad048d63c"
+                  "the WIRE_FORMAT.md 5.3.6 worked example, byte for byte"
+
+              // And a checkpoint the fold takes carries the same seal over the state it folded.
+              let sink, _, a, _, _, _ = fixture ()
+
+              let taken =
+                  DagFold.checkpointAt (buildDashboard ()) (dagOf sink) a.Hash
+                  |> okOr "checkpointAt"
+
+              Expect.equal
+                  taken.Hash
+                  (CheckpointSeal.seal a.Hash 0 taken.State)
+                  "a folded checkpoint seals the same way"
+          }
+
           test "resume coordinate is linear↔DAG forward-compatible behind one envelope shape" {
               // The SAME envelope record carries either coordinate variant — the
               // Phase-177 linear shape upgrades to a content-addressed DAG node
