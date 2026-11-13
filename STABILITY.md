@@ -7893,6 +7893,46 @@ allocates 864.5 MB; the table and what still grows with the history (Core's inde
 **Consumer action: none.** A caller that carries a DAG across merges may carry `Reach.ofDag dag` beside it and merge
 through `mergeIndexed`, keeping the `Reach` it hands back.
 
+### What rides this slot — Phase 2659 (the Binding-free display kinds move onto the decoder's policy record)
+
+**Class: no surface change.** Package `Fuaran.UI.Ops` (private members of `JsonDecode` only). `Fuaran.UI` and its
+generated layer are untouched. No signature moves, no wire byte moves, and every verdict `JsonDecode` gives is
+unchanged: the decoder-parity harness (`tests/decoder-parity/`) reports zero divergences over every node-decoder
+fixture, the op fixtures, both malformed recovery sets and the 9,255 mutations, verdicts and sentences alike.
+
+**What changed.** `Fact`, `Markdown` (with its citations), `Tree` (with its rows) and `Custom` (with its content
+hash) are now decoded through the generated collecting decoders under `JsonDecode`'s policy record, as Phase 2639's
+first family was; their hand structure is deleted. The rules those kinds carry beyond their types are holder-level
+overrides on the record: `Fact.emphasis` reads the `Emphasis` aliases at its `bool` slot, a citation's name token and
+the citation list's non-empty and unique-name rules, the `Tree` row-depth bound and the presence-read `onSelect`
+sentinel, and `Custom.props`, which is verbatim JSON and is read by the decoder's own reader. A member `null` at a
+record position is refused before the generated walk reads it. See `docs/migrations/2639-decoder-layering.md`.
+
+**Consumer action: none.**
+
+### What rides this slot — Phase 2652 (one checkpoint seal, specified; the DAG case of the re-seal)
+
+**Class: no surface change.** No package source moves and no hash moves in this slot. The phase was filed as
+breaking ("every persisted DAG checkpoint hash moves"); that move already shipped, in `0.104.0`, with the cut
+(Phase 2645), which deleted `DagCheckpoint` and its `{"snapshot":true,"tree":…}` pre-image and made the DAG
+checkpoint Core's `Dag.Checkpoint`, sealed by the same strict `Sealed.seal` as the linear checkpoint (Phase 2305,
+`0.103.0`). What lands here is the record of that:
+
+- **One seal, pinned.** `RetentionTests` (`Fuaran.UI.OpStream.Dag.Tests`) pins that a DAG checkpoint's hash is Core's
+  strict seal at the anchor `(0, node)` and equals `CheckpointSeal.seal node 0` over the same state, for a sealed and
+  for a folded checkpoint, against a fixed vector. `Conformance.checkpointLaws` is already enrolled in the
+  Core-conformance census (Phase 2645).
+- **Specified.** `WIRE_FORMAT.md` §5.3.6 states the seal (pre-image, strict rule, the linear and DAG anchors, worked
+  examples) and the verifier's refusal classes; `corpus-producers.json` names the producer of
+  `chain/checkpoint-corpus.json`. No corpus file changes.
+- **The DAG case of the 2305 re-seal is a re-take** (`docs/DECISIONS.md` D31). A checkpoint stored before `0.104.0`
+  names a node the cut re-addressed, so a re-seal in place would seal a dangling anchor. A host that persisted DAG
+  checkpoints re-mints its store (fuaran#2648) and re-takes each one at the re-minted node with
+  `DagFold.checkpointAt`, or `DagFold.sealAt` over a state it verified under the old seal where the history behind
+  it was compacted away. No shipped DAG sink persists checkpoints.
+
+**Consumer action: none** beyond what `0.104.0` already asked of a host persisting DAG checkpoints.
+
 ---
 
 ## 0.104.0 (RELEASED — tagged v0.104.0 at cc477007, 2026-11-11) — the slot opened after v0.103.0 was released; advanced from 0.103.1 on 2026-11-10 by Phase 2640, whose change is breaking
