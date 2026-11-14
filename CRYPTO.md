@@ -153,8 +153,8 @@ canonical encoding of the snapshot tree (`CanonicalJson.encodeNode`). So a swapp
 sequence and a moved head each fail it, and a real snapshot lifted from one position does not verify at
 another. **What it does not cover:** `StreamId` and `Timestamp`, which are storage, as they are outside
 the record chain. Before 2305 the tier sealed the same shape under a `"tree"` key with its own
-function; the bytes moved, the property did not, and `CheckpointReseal` /
-`SqliteSink.resealCheckpoints` re-seal a store once (`docs/migrations/2305-core-snapshot.md`).
+function; the bytes moved, the property did not, and a store sealed the old way is re-sealed from a checkout of
+`v0.104.0`, the last tree that carries the re-seal (`docs/migrations/2305-core-snapshot.md`).
 
 **Resuming from a checkpoint verifies the seal and the WHOLE tail first** — `CheckpointSeal.firstBreak`,
 which is Core's `Sealed.firstBreak`: the seal, then every tail record walked from
