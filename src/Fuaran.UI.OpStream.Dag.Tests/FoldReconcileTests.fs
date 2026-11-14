@@ -6,6 +6,7 @@ open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.Ops.Types
 open Fuaran.UI.OpStream.Abstractions
+open Fuaran.UI.OpStream.Dag.Abstractions
 open Fuaran.UI.OpStream.Dag.Merge
 open Fuaran.UI.OpStream.TestSupport
 
@@ -126,6 +127,65 @@ let private generatedPairs (seed: int) (count: int) : (TreeOp<TestMsg> list * Tr
         |> snd
 
     [ for _ in 1..count -> drawDelta (), drawDelta () ]
+
+// ---- the yield rule (Phase 2724) --------------------------------------------
+
+let private contexts = [ None; Some ReconcileSide.A; Some ReconcileSide.B ]
+
+/// `delta` with a reorder appended that lists `parent`'s children in the order the
+/// delta's own head holds them — a restatement, unchanged where it applies.
+/// `delta` itself when the head does not hold the parent.
+let private restating (baseT: Node<TestMsg>) (parent: string) (delta: TreeOp<TestMsg> list) =
+    let head = delta |> List.fold (fun t op -> applyOk op t) baseT
+
+    match Fuaran.UI.Ops.Introspect.findNode (NodeId parent) head with
+    | Some _ ->
+        delta
+        @ [ TreeOp.ReorderChildren(NodeId parent, childIds head parent |> List.map NodeId) ]
+    | None -> delta
+
+/// Mint the merge node of two branches recorded off a genesis (the base IS
+/// `baseT`), commit it, and replay it through Core's closure fold: the tree the
+/// node replays to, beside the tree the merge derived. `aFirst` decides which
+/// branch's records carry the earlier timestamps, so both drain orders are met.
+let private mintAndReplay
+    (precedence: ReconcileSide option)
+    (aFirst: bool)
+    (baseT: Node<TestMsg>)
+    (opsA: TreeOp<TestMsg> list)
+    (opsB: TreeOp<TestMsg> list)
+    =
+    let streamId = "yield-stream"
+    let genesis = stepRecord streamId None (TreeOp.Batch []) 1700000000L
+
+    let branch (ops: TreeOp<TestMsg> list) (t0: int64) =
+        ops
+        |> List.indexed
+        |> List.fold
+            (fun (acc: DagOpRecord<TestMsg> list) (i, op) ->
+                stepRecord streamId (Some(List.head acc)) op (t0 + int64 i) :: acc)
+            [ genesis ]
+
+    let a = branch opsA (if aFirst then 1700000100L else 1700000200L)
+    let b = branch opsB (if aFirst then 1700000200L else 1700000100L)
+    let records = a @ b |> List.distinctBy _.Hash
+    let dag = DagOpRecord.toDag records
+
+    let context =
+        { MergeContext.defaults with
+            Precedence = precedence }
+
+    match
+        (DagMerge.mergeDag context streamId baseT dag (List.head a).Hash (List.head b).Hash (timestamp 1700000900L))
+            .Result
+    with
+    | MergeResult.Merged(record, tree) ->
+        let reach = Fuaran.Core.Dag.Reach.ofDag (DagOpRecord.toDag (records @ [ record ]))
+
+        match DagFold.replayToWith baseT reach record.Hash with
+        | Ok replayed -> Some(canonical replayed, canonical tree)
+        | Error e -> failtestf "the merge node does not replay: %A" e
+    | _ -> None
 
 [<Tests>]
 let tests =
@@ -388,4 +448,129 @@ let tests =
               Expect.isGreaterThan refused 0 "some pair refused"
               Expect.isGreaterThan editsBesideRemovals 0 "some edit beside a removal of its node was drawn"
               printfn "Phase 2695 finding: %d precedence merges fault outside the DeleteModify rule" recordedFaults
+          }
+
+          test
+              "an unchanged reorder yields to a real reorder of its parent: every context, both namings, and the node replays to it" {
+              for id, real in
+                  [ "fold-reorder-beside-restated-order", [ "right"; "left" ]
+                    "fold-restated-order-beside-reorder", [ "right"; "left" ]
+                    "fold-append-restated-beside-reorder", [ "boxb"; "boxa"; "new" ] ] do
+                  let _, _, _, baseT, opsA, opsB = byId id
+
+                  for context in contexts do
+                      for x, y in [ opsA, opsB; opsB, opsA ] do
+                          match DagReconcile.reconcileWith context baseT x y with
+                          | Ok r ->
+                              Expect.equal
+                                  (childIds r.Tree "dash")
+                                  real
+                                  (sprintf "%s under %A: the real order" id context)
+
+                              Expect.isTrue
+                                  (r.Script
+                                   |> List.exists (fun op ->
+                                       canonOp op = canonOp (
+                                           TreeOp.ReorderChildren(NodeId "dash", real |> List.map NodeId)
+                                       )))
+                                  (sprintf "%s under %A: the script records the surviving order" id context)
+
+                              Expect.equal r.Reasserted 0 (sprintf "%s under %A: nothing left to re-assert" id context)
+                          | Error e -> failtestf "%s under %A: expected a derivation, got %A" id context e
+
+                      for aFirst in [ true; false ] do
+                          match mintAndReplay context aFirst baseT opsA opsB with
+                          | Some(replayed, derived) ->
+                              Expect.equal
+                                  replayed
+                                  derived
+                                  (sprintf "%s under %A (A first: %b): replays" id context aFirst)
+                          | None -> failtestf "%s under %A: expected a merge node" id context
+          }
+
+          test "yieldUnchangedReorders drops an unchanged reorder beside a real reorder of its parent, and nothing else" {
+              let baseT = buildDashboard ()
+              let restated = TreeOp.ReorderChildren(dashboardId, [ leftChildId; rightChildId ])
+              let real = TreeOp.ReorderChildren(dashboardId, [ rightChildId; leftChildId ])
+              let insert = TreeOp.InsertChild(dashboardId, Fuaran.markdown "new" "New")
+              let remove = TreeOp.RemoveNode rightChildId
+
+              let yieldOf a b =
+                  let keptA, keptB, parents = DagReconcile.yieldUnchangedReorders baseT a b
+                  FoldCorpus.encodeOps keptA, FoldCorpus.encodeOps keptB, parents
+
+              Expect.equal
+                  (yieldOf [ restated ] [ real ])
+                  ("[]", FoldCorpus.encodeOps [ real ], [ "dash" ])
+                  "beside a real reorder: the restated one leaves its delta, the parent is named"
+
+              Expect.equal
+                  (yieldOf [ real ] [ restated ])
+                  (FoldCorpus.encodeOps [ real ], "[]", [ "dash" ])
+                  "and the same on the other branch"
+
+              for name, other in
+                  [ "an insert into the parent", insert
+                    "a removal of a child it lists", remove
+                    "another restatement", restated
+                    "a real reorder inside a Batch", TreeOp.Batch [ real ]
+                    "a real reorder of another parent",
+                    TreeOp.ReorderChildren(dashboardId, [ rightChildId; leftChildId; NodeId "box" ]) ] do
+                  let other' = name.EndsWith "another parent"
+                  let baseT = if other' then precedenceBase () else baseT
+
+                  let restated =
+                      if other' then
+                          TreeOp.ReorderChildren(NodeId "box", [ NodeId "inner" ])
+                      else
+                          restated
+
+                  let keptA, keptB, parents =
+                      DagReconcile.yieldUnchangedReorders baseT [ restated ] [ other ]
+
+                  Expect.equal
+                      (FoldCorpus.encodeOps keptA, FoldCorpus.encodeOps keptB, parents)
+                      (FoldCorpus.encodeOps [ restated ], FoldCorpus.encodeOps [ other ], [])
+                      (sprintf "beside %s nothing is dropped" name)
+
+              // A real reorder inside a Batch keeps the pair refused: the rule frees the
+              // top-level pair, and the footprint frees nothing here.
+              match DagReconcile.reconcile baseT [ restated ] [ TreeOp.Batch [ real ] ] with
+              | Error(ReconcileFault.Refused _) -> ()
+              | other -> failtestf "a restatement beside a Batch holding a real reorder still refuses, got %A" other
+          }
+
+          test "a restatement appended beside a real reorder of its parent changes no verdict and no tree, and replays" {
+              let mutable fired = 0
+
+              for i, (a, b) in generatedPairs 2724 1500 |> List.indexed do
+                  let baseT = precedenceBase ()
+
+                  for name, a', b' in
+                      [ "A restates", restating baseT "dash" a, b
+                        "B restates", a, restating baseT "dash" b ] do
+                      let _, _, yielded = DagReconcile.yieldUnchangedReorders baseT a' b'
+
+                      if not yielded.IsEmpty then
+                          fired <- fired + 1
+
+                          for context in contexts do
+                              let what = sprintf "generated #%d, %s, under %A" i name context
+
+                              let answer (r: Result<Reconciled<TestMsg>, ReconcileFault<TestMsg>>) =
+                                  match r with
+                                  | Ok r -> "derives " + canonical r.Tree
+                                  | Error(ReconcileFault.Refused rs) -> "refuses " + DagReconcile.encodeEnvelope rs
+                                  | Error e -> sprintf "%A" e
+
+                              Expect.equal
+                                  (answer (DagReconcile.reconcileWith context baseT a' b'))
+                                  (answer (DagReconcile.reconcileWith context baseT a b))
+                                  (sprintf "%s: the restatement yields and changes nothing" what)
+
+                              match mintAndReplay context (i % 2 = 0) baseT a' b' with
+                              | Some(replayed, derived) -> Expect.equal replayed derived (sprintf "%s: replays" what)
+                              | None -> ()
+
+              Expect.isGreaterThan fired 100 "the population reaches the rule"
           } ]

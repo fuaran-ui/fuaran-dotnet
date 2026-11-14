@@ -247,6 +247,28 @@ let fixtures: (string * FoldExpectation * string * Node<TestMsg> * TreeOp<TestMs
       [ TreeOp.InsertChild(NodeId "dash", Fuaran.markdown "new" "Appended")
         TreeOp.ReorderChildren(NodeId "dash", [ NodeId "boxa"; NodeId "boxb"; NodeId "new" ]) ]
 
+      "fold-reorder-beside-restated-order",
+      Derives,
+      "One branch reorders a parent's children while the other lists them in the order the parent already holds — the pair the retired fold-refusal-two-reorders refused. The restated reorder changes nothing on its own branch, so it yields to the other branch's real reorder of the same parent and is dropped before the conflict report (Phase 2724); the fold derives the real order and the script records it for the parent, because a merge node's replay still applies the restated op",
+      flat,
+      [ TreeOp.ReorderChildren(dashboardId, [ rightChildId; leftChildId ]) ],
+      [ TreeOp.ReorderChildren(dashboardId, [ leftChildId; rightChildId ]) ]
+
+      "fold-restated-order-beside-reorder",
+      Derives,
+      "The mirror of fold-reorder-beside-restated-order: the restated reorder is on the first branch and the real one on the second. The restated one yields wherever it sits (Phase 2724), and the fold derives the real order",
+      flat,
+      [ TreeOp.ReorderChildren(dashboardId, [ leftChildId; rightChildId ]) ],
+      [ TreeOp.ReorderChildren(dashboardId, [ rightChildId; leftChildId ]) ]
+
+      "fold-append-restated-beside-reorder",
+      Derives,
+      "One branch appends a child to a parent and then lists the children in the order the parent then holds; the other reorders the parent's two children. The list is unchanged where its own branch applies it, so it yields to the real reorder (Phase 2724); the append and the real reorder are a rebase (Phase 2671), and the fold derives the real order with the append after it",
+      nested,
+      [ TreeOp.InsertChild(NodeId "dash", Fuaran.markdown "new" "Appended")
+        TreeOp.ReorderChildren(NodeId "dash", [ NodeId "boxa"; NodeId "boxb"; NodeId "new" ]) ],
+      [ TreeOp.ReorderChildren(NodeId "dash", [ NodeId "boxb"; NodeId "boxa" ]) ]
+
       "fold-mount-input-insert",
       Derives,
       "One branch appends a child to a container held only in a Mount's slot input while the other retones a pane outside the Mount. The structural ops locate their parent through every position the tree holds a node in, slot arguments included (Phase 2701), so the insert is a structure write of that container and the retone a style write elsewhere: independent, and the fold composes them",
@@ -329,13 +351,6 @@ let fixtures: (string * FoldExpectation * string * Node<TestMsg> * TreeOp<TestMs
       [ TreeOp.RemoveNode(NodeId "m") ],
       [ TreeOp.MoveNode(NodeId "m", NodeId "boxb") ]
 
-      "fold-refusal-two-reorders",
-      Refuses,
-      "One branch reorders a parent's children while the other lists them in the order the parent already holds. The second reorder changes nothing where it applies, so it reads the parent's child-list and kind slots and writes neither (Phase 2696); its reads meet the first reorder's writes, SlotClashes no rule decides, refused as a Conflict. The pair does not commute under replay: applied after the real reorder, the restated one puts the old order back",
-      flat,
-      [ TreeOp.ReorderChildren(dashboardId, [ rightChildId; leftChildId ]) ],
-      [ TreeOp.ReorderChildren(dashboardId, [ leftChildId; rightChildId ]) ]
-
       "fold-refusal-two-real-reorders",
       Refuses,
       "Both branches reorder one parent's three children, each to an order the parent does not hold and to different orders from each other — each writes the parent's child-list and kind slots, SlotClashes no rule decides, refused as a Conflict (Phase 2696: the case that stays refused)",
@@ -356,6 +371,17 @@ let fixtures: (string * FoldExpectation * string * Node<TestMsg> * TreeOp<TestMs
       flat,
       [ toneOf ToneVariant.Brand leftChildId ],
       [ toneOf ToneVariant.Brand rightChildId ] ]
+
+/// The ids the family has retired, each with the phase that retired it and the
+/// fixtures that took its case: `(id, retired by, successors)`. A retired id is
+/// never reused — a fixture whose verdict changes moves to a new id — so a
+/// host's record of a verdict under an id stays true of that id. The manifest
+/// carries the list as `retiredFoldFixtures` (Phase 2724, the convention's first
+/// entry; WIRE_FORMAT §34.6).
+let retired: (string * string * string list) list =
+    [ "fold-refusal-two-reorders",
+      "Phase 2724",
+      [ "fold-reorder-beside-restated-order"; "fold-restated-order-beside-reorder" ] ]
 
 /// The policy's verdict for a fixture.
 let verdictOf (expectation: FoldExpectation) baseT opsA opsB =
@@ -385,7 +411,7 @@ let private kindOf expectation =
     | Gated -> "merge-fold-gated"
 
 let private description =
-    "merge-fold (Phase 2293; the merge-conformance corpus's only family since Phase 2645, manifest version 2): decode base and the two branches' op deltas (aOpsFile, bOpsFile: canonical TreeOp arrays, each applying from base op by op), reconcile them by fold under the policy of WIRE_FORMAT.md section 34 (Core's conflict report over the base-aware footprint, in which a reorder to the order its parent already holds reads the child list and writes nothing (Phase 2696); agreements applied as no change; two appends of distinct nodes under one parent admitted and ordered by the declared child-order rule; a reorder of a parent beside an append to it or a removal or move of a child it lists admitted as a rebase (Phase 2671); every other reported pair refused, a removal against a concurrent touch of the removed node as DeleteModify). merge-fold-derive: the derived tree is byte-equal to expectedFile and sha256(expected) == outcomeHash. merge-fold-refusal: the policy refuses and the envelope is byte-equal to envelopeFile with sha256 == envelopeHash; swapping a and b swaps every entry's left and right and re-sorts. merge-fold-gated: the fold derives and the sample validator over the derived tree introduces defects neither branch head carries; the verdict is byte-equal to verdictFile with sha256 == verdictHash."
+    "merge-fold (Phase 2293; the merge-conformance corpus's only family since Phase 2645, manifest version 2): decode base and the two branches' op deltas (aOpsFile, bOpsFile: canonical TreeOp arrays, each applying from base op by op), reconcile them by fold under the policy of WIRE_FORMAT.md section 34 (Core's conflict report over the base-aware footprint, in which a reorder to the order its parent already holds reads the child list and writes nothing (Phase 2696); before the report, a top-level reorder that leaves its parent's order as it was on its own branch dropped from its delta when the other delta holds a top-level reorder of the same parent that changes the order on its branch, the script recording that parent's surviving order (Phase 2724); agreements applied as no change; two appends of distinct nodes under one parent admitted and ordered by the declared child-order rule; a reorder of a parent beside an append to it or a removal or move of a child it lists admitted as a rebase (Phase 2671); every other reported pair refused, a removal against a concurrent touch of the removed node as DeleteModify). merge-fold-derive: the derived tree is byte-equal to expectedFile and sha256(expected) == outcomeHash. merge-fold-refusal: the policy refuses and the envelope is byte-equal to envelopeFile with sha256 == envelopeHash; swapping a and b swaps every entry's left and right and re-sorts. merge-fold-gated: the fold derives and the sample validator over the derived tree introduces defects neither branch head carries; the verdict is byte-equal to verdictFile with sha256 == verdictHash. retiredFoldFixtures (Phase 2724): the ids the family has retired, each with the phase that retired it (retiredBy) and the fixtures that took its case (successors); a retired id is never reused, and no foldFixtures entry carries one."
 
 /// Write the family's payloads into `dir`, remove every other file there (the
 /// retired triad families), and write the manifest.
@@ -418,12 +444,25 @@ let emitInto (dir: string) : unit =
                   (Fuaran.Core.Hash.sha256Hex bytes)
                   desc ]
 
+    let retiredEntries =
+        [ for (id, by, successors) in retired do
+              if fixtures |> List.exists (fun (live, _, _, _, _, _) -> live = id) then
+                  failwithf "fold fixture %s: a retired id is never reused" id
+
+              sprintf
+                  "    {\n      \"id\": \"%s\",\n      \"retiredBy\": \"%s\",\n      \"successors\": [%s]\n    }"
+                  id
+                  by
+                  (successors |> List.map (sprintf "\"%s\"") |> String.concat ", ") ]
+
     write
         "manifest.json"
         ("{\n  \"version\": 2,\n  \"description\": \"Fuaran merge-conformance corpus. Since Phase 2645 (the cut) the UI op-stream DAG is Fuaran.Core's DAG and its only merge is the fold (WIRE_FORMAT.md section 34), so this corpus is the foldFixtures family alone; the tree merge's triad families (fixtures, refusalFixtures, totalityFixtures) were retired with it.\",\n  \"foldDescription\": \""
          + description
          + "\",\n  \"foldFixtures\": [\n"
          + System.String.Join(",\n", entries)
+         + "\n  ],\n  \"retiredFoldFixtures\": [\n"
+         + System.String.Join(",\n", retiredEntries)
          + "\n  ]\n}\n")
 
     for path in Directory.GetFiles dir do

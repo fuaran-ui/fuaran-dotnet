@@ -45,6 +45,14 @@ open Fuaran.UI.OpStream.Abstractions
 //      insert beneath it — is classed `DeleteModify`; every other pair is
 //      `Conflict`. Two reorders of one parent that differ stay refused.
 //
+//  THE YIELD RULE (Phase 2724, operator ruling 2026-11-14), before Core is
+//  asked: a reorder that leaves its parent's order as it was on its own
+//  branch carries no intent, so beside the other branch's REAL reorder of the
+//  same parent it is dropped from its delta (`yieldUnchangedReorders`), the
+//  real order survives, and the script records it for that parent. Without
+//  the rule the pair refuses: replayed after the real reorder, the unchanged
+//  one would put the old order back.
+//
 //  THE CHILD-ORDER RULE (declared). Under a parent the policy interleaves or
 //  rebases, the children neither branch appended keep the order the fold gives
 //  them (a rebased reorder's order, where a branch reordered the parent), and
@@ -139,8 +147,8 @@ type ReconcileFault<'Msg> =
     | IntroducedDefects of MergeDefect list
 
 /// A derived merge: the tree the fold reaches, the script the merge records
-/// (one `ReorderChildren` per interleaved or rebased parent, parents in ordinal
-/// order, then any re-asserted precedence ops), how many distinct agreeing ops
+/// (one `ReorderChildren` per interleaved, rebased or yielded-to parent, parents
+/// in ordinal order, then any re-asserted precedence ops), how many distinct agreeing ops
 /// the fold applied as no change, and how many parents it interleaved or
 /// rebased.
 type Reconciled<'Msg> =
@@ -397,6 +405,70 @@ module DagReconcile =
                     | _ -> run)
             []
 
+    /// Each op of `delta` with the tree its own branch applies it to, threaded
+    /// from `baseTree`. `reconcileWith` refuses a delta that does not apply
+    /// before it reads this, so the fallback never decides a verdict.
+    let private threaded (baseTree: Node<'Msg>) (delta: TreeOp<'Msg> list) : (TreeOp<'Msg> * Node<'Msg>) list =
+        delta
+        |> List.mapFold (fun t op -> (op, t), (Apply.apply op t |> Result.defaultValue t)) baseTree
+        |> fst
+
+    /// The parent a top-level `ReorderChildren` reorders, with whether its list
+    /// is the parent's child order in `tree` — the same ids, in the same order,
+    /// of the same length: the equality `TreeOpFootprint`'s unchanged-reorder arm
+    /// states (Phase 2696). `None` for any other op, a `Batch` included, and for
+    /// a reorder of a parent `tree` does not hold.
+    let private reorderIn (tree: Node<'Msg>) (op: TreeOp<'Msg>) : (string * bool) option =
+        match op with
+        | TreeOp.ReorderChildren(NodeId p, order) ->
+            findNode (NodeId p) tree
+            |> Option.map (fun node -> p, (childrenOf node |> List.map (fun c -> NodeId c.Id)) = order)
+        | _ -> None
+
+    /// THE YIELD RULE (Phase 2724, WIRE_FORMAT §34.3), applied before anything is
+    /// judged: a top-level `ReorderChildren` that leaves its parent's order as it
+    /// was in the tree its own branch applies it to is dropped from its delta
+    /// when the other delta holds a top-level `ReorderChildren` of the same parent
+    /// that changes the order on its own branch. The dropped op carries no intent
+    /// (on its own branch it is no change), so removing it leaves every later
+    /// tree of its branch as it was and the delta still applies op by op; what it
+    /// would otherwise do is restore the order it lists when replayed after the
+    /// real reorder. Nothing else is dropped: an unchanged reorder beside an
+    /// append or a removal in its parent, beside another unchanged reorder, or
+    /// beside a reorder inside a `Batch` keeps its reads and is judged as before.
+    /// Returns the two deltas without the yielded reorders and the parents they
+    /// reordered (ordinal, distinct): the merge script records each such
+    /// parent's surviving order, because a merge node's replay still applies the
+    /// yielded op, in Core's drain order.
+    let yieldUnchangedReorders
+        (baseTree: Node<'Msg>)
+        (deltaA: TreeOp<'Msg> list)
+        (deltaB: TreeOp<'Msg> list)
+        : TreeOp<'Msg> list * TreeOp<'Msg> list * string list =
+        let a = threaded baseTree deltaA
+        let b = threaded baseTree deltaB
+
+        let realParents (ops: (TreeOp<'Msg> * Node<'Msg>) list) =
+            ops
+            |> List.choose (fun (op, t) ->
+                match reorderIn t op with
+                | Some(p, false) -> Some p
+                | _ -> None)
+            |> Set.ofList
+
+        let yields (otherReal: Set<string>) (op, t) =
+            match reorderIn t op with
+            | Some(p, true) when otherReal.Contains p -> Some p
+            | _ -> None
+
+        let split (ops: (TreeOp<'Msg> * Node<'Msg>) list) (otherReal: Set<string>) =
+            ops |> List.filter (yields otherReal >> Option.isNone) |> List.map fst,
+            ops |> List.choose (yields otherReal)
+
+        let keptA, yieldedA = split a (realParents b)
+        let keptB, yieldedB = split b (realParents a)
+        keptA, keptB, yieldedA @ yieldedB |> List.distinct |> List.sortWith ordinal
+
     let private scriptFor
         (tree: Node<'Msg>)
         (parents: string list)
@@ -423,6 +495,10 @@ module DagReconcile =
         | Error(i, e), _ -> Error(ReconcileFault.DeltaDoesNotApply(ReconcileSide.A, i, e))
         | _, Error(i, e) -> Error(ReconcileFault.DeltaDoesNotApply(ReconcileSide.B, i, e))
         | Ok headA, Ok headB ->
+            // The yield rule runs first, in every context (Phase 2724): what follows judges,
+            // folds and re-asserts the deltas without the yielded reorders.
+            let deltaA, deltaB, yielded = yieldUnchangedReorders baseTree deltaA deltaB
+
             let verdicts =
                 Fuaran.Core.Dag.conflictsIn TreeOpFootprint.ofOpIn Apply.apply baseTree deltaA deltaB
                 |> List.map (fun c -> c, judge c)
@@ -508,10 +584,14 @@ module DagReconcile =
                     |> List.distinct
                     |> List.length
 
+                // A parent whose reorder yielded is recorded too: its order in the
+                // fold is the surviving reorder's, which the script fixes for replay.
+                let scripted = parents @ yielded |> List.distinct |> List.sortWith ordinal
+
                 let derive first second =
                     foldOps rebase (first @ second) baseTree
                     |> Result.bind (fun t ->
-                        let script = scriptFor t parents deltaA deltaB @ reasserted
+                        let script = scriptFor t scripted deltaA deltaB @ reasserted
                         foldOps Set.empty script t |> Result.map (fun t' -> t', script))
 
                 match derive deltaA deltaB, derive deltaB deltaA with
