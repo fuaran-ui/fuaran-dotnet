@@ -8055,6 +8055,26 @@ unaffected: the new interface is optional, and `mergeWith` keeps its old path fo
 
 ---
 
+### What rides this slot — Phase 2727 (a DAG checkpoint taken before the identity cut is refused by name and re-taken)
+
+**Class: ADDITIVE.** Package `Fuaran.UI.OpStream.Dag.Abstractions` gains `CheckpointRefusal` (one case,
+`StaleAnchor of anchor: string`), `CheckpointRefusal.message` and `DagRetention.admitCheckpoint`. Nothing existing
+changes, no address, hash or wire byte moves. The slot already carries a BREAKING class (Phase 2716), so this rider
+does not advance the number again.
+
+- **The refusal is `CheckpointRefusal.StaleAnchor`**, matched by case; `CheckpointRefusal.message` renders it ("the
+  checkpoint predates the identity cut and must be re-taken").
+- **`DagRetention.admitCheckpoint dag checkpoint`** returns the checkpoint when its anchor is a node the DAG holds,
+  else `Error (StaleAnchor anchor)`. It runs at read, before `DagFold.verifyCheckpoint` / `replayFrom`: no shipped
+  sink persists a checkpoint, so there is no load for it to run at. It does not check the seal. Nothing falls back to
+  folding from genesis.
+- **The re-take is `DagFold.checkpointAt`** at the re-minted node (`DagFold.sealAt` over a state verified under the
+  old seal where the history is gone). A pre-cut DAG checkpoint is re-taken, never migrated (`docs/DECISIONS.md`
+  D31, amended 2026-11-14).
+- Core already names an absent anchor (`CheckpointBreak.UnknownNode`, `CheckpointFault.UnknownNode`); the tier's name
+  adds the cause and the remedy. No Fable path: the code is .NET only and the Fable leg was not run.
+- This repository tracks no public API baseline file, so none was regenerated.
+
 ## 0.104.0 (RELEASED — tagged v0.104.0 at cc477007, 2026-11-11) — the slot opened after v0.103.0 was released; advanced from 0.103.1 on 2026-11-10 by Phase 2640, whose change is breaking
 
 _`v0.103.0` is TAGGED (2026-11-09, at `1b783c61`), so nothing may ride it: Phase 2639 opened the next slot at the

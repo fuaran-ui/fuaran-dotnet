@@ -62,6 +62,13 @@ dotnet run --project tools/dag-remint -- wire records.jsonl records-0.104.jsonl 
 - **The receipt** gives each stream's old and new head and every old and new address. It is a recomputation, not
   a signature (`CRYPTO.md`).
 
+## Checkpoints (Phase 2727)
+
+A DAG checkpoint taken before the cut names an address the DAG no longer holds. It is re-taken, never migrated
+(`docs/DECISIONS.md` D31). Run `DagRetention.admitCheckpoint dag checkpoint` before reading one: a stale anchor comes
+back as `Error (CheckpointRefusal.StaleAnchor anchor)`. Re-take with `DagFold.checkpointAt initial dag node` at the
+re-minted node. Nothing folds from genesis in its place.
+
 ## Rollback
 
 Restore `<db>.pre-2645` over the database, or keep the pre-cut wire file, and pin the DAG packages back to
