@@ -8069,6 +8069,37 @@ legs also pin the retired id by name.
 **Consumer action: a precedence caller that relied on its named side's restated order winning over a real reorder
 gets the real order.** None in the default context.
 
+### What rides this slot — Phase 2725 (a precedence merge never answers `FoldFaulted`, and the corpus certifies precedence)
+
+**Class: additive (a fault becomes a typed refusal); it rides the slot's breaking class (Phase 2716) and does not
+advance the number again.** Package `Fuaran.UI.OpStream.Dag.Merge`. No signature moves, no type gains a case, and no
+wire byte of a document moves; the refusal envelope's classes are unchanged. The default context is unchanged.
+
+**What changed.** Under a named precedence side (`reconcileWith (Some side)`, `MergeContext.Precedence`,
+`GuestConvergence`), the two shapes Phase 2695 recorded as still faulting now refuse with `ReconcileFault.Refused`,
+each pair with the entry the default context gives it (operator ruling 2026-11-14; WIRE_FORMAT §34.4): a pair that does
+not apply in both orders — two inserts of one id with different content, or one op that in its own branch's tree
+leaves the other unable to apply (two moves that would put each container inside the other, found by this phase) —
+refuses before the fold; and a pair whose re-asserted op no longer applies where it is re-asserted (its own branch
+later removed or moved what it addresses, or the other branch changed the child list a re-asserted reorder names)
+refuses after it. A precedence refusal's envelope therefore holds only entries the default envelope holds. Phase
+2695's rule is kept as shipped. `FoldFaulted` stays in the type for a fold that faults on an op the policy itself
+admitted; no fixture or generated pair reaches it under any context.
+
+**Measured** (`docs/DAG_STRATEGY.md`, Phase 2725): over the fold fixtures and 1,500 generated pairs (seed 2695) under
+each named side, the 118 fold faults are refusals, and the 2,372 precedence derivations are byte-identical (tree and
+script) to the landed tree's; over a second population (seed 2724) and the new precedence fixtures nothing faults.
+By construction the pre-fold reading can refuse a precedence merge that derived before: two inserts of one id that
+each branch later removes again used to derive by re-asserting the named side's insert, resurrecting a node both
+branches removed. None of the measured populations holds one.
+
+**Corpus.** The merge-conformance manifest gains a top-level `precedenceFixtures` array (24 fixtures: 12 cases, each
+under side `a` and side `b`), certified by this host only; the other four hosts offer no precedence merge and do not
+read it (WIRE_FORMAT §34.6).
+
+**Consumer action: a precedence caller that matched `FoldFaulted` for these shapes matches `Refused` instead.** Two
+downstream consumers pin the old fault in their own tests; they are re-pinned in the release's adoption sweep.
+
 ---
 
 ## 0.104.0 (RELEASED — tagged v0.104.0 at cc477007, 2026-11-11) — the slot opened after v0.103.0 was released; advanced from 0.103.1 on 2026-11-10 by Phase 2640, whose change is breaking

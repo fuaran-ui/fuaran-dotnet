@@ -24,6 +24,10 @@ open Fuaran.UI.OpStream.TestSupport
 //  naming the tree merge's refusal pin a class the fold derives where the tree
 //  merge refuses, accepted by the same ruling (Phase 2671).
 //
+//  Since Phase 2725 the manifest also carries `precedenceFixtures`: each case
+//  of `precedenceCases` emitted under each named side, certifying the optional
+//  precedence merge of WIRE_FORMAT §34.4 (`reconcileWith (Some side)`).
+//
 //  The triad families that sat beside it (`fixtures`, `refusalFixtures`,
 //  `totalityFixtures`: the tree merge's 3-way verdicts) were retired at the cut,
 //  which made the fold the DAG's only merge; the manifest moved to version 2 and
@@ -383,6 +387,145 @@ let retired: (string * string * string list) list =
       "Phase 2724",
       [ "fold-reorder-beside-restated-order"; "fold-restated-order-beside-reorder" ] ]
 
+/// The precedence fixtures (Phase 2725): the `precedenceFixtures` key of the
+/// manifest, certifying the optional precedence merge of WIRE_FORMAT §34.4. Each
+/// case is authored once and emitted under both named sides — `a` (the first
+/// delta takes precedence) and `b` (the second) — as two fixtures,
+/// `fold-precedence-<side>-<case>`, so the rule is pinned whichever side is named.
+/// `(case, under a, under b, description, base, ops a, ops b)`.
+let private precedenceCases
+    : (string * FoldExpectation * FoldExpectation * string * Node<TestMsg> * TreeOp<TestMsg> list * TreeOp<TestMsg> list) list =
+    let flat = buildDashboard ()
+    let nested = nestedTree ()
+
+    // Two panes and a container with one child, so every touch of a removed node §34.4
+    // names (an edit, a restyle, an insert beneath, a move) has a node to land on.
+    let panes =
+        container
+            "dash"
+            [ Fuaran.markdown "left" "Left pane"
+              Fuaran.markdown "right" "Right pane"
+              container "box" [ Fuaran.markdown "inner" "Inner" ] ]
+
+    let row =
+        container
+            "row"
+            [ Fuaran.markdown "r0" "Zero"
+              Fuaran.markdown "r1" "One"
+              Fuaran.markdown "r2" "Two" ]
+
+    [ "concurrent-tone",
+      Derives,
+      Derives,
+      "Both branches set a different tone on one pane: two writes of one slot, which apply in either order, so the named side's tone is re-asserted at the end of the script and the merge takes it",
+      flat,
+      [ toneOf ToneVariant.Brand leftChildId ],
+      [ toneOf ToneVariant.Critical leftChildId ]
+
+      "two-real-reorders",
+      Derives,
+      Derives,
+      "Both branches reorder one parent's three children to different orders: a Conflict the default context refuses; each reorder applies after the other, so the named side's order is re-asserted and the merge takes it",
+      row,
+      [ TreeOp.ReorderChildren(NodeId "row", [ NodeId "r2"; NodeId "r1"; NodeId "r0" ]) ],
+      [ TreeOp.ReorderChildren(NodeId "row", [ NodeId "r1"; NodeId "r0"; NodeId "r2" ]) ]
+
+      "restated-order",
+      Derives,
+      Derives,
+      "One branch reorders a parent's children while the other lists them in the order the parent already holds. The yield rule runs before precedence is consulted (Phase 2724), so the restatement is dropped from its delta whichever side is named, and the merge takes the real order, also when the named side is the one that restated it",
+      flat,
+      [ TreeOp.ReorderChildren(dashboardId, [ rightChildId; leftChildId ]) ],
+      [ TreeOp.ReorderChildren(dashboardId, [ leftChildId; rightChildId ]) ]
+
+      "delete-edit",
+      Refuses,
+      Refuses,
+      "One branch removes a pane the other edits: a DeleteModify pair whose removal takes the other op's node (the base holds it and the removing branch's head does not), so it refuses before the fold with the entry the default context gives it, whichever side is named (Phase 2695)",
+      panes,
+      [ TreeOp.RemoveNode leftChildId ],
+      [ TreeOp.EditNode(leftChildId, (Fuaran.markdown "left" "Edited").Kind) ]
+
+      "delete-restyle",
+      Refuses,
+      Refuses,
+      "One branch removes a pane the other restyles: refused as DeleteModify under either side, as an edit is (Phase 2695)",
+      panes,
+      [ TreeOp.RemoveNode leftChildId ],
+      [ toneOf ToneVariant.Success leftChildId ]
+
+      "delete-insert-beneath",
+      Refuses,
+      Refuses,
+      "One branch removes a container the other inserts a child beneath: the insert addresses the removed node, so the pair refuses as DeleteModify under either side (Phase 2695)",
+      panes,
+      [ TreeOp.RemoveNode(NodeId "box") ],
+      [ TreeOp.InsertChild(NodeId "box", Fuaran.markdown "new" "New") ]
+
+      "delete-move",
+      Refuses,
+      Refuses,
+      "One branch removes a pane the other moves into a container: refused as DeleteModify under either side (Phase 2695)",
+      panes,
+      [ TreeOp.RemoveNode leftChildId ],
+      [ TreeOp.MoveNode(leftChildId, NodeId "box") ]
+
+      "sibling-insert-beside-removal",
+      Derives,
+      Derives,
+      "One branch removes a pane while the other appends a new child to the same parent: a DeleteModify pair the default context refuses, whose removal is of ANOTHER node than the one the insert addresses, so both ops apply in either order and the named side settles it; the merge holds the insert and not the removed pane (Phase 2695's admitted case)",
+      panes,
+      [ TreeOp.RemoveNode leftChildId ],
+      [ TreeOp.InsertChild(dashboardId, Fuaran.markdown "new" "New") ]
+
+      "same-id-insert",
+      Refuses,
+      Refuses,
+      "Both branches insert a node under one id with different content. The pair applies in neither order (the second insert meets the id the first placed), so precedence cannot settle it: it refuses before the fold with the entry the default context gives it, whichever side is named (Phase 2725; before it the merge faulted)",
+      flat,
+      [ TreeOp.InsertChild(dashboardId, Fuaran.markdown "new" "A wrote this") ],
+      [ TreeOp.InsertChild(dashboardId, Fuaran.markdown "new" "B wrote this") ]
+
+      "mutual-move",
+      Refuses,
+      Refuses,
+      "One branch moves a container into a second container while the other moves the second into the first. Whichever applies second would put a node inside its own descendant, so the pair applies in neither order and precedence cannot settle it: it refuses before the fold with the entry the default context gives it, whichever side is named (Phase 2725; before it the merge faulted)",
+      nested,
+      [ TreeOp.MoveNode(NodeId "boxa", NodeId "boxb") ],
+      [ TreeOp.MoveNode(NodeId "boxb", NodeId "boxa") ]
+
+      "superseded-move",
+      Derives,
+      Refuses,
+      "One branch appends a child to a container while the other moves that container's child out and then removes it: the append and the move both change the container's child list, a Conflict. Under a the append is re-asserted, already held, and the merge derives. Under b the move is re-asserted at the end of the script, and its own branch has since removed the node it moves, so it no longer applies: the pair refuses with the entry the default context gives it (Phase 2725; before it the merge faulted)",
+      nested,
+      [ TreeOp.InsertChild(NodeId "boxa", Fuaran.markdown "n" "New") ],
+      [ TreeOp.MoveNode(NodeId "m", NodeId "boxb"); TreeOp.RemoveNode(NodeId "m") ]
+
+      "stale-reorder",
+      Refuses,
+      Refuses,
+      "Both branches reorder one parent's three children to different orders, and the second branch then removes one of them. Under a the first branch's reorder is re-asserted at the end of the script, and the other branch has changed the child list it names; under b the second branch's reorder is re-asserted, and its own branch has since removed a child it names. Neither applies where it is re-asserted, so under either side the pair refuses with the entry the default context gives it (Phase 2725; before it the merge faulted)",
+      row,
+      [ TreeOp.ReorderChildren(NodeId "row", [ NodeId "r2"; NodeId "r1"; NodeId "r0" ]) ],
+      [ TreeOp.ReorderChildren(NodeId "row", [ NodeId "r1"; NodeId "r0"; NodeId "r2" ])
+        TreeOp.RemoveNode(NodeId "r0") ] ]
+
+/// The side a fixture names, as the manifest spells it.
+let sideText (side: ReconcileSide) =
+    match side with
+    | ReconcileSide.A -> "a"
+    | ReconcileSide.B -> "b"
+
+/// `(id, side, expectation, description, base, ops a, ops b)`, every case under
+/// side `a` then side `b`.
+let precedenceFixtures
+    : (string * ReconcileSide * FoldExpectation * string * Node<TestMsg> * TreeOp<TestMsg> list * TreeOp<TestMsg> list) list =
+    [ for side in [ ReconcileSide.A; ReconcileSide.B ] do
+          for case, underA, underB, desc, baseT, opsA, opsB in precedenceCases do
+              let expectation = if side = ReconcileSide.A then underA else underB
+              sprintf "fold-precedence-%s-%s" (sideText side) case, side, expectation, desc, baseT, opsA, opsB ]
+
 /// The policy's verdict for a fixture.
 let verdictOf (expectation: FoldExpectation) baseT opsA opsB =
     match expectation with
@@ -394,15 +537,23 @@ let verdictOf (expectation: FoldExpectation) baseT opsA opsB =
 let encodeOps (ops: TreeOp<TestMsg> list) : string =
     "[" + (ops |> List.map CanonicalJson.encodeOp |> String.concat ",") + "]"
 
-/// The artefact a fixture pins: `(file suffix, bytes, manifest file key, manifest hash key)`.
-let artefactOf (id: string) expectation baseT opsA opsB : string * string * string * string =
-    match expectation, verdictOf expectation baseT opsA opsB with
+/// The artefact a verdict pins: `(file suffix, bytes, manifest file key, manifest hash key)`.
+let private artefactOfVerdict (id: string) expectation verdict : string * string * string * string =
+    match expectation, verdict with
     | Derives, Ok r -> ".expected.json", CanonicalJson.encodeNode r.Tree, "expectedFile", "outcomeHash"
     | Refuses, Error(ReconcileFault.Refused refusals) ->
         ".envelope.json", DagReconcile.encodeEnvelope refusals, "envelopeFile", "envelopeHash"
     | Gated, Error(ReconcileFault.IntroducedDefects defects) ->
         ".verdict.json", ValidatorGate.encodeVerdict defects, "verdictFile", "verdictHash"
     | e, v -> failwithf "fold fixture %s: expected %A, the policy answered %A" id e v
+
+/// The artefact a fixture pins: `(file suffix, bytes, manifest file key, manifest hash key)`.
+let artefactOf (id: string) expectation baseT opsA opsB : string * string * string * string =
+    artefactOfVerdict id expectation (verdictOf expectation baseT opsA opsB)
+
+/// The artefact a precedence fixture pins, under its named side.
+let precedenceArtefactOf (id: string) side expectation baseT opsA opsB : string * string * string * string =
+    artefactOfVerdict id expectation (DagReconcile.reconcileWith (Some side) baseT opsA opsB)
 
 let private kindOf expectation =
     match expectation with
@@ -413,6 +564,9 @@ let private kindOf expectation =
 let private description =
     "merge-fold (Phase 2293; the merge-conformance corpus's only family since Phase 2645, manifest version 2): decode base and the two branches' op deltas (aOpsFile, bOpsFile: canonical TreeOp arrays, each applying from base op by op), reconcile them by fold under the policy of WIRE_FORMAT.md section 34 (Core's conflict report over the base-aware footprint, in which a reorder to the order its parent already holds reads the child list and writes nothing (Phase 2696); before the report, a top-level reorder that leaves its parent's order as it was on its own branch dropped from its delta when the other delta holds a top-level reorder of the same parent that changes the order on its branch, the script recording that parent's surviving order (Phase 2724); agreements applied as no change; two appends of distinct nodes under one parent admitted and ordered by the declared child-order rule; a reorder of a parent beside an append to it or a removal or move of a child it lists admitted as a rebase (Phase 2671); every other reported pair refused, a removal against a concurrent touch of the removed node as DeleteModify). merge-fold-derive: the derived tree is byte-equal to expectedFile and sha256(expected) == outcomeHash. merge-fold-refusal: the policy refuses and the envelope is byte-equal to envelopeFile with sha256 == envelopeHash; swapping a and b swaps every entry's left and right and re-sorts. merge-fold-gated: the fold derives and the sample validator over the derived tree introduces defects neither branch head carries; the verdict is byte-equal to verdictFile with sha256 == verdictHash. retiredFoldFixtures (Phase 2724): the ids the family has retired, each with the phase that retired it (retiredBy) and the fixtures that took its case (successors); a retired id is never reused, and no foldFixtures entry carries one."
 
+let private precedenceDescription =
+    "merge-fold under precedence (Phase 2725; WIRE_FORMAT.md section 34.4, the optional precedence merge): each entry is a foldFixtures entry with a precedence member naming the delta that takes precedence (a: aOpsFile, b: bOpsFile), reconciled under that side. A named side admits the pairs the policy would refuse and re-asserts its own ops of them, in its delta's order, at the end of the script, with three exceptions that refuse with the entries the default context gives those pairs: a DeleteModify pair whose removal takes the other op's node (a node the other op addresses that the base holds and the removing branch's head does not; Phase 2695), checked before the fold; a pair whose two ops insert a node under one id, which applies in neither order, checked before the fold; and a pair whose named-side op does not apply, as written, where it is re-asserted after the fold and the child-order script, in either fold order. A precedence merge's refusal envelope therefore holds only entries the default context's envelope holds, and it never answers with a fold fault. merge-fold-derive and merge-fold-refusal are read as in foldDescription; swapping a and b and naming the other side gives the same tree, or the mirrored envelope. A host that offers no precedence merge does not read this array and certifies nothing from it."
+
 /// Write the family's payloads into `dir`, remove every other file there (the
 /// retired triad families), and write the manifest.
 let emitInto (dir: string) : unit =
@@ -422,31 +576,66 @@ let emitInto (dir: string) : unit =
         File.WriteAllText(Path.Combine(dir, name), bytes)
         written.Add name |> ignore
 
+    // One manifest entry and its four payloads; `precedence` names the side of a
+    // precedence fixture and is absent from a foldFixtures entry.
+    let entryOf
+        id
+        (precedence: ReconcileSide option)
+        expectation
+        desc
+        baseT
+        opsA
+        opsB
+        (artefact: string * string * string * string)
+        =
+        let suffix, bytes, fileKey, hashKey = artefact
+        write (id + ".base.json") (CanonicalJson.encodeNode baseT)
+        write (id + ".a.ops.json") (encodeOps opsA)
+        write (id + ".b.ops.json") (encodeOps opsB)
+        write (id + suffix) bytes
+
+        let side =
+            precedence
+            |> Option.map (fun s -> sprintf "      \"precedence\": \"%s\",\n" (sideText s))
+            |> Option.defaultValue ""
+
+        sprintf
+            "    {\n      \"id\": \"%s\",\n      \"kind\": \"%s\",\n%s      \"baseFile\": \"%s.base.json\",\n      \"aOpsFile\": \"%s.a.ops.json\",\n      \"bOpsFile\": \"%s.b.ops.json\",\n      \"%s\": \"%s%s\",\n      \"%s\": \"%s\",\n      \"description\": \"%s\"\n    }"
+            id
+            (kindOf expectation)
+            side
+            id
+            id
+            id
+            fileKey
+            id
+            suffix
+            hashKey
+            (Fuaran.Core.Hash.sha256Hex bytes)
+            desc
+
     let entries =
         [ for (id, expectation, desc, baseT, opsA, opsB) in fixtures do
-              let suffix, bytes, fileKey, hashKey = artefactOf id expectation baseT opsA opsB
-              write (id + ".base.json") (CanonicalJson.encodeNode baseT)
-              write (id + ".a.ops.json") (encodeOps opsA)
-              write (id + ".b.ops.json") (encodeOps opsB)
-              write (id + suffix) bytes
+              entryOf id None expectation desc baseT opsA opsB (artefactOf id expectation baseT opsA opsB) ]
 
-              sprintf
-                  "    {\n      \"id\": \"%s\",\n      \"kind\": \"%s\",\n      \"baseFile\": \"%s.base.json\",\n      \"aOpsFile\": \"%s.a.ops.json\",\n      \"bOpsFile\": \"%s.b.ops.json\",\n      \"%s\": \"%s%s\",\n      \"%s\": \"%s\",\n      \"description\": \"%s\"\n    }"
+    let precedenceEntries =
+        [ for (id, side, expectation, desc, baseT, opsA, opsB) in precedenceFixtures do
+              entryOf
                   id
-                  (kindOf expectation)
-                  id
-                  id
-                  id
-                  fileKey
-                  id
-                  suffix
-                  hashKey
-                  (Fuaran.Core.Hash.sha256Hex bytes)
-                  desc ]
+                  (Some side)
+                  expectation
+                  desc
+                  baseT
+                  opsA
+                  opsB
+                  (precedenceArtefactOf id side expectation baseT opsA opsB) ]
 
     let retiredEntries =
         [ for (id, by, successors) in retired do
-              if fixtures |> List.exists (fun (live, _, _, _, _, _) -> live = id) then
+              if
+                  fixtures |> List.exists (fun (live, _, _, _, _, _) -> live = id)
+                  || precedenceFixtures |> List.exists (fun (live, _, _, _, _, _, _) -> live = id)
+              then
                   failwithf "fold fixture %s: a retired id is never reused" id
 
               sprintf
@@ -457,12 +646,16 @@ let emitInto (dir: string) : unit =
 
     write
         "manifest.json"
-        ("{\n  \"version\": 2,\n  \"description\": \"Fuaran merge-conformance corpus. Since Phase 2645 (the cut) the UI op-stream DAG is Fuaran.Core's DAG and its only merge is the fold (WIRE_FORMAT.md section 34), so this corpus is the foldFixtures family alone; the tree merge's triad families (fixtures, refusalFixtures, totalityFixtures) were retired with it.\",\n  \"foldDescription\": \""
+        ("{\n  \"version\": 2,\n  \"description\": \"Fuaran merge-conformance corpus. Since Phase 2645 (the cut) the UI op-stream DAG is Fuaran.Core's DAG and its only merge is the fold (WIRE_FORMAT.md section 34), so this corpus is the foldFixtures family alone; the tree merge's triad families (fixtures, refusalFixtures, totalityFixtures) were retired with it. Since Phase 2725 the family's precedenceFixtures certify the optional precedence merge (section 34.4).\",\n  \"foldDescription\": \""
          + description
          + "\",\n  \"foldFixtures\": [\n"
          + System.String.Join(",\n", entries)
          + "\n  ],\n  \"retiredFoldFixtures\": [\n"
          + System.String.Join(",\n", retiredEntries)
+         + "\n  ],\n  \"precedenceDescription\": \""
+         + precedenceDescription
+         + "\",\n  \"precedenceFixtures\": [\n"
+         + System.String.Join(",\n", precedenceEntries)
          + "\n  ]\n}\n")
 
     for path in Directory.GetFiles dir do

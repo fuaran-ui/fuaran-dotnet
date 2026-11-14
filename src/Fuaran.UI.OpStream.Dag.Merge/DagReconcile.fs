@@ -83,19 +83,29 @@ open Fuaran.UI.OpStream.Abstractions
 //  `ValidatorGate.introducedDefects` over the two branch heads and the derived
 //  tree and refuses on any.
 //
-//  PRECEDENCE, AS A SCRIPT (Phase 2645, optional; bounded by §34.4 at Phase
-//  2695). A caller that names a side (`reconcileWith (Some side)`) admits the
-//  pairs the policy would refuse, but for one kind below, and re-asserts that
-//  side's ops of them after the fold, in its delta's order, as the tail of the script. Both fold
-//  orders still have to reach one tree with the script, so precedence settles a
-//  pair whose two ops both apply in either order (two writes of one slot), and
-//  nothing else: a `DeleteModify` pair whose removal takes the other op's node
-//  (an edit, restyle, move or insert beside a removal of the node or of an
-//  ancestor) refuses before the fold, with the entries the default context
-//  gives it, whichever side is named. A `DeleteModify` pair whose removal is of
-//  another node (an insert beside the removal of a sibling) applies in either
-//  order and is settled. The classifier is `judge` in both contexts; the fold
-//  never classes a pair.
+//  PRECEDENCE, AS A SCRIPT (Phase 2645, optional; bounded by §34.4 at Phases
+//  2695 and 2725). A caller that names a side (`reconcileWith (Some side)`)
+//  admits the pairs the policy would refuse, but for the kinds below, and
+//  re-asserts that side's ops of them after the fold, in its delta's order, as
+//  the tail of the script. Both fold orders still have to reach one tree with
+//  the script, so precedence settles a pair whose two ops both apply in either
+//  order (two writes of one slot), and nothing else. A pair it cannot settle
+//  refuses with the entry the default context gives it, so a precedence
+//  refusal holds only entries the default refusal holds, and a precedence
+//  merge never answers `FoldFaulted` (operator ruling 2026-11-14):
+//   - before the fold, a `DeleteModify` pair whose removal takes the other
+//     op's node (an edit, restyle, move or insert beside a removal of the node
+//     or of an ancestor; Phase 2695). A `DeleteModify` pair whose removal is of
+//     another node (an insert beside the removal of a sibling) applies in
+//     either order and is settled;
+//   - before the fold, a pair that does not apply in both orders (Phase 2725):
+//     two inserts of one id, or one op that, in the tree its own branch
+//     applied it to, leaves the other unable to apply there;
+//   - after the fold, a pair whose named-side op does not apply, as written,
+//     where it is re-asserted (Phase 2725): its own branch later removed or
+//     moved what it addresses, or the other branch changed the child list a
+//     re-asserted reorder names.
+//  The classifier is `judge` in both contexts; the fold never classes a pair.
 //
 //  THE REPLAY WITNESS (Phase 2645, the cut). The policy is the DAG's only merge:
 //  a merge node records the script, and Core's closure fold replays it. That
@@ -141,7 +151,9 @@ type ReconcileFault<'Msg> =
     /// Every pair was admitted, and the two fold orders still reached different
     /// trees (the canonical encodings of A-then-B and B-then-A).
     | OrderSensitive of aThenB: string * bThenA: string
-    /// Every pair was admitted and the fold faulted applying an op.
+    /// Every pair was admitted and the fold faulted applying an op. A pair a named
+    /// precedence side cannot settle refuses instead (Phase 2725), so no fixture
+    /// or generated pair reaches this under any context.
     | FoldFaulted of error: ApplyError
     /// The derived tree carries a defect neither branch head had (Phase 184).
     | IntroducedDefects of MergeDefect list
@@ -265,6 +277,14 @@ module DagReconcile =
         | TreeOp.RemoveNode _ -> true
         | TreeOp.Batch ops -> List.exists removes ops
         | _ -> false
+
+    /// Every id in the subtrees `op` inserts as a child (an `InsertChild`, or one
+    /// inside a `Batch`), through every position a node is held in.
+    let rec private insertedIds (op: TreeOp<'Msg>) : Set<string> =
+        match op with
+        | TreeOp.InsertChild(_, child) -> allNodeIds child |> List.map (fun (NodeId id) -> id) |> Set.ofList
+        | TreeOp.Batch ops -> ops |> List.fold (fun acc o -> Set.union acc (insertedIds o)) Set.empty
+        | _ -> Set.empty
 
     /// The node `op` appends to `parent`, when it is an append there.
     let private appendInto (parent: string) (op: TreeOp<'Msg>) : string option =
@@ -484,7 +504,11 @@ module DagReconcile =
     /// as recorded on their branches. With `precedence = Some side`, a pair the
     /// policy refuses is admitted and `side`'s op of it is re-asserted at the end
     /// of the script, except a `DeleteModify` pair whose removal takes the other
-    /// op's node, which still refuses (see the header).
+    /// op's node, a pair that does not apply in both orders, and a pair whose
+    /// re-asserted op no longer applies, each of which refuses with the entry the
+    /// default context gives it (see the header). No context answers `FoldFaulted`
+    /// for a pair; the case remains for a fold that faults on an op the policy
+    /// itself admitted, which no fixture or generated pair reaches.
     let reconcileWith
         (precedence: ReconcileSide option)
         (baseTree: Node<'Msg>)
@@ -538,8 +562,51 @@ module DagReconcile =
                             // slot arguments included.
                             (findNode id baseTree).IsSome && (findNode id removingHead).IsNone)
 
+                    // Phase 2725: a pair whose two ops do not both apply in either order is not two
+                    // writes of one slot, so a named side cannot settle it either, and it refuses
+                    // here, before the fold, with the entries the default context gives it. Two
+                    // readings, both of the deltas and never of the fold. (1) The two ops insert a
+                    // node under one id (with different bytes, or the pair would be an agreement):
+                    // whichever applies second meets the id the first placed. (2) One op, in the
+                    // tree its own branch applied it to, takes away what the other needs there: the
+                    // other applies to that tree, and no longer applies once the first has (two
+                    // moves that would put each node inside the other, for one). Where the other
+                    // does not apply to that tree at all, the reading says nothing.
+                    let insertsOneId (r: Refusal<'Msg>) =
+                        not (Set.isEmpty (Set.intersect (insertedIds r.Conflict.Left) (insertedIds r.Conflict.Right)))
+
+                    let ownTree (delta: TreeOp<'Msg> list) =
+                        let trees = threaded baseTree delta
+
+                        fun (op: TreeOp<'Msg>) ->
+                            trees |> List.tryFind (fun (o, _) -> canon o = canon op) |> Option.map snd
+
+                    let treeA, treeB = ownTree deltaA, ownTree deltaB
+
+                    // `first`, applied to `t` (the tree its own branch applied it to), leaves
+                    // `other` unable to apply, where `other` applies to `t`.
+                    let takesWhatItNeeds (first: TreeOp<'Msg>) (other: TreeOp<'Msg>) (t: Node<'Msg> option) =
+                        match t with
+                        | Some t when Result.isOk (applyHeld other t) ->
+                            match applyHeld first t with
+                            | Ok after -> Result.isError (applyHeld other after)
+                            | Error _ -> false
+                        | _ -> false
+
+                    let notInBothOrders (r: Refusal<'Msg>) =
+                        insertsOneId r
+                        || takesWhatItNeeds r.Conflict.Left r.Conflict.Right (treeA r.Conflict.Left)
+                        || takesWhatItNeeds r.Conflict.Right r.Conflict.Left (treeB r.Conflict.Right)
+
                     refusals
-                    |> List.filter (fun r -> r.Class = RefusalClass.DeleteModify && takesItsNode r)
+                    |> List.filter (fun r ->
+                        (r.Class = RefusalClass.DeleteModify && takesItsNode r) || notInBothOrders r)
+
+            // The named side's op of a refused pair.
+            let mine (r: Refusal<'Msg>) =
+                match precedence with
+                | Some ReconcileSide.B -> r.Conflict.Right
+                | _ -> r.Conflict.Left
 
             match unsettled with
             | _ :: _ -> Error(ReconcileFault.Refused(sortCanonical unsettled))
@@ -549,12 +616,6 @@ module DagReconcile =
                     match precedence with
                     | None -> []
                     | Some side ->
-                        let mine (r: Refusal<'Msg>) =
-                            if side = ReconcileSide.A then
-                                r.Conflict.Left
-                            else
-                                r.Conflict.Right
-
                         let named = refusals |> List.map (mine >> canon) |> Set.ofList
                         let delta = if side = ReconcileSide.A then deltaA else deltaB
 
@@ -588,16 +649,46 @@ module DagReconcile =
                 // fold is the surviving reorder's, which the script fixes for replay.
                 let scripted = parents @ yielded |> List.distinct |> List.sortWith ordinal
 
+                // The fold, the child-order script, then the re-asserted ops one by one. A
+                // re-asserted op that does not apply, as written, where it is re-asserted is
+                // skipped and named (Phase 2725): its own branch later removed or moved what it
+                // addresses, or the other branch changed the child list a re-asserted reorder
+                // names. Skipping one changes what the later ones meet, so every host walks the
+                // list in the same order and skips the same way.
                 let derive first second =
                     foldOps rebase (first @ second) baseTree
                     |> Result.bind (fun t ->
-                        let script = scriptFor t scripted deltaA deltaB @ reasserted
-                        foldOps Set.empty script t |> Result.map (fun t' -> t', script))
+                        let reorders = scriptFor t scripted deltaA deltaB
+
+                        foldOps Set.empty reorders t
+                        |> Result.map (fun t' ->
+                            let tail, stale =
+                                reasserted
+                                |> List.fold
+                                    (fun (tree, stale) op ->
+                                        match applyHeld op tree with
+                                        | Ok next -> next, stale
+                                        | Error _ -> tree, Set.add (canon op) stale)
+                                    (t', Set.empty)
+
+                            tail, reorders @ reasserted, stale))
 
                 match derive deltaA deltaB, derive deltaB deltaA with
                 | Error e, _
                 | _, Error e -> Error(ReconcileFault.FoldFaulted e)
-                | Ok(ab, script), Ok(ba, _) ->
+                | Ok(_, _, staleAB), Ok(_, _, staleBA) when not (Set.isEmpty staleAB && Set.isEmpty staleBA) ->
+                    // A named side settles a pair only by re-asserting its op, so a pair whose op
+                    // no longer applies in either fold order is NOT settled: it refuses with the
+                    // entry the default context gives it, beside every other pair whose named-side
+                    // op is the same.
+                    let stale = Set.union staleAB staleBA
+
+                    Error(
+                        ReconcileFault.Refused(
+                            sortCanonical (refusals |> List.filter (mine >> canon >> stale.Contains))
+                        )
+                    )
+                | Ok(ab, script, _), Ok(ba, _, _) ->
                     let abText = CanonicalJson.encodeNode ab
                     let baText = CanonicalJson.encodeNode ba
 

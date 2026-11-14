@@ -367,7 +367,6 @@ let tests =
               let mutable derived = 0
 
               let mutable editsBesideRemovals = 0
-              let mutable recordedFaults = 0
 
               for id, baseT, opsA, opsB in fixturePairs @ generated do
                   let what context =
@@ -427,27 +426,186 @@ let tests =
 
                           Expect.isNonEmpty rs (sprintf "%s: a refusal names its pairs" (what context))
                       | Error(ReconcileFault.FoldFaulted e) ->
-                          // THE RECORDED FINDING (Phase 2695; not this phase's rule, awaiting a
-                          // ruling). Under a named side, two shapes still reach the fold and fault:
-                          // (1) two inserts of one id with different content
-                          // (`fold-refusal-same-id-insert`), a `Conflict` whose ops apply in
-                          // NEITHER order, so §34.4 says it refuses, yet precedence admits the
-                          // class; (2) a re-asserted op that no longer applies at the script's
-                          // tail: its own branch later removed or moved what it addresses, or
-                          // the other branch changed the child list a re-asserted reorder names.
-                          // This arm pins that nothing ELSE faults: never under the default
-                          // context, and never on an edit beside a removal of its node.
-                          if context.IsNone || besideItsRemoval then
-                              failtestf "%s: a fold fault outside the recorded finding (%A)" (what context) e
-
-                          recordedFaults <- recordedFaults + 1
+                          // Phase 2725 (operator ruling 2026-11-14): no merge answers a fold
+                          // fault, under any context. The 118 the Phase 2695 measurement left
+                          // (fixtures and this population, under a named side) refuse with
+                          // typed entries now; see the two tests below.
+                          failtestf "%s: a fold fault (%A)" (what context) e
                       | Error _ -> ()
 
               // The population must reach every answer, or the checks above asked nothing.
               Expect.isGreaterThan derived 0 "some pair derived"
               Expect.isGreaterThan refused 0 "some pair refused"
               Expect.isGreaterThan editsBesideRemovals 0 "some edit beside a removal of its node was drawn"
-              printfn "Phase 2695 finding: %d precedence merges fault outside the DeleteModify rule" recordedFaults
+          }
+
+          test
+              "under precedence, a pair that applies in neither order refuses with the entry the default context gives it" {
+              // Shape 1 of the Phase 2695 finding: two inserts of one id, and (found by this
+              // phase) two moves that would put each node inside the other.
+              for case in [ "same-id-insert"; "mutual-move" ] do
+                  let _, _, _, _, baseT, opsA, opsB =
+                      FoldCorpus.precedenceFixtures
+                      |> List.find (fun (i, _, _, _, _, _, _) -> i = "fold-precedence-a-" + case)
+
+                  let byDefault =
+                      match DagReconcile.reconcile baseT opsA opsB with
+                      | Error(ReconcileFault.Refused rs) -> DagReconcile.encodeEnvelope rs
+                      | other -> failtestf "%s: the default context must refuse, got %A" case other
+
+                  for side in [ ReconcileSide.A; ReconcileSide.B ] do
+                      match DagReconcile.reconcileWith (Some side) baseT opsA opsB with
+                      | Error(ReconcileFault.Refused rs) ->
+                          Expect.equal
+                              (DagReconcile.encodeEnvelope rs)
+                              byDefault
+                              (sprintf "%s, precedence %A: the default context's entry" case side)
+                      | other -> failtestf "%s, precedence %A: expected a refusal, got %A" case side other
+          }
+
+          test "under precedence, a re-asserted op that no longer applies refuses its pair with the default entry" {
+              // Shape 2 of the Phase 2695 finding: its own branch later removed or moved what the
+              // op addresses (b names the move its branch then removes), or the other branch
+              // changed the child list a re-asserted reorder names (a and b of the stale reorder).
+              for case, sides in
+                  [ "superseded-move", [ ReconcileSide.B ]
+                    "stale-reorder", [ ReconcileSide.A; ReconcileSide.B ] ] do
+                  for side in sides do
+                      let id = sprintf "fold-precedence-%s-%s" (FoldCorpus.sideText side) case
+
+                      let _, _, _, _, baseT, opsA, opsB =
+                          FoldCorpus.precedenceFixtures |> List.find (fun (i, _, _, _, _, _, _) -> i = id)
+
+                      let defaults =
+                          match DagReconcile.reconcile baseT opsA opsB with
+                          | Error(ReconcileFault.Refused rs) -> rs
+                          | other -> failtestf "%s: the default context must refuse, got %A" id other
+
+                      match DagReconcile.reconcileWith (Some side) baseT opsA opsB with
+                      | Error(ReconcileFault.Refused rs) ->
+                          let entry (r: Refusal<TestMsg>) = DagReconcile.encodeEnvelope [ r ]
+
+                          for r in rs do
+                              Expect.contains
+                                  (defaults |> List.map entry)
+                                  (entry r)
+                                  (sprintf "%s: an entry the default context gives" id)
+
+                          let named = if side = ReconcileSide.A then opsA else opsB
+
+                          Expect.isTrue
+                              (rs
+                               |> List.forall (fun r ->
+                                   let mine =
+                                       if side = ReconcileSide.A then
+                                           r.Conflict.Left
+                                       else
+                                           r.Conflict.Right
+
+                                   named |> List.exists (fun o -> canonOp o = canonOp mine)))
+                              (sprintf "%s: each entry names the named side's re-asserted op" id)
+                      | other -> failtestf "%s: expected a refusal, got %A" id other
+          }
+
+          test "committed precedence fixtures match the F# policy byte for byte, and swapping the deltas swaps the side" {
+              let swap side =
+                  if side = ReconcileSide.A then
+                      ReconcileSide.B
+                  else
+                      ReconcileSide.A
+
+              for id, side, expectation, _, baseT, opsA, opsB in FoldCorpus.precedenceFixtures do
+                  if Directory.Exists corpusDir then
+                      let suffix, bytes, _, _ =
+                          FoldCorpus.precedenceArtefactOf id side expectation baseT opsA opsB
+
+                      Expect.equal (read (id + suffix)) bytes (sprintf "%s: F# verdict == committed artefact" id)
+                      Expect.equal (read (id + ".base.json")) (canonical baseT) (sprintf "%s: base payload" id)
+                      Expect.equal (read (id + ".a.ops.json")) (FoldCorpus.encodeOps opsA) (sprintf "%s: a ops" id)
+                      Expect.equal (read (id + ".b.ops.json")) (FoldCorpus.encodeOps opsB) (sprintf "%s: b ops" id)
+
+                  match
+                      DagReconcile.reconcileWith (Some side) baseT opsA opsB,
+                      DagReconcile.reconcileWith (Some(swap side)) baseT opsB opsA
+                  with
+                  | Ok ab, Ok ba ->
+                      Expect.equal (canonical ba.Tree) (canonical ab.Tree) (sprintf "%s: one derived tree" id)
+
+                      for aFirst in [ true; false ] do
+                          match mintAndReplay (Some side) aFirst baseT opsA opsB with
+                          | Some(replayed, derived) ->
+                              Expect.equal replayed derived (sprintf "%s (A first: %b): the node replays" id aFirst)
+                          | None -> failtestf "%s: expected a merge node" id
+                  | Error(ReconcileFault.Refused ab), Error(ReconcileFault.Refused ba) ->
+                      Expect.equal
+                          (DagReconcile.encodeEnvelope ba)
+                          (DagReconcile.encodeEnvelope (mirrored ab))
+                          (sprintf "%s: the swapped envelope is the mirrored one" id)
+                  | x, y -> failtestf "%s: the two namings disagree: %A / %A" id x y
+          }
+
+          test
+              "no precedence merge faults, every refusal is the default's, and every derivation is byte-identical to before" {
+              let population seed =
+                  generatedPairs seed 1500
+                  |> List.mapi (fun i (a, b) -> sprintf "generated %d #%d" seed i, precedenceBase (), a, b)
+
+              let fixturePairs =
+                  FoldCorpus.fixtures
+                  |> List.map (fun (id, _, _, baseT, opsA, opsB) -> id, baseT, opsA, opsB)
+
+              let precedencePairs =
+                  FoldCorpus.precedenceFixtures
+                  |> List.map (fun (id, _, _, _, baseT, opsA, opsB) -> id, baseT, opsA, opsB)
+
+              let mutable derivations = []
+              let mutable settledNothing = 0
+
+              for id, baseT, opsA, opsB in fixturePairs @ population 2695 @ population 2724 @ precedencePairs do
+                  let byDefault =
+                      match DagReconcile.reconcile baseT opsA opsB with
+                      | Error(ReconcileFault.Refused rs) -> rs |> List.map (fun r -> DagReconcile.encodeEnvelope [ r ])
+                      | _ -> []
+
+                  for side in [ ReconcileSide.A; ReconcileSide.B ] do
+                      match DagReconcile.reconcileWith (Some side) baseT opsA opsB with
+                      | Ok r ->
+                          if id.StartsWith "generated 2724" |> not && id.StartsWith "fold-precedence" |> not then
+                              derivations <-
+                                  sprintf
+                                      "%s|%A|%s|%s"
+                                      (id.Replace("generated 2695 ", "generated "))
+                                      side
+                                      (canonical r.Tree)
+                                      (FoldCorpus.encodeOps r.Script)
+                                  :: derivations
+                      | Error(ReconcileFault.Refused rs) ->
+                          // A named side refuses only pairs the default context refuses, with the
+                          // entries it gives them: the envelope is a subset of the default's.
+                          for r in rs do
+                              Expect.contains
+                                  byDefault
+                                  (DagReconcile.encodeEnvelope [ r ])
+                                  (sprintf "%s under %A: a default entry" id side)
+
+                          if rs.Length = byDefault.Length then
+                              settledNothing <- settledNothing + 1
+                      | Error(ReconcileFault.FoldFaulted e) -> failtestf "%s under %A: a fold fault (%A)" id side e
+                      | Error _ -> ()
+
+              // The derivations the landed tree gave under a named side, over the Phase 2695
+              // population (seed 2695) and the fold fixtures, before Phase 2725: their count
+              // and the SHA-256 over `id|side|tree|script` lines in order. A merge that derived
+              // still derives, byte for byte, and nothing that faulted now derives.
+              let lines = List.rev derivations
+              Expect.equal lines.Length 2372 "the derivation count before Phase 2725"
+
+              Expect.equal
+                  (Fuaran.Core.Hash.sha256Hex (String.concat "\n" lines))
+                  "5ebed2d4d257964310986bd69880e5dc9244ca1c3dbd2b0d57c600412ed6faba"
+                  "every precedence derivation is byte-identical to before"
+
+              Expect.isGreaterThan settledNothing 0 "some precedence merge refused"
           }
 
           test

@@ -515,6 +515,51 @@ Corpus: `fold-refusal-two-reorders` is retired — the manifest's `retiredFoldFi
 never reused — and its pair derives as `fold-reorder-beside-restated-order`, beside the mirror
 `fold-restated-order-beside-reorder` and `fold-append-restated-beside-reorder`.
 
+## A precedence merge never faults, and the corpus certifies it (Phase 2725)
+
+Phase 2695 left 118 precedence merges (the fold fixtures and 1,500 generated pairs, seed 2695, each under both named
+sides) that reached the fold and faulted, in two shapes. The operator ruled on 2026-11-14 that both refuse with typed
+entries, so no precedence merge answers `FoldFaulted`, and that 2695's rule stays as shipped and is pinned in the
+corpus.
+
+**The rule: a pair precedence cannot settle refuses with the entry the default context gives it.** Precedence settles
+two writes of one slot by re-asserting the named side's op; where that cannot work, the pair is reported exactly as
+the default context reports it, so a precedence refusal adds no class and its envelope is a subset of the default's.
+Three readings name those pairs (WIRE_FORMAT §34.4): 2695's removal of the other op's node, before the fold; a pair
+that does not apply in both orders, before the fold; and a pair whose re-asserted op no longer applies, after it.
+
+- **Not in both orders (shape 1).** Two inserts of one id with different content: whichever applies second meets the
+  id the first placed. Writing the go-red tests found a second member of the class that 2695's population could not
+  draw (its moves only move leaves): two moves that would put each container inside the other, which faulted with
+  `KindMismatch`. So the reading is general: one op, applied to the tree its own branch applied it to, leaves the
+  other unable to apply there, where the other applies to that tree. The first draft applied the first op to the
+  OTHER op's tree instead, and refused two derivations of the population (seed 2695, #40 under both sides): a
+  removal of a container beside a move of its child out of it, which the removing branch had itself already moved
+  out; read in the remover's own tree, the move still applies, and the pair derives as before. The insert reading
+  needs no tree, so it holds where the tree reading cannot speak (each insert under a parent its own branch made).
+- **No longer applies where re-asserted (shape 2).** The re-asserted ops are applied in turn after the fold and the
+  child-order script; one that does not apply is skipped and the walk goes on, and every refused pair whose named-side
+  op was skipped in either fold order refuses. The two causes the population shows: the op's own branch later
+  removed or moved what it addresses (`superseded-move` under `b`), and the other branch changed the child list a
+  re-asserted reorder names (`stale-reorder` under `a`).
+
+**Measured** (the generated-population test in `FoldReconcileTests`, which now pins these numbers): over the fold
+fixtures and seed 2695's 1,500 pairs under each named side, the 118 faults (86 `DuplicateNodeId`, 27
+`OrderingMismatch`, 2 `NodeNotFound`, 1 `ParentNotFound` in the population, plus the same-id fixture under both
+sides) all refuse, every refusal's entries are default entries, and the 2,372 derivations are byte-identical, tree and
+script, to the landed tree's (their SHA-256 over `id|side|tree|script` lines, taken before the change, is pinned). A
+second population (seed 2724) and the precedence fixtures reach no fault either. By construction the pre-fold reading
+can refuse a merge that used to derive — two inserts of one id that each branch later removes again derived by
+re-asserting the named side's insert, resurrecting a node both branches removed — but no measured pair is one.
+
+**The corpus.** `precedenceFixtures` in the merge-conformance manifest: twelve cases, each under side `a` and side
+`b` (`fold-precedence-<side>-<case>`): three settled derives, 2695's four refusals, the sibling insert 2695 admits,
+both shape-1 members, and the two shape-2 causes (WIRE_FORMAT §34.6 lists them). It is a separate array, not new
+`foldFixtures` entries, because precedence is optional: none of the other four hosts offers one, each reads
+`foldFixtures` by name, and a host that adds a precedence merge certifies the array then. Run read-only against this
+corpus, `fuaran-ts`, `fuaran-py` and `fuaran-go` fail only Phase 2724's three derive fixtures (and `fuaran-py` its pin
+of the retired id); `fuaran-rs`, not runnable from its clone, has the same reconciler gap.
+
 ## In short
 
 - One stream, one writer → **linear chain**.
