@@ -252,6 +252,51 @@ let tests =
                   "a folded checkpoint seals the same way"
           }
 
+          // Phase 2727 — a checkpoint taken before the identity cut names an address the DAG no longer
+          // holds. It is refused by name and re-taken, never migrated and never read as a fold from genesis.
+          test "a checkpoint at an address the DAG does not hold is refused by name" {
+              let sink, _, a, _, _, _ = fixture ()
+              let dag = dagOf sink
+              let preCut = String.replicate 64 "0"
+
+              let stale =
+                  { (DagFold.checkpointAt (buildDashboard ()) dag a.Hash |> okOr "checkpointAt") with
+                      Node = preCut }
+
+              match DagRetention.admitCheckpoint dag stale with
+              | Error(CheckpointRefusal.StaleAnchor anchor as refusal) ->
+                  Expect.equal anchor preCut "the refusal names the anchor the DAG does not hold"
+
+                  Expect.stringContains
+                      (CheckpointRefusal.message refusal)
+                      "must be re-taken"
+                      "the message says what to do"
+              | Ok _ -> failtest "a stale anchor was admitted"
+          }
+
+          test "a re-taken checkpoint is admitted, and equals the one a fold from genesis seals" {
+              let sink, _, a, _, c, _ = fixture ()
+              let initial = buildDashboard ()
+              let dag = dagOf sink
+
+              let retaken = DagFold.checkpointAt initial dag a.Hash |> okOr "re-take"
+              let state = DagFold.replayTo initial dag a.Hash |> okOr "fold from genesis"
+
+              Expect.equal
+                  retaken.Hash
+                  (DagFold.sealAt a.Hash state).Hash
+                  "the re-take is the genesis fold sealed at the node"
+
+              Expect.equal retaken.Hash (CheckpointSeal.seal a.Hash 0 state) "and carries the 2652 seal"
+
+              let admitted = DagRetention.admitCheckpoint dag retaken |> okOr "admit"
+              Expect.isOk (DagFold.verifyCheckpoint admitted dag) "an admitted checkpoint verifies"
+
+              let bounded = DagFold.replayFrom admitted dag c.Hash |> okOr "replayFrom"
+              let full = DagFold.replayTo initial dag c.Hash |> okOr "full replay"
+              Expect.equal (canonical bounded) (canonical full) "and replays the tail to the same tree"
+          }
+
           test "resume coordinate is linear↔DAG forward-compatible behind one envelope shape" {
               // The SAME envelope record carries either coordinate variant — the
               // Phase-177 linear shape upgrades to a content-addressed DAG node

@@ -53,7 +53,39 @@ type GcRoots =
       Checkpoints: string list
       ResumeCoordinates: ResumeCoordinate list }
 
+/// Why the tier refuses a DAG checkpoint before it reads it. A checkpoint is a state sealed at a
+/// node address; the identity cut (Phases 2645 and 2648) re-addressed every node, so a checkpoint
+/// taken before it names an address the DAG no longer holds.
+[<RequireQualifiedAccess>]
+type CheckpointRefusal =
+    /// The checkpoint's anchor is not a node of the DAG. A checkpoint taken before the identity cut
+    /// stands here: it is re-taken (`DagFold.checkpointAt` at the re-minted node), never migrated,
+    /// and never answered by folding the DAG from genesis in its place.
+    | StaleAnchor of anchor: string
+
+module CheckpointRefusal =
+    /// The refusal as the sentence a host shows: what it names, and what to do.
+    let message (refusal: CheckpointRefusal) : string =
+        match refusal with
+        | CheckpointRefusal.StaleAnchor anchor ->
+            $"checkpoint anchor {anchor} is not a node of this DAG: the checkpoint predates the identity cut and must be re-taken"
+
 module DagRetention =
+
+    /// Admit a checkpoint for reading: `Ok` only when its anchor is a node the DAG holds, else
+    /// `StaleAnchor` naming the anchor. The seal is not checked here (`DagFold.verifyCheckpoint`
+    /// is). Run it before `DagFold.replayFrom` / `verifyCheckpoint` so a pre-cut checkpoint is
+    /// refused by this name rather than by Core's generic `UnknownNode`, and never read as if the
+    /// DAG began at it. It runs at read: no shipped sink persists a checkpoint, so there is no load
+    /// for it to run at, and the sink's own load verification covers the nodes it holds.
+    let admitCheckpoint
+        (dag: Fuaran.Core.Dag.T<'Op>)
+        (checkpoint: Fuaran.Core.Dag.Checkpoint<'State>)
+        : Result<Fuaran.Core.Dag.Checkpoint<'State>, CheckpointRefusal> =
+        if Map.containsKey checkpoint.Node dag.Nodes then
+            Ok checkpoint
+        else
+            Error(CheckpointRefusal.StaleAnchor checkpoint.Node)
 
     /// The distinct DAG hashes named by a `GcRoots` (heads + checkpoint nodes +
     /// the hash-bearing resume coordinates).
