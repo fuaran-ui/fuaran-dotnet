@@ -7873,6 +7873,20 @@ module as it is after the cut.
 **Consumer action: a store not yet re-minted must be re-minted from a `v0.104.0` checkout before moving to this release
 or later; nothing else.**
 
+### What rides this slot — Phase 2726 (`CheckpointReseal` and `SqliteSink.resealCheckpoints` are removed)
+
+**Class: BREAKING (removal of published surface).** Packages `Fuaran.UI.OpStream.Abstractions` (the `CheckpointReseal`
+module: `reseal`, `describe`, `Outcome`, `Refusal`) and `Fuaran.UI.OpStream.Sqlite` (`SqliteSink.resealCheckpoints`).
+The slot already carries a breaking class (raised by Phase 2716), so this rider does not advance the number again.
+No wire byte moves and no seal changes: `CheckpointSeal` is untouched and every checkpoint hash is what it was.
+
+**What changed.** The one-shot re-seal of a pre-2305 checkpoint, shipped in 0.103.0 and 0.104.0 as migration
+scaffolding, is removed with the tests that existed only to exercise it. The pre-2305 `"tree"` pre-image survives
+only as a frozen test vector, so the go-red half of the seal test still shows it is a different hash.
+
+**Consumer action: a store not yet re-sealed must be re-sealed from a `v0.104.0` checkout before moving to this release
+or later; nothing else.** See `docs/migrations/2305-core-snapshot.md`.
+
 ### What rides this slot — Phase 2692 (the DAG merge over Core's reachability index)
 
 **Class: additive.** Package `Fuaran.UI.OpStream.Dag.Merge` gains public members; no member is removed or changes
