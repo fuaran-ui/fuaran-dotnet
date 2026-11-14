@@ -51,7 +51,8 @@ open Fuaran.UI.Types
 /// `{"snapshot":true,"seq":Sequence,"state":<CanonicalJson.encodeNode Snapshot>}`
 /// chained from `PreviousChainHead` by the stream's SHA-256 `HashFn`. Before
 /// 2305 the tier sealed the same shape under a `"tree"` key with its own
-/// function; a store sealed that way is re-sealed once by `CheckpointReseal`.
+/// function; a store sealed that way is re-sealed from a checkout of `v0.104.0`
+/// (`docs/migrations/2305-core-snapshot.md`).
 /// `StreamId` and `Timestamp` are storage, outside the seal, as they are outside
 /// the record chain.
 ///
@@ -137,69 +138,6 @@ module CheckpointSeal =
             (HashChain.recordShape<'Msg> ())
             (Fuaran.Core.Sealed.ofSnapshot (toSnapshot checkpoint))
             tail
-
-/// The ONE-SHOT re-seal of a checkpoint sealed before Phase 2305 (the tier's own
-/// `"tree"`-keyed pre-image) under Core's seal. Migration scaffolding: it is the
-/// only place the old pre-image survives, nothing on a live path computes it, and
-/// it is removed in the release after the one that ships it
-/// (`docs/migrations/2305-core-snapshot.md`).
-[<RequireQualifiedAccess>]
-module CheckpointReseal =
-
-    /// The pre-2305 pre-image, frozen: Core's strict shape with `"tree"` where
-    /// Core has `"state"`, chained from `previousChainHead` by the same SHA-256.
-    let private legacySeal (previousChainHead: string) (sequence: int) (tree: Node<'Msg>) : string =
-        Fuaran.Core.OpStream.sha256Hash
-            previousChainHead
-            ("{\"snapshot\":true,\"seq\":"
-             + string sequence
-             + ",\"tree\":"
-             + CanonicalJson.encodeNode tree
-             + "}")
-
-    /// What a re-seal found.
-    [<RequireQualifiedAccess>]
-    type Outcome<'Msg> =
-        /// The checkpoint already verifies under Core's seal; nothing to do, so a
-        /// re-run of the migration is a no-op.
-        | AlreadySealed
-        /// It verified under the pre-2305 seal and is re-sealed under Core's.
-        | Resealed of Checkpoint<'Msg>
-
-    /// Why a checkpoint was refused: its stored hash verifies under NEITHER seal,
-    /// so it is corrupt (or of neither format) and is not re-blessed.
-    type Refusal =
-        { StreamId: string
-          Sequence: int
-          StoredHash: string }
-
-    /// Verify `checkpoint` under the old seal and re-seal it under Core's, or
-    /// refuse it by name. A checkpoint already under Core's seal is `AlreadySealed`.
-    let reseal (checkpoint: Checkpoint<'Msg>) : Result<Outcome<'Msg>, Refusal> =
-        if CheckpointSeal.firstBreak checkpoint [] |> Option.isNone then
-            Ok Outcome.AlreadySealed
-        elif
-            legacySeal checkpoint.PreviousChainHead checkpoint.Sequence checkpoint.Snapshot = checkpoint.SnapshotHash
-        then
-            Ok(
-                Outcome.Resealed
-                    { checkpoint with
-                        SnapshotHash =
-                            CheckpointSeal.seal checkpoint.PreviousChainHead checkpoint.Sequence checkpoint.Snapshot }
-            )
-        else
-            Error
-                { StreamId = checkpoint.StreamId
-                  Sequence = checkpoint.Sequence
-                  StoredHash = checkpoint.SnapshotHash }
-
-    /// The refusal as text, naming the checkpoint.
-    let describe (refusal: Refusal) : string =
-        sprintf
-            "checkpoint re-seal refused for stream '%s' at sequence %d: its stored hash %s verifies under neither the pre-2305 seal nor Core's, so it is not re-sealed. Nothing was written."
-            refusal.StreamId
-            refusal.Sequence
-            refusal.StoredHash
 
 /// Host-provided node codec for `Node<'Msg>` JSON serialisation. Sinks
 /// that persist checkpoints to text storage (Sqlite, future Postgres,

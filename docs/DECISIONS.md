@@ -10,6 +10,25 @@ consequence.
 
 ---
 
+## 2026-11-14 — D33: the checkpoint re-seal is removed, and `v0.104.0` is the last tree that carries it
+
+**Decided (Phase 2726).** D31 named the one-shot re-seal (`CheckpointReseal.reseal`, `SqliteSink.resealCheckpoints`)
+as the migration for the 2305 seal change, and its header promised removal in the release after the one that ships
+it. That release is this one. Both are removed.
+
+1. **The re-seal is scaffolding, and the only place the pre-2305 pre-image lived.** Nothing on a live path computed
+   it. Keeping it past its release would keep a second seal rule in a package whose point is that there is one.
+2. **A store not re-sealed is re-sealed from a checkout of the `v0.104.0` tag.** The migration note says so and names
+   the tag. The tool is not carried forward under any other name.
+3. **No bytes move.** A test that pinned a hash through the removed entry is re-pinned through `CheckpointSeal.seal`
+   at the same value; the artefact pin in `CoreHashPinTests` already was, and is unchanged.
+
+Rejected: keeping the re-seal for one more release. The operator ruled the removal on 2026-11-14 on the ground that
+no consumer outside the operator's control holds a pre-2305 store, and a search of the sibling repositories found no
+caller of either name.
+
+---
+
 ## 2026-11-14 — D32: a DAG sink verifies on write and at load, and a read trusts what it holds
 
 **Decided (Phase 2716; ruled by the operator 2026-11-14: option A).** A DAG sink verifies every record on WRITE
@@ -95,6 +114,14 @@ examples) and the refusal classes a verifier reports over the tail (`seal`, then
 Rejected: a format tag on the checkpoint. The chain format stays 2 (D30 ruling 3 stands): the records did not move,
 only the seal beside them, and a seal made under an earlier rule simply does not recompute, which is the refusal a
 reader needs.
+
+**Amended 2026-11-14 (Phase 2727, operator ruling).** A DAG checkpoint taken before the identity cut is RE-TAKEN,
+never migrated: point 3 stands as the rule and is now a library act. `DagFold.checkpointAt` at the re-minted node is
+the re-take. `DagRetention.admitCheckpoint` refuses a checkpoint whose anchor the DAG does not hold as
+`CheckpointRefusal.StaleAnchor`, matched by case, and the message says the checkpoint predates the cut and must be
+re-taken; it never falls back to a fold from genesis. It runs at read, not at load: no shipped sink stores a checkpoint
+(the host holds it), and the sinks' load verification (Phase 2716, D32) covers the nodes. Core's own `UnknownNode`
+already refuses an absent anchor; the tier's case adds the cause and the remedy.
 
 ## 2026-11-08 — D30: a compacted stream keeps its boundary and its keys; the chain format stays 2
 
