@@ -96,7 +96,7 @@ let private artefactPins: (string * (unit -> string) * string) list =
       "9f8710b8d7296c882092e5080e0a29c8ada3b20eebc0d520178378b19855d1e0"
       // Phase 2305 moved this pin DELIBERATELY: the checkpoint seal is Core's strict
       // snapshot seal (`"state"` where the tier's own seal had `"tree"`), so a stored
-      // checkpoint is re-sealed once (`CheckpointReseal`). The value recorded under the
+      // checkpoint was re-sealed once (the re-seal is gone, see the 2305 migration note). The value recorded under the
       // retired seal was 7c9cbc21b040b6577dcae2714daa9ed390ccfdd04e2f9717788a68f65e3eec99.
       "a checkpoint snapshot hash (CheckpointSeal.seal, Core's strict seal)",
       (fun () -> CheckpointSeal.seal HashChain.genesisPreviousHash 3 tree),

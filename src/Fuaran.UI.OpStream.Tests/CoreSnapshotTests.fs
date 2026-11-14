@@ -4,7 +4,7 @@ module Fuaran.UI.OpStream.Tests.CoreSnapshotTests
 //  Phase 2305 — the linear checkpoint is Core's `Snapshot`, and replay from it
 //  is Core's `Compacted` fold.
 //
-//  Four claims, each shown with a go-red half:
+//  Three claims, each shown with a go-red half:
 //
 //   1. A checkpoint's hash reproduces from Core's seal: `Checkpoint.create`
 //      mints exactly the hash `Snapshots.take` mints over the same stream mapped
@@ -17,9 +17,6 @@ module Fuaran.UI.OpStream.Tests.CoreSnapshotTests
 //      (`PersistenceLawsTests.fs`).
 //   3. A break ANYWHERE in the tail is refused by name before anything is
 //      applied — in the middle of the tail, not only at its first link.
-//   4. The one-shot re-seal: a pre-2305 checkpoint verifies under the old seal
-//      and is re-sealed under Core's; one already under Core's is left alone;
-//      one under neither is refused by name with nothing written.
 // ============================================================================
 
 open System
@@ -88,8 +85,7 @@ let private overBothStores (body: string -> IOpStreamCheckpointSink<TestMsg> -> 
         body "Sqlite" (SqliteSink.createWithCheckpoints (sprintf "Data Source=%s" path) testCodec testNodeCodec))
 
 /// The pre-2305 seal, restated here as a FROZEN vector of the old format (the
-/// shipped copy is private to `CheckpointReseal`): `"tree"` where Core has
-/// `"state"`.
+/// tier computes it nowhere now): `"tree"` where Core has `"state"`.
 let private legacySeal (head: string) (sequence: int) (tree: Node<TestMsg>) : string =
     Fuaran.Core.OpStream.sha256Hash
         head
@@ -135,7 +131,7 @@ let tests =
               Expect.equal cp.SnapshotHash expected "the seal's pre-image carries \"state\""
 
               // Go-red: the pre-2305 "tree" seal is a DIFFERENT hash, so a store
-              // sealed under it does not verify until re-sealed.
+              // sealed under it does not verify.
               Expect.notEqual
                   cp.SnapshotHash
                   (legacySeal cp.PreviousChainHead 3 cp.Snapshot)
@@ -272,103 +268,4 @@ let tests =
               | Error(CheckpointReplayError.TailBroken(2, VerificationError.OutOfOrder(expected, actual))) ->
                   Expect.equal (expected, actual) (4, 5) "names the missing sequence and the one found"
               | other -> failtestf "GO-RED FAILED: expected TailBroken/OutOfOrder(4, 5), got %A" other
-          }
-
-          test "re-seal: a pre-2305 checkpoint is re-sealed, a Core one is left, one under neither is refused" {
-              let tree = treeAfter 2
-              let head = String.replicate 64 "c"
-              let current = CheckpointSeal.create "rs" 2 head (timestamp 5L) tree
-
-              let legacy =
-                  { current with
-                      SnapshotHash = legacySeal head 2 tree }
-
-              match CheckpointReseal.reseal legacy with
-              | Ok(CheckpointReseal.Outcome.Resealed cp) ->
-                  Expect.equal cp.SnapshotHash current.SnapshotHash "re-sealed under Core's seal"
-                  Expect.equal (Checkpoint.verifySnapshotHash cp) (Ok()) "and it verifies"
-              | other -> failtestf "expected Resealed, got %A" other
-
-              match CheckpointReseal.reseal current with
-              | Ok CheckpointReseal.Outcome.AlreadySealed -> ()
-              | other -> failtestf "expected AlreadySealed, got %A" other
-
-              let corrupt =
-                  { current with
-                      SnapshotHash = String.replicate 64 "d" }
-
-              match CheckpointReseal.reseal corrupt with
-              | Error refusal ->
-                  Expect.equal (refusal.StreamId, refusal.Sequence) ("rs", 2) "names the checkpoint"
-                  Expect.stringContains (CheckpointReseal.describe refusal) "neither" "says why"
-              | other -> failtestf "GO-RED FAILED: a corrupt checkpoint was re-blessed: %A" other
-          }
-
-          test "SqliteSink.resealCheckpoints migrates a pre-2305 store once, and refuses a corrupt one whole" {
-              withDb (fun path ->
-                  let conn = sprintf "Data Source=%s" path
-                  let sink = SqliteSink.createWithCheckpoints conn testCodec testNodeCodec
-                  let records = chain "mig"
-                  appendAll sink (List.truncate 2 records)
-                  let tree = treeAfter 2
-                  let cp = CheckpointSeal.create "mig" 2 records[1].Hash (timestamp 9L) tree
-                  // What a pre-2305 writer stored.
-                  sink.AppendCheckpoint
-                      { cp with
-                          SnapshotHash = legacySeal cp.PreviousChainHead 2 tree }
-                  |> Async.RunSynchronously
-
-                  appendAll sink (List.skip 2 records)
-
-                  match
-                      CheckpointedReplay.applyFromCheckpoint sink (buildDashboard ()) "mig" 5
-                      |> Async.RunSynchronously
-                  with
-                  | Error(CheckpointReplayError.SnapshotHashMismatch(2, _, _)) -> ()
-                  | other -> failtestf "GO-RED FAILED: an un-migrated store resumed: %A" other
-
-                  Expect.equal (SqliteSink.resealCheckpoints conn testNodeCodec) (Ok 1) "one checkpoint re-sealed"
-                  Expect.equal (SqliteSink.resealCheckpoints conn testNodeCodec) (Ok 0) "a re-run is a no-op"
-
-                  match
-                      CheckpointedReplay.applyFromCheckpoint sink (buildDashboard ()) "mig" 5
-                      |> Async.RunSynchronously
-                  with
-                  | Ok t -> Expect.equal (canonical t) (canonical (treeAfter 5)) "the migrated store resumes"
-                  | Error e -> failtestf "the migrated store refused: %A" e
-
-                  // A second stream: one legacy checkpoint and one corrupt one.
-                  let other = chain "bad"
-                  appendAll sink (List.truncate 2 other)
-
-                  let cpBad1 =
-                      CheckpointSeal.create "bad" 1 other[0].Hash (timestamp 9L) (treeAfter 1)
-
-                  sink.AppendCheckpoint
-                      { cpBad1 with
-                          SnapshotHash = legacySeal cpBad1.PreviousChainHead 1 (treeAfter 1) }
-                  |> Async.RunSynchronously
-
-                  let cpBad2 =
-                      CheckpointSeal.create "bad" 2 other[1].Hash (timestamp 9L) (treeAfter 2)
-
-                  sink.AppendCheckpoint
-                      { cpBad2 with
-                          SnapshotHash = String.replicate 64 "e" }
-                  |> Async.RunSynchronously
-
-                  match SqliteSink.resealCheckpoints conn testNodeCodec with
-                  | Error message ->
-                      Expect.stringContains message "'bad'" "names the stream"
-                      Expect.stringContains message "sequence 2" "names the checkpoint"
-                  | Ok n -> failtestf "GO-RED FAILED: a store with a corrupt checkpoint migrated (%d)" n
-
-                  // Nothing was written: the legacy checkpoint at 1 is still legacy.
-                  match sink.LatestCheckpointAtOrBefore("bad", 1) |> Async.RunSynchronously with
-                  | Some stored ->
-                      Expect.equal
-                          stored.SnapshotHash
-                          (legacySeal cpBad1.PreviousChainHead 1 (treeAfter 1))
-                          "untouched"
-                  | None -> failtest "the legacy checkpoint vanished")
           } ]

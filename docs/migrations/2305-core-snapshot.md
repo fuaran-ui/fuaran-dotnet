@@ -50,26 +50,27 @@ checkpoint, and `SnapshotHashMismatch` a seal that does not recompute.
 ## Persisted data
 
 A checkpoint stored by 0.102.0 or earlier fails the new seal — `applyFromCheckpoint` answers
-`SnapshotHashMismatch`, and `SessionReplay.reconstruct` its own `SnapshotHashMismatch` — until it is re-sealed. The
-re-seal is ONE-SHOT and refuses rather than re-blessing anything it cannot verify:
+`SnapshotHashMismatch`, and `SessionReplay.reconstruct` its own `SnapshotHashMismatch` — until it is re-sealed.
+
+**The re-seal tool is gone: `v0.104.0` is the last tree that carries it.** `CheckpointReseal` and
+`SqliteSink.resealCheckpoints` were migration scaffolding, shipped in 0.103.0 and 0.104.0 and removed in the release
+after (Phase 2726). A store that was not re-sealed by then is re-sealed from a checkout of the `v0.104.0` tag, using
+the same calls as before:
 
 - **SQLite stores:** `SqliteSink.resealCheckpoints connectionString nodeCodec` reads every `op_checkpoint` row in one
   immediate transaction, decodes each snapshot through `nodeCodec`, re-seals a checkpoint that verifies under the
   0.102.0 seal, leaves one already under Core's seal alone, and refuses the WHOLE store by name — stream and
   sequence, nothing written — if any row verifies under neither or does not decode. Only `snapshot_hash` is
   updated. It returns the number re-sealed, so a second run returns `Ok 0`. Run it once per database, with the same
-  node codec the store reads snapshots through, before the first resume under 0.103.0.
+  node codec the store reads snapshots through.
 - **Any other store:** `CheckpointReseal.reseal checkpoint` is the same decision for one checkpoint —
-  `Resealed cp` (write `cp.SnapshotHash` back), `AlreadySealed`, or a `Refusal` naming it (`CheckpointReseal.describe`).
-  Verify the whole store before writing any of it, as the SQLite path does.
+  `Resealed cp` (write `cp.SnapshotHash` back), `AlreadySealed`, or a `Refusal` naming it. Verify the whole store
+  before writing any of it, as the SQLite path does.
 - **In-memory stores** hold nothing across a process, so they have nothing to migrate.
 
 A checkpoint the re-seal refuses was already failing the 0.102.0 seal: it is corrupt, and the honest options are the
 ordinary ones — drop it (the ops it covers replay from the previous checkpoint or from genesis, where they are still
 held) or keep the store read-only under a 0.102.x reader.
-
-**The re-seal is removed in the release after 0.103.0.** `CheckpointReseal` and `SqliteSink.resealCheckpoints` are
-migration scaffolding: the 0.102.0 pre-image survives only there, and nothing on a live path computes it.
 
 ## Verifying the upgrade
 
@@ -77,4 +78,4 @@ After the re-seal, `CheckpointedReplay.applyFromCheckpoint` resumes every stream
 reaches. The `chain/` corpus carries a checkpoint sealed by Core's rule and its tail-break vectors (`checkpoint` in
 `chain/chain-corpus.json`); a host that seals checkpoints reproduces its `snapshotHash` byte for byte and refuses
 each vector at the index it names. The suites are `CoreSnapshotTests` (Core's `Snapshots.take` / `verify` and
-`Compacted.replayFrom` over both stores, the tail breaks and the re-seal) and `CheckpointTests`.
+`Compacted.replayFrom` over both stores and the tail breaks) and `CheckpointTests`.

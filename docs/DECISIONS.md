@@ -10,6 +10,25 @@ consequence.
 
 ---
 
+## 2026-11-14 — D33: the checkpoint re-seal is removed, and `v0.104.0` is the last tree that carries it
+
+**Decided (Phase 2726).** D31 named the one-shot re-seal (`CheckpointReseal.reseal`, `SqliteSink.resealCheckpoints`)
+as the migration for the 2305 seal change, and its header promised removal in the release after the one that ships
+it. That release is this one. Both are removed.
+
+1. **The re-seal is scaffolding, and the only place the pre-2305 pre-image lived.** Nothing on a live path computed
+   it. Keeping it past its release would keep a second seal rule in a package whose point is that there is one.
+2. **A store not re-sealed is re-sealed from a checkout of the `v0.104.0` tag.** The migration note says so and names
+   the tag. The tool is not carried forward under any other name.
+3. **No bytes move.** A test that pinned a hash through the removed entry is re-pinned through `CheckpointSeal.seal`
+   at the same value; the artefact pin in `CoreHashPinTests` already was, and is unchanged.
+
+Rejected: keeping the re-seal for one more release. The operator ruled the removal on 2026-11-14 on the ground that
+no consumer outside the operator's control holds a pre-2305 store, and a search of the sibling repositories found no
+caller of either name.
+
+---
+
 ## 2026-11-14 — D32: a DAG sink verifies on write and at load, and a read trusts what it holds
 
 **Decided (Phase 2716; ruled by the operator 2026-11-14: option A).** A DAG sink verifies every record on WRITE
