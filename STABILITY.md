@@ -7813,11 +7813,15 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.104.1 — the slot opened after v0.104.0 was released (DRAFT — untagged)
+## 0.105.0 — the slot opened after v0.104.0 was released; advanced from 0.104.1 on 2026-11-14 by Phase 2716, whose change is breaking (DRAFT — untagged)
 
 _`v0.104.0` is TAGGED (2026-11-11, at `cc477007`), so nothing may ride it. Phase 2623 opens the next slot at the
 patch number: its change moves no public surface. The `<Version>` advance and its ledger record are the release
 act's, recorded separately._
+
+_Class: **BREAKING (behaviour)** — raised from additive by Phase 2716, whose change moves a published read contract
+(the DAG sinks' verify-on-read, Phase 793): pre-1.0 breaking is a minor number, so the untagged 0.104.1 draft advances
+to 0.105.0. No signature is removed and no wire byte moves; the other riders below keep their own classes._
 
 ### What rides this slot — Phase 2623 (`NodeChildren` reads keyed positions without slot records or closures)
 
@@ -7987,6 +7991,53 @@ naming both ops: the envelope the default context gives the same pair, under eit
 entry instead.** `FoldFaulted` still reaches a precedence caller in two recorded shapes outside this rule (two inserts
 of one id with different content; a re-asserted op that no longer applies at the script's tail), described in
 `docs/DAG_STRATEGY.md`.
+
+### What rides this slot — Phase 2716 (a DAG sink verifies on write and at load, trusts what it holds, and holds its index)
+
+**Class: BREAKING (behaviour) — the slot advanced from 0.104.1 to 0.105.0 for it.** Packages
+`Fuaran.UI.OpStream.Dag.Abstractions` (additive), `Fuaran.UI.OpStream.Dag.InMemory` and `Fuaran.UI.OpStream.Dag.Sqlite`
+(the read contract), `Fuaran.UI.OpStream.Dag.Merge` (`mergeWith` routes through a held index; same answers). No
+signature is removed, no address, hash or wire byte moves. Ruled by the operator as `docs/DECISIONS.md` D32.
+
+**The contract, precisely.**
+
+- **On write**, both sinks run `DagWriteAdmission.admit` on every record, as before: the address recomputes, every
+  parent is present.
+- **At load**, the SQLite sink verifies every record of a stream in full (`DagVerify.recordsResolving`: the address
+  recomputes, every parent resolves store-wide) unless the host named `LoadVerification.Off` (`Tail` verifies in
+  full). A stream is loaded the first time a read touches it in a sink instance, and the records another writer adds
+  to the file are read and verified the same way at the next read (detected by the stream's row counts; a prune by
+  another writer re-loads the stream). The in-memory sink has no backing store and so no load; its `LoadVerification`
+  argument is accepted and governs nothing.
+- **A read** — `Records`, `TryGet`, `Reachable`, `Reach` — re-checks nothing. Before this release `Records` and `TryGet`
+  re-verified every record on every call (Phase 793).
+- **Therefore NOT detected by a read:** a record changed in the backing store after the sink loaded it, by something
+  other than this sink, that moves no row count (an in-place `UPDATE`, a bit-flip). The next load (another sink
+  instance) refuses it, and so does `Reverify`.
+
+**Added (additive).** `IDagOpStreamIndexedSink<'Msg>` (extends `IDagOpStreamSink<'Msg>`; both sinks implement it):
+`Reach streamId` — Core's `Dag.Reach` over the stream's live records as held, built once at the first ancestry
+question and extended by `Dag.appendIndexed` / `Dag.mergeIndexed` with every admitted record, rebuilt after a prune —
+and `Reverify streamId`, which re-reads and re-checks the stream, rebuilds the index, and throws naming the stream and
+the record on a mismatch (then holding nothing for the stream, so the next read refuses too); it verifies under
+`LoadVerification.Off` as well. `DagSinkCapabilities.tryIndexed` (`None` under Fable) and `DagSinkIndex.build` /
+`tryExtend` (the one way both sinks hold the index).
+
+**Also changed.** `DagMerge.mergeWith` (so `merge` and `mergeIntoTrunkWith`) merges a sink that holds an index through
+`mergeIndexed`; the outcome is unchanged. The SQLite sink's `TryGet` now loads the whole stream on first touch, so a
+stream holding one corrupt row refuses a `TryGet` of any of its records, as its `Records` always did.
+
+**Measured** (`merge-rate`, Release; `docs/DAG_STRATEGY.md` has the tables). A merge through the in-memory sink with a
+checkpoint at the fork allocates 59.2 MB at 20,000 records of shared history, where it allocated 1,084.4 MB (7.1 s to
+0.36 s): what `mergeIndexed` costs a caller holding the DAG. The price: 26.7 MB of index held at 20,000 records
+(N²/16 bytes), 1.27 s to build it once, and about 3.3 ms per write while it is held.
+
+**Who is affected, and the consumer action.** A host that relied on a DAG sink READ to notice its store changing
+underneath the process — the SQLite file edited by another program after this sink loaded the stream — calls
+`Reverify streamId` where it wants that check (for example before a release or after an operator hand-edit), or
+constructs a new sink. A host that names `LoadVerification.Off` now opts out of load verification only; it still
+gets write verification, and `Reverify` on demand. Implementers of `IDagOpStreamSink` outside this repository are
+unaffected: the new interface is optional, and `mergeWith` keeps its old path for a sink that does not offer it.
 
 ---
 

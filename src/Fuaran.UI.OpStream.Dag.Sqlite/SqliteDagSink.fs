@@ -46,23 +46,44 @@ open Fuaran.UI.OpStream.SqliteStore
 //  rows-affected distinguishes "head was unset" (1) from "head already set" (0).
 //
 //  Op JSON goes through the host `IOpJsonCodec<'Msg>` (closure-bearing typed
-//  ops can't round-trip generically). `Reachable` is Core's `Dag.ancestorsOf`
-//  over the stream's live nodes.
+//  ops can't round-trip generically). `Reachable` is Core's reachability index
+//  over the stream's live nodes, held across calls (Phase 2716).
 //
-//  ── VERIFY ON READ (Phase 793) ─────────────────────────────────────────────
-//  `Records` and `TryGet` re-verify what they hand back
-//  (`DagVerify.recordsResolving` / `DagVerify.record`) rather than trusting the
-//  rows because this sink wrote them. This store outlives the process and is a file any other program can
-//  touch, so it is where "computed on write, never checked on read" actually
-//  costs something. `Add` runs the admission both DAG sinks share
-//  (`DagWriteAdmission.admit`, Phase 1937): the address recomputed, every parent
-//  present, a held address a no-op — so a forged record never reaches a row.
+//  ── THE READ CONTRACT (Phase 2716, docs/DECISIONS.md D32) ──────────────────
+//  Verified on WRITE and at LOAD, trusted on READ.
 //
-//  The topology reads (`Parents` / `Heads`) deliberately
-//  do NOT verify: they read only (hash, parents) and never return a record, so
-//  there is no content address in scope to recompute — the check would have to
-//  load every payload to say nothing more than `Records` already says. A caller
-//  that wants the whole store proved calls `Records`.
+//   - WRITE. `Add` / `AddAll` run the admission both DAG sinks share
+//     (`DagWriteAdmission.admit`, Phase 1937) inside the write transaction: the
+//     address recomputed, every parent present, a held address a no-op — so a
+//     forged record never reaches a row.
+//   - LOAD. This sink holds each stream it has been asked about: its live
+//     records and, once a question needs it, Core's reachability index. A
+//     stream is LOADED the first time a read touches it in this sink instance
+//     (opening the sink loads nothing), and every record loaded is verified in
+//     full (`DagVerify.recordsResolving`: the address recomputes, every parent
+//     resolves store-wide), unless the host named `LoadVerification.Off`
+//     (`Tail` verifies in full: a set has no tail).
+//   - READ. `Records`, `TryGet`, `Reachable` and `Reach` hand back what is
+//     held, re-checking nothing. Before Phase 2716 `Records` and `TryGet`
+//     re-verified every row on every call (Phase 793).
+//
+//  ANOTHER WRITER on the same file (another sink instance, process or
+//  connection) is in contract through this sink's own API, and DETECTED: every
+//  read first compares the stream's live and pruned row counts with what is
+//  held (one indexed query). Records another writer ADDED are read, verified as
+//  at load, and added to what is held (and to the index); a prune by another
+//  writer, or a held row that is gone, re-loads the stream in full.
+//
+//  What is NOT detected by a read: a row CHANGED in place, by something other
+//  than this sink's API (a hand-run `UPDATE`, a bit-flip, a tool writing the
+//  file), after this sink loaded it — the counts do not move. It is caught by
+//  the next load (a new sink instance) or on demand by `Reverify`
+//  (`IDagOpStreamIndexedSink`), which re-reads and re-checks the stream and
+//  rebuilds the index, and refuses by name on a mismatch.
+//
+//  The topology reads (`Parents` / `Heads`) read (hash, parents) from the file
+//  directly, as before: they never return a record, so there is no content
+//  address in scope to recompute.
 // ============================================================================
 
 module private DagJson =
@@ -138,22 +159,23 @@ module SqliteDagSchema =
     [<Literal>]
     let version = 1
 
+/// A stream as the sink holds it across calls (Phase 2716): its live records by
+/// address, Core's reachability index once a question has built it, and the
+/// stream's live and pruned row counts as of the last read of the file.
+type private HeldStream<'Msg> =
+    { mutable Records: Map<string, DagOpRecord<'Msg>>
+      mutable Reach: Fuaran.Core.Dag.Reach<StreamEntry<'Msg>> option
+      mutable Live: int64
+      mutable Pruned: int64 }
+
 type SqliteDagSink<'Msg>(connectionString: string, codec: IOpJsonCodec<'Msg>, loadVerification: LoadVerification) =
 
 
-    /// `IDagOpStreamSink` has no error channel — its reads return bare records —
-    /// so a broken DAG is refused the way this sink already refuses an
-    /// undecodable row: by name, naming the stream and the record.
-    /// `LoadVerification.Tail` has no meaning over a SET (no total order to take
-    /// a tail of), so it verifies in full — erring towards more checking.
-    let verifyOnRead (streamId: string) (check: unit -> Result<unit, DagVerificationError>) =
-        match loadVerification with
-        | LoadVerification.Off -> ()
-        | LoadVerification.Full
-        | LoadVerification.Tail _ ->
-            match check () with
-            | Ok() -> ()
-            | Error e -> invalidOp ("SqliteDagSink: " + DagVerify.describe streamId e)
+    /// Each stream this sink has loaded: its live records (by address, in address
+    /// order), the index once a question built it, and the row counts the held
+    /// state was read at — what tells a read that another writer moved the file.
+    let heldStreams = System.Collections.Generic.Dictionary<string, HeldStream<'Msg>>()
+    let heldLock = obj ()
 
     let openConnection () : SqliteConnection =
         SqliteConnections.openConnection connectionString
@@ -268,7 +290,7 @@ INSERT INTO dag_schema (version) SELECT @v WHERE NOT EXISTS (SELECT 1 FROM dag_s
         | _ -> []
 
     /// A record as a row stores it: the STORED address, never a recomputed one,
-    /// so the read path's verification can find a row whose address is wrong.
+    /// so the load's verification can find a row whose address is wrong.
     let stored
         (streamId: string)
         (hash: string)
@@ -283,8 +305,39 @@ INSERT INTO dag_schema (version) SELECT @v WHERE NOT EXISTS (SELECT 1 FROM dag_s
               Actor = actor
               Op = entry } }
 
-    let readRecord (streamId: string) (hash: string) : DagOpRecord<'Msg> option =
-        use conn = openConnection ()
+    /// The record of the current row of `reader`, whose columns from `first` on
+    /// are `parents_json, op_json, prompt_id, actor_json, timestamp,
+    /// result_envelope_json` — the one row decoder both reads below share.
+    let recordAt (streamId: string) (hash: string) (reader: SqliteDataReader) (first: int) : DagOpRecord<'Msg> =
+        let op =
+            match codec.DecodeOp(reader.GetString(first + 1)) with
+            | Ok o -> o
+            | Error error ->
+                raise (
+                    CodecDecodeFailed(
+                        sprintf "SqliteDagSink: codec failed to decode op at (%s, %s)" streamId hash,
+                        error
+                    )
+                )
+
+        let promptId =
+            if reader.IsDBNull(first + 2) then
+                None
+            else
+                Some(reader.GetString(first + 2))
+
+        stored
+            streamId
+            hash
+            (DagJson.decodeParents (reader.GetString first))
+            (DagJson.readActor (reader.GetString(first + 3)))
+            { Op = op
+              PromptId = promptId
+              Timestamp = DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64(first + 4))
+              ResultEnvelope = envelopeAt streamId hash (reader.GetString(first + 5)) }
+
+    /// The record at (`streamId`, `hash`) on `conn`, or `None`.
+    let readRecordOn (conn: SqliteConnection) (streamId: string) (hash: string) : DagOpRecord<'Msg> option =
         use cmd = conn.CreateCommand()
 
         cmd.CommandText <-
@@ -295,44 +348,15 @@ FROM dag_node WHERE stream_id = @s AND hash = @h;"""
         cmd.Parameters.AddWithValue("@h", hash) |> ignore
         use reader = cmd.ExecuteReader()
 
-        if not (reader.Read()) then
-            None
+        if reader.Read() then
+            Some(recordAt streamId hash reader 0)
         else
-            let opJson = reader.GetString 1
+            None
 
-            let op =
-                match codec.DecodeOp opJson with
-                | Ok o -> o
-                | Error error ->
-                    raise (
-                        CodecDecodeFailed(
-                            sprintf "SqliteDagSink: codec failed to decode op at (%s, %s)" streamId hash,
-                            error
-                        )
-                    )
-
-            let promptId = if reader.IsDBNull 2 then None else Some(reader.GetString 2)
-
-            Some(
-                stored
-                    streamId
-                    hash
-                    (DagJson.decodeParents (reader.GetString 0))
-                    (DagJson.readActor (reader.GetString 3))
-                    { Op = op
-                      PromptId = promptId
-                      Timestamp = DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64 4)
-                      ResultEnvelope = envelopeAt streamId hash (reader.GetString 5) }
-            )
-
-    /// Bulk read of every record in a stream in ONE query + connection, replacing
-    /// the `Records` member's N+1 (a `readRecord` per hash, each opening its own
-    /// connection). `ORDER BY hash` reproduces the old order exactly — the prior
-    /// path materialised hashes via `loadParentMap |> Map.toList` (ascending hash)
-    /// then `readRecord` per hash, and hashes are pure-ASCII hex so SQLite's
-    /// BINARY collation matches F#'s ordinal string compare.
-    let readAllRecords (streamId: string) : DagOpRecord<'Msg> list =
-        use conn = openConnection ()
+    /// Every record of `streamId` on `conn`, in ONE query, in address order
+    /// (`ORDER BY hash`: hashes are pure-ASCII hex, so SQLite's BINARY collation
+    /// is F#'s ordinal string order).
+    let readAllRecordsOn (conn: SqliteConnection) (streamId: string) : DagOpRecord<'Msg> list =
         use cmd = conn.CreateCommand()
 
         cmd.CommandText <-
@@ -344,33 +368,7 @@ FROM dag_node WHERE stream_id = @s ORDER BY hash;"""
         let acc = System.Collections.Generic.List<DagOpRecord<'Msg>>()
 
         while reader.Read() do
-            let hash = reader.GetString 0
-            let opJson = reader.GetString 2
-
-            let op =
-                match codec.DecodeOp opJson with
-                | Ok o -> o
-                | Error error ->
-                    raise (
-                        CodecDecodeFailed(
-                            sprintf "SqliteDagSink: codec failed to decode op at (%s, %s)" streamId hash,
-                            error
-                        )
-                    )
-
-            let promptId = if reader.IsDBNull 3 then None else Some(reader.GetString 3)
-
-            acc.Add(
-                stored
-                    streamId
-                    hash
-                    (DagJson.decodeParents (reader.GetString 1))
-                    (DagJson.readActor (reader.GetString 4))
-                    { Op = op
-                      PromptId = promptId
-                      Timestamp = DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64 5)
-                      ResultEnvelope = envelopeAt streamId hash (reader.GetString 6) }
-            )
+            acc.Add(recordAt streamId (reader.GetString 0) reader 1)
 
         List.ofSeq acc
 
@@ -410,13 +408,6 @@ FROM dag_node WHERE stream_id = @s ORDER BY hash;"""
                 acc.Add(reader.GetString 0)
 
             Set.ofSeq acc
-
-    let presentHashes (hashes: string list) : Set<string> =
-        match hashes with
-        | [] -> Set.empty
-        | _ ->
-            use conn = openConnection ()
-            presentHashesOn conn hashes
 
     /// Store `record`'s row on `conn`, inside the caller's transaction. The one
     /// INSERT both `Add` and `AddAll` reach, after admission.
@@ -461,6 +452,173 @@ VALUES
 
         cmd.ExecuteNonQuery() |> ignore
 
+    // ── The held streams (Phase 2716) ───────────────────────────────────────
+
+    /// The stream's live and pruned row counts on `conn`: one query over the
+    /// primary-key indexes. Every write through any sink instance moves one of
+    /// them (an add the first, a prune both), so an unmoved pair means the held
+    /// stream is the file's.
+    let countsOn (conn: SqliteConnection) (streamId: string) : int64 * int64 =
+        use cmd = conn.CreateCommand()
+
+        cmd.CommandText <-
+            "SELECT (SELECT COUNT(*) FROM dag_node WHERE stream_id = @s), (SELECT COUNT(*) FROM dag_skeleton WHERE stream_id = @s);"
+
+        cmd.Parameters.AddWithValue("@s", streamId) |> ignore
+        use reader = cmd.ExecuteReader()
+        reader.Read() |> ignore
+        reader.GetInt64 0, reader.GetInt64 1
+
+    /// Verify `records`, read from the file on `conn`, before the sink holds them:
+    /// both legs, a parent resolving when `known` holds it or the store does
+    /// (store-wide: a guest branch's genesis hangs off the HOST stream). `force`
+    /// verifies under any mode (`Reverify`). A refusal names the stream and the
+    /// record.
+    let verifyRead
+        (conn: SqliteConnection)
+        (force: bool)
+        (streamId: string)
+        (known: string -> bool)
+        (records: DagOpRecord<'Msg> list)
+        : unit =
+        let check () =
+            let present =
+                records
+                |> List.collect _.Parents
+                |> List.distinct
+                |> List.filter (known >> not)
+                |> presentHashesOn conn
+
+            match DagVerify.recordsResolving (fun h -> known h || present.Contains h) records with
+            | Ok() -> ()
+            | Error e -> invalidOp ("SqliteDagSink: " + DagVerify.describe streamId e)
+
+        match force, loadVerification with
+        | false, LoadVerification.Off -> ()
+        | _ -> check ()
+
+    /// LOAD: read every live record of `streamId` on `conn`, verify it, and hold
+    /// it with the counts it was read at. The index is built at the first
+    /// question that needs it.
+    let loadOn (conn: SqliteConnection) (force: bool) (streamId: string) : HeldStream<'Msg> =
+        let live, pruned = countsOn conn streamId
+        let records = readAllRecordsOn conn streamId
+        let byHash = records |> List.map (fun r -> r.Hash, r) |> Map.ofList
+        verifyRead conn force streamId byHash.ContainsKey records
+
+        { Records = byHash
+          Reach = None
+          Live = live
+          Pruned = pruned }
+
+    /// Hold `record`, newly in the stream, extending the index when one is held.
+    /// Idempotent: a record already held changes nothing and is not counted.
+    let hold (h: HeldStream<'Msg>) (record: DagOpRecord<'Msg>) : unit =
+        if not (h.Records.ContainsKey record.Hash) then
+            h.Records <- Map.add record.Hash record h.Records
+            h.Live <- h.Live + 1L
+
+            match h.Reach with
+            | None -> ()
+            | Some reach ->
+                h.Reach <-
+                    match DagSinkIndex.tryExtend reach record with
+                    | Some extended -> Some extended
+                    | None -> Some(DagSinkIndex.build (Map.values h.Records))
+
+    /// `added`, parents before children (Kahn over the parents inside the set).
+    let parentFirst (added: DagOpRecord<'Msg> list) : DagOpRecord<'Msg> list =
+        let inSet = added |> List.map _.Hash |> Set.ofList
+
+        let rec go (pending: DagOpRecord<'Msg> list) (placed: Set<string>) (acc: DagOpRecord<'Msg> list) =
+            let ready, rest =
+                pending
+                |> List.partition (fun r ->
+                    r.Parents |> List.forall (fun p -> not (inSet.Contains p) || placed.Contains p))
+
+            match ready, rest with
+            | [], [] -> List.rev acc
+            // A cycle cannot be written through admission; hold what remains as read.
+            | [], _ -> List.rev acc @ rest
+            | _ -> go rest (ready |> List.fold (fun s r -> Set.add r.Hash s) placed) (List.rev ready @ acc)
+
+        go added Set.empty []
+
+    /// Bring a held stream up to the file on `conn`. Unmoved counts: it is the
+    /// file's. More live rows and the same prune count, with every held address
+    /// still in the file: another writer ADDED records, which are read, verified
+    /// as at load and held. Anything else (a prune by another writer, a held row
+    /// gone): LOAD again.
+    let refreshOn (conn: SqliteConnection) (streamId: string) (h: HeldStream<'Msg>) : HeldStream<'Msg> =
+        let live, pruned = countsOn conn streamId
+
+        if live = h.Live && pruned = h.Pruned then
+            h
+        elif pruned <> h.Pruned || live < h.Live then
+            loadOn conn false streamId
+        else
+            let inFile =
+                use cmd = conn.CreateCommand()
+                cmd.CommandText <- "SELECT hash FROM dag_node WHERE stream_id = @s;"
+                cmd.Parameters.AddWithValue("@s", streamId) |> ignore
+                use reader = cmd.ExecuteReader()
+                let acc = System.Collections.Generic.HashSet<string>()
+
+                while reader.Read() do
+                    acc.Add(reader.GetString 0) |> ignore
+
+                acc
+
+            if h.Records |> Map.exists (fun hash _ -> not (inFile.Contains hash)) then
+                loadOn conn false streamId
+            else
+                let added =
+                    inFile
+                    |> Seq.filter (h.Records.ContainsKey >> not)
+                    |> Seq.sort
+                    |> Seq.choose (readRecordOn conn streamId)
+                    |> List.ofSeq
+
+                let addedHashes = added |> List.map _.Hash |> Set.ofList
+                verifyRead conn false streamId (fun x -> h.Records.ContainsKey x || addedHashes.Contains x) added
+
+                for r in parentFirst added do
+                    hold h r
+
+                h.Live <- live
+                h.Pruned <- pruned
+                h
+
+    /// Run `f` over `streamId` as held, loading or refreshing it first, on one
+    /// read snapshot of the file and under the sink's one lock. A refused load
+    /// holds nothing for the stream, so the next read loads (and refuses) again.
+    let withHeld (streamId: string) (f: HeldStream<'Msg> -> 'T) : 'T =
+        lock heldLock (fun () ->
+            try
+                let h =
+                    use conn = openConnection ()
+                    use _snapshot = conn.BeginTransaction(true)
+
+                    match heldStreams.TryGetValue streamId with
+                    | true, h -> refreshOn conn streamId h
+                    | false, _ -> loadOn conn false streamId
+
+                heldStreams[streamId] <- h
+                f h
+            with _ ->
+                heldStreams.Remove streamId |> ignore
+                reraise ())
+
+    /// The held stream's index, built now if no question has built it yet.
+    /// Caller holds the lock.
+    let reachOf (h: HeldStream<'Msg>) : Fuaran.Core.Dag.Reach<StreamEntry<'Msg>> =
+        match h.Reach with
+        | Some reach -> reach
+        | None ->
+            let reach = DagSinkIndex.build (Map.values h.Records)
+            h.Reach <- Some reach
+            reach
+
     /// Admit and store every record of `records`, in order, in ONE `BEGIN
     /// IMMEDIATE` transaction (Phase 2117; `Add` is the one-record case). Each
     /// record runs the admission both DAG sinks share (`DagWriteAdmission.admit`,
@@ -491,6 +649,7 @@ VALUES
                 // lands. IMMEDIATE takes the write lock up front, so the reads and
                 // the write see one state.
                 use tx = conn.BeginTransaction(false)
+                let stored = ResizeArray<DagOpRecord<'Msg>>()
 
                 for record in records do
                     // The address recomputed, every parent present store-wide (one
@@ -512,9 +671,31 @@ VALUES
                     match DagWriteAdmission.admit present.Contains held record with
                     | Error refusal -> invalidOp (DagWriteAdmission.describe "SqliteDagSink" record refusal)
                     | Ok DagAdmission.AlreadyHeld -> ()
-                    | Ok DagAdmission.Store -> insertOn conn record
+                    | Ok DagAdmission.Store ->
+                        insertOn conn record
+                        stored.Add record
 
                 tx.Commit()
+
+                // Committed: a stream this sink holds holds the new records too, as a
+                // load would read them back (whole-second timestamps), and its index
+                // is extended with each, parents first (the admission order).
+                lock heldLock (fun () ->
+                    for record in stored do
+                        match heldStreams.TryGetValue record.StreamId with
+                        | true, h ->
+                            hold
+                                h
+                                { record with
+                                    Node =
+                                        { record.Node with
+                                            Op =
+                                                { record.Entry with
+                                                    Timestamp =
+                                                        DateTimeOffset.FromUnixTimeSeconds(
+                                                            record.Timestamp.ToUnixTimeSeconds()
+                                                        ) } } }
+                        | false, _ -> ())
             with :? SqliteException as ex when SqliteConnections.isContention ex ->
                 invalidOp (
                     sprintf
@@ -525,7 +706,7 @@ VALUES
                         SqliteConnections.busyTimeoutMs
                 )
 
-    /// Two-arg constructor — verifies every read (Phase 793).
+    /// Two-arg constructor — verifies every load in full (D32).
     new(connectionString: string, codec: IOpJsonCodec<'Msg>) =
         SqliteDagSink<'Msg>(connectionString, codec, LoadVerification.Full)
 
@@ -535,15 +716,7 @@ VALUES
             async { addAll ("record " + record.Hash) record.StreamId [ record ] }
 
         member _.TryGet(streamId: string, hash: string) : Async<DagOpRecord<'Msg> option> =
-            async {
-                let found = readRecord streamId hash
-
-                match found with
-                | None -> ()
-                | Some r -> verifyOnRead streamId (fun () -> DagVerify.record r)
-
-                return found
-            }
+            async { return withHeld streamId (fun h -> Map.tryFind hash h.Records) }
 
         member _.Head(streamId: string) : Async<string option> =
             async {
@@ -603,7 +776,7 @@ VALUES
             async { return readParents streamId hash }
 
         member _.Reachable(streamId: string, hash: string) : Async<Set<string>> =
-            async { return Fuaran.Core.Dag.ancestorsOf (DagOpRecord.toDag (readAllRecords streamId)) hash }
+            async { return withHeld streamId (fun h -> Fuaran.Core.Dag.Reach.ancestors (reachOf h) hash) }
 
         member _.Heads(streamId: string) : Async<string list> =
             async {
@@ -619,16 +792,7 @@ VALUES
             }
 
         member _.Records(streamId: string) : Async<DagOpRecord<'Msg> list> =
-            async {
-                let records = readAllRecords streamId
-
-                verifyOnRead streamId (fun () ->
-                    let present = records |> List.collect _.Parents |> List.distinct |> presentHashes
-
-                    DagVerify.recordsResolving present.Contains records)
-
-                return records
-            }
+            async { return withHeld streamId (fun h -> h.Records |> Map.toList |> List.map snd) }
 
         member _.Tombstone(streamId: string, hash: string) : Async<bool> =
             async {
@@ -658,6 +822,19 @@ DELETE FROM dag_node WHERE stream_id = @s AND hash = @h;"""
                     move.Parameters.AddWithValue("@p", json) |> ignore
                     move.ExecuteNonQuery() |> ignore
                     tx.Commit()
+
+                    // Core's index has no removal: drop it, and the next question
+                    // rebuilds it. A held stream that did not hold the record is
+                    // stale, and the moved counts re-load it at its next read.
+                    lock heldLock (fun () ->
+                        match heldStreams.TryGetValue streamId with
+                        | true, h when h.Records.ContainsKey hash ->
+                            h.Records <- Map.remove hash h.Records
+                            h.Reach <- None
+                            h.Live <- h.Live - 1L
+                            h.Pruned <- h.Pruned + 1L
+                        | _ -> ())
+
                     return true
                 | _ -> return false
             }
@@ -704,13 +881,36 @@ DELETE FROM dag_node WHERE stream_id = @s AND hash = @h;"""
                 | first :: _ -> addAll (sprintf "a batch of %d records" (List.length records)) first.StreamId records
             }
 
+    /// Phase 2716 — the held index, and the verify-on-read guarantee on demand.
+    interface IDagOpStreamIndexedSink<'Msg> with
+        member _.Reach(streamId: string) : Async<Fuaran.Core.Dag.Reach<StreamEntry<'Msg>>> =
+            async { return withHeld streamId reachOf }
+
+        member _.Reverify(streamId: string) : Async<unit> =
+            async {
+                lock heldLock (fun () ->
+                    try
+                        let h =
+                            use conn = openConnection ()
+                            use _snapshot = conn.BeginTransaction(true)
+                            loadOn conn true streamId
+
+                        h.Reach <- Some(DagSinkIndex.build (Map.values h.Records))
+                        heldStreams[streamId] <- h
+                    with _ ->
+                        heldStreams.Remove streamId |> ignore
+                        reraise ())
+            }
+
 module SqliteDagSink =
-    /// Fresh sink as the abstraction interface. Verifies every read (Phase 793).
+    /// Fresh sink as the abstraction interface. Verifies every write and every
+    /// load in full, and trusts what it holds on a read (D32); it is also an
+    /// `IDagOpStreamIndexedSink`.
     let create<'Msg> (connectionString: string) (codec: IOpJsonCodec<'Msg>) : IDagOpStreamSink<'Msg> =
         upcast SqliteDagSink<'Msg>(connectionString, codec)
 
-    /// `create` under an explicit read-path verification mode. Naming a cheaper
-    /// mode here is the ONLY way to get one — there is no silent fast path.
+    /// `create` under an explicit LOAD verification mode. Naming a cheaper mode
+    /// here is the ONLY way to get one — there is no silent fast path.
     let createWith<'Msg>
         (loadVerification: LoadVerification)
         (connectionString: string)

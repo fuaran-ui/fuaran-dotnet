@@ -11,7 +11,7 @@ namespace Fuaran.UI.OpStream.Dag.Abstractions
 //      skeleton, so every record a sink returns is a whole node.
 //
 //  `records` is Core's `Dag.firstBreak` over a CLOSED set, its break mapped onto
-//  this tier's error. `recordsResolving` is the sinks' read-path form: a stream's
+//  this tier's error. `recordsResolving` is the sinks' load-path form (D32): a stream's
 //  records are not closed (a guest branch's genesis hangs off the host stream's
 //  `Mount` op, Phase 267), so the parent leg resolves against the whole store.
 //

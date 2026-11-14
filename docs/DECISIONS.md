@@ -10,6 +10,56 @@ consequence.
 
 ---
 
+## 2026-11-14 — D32: a DAG sink verifies on write and at load, and a read trusts what it holds
+
+**Decided (Phase 2716; ruled by the operator 2026-11-14: option A).** A DAG sink verifies every record on WRITE
+(`DagWriteAdmission.admit`: the address recomputes, every parent is present) and every record it LOADS from a backing
+store (`DagVerify.recordsResolving`, both legs, unless the host names `LoadVerification.Off`). A READ (`Records`,
+`TryGet`, `Reachable`, and the new `Reach`) trusts the records the sink holds and re-checks nothing. This supersedes
+Phase 793's verify-on-read for the two DAG sinks. There is one mode; no sink offers a second.
+
+1. **What "load" is.** The in-memory sink has no backing store: every record it holds entered through `Add`, so it
+   has no load, and its read check could never fail through its own API. The SQLite sink loads a stream the first
+   time a read touches it in a sink instance (opening the sink loads nothing), and again when the file moved under
+   it: every read compares the stream's live and pruned row counts with what it holds. Records another writer ADDED
+   are read and verified as at load; a prune by another writer, or a held row that is gone, re-loads the stream.
+2. **What is therefore not detected by a read:** a record changed in the backing store after the sink loaded it, by
+   something other than this sink (a hand-run `UPDATE`, a bit-flip, a tool writing the file), when the change does not
+   move the row counts. It is caught by the next load (another sink instance) or on demand.
+3. **The old guarantee is on demand, never silent.** `IDagOpStreamIndexedSink.Reverify streamId` re-reads and
+   re-checks the stream, rebuilds the index, and refuses by name on a mismatch (and then holds nothing for the stream,
+   so every read after it loads and refuses again). It verifies under `LoadVerification.Off` too: asking is the opt-in.
+4. **The index the ruling buys.** Each sink holds Core's `Dag.Reach` beside its node map, built at the first ancestry
+   question and extended by `Dag.appendIndexed` / `Dag.mergeIndexed` with every admitted record (`DagSinkIndex`); a
+   prune drops it and the next question rebuilds it. `DagMerge.mergeWith` merges a sink that holds one through
+   `mergeIndexed`. A caller holding only a `Dag.T` keeps Core's unindexed functions.
+
+**The measurement beside it** (`merge-rate 3 1000,5000,20000`, Release, the host not idle so allocation is the
+figure to read; full tables in `DAG_STRATEGY.md`). A merge through the in-memory sink, with a checkpoint at the fork,
+allocated 43.4 MB / 244.1 MB / 1,084.4 MB at 1,000 / 5,000 / 20,000 records of shared history before, and 3.3 MB /
+13.8 MB / 59.2 MB after, which is what `mergeIndexed` allocates for a caller holding the DAG to within 1 KB. Of the
+before, verification alone was 10.7 MB / 45.0 MB / 177.0 MB and 391 ms at 20,000 on every `Records` call. The price:
+the index holds 26.7 MB at 20,000 records (N²/16 bytes of bitsets, measured retained), costs 1.27 s and 127 MB of
+allocation to build once, and adds about 3.3 ms and 586 KB per write while held (0.23 ms and 10 KB without it).
+
+**The threat statement**, for an attacker who can write the store between calls but does not hold the sink's API. In
+every option the address is UNKEYED (`CRYPTO.md`): an attacker who edits a record and recomputes its address and its
+children's passes every check, at write, at load and at read. What differs is the naive edit.
+
+- **A (ruled).** An in-place edit of a held row is not seen by this process's reads until the next load or
+  `Reverify`; the process keeps serving and merging the records as it loaded them, so the edit does not reach its
+  answers, but it also does not know the file is corrupt. A forged ADDED row is refused at the next read. Another
+  process, or this one after a restart, refuses the edit at load.
+- **B (rejected: verify on read stays, no held index).** A naive edit is refused at the next read of every process.
+  The price is the full verification and a DAG rebuild on every read, and a merge through a sink at 20,000 records
+  costing 7.1 s and 1.08 GB where it costs 0.36 s and 59 MB here.
+- **C (rejected: the index opt-in per sink, verify on read the default).** B's exposure for default sinks and A's for
+  opted-in ones: two read contracts, so a reader of a sink it did not construct cannot tell which guarantee it holds.
+  With no consumers outside the operator's control yet, changing the contract now costs less than keeping two.
+
+**Consequence.** `STABILITY.md` records this as a behaviour change (0.105.0, advanced from the 0.104.1 draft): a
+caller that relied on a read to detect a store changed underneath the process calls `Reverify`.
+
 ## 2026-11-13 — D31: there is one checkpoint seal, Core's strict seal, and the format DID move
 
 **Decided (Phase 2652).** This supersedes the last sentence of D30's ruling 1, "the rule is adopted, the format is

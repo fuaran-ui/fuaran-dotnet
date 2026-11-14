@@ -21,9 +21,10 @@ node, address, verifier, topology or retention of its own.
 |---|---|
 | `DagOpRecord<'Msg>` | A Core `DagNode<StreamEntry<'Msg>>` with the stream it is stored in. The op is the linear chain's envelope (op, timestamp, prompt, result), so a lifted node's op is byte-identical to its linear op. The address is Core's `Dag.nodeId` under SHA-256 (`DagOpRecord.nodeId`). A merge node is an ordinary node whose op is its reconciliation script. |
 | `DagOpRecord.ofLinear` / `DagLift` | Embed a linear history as a single-parent branch; the lift verifies the segment first and returns a recomputable `LiftReceipt`. |
-| `DagVerify` | Integrity: Core's `Dag.firstBreak` over a closed set, or the store-resolved form the sinks' read paths use. |
+| `DagVerify` | Integrity: Core's `Dag.firstBreak` over a closed set, or the store-resolved form the sinks verify a load with (D32). |
 | `DagRetention` | GC roots and the retention policy over Core's `Dag.prunable`. |
 | `IDagOpStreamSink<'Msg>` | Durable superset interface: admission by address recompute and parent presence, an atomic `TryAdvanceHead` CAS on the trunk head, and a pruned-node skeleton (`DagSkeletonNode`) beside the live set. |
+| `IDagOpStreamIndexedSink<'Msg>` / `DagSinkIndex` | A sink that holds each stream and Core's reachability index across calls (Phase 2716): records verified on write and at load, trusted on read, and `Reverify` to re-check on demand (`docs/DECISIONS.md` D32). `DagSinkCapabilities.tryIndexed` asks a sink for it. |
 
 ## Posture
 

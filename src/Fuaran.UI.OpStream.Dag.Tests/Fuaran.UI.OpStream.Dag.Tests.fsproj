@@ -28,6 +28,8 @@
     <!-- Phase 2645: the one merge, over Core's DAG - minted, checked against Core's fold, stored. -->
     <Compile Include="DagMergeTests.fs" />
     <Compile Include="IndexedMergeTests.fs" />
+    <!-- Phase 2716: the index a sink holds across calls equals a fresh one after every write. -->
+    <Compile Include="HeldIndexTests.fs" />
     <Compile Include="ValidatorGateTests.fs" />
     <Compile Include="OpenCoreInvariantTests.fs" />
     <!-- Phase 267: guest op-stream fork + host-convergence anchor (§4o). -->
@@ -35,8 +37,9 @@
     <!-- Phase 2116: the verified linear-to-DAG lift and its recomputable receipt. -->
     <Compile Include="DagLiftTests.fs" />
     <Compile Include="DagPromoteTests.fs" />
-    <!-- Phase 793: DagVerify wired at the sinks' read paths. Go-red proofs —
-         each corrupts a real record, the Sqlite ones by UPDATEing the file. -->
+    <!-- Phase 793, re-pinned by Phase 2716 (D32): DagVerify at the sinks' LOAD and on
+         demand (Reverify). Go-red proofs - each corrupts a real record, the Sqlite
+         ones by UPDATEing the file. -->
     <Compile Include="DagVerifyOnReadTests.fs" />
     <!-- Phase 1525: verify on WRITE — parent presence, collision-vs-duplicate,
          idempotence across a retention sweep, and the IMMEDIATE-transaction

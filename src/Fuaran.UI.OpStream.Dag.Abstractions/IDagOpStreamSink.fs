@@ -1,5 +1,7 @@
 namespace Fuaran.UI.OpStream.Dag.Abstractions
 
+open Fuaran.UI.OpStream.Abstractions
+
 // ============================================================================
 //  IDagOpStreamSink — the durable, content-addressed, branching superset of
 //  `IOpStreamSink`.
@@ -123,6 +125,55 @@ type IDagOpStreamBatchSink<'Msg> =
     /// refused.
     abstract member AddAll: records: DagOpRecord<'Msg> list -> Async<unit>
 
+// ============================================================================
+//  Phase 2716 — a sink that HOLDS each stream across calls, with Core's
+//  reachability index beside the node map. An optional extension interface on
+//  Phase 2117's reasoning: a new abstract member on `IDagOpStreamSink` would
+//  break every implementor outside this repo.
+//
+//  The read contract it states (docs/DECISIONS.md D32, option A):
+//
+//   - ON WRITE, every record passes `DagWriteAdmission.admit` (the address
+//     recomputes, every parent is present) before the sink holds it.
+//   - AT LOAD, a stream read from a backing store is verified in full
+//     (`DagVerify.recordsResolving`, both legs) before the sink holds it, unless
+//     the host named `LoadVerification.Off`. What "load" is, is each sink's to
+//     say (the in-memory sink has no backing store and so no load).
+//   - A READ (`Records`, `TryGet`, `Reachable`, `Reach`) trusts what the sink
+//     holds and re-checks nothing.
+//
+//  So what is NOT detected by a read is a record changed in the backing store
+//  after the sink loaded it, by something other than this sink. `Reverify` is the
+//  old guarantee on demand: it re-reads and re-checks the stream and rebuilds the
+//  index, and refuses by name on a mismatch. Nothing calls it silently.
+// ============================================================================
+
+/// Extension of `IDagOpStreamSink<'Msg>`: a sink that holds each stream's live
+/// records and Core's reachability index across calls (Phase 2716), so an
+/// ancestry question or a merge costs what it costs a caller holding the DAG.
+///
+/// The index is built ONCE per stream, at the first question that needs it, and
+/// from then on extended by Core's `Dag.appendIndexed` / `Dag.mergeIndexed` with
+/// every record the sink admits; a prune rebuilds it at the next question. A
+/// caller holding only a `Dag.T` keeps asking Core's unindexed functions.
+type IDagOpStreamIndexedSink<'Msg> =
+    inherit IDagOpStreamSink<'Msg>
+
+    /// Core's reachability index over `streamId`'s live records as the sink holds
+    /// them: it answers every question `Dag.Reach.ofDag (DagOpRecord.toDag
+    /// records)` answers. Not re-verified (the D32 read contract). An unknown
+    /// stream answers the index of the empty DAG.
+    abstract member Reach: streamId: string -> Async<Fuaran.Core.Dag.Reach<StreamEntry<'Msg>>>
+
+    /// The verify-on-read guarantee, on demand: re-read `streamId` from the
+    /// backing store, check every record (`DagVerify.recordsResolving` — the
+    /// address recomputes and every parent resolves store-wide), and hold what
+    /// was read with a freshly built index. Throws — by name, naming the stream
+    /// and the record — on a mismatch, and then holds nothing for the stream, so
+    /// the next read loads (and refuses) again. Verifies whatever
+    /// `LoadVerification` the sink was built with: asking is the opt-in.
+    abstract member Reverify: streamId: string -> Async<unit>
+
 /// The ONE place a DAG sink is asked what it can do (Phase 2117), fenced for
 /// Fable exactly as the linear tier's `SinkCapabilities` is: `:? IInterface`
 /// does not compile under Fable (the JS runtime carries no interface identity
@@ -142,3 +193,52 @@ module DagSinkCapabilities =
         | :? IDagOpStreamBatchSink<'Msg> as batch -> Some batch
         | _ -> None
 #endif
+
+    /// The sink's held streams and reachability index (Phase 2716), if it holds
+    /// them. `None` under Fable — always, whatever the sink is.
+    let tryIndexed<'Msg> (sink: IDagOpStreamSink<'Msg>) : IDagOpStreamIndexedSink<'Msg> option =
+#if FABLE_COMPILER
+        ignore sink
+        None
+#else
+        match sink with
+        | :? IDagOpStreamIndexedSink<'Msg> as indexed -> Some indexed
+        | _ -> None
+#endif
+
+/// The index a sink holds beside its node map (Phase 2716): built once, and
+/// extended through Core's indexed writes as records are admitted. Both DAG
+/// sinks hold it through these two functions, so they cannot hold it
+/// differently.
+module DagSinkIndex =
+
+    /// Core's reachability index over `records`, built in one traversal
+    /// (`Dag.Reach.ofDag`): O(N²/32) word operations and N²/16 bytes of bitsets.
+    let build<'Msg> (records: DagOpRecord<'Msg> seq) : Fuaran.Core.Dag.Reach<StreamEntry<'Msg>> =
+        Fuaran.Core.Dag.Reach.ofDag (DagOpRecord.toDag records)
+
+    /// `reach` extended with `record`, the next record admitted to its stream,
+    /// through Core's own indexed writes: `Dag.appendIndexed` for a genesis or
+    /// one-parent node, `Dag.mergeIndexed` for a two-parent node, each re-minting
+    /// the record's node from its own fields. O(N). `None` where Core's indexed
+    /// writes cannot add the node as it is written — a node of three or more
+    /// parents, a parent outside the stream's live set (a guest branch's genesis,
+    /// whose parent is in the host stream), or a minted id other than the
+    /// record's — and then the caller builds the index over its live set, which
+    /// is the answer by definition.
+    let tryExtend<'Msg>
+        (reach: Fuaran.Core.Dag.Reach<StreamEntry<'Msg>>)
+        (record: DagOpRecord<'Msg>)
+        : Fuaran.Core.Dag.Reach<StreamEntry<'Msg>> option =
+        let s = DagOpRecord.stream<'Msg> ()
+
+        let written =
+            match record.Parents with
+            | [] -> Some(Fuaran.Core.Dag.appendIndexed s record.Actor record.Entry "" reach)
+            | [ parent ] -> Some(Fuaran.Core.Dag.appendIndexed s record.Actor record.Entry parent reach)
+            | [ left; right ] -> Some(Fuaran.Core.Dag.mergeIndexed s record.Actor record.Entry left right reach)
+            | _ -> None
+
+        match written with
+        | Some(Ok indexed) when indexed.Written.Id = record.Hash -> Some indexed.Reach
+        | _ -> None

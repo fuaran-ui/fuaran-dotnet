@@ -14,13 +14,13 @@ open Fuaran.UI.OpStream.Dag.Sqlite
 open Fuaran.UI.OpStream.TestSupport
 
 // ============================================================================
-//  Phase 793 — `DagVerify` is wired at the DAG sinks' READ paths.
-//
-//  Before this phase `DagVerify.records` had ZERO production callers. Dead
-//  verification code is worse than none: it reads as coverage that does not
-//  exist. It is now called by `Records` and (its content-address leg) by
-//  `TryGet` on both sinks, and every test below is a GO-RED proof that the
-//  call is live — the Sqlite ones corrupt the DATABASE FILE with raw SQL.
+//  Phase 793 wired `DagVerify` at the DAG sinks' READ paths; Phase 2716 moved
+//  it to LOAD (docs/DECISIONS.md D32): a sink verifies a stream when it reads it
+//  from its backing store and every record on write, and a read trusts what the
+//  sink holds. `Reverify` is the old guarantee on demand. Every test below is a
+//  GO-RED proof that a check is live — the Sqlite ones corrupt the DATABASE FILE
+//  with raw SQL — and the ones marked D32 pin what a read no longer detects, so
+//  a contract that quietly moves back (or further) fails here.
 //
 //  One design fact these tests pin, because getting it wrong silently breaks
 //  a shipped feature: parent linkage is resolved against the WHOLE STORE, not
@@ -71,7 +71,7 @@ let private corruptRowInDb (path: string) (hash: string) =
 [<Tests>]
 let tests =
     testList
-        "Dag — verify on read (Phase 793)"
+        "Dag — verify at load, on write and on demand (Phase 793, D32)"
         [
 
           // ── InMemoryDagSink ─────────────────────────────────────────────
@@ -203,7 +203,7 @@ let tests =
 
           // ── SqliteDagSink — corruption of the DATABASE FILE ─────────────
 
-          test "SqliteDagSink.Records REFUSES a row corrupted in the database file" {
+          test "SqliteDagSink.Records REFUSES, at load, a row corrupted in the database file" {
               use db = TempDb.create "dagverify"
               let path = db.Path
 
@@ -234,7 +234,7 @@ let tests =
               Expect.stringContains message child.Hash "names the corrupt record by its stored address"
           }
 
-          test "SqliteDagSink.TryGet REFUSES a row corrupted in the database file" {
+          test "SqliteDagSink.TryGet REFUSES, at load, a row corrupted in the database file" {
               use db = TempDb.create "dagverify"
               let path = db.Path
 
@@ -269,4 +269,140 @@ let tests =
                   SqliteDagSink.createWith<TestMsg> LoadVerification.Off (sprintf "Data Source=%s" path) testCodec
 
               Expect.equal (unchecked'.Records "s" |> Async.RunSynchronously).Length 1 "Off returns the row unchecked"
+          }
+
+          // ── D32 (Phase 2716): what a read no longer re-checks, and Reverify ─
+
+          test
+              "D32: a row corrupted AFTER load is not seen by a read; Reverify refuses it by name, and so does every read after" {
+              use db = TempDb.create "dagverify"
+              let path = db.Path
+              let sink = SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) testCodec
+              let g = stepRecord "s" None brand 1L
+              let child = stepRecord "s" (Some g) removeRight 2L
+              add sink g
+              add sink child
+              Expect.equal (sink.Records "s" |> Async.RunSynchronously).Length 2 "loaded clean"
+
+              corruptRowInDb path child.Hash
+
+              // The contract, pinned: the read hands back what the sink holds.
+              let held = sink.Records "s" |> Async.RunSynchronously
+              Expect.equal held.Length 2 "a read trusts the records the sink holds"
+
+              Expect.equal
+                  (held |> List.find (fun r -> r.Hash = child.Hash)).Timestamp
+                  child.Timestamp
+                  "and hands back the record as loaded, not the row as edited"
+
+              let indexed = Option.get (DagSinkCapabilities.tryIndexed sink)
+
+              let message =
+                  refusalMessage "SqliteDagSink.Reverify" (fun () -> indexed.Reverify "s" |> Async.RunSynchronously)
+
+              Expect.stringContains message "'s'" "names the stream"
+              Expect.stringContains message child.Hash "names the corrupt record by its stored address"
+
+              // A refused re-verify holds nothing: the next read loads, and refuses.
+              refusalMessage "SqliteDagSink.Records after a refused Reverify" (fun () ->
+                  sink.Records "s" |> Async.RunSynchronously |> ignore)
+              |> ignore
+          }
+
+          test "D32: Reverify verifies under LoadVerification.Off too, because asking is the opt-in" {
+              use db = TempDb.create "dagverify"
+              let path = db.Path
+              let sink = SqliteDagSink.create<TestMsg> (sprintf "Data Source=%s" path) testCodec
+              let g = stepRecord "s" None brand 1L
+              add sink g
+              corruptRowInDb path g.Hash
+
+              let unchecked' =
+                  SqliteDagSink.createWith<TestMsg> LoadVerification.Off (sprintf "Data Source=%s" path) testCodec
+
+              Expect.equal (unchecked'.Records "s" |> Async.RunSynchronously).Length 1 "Off loads the row unchecked"
+
+              refusalMessage "SqliteDagSink.Reverify under Off" (fun () ->
+                  (Option.get (DagSinkCapabilities.tryIndexed unchecked')).Reverify "s"
+                  |> Async.RunSynchronously)
+              |> ignore
+          }
+
+          test "D32: a record ANOTHER WRITER adds is read and verified at the next read; a forged row is refused there" {
+              use db = TempDb.create "dagverify"
+              let cs = sprintf "Data Source=%s" db.Path
+              let reader = SqliteDagSink.create<TestMsg> cs testCodec
+              let writer = SqliteDagSink.create<TestMsg> cs testCodec
+              let g = stepRecord "s" None brand 1L
+              add writer g
+              Expect.equal (reader.Records "s" |> Async.RunSynchronously).Length 1 "the reader loads the stream"
+
+              let child = stepRecord "s" (Some g) removeRight 2L
+              add writer child
+              let records = reader.Records "s" |> Async.RunSynchronously
+              Expect.equal records.Length 2 "the other writer's record is held at the next read"
+
+              let reach =
+                  (Option.get (DagSinkCapabilities.tryIndexed reader)).Reach "s"
+                  |> Async.RunSynchronously
+
+              Expect.isTrue
+                  (Fuaran.Core.Dag.Reach.reaches reach g.Hash child.Hash)
+                  "and is in the index the reader holds"
+
+              // A row another program inserts under an address its content does not
+              // recompute to: refused when the reader picks it up, as at load.
+              let forged = String('f', 64)
+
+              do
+                  use conn = new SqliteConnection(cs)
+                  conn.Open()
+                  use cmd = conn.CreateCommand()
+
+                  cmd.CommandText <-
+                      "INSERT INTO dag_node SELECT stream_id, @f, parents_json, op_json, prompt_id, actor_json, timestamp, result_envelope_json FROM dag_node WHERE hash = @h;"
+
+                  cmd.Parameters.AddWithValue("@f", forged) |> ignore
+                  cmd.Parameters.AddWithValue("@h", child.Hash) |> ignore
+
+                  if cmd.ExecuteNonQuery() <> 1 then
+                      failtest "expected to insert exactly one forged row"
+
+              let message =
+                  refusalMessage "SqliteDagSink.Records over another writer's forged row" (fun () ->
+                      reader.Records "s" |> Async.RunSynchronously |> ignore)
+
+              Expect.stringContains message forged "names the forged record"
+          }
+
+          test "D32: a prune by another writer re-loads the stream at the next read" {
+              use db = TempDb.create "dagverify"
+              let cs = sprintf "Data Source=%s" db.Path
+              let reader = SqliteDagSink.create<TestMsg> cs testCodec
+              let writer = SqliteDagSink.create<TestMsg> cs testCodec
+              let g = stepRecord "s" None brand 1L
+              let child = stepRecord "s" (Some g) removeRight 2L
+              add writer g
+              add writer child
+              Expect.equal (reader.Records "s" |> Async.RunSynchronously).Length 2 "loaded"
+              Expect.isTrue (writer.Tombstone("s", child.Hash) |> Async.RunSynchronously) "pruned by the other writer"
+
+              Expect.equal
+                  (reader.Records "s" |> Async.RunSynchronously |> List.map _.Hash)
+                  [ g.Hash ]
+                  "the reader holds the live set after the prune"
+
+              Expect.isNone (reader.TryGet("s", child.Hash) |> Async.RunSynchronously) "and no longer the pruned record"
+          }
+
+          test "D32: the in-memory sink re-verifies a clean stream on demand" {
+              let sink = InMemoryDagSink.create<TestMsg> ()
+              let g = stepRecord "s" None brand 1L
+              add sink g
+              add sink (stepRecord "s" (Some g) removeRight 2L)
+
+              (Option.get (DagSinkCapabilities.tryIndexed sink)).Reverify "s"
+              |> Async.RunSynchronously
+
+              Expect.equal (sink.Records "s" |> Async.RunSynchronously).Length 2 "the stream reads back after Reverify"
           } ]

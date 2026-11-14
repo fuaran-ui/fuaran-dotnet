@@ -413,7 +413,11 @@ module DagMerge =
         { Outcome = outcome
           Reach = after.Reach |> Option.defaultValue reach }
 
-    /// `mergeDag` over `streamId`'s live records in `sink`.
+    /// `mergeDag` over `streamId`'s live records in `sink`. A sink that holds its
+    /// streams' reachability index (`IDagOpStreamIndexedSink`, Phase 2716) is
+    /// merged through `mergeIndexed` over the index it holds, so the merge costs
+    /// what it costs a caller holding the DAG; any other sink's records are read
+    /// and merged through `mergeDag`. The outcome is the same either way.
     let mergeWith<'Msg>
         (context: MergeContext<'Msg>)
         (sink: IDagOpStreamSink<'Msg>)
@@ -427,8 +431,13 @@ module DagMerge =
             if headA = headB then
                 return plain (MergeResult.AlreadyMerged headA)
             else
-                let! records = sink.Records streamId
-                return mergeDag context streamId initial (DagOpRecord.toDag records) headA headB now
+                match DagSinkCapabilities.tryIndexed sink with
+                | Some indexed ->
+                    let! reach = indexed.Reach streamId
+                    return (mergeIndexed context streamId initial reach headA headB now).Outcome
+                | None ->
+                    let! records = sink.Records streamId
+                    return mergeDag context streamId initial (DagOpRecord.toDag records) headA headB now
         }
 
     /// `mergeWith` under `MergeContext.defaults`.

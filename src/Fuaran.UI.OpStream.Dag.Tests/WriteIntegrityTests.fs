@@ -253,8 +253,8 @@ let tests =
               Expect.stringContains message "content-address check failed" "names the check that failed"
               Expect.stringContains message original.Hash "names the contested address"
 
-              // Read back under `LoadVerification.Off`: the verify-on-read
-              // path would refuse the forged record for an unrelated reason,
+              // Read back under `LoadVerification.Off`: the load's verification
+              // (D32) would refuse the forged record for an unrelated reason,
               // and this assertion is about the WRITE not having landed.
               let unchecked' =
                   SqliteDagSink.createWith<TestMsg> LoadVerification.Off (connectionString path) testCodec

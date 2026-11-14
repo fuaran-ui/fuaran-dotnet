@@ -417,6 +417,65 @@ what it addresses, or the other branch changed the child list a re-asserted reor
 what precedence owes such a pair. `FoldReconcileTests` pins that nothing else faults: never the default context, and
 never an edit beside a removal of its node.
 
+## A sink holds its reachability index across calls (Phase 2716)
+
+Phase 2692 left the index with the caller that carries the DAG, because a sink-held index met Phase 793's
+verify-on-read before it met a cost. The operator ruled the contract (`DECISIONS.md` D32, option A): a sink verifies
+every record on write and at load, and a read trusts what it holds. With that ruled, both sinks hold the index.
+
+**What changed.** `IDagOpStreamIndexedSink<'Msg>` (an optional extension interface, the Phase 2117 shape) adds
+`Reach streamId`, the index over the stream's live records as the sink holds it, and `Reverify streamId`, the old
+guarantee on demand. Both sinks implement it. A stream's index is built ONCE, at the first ancestry question
+(`Reachable`, `Reach`, or a merge through `mergeWith`), and from then on every admitted record extends it through
+Core's `Dag.appendIndexed` (genesis or one parent) or `Dag.mergeIndexed` (two parents), re-minting the record's node
+from its own fields (`DagSinkIndex.tryExtend`). A record those writes cannot add as written (three or more parents, a
+parent outside the stream's live set such as a guest branch's genesis) rebuilds the index over the live set, once; a
+prune drops it, and the next question rebuilds it. A write-only stream never builds it. `DagMerge.mergeWith` (and so
+`merge` and `mergeIntoTrunkWith`) asks a sink that holds an index for it and merges through `mergeIndexed`; any other
+sink keeps the `Records` + `toDag` + `mergeDag` path. A caller holding only a `Dag.T` keeps Core's unindexed
+functions. `HeldIndexTests` holds the sink's index equal to one built fresh from its records after every write of
+generated histories (appends, forks, merges through the sink, criss-cross twins, guest branches, prunes) on both sinks.
+
+**The SQLite sink's load.** It holds each stream it is asked about. A stream is loaded (read and verified in full) the
+first time a read touches it in a sink instance; every later read first compares the stream's live and pruned row
+counts with what it holds (one query). Records another writer added are read, verified and held, and extend the index;
+a prune by another writer, or a held row that is gone, re-loads the stream. A row changed in place after the load
+moves no count and is not seen by a read: `Reverify` re-reads and re-checks the stream and refuses it by name.
+
+**Measured** (`merge-rate 3 1000,5000,20000`, Release, the same fixture and host as Phase 2692's table; the host was not
+idle, so the wall times are indicative and the allocation repeats). The merge through the in-memory sink, before
+(tree `8cc6c7d7`) and after:
+
+| scenario | MB at 1,000 | MB at 5,000 | MB at 20,000 | ms at 20,000 |
+|---|---|---|---|---|
+| `sink` before | 56.9 | 309.7 | 1,339.0 | 7,341 |
+| `sink` after | 16.9 | 80.1 | 317.2 | 671 |
+| `indexed` (a caller holding the DAG) | 16.9 | 80.1 | 317.2 | 710 |
+| `sink_ckpt` before | 43.4 | 244.1 | 1,084.4 | 7,089 |
+| `sink_ckpt` after | 3.3 | 13.8 | 59.2 | 362 |
+| `indexed_ckpt` (a caller holding the DAG) | 3.3 | 13.8 | 59.2 | 356 |
+
+A merge through the sink now allocates what `mergeIndexed` allocates for a caller holding the DAG, to within 1.6 KB.
+`merge-rate`'s `load` callee (`Records` + `toDag`) fell from 219.9 MB and 867 ms to 19.1 MB and 78 ms at 20,000: the
+read no longer verifies. The measurement takes one untimed warm-up run, which is where the index is built.
+
+**The price, on the same page** (a throwaway harness over a linear stream, Release, the same host):
+
+| at 20,000 records | in-memory sink | SQLite sink |
+|---|---|---|
+| index held (retained, N²/16 bytes of bitsets plus slot arrays) | 26.7 MB | the same |
+| index build, once (at the first question) | 1.27 s, 127 MB allocated | 1.12 s |
+| a write while the index is held | 3.3 ms, 586 KB | 26 ms (the transaction dominates) |
+| a write while no index is held | 0.23 ms, 10 KB | — |
+| a read of `Records` | 12.7 ms (no verification) | 31 ms held; 1.29 s at load |
+| the verification a read no longer runs | 391 ms, 177 MB per `Records` | as before, now at load only |
+| `Reverify` | — | 1.97 s |
+
+The index grows with the square of the record count (2.2 MB at 5,000 and 26.7 MB at 20,000 measured; about 156 MB
+at 50,000 by Core's own figure for `Reach`) and each write while it is held costs O(N): Core's extension copies the slot arrays. A host that writes
+heavily and asks rarely pays nothing until it asks; one that holds very long streams pays the memory. Compaction behind
+a checkpoint (`DagFold`) bounds both.
+
 ## In short
 
 - One stream, one writer → **linear chain**.
