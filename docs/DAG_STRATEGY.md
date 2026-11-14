@@ -476,6 +476,45 @@ at 50,000 by Core's own figure for `Reach`) and each write while it is held cost
 heavily and asks rarely pays nothing until it asks; one that holds very long streams pays the memory. Compaction behind
 a checkpoint (`DagFold`) bounds both.
 
+## An unchanged reorder yields to a real one (Phase 2724)
+
+Phase 2696 left one pair refused: a reorder that restates its own branch's order beside a real reorder of the same
+parent on the other branch. The footprint cannot free it (the no-read footprint is unsound, above); the operator ruled
+on 2026-11-14 that the pair merges, taking the real order. The rule is the POLICY's, not the footprint's:
+`DagReconcile.yieldUnchangedReorders` runs before Core's conflict report and drops from its delta a top-level
+`ReorderChildren` whose list is its parent's child order where its own branch applies it (2696's equality: the same
+ids, in the same order) when the other delta holds a top-level `ReorderChildren` of the same parent that changes the
+order on its branch. The dropped op is no change on its own branch, so every later tree of that branch is as it was.
+Every context runs it — the default and both precedence sides — and the script records each yielded parent's order,
+because the merge node's replay (Core's closure fold) still applies the dropped op in its own drain order. Nothing
+else is dropped: an unchanged reorder beside an append, a removal or a move in its parent, beside another unchanged
+reorder, or beside a reorder inside a `Batch`, is judged as before (`FoldReconcileTests` pins each).
+
+**Measured** with the derivability snapshot in the same uncommitted probe as Phase 2696 (the last tree holding the
+tree merge, `b052c482`, with 2696's shipped footprint arm and this phase's rule ported behind a switch, so before and
+after are one build). Seed 20261016, 20,000 trials; 2292's rows use 2292's generator verbatim. The before run
+reproduces 2696's after row exactly.
+
+| population | policy | refused two-reorder triads | of them, one side unchanged | `derived_share` | same tree | pinned append order | unpinned different tree |
+|---|---|---|---|---|---|---|---|
+| 2670's draws | after 2696 | 32 | 30 | 0.9345 | 10,177 | 37 | 0 |
+| 2670's draws | **after 2724** | **2** | **0** | **0.9372** | 10,206 | 38 | **0** |
+| 2292's draws | after 2696 | 84 | 66 | 0.9094 | 8,452 | 24 | 0 |
+| 2292's draws | **after 2724** | **18** | **0** | **0.9161** | 8,514 | 24 | **0** |
+
+Triad by triad against the before run (the cell class and the hash of the derived tree, per triad): on 2670's draws
+the 30 unchanged-beside-real refusals all derive — 29 to the tree merge's tree, 1 in the pinned append-order class —
+and 12 triads the tree merge refuses now derive; the 2 two-real-reorder refusals stay refused
+(`fold-refusal-two-real-reorders`). On 2292's draws the 66 all derive — 62 to the tree merge's tree, 4 in the pinned own-parent-move class — and 32 triads the tree merge refuses now derive; the 18 refusals of two real, different reorders stay. No triad the policy derived before is refused or derives a different
+tree on either population, as the construction says it cannot in the default context: the rule fires only where a
+real reorder and an unchanged one of one parent meet, a pair that always refused there. Under a named precedence side
+it does change an answer: naming the restating side used to re-assert its order and derive the old one; it now derives
+the real order (`STABILITY.md`, 0.105.0).
+
+Corpus: `fold-refusal-two-reorders` is retired — the manifest's `retiredFoldFixtures` records it, and a retired id is
+never reused — and its pair derives as `fold-reorder-beside-restated-order`, beside the mirror
+`fold-restated-order-beside-reorder` and `fold-append-restated-beside-reorder`.
+
 ## In short
 
 - One stream, one writer → **linear chain**.

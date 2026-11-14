@@ -8039,6 +8039,36 @@ constructs a new sink. A host that names `LoadVerification.Off` now opts out of 
 gets write verification, and `Reverify` on demand. Implementers of `IDagOpStreamSink` outside this repository are
 unaffected: the new interface is optional, and `mergeWith` keeps its old path for a sink that does not offer it.
 
+### What rides this slot — Phase 2724 (a reorder that changes nothing on its own branch yields to the other side's reorder)
+
+**Class: additive in the default context; BREAKING (behaviour) under a named precedence side — it rides the slot's
+breaking class (Phase 2716) and does not advance the number again.** Package `Fuaran.UI.OpStream.Dag.Merge`. New
+public function `DagReconcile.yieldUnchangedReorders`; no signature moves and no wire byte of a document moves.
+
+**What changed.** Before Core's conflict report is taken, `DagReconcile.reconcileWith` drops from its delta a top-level
+`ReorderChildren` whose list is its parent's child order in the tree its own branch applies it to (the same ids, in
+the same order — Phase 2696's equality) when the other delta holds a top-level `ReorderChildren` of the same parent
+that changes the order on its own branch; the merge script records that parent's surviving order, because a merge
+node's replay still applies the dropped op (WIRE_FORMAT §34.3, the yield rule; operator ruling 2026-11-14). In the
+default context a pair that refused now derives the real order, and nothing that derived before changes: the rule
+fires only where a real reorder and an unchanged one of one parent meet, a pair that was always refused. Under a
+named precedence side (`reconcileWith (Some side)`, `MergeContext.Precedence`) that pair used to derive by
+re-asserting the named side's reorder, so naming the side whose reorder restated the order derived the OLD order; it
+now derives the real order whichever side is named, and the merge node minted for it differs.
+
+**Corpus.** `fold-refusal-two-reorders` is retired (recorded in the manifest's new `retiredFoldFixtures` array; a
+retired id is never reused); its pair derives as `fold-reorder-beside-restated-order`, with the mirror
+`fold-restated-order-beside-reorder` and `fold-append-restated-beside-reorder`.
+
+**Measured** (`docs/DAG_STRATEGY.md`, Phase 2724): the derivability snapshot's refused two-reorder triads fall from 32 to 2 on 2670's draws (`derived_share` 0.9345 to 0.9372) and from 84 to 18 on 2292's (0.9094 to 0.9161): every unchanged-beside-real refusal (30 and 66) derives, the refusals left are two real, different reorders, no unpinned different-tree triad appears, and no triad derived before is refused or derives a different tree.
+
+**Host spillovers (not edited here).** The `fuaran-ts`, `fuaran-py`, `fuaran-go` and `fuaran-rs` reconcilers do not
+drop the yielded reorder, so each refuses the three new derive fixtures until that host follows; the Go and Python
+legs also pin the retired id by name.
+
+**Consumer action: a precedence caller that relied on its named side's restated order winning over a real reorder
+gets the real order.** None in the default context.
+
 ---
 
 ## 0.104.0 (RELEASED — tagged v0.104.0 at cc477007, 2026-11-11) — the slot opened after v0.103.0 was released; advanced from 0.103.1 on 2026-11-10 by Phase 2640, whose change is breaking
