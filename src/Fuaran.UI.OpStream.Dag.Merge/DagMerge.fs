@@ -22,7 +22,9 @@ open Fuaran.UI.OpStream.Dag.Abstractions
 //      `Precedence` side, when named, re-asserts its ops of each pair it settles
 //      as script; an edit beside a removal of its node, a pair that does not
 //      apply in both orders, and a pair whose re-asserted op no longer applies
-//      refuse under it with the entries the default context gives them (§34.4).
+//      refuse under it, naming pairs the default context refuses: the first as
+//      `DeleteModify`, the others as `NotInBothOrders` and `StaleReassertion`
+//      (§34.4, Phase 2743).
 //   4. The validator gate (`ValidatorGate.verdict`, Core's introduced-findings
 //      gate) runs over the two branch trees and the derived one.
 //   5. The merge node is minted by Core (`Dag.merge`): a node with the two heads

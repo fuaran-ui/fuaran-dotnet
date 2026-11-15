@@ -8116,6 +8116,32 @@ downstream consumers pin the old fault in their own tests; they are re-pinned in
 
 ---
 
+### What rides this slot — Phase 2743 (a precedence refusal states its reason as a typed entry class)
+
+**Class: BREAKING (a closed DU gains cases); it rides the slot's breaking class (Phase 2716) and does not advance the
+number again.** Package `Fuaran.UI.OpStream.Dag.Merge`: `RefusalClass` gains `NotInBothOrders` and
+`StaleReassertion`, so an F# consumer that matches it exhaustively stops compiling (FS0025 under warnings-as-errors)
+until it handles them. No signature is removed. The default context is unchanged: it gives only `DeleteModify` and
+`Conflict`, and no `foldFixtures` byte moves.
+
+**What changed.** Under a named precedence side (`reconcileWith (Some side)`, `MergeContext.Precedence`,
+`GuestConvergence`), a refused entry's class is the reason the side could not settle the pair (operator ruling
+2026-11-15; WIRE_FORMAT §34.4): a removal of the other op's node stays `DeleteModify` (Phase 2695); a pair that does not
+apply in both orders, which carried the default `Conflict`, is now `NotInBothOrders`; and a pair whose re-asserted op
+no longer applies, likewise `Conflict` before, is now `StaleReassertion`. A precedence refusal is never `Conflict`.
+Address, shape, slot, ops and the canonical order of the envelope are unchanged, so each entry still names a pair the
+default envelope names. Decision record: `docs/DECISIONS.md` D34.
+
+**Wire.** An addition confined to precedence reports: the refusal envelope's `class` takes two new values there
+(§34.5). Seven `precedenceFixtures` envelopes of the merge-conformance corpus are re-classed in place (their hashes
+move, their ids and verdicts do not); no `foldFixtures` entry, hash or description moves. The other four hosts read
+`foldFixtures` only and are unaffected.
+
+**Consumer action:** a `match` over `RefusalClass` adds the two cases; a precedence caller that branched on
+`Conflict` for these pairs branches on the new classes instead. No consumer in the estate matches it exhaustively.
+
+---
+
 ### What rides this slot — Phase 2727 (a DAG checkpoint taken before the identity cut is refused by name and re-taken)
 
 **Class: ADDITIVE.** Package `Fuaran.UI.OpStream.Dag.Abstractions` gains `CheckpointRefusal` (one case,

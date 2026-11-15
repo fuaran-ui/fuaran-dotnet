@@ -132,6 +132,12 @@ let private generatedPairs (seed: int) (count: int) : (TreeOp<TestMsg> list * Tr
 
 let private contexts = [ None; Some ReconcileSide.A; Some ReconcileSide.B ]
 
+/// A refused pair without its class — address, shape, slot and the two ops, as the
+/// envelope writes them — so a precedence entry can be matched to the default pair it
+/// re-classes (Phase 2743).
+let private pairOf (r: Refusal<TestMsg>) =
+    DagReconcile.encodeEnvelope [ { r with Class = RefusalClass.Conflict } ]
+
 /// `delta` with a reorder appended that lists `parent`'s children in the order the
 /// delta's own head holds them — a restatement, unchanged where it applies.
 /// `delta` itself when the head does not hold the parent.
@@ -439,10 +445,10 @@ let tests =
               Expect.isGreaterThan editsBesideRemovals 0 "some edit beside a removal of its node was drawn"
           }
 
-          test
-              "under precedence, a pair that applies in neither order refuses with the entry the default context gives it" {
-              // Shape 1 of the Phase 2695 finding: two inserts of one id, and (found by this
-              // phase) two moves that would put each node inside the other.
+          test "under precedence, a pair that applies in neither order refuses its default pairs as NotInBothOrders" {
+              // Shape 1 of the Phase 2695 finding: two inserts of one id, and (found by Phase 2725)
+              // two moves that would put each node inside the other. Phase 2743: the entry names
+              // the reason, so a reader needs no context to know no side settles the pair.
               for case in [ "same-id-insert"; "mutual-move" ] do
                   let _, _, _, _, baseT, opsA, opsB =
                       FoldCorpus.precedenceFixtures
@@ -450,20 +456,24 @@ let tests =
 
                   let byDefault =
                       match DagReconcile.reconcile baseT opsA opsB with
-                      | Error(ReconcileFault.Refused rs) -> DagReconcile.encodeEnvelope rs
+                      | Error(ReconcileFault.Refused rs) -> rs
                       | other -> failtestf "%s: the default context must refuse, got %A" case other
 
                   for side in [ ReconcileSide.A; ReconcileSide.B ] do
                       match DagReconcile.reconcileWith (Some side) baseT opsA opsB with
                       | Error(ReconcileFault.Refused rs) ->
                           Expect.equal
-                              (DagReconcile.encodeEnvelope rs)
-                              byDefault
-                              (sprintf "%s, precedence %A: the default context's entry" case side)
+                              (rs |> List.map pairOf)
+                              (byDefault |> List.map pairOf)
+                              (sprintf "%s, precedence %A: the default context's pairs" case side)
+
+                          Expect.isTrue
+                              (rs |> List.forall (fun r -> r.Class = RefusalClass.NotInBothOrders))
+                              (sprintf "%s, precedence %A: every entry is NotInBothOrders" case side)
                       | other -> failtestf "%s, precedence %A: expected a refusal, got %A" case side other
           }
 
-          test "under precedence, a re-asserted op that no longer applies refuses its pair with the default entry" {
+          test "under precedence, a re-asserted op that no longer applies refuses its pair as StaleReassertion" {
               // Shape 2 of the Phase 2695 finding: its own branch later removed or moved what the
               // op addresses (b names the move its branch then removes), or the other branch
               // changed the child list a re-asserted reorder names (a and b of the stale reorder).
@@ -483,13 +493,16 @@ let tests =
 
                       match DagReconcile.reconcileWith (Some side) baseT opsA opsB with
                       | Error(ReconcileFault.Refused rs) ->
-                          let entry (r: Refusal<TestMsg>) = DagReconcile.encodeEnvelope [ r ]
-
                           for r in rs do
                               Expect.contains
-                                  (defaults |> List.map entry)
-                                  (entry r)
-                                  (sprintf "%s: an entry the default context gives" id)
+                                  (defaults |> List.map pairOf)
+                                  (pairOf r)
+                                  (sprintf "%s: a pair the default context refuses" id)
+
+                              Expect.equal
+                                  r.Class
+                                  RefusalClass.StaleReassertion
+                                  (sprintf "%s: the entry names the stale re-assertion" id)
 
                           let named = if side = ReconcileSide.A then opsA else opsB
 
@@ -560,12 +573,25 @@ let tests =
 
               let mutable derivations = []
               let mutable settledNothing = 0
+              let mutable classesSeen = Set.empty
+
+              let precedenceOnly =
+                  set [ RefusalClass.NotInBothOrders; RefusalClass.StaleReassertion ]
 
               for id, baseT, opsA, opsB in fixturePairs @ population 2695 @ population 2724 @ precedencePairs do
-                  let byDefault =
+                  let defaults =
                       match DagReconcile.reconcile baseT opsA opsB with
-                      | Error(ReconcileFault.Refused rs) -> rs |> List.map (fun r -> DagReconcile.encodeEnvelope [ r ])
+                      | Error(ReconcileFault.Refused rs) -> rs
                       | _ -> []
+
+                  // The default context never gives a precedence-only class (Phase 2743).
+                  for r in defaults do
+                      Expect.isFalse
+                          (precedenceOnly.Contains r.Class)
+                          (sprintf "%s: a default entry carries a default class" id)
+
+                  let byDefault = defaults |> List.map (fun r -> DagReconcile.encodeEnvelope [ r ])
+                  let defaultPairs = defaults |> List.map pairOf
 
                   for side in [ ReconcileSide.A; ReconcileSide.B ] do
                       match DagReconcile.reconcileWith (Some side) baseT opsA opsB with
@@ -580,13 +606,22 @@ let tests =
                                       (FoldCorpus.encodeOps r.Script)
                                   :: derivations
                       | Error(ReconcileFault.Refused rs) ->
-                          // A named side refuses only pairs the default context refuses, with the
-                          // entries it gives them: the envelope is a subset of the default's.
+                          // A named side refuses only pairs the default context refuses: each entry
+                          // is the default's, or the default's pair under a precedence-only class
+                          // naming why the side could not settle it (Phase 2743).
                           for r in rs do
-                              Expect.contains
-                                  byDefault
-                                  (DagReconcile.encodeEnvelope [ r ])
-                                  (sprintf "%s under %A: a default entry" id side)
+                              classesSeen <- Set.add r.Class classesSeen
+
+                              if precedenceOnly.Contains r.Class then
+                                  Expect.contains
+                                      defaultPairs
+                                      (pairOf r)
+                                      (sprintf "%s under %A: a default pair" id side)
+                              else
+                                  Expect.contains
+                                      byDefault
+                                      (DagReconcile.encodeEnvelope [ r ])
+                                      (sprintf "%s under %A: a default entry" id side)
 
                           if rs.Length = byDefault.Length then
                               settledNothing <- settledNothing + 1
@@ -606,6 +641,17 @@ let tests =
                   "every precedence derivation is byte-identical to before"
 
               Expect.isGreaterThan settledNothing 0 "some precedence merge refused"
+
+              // A precedence refusal is a removal of the other op's node (`DeleteModify`, Phase 2695)
+              // or one of the two precedence-only classes, never a bare `Conflict`; and every one of
+              // the three was reached, or the checks above asked nothing.
+              Expect.equal
+                  classesSeen
+                  (set
+                      [ RefusalClass.DeleteModify
+                        RefusalClass.NotInBothOrders
+                        RefusalClass.StaleReassertion ])
+                  "precedence refusals carry exactly the three classes"
           }
 
           test

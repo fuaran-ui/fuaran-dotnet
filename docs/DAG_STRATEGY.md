@@ -524,7 +524,8 @@ corpus.
 
 **The rule: a pair precedence cannot settle refuses with the entry the default context gives it.** Precedence settles
 two writes of one slot by re-asserting the named side's op; where that cannot work, the pair is reported exactly as
-the default context reports it, so a precedence refusal adds no class and its envelope is a subset of the default's.
+the default context reports it, so a precedence refusal added no class and its envelope was a subset of the
+default's (Phase 2743, below, types the reason as the entry's class).
 Three readings name those pairs (WIRE_FORMAT §34.4): 2695's removal of the other op's node, before the fold; a pair
 that does not apply in both orders, before the fold; and a pair whose re-asserted op no longer applies, after it.
 
@@ -559,6 +560,37 @@ both shape-1 members, and the two shape-2 causes (WIRE_FORMAT §34.6 lists them)
 `foldFixtures` by name, and a host that adds a precedence merge certifies the array then. Run read-only against this
 corpus, `fuaran-ts`, `fuaran-py` and `fuaran-go` fail only Phase 2724's three derive fixtures (and `fuaran-py` its pin
 of the retired id); `fuaran-rs`, not runnable from its clone, has the same reconciler gap.
+
+## A precedence refusal names its reason as its class (Phase 2743)
+
+Phase 2725 refused the pairs a named side cannot settle with the entry the default context gives them, so a reader
+of a precedence envelope could not tell, from an entry alone, a pair no side settles from a pair only the named
+side's re-assertion failed on; it had to know the context and read §34.4. The operator ruled on 2026-11-15 that the
+reason is typed. `RefusalClass` gains two cases, given only on the named-side path, and the envelope writes them:
+
+| Reading (§34.4) | Class | Fixtures |
+|---|---|---|
+| 1 — a removal of the other op's node (Phase 2695) | `DeleteModify`, unchanged | `delete-edit`, `delete-restyle`, `delete-insert-beneath`, `delete-move` |
+| 2 — the pair does not apply in both orders (Phase 2725) | `NotInBothOrders` | `same-id-insert`, `mutual-move` |
+| 3 — the re-asserted op no longer applies (Phase 2725) | `StaleReassertion` | `superseded-move` under `b`, `stale-reorder` |
+
+**Why two values and not one or four.** The two call for different actions: under `NotInBothOrders` no naming of
+either side settles the pair, while under `StaleReassertion` the named side's op is what is stale, so the other naming
+may settle it (`superseded-move` derives under `a`) or the op must be restated against its own branch. Splitting either
+by shape would separate cases whose action is the same. Reading 1 keeps `DeleteModify`: it already names its action,
+and keeping it keeps Phase 2695's four refusal fixtures byte-identical. Every reading-1 pair also fails reading 2, so
+the readings are checked in order and the first decides the class (`docs/DECISIONS.md` D34).
+
+**What is pinned.** The generated-population test in `FoldReconcileTests` (the fold fixtures, seeds 2695 and 2724, and
+the precedence fixtures, under both sides) now asserts that the default context never gives a precedence-only class;
+that every precedence entry is the default's entry or the default's pair under a precedence-only class; that a
+precedence refusal is never classed `Conflict`; that the three classes are each reached; and, unchanged, that the
+2,372 derivations hash as before. No `foldFixtures` byte moved; seven `precedenceFixtures` envelopes were re-classed in
+place and keep their ids, because each still refuses the same pairs.
+
+**Who reads the class.** The four other hosts produce the class from their own reconcile over a closed set
+(`DeleteModify` / `Conflict`) and read only `foldFixtures` (§34.6), whose envelopes carry neither new value, so none
+can meet one. A host that adds a precedence merge adds the two values with it.
 
 ## In short
 

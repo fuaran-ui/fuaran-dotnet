@@ -10,6 +10,36 @@ consequence.
 
 ---
 
+## 2026-11-15 — D34: a precedence refusal's class is the reading that refused it — `NotInBothOrders` or `StaleReassertion`, beside `DeleteModify`
+
+**Decided (Phase 2743; operator ruling 2026-11-15 on Phase 2725's t2 decision).** Phase 2725 refused the pairs a named
+precedence side cannot settle with the entry the default context gives them, and stated the reason in prose in
+WIRE_FORMAT §34.4. The reason is now the entry's class. The set a precedence refusal can carry is closed at three:
+
+1. **`DeleteModify`** — reading 1 (Phase 2695), a removal of the node the other op touches. Unchanged: the class already
+   names the action, and keeping it keeps Phase 2695's fixtures byte-identical.
+2. **`NotInBothOrders`** — reading 2 (Phase 2725), the two ops do not both apply in either order (two inserts of one
+   id; two moves that would put each container inside the other). No naming of either side settles the pair.
+3. **`StaleReassertion`** — reading 3 (Phase 2725), the named side's op no longer applies where it is re-asserted. The
+   other naming may settle it, or the op must be restated against its own branch's head.
+
+The readings are checked in that order and the first decides: every reading-1 pair also fails reading 2. A precedence
+refusal is never `Conflict`; the default context never gives values 2 or 3, so no `foldFixtures` envelope carries them.
+Each entry still names a pair the default envelope names (address, shape, slot, ops).
+
+Rejected: **one value** for both 2725 readings — it would not let a reader act, because the two readings call for
+different actions (another naming can settle a stale re-assertion, nothing can settle a pair that applies in neither
+order); **one value per shape** (same-id insert, mutual move, own-branch removal, changed child list) — it separates
+cases whose action is the same; **re-classing reading 1** too — it would move four fixtures and a shipped class for no
+reader gain. Also rejected: retiring the seven re-classed `precedenceFixtures` ids under new ones. Each still refuses
+the same pairs, only the reference reads the array, and the retirement convention is stated for `foldFixtures`
+verdicts; the ids are kept and their hashes move.
+
+Consequence: `RefusalClass` is a closed DU that gained two cases (breaking for an exhaustive F# match; it rides the
+0.105.0 draft, already breaking). A host that adds a precedence merge adds the two values with it.
+
+---
+
 ## 2026-11-14 — D33: the checkpoint re-seal is removed, and `v0.104.0` is the last tree that carries it
 
 **Decided (Phase 2726).** D31 named the one-shot re-seal (`CheckpointReseal.reseal`, `SqliteSink.resealCheckpoints`)

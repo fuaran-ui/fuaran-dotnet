@@ -90,22 +90,24 @@ open Fuaran.UI.OpStream.Abstractions
 //  the tail of the script. Both fold orders still have to reach one tree with
 //  the script, so precedence settles a pair whose two ops both apply in either
 //  order (two writes of one slot), and nothing else. A pair it cannot settle
-//  refuses with the entry the default context gives it, so a precedence
-//  refusal holds only entries the default refusal holds, and a precedence
-//  merge never answers `FoldFaulted` (operator ruling 2026-11-14):
+//  refuses, naming a pair the default refusal names, under a class that says
+//  why (Phase 2743), and a precedence merge never answers `FoldFaulted`
+//  (operator ruling 2026-11-14):
 //   - before the fold, a `DeleteModify` pair whose removal takes the other
 //     op's node (an edit, restyle, move or insert beside a removal of the node
-//     or of an ancestor; Phase 2695). A `DeleteModify` pair whose removal is of
-//     another node (an insert beside the removal of a sibling) applies in
-//     either order and is settled;
+//     or of an ancestor; Phase 2695), with the default entry, `DeleteModify`.
+//     A `DeleteModify` pair whose removal is of another node (an insert beside
+//     the removal of a sibling) applies in either order and is settled;
 //   - before the fold, a pair that does not apply in both orders (Phase 2725):
 //     two inserts of one id, or one op that, in the tree its own branch
-//     applied it to, leaves the other unable to apply there;
+//     applied it to, leaves the other unable to apply there. Class
+//     `NotInBothOrders`: no named side settles it;
 //   - after the fold, a pair whose named-side op does not apply, as written,
 //     where it is re-asserted (Phase 2725): its own branch later removed or
 //     moved what it addresses, or the other branch changed the child list a
-//     re-asserted reorder names.
-//  The classifier is `judge` in both contexts; the fold never classes a pair.
+//     re-asserted reorder names. Class `StaleReassertion`.
+//  `judge` classes every pair in both contexts and the fold never classes one;
+//  the two precedence-only classes are given only on the named-side path.
 //
 //  THE REPLAY WITNESS (Phase 2645, the cut). The policy is the DAG's only merge:
 //  a merge node records the script, and Core's closure fold replays it. That
@@ -125,7 +127,10 @@ type ReconcileSide =
     | A
     | B
 
-/// How the policy classes a pair it refuses.
+/// How the policy classes a pair it refuses. The default context gives only
+/// `DeleteModify` and `Conflict`; the last two are given only under a named
+/// precedence side, each naming why that side could not settle the pair
+/// (Phase 2743, WIRE_FORMAT §34.4).
 [<RequireQualifiedAccess>]
 type RefusalClass =
     /// One op removes a node the other touches (edits, moves or inserts under).
@@ -133,6 +138,14 @@ type RefusalClass =
     /// Any other interference Core reports that is neither an agreement nor an
     /// interleave.
     | Conflict
+    /// Precedence only: the two ops do not both apply in either order (two
+    /// inserts of one id, or one op that, in its own branch's tree, leaves the
+    /// other unable to apply), so no named side settles the pair.
+    | NotInBothOrders
+    /// Precedence only: the named side's op no longer applies where it is
+    /// re-asserted (its own branch later removed or moved what it addresses, or
+    /// the other branch changed the child list a re-asserted reorder names).
+    | StaleReassertion
 
 /// One refused pair: Core's conflict report entry (the two ops, the address
 /// they collide on and its shape) with the policy's class.
@@ -345,6 +358,8 @@ module DagReconcile =
         match c with
         | RefusalClass.DeleteModify -> "DeleteModify"
         | RefusalClass.Conflict -> "Conflict"
+        | RefusalClass.NotInBothOrders -> "NotInBothOrders"
+        | RefusalClass.StaleReassertion -> "StaleReassertion"
 
     let private orderKey (r: Refusal<'Msg>) =
         r.Conflict.Address,
@@ -505,9 +520,10 @@ module DagReconcile =
     /// policy refuses is admitted and `side`'s op of it is re-asserted at the end
     /// of the script, except a `DeleteModify` pair whose removal takes the other
     /// op's node, a pair that does not apply in both orders, and a pair whose
-    /// re-asserted op no longer applies, each of which refuses with the entry the
-    /// default context gives it (see the header). No context answers `FoldFaulted`
-    /// for a pair; the case remains for a fold that faults on an op the policy
+    /// re-asserted op no longer applies, each of which refuses as a pair the
+    /// default context refuses: the first with the default entry, the second as
+    /// `NotInBothOrders`, the third as `StaleReassertion` (see the header). No
+    /// context answers `FoldFaulted` for a pair; the case remains for a fold that faults on an op the policy
     /// itself admitted, which no fixture or generated pair reaches.
     let reconcileWith
         (precedence: ReconcileSide option)
@@ -538,7 +554,8 @@ module DagReconcile =
             // every pair through `judge`; the default refuses every pair it does not admit. A
             // named side settles two writes of one slot and nothing else, so it refuses here,
             // before anything is folded and with the entries the default context gives them,
-            // the `DeleteModify` pairs whose removal takes the other op's node: a node the other
+            // the `DeleteModify` pairs whose removal takes the other op's node (Phase 2743 leaves
+            // their class as it is; the two later readings re-class theirs): a node the other
             // op addresses that the base holds and the removing branch's head does not. The
             // class still decides the pair is a delete beside a modify; which node the removal
             // took is read from the branch head, and the fold is never the classifier. A
@@ -564,7 +581,7 @@ module DagReconcile =
 
                     // Phase 2725: a pair whose two ops do not both apply in either order is not two
                     // writes of one slot, so a named side cannot settle it either, and it refuses
-                    // here, before the fold, with the entries the default context gives it. Two
+                    // here, before the fold, as `NotInBothOrders` (Phase 2743). Two
                     // readings, both of the deltas and never of the fold. (1) The two ops insert a
                     // node under one id (with different bytes, or the pair would be an agreement):
                     // whichever applies second meets the id the first placed. (2) One op, in the
@@ -598,9 +615,19 @@ module DagReconcile =
                         || takesWhatItNeeds r.Conflict.Left r.Conflict.Right (treeA r.Conflict.Left)
                         || takesWhatItNeeds r.Conflict.Right r.Conflict.Left (treeB r.Conflict.Right)
 
+                    // Reading 1 is checked first, so a removal of the other op's node keeps the
+                    // `DeleteModify` it has in every context (such a pair also fails reading 2);
+                    // a pair only reading 2 refuses says so (Phase 2743).
                     refusals
-                    |> List.filter (fun r ->
-                        (r.Class = RefusalClass.DeleteModify && takesItsNode r) || notInBothOrders r)
+                    |> List.choose (fun r ->
+                        if r.Class = RefusalClass.DeleteModify && takesItsNode r then
+                            Some r
+                        elif notInBothOrders r then
+                            Some
+                                { r with
+                                    Class = RefusalClass.NotInBothOrders }
+                        else
+                            None)
 
             // The named side's op of a refused pair.
             let mine (r: Refusal<'Msg>) =
@@ -678,14 +705,20 @@ module DagReconcile =
                 | _, Error e -> Error(ReconcileFault.FoldFaulted e)
                 | Ok(_, _, staleAB), Ok(_, _, staleBA) when not (Set.isEmpty staleAB && Set.isEmpty staleBA) ->
                     // A named side settles a pair only by re-asserting its op, so a pair whose op
-                    // no longer applies in either fold order is NOT settled: it refuses with the
-                    // entry the default context gives it, beside every other pair whose named-side
-                    // op is the same.
+                    // no longer applies in either fold order is NOT settled: it refuses as
+                    // `StaleReassertion` (Phase 2743), beside every other pair whose named-side op
+                    // is the same.
                     let stale = Set.union staleAB staleBA
 
                     Error(
                         ReconcileFault.Refused(
-                            sortCanonical (refusals |> List.filter (mine >> canon >> stale.Contains))
+                            sortCanonical (
+                                refusals
+                                |> List.filter (mine >> canon >> stale.Contains)
+                                |> List.map (fun r ->
+                                    { r with
+                                        Class = RefusalClass.StaleReassertion })
+                            )
                         )
                     )
                 | Ok(ab, script, _), Ok(ba, _, _) ->
@@ -731,8 +764,10 @@ module DagReconcile =
 
     /// The refusal envelope: a JSON array of the refused pairs in canonical
     /// order, each an object with ordinal-sorted keys —
-    /// `{"address":…,"class":"Conflict"|"DeleteModify","left":<op>,"right":<op>,"shape":…[,"slot":…]}`
-    /// — the ops embedded as their canonical encodings and `slot` present only
+    /// `{"address":…,"class":<class>,"left":<op>,"right":<op>,"shape":…[,"slot":…]}`
+    /// — `class` one of `Conflict` and `DeleteModify` (every context) or
+    /// `NotInBothOrders` and `StaleReassertion` (a named precedence side only),
+    /// the ops embedded as their canonical encodings and `slot` present only
     /// for a `SlotClash`. Byte-stable across hosts; `sha256Hex` over it is the
     /// cross-host refusal hash.
     let encodeEnvelope (refusals: Refusal<'Msg> list) : string =
