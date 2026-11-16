@@ -22,7 +22,11 @@ module CoreFable.Program
 // written unconditionally when it was raised to 0.40.2 (Phase 2286), and the `CORE_0_41` arms
 // (`IdlField.Keyed`, Core Phase 494) were written unconditionally when it was raised to 0.41.0
 // (Phase 2420). A later candidate that breaks a spelling touched here gets a version constant in
-// `CoreFable.fsproj` (keyed off `CoreFableEffectiveCore`) the same way. None is defined today.
+// `CoreFable.fsproj` (keyed off `CoreFableEffectiveCore`) the same way. One is defined today:
+// `CORE_0_43` (Core Phases 638 and 651: both registries' dispatch takes a decision context and a
+// `Grant option`; Phase 642: a capability declares its result; Phase 644: the `Idl` record gains
+// `Contracts`), under which the touches below write the 0.43.0 spellings; it retires with its arms
+// when the pin is raised to 0.43.0.
 //
 // With `CORE_PARITY` defined (see `core-fable.ps1`), the program is also the VALUE leg: `--vectors`
 // prints `Fuaran.Core.ParityVectors.lines ()` — the cross-pipeline table the conformance kit ships
@@ -78,7 +82,12 @@ let private functionTouch =
     // Phase 210 — the capability seam's `Deferred` envelope: the host body answers in it and the
     // retyped `Registry.dispatch` has to compile under Fable too. Named deliberately, because
     // `Function.toJsonSchema` alone reached neither dispatcher.
+#if CORE_0_43
+    // Core 0.43.0 (Phase 642): a capability declares what it answers.
+    let cap = Capability.create "c" sg (ClientIsland Fable) (Returns.Value AnyString)
+#else
     let cap = Capability.create "c" sg (ClientIsland Fable)
+#endif
 
     let reg =
         CapabilityRegistry.empty
@@ -89,7 +98,13 @@ let private functionTouch =
     let body (_: Capability) () : Deferred<string> = Pending
 
     let dispatched =
+#if CORE_0_43
+        // Core 0.43.0 (Phase 638): the context and a grant follow the registry; the grant for this
+        // very invocation is presented, so the mint and the identity it is bound to run here too.
+        match CapabilityRegistry.dispatch reg () (Some(Capability.grant cap [])) "c" [] body with
+#else
         match CapabilityRegistry.dispatch reg "c" [] body with
+#endif
         | Ok Pending -> "pending"
         | Ok other -> sprintf "%A" other
         | Error e -> sprintf "%A" e
@@ -258,7 +273,13 @@ let private queryTouch =
         match QueryRegistry.empty |> QueryRegistry.register q with
         | Error e -> sprintf "%A" e
         | Ok registry ->
+#if CORE_0_43
+            // Core 0.43.0 (Phase 651): the query registry takes the context and a grant as the
+            // capability registry does; the grant for this read is presented.
+            match QueryRegistry.dispatch registry () (Some(Query.grant q [])) q.Id [] (fun _ -> Pending) with
+#else
             match QueryRegistry.dispatch registry q.Id [] (fun _ -> Pending) with
+#endif
             | Ok Pending -> "pending"
             | Ok other -> sprintf "%A" other
             | Error e -> sprintf "%A" e
@@ -472,7 +493,12 @@ let private idlTouch =
           NodeFields = []
           Ops = []
           Wire = WireShape.Default
-          Harden = HardenPolicy.Undeclared }
+          Harden = HardenPolicy.Undeclared
+#if CORE_0_43
+          // Core 0.43.0 (Phase 644): the vocabulary declares data only.
+          Contracts = []
+#endif
+        }
 
     // `trySampleNodes` is the one spelling from Core 0.36.0 (Phase 384), which removed `sampleNodes`.
     let sampled =
