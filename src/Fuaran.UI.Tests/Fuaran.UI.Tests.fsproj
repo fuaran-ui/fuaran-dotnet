@@ -511,6 +511,9 @@
     <!-- Phase 2312 - the one lowering of a UI finding into Core's guided finding, and the walk as one Core rule family. -->
     <Compile Include="CoreLoweringTests.fs" />
     <Compile Include="GateReadsCensusTests.fs" />
+    <!-- Phase 2665 - the change-set's hand-edit count: the build module, linked, and its tests. -->
+    <Compile Include="..\..\build\ChangeSet.fs" Link="ChangeSet.fs" />
+    <Compile Include="ChangeSetHandEditTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

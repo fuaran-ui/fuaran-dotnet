@@ -349,6 +349,19 @@ let private tierCssCopies =
       "fuaran-py",
       Path.Combine(cssSiblingRoot "fuaran-py", "src", "fuaran_ui", "renderer", "content", "fuaran-reference.css") ]
 
+/// Phase 2665 — what this build's own generators write in a roster host's checkout, host-relative,
+/// for the change-set's hand-edit count: the reference-CSS tier copies (`-- Css`), the embedded
+/// renderer assets (`-- RendererWeb`, through `scripts/sync-renderer-web.ps1`) and the authoring
+/// packs' schema copies (`docs/tools/authoring-pack.fsx --write`, drift-checked by `DriftChecks`).
+/// None can carry a generated header a reader could trust (each is a byte copy of a file that has
+/// none, or minified), so they are declared here, beside the targets that write them.
+let private generatorOutputs =
+    [ for tier, path in tierCssCopies -> tier, Path.GetRelativePath(cssSiblingRoot tier, path).Replace('\\', '/') ]
+    @ [ "fuaran", "src/Fuaran.UI.Renderer.Web/content/fuaran-renderer.js"
+        "fuaran", "src/Fuaran.UI.Renderer.Web/content/fuaran-renderer.json"
+        "fuaran", "docs/prompt-pack/schema.json"
+        "fuaran", "docs/prompt-pack-lenient/schema.json" ]
+
 // ─── Phase 433 — the vocabulary fingerprint stamp ──────────────────────────
 //
 // The canonical sheet carries a `fuaran-vocabulary-fingerprint:` stamp in its
@@ -648,10 +661,12 @@ let private runSuiteCaptured (label: string) (args: string list) workingDir =
     if result.ExitCode <> 0 then
         failwithf "%s FAILED (exit %d)" label result.ExitCode
 
-/// Phase 2301 — `--dry-run` / `--legs` for the `ChangeSet` target, split out of the arguments in
+/// Phase 2301 — `--dry-run` / `--legs` (and Phase 2665's `--base`) for the `ChangeSet` target, split out of the arguments in
 /// `main` before FAKE parses them.
 let mutable private changeSetOptions: ChangeSet.Options =
-    { DryRun = false; Legs = None }
+    { DryRun = false
+      Legs = None
+      Bases = Map.empty }
 
 let private init (args: string array) =
     args
@@ -935,7 +950,7 @@ let private registerTargets (args: string array) =
     // certify every roster host, report. Standalone: it depends on no other target, and no gate
     // target depends on it. The stages and their reasons are `build/ChangeSet.fs`.
     Target.create "ChangeSet" (fun _ ->
-        match ChangeSet.run repoRoot corpusRootPath changeSetOptions with
+        match ChangeSet.run repoRoot corpusRootPath generatorOutputs changeSetOptions with
         | 0 -> ()
         | 3 -> failwith "ChangeSet: PARTIAL (narrowed with --legs) — never a green"
         | _ -> failwith "ChangeSet: RED — the stage report above names the stage")

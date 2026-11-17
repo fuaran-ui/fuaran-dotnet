@@ -134,6 +134,17 @@ The IDL codegen family (Phase 317) cheapens the *mechanical* legs of this table 
 *conceptual* cost – the a11y curation, the confusion tax, and the working-memory tax are irreducible
 and are the ones this charter guards.
 
+**The hand-edit figure (Phase 2665).** What a vocabulary change cost by hand is measured, not
+estimated. The change-set command (`dotnet run --project Build.fsproj -- ChangeSet`, WIRE_FORMAT.md
+§11) asks every roster host's checkout and the corpus which files the change touched and classes each
+as *generated* (its header says so, or the corpus's data or this build lists it as a generator output)
+or *hand-edited*. It prints the two counts per host and a total after its stage report, and records
+them in `output/change-set/hand-edits.json` beside the leg logs; `--dry-run` prints the same counts
+and writes nothing, and `--base <host>=<a>..<b>` measures a change already committed. **A phase that
+changes the vocabulary cites that record's per-host hand counts and total in its outcome**, so the
+cost of growing the language is a tracked number rather than a remembered one. The baseline is in
+Phase 2665's outcome.
+
 ---
 
 ## 2. Variant-vs-kind guidance (the quiet-churn rule)
