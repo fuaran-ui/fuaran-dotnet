@@ -2069,3 +2069,81 @@ let witnessPairTests =
               Expect.hasLength keyedList 1 "an ordered list declared keyed is one disagreement"
               Expect.stringContains keyedList.Head "Box.children" "named at the slot"
           } ]
+
+// ============================================================================
+//  Phase 2664 — the first per-kind behaviour family read from the vocabulary.
+//
+//  The kind category is a table in disguise: a constant per kind, with no logic.
+//  The vocabulary already declares it (each IDL kind's `category`) and the
+//  generator already emits it (`Generated.kindCategories`, the
+//  `VocabularyConstants` derivation), so `Kind.category`'s hand match was a
+//  second copy of a declared table. The certification is 2640's method: the
+//  generated table and the hand match it replaces are run over every node of
+//  every corpus fixture, and the sample must reach every kind the vocabulary
+//  declares, so the agreement is total rather than a claim about the kinds a
+//  sample happened to hold.
+// ============================================================================
+
+module private KindCategoryFamily =
+
+    /// The vocabulary's spelling of a host category. The host's `Structural` is the
+    /// vocabulary's `Meta`; every other case is spelt alike.
+    let declaredName (category: NodeCategory) : string =
+        match category with
+        | NodeCategory.Layout -> "Layout"
+        | NodeCategory.Display -> "Display"
+        | NodeCategory.Input -> "Input"
+        | NodeCategory.Visualisation -> "Visualisation"
+        | NodeCategory.Structural -> "Meta"
+
+    /// Every category the generated table declares for one wire tag (one, when the table is sound).
+    let generated (tag: string) : string list =
+        Generated.kindCategories
+        |> Map.toList
+        |> List.filter (fun (_, tags) -> Set.contains tag tags)
+        |> List.map fst
+
+    /// Every node of every corpus fixture, structural and keyed positions alike.
+    let corpusNodes () : Node<obj> list =
+        let rec all (n: Node<obj>) =
+            n :: List.collect all (Generated.children n @ Generated.keyedChildren n)
+
+        WitnessPair.corpusRoots () |> List.collect all
+
+[<Tests>]
+let kindCategoryFamilyTests =
+    testList
+        "Phase 2664 - the kind category is read from the vocabulary's declared table"
+        [ test "every declared kind has exactly one declared category, and every category name is a host category" {
+              for tag in Generated.allWireTags do
+                  Expect.hasLength (KindCategoryFamily.generated tag) 1 (sprintf "%s declares one category" tag)
+
+              Expect.equal
+                  (Generated.kindCategories |> Map.toList |> List.map fst |> Set.ofList)
+                  (set [ "Display"; "Input"; "Layout"; "Meta"; "Visualisation" ])
+                  "the declared category names are exactly the host's five"
+          }
+
+          test "the generated table agrees with Kind.category on every corpus node, and the sample reaches every kind" {
+              let nodes = KindCategoryFamily.corpusNodes ()
+              Expect.isGreaterThan nodes.Length 100 "the corpus's node fixtures are read — is the corpus clone present?"
+
+              let disagreements =
+                  nodes
+                  |> List.choose (fun n ->
+                      let tag = Kind.wireTag n.Kind
+                      let hand = KindCategoryFamily.declaredName (Kind.category n.Kind)
+
+                      match KindCategoryFamily.generated tag with
+                      | [ declared ] when declared = hand -> None
+                      | declared -> Some(sprintf "%s: hand %s, declared %A" tag hand declared))
+                  |> List.distinct
+
+              Expect.isEmpty disagreements "the generated table and the hand match agree"
+
+              let reached = nodes |> List.map (fun n -> Kind.wireTag n.Kind) |> Set.ofList
+
+              Expect.isEmpty
+                  (Set.difference (Set.ofList Generated.allWireTags) reached)
+                  "the sample reaches every declared kind, so the agreement is total"
+          } ]
