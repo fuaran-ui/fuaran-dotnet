@@ -3039,52 +3039,48 @@ module Kind =
         | NodeKind.DataGrid _ -> "Grid"
         | other -> wireTag other
 
+    /// A category name as the vocabulary spells it, read as the host's category. The host's
+    /// `Structural` is the vocabulary's `Meta`; the other four are spelt alike. `None` for a
+    /// name the host does not have a case for.
+    let private ofDeclaredName (name: string) : NodeCategory option =
+        match name with
+        | "Layout" -> Some NodeCategory.Layout
+        | "Display" -> Some NodeCategory.Display
+        | "Input" -> Some NodeCategory.Input
+        | "Visualisation" -> Some NodeCategory.Visualisation
+        | "Meta" -> Some NodeCategory.Structural
+        | _ -> None
+
+    /// Every kind's category by wire tag, read once from the table the vocabulary declares
+    /// (each IDL kind's `category`, emitted as `Generated.kindCategories`).
+    let private declaredCategories: Map<string, NodeCategory> =
+        [ for KeyValue(name, tags) in Generated.kindCategories do
+              match ofDeclaredName name with
+              | Some category ->
+                  for tag in tags do
+                      yield tag, category
+              | None -> () ]
+        |> Map.ofList
+
     /// The behavioural category of a kind — derived, not stored (Phase 692).
+    ///
+    /// Phase 2664 — read from the vocabulary's declared table rather than from a hand match
+    /// over every kind: the category is a constant per kind, the IDL declares it on every kind,
+    /// and the generator emits it. A new kind therefore takes its category from the declaration
+    /// that admits it. A declared name the host has no case for is refused here, naming the
+    /// kind, and `GeneratedLayerTests` pins that every declared kind has exactly one category
+    /// the host reads, so the refusal is reached in the gate rather than by a caller.
     let category (kind: NodeKind<'Msg>) : NodeCategory =
-        match kind with
-        | NodeKind.Box _
-        | NodeKind.SplitPanel _
-        | NodeKind.Tabs _
-        | NodeKind.Stepper _
-        | NodeKind.SummaryList _
-        | NodeKind.Disclosure _
-        | NodeKind.Modal _
-        | NodeKind.ScrollArea _ -> NodeCategory.Layout
-        | NodeKind.Heading _
-        | NodeKind.Markdown _
-        | NodeKind.Metric _
-        | NodeKind.Badge _
-        | NodeKind.Sparkline _
-        | NodeKind.Callout _
-        | NodeKind.Progress _
-        | NodeKind.Skeleton _
-        | NodeKind.Icon _
-        | NodeKind.LabelValueRow _
-        | NodeKind.Fact _
-        | NodeKind.Link _
-        | NodeKind.Image _
-        | NodeKind.Media _
-        | NodeKind.Embed _
-        | NodeKind.List _
-        | NodeKind.Tree _
-        | NodeKind.Toast _
-        | NodeKind.CodeBlock _
-        | NodeKind.Math _
-        | NodeKind.Drawing _ -> NodeCategory.Display
-        | NodeKind.Form _
-        | NodeKind.Filters _
-        | NodeKind.Button _
-        | NodeKind.FileUpload _
-        | NodeKind.Select _ -> NodeCategory.Input
-        | NodeKind.DataGrid _
-        | NodeKind.Chart _
-        | NodeKind.Map _ -> NodeCategory.Visualisation
-        | NodeKind.Custom _
-        | NodeKind.ErrorBoundary _
-        | NodeKind.Switch _
-        | NodeKind.FragmentDecl _
-        | NodeKind.FragmentRef _
-        | NodeKind.Mount _ -> NodeCategory.Structural
+        let tag = wireTag kind
+
+        match Map.tryFind tag declaredCategories with
+        | Some category -> category
+        | None ->
+            invalidOp (
+                sprintf
+                    "kind %s has no category this host reads: the vocabulary declares none for it, or one outside Layout, Display, Input, Visualisation and Meta"
+                    tag
+            )
 
 // ─── Behind reader (Phase 1812) ───────────────────────────────────────────
 

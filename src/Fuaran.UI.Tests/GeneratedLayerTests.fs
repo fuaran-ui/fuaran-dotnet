@@ -2078,10 +2078,16 @@ let witnessPairTests =
 //  generator already emits it (`Generated.kindCategories`, the
 //  `VocabularyConstants` derivation), so `Kind.category`'s hand match was a
 //  second copy of a declared table. The certification is 2640's method: the
-//  generated table and the hand match it replaces are run over every node of
-//  every corpus fixture, and the sample must reach every kind the vocabulary
-//  declares, so the agreement is total rather than a claim about the kinds a
-//  sample happened to hold.
+//  generated table and the hand match it replaces were run over every node of
+//  every corpus fixture, with the sample required to reach every kind the
+//  vocabulary declares so the agreement was total, and only then was the hand
+//  match deleted (the certifying commit carries both). `Kind.category` now
+//  reads the table, so the second test below pins that reading: the host's
+//  spelling of each category against the declaration, at every kind.
+//
+//  The first test is the forward-coupling guard. A new kind cannot be declared
+//  without a category (the IDL record requires one), and a category name the
+//  host has no case for reds here rather than at a caller.
 // ============================================================================
 
 module private KindCategoryFamily =
@@ -2124,7 +2130,7 @@ let kindCategoryFamilyTests =
                   "the declared category names are exactly the host's five"
           }
 
-          test "the generated table agrees with Kind.category on every corpus node, and the sample reaches every kind" {
+          test "Kind.category reads the declared category on every corpus node, and the sample reaches every kind" {
               let nodes = KindCategoryFamily.corpusNodes ()
               Expect.isGreaterThan nodes.Length 100 "the corpus's node fixtures are read — is the corpus clone present?"
 
@@ -2132,14 +2138,14 @@ let kindCategoryFamilyTests =
                   nodes
                   |> List.choose (fun n ->
                       let tag = Kind.wireTag n.Kind
-                      let hand = KindCategoryFamily.declaredName (Kind.category n.Kind)
+                      let host = KindCategoryFamily.declaredName (Kind.category n.Kind)
 
                       match KindCategoryFamily.generated tag with
-                      | [ declared ] when declared = hand -> None
-                      | declared -> Some(sprintf "%s: hand %s, declared %A" tag hand declared))
+                      | [ declared ] when declared = host -> None
+                      | declared -> Some(sprintf "%s: Kind.category %s, declared %A" tag host declared))
                   |> List.distinct
 
-              Expect.isEmpty disagreements "the generated table and the hand match agree"
+              Expect.isEmpty disagreements "Kind.category and the declared table agree"
 
               let reached = nodes |> List.map (fun n -> Kind.wireTag n.Kind) |> Set.ofList
 

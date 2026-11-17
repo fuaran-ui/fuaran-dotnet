@@ -354,6 +354,55 @@ check too, on the enumeration-completeness rule the authoring-surface pin uses. 
 deliberately does **not** police is two cases sharing a code *within* one registry — several
 defect-DU cases legitimately map to one code, and nothing can distinguish that from a repeat.
 
+## 6. Per-kind behaviour belongs in the vocabulary (Phase 2664)
+
+Every host generates its MODEL from `idl.json`, so the structure of a kind is declared once. A
+kind's BEHAVIOUR is still spread across hand-written matches with one arm per kind, and each of
+them is a place a new kind must be remembered. Some of those matches are tables in disguise: a
+constant per kind, with no logic. A table belongs in the vocabulary, declared on the kind, and
+read by the host from the generated layer, so admitting a kind admits its row.
+
+**The first family is the kind category.** Each IDL kind already declares its `category`, and the
+generator already emits the table (`Generated.kindCategories`). `Kind.category` was a 43-arm hand
+copy of it. It now reads the table; `GeneratedLayerTests` pins that every declared kind has exactly
+one category the host reads, and that the host's reading agrees with the declaration at every kind.
+
+**The inventory** (2026-11-17, every match in `src/` outside `Generated.fs` with an arm for
+nearly every kind). Table: a constant per kind. Plan: already under the renderers' per-kind
+element plan (Phase 2108). Logic: real per-kind logic, which stays hand-written.
+
+| Match | File | Class |
+|---|---|---|
+| `Kind.category` | `Fuaran.UI/Types.fs` | table — now read from the vocabulary |
+| `kindClass` | `Fuaran.UI.Renderer.Core/Theme.fs` | table, except `Box` (role and layout) and `Custom` (its ids) |
+| `HostLimits.childCount` | `Fuaran.UI/HostLimits.fs` | table: which field is the kind's side-by-side child list |
+| `forwardsToSemanticElement`, `tooltipRidesSemanticElement` | `Fuaran.UI.Renderer.Core/Accessibility.fs` | table (allow-lists with a default, not exhaustive) |
+| `availableFields` | `Fuaran.UI.Ops/Introspect.fs` | table, except `Box` (its fields follow its layout mode) |
+| `availableBindingSlots` | `Fuaran.UI.Ops/Introspect.fs` | table (partial: the kinds with binding slots) |
+| `renderKind` (client, server) | `Fuaran.UI.Renderer/Render.fs`, `Fuaran.UI.Renderer.Server/Render.fs` | plan |
+| `isBidiIsolated` | `Fuaran.UI.Renderer.Core/Accessibility.fs` | logic (reads each kind's text sources) |
+| `fromSpec` | `Fuaran.UI/StructuralQuery.fs` | logic (projects each kind's `Tone`) |
+| `held`, `reads` | `Fuaran.UI/NodeChildren.fs` | logic (the structural walk) |
+| `walkNode` | `Fuaran.UI/BindingWalk.fs` | logic |
+| `walk` | `Fuaran.UI/DeadOnDecode.fs` | logic |
+| `walkBody` | `Fuaran.UI/PreEmitValidate.fs` | logic |
+| `dispatchUpdateField`, `dispatchReplaceBinding` | `Fuaran.UI.Ops/Apply.fs` | logic |
+| `extractProps`, `extractBindings`, `extractSlot` | `Fuaran.UI.AiTools/Tools.fs` | logic |
+| `walkVisible` | `Fuaran.UI.Renderer.Server/Speech.fs` | logic |
+| `renderKind` | `Fuaran.UI.Renderer.Server/Email.fs` | logic (the email projection is not under the element plan) |
+| `extractBindingSlots`, `resolveSlot` | `Fuaran.UI.Renderer/DebugGlobal.fs` | logic |
+| `ownContentLength` | `Fuaran.UI.Ops.CleanRoom/Skeleton.fs` | logic |
+| `extractFieldUpdates` | `Fuaran.UI.OpStream.Replay/TreeOpDiff.fs` | logic |
+| `resolveOwnFields` | `Fuaran.UI.Program/UiWitness.fs` | logic |
+
+**The remaining tables need a declaration slot the generator does not yet have.** The category
+could move because the IDL kind record already carries it. The other table families are new
+per-kind facts (a CSS hook, a semantic-element flag, the child-list field), and the IDL's kind
+record holds no slot for them: its annotations are the deprecation, in-process-only, since and doc
+notes, and the generator emits no per-kind table from a support declaration. Declaring them is a
+generator change (a per-kind table the vocabulary declares, emitted as a total lookup that refuses
+a kind with no row), and the families follow it one by one.
+
 ---
 
 ## Appendix A – Plateau taxonomy (reserve names now, implement on evidence)
