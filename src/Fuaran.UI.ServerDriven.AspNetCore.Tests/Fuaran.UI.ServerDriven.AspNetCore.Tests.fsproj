@@ -6,6 +6,7 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="TestSupport.fs" />
     <Compile Include="InboundTests.fs" />
     <Compile Include="ConnTokenTests.fs" />
     <Compile Include="SseChannelTests.fs" />

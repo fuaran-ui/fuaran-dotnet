@@ -99,14 +99,15 @@ let tests =
               Expect.isTrue (channel.Pushed |> List.skip 1 |> List.forall isRebaseline) "only re-baselines pushed"
           }
 
-          test "overlapping Handle calls are serialised: distinct Seq values, no lost transition" {
+          testTask "overlapping Handle calls are serialised: distinct Seq values, no lost transition" {
               let slow Inc m =
                   System.Threading.Thread.Sleep 20
                   m + 1
 
               let channel, conn = connect 64 slow
+              // Awaited, not waited on: the test holds no pool thread the steps need.
               let steps = [| for _ in 1..8 -> Task.Run(fun () -> conn.Handle click) |]
-              Task.WaitAll steps
+              do! Task.WhenAll steps
               Expect.equal conn.Session.Model 8 "every transition applied"
               Expect.equal (channel.Pushed |> List.map _.Seq |> List.sort) [ 1..8 ] "one Seq per frame"
           }
