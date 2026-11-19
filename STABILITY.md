@@ -8189,6 +8189,42 @@ sees it, because every page every host renders changes its spacing. The slot alr
 `--fuaran-space-md` (stacks, grids) or `--fuaran-space-lg` (dashboards), or declares a gap; a host stylesheet that
 zeroed node margins inside its own containers to work around the double spacing can drop that rule.
 
+### What rides this slot — Phase 2813 (the program adapters adopt `Fuaran.Program` 0.16.0)
+
+**Class: breaking, by dependency** — the draft's own class, so it rides rather than advances it. Packages
+`Fuaran.UI.Program` and `Fuaran.UI.Program.Server` are built against `Fuaran.Program.*` 0.16.0 (from 0.13.0, one hop
+across 0.13.1, 0.14.1, 0.15.0 and 0.16.0), and `Fuaran.UI`, which references `Fuaran.Program.Bounded`, takes the same
+floor. No type or member these packages declare moves; what moves is the program core a consumer takes with them.
+
+**What a consumer of the adapters gains.**
+
+- **The closure share** (Program 0.16.0): `DemandedProjection.Closure` and `ServerDemand.Closure` on every demanded
+  document the adapters project, the client and the server tier counted separately over distinct demands, and carried
+  on the document so a reader takes the figure instead of recounting it. The UI tier certifies Program's
+  `demanded-closure-share` family at the UI witness (below).
+- Through the durable interpreter and the server placement, everything the three releases add for a host: per-event
+  quantity pricing through the calls (0.14.1), an op stage's partial receipt and retryable and standing-condition
+  declarations on resume (0.15.0), and the file journal store's one-live-process hold on a run (0.16.0). None of it is
+  adopted by the adapters themselves; each is the host's to declare.
+
+**What a consumer of the adapters pays.**
+
+- **The demanded document is version 15.** A version-14 document is refused (`UnknownVersion`), and an envelope signed
+  over one reports drift until it is re-signed. Every document carries `closure` after `quantities`, and every server
+  tier the same member after `constraints`; a reader refuses a carried share its lists do not project. The demanded
+  corpus copy in `src/Fuaran.UI.Program.Server.Tests/conformance/` is re-emitted at version 15.
+- **Program's own breaking entries, for a host that builds on the program core directly.** `ActionWitness` gains
+  `Refusals` (0.14.1; the UI witness declares `RefusalReading.Continues`, its reading before the member existed, so no
+  UI run moves). `ServerEffectRegistry` and `PerformerFacets` gain a member each, `WriteReceipt` carries a `Kind` where
+  it carried `Digest`, and the server tier's quantities are priced per event (0.14.1). `OpPerformance.Performed` and
+  `OpContract.check` run over `OpFailure`, and `JournalPhase` / `JournaledStep` carry a partial and gain a retryable
+  case (0.15.0). A second live process resuming a run the file journal store holds is refused (0.16.0). Program's `STABILITY.md` states each.
+- **Recompile.** A binary built against 0.13.x fails to load beside 0.16.0.
+
+**What did not move.** The UI witness's readings, every UI action's lowering and every refusal token the adapters
+emit; the program wire; the UI wire. The parity, bounded, runtime and server suites run unchanged apart from the
+construction sites the hop forced and the demanded documents moved to version 15.
+
 ## 0.104.0 (RELEASED — tagged v0.104.0 at cc477007, 2026-11-11) — the slot opened after v0.103.0 was released; advanced from 0.103.1 on 2026-11-10 by Phase 2640, whose change is breaking
 
 _`v0.103.0` is TAGGED (2026-11-09, at `1b783c61`), so nothing may ride it: Phase 2639 opened the next slot at the
