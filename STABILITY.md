@@ -8189,6 +8189,42 @@ sees it, because every page every host renders changes its spacing. The slot alr
 `--fuaran-space-md` (stacks, grids) or `--fuaran-space-lg` (dashboards), or declares a gap; a host stylesheet that
 zeroed node margins inside its own containers to work around the double spacing can drop that rule.
 
+### What rides this slot — Phase 2752 (scenario fragments: a parameter panel and a two-scenario comparison)
+
+**Class: additive.** Package `Fuaran.UI.Fragments`. Two certified entries join `Stdlib.all`, and both are compositions
+of shipped kinds: no kind, variant or field is added, and no wire byte of an existing fixture moves.
+
+- **`parameter-panel`** (`Stdlib.parameterPanel`, `Stdlib.ParameterPanel`; effect `WritesHost`). It yields one to four
+  controls (`count`). Parameter N has the holes `param-N-name`, `-label`, `-control` (`number` or `choice`), `-min`,
+  `-max`, `-step`, `-default` and `-options`. Each control is a `Filters` chip that writes the filter key named by its
+  parameter, so a pipeline reads it with `TransformParam { Name; From = Binding.Filter name }`. A control whose
+  parameter no pipeline reads draws FUARAN074. A pipeline reading a parameter that no control declares draws FUARAN075.
+- **`scenario-comparison`** (`Stdlib.scenarioComparison`, `Stdlib.ScenarioComparison`; effect `ReadsHost`). One model
+  is defined once in the pipeline (`Transform.Define`) and called once per scenario. The pipeline then derives
+  `difference = scenario-b - scenario-a` and projects the key and the three figures into a `DataGrid`. The grid carries
+  that pipeline expanded (`FnDef.expand`), so no `define` or `invoke` reaches the wire. The entry's
+  model is `base * (1 + growth)` over host-named rows. Its holes are `heading`, `source`, `key`, `measure`,
+  `key-label`, `a-label`, `b-label`, `difference-label`, `a-growth` and `b-growth`.
+- **New members.** The types `ScenarioModel` and `ScenarioSide`. In `Stdlib`: `scenarioComparisonOf`, which builds the
+  comparison over a caller's model and refuses a side that does not bind exactly the model's scenario parameters;
+  `scenarioPipelineDefined`, `scenarioPipeline` (the expansion, refused where the model does not expand) and
+  `scenarioParameters`; `scenarioParamName`; and the column-name literals `ScenarioAColumn`,
+  `ScenarioBColumn` and `DifferenceColumn`. `Stdlib.boundExamples` gains one reference, a panel with a number control
+  and a choice control. `StdlibFragment` is unchanged.
+- **Corpus.** Five node fixtures are new: `frag-stdlib-parameter-panel`, `frag-stdlib-parameter-panel-ref`,
+  `frag-stdlib-parameter-panel-ref-mixed`, `frag-stdlib-scenario-comparison` and
+  `frag-stdlib-scenario-comparison-ref`. They use no new wire vocabulary.
+
+- **`Fuaran.UI.Design` (behaviour).** A fragment card now runs the server preview a component card runs, so a bound
+  grid in a fragment previews as the static table of its rows. A grid whose `Transform` reads a host `Ref` source
+  previews as its columns over no rows, with a caption naming the source, where it rendered a hydration placeholder.
+
+**What a consumer does.** Nothing. A consumer that pins the library's size (the charter's six to ten entries) now
+counts ten.
+
+**Certified by** the `Phase 2752 — a parameter panel and a two-scenario comparison` list in
+`src/Fuaran.UI.Fragments.Tests/StdlibCertificationTests.fs`, and by the library's quantified certification.
+
 ### What rides this slot — Phase 2813 (the program adapters adopt `Fuaran.Program` 0.16.0)
 
 **Class: breaking, by dependency** — the draft's own class, so it rides rather than advances it. Packages

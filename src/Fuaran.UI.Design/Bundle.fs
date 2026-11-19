@@ -936,7 +936,15 @@ let rec private serverPreview (node: Node<unit>) : Node<unit> * string list =
                  (spec.Columns |> List.map _.Label)
                  [ for r in rows -> [ for c in spec.Columns -> cell c r ] ],
              [ "Shown as the static read-only table the server renderer emits for the same rows, toned pills included. The interactive grid (sorting, selection) renders client-side." ]
-         | None -> node, [])
+         | None ->
+             // Phase 2752 — rows the HOST resolves (a `Ref` source) are not the
+             // preview's to hold. The grid is shown as its columns over no rows, and
+             // the caption says whose rows they are; a placeholder would show nothing.
+             match spec.Source with
+             | Binding.Transform(TransformSource.Data(Fuaran.Core.DataSource.Ref source), _, _) ->
+                 staticTable node spec.Columns (spec.Columns |> List.map _.Label) [],
+                 [ $"Its rows are the host's source \"{source}\", which a preview does not hold: shown as the grid's columns, with no rows. The grid fills them client-side." ]
+             | _ -> node, [])
     | NodeKind.Map spec ->
         (match BindingResolver.tryResolve exampleSources spec.Source with
          | Some markers ->
@@ -1166,7 +1174,8 @@ let private fragmentCard (styles: CardStyles) (fragment: StdlibFragment<unit>) :
             let children, rebuild = NodeChildren.lens NodeChildren.Reach.fragmentScope node
             rebuild (children |> List.map fillSlots)
 
-    let tree = fillSlots (fragment.Materialize values)
+    // Phase 2752 — a fragment over a bound grid previews as a component card's does.
+    let tree, captions = serverPreview (fillSlots (fragment.Materialize values))
 
     let body =
         [ $"<h1>{enc fragment.Name}</h1>"
@@ -1176,8 +1185,11 @@ let private fragmentCard (styles: CardStyles) (fragment: StdlibFragment<unit>) :
         @ (holes |> List.map (fun h -> $"<li>{enc h}</li>"))
         @ [ "</ul>"
             $"<p>Apply it with a <code>FragmentRef</code> named <code>{enc fragment.Name}</code>, binding the required holes; the example below binds every one.</p>"
-            "</div>"
-            render tree ]
+            "</div>" ]
+        @ (captions
+           |> List.distinct
+           |> List.map (fun c -> $"<p class=\"ds-note\">{enc c}</p>"))
+        @ [ render tree ]
         |> String.concat "\n"
 
     { Group = CardGroup.Fragments

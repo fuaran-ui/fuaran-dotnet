@@ -1193,6 +1193,39 @@ The renderer projects each `field` off the row (a `Transform` produces rows keye
 
 Give the grid a `rowKeyField` (stable identity – it also drives the selected-row highlight). The `nodeId` must name a real, selection-producing node: a `Selection` over an id absent from the tree is FUARAN070 (error); over a non-Visualisation node, FUARAN071 (warn). A present `onRowClick` closure wins and suppresses the default write.
 
+### A what-if over a pipeline — the scenario fragments (Phase 2752)
+
+A "what if" over data you already bind needs no new kind. Keep the tree fixed and let the parameters
+move. The certified fragment library (`Fuaran.UI.Fragments`) packages the two halves:
+
+- **`parameter-panel`** — the controls. Parameter *N* gets a control named `param-N-name` that
+  writes **the filter key of that name**. A number control is a bounded `RangedNumber` with
+  `param-N-min`, `param-N-max`, `param-N-step` and `param-N-default`. A choice control takes its
+  options from `param-N-options`. A pipeline reads the parameter through `params`, as in the filter
+  wiring above: `{ "from": { "$type": "Filter", "name": "growth" }, "name": "growth" }`.
+- **`scenario-comparison`** — one model under two parameter sets, side by side, with a difference
+  column. The pipeline derives each scenario from the same model expression with that scenario's
+  parameters, then derives the difference (`scenario-b - scenario-a`). **Do not compute either figure yourself, and do
+  not compute their difference yourself.** The pipeline computes all three. The fragment's model is
+  `base * (1 + growth)` over rows the host names, and each scenario's growth is a value you bind.
+  A scenario that follows a panel control is a `Transform` whose `params` entry reads the control's
+  filter (above). An F# author builds that comparison over any model with
+  `Stdlib.scenarioComparisonOf`.
+
+```json
+{ "$type": "FragmentRef", "name": "scenario-comparison",
+  "args": { "source": { "$type": "Str", "value": "budget-lines" },
+            "key": { "$type": "Str", "value": "line" },
+            "measure": { "$type": "Str", "value": "cost" },
+            "a-growth": { "$type": "Float", "value": 0 },
+            "b-growth": { "$type": "Float", "value": 0.03 } } }
+```
+
+The panel and its readers are checked against each other. **Name only the parameters a pipeline
+reads.** A control that nothing reads is `FUARAN074`. A `params` entry reading a filter that no
+control declares is `FUARAN075`, and that one is an error. Moving one control re-evaluates only the
+sites that read its parameter.
+
 ### A bound grid's declared behaviours — sort, page, edit (Phases 861 / 862 / 863)
 
 One rule decides all three, and it is the thing to learn once: **a grid behaviour the user drives is declared as a named `$state` key the grid both writes and reads, and the renderer draws the control.** There is deliberately no grid-level `sortable` or `pageable` boolean — the KEY is the affordance, so a flag with no key behind it would be a control that writes state nothing reads.
