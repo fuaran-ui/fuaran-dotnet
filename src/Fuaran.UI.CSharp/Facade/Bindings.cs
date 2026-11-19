@@ -246,6 +246,8 @@ public static class Binding
     /// <paramref name="source"/>. In a rows slot the binding is the result rows; in a
     /// scalar slot it is the lone cell of an exactly-1×1 result.
     /// </summary>
+    /// <param name="source">The table the pipeline reads from.</param>
+    /// <param name="pipeline">The pipeline steps, applied in order to <paramref name="source"/>.</param>
     /// <param name="parameters">
     /// Named values the pipeline reads as <c>param</c> / <c>in</c>, each fed by its own
     /// binding — this is how a filter chip or a selected row re-parameterises the
@@ -350,9 +352,13 @@ public readonly struct LocalFlush
 /// <summary>Date-presentation breadth for <see cref="LocaleFormat.Date"/> — maps to the F# <c>DateStyle</c>.</summary>
 public enum DateStyle
 {
+    /// <summary>The <c>Short</c> value of <see cref="DateStyle"/>.</summary>
     Short,
+    /// <summary>The <c>Medium</c> value of <see cref="DateStyle"/>.</summary>
     Medium,
+    /// <summary>The <c>Long</c> value of <see cref="DateStyle"/>.</summary>
     Long,
+    /// <summary>The <c>Full</c> value of <see cref="DateStyle"/>.</summary>
     Full,
 }
 
@@ -363,21 +369,32 @@ public enum DateStyle
 /// </summary>
 public enum TimeStyle
 {
+    /// <summary>The <c>Short</c> value of <see cref="TimeStyle"/>.</summary>
     Short,
+    /// <summary>The <c>Medium</c> value of <see cref="TimeStyle"/>.</summary>
     Medium,
+    /// <summary>The <c>Long</c> value of <see cref="TimeStyle"/>.</summary>
     Long,
+    /// <summary>The <c>Full</c> value of <see cref="TimeStyle"/>.</summary>
     Full,
 }
 
 /// <summary>Relative-time grain for <see cref="LocaleFormat.RelativeTime"/> — maps to the F# <c>RelativeTimeUnit</c>.</summary>
 public enum RelativeTimeUnit
 {
+    /// <summary>The <c>Second</c> value of <see cref="RelativeTimeUnit"/>.</summary>
     Second,
+    /// <summary>The <c>Minute</c> value of <see cref="RelativeTimeUnit"/>.</summary>
     Minute,
+    /// <summary>The <c>Hour</c> value of <see cref="RelativeTimeUnit"/>.</summary>
     Hour,
+    /// <summary>The <c>Day</c> value of <see cref="RelativeTimeUnit"/>.</summary>
     Day,
+    /// <summary>The <c>Week</c> value of <see cref="RelativeTimeUnit"/>.</summary>
     Week,
+    /// <summary>The <c>Month</c> value of <see cref="RelativeTimeUnit"/>.</summary>
     Month,
+    /// <summary>The <c>Year</c> value of <see cref="RelativeTimeUnit"/>.</summary>
     Year,
 }
 

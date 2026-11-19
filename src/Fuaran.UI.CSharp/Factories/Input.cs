@@ -196,7 +196,7 @@ public sealed class FormField
     public static FormField Text(string id, Text label, string initial = "", bool required = false, Text? help = null, FieldRule? rule = null) =>
         Make(id, label, FsGen.FormFieldKind<object>.NewText(Fuaran.FieldValue(global::Fuaran.Core.JVal.NewJStr(initial)), Fs.Some(Fuaran.NoFieldHandler())), required, help, rule);
 
-    /// <summary>A number field. A numeric RANGE is <see cref="Fuaran.RangedNumber"/>'s
+    /// <summary>A number field. A numeric RANGE is <c>RangedNumber</c>'s
     /// job, not <paramref name="rule"/>'s — the rule vocabulary deliberately does not
     /// restate a bound that already had a spelling (FUARAN101 refuses one that does).</summary>
     public static FormField Number(string id, Text label, double initial = 0.0, bool required = false, Text? help = null, FieldRule? rule = null) =>
@@ -244,7 +244,7 @@ public sealed class FormField
 
     /// <summary>A rating field (Phase 1130) — a subjective score on a small ordinal
     /// scale. Reach for it when the number is a judgement a person GIVES; reach for
-    /// <see cref="Fuaran.RangedNumber"/> when it is a quantity they REPORT.
+    /// <c>RangedNumber</c> when it is a quantity they REPORT.
     /// <paramref name="max"/> defaults to 5, the conventional scale.
     /// <paramref name="allowHalf"/> admits half positions on ENTRY — the value is a
     /// <c>double</c> either way, because a displayed rating is routinely an average.</summary>
@@ -331,7 +331,7 @@ public sealed class Filter
             name));
 
     /// <summary>A typeahead filter chip bound to its own filter key (Phase 1113) — the
-    /// searchable form of <see cref="Choice(string, Text, IEnumerable{ValueTuple{string, string}})"/>.</summary>
+    /// searchable form of <c>Choice</c>.</summary>
     public static Filter Combobox(string name, Text label, IEnumerable<(string Value, string Label)> options, bool allowFreeText = false) =>
         new(new FsGen.FilterSpec<object>(
             FsGen.FormFieldKind<object>.NewCombobox(

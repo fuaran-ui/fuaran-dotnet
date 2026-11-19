@@ -14,48 +14,71 @@
 /// <summary>Semantic tone — maps to the F# <c>ToneVariant</c>.</summary>
 public enum Tone
 {
+    /// <summary>The <c>Default</c> value of <see cref="Tone"/>.</summary>
     Default,
+    /// <summary>The <c>Subdued</c> value of <see cref="Tone"/>.</summary>
     Subdued,
+    /// <summary>The <c>Brand</c> value of <see cref="Tone"/>.</summary>
     Brand,
+    /// <summary>The <c>Success</c> value of <see cref="Tone"/>.</summary>
     Success,
+    /// <summary>The <c>Warning</c> value of <see cref="Tone"/>.</summary>
     Warning,
+    /// <summary>The <c>Critical</c> value of <see cref="Tone"/>.</summary>
     Critical,
+    /// <summary>The <c>Info</c> value of <see cref="Tone"/>.</summary>
     Info,
 }
 
 /// <summary>Density weight — maps to the F# <c>StyleWeight</c>.</summary>
 public enum Weight
 {
+    /// <summary>The <c>Compact</c> value of <see cref="Weight"/>.</summary>
     Compact,
+    /// <summary>The <c>Standard</c> value of <see cref="Weight"/>.</summary>
     Standard,
+    /// <summary>The <c>Spacious</c> value of <see cref="Weight"/>.</summary>
     Spacious,
 }
 
 /// <summary>Visual emphasis — maps to the F# <c>Emphasis</c>.</summary>
 public enum Emphasis
 {
+    /// <summary>The <c>Quiet</c> value of <see cref="Emphasis"/>.</summary>
     Quiet,
+    /// <summary>The <c>Normal</c> value of <see cref="Emphasis"/>.</summary>
     Normal,
+    /// <summary>The <c>Loud</c> value of <see cref="Emphasis"/>.</summary>
     Loud,
 }
 
 /// <summary>Button presentation — maps to the F# <c>ButtonVariant</c>.</summary>
 public enum ButtonVariant
 {
+    /// <summary>The <c>Primary</c> value of <see cref="ButtonVariant"/>.</summary>
     Primary,
+    /// <summary>The <c>Secondary</c> value of <see cref="ButtonVariant"/>.</summary>
     Secondary,
+    /// <summary>The <c>Tertiary</c> value of <see cref="ButtonVariant"/>.</summary>
     Tertiary,
+    /// <summary>The <c>Destructive</c> value of <see cref="ButtonVariant"/>.</summary>
     Destructive,
 }
 
 /// <summary>Badge presentation — maps to the F# <c>BadgeVariant</c>.</summary>
 public enum BadgeVariant
 {
+    /// <summary>The <c>Neutral</c> value of <see cref="BadgeVariant"/>.</summary>
     Neutral,
+    /// <summary>The <c>Brand</c> value of <see cref="BadgeVariant"/>.</summary>
     Brand,
+    /// <summary>The <c>Success</c> value of <see cref="BadgeVariant"/>.</summary>
     Success,
+    /// <summary>The <c>Warning</c> value of <see cref="BadgeVariant"/>.</summary>
     Warning,
+    /// <summary>The <c>Critical</c> value of <see cref="BadgeVariant"/>.</summary>
     Critical,
+    /// <summary>The <c>Info</c> value of <see cref="BadgeVariant"/>.</summary>
     Info,
 }
 
@@ -91,49 +114,68 @@ public enum TextDirection
 /// <summary>Layout / scroll axis — maps to the F# <c>Orientation</c>.</summary>
 public enum Orientation
 {
+    /// <summary>The <c>Vertical</c> value of <see cref="Orientation"/>.</summary>
     Vertical,
+    /// <summary>The <c>Horizontal</c> value of <see cref="Orientation"/>.</summary>
     Horizontal,
 }
 
 /// <summary>Heading presentation — maps to the F# <c>HeadingVariant</c>.</summary>
 public enum HeadingVariant
 {
+    /// <summary>The <c>Standard</c> value of <see cref="HeadingVariant"/>.</summary>
     Standard,
+    /// <summary>The <c>Eyebrow</c> value of <see cref="HeadingVariant"/>.</summary>
     Eyebrow,
+    /// <summary>The <c>Caption</c> value of <see cref="HeadingVariant"/>.</summary>
     Caption,
+    /// <summary>The <c>Lead</c> value of <see cref="HeadingVariant"/>.</summary>
     Lead,
 }
 
 /// <summary>Image presentation — maps to the F# <c>ImageVariant</c>.</summary>
 public enum ImageVariant
 {
+    /// <summary>The <c>Default</c> value of <see cref="ImageVariant"/>.</summary>
     Default,
+    /// <summary>The <c>Avatar</c> value of <see cref="ImageVariant"/>.</summary>
     Avatar,
+    /// <summary>The <c>Rounded</c> value of <see cref="ImageVariant"/>.</summary>
     Rounded,
 }
 
 /// <summary>How an image fills its box — maps to the F# <c>ImageFit</c>.</summary>
 public enum ImageFit
 {
+    /// <summary>The <c>Natural</c> value of <see cref="ImageFit"/>.</summary>
     Natural,
+    /// <summary>The <c>Cover</c> value of <see cref="ImageFit"/>.</summary>
     Cover,
+    /// <summary>The <c>Contain</c> value of <see cref="ImageFit"/>.</summary>
     Contain,
 }
 
 /// <summary>The box an image reserves before it loads — maps to the F# <c>ImageAspect</c>.</summary>
 public enum ImageAspect
 {
+    /// <summary>The <c>Natural</c> value of <see cref="ImageAspect"/>.</summary>
     Natural,
+    /// <summary>The <c>Square</c> value of <see cref="ImageAspect"/>.</summary>
     Square,
+    /// <summary>The <c>FourThree</c> value of <see cref="ImageAspect"/>.</summary>
     FourThree,
+    /// <summary>The <c>ThreeTwo</c> value of <see cref="ImageAspect"/>.</summary>
     ThreeTwo,
+    /// <summary>The <c>SixteenNine</c> value of <see cref="ImageAspect"/>.</summary>
     SixteenNine,
 }
 
 /// <summary>Image fetch timing — maps to the F# <c>ImageLoading</c>.</summary>
 public enum ImageLoading
 {
+    /// <summary>The <c>Eager</c> value of <see cref="ImageLoading"/>.</summary>
     Eager,
+    /// <summary>The <c>Lazy</c> value of <see cref="ImageLoading"/>.</summary>
     Lazy,
 }
 
@@ -142,9 +184,13 @@ public enum ImageLoading
 /// renders.</summary>
 public enum TrackKind
 {
+    /// <summary>The <c>Subtitles</c> value of <see cref="TrackKind"/>.</summary>
     Subtitles,
+    /// <summary>The <c>Captions</c> value of <see cref="TrackKind"/>.</summary>
     Captions,
+    /// <summary>The <c>Descriptions</c> value of <see cref="TrackKind"/>.</summary>
     Descriptions,
+    /// <summary>The <c>Chapters</c> value of <see cref="TrackKind"/>.</summary>
     Chapters,
 }
 
@@ -177,8 +223,11 @@ public enum EmbedPermission
 /// <summary>Scroll axis — maps to the F# <c>ScrollOrientation</c>.</summary>
 public enum ScrollOrientation
 {
+    /// <summary>The <c>Vertical</c> value of <see cref="ScrollOrientation"/>.</summary>
     Vertical,
+    /// <summary>The <c>Horizontal</c> value of <see cref="ScrollOrientation"/>.</summary>
     Horizontal,
+    /// <summary>The <c>Both</c> value of <see cref="ScrollOrientation"/>.</summary>
     Both,
 }
 
@@ -191,7 +240,9 @@ public enum ScrollOrientation
 /// </summary>
 public enum Modality
 {
+    /// <summary>The <c>Modal</c> value of <see cref="Modality"/>.</summary>
     Modal,
+    /// <summary>The <c>Popover</c> value of <see cref="Modality"/>.</summary>
     Popover,
 }
 
@@ -237,18 +288,26 @@ public enum NavigateTarget
 /// <summary>Math presentation — maps to the F# <c>MathDisplay</c>.</summary>
 public enum MathDisplay
 {
+    /// <summary>The <c>Inline</c> value of <see cref="MathDisplay"/>.</summary>
     Inline,
+    /// <summary>The <c>Block</c> value of <see cref="MathDisplay"/>.</summary>
     Block,
 }
 
 /// <summary>Chart kind — maps to the F# <c>ChartKind</c>.</summary>
 public enum ChartKind
 {
+    /// <summary>The <c>Line</c> value of <see cref="ChartKind"/>.</summary>
     Line,
+    /// <summary>The <c>Bar</c> value of <see cref="ChartKind"/>.</summary>
     Bar,
+    /// <summary>The <c>Area</c> value of <see cref="ChartKind"/>.</summary>
     Area,
+    /// <summary>The <c>Pie</c> value of <see cref="ChartKind"/>.</summary>
     Pie,
+    /// <summary>The <c>Scatter</c> value of <see cref="ChartKind"/>.</summary>
     Scatter,
+    /// <summary>The <c>Heatmap</c> value of <see cref="ChartKind"/>.</summary>
     Heatmap,
 }
 
@@ -260,9 +319,13 @@ public enum ChartKind
 /// </summary>
 public enum ChartLegendPosition
 {
+    /// <summary>The <c>Top</c> value of <see cref="ChartLegendPosition"/>.</summary>
     Top,
+    /// <summary>The <c>Right</c> value of <see cref="ChartLegendPosition"/>.</summary>
     Right,
+    /// <summary>The <c>Bottom</c> value of <see cref="ChartLegendPosition"/>.</summary>
     Bottom,
+    /// <summary>The <c>None</c> value of <see cref="ChartLegendPosition"/>.</summary>
     None,
 }
 
@@ -275,7 +338,9 @@ public enum ChartLegendPosition
 /// </summary>
 public enum ChartDataLabels
 {
+    /// <summary>The <c>Off</c> value of <see cref="ChartDataLabels"/>.</summary>
     Off,
+    /// <summary>The <c>Ends</c> value of <see cref="ChartDataLabels"/>.</summary>
     Ends,
 }
 
@@ -289,7 +354,9 @@ public enum ChartDataLabels
 /// </summary>
 public enum ChartXScale
 {
+    /// <summary>The <c>Category</c> value of <see cref="ChartXScale"/>.</summary>
     Category,
+    /// <summary>The <c>Temporal</c> value of <see cref="ChartXScale"/>.</summary>
     Temporal,
 }
 
@@ -302,7 +369,9 @@ public enum ChartXScale
 /// </summary>
 public enum TrendPolarity
 {
+    /// <summary>The <c>HigherIsBetter</c> value of <see cref="TrendPolarity"/>.</summary>
     HigherIsBetter,
+    /// <summary>The <c>LowerIsBetter</c> value of <see cref="TrendPolarity"/>.</summary>
     LowerIsBetter,
 }
 
@@ -312,7 +381,9 @@ public enum TrendPolarity
 /// </summary>
 public enum SortDirection
 {
+    /// <summary>The <c>Asc</c> value of <see cref="SortDirection"/>.</summary>
     Asc,
+    /// <summary>The <c>Desc</c> value of <see cref="SortDirection"/>.</summary>
     Desc,
 }
 
@@ -324,8 +395,11 @@ public enum SortDirection
 /// </summary>
 public enum TextFormat
 {
+    /// <summary>The <c>Email</c> value of <see cref="TextFormat"/>.</summary>
     Email,
+    /// <summary>The <c>Url</c> value of <see cref="TextFormat"/>.</summary>
     Url,
+    /// <summary>The <c>Tel</c> value of <see cref="TextFormat"/>.</summary>
     Tel,
 }
 
@@ -335,19 +409,28 @@ public enum TextFormat
 /// </summary>
 public enum CompareOp
 {
+    /// <summary>The <c>Eq</c> value of <see cref="CompareOp"/>.</summary>
     Eq,
+    /// <summary>The <c>Neq</c> value of <see cref="CompareOp"/>.</summary>
     Neq,
+    /// <summary>The <c>Lt</c> value of <see cref="CompareOp"/>.</summary>
     Lt,
+    /// <summary>The <c>Lte</c> value of <see cref="CompareOp"/>.</summary>
     Lte,
+    /// <summary>The <c>Gt</c> value of <see cref="CompareOp"/>.</summary>
     Gt,
+    /// <summary>The <c>Gte</c> value of <see cref="CompareOp"/>.</summary>
     Gte,
 }
 
 /// <summary>Icon display size (Phase 821) — <c>Medium</c> is the default.</summary>
 public enum IconSize
 {
+    /// <summary>The <c>Small</c> value of <see cref="IconSize"/>.</summary>
     Small,
+    /// <summary>The <c>Medium</c> value of <see cref="IconSize"/>.</summary>
     Medium,
+    /// <summary>The <c>Large</c> value of <see cref="IconSize"/>.</summary>
     Large,
 }
 
@@ -383,8 +466,11 @@ public enum TimeGrain
 /// </summary>
 public enum DurationUnit
 {
+    /// <summary>The <c>Seconds</c> value of <see cref="DurationUnit"/>.</summary>
     Seconds,
+    /// <summary>The <c>Minutes</c> value of <see cref="DurationUnit"/>.</summary>
     Minutes,
+    /// <summary>The <c>Hours</c> value of <see cref="DurationUnit"/>.</summary>
     Hours,
 }
 
