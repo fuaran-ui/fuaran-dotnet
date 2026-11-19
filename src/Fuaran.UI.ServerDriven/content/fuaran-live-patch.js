@@ -511,11 +511,30 @@
   // The client mirror of IFuaranLiveChannel: connect(onFrame) + send(event).
   // A WebSocket adapter is a drop-in — only this object changes; the patch /
   // effect / delegation core above is transport-identical.
+  // This page's own tab id (Phase 1928). The correlation cookie is per-origin,
+  // so without it every tab of a browser shares one stream and the last tab
+  // opened receives every tab's events. Minted once per page load — never
+  // stored, so a duplicated tab cannot inherit another tab's id — and sent on
+  // the stream (query: EventSource cannot set a header) and on every event.
+  var pageTabId = null;
+  function tabId() {
+    if (pageTabId === null) {
+      var c = global.crypto;
+      pageTabId = c && c.randomUUID
+        ? c.randomUUID().replace(/-/g, "")
+        : Math.random().toString(36).slice(2) + Date.now().toString(36);
+    }
+    return pageTabId;
+  }
+  function withTab(url) {
+    return url + (url.indexOf("?") < 0 ? "?" : "&") + "tab=" + encodeURIComponent(tabId());
+  }
+
   function sseAdapter(config) {
     var lastSeq = 0;
     return {
       connect: function (onFrame, onState) {
-        var es = new EventSource(config.streamUrl);
+        var es = new EventSource(withTab(config.streamUrl));
         es.onopen = function () { if (onState) onState(true); }; // QW2
         es.addEventListener("patch", function (e) {
           var frame = JSON.parse(e.data);
@@ -534,7 +553,7 @@
         // clears only on the next inbound frame (the pre-ack behaviour).
         return fetch(config.sendUrl, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "X-Fuaran-Tab": tabId() },
           body: JSON.stringify(event),
           credentials: "same-origin"
         });

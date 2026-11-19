@@ -155,6 +155,9 @@ let tests =
               let app, stream =
                   streamDelegate (fun r -> registry <- Endpoints.mapFuaranLiveAsync r config factory) config.StreamPath
 
+              // No reconnect grace (Phase 1928): a stream that ends evicts its
+              // connection at once, so "deregisters" below needs no wait.
+              registry.ReconnectGrace <- TimeSpan.Zero
               use stuckAbort = new CancellationTokenSource()
               use freeAbort = new CancellationTokenSource()
               let stuckCtx, _ = context app stuckAbort.Token

@@ -10,6 +10,7 @@
     <Compile Include="ConnTokenTests.fs" />
     <Compile Include="SseChannelTests.fs" />
     <Compile Include="AsyncFactoryTests.fs" />
+    <Compile Include="ReconnectTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
