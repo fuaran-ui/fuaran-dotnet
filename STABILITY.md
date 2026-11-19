@@ -8189,6 +8189,40 @@ sees it, because every page every host renders changes its spacing. The slot alr
 `--fuaran-space-md` (stacks, grids) or `--fuaran-space-lg` (dashboards), or declares a gap; a host stylesheet that
 zeroed node margins inside its own containers to work around the double spacing can drop that rule.
 
+### What rides this slot — Phase 1928 (server-driven sessions survive reconnect and concurrency)
+
+**Class: BREAKING (behaviour), additive in surface.** Packages `Fuaran.UI.ServerDriven`,
+`Fuaran.UI.ServerDriven.AspNetCore` and `Fuaran.UI.ServerDriven.WebSocket`. No signature is removed or changed,
+`ILiveConnection` and `LiveAppConfig` gain nothing, and no wire byte moves (the frame and event bodies are unchanged;
+the tab id travels on the query or a header). It is recorded as breaking because a host can observe three behaviours
+change, listed below. The slot already carries a BREAKING class (Phase 2716), so this rider does not advance the
+number again.
+
+- **Added (core).** `ResyncOutcome` (`Replayed of frames: int` | `Rebaselined`), `LiveConnection.Reattach(lastSeq,
+  attach)` and `LiveConnection.Rebaseline()`. `LiveConnection.Resync` keeps its signature and now runs under the
+  connection's gate, with `Handle`.
+- **Added (SSE backend).** `ConnectionRegistry.ReconnectGrace` (get/set) and the static
+  `ConnectionRegistry.DefaultReconnectGrace` (30 s); the literals `Endpoints.TabQueryParameter` (`tab`) and
+  `Endpoints.TabHeader` (`X-Fuaran-Tab`).
+- **Behaviour 1 — a connection outlives its stream.** A stream that ends detaches its connection, which the registry
+  keeps for `ReconnectGrace` before evicting it. `ConnectionRegistry.Count` therefore counts a dropped connection for
+  up to that long, where it used to fall at once. `Remove`, and an `Add` that replaces a connection, now also end the
+  removed connection's stream and lifetime.
+- **Behaviour 2 — a reconnect re-attaches.** A GET carrying `Last-Event-ID` whose cookie re-verifies and names a
+  registered connection re-attaches to it (replay, or one full-document re-baseline) instead of minting a fresh
+  session. A reconnect that cannot re-attach still gets a fresh session, now re-baselined. A stream naming a tab keeps
+  the id its cookie already carries instead of minting one.
+- **Behaviour 3 — the effect runner's lifetime.** On the SSE backend an awaited-effect runner (Phase 2170) is bound to
+  the connection's lifetime (ended at eviction), not to the first request's abort token. On the WebSocket backend both
+  loops now end together and are awaited.
+- **The shipped shim.** `content/fuaran-live-patch.js` sends a per-page-load tab id on the stream and on every event.
+
+**Consumer action:** none to keep working. A host that reads `ConnectionRegistry.Count` as "live streams" or relies
+on a stream's end removing its connection at once sets `registry.ReconnectGrace <- TimeSpan.Zero` on the registry
+`mapFuaranLive` returns. A host shipping its own client sends a tab id (`?tab=` on the stream, `X-Fuaran-Tab` on
+events) to give each tab its own stream; without one it keeps the pre-1928 one-stream-per-browser behaviour. See
+`docs/SERVER_DRIVEN.md`, "Reconnection + replay".
+
 ## 0.104.0 (RELEASED — tagged v0.104.0 at cc477007, 2026-11-11) — the slot opened after v0.103.0 was released; advanced from 0.103.1 on 2026-11-10 by Phase 2640, whose change is breaking
 
 _`v0.103.0` is TAGGED (2026-11-09, at `1b783c61`), so nothing may ride it: Phase 2639 opened the next slot at the
