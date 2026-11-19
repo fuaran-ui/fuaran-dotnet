@@ -26,28 +26,17 @@ open Fuaran.UI.Fragments
 open Fuaran.UI.Validator.RecipeCertification
 open Fuaran.UI.OpStream.Abstractions
 
-// ─── Local tree walk ─────────────────────────────────────────────────────────
+// ─── Tree walk ───────────────────────────────────────────────────────────────
 //
-// Deliberately local rather than borrowed from the renderer: this project
-// depends on `Fuaran.UI` and the validator only, and pulling the renderer in to
-// reuse eight lines of container arms would put a React/Feliz dependency under
-// a certification suite.
-
-let private childrenOf (node: Node<'Msg>) : Node<'Msg> list =
-    match node.Kind with
-    | NodeKind.Box s -> s.Children
-    | NodeKind.SplitPanel s -> s.Children
-    | NodeKind.Tabs s -> s.Children
-    | NodeKind.Stepper s -> s.Children
-    | NodeKind.SummaryList s -> s.Children
-    | NodeKind.Disclosure s -> s.Children
-    | NodeKind.Modal s -> s.Children
-    | NodeKind.ScrollArea s -> s.Children
-    | NodeKind.ErrorBoundary s -> [ s.Child; s.Fallback ]
-    | _ -> []
+// The tier's one child enumeration (`Fuaran.UI.NodeChildren`), which lives in
+// `Fuaran.UI` itself, so no renderer dependency comes with it. Phase 2752
+// replaced a local copy of nine container arms with it: the copy saw no `Switch`
+// arm, no state alternative and no fragment body, so a node in any of those was
+// invisible to every assertion here.
 
 let rec private descendants (node: Node<'Msg>) : Node<'Msg> list =
-    node :: (childrenOf node |> List.collect descendants)
+    node
+    :: (NodeChildren.children NodeChildren.Reach.keyed node |> List.collect descendants)
 
 /// The slot names a template body marks with an unbound `FragmentRef`.
 let private slotMarkersIn (body: Node<'Msg>) : string list =
