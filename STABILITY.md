@@ -8229,6 +8229,36 @@ floor. No type or member these packages declare moves; what moves is the program
 emit; the program wire; the UI wire. The parity, bounded, runtime and server suites run unchanged apart from the
 construction sites the hop forced and the demanded documents moved to version 15.
 
+### What rides this slot — Phase 1814 (the Adaptive Card projection)
+
+**Class: ADDITIVE** on `Fuaran.UI` and `Fuaran.UI.Renderer.Server`; ADDITIVE on the corpus artefact
+`render-fidelity.json`; no wire payload moves. Rides the open draft; it does not advance the number.
+
+| Surface | Change | Who pays |
+|---|---|---|
+| `Fuaran.UI.Renderer.Server.AdaptiveCard` (new module) | `projectWith : CardOptions -> ServerRenderContext -> Node<obj> -> Result<JsonObject * Degradation list, ProjectionRefusal>`, `project` (the default options), `projectStatic`; `CardOptions` (`LiveUrl`, `Limits: HostLimits`) and `defaults` (`HostLimits.card`); `Degradation` / `DegradationRule` / `ruleId`; `ProjectionRefusal` (`HostLimitsExceeded`, `CardPayloadExceeded`) and `describeRefusal`; `toJson`; `escapeFactText`; `SchemaVersion` (`"1.4"`) and `SchemaUrl`. | Nobody - a new module. |
+| `Fuaran.UI.RenderFidelity` | `CardRuling` (`Mapped` / `Structural` / `OpenLive` / `FlattenToText` / `Omitted`), `cardRulings` (one per canonical wire kind, Ordinal), `cardOf`, `cardClassId`, `cardNote`, `cardElements`, `cardClasses`. `FidelityRow` does not change shape: the column is a separate table, as the speech column is. | Nobody. |
+| `render-fidelity.json` | A top-level `adaptiveCardClasses` array and a per-kind `adaptiveCard` object (`class`, `elements`, `note`). Readers take named members; the bundled Python snapshot is re-synced in the same change-set. | Nobody. |
+
+**The target is Adaptive Cards 1.4, the newest version both Teams and Outlook render**, and the
+projection writes neither of the two 1.4 members Outlook does not display (`Action.Submit`,
+`Input.Time`). A tree over the declared `HostLimits` is refused through
+`PreEmitValidate.validateWithLimits` with its Phase 1817 code before any card is built, and the
+card's own bytes are held to the same `MaxSerializedBytes`. Every string reaches the card as a
+literal `TextRun` or an escaped `Fact`; every tree-authored URL passes the context's destination
+policy. `docs/ADAPTIVE-CARD-PROJECTION.md` carries the mapping table, held to `cardRulings` row for
+row by a test.
+
+**Pinned:** every card is validated against the published Adaptive Cards 1.4 JSON Schema (vendored
+with its MIT licence as a test asset of `Fuaran.UI.Renderer.Server.Tests`), every corpus node fixture
+included; `RenderFidelityTests` holds the column against the rows with a negative probe.
+`JsonSchema.Net` gains a second test-only consumer; no shipping package references it.
+
+**Vocabulary charter.** Not engaged: no kind, case or spec field is added. **Escape-hatch inventory —
+CONFIRMED no new hatch:** the projection is a new egress, but every string and URL it writes passes
+the existing `Sanitize` seams (destination policy per egress class, the `Markdown` render's own
+policy check), and the live-surface URL is the host's own declaration, as in the email projection.
+
 ## 0.104.0 (RELEASED — tagged v0.104.0 at cc477007, 2026-11-11) — the slot opened after v0.103.0 was released; advanced from 0.103.1 on 2026-11-10 by Phase 2640, whose change is breaking
 
 _`v0.103.0` is TAGGED (2026-11-09, at `1b783c61`), so nothing may ride it: Phase 2639 opened the next slot at the

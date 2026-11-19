@@ -47,6 +47,12 @@
          omissions by node id, SSML injection refused, fixed-clock determinism,
          and every corpus node fixture held to its render-fidelity speech ruling. -->
     <Compile Include="SpeechProjectionTests.fs" />
+    <!-- AdaptiveCardProjectionTests pins Phase 1814's Adaptive Card projection:
+         every card validated against the PUBLISHED 1.4 schema (vendored with its
+         licence under adaptive-card-schema/), the per-kind ruling held against the
+         fidelity rows, the doc's table and every corpus node fixture, host-limit
+         refusals with the 1817 codes, and the literal-text and destination seams. -->
+    <Compile Include="AdaptiveCardProjectionTests.fs" />
     <!-- GalleryExpressionTests is the Phase 1082 GATE: it asks, in emitted
          bytes, what the shipped layout + image vocabulary can and cannot say
          about an artwork-gallery page. Its masonry probes are negative
@@ -107,7 +113,13 @@
     <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Phase 1814 - the published Adaptive Cards schema the projection is validated against. -->
+    <None Include="adaptive-card-schema\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Expecto" />
     <PackageReference Include="FSharp.Core" />
+    <!-- Phase 1814 - an off-the-shelf JSON Schema validator for the Adaptive Card schema. -->
+    <PackageReference Include="JsonSchema.Net" />
   </ItemGroup>
 </Project>
