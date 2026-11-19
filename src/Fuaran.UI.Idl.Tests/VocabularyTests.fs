@@ -400,3 +400,65 @@ let tests =
                       (File.ReadAllText resolved)
                       ("module " + prelude.Module)
                       "the named host prelude does not declare the module the support document names") ]
+
+// ─── Phase 1869 — the vocabulary documents itself, once ────────────────────
+//
+// The doc table in `Vocabulary.fs` is the ONE source of the vocabulary's docs: every kind,
+// field, union, case, enum, enum case, record and op carries an authored `doc` annotation,
+// which `idl.json` carries and `Generated.fs` prints as its `///` summaries. The table is keyed
+// by declaration, so these three checks are what keep it true: a declaration with no entry, an
+// entry naming no declaration (a renamed or removed member), and a key written twice.
+[<Tests>]
+let docTests =
+    testList
+        "Phase 1869 — every vocabulary declaration is documented in the IDL"
+        [ testCase "every declaration has a doc entry" (fun _ ->
+              let documented = Set.ofList Fuaran.UI.Vocabulary.docTableKeys
+
+              let missing =
+                  Fuaran.UI.Vocabulary.docKeys Fuaran.UI.Vocabulary.uiIdl
+                  |> List.filter (fun k -> not (documented.Contains k))
+
+              Expect.isEmpty
+                  missing
+                  "these declarations have no entry in Vocabulary.fs's doc table — add one line each, what the member IS, for an author hovering over it")
+
+          testCase "every doc entry names a declaration" (fun _ ->
+              let declared = Set.ofList (Fuaran.UI.Vocabulary.docKeys Fuaran.UI.Vocabulary.uiIdl)
+
+              let stale =
+                  Fuaran.UI.Vocabulary.docTableKeys
+                  |> List.filter (fun k -> not (declared.Contains k))
+
+              Expect.isEmpty
+                  stale
+                  "these doc entries in Vocabulary.fs name no declaration — the member was renamed or removed; move or delete the entry")
+
+          testCase "no doc key is written twice" (fun _ ->
+              let twice =
+                  Fuaran.UI.Vocabulary.docTableKeys
+                  |> List.countBy id
+                  |> List.filter (fun (_, n) -> n > 1)
+                  |> List.map fst
+
+              Expect.isEmpty twice "these keys appear more than once in Vocabulary.fs's doc table")
+
+          testCase "the docs ride the published artifact" (fun _ ->
+              // A doc is a declaration's annotation, so the artifact carries it; this is the claim
+              // the other hosts read it from. One per declaration kind is enough to fail when the
+              // table stops being laid over the vocabulary.
+              let idl = Fuaran.UI.Vocabulary.uiIdl
+              let undocumented (a: Annotations) = a.Doc.IsNone
+
+              Expect.isFalse
+                  (idl.Kinds |> List.exists (fun k -> undocumented k.Annotations))
+                  "a kind carries no doc annotation"
+
+              Expect.isFalse
+                  (idl.Unions |> List.exists (fun u -> undocumented u.Annotations))
+                  "a union carries no doc annotation"
+
+              Expect.isFalse
+                  (idl.Enums
+                   |> List.exists (fun e -> e.Cases |> List.exists (fun c -> undocumented (e.AnnotationsOf c))))
+                  "an enum case carries no doc annotation") ]

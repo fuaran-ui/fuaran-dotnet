@@ -3891,7 +3891,8 @@ let private treeOps: IdlKind list =
         Annotations = Annotations.Empty
         Fields = [ req "target" TStr; opt "tooltip" TS ] } ]
 
-let uiIdl: Idl =
+/// The vocabulary as DECLARED, before its documentation is laid over it (Phase 1869) — see [[uiIdl]].
+let private declared: Idl =
     { Kinds = displayKinds @ layoutKinds @ inputKinds @ visKinds @ metaKinds
       Unions =
         [ textSource
@@ -4110,6 +4111,1869 @@ let uiIdl: Idl =
           ValueLiteralCase = "Static"
           ValueLiteralField = "value"
           TransparentUnions = [ "TextSource", "Literal" ] } }
+
+// ─── Phase 1869 — the vocabulary's documentation ───────────────────────────
+//
+// The IDL is the ONE source of the vocabulary's docs. What a kind, field,
+// union, case, enum or record IS is authored here, rides `idl.json` as that
+// declaration's `doc` annotation (Fuaran.Core Phase 255 for members, Phase 542
+// for types), and every layer generated from the artefact prints it — the
+// `///` summaries of `Generated.fs` first, the other hosts as they read it.
+//
+// It is a TABLE keyed by declaration rather than a `doc` at each declaration
+// site, for one reason: a doc moves no wire byte, and laying eleven hundred of
+// them inline would rewrite nearly every line of the declarations above, the
+// lines every vocabulary change edits. Keyed here, a new declaration costs one
+// line, and `VocabularyTests` refuses a declaration with no entry and an entry
+// naming no declaration, so the table can neither fall behind the vocabulary
+// nor outlive a removal.
+//
+// Keys: `kind:<Tag>`, `kind-field:<Tag>.<field>`, `op:<Tag>`,
+// `op-field:<Tag>.<field>`, `node:<field>`, `union:<Name>`,
+// `case:<Union>.<Case>`, `case-field:<Union>.<Case>.<field>`, `enum:<Name>`,
+// `enum-case:<Enum>.<HostCase>`, `record:<Name>`, `record-field:<Record>.<field>`.
+// A doc is written for the author hovering over the generated member: what it
+// is, in a sentence. A kind's doc names its §4b family first.
+
+/// A doc of several paragraphs, one string per line; an empty string is a paragraph break.
+let private lines (ls: string list) : string = String.concat "\n" ls
+
+let private docs: (string * string) list =
+    [
+      // Kinds and their fields
+      "kind:Badge", "Display kind (§4b): a short inline status label coloured by a variant."
+      "kind-field:Badge.label", "The badge text."
+      "kind-field:Badge.variant", "The badge's colour role. Omitted means `Neutral`."
+      "kind:Box",
+      "Layout kind (§4b): the general container, whose `layout` says how its children arrange and whose `role` says what the container means."
+      "kind-field:Box.children", "The child nodes the box arranges, in order."
+      "kind-field:Box.heading", "An optional heading rendered above the children. Omitted means no heading."
+      "kind-field:Box.layout",
+      "How the children arrange: `Flex` flow, an explicit `Grid`, `Masonry` columns or the responsive `Auto` tile."
+      "kind-field:Box.role",
+      "What the container means (`Dashboard`, `Card`, `Group`, `Separator`), which selects the emitted element, ARIA landmark and chrome."
+      "kind-field:Box.keepTogether",
+      "When the rendering is paged, keep this box and everything under it on one page; a continuous medium ignores it. Omitted on the wire at `false`."
+      "kind-field:Box.breakBefore",
+      "When the rendering is paged, start this box at the top of a fresh page; a continuous medium ignores it. Omitted on the wire at `false`."
+      "kind:Button", "Input kind (§4b): a clickable control that dispatches an `Action`."
+      "kind-field:Button.label", "The visible button text."
+      "kind-field:Button.onClick", "The `Action` dispatched when the button is activated."
+      "kind-field:Button.variant", "The button's visual emphasis. Omitted means `Secondary`."
+      "kind-field:Button.icon", "An optional icon name rendered with the label. Omitted means no icon."
+      "kind-field:Button.tooltip",
+      "Superseded host-only hint that never reaches the wire (§10.1); use the node-level `Tooltip` trait instead."
+      "kind-field:Button.disabled",
+      "A binding that disables the button while it resolves to `true`. Omitted means always enabled."
+      "kind-field:Button.affordance",
+      "The operability `Affordance` declaring how an agent-initiated instruction may address this control (§31). Omitted means none beyond what the node already says."
+      "kind:Callout",
+      "Display kind (§4b): an inline banner for a status, tier or mode message, sized for content blocks."
+      "kind-field:Callout.body", "The callout's message text."
+      "kind-field:Callout.dismissable",
+      "Whether the callout offers a close affordance. Omitted means `false` (the opposite default to `Toast.dismissable`)."
+      "kind-field:Callout.tone", "The status colour of the banner. Omitted means `Default`."
+      "kind-field:Callout.heading", "An optional title shown above the body. Omitted means no heading."
+      "kind-field:Callout.icon", "An optional icon name shown beside the message. Omitted means no icon."
+      "kind:Chart", "Visualisation kind (§4b): a chart of bound rows, plotting `yFields` against `xField`."
+      "kind-field:Chart.kind", "The chart type: line, bar, area, pie, scatter or heatmap."
+      "kind-field:Chart.source",
+      "The binding that resolves to the rows the chart plots, each row a map of column name to value."
+      "kind-field:Chart.stacked", "Whether series are stacked rather than drawn side by side. Omitted means `false`."
+      "kind-field:Chart.xField", "The row column plotted on the x axis."
+      "kind-field:Chart.yFields",
+      "The row columns plotted as series. An empty list, admitted only over a `Query` source, plots every numeric column but `xField` (§3.6.29)."
+      "kind-field:Chart.title", "An optional chart title. Omitted means no title."
+      "kind-field:Chart.valueFormat",
+      "The number format of the value axis and its labels, in the `Format` vocabulary. Absent means the chart's default rendering (thousands separators and step-derived decimals)."
+      "kind-field:Chart.xTitle",
+      "The x axis's name. Absent falls back to the capitalised x field name, so an axis is never nameless."
+      "kind-field:Chart.yTitle", "An optional name for the value (y) axis. Omitted means the axis is unlabelled."
+      "kind-field:Chart.subtitle",
+      "A muted line under the title, the natural place to state units; when present the chart does not add its own display-unit note."
+      "kind-field:Chart.legendPosition",
+      "Where the legend sits, or `None` for no legend. Absent means the host style's default position (the right edge), not \"no legend\"."
+      "kind-field:Chart.dataLabels", "Whether each value is written onto the plot beside its mark. Absent means `Off`."
+      "kind-field:Chart.xScale",
+      "What the x column means: discrete categories, or dates on a continuous temporal scale. Absent means `Category`; `Temporal` over a non-date column is refused before emission (FUARAN097)."
+      "kind-field:Chart.annotations",
+      "Data-addressed annotations drawn over the chart, such as reference lines. Omitted means none."
+      "kind-field:Chart.onPointClick",
+      "An in-process handler called with the clicked point's row; it travels on the wire only as a `\"<closure>\"` sentinel."
+      "kind:CodeBlock",
+      "Display kind (§4b): a block of source code rendered as an escaped `<pre><code>`, never parsed as markdown."
+      "kind-field:CodeBlock.code", "The raw source text, HTML-escaped at render."
+      "kind-field:CodeBlock.copyable",
+      "Whether a copy affordance is rendered. Omitted means `true`: a code block is copyable unless it says otherwise."
+      "kind-field:CodeBlock.highlightLines", "The 1-based line numbers to mark as highlighted. Omitted means none."
+      "kind-field:CodeBlock.language",
+      "The language hint, emitted as a `language-<x>` class for highlighting (F* and F# get a deterministic highlighting tier in the reference renderers)."
+      "kind-field:CodeBlock.lineNumbers", "Whether a line-number gutter is shown. Omitted means `false`."
+      "kind:Custom",
+      "Meta kind (§4b): the host-registered escape hatch that renders a component the host supplies, with an opaque prop bag."
+      "kind-field:Custom.moduleId", "The host module that registers the component."
+      "kind-field:Custom.componentId", "The component's id within its module."
+      "kind-field:Custom.props",
+      "The component's props as verbatim JSON, opaque to the wire and validated by the host renderer."
+      "kind-field:Custom.contentHash",
+      "The `ContentHash` derived from the component's declared shape, checked by the host at render time. Omitted opts out of the check."
+      "kind-field:Custom.exposedNodeIds",
+      "Interior node ids the component exposes for addressing. Omitted means the renderer does not introspect its interior."
+      "kind:DataGrid",
+      "Visualisation kind (§4b): a data grid of columns over bound rows, or over static rows for a read-only table."
+      "kind-field:DataGrid.columns", "The grid's column definitions, in display order."
+      "kind-field:DataGrid.editable", "Whether cells may be edited. Omitted means `false`."
+      "kind-field:DataGrid.rowKey",
+      "An in-process closure computing each row's stable key, overriding `rowKeyField`; it travels on the wire only as a sentinel."
+      "kind-field:DataGrid.rowKeyField",
+      "The row column that gives each row its stable identity. Omitted means no declared key."
+      "kind-field:DataGrid.sortStateKey",
+      "The State key holding the sort descriptor `{\"column\": <index>, \"direction\": \"asc\"|\"desc\"}`; when set, column headers sort the rows and a header click writes the toggled descriptor. Omitted when absent."
+      "kind-field:DataGrid.pageSize",
+      "How many rows one page holds; with `pageStateKey` set the grid renders a pager and shows one page at a time. Omitted when absent."
+      "kind-field:DataGrid.pageStateKey",
+      "The State key carrying the current page as `{\"page\": <1-based int>}`, enabling declarative pagination with `pageSize`. Omitted means the grid is not paged."
+      "kind-field:DataGrid.defaultSort",
+      "The initial row order, applied while the sort state key holds nothing; once the reader sorts, the state wins. Valid with or without `sortStateKey`."
+      "kind-field:DataGrid.editStateKey",
+      "The State key an edited cell's whole updated rows value is committed to. Absent writes back to the grid's own `source` when it is a direct `Binding.State`, and is display-only otherwise."
+      "kind-field:DataGrid.reorderable",
+      "Let the reader reorder rows by dragging; the reordered rows commit to `editStateKey`. Omitted on the wire at `false`."
+      "kind-field:DataGrid.transferInKey",
+      "The State key on which this grid accepts rows dragged from another grid that names the same key as its `transferOutKey`. Omitted when absent."
+      "kind-field:DataGrid.transferOutKey",
+      "The State key to which this grid may release rows, for a grid naming the same key as its `transferInKey`. Omitted when absent."
+      "kind-field:DataGrid.keepRowsTogether",
+      "When the rendering is paged, never split a row across a page boundary; a continuous medium ignores it. Omitted on the wire at `false`."
+      "kind-field:DataGrid.repeatHeader",
+      "When the rendering is paged, repeat the column headers at the top of every page the grid continues onto. Omitted on the wire at `false`."
+      "kind-field:DataGrid.exportable",
+      "Offer the reader a control that downloads the rows the client holds, sorted as shown, as an RFC 4180 CSV file; nothing is written back to the tree. Omitted on the wire at `false`."
+      "kind-field:DataGrid.windowStateKey",
+      "The State key holding the row window `{\"offset\": <int>, \"count\": <int>}` the renderer writes as the viewport moves; the grid presents that slice of its rows. Absent or malformed means every row is presented."
+      "kind-field:DataGrid.rowTotal",
+      "The declared size of the whole result set, for a grid whose host returns it a page or window at a time, so the pager and scroll extent can show the total. A value that is not an integer of zero or more declares no total."
+      "kind-field:DataGrid.source",
+      "The binding that resolves to the grid's rows, each row a map of column name to value."
+      "kind-field:DataGrid.staticRows",
+      "Fixed header and row text for a static read-only grid. Omitted means rows come from `source`."
+      "kind-field:DataGrid.onRowClick",
+      "An in-process handler called with the clicked row; it travels on the wire only as a `\"<closure>\"` sentinel."
+      "kind:Disclosure",
+      "Layout kind (§4b): a collapsible section with a heading that the reader can expand and collapse."
+      "kind-field:Disclosure.children", "The content shown while the section is open."
+      "kind-field:Disclosure.defaultOpen", "Whether the section starts open on first mount, before `open` resolves."
+      "kind-field:Disclosure.heading", "The always-visible heading that toggles the section."
+      "kind-field:Disclosure.onToggle",
+      "An in-process handler called with the new open state. Omitted means a toggle is written back to `open` when it is bound to State or a filter."
+      "kind-field:Disclosure.open", "The controlled open state of the section."
+      "kind:Drawing",
+      "Display kind (§4b): a resolved vector drawing of shapes in a user-space coordinate box, the render target charts lower to."
+      "kind-field:Drawing.description",
+      "An optional long description, emitted as the drawing's `<desc>`. Omitted means none."
+      "kind-field:Drawing.shapes", "The shapes to draw, in painter's order (later shapes paint over earlier ones)."
+      "kind-field:Drawing.style",
+      "The root `DrawStyle`, inherited by shapes that omit their own; an empty style is legitimate."
+      "kind-field:Drawing.title",
+      "An optional accessible name, emitted as the drawing's `<title>` with `role=img`. Omitted means no title."
+      "kind-field:Drawing.viewBox", "The user-space coordinate box the shapes are drawn in, mirroring SVG's `viewBox`."
+      "kind:Embed",
+      "Display kind (§4b): a third-party document rendered in a maximally sandboxed frame, for content that cannot cooperate with the host (use `Mount` for a cooperating guest)."
+      "kind-field:Embed.aspectRatio", "The box ratio the frame reserves before it loads. Omitted means `Natural`."
+      "kind-field:Embed.permissions",
+      "The sandbox relaxations granted to the framed document. Omitted (the empty list) means total denial."
+      "kind-field:Embed.src", "The URL of the document to frame; only `https` is admitted, with no relative references."
+      "kind-field:Embed.title", "The frame's accessible name; required, and an empty literal is refused (FUARAN111)."
+      "kind:ErrorBoundary",
+      "Meta kind (§4b): renders `child`, and renders `fallback` in its place if the child fails to render."
+      "kind-field:ErrorBoundary.child", "The subtree rendered normally."
+      "kind-field:ErrorBoundary.fallback", "The subtree rendered instead when `child` fails."
+      "kind:Fact",
+      "Display kind (§4b): a labelled text fact such as Patient: Alice Smith, the text counterpart of the numeric `LabelValueRow`."
+      "kind-field:Fact.emphasis", "Whether the value gets KPI-tile prominence. Omitted means `false`."
+      "kind-field:Fact.help", "Optional small print shown under the label. Omitted means none."
+      "kind-field:Fact.icon", "An optional icon name shown with the fact. Omitted means no icon."
+      "kind-field:Fact.label", "The fact's label."
+      "kind-field:Fact.tone", "The status colour of the fact. Omitted means `Default`."
+      "kind-field:Fact.value", "The fact's text value, which may be literal, translated or bound."
+      "kind-field:Fact.reference",
+      "The citation naming the fact behind this value, a bare string the language never parses or resolves; a renderer stamps it as `data-fact` (§3.6.31). Omitted means no citation."
+      "kind:FileUpload", "Input kind (§4b): a file picker, with optional drop, paste and device-capture gestures."
+      "kind-field:FileUpload.accept",
+      "The file types the picker offers, as MIME types or extensions; an empty list accepts any file."
+      "kind-field:FileUpload.label", "The control's visible label."
+      "kind-field:FileUpload.multiple", "Whether more than one file may be selected. Omitted means `false`."
+      "kind-field:FileUpload.onSelect",
+      "An in-process handler called with the selected files' metadata; it travels on the wire only as a `\"<closure>\"` sentinel."
+      "kind-field:FileUpload.disabled",
+      "A binding that disables the control while it resolves to `true`. Omitted means always enabled."
+      "kind-field:FileUpload.acceptPaste",
+      "Whether files pasted from the clipboard are accepted. Omitted means `false`."
+      "kind-field:FileUpload.dropTarget",
+      "Whether files may be dragged and dropped onto the control. Omitted means `false`."
+      "kind-field:FileUpload.capture",
+      "A device (`Camera` or `Microphone`) the control captures a new file from. Omitted means the ordinary file picker."
+      "kind-field:FileUpload.destination",
+      "The name of a host-registered upload destination the selection streams to; a name the host does not register is refused. Omitted means nothing leaves the client."
+      "kind-field:FileUpload.maxBytes",
+      "The largest accepted size of each file, in bytes; must be positive. Omitted means no declared ceiling."
+      "kind-field:FileUpload.maxFiles",
+      "The most files one selection may hold, meaningful only with `multiple`; must be positive. Omitted means no declared ceiling."
+      "kind:Filters", "Input kind (§4b): a strip of filter controls whose values feed the filter store."
+      "kind-field:Filters.items", "The filter controls, each a `FilterSpec` whose `name` is its filter-store key."
+      "kind:Form", "Input kind (§4b): an ordered list of fields with a submit control."
+      "kind-field:Form.fields", "The form's fields, in display order."
+      "kind-field:Form.onSubmit", "The `Action` dispatched when the form is submitted."
+      "kind-field:Form.submitLabel", "The submit control's text."
+      "kind-field:Form.disabled",
+      "A binding that disables the form while it resolves to `true`. Omitted means always enabled."
+      "kind:FragmentDecl",
+      "Meta kind (§4b): declares a named, reusable fragment with typed holes that a `FragmentRef` expands."
+      "kind-field:FragmentDecl.body", "The fragment's node tree."
+      "kind-field:FragmentDecl.name",
+      "The name a `FragmentRef` addresses this fragment by; non-empty with no whitespace."
+      "kind-field:FragmentDecl.holes",
+      "The fragment's typed parameters: value holes and tree slots. Omitted means a fixed body with no holes."
+      "kind-field:FragmentDecl.effect",
+      "The fragment's declared `EffectClass` (determinism and host effect). Omitted means pure and deterministic."
+      "kind:FragmentRef",
+      "Meta kind (§4b): renders a declared fragment by name, binding its holes; an isolation boundary whose interior ids are namespaced (§8.1)."
+      "kind-field:FragmentRef.name", "The name of the `FragmentDecl` to render."
+      "kind-field:FragmentRef.args",
+      "The hole bindings by hole name, each a scalar value or a slot subtree. Omitted means a name-only reference."
+      "kind:Heading", "Display kind (§4b): a section heading rendered as `<h1>`–`<h6>`."
+      "kind-field:Heading.level", "The heading rank, rendered as the matching `<h1>`–`<h6>` element."
+      "kind-field:Heading.text", "The heading text."
+      "kind-field:Heading.variant",
+      "A presentation variant (eyebrow, caption, lead) added as a class without changing the heading element. Omitted means `Standard`."
+      "kind:Icon",
+      lines
+          [ "Phase 821 — the standalone icon-only display kind: a decorative or"
+            "labelled glyph with no Button / Image envelope. `Icon` names a"
+            "glyph from the existing icon vocabulary (the `data-icon` hook); `Label ="
+            "None` is decorative (`aria-hidden=\"true\"`), `Some` is meaningful"
+            "(`role=\"img\"` + `aria-label`)." ]
+      "kind-field:Icon.icon", "The icon name to render."
+      "kind-field:Icon.size", "The glyph size. Omitted means `Medium`."
+      "kind-field:Icon.tone", "The glyph colour. Omitted means `Default`."
+      "kind-field:Icon.label",
+      "The icon's accessible name. Omitted means the icon is decorative and hidden from assistive technology."
+      "kind:Image",
+      "Display kind (§4b): an image whose source is routed through the §19 URL-scheme floor at render time."
+      "kind-field:Image.alt", "The image's text alternative; required."
+      "kind-field:Image.src", "The image URL, static or bound, sanitised at render time."
+      "kind-field:Image.variant", "The crop treatment (plain, avatar or rounded). Omitted means `Default`."
+      "kind-field:Image.fit",
+      "How the image fills its box: intrinsic size, cover-and-crop or contain-and-letterbox. Omitted means `Natural`."
+      "kind-field:Image.aspectRatio",
+      "The box ratio reserved before the image loads, which prevents layout shift. Omitted means `Natural`."
+      "kind-field:Image.loading",
+      "Whether the image is fetched at initial load or deferred until near the viewport. Omitted means `Eager`."
+      "kind-field:Image.srcSet", "Alternate renditions the browser may choose between. Omitted means none."
+      "kind-field:Image.expandable",
+      "Whether the full-size asset is reachable from the rendered image, via a real link a script tier may upgrade to an overlay. Omitted means `false`."
+      "kind-field:Image.caption",
+      "An optional caption; present, the image renders as a `<figure>` with `<figcaption>`. Omitted means a bare image."
+      "kind:LabelValueRow",
+      "Display kind (§4b): a label beside a formatted numeric value, such as one line of a summary."
+      "kind-field:LabelValueRow.emphasis", "Whether the row is emphasised, as for a total. Omitted means `false`."
+      "kind-field:LabelValueRow.format",
+      "How the number is formatted for display. Omitted means `None` (no formatting)."
+      "kind-field:LabelValueRow.label", "The row's label."
+      "kind-field:LabelValueRow.value", "The numeric value, static or bound."
+      "kind-field:LabelValueRow.help", "Optional small print shown under the label. Omitted means none."
+      "kind:Link", "Display kind (§4b): a hyperlink whose destination is sanitised at render time."
+      "kind-field:Link.href", "The link destination, static or bound."
+      "kind-field:Link.label", "The link text."
+      "kind-field:Link.download", "Whether the link carries a `download` attribute. Omitted means `false`."
+      "kind-field:Link.rel", "An optional `rel` attribute value, such as `noopener`. Omitted means none."
+      "kind-field:Link.target", "An optional `target` attribute value, such as `_blank`. Omitted means none."
+      "kind-field:Link.protection",
+      "An optional anti-scraper render strategy; `Email` keeps a `mailto:` address out of plaintext markup without altering the href. Omitted means an ordinary link."
+      "kind:List", "Display kind (§4b): a bulleted or numbered list of text items."
+      "kind-field:List.items", "The list items, in order."
+      "kind-field:List.ordered", "Whether the list is numbered. Omitted means `false` (bulleted)."
+      "kind:Map", "Visualisation kind (§4b): a geographic map showing bound markers."
+      "kind-field:Map.centreLatitude", "The latitude of the map's centre, in WGS-84 decimal degrees."
+      "kind-field:Map.centreLongitude", "The longitude of the map's centre, in WGS-84 decimal degrees."
+      "kind-field:Map.source", "The binding that resolves to the markers shown on the map."
+      "kind-field:Map.zoom", "The map's zoom level."
+      "kind-field:Map.onMarkerClick",
+      "An in-process handler called with the clicked marker; it travels on the wire only as a `\"<closure>\"` sentinel."
+      "kind:Markdown", "Display kind (§4b): a block of markdown text rendered by a deterministic renderer."
+      "kind-field:Markdown.citations",
+      "The figures the text cites, each placed by a `cite:<name>` link destination (§3.6.32). Omitted means none."
+      "kind-field:Markdown.text", "The markdown source."
+      "kind:Math",
+      "Display kind (§4b): a LaTeX formula, rendered as escaped source with optional client-side typesetting."
+      "kind-field:Math.source", "The LaTeX source of the formula."
+      "kind-field:Math.display", "Whether the formula renders inline or as a block."
+      "kind:Media", "Display kind (§4b): a video or audio player."
+      "kind-field:Media.controls",
+      "Whether the playback controls are shown. Omitted means `true`, so a keyboard user can always pause."
+      "kind-field:Media.kind", "Whether this is a video (with its video-only options) or an audio player."
+      "kind-field:Media.label", "The player's accessible name; required, because a transport is never decorative."
+      "kind-field:Media.loop", "Whether playback restarts at the end. Omitted means `false`."
+      "kind-field:Media.src", "The media URL, static or bound, routed through the §19 URL-scheme floor at render time."
+      "kind-field:Media.tracks",
+      "Timed-text tracks such as captions and subtitles, in authored order. Omitted means none."
+      "kind-field:Media.transcript",
+      "An optional text transcript, rendered as a disclosure beside the player. Omitted means no transcript is offered."
+      "kind:Metric", "Display kind (§4b): a KPI tile showing a labelled, formatted number with optional trend lines."
+      "kind-field:Metric.label", "The metric's label."
+      "kind-field:Metric.value", "The headline number, static or bound."
+      "kind-field:Metric.format", "How the headline number is formatted. Omitted means `None` (no formatting)."
+      "kind-field:Metric.tone", "The colour of the tile, saying how this reading stands. Omitted means `Default`."
+      "kind-field:Metric.weight", "The tile's density. Omitted means `Standard`."
+      "kind-field:Metric.emphasis", "The tile's visual prominence. Omitted means `Normal`."
+      "kind-field:Metric.trend", "An optional change value shown as the primary trend line. Omitted means no trend."
+      "kind-field:Metric.trendFormat",
+      "An optional format for the trend value. Omitted means the trend is not given its own format."
+      "kind-field:Metric.trendPolarity",
+      "Which direction of this quantity is good, used to colour the trend's sentiment without changing its text. Omitted means `HigherIsBetter`; inert when there is no `trend`."
+      "kind-field:Metric.comparisons",
+      "Further comparisons, each rendered as one more trend line under the primary trend. Omitted means none."
+      "kind-field:Metric.icon", "An optional icon name shown on the tile. Omitted means no icon."
+      "kind-field:Metric.subtext", "Optional supporting text shown under the value. Omitted means none."
+      "kind:Modal",
+      "Layout kind (§4b): an overlay shown while `open` is true, either a blocking dialog or an anchored popover."
+      "kind-field:Modal.children", "The overlay's content."
+      "kind-field:Modal.dismissable",
+      "Whether the reader may dismiss the overlay (close button, backdrop, Esc). Omitted means `true`."
+      "kind-field:Modal.onDismiss",
+      "The `Action` dispatched on dismissal. Omitted means `false` is written back to `open` when it is bound to State or a filter."
+      "kind-field:Modal.open", "The controlled visibility of the overlay."
+      "kind-field:Modal.heading", "An optional dialog title. Omitted means no title."
+      "kind-field:Modal.modality",
+      "Which overlay this is: a blocking `Modal` dialog or an anchored `Popover`. Omitted means `Modal`."
+      "kind-field:Modal.anchor",
+      "The id of the node a `Popover` is positioned against; meaningful for `Popover` only. Omitted means unanchored."
+      "kind:Mount",
+      "Meta kind (§4b): an isolation boundary that hosts a guest in its own scope, produced host-side and never inlined (§8.1)."
+      "kind-field:Mount.capabilities",
+      "The capability tags the guest requests, which the host's gate consults; an empty list denies every host-affecting action."
+      "kind-field:Mount.channel", "The declared host-guest message channel and its direction."
+      "kind-field:Mount.inputs",
+      "The guest's configuration and initial state, bound by hole name. Omitted means no inputs."
+      "kind-field:Mount.onBubble",
+      "An in-process handler for actions the guest bubbles to the host; it travels on the wire only as a `\"<closure>\"` sentinel."
+      "kind-field:Mount.scopeId", "The id of the guest's runtime scope."
+      "kind:Progress", "Display kind (§4b): a progress indicator for a long-running task."
+      "kind-field:Progress.fraction", "The completed fraction, from 0 to 1, static or bound."
+      "kind-field:Progress.indeterminate",
+      "Whether the indicator shows activity with no measurable bound; pair it with a `caveat`. Omitted means `false`."
+      "kind-field:Progress.tone", "The indicator's colour. Omitted means `Default`."
+      "kind-field:Progress.label", "An optional label describing the task. Omitted means none."
+      "kind-field:Progress.caveat",
+      "An optional note qualifying the progress, such as why no honest bound exists. Omitted means none."
+      "kind:ScrollArea", "Layout kind (§4b): a scrollable region around its children."
+      "kind-field:ScrollArea.children", "The content that scrolls."
+      "kind-field:ScrollArea.orientation", "The scroll axis: vertical, horizontal or both."
+      "kind-field:ScrollArea.maxHeight", "The viewport's maximum height in pixels. Omitted means no height ceiling."
+      "kind-field:ScrollArea.maxWidth", "The viewport's maximum width in pixels. Omitted means no width ceiling."
+      "kind:Select", "Input kind (§4b): a dropdown choosing one option, or several when `multiple` is true."
+      "kind-field:Select.label", "The control's visible label."
+      "kind-field:Select.onChange",
+      "An in-process handler called with the new single selection; it travels on the wire only as a `\"<closure>\"` sentinel."
+      "kind-field:Select.onChangeMulti",
+      "An in-process handler called with the new multi-selection; it travels on the wire only as a `\"<closure>\"` sentinel."
+      "kind-field:Select.source", "The binding that resolves to the selectable options."
+      "kind-field:Select.value",
+      "The single-select's selected value. Required unless `multiple` is true, and absent when it is (§3.2)."
+      "kind-field:Select.placeholder", "Text shown while nothing is selected. Omitted means no placeholder."
+      "kind-field:Select.disabled",
+      "A binding that disables the control while it resolves to `true`. Omitted means always enabled."
+      "kind-field:Select.multiple",
+      "Whether several options may be selected, carried in `values`. Omitted means a single-select."
+      "kind-field:Select.values", "The multi-select's selected values. Used when `multiple` is true."
+      "kind-field:Select.affordance",
+      "The operability `Affordance` declaring how an agent-initiated instruction may address this control (§31). Omitted means none beyond what the node already says."
+      "kind-field:Select.groups",
+      "Named groups of the options, by option value; options no group names render after them, ungrouped. Omitted means no grouping."
+      "kind:Skeleton", "Display kind (§4b): a loading placeholder of blank rows shown before content arrives."
+      "kind-field:Skeleton.rows", "The number of placeholder rows, bounded by `MaxSkeletonRows` (§21.9)."
+      "kind:Sparkline", "Display kind (§4b): a small inline line chart of a numeric series."
+      "kind-field:Sparkline.source", "The numeric series to plot, static or bound."
+      "kind:SplitPanel", "Layout kind (§4b): two side-by-side panes, the first child in one and the rest in the other."
+      "kind-field:SplitPanel.children",
+      "The panes' content: the first child fills the first pane and the remaining children the second."
+      "kind-field:SplitPanel.weight",
+      "The first pane's share of the width, from 0 to 1 (clamped); the second pane takes the remainder."
+      "kind:Stepper", "Layout kind (§4b): a step sequence whose children are the steps, one of them active."
+      "kind-field:Stepper.activeStep", "The index of the active step. Omitted means a static `0`."
+      "kind-field:Stepper.children", "The steps, in order."
+      "kind-field:Stepper.onSelect",
+      "An in-process handler called with the clicked step's index. Omitted means clicking a step dispatches nothing."
+      "kind:SummaryList", "Layout kind (§4b): a list of summary rows under an optional heading."
+      "kind-field:SummaryList.children", "The list's rows, in order."
+      "kind-field:SummaryList.heading", "An optional heading above the list. Omitted means no heading."
+      "kind:Switch",
+      "Meta kind (§4b): renders the first case whose `match` equals the selector's value, or `default` when none does."
+      "kind-field:Switch.autoAdvanceMs",
+      "The interval, in milliseconds, at which the switch advances to its next case on its own; must be positive. Omitted means it does not advance."
+      "kind-field:Switch.cases",
+      "The ordered cases, each a `match` string and the child it renders; the first match wins."
+      "kind-field:Switch.default", "The node rendered when no case matches, and before the selector first resolves."
+      "kind-field:Switch.on",
+      "The general binding whose string value selects the case. Exactly one of `on` and `stateKey` is present."
+      "kind-field:Switch.stateKey",
+      "The State key whose value selects the case, the compact form of `on`. Exactly one of `on` and `stateKey` is present."
+      "kind:Tabs", "Layout kind (§4b): a tabbed container showing one child at a time."
+      "kind-field:Tabs.activeIndex", "The index of the active tab. Omitted means a static `0`."
+      "kind-field:Tabs.children", "The tab panels, one per tab, in order."
+      "kind-field:Tabs.orientation",
+      "Whether the tab strip runs horizontally or vertically. Omitted means `Horizontal`."
+      "kind-field:Tabs.onSelect",
+      "An in-process handler called with the clicked tab's index. Omitted means the index is written back to `activeIndex` when it is bound to State or a filter."
+      "kind-field:Tabs.onSelectTag",
+      "An in-process handler called with the clicked tab's tag. Omitted means the tag is written back to `activeTag` when it is bound."
+      "kind-field:Tabs.tabHeaders",
+      "Per-tab headers (label, icon, disabled), one per child. Omitted means headings are inferred from the children."
+      "kind-field:Tabs.tabTags",
+      "A stable string tag for each tab, one per child. Omitted means tabs are addressed by index only."
+      "kind-field:Tabs.activeTag",
+      "The tag of the active tab, an alternative to `activeIndex` when `tabTags` are declared. Omitted means selection follows `activeIndex`."
+      "kind:Toast",
+      "Display kind (§4b): an in-tree notification announced through a live region and shown while its `open` binding is true."
+      "kind-field:Toast.dismissable",
+      "Whether the toast offers a close affordance. Omitted means `true` (the opposite default to `Callout.dismissable`)."
+      "kind-field:Toast.message", "The notification text."
+      "kind-field:Toast.open", "Whether the toast is shown; resolving `true` shows it."
+      "kind-field:Toast.tone", "The status colour of the toast. Omitted means `Default`."
+      "kind:Tree",
+      "Display kind (§4b): a hierarchy of `TreeItem` rows the reader walks with one focus, opening and closing rows, following the WAI-ARIA tree pattern."
+      "kind-field:Tree.expandedStateKey",
+      "An optional State key holding the array of open row ids. Omitted means the tree renders fully expanded and does not toggle."
+      "kind-field:Tree.items", "The top-level rows; row ids must be unique within the tree."
+      "kind-field:Tree.onSelect",
+      "An optional handler called with the selected item's id; it is a closure, so canonical wire carries only the `<closure>` sentinel. Omitted means no dispatch on selection."
+      "kind-field:Tree.selectionStateKey",
+      "An optional State key holding the selected row id. Omitted means the tree does not select and emits no `aria-selected`."
+      // Tree ops and their fields
+      "op:Batch",
+      "Tree op (§3.4): applies a list of ops all-or-nothing, in order; the first failing op aborts the batch and leaves the tree as it was."
+      "op-field:Batch.ops", "The ops to apply, in order; each may itself be a `Batch`."
+      "op:EditNode",
+      "Tree op (§3.4): swaps the addressed node's kind, keeping its id and every envelope trait such as style, state and accessibility."
+      "op-field:EditNode.newKind", "The replacement kind, written as a bare kind object with no `id` envelope."
+      "op-field:EditNode.target", "The id of the node whose kind is replaced."
+      "op:InsertChild",
+      "Tree op (§3.4): appends a new child node to the addressed parent; to place it elsewhere, follow it with a `ReorderChildren`."
+      "op-field:InsertChild.child", "The node to insert, appended as the parent's last child."
+      "op-field:InsertChild.parentId",
+      "The id of the parent that receives the child; it must be a kind that has children."
+      "op:MoveNode",
+      "Tree op (§3.4): moves an existing node under a new parent, appending it as that parent's last child."
+      "op-field:MoveNode.newParentId",
+      "The id of the parent the node moves under; moving a node into its own subtree is refused."
+      "op-field:MoveNode.target", "The id of the node to move."
+      "op:PatchStyle",
+      "Tree op (§3.4): sets only the style fields the delta names on the addressed node, leaving every other style field as it is."
+      "op-field:PatchStyle.style",
+      "The style fields to set; an absent member is left unchanged and a present one is set, a default token included. An empty delta is refused."
+      "op-field:PatchStyle.target", "The id of the node whose style is patched."
+      "op:RemoveNode",
+      "Tree op (§3.4): removes the addressed node and its subtree from its parent; the root cannot be removed."
+      "op-field:RemoveNode.target", "The id of the node to remove."
+      "op:ReorderChildren", "Tree op (§3.4): reorders a parent's children by listing their ids in the new order."
+      "op-field:ReorderChildren.newOrder",
+      "The parent's current child ids in their new order; it must be an exact permutation of them."
+      "op-field:ReorderChildren.parentId", "The id of the parent whose children are reordered."
+      "op:ReplaceBinding", "Tree op (§3.4): replaces one binding-typed slot on the addressed node."
+      "op-field:ReplaceBinding.binding",
+      "The new binding; its value type is checked against the slot when the op is applied."
+      "op-field:ReplaceBinding.slot", "The name of the binding-typed field to replace, such as `Source` or `Trend`."
+      "op-field:ReplaceBinding.target", "The id of the node whose binding is replaced."
+      "op:ReplaceRoot",
+      "Tree op (§3.4): replaces the whole tree with a new root node; the only op that can change the root id."
+      "op-field:ReplaceRoot.node", "The new root node."
+      "op:UpdateAccessibility",
+      "Tree op (§3.4): replaces the addressed node's whole `Accessibility` record; a record setting no member removes the trait."
+      "op-field:UpdateAccessibility.accessibility",
+      "The new accessibility record; a member it leaves absent is cleared."
+      "op-field:UpdateAccessibility.target", "The id of the node whose accessibility is replaced."
+      "op:UpdateProp", "Tree op (§3.4): sets one field of the addressed node's spec, addressed by a dotted path."
+      "op-field:UpdateProp.path",
+      "The field to set, as a dotted path with optional 0-based indices such as `Label` or `Columns[0].Label`; the grammar is checked when the op is applied, not at decode."
+      "op-field:UpdateProp.target", "The id of the node whose field is set."
+      "op-field:UpdateProp.value",
+      "The new field value as JSON; it is read by the addressed field's own decode rules, so a mistyped value is refused rather than coerced."
+      "op:UpdateState",
+      "Tree op (§3.4): replaces the addressed node's `StateBehaviour`, its loading, empty and error surfaces."
+      "op-field:UpdateState.state", "The new state behaviour for the node."
+      "op-field:UpdateState.target", "The id of the node whose state behaviour is replaced."
+      "op:UpdateStyle",
+      "Tree op (§3.4): replaces the addressed node's whole `SemanticStyle`; use `PatchStyle` to change only some fields."
+      "op-field:UpdateStyle.style",
+      "The new style record; a field left at its default resets the node's value to that default."
+      "op-field:UpdateStyle.target", "The id of the node whose style is replaced."
+      "op:UpdateTooltip", "Tree op (§3.4): sets or clears the addressed node's tooltip."
+      "op-field:UpdateTooltip.target", "The id of the node whose tooltip is set."
+      "op-field:UpdateTooltip.tooltip", "The new tooltip text. Omitted clears the tooltip."
+      // The node envelope
+      "node:accessibility",
+      "Optional ARIA metadata for this node (accessible name, role, hidden, live region, spoken text). Omitted means none."
+      "node:extraAttributes",
+      "Host-only extra attributes (such as `data-*` test hooks) for the rendered element; never emitted on the wire."
+      "node:fallback",
+      "An optional node a reader that does not understand this node's kind renders in its place (§15.3); it must not itself use that kind or nest another fallback. Omitted means a labelled placeholder."
+      "node:motion", "Host-only animation token for this node; never emitted on the wire. Omitted means no animation."
+      "node:state",
+      "Optional nodes to render while this node is loading or empty, and a handler for its error state. Omitted means none."
+      "node:style",
+      "Optional semantic style for this node: direction, emphasis, role, tone, voice and weight. Omitted means every default."
+      "node:tooltip",
+      "An optional supplementary hint about this node, linked with `aria-describedby`; it describes the node and never names it, and the renderer chooses how it appears. Omitted means no tooltip."
+      "node:visible",
+      "An optional condition; resolving `false` removes this node from the output entirely, unlike `accessibility.hidden`. Omitted, unresolved or errored, the node renders."
+      // Value unions, their cases and the cases' members
+      "union:Action",
+      "What an interaction does: navigate, write state, call or notify the host, open a dialogue, or run a chain of these, each a `$type`-tagged case."
+      "case:Action.Chain", "Runs several actions in order."
+      "case-field:Action.Chain.ops", "The actions to run, in order."
+      "case:Action.WriteToClipboard",
+      lines
+          [ "Write `text` to the reader's clipboard."
+            ""
+            "Phase 1126 — the payload is a `TextSource`, so what a reader copies may"
+            "be a bound value or a computed reference rather than only a literal the"
+            "author typed. The case was WIDENED rather than joined by a"
+            "`WriteToClipboardBound` sibling: two cases for one intent is the"
+            "permanent near-synonym pair the vocabulary charter exists to forbid, and"
+            "a source break that the compiler names once is cheaper than a"
+            "vocabulary that stays ambiguous forever."
+            ""
+            "**The wire does not move for a literal payload.** `TextSource.Literal`"
+            "is canonically the bare JSON string, so"
+            "`{\"$type\":\"WriteToClipboard\",\"text\":\"…\"}` is emitted and accepted"
+            "exactly as it was before this release. Construction sites are what"
+            "break, and they break at compile time: wrap the old argument in"
+            "`TextSource.Literal`."
+            ""
+            "A `Bound` payload resolves at DISPATCH time, through the same binding"
+            "resolver the surrounding tree renders through — never at decode time,"
+            "so the copied text is what the reader was looking at when they asked."
+            ""
+            "There is deliberately no clipboard *read*: a tree that could read the"
+            "clipboard without a paste gesture is a keylogger-adjacent capability."
+            "Paste is user-initiated by construction, and that is the boundary." ]
+      "case-field:Action.WriteToClipboard.text",
+      "The text to copy, literal or bound; a literal is the bare JSON string on the wire."
+      "case:Action.Dispatch",
+      lines
+          [ "Carry a typed host message. **IN-PROCESS ONLY.**"
+            ""
+            "Phase 1152 — the declaration says this now, so it no longer depends on"
+            "the reader having found `Action.dispatch`'s doc comment first. `msg` is"
+            "a host value with no wire projection: `{\"$type\":\"Dispatch\"}` is the"
+            "whole encoding, and the canonical decoder restores the payload as the"
+            "`\"<closure>\"` sentinel. A browser fed canonical wire JSON therefore"
+            "observes THAT the affordance fired and can never receive the message —"
+            "documented behaviour, not a defect. Full Fable is the one tier where"
+            "this survives, because there the tree is never serialised."
+            ""
+            "**The two wire-representable remedies.** `Action.Notify` carries a"
+            "channel and a JSON payload; `Action.Call` with an `into:` target writes"
+            "its result into state or a query (`onResult` is itself a closure and"
+            "does not survive either). Typed dispatch is then recovered host-side by"
+            "binding a handler table to the artifact's declared action holes, which"
+            "is uniform across hosts and needs no per-language mechanism."
+            ""
+            "**Two shipped surfaces make this checkable rather than remembered:**"
+            "`CanonicalJson.encodeNodeForTransport` REFUSES a tree carrying one, and"
+            "`PreEmitValidate.validateForTransport` reports it as **FUARAN112**."
+            "Neither fires on the plain in-process paths, because there is nothing"
+            "wrong with them — which is also why the `Obsolete` attribute below is"
+            "a warning (FS0044) and not an error." ]
+      "case-field:Action.Dispatch.msg",
+      "The host message to dispatch; in-process only, it is never encoded, so a decoded `Dispatch` cannot deliver it."
+      "case:Action.Invoke", "Invokes a host-registered capability for its effect."
+      "case-field:Action.Invoke.capabilityId", "The id of the capability, as the host's capability registry names it."
+      "case-field:Action.Invoke.args",
+      "The arguments, as address/value pairs the host checks against the capability's signature before dispatch."
+      "case:Action.ReadFileBody",
+      "Reads a selected file's whole body into a string and hands it to `onRead`; meant for small payloads, while large files belong to an upload destination."
+      "case-field:Action.ReadFileBody.fileRef", "The id of the selected file to read."
+      "case-field:Action.ReadFileBody.fileHandle",
+      "The runtime file handle the host reads from; host-only, never encoded, and `None` after decode."
+      "case-field:Action.ReadFileBody.encoding", "How the body is turned into a string: `Text`, `Base64` or `DataUrl`."
+      "case-field:Action.ReadFileBody.onRead",
+      "The handler that receives the body; a closure, so it does not survive encoding."
+      "case:Action.Call", "Calls a host endpoint, optionally writing the result into state or a query."
+      "case-field:Action.Call.endpoint",
+      "The host endpoint to call; the host's dispatch gate decides whether it may be called."
+      "case-field:Action.Call.onResult",
+      "The handler that receives the result; a closure, so it does not survive encoding, and it takes precedence when present."
+      "case-field:Action.Call.into",
+      "Where the result lands, a state key or a query name. Omitted, with no `onResult`, makes this a fire-and-forget call."
+      "case:Action.Navigate",
+      lines
+          [ "Navigate the reader to `route`, in the browsing context `target` names."
+            ""
+            "Phase 1536 — the route is a `TextSource`, so \"open the selected"
+            "order\" (`/orders/{selection.id}`) has a spelling. The case was WIDENED"
+            "rather than joined by a `NavigateBound` sibling, on exactly the"
+            "reasoning Phase 1126 applied to `WriteToClipboard`: two cases for one"
+            "intent is the permanent near-synonym pair the vocabulary charter exists"
+            "to forbid."
+            ""
+            "**The wire does not move for a literal route.** `TextSource.Literal` is"
+            "canonically the bare JSON string, so"
+            "`{\"$type\":\"Navigate\",\"route\":\"/x\"}` is emitted and accepted exactly"
+            "as it was before this release, and the §16 `href` / `url` / `to`"
+            "aliases still normalise onto this one field. Construction sites are"
+            "what break, and they break at compile time: wrap the old argument in"
+            "`TextSource.Literal`."
+            ""
+            "**Resolve, then gate — in that order.** A bound route resolves at"
+            "DISPATCH time through the surrounding tree's binding sources, and the"
+            "egress check and the dispatch gate then judge the RESOLVED string. A"
+            "template is not a destination: gating `/orders/{id}` would consult the"
+            "policy about a URL nobody navigates to. A route that does not resolve"
+            "warns and navigates nowhere."
+            ""
+            "`target = Blank` opens a fresh browsing context with"
+            "`noopener,noreferrer` — the renderer's obligation on every host, never"
+            "a host seam's." ]
+      "case-field:Action.Navigate.route",
+      "The route to open, literal or bound; a bound route is resolved when the action fires."
+      "case-field:Action.Navigate.target", "Where the route opens. Omitted means `Self`, the current view."
+      "case:Action.CommitLocal",
+      "Flushes the edit buffer of the addressed input, for a `Binding.Local` whose `flushOn` is `OnCommitAction`."
+      "case-field:Action.CommitLocal.nodeId", "The id of the input node whose buffer is committed."
+      "case:Action.Notify", "Sends a JSON payload to the host on a named channel."
+      "case-field:Action.Notify.channel", "The channel name the host listens on."
+      "case-field:Action.Notify.payload", "The JSON data sent with the notification."
+      "case:Action.SetState",
+      "Write a value to the document's reactive state under `key`: either the literal `value` or the `valueFrom` binding evaluated at dispatch time, and exactly one of the two."
+      "case-field:Action.SetState.key", "The state key to write."
+      "case-field:Action.SetState.value", "A literal value to write; exactly one of `value` and `valueFrom` is present."
+      "case-field:Action.SetState.valueFrom",
+      "A binding resolved when the action fires, whose value is written; exactly one of `value` and `valueFrom` is present."
+      "case:Action.AiTool", "Asks the host to run a named AI tool with JSON arguments."
+      "case-field:Action.AiTool.toolName", "The name of the tool to run."
+      "case-field:Action.AiTool.args", "The tool's arguments, as JSON."
+      "case:Action.Print",
+      lines
+          [ "Phase 1124 — open the reader's own print dialogue. The first"
+            "PAYLOAD-FREE `Action` case, and the emptiness is the ruling: the"
+            "paged MEDIUM is Host chrome, so a document may say *print now* and"
+            "nothing about how. No page size, no margin, no sheet range, no"
+            "target subtree — `{\"$type\":\"Print\"}` is the whole encoding."
+            ""
+            "Not a hatch. `window.print()` opens a dialogue the reader operates"
+            "and can cancel, hands the page to no third party, and returns"
+            "nothing the tree can read — so it discloses less than the clipboard"
+            "write beside it. It is gated all the same"
+            "(`ActionDescriptor.Print`), because a host that renders untrusted"
+            "trees must be able to refuse an unbidden dialogue." ]
+      "case:Action.Confirm",
+      lines
+          [ "Phase 1537 — ask the reader `prompt`, then dispatch `onConfirm` on"
+            "acceptance or `onCancel` (when present) on refusal."
+            ""
+            "\"Delete — are you sure?\" is composable today only as `Modal.Open` +"
+            "`SetState` + a second button: a state key, a writer and a control the"
+            "emitter must invent, for an intent every host already owns as a"
+            "dialogue."
+            ""
+            "**One dispatch path, gated twice.** `Confirm` itself is gated"
+            "(`ActionDescriptor.Confirm`) — a host rendering untrusted trees must"
+            "be able to refuse an unbidden dialogue, exactly the `Print` reasoning."
+            "On acceptance the continuation re-enters the ORDINARY dispatch entry,"
+            "so a `Navigate` inside it meets its own egress check and a `SetState`"
+            "its own host-reserved-key guard. Nothing here is a second path around"
+            "a gate; a confirm cannot smuggle an action a host would refuse."
+            ""
+            "**Bounded at depth one.** A `Confirm` anywhere inside either"
+            "continuation — under a `Chain` included — is refused at decode. A"
+            "dialogue that answers a dialogue is a modal stack a reader cannot"
+            "escape, and it expresses no intent a single question does not."
+            ""
+            "**What this does not claim.** A confirmation is a courtesy to the"
+            "reader, never an authorisation: the answer comes from the client, and"
+            "a hostile client answers yes without asking anyone. Anything that must"
+            "not happen without permission is refused by the gate, not by the"
+            "dialogue." ]
+      "case-field:Action.Confirm.prompt", "The question shown to the reader, literal or bound."
+      "case-field:Action.Confirm.onConfirm",
+      "The action dispatched when the reader accepts; it may not itself contain a `Confirm`."
+      "case-field:Action.Confirm.onCancel",
+      "The action dispatched when the reader declines. Omitted means declining does nothing."
+      "case:Action.Focus",
+      lines
+          [ "Phase 1537 — move keyboard focus to the node addressed by `nodeId`."
+            ""
+            "The server-driven tier has carried `ClientEffect.Focus of nodeId` since"
+            "Phase 152 with no `Action` counterpart; this closes that asymmetry"
+            "rather than opening a new capability."
+            ""
+            "Gated (`ActionDescriptor.Focus`) on the `Print` reasoning: moving the"
+            "reader's caret — and, with it, the viewport — is host-observable even"
+            "though no `IFuaranRuntime` member backs it. A node id that addresses"
+            "nothing warns and moves nothing."
+            ""
+            "**What this does not claim.** Nothing about scrolling: a host may"
+            "scroll as a consequence of focusing, and this case does not ask it to"
+            "and cannot stop it. Nothing about selection: focus is not a caret"
+            "position, a text range, or a grid cell selection. And nothing about"
+            "WHICH node — \"focus the first invalid field\" is this case naming a"
+            "node the author chose; choosing the first invalid one is a"
+            "renderer-owned affordance, not an argument here." ]
+      "case-field:Action.Focus.nodeId", "The id of the node in this document that receives keyboard focus."
+      "union:Binding",
+      "Where a slot's value comes from: a literal, host data, a filter, a selection, state, the current instant, a computation or a formatted value, each a `$type`-tagged case."
+      "case:Binding.Static", "A literal value written into the document."
+      "case-field:Binding.Static.value", "The value. Omitted means the binding carries no value."
+      "case:Binding.Query", "Reads a host-computed query result by name."
+      "case-field:Binding.Query.name", "The name of the query the host resolves."
+      "case-field:Binding.Query.accessor",
+      "Projects the host's raw result to the slot's type; host-only, never encoded, and the identity after decode."
+      "case-field:Binding.Query.dependsOn",
+      "The names of the filters that scope this query, which is re-resolved when one of them changes. Omitted means it depends on no filter."
+      "case:Binding.Filter", "Reads the current value of a named filter."
+      "case-field:Binding.Filter.name", "The filter's name."
+      "case-field:Binding.Filter.defaultValue",
+      "The value yielded, and seeded into the filter, before the filter is first written. Omitted means the binding is unresolved until then."
+      "case:Binding.Selection", "Reads the current selection of the addressed node, such as a grid's selected row."
+      "case-field:Binding.Selection.nodeId", "The id of the node whose selection is read."
+      "case-field:Binding.Selection.accessor",
+      "Projects the selection to the slot's type; host-only and never encoded, so a decoded binding projects through `field` instead."
+      "case-field:Binding.Selection.defaultValue", "The value yielded before anything is selected."
+      "case-field:Binding.Selection.field",
+      "The row field to read from the selection. Omitted means the selection itself."
+      "case:Binding.State", "Reads a value from the document's reactive state by key."
+      "case-field:Binding.State.key", "The state key to read."
+      "case-field:Binding.State.defaultValue", "The value yielded before the key is first written."
+      "case:Binding.Now", "Reads the current instant, which the host supplies; the document never carries it."
+      "case-field:Binding.Now.accessor",
+      "Projects the host's instant to the slot's type; host-only, never encoded, and the identity after decode."
+      "case-field:Binding.Now.grain",
+      "The resolution the host truncates the instant to before it is read. Omitted means `Second`."
+      "case:Binding.Computed",
+      "Derives a value in process with a host function; it has no wire form, and a decoded `Computed` fails when read."
+      "case-field:Binding.Computed.fn",
+      "The function that computes the value from the binding context; it encodes only as a closure placeholder."
+      "case:Binding.Local",
+      "A controlled input's edit buffer, seeded from `initialFrom` and written back when `flushOn` fires."
+      "case-field:Binding.Local.flushOn", "When the buffered value is written back."
+      "case-field:Binding.Local.format",
+      "Renders the value as the text shown in the input; a closure, so a decoded buffer uses `codec` or the identity rendition."
+      "case-field:Binding.Local.initialFrom", "The binding the buffer is seeded and re-synced from."
+      "case-field:Binding.Local.onCommit",
+      "Runs when the buffer flushes, receiving the parsed value; a closure, and mutually exclusive with `commitTo`."
+      "case-field:Binding.Local.parse",
+      "Reads the typed text back as a value, or an error the input shows; a closure, so a decoded buffer uses `codec` or the identity parse."
+      "case-field:Binding.Local.codec",
+      "A locale-independent codec for the buffer text, replacing the identity in both directions; only `Format.Number` is admitted. Omitted means the identity codec."
+      "case-field:Binding.Local.commitTo",
+      "The state key the flushed value is written to; mutually exclusive with `onCommit`."
+      "case:Binding.Format", "A number rendered as locale-aware display text."
+      "case-field:Binding.Format.source", "The numeric binding to format."
+      "case-field:Binding.Format.format",
+      "How the number is rendered, such as a currency, a percentage, a date-time or a duration."
+      "case-field:Binding.Format.locale", "The locale it is rendered in, the host's ambient locale or an explicit tag."
+      "case:Binding.I18n", "Looks up a localised message by key."
+      "case-field:Binding.I18n.key", "The message key in the host's catalogue."
+      "case-field:Binding.I18n.args", "Named bindings that fill the message's placeholders. Omitted means no arguments."
+      "case:Binding.Transform",
+      "A table derived by running `pipeline` over `source`; a binding-shaped source (State, Selection or Query) stays live, so the result re-evaluates when that source changes."
+      "case-field:Binding.Transform.source",
+      "The data the pipeline runs over: an embedded table, a host-resolved named source, or a live binding."
+      "case-field:Binding.Transform.pipeline",
+      "The ordered transform steps, such as filter, derive, group and sort, evaluated over the source."
+      "case-field:Binding.Transform.params",
+      "Binds the pipeline's named params to binding sources; a filter step whose param is unset is skipped. Omitted means no params."
+      "case:Binding.Expr", "Evaluates one scalar expression over its bound params, yielding a single value."
+      "case-field:Binding.Expr.expr",
+      "The expression, in the same algebra a transform pipeline uses; it may not reference a column."
+      "case-field:Binding.Expr.params",
+      "Binds the expression's named params to binding sources; a param the expression uses but this list does not bind is refused at decode. Omitted means no params."
+      "case:Binding.Invoke",
+      "Calls a host-registered capability for a value, which arrives asynchronously and renders through the node's loading and error surfaces."
+      "case-field:Binding.Invoke.capabilityId", "The id of the capability, as the host's capability registry names it."
+      "case-field:Binding.Invoke.args",
+      "The arguments, as address/value pairs the host checks against the capability's signature before dispatch."
+      "union:BoxLayout",
+      "How a `Box` arranges its children: the responsive auto-tile, a flex row or column, a row-fill grid, or a column-fill masonry."
+      "case:BoxLayout.Auto",
+      "Responsive auto-tile: the renderer chooses the column count, and the author declares none."
+      "case:BoxLayout.Flex", "A single flex line of children along `direction`, optionally wrapping."
+      "case-field:BoxLayout.Flex.direction",
+      "The main axis: `Vertical` stacks the children, `Horizontal` lays them in a row."
+      "case-field:BoxLayout.Flex.wrap",
+      "Whether children wrap onto further lines when they overflow the main axis. Defaults to `false`, which is omitted on the wire."
+      "case-field:BoxLayout.Flex.gap",
+      "Spacing between children, in pixels. Omitted means the renderer's default spacing."
+      "case:BoxLayout.Grid",
+      "A grid that fills by row, with `cols` columns or an explicit `templateColumns` track list."
+      "case-field:BoxLayout.Grid.cols", "The number of columns. A present `templateColumns` supersedes it."
+      "case-field:BoxLayout.Grid.templateColumns",
+      "A verbatim CSS `grid-template-columns` sizing function that supersedes `cols`. Omitted means `cols` equal columns."
+      "case-field:BoxLayout.Grid.gap",
+      "Spacing between grid cells, in pixels. Omitted means the renderer's default spacing."
+      "case:BoxLayout.Masonry",
+      "A column-fill layout (§3.6.7): children flow down `cols` columns in turn, realised with CSS multi-column layout."
+      "case-field:BoxLayout.Masonry.cols",
+      "The number of columns. Must be a positive integer; zero or a negative value is refused by the decoder."
+      "case-field:BoxLayout.Masonry.gap",
+      "Spacing between columns, in pixels. Omitted means the renderer's default spacing."
+      "union:CallResultTarget", "Where an `Action.Call` writes its result."
+      "case:CallResultTarget.State", "Writes the result to a state key, re-rendering its `Binding.State` readers."
+      "case-field:CallResultTarget.State.key", "The state key written."
+      "case:CallResultTarget.Query",
+      "Writes the result as a named query result, re-rendering its `Binding.Query` readers."
+      "case-field:CallResultTarget.Query.name", "The query name written."
+      "union:CellFormat",
+      "How a numeric or date value is displayed in a grid column, a `Metric` or a comparison, while the underlying value keeps its type for sorting and trends."
+      "case:CellFormat.None", "No formatting: the value is shown as it is."
+      "case:CellFormat.Number", "A plain number, with optional fraction digits and an optional locale."
+      "case-field:CellFormat.Number.decimals",
+      "The number of fraction digits to show. Omitted means the formatter's default precision."
+      "case-field:CellFormat.Number.locale",
+      "The locale the figure renders in, through the same formatter `Binding.Format` uses. Omitted means the locale-free rendering, identical on every host."
+      "case:CellFormat.Currency", "A money figure in the currency named by `code`."
+      "case-field:CellFormat.Currency.code", "The ISO 4217 currency code, such as `GBP` or `USD`."
+      "case-field:CellFormat.Currency.decimals",
+      "The number of fraction digits to show. Omitted means two places without a locale, or the currency's own digits with one."
+      "case-field:CellFormat.Currency.locale",
+      "The locale the figure renders in, giving its grouping and symbol. Omitted means the locale-free rendering, the code followed by the amount."
+      "case:CellFormat.Percent", "A percentage, with optional fraction digits and an optional locale."
+      "case-field:CellFormat.Percent.decimals",
+      "The number of fraction digits to show. Omitted means the formatter's default precision."
+      "case-field:CellFormat.Percent.locale",
+      "The locale the figure renders in, through the same formatter `Binding.Format` uses. Omitted means the locale-free rendering, identical on every host."
+      "case:CellFormat.SignificantDigits",
+      "A number rounded to a fixed count of significant digits, so its fraction digits move with its magnitude."
+      "case-field:CellFormat.SignificantDigits.digits", "The number of significant digits to keep."
+      "case:CellFormat.DateTime", "A date, a time, or both, rendered through a host-formatter pattern."
+      "case-field:CellFormat.DateTime.format",
+      "The format pattern, such as `yyyy-MM-dd`, `HH:mm` or `dd MMM yyyy HH:mm`."
+      "case:CellFormat.Duration",
+      lines
+          [ "Phase 819 — trendable duration cells: the raw float counts `unit`s,"
+            "rendered per `style`." ]
+      "case-field:CellFormat.Duration.unit", "The unit the raw number counts: seconds, minutes or hours."
+      "case-field:CellFormat.Duration.style",
+      "How the duration is written: `Compact` (1h 20m), `Clock` (1:20:00) or `Long` (1 hour 20 minutes)."
+      "case:CellFormat.RelativeTime",
+      lines
+          [ "Phase 819 — cell-vocabulary parity with `Format.RelativeTime`: the"
+            "raw float is a signed count of `unit`." ]
+      "case-field:CellFormat.RelativeTime.unit", "The unit the raw number counts, as a signed offset from now."
+      "case:CellFormat.Custom", "A host closure that formats the cell value itself. It does not survive the wire."
+      "case-field:CellFormat.Custom.fn", "The function that turns a `CellValue` into its display text."
+      "union:CellKindErased",
+      "What a `DataGrid` cell is and does, with any row accessors taking the row as a name-addressable map."
+      "case:CellKindErased.Text", "A plain, non-interactive text cell."
+      "case:CellKindErased.Numeric",
+      "A non-interactive numeric cell, which keeps numeric sorting; pair it with a `CellFormat` to style the figure."
+      "case:CellKindErased.Date", "A non-interactive date cell."
+      "case:CellKindErased.Editable", "An editable cell whose edits are reported through `onEdit`."
+      "case-field:CellKindErased.Editable.onEdit",
+      "Called with the row and the new `CellValue` when the reader edits the cell. Omitted means no edit handler."
+      "case:CellKindErased.Checkbox", "A checkbox cell whose state is read from the row."
+      "case-field:CellKindErased.Checkbox.get", "Reads whether the checkbox is ticked for the row."
+      "case-field:CellKindErased.Checkbox.onToggle",
+      "Called with the row and the new state when the reader toggles the checkbox. Omitted means no handler."
+      "case:CellKindErased.Button", "A button in the cell."
+      "case-field:CellKindErased.Button.label", "The button's text."
+      "case-field:CellKindErased.Button.onClick",
+      "Called with the row when the button is clicked. Omitted means no handler."
+      "case:CellKindErased.ButtonGroup", "Several buttons side by side in the cell."
+      "case-field:CellKindErased.ButtonGroup.buttons", "The buttons, in display order, each a `ButtonGroupItem`."
+      "case:CellKindErased.Link", "A hyperlink whose target and text are computed from the row."
+      "case-field:CellKindErased.Link.hrefFn", "Computes the link target from the row."
+      "case-field:CellKindErased.Link.labelFn", "Computes the link text from the row."
+      "case:CellKindErased.Pill",
+      "A toned pill whose label and tone are computed by host closures; use `TonedPill` for a tone rule that survives the wire."
+      "case-field:CellKindErased.Pill.labelFn", "Computes the pill's label from the row."
+      "case-field:CellKindErased.Pill.toneFn", "Computes the pill's `ToneVariant` from the row."
+      "case:CellKindErased.TonedPill",
+      "A toned pill declared as data: the row's `field` value is the label, and `map` picks its tone."
+      "case-field:CellKindErased.TonedPill.field",
+      "The row property that supplies both the pill's label and its key into `map`."
+      "case-field:CellKindErased.TonedPill.map", "Maps a field value to the `ToneVariant` the pill takes."
+      "case-field:CellKindErased.TonedPill.default",
+      "The tone for a value `map` does not mention. Defaults to `Default`, which is omitted on the wire."
+      "case:CellKindErased.Progress", "A progress bar computed from the row, with an optional label."
+      "case-field:CellKindErased.Progress.fractionFn", "Computes the completed fraction, from 0 to 1, from the row."
+      "case-field:CellKindErased.Progress.labelFn",
+      "Computes the bar's label from the row. Omitted means an unlabelled bar."
+      "case:CellKindErased.Custom",
+      "A bespoke cell renderer supplied by the host; the last-resort escape when no other cell kind fits."
+      "case-field:CellKindErased.Custom.fn",
+      "Builds the cell's node, given a projector that reads the cell value from the row."
+      "union:ChartAnnotation",
+      "A data-addressed chart annotation in `ChartSpec.annotations`: it carries an address in the data's own coordinates and an optional label, never geometry or style, so it survives data changes, restyles and resizes."
+      "case:ChartAnnotation.ReferenceLine", "A horizontal line across the plot at a value on the value axis."
+      "case-field:ChartAnnotation.ReferenceLine.value",
+      "The line's position in the value axis's own units. Must be finite; a non-finite value is refused by the decoder."
+      "case-field:ChartAnnotation.ReferenceLine.label", "The line's label text. Omitted means an unlabelled line."
+      "case:ChartAnnotation.EventMarker",
+      "A vertical line at an x-axis address (a category or a date), with an optional label."
+      "case-field:ChartAnnotation.EventMarker.at",
+      "Where on the x axis the marker stands, as a `ChartAnnotationX` address."
+      "case-field:ChartAnnotation.EventMarker.label", "The marker's label text. Omitted means an unlabelled marker."
+      "case:ChartAnnotation.RangeBand", "A shaded interval on either axis, drawn behind the series."
+      "case-field:ChartAnnotation.RangeBand.range",
+      "The band's extent; the `ChartAnnotationRange` case chooses the axis and types the pair of ends."
+      "case-field:ChartAnnotation.RangeBand.label", "The band's label text. Omitted means an unlabelled band."
+      "union:ChartAnnotationRange",
+      "The pair of ends of a `RangeBand`; the case names the axis the band lies on, so both ends share that axis's address form."
+      "case:ChartAnnotationRange.ValueRange", "A band between two values on the value axis."
+      "case-field:ChartAnnotationRange.ValueRange.from",
+      "The band's lower end in the value axis's own units. Must be finite and not greater than `to`."
+      "case-field:ChartAnnotationRange.ValueRange.to",
+      "The band's upper end in the value axis's own units. Must be finite and not less than `from`."
+      "case:ChartAnnotationRange.XRange", "A band between two x-axis addresses, both categories or both dates."
+      "case-field:ChartAnnotationRange.XRange.from",
+      "The band's starting x address. A date pair must be in order; a category pair's order is checked against the rows at authoring time."
+      "case-field:ChartAnnotationRange.XRange.to", "The band's ending x address, in the same address form as `from`."
+      "union:ChartAnnotationX",
+      "An x-axis address for a chart annotation: a category key on a band axis or a date on a temporal axis. The form is declared, never inferred, and a form that does not match the chart's x scale is refused."
+      "case:ChartAnnotationX.Category", "Addresses a category band on a band x axis."
+      "case-field:ChartAnnotationX.Category.key", "The category key naming the band."
+      "case:ChartAnnotationX.Date", "Addresses an instant on a temporal x axis (`XScale = Temporal`)."
+      "case-field:ChartAnnotationX.Date.iso",
+      "The instant as an ISO-8601 date string. An unparseable date is refused by the decoder."
+      "union:ColumnWidth", "How a `DataGrid` column is sized."
+      "case:ColumnWidth.Auto", "The renderer sizes the column to its content."
+      "case:ColumnWidth.Fixed", "A fixed width in pixels."
+      "case-field:ColumnWidth.Fixed.pixels", "The column width, in pixels."
+      "case:ColumnWidth.Flex", "A share of the remaining width, in proportion to `weight`."
+      "case-field:ColumnWidth.Flex.weight", "The column's relative share of the remaining width."
+      "union:CurveCommand", "One command of a `Curve` shape's path, in the drawing's coordinate space."
+      "case:CurveCommand.MoveTo", "Starts a new subpath at a point without drawing."
+      "case-field:CurveCommand.MoveTo.to", "The point the pen moves to."
+      "case:CurveCommand.LineTo", "Draws a straight line from the current point."
+      "case-field:CurveCommand.LineTo.to", "The line's end point."
+      "case:CurveCommand.CubicTo", "Draws a cubic Bezier curve from the current point."
+      "case-field:CurveCommand.CubicTo.control1", "The first control point."
+      "case-field:CurveCommand.CubicTo.control2", "The second control point."
+      "case-field:CurveCommand.CubicTo.to", "The curve's end point."
+      "case:CurveCommand.QuadraticTo", "Draws a quadratic Bezier curve from the current point."
+      "case-field:CurveCommand.QuadraticTo.control", "The control point."
+      "case-field:CurveCommand.QuadraticTo.to", "The curve's end point."
+      "case:CurveCommand.Close", "Closes the current subpath with a straight line back to its start."
+      "union:FormFieldKind",
+      "The input control a `Form` field or a `Filters` chip uses. On every case an omitted `value` auto-binds the field's own state or filter, and an omitted `onChange` writes changes back to a writable value binding."
+      "case:FormFieldKind.Text", "A single-line text input."
+      "case-field:FormFieldKind.Text.value",
+      "The text shown in the input, as a `Binding` to a string. Omitted means the field auto-binds its own state or filter slot."
+      "case-field:FormFieldKind.Text.onChange",
+      "Called with the new text. Omitted means the change is written back to the `value` binding when it is writable."
+      "case:FormFieldKind.Number", "A numeric input."
+      "case-field:FormFieldKind.Number.value",
+      "The number shown in the input, as a `Binding` to a number. Omitted means the field auto-binds its own state or filter slot."
+      "case-field:FormFieldKind.Number.onChange",
+      "Called with the new number. Omitted means the change is written back to the `value` binding when it is writable."
+      "case:FormFieldKind.Checkbox", "A boolean checkbox."
+      "case-field:FormFieldKind.Checkbox.value",
+      "Whether the box is ticked, as a `Binding` to a bool. Omitted means the field auto-binds its own state or filter slot."
+      "case-field:FormFieldKind.Checkbox.onChange",
+      "Called with the new ticked state. Omitted means the change is written back to the `value` binding when it is writable."
+      "case:FormFieldKind.Toggle", "A boolean on/off switch: the same value as `Checkbox`, shown as a toggle."
+      "case-field:FormFieldKind.Toggle.value",
+      "Whether the switch is on, as a `Binding` to a bool. Omitted means the field auto-binds its own state or filter slot."
+      "case-field:FormFieldKind.Toggle.onChange",
+      "Called with the new on/off state. Omitted means the change is written back to the `value` binding when it is writable."
+      "case:FormFieldKind.Choice", "A single choice from a bounded list of options."
+      "case-field:FormFieldKind.Choice.options", "The options to choose from, each a `SelectOption`."
+      "case-field:FormFieldKind.Choice.value",
+      "The chosen option's value, as a `Binding` to a string. Omitted means the field auto-binds its own state or filter slot."
+      "case-field:FormFieldKind.Choice.onChange",
+      "Called with the chosen value, or null when the choice is cleared. Omitted means the change is written back to the `value` binding when it is writable."
+      "case:FormFieldKind.TextArea", "A multi-line text input."
+      "case-field:FormFieldKind.TextArea.value",
+      "The text shown in the input, as a `Binding` to a string. Omitted means the field auto-binds its own state or filter slot."
+      "case-field:FormFieldKind.TextArea.onChange",
+      "Called with the new text. Omitted means the change is written back to the `value` binding when it is writable."
+      "case-field:FormFieldKind.TextArea.rows", "The number of visible text rows."
+      "case:FormFieldKind.RangedNumber", "A numeric quantity input with optional bounds and step."
+      "case-field:FormFieldKind.RangedNumber.value",
+      "The current number, as a `Binding` to a number. Omitted means the field auto-binds its own state or filter slot."
+      "case-field:FormFieldKind.RangedNumber.onChange",
+      "Called with the new number. Omitted means the change is written back to the `value` binding when it is writable."
+      "case-field:FormFieldKind.RangedNumber.min", "The lowest allowed value. Omitted means no lower bound."
+      "case-field:FormFieldKind.RangedNumber.max", "The highest allowed value. Omitted means no upper bound."
+      "case-field:FormFieldKind.RangedNumber.step",
+      "The increment between allowed values. Omitted means the control's default step."
+      "case:FormFieldKind.Range", "A dual-thumb numeric range selecting a low and a high value."
+      "case-field:FormFieldKind.Range.value",
+      "The selected pair, as a `Binding` to a `RangePair`; a static pair is written as the bare `{\"max\":…,\"min\":…}` object. Omitted means the field auto-binds its own state or filter slot."
+      "case-field:FormFieldKind.Range.onChange",
+      "Called with the new pair. Omitted means the change is written back to the `value` binding when it is writable."
+      "case-field:FormFieldKind.Range.min", "The lowest value either thumb can take. Omitted means no lower bound."
+      "case-field:FormFieldKind.Range.max", "The highest value either thumb can take. Omitted means no upper bound."
+      "case-field:FormFieldKind.Range.step",
+      "The increment between allowed values. Omitted means the control's default step."
+      "case:FormFieldKind.SegmentedChoice", "A single choice shown as a row or column of segmented buttons."
+      "case-field:FormFieldKind.SegmentedChoice.options", "The options to choose from, each a `SelectOption`."
+      "case-field:FormFieldKind.SegmentedChoice.value",
+      "The chosen option's value, as a `Binding` to a string. Omitted means the field auto-binds its own state or filter slot."
+      "case-field:FormFieldKind.SegmentedChoice.onChange",
+      "Called with the chosen value, or null when the choice is cleared. Omitted means the change is written back to the `value` binding when it is writable."
+      "case-field:FormFieldKind.SegmentedChoice.orientation",
+      "Whether the segments run in a row or a column. Defaults to `Horizontal`, which is omitted on the wire."
+      "case:FormFieldKind.DateTime", "A date, time-of-day or date-time input, chosen by `variant`."
+      "case-field:FormFieldKind.DateTime.value",
+      "The value as an ISO-8601 string in the `variant`'s shape, as a `Binding`. Omitted means the field auto-binds its own state or filter slot."
+      "case-field:FormFieldKind.DateTime.onChange",
+      "Called with the new ISO-8601 string, or null when cleared. Omitted means the change is written back to the `value` binding when it is writable."
+      "case-field:FormFieldKind.DateTime.variant", "Whether the field takes a `Date`, a `Time` or a `DateTime`."
+      "case-field:FormFieldKind.DateTime.min",
+      "The earliest allowed value, as an ISO-8601 string. Omitted means no lower bound."
+      "case-field:FormFieldKind.DateTime.max",
+      "The latest allowed value, as an ISO-8601 string. Omitted means no upper bound."
+      "case-field:FormFieldKind.DateTime.step",
+      "The increment between allowed values, in seconds. Omitted means the control's default step."
+      "case:FormFieldKind.DateTimeRange",
+      "A single control selecting an ordered from/to pair of dates, times or date-times."
+      "case-field:FormFieldKind.DateTimeRange.value",
+      "The selected pair, as a `Binding` to a `DateTimeRangePair`; a static pair is written as the bare `{\"from\":…,\"to\":…}` object and must have `from` no later than `to`. Omitted means the field auto-binds its own state or filter slot."
+      "case-field:FormFieldKind.DateTimeRange.onChange",
+      "Called with the new from/to pair. Omitted means the change is written back to the `value` binding when it is writable."
+      "case-field:FormFieldKind.DateTimeRange.variant", "Whether both ends are a `Date`, a `Time` or a `DateTime`."
+      "case-field:FormFieldKind.DateTimeRange.min",
+      "The earliest value either end can take, as an ISO-8601 string. Omitted means no lower bound."
+      "case-field:FormFieldKind.DateTimeRange.max",
+      "The latest value either end can take, as an ISO-8601 string. Omitted means no upper bound."
+      "case-field:FormFieldKind.DateTimeRange.step",
+      "The increment between allowed values, in seconds. Omitted means the control's default step."
+      "case:FormFieldKind.Combobox", "A searchable single choice that filters its options as the reader types."
+      "case-field:FormFieldKind.Combobox.allowFreeText",
+      "Whether the reader may enter a value outside the options. Defaults to `false`, which is omitted on the wire."
+      "case-field:FormFieldKind.Combobox.onChange",
+      "Called with the chosen or entered value, or null when cleared. Omitted means the change is written back to the `value` binding when it is writable."
+      "case-field:FormFieldKind.Combobox.options",
+      "The options to search, each a `SelectOption`; a `Query` binding supplies them asynchronously."
+      "case-field:FormFieldKind.Combobox.value",
+      "The current value, as a `Binding` to a string. Omitted means the field auto-binds its own state or filter slot."
+      "case:FormFieldKind.Rating", "A score on a small ordinal scale, such as one to five stars."
+      "case-field:FormFieldKind.Rating.allowHalf",
+      "Whether the reader may enter half steps. Defaults to `false` (whole steps only), which is omitted on the wire."
+      "case-field:FormFieldKind.Rating.max",
+      "The top of the scale. Must be at least 1; a smaller value is refused by the decoder."
+      "case-field:FormFieldKind.Rating.onChange",
+      "Called with the new score. Omitted means the change is written back to the `value` binding when it is writable."
+      "case-field:FormFieldKind.Rating.value",
+      "The current score, as a `Binding` to a number, which may be fractional for display such as an average. Omitted means the field auto-binds its own state or filter slot."
+      "case:FormFieldKind.Color", "A colour swatch that opens the platform's colour picker."
+      "case-field:FormFieldKind.Color.onChange",
+      "Called with the new colour as a `#rrggbb` string. Omitted means the change is written back to the `value` binding when it is writable."
+      "case-field:FormFieldKind.Color.value",
+      "The colour as a `#rrggbb` string, as a `Binding`; a static value of any other shape is refused by the decoder. Omitted means the field auto-binds its own state or filter slot."
+      "case:FormFieldKind.Tokens", "A multi-value input that collects several tokens, each shown as a removable chip."
+      "case-field:FormFieldKind.Tokens.allowFreeText",
+      "Whether the reader may add tokens not among the suggestions. Defaults to `true`, which is omitted on the wire; `false` with no `suggestions` is refused by the decoder."
+      "case-field:FormFieldKind.Tokens.onChange",
+      "Called with the new token list. Omitted means the change is written back to the `value` binding when it is writable."
+      "case-field:FormFieldKind.Tokens.suggestions",
+      "Suggested tokens, each a `SelectOption`; a `Query` binding supplies them asynchronously. Omitted means a plain token box with nothing to suggest."
+      "case-field:FormFieldKind.Tokens.value",
+      "The tokens in the order they were added, as a `Binding` to a string list. Omitted means the field auto-binds its own state or filter slot."
+      "union:Format",
+      "A locale-aware rendering of a number, used by `Binding.Format` and, for `Number` only, as a `Binding.Local` codec."
+      "case:Format.Number", "A plain number."
+      "case-field:Format.Number.decimals",
+      "The fixed number of fraction digits. Omitted leaves the digit count to the formatter."
+      "case:Format.Currency", "A currency amount."
+      "case-field:Format.Currency.isoCode", "The ISO 4217 currency code, such as `GBP`."
+      "case-field:Format.Currency.decimals",
+      "The number of fraction digits, overriding the currency's default. Omitted keeps the default."
+      "case:Format.Percent", "A fraction rendered as a percentage."
+      "case-field:Format.Percent.decimals",
+      "The fixed number of fraction digits. Omitted leaves the digit count to the formatter."
+      "case:Format.DateTime", "A date, a time of day, or both; set at least one of `dateStyle` and `timeStyle`."
+      "case-field:Format.DateTime.dateStyle", "How the date part is rendered. Omitted renders no date."
+      "case-field:Format.DateTime.timeStyle", "How the time-of-day part is rendered. Omitted renders no time."
+      "case:Format.RelativeTime",
+      "A signed count of a unit rendered as relative time, such as in 3 days or 2 hours ago."
+      "case-field:Format.RelativeTime.unit", "The unit the source counts."
+      "case:Format.Duration",
+      lines
+          [ "Phase 819 — locale-independent duration formatting: the numeric"
+            "source counts `unit`s, rendered per `style`." ]
+      "case-field:Format.Duration.unit", "The unit the source counts."
+      "case-field:Format.Duration.style", "How the duration is rendered: `Compact`, `Clock` or `Long`."
+      "case:Format.Since",
+      "The time elapsed from an instant in Unix-epoch seconds to the host's current instant, rendered as relative time."
+      "case-field:Format.Since.unit",
+      "The unit to render in. Omitted means the unit is chosen automatically from the elapsed time."
+      "union:FragmentArg",
+      "An argument bound to a hole at a `FragmentRef`: a scalar for a value hole, or a subtree (`SlotArg`) for a slot hole."
+      "case:FragmentArg.Int", "An integer value argument."
+      "case-field:FragmentArg.Int.value", "The integer bound to the hole."
+      "case:FragmentArg.Float", "A floating-point value argument."
+      "case-field:FragmentArg.Float.value", "The number bound to the hole."
+      "case:FragmentArg.Bool", "A boolean value argument."
+      "case-field:FragmentArg.Bool.value", "The boolean bound to the hole."
+      "case:FragmentArg.Str", "A string value argument."
+      "case-field:FragmentArg.Str.value", "The string bound to the hole."
+      "case:FragmentArg.SlotArg", "A subtree argument for a `Slot` or `Repeat` hole."
+      "case-field:FragmentArg.SlotArg.tree", "The node bound into the slot."
+      "union:HoleDecl", "A typed hole declared on a parameterised `FragmentDecl`, bound by name at each `FragmentRef`."
+      "case:HoleDecl.Value", "A hole that takes a typed scalar value, validated against its value-space at bind time."
+      "case-field:HoleDecl.Value.name", "The hole's name, which a `FragmentRef` uses as the key in `args`."
+      "case-field:HoleDecl.Value.space", "The value-space an argument must fall within."
+      "case-field:HoleDecl.Value.default",
+      "The value used when no argument is bound. Omitted means the hole is required."
+      "case:HoleDecl.Slot", "A hole that takes a subtree. Always required."
+      "case-field:HoleDecl.Slot.name", "The hole's name, which a `FragmentRef` uses as the key in `args`."
+      "case-field:HoleDecl.Slot.kindConstraint",
+      "The node kind name the bound subtree must have (matched against the kind-constraint vocabulary, e.g. `Heading`). Omitted means any kind is accepted."
+      "case:HoleDecl.Repeat", "A hole that takes a subtree expanded a bounded number of times. Always required."
+      "case-field:HoleDecl.Repeat.name", "The hole's name, which a `FragmentRef` uses as the key in `args`."
+      "case-field:HoleDecl.Repeat.countSpace",
+      "The value-space of the repeat count. Must be a bounded `IntRange`; any other space is refused."
+      "union:HoleValueSpace",
+      "The domain a value argument must fall within, checked when the argument is bound to a hole."
+      "case:HoleValueSpace.IntRange", "An integer between `min` and `max`, inclusive."
+      "case-field:HoleValueSpace.IntRange.min", "The smallest accepted integer (inclusive)."
+      "case-field:HoleValueSpace.IntRange.max", "The largest accepted integer (inclusive)."
+      "case:HoleValueSpace.FloatRange", "A number between `min` and `max`, inclusive."
+      "case-field:HoleValueSpace.FloatRange.min", "The smallest accepted number (inclusive)."
+      "case-field:HoleValueSpace.FloatRange.max", "The largest accepted number (inclusive)."
+      "case:HoleValueSpace.StringLen", "A string whose length is between `minLen` and `maxLen`, inclusive."
+      "case-field:HoleValueSpace.StringLen.minLen", "The shortest accepted length (inclusive)."
+      "case-field:HoleValueSpace.StringLen.maxLen", "The longest accepted length (inclusive)."
+      "case:HoleValueSpace.Enum", "A string drawn from a fixed set of choices."
+      "case-field:HoleValueSpace.Enum.choices", "The accepted strings."
+      "case:HoleValueSpace.AnyString", "Any string, unconstrained."
+      "union:LocalFlushTrigger", "When a `Binding.Local` edit buffer writes its value back."
+      "case:LocalFlushTrigger.OnBlur", "When the input loses focus."
+      "case:LocalFlushTrigger.OnSubmit", "When the enclosing form is submitted."
+      "case:LocalFlushTrigger.OnDebounce", "After the reader pauses typing for a set delay."
+      "case-field:LocalFlushTrigger.OnDebounce.milliseconds", "The pause, in milliseconds, before the buffer flushes."
+      "case:LocalFlushTrigger.OnCommitAction", "When an `Action.CommitLocal` names the input."
+      "union:LocaleSource", "The locale a `Binding.Format` renders in."
+      "case:LocaleSource.Ambient", "The host's ambient locale."
+      "case:LocaleSource.Explicit", "A fixed locale named by a tag."
+      "case-field:LocaleSource.Explicit.tag", "The BCP 47 language tag, such as `en-GB`."
+      "union:MediaKind", "Which media surface a `Media` node is: a video or an audio player."
+      "case:MediaKind.Video", "A video player, with an optional poster frame and autoplay."
+      "case-field:MediaKind.Video.autoplay",
+      "Whether the video starts playing by itself. Defaults to `false`, which is omitted on the wire."
+      "case-field:MediaKind.Video.poster",
+      "The URL of the image shown before playback starts. Omitted means no poster frame."
+      "case:MediaKind.Audio", "An audio player; it carries no extra members and never autoplays."
+      "union:Scalar", "A self-describing scalar value, used as a `Value` hole's default."
+      "case:Scalar.Int", "An integer scalar."
+      "case-field:Scalar.Int.value", "The integer value."
+      "case:Scalar.Float", "A floating-point scalar."
+      "case-field:Scalar.Float.value", "The numeric value."
+      "case:Scalar.Bool", "A boolean scalar."
+      "case-field:Scalar.Bool.value", "The boolean value."
+      "case:Scalar.Str", "A string scalar."
+      "case-field:Scalar.Str.value", "The string value."
+      "union:Shape",
+      "A shape in a `Drawing`, positioned in the drawing's coordinate space; every case carries a `DrawStyle`."
+      "case:Shape.Group", "A group of shapes sharing one style."
+      "case-field:Shape.Group.children", "The shapes in the group, drawn in order."
+      "case-field:Shape.Group.style", "The style applied to the group."
+      "case:Shape.Rectangle", "An axis-aligned rectangle, optionally with rounded corners."
+      "case-field:Shape.Rectangle.x", "The x coordinate of the top-left corner."
+      "case-field:Shape.Rectangle.y", "The y coordinate of the top-left corner."
+      "case-field:Shape.Rectangle.width", "The rectangle's width."
+      "case-field:Shape.Rectangle.height", "The rectangle's height."
+      "case-field:Shape.Rectangle.cornerRadius", "The radius of the rounded corners. Omitted means square corners."
+      "case-field:Shape.Rectangle.style", "The rectangle's fill, stroke and other style."
+      "case:Shape.Line", "A straight line segment between two points."
+      "case-field:Shape.Line.x1", "The x coordinate of the start point."
+      "case-field:Shape.Line.y1", "The y coordinate of the start point."
+      "case-field:Shape.Line.x2", "The x coordinate of the end point."
+      "case-field:Shape.Line.y2", "The y coordinate of the end point."
+      "case-field:Shape.Line.style", "The line's stroke and other style."
+      "case:Shape.Polyline", "An open path of straight segments through a list of points."
+      "case-field:Shape.Polyline.points", "The points the polyline passes through, in order."
+      "case-field:Shape.Polyline.style", "The polyline's stroke and other style."
+      "case:Shape.Polygon", "A closed shape of straight edges through a list of points."
+      "case-field:Shape.Polygon.points", "The polygon's vertices, in order."
+      "case-field:Shape.Polygon.style", "The polygon's fill, stroke and other style."
+      "case:Shape.Curve", "A path built from a sequence of `CurveCommand`s."
+      "case-field:Shape.Curve.commands", "The path commands, applied in order."
+      "case-field:Shape.Curve.style", "The path's fill, stroke and other style."
+      "case:Shape.Circle", "A circle given by its centre and radius."
+      "case-field:Shape.Circle.cx", "The x coordinate of the centre."
+      "case-field:Shape.Circle.cy", "The y coordinate of the centre."
+      "case-field:Shape.Circle.r", "The radius."
+      "case-field:Shape.Circle.style", "The circle's fill, stroke and other style."
+      "case:Shape.Ellipse", "An axis-aligned ellipse given by its centre and two radii."
+      "case-field:Shape.Ellipse.cx", "The x coordinate of the centre."
+      "case-field:Shape.Ellipse.cy", "The y coordinate of the centre."
+      "case-field:Shape.Ellipse.rx", "The horizontal radius."
+      "case-field:Shape.Ellipse.ry", "The vertical radius."
+      "case-field:Shape.Ellipse.style", "The ellipse's fill, stroke and other style."
+      "case:Shape.Label", "A text label placed at a point."
+      "case-field:Shape.Label.x",
+      "The x coordinate of the label's anchor point; `DrawStyle.textAnchor` sets how the text aligns to it."
+      "case-field:Shape.Label.y", "The y coordinate of the label's anchor point."
+      "case-field:Shape.Label.text", "The label's text."
+      "case-field:Shape.Label.style", "The label's font, fill and other style."
+      "union:TextSource", "Text for a slot: a literal string, a bound value, or a localised message."
+      "case:TextSource.Literal", "Literal text; it encodes as the bare JSON string."
+      "case-field:TextSource.Literal.text", "The text."
+      "case:TextSource.Bound", "Text read from a string binding."
+      "case-field:TextSource.Bound.binding", "The string binding the text comes from."
+      "case:TextSource.I18n", "A localised message looked up by key."
+      "case-field:TextSource.I18n.key", "The message key in the host's catalogue."
+      "case-field:TextSource.I18n.args",
+      "Named arguments that fill the message's placeholders, each a literal value or a binding."
+      // Enums and their cases
+      "enum:BadgeVariant", "The visual tone of a `Badge`, from neutral through brand to the status colours."
+      "enum-case:BadgeVariant.Neutral", "A plain, untinted badge; the default."
+      "enum-case:BadgeVariant.Brand", "Tinted with the primary brand accent."
+      "enum-case:BadgeVariant.Success", "Tinted as a success state."
+      "enum-case:BadgeVariant.Warning", "Tinted as a warning state."
+      "enum-case:BadgeVariant.Critical", "Tinted as an error or critical state."
+      "enum-case:BadgeVariant.Info", "Tinted as an informational accent."
+      "enum:BoxRole", "What a `Box` container is for: a responsive dashboard, a card, a plain group, or a separator."
+      "enum-case:BoxRole.Dashboard", "A dashboard surface whose children tile like cards."
+      "enum-case:BoxRole.Card", "A card: a bounded surface, usually with a `heading`."
+      "enum-case:BoxRole.Group", "A plain grouping container with no surface of its own."
+      "enum-case:BoxRole.Separator",
+      "A divider; a childless `Box` with this role renders as a separator line, its `heading` as the label."
+      "enum:ButtonVariant", "The visual weight of a `Button`, from the primary call to action to a destructive one."
+      "enum-case:ButtonVariant.Primary", "The main call to action."
+      "enum-case:ButtonVariant.Secondary", "A standard, lower-emphasis action; the default."
+      "enum-case:ButtonVariant.Tertiary", "The lightest-weight action."
+      "enum-case:ButtonVariant.Destructive", "An action that deletes or destroys something."
+      "enum:CaptureSource",
+      "Which of the reader's recording devices a `FileUpload` asks the platform to open instead of the file picker; a request the user agent may ignore."
+      "enum-case:CaptureSource.Camera", "Ask for the environment-facing camera."
+      "enum-case:CaptureSource.Microphone", "Ask for the microphone or recorder."
+      "enum:ChannelDirection", "Which way messages may flow on a `Mount`'s guest channel."
+      "enum-case:ChannelDirection.OutOnly",
+      "The guest may send messages to the host, but the host cannot push into the guest."
+      "enum-case:ChannelDirection.TwoWay",
+      "The host may also push messages into the guest; a host may clamp a rendered mount back to `OutOnly` unless it grants two-way itself."
+      "enum:ChartDataLabels",
+      lines
+          [ "Whether a chart writes its values directly onto the picture, and where"
+            "(Phase 881)."
+            ""
+            "A WIRE vocabulary, on the D8 line's semantic side: whether the reader is"
+            "meant to READ THE NUMBERS or read the shape is the author's meaning; the"
+            "type size, the offsets and the fit rule that realise it stay the host's, in"
+            "`ChartStyle`."
+            ""
+            "THE CASE SET IS TWO, AND THAT IS THE POINT. There is deliberately no"
+            "\"all points\" case: a number on every interior point is the clutter this"
+            "vocabulary exists to avoid, so no shape of this API can request one. `Ends`"
+            "names the selective placements that read — a bar's cap, a line's last point"
+            "— and the set is closed there. Adding an all-points case later would not be"
+            "an extension; it would retract the guarantee." ]
+      "enum-case:ChartDataLabels.Off", "No data labels (the shipped default, and what an absent field means)."
+      "enum-case:ChartDataLabels.Ends",
+      lines
+          [ "Label the ENDS only: every bar's cap (a stacked bar's TOTAL at the stack"
+            "cap, never its interior segments) and the last point of every line or"
+            "area edge." ]
+      "enum:ChartKind", "The chart family a `Chart` draws its series as."
+      "enum-case:ChartKind.Line", "A line chart."
+      "enum-case:ChartKind.Bar", "A bar chart."
+      "enum-case:ChartKind.Area", "An area chart."
+      "enum-case:ChartKind.Pie", "A pie chart."
+      "enum-case:ChartKind.Scatter", "A scatter plot."
+      "enum-case:ChartKind.Heatmap", "A heatmap."
+      "enum:ChartLegendPosition",
+      lines
+          [ "Which edge of the chart the series legend occupies — or `None`, which"
+            "suppresses it entirely (Phase 880)."
+            ""
+            "A WIRE vocabulary, on the same side of the D8 line as `ChartSpec.Title`:"
+            "WHERE an author wants the legend is their meaning; the geometry that puts it"
+            "there — column widths, pitches, how the plot shrinks — stays the host's, in"
+            "`ChartStyle`. `ChartStyle.LegendPosition` carries the DEFAULT (`Right`); an"
+            "explicit `ChartSpec.LegendPosition` beats it."
+            ""
+            "The case set is the four an author can mean. `Left` was declared by Phase 885"
+            "alongside the reserved field and is RETIRED here without ever having been"
+            "consumed by a lowering path: the left edge is the y axis's, so a legend there"
+            "competes with the tick column and the rotated axis title for the same band,"
+            "and the vocabulary charter's demand gate found no evidence for it. Retiring"
+            "an unconsumed case is cheaper than shipping a wire value that renders as a"
+            "guess." ]
+      "enum-case:ChartLegendPosition.Top", "A horizontal row in the top margin, under the title (the pre-880 shape)."
+      "enum-case:ChartLegendPosition.Right",
+      lines
+          [ "A vertical column on the right — one row per series, the plot shrinking"
+            "by the column's width. The shipped default." ]
+      "enum-case:ChartLegendPosition.Bottom", "The same horizontal row, mirrored below the x-axis title."
+      "enum-case:ChartLegendPosition.None", "No legend box at all."
+      "enum:ChartXScale",
+      lines
+          [ "What a chart's x axis MEANS — the scale its x column is read on (Phase 882)."
+            ""
+            "A WIRE vocabulary on the D8 line's semantic side: whether a column is a set"
+            "of CATEGORIES or a run of DATES is a fact about the data the author is"
+            "declaring, not an appearance choice. Where the ticks land, how they are"
+            "formatted and how much margin they need are the host's, in `ChartStyle`."
+            ""
+            "DECLARED, NOT INFERRED, and that is the point of the field. The chart's data"
+            "schema is statically known only for an embedded table with an empty pipeline,"
+            "so an inferred axis would make one wire tree draw a band axis or a temporal"
+            "one depending on where its rows came from; and sniffing the cell strings for"
+            "an ISO-8601 shape is a guess dressed as a rule. Declaring it lets the"
+            "pre-emit validator GROUND the claim instead (FUARAN097 refuses a temporal"
+            "axis over a non-date column) — the author says what the column is, and the"
+            "language refuses to be wrong about it quietly." ]
+      "enum-case:ChartXScale.Category",
+      lines
+          [ "Discrete categories, one band per row, in row order (the shipped"
+            "default, and what an absent field means)." ]
+      "enum-case:ChartXScale.Temporal",
+      lines
+          [ "Dates: the x column carries canonical ISO-8601 dates (`YYYY-MM-DD`, or a"
+            "timestamp whose time-of-day is discarded) and the axis is CONTINUOUS —"
+            "points sit at their date, ticks land on calendar boundaries, and the"
+            "tick labels adapt to the data's granularity." ]
+      "enum:CompareOp", "The comparison a cross-field `FieldRule` makes against one operand; lower-case on the wire."
+      "enum-case:CompareOp.Eq", "Equal to."
+      "enum-case:CompareOp.Neq", "Not equal to."
+      "enum-case:CompareOp.Lt", "Less than."
+      "enum-case:CompareOp.Lte", "Less than or equal to."
+      "enum-case:CompareOp.Gt", "Greater than."
+      "enum-case:CompareOp.Gte", "Greater than or equal to."
+      "enum:DateStyle",
+      "How much of a date the platform formatter writes, from short numeric to the full spelled-out form."
+      "enum-case:DateStyle.Short", "The shortest form, typically numeric."
+      "enum-case:DateStyle.Medium", "A medium-length form, typically with an abbreviated month."
+      "enum-case:DateStyle.Long", "A long form with the month spelled out."
+      "enum-case:DateStyle.Full", "The fullest form, including the weekday."
+      "enum:DateTimeVariant",
+      "The temporal breadth a `DateTime` or `DateTimeRange` field accepts: a date, a time of day, or both."
+      "enum-case:DateTimeVariant.Date", "A calendar date only."
+      "enum-case:DateTimeVariant.Time", "A time of day only."
+      "enum-case:DateTimeVariant.DateTime", "A date together with a time of day."
+      "enum:DeterminismSource",
+      "The determinism axis of an `EffectClass`: whether the output is a pure function of its inputs or also depends on a clock, randomness or the network."
+      "enum-case:DeterminismSource.Deterministic", "The output depends only on the inputs."
+      "enum-case:DeterminismSource.Clock", "The output depends on the current time."
+      "enum-case:DeterminismSource.Random", "The output depends on randomness."
+      "enum-case:DeterminismSource.Network", "The output depends on the network."
+      "enum:DurationStyle",
+      lines
+          [ "Phase 819 — presentation style for a duration: `Compact` \"1h 20m\","
+            "`Clock` \"1:20:00\", `Long` \"1 hour 20 minutes\"." ]
+      "enum-case:DurationStyle.Compact", "A compact form, such as \"1h 20m\"."
+      "enum-case:DurationStyle.Clock", "A clock form, such as \"1:20:00\"."
+      "enum-case:DurationStyle.Long", "A spelled-out form, such as \"1 hour 20 minutes\"."
+      "enum:DurationUnit",
+      lines
+          [ "Phase 819 — how `Format.Duration` / `CellFormat.Duration` interpret the"
+            "numeric source: the unit the raw float counts." ]
+      "enum-case:DurationUnit.Seconds", "The source value counts seconds."
+      "enum-case:DurationUnit.Minutes", "The source value counts minutes."
+      "enum-case:DurationUnit.Hours", "The source value counts hours."
+      "enum:EmbedPermission",
+      "One named relaxation of an `Embed`'s otherwise fully sandboxed context; an empty list grants none."
+      "enum-case:EmbedPermission.AllowScripts", "Lets the embedded content run scripts."
+      "enum-case:EmbedPermission.AllowSameOrigin",
+      "Lets the embedded content keep its own origin rather than an opaque one."
+      "enum-case:EmbedPermission.AllowForms", "Lets the embedded content submit forms."
+      "enum-case:EmbedPermission.AllowFullscreen", "Lets the embedded content enter fullscreen."
+      "enum:Emphasis", "How strongly a node's text is weighted relative to its surroundings."
+      "enum-case:Emphasis.Quiet", "De-emphasised, rendered lighter."
+      "enum-case:Emphasis.Normal", "Ordinary emphasis; the default."
+      "enum-case:Emphasis.Loud", "Emphasised, rendered bolder."
+      "enum:FileReadEncoding", "How the contents of a file read from a `fileRef` are handed to the `onRead` handler."
+      "enum-case:FileReadEncoding.Text", "As decoded text."
+      "enum-case:FileReadEncoding.Base64", "As a base64 string of the raw bytes."
+      "enum-case:FileReadEncoding.DataUrl", "As a `data:` URL."
+      "enum:FontVoice",
+      "The typographic voice of a node: the host's default, a display voice, or a structural one; rendered as a `fuaran-voice-*` class the host styles."
+      "enum-case:FontVoice.Default", "The host's ordinary text voice; the default."
+      "enum-case:FontVoice.Display", "A bold, tightly set display voice for prominent text."
+      "enum-case:FontVoice.Structural", "A plain voice for structural, reading text."
+      "enum:HashStrictness",
+      "What happens when a `Custom` node's declared `ContentHash` does not match its registered renderer."
+      "enum-case:HashStrictness.StrictReplay",
+      "A mismatch is routed through the node's error path instead of rendering."
+      "enum-case:HashStrictness.AdvisoryWarning", "A mismatch renders normally and logs a warning."
+      "enum-case:HashStrictness.Enforced", "A mismatch is also a build-time error from the validator."
+      "enum:HeadingVariant", "The typographic treatment of a `Heading`; the heading level is kept whatever the variant."
+      "enum-case:HeadingVariant.Standard", "An ordinary heading; the default."
+      "enum-case:HeadingVariant.Eyebrow", "A small, upper-case kicker shown above a title."
+      "enum-case:HeadingVariant.Caption", "A small, muted caption-style heading."
+      "enum-case:HeadingVariant.Lead", "A larger, prominent lead heading."
+      "enum:HostEffect",
+      "The host-effect axis of an `EffectClass`: whether a fragment leaves the host alone, reads from it, or writes to it."
+      "enum-case:HostEffect.Pure", "Touches no host state."
+      "enum-case:HostEffect.ReadsHost", "Reads host state."
+      "enum-case:HostEffect.WritesHost", "Writes host state."
+      "enum:IconSize",
+      lines
+          [ "Phase 821 — size class for the standalone `Icon` display kind; `Medium`"
+            "is the default and is omitted on the wire." ]
+      "enum-case:IconSize.Small", "A small icon."
+      "enum-case:IconSize.Medium", "A medium icon; the default."
+      "enum-case:IconSize.Large", "A large icon."
+      "enum:ImageAspect",
+      "The aspect ratio an `Image` reserves before its pixels arrive, so the layout does not shift when it loads."
+      "enum-case:ImageAspect.Natural", "No reserved box; the image's own aspect applies once it loads."
+      "enum-case:ImageAspect.Square", "A 1:1 box."
+      "enum-case:ImageAspect.FourThree", "A 4:3 box."
+      "enum-case:ImageAspect.ThreeTwo", "A 3:2 box."
+      "enum-case:ImageAspect.SixteenNine", "A 16:9 box."
+      "enum:ImageFit", "How an `Image`'s pixels fill the box the layout gives it."
+      "enum-case:ImageFit.Natural", "The image keeps its intrinsic aspect at automatic height."
+      "enum-case:ImageFit.Cover", "The image fills the box and is cropped to fit."
+      "enum-case:ImageFit.Contain", "The whole image fits inside the box, letterboxed."
+      "enum:ImageLoading",
+      "Whether an `Image` is fetched during the initial load or deferred until it nears the viewport."
+      "enum-case:ImageLoading.Eager", "Fetched with the initial load; the default."
+      "enum-case:ImageLoading.Lazy",
+      "Deferred until the image approaches the viewport; avoid for above-the-fold images."
+      "enum:ImageVariant", "The presentation of an `Image`."
+      "enum-case:ImageVariant.Default", "Rendered as-is; the default."
+      "enum-case:ImageVariant.Avatar", "Rendered as a rounded avatar crop."
+      "enum-case:ImageVariant.Rounded", "Rendered with rounded corners."
+      "enum:LinkProtection",
+      lines
+          [ "Phase 812 — anti-scraper render strategy for a `Link`. `Email` marks a"
+            "`mailto:` link whose address must not appear in plaintext in emitted HTML"
+            "(the renderers own the emission strategy)." ]
+      "enum-case:LinkProtection.Email", "A `mailto:` link whose address must not appear as plaintext in emitted HTML."
+      "enum:LiveRegionKind",
+      "How politely assistive technology announces changes to a node; the `aria-live` value, lower-case on the wire."
+      "enum-case:LiveRegionKind.Polite", "Announced when the reader is idle."
+      "enum-case:LiveRegionKind.Assertive", "Announced immediately, interrupting the reader."
+      "enum-case:LiveRegionKind.Off", "Changes are not announced."
+      "enum:MathDisplay", "Whether a `Math` expression is set inline with text or as its own block."
+      "enum-case:MathDisplay.Inline", "Set inline within the surrounding text."
+      "enum-case:MathDisplay.Block", "Set as a separate display block."
+      "enum:ModalityKind", "Which overlay a `Modal` node is: a blocking dialogue or a transient popover."
+      "enum-case:ModalityKind.Modal", "A blocking surface with a scrim and a focus trap; the default."
+      "enum-case:ModalityKind.Popover",
+      "A transient, anchored surface with no scrim or focus trap that dismisses on an outside click."
+      "enum:Motion", "The animation token for a node's host-only `motion` field; it is never written to the wire."
+      "enum-case:Motion.None", "No animation."
+      "enum-case:Motion.PulseDuringLoad", "Pulses while the node is loading."
+      "enum-case:Motion.FadeInOnMount", "Fades in when the node appears."
+      "enum-case:Motion.SlideInFromBelow", "Slides in from below when the node appears."
+      "enum-case:Motion.ShakeOnError", "Shakes when the node enters an error state."
+      "enum-case:Motion.RotateOnRefresh", "Rotates while the node refreshes."
+      "enum-case:Motion.SlideInFromRight", "Slides in from the right when the node appears."
+      "enum-case:Motion.ExpandCollapse", "Animates expanding and collapsing."
+      "enum-case:Motion.CrossFade",
+      "Cross-fades when the content standing here is replaced, as when a `Switch` changes case."
+      "enum-case:Motion.SlideBetween",
+      "Slides between the old and new content when it is replaced, as when a `Switch` changes case."
+      "enum:NavigateTarget",
+      lines
+          [ "Phase 1536 — which browsing context an `Action.Navigate` lands in."
+            "Omitted at `Self` on the wire, so documents written before this release"
+            "keep their bytes."
+            ""
+            "A closed enum, and NOT the free string `LinkSpec.target` is: that field"
+            "takes any `_blank` / `_parent` / `_top` / named-frame token a web author"
+            "might type, which is a vocabulary a decoded tree gets to invent. The"
+            "axis here has two answers — this context, or a fresh one. `_parent` and"
+            "`_top` are frame-busting gestures a hosted tree must not be able to ask"
+            "for, and a named frame is an addressing scheme this language does not"
+            "have." ]
+      "enum-case:NavigateTarget.Self", "Navigate in the current browsing context; the default."
+      "enum-case:NavigateTarget.Blank", "Open a fresh browsing context, always without an opener or referrer."
+      "enum:Orientation", "A layout axis: vertical or horizontal."
+      "enum-case:Orientation.Vertical", "Laid out top to bottom."
+      "enum-case:Orientation.Horizontal", "Laid out side by side."
+      "enum:RelativeTimeUnit", "The unit a relative time is expressed in, such as \"3 days ago\"."
+      "enum-case:RelativeTimeUnit.Second", "Seconds."
+      "enum-case:RelativeTimeUnit.Minute", "Minutes."
+      "enum-case:RelativeTimeUnit.Hour", "Hours."
+      "enum-case:RelativeTimeUnit.Day", "Days."
+      "enum-case:RelativeTimeUnit.Week", "Weeks."
+      "enum-case:RelativeTimeUnit.Month", "Months."
+      "enum-case:RelativeTimeUnit.Year", "Years."
+      "enum:ScrollOrientation", "The axis or axes a scroll area scrolls along."
+      "enum-case:ScrollOrientation.Vertical", "Scrolls vertically."
+      "enum-case:ScrollOrientation.Horizontal", "Scrolls horizontally."
+      "enum-case:ScrollOrientation.Both", "Scrolls along both axes."
+      "enum:SortDirection", "The direction of a table's declared initial sort; lower-case on the wire."
+      "enum-case:SortDirection.Asc", "Ascending."
+      "enum-case:SortDirection.Desc", "Descending."
+      "enum:StyleRole", "The semantic content role of a node, rendered as a `fuaran-role-*` class the host styles."
+      "enum-case:StyleRole.None", "No declared role; the default."
+      "enum-case:StyleRole.Eyebrow", "A small, upper-case kicker above other content."
+      "enum-case:StyleRole.Data", "Numeric data, set with tabular figures."
+      "enum-case:StyleRole.Lede", "An introductory lede paragraph, set larger and muted."
+      "enum-case:StyleRole.Caption", "A small, muted caption."
+      "enum:StyleWeight", "The layout density of a node; this is spacing, not font weight."
+      "enum-case:StyleWeight.Compact", "Tighter spacing."
+      "enum-case:StyleWeight.Standard", "Ordinary spacing; the default."
+      "enum-case:StyleWeight.Spacious", "Looser spacing."
+      "enum:TextAnchor", "The horizontal alignment of a drawing `Label` about its anchor point."
+      "enum-case:TextAnchor.Start", "The text starts at the anchor point."
+      "enum-case:TextAnchor.Middle", "The text is centred on the anchor point."
+      "enum-case:TextAnchor.End", "The text ends at the anchor point."
+      "enum:TextDirection",
+      "The base direction of one authored value, so it reads correctly whatever text surrounds it; lower-case on the wire."
+      "enum-case:TextDirection.Auto",
+      "No declared direction; resolved from the value's own characters, and the default."
+      "enum-case:TextDirection.Ltr", "Left to right."
+      "enum-case:TextDirection.Rtl", "Right to left."
+      "enum:TextFormat", "The named input format a `FieldRule` accepts; lower-case on the wire."
+      "enum-case:TextFormat.Email", "An email address."
+      "enum-case:TextFormat.Url", "A URL."
+      "enum-case:TextFormat.Tel", "A telephone number."
+      "enum:TimeGrain", "The resolution `Binding.Now` truncates the host-furnished instant to."
+      "enum-case:TimeGrain.Second", "Truncated to the second."
+      "enum-case:TimeGrain.Minute", "Truncated to the minute."
+      "enum-case:TimeGrain.Hour", "Truncated to the hour."
+      "enum-case:TimeGrain.Day", "Truncated to the day."
+      "enum:TimeStyle", "How much of a time of day the platform formatter writes, from short to the full form."
+      "enum-case:TimeStyle.Short", "The shortest form, typically hours and minutes."
+      "enum-case:TimeStyle.Medium", "A medium form, typically including seconds."
+      "enum-case:TimeStyle.Long", "A long form, typically with the time zone."
+      "enum-case:TimeStyle.Full", "The fullest form, with the full time zone."
+      "enum:ToneVariant", "The semantic colour tone of a node, drawn from the theme's seven-tone palette."
+      "enum-case:ToneVariant.Default", "The neutral surface; the default."
+      "enum-case:ToneVariant.Subdued", "A muted surface."
+      "enum-case:ToneVariant.Brand", "The primary brand accent."
+      "enum-case:ToneVariant.Success", "A success state."
+      "enum-case:ToneVariant.Warning", "A warning state."
+      "enum-case:ToneVariant.Critical", "An error or critical state."
+      "enum-case:ToneVariant.Info", "An informational accent."
+      "enum:TrackKind", "What a media text track carries."
+      "enum-case:TrackKind.Subtitles", "Translated dialogue for a reader who cannot follow the language."
+      "enum-case:TrackKind.Captions", "Transcribed dialogue and non-speech sound for a reader who cannot hear it."
+      "enum-case:TrackKind.Descriptions", "Narration of what is visible for a reader who cannot see it."
+      "enum-case:TrackKind.Chapters", "Names for the media's navigable sections."
+      "enum:TrendPolarity",
+      "Which direction of a `Metric`'s measured quantity is good; a property of the quantity, not of one reading."
+      "enum-case:TrendPolarity.HigherIsBetter", "A rising value is an improvement; the default."
+      "enum-case:TrendPolarity.LowerIsBetter", "A falling value is an improvement, as for cost, latency or error rate."
+      // Records and their fields
+      "record:Accessibility",
+      "The node envelope's accessibility overrides: accessible name, ARIA references, role, live-region politeness, hiding and the spoken rendering. Omitted entirely when the node declares none."
+      "record-field:Accessibility.describedBy",
+      "The id of the node that describes this one, rendered as `aria-describedby`. Omitted means no description reference."
+      "record-field:Accessibility.hidden",
+      "Whether the node is hidden from assistive technology (`aria-hidden`), possibly bound. Omitted means not hidden."
+      "record-field:Accessibility.label",
+      "The node's accessible name (`aria-label`), possibly bound. Omitted means the name is derived from the node's own content."
+      "record-field:Accessibility.labelledBy",
+      "The id of the node whose text names this one, rendered as `aria-labelledby`."
+      "record-field:Accessibility.liveRegion",
+      "How politely assistive technology announces changes to this node (`aria-live`). Omitted means the node is not a live region."
+      "record-field:Accessibility.role",
+      "The ARIA role to render, from the open `AriaRole` set; a custom role string is emitted verbatim. Omitted means the kind's default role."
+      "record-field:Accessibility.speak",
+      "The node's spoken rendering for a voice surface, as translatable `TextSource` content. It never becomes the accessible name and changes no visual or ARIA output."
+      "record:Affordance",
+      "How an agent-initiated instruction may address a `Select`, `Button` or form field beyond what the node already says (§31). Every member omits at its default, so `{}` declares nothing extra."
+      "record-field:Affordance.patterns",
+      "Further SET phrasings for a select or field, or CLICK phrasings for a button; a `{value}` slot marks where the instruction's value goes. Empty by default."
+      "record-field:Affordance.readPatterns",
+      "Further question phrasings, which resolve only to a read of the node's value. Empty by default."
+      "record-field:Affordance.aliases", "Spoken tokens mapped onto canonical option values. Empty by default."
+      "record-field:Affordance.description",
+      "Free text describing the node that a reader may render and must not parse. Omitted means no description."
+      "record-field:Affordance.clearable",
+      "Whether the node may be cleared by an instruction such as `clear <label>`. Defaults to `false`."
+      "record-field:Affordance.neverControllable",
+      "When `true`, withdraws the node from the operable surface entirely, so no instruction can address it. Defaults to `false`."
+      "record:AffordanceAlias", "One spoken alias in an `Affordance`, resolving a token onto a canonical option value."
+      "record-field:AffordanceAlias.alias", "The spoken token an instruction may use."
+      "record-field:AffordanceAlias.value", "The canonical option `value` the alias resolves to."
+      "record:ButtonGroupItem",
+      "One button in a `ButtonGroup` grid cell, with a label and a click handler over the row."
+      "record-field:ButtonGroupItem.label", "The button's text."
+      "record-field:ButtonGroupItem.onClick",
+      "The handler called with the cell's row when the button is clicked; in-process only, it crosses the wire as the closure sentinel."
+      "record:ColumnErased",
+      "A `DataGrid` column: its header, cell kind, format, width, and where each row's cell value comes from (a row field name or a projection closure)."
+      "record-field:ColumnErased.field",
+      "The row property whose value this column shows, the declarative alternative to `value`. Omitted when the column uses a `value` projection."
+      "record-field:ColumnErased.sortable",
+      "Narrows sorting for this column: `false` opts it out. Absent inherits (sortable when the column has a `field` and the grid declares `sortStateKey`); `true` without a `sortStateKey` is an error."
+      "record-field:ColumnErased.editable",
+      "Narrows the grid's editability for this column: `false` makes it read-only under an editable grid. Absent inherits the grid; `true` on a grid that is not editable is an error."
+      "record-field:ColumnErased.format",
+      "How the column's figures are displayed. Defaults to `None`, meaning no formatting."
+      "record-field:ColumnErased.kind", "How each cell in the column renders, from the `CellKindErased` vocabulary."
+      "record-field:ColumnErased.label", "The column header text."
+      "record-field:ColumnErased.value",
+      "A projection from a row to its `CellValue`; in-process only, it crosses the wire as the closure sentinel. Omitted when the column names a `field` instead."
+      "record-field:ColumnErased.width", "The column's width. Defaults to `Auto`."
+      "record:CompareRule",
+      "The cross-field comparison of a `FieldRule`: the field's value must stand in relation `op` to the bound `against` value."
+      "record-field:CompareRule.against",
+      "The value to compare with, always a `Binding`; binding `State` to a sibling field's id compares against that field's live value."
+      "record-field:CompareRule.op", "The comparison the field's value must satisfy against `against`."
+      "record:ContentHash",
+      "A `Custom` node's content-identity envelope: a digest of the component's declared shape and what a host should do when it does not match."
+      "record-field:ContentHash.algorithm", "The digest algorithm, e.g. `SHA256`."
+      "record-field:ContentHash.hash", "The hex-encoded digest."
+      "record-field:ContentHash.strictness",
+      "What happens on a hash mismatch: fail the render, warn and render, or also fail the build."
+      "record:DateTimeRangePair",
+      "The `{from, to}` value of a `DateTimeRange` control: an ordered pair of ISO-8601 strings. The decoder refuses a `from` later than `to`."
+      "record-field:DateTimeRangePair.from", "The range start, as an ISO-8601 string."
+      "record-field:DateTimeRangePair.to", "The range end, as an ISO-8601 string; must not precede `from`."
+      "record:DefaultSort", "A static table's declared initial order: the column to sort by and the direction."
+      "record-field:DefaultSort.column",
+      "The zero-based index into `StaticRows.headers` of the column to sort by; a negative index is refused at decode."
+      "record-field:DefaultSort.direction", "Ascending or descending."
+      "record:DrawPoint", "A point in a `Drawing`'s user-space coordinate system."
+      "record-field:DrawPoint.x", "The horizontal coordinate, in `ViewBox` user space."
+      "record-field:DrawPoint.y", "The vertical coordinate, in `ViewBox` user space."
+      "record:DrawStyle",
+      "The style of one `Drawing` shape: fill, stroke, opacity, text settings, rotation, mark identity and hover tip. Every member is optional, so `{}` is a valid style."
+      "record-field:DrawStyle.emphasis", "The mark's semantic emphasis. Omitted means the default."
+      "record-field:DrawStyle.fill", "The fill colour, possibly bound. Omitted means the host default."
+      "record-field:DrawStyle.fontFamily", "The font family for text shapes. Omitted means the host default."
+      "record-field:DrawStyle.fontSize",
+      "The font size for text shapes, in user-space units. Omitted means the host default."
+      "record-field:DrawStyle.markId",
+      "The mark identity of a data-bearing shape (`series-field|category-key`), emitted as `data-fuaran-mark`. Omitted means no mark identity."
+      "record-field:DrawStyle.opacity", "The shape's opacity, possibly bound. Omitted means fully opaque."
+      "record-field:DrawStyle.rotation",
+      "The shape's rotation in degrees, e.g. for a tilted axis label. Omitted means no rotation."
+      "record-field:DrawStyle.stroke", "The stroke colour, possibly bound. Omitted means the host default."
+      "record-field:DrawStyle.strokeWidth", "The stroke width, possibly bound. Omitted means the host default."
+      "record-field:DrawStyle.textAnchor",
+      "How a text shape aligns to its position: start, middle or end. Omitted means the host default."
+      "record-field:DrawStyle.tip",
+      "The mark's hover tip, rendered as the native tooltip and accessible name of the shape. Omitted means no tip."
+      "record:EffectClass",
+      "A `FragmentDecl`'s two-axis effect class: what it does to the host and how deterministic it is. Omitted on the wire when pure and deterministic."
+      "record-field:EffectClass.determinism",
+      "Whether the fragment's output depends only on its inputs, or also on a clock, randomness or the network."
+      "record-field:EffectClass.hostEffect", "Whether the fragment is pure, reads host state, or writes host state."
+      "record:FieldRule",
+      "A form field's declared constraint on accepted values: format, pattern, length bounds and a cross-field comparison. The decoder refuses a rule with every slot absent, and a `minLength` above `maxLength`."
+      "record-field:FieldRule.compare",
+      "A comparison against another value, typically a sibling field's. Omitted means no comparison."
+      "record-field:FieldRule.format", "A named text format the value must match. Omitted means no format check."
+      "record-field:FieldRule.maxLength", "The maximum length of the value. Omitted means no upper bound."
+      "record-field:FieldRule.message",
+      "The message shown when the rule fails. Omitted means the host's default message."
+      "record-field:FieldRule.minLength", "The minimum length of the value. Omitted means no lower bound."
+      "record-field:FieldRule.pattern", "A pattern the value must match. Omitted means no pattern check."
+      "record:FilterSpec",
+      "One chip in a `Filters` strip: a form control, its label, and the filter name its value is stored under."
+      "record-field:FilterSpec.kind",
+      "The control the chip renders, from the `FormFieldKind` vocabulary; with no `value` it binds the filter named `name`."
+      "record-field:FilterSpec.label", "The chip's label."
+      "record-field:FilterSpec.name", "The filter's name, which is also the store key its value is written to."
+      "record:FormField",
+      "One field of a `Form`: its id, control, label, required flag, help text, constraint and agent affordance."
+      "record-field:FormField.id",
+      "The field's identifier; with no explicit `value`, the control binds `State` under this id."
+      "record-field:FormField.kind", "The control the field renders, from the `FormFieldKind` vocabulary."
+      "record-field:FormField.label", "The field's label."
+      "record-field:FormField.required",
+      "Whether the field must be filled before the form submits. Defaults to `false`."
+      "record-field:FormField.help", "Help text shown with the field. Omitted means none."
+      "record-field:FormField.rule",
+      "The field's constraint on accepted values. Omitted means no constraint beyond `required` and the control's own bounds."
+      "record-field:FormField.affordance",
+      "How an agent instruction may address this field beyond its label (§31). Omitted means the field is addressed by its label alone."
+      "record:GuestChannel",
+      "The declared message channel of a `Mount`: which way messages may cross, and optionally the guest's message shape. The direction is a request; the renderer clamps every mount to `OutOnly` unless the host grants two-way."
+      "record-field:GuestChannel.direction", "Which way messages may cross: guest-to-host only, or both ways."
+      "record-field:GuestChannel.messageShape",
+      "The name of the guest's message shape, used for validation and the capability gate. Omitted means none is declared."
+      "record:InvokeArg",
+      "One scalar argument of an `Invoke`, validated by the host against the capability's signature before dispatch."
+      "record-field:InvokeArg.addr", "The argument's address in the capability's signature."
+      "record-field:InvokeArg.value", "The argument's value, as a string."
+      "record:MapMarker", "A labelled marker on a `Map`, at a latitude and longitude."
+      "record-field:MapMarker.label", "The marker's label."
+      "record-field:MapMarker.latitude", "The marker's latitude, in degrees."
+      "record-field:MapMarker.longitude", "The marker's longitude, in degrees."
+      "record:MarkdownCitation",
+      "One figure a `Markdown` text cites: the name its `cite:<name>` link uses and the reference to the fact behind it."
+      "record-field:MarkdownCitation.label",
+      "What the figure is, for a screen reader; never printed. Omitted means no accessible description."
+      "record-field:MarkdownCitation.name",
+      "The name the text's `cite:<name>` link destination uses; its grammar and uniqueness are checked at decode."
+      "record-field:MarkdownCitation.reference", "The opaque reference naming the fact behind the figure (§3.6.31)."
+      "record:MetricComparison",
+      "A further comparison on a `Metric`, rendered as one more labelled trend line under the primary trend."
+      "record-field:MetricComparison.label", "What the comparison is against, e.g. the same day last year."
+      "record-field:MetricComparison.value", "The comparison's change value, possibly bound."
+      "record-field:MetricComparison.format", "How the value is displayed. Defaults to `None`, meaning no formatting."
+      "record-field:MetricComparison.polarity",
+      "Whether a rise is good or bad, which sets the line's sentiment. Defaults to `HigherIsBetter`."
+      "record:RangePair", "The `{min, max}` value of a `Range` control."
+      "record-field:RangePair.max", "The upper end of the selected range."
+      "record-field:RangePair.min", "The lower end of the selected range."
+      "record:SelectOption", "One option of a choice control: the text shown and the value it selects."
+      "record-field:SelectOption.label", "The text shown for the option."
+      "record-field:SelectOption.value", "The value the option selects."
+      "record:SelectOptionGroup", "A named group of a `Select`'s options, naming its members by value."
+      "record-field:SelectOptionGroup.label", "The group's heading."
+      "record-field:SelectOptionGroup.values", "The `value`s of the options in this group."
+      "record:SemanticStyle",
+      "The node envelope's semantic style: direction, emphasis, role, tone, voice and weight. Each member omits at its default, and the whole object is omitted when all are default."
+      "record-field:SemanticStyle.direction",
+      "The text direction of the node's value; a declared direction isolates the run from surrounding bidirectional text. Defaults to `auto`."
+      "record-field:SemanticStyle.emphasis", "The node's emphasis. Defaults to `Normal`."
+      "record-field:SemanticStyle.role", "The node's semantic style role. Defaults to `None`."
+      "record-field:SemanticStyle.tone", "The node's tone. Defaults to `Default`."
+      "record-field:SemanticStyle.voice", "The node's font voice. Defaults to `Default`."
+      "record-field:SemanticStyle.weight", "The node's weight. Defaults to `Standard`."
+      "record:SrcSetEntry", "One candidate source of a responsive `Image`, with its intrinsic width."
+      "record-field:SrcSetEntry.src", "The candidate's URL, possibly bound."
+      "record-field:SrcSetEntry.width", "The candidate's intrinsic pixel width (the `w` descriptor); must be positive."
+      "record:StateBehaviour",
+      "The node envelope's async-state renderings: what to show while loading, when empty, and on error."
+      "record-field:StateBehaviour.onEmpty",
+      "The node rendered in place of this one when its data is empty. Omitted means the host default."
+      "record-field:StateBehaviour.onError",
+      "A callback building the node rendered on error from the error payload; in-process only, the wire carries only its presence."
+      "record-field:StateBehaviour.onLoading",
+      "The node rendered in place of this one while its data is loading. Omitted means the host default."
+      "record:StaticRows", "A `DataGrid`'s static header-and-row content, with optional sort intent and cell citations."
+      "record-field:StaticRows.citations", "The cells whose figures cite a fact. Empty by default."
+      "record-field:StaticRows.defaultSort", "The table's initial order. Omitted means rows are shown as given."
+      "record-field:StaticRows.headers", "The column headers."
+      "record-field:StaticRows.rows", "The table's rows, each a list of cells in header order."
+      "record-field:StaticRows.sortable",
+      "Whether the table invites interactive column sorting; a host honours it with whatever sorting it has. Omitted means no sorting is declared."
+      "record:StyleDelta",
+      "The payload of a `PatchStyle` op: the semantic style members to change, each absent member left as it is."
+      "record-field:StyleDelta.direction", "The new text direction. Omitted leaves it unchanged."
+      "record-field:StyleDelta.emphasis", "The new emphasis. Omitted leaves it unchanged."
+      "record-field:StyleDelta.role", "The new style role. Omitted leaves it unchanged."
+      "record-field:StyleDelta.tone", "The new tone. Omitted leaves it unchanged."
+      "record-field:StyleDelta.voice", "The new font voice. Omitted leaves it unchanged."
+      "record-field:StyleDelta.weight", "The new weight. Omitted leaves it unchanged."
+      "record:SwitchCase",
+      "One branch of a `Switch`: the node it selects and when. Exactly one of `match` and `when` must be present."
+      "record-field:SwitchCase.child", "The node rendered when this case is selected."
+      "record-field:SwitchCase.match", "The selector value that picks this case."
+      "record-field:SwitchCase.when", "A condition evaluated at render time that picks this case."
+      "record:TabHeader", "The header of one tab in a `Tabs` container: label, icon and disabled state."
+      "record-field:TabHeader.label", "The tab's label."
+      "record-field:TabHeader.icon", "An icon shown in the tab header. Omitted means no icon."
+      "record-field:TabHeader.disabled", "Whether the tab is disabled, possibly bound. Omitted means enabled."
+      "record:TableCitation", "One cell of a static table whose figure cites a fact, addressed by row and column."
+      "record-field:TableCitation.column", "The zero-based column index of the cell."
+      "record-field:TableCitation.label",
+      "What the figure is, for a screen reader; never printed. Omitted means no accessible description."
+      "record-field:TableCitation.reference", "The opaque reference naming the fact behind the figure (§3.6.31)."
+      "record-field:TableCitation.row", "The zero-based row index of the cell in `StaticRows.rows`."
+      "record:TrackEntry", "One timed-text track of a `Media` node, such as captions or subtitles."
+      "record-field:TrackEntry.default",
+      "Whether this track is the default of its kind; if several are, the first wins. Defaults to `false`."
+      "record-field:TrackEntry.kind", "The kind of timed text the track carries."
+      "record-field:TrackEntry.label", "The track's name in the player's track menu."
+      "record-field:TrackEntry.src",
+      "The track file's URL, possibly bound; it passes the same URL checks as the media source."
+      "record-field:TrackEntry.srcLang", "The track's language tag, required for every kind."
+      "record:TransformParam",
+      "One parameter of a `Transform` binding, binding a pipeline parameter name to a value source."
+      "record-field:TransformParam.from", "Where the parameter's value comes from."
+      "record-field:TransformParam.name", "The pipeline parameter this value binds."
+      "record:TreeItem", "One row of a `Tree`, with an id, a label, an optional icon and nested child rows."
+      "record-field:TreeItem.children", "The row's child rows. Empty means the row is a leaf."
+      "record-field:TreeItem.icon", "An icon shown on the row. Omitted means no icon."
+      "record-field:TreeItem.id",
+      "The row's identity, used by the tree's expanded and selection state; unique within one `Tree`."
+      "record-field:TreeItem.label", "The row's text."
+      "record:ViewBox", "A `Drawing`'s user-space coordinate box, as in SVG's `viewBox`."
+      "record-field:ViewBox.height", "The box's height in user-space units."
+      "record-field:ViewBox.minX", "The box's left edge in user space."
+      "record-field:ViewBox.minY", "The box's top edge in user space."
+      "record-field:ViewBox.width", "The box's width in user-space units." ]
+
+/// Every documentable declaration of an IDL, by its doc key (the table's key forms above), in
+/// declaration order.
+let docKeys (idl: Idl) : string list =
+    [ for k in idl.Kinds do
+          "kind:" + k.Tag
+
+          for f in k.Fields do
+              "kind-field:" + k.Tag + "." + f.Name
+      for o in idl.Ops do
+          "op:" + o.Tag
+
+          for f in o.Fields do
+              "op-field:" + o.Tag + "." + f.Name
+      for f in idl.NodeFields do
+          "node:" + f.Name
+      for u in idl.Unions do
+          "union:" + u.Name
+
+          for c in u.Cases do
+              "case:" + u.Name + "." + c.Tag
+
+              for f in c.Fields do
+                  "case-field:" + u.Name + "." + c.Tag + "." + f.Name
+      for e in idl.Enums do
+          "enum:" + e.Name
+
+          for c in e.Cases do
+              "enum-case:" + e.Name + "." + c
+      for r in idl.Records do
+          "record:" + r.Name
+
+          for f in r.Fields do
+              "record-field:" + r.Name + "." + f.Name ]
+
+/// The doc table's keys in table order, duplicates kept, so a test can refuse a duplicate, a key
+/// naming no declaration, and a declaration the table does not document.
+let docTableKeys: string list = docs |> List.map fst
+
+/// `idl` with every table entry laid on its declaration as the `doc` annotation; a declaration's
+/// other annotations are untouched.
+let private documented (idl: Idl) : Idl =
+    let table = Map.ofList docs
+
+    let doc (key: string) (a: Annotations) : Annotations =
+        match Map.tryFind key table with
+        | Some d -> { a with Doc = Some d }
+        | None -> a
+
+    let fields (prefix: string) (fs: IdlField list) =
+        fs
+        |> List.map (fun f ->
+            { f with
+                Annotations = doc (prefix + f.Name) f.Annotations })
+
+    let kind (kindKey: string) (fieldKey: string) (k: IdlKind) =
+        { k with
+            Annotations = doc (kindKey + k.Tag) k.Annotations
+            Fields = fields (fieldKey + k.Tag + ".") k.Fields }
+
+    { idl with
+        Kinds = idl.Kinds |> List.map (kind "kind:" "kind-field:")
+        Ops = idl.Ops |> List.map (kind "op:" "op-field:")
+        NodeFields = fields "node:" idl.NodeFields
+        Unions =
+            idl.Unions
+            |> List.map (fun u ->
+                { u with
+                    Annotations = doc ("union:" + u.Name) u.Annotations
+                    Cases =
+                        u.Cases
+                        |> List.map (fun c ->
+                            { c with
+                                Annotations = doc ("case:" + u.Name + "." + c.Tag) c.Annotations
+                                Fields = fields ("case-field:" + u.Name + "." + c.Tag + ".") c.Fields }) })
+        Enums =
+            idl.Enums
+            |> List.map (fun e ->
+                { e with
+                    Annotations = doc ("enum:" + e.Name) e.Annotations
+                    CaseAnnotations =
+                        e.Cases
+                        |> List.map (fun c -> c, doc ("enum-case:" + e.Name + "." + c) (e.AnnotationsOf c))
+                        |> List.filter (fun (_, a) -> not a.IsEmpty) })
+        Records =
+            idl.Records
+            |> List.map (fun r ->
+                { r with
+                    Annotations = doc ("record:" + r.Name) r.Annotations
+                    Fields = fields ("record-field:" + r.Name + ".") r.Fields }) }
+
+/// The UI wire vocabulary: the declarations above, documented.
+let uiIdl: Idl = documented declared
 
 /// The published artifact's identity (Phase 2286). Until Fuaran.Core 0.40 `Artifact.render` wrote this
 /// `description` by default; since Core Phase 527 (D40 amended) a vocabulary that wants one declares it,
