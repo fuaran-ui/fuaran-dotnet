@@ -355,56 +355,79 @@ let private serveStream
     }
     :> Task
 
+/// Re-attach `stream` to `conn` and hand back the queue it drains; if
+/// catching the client up throws, the stream detaches again before the failure
+/// propagates. (Outside the handler's `task`, so its state machine stays
+/// statically compilable.)
+let private reattachOrDetach
+    (registry: ConnectionRegistry)
+    (connId: string)
+    (stream: obj)
+    (conn: IReattachable)
+    (lastSeq: int)
+    : SseChannel =
+    try
+        conn.Reattach lastSeq
+    with _ ->
+        registry.Detach(connId, stream)
+        reraise ()
+
+/// A stream that opens a session: the first visit, or a reconnect that could
+/// not re-attach.
+let private openFresh
+    (config: LiveAppConfig<'Model, 'Msg>)
+    (openSession: CancellationToken -> Task<(LiveSession<'Model, 'Msg> * EffectOutbox<'Msg> option) option>)
+    (registry: ConnectionRegistry)
+    (ctx: HttpContext)
+    (principal: string)
+    (cookieId: string option)
+    (tab: string option)
+    (lastSeq: int option)
+    : Task =
+    task {
+        // Phase 2170 — the factory is awaited FIRST, before anything is written
+        // to the response, so a factory that never answers leaves a request that
+        // ends with its client rather than a half-open stream.
+        match! openSession ctx.RequestAborted with
+        | None -> () // the client went away before its session existed
+        | Some(made, outbox) -> do! serveStream config registry ctx principal cookieId tab lastSeq made outbox
+    }
+    :> Task
+
 let private streamHandler
     (config: LiveAppConfig<'Model, 'Msg>)
     (openSession: CancellationToken -> Task<(LiveSession<'Model, 'Msg> * EffectOutbox<'Msg> option) option>)
     (registry: ConnectionRegistry)
     (ctx: HttpContext)
     : Task =
-    task {
-        match tryTab ctx with
-        | Error() -> ctx.Response.StatusCode <- 400 // Bad Request — malformed tab id
-        | Ok tab ->
-            let principal = config.ResolvePrincipal ctx
-            let cookieId = boundId config principal ctx
-            let lastSeq = lastEventId ctx
-            let stream = obj ()
+    match tryTab ctx with
+    | Error() ->
+        ctx.Response.StatusCode <- 400 // Bad Request — malformed tab id
+        Task.CompletedTask
+    | Ok tab ->
+        let principal = config.ResolvePrincipal ctx
+        let cookieId = boundId config principal ctx
+        let lastSeq = lastEventId ctx
+        let stream = obj ()
 
-            // Phase 1928 — a reconnect re-attaches to the session the client had:
-            // `Last-Event-ID` present, the cookie re-verified against THIS
-            // request's principal, and that id (scoped by the tab) registered.
-            // No session is opened for it: the client's own is still here.
-            let reattach =
-                match cookieId, lastSeq with
-                | Some id, Some last ->
-                    let connId = connKey id tab
+        // Phase 1928 — a reconnect re-attaches to the session the client had:
+        // `Last-Event-ID` present, the cookie re-verified against THIS request's
+        // principal, and that id (scoped by the tab) registered. No session is
+        // opened for it: the client's own is still here.
+        let reattach =
+            match cookieId, lastSeq with
+            | Some id, Some last ->
+                let connId = connKey id tab
 
-                    registry.TryReattach(connId, stream, tab.IsSome)
-                    |> Option.map (fun conn -> connId, conn, last)
-                | _ -> None
+                registry.TryReattach(connId, stream, tab.IsSome)
+                |> Option.map (fun conn -> connId, conn, last)
+            | _ -> None
 
-            match reattach with
-            | Some(connId, conn, last) ->
-                streamHeaders ctx
-
-                let channel =
-                    try
-                        conn.Reattach last
-                    with _ ->
-                        registry.Detach(connId, stream)
-                        reraise ()
-
-                do! drain ctx registry connId stream channel
-            | None ->
-                // Phase 2170 — the factory is awaited FIRST, before anything is
-                // written to the response, so a factory that never answers leaves
-                // a request that ends with its client rather than a half-open
-                // stream.
-                match! openSession ctx.RequestAborted with
-                | None -> () // the client went away before its session existed
-                | Some(made, outbox) -> do! serveStream config registry ctx principal cookieId tab lastSeq made outbox
-    }
-    :> Task
+        match reattach with
+        | Some(connId, conn, last) ->
+            streamHeaders ctx
+            drain ctx registry connId stream (reattachOrDetach registry connId stream conn last)
+        | None -> openFresh config openSession registry ctx principal cookieId tab lastSeq
 
 let private eventHandler
     (config: LiveAppConfig<'Model, 'Msg>)
