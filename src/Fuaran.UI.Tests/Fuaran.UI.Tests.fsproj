@@ -297,6 +297,8 @@
          of the styling contract with no executable guarantee. -->
     <Compile Include="CssCoverageTests.fs" />
     <Compile Include="PrintCascadeTests.fs" />
+    <!-- Phase 2794 - a gap-spaced layout container owns the spacing between its children (D35). -->
+    <Compile Include="LayoutSpacingTests.fs" />
     <!-- Phase 1878 — the registry the census's `Cases` column reads: what each ADOPTED law family
          actually ran in this process, forced from a module-level `let` (never inside a testCase),
          so registration is complete before the census test forces anything. Must precede

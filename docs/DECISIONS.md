@@ -10,6 +10,51 @@ consequence.
 
 ---
 
+## 2026-11-18 — D35: a gap-spaced layout container owns the spacing between its children; a node's margin is plain-flow spacing
+
+**Decided (Phase 2794).** The reference stylesheet gave every node wrapper `.fuaran-node { margin-bottom:
+var(--fuaran-space-sm, 8px) }` and gave every layout container a `gap`, and nothing turned the margin off inside a
+container, so a container's children were spaced twice. Measured on the server renderer's own output (Chromium,
+1280px): a vertical stack declared at 12px read 20px; a stack declared at 16px read 24px; a grid's rows sat 20px apart
+and its columns 12px; a dashboard read 24px against its 16px; and in a row bottom-aligning its children, a box of three
+selects sat 8px higher than the lone selects beside it, one margin per level of nesting. The model is now:
+
+1. **Covered containers.** The direct child nodes of `.fuaran-layout-stack` (both directions, wrapping or not),
+   `.fuaran-layout-grid` and `.fuaran-layout-dashboard` keep no margin: `margin-bottom: 0` on `<container> >
+   .fuaran-node`. The container's gap (its class token, or the `gap` a `BoxLayout.Flex` / `Grid` declares inline) is the
+   only space between them, so a declared gap is the spacing a reader sees, a grid's rows and columns are spaced alike,
+   and a nested box bottom-aligns with lone controls beside it with no host CSS. The selector outranks `.fuaran-node`
+   (two classes against one), so the rule holds wherever a host's sheet places it.
+2. **Vertical rhythm is deliberately tightened to the tokens, not preserved.** The stack and grid keep
+   `--fuaran-space-md` (12px) and the dashboard `--fuaran-space-lg` (16px), so vertical spacing between a container's
+   children falls by 8px. Preserving today's 20px would need a value the spacing scale does not have (4 / 8 / 12 / 16 /
+   24) — a `calc` of two tokens, which re-encodes the double spacing this decision removes as a new magic number, and
+   would leave a vertical stack spaced differently from a horizontal one and a grid's rows from its columns. A host
+   that wants the looser rhythm raises `--fuaran-space-md` (or declares a gap) and gets it everywhere, coherently.
+3. **Plain flow keeps the margin.** `.fuaran-node` keeps `margin-bottom: var(--fuaran-space-sm, 8px)`: it is the
+   spacing of a node no layout container spaces — at a page root, in a card body, a split pane, a tab panel, a
+   disclosure body, a summary-list body, a modal or popover body, a scroll area.
+4. **Left alone, deliberately.** `.fuaran-layout-masonry`: multi-column layout has no row gap, so its own
+   `.fuaran-layout-masonry > * { margin-bottom }` already is container-owned row spacing and is not a node margin.
+   `.fuaran-layout-split-panel`: its children are panes, not nodes; the nodes inside a pane are in flow (3).
+   `.fuaran-layout-card` and the other padded surfaces in (3): not gap-spaced. Container-internal flex boxes that hold
+   no child nodes (`.fuaran-form`, `.fuaran-filters`, `.fuaran-form-field`, `.fuaran-media-group`, …) are untouched;
+   their children are a kind's own elements. A kind's own inner margins (`.fuaran-heading`, `.fuaran-markdown p`, a
+   divider, a code block) are the kind's typography, not node spacing, and are out of this rule.
+
+Rejected: **raising the gap tokens** to keep the 20px (above); **`> *` instead of `> .fuaran-node`** — it would also
+strip margins from a non-node child a host renders into a container, and at one class it would lose to any later
+single-class kind rule; **`margin: 0`** — it would reach margins this sheet never set (a host's `margin-inline-start:
+auto` push), where only the node margin is the defect; **removing the node margin altogether** — plain flow has no
+other spacing, so every card body would collapse.
+
+Consequence: every host that serves the sheet changes its vertical spacing inside these three containers (the
+stylesheet is a byte-copy in every tier). A consumer stylesheet that zeroed node margins inside its own containers to
+work around the defect is now redundant and harmless. `HOST-STYLING-CHECKLIST.md` §6 carries the rule for a host
+stylesheet; `src/Fuaran.UI.Tests/LayoutSpacingTests.fs` pins it.
+
+---
+
 ## 2026-11-15 — D34: a precedence refusal's class is the reading that refused it — `NotInBothOrders` or `StaleReassertion`, beside `DeleteModify`
 
 **Decided (Phase 2743; operator ruling 2026-11-15 on Phase 2725's t2 decision).** Phase 2725 refused the pairs a named
