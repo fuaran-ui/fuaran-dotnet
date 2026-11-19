@@ -306,7 +306,9 @@ let tests =
                         "filters-rating-colour.json"
                         "filters-segmented.json"
                         "filters-tokens.json"
-                        "frag-stdlib-filter-bar.json" ]
+                        "frag-stdlib-filter-bar.json"
+                        // Phase 2752 — the parameter panel's controls are filter chips.
+                        "frag-stdlib-parameter-panel.json" ]
                       "the declared-filter control set is exactly the corpus's Filters-bearing fixtures"
           }
 
