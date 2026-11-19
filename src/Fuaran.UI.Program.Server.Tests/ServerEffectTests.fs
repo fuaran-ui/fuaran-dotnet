@@ -135,13 +135,20 @@ let tests =
               let refusing: OpPrefix<string> -> string -> string -> Result<OpReceipt, string> =
                   fun _ _ _ -> Error "the world refused"
 
+              // Program 0.15.0 (its D68): the contract runs over a performer that
+              // fails with an `OpFailure`; these refuse with a reason alone, so
+              // each is lifted, and the refusal read back is the reason.
+              let checkOf performer =
+                  OpContract.check contract (fun p s o -> performer p s o |> OpFailure.lift) prefix "planned" "op"
+                  |> Result.mapError _.Reason
+
               Expect.equal
-                  (OpContract.check contract honest prefix "planned" "op")
+                  (checkOf honest)
                   (Ok(OpReceipt.ofDetail (Fuaran.Core.JStr "planned/op")))
                   "a receipt the contract holds of is the receipt, unchanged"
 
               Expect.equal
-                  (OpContract.check contract overreaching prefix "planned" "op")
+                  (checkOf overreaching)
                   (Error "return-contract:names-the-op")
                   "a receipt the contract rejects is the host's own refusal, naming the contract"
 
@@ -152,12 +159,12 @@ let tests =
                         Holds = fun _ -> true })
                   "in the ONE vocabulary a return contract's refusal has — the op axis coins no second prefix"
 
-              match OpContract.check contract overreaching prefix "planned" "op" with
+              match checkOf overreaching with
               | Error reason -> Expect.isFalse (reason.Contains secret) "and the refusal never carries the receipt"
               | Ok _ -> failtest "the rejected receipt was admitted"
 
               Expect.equal
-                  (OpContract.check contract refusing prefix "planned" "op")
+                  (checkOf refusing)
                   (Error "the world refused")
                   "a raw refusal passes through with the performer's own reason — the contract is not consulted"
           }

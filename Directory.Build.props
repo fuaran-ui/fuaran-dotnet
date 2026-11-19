@@ -828,7 +828,13 @@
          file beside its DLL (build/PackageDocumentation.targets). By the 0.17.0
          precedent a new packaged asset is a public-contract addition and never
          rides a same-version repack; no released version is repacked. See
-         STABILITY.md "0.98.0". -->
+         STABILITY.md "0.98.0".
+         0.105.0 (Phase 2813, 2026-11-19) - v0.104.0 is TAGGED, and the
+         0.105.0 slot is an untagged BREAKING draft (opened by Phase 2623,
+         advanced by Phase 2716). The raise of Fuaran.Program to 0.16.0 is
+         breaking for a consumer of the program adapters and rides it; the
+         number moves here with the first change that cannot ride the tag. See
+         STABILITY.md "0.105.0". -->
     <Version>0.105.0</Version>
   </PropertyGroup>
 

@@ -30,8 +30,12 @@
          (fuaran#2286 adopts it: 0.10.x's assemblies bind Fuaran.Core.Canon), which the pins here
          meet. 0.13.0 (fuaran#2432, 2026-10-24; 0.12.x skipped here) carries the empty-name refusals
          (fuaran#2213, #2436), the wire limits and the windowed, quantity and floor/Required policy
-         clauses, on the same substrate. One property per producing repository, as above. -->
-    <FuaranProgramVersion>0.13.0</FuaranProgramVersion>
+         clauses, on the same substrate. 0.16.0 (Phase 2813, 2026-11-19; 0.13.1, 0.14.1 and 0.15.0
+         crossed in one hop) carries the closure share on the demanded document, which moves to
+         version 15, the per-event quantity pricing, the op stage's partial receipt and the file
+         journal store's process hold, on Fuaran.Core 0.41.0, which the Core pins here meet. One
+         property per producing repository, as above. -->
+    <FuaranProgramVersion>0.16.0</FuaranProgramVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="FSharp.Core" Version="10.1.300" />
