@@ -17,8 +17,6 @@ module Fuaran.UI.Renderer.Web.Tests.FingerprintedAssets
 // ============================================================================
 
 open System
-open System.IO
-open System.Text
 open Expecto
 open Microsoft.AspNetCore.Builder
 open Microsoft.AspNetCore.Http
@@ -47,15 +45,23 @@ let private get (ifNoneMatch: string option) (path: string) : HttpContext =
     ifNoneMatch
     |> Option.iter (fun tag -> ctx.Request.Headers.IfNoneMatch <- StringValues tag)
 
-    ctx.Response.Body <- new MemoryStream()
+    // The body goes to the context's default null sink: this suite is declared
+    // `pure` (no filesystem or stream API in its sources), so WHAT was served
+    // is read from the headers instead. The strong ETag is the SHA-256 of the
+    // bytes and Content-Length their count, which names them more exactly than
+    // a copy would.
     (requestDelegate.Invoke ctx).GetAwaiter().GetResult()
     ctx
 
 let private cacheControl (ctx: HttpContext) =
     ctx.Response.Headers.CacheControl.ToString()
 
-let private body (ctx: HttpContext) =
-    (ctx.Response.Body :?> MemoryStream).ToArray()
+/// Whether the response sent `bytes` as `asset`: its type, its length, and
+/// the ETag that hashes them.
+let private servedAs (asset: Assets.Asset) (bytes: byte[]) (ctx: HttpContext) =
+    ctx.Response.ContentType = asset.ContentType
+    && ctx.Response.ContentLength = Nullable(int64 bytes.Length)
+    && ctx.Response.Headers.ETag.ToString() = Assets.etag bytes
 
 /// The `src` / `href` the snippet emitted.
 let private urlIn (attribute: string) (tag: string) =
@@ -140,7 +146,11 @@ let tests =
                       "public, max-age=31536000, immutable"
                       (sprintf "%s: a URL that changes with the bytes may be immutable" asset.Path)
 
-                  Expect.equal (List.ofArray (body hashed)) (List.ofArray bytes) "the hashed path serves the bytes"
+                  Expect.isTrue
+                      (servedAs asset bytes hashed)
+                      (sprintf "%s: the hashed path serves the embedded bytes" asset.Path)
+
+                  Expect.isTrue (servedAs asset bytes plain) (sprintf "%s: and so does the plain path" asset.Path)
 
                   Expect.equal plain.Response.StatusCode 200 (sprintf "%s: the plain path stays served" asset.Path)
 
@@ -159,10 +169,15 @@ let tests =
               let revalidated = get (Some tag) "/_fuaran/fuaran-renderer.js"
 
               Expect.equal revalidated.Response.StatusCode 304 "an unchanged bundle costs a 304, not a body"
-              Expect.equal (body revalidated).Length 0 "and sends nothing"
+              Expect.isFalse revalidated.Response.ContentLength.HasValue "and declares no body"
+              Expect.isNull revalidated.Response.ContentType "nor a type for one"
 
               let stale = get (Some "\"0000\"") "/_fuaran/fuaran-renderer.js"
               Expect.equal stale.Response.StatusCode 200 "a browser holding other bytes gets the current ones"
+
+              Expect.isTrue
+                  (servedAs Assets.rendererScript (Assets.read Assets.rendererScript) stale)
+                  "the whole bundle"
           }
 
           test "another build's hash is served revalidating, never immutable" {
