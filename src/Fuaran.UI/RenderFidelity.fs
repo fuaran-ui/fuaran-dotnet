@@ -1585,3 +1585,234 @@ let speechRulings: (string * SpeechRuling) list =
 let speechOf (wireKind: string) : SpeechRuling option =
     speechRulings
     |> List.tryPick (fun (k, r) -> if k = wireKind then Some r else None)
+
+// ─── The Adaptive Card column (Phase 1814) ───────────────────────────────────
+//
+// A render target this library will never ship a renderer for: the Adaptive
+// Card renderers already inside other hosts' clients. The projection
+// (`Fuaran.UI.Renderer.Server.AdaptiveCard`) lowers a tree to one Adaptive Card
+// at schema 1.4, the newest version both Teams and Outlook render, and this
+// column declares, per canonical wire kind, what it does with the kind.
+//
+// A SEPARATE TABLE beside `speechRulings`, for the reasons given there: it
+// rules on a different target, and widening the published row record would
+// break every full-literal construction of it. Completeness is held the same
+// way: a test measures this table against `all`, the emitter refuses a kind it
+// has no ruling for, and the projection matches `NodeKind` exhaustively, so a
+// new kind fails to compile there before it can fail a test here.
+
+/// What the Adaptive Card projection does with a kind. Five classes, the closed
+/// set `render-fidelity.json` enumerates as `adaptiveCardClasses`.
+[<RequireQualifiedAccess>]
+type CardRuling =
+    /// The kind has a card counterpart and projects to it.
+    | Mapped of elements: string list * note: string
+    /// A structure carrier: the node lays out its children, which project.
+    | Structural of elements: string list * note: string
+    /// Projected to a labelled link to the live surface (`Action.OpenUrl`), or
+    /// to a labelled note when the host declares no live surface. Never a
+    /// half-working control.
+    | OpenLive of note: string
+    /// The content survives as literal text and its form does not.
+    | FlattenToText of elements: string list * note: string
+    /// Nothing is emitted, and the node is named in the degradation list.
+    | Omitted of note: string
+
+/// The class token a ruling carries in `render-fidelity.json`.
+let cardClassId (ruling: CardRuling) : string =
+    match ruling with
+    | CardRuling.Mapped _ -> "mapped"
+    | CardRuling.Structural _ -> "structural"
+    | CardRuling.OpenLive _ -> "open-live"
+    | CardRuling.FlattenToText _ -> "flatten-to-text"
+    | CardRuling.Omitted _ -> "omitted"
+
+/// The per-kind note a ruling carries.
+let cardNote (ruling: CardRuling) : string =
+    match ruling with
+    | CardRuling.Mapped(_, note)
+    | CardRuling.Structural(_, note)
+    | CardRuling.FlattenToText(_, note)
+    | CardRuling.OpenLive note
+    | CardRuling.Omitted note -> note
+
+/// The Adaptive Card element types the node itself may emit at its own level
+/// (a container's children add their own). An open-live node emits an
+/// `ActionSet` holding one `Action.OpenUrl`, or a `RichTextBlock` note when the
+/// host declared no live surface; an omitted node emits nothing.
+let cardElements (ruling: CardRuling) : string list =
+    match ruling with
+    | CardRuling.Mapped(elements, _)
+    | CardRuling.Structural(elements, _)
+    | CardRuling.FlattenToText(elements, _) -> elements
+    | CardRuling.OpenLive _ -> [ "ActionSet"; "RichTextBlock" ]
+    | CardRuling.Omitted _ -> []
+
+/// The closed class vocabulary, in the order `render-fidelity.json` emits it.
+let cardClasses: (string * string) list =
+    [ "mapped", "the kind projects to its Adaptive Card counterpart"
+      "structural", "the node lays out its children in a Container or ColumnSet, and the children project"
+      "open-live",
+      "a labelled Action.OpenUrl to the live surface, or a labelled note when none is declared; never a half-working control"
+      "flatten-to-text", "the content survives as literal text in a RichTextBlock; the form does not"
+      "omitted", "nothing is emitted, and the node is named in the projection's degradation list" ]
+
+/// The Adaptive Card ruling for every canonical wire kind, ordered by wire name
+/// (Ordinal), so a new kind lands as one clean insert.
+///
+/// Four rules hold across the table and are stated once here: a node whose
+/// `visible` resolves false is omitted with its subtree; every binding resolves
+/// ONCE, at projection time, and the card is inert after that; every string
+/// reaches the card as literal text (a `TextRun`, which hosts never read as
+/// markdown, or a `Fact` escaped against the markdown hosts apply there); and
+/// every URL passes the context's destination policy before it is written.
+let cardRulings: (string * CardRuling) list =
+    [ "Badge",
+      CardRuling.FlattenToText(
+          [ "RichTextBlock" ],
+          "the label as a bold TextRun coloured by the variant; the pill shape has no card form"
+      )
+      "Box",
+      CardRuling.Structural(
+          [ "Container"; "ColumnSet" ],
+          "a Container; a horizontal flex row is a ColumnSet, a grid or masonry layout is a Container of ColumnSet rows; a Card gains the emphasis style and its heading"
+      )
+      "Button",
+      CardRuling.Mapped(
+          [ "ActionSet"; "RichTextBlock" ],
+          "an ActionSet holding one action: Navigate to an absolute allowed URL is Action.OpenUrl, an action the backend can run is Action.Execute with a declared verb, a client-only action is open-live; a disabled button is a note"
+      )
+      "Callout",
+      CardRuling.Mapped([ "Container" ], "a Container styled by tone, holding the heading (bold) and the body")
+      "Chart",
+      CardRuling.OpenLive
+          "a chart is drawn as SVG, which neither Teams nor Outlook renders in a card image; the title is the link text"
+      "CodeBlock",
+      CardRuling.FlattenToText(
+          [ "RichTextBlock" ],
+          "the source as one monospace TextRun; there is no highlighting pass and no copy control"
+      )
+      "Custom",
+      CardRuling.OpenLive "a host renderer's output is outside this projection's audit, so it is linked, not embedded"
+      "DataGrid",
+      CardRuling.Mapped(
+          [ "Container"; "ActionSet"; "RichTextBlock" ],
+          "the staticRows form is a Container of ColumnSet rows under a bold header row (Table is a 1.5 element Outlook does not render); the row ceiling is the host limits' MaxGridRows, refused before projection; the client-library form is open-live"
+      )
+      "Disclosure",
+      CardRuling.Structural(
+          [ "Container" ],
+          "always expanded: the heading (bold), then the children; a card that hides a section silently loses it"
+      )
+      "Drawing", CardRuling.OpenLive "inline SVG, for the same reason as Chart"
+      "Embed", CardRuling.OpenLive "a third-party browsing context has no card form; the title is the link text"
+      "ErrorBoundary",
+      CardRuling.Structural(
+          [],
+          "the protected child projects; the fallback is a client-runtime path, reported as not taken"
+      )
+      "Fact",
+      CardRuling.Mapped(
+          [ "FactSet"; "RichTextBlock" ],
+          "a FactSet row (adjacent Facts and LabelValueRows share one FactSet); help text follows as a subtle line"
+      )
+      "FileUpload", CardRuling.OpenLive "a card cannot carry a file"
+      "Filters", CardRuling.OpenLive "filters re-query a live view, and the card is inert after projection"
+      "Form",
+      CardRuling.Mapped(
+          [ "Container"; "ActionSet"; "RichTextBlock" ],
+          "a Container of Input elements (Text, Number, Date, Toggle, ChoiceSet), then an ActionSet whose Action.Execute submits them; a field with no faithful input is substituted and declared"
+      )
+      "FragmentDecl", CardRuling.Omitted "a template declaration paints nothing, here as everywhere"
+      "FragmentRef",
+      CardRuling.Structural(
+          [ "RichTextBlock" ],
+          "expanded against the tree's fragment registry; an unresolved reference is a labelled note"
+      )
+      "Heading",
+      CardRuling.Mapped(
+          [ "RichTextBlock" ],
+          "a bold TextRun sized by level (1 extraLarge, 2 large, 3 medium, 4 to 6 default)"
+      )
+      "Icon",
+      CardRuling.Omitted
+          "a card has no icon font, and the name alone would paint as a word; the icon is reported, not drawn"
+      "Image",
+      CardRuling.Mapped(
+          [ "Image"; "RichTextBlock" ],
+          "an Image at an absolute allowed URL with the alt as altText, then the caption; a refused or relative source degrades to the alt text"
+      )
+      "LabelValueRow",
+      CardRuling.Mapped(
+          [ "FactSet"; "RichTextBlock" ],
+          "a FactSet row, the value formatted through the shared projection; adjacent rows share one FactSet"
+      )
+      "Link",
+      CardRuling.Mapped(
+          [ "RichTextBlock" ],
+          "a TextRun whose selectAction is Action.OpenUrl at the allowed destination; a refused or relative destination is plain text"
+      )
+      "List",
+      CardRuling.FlattenToText(
+          [ "RichTextBlock" ],
+          "one literal line per item, numbered or bulleted; a card has no list element outside markdown"
+      )
+      "Map", CardRuling.OpenLive "a client map library draws it; the server has markers, not a picture"
+      "Markdown",
+      CardRuling.Mapped(
+          [ "RichTextBlock" ],
+          "the one deterministic GFM render, one RichTextBlock per block: bold, italic, strikethrough and code become TextRun styles, a link at an allowed absolute destination keeps an Action.OpenUrl, an image becomes its alt text"
+      )
+      "Math",
+      CardRuling.FlattenToText(
+          [ "RichTextBlock" ],
+          "the LaTeX source in a monospace TextRun; readable source beats invisible mathematics"
+      )
+      "Media",
+      CardRuling.Mapped(
+          [ "Media"; "ActionSet"; "RichTextBlock" ],
+          "a Media element when the source is an absolute allowed URL whose extension names a MIME type, with the poster and the label as altText; otherwise open-live"
+      )
+      "Metric",
+      CardRuling.Mapped(
+          [ "Container" ],
+          "a Container: the label (subtle), the formatted value (large, bold), the trend and comparisons, then the subtext"
+      )
+      "Modal", CardRuling.OpenLive "an overlay has no meaning in a card"
+      "Mount", CardRuling.OpenLive "the guest tree attaches client-side; there is nothing to project"
+      "Progress", CardRuling.FlattenToText([ "RichTextBlock" ], "'<label>: <n>%', or 'in progress' when indeterminate")
+      "ScrollArea",
+      CardRuling.Structural([ "Container" ], "a Container; a card has no clipping, and hidden content is lost content")
+      "Select",
+      CardRuling.OpenLive
+          "a selection outside a Form has no submit to carry it, and an input that reaches nothing is a half-working control"
+      "Skeleton", CardRuling.Omitted "a loading placeholder describes a state a delivered card is never in"
+      "Sparkline", CardRuling.OpenLive "the polyline is drawn client-side"
+      "SplitPanel", CardRuling.Structural([ "ColumnSet" ], "a two-column ColumnSet at the declared weights")
+      "Stepper", CardRuling.OpenLive "step-by-step navigation needs the runtime"
+      "SummaryList",
+      CardRuling.Structural(
+          [ "Container" ],
+          "a Container: the heading (bold), then the children, whose adjacent Facts and LabelValueRows share one FactSet"
+      )
+      "Switch",
+      CardRuling.Structural(
+          [],
+          "the case matching the resolved selector, else the default; the others are reported as not taken"
+      )
+      "Tabs",
+      CardRuling.OpenLive
+          "projecting only the active panel would be a lie about how much the section holds, so the card links to it"
+      "Toast",
+      CardRuling.FlattenToText(
+          [ "Container" ],
+          "an OPEN toast is a Container styled by tone holding the message; a closed one is omitted and reported"
+      )
+      "Tree",
+      CardRuling.OpenLive "a card can toggle nothing, so a faithful hierarchy would have to show every closed branch" ]
+
+/// The Adaptive Card ruling of a wire kind, or `None` for a kind with no ruling
+/// (which the completeness test makes impossible for a kind with a fidelity row).
+let cardOf (wireKind: string) : CardRuling option =
+    cardRulings
+    |> List.tryPick (fun (k, r) -> if k = wireKind then Some r else None)

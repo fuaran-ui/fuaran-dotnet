@@ -29,6 +29,10 @@
          that module's Switch-branch selection, so a script and a digest cannot
          disagree about which case a tree shows). -->
     <Compile Include="Speech.fs" />
+    <!-- AdaptiveCard.fs — the Phase 1814 Adaptive Card projection. After
+         Email.fs (it shares that module's Switch-branch selection, as Speech.fs
+         does, so a card cannot show a different case from the page). -->
+    <Compile Include="AdaptiveCard.fs" />
     <Compile Include="Hydration.fs" />
     <Compile Include="Resume.fs" />
   </ItemGroup>

@@ -53,11 +53,13 @@
     <!-- VB Roslyn — Phase 315 adds the VB XML-literal diagnostic leg to
          Fuaran.UI.Analyzers (VB XML literals are syntax, not IOperation). -->
     <PackageVersion Include="Microsoft.CodeAnalysis.VisualBasic" Version="4.11.0" />
-    <!-- Draft 2020-12 JSON Schema validator — consumed ONLY by
-         Fuaran.UI.JsonDecode.Tests to assert the generated
+    <!-- JSON Schema validator (draft 2020-12 and earlier) — consumed ONLY by two
+         test suites: Fuaran.UI.JsonDecode.Tests, to assert the generated
          wire-format-fixtures/schema.json (Phase 96) accepts/rejects the corpus
          consistently with JsonDecode, using a real off-the-shelf validator
-         (proves the schema is a genuine drop-in for external tooling). Test-only;
+         (proves the schema is a genuine drop-in for external tooling), and by
+         Fuaran.UI.Renderer.Server.Tests to validate the Adaptive Card projection
+         against the published Adaptive Cards schema (Phase 1814). Test-only;
          not referenced by any shipping package. -->
     <PackageVersion Include="JsonSchema.Net" Version="9.2.1" />
     <PackageVersion Include="Fake.Core.Target" Version="6.1.4" />
