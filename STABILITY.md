@@ -8189,6 +8189,48 @@ sees it, because every page every host renders changes its spacing. The slot alr
 `--fuaran-space-md` (stacks, grids) or `--fuaran-space-lg` (dashboards), or declares a gap; a host stylesheet that
 zeroed node margins inside its own containers to work around the double spacing can drop that rule.
 
+### What rides this slot — Phase 2068 (chart lowering is staged and memoised; a render declares its provenance scope)
+
+**Class: BREAKING (source), of the class the slot already carries.** Packages `Fuaran.UI.Charts`,
+`Fuaran.UI.Renderer.Core`, `Fuaran.UI.Renderer` and `Fuaran.UI.Renderer.Server`. No wire byte moves and no lowered
+drawing moves: every `chart-lowering` golden is byte-unchanged, so no other host's gate reads a difference.
+
+**What changed.**
+
+- **The lowering is staged** (`Fuaran.UI.Charts`, private members only). The one function that lowered a chart is
+  now a pipeline of private stage functions, each returning one typed record: `seriesData`, `valueAxis`,
+  `categoryAxis`, `frame`, `legendLayout`, `plotArea`, `axisChrome`, `seriesMarks`, `dataLabels`, `annotationMarks`,
+  `legendAndTitles`, `pieMarks` and `accessibleSummaryOf`. No public signature of the lowering moves
+  (`lower` / `lowerWith` / `lowerWithStyle` / `tryLower*` answer what they answered).
+- **The client renderer memoises the lowering** (`Fuaran.UI.Renderer`, additive: `Render.ChartLoweringMemo`). A
+  re-render that hands a `Chart` the same spec value, the same row source and the same installed style serves the
+  drawing it lowered last time. The memo holds one entry per spec value, weakly. A row source is held by identity
+  when it is an F# list, by its identity and each row's when it is an array or `ResizeArray`, and is never memoised
+  when it is any other sequence. Text resolution and SVG emission still run on every render, so a title bound to a
+  source that moved is re-emitted.
+- **`Charts.renderSvgVia`** (additive) is `renderSvgWith` with the lowering supplied by the caller; `renderSvgWith`
+  is now that function over `tryLowerWithStyle`. **`Charts.provenanceInForce`** (additive) resolves a render's
+  declared provenance scope against the process default.
+- **A render declares its chart-provenance scope on its context.** `RenderContext<'Msg>` (client) and
+  `ServerRenderContext` each gain `ChartProvenance: ChartProvenance option`; `None`, the default every constructor
+  sets, is the process default `installChartProvenance` installs, which is unchanged and still ships `Off`.
+  `Render.renderWithChartProvenance` (server, additive) renders under a declared scope. Both renderers' `Chart`
+  arms now call `renderSvgWith` / `renderSvgVia` with the scope in force; `Charts.renderSvg` stays, and is what
+  they call when no scope is declared.
+- **`ElementPlan.VisPlan.chart`'s `svg` callback takes the row source as `Row seq`** (was `Row list`), handed over
+  as it resolved. The client no longer lists a chart's rows before the lowering reads them, so an unbounded source
+  is read only to the point cap, on the client as on the server.
+
+**What breaks.** A full record literal of `RenderContext<'Msg>` or `ServerRenderContext` (build one with
+`RenderContext.create` / the `mkContext*` functions and adjust it with `with`). A caller of
+`ElementPlan.VisPlan.chart` that passes a function over `Row list`.
+
+**Behaviour to know.** A host that writes new cell values into a row source in place, keeping the same row values
+(for example mutating an object a cell holds), is not seen by the memo; rows are immutable maps, so replacing a row
+is seen. A host that replaces its data, or its tree, per dispatch gets exactly the lowering it got before.
+
+**Consumer action: none**, unless one of the two source breaks above applies.
+
 ## 0.104.0 (RELEASED — tagged v0.104.0 at cc477007, 2026-11-11) — the slot opened after v0.103.0 was released; advanced from 0.103.1 on 2026-11-10 by Phase 2640, whose change is breaking
 
 _`v0.103.0` is TAGGED (2026-11-09, at `1b783c61`), so nothing may ride it: Phase 2639 opened the next slot at the

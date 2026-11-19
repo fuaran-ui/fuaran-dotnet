@@ -85,6 +85,14 @@ type ServerRenderContext =
         /// only be emitted after — see `Csp.StyleCollector`, which carries the
         /// full argument for the shape.
         Styles: Csp.StyleCollector
+        /// Phase 2068 — the chart-provenance scope THIS render stamps its lowered
+        /// charts under, or `None` for the process default the host installed
+        /// (`Charts.installChartProvenance`, which ships `Off`). A host serving
+        /// more than one scope from one process declares it here, per request
+        /// (`renderWithChartProvenance`): an install per request would race on
+        /// the global. The client context carries the same field, so the two
+        /// tiers stamp alike.
+        ChartProvenance: Fuaran.UI.Charts.ChartProvenance option
     }
 
 // ─── Text + value helpers ──────────────────────────────────────────────────
@@ -438,14 +446,18 @@ and private renderKind
         | None -> Emit.plan (ElementPlan.VisPlan.gridPlaceholder ctx.Sources spec)
     | NodeKind.Chart spec ->
         // Phase 526 / 643 — the lowered kinds draw the shared Drawing SVG through
-        // `Charts.renderSvg`, the one entry point the client also calls.
+        // `Charts`, under the provenance scope this context declares (Phase 2068);
+        // the client's arm makes the same call through its lowering memo.
         Emit.plan (
             ElementPlan.VisPlan.chart
                 (planContext walk ctx parentNodeId)
                 state
                 spec
                 (Fuaran.UI.Charts.isLowered spec.Kind)
-                (Fuaran.UI.Charts.renderSvg ctx.Sources (renderText ctx))
+                (Fuaran.UI.Charts.renderSvgWith
+                    (Fuaran.UI.Charts.provenanceInForce ctx.ChartProvenance)
+                    ctx.Sources
+                    (renderText ctx))
         )
     | NodeKind.Map spec -> Emit.plan (ElementPlan.VisPlan.map (planContext walk ctx parentNodeId) state spec)
     | NodeKind.ErrorBoundary spec ->
@@ -773,7 +785,10 @@ let mkContextWith
       Policy = RenderPolicy.defaults
       // One collector per context, so it can never outlive the render that
       // built it or be shared between two. Untouched under `Permissive`.
-      Styles = Csp.StyleCollector() }
+      Styles = Csp.StyleCollector()
+      // The process default; a render that declares its own is reached BY NAME
+      // (`renderWithChartProvenance`), as each `Policy` posture is.
+      ChartProvenance = None }
 
 /// `mkContextWith` with an EXPLICIT destination policy (Phase 1026) — the named
 /// opt-out from the ambient default-deny, and the server twin of the client's
@@ -920,6 +935,26 @@ let renderWithInScope
     (node: Node<obj>)
     : string =
     Render.htmlView (renderNode Walk.root (mkContextInScope scope customs sources node) node)
+
+/// `renderWith` under a chart-provenance scope this render DECLARES (Phase
+/// 2068): every lowered chart in the tree is stamped under `provenance`,
+/// whatever the process default is and without touching it, so two requests in
+/// one process can stamp under different scopes.
+let renderWithChartProvenance
+    (provenance: Fuaran.UI.Charts.ChartProvenance)
+    (customs: Registry.ServerCustomRendererRegistry)
+    (sources: BindingResolver.BindingSources)
+    (node: Node<obj>)
+    : string =
+    let ctx = mkContextWith customs sources node
+
+    Render.htmlView (
+        renderNode
+            Walk.root
+            { ctx with
+                ChartProvenance = Some provenance }
+            node
+    )
 
 /// `renderWith` plus a host-supplied CONTRACT-CARD store (Phase 1108) — an
 /// unregistered `Custom` node whose identity the store knows renders the
