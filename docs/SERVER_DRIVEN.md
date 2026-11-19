@@ -327,9 +327,9 @@ unbounded memory-growth vectors. All three are now capped:
 
 | Queue | Cap (default) | On overflow |
 |---|---|---|
-| SSE frame queue (`SseChannel`) | `SseDefaults.FrameQueueCapacity` = **256 frames** | the channel **closes** – the drain loop ends the stream; `EventSource` auto-reconnects with `Last-Event-ID` and `Resync` replays the missed frames (a clean reconnect-replay, not silent frame loss) |
-| WS frame queue (`WsChannel`) | `WsDefaults.FrameQueueCapacity` = **256 frames** | the channel **closes** – the send pump ends and the socket closes; the client's WS adapter reconnects and `Frame.Seq` + `Resync` replay the missed frames (the same stalled-reader guard as `SseChannel`, mirrored onto the WebSocket backend) |
-| Reconnect-replay buffer (`LiveConnection`) | `LiveConnectionDefaults.ReplayBufferCapacity` = **512 frames** | the **oldest** frame is evicted; a client reconnecting from behind the retained window gets a partial replay (the Phase 155 durable journal is the complete recovery) |
+| SSE frame queue (`SseChannel`) | `SseDefaults.FrameQueueCapacity` = **256 frames** | the channel **closes** – the drain loop ends the stream; `EventSource` auto-reconnects with `Last-Event-ID`, re-attaches to its connection and is replayed the missed frames (a clean reconnect-replay, not silent frame loss – Phase 1928) |
+| WS frame queue (`WsChannel`) | `WsDefaults.FrameQueueCapacity` = **256 frames** | the channel **closes** – the send pump ends and the socket closes; the client's WS adapter reconnects (the same stalled-reader guard as `SseChannel`, mirrored onto the WebSocket backend). The WebSocket backend does **not** re-attach: a connection lives and dies with its socket, so the reconnect opens a fresh session |
+| Reconnect-replay buffer (`LiveConnection`) | `LiveConnectionDefaults.ReplayBufferCapacity` = **512 frames** | the **oldest** frame is evicted; a client re-attaching from behind the retained window is re-baselined with one full-document frame of its session (Phase 1928 – see [Reconnection + replay](#reconnection--replay)); the Phase 155 durable journal is the recovery across a restart |
 
 All three caps are per-channel/per-connection overridable (`SseChannel(capacity =
 …)`, `WsChannel(capacity = …)`, `LiveConnection(…, replayBufferCapacity = …)`). **Semantically-tightening
@@ -407,6 +407,72 @@ exposes `Resync(lastSeq)`, which re-pushes the retained frames newer than the
 client's last-applied `Seq`. The session model already survives a transport
 drop in the `LiveConnection`; `Resync` recovers the unacknowledged frames.
 Implemented **once in the core**, against the seam – both backends share it.
+
+### What the SSE backend does on a reconnect (Phase 1928)
+
+A connection **outlives the stream that opened it**. When an SSE stream ends –
+the client dropped, a write to it failed, or the bounded queue closed it on
+purpose (Phase 212) – the stream's queue is closed and the stream *detaches*
+from its connection, in a `finally`, whatever ended it. The connection stays in
+the `ConnectionRegistry` for `ReconnectGrace` (default
+`ConnectionRegistry.DefaultReconnectGrace`, 30 s; settable on the registry
+`mapFuaranLive` returns; `TimeSpan.Zero` evicts at once). A connection still
+detached when the grace runs out is **evicted**: removed, its channel closed, and
+its lifetime ended – which is also what stops its awaited-effect runner (Phase
+2170), so effects keep running across a brief drop and stop with the connection.
+
+`EventSource` reconnects on its own, resending the last `id:` it saw as
+`Last-Event-ID`. A GET carrying it **re-attaches** when the correlation cookie
+re-verifies against *this* request's principal (Phase 211) and the id it binds
+(scoped by the tab, below) names a registered connection. No session is minted
+for it; the client gets the session it had. `LiveConnection.Reattach` then runs
+under the connection's gate, so no step interleaves:
+
+| The client's `Last-Event-ID` | What it gets (`ResyncOutcome`) |
+|---|---|
+| inside the retained window | `Replayed n` – exactly the frames it missed, in order |
+| behind the window (its missed frames were evicted), or a sequence this connection never pushed | `Rebaselined` – one full-document `ReplaceFragment` of the root, from the connection's **current** session, under the next `Seq` |
+
+Never a partial replay: a replay with a hole in it would patch a DOM the server
+no longer describes. A re-baseline keeps the model – the client adopts the
+server's tree, and the next patch diffs from what the client actually holds.
+
+A reconnect that **cannot** re-attach – the connection was evicted, the cookie
+no longer verifies, or (tabless only, below) another stream holds it – opens a
+fresh session, as a first visit does. Because the client reported a
+last-applied sequence, that fresh connection also re-baselines it (unless the
+host already did, with `ResumeFrom` in `ConfigureConnection` – the durable
+path below), so a client is never left patching a DOM from another session.
+
+**Serialisation.** `Handle`, `Resync`, `Reattach`, `Rebaseline`, `ResumeFrom`
+and an effect's fed-back message all run under one per-connection gate (the
+invariant is stated once, on `LiveConnection`). Two POSTs that overlap on one
+connection – HTTP/2, or two quick fetches – are stepped one after the other:
+each frame gets its own `Seq`, and neither step's transition is lost.
+
+### Several tabs
+
+The correlation cookie is per-origin, so every tab of one browser sends the same
+one. A request may name **its own tab** with the optional `tab` query parameter
+(the stream GET – `EventSource` cannot set a header) or the `X-Fuaran-Tab`
+header (the event POST), 1–64 characters of `[A-Za-z0-9_-]` (anything else is
+refused `400`). The cookie keeps binding the principal; the tab selects the
+connection:
+
+- **With a tab id**, the stream keeps the id the cookie already carries and the
+  connection is keyed by that id *and* the tab, so each tab has its own stream
+  and session, and a POST drives only the tab that sent it. A reconnect naming
+  its tab re-attaches even if the server has not yet noticed the old stream drop.
+  The shipped shim (`fuaran-live-patch.js`) mints one tab id per page load –
+  never stored, so a duplicated tab cannot inherit it – and sends it on both.
+- **Without one** (a client predating Phase 1928), every stream mints a fresh id
+  and re-sets the cookie, so the most recently opened tab receives the POSTs of
+  every tab – the behaviour before Phase 1928. A tabless reconnect re-attaches
+  only to a connection no stream holds, so two tabless tabs never take each
+  other's streams over.
+
+The WebSocket backend needs none of this: one socket is one tab, and its
+connection lives and dies with the socket.
 
 The durable form promotes the `OpStream` journal (hash-chained `OpRecord`
 sequence) from audit log to **load-bearing transport-recovery layer**: replay

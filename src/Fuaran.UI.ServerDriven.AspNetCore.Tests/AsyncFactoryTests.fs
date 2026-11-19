@@ -6,13 +6,14 @@ module Fuaran.UI.ServerDriven.AspNetCore.Tests.AsyncFactoryTests
 // asynchronous factory before the connection exists, and runs the effects an
 // effect-returning update hands back. Driven through the endpoint's own
 // `RequestDelegate` against a `DefaultHttpContext`, so the glue under test is the
-// shipped handler and not a re-statement of it. Every wait is bounded.
+// shipped handler and not a re-statement of it. Every wait is a bounded,
+// awaited signal that holds no thread (`TestSupport`, Phase 1928 carrying the
+// Phase 2497 rule here): a synchronous wait on a pool thread goes red on a
+// loaded machine by starving the very continuations it waits for.
 
 #nowarn "44" // `Action.Dispatch` is in-process-only (Phase 1152); this suite is in-process.
 
 open System
-open System.IO
-open System.Diagnostics
 open System.Threading
 open System.Threading.Tasks
 open Expecto
@@ -26,22 +27,11 @@ open Fuaran.UI.ServerDriven.Validation
 open Fuaran.UI.ServerDriven.Driver
 open Fuaran.UI.ServerDriven.AspNetCore
 open Fuaran.UI.ServerDriven.AspNetCore.Endpoints
+open Fuaran.UI.ServerDriven.AspNetCore.Tests.TestSupport
 
 type Msg =
     | Click
     | Loaded of string
-
-let private bound = TimeSpan.FromSeconds 10.0
-
-let private eventually (cond: unit -> bool) : bool =
-    let sw = Stopwatch.StartNew()
-    let mutable ok = cond ()
-
-    while not ok && sw.Elapsed < bound do
-        Thread.Sleep 10
-        ok <- cond ()
-
-    ok
 
 let private view (m: string) : Node<Msg> =
     Fuaran.dashboard
@@ -55,43 +45,6 @@ let private view (m: string) : Node<Msg> =
                   Fuaran.markdown "status" m ] }
 
 let private render (n: Node<Msg>) = $"<f id='{n.Id}'/>"
-
-/// A write-only response body the handler writes on its thread and the test
-/// reads on its own.
-type private SharedBody() =
-    inherit Stream()
-    let buffer = new MemoryStream()
-    let gate = obj ()
-
-    let append (bytes: byte[]) offset count =
-        lock gate (fun () -> buffer.Write(bytes, offset, count))
-
-    member _.Text = lock gate (fun () -> Text.Encoding.UTF8.GetString(buffer.ToArray()))
-
-    override _.CanRead = false
-    override _.CanSeek = false
-    override _.CanWrite = true
-    override _.Length = lock gate (fun () -> buffer.Length)
-
-    override _.Position
-        with get () = 0L
-        and set _ = raise (NotSupportedException())
-
-    override _.Flush() = ()
-    override _.FlushAsync(_: CancellationToken) = Task.CompletedTask
-    override _.Read(_: byte[], _: int, _: int) : int = raise (NotSupportedException())
-    override _.Seek(_: int64, _: SeekOrigin) : int64 = raise (NotSupportedException())
-    override _.SetLength(_: int64) = raise (NotSupportedException())
-    override _.Write(bytes: byte[], offset: int, count: int) = append bytes offset count
-
-    override _.WriteAsync(bytes: byte[], offset: int, count: int, _: CancellationToken) =
-        append bytes offset count
-        Task.CompletedTask
-
-    override _.WriteAsync(bytes: ReadOnlyMemory<byte>, _: CancellationToken) =
-        let copy = bytes.ToArray()
-        append copy 0 copy.Length
-        ValueTask()
 
 /// Map with `map`, and hand back the stream endpoint's own delegate.
 let private streamDelegate (map: IEndpointRouteBuilder -> unit) (path: string) : WebApplication * RequestDelegate =
@@ -128,7 +81,7 @@ let tests =
     testSequenced
     <| testList
         "Phase 2170 — mapFuaranLiveAsync"
-        [ test "a factory that never answers holds only its own request, and ends with it" {
+        [ testTask "a factory that never answers holds only its own request, and ends with it" {
               let config = defaultAsyncConfig<string, Msg> ()
               let factoryCalls = ref 0
 
@@ -137,17 +90,21 @@ let tests =
               // request only after this fires, so which request is stuck is fixed by
               // construction, not by the order two threads happened to reach the factory
               // (the race that let the free request take the blocking call under load).
-              use firstEntered = new ManualResetEventSlim(false)
+              let firstEntered = signal ()
+              // Built before the race: the bound times the seam, not the first
+              // construction of a session in this process.
+              let ready =
+                  init (DriverServices.createPermissive render) (fun _ m -> m) view "ready"
 
               let factory: AsyncSessionFactory<string, Msg> =
                   fun () ->
                       async {
                           if Interlocked.Increment factoryCalls = 1 then
-                              firstEntered.Set()
+                              firstEntered.TrySetResult() |> ignore
                               let! _ = Async.AwaitTask(TaskCompletionSource<unit>().Task)
                               ()
 
-                          return init (DriverServices.createPermissive render) (fun _ m -> m) view "ready", None
+                          return ready, None
                       }
 
               let mutable registry = Unchecked.defaultof<ConnectionRegistry>
@@ -155,36 +112,45 @@ let tests =
               let app, stream =
                   streamDelegate (fun r -> registry <- Endpoints.mapFuaranLiveAsync r config factory) config.StreamPath
 
-              use stuckAbort = new CancellationTokenSource()
-              use freeAbort = new CancellationTokenSource()
+              // No reconnect grace (Phase 1928): a stream that ends evicts its
+              // connection at once, so "deregisters" below needs no wait.
+              registry.ReconnectGrace <- TimeSpan.Zero
+              let stuckAbort = new CancellationTokenSource()
+              let freeAbort = new CancellationTokenSource()
               let stuckCtx, _ = context app stuckAbort.Token
-              let freeCtx, _ = context app freeAbort.Token
+              let freeCtx, freeBody = context app freeAbort.Token
 
-              // Invoked from a worker and bounded: a handler that blocked on the
+              // Invoked on its own thread and bounded: a handler that blocked on the
               // factory would not RETURN, and this fails at the bound instead of
               // hanging the suite.
-              let invoked = Task.Factory.StartNew(fun () -> stream.Invoke stuckCtx)
+              let invoked = offPool (fun () -> stream.Invoke stuckCtx)
               // Which request owns the blocking call is asserted before anything about
               // headers is, so a wrong assignment fails on its cause, not on a symptom.
-              Expect.isTrue (firstEntered.Wait bound) "the stuck request entered the factory"
+              let! entered = within firstEntered.Task
+              Expect.isTrue entered "the stuck request entered the factory"
               Expect.equal factoryCalls.Value 1 "and it was the first call: no other request had reached the factory"
-              Expect.isTrue (invoked.Wait bound) "the handler returned without blocking on the factory"
+              let! returned = within invoked
+              Expect.isTrue returned "the handler returned without blocking on the factory"
               let stuck = invoked.Result
               let free = stream.Invoke freeCtx
 
-              Expect.isTrue (eventually (fun () -> registry.Count = 1)) "the other connection opened meanwhile"
+              let! opened = within freeBody.Flushed
+              Expect.isTrue opened "the other connection opened meanwhile"
+              Expect.equal registry.Count 1 "and registered"
               Expect.equal factoryCalls.Value 2 "through the factory's second call, which answered"
               Expect.isFalse stuck.IsCompleted "the stuck request is still waiting for its session"
               Expect.isFalse (stuckCtx.Response.Headers.ContainsKey "Set-Cookie") "and has written nothing"
 
               stuckAbort.Cancel()
-              Expect.isTrue (stuck.Wait bound) "the stuck request ends with its client"
+              let! stuckEnded = within stuck
+              Expect.isTrue stuckEnded "the stuck request ends with its client"
               freeAbort.Cancel()
-              Expect.isTrue (free.Wait bound) "the open stream ends with its client"
+              let! freeEnded = within free
+              Expect.isTrue freeEnded "the open stream ends with its client"
               Expect.equal registry.Count 0 "and deregisters"
           }
 
-          test "an effect-returning update's effects are awaited and their frames streamed" {
+          testTask "an effect-returning update's effects are awaited and their frames streamed" {
               let config = defaultAsyncConfig<string, Msg> ()
               let release = TaskCompletionSource<unit>()
 
@@ -215,10 +181,11 @@ let tests =
               let app, stream =
                   streamDelegate (fun r -> registry <- Endpoints.mapFuaranLiveAsync r config factory) config.StreamPath
 
-              use abort = new CancellationTokenSource()
+              let abort = new CancellationTokenSource()
               let ctx, body = context app abort.Token
               let running = stream.Invoke ctx
-              Expect.isTrue (eventually (fun () -> registry.Count = 1)) "the connection opened"
+              let! opened = within body.Flushed
+              Expect.isTrue opened "the connection opened"
 
               let connId =
                   match connIdOf config ctx with
@@ -234,13 +201,16 @@ let tests =
                     Payload = Map.empty
                     LastSeq = 0 }
 
-              Expect.isTrue (eventually (fun () -> body.Text.Contains "id: 1")) "the click's own frame streamed"
+              let! first = within (body.Contains "id: 1")
+              Expect.isTrue first "the click's own frame streamed"
               Expect.isFalse (body.Text.Contains "id: 2") "the effect has not answered yet"
               release.SetResult()
-              Expect.isTrue (eventually (fun () -> body.Text.Contains "id: 2")) "the effect's message streamed a frame"
+              let! second = within (body.Contains "id: 2")
+              Expect.isTrue second "the effect's message streamed a frame"
 
               abort.Cancel()
-              Expect.isTrue (running.Wait bound) "the stream ends with its client"
+              let! ended = within running
+              Expect.isTrue ended "the stream ends with its client"
           }
 
           test "a config built for the async map refuses the synchronous one loudly" {

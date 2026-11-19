@@ -142,7 +142,12 @@ let private serveSocket
         let! ws = ctx.WebSockets.AcceptWebSocketAsync()
         let channel = WsChannel()
         let conn = LiveConnection(connId, session, channel)
-        let token = ctx.RequestAborted
+        // Both loops run on a token linked to the request's, so whichever ends
+        // first can end the other (Phase 1928): cancelling a pending
+        // `ReceiveAsync` / `SendAsync` aborts the socket, so neither loop can be
+        // left waiting on a peer that will never answer.
+        use lifetime = CancellationTokenSource.CreateLinkedTokenSource ctx.RequestAborted
+        let token = lifetime.Token
 
         match outbox with
         | Some effects ->
@@ -181,8 +186,11 @@ let private serveSocket
                                 | false, _ -> pending <- false
                         else
                             pumping <- false // queue completed — end the pump
-                with :? OperationCanceledException ->
-                    ()
+                with
+                | :? OperationCanceledException -> ()
+                // A send to a peer that dropped fails here; it ends the pump as a
+                // disconnect does, observed rather than left on a faulted task.
+                | :? WebSocketException -> ()
             }
 
         let recvLoop =
@@ -213,12 +221,23 @@ let private serveSocket
                                 config.MaxMessageBytes
                                 connId
 
-                            do!
-                                ws.CloseAsync(
-                                    WebSocketCloseStatus.MessageTooBig,
-                                    "inbound message exceeds the configured budget",
-                                    token
-                                )
+                            // `CloseOutputAsync` sends the close frame and returns
+                            // (Phase 1928): `CloseAsync` would then wait for the
+                            // peer's own close frame, which a hostile peer never
+                            // sends, until the request aborted. The socket is
+                            // torn down when this loop ends either way, so a close
+                            // frame that cannot be sent (the peer is gone, or a
+                            // frame is mid-send) is not an error worth keeping.
+                            try
+                                do!
+                                    ws.CloseOutputAsync(
+                                        WebSocketCloseStatus.MessageTooBig,
+                                        "inbound message exceeds the configured budget",
+                                        token
+                                    )
+                            with
+                            | :? WebSocketException
+                            | :? InvalidOperationException -> ()
 
                             go <- false
                         else
@@ -247,12 +266,23 @@ let private serveSocket
                                         "[Fuaran] WebSocket inbound handling failed for conn %s; skipping message: %s"
                                         connId
                                         ex.Message
-                with :? OperationCanceledException ->
-                    ()
+                with
+                | :? OperationCanceledException -> ()
+                // A receive from a peer that dropped without a close frame
+                // fails here; it ends the loop as a close does.
+                | :? WebSocketException -> ()
             }
 
+        // Whichever loop ended first, end the other and the connection (Phase
+        // 1928): close the queue (the pump's exit), cancel the shared token (the
+        // receive's exit — it aborts the socket), and await both, so neither is
+        // left running, and neither faults unobserved. `WhenAny` never throws,
+        // so the teardown always runs.
         let! _ = Task.WhenAny(sendPump, recvLoop)
         (channel :> IFuaranLiveChannel).Close()
+        lifetime.Cancel()
+        let! _ = Task.WhenAll(sendPump, recvLoop)
+        ()
     }
     :> Task
 

@@ -87,6 +87,18 @@ module LiveConnectionDefaults =
     [<Literal>]
     let ReplayBufferCapacity = 512
 
+/// What a reconnect replay did (Phase 1928, `LiveConnection.Reattach`).
+[<RequireQualifiedAccess>]
+type ResyncOutcome =
+    /// The client's last-applied sequence was inside the retained window: the
+    /// frames it missed were re-pushed, in order (zero when it missed none).
+    | Replayed of frames: int
+    /// The client was behind the retained window (its missed frames were
+    /// evicted) or reported a sequence this connection never pushed: one
+    /// full-document frame re-baselined it on the connection's CURRENT session,
+    /// so the next patch diffs from the DOM the client actually holds.
+    | Rebaselined
+
 /// One live connection: binds a `LiveSession` to a channel. On each inbound
 /// event it steps the driver, advances the op sequence, and pushes a `Frame`
 /// when the step produced any patch / effect. A G1-rejected step pushes nothing
@@ -96,6 +108,15 @@ module LiveConnectionDefaults =
 /// connection's mutable session (a connection is inherently stateful — one
 /// evolving model). `replayBufferCapacity` bounds the reconnect-replay buffer
 /// (default `LiveConnectionDefaults.ReplayBufferCapacity`; oldest evicted).
+///
+/// **Concurrency invariant (Phases 2170, 1928).** Every member that reads or
+/// writes the session, the op sequence or the replay buffer — `Handle`,
+/// `Resync`, `Reattach`, `Rebaseline`, `ResumeFrom` and a fed-back effect
+/// message — runs under ONE per-connection gate, for its synchronous part only.
+/// So two inbound events that overlap (concurrent POSTs on one SSE connection)
+/// are stepped one after the other: each sees the session the other left,
+/// each frame gets its own `Seq`, and a replay never enumerates a buffer a step
+/// is appending to. No effect is awaited while the gate is held.
 type LiveConnection<'Model, 'Msg>
     (connId: string, initial: LiveSession<'Model, 'Msg>, channel: IFuaranLiveChannel, ?replayBufferCapacity: int) as this
     =
@@ -168,6 +189,20 @@ type LiveConnection<'Model, 'Msg>
     // no effect is ever awaited while it is held.
     let gate = obj ()
 
+    /// Re-push every retained frame newer than `lastSeq`; the count re-pushed.
+    /// Callers hold `gate`.
+    let replayAfter (lastSeq: int) =
+        let missed = buffer |> Seq.filter (fun f -> f.Seq > lastSeq) |> List.ofSeq
+        missed |> List.iter channel.Push
+        List.length missed
+
+    /// The full-document frame content for the current tree (the re-baseline
+    /// `ResumeFrom` and `Reattach` push). Callers hold `gate`.
+    let rebaselineOutput () : StepOutput =
+        { Patches = [ DomPatch.ReplaceFragment(session.Tree.Id, session.Services.RenderFragment session.Tree) ]
+          Effects = []
+          Rejected = None }
+
     do
         channel.Receive(fun ev ->
             if ev.ConnId = connId then
@@ -220,11 +255,42 @@ type LiveConnection<'Model, 'Msg>
     /// loses no state. The buffer is bounded (Phase 212): a client reconnecting
     /// from behind the retained window gets only the retained tail — the durable
     /// journal (Phase 155) is the complete recovery. Returns the number of
-    /// frames replayed.
+    /// frames replayed. Under the connection's gate (Phase 1928). A transport
+    /// re-attaching a dropped stream calls `Reattach`, which re-baselines
+    /// instead of replaying partially.
     member _.Resync(lastSeq: int) : int =
-        let missed = buffer |> Seq.filter (fun f -> f.Seq > lastSeq) |> List.ofSeq
-        missed |> List.iter channel.Push
-        List.length missed
+        lock gate (fun () -> replayAfter lastSeq)
+
+    /// Phase 1928 — the reconnect a transport performs when a client comes back
+    /// to THIS connection carrying its last-applied sequence (SSE's
+    /// `Last-Event-ID`). Under the connection's gate, so no step interleaves:
+    /// `attach` runs first (the transport points the channel at the new stream),
+    /// then either the frames the client missed are re-pushed — when every one of
+    /// them is still retained — or, when the client is behind the retained window
+    /// or reports a sequence this connection never pushed, one full-document
+    /// frame re-baselines it on the current session. Never a partial replay: a
+    /// replay with a hole in it would patch a DOM the server no longer describes.
+    member this.Reattach(lastSeq: int, attach: unit -> unit) : ResyncOutcome =
+        lock gate (fun () ->
+            attach ()
+
+            let inWindow =
+                lastSeq >= 0
+                && lastSeq <= seq
+                && (lastSeq = seq || (buffer.Count > 0 && buffer[0].Seq <= lastSeq + 1))
+
+            if inWindow then
+                ResyncOutcome.Replayed(replayAfter lastSeq)
+            else
+                this.EmitFrame(rebaselineOutput ())
+                ResyncOutcome.Rebaselined)
+
+    /// Phase 1928 — push one full-document frame of the current session's tree,
+    /// so a client whose DOM cannot be trusted (a reconnect the replay buffer
+    /// cannot serve, a fresh connection answering a client that reported a
+    /// last-applied sequence) adopts the server's tree. Under the gate.
+    member this.Rebaseline() =
+        lock gate (fun () -> this.EmitFrame(rebaselineOutput ()))
 
     /// Step the connection with one inbound event: drive the session, advance
     /// the op sequence, and push a `Frame` when the step produced any patch /
@@ -393,11 +459,7 @@ type LiveConnection<'Model, 'Msg>
             durHead <- headHash
             durOpSeq <- sequence
             durSinceCheckpoint <- 0
-
-            this.EmitFrame
-                { Patches = [ DomPatch.ReplaceFragment(tree.Id, session.Services.RenderFragment tree) ]
-                  Effects = []
-                  Rejected = None })
+            this.EmitFrame(rebaselineOutput ()))
 
     /// Phase 2170 — turn on the awaited-effect runner for a session built by
     /// `Driver.initWithEffects`, passing the outbox it returned. After every step
