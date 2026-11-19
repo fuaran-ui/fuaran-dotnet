@@ -1126,7 +1126,11 @@ let dispatch: DispatchWitness<Node<obj>, Action<obj>, Binding<JVal>, BindingSour
           // placeholder — the UI tier repeats through data binding, in the
           // tree. The identity, and nothing.
           Substitute = fun _ _ action -> action
-          Placeholders = fun _ -> [] }
+          Placeholders = fun _ -> []
+          // A refused UI leaf reads on (Program 0.14.1, its D60): the run
+          // keeps the effects of the steps it admitted, the reading every
+          // UI action had before the member existed.
+          Refusals = RefusalReading.Continues }
       Expr =
         { Resolve = resolveExpr
           Uses = usesOfExpr }
