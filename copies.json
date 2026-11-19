@@ -29,6 +29,14 @@
       ],
       "check": "bytes",
       "regen": "fuaran#2012, and the one record here whose WRITER is this repository: two of the demanded corpus's vectors are real harvests of a UI program, which only the server UI adapter can produce, so the emitter moved here (src/Fuaran.UI.Program.Server.Tests/emit-demanded-conformance.fsx) while the canonical corpus stays in the program repository beside the codec that is its authority, which certifies every vector's recorded read against its own decoder. Regenerate HERE with that script, then copy the file TO the consumer path above."
+    },
+    {
+      "source": "src/Fuaran.UI.Renderer.Web/content/fuaran-renderer.package.json",
+      "consumers": [
+        "Fuaran/Fuaran-UI/fuaran-ts/packages/renderer/package.json"
+      ],
+      "check": "bytes",
+      "regen": "Phase 2445. The embedded browser renderer's package manifest, recorded at sync beside the bundle it was built under; the AUTHORITY is the consumer path above, so a finding here means the renderer package in fuaran-ts moved (usually its version) and the embedded bundle has not been re-synced. The bundle itself is not declared: its source is a gitignored build output, and its bytes do not move when only the version does. Re-sync from a built fuaran-ts checkout: cd Fuaran/Fuaran-UI/fuaran-dotnet; pwsh ./scripts/sync-renderer-web.ps1 -Sync (set FUARAN_TS_ROOT to a checkout you own), and commit the three content/ files with the change that moved the renderer."
     }
   ]
 }
