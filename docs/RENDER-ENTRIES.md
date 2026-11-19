@@ -225,6 +225,27 @@ If you hit a genuine assembly-identity split, it is a Fable packaging question
 (check that every tier resolves one copy of `Fuaran.UI.Telemetry.Abstractions`),
 not a reason to pick a sink-less entry.
 
+## Where a client-render claim is proved (Phase 2550)
+
+The client renderer's elements are Feliz's, and Feliz builds its properties with an erased `unbox`: free under
+Fable, a real cast on .NET. So on .NET every path that emits an element throws at its first property, and a .NET
+suite can only pin the value-level pieces around an element (a memo's decision, a plan, a class name), never the
+element. A claim about ELEMENTS or about a MOUNTED DOM is therefore proved in
+[`tests/fable-render/`](../tests/fable-render/README.md): an Expecto-shaped suite compiled by Fable and run under
+Node with a DOM (jsdom), as the `client render suite` leg of the gate's Fable stage (`tests/fable-laws/fable-check.ps1`).
+It holds today:
+
+- **The subtree memo** (above): a kept node under the same context and generation is the identical element, a kept
+  child under a rebuilt parent too; a store write, a new context and a new node each rebuild; a node under an
+  `ActionSink` is never memoised. The .NET `SubtreeMemoTests` keep the value-level half.
+- **One `dangerouslySetInnerHTML` object per markup** (Phase 2069): two emits of one markup share the prop object, a
+  different markup does not, and a mounted markdown sink re-rendered with unchanged markup records no `childList`
+  mutation, while the heading changed beside it records exactly one.
+
+A renderer phase that claims something about elements adds its case there, beside these, rather than proving it only
+in the render-cost benchmark, which no gate runs. `tests/fable-laws/fable-check.tests.ps1` plants each of the
+regressions above in the compiled renderer and requires the stage to go red on it.
+
 ## See also
 
 - [`../STABILITY.md`](../STABILITY.md) — which of these surfaces are stable and what a version bump means.

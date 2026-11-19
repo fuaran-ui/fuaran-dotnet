@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Phase 2550 — the client render suite. The client renderer's elements are Feliz's, which build
+    only under Fable (on .NET a `(string * obj)` tuple is not an `IReactProperty`, so every path that
+    emits an element throws at its first property). This project is where a claim about those
+    elements is proved: it is compiled by Fable and run under Node with a DOM by `drive.mjs`, as a
+    named leg of the Fable stage (`tests/fable-laws/fable-check.ps1`). See README.md.
+
+    Fable-only by construction: every test file is `#if FABLE_COMPILER` throughout, and the .NET
+    entry point only says so. It is deliberately outside `Fuaran.sln` and `test-suites.json`; the
+    Fable stage builds it, which `gate-reads.json` records.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+    <!-- NULLNESS OFF, for the reason `tests/fable-laws/FableLaws.fsproj` gives: under Fable the
+         ENTRY project's properties govern the whole transpiled graph, and with nullness ON the wire
+         encoder emits a `fable-library-js` call that does not exist, so the transpile is green and
+         the first import dies. This project RUNS its output; the nullness-ON compile of the client
+         tier is the portability stage's. -->
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Expecto.fs" />
+    <Compile Include="SubtreeMemoTests.fs" />
+    <Compile Include="RawSinkPropTests.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" />
+    <None Include="drive.mjs" />
+    <None Include="package.json" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.Renderer\Fuaran.UI.Renderer.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <PackageReference Include="Fable.Core" />
+    <PackageReference Include="Feliz" />
+  </ItemGroup>
+</Project>

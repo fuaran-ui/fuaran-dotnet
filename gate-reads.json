@@ -31,7 +31,8 @@
     "tests/core-fable/CoreFable.fsproj",
     "src/Fuaran.UI.Program.Parity.Fable/Fuaran.UI.Program.Parity.Fable.fsproj",
     "tests/fable-pack-consumer/FablePackConsumer.fsproj",
-    "tests/fable-watch-consumer/FableWatchConsumer.fsproj"
+    "tests/fable-watch-consumer/FableWatchConsumer.fsproj",
+    "tests/fable-render/FableRender.fsproj"
   ],
   "notBuilt": [
     {

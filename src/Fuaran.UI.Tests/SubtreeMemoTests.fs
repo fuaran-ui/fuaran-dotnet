@@ -8,8 +8,11 @@ module Fuaran.UI.Tests.SubtreeMemo
 //  the memo's own value-level pieces — the decision (`SubtreeMemo.hit`), the
 //  table (`tryGet` / `set`, keyed by node identity), the generation every
 //  store write advances — and the default (`create` leaves it off). The
-//  element side, a kept subtree returning the identical element across host
-//  renders, is exercised in a browser by the renderer benchmark's study arm.
+//  element half — a kept node returning the identical element, and a store
+//  write, a new context, a new node and an action sink each defeating it — is
+//  asserted on real elements by the Fable-run client render suite,
+//  `tests/fable-render/SubtreeMemoTests.fs` (Phase 2550), in the gate's Fable
+//  stage.
 // ============================================================================
 
 open Expecto
