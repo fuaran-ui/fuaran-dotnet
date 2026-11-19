@@ -2186,6 +2186,20 @@ else {
     }
 }
 
+# ── 2d'. The packed-consumer leg's cache repair (Phase 2789) ───────────────
+#
+# The leg reuses a cached package only when it is whole. Its `-SelfTest` seeds an emptied entry in a
+# throwaway cache and requires the repair to delete it and keep a whole one. It compiles nothing,
+# costs about a second, and runs wherever the leg itself is not skipped, so the repair cannot rot.
+
+if (-not $SkipPackConsumer -and -not $PSBoundParameters.ContainsKey('SrcRoot') -and (Test-Path -LiteralPath $packConsumerScript -PathType Leaf)) {
+    Write-Stage "the packed-consumer leg's cache repair — $(ConvertTo-RepoRelative $packConsumerScript) -SelfTest"
+    $packCacheLeg = Invoke-Leg -Exe 'pwsh' -Arguments @('-NoProfile', '-File', $packConsumerScript, '-SelfTest')
+    if ($packCacheLeg.Exit -ne 0) {
+        $failures.Add((Write-LegFailure -Leg 'the packed-consumer cache-repair self-test' -Command $packCacheLeg.Command -Exit $packCacheLeg.Exit -Seconds $packCacheLeg.Seconds -Output $packCacheLeg.Output))
+    }
+}
+
 # ── 2e. The watch-mode leg (Phase 2174) ────────────────────────────────────
 #
 # Every compile above is Fable's one-shot compile, and Fable's watch mode reports diagnostics the
