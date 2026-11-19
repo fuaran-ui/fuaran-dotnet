@@ -175,7 +175,7 @@ public sealed class FuaranNode
     /// Removal, not concealment: no element, no placeholder, no
     /// <c>aria-hidden</c>, nothing in the layout and nothing in the
     /// accessibility tree. It is NOT the same as
-    /// <see cref="Accessibility.Hidden"/>, which is <c>aria-hidden</c> over a
+    /// <c>Accessibility.Hidden</c>, which is <c>aria-hidden</c> over a
     /// node that IS drawn and DOES occupy space — the right spelling for
     /// decorative content a screen reader should skip.
     /// </para>

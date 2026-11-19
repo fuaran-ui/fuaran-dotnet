@@ -8229,6 +8229,10 @@ floor. No type or member these packages declare moves; what moves is the program
 emit; the program wire; the UI wire. The parity, bounded, runtime and server suites run unchanged apart from the
 construction sites the hop forced and the demanded documents moved to version 15.
 
+### What rides this slot — Phase 1871 (the C# and VB veneers ship their XML documentation file)
+
+**Class: ADDITIVE.** `Fuaran.UI.CSharp` and `Fuaran.UI.VisualBasic` now build and pack their XML documentation file (`GenerateDocumentationFile` is set in each project, because the Phase 1865 property is F#-only), so a consumer's hover shows the doc comments. No signature moves and no wire byte moves. The missing-documentation warning (CS1591) and its malformed-comment family stay errors under `TreatWarningsAsErrors`, with no `NoWarn`: the 101 undocumented public enum members and ten malformed comments the first build named in the C# veneer are fixed. The Visual Basic compiler has no missing-documentation diagnostic; its malformed-comment family (BC42305 among them) is what holds that veneer.
+
 ## 0.104.0 (RELEASED — tagged v0.104.0 at cc477007, 2026-11-11) — the slot opened after v0.103.0 was released; advanced from 0.103.1 on 2026-11-10 by Phase 2640, whose change is breaking
 
 _`v0.103.0` is TAGGED (2026-11-09, at `1b783c61`), so nothing may ride it: Phase 2639 opened the next slot at the
