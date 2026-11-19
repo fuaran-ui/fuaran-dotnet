@@ -8201,7 +8201,8 @@ floor. No type or member these packages declare moves; what moves is the program
 - **The closure share** (Program 0.16.0): `DemandedProjection.Closure` and `ServerDemand.Closure` on every demanded
   document the adapters project, the client and the server tier counted separately over distinct demands, and carried
   on the document so a reader takes the figure instead of recounting it. The UI tier certifies Program's
-  `demanded-closure-share` family at the UI witness (below).
+  `demanded-closure-share` family at the UI witness: the family read through the pinned reader, and a UI program of
+  each of its readable shapes walked to the vector's shares (`ClosureShareTests`; `docs/DECISIONS.md` D36).
 - Through the durable interpreter and the server placement, everything the three releases add for a host: per-event
   quantity pricing through the calls (0.14.1), an op stage's partial receipt and retryable and standing-condition
   declarations on resume (0.15.0), and the file journal store's one-live-process hold on a run (0.16.0). None of it is
@@ -8212,7 +8213,10 @@ floor. No type or member these packages declare moves; what moves is the program
 - **The demanded document is version 15.** A version-14 document is refused (`UnknownVersion`), and an envelope signed
   over one reports drift until it is re-signed. Every document carries `closure` after `quantities`, and every server
   tier the same member after `constraints`; a reader refuses a carried share its lists do not project. The demanded
-  corpus copy in `src/Fuaran.UI.Program.Server.Tests/conformance/` is re-emitted at version 15.
+  corpus copy in `src/Fuaran.UI.Program.Server.Tests/conformance/` is re-emitted at version 15, byte-identical to the
+  program repository's at `v0.16.0`.
+- **The program proof leg pins `proofs-program-0.16.0.tar`.** Its sha256 is 0.14.1's: neither later release moved a
+  file the asset carries, so the committed extractions stand unchanged.
 - **Program's own breaking entries, for a host that builds on the program core directly.** `ActionWitness` gains
   `Refusals` (0.14.1; the UI witness declares `RefusalReading.Continues`, its reading before the member existed, so no
   UI run moves). `ServerEffectRegistry` and `PerformerFacets` gain a member each, `WriteReceipt` carries a `Kind` where
