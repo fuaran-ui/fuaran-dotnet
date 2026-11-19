@@ -16,17 +16,19 @@ module CoreFable.Program
 // candidate alike were retired when the pin was raised to 0.34.0, so a cut-time run against an older
 // Core line is no longer a supported mode.
 //
-// The program is written for Fuaran.Core 0.41.0, the pin: the `CORE_0_37` arms that let it compile
+// The program is written for Fuaran.Core 0.42.0, the pin (Phase 2691): the `CORE_0_37` arms that let it compile
 // against the 0.36.0 pin and the 0.37.0 candidate alike were retired when the pin was raised to
 // 0.38.1 (Phase 2226), the 0.40.0 spellings (Text, the `IdlField` canonical-form slots) were
 // written unconditionally when it was raised to 0.40.2 (Phase 2286), and the `CORE_0_41` arms
 // (`IdlField.Keyed`, Core Phase 494) were written unconditionally when it was raised to 0.41.0
 // (Phase 2420). A later candidate that breaks a spelling touched here gets a version constant in
-// `CoreFable.fsproj` (keyed off `CoreFableEffectiveCore`) the same way. One is defined today:
+// `CoreFable.fsproj` (keyed off `CoreFableEffectiveCore`) the same way. Two are defined today:
 // `CORE_0_43` (Core Phases 638 and 651: both registries' dispatch takes a decision context and a
 // `Grant option`; Phase 642: a capability declares its result; Phase 644: the `Idl` record gains
 // `Contracts`), under which the touches below write the 0.43.0 spellings; it retires with its arms
-// when the pin is raised to 0.43.0.
+// when the pin is raised to 0.43.0. And `CORE_0_44` (Core Phase 685: the query declaration's writer
+// and `Query.grant` take the `AdmittedQuery` the admission gate answers, and a budget is a
+// `PositiveInt`), which retires with its arms when the pin is raised to 0.44.0.
 //
 // With `CORE_PARITY` defined (see `core-fable.ps1`), the program is also the VALUE leg: `--vectors`
 // prints `Fuaran.Core.ParityVectors.lines ()` — the cross-pipeline table the conformance kit ships
@@ -252,6 +254,13 @@ let private networkDeterminism = Effect.network
 // Query — declaration codec round-trip, plus the seam's `Deferred` envelope (Phase 198): the
 // resolver answers in `Deferred<QueryResult>` and that envelope has to encode under Fable too.
 let private queryTouch =
+#if CORE_0_44
+    // Core 0.44.0 (Phase 685): a budget is a `PositiveInt`.
+    let timeoutMs = PositiveInt.tryCreate 5000
+#else
+    let timeoutMs = Some 5000
+#endif
+
     let q: Query =
         { Id = "q"
           Params = []
@@ -260,11 +269,19 @@ let private queryTouch =
             { Host = ReadsHost
               Determinism = networkDeterminism }
           Source = Ref "src"
-          TimeoutMs = Some 5000
+          TimeoutMs = timeoutMs
           PageSize = None
           // Core 0.36.0 (Phase 398): the declaration's row filter and order, both empty here.
           Where = []
           OrderBy = [] }
+
+#if CORE_0_44
+    // Core 0.44.0 (Phase 685): the writer and the grant take the declaration the admission gate
+    // admits, so the gate runs here too.
+    let declared = QueryRegistry.admit q |> Result.toOption |> Option.get
+#else
+    let declared = q
+#endif
 
     let pending = QueryCodec.encodeDeferredResult Pending
 
@@ -276,7 +293,7 @@ let private queryTouch =
 #if CORE_0_43
             // Core 0.43.0 (Phase 651): the query registry takes the context and a grant as the
             // capability registry does; the grant for this read is presented.
-            match QueryRegistry.dispatch registry () (Some(Query.grant q [])) q.Id [] (fun _ -> Pending) with
+            match QueryRegistry.dispatch registry () (Some(Query.grant declared [])) q.Id [] (fun _ -> Pending) with
 #else
             match QueryRegistry.dispatch registry q.Id [] (fun _ -> Pending) with
 #endif
@@ -284,7 +301,7 @@ let private queryTouch =
             | Ok other -> sprintf "%A" other
             | Error e -> sprintf "%A" e
 
-    sprintf "%s|%s|%s" (QueryCodec.encode q) pending dispatched
+    sprintf "%s|%s|%s" (QueryCodec.encode declared) pending dispatched
 
 // Conformance — a self-contained law (also exercises Wire's canonical float under Fable).
 let private conformanceTouch = Conformance.canonicalFloatLaws 1 3
