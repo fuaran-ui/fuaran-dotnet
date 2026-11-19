@@ -404,15 +404,24 @@ let private modelRegistry: Staging.registry<Node<obj>, Fuaran.Core.JVal, TreeOp<
       r_record = fun _ -> failwith "the replay differential plans nothing" }
 
 /// The journal snapshot as the model reads it, from the production journal's
-/// own entries: `stepOf` for the three-state reading, `capabilityOf` and
-/// `subjectOf` for the recorded identity.
-let private modelJournal (entries: JournalEntry list) : Staging.journal<Fuaran.Core.JVal> =
+/// own entries: `stepOf` for the step's reading, `capabilityOf` and
+/// `subjectOf` for the recorded identity. The one adaptor both model-beside-
+/// production suites here read through (`ProofOracleTests` too). A RETRYABLE
+/// refusal (Program 0.15.0, its D69) reduces to the model's states as Program's
+/// own adaptor reduces it: unrun while the run has not completed, a refusal once
+/// it has. Nothing here classes a refusal retryable, so the arm is the reading,
+/// not a path these suites take.
+let internal modelJournal (entries: JournalEntry list) : Staging.journal<Fuaran.Core.JVal> =
+    let complete = Journal.isComplete entries
+
     { j_step =
         fun k ->
             match Journal.stepOf entries (int k) with
             | JournaledStep.Unrun -> Staging.JUnrun
             | JournaledStep.Value v -> Staging.JValue v
-            | JournaledStep.Refusal r -> Staging.JRefusal r
+            | JournaledStep.Refusal(r, _) -> Staging.JRefusal r
+            | JournaledStep.Retryable(r, _) when complete -> Staging.JRefusal r
+            | JournaledStep.Retryable _ -> Staging.JUnrun
             | JournaledStep.Indeterminate _ -> Staging.JIndeterminate
       j_recorded =
         fun k ->

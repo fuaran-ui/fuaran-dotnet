@@ -27,6 +27,7 @@
     <Compile Include="ProofOracleTests.fs" />
     <Compile Include="DemandedCorpus.fs" />
     <Compile Include="DemandedCorpusTests.fs" />
+    <Compile Include="ClosureShareTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

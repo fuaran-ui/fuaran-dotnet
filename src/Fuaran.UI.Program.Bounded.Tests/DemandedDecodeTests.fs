@@ -167,6 +167,14 @@ let private emitted: string = Demanded.encode (Demanded.ofTree richTree)
 
 let private replacing (find: string) (replace: string) : string = emitted.Replace(find, replace)
 
+/// A share as the document carries it (Program 0.16.0, its D71), so a test that
+/// adds a demand to `emitted` moves the carried share with it.
+let private carried (share: ClosureShare) : string =
+    $"\"closure\":{{\"inside\":{share.Inside},\"exits\":{share.Exits},\"shareBasisPoints\":{share.BasisPoints}}}"
+
+/// The client tier's share in `emitted`, which carries no server tier.
+let private richShare: ClosureShare = (Demanded.ofTree richTree).Closure
+
 // ─── the round trip, both directions ────────────────────────────────
 
 let private roundTrips: Test list =
@@ -281,7 +289,14 @@ let private behaviour: Test list =
           // red, and only this one. The strictly-weaker reader is distinguishable
           // from the correct one.
           let json =
-              emitted.Replace("\"effects\":[\"Navigate\"", "\"effects\":[\"AFutureArm\",\"Navigate\"")
+              emitted
+                  .Replace("\"effects\":[\"Navigate\"", "\"effects\":[\"AFutureArm\",\"Navigate\"")
+                  .Replace(
+                      carried richShare,
+                      carried
+                          { richShare with
+                              Inside = richShare.Inside + 1 }
+                  )
 
           Expect.equal
               (decoded json).Effects
@@ -364,7 +379,7 @@ let private behaviour: Test list =
 
       test "a missing member is refused, naming the member and the version" {
           let dropped =
-              """{"kind":"demanded","version":14,"effects":[],"hostCalls":[],"stateNamespaces":[],"iterations":[],"opaqueLeaves":[],"values":[],"quantities":[],"server":null}"""
+              """{"kind":"demanded","version":15,"effects":[],"hostCalls":[],"stateNamespaces":[],"iterations":[],"opaqueLeaves":[],"values":[],"quantities":[],"closure":{"inside":0,"exits":0,"shareBasisPoints":10000},"server":null}"""
 
           let missing = refusal dropped
           Expect.equal missing.Defect DemandedDefect.MissingMember "absent, not defaulted"
@@ -411,7 +426,7 @@ let private behaviour: Test list =
           // version, and reading it as 'no walk ran' would silently accept a
           // shape this version does not describe.
           let noServer =
-              """{"kind":"demanded","version":14,"effects":[],"hostCalls":[],"stateNamespaces":[],"opaqueHandlers":[],"iterations":[],"opaqueLeaves":[],"values":[],"quantities":[]}"""
+              """{"kind":"demanded","version":15,"effects":[],"hostCalls":[],"stateNamespaces":[],"opaqueHandlers":[],"iterations":[],"opaqueLeaves":[],"values":[],"quantities":[],"closure":{"inside":0,"exits":0,"shareBasisPoints":10000}}"""
 
           let failure = refusal noServer
           Expect.equal failure.Defect DemandedDefect.MissingMember "absent is not null"
@@ -463,14 +478,14 @@ let private behaviour: Test list =
           // defect and hand back a value that no longer re-encodes to the bytes
           // it came from.
           let unsorted =
-              """{"kind":"demanded","version":14,"effects":["WriteToClipboard","Navigate"],"hostCalls":[],"stateNamespaces":[],"opaqueHandlers":[],"iterations":[],"opaqueLeaves":[],"values":[],"quantities":[],"server":null}"""
+              """{"kind":"demanded","version":15,"effects":["WriteToClipboard","Navigate"],"hostCalls":[],"stateNamespaces":[],"opaqueHandlers":[],"iterations":[],"opaqueLeaves":[],"values":[],"quantities":[],"closure":{"inside":2,"exits":0,"shareBasisPoints":10000},"server":null}"""
 
           let failure = refusal unsorted
           Expect.equal failure.Defect DemandedDefect.NotCanonical "not sorted"
           Expect.equal failure.Field "effects" "named"
 
           let duplicated =
-              """{"kind":"demanded","version":14,"effects":[],"hostCalls":[],"stateNamespaces":[{"namespace":"cart","written":true,"read":false},{"namespace":"cart","written":false,"read":true}],"opaqueHandlers":[],"iterations":[],"opaqueLeaves":[],"values":[],"quantities":[],"server":null}"""
+              """{"kind":"demanded","version":15,"effects":[],"hostCalls":[],"stateNamespaces":[{"namespace":"cart","written":true,"read":false},{"namespace":"cart","written":false,"read":true}],"opaqueHandlers":[],"iterations":[],"opaqueLeaves":[],"values":[],"quantities":[],"closure":{"inside":2,"exits":0,"shareBasisPoints":10000},"server":null}"""
 
           Expect.equal
               (refusal duplicated).Field
@@ -480,7 +495,7 @@ let private behaviour: Test list =
 
       test "a non-canonical SERVER list is refused too" {
           let unsorted =
-              """{"kind":"demanded","version":14,"effects":[],"hostCalls":[],"stateNamespaces":[],"opaqueHandlers":[],"iterations":[],"opaqueLeaves":[],"values":[],"quantities":[],"server":{"effects":["Notify","ApplyOps"],"capabilities":[],"functions":[],"channels":[],"reach":[],"replay":[],"undo":[],"constraints":[]}}"""
+              """{"kind":"demanded","version":15,"effects":[],"hostCalls":[],"stateNamespaces":[],"opaqueHandlers":[],"iterations":[],"opaqueLeaves":[],"values":[],"quantities":[],"closure":{"inside":0,"exits":0,"shareBasisPoints":10000},"server":{"effects":["Notify","ApplyOps"],"capabilities":[],"functions":[],"channels":[],"reach":[],"replay":[],"undo":[],"constraints":[],"closure":{"inside":0,"exits":0,"shareBasisPoints":10000}}}"""
 
           let failure = refusal unsorted
           Expect.equal failure.Defect DemandedDefect.NotCanonical "the tier's lists carry the same promise"

@@ -342,7 +342,10 @@ let private modelRegistry
         // performers this oracle stages name no typed write.
         | OpPerformance.Performed perform ->
             let token state op : Performer * Fuaran.Core.JVal =
-                (fun (_: Fuaran.Core.JVal) -> perform (OpPrefix.atEntry state) state op |> Result.map _.Detail),
+                (fun (_: Fuaran.Core.JVal) ->
+                    perform (OpPrefix.atEntry state) state op
+                    |> Result.map _.Detail
+                    |> Result.mapError _.Reason),
                 Fuaran.Core.JObj []
 
             Staging.OSome token }
@@ -2493,23 +2496,8 @@ let private decidedOf (entries: JournalEntry list) =
     |> List.choose (fun e ->
         match e.Phase with
         | JournalPhase.Completed value -> Some(e.Step, e.Capability, e.Subject, Ok value)
-        | JournalPhase.Refused reason -> Some(e.Step, e.Capability, e.Subject, Error reason)
+        | JournalPhase.Refused(reason, _) -> Some(e.Step, e.Capability, e.Subject, Error reason)
         | _ -> None)
-
-/// The production journal snapshot, read as the model's `journal`.
-let private keyedJournal (entries: JournalEntry list) : Staging.journal<Fuaran.Core.JVal> =
-    { j_step =
-        fun k ->
-            match Journal.stepOf entries (int k) with
-            | JournaledStep.Unrun -> Staging.JUnrun
-            | JournaledStep.Value v -> Staging.JValue v
-            | JournaledStep.Refusal r -> Staging.JRefusal r
-            | JournaledStep.Indeterminate _ -> Staging.JIndeterminate
-      j_recorded =
-        fun k ->
-            match Journal.capabilityOf entries (int k), Journal.subjectOf entries (int k) with
-            | Some capability, Some subject -> Staging.OSome(capability, modelOpt subject)
-            | _ -> Staging.ONone }
 
 /// The subject a staged call is journaled under: the op's content address for
 /// an op stage — read off the token, which carries the op — and none for a
@@ -2554,7 +2542,7 @@ let private runKeyedDurably (c: KeyedCase) : DurableKeyedRun =
     let services = DurableServices.create |> DurableServices.withJournal journal
 
     let durableFor (entries: JournalEntry list) : Staging.durable<Fuaran.Core.JVal, KeyedToken> =
-        { d_journal = keyedJournal entries
+        { d_journal = DurableInterpreterTests.modelJournal entries
           d_subject = keyedSubject
           d_idempotent =
             fun call ->
@@ -3010,11 +2998,12 @@ let effectGateTests =
                               let expected =
                                   OpContract.check
                                       production
-                                      (fun _ s o -> behaviour s o |> Result.map OpReceipt.ofDetail)
+                                      (fun _ s o -> behaviour s o |> Result.map OpReceipt.ofDetail |> OpFailure.lift)
                                       (OpPrefix.atEntry state)
                                       state
                                       op
                                   |> Result.map _.Detail
+                                  |> Result.mapError _.Reason
                                   |> modelRes
 
                               let actual = EffectGate.check_op model modelPerform state op
