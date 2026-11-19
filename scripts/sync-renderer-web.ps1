@@ -27,6 +27,15 @@
                                      the reference stylesheet's class-vocabulary
                                      fingerprint at sync time, and a SHA-256 of
                                      the copied bytes
+      content/fuaran-renderer.package.json
+                                     a byte copy of the renderer package's own
+                                     package.json at sync time (Phase 2445). NOT
+                                     embedded in the package: it is the record
+                                     the workspace's declared-copies sweep
+                                     (`copies.json`) compares with the sibling's
+                                     tracked manifest, so a version move in
+                                     fuaran-ts is named against the fuaran-ts
+                                     file that moved, before any gate here runs
 
     The reference STYLESHEET is deliberately not synced here: the package embeds
     the canonical file where it lies (a `<EmbeddedResource>` link), so there is
@@ -36,10 +45,13 @@
 
     Two questions, and only one is answerable offline:
 
-      * Does the recorded renderer VERSION still match the sibling's
-        package.json, and does the recorded vocabulary fingerprint still match
-        `Theme.vocabularyFingerprint`? Answerable from committed text, always,
-        and this is what runs in the `Check` gate.
+      * Does the recorded package MANIFEST still match the sibling's
+        package.json byte for byte (and, as its most common reason not to, the
+        recorded renderer VERSION), and does the recorded vocabulary fingerprint
+        still match `Theme.vocabularyFingerprint`? Answerable from committed
+        text, always, and this is what runs in the `Check` gate. The manifest
+        comparison is the same question `copies.json` asks on the workspace sweep,
+        so the gate and the sweep cannot disagree.
 
       * Do the embedded BYTES still match a freshly built bundle? Answerable
         only where the bundle has been built — it is a gitignored build output
@@ -129,11 +141,9 @@ $tsPackageJson = Join-Path $rendererPkg "package.json"
 $contentDir = Join-Path $repoRoot "src/Fuaran.UI.Renderer.Web/content"
 $embeddedBundle = Join-Path $contentDir "fuaran-renderer.js"
 $embeddedFingerprint = Join-Path $contentDir "fuaran-renderer.json"
+$embeddedManifest = Join-Path $contentDir "fuaran-renderer.package.json"
 $themeSource = Join-Path $repoRoot "src/Fuaran.UI.Renderer.Core/Theme.fs"
 
-# Sibling launcher conventions - see workspace CLAUDE.md "Sibling launcher
-# conventions (mandate)". Copy-pasted from the canonical body there; do not
-# diverge without updating the workspace doc.
 function Invoke-Pnpm {
     # Node ships a pnpm.ps1 shim that rebuilds args from the caller's
     # command-line text via Substring(InvocationName.Length). Called from inside
@@ -449,6 +459,13 @@ if ($Sync) {
     # identical bytes and reports "already identical".
     Copy-Item -Path $builtBundle -Destination $embeddedBundle -Force
 
+    # Phase 2445 - the manifest the bundle was built under, byte for byte. The
+    # bundle's own bytes do not move when only the package version does, so a
+    # version move is invisible to any comparison of bundles; the manifest is
+    # the tracked file in fuaran-ts that DOES move, and `copies.json` declares
+    # this copy of it so the workspace sweep names that file when it moves.
+    Copy-Item -Path $tsPackageJson -Destination $embeddedManifest -Force
+
     $fp = [ordered] @{
         rendererPackage       = Read-JsonField $tsPackageJson "name"
         rendererVersion       = Read-JsonField $tsPackageJson "version"
@@ -467,12 +484,13 @@ if ($Sync) {
     Write-Host ""
     Write-Host "Embedded renderer assets synced:"
     Write-Host ("  bundle      {0}  ({1:N0} bytes)" -f $embeddedBundle, (Get-Item $embeddedBundle).Length)
+    Write-Host ("  manifest    {0}" -f $embeddedManifest)
     Write-Host ("  renderer    {0}@{1}" -f $fp.rendererPackage, $fp.rendererVersion)
     Write-Host ("  bundle      v{0}, wire profile {1}" -f $fp.bundleVersion, $fp.wireProfile)
     Write-Host ("  vocabulary  {0}" -f $fp.vocabularyFingerprint)
     Write-Host ("  sha256      {0}" -f $fp.bundleSha256)
     Write-Host ""
-    Write-Host "Commit both files in the same change-set as the renderer change that prompted the sync."
+    Write-Host "Commit the three files in the same change-set as the renderer change that prompted the sync."
     exit 0
 }
 
@@ -485,6 +503,9 @@ if (-not (Test-Path $embeddedBundle)) {
 }
 if (-not (Test-Path $embeddedFingerprint)) {
     $problems += "the embedded fingerprint is MISSING ($embeddedFingerprint). Run this script with -Sync."
+}
+if (-not (Test-Path $embeddedManifest)) {
+    $problems += "the recorded package manifest is MISSING ($embeddedManifest). Run this script with -Sync."
 }
 
 if ($problems.Count -eq 0) {
@@ -503,6 +524,13 @@ if ($problems.Count -eq 0) {
         $problems += "the fingerprint records sha256=$recordedSha but the embedded bundle hashes to $actualSha - the bundle was replaced without re-running this script."
     }
 
+    # The same self-consistency for the recorded manifest: the sidecar's version
+    # and the manifest's must name one release, or one of them was hand-edited.
+    $manifestVersion = Read-JsonField $embeddedManifest "version"
+    if ($manifestVersion -ne $recordedVersion) {
+        $problems += "the fingerprint records renderer $recordedVersion but the recorded package manifest says $manifestVersion - one of them was replaced without re-running this script."
+    }
+
     # The always-answerable half: the vocabulary the assets were synced against
     # versus the one this build's renderer emits.
     $currentVocab = Read-VocabularyFingerprint
@@ -517,11 +545,17 @@ if ($problems.Count -eq 0) {
         $siblingVersion = Read-JsonField $tsPackageJson "version"
         $siblingProfile = Read-TsConst $standaloneSrc "WIRE_PROFILE"
 
-        if ($recordedVersion -eq $siblingVersion) {
-            Write-Host ("  renderer    matches   {0}" -f $siblingVersion)
+        # Phase 2445 - the manifest, compared exactly as `copies.json` declares
+        # it, so this gate and the workspace sweep answer one question. A version
+        # move is the usual reason the bytes part, and is named as such.
+        if ((Get-Sha256 $embeddedManifest) -eq (Get-Sha256 $tsPackageJson)) {
+            Write-Host ("  renderer    matches   {0} (package manifest identical)" -f $siblingVersion)
+        }
+        elseif ($recordedVersion -ne $siblingVersion) {
+            $problems += "the embedded bundle was built from @fuaran-ui/renderer $recordedVersion but the sibling is now $siblingVersion - re-sync."
         }
         else {
-            $problems += "the embedded bundle was built from @fuaran-ui/renderer $recordedVersion but the sibling is now $siblingVersion - re-sync."
+            $problems += "the renderer's package.json in the sibling has changed since the sync (the version is still $siblingVersion; a dependency, an entry point or the build script may have moved) - re-sync."
         }
 
         if ($recordedProfile -ne $siblingProfile) {
