@@ -90,24 +90,52 @@ let private tierLess =
 
 let private emptyTier = (Harvest.ofRegistration QueryPosture.PureRead []).Document
 
+/// A tier's closure share as the document carries it (Program 0.16.0, its D71):
+/// the distinct demands inside and exiting, and the share in basis points. The
+/// literals below are written with the counts their lists project, as a
+/// producer writing the document by hand must; the reader refuses any other.
+let private closure (inside: int) (exits: int) =
+    let share: ClosureShare = { Inside = inside; Exits = exits }
+    $"{{\"inside\":{inside},\"exits\":{exits},\"shareBasisPoints\":{share.BasisPoints}}}"
+
+/// The share of a tier demanding nothing.
+let private noDemand = closure 0 0
+
 let private emptyServer =
-    "{\"effects\":[],\"capabilities\":[],\"functions\":[],\"channels\":[],\"reach\":[],\"replay\":[],\"undo\":[],\"constraints\":[]}"
+    "{\"effects\":[],\"capabilities\":[],\"functions\":[],\"channels\":[],\"reach\":[],\"replay\":[],\"undo\":[],\"constraints\":[],\"closure\":"
+    + noDemand
+    + "}"
 
 let private docWith (server: string) =
     "{\"kind\":\"demanded\",\"version\":"
     + v
-    + ",\"effects\":[],\"hostCalls\":[],\"stateNamespaces\":[],\"opaqueHandlers\":[],\"iterations\":[],\"opaqueLeaves\":[],\"values\":[],\"quantities\":[],\"server\":"
+    + ",\"effects\":[],\"hostCalls\":[],\"stateNamespaces\":[],\"opaqueHandlers\":[],\"iterations\":[],\"opaqueLeaves\":[],\"values\":[],\"quantities\":[],\"closure\":"
+    + noDemand
+    + ",\"server\":"
     + server
     + "}"
 
 let private canonical = docWith emptyServer
 
+/// A document whose client tier carries the given share in place of the empty one.
+let private clientShare (inside: int) (exits: int) (document: string) =
+    document.Replace(
+        "\"quantities\":[],\"closure\":" + noDemand,
+        "\"quantities\":[],\"closure\":" + closure inside exits
+    )
+
+/// A server tier carrying the given share in place of the empty one.
+let private serverShare (inside: int) (exits: int) (server: string) =
+    server.Replace("\"closure\":" + noDemand + "}", "\"closure\":" + closure inside exits + "}")
+
 /// The canonical document with no server walk and the given opaque leaves
-/// (Program Phase 2130, document version 8).
-let private withOpaqueLeaves (leaves: string) =
+/// (Program Phase 2130, document version 8); each leaf is an exit of the
+/// client tier, so `exits` is the number of leaves written.
+let private withOpaqueLeaves (exits: int) (leaves: string) =
     canonical
         .Replace("\"server\":" + emptyServer, "\"server\":null")
         .Replace("\"opaqueLeaves\":[]", "\"opaqueLeaves\":" + leaves)
+    |> clientShare 0 exits
 
 /// A server tier with one member replaced, every other member at its empty value.
 let private serverWith (key: string) (value: string) =
@@ -138,6 +166,7 @@ let vectors: (string * string * string) list =
            (serverWith "constraints" policy)
                .Replace("\"effects\":[]", "\"effects\":[\"HostCall\"]")
                .Replace("\"functions\":[]", "\"functions\":[{\"function\":\"fetch\",\"capability\":\"host:fetch\"}]")
+           |> serverShare 0 1
        ),
        "A tier carrying the host's declared argument policy, every clause kind included. A reader that dropped a clause would report 'unconstrained' for a bounded capability, which is the one misreading in this document that is dangerous rather than merely lossy.")
       ("op-reach",
@@ -147,6 +176,7 @@ let vectors: (string * string * string) list =
                "[{\"capability\":\"ApplyOps\",\"argument\":\"target\",\"name\":\"spinner\"},{\"capability\":\"EmitPatch\",\"argument\":\"target\",\"name\":\"row\"}]")
                .Replace("\"effects\":[]", "\"effects\":[\"ApplyOps\",\"EmitPatch\"]")
                .Replace("\"capabilities\":[]", "\"capabilities\":[\"ApplyOps\",\"EmitPatch\"]")
+           |> serverShare 2 0
        ),
        "A tier carrying what its ops reach: every named argument of every op, under the capability it rides. A reader that dropped it would report an op sequence that writes as one that names nothing.")
       ("unknown-policy-clause",
@@ -192,31 +222,35 @@ let vectors: (string * string * string) list =
       ("non-canonical-effects",
        canonical
            .Replace("\"effects\":[],\"hostCalls\"", "\"effects\":[\"b\",\"a\"],\"hostCalls\"")
-           .Replace("\"server\":" + emptyServer, "\"server\":null"),
+           .Replace("\"server\":" + emptyServer, "\"server\":null")
+       |> clientShare 2 0,
        "A client-tier list that is not distinct and sorted. Two such documents would not compare by value, which is the property the encoding exists to provide.")
       ("non-canonical-server-functions",
        docWith (
            serverWith
                "functions"
                "[{\"function\":\"b\",\"capability\":\"host:b\"},{\"function\":\"a\",\"capability\":\"host:a\"}]"
+           |> serverShare 0 2
        ),
        "The same rule in the server tier.")
       ("opaque-leaves",
        withOpaqueLeaves
+           2
            "[{\"reason\":\"in-process\",\"name\":\"Relay\"},{\"reason\":\"in-process\",\"name\":\"Signal\"}]",
        "A tree reaching leaves that declare themselves opaque, each named with its reason class (Phase 2130). Carried, never dropped: a reader that dropped one would report a program whose escape it cannot see as one that demands nothing.")
       ("unknown-opaque-reason",
-       withOpaqueLeaves "[{\"reason\":\"teleported\",\"name\":\"Elsewhere\"}]",
+       withOpaqueLeaves 1 "[{\"reason\":\"teleported\",\"name\":\"Elsewhere\"}]",
        "A reason class outside a consumer's vocabulary. Carried as written, as an unknown effect arm is: the class is what a host accepts or does not, and dropping one would hide the escape it names.")
       ("missing-opaque-leaves",
-       (withOpaqueLeaves "[]").Replace(",\"opaqueLeaves\":[]", ""),
+       (withOpaqueLeaves 0 "[]").Replace(",\"opaqueLeaves\":[]", ""),
        "A document without `opaqueLeaves`. Refused: an absent member says the producer predates it, an empty one says it looked and found no escape, and only the second is a claim about the program.")
       ("non-canonical-opaque-leaves",
        withOpaqueLeaves
+           2
            "[{\"reason\":\"in-process\",\"name\":\"Signal\"},{\"reason\":\"in-process\",\"name\":\"Relay\"}]",
        "Opaque leaves not in canonical order (by reason class, then name). Refused, on the client tier's terms.")
       ("undeclared-opaque-leaf-member",
-       withOpaqueLeaves "[{\"reason\":\"in-process\",\"name\":\"Relay\",\"extra\":1}]",
+       withOpaqueLeaves 1 "[{\"reason\":\"in-process\",\"name\":\"Relay\",\"extra\":1}]",
        "An opaque leaf carrying a member this version does not declare.")
       ("not-an-object", "[]", "A document whose root is not an object.")
       ("not-json", "{", "Bytes that are not readable JSON.") ]
