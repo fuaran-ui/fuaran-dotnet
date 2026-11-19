@@ -8297,6 +8297,31 @@ on a stream's end removing its connection at once sets `registry.ReconnectGrace 
 events) to give each tab its own stream; without one it keeps the pre-1928 one-stream-per-browser behaviour. See
 `docs/SERVER_DRIVEN.md`, "Reconnection + replay".
 
+---
+
+### What rides this slot — Phase 1929 (`Fuaran.UI.Renderer.Web` serves its assets at content-hashed URLs)
+
+**Class: ADDITIVE (surface), with a visible change to the snippet's emitted URLs.** Package `Fuaran.UI.Renderer.Web`.
+No signature is removed or changed and no wire byte moves. The slot already carries a BREAKING class (Phase 2716), so
+this rider does not advance the number.
+
+- **Added surface.** `Assets.contentHash` (the first eight lowercase hex digits of an asset's SHA-256, the digest its
+  ETag is already cut from), `Assets.fingerprintedPath`, `Assets.embeddedHash`, `Assets.versionedPath`, and
+  `Snippet.assetUrl`.
+- **New routes.** `MapFuaranRenderer` serves each immutable asset (the bundle, the reference stylesheet and the two
+  enhancement scripts) a second time, at `<name>.<hash8>.<ext>` (for example `fuaran-renderer.<hash8>.js`), with
+  `public, max-age=31536000, immutable`. A hashed path that carries a different build's hash gets the current bytes as
+  `no-cache`, and a name that is not a hash gets `404`. `fingerprint.json` has no hashed path.
+- **Changed behaviour.** The plain paths (`fuaran-renderer.js`, `fuaran-reference.css`, the two enhancement scripts)
+  stay served, now with `no-cache` and the strong ETag in place of `immutable`, so a browser revalidates them on each
+  load. `Snippet.styleLink`, `scriptTag` and `assetTags` keep their signatures and now emit the hashed URL, so every
+  page that uses them changes its markup. `Asset.Immutable` keeps its name; it now means "also served at a
+  content-hashed path, cached immutably there".
+
+**Consumer action:** none for pages that use the snippet helpers: they get the hashed URL. A page that wrote a plain
+path by hand keeps working and revalidates on each load. To skip that round trip, embed
+`Snippet.assetUrl prefix asset` instead. See `docs/EMBEDDED-RENDERER.md` §5.
+
 ## 0.104.0 (RELEASED — tagged v0.104.0 at cc477007, 2026-11-11) — the slot opened after v0.103.0 was released; advanced from 0.103.1 on 2026-11-10 by Phase 2640, whose change is breaking
 
 _`v0.103.0` is TAGGED (2026-11-09, at `1b783c61`), so nothing may ride it: Phase 2639 opened the next slot at the

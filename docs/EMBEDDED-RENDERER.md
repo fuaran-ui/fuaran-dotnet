@@ -193,6 +193,41 @@ change-set.**
 
 ---
 
+## 5. Which URL to embed: the hashed path and the plain path
+
+Every asset except the fingerprint answers on **two** paths under the mount prefix (Phase 1929):
+
+| Path | Example | `Cache-Control` | Embed it? |
+|---|---|---|---|
+| **content-hashed** | `/_fuaran/fuaran-renderer.<hash8>.js` | `public, max-age=31536000, immutable` | **yes** |
+| **plain** | `/_fuaran/fuaran-renderer.js` | `no-cache`, with the strong ETag | only if you must |
+
+`<hash8>` is the first eight hex digits of the SHA-256 of the embedded bytes — the same digest the
+ETag is cut from — so a package upgrade that changes the bundle changes the URL. **Embed the hashed
+path.** `Snippet.styleLink`, `Snippet.scriptTag` and `Snippet.assetTags` emit it already;
+`Snippet.assetUrl prefix asset` (or `Assets.versionedPath asset`) names it for a tag you write
+yourself, such as the two enhancement scripts.
+
+**Why `immutable` moved.** The plain paths used to be served `immutable` for a year, on the premise
+that the bytes change only when the package version does — which is exactly the case in which a
+fixed URL does not change. After an upgrade, a returning browser ran the old renderer for up to a
+year and never sent the conditional request the ETag would have answered. `immutable` is now earned
+by the URL: it is sent only where a change to the bytes is a change to the name.
+
+**The plain path stays served**, for pages that wrote it by hand, as `no-cache` with the ETag: the
+browser revalidates on every load and an unchanged asset costs a `304`. It is correct, and it is a
+round trip per page load that the hashed path does not pay.
+
+**A hashed path carrying another build's hash** — a page rendered by the previous deployment, met
+mid-rollout or from a cached document — is served the current bytes as `no-cache`, never
+`immutable` (the bytes do not match the name) and never `404` (which would leave that page with no
+renderer at all). A name that is not an eight-digit lowercase hex hash gets a `404`.
+
+The **fingerprint** (`/_fuaran/fingerprint.json`) has only the plain path and is always `no-cache`:
+it is the drift oracle, and an oracle a cache answers from last year answers about last year.
+
+---
+
 ## See also
 
 - [`../src/Fuaran.UI.Renderer.Web/README.md`](../src/Fuaran.UI.Renderer.Web/README.md) — the package API.
