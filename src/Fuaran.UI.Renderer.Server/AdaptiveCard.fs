@@ -947,7 +947,17 @@ let projectWith
             kids |> List.collect (walk (depth + 1)) |> assemble
 
         and walkVisible (depth: int) (n: Node<obj>) : Piece list =
-            let structural (style: string option) (headingText: string option) (kids: Node<obj> list) =
+            // The node's ordered children and the nodes its kind holds in named
+            // arms, read through the tier's one enumeration (`NodeChildren`),
+            // never by taking the kind apart here.
+            let kids = NodeChildren.children NodeChildren.Reach.structural n
+
+            let reportNotTaken (taken: Node<obj>) =
+                for held in NodeChildren.children NodeChildren.Reach.kindHeld n do
+                    if not (LanguagePrimitives.PhysicalEquality held taken) then
+                        degradeSubtree DegradationRule.NotTaken n.Id held
+
+            let structural (style: string option) (headingText: string option) =
                 let head =
                     headingText
                     |> Option.map normalise
@@ -959,7 +969,7 @@ let projectWith
                 | [] -> []
                 | items -> [ Piece.Element(container style items) ]
 
-            let rowsOf (perRow: int) (kids: Node<obj> list) =
+            let rowsOf (perRow: int) =
                 let cells = kids |> List.map (fun k -> walk (depth + 1) k |> assemble)
 
                 cells
@@ -985,7 +995,7 @@ let projectWith
                     [ Piece.Element(jobj [ "type", jstr "Container"; "items", jarr []; "separator", jbool true ]) ]
                 | _, BoxLayout.Flex(Orientation.Horizontal, _, _) ->
                     let cols =
-                        spec.Children
+                        kids
                         |> List.map (fun k -> walk (depth + 1) k |> assemble)
                         |> List.filter (fun items -> not items.IsEmpty)
                         |> List.map (column (jstr "stretch"))
@@ -995,13 +1005,13 @@ let projectWith
                     | [], cols -> [ Piece.Element(columnSet cols) ]
                     | head, [] -> [ Piece.Element(container style head) ]
                     | head, cols -> [ Piece.Element(container style (head @ [ columnSet cols ])) ]
-                | _, BoxLayout.Grid(cols, _, _) -> [ Piece.Element(container style (head @ rowsOf cols spec.Children)) ]
+                | _, BoxLayout.Grid(cols, _, _) -> [ Piece.Element(container style (head @ rowsOf cols)) ]
                 | _, BoxLayout.Masonry(cols, _) ->
                     degrade (DegradationRule.LayoutApproximated "masonry as a grid of rows") n.Id n
-                    [ Piece.Element(container style (head @ rowsOf cols spec.Children)) ]
+                    [ Piece.Element(container style (head @ rowsOf cols)) ]
                 | _, BoxLayout.Flex _
                 | _, BoxLayout.Auto ->
-                    match head @ walkChildren depth spec.Children with
+                    match head @ walkChildren depth kids with
                     | [] -> []
                     | items -> [ Piece.Element(container style items) ]
             | NodeKind.SplitPanel spec ->
@@ -1009,7 +1019,7 @@ let projectWith
                 let left = int (Math.Round(weight * 100.0))
 
                 let leftKids, rightKids =
-                    match spec.Children with
+                    match kids with
                     | [] -> [], []
                     | a :: rest -> [ a ], rest
 
@@ -1018,8 +1028,8 @@ let projectWith
                           [ column (jint (max 1 left)) (walkChildren depth leftKids)
                             column (jint (max 1 (100 - left))) (walkChildren depth rightKids) ]
                   ) ]
-            | NodeKind.ScrollArea spec -> structural None None spec.Children
-            | NodeKind.SummaryList spec -> structural None (spec.Heading |> Option.map text) spec.Children
+            | NodeKind.ScrollArea _ -> structural None None
+            | NodeKind.SummaryList spec -> structural None (spec.Heading |> Option.map text)
             | NodeKind.Disclosure spec ->
                 let isOpen =
                     BindingResolver.tryResolve ctx.Sources spec.Open
@@ -1028,17 +1038,14 @@ let projectWith
                 if not isOpen then
                     degrade DegradationRule.AlwaysExpanded n.Id n
 
-                structural None (Some(text spec.Heading)) spec.Children
+                structural None (Some(text spec.Heading))
             | NodeKind.ErrorBoundary spec ->
-                degradeSubtree DegradationRule.NotTaken n.Id spec.Fallback
+                reportNotTaken spec.Child
                 walk (depth + 1) spec.Child
             | NodeKind.Switch spec ->
                 let chosen = Email.selectedSwitchBranch ctx spec
 
-                for branch in (spec.Cases |> List.map _.Child) @ [ spec.Default ] do
-                    if not (LanguagePrimitives.PhysicalEquality branch chosen) then
-                        degradeSubtree DegradationRule.NotTaken n.Id branch
-
+                reportNotTaken chosen
                 walk (depth + 1) chosen
             | NodeKind.FragmentRef spec ->
                 match Map.tryFind spec.Name ctx.Fragments with
