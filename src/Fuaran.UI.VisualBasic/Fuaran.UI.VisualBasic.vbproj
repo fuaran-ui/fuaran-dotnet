@@ -30,6 +30,9 @@
     <Description>Fuaran.UI.VisualBasic — author Fuaran UI trees in VB via first-class XML literals. A runtime XElement → Node&lt;obj&gt; translator over the shared F# encoder; no FSharp.Core types on the boundary. Apache-2.0 licensed.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RootNamespace>Fuaran.UI.VisualBasic</RootNamespace>
+    <!-- Phase 1871: the XML documentation file is built here (build/PackageDocumentation.targets is F#-only), and a
+         malformed documentation comment stays an error under TreatWarningsAsErrors, with no NoWarn. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 
   <ItemGroup>

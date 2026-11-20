@@ -230,7 +230,45 @@ type RenderContext<'Msg> =
         /// changed. Off by default; a node rendered under an action sink is
         /// never memoised, because its context is re-stamped per node.
         SubtreeMemo: bool
+        /// Phase 2068 — the chart-provenance scope THIS render stamps its lowered
+        /// charts under, or `None` for the process default the host installed
+        /// (`Charts.installChartProvenance`, which ships `Off`). Declared here so
+        /// two renders in one process can stamp under different scopes.
+        ChartProvenance: Fuaran.UI.Charts.ChartProvenance option
     }
+
+/// A table keyed on a value's IDENTITY that holds its keys weakly, so an entry
+/// goes when its key is collected: a `WeakMap` under Fable, a
+/// `ConditionalWeakTable` on .NET. The two memos below each keep one.
+[<RequireQualifiedAccess>]
+module private WeakTable =
+#if FABLE_COMPILER
+    [<Fable.Core.Emit("new WeakMap()")>]
+    let create () : obj = Fable.Core.Util.jsNative
+
+    [<Fable.Core.Emit("($0.get($1) ?? null)")>]
+    let private get (table: obj) (key: obj) : obj = Fable.Core.Util.jsNative
+
+    [<Fable.Core.Emit("$0.set($1, $2)")>]
+    let set (table: obj) (key: obj) (value: obj) : unit = Fable.Core.Util.jsNative
+
+    let tryGet (table: obj) (key: obj) : obj option =
+        match get table key with
+        | null -> None
+        | value -> Some value
+#else
+    type private Table = System.Runtime.CompilerServices.ConditionalWeakTable<obj, obj>
+
+    let create () : obj = box (Table())
+
+    let set (table: obj) (key: obj) (value: obj) : unit =
+        (unbox<Table> table).AddOrUpdate(key, value)
+
+    let tryGet (table: obj) (key: obj) : obj option =
+        match (unbox<Table> table).TryGetValue key with
+        | true, value -> Some value
+        | _ -> None
+#endif
 
 /// Phase 2547 — the subtree memo's table: one entry per `Node` value, held
 /// weakly, so a tree a host drops is collected with its elements.
@@ -250,34 +288,155 @@ module SubtreeMemo =
         | Some e when obj.ReferenceEquals(e.Context, context) && e.Generation = generation -> Some e.Element
         | _ -> None
 
-#if FABLE_COMPILER
-    [<Fable.Core.Emit("new WeakMap()")>]
-    let private newTable () : obj = Fable.Core.Util.jsNative
-
-    [<Fable.Core.Emit("($0.get($1) ?? null)")>]
-    let private tableGet (table: obj) (key: obj) : obj = Fable.Core.Util.jsNative
-
-    [<Fable.Core.Emit("$0.set($1, $2)")>]
-    let private tableSet (table: obj) (key: obj) (value: obj) : unit = Fable.Core.Util.jsNative
-
-    let private table = newTable ()
+    let private table = WeakTable.create ()
 
     let tryGet (node: obj) : Entry option =
-        match tableGet table node with
-        | null -> None
-        | entry -> Some(unbox<Entry> entry)
+        WeakTable.tryGet table node |> Option.map unbox<Entry>
 
-    let set (node: obj) (entry: Entry) : unit = tableSet table node (box entry)
-#else
-    let private table = System.Runtime.CompilerServices.ConditionalWeakTable<obj, obj>()
+    let set (node: obj) (entry: Entry) : unit = WeakTable.set table node (box entry)
 
-    let tryGet (node: obj) : Entry option =
-        match table.TryGetValue node with
-        | true, entry -> Some(unbox<Entry> entry)
+/// Phase 2068 — the chart lowering memo. A chart's lowering reads nothing but
+/// its limits, style, spec and rows, so a re-render that hands the renderer the
+/// same four lowers nothing: the drawing it made last time is served. One entry
+/// per `ChartSpec` value, held weakly, so the table is bounded by the charts a
+/// live tree holds and a tree a host drops is collected with its drawings.
+///
+/// "The same" is IDENTITY, never a comparison of content, with one exception
+/// stated at `hit`. The spec, the style and the row source are compared by
+/// reference; a host that keeps its tree and its data across dispatches (the
+/// ordinary case for a state-store write that touches neither) gets every chart
+/// back unlowered. A source that is re-evaluated to fresh rows on each render (a
+/// `Transform`) is a miss and lowers, as before.
+///
+/// Identity is content only for an IMMUTABLE source, so what the memo holds a
+/// row source by depends on what it is (`rowKeyOf`): an F# list by its own
+/// identity; an array or `ResizeArray`, which a host may write into in place,
+/// by its identity AND each row's (a `Row` is an immutable map, so a replaced
+/// row is a different reference); any other sequence not at all, because nothing
+/// short of reading it says whether it moved.
+[<RequireQualifiedAccess>]
+module ChartLoweringMemo =
+    /// What the memo may hold a row source by.
+    [<RequireQualifiedAccess>]
+    type RowKey =
+        /// An immutable source: its identity is its content.
+        | Identity
+        /// An indexable, writable source: each row's identity, in order.
+        | Rows of obj[]
+        /// A sequence the memo cannot key without reading it: never memoised.
+        | Unkeyed
+
+    let rowKeyOf (rows: Row seq) : RowKey =
+        match box rows with
+        | :? (Row list) -> RowKey.Identity
+        | :? (Row[]) as indexed -> RowKey.Rows(Array.map box indexed)
+        | :? ResizeArray<Row> as indexed -> RowKey.Rows(indexed |> Seq.map box |> Array.ofSeq)
+        | _ -> RowKey.Unkeyed
+
+    type Entry =
+        { Rows: obj
+          RowKey: RowKey
+          Limits: Fuaran.UI.Charts.ChartLimits
+          Style: obj
+          XTitle: TextSource option
+          YTitle: TextSource option
+          Lowered: Result<DrawingSpec, Fuaran.UI.Charts.ChartRefusal> }
+
+    let private sameRows (held: RowKey) (now: RowKey) : bool =
+        match held, now with
+        | RowKey.Identity, RowKey.Identity -> true
+        | RowKey.Rows a, RowKey.Rows b ->
+            a.Length = b.Length
+            && Array.forall2 (fun (x: obj) (y: obj) -> obj.ReferenceEquals(x, y)) a b
+        | _ -> false
+
+    /// Two axis titles that lower alike: the same value, or two literals with
+    /// the same text. A `TextSource` has no structural equality, and a filled
+    /// title is a fresh literal on every render.
+    let private sameTitle (held: TextSource option) (now: TextSource option) : bool =
+        match held, now with
+        | None, None -> true
+        | Some a, Some b ->
+            obj.ReferenceEquals(a, b)
+            || (match a, b with
+                | TextSource.Literal x, TextSource.Literal y -> x = y
+                | _ -> false)
+        | _ -> false
+
+    /// The memo's decision, as a value: the drawing an entry holds is served
+    /// only for the row source, limits and style it was lowered from and the
+    /// axis titles it was lowered with. The titles are the one comparison that
+    /// is not identity (`sameTitle`): the renderer fills an absent axis title
+    /// from the bound field before it lowers (WIRE_FORMAT §3.6.27), so the spec
+    /// that is lowered is a fresh record on every render and the titles are the
+    /// only part of it that can differ from the keyed spec's.
+    let hit
+        (entry: Entry option)
+        (rows: obj)
+        (rowKey: RowKey)
+        (limits: Fuaran.UI.Charts.ChartLimits)
+        (style: obj)
+        (xTitle: TextSource option)
+        (yTitle: TextSource option)
+        : Result<DrawingSpec, Fuaran.UI.Charts.ChartRefusal> option =
+        match entry with
+        | Some e when
+            obj.ReferenceEquals(e.Rows, rows)
+            && sameRows e.RowKey rowKey
+            && e.Limits = limits
+            && obj.ReferenceEquals(e.Style, style)
+            && sameTitle e.XTitle xTitle
+            && sameTitle e.YTitle yTitle
+            ->
+            Some e.Lowered
         | _ -> None
 
-    let set (node: obj) (entry: Entry) : unit = table.AddOrUpdate(node, box entry)
-#endif
+    let private table = WeakTable.create ()
+
+    let tryGet (spec: obj) : Entry option =
+        WeakTable.tryGet table spec |> Option.map unbox<Entry>
+
+    let set (spec: obj) (entry: Entry) : unit = WeakTable.set table spec (box entry)
+
+    /// `lowerUnder`, memoised on `keySpec` and `keyRows`: the spec value the
+    /// tree holds and the row source as it resolved, which are what stay the
+    /// same across renders (the spec that is lowered carries filled titles, and
+    /// under a stamping provenance scope the rows that are lowered are a capped
+    /// copy). The result has `lowerUnder`'s shape, so it is what
+    /// `Charts.renderSvgVia` takes.
+    let lowerVia<'Msg>
+        (lowerUnder:
+            Fuaran.UI.Charts.ChartLimits
+                -> Fuaran.UI.Charts.ChartStyle
+                -> ChartSpec<'Msg>
+                -> Row seq
+                -> Result<DrawingSpec, Fuaran.UI.Charts.ChartRefusal>)
+        (keySpec: ChartSpec<'Msg>)
+        (keyRows: Row seq)
+        (limits: Fuaran.UI.Charts.ChartLimits)
+        (style: Fuaran.UI.Charts.ChartStyle)
+        (spec: ChartSpec<'Msg>)
+        (rows: Row seq)
+        : Result<DrawingSpec, Fuaran.UI.Charts.ChartRefusal> =
+        match rowKeyOf keyRows with
+        | RowKey.Unkeyed -> lowerUnder limits style spec rows
+        | rowKey ->
+            match hit (tryGet (box keySpec)) (box keyRows) rowKey limits (box style) spec.XTitle spec.YTitle with
+            | Some lowered -> lowered
+            | None ->
+                let lowered = lowerUnder limits style spec rows
+
+                set
+                    (box keySpec)
+                    { Rows = box keyRows
+                      RowKey = rowKey
+                      Limits = limits
+                      Style = box style
+                      XTitle = spec.XTitle
+                      YTitle = spec.YTitle
+                      Lowered = lowered }
+
+                lowered
 
 // ─── Accessibility-attribute emission ──────────────────────────────────────
 //
@@ -1594,7 +1753,8 @@ module RenderContext =
           CurrentNodeId = None
           UploadSink = None
           Policy = RenderPolicy.defaults
-          SubtreeMemo = false }
+          SubtreeMemo = false
+          ChartProvenance = None }
 
     /// `ofPrepared` over a pass made for this call.
     let create
@@ -2049,7 +2209,8 @@ let private sameContextButSources (a: RenderContext<obj>) (b: RenderContext<obj>
         && a.CurrentNodeId = b.CurrentNodeId
         && same a.UploadSink b.UploadSink
         && same a.Policy b.Policy
-        && a.SubtreeMemo = b.SubtreeMemo)
+        && a.SubtreeMemo = b.SubtreeMemo
+        && a.ChartProvenance = b.ChartProvenance)
 
 let private boundaryUnchanged (previous: BoundaryProps) (next: BoundaryProps) : bool =
     obj.ReferenceEquals(previous.node, next.node)
@@ -5360,14 +5521,26 @@ and private renderChart
         // element to attach to); an `OnPointClick` of `None` publishes the
         // clicked datum under the chart's own node id. POINT SELECTION ONLY —
         // 866 left zoom and brush out.
-        let drawn: Row list ref = ref []
+        let drawn: Row seq ref = ref Seq.empty
 
         // Phase 2209 — `chart` hands back the spec with its absent axis titles
         // filled from the bound fields (WIRE_FORMAT §3.6.27); the point-click
         // map below reads only the fields' names, which the fill leaves alone.
-        let svg (titled: ChartSpec<'Msg>) (rows: Row list) : string =
+        //
+        // Phase 2068 — the row source arrives as it resolved, unlisted, and the
+        // lowering goes through `ChartLoweringMemo`, keyed on the tree's own
+        // `spec` and that source: a re-render that changed neither draws from
+        // the drawing it already has. The provenance scope is this context's.
+        let svg (titled: ChartSpec<'Msg>) (rows: Row seq) : string =
             drawn.Value <- rows
-            Fuaran.UI.Charts.renderSvg ctx.Sources (BindingResolver.resolveTextSource ctx.Sources) titled rows
+
+            Fuaran.UI.Charts.renderSvgVia
+                (ChartLoweringMemo.lowerVia Fuaran.UI.Charts.tryLowerWithStyle spec rows)
+                (Fuaran.UI.Charts.provenanceInForce ctx.ChartProvenance)
+                ctx.Sources
+                (BindingResolver.resolveTextSource ctx.Sources)
+                titled
+                rows
 
         Emit.planWith
             (fun point _ ->
@@ -5383,7 +5556,9 @@ and private renderChart
                               let markId = marked.getAttribute "data-fuaran-mark"
 
                               if not (isNull markId) then
-                                  chartPointClick (runAction ctx) parentNodeId spec drawn.Value markId) ]
+                                  // A drawing with a mark on it was lowered within the
+                                  // point cap, so the source is finite here.
+                                  chartPointClick (runAction ctx) parentNodeId spec (List.ofSeq drawn.Value) markId) ]
                 | _ -> [])
             (ElementPlan.VisPlan.chart
                 (planContext ctx parentNodeId)

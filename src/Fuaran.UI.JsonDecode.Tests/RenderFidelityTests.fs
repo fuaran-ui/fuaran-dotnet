@@ -889,3 +889,89 @@ let speechColumn =
                       (str (speech.GetProperty("class")))
                       (speechOf kind |> Option.map speechClassId |> Option.defaultValue "<none>")
                       (kind + " emits a speech class that disagrees with the declaration")) ]
+
+// ─── The Adaptive Card column (Phase 1814) ───────────────────────────────────
+//
+// Held exactly as the speech column is: manifest -> rows -> rulings, with the
+// rule written as a function so the negative probe exercises the same code.
+
+let private kindsWithoutCardRuling (kinds: string list) (rulings: (string * CardRuling) list) : string list =
+    let declared = rulings |> List.map fst |> Set.ofList
+    kinds |> List.filter (fun k -> not (Set.contains k declared))
+
+[<Tests>]
+let adaptiveCardColumn =
+    testList
+        "Fuaran.UI.RenderFidelity — Adaptive Card column (Phase 1814)"
+        [ testCase "every fidelity row carries an Adaptive Card ruling" (fun () ->
+              Expect.isEmpty
+                  (kindsWithoutCardRuling (all |> List.map _.Kind) cardRulings)
+                  "a kind with a fidelity row and no Adaptive Card ruling: add one to RenderFidelity.cardRulings declaring mapped / structural / open-live / flatten-to-text / omitted")
+
+          testCase "a kind with no ruling FAILS the rule (negative probe)" (fun () ->
+              let probe = "ProbeKindWithNoCardRuling"
+
+              Expect.equal
+                  (kindsWithoutCardRuling (probe :: (all |> List.map _.Kind)) cardRulings)
+                  [ probe ]
+                  "the card rule must name an undeclared kind - if this is empty the rule cannot fail and guards nothing")
+
+          testCase
+              "no ruling names a kind the table has no row for, none is declared twice, and the order is Ordinal"
+              (fun () ->
+                  let rows = all |> List.map _.Kind |> Set.ofList
+                  let names = cardRulings |> List.map fst
+
+                  Expect.isEmpty
+                      (names |> List.filter (fun k -> not (Set.contains k rows)))
+                      "an Adaptive Card ruling for a kind with no fidelity row - a stale ruling"
+
+                  Expect.isEmpty
+                      (names |> List.countBy id |> List.filter (fun (_, n) -> n > 1))
+                      "a kind carries two Adaptive Card rulings"
+
+                  Expect.equal
+                      names
+                      (names |> List.sortWith (fun a b -> String.CompareOrdinal(a, b)))
+                      "the card table is ordered by wire name so an addition lands as one insert")
+
+          testCase "every ruling draws its class from the closed vocabulary and carries a note" (fun () ->
+              let vocabulary = cardClasses |> List.map fst
+
+              Expect.equal
+                  vocabulary
+                  [ "mapped"; "structural"; "open-live"; "flatten-to-text"; "omitted" ]
+                  "the Adaptive Card class vocabulary is closed at the five classes the column declares"
+
+              for (kind, ruling) in cardRulings do
+                  Expect.contains vocabulary (cardClassId ruling) (kind + " carries a class outside the vocabulary")
+
+                  Expect.isNotEmpty
+                      (cardNote ruling)
+                      (kind + " carries no note - the class alone does not say what happens"))
+
+          testCase "the artefact carries the adaptiveCard column for every kind, and the class vocabulary" (fun () ->
+              use doc = JsonDocument.Parse(RenderFidelityArtifact.toJson ())
+              let root = doc.RootElement
+
+              let str (e: JsonElement) =
+                  e.GetString() |> Option.ofObj |> Option.defaultValue ""
+
+              let classes =
+                  [ for c in root.GetProperty("adaptiveCardClasses").EnumerateArray() -> str (c.GetProperty("class")) ]
+
+              Expect.equal classes (cardClasses |> List.map fst) "adaptiveCardClasses is emitted in declaration order"
+
+              for k in root.GetProperty("kinds").EnumerateArray() do
+                  let kind = str (k.GetProperty("kind"))
+                  let card = k.GetProperty("adaptiveCard")
+
+                  Expect.equal
+                      (str (card.GetProperty("class")))
+                      (cardOf kind |> Option.map cardClassId |> Option.defaultValue "<none>")
+                      (kind + " emits an Adaptive Card class that disagrees with the declaration")
+
+                  Expect.equal
+                      [ for e in card.GetProperty("elements").EnumerateArray() -> str e ]
+                      (cardOf kind |> Option.map cardElements |> Option.defaultValue [])
+                      (kind + " emits Adaptive Card elements that disagree with the declaration")) ]

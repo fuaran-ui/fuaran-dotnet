@@ -1375,6 +1375,44 @@ let ssrParityTests =
                   Fuaran.UI.Charts.clearChartProvenance ()
           }
 
+          // ── Phase 2068 — a render DECLARES its provenance scope ──────────────
+          //
+          // The scope above is the process default. A host serving more than one
+          // policy from one process cannot install per request (two renders
+          // would race on the global), so a render declares its own on its
+          // context. What this pins: the declaration reaches the server arm and
+          // decides the stamp in both directions. It neither installs nor reads
+          // the process default, which is the point: it holds whatever a test
+          // running beside it has installed.
+          test "chart provenance — a render's declared scope decides the stamp, whatever is installed (Phase 2068)" {
+              let rows: Map<string, obj> list =
+                  [ Map.ofList [ "quarter", box "Q1"; "revenue", box 120.0 ]
+                    Map.ofList [ "quarter", box "Q2"; "revenue", box 90.5 ] ]
+
+              let spec: ChartSpec<obj> =
+                  { Defaults.chart with
+                      Kind = ChartKind.Bar
+                      Source = Binding.Static(Some(rows :> Map<string, obj> seq))
+                      XField = "quarter"
+                      YFields = [ "revenue" ] }
+
+              let node = Fuaran.chart "ch-declared" spec
+              let contains (needle: string) (haystack: string) = haystack.Contains needle
+
+              let declared scope =
+                  Render.renderWithChartProvenance scope Registry.empty BindingResolver.empty node
+
+              Expect.isTrue
+                  (contains
+                      "<metadata data-fuaran-provenance=\"v1\">"
+                      (declared Fuaran.UI.Charts.ChartProvenance.SpecAndData))
+                  "a declared stamping scope stamps"
+
+              Expect.isFalse
+                  (contains "<metadata" (declared Fuaran.UI.Charts.ChartProvenance.Off))
+                  "a declared Off does not"
+          }
+
           // ── Phase 1078 — the caption ──────────────────────────────────────
           //
           // The acceptance criterion for this phase is a NEGATIVE: an

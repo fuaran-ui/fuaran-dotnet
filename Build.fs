@@ -1038,7 +1038,6 @@ let private registerTargets (args: string array) =
               "--check" ]
             repoRoot)
 
-    "AuthoringPack" ==> "DriftChecks" |> ignore
 
     // Phase 1647 — the corpus's cross-host coverage projection, run from the AUTHORING
     // side. `validator-coverage.json` declares which of the canonical vocabulary's codes
@@ -1102,7 +1101,6 @@ let private registerTargets (args: string array) =
               "lenient" ]
             repoRoot)
 
-    "Build" ==> "AuthoringPackDialect" ==> "DriftChecks" |> ignore
 
     // Phase 843 — the per-family compiled pack variants' drift check. A pure fsi pass
     // like AuthoringPack: each variant is compiled from committed inputs only (the
@@ -1120,7 +1118,74 @@ let private registerTargets (args: string array) =
               "all" ]
             repoRoot)
 
-    "AuthoringPackFamilies" ==> "DriftChecks" |> ignore
+    // Phase 1805 — ONE aggregate over the pack's three projections, and ONE regenerate for
+    // them. The teaching prompt has one authored source and three generated projections (the
+    // base pack with its manifest, the lenient pack, the per-family variants), each with its
+    // own check above. FAKE stops at the first failing target, so an author who regenerated
+    // the projection they knew about met a red gate naming the second, regenerated that, and
+    // met a third: two full gate rounds on one edit (Phase 1783), and a `<Version>` change
+    // has the same shape through the manifest's language stamp. The reference-CSS discipline
+    // already solved this for the four stylesheet copies; this is the same shape: every
+    // member runs, every stale one is named, and the single repair command is printed once.
+    //
+    // The members are the three checks above, unchanged and still reachable singly
+    // (`-- AuthoringPack` etc.); this target only stops them being the unit of failure.
+    // `DriftChecks` hangs off THIS rather than off the three, so `Check` and `run.ps1` (which
+    // calls `DriftChecks`) both gain it with no edit to either.
+    //
+    // Position in `run.ps1`: it runs `DriftChecks` last, deliberately (its own comment: a
+    // regeneration is the remedy for every red it can report, and reaching it means behaviour
+    // is already proved). That file is a deny-floor path, outside this phase's footprint, so
+    // the position is left. The seconds-not-a-gate property is available to the author as
+    // `-- PackDrift` before queueing a gate, and `-- PackRegen` is the repair.
+    //
+    // ORDER of the regenerate is load-bearing: the lenient pack is decoder-proved from the
+    // canonical pack, and the family variants are compiled from whichever of the two they
+    // select, so base, then lenient, then families. The lenient member needs the Release
+    // outputs of `Fuaran.UI.JsonDecode.Tests`, hence the HARD `Build` edge on both targets.
+    let packProjections =
+        [ "base pack + manifest", []
+          "lenient pack", [ "--dialect"; "lenient" ]
+          "family variants", [ "--family"; "all" ] ]
+
+    let runAuthoringPack (mode: string) (extra: string list) =
+        CreateProcess.fromRawCommand
+            "dotnet"
+            ([ "fsi"; Path.Combine(repoRoot, "docs", "tools", "authoring-pack.fsx"); mode ]
+             @ extra)
+        |> CreateProcess.withWorkingDirectory repoRoot
+        |> Proc.run
+        |> fun r -> r.ExitCode
+
+    Target.create "PackDrift" (fun _ ->
+        let stale =
+            [ for name, extra in packProjections do
+                  Trace.log (sprintf "pack drift: checking %s" name)
+
+                  if runAuthoringPack "--check" extra <> 0 then
+                      yield name ]
+
+        if not stale.IsEmpty then
+            failwithf
+                "%d of %d pack projections are stale: %s. Repair ALL of them with one command: dotnet run --project Build.fsproj -- PackRegen"
+                stale.Length
+                packProjections.Length
+                (String.concat "; " stale))
+
+    Target.create "PackRegen" (fun _ ->
+        for name, extra in packProjections do
+            Trace.log (sprintf "pack regen: writing %s" name)
+
+            let code = runAuthoringPack "--write" extra
+
+            if code <> 0 then
+                failwithf
+                    "authoring-pack --write (%s) failed with exit %d; later projections were not regenerated."
+                    name
+                    code)
+
+    "Build" ==> "PackDrift" ==> "DriftChecks" |> ignore
+    "Build" ==> "PackRegen" |> ignore
 
     // Phase 432 — the reference stylesheet's tier copies. Two entry points over
     // one pair of functions (see their comment above `dotnet`): `Css` generates,
@@ -1290,6 +1355,7 @@ let private registerTargets (args: string array) =
     // rather than an ordering preference.
     "Test" ?=> "AuthoringPack" |> ignore
     "Test" ?=> "AuthoringPackFamilies" |> ignore
+    "Test" ?=> "PackDrift" |> ignore
     "Test" ?=> "CssCheck" |> ignore
 
 [<EntryPoint>]

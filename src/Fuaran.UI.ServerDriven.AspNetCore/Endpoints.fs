@@ -27,8 +27,13 @@ open Fuaran.UI.ServerDriven.Driver
 //        registers it, then drains the channel's frame queue to the long-lived
 //        response (`FrameWire.encodeSse` + flush) until the client disconnects
 //        or the bounded queue closes (Phase 212 — a stalled reader is closed,
-//        not buffered without limit). On disconnect: deregister + close.
-//        `Last-Event-ID` (the client's last-applied `Frame.Seq`) drives `Resync`.
+//        not buffered without limit). When the stream ends, for any reason, its
+//        queue is closed and it detaches from the connection (Phase 1928).
+//        A GET carrying `Last-Event-ID` (the client's last-applied `Frame.Seq`)
+//        whose re-verified cookie names a registered connection RE-ATTACHES to
+//        it — the session the client had — and replays what it missed, or
+//        re-baselines it when the replay buffer no longer holds all of it.
+//        An optional tab id (`?tab=`) scopes the connection to one tab.
 //   POST EventPath   — receives one client event. Verifies the signed connId
 //        token against the request principal (`ConnToken.verify`, Phase 211;
 //        401 on a forged / unbound cookie), guard-parses the body
@@ -112,26 +117,147 @@ let defaultAsyncConfig<'Model, 'Msg> () : LiveAppConfig<'Model, 'Msg> =
         invalidOp
             "this LiveAppConfig was built by defaultAsyncConfig: map it with mapFuaranLiveAsync, which awaits its own session factory")
 
-/// One live SSE stream over an opened session (and its effect outbox, when the
-/// session's update returns awaited effects).
+/// Phase 1928 — the query parameter naming the tab a stream / event belongs to.
+[<Literal>]
+let TabQueryParameter = "tab"
+
+/// Phase 1928 — the header naming the tab an event belongs to (a `fetch` POST
+/// can send a header; an `EventSource` GET cannot, so it uses the query).
+[<Literal>]
+let TabHeader = "X-Fuaran-Tab"
+
+/// The tab id a request names: the `tab` query parameter, else the
+/// `X-Fuaran-Tab` header. `Ok None` when it names none; `Error ()` for a value
+/// that is not 1–64 characters of `[A-Za-z0-9_-]` (a repeated parameter
+/// included), which the endpoints refuse 400.
+let private tryTab (ctx: HttpContext) : Result<string option, unit> =
+    let raw =
+        match ctx.Request.Query.TryGetValue TabQueryParameter with
+        | true, v when v.Count > 0 -> Some(string v)
+        | _ ->
+            match ctx.Request.Headers.TryGetValue TabHeader with
+            | true, v when v.Count > 0 -> Some(string v)
+            | _ -> None
+
+    let wellFormed (t: string) =
+        t.Length >= 1
+        && t.Length <= 64
+        && t |> Seq.forall (fun c -> Char.IsAsciiLetterOrDigit c || c = '-' || c = '_')
+
+    match raw with
+    | None -> Ok None
+    | Some t when wellFormed t -> Ok(Some t)
+    | Some _ -> Error()
+
+/// The id the request's correlation cookie binds to the request principal
+/// (Phase 211): `None` for a missing, forged or cross-principal cookie.
+let private boundId (config: LiveAppConfig<'Model, 'Msg>) (principal: string) (ctx: HttpContext) : string option =
+    match ctx.Request.Cookies.TryGetValue config.CookieName with
+    | true, token ->
+        match token with
+        | null -> None
+        | t -> ConnToken.verify config.Secret principal t
+    | _ -> None
+
+/// The registry key of a connection: the cookie-bound id, scoped by the tab
+/// when the request names one (Phase 1928). A minted id is 32 hex digits, so
+/// no tabless key can equal a tabbed one.
+let private connKey (boundId: string) (tab: string option) =
+    match tab with
+    | None -> boundId
+    | Some t -> boundId + "." + t
+
+/// The client's last-applied `Frame.Seq`, from `Last-Event-ID`.
+let private lastEventId (ctx: HttpContext) : int option =
+    match ctx.Request.Headers.TryGetValue "Last-Event-ID" with
+    | true, v ->
+        match Int32.TryParse(string v) with
+        | true, lastSeq -> Some lastSeq
+        | _ -> None
+    | _ -> None
+
+let private streamHeaders (ctx: HttpContext) =
+    ctx.Response.ContentType <- "text/event-stream"
+    ctx.Response.Headers["Cache-Control"] <- StringValues "no-cache"
+    // Disable proxy buffering so frames flush promptly (nginx + friends).
+    ctx.Response.Headers["X-Accel-Buffering"] <- StringValues "no"
+
+/// Drain `channel` to the response until the client disconnects or the queue
+/// completes (a host `Close`, a re-attach that took the connection over, or the
+/// Phase 212 bounded-overflow close — the stream must END then, so the client
+/// reconnect-replays, rather than spin on a completed queue). Whatever ends it
+/// — a write that fails included — the queue is closed and `stream` detaches
+/// from the connection in `finally` (Phase 1928), so nothing outlives the
+/// stream but the connection's reconnect grace.
+let private drain
+    (ctx: HttpContext)
+    (registry: ConnectionRegistry)
+    (connId: string)
+    (stream: obj)
+    (channel: SseChannel)
+    : Task =
+    task {
+        let reader = channel.Reader
+        let token = ctx.RequestAborted
+
+        try
+            try
+                do! ctx.Response.Body.FlushAsync token
+
+                // The `Frame` binding is scoped inside the `TryRead` success arm
+                // — no `Unchecked.defaultof` sentinel (Phase 212).
+                let mutable streaming = true
+
+                while streaming && not token.IsCancellationRequested do
+                    let! more = reader.WaitToReadAsync(token).AsTask()
+
+                    if more then
+                        let mutable pending = true
+
+                        while pending do
+                            match reader.TryRead() with
+                            | true, frame ->
+                                do! ctx.Response.WriteAsync(FrameWire.encodeSse frame, token)
+                                do! ctx.Response.Body.FlushAsync token
+                            | false, _ -> pending <- false
+                    else
+                        streaming <- false // queue completed — end the stream
+            with :? OperationCanceledException ->
+                () // client disconnected — normal teardown
+        finally
+            (channel :> IFuaranLiveChannel).Close()
+            registry.Detach(connId, stream)
+    }
+    :> Task
+
+/// One live SSE stream over a freshly opened session (and its effect outbox,
+/// when the session's update returns awaited effects).
 let private serveStream
     (config: LiveAppConfig<'Model, 'Msg>)
     (registry: ConnectionRegistry)
     (ctx: HttpContext)
+    (principal: string)
+    (cookieId: string option)
+    (tab: string option)
+    (lastSeq: int option)
     (made: LiveSession<'Model, 'Msg>)
     (outbox: EffectOutbox<'Msg> option)
     : Task =
     task {
-        // Bind the connId to the request principal (Phase 211): the cookie value
-        // is the HMAC-signed token, not a bare GUID, so the POST handler can
-        // reject a forged / cross-principal id rather than routing it.
-        let principal = config.ResolvePrincipal ctx
-        let connId = Guid.NewGuid().ToString("N")
-        let token = ConnToken.sign config.Secret principal connId
-        ctx.Response.ContentType <- "text/event-stream"
-        ctx.Response.Headers["Cache-Control"] <- StringValues "no-cache"
-        // Disable proxy buffering so frames flush promptly (nginx + friends).
-        ctx.Response.Headers["X-Accel-Buffering"] <- StringValues "no"
+        // Bind the id to the request principal (Phase 211): the cookie value is
+        // the HMAC-signed token, not a bare GUID, so the POST handler can reject
+        // a forged / cross-principal id rather than routing it. A tabless stream
+        // mints a fresh id per connection (one stream per browser: the last one
+        // opened routes the POSTs); a stream naming its tab keeps the id the
+        // cookie already carries (Phase 1928), so the tabs of one browser share
+        // one principal-bound id and are told apart by their tab.
+        let boundTo =
+            match tab, cookieId with
+            | Some _, Some id -> id
+            | _ -> Guid.NewGuid().ToString("N")
+
+        let connId = connKey boundTo tab
+        streamHeaders ctx
         // The signed token is the session-routing authz credential (the POST
         // handler reads it back from this cookie and verifies it to route inbound
         // events). Harden the cookie transport too: HttpOnly (no script access),
@@ -139,11 +265,9 @@ let private serveStream
         // be lifted by injected script or replayed cross-origin.
         ctx.Response.Cookies.Append(
             config.CookieName,
-            token,
+            ConnToken.sign config.Secret principal boundTo,
             CookieOptions(HttpOnly = true, Secure = true, SameSite = SameSiteMode.Strict)
         )
-
-        let channel = SseChannel()
 
         // Phase 212 — denials are recorded by default. Compose a logging sink
         // onto the session's `OnReject` seam so a G1 rejection reaches the
@@ -186,10 +310,20 @@ let private serveStream
                                 logReject reason
                                 hostOnReject reason } }
 
-        let conn = LiveConnection(connId, session, channel)
+        // The connection outlives this stream (Phase 1928): it is built over a
+        // relay a reconnecting stream re-attaches to, and its effects run for the
+        // CONNECTION's lifetime, which ends when the registry evicts it — not
+        // when this request does.
+        let relay = RelayChannel()
+        // The queue THIS stream drains, taken before the connection is
+        // registered: a reconnect that re-attaches later swaps in its own queue
+        // and closes this one, which ends this stream rather than sharing it.
+        let channel = relay.Current
+        let lifetime = new CancellationTokenSource()
+        let conn = LiveConnection(connId, session, relay)
 
         match outbox with
-        | Some effects -> conn.EnableEffects(effects, logEffectFault, ctx.RequestAborted)
+        | Some effects -> conn.EnableEffects(effects, logEffectFault, lifetime.Token)
         | None -> ()
 
         // Host opt-in seams (form validation / routing / durability / telemetry),
@@ -197,50 +331,66 @@ let private serveStream
         // principal is threaded in (Phase 211) so the host can attribute the
         // durability journal to the real user.
         config.ConfigureConnection principal conn
-        registry.Add(connId, toHandle conn channel)
 
-        // Reconnect replay: EventSource resends the last-seen id as
-        // Last-Event-ID; replay the frames the client missed.
-        match ctx.Request.Headers.TryGetValue "Last-Event-ID" with
-        | true, v ->
-            match Int32.TryParse(string v) with
-            | true, lastSeq -> conn.Resync lastSeq |> ignore
-            | _ -> ()
-        | _ -> ()
+        let stream = obj ()
 
-        let reader = channel.Reader
-        let token = ctx.RequestAborted
+        registry.AddAttached(
+            connId,
+            toReattachableHandle conn relay,
+            stream,
+            fun () ->
+                (relay :> IFuaranLiveChannel).Close()
+                lifetime.Cancel()
+        )
 
-        try
-            do! ctx.Response.Body.FlushAsync token
+        // A client that reports a last-applied sequence is reconnecting, but not
+        // to this connection (its own was evicted, or another stream holds it):
+        // its DOM belongs to a session this one is not. Re-baseline it on this
+        // session rather than patch a DOM the server does not describe — unless
+        // the host already did (`ResumeFrom` in `ConfigureConnection`).
+        if lastSeq.IsSome && conn.Sequence = 0 then
+            conn.Rebaseline()
 
-            // Drain until the client disconnects or the queue completes (a
-            // host `Close`, or the Phase 212 bounded-overflow close — the
-            // stream must END then, so the client reconnect-replays, rather
-            // than spin on a completed queue). The `Frame` binding is scoped
-            // inside the `TryRead` success arm — no `Unchecked.defaultof`
-            // sentinel (Phase 212).
-            let mutable streaming = true
+        do! drain ctx registry connId stream channel
+    }
+    :> Task
 
-            while streaming && not token.IsCancellationRequested do
-                let! more = reader.WaitToReadAsync(token).AsTask()
+/// Re-attach `stream` to `conn` and hand back the queue it drains; if
+/// catching the client up throws, the stream detaches again before the failure
+/// propagates. (Outside the handler's `task`, so its state machine stays
+/// statically compilable.)
+let private reattachOrDetach
+    (registry: ConnectionRegistry)
+    (connId: string)
+    (stream: obj)
+    (conn: IReattachable)
+    (lastSeq: int)
+    : SseChannel =
+    try
+        conn.Reattach lastSeq
+    with _ ->
+        registry.Detach(connId, stream)
+        reraise ()
 
-                if more then
-                    let mutable pending = true
-
-                    while pending do
-                        match reader.TryRead() with
-                        | true, frame ->
-                            do! ctx.Response.WriteAsync(FrameWire.encodeSse frame, token)
-                            do! ctx.Response.Body.FlushAsync token
-                        | false, _ -> pending <- false
-                else
-                    streaming <- false // queue completed — end the stream
-        with :? OperationCanceledException ->
-            () // client disconnected — normal teardown
-
-        registry.Remove connId
-        (channel :> IFuaranLiveChannel).Close()
+/// A stream that opens a session: the first visit, or a reconnect that could
+/// not re-attach.
+let private openFresh
+    (config: LiveAppConfig<'Model, 'Msg>)
+    (openSession: CancellationToken -> Task<(LiveSession<'Model, 'Msg> * EffectOutbox<'Msg> option) option>)
+    (registry: ConnectionRegistry)
+    (ctx: HttpContext)
+    (principal: string)
+    (cookieId: string option)
+    (tab: string option)
+    (lastSeq: int option)
+    : Task =
+    task {
+        // Phase 2170 — the factory is awaited FIRST, before anything is written
+        // to the response, so a factory that never answers leaves a request that
+        // ends with its client rather than a half-open stream.
+        match! openSession ctx.RequestAborted with
+        | None -> () // the client went away before its session existed
+        | Some(made, outbox) -> do! serveStream config registry ctx principal cookieId tab lastSeq made outbox
     }
     :> Task
 
@@ -250,15 +400,34 @@ let private streamHandler
     (registry: ConnectionRegistry)
     (ctx: HttpContext)
     : Task =
-    task {
-        // Phase 2170 — the factory is awaited FIRST, before anything is written
-        // to the response, so a factory that never answers leaves a request that
-        // ends with its client rather than a half-open stream.
-        match! openSession ctx.RequestAborted with
-        | None -> () // the client went away before its session existed
-        | Some(made, outbox) -> do! serveStream config registry ctx made outbox
-    }
-    :> Task
+    match tryTab ctx with
+    | Error() ->
+        ctx.Response.StatusCode <- 400 // Bad Request — malformed tab id
+        Task.CompletedTask
+    | Ok tab ->
+        let principal = config.ResolvePrincipal ctx
+        let cookieId = boundId config principal ctx
+        let lastSeq = lastEventId ctx
+        let stream = obj ()
+
+        // Phase 1928 — a reconnect re-attaches to the session the client had:
+        // `Last-Event-ID` present, the cookie re-verified against THIS request's
+        // principal, and that id (scoped by the tab) registered. No session is
+        // opened for it: the client's own is still here.
+        let reattach =
+            match cookieId, lastSeq with
+            | Some id, Some last ->
+                let connId = connKey id tab
+
+                registry.TryReattach(connId, stream, tab.IsSome)
+                |> Option.map (fun conn -> connId, conn, last)
+            | _ -> None
+
+        match reattach with
+        | Some(connId, conn, last) ->
+            streamHeaders ctx
+            drain ctx registry connId stream (reattachOrDetach registry connId stream conn last)
+        | None -> openFresh config openSession registry ctx principal cookieId tab lastSeq
 
 let private eventHandler
     (config: LiveAppConfig<'Model, 'Msg>)
@@ -269,20 +438,16 @@ let private eventHandler
         // Verify the signed connId token against the request principal (Phase 211,
         // C1): a missing / forged / cross-principal cookie yields no connId and is
         // rejected 401, never routed. The registry lookup is no longer the entire
-        // gate — the cryptographic binding is.
+        // gate — the cryptographic binding is. The event routes to the stream of
+        // the tab that sent it (Phase 1928): the cookie binds the principal, the
+        // tab id selects the connection.
         let principal = config.ResolvePrincipal ctx
 
-        let boundConnId =
-            match ctx.Request.Cookies.TryGetValue config.CookieName with
-            | true, token ->
-                match token with
-                | null -> None
-                | t -> ConnToken.verify config.Secret principal t
-            | _ -> None
-
-        match boundConnId with
-        | None -> ctx.Response.StatusCode <- 401 // Unauthorized — unbound / forged connId
-        | Some connId ->
+        match boundId config principal ctx, tryTab ctx with
+        | None, _ -> ctx.Response.StatusCode <- 401 // Unauthorized — unbound / forged connId
+        | Some _, Error() -> ctx.Response.StatusCode <- 400 // Bad Request — malformed tab id
+        | Some id, Ok tab ->
+            let connId = connKey id tab
             // Guard against an unbounded buffered read: a single inbound live event
             // is a small JSON envelope, so reject anything past a sane cap (1 MB)
             // with 413 before allocating the body. A client that advertises an

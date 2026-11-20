@@ -426,6 +426,9 @@
 #>
 [CmdletBinding()]
 param(
+    # Skip the client render suite (`tests/fable-render/`, Phase 2550) alone — a switch, never a
+    # lane. `-SkipLaws` skips it too: both are the behavioural half that runs under Node.
+    [switch] $SkipRender,
     # Skip the client-tier portability compiles (the slow half).
     [switch] $SkipPortability,
     # Skip the law harness (the half that needs Node).
@@ -1783,6 +1786,181 @@ if (-not $SkipLaws) {
     }
 }
 
+# ── 2'. The client render suite (Phase 2550) ────────────────────────────────
+#
+# The client renderer's elements are Feliz's, which build only under Fable: on .NET a property is a
+# tuple that is not an `IReactProperty`, so every path that emits an element throws at its first
+# property and no .NET suite can assert anything about an element. The law harness above cannot
+# either: it prints byte-identical output on both pipelines, so it mounts nothing. A claim about
+# ELEMENTS or a MOUNTED DOM (Phase 2547's subtree memo, Phase 2069's one prop object per markup) is
+# proved here: `tests/fable-render/` is compiled by Fable and run under Node with a DOM (jsdom) by its
+# `drive.mjs`, which exits non-zero on any failed case and on a run of zero cases. Its README says why
+# jsdom rather than a browser.
+#
+# Three legs, each a native command whose exit is read from `$LASTEXITCODE` by `Invoke-Leg`, never off
+# a pipe: `npm ci` (only when `node_modules` is absent or older than the lock file, so a warm run
+# installs nothing), the Fable compile into `tests/fable-render/output` (Node resolves `react` and
+# `jsdom` from the compiled files' location, so the output sits beside `node_modules`), and the node
+# run. `-SkipRender` skips it alone; `-SkipLaws` skips it with the law harness, because both are the
+# behavioural half that runs under Node (CI's portability job passes `-SkipLaws` and keeps its scope).
+# Not run under a redirected `-SrcRoot`, for 2b's reason. Addressed like every other subject: the
+# project's transitive sources plus the driver, the lock file and the node version.
+#
+# This leg is the one place in the script that shells npm, so the header's note that the npm shim
+# convention does not apply here holds for every leg but this one: `npm ci` goes through the
+# `Invoke-Npm` / `Invoke-NpmAnyOs` helpers below, never a bare `& npm`.
+#
+# `FUARAN_FABLE_RENDER_PLANT` (memo | prop | sink) is read by `fable-check.tests.ps1` alone: the leg
+# passes it to `drive.mjs --plant`, which edits the compiled renderer to re-create one regression the
+# suite exists to catch, so that script can show this leg goes red on it. A planted run consults no
+# record and never writes one.
+
+function Invoke-Npm {
+    # Node 22.x ships an npm.ps1 shim that rebuilds args from the caller's command-line text via
+    # Substring(InvocationName.Length). Called from inside another .ps1 as `& npm ci ...`, the
+    # 3-char slice eats `& n` and npm sees `pm ci ...` — `Unknown command: "pm"`. Resolving npm.cmd
+    # directly skips the shim.
+    #
+    # `Get-Command npm.cmd` returns EVERY npm.cmd on PATH — typically two (Program Files installer
+    # shim + %APPDATA%\npm self-update shim). `$cmd.Source` would then be an array and `& $cmd.Source`
+    # concatenates the paths into one bogus string. Pin to the first match — both shims behave alike.
+    [CmdletBinding()]
+    param([Parameter(ValueFromRemainingArguments = $true)] $Arguments)
+    $cmd = Get-Command npm.cmd -CommandType Application -ErrorAction Stop | Select-Object -First 1
+    & $cmd.Source @Arguments
+}
+
+function Invoke-NpmAnyOs {
+    # Windows takes the canonical helper (the shim bug it dodges is Windows-only); elsewhere resolve the
+    # npm APPLICATION on PATH explicitly — never a bare `& npm`. Pin to the first match, as above.
+    param([Parameter(ValueFromRemainingArguments = $true)] $Arguments)
+    if ($IsWindows) {
+        Invoke-Npm @Arguments
+    }
+    else {
+        $cmd = Get-Command npm -CommandType Application -ErrorAction Stop | Select-Object -First 1
+        & $cmd.Source @Arguments
+    }
+}
+
+$renderDir = Join-Path $repoRoot 'tests' 'fable-render'
+$renderProject = Join-Path $renderDir 'FableRender.fsproj'
+$renderOut = Join-Path $renderDir 'output'
+$renderDrive = Join-Path $renderDir 'drive.mjs'
+$renderLock = Join-Path $renderDir 'package-lock.json'
+$renderStamp = Join-Path $renderDir 'node_modules' '.fuaran-lock.sha256'
+$renderPlant = if ($env:FUARAN_FABLE_RENDER_PLANT) { $env:FUARAN_FABLE_RENDER_PLANT.Trim() } else { '' }
+
+if ($SkipRender -or $SkipLaws) {
+    Write-Host ''
+    Write-Host "  the client render suite: SKIPPED by $(if ($SkipRender) { '-SkipRender' } else { '-SkipLaws' })" -ForegroundColor Yellow
+}
+elseif ($PSBoundParameters.ContainsKey('SrcRoot')) {
+    Write-Host ''
+    Write-Host '  the client render suite: not run under a redirected -SrcRoot' -ForegroundColor DarkGray
+}
+elseif (-not (Get-Command node -CommandType Application -ErrorAction SilentlyContinue)) {
+    # A NAMED skip, as the law harness takes it: the portability half needs no Node and has run.
+    Write-Host ''
+    Write-Host '  the client render suite: SKIPPED - no `node` on PATH; the suite needs a JS runtime.' -ForegroundColor Yellow
+}
+else {
+    $renderLabel = ConvertTo-RepoRelative $renderProject
+    Write-Stage "the client render suite — $renderLabel under Node + jsdom"
+    $renderFailuresBefore = $failures.Count
+
+    if ($renderPlant) {
+        Write-Host "  PLANTED REGRESSION '$renderPlant' (FUARAN_FABLE_RENDER_PLANT): this run must go red, and records nothing" -ForegroundColor Yellow
+    }
+
+    $renderSemantics = @(
+        "dotnet fable -o output --noCache + node drive.mjs $(Get-CachedFileSha256 $renderDrive)"
+        "lock $(Get-CachedFileSha256 $renderLock)"
+        "node $(Get-NodeVersionTag)"
+    ) -join ' + '
+    $renderAddress = Get-CompileAddress $renderProject $renderSemantics
+    $renderRecorded = if ($laneMaySkip -and (-not $renderPlant) -and $renderAddress) { Test-RecordedGreen 'FableRender' $renderAddress $renderSemantics } else { $null }
+
+    if ($renderRecorded) {
+        Add-Timing $renderLabel 'skipped' 0
+        Write-Host "  SKIPPED BY ADDRESS $renderLabel" -ForegroundColor Yellow
+        Write-Host "    address $renderAddress" -ForegroundColor DarkGray
+        Write-Host "    recorded green in lane '$($renderRecorded.lane)' at $($renderRecorded.recordedUtc)" -ForegroundColor DarkGray
+    }
+    else {
+        # The install. Keyed on the lock file's bytes through a stamp written after a green `npm ci`,
+        # so an edited lock reinstalls and an unchanged one costs nothing.
+        $lockSha = Get-CachedFileSha256 $renderLock
+        $stamped = if (Test-Path -LiteralPath $renderStamp -PathType Leaf) { (Get-Content -LiteralPath $renderStamp -Raw).Trim() } else { '' }
+        $installed = $stamped -eq $lockSha
+
+        if (-not $installed) {
+            Push-Location $renderDir
+            try {
+                $npmLeg = Invoke-Leg -Exe 'Invoke-NpmAnyOs' -Quiet -Arguments @('ci', '--no-fund', '--no-audit')
+            }
+            finally {
+                Pop-Location
+            }
+            Add-Timing "$renderLabel (npm ci)" $(if ($npmLeg.Exit -eq 0) { 'ran' } else { 'FAILED' }) $npmLeg.Seconds
+
+            if ($npmLeg.Exit -eq 0) {
+                Set-Content -LiteralPath $renderStamp -Value $lockSha -NoNewline
+                $installed = $true
+            }
+            else {
+                $failures.Add((Write-LegFailure -Leg 'the client render suite npm ci' -Command $npmLeg.Command -Exit $npmLeg.Exit -Seconds $npmLeg.Seconds -Output $npmLeg.Output))
+            }
+        }
+
+        if ($installed) {
+            Remove-Item -Recurse -Force $renderOut -ErrorAction SilentlyContinue
+
+            $renderFableLeg = Invoke-Leg -Exe 'dotnet' -Arguments @('fable', $renderProject, '-o', $renderOut, '--noCache')
+            $renderFigures = Get-FableTiming $renderFableLeg.Output
+            Add-Timing "$renderLabel (Fable compile)" $(if ($renderFableLeg.Exit -eq 0) { 'compiled' } else { 'FAILED' }) `
+                $renderFableLeg.Seconds $renderFigures.ParsedMs $renderFigures.EmittedMs
+
+            if ($renderFableLeg.Exit -ne 0) {
+                $failures.Add((Write-LegFailure -Leg 'the client render suite Fable compile' -Command $renderFableLeg.Command -Exit $renderFableLeg.Exit -Seconds $renderFableLeg.Seconds -Output $renderFableLeg.Output))
+            }
+            else {
+                $renderArguments = @($renderDrive, $renderOut) + $(if ($renderPlant) { @('--plant', $renderPlant) } else { @() })
+                $renderNodeLeg = Invoke-Leg -Exe 'node' -Arguments $renderArguments
+                Add-Timing "$renderLabel (Node run)" $(if ($renderNodeLeg.Exit -eq 0) { 'ran' } else { 'FAILED' }) $renderNodeLeg.Seconds
+
+                # Both signals, so neither is the only one: the exit status AND the summary line, which
+                # must count at least one case and no failure.
+                $renderTotal = $renderNodeLeg.Output | Where-Object { $_ -match '^TOTAL tests=\d+ failed=\d+$' } | Select-Object -Last 1
+
+                if ($renderNodeLeg.Exit -ne 0) {
+                    $failures.Add((Write-LegFailure -Leg 'the client render suite run under node' -Command $renderNodeLeg.Command -Exit $renderNodeLeg.Exit -Seconds $renderNodeLeg.Seconds -Output $renderNodeLeg.Output))
+                }
+                elseif (-not $renderTotal) {
+                    $failures.Add('the client render suite printed no TOTAL line - it did not run to completion')
+                }
+                elseif ($renderTotal -notmatch '^TOTAL tests=([1-9]\d*) failed=0$') {
+                    $failures.Add("the client render suite exited 0 over a red or empty summary: $renderTotal")
+                }
+            }
+
+            if (-not $KeepOutput) {
+                Remove-Item -Recurse -Force $renderOut -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
+    # Only an unplanted run that performed the suite may record it, and a red one clears the record.
+    if ((-not $renderRecorded) -and (-not $renderPlant) -and $renderAddress) {
+        if ($failures.Count -eq $renderFailuresBefore) {
+            Write-RecordedGreen 'FableRender' $renderAddress $renderSemantics
+        }
+        else {
+            Clear-RecordedGreen 'FableRender'
+        }
+    }
+}
+
 # ── 2b. The Fuaran.Core Fable gate (Phase 217) ──────────────────────────────
 #
 # Fuaran.Core runs no Fable compiler of its own: the compiler belongs where a Fable toolchain
@@ -2005,6 +2183,20 @@ else {
                 $failures.Add((Write-LegFailure -Leg 'the packed-consumer leg' -Command $packConsumerLeg.Command -Exit $packConsumerLeg.Exit -Seconds $packConsumerLeg.Seconds -Output $packConsumerLeg.Output))
             }
         }
+    }
+}
+
+# ── 2d'. The packed-consumer leg's cache repair (Phase 2789) ───────────────
+#
+# The leg reuses a cached package only when it is whole. Its `-SelfTest` seeds an emptied entry in a
+# throwaway cache and requires the repair to delete it and keep a whole one. It compiles nothing,
+# costs about a second, and runs wherever the leg itself is not skipped, so the repair cannot rot.
+
+if (-not $SkipPackConsumer -and -not $PSBoundParameters.ContainsKey('SrcRoot') -and (Test-Path -LiteralPath $packConsumerScript -PathType Leaf)) {
+    Write-Stage "the packed-consumer leg's cache repair — $(ConvertTo-RepoRelative $packConsumerScript) -SelfTest"
+    $packCacheLeg = Invoke-Leg -Exe 'pwsh' -Arguments @('-NoProfile', '-File', $packConsumerScript, '-SelfTest')
+    if ($packCacheLeg.Exit -ne 0) {
+        $failures.Add((Write-LegFailure -Leg 'the packed-consumer cache-repair self-test' -Command $packCacheLeg.Command -Exit $packCacheLeg.Exit -Seconds $packCacheLeg.Seconds -Output $packCacheLeg.Output))
     }
 }
 

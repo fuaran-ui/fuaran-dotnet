@@ -30,8 +30,12 @@
          (fuaran#2286 adopts it: 0.10.x's assemblies bind Fuaran.Core.Canon), which the pins here
          meet. 0.13.0 (fuaran#2432, 2026-10-24; 0.12.x skipped here) carries the empty-name refusals
          (fuaran#2213, #2436), the wire limits and the windowed, quantity and floor/Required policy
-         clauses, on the same substrate. One property per producing repository, as above. -->
-    <FuaranProgramVersion>0.13.0</FuaranProgramVersion>
+         clauses, on the same substrate. 0.16.0 (Phase 2813, 2026-11-19; 0.13.1, 0.14.1 and 0.15.0
+         crossed in one hop) carries the closure share on the demanded document, which moves to
+         version 15, the per-event quantity pricing, the op stage's partial receipt and the file
+         journal store's process hold, on Fuaran.Core 0.41.0, which the Core pins here meet. One
+         property per producing repository, as above. -->
+    <FuaranProgramVersion>0.16.0</FuaranProgramVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="FSharp.Core" Version="10.1.300" />
@@ -53,11 +57,13 @@
     <!-- VB Roslyn — Phase 315 adds the VB XML-literal diagnostic leg to
          Fuaran.UI.Analyzers (VB XML literals are syntax, not IOperation). -->
     <PackageVersion Include="Microsoft.CodeAnalysis.VisualBasic" Version="4.11.0" />
-    <!-- Draft 2020-12 JSON Schema validator — consumed ONLY by
-         Fuaran.UI.JsonDecode.Tests to assert the generated
+    <!-- JSON Schema validator (draft 2020-12 and earlier) — consumed ONLY by two
+         test suites: Fuaran.UI.JsonDecode.Tests, to assert the generated
          wire-format-fixtures/schema.json (Phase 96) accepts/rejects the corpus
          consistently with JsonDecode, using a real off-the-shelf validator
-         (proves the schema is a genuine drop-in for external tooling). Test-only;
+         (proves the schema is a genuine drop-in for external tooling), and by
+         Fuaran.UI.Renderer.Server.Tests to validate the Adaptive Card projection
+         against the published Adaptive Cards schema (Phase 1814). Test-only;
          not referenced by any shipping package. -->
     <PackageVersion Include="JsonSchema.Net" Version="9.2.1" />
     <PackageVersion Include="Fake.Core.Target" Version="6.1.4" />

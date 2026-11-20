@@ -10,6 +10,49 @@ consequence.
 
 ---
 
+## 2026-11-19 — D36: the closure share is certified at the UI witness by its family read here and by its shapes walked here
+
+**Decided (Phase 2813).** `Fuaran.Program` 0.16.0 carries a closure share on every tier of the demanded document
+(that repository's D71) and certifies it with a conformance family, `demanded-closure-share.json`, whose vectors were
+produced by walks at its own toy witness. The UI tier adopts the release, so it certifies the same family. Three things
+were decided about how.
+
+1. **Two halves, because the family's documents are not UI documents.** The family's readable vectors name toy effects
+   and toy host calls, so no UI program writes them. Reading them here proves this tier's reader agrees with the
+   definition and nothing about the UI witness. So `ClosureShareTests` does both. (a) **The family, read here.** Every
+   readable vector decodes through the pinned reader with the client and server shares its reading records, and
+   re-encodes byte for byte. Every recorded basis-point figure is the one its counts define. Every refusal vector is
+   refused for its defect, at its field. (b) **The same shapes, walked here.** Each readable vector names a shape of
+   program, and for each one a UI program of that shape is walked by the UI witness. The shapes are: all inside, one host
+   call, one call action, a server handler mixing compute stages and performed effects, closure-held handlers, an opaque
+   leaf, and a server walk that found nothing. Each walk projects exactly the vector's shares, client and server. A test
+   holds the set of UI programs to the set of readable vectors, so a shape the family adds is red here until it has a UI
+   program.
+
+2. **The family is a copy here, declared in `copies.json` in the copy-HERE direction.** The program packages ship no
+   conformance files, and this suite runs where the program repository is not checked out. So the family is committed
+   beside the demanded corpus at the tag of the release `FuaranProgramVersion` names, and declared with the program
+   repository's file as the consumer path to copy FROM. That is the direction the schema-to-form parity table's record
+   already runs. The demanded corpus keeps its own record, whose writer is this repository. At version 15 the program
+   repository re-cut that corpus by hand. The emitter here writes those bytes exactly, because its literal documents
+   carry the shares their lists project.
+
+3. **The raise rides the 0.105.0 draft.** `v0.104.0` is tagged, and `STABILITY.md`'s 0.105.0 slot is an untagged draft
+   of class breaking. The raise is breaking for a consumer of the program adapters, by dependency, so it rides that
+   draft. `<Version>` moves to 0.105.0 with it.
+
+**Rejected.** Reading the family's documents alone. It certifies the reader, which the program repository already
+certifies, and says nothing about the UI witness the adapters ship. Restating the definition in a UI-side counter and
+comparing it with `Closure`. That is a second implementation of D71 that agrees with the first by construction, so it
+cannot fail. Taking the family from a sibling checkout at test time. The suite would then pass or fail on a tree it
+does not pin.
+
+**Consequence.** A later Program release that moves the definition or the family moves this copy. Then
+the copy declared in `copies.json` reads stale, or this suite goes red, whichever comes first. A new shape in the family needs a
+UI program before this suite is green.
+
+---
+
 ## 2026-11-18 — D35: a gap-spaced layout container owns the spacing between its children; a node's margin is plain-flow spacing
 
 **Decided (Phase 2794).** The reference stylesheet gave every node wrapper `.fuaran-node { margin-bottom:

@@ -41,7 +41,7 @@ public readonly struct Text
     /// </summary>
     /// <remarks>
     /// Phase 1661 — the arguments are BINDINGS, exactly as
-    /// <see cref="Binding.I18n(string, ValueTuple{string, Binding{Payload}}[])"/>'s
+    /// <c>Binding.I18n</c>'s
     /// are, which is the asymmetry that phase closed: "3 items left" takes its
     /// count from the same reactive slot the list reads. A literal argument is
     /// <c>Binding.Static</c> of a payload and encodes as the bare JSON value, so

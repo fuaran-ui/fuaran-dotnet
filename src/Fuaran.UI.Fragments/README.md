@@ -51,6 +51,8 @@ Two consequences follow, and both are enforced rather than hoped for:
 | `section-header` | `eyebrow`, `title`, `level` (1–4) | pure | An eyebrow above a title, at a caller-chosen heading level. |
 | `metric-card` | `title`, `value`, `caption` | pure | A card carrying one headline figure and the caption that qualifies it. |
 | `loading-placeholder` | `rows` (repeat, 1–8) | pure | Skeleton rows — the shape a list takes while its query is in flight. |
+| `parameter-panel` | `heading`, `count` (repeat, 1–4), per parameter `param-N-name`, `param-N-label`, `param-N-control`, `param-N-min`, `param-N-max`, `param-N-step`, `param-N-default`, `param-N-options` | writes host | The controls that set a pipeline's parameters: each writes the filter key a parameter of the same name reads. |
+| `scenario-comparison` | `heading`, `source`, `key`, `measure`, `key-label`, `a-label`, `b-label`, `difference-label`, `a-growth`, `b-growth` | reads host | One model run under two parameter sets, side by side with their difference, every figure computed by the pipeline. |
 
 ### The kpi-strip and filter-bar holes (Phase 2471)
 
@@ -78,6 +80,49 @@ binds none of them expands as it always did.
 
 `Stdlib.boundExamples` holds one reference to each fragment that binds these holes, and the corpus
 pins those references next to each fragment's original example.
+
+### The scenario fragments (Phase 2752)
+
+A pipeline reads named parameters, and each `TransformParam` binds one to a source. The two scenario
+fragments package the "what if" that this already allows: the tree stays fixed and the parameters move.
+
+- **`parameter-panel`** yields one to four controls (`count`). Parameter *N* is named by
+  `param-N-name` and labelled by `param-N-label`. Its `param-N-control` is `number` (the default) or
+  `choice`. A number is a `RangedNumber` from `param-N-min` to `param-N-max` in steps of
+  `param-N-step`, starting at `param-N-default`. A choice takes its options from `param-N-options`, in
+  the same `value=Label|…` grammar the filter bar uses. Each control writes the **filter key** named
+  by its parameter. A pipeline reads that key with
+  `{ Name = "<name>"; From = Binding.Filter("<name>", None) }`.
+  The panel uses filter keys, not free state keys, because a filter chip declares its name in the
+  tree. That lets pre-emit validation check the panel against its readers in both directions. A
+  control whose parameter no pipeline reads draws **FUARAN074**, so a panel on its own draws it for
+  each control until something reads that control. A pipeline reading a parameter that no control
+  declares draws **FUARAN075**. Every binding materialises. Bounds given in the wrong order are
+  swapped, a default outside the bounds is clamped, a blank name falls back to `param-N`, and a
+  repeated name keeps only its first control, so no key ever has two writers.
+- **`scenario-comparison`** runs one model under two parameter sets and shows the results side by
+  side, with a difference column. The model is one function. The comparison's pipeline defines it
+  once (`Transform.Define`) and calls it once per scenario; `Stdlib.scenarioPipelineDefined` returns
+  that form. The difference is a further `Derive` (`scenario-b - scenario-a`). Every figure is
+  computed by the pipeline; the fragment computes nothing. What the grid carries is
+  `Stdlib.scenarioPipeline`: the same pipeline with each call expanded into the model's body
+  (`FnDef.expand`, the step every evaluator takes first). A host whose codec does not read function
+  definitions still reads the expansion.
+  The stdlib entry carries one general model, `base * (1 + growth)`. The host names the rows
+  (`source`, a `Ref`), the key column (`key`) and the column projected (`measure`). Each scenario's
+  growth is a bounded hole (`a-growth`, `b-growth`). The entry's scenarios hold values, not panel
+  reads. A fragment reading a filter that it does not declare would be FUARAN075 on its own, and
+  certification judges each fragment on its own.
+  For a model of your own, `Stdlib.scenarioComparisonOf` takes a `ScenarioModel` and two
+  `ScenarioSide`s and builds the same subtree. A `ScenarioModel` holds the rows, the key, the
+  function, and the parameters that columns feed. Each `ScenarioSide` holds a label and a binding
+  for every scenario parameter. A side that reads `Binding.Filter "<name>"` follows the panel's
+  control. A side that reads a literal holds still. The builder refuses a side that leaves a
+  scenario parameter unbound or binds a name the model does not have.
+
+Changing one panel control re-evaluates only the sites that read that parameter. The binding walk
+(`BindingWalk.collect`) records each reader against the filter it reads, so a change to `growth`
+reaches the comparison and no site that reads only `uplift`. The suite pins this.
 
 Fragment names are **permanent**. Renaming one breaks every consumer's refs and every stored tree
 that carries them, so a rename is a new fragment plus a deprecation, never an edit.
@@ -129,7 +174,8 @@ Three invariants are stamped into the type surface rather than checked by conven
 
 And one honesty boundary, which is the reason the effect axis is declared at all: **a fragment whose
 declared effect is not pure-deterministic is certified for STRUCTURE only.** `filter-bar` reads host
-filter state and `confirm-action-pair` writes host state; their verdicts carry `StructureOnly = true`
+filter state, `confirm-action-pair` and `parameter-panel` write host state, and `scenario-comparison`
+reads rows the host resolves; their verdicts carry `StructureOnly = true`
 and assert that the emitted tree is valid for every binding — never that the emission is a pure
 function of its holes, and never anything about output quality. A consumer that reads a
 structure-only verdict as a determinism guarantee has been told otherwise here.

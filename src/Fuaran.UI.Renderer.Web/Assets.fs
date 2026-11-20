@@ -3,9 +3,10 @@ module Fuaran.UI.Renderer.Web.Assets
 // ============================================================================
 //  The embedded static web assets.
 //
-//  Three files travel INSIDE this assembly rather than beside it: the browser
-//  renderer bundle, the reference stylesheet, and the fingerprint sidecar. A
-//  consumer adds one PackageReference and gets all three — no npm install, no
+//  Five files travel INSIDE this assembly rather than beside it: the browser
+//  renderer bundle, the reference stylesheet, the two reference enhancement
+//  scripts, and the fingerprint sidecar. A consumer adds one PackageReference
+//  and gets all of them — no npm install, no
 //  wwwroot to populate, no build step. The precedent is well-worn (a Swagger UI
 //  package embedding its own JS).
 //
@@ -31,9 +32,12 @@ type Asset =
         ContentType: string
         /// The embedded resource's manifest name.
         ResourceName: string
-        /// Whether the asset may be cached immutably. FALSE for the fingerprint:
-        /// it is the drift ORACLE, and an oracle a proxy may serve from last
-        /// year answers a question about last year.
+        /// Whether the asset is ALSO served under a content-hashed path
+        /// (`fingerprintedPath`), where it is cached immutably. The plain
+        /// `Path` always revalidates, whatever this says: a URL that does not
+        /// change when the bytes do cannot honestly be immutable (Phase 1929).
+        /// FALSE for the fingerprint: it is the drift ORACLE, and an oracle a
+        /// proxy may serve from last year answers a question about last year.
         Immutable: bool
     }
 
@@ -108,8 +112,8 @@ let private assembly = typeof<Asset>.Assembly
 /// Read an embedded asset's bytes.
 ///
 /// Throws rather than returning an option, and does so at the first read. An
-/// asset missing from this assembly is a BUILD defect — the `.fsproj` names all
-/// three — so there is no runtime recovery to offer, and failing at startup
+/// asset missing from this assembly is a BUILD defect — the `.fsproj` names every
+/// one — so there is no runtime recovery to offer, and failing at startup
 /// with the resource name is strictly better than serving a 404 that reads like
 /// a routing mistake.
 let read (asset: Asset) : byte[] =
@@ -132,16 +136,50 @@ let fingerprint () : Result<Fingerprint.EmbeddedFingerprint, string> =
     |> System.Text.Encoding.UTF8.GetString
     |> Fingerprint.parse
 
+// One SHA-256 per asset feeds both the ETag and the URL hash below.
+let private digest (bytes: byte[]) : string =
+    System.Convert.ToHexString(SHA256.HashData bytes)
+
+let private etagOf (hexDigest: string) =
+    "\"" + hexDigest.Substring(0, 32) + "\""
+
+let private hashOf (hexDigest: string) =
+    hexDigest.Substring(0, 8).ToLowerInvariant()
+
 /// A strong ETag over an asset's bytes — the content itself, so a re-deploy of
 /// identical assets does not invalidate a client's cache and a changed bundle
 /// always does. Quoted per RFC 9110.
-let etag (bytes: byte[]) : string =
-    "\"" + System.Convert.ToHexString(SHA256.HashData bytes).Substring(0, 32) + "\""
+let etag (bytes: byte[]) : string = etagOf (digest bytes)
+
+/// The content hash a fingerprinted URL carries: the first eight lowercase hex
+/// digits of the SHA-256 of the bytes, cut from the same digest as the ETag.
+/// Eight digits are a cache key, not an integrity claim — they only have to
+/// differ between two builds of one asset, and the strong ETag served beside
+/// them still names the bytes exactly.
+let contentHash (bytes: byte[]) : string = hashOf (digest bytes)
+
+/// The path an asset answers on under a content hash:
+/// `fuaran-renderer.js` → `fuaran-renderer.<hash>.js`. The hash goes before
+/// the extension, so the URL still ends in `.js` / `.css` for every tool that
+/// keys off it.
+let fingerprintedPath (asset: Asset) (hash: string) : string =
+    match asset.Path.LastIndexOf '.' with
+    | -1 -> asset.Path + "." + hash
+    | dot -> asset.Path.Substring(0, dot) + "." + hash + asset.Path.Substring dot
 
 // ─── The per-process read ─────────────────────────────────────────────────
 
 let private cache =
-    System.Collections.Concurrent.ConcurrentDictionary<string, byte[] * string>()
+    System.Collections.Concurrent.ConcurrentDictionary<string, byte[] * string * string>()
+
+let private cached (asset: Asset) =
+    cache.GetOrAdd(
+        asset.ResourceName,
+        fun _ ->
+            let bytes = read asset
+            let hex = digest bytes
+            bytes, etagOf hex, hashOf hex
+    )
 
 /// An asset's bytes and its ETag, read out of the assembly and hashed ONCE per
 /// process.
@@ -159,9 +197,21 @@ let private cache =
 /// it. Nothing in this package writes to it, and a consumer holding one must
 /// not either.
 let content (asset: Asset) : byte[] * string =
-    cache.GetOrAdd(
-        asset.ResourceName,
-        fun _ ->
-            let bytes = read asset
-            bytes, etag bytes
-    )
+    let bytes, tag, _ = cached asset
+    bytes, tag
+
+/// `contentHash` of the EMBEDDED bytes, computed once per process with the
+/// ETag.
+let embeddedHash (asset: Asset) : string =
+    let _, _, hash = cached asset
+    hash
+
+/// The path a page should EMBED for an asset (Phase 1929). For an immutable
+/// asset that is the content-hashed path, so a package upgrade changes the URL
+/// and no browser holding the previous bundle has been told not to look; for
+/// the fingerprint, which is never cached immutably, it is the plain path.
+let versionedPath (asset: Asset) : string =
+    if asset.Immutable then
+        fingerprintedPath asset (embeddedHash asset)
+    else
+        asset.Path

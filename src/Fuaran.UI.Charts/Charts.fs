@@ -1956,9 +1956,9 @@ let seriesFieldsOf<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) : string list =
 /// Phase 933 — the x-key each row contributes to a data-bearing mark id, in the
 /// SAME form the lowering stamps, index-aligned with `rows`.
 ///
-/// This MIRRORS four bindings inside `lowerRows` (`categories`, `isTemporal`,
-/// `dayValues`, `xValues`) which are local to that function and cannot be
-/// called from outside it. The mirror is not held by this comment: the test
+/// This MIRRORS four bindings of the lowering's first stages (`categories` in
+/// `seriesData`; `isTemporal`, `dayValues` and `xValues` in `categoryAxis`),
+/// which are local to those functions and cannot be called from outside them. The mirror is not held by this comment: the test
 /// `every per-datum mark id the lowering emits is reproduced by markCategoryKeys`
 /// lowers a real chart per arm and pins the two against each other, so a change
 /// to either derivation goes red rather than silently un-selecting the chart.
@@ -2030,19 +2030,42 @@ let rowOfMarkId<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) (markId: string) :
         |> Array.tryFindIndex (fun k -> k = categoryKey)
         |> Option.bind (fun i -> List.tryItem i rowList)
 // ─── The lowering ─────────────────────────────────────────────────────────────
+//
+// The lowering is a pipeline of STAGES (Phase 2068), each a pure function of the
+// style, the spec, the rows and the records of the stages before it, and each
+// returning one typed record (or, for a stage with one result, that result).
+// `lowerRows`, at the end of this section, runs them in the order they are
+// written here and assembles their shapes in painter's order:
+//
+//   seriesData -> valueAxis -> categoryAxis -> frame -> legendLayout -> plotArea
+//     -> axisChrome -> seriesMarks -> dataLabels -> annotationMarks
+//     -> legendAndTitles -> pieMarks, then accessibleSummaryOf for the `<desc>`.
+//
+// A stage opens with the fields it reads from earlier records, bound to the
+// names its body uses. Every stage runs for every kind, as the single function
+// they were cut from did; only `pieMarks` defers its work, to the `Pie` arm.
 
-/// The core lowering: an ALREADY-CAPPED row list to a canonical `DrawingSpec`,
-/// under an explicit `ChartStyle` (Phase 885 — every colour, size, weight and
-/// offset below reads from it). The public entry points (`lower` / `lowerWith` /
-/// `lowerWithStyle` / `tryLower*`) apply the Phase-790 cost caps before this
-/// runs, so it never sees an over-budget input.
-/// Lowered arms: `Bar` (grouped + stacked), `Line`, `Area` (overlaid +
-/// stacked), `Scatter` (linear numeric x), `Pie` (polar, single-series) —
-/// Phases 533 + 637 + 636 + 638. `Heatmap` produces an empty drawing (its
-/// lowering rule lands with its own phase). `Stacked = true` on a kind where
-/// stacking is meaningless (`Line`, `Scatter`, `Pie`) is ignored — the flag
-/// only changes `Bar` / `Area` geometry.
-let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: Row list) : DrawingSpec =
+
+/// The rows read once: the category keys, one value array per series, the stacking decision, the
+/// declared annotations that widen the value domain, and the extent of everything the y axis must span.
+[<RequireQualifiedAccess>]
+type private SeriesData =
+    { Categories: string array
+      N: int
+      YFields: string array
+      Series: float array array
+      M: int
+      Stacked: bool
+      CumsFor: int -> float array
+      IsPie: bool
+      ReferenceLines: (float * TextSource option) array
+      RangeBandsDeclared: (int * ChartAnnotationRange * TextSource option) array
+      ValueBands: (int * float * float * TextSource option) array
+      DataMin: float
+      DataMax: float }
+
+/// Computes `SeriesData`.
+let private seriesData<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : SeriesData =
     // ORDER IS LOAD-BEARING SINCE PHASE 879. The plot rectangle used to be the
     // first thing computed, from four constant margins. It is now DERIVED from
     // the text the chart is going to print — the widest formatted y tick decides
@@ -2211,6 +2234,38 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
 
     let dataMin = List.min allValues
     let dataMax = List.max allValues
+
+    { Categories = categories
+      N = n
+      YFields = yFields
+      Series = series
+      M = m
+      Stacked = stacked
+      CumsFor = cumsFor
+      IsPie = isPie
+      ReferenceLines = referenceLines
+      RangeBandsDeclared = rangeBandsDeclared
+      ValueBands = valueBands
+      DataMin = dataMin
+      DataMax = dataMax }
+
+/// The value (y) axis in data space: the nice domain and its ticks, the display unit, and the one
+/// formatter every tick, data label and tooltip writes a value through.
+[<RequireQualifiedAccess>]
+type private ValueAxis =
+    { NiceLo: float
+      NiceHi: float
+      Ticks: float list
+      YDisplayUnit: DisplayUnit
+      YTickText: float -> string
+      DatumTip: string -> string -> float -> DrawStyle -> DrawStyle
+      SeriesTip: string -> DrawStyle -> DrawStyle }
+
+/// Computes `ValueAxis`.
+let private valueAxis<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (data: SeriesData) : ValueAxis =
+    let dataMin = data.DataMin
+    let dataMax = data.DataMax
+
     // Bars + lines share a zero-anchored domain — deterministic + honest for
     // bars. Stacked domains come from the cumulative partial sums, so the axis
     // covers the stack totals, never a single series' range.
@@ -2280,6 +2335,39 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
     /// Per-point readouts on a line need per-point elements, which is geometry
     /// this phase does not add.
     let seriesTip (seriesField: string) (style: DrawStyle) : DrawStyle = withTip seriesField style
+
+    { NiceLo = niceLo
+      NiceHi = niceHi
+      Ticks = ticks
+      YDisplayUnit = yDisplayUnit
+      YTickText = yTickText
+      DatumTip = datumTip
+      SeriesTip = seriesTip }
+
+/// The x axis in data space: which of the three x readings applies (band, linear numeric, temporal),
+/// the day values and x-anchored annotations of a temporal axis, and the x domain, ticks and tick text.
+[<RequireQualifiedAccess>]
+type private CategoryAxis =
+    { IsScatter: bool
+      IsTemporal: bool
+      EventMarkers: (int * TextSource option) array
+      XBands: (int * int * int * TextSource option) array
+      IsContinuousX: bool
+      XValues: float array
+      XNiceLo: float
+      XNiceHi: float
+      XTicks: float list
+      XTickText: float -> string }
+
+/// Computes `CategoryAxis`.
+let private categoryAxis<'Msg>
+    (style: ChartStyle)
+    (spec: ChartSpec<'Msg>)
+    (rows: Row list)
+    (data: SeriesData)
+    : CategoryAxis =
+    let categories = data.Categories
+    let rangeBandsDeclared = data.RangeBandsDeclared
 
     // ── Linear x-scale (Phase 636 — the Scatter arm's numeric x axis) ──
     // Scatter reads the x-field NUMERICALLY and plots on a linear x-domain (the
@@ -2494,6 +2582,51 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
         | Some step -> Temporal.label step (int v)
         | None -> formatValue None 1.0 false xStep v
 
+    { IsScatter = isScatter
+      IsTemporal = isTemporal
+      EventMarkers = eventMarkers
+      XBands = xBands
+      IsContinuousX = isContinuousX
+      XValues = xValues
+      XNiceLo = xNiceLo
+      XNiceHi = xNiceHi
+      XTicks = xTicks
+      XTickText = xTickText }
+
+/// The frame the plot sits in, as far as it can be decided before the legend: the text sizes, the axis
+/// titles and subtitle band, the top and left margins, and the pie arm's values and refusal.
+[<RequireQualifiedAccess>]
+type private Frame =
+    { TickSize: float
+      TitleSize: float
+      SubtitleSize: float
+      LineHeight: float
+      WidestOf: string seq -> float
+      XTitle: TextSource option
+      YTitle: TextSource option
+      SubtitleBand: float
+      MarginTop: float
+      YTickLabelText: float -> string
+      PlotX0: float
+      PieValues: float array
+      PieRefused: bool
+      PieFractions: float array }
+
+/// Computes `Frame`.
+let private frame<'Msg>
+    (style: ChartStyle)
+    (spec: ChartSpec<'Msg>)
+    (data: SeriesData)
+    (valueAxis: ValueAxis)
+    (categoryAxis: CategoryAxis)
+    : Frame =
+    let series = data.Series
+    let m = data.M
+    let isPie = data.IsPie
+    let ticks = valueAxis.Ticks
+    let yTickText = valueAxis.YTickText
+    let isTemporal = categoryAxis.IsTemporal
+
     // ── Text-metric layout (Phase 879) ───────────────────────────────────────
     //
     // Everything below reads `TextMetrics` and nothing reads a font. The four
@@ -2645,6 +2778,50 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
         else
             [||]
 
+    { TickSize = tickSize
+      TitleSize = titleSize
+      SubtitleSize = subtitleSize
+      LineHeight = lineHeight
+      WidestOf = widestOf
+      XTitle = xTitle
+      YTitle = yTitle
+      SubtitleBand = subtitleBand
+      MarginTop = marginTop
+      YTickLabelText = yTickLabelText
+      PlotX0 = plotX0
+      PieValues = pieValues
+      PieRefused = pieRefused
+      PieFractions = pieFractions }
+
+/// The legend, measured: its entries, the position it takes once the band is known to fit, and the
+/// column width or band height the plot gives up to it.
+[<RequireQualifiedAccess>]
+type private LegendLayout =
+    { LegendEntries: (string * string) array
+      BandEntryWidth: string -> float
+      LegendPos: ChartLegendPosition
+      LegendTexts: string array
+      LegendColumnW: float
+      LegendBandH: float }
+
+/// Computes `LegendLayout`.
+let private legendLayout<'Msg>
+    (style: ChartStyle)
+    (spec: ChartSpec<'Msg>)
+    (data: SeriesData)
+    (frame: Frame)
+    : LegendLayout =
+    let categories = data.Categories
+    let yFields = data.YFields
+    let m = data.M
+    let isPie = data.IsPie
+    let tickSize = frame.TickSize
+    let lineHeight = frame.LineHeight
+    let widestOf = frame.WidestOf
+    let plotX0 = frame.PlotX0
+    let pieRefused = frame.PieRefused
+    let pieFractions = frame.PieFractions
+
     /// The legend's rows in draw order — `(colour, label)`. TWO sources, ONE
     /// shape, which is what Phase 880 unified: the cartesian arms legend their
     /// SERIES and only when there is more than one (with a single series the
@@ -2773,6 +2950,59 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
         match legendPos with
         | ChartLegendPosition.Bottom -> r2 (lineHeight + style.AxisLabelPadding)
         | _ -> 0.0
+
+    { LegendEntries = legendEntries
+      BandEntryWidth = bandEntryWidth
+      LegendPos = legendPos
+      LegendTexts = legendTexts
+      LegendColumnW = legendColumnW
+      LegendBandH = legendBandH }
+
+/// The plot rectangle and the two pixel scales: the band geometry, the x-label tilt and the bottom
+/// margin it needs, and `yScale` / `xScale` from data space to canvas coordinates.
+[<RequireQualifiedAccess>]
+type private PlotArea =
+    { PlotX1: float
+      PlotW: float
+      BandW: float
+      CentreX: int -> float
+      BoundaryX: int -> float
+      TiltDegrees: float
+      XLabelTexts: string array
+      PlotY0: float
+      PlotY1: float
+      PlotH: float
+      YScale: float -> float
+      XScaleRaw: float -> float
+      XScale: float -> float }
+
+/// Computes `PlotArea`.
+let private plotArea<'Msg>
+    (style: ChartStyle)
+    (spec: ChartSpec<'Msg>)
+    (data: SeriesData)
+    (valueAxis: ValueAxis)
+    (categoryAxis: CategoryAxis)
+    (frame: Frame)
+    (legendLayout: LegendLayout)
+    : PlotArea =
+    let categories = data.Categories
+    let n = data.N
+    let niceLo = valueAxis.NiceLo
+    let niceHi = valueAxis.NiceHi
+    let isScatter = categoryAxis.IsScatter
+    let isTemporal = categoryAxis.IsTemporal
+    let xNiceLo = categoryAxis.XNiceLo
+    let xNiceHi = categoryAxis.XNiceHi
+    let xTicks = categoryAxis.XTicks
+    let xTickText = categoryAxis.XTickText
+    let tickSize = frame.TickSize
+    let lineHeight = frame.LineHeight
+    let widestOf = frame.WidestOf
+    let marginTop = frame.MarginTop
+    let plotX0 = frame.PlotX0
+    let legendColumnW = legendLayout.LegendColumnW
+    let legendBandH = legendLayout.LegendBandH
 
     // Phase 880 — a `Right` legend takes its column off the plot, not off the
     // right margin: the margin stays the clearance between the legend's widest
@@ -2956,6 +3186,73 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
         plotX0 + (v - xNiceLo) / (xNiceHi - xNiceLo) * plotW
 
     let xScale (v: float) : float = r2 (xScaleRaw v)
+
+    { PlotX1 = plotX1
+      PlotW = plotW
+      BandW = bandW
+      CentreX = centreX
+      BoundaryX = boundaryX
+      TiltDegrees = tiltDegrees
+      XLabelTexts = xLabelTexts
+      PlotY0 = plotY0
+      PlotY1 = plotY1
+      PlotH = plotH
+      YScale = yScale
+      XScaleRaw = xScaleRaw
+      XScale = xScale }
+
+/// The axis chrome: axis lines, gridlines, the zero line, tick marks, tick labels on both axes, and
+/// the axis titles with the display-unit slot.
+[<RequireQualifiedAccess>]
+type private AxisChrome =
+    { Axes: Shape list
+      Gridlines: Shape list
+      XGridlines: Shape list
+      ZeroLine: Shape list
+      TickMarks: Shape list
+      YTickLabels: Shape list
+      XLabels: Shape list
+      BoundText: float -> float -> TextSource -> TextSource
+      AxisTitles: Shape list }
+
+/// Computes `AxisChrome`.
+let private axisChrome<'Msg>
+    (style: ChartStyle)
+    (spec: ChartSpec<'Msg>)
+    (data: SeriesData)
+    (valueAxis: ValueAxis)
+    (categoryAxis: CategoryAxis)
+    (frame: Frame)
+    (legendLayout: LegendLayout)
+    (plot: PlotArea)
+    : AxisChrome =
+    let n = data.N
+    let niceLo = valueAxis.NiceLo
+    let niceHi = valueAxis.NiceHi
+    let ticks = valueAxis.Ticks
+    let yDisplayUnit = valueAxis.YDisplayUnit
+    let isScatter = categoryAxis.IsScatter
+    let isTemporal = categoryAxis.IsTemporal
+    let isContinuousX = categoryAxis.IsContinuousX
+    let xTicks = categoryAxis.XTicks
+    let xTickText = categoryAxis.XTickText
+    let tickSize = frame.TickSize
+    let xTitle = frame.XTitle
+    let yTitle = frame.YTitle
+    let yTickLabelText = frame.YTickLabelText
+    let plotX0 = frame.PlotX0
+    let legendBandH = legendLayout.LegendBandH
+    let plotX1 = plot.PlotX1
+    let plotW = plot.PlotW
+    let centreX = plot.CentreX
+    let boundaryX = plot.BoundaryX
+    let tiltDegrees = plot.TiltDegrees
+    let xLabelTexts = plot.XLabelTexts
+    let plotY0 = plot.PlotY0
+    let plotY1 = plot.PlotY1
+    let plotH = plot.PlotH
+    let yScale = plot.YScale
+    let xScale = plot.XScale
 
     // ── Axes + gridlines ──
     let axisStyle = styleStrokeInk style style.AxisOpacity style.AxisStrokeWidth
@@ -3202,6 +3499,56 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
 
     let axisTitles = xTitleShapes @ yTitleShapes @ unitSlotShapes
 
+    { Axes = axes
+      Gridlines = gridlines
+      XGridlines = xGridlines
+      ZeroLine = zeroLine
+      TickMarks = tickMarks
+      YTickLabels = yTickLabels
+      XLabels = xLabels
+      BoundText = boundText
+      AxisTitles = axisTitles }
+
+/// The data marks of the cartesian kinds (`Bar`, `Line`, `Area`, `Scatter`), with the slot geometry
+/// the data labels and annotations place against.
+[<RequireQualifiedAccess>]
+type private SeriesMarks =
+    { XCentre: int -> float
+      StackedBarW: float
+      StackedBarX: int -> float
+      GroupedSubW: float
+      GroupedBarW: float
+      GroupedBarX: int -> int -> float
+      SeriesShapes: Shape list }
+
+/// Computes `SeriesMarks`.
+let private seriesMarks<'Msg>
+    (style: ChartStyle)
+    (spec: ChartSpec<'Msg>)
+    (data: SeriesData)
+    (valueAxis: ValueAxis)
+    (categoryAxis: CategoryAxis)
+    (frame: Frame)
+    (plot: PlotArea)
+    : SeriesMarks =
+    let categories = data.Categories
+    let n = data.N
+    let yFields = data.YFields
+    let series = data.Series
+    let m = data.M
+    let stacked = data.Stacked
+    let cumsFor = data.CumsFor
+    let datumTip = valueAxis.DatumTip
+    let seriesTip = valueAxis.SeriesTip
+    let isTemporal = categoryAxis.IsTemporal
+    let xValues = categoryAxis.XValues
+    let plotX0 = frame.PlotX0
+    let bandW = plot.BandW
+    let centreX = plot.CentreX
+    let yScale = plot.YScale
+    let xScaleRaw = plot.XScaleRaw
+    let xScale = plot.XScale
+
     // ── Where a datum sits along x (Phase 882) ───────────────────────────────
     //
     // ONE pair of expressions the series geometry reads, and the band-vs-value
@@ -3438,6 +3785,41 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
                       ) ]
         | _ -> []
 
+    { XCentre = xCentre
+      StackedBarW = stackedBarW
+      StackedBarX = stackedBarX
+      GroupedSubW = groupedSubW
+      GroupedBarW = groupedBarW
+      GroupedBarX = groupedBarX
+      SeriesShapes = seriesShapes }
+
+/// The selective data labels: bar caps and line or area endpoints, each gated on the text fitting.
+let private dataLabels<'Msg>
+    (style: ChartStyle)
+    (spec: ChartSpec<'Msg>)
+    (data: SeriesData)
+    (valueAxis: ValueAxis)
+    (plot: PlotArea)
+    (marks: SeriesMarks)
+    : Shape list =
+    let n = data.N
+    let series = data.Series
+    let m = data.M
+    let stacked = data.Stacked
+    let cumsFor = data.CumsFor
+    let yTickText = valueAxis.YTickText
+    let plotX1 = plot.PlotX1
+    let bandW = plot.BandW
+    let plotY0 = plot.PlotY0
+    let plotY1 = plot.PlotY1
+    let yScale = plot.YScale
+    let xCentre = marks.XCentre
+    let stackedBarW = marks.StackedBarW
+    let stackedBarX = marks.StackedBarX
+    let groupedSubW = marks.GroupedSubW
+    let groupedBarW = marks.GroupedBarW
+    let groupedBarX = marks.GroupedBarX
+
     // ── Data labels (Phase 881) — the values, written selectively ────────────
     //
     // `ChartSpec.DataLabels` has two states and no third: `Off` (the default,
@@ -3611,6 +3993,38 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
             | ChartKind.Line
             | ChartKind.Area -> endpointLabels (fun j -> series.[j].[n - 1])
             | _ -> []
+
+    dataLabelShapes
+
+/// The annotations: reference lines, range bands and event markers, and their collision-resolved labels.
+[<RequireQualifiedAccess>]
+type private AnnotationMarks =
+    { ReferenceLineShapes: Shape list
+      RangeBandShapes: Shape list
+      EventMarkerShapes: Shape list
+      AnnotationLabelShapes: Shape list }
+
+/// Computes `AnnotationMarks`.
+let private annotationMarks
+    (style: ChartStyle)
+    (data: SeriesData)
+    (categoryAxis: CategoryAxis)
+    (frame: Frame)
+    (plot: PlotArea)
+    : AnnotationMarks =
+    let referenceLines = data.ReferenceLines
+    let valueBands = data.ValueBands
+    let isTemporal = categoryAxis.IsTemporal
+    let eventMarkers = categoryAxis.EventMarkers
+    let xBands = categoryAxis.XBands
+    let plotX0 = frame.PlotX0
+    let plotX1 = plot.PlotX1
+    let centreX = plot.CentreX
+    let boundaryX = plot.BoundaryX
+    let plotY0 = plot.PlotY0
+    let plotY1 = plot.PlotY1
+    let yScale = plot.YScale
+    let xScale = plot.XScale
 
     // ── Annotations (Phase 1490 — §4l) — the marks, then the labels ──────────
     //
@@ -3871,6 +4285,42 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
                           (max 0.0 (y1 - y0 - style.AnnotationLabelPadding))
                           t ]
 
+    { ReferenceLineShapes = referenceLineShapes
+      RangeBandShapes = rangeBandShapes
+      EventMarkerShapes = eventMarkerShapes
+      AnnotationLabelShapes = annotationLabelShapes }
+
+/// The legend's shapes at the position `legendLayout` chose, and the title and subtitle.
+[<RequireQualifiedAccess>]
+type private LegendAndTitles =
+    { Legend: Shape list
+      TitleShapes: Shape list
+      SubtitleShapes: Shape list }
+
+/// Computes `LegendAndTitles`.
+let private legendAndTitles<'Msg>
+    (style: ChartStyle)
+    (spec: ChartSpec<'Msg>)
+    (frame: Frame)
+    (legendLayout: LegendLayout)
+    (plot: PlotArea)
+    (axisChrome: AxisChrome)
+    : LegendAndTitles =
+    let tickSize = frame.TickSize
+    let titleSize = frame.TitleSize
+    let subtitleSize = frame.SubtitleSize
+    let subtitleBand = frame.SubtitleBand
+    let plotX0 = frame.PlotX0
+    let legendEntries = legendLayout.LegendEntries
+    let bandEntryWidth = legendLayout.BandEntryWidth
+    let legendPos = legendLayout.LegendPos
+    let legendTexts = legendLayout.LegendTexts
+    let legendBandH = legendLayout.LegendBandH
+    let plotX1 = plot.PlotX1
+    let plotW = plot.PlotW
+    let plotY0 = plot.PlotY0
+    let boundText = axisChrome.BoundText
+
     // ── Legend (Phase 880) — one entry list, four placements ──
     //
     // COLUMN (`Right`, the shipped default): one row per entry, each a swatch
@@ -3999,6 +4449,30 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
               ) ]
         | None -> []
 
+    { Legend = legend
+      TitleShapes = titleShapes
+      SubtitleShapes = subtitleShapes }
+
+/// The `Pie` arm's wedges, deferred: the emitter runs only when the kind is `Pie`.
+let private pieMarks
+    (style: ChartStyle)
+    (data: SeriesData)
+    (valueAxis: ValueAxis)
+    (frame: Frame)
+    (plot: PlotArea)
+    : unit -> Shape list =
+    let categories = data.Categories
+    let n = data.N
+    let yFields = data.YFields
+    let datumTip = valueAxis.DatumTip
+    let plotX0 = frame.PlotX0
+    let pieValues = frame.PieValues
+    let pieRefused = frame.PieRefused
+    let pieFractions = frame.PieFractions
+    let plotX1 = plot.PlotX1
+    let plotY0 = plot.PlotY0
+    let plotY1 = plot.PlotY1
+
     // ── Pie (Phase 638) — the polar arm: no cartesian chrome ──
     //
     // Bounded v1: exactly ONE series (multi-series pie is a grounded-validation
@@ -4099,58 +4573,35 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
 
             segs
 
-    // Pie is polar — no axes/gridlines/tick chrome; every other arm assembles
-    // the shared cartesian chrome in painter's order: gridlines (h then v), the
-    // zero baseline, axes, tick marks, y-tick + x labels, axis titles, series,
-    // legend, chart title. Since Phase 880 BOTH arms take the same `legend` in
-    // the same slot — geometry, then legend, then titles.
-    let shapes =
-        match spec.Kind with
-        | ChartKind.Pie -> pieShapes () @ legend @ titleShapes @ subtitleShapes
-        | _ ->
-            // Phase 1492 (§4l rung 1) — the RANGE BANDS, first of everything:
-            // behind the series, and behind the grid and axes with it. This is
-            // the half of the draw order the first two members could not
-            // exercise, and it is why §4l states the order as data rather than
-            // leaving it to a stylesheet. In inline SVG z-order IS emission
-            // order, so a host that emitted a band after its series would draw
-            // a tinted rectangle OVER the data: a valid document, a different
-            // picture, and nothing in a schema or a validator could see it.
-            //
-            // Before the GRID too, not merely before the series. A gridline is
-            // chrome for reading positions off the plot, and chrome a band
-            // covered would go missing exactly where the band drew attention.
-            rangeBandShapes
-            @ gridlines
-            @ xGridlines
-            @ zeroLine
-            @ axes
-            @ tickMarks
-            @ yTickLabels
-            @ xLabels
-            @ axisTitles
-            @ seriesShapes
-            // Phase 881 — the values sit ON the series, so they are painted
-            // straight after it and before the legend: over their own marks,
-            // under nothing that would obscure them.
-            @ dataLabelShapes
-            // Phase 1490 (§4l rung 3) — reference lines in FRONT of the series.
-            // A threshold drawn under the bars it measures is a threshold the
-            // reader cannot check the bars against.
-            @ referenceLineShapes
-            // Phase 1491 (§4l rung 3, beside the reference lines) — the event
-            // markers, also in FRONT of the series. A shock drawn under the line
-            // it explains is a shock the reader cannot line the data up against.
-            @ eventMarkerShapes
-            @ legend
-            @ titleShapes
-            @ subtitleShapes
-            // Phase 1490 (§4l rung 4) — every annotation label LAST, above all
-            // marks. Last literally, and not merely after the series: the label
-            // is the only part of an annotation that carries authored words, and
-            // a rung that put it under the legend column would suppress it on
-            // exactly the charts that are busiest.
-            @ annotationLabelShapes
+    pieShapes
+
+/// The accessible summary (`<desc>`): the kind, the series, the extent, the peak and the annotations,
+/// in the clause order every host reproduces.
+let private accessibleSummaryOf<'Msg>
+    (spec: ChartSpec<'Msg>)
+    (data: SeriesData)
+    (valueAxis: ValueAxis)
+    (categoryAxis: CategoryAxis)
+    (frame: Frame)
+    : string option =
+    let categories = data.Categories
+    let n = data.N
+    let yFields = data.YFields
+    let series = data.Series
+    let m = data.M
+    let stacked = data.Stacked
+    let referenceLines = data.ReferenceLines
+    let valueBands = data.ValueBands
+    let yDisplayUnit = valueAxis.YDisplayUnit
+    let yTickText = valueAxis.YTickText
+    let isTemporal = categoryAxis.IsTemporal
+    let eventMarkers = categoryAxis.EventMarkers
+    let xBands = categoryAxis.XBands
+    let isContinuousX = categoryAxis.IsContinuousX
+    let xNiceLo = categoryAxis.XNiceLo
+    let xNiceHi = categoryAxis.XNiceHi
+    let xTickText = categoryAxis.XTickText
+    let pieRefused = frame.PieRefused
 
     // ── The accessible summary (Phase 921) ───────────────────────────────────
     //
@@ -4391,6 +4842,89 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
 
             Some(clampText summaryMaxChars (String.concat summaryClauseSeparator clauses + "."))
 
+    accessibleSummary
+
+/// The core lowering: an ALREADY-CAPPED row list to a canonical `DrawingSpec`,
+/// under an explicit `ChartStyle` (Phase 885 — every colour, size, weight and
+/// offset below reads from it). The public entry points (`lower` / `lowerWith` /
+/// `lowerWithStyle` / `tryLower*`) apply the Phase-790 cost caps before this
+/// runs, so it never sees an over-budget input.
+/// Lowered arms: `Bar` (grouped + stacked), `Line`, `Area` (overlaid +
+/// stacked), `Scatter` (linear numeric x), `Pie` (polar, single-series) —
+/// Phases 533 + 637 + 636 + 638. `Heatmap` produces an empty drawing (its
+/// lowering rule lands with its own phase). `Stacked = true` on a kind where
+/// stacking is meaningless (`Line`, `Scatter`, `Pie`) is ignored — the flag
+/// only changes `Bar` / `Area` geometry.
+let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: Row list) : DrawingSpec =
+    let data = seriesData spec rows
+    let valueAxis = valueAxis style spec data
+    let categoryAxis = categoryAxis style spec rows data
+    let frame = frame style spec data valueAxis categoryAxis
+    let legendLayout = legendLayout style spec data frame
+    let plot = plotArea style spec data valueAxis categoryAxis frame legendLayout
+
+    let axisChrome =
+        axisChrome style spec data valueAxis categoryAxis frame legendLayout plot
+
+    let marks = seriesMarks style spec data valueAxis categoryAxis frame plot
+    let dataLabelShapes = dataLabels style spec data valueAxis plot marks
+    let annotations = annotationMarks style data categoryAxis frame plot
+    let titles = legendAndTitles style spec frame legendLayout plot axisChrome
+    let pieShapes = pieMarks style data valueAxis frame plot
+
+    // Pie is polar — no axes/gridlines/tick chrome; every other arm assembles
+    // the shared cartesian chrome in painter's order: gridlines (h then v), the
+    // zero baseline, axes, tick marks, y-tick + x labels, axis titles, series,
+    // legend, chart title. Since Phase 880 BOTH arms take the same `legend` in
+    // the same slot — geometry, then legend, then titles.
+    let shapes =
+        match spec.Kind with
+        | ChartKind.Pie -> pieShapes () @ titles.Legend @ titles.TitleShapes @ titles.SubtitleShapes
+        | _ ->
+            // Phase 1492 (§4l rung 1) — the RANGE BANDS, first of everything:
+            // behind the series, and behind the grid and axes with it. This is
+            // the half of the draw order the first two members could not
+            // exercise, and it is why §4l states the order as data rather than
+            // leaving it to a stylesheet. In inline SVG z-order IS emission
+            // order, so a host that emitted a band after its series would draw
+            // a tinted rectangle OVER the data: a valid document, a different
+            // picture, and nothing in a schema or a validator could see it.
+            //
+            // Before the GRID too, not merely before the series. A gridline is
+            // chrome for reading positions off the plot, and chrome a band
+            // covered would go missing exactly where the band drew attention.
+            annotations.RangeBandShapes
+            @ axisChrome.Gridlines
+            @ axisChrome.XGridlines
+            @ axisChrome.ZeroLine
+            @ axisChrome.Axes
+            @ axisChrome.TickMarks
+            @ axisChrome.YTickLabels
+            @ axisChrome.XLabels
+            @ axisChrome.AxisTitles
+            @ marks.SeriesShapes
+            // Phase 881 — the values sit ON the series, so they are painted
+            // straight after it and before the legend: over their own marks,
+            // under nothing that would obscure them.
+            @ dataLabelShapes
+            // Phase 1490 (§4l rung 3) — reference lines in FRONT of the series.
+            // A threshold drawn under the bars it measures is a threshold the
+            // reader cannot check the bars against.
+            @ annotations.ReferenceLineShapes
+            // Phase 1491 (§4l rung 3, beside the reference lines) — the event
+            // markers, also in FRONT of the series. A shock drawn under the line
+            // it explains is a shock the reader cannot line the data up against.
+            @ annotations.EventMarkerShapes
+            @ titles.Legend
+            @ titles.TitleShapes
+            @ titles.SubtitleShapes
+            // Phase 1490 (§4l rung 4) — every annotation label LAST, above all
+            // marks. Last literally, and not merely after the series: the label
+            // is the only part of an annotation that carries authored words, and
+            // a rung that put it under the legend column would suppress it on
+            // exactly the charts that are busiest.
+            @ annotations.AnnotationLabelShapes
+
     { ViewBox =
         { MinX = 0.0
           MinY = 0.0
@@ -4399,7 +4933,9 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
       Shapes = shapes
       Style = emptyStyle
       Title = spec.Title
-      Description = accessibleSummary |> Option.map TextSource.Literal }
+      Description =
+        accessibleSummaryOf spec data valueAxis categoryAxis frame
+        |> Option.map TextSource.Literal }
 
 /// The drawing a refused lowering produces (Phase 790) under an explicit style:
 /// the style's canvas, no shapes, and the refusal as the a11y `<desc>` — bounded
@@ -4921,16 +5457,21 @@ let tryRecover (svg: string) : Result<RecoveredChart, string> =
 // rather than by two call sites kept in step — the same argument the shared
 // `DrawingSvg` emitter already makes for the drawing itself.
 //
-// The default is PROCESS-GLOBAL and installed by the host, exactly like
+// The PROCESS default is installed by the host, exactly like
 // `CustomHash.installCustomHashFloor` and the renderer's guest seam, and for the
-// same reason: the installing host lives in another assembly, there is one
-// policy per process, and widening the renderer's context record would be a
-// public-API change on every emitter for a knob almost no host sets.
+// same reason: the installing host lives in another assembly and most processes
+// have one policy.
 //
-// It ships `Off`, so every existing inline page render is BYTE-IDENTICAL. An
-// export-oriented path does not flip the global — it calls `renderSvgWith`
-// directly with the scope it wants, which is both explicit and free of the race
-// a flip-around-a-call would have.
+// Since Phase 2068 a RENDER may declare its own scope on its context (the
+// client's `RenderContext.ChartProvenance`, the server's
+// `ServerRenderContext.ChartProvenance`), which is what a host serving more than
+// one policy from one process uses: a per-request install would race on the
+// global. `provenanceInForce` resolves the two, the declaration first.
+//
+// The default ships `Off`, so every existing inline page render is
+// BYTE-IDENTICAL. An export-oriented path does not flip the global — it calls
+// `renderSvgWith` directly with the scope it wants, which is both explicit and
+// free of the race a flip-around-a-call would have.
 
 let mutable private installedProvenance: ChartProvenance = ChartProvenance.Off
 
@@ -4946,6 +5487,13 @@ let currentChartProvenance () : ChartProvenance = installedProvenance
 /// mirroring `CustomHash.clearCustomHashFloor`.
 let clearChartProvenance () : unit =
     installedProvenance <- ChartProvenance.Off
+
+/// The provenance scope a render draws under (Phase 2068): the scope its context
+/// declares, else the process default the host installed.
+let provenanceInForce (declared: ChartProvenance option) : ChartProvenance =
+    match declared with
+    | Some provenance -> provenance
+    | None -> installedProvenance
 
 // ─── The host-installed chart style (Phase 2482) ─────────────────────────────
 //
@@ -5014,21 +5562,30 @@ let currentChartStyle () : ChartStyle = installedStyle
 /// Restore the shipped default style — host teardown and test isolation.
 let clearChartStyle () : unit = installedStyle <- ChartStyle.defaults
 
-/// Lower and emit a chart's SVG under an EXPLICIT provenance scope — the entry
-/// point an export-oriented path calls. The style is the host-installed one
-/// (`currentChartStyle`), exactly as for `renderSvg`: provenance chooses what is
-/// stamped, never what the chart looks like.
+/// Lower and emit a chart's SVG under an explicit provenance scope, with the
+/// LOWERING supplied by the caller (Phase 2068). `lowerUnder` has
+/// `tryLowerWithStyle`'s shape and must answer what it would answer; a caller
+/// passes its own to memoise the lowering (the client renderer's
+/// `ChartLoweringMemo`), which is sound because the lowering reads nothing but
+/// its four arguments. Text resolution and the SVG emission are NOT part of what
+/// is supplied: a title bound to a source that moved re-emits over the same
+/// drawing.
+///
+/// The style is the host-installed one (`currentChartStyle`): provenance chooses
+/// what is stamped, never what the chart looks like.
 ///
 /// A REFUSED lowering (over the cost caps) emits no metadata: the refusal drawing
 /// is not the picture the stamp would be describing, and stamping provenance onto
 /// a chart that was not drawn would be a claim about an artefact that does not
 /// exist.
 ///
-/// Under `Off` the row source is consumed exactly as deep as `lower` reads it;
-/// under either stamping scope the rows are needed twice (stamp and drawing) and
-/// are materialised, but only to the SAME `MaxPointsPerSeries + 1` bound, so an
-/// unbounded source is still never fully materialised (Phase 790).
-let renderSvgWith<'Msg>
+/// Under `Off` the row source is handed to `lowerUnder` as given, so it is read
+/// exactly as deep as the lowering reads it; under either stamping scope the rows
+/// are needed twice (stamp and drawing) and are materialised, but only to the
+/// SAME `MaxPointsPerSeries + 1` bound, so an unbounded source is still never
+/// fully materialised (Phase 790).
+let renderSvgVia<'Msg>
+    (lowerUnder: ChartLimits -> ChartStyle -> ChartSpec<'Msg> -> Row seq -> Result<DrawingSpec, ChartRefusal>)
     (provenance: ChartProvenance)
     (sources: BindingResolver.BindingSources)
     (textOf: TextSource -> string)
@@ -5039,7 +5596,10 @@ let renderSvgWith<'Msg>
     let style = currentChartStyle ()
 
     match provenance with
-    | ChartProvenance.Off -> DrawingSvg.render sources textOf (lowerWithStyle limits style spec rows)
+    | ChartProvenance.Off ->
+        match lowerUnder limits style spec rows with
+        | Ok drawing -> DrawingSvg.render sources textOf drawing
+        | Error refusal -> DrawingSvg.render sources textOf (refusalDrawingWithStyle style spec refusal)
     | _ ->
 
         let capped =
@@ -5048,13 +5608,27 @@ let renderSvgWith<'Msg>
             else
                 rows |> Seq.truncate (limits.MaxPointsPerSeries + 1) |> List.ofSeq
 
-        match tryLowerWithStyle limits style spec capped with
+        match lowerUnder limits style spec capped with
         | Error refusal -> DrawingSvg.render sources textOf (refusalDrawingWithStyle style spec refusal)
         | Ok drawing -> DrawingSvg.renderWithMetadata (provenanceDocument provenance spec capped) sources textOf drawing
 
+/// Lower and emit a chart's SVG under an EXPLICIT provenance scope — the entry
+/// point an export-oriented path calls, and the one a renderer calls with the
+/// scope its context declares (`provenanceInForce`). `renderSvgVia` over the
+/// shipped lowering.
+let renderSvgWith<'Msg>
+    (provenance: ChartProvenance)
+    (sources: BindingResolver.BindingSources)
+    (textOf: TextSource -> string)
+    (spec: ChartSpec<'Msg>)
+    (rows: Row seq)
+    : string =
+    renderSvgVia tryLowerWithStyle provenance sources textOf spec rows
+
 /// Lower and emit a chart's SVG under the host-installed provenance scope and the
-/// host-installed chart style (Phase 2482) — the single entry point BOTH
-/// renderers' `Chart` arms call.
+/// host-installed chart style (Phase 2482). Both renderers' `Chart` arms called
+/// this until Phase 2068; they now call `renderSvgWith` / `renderSvgVia` with the
+/// scope their context declares, which is this when the context declares none.
 let renderSvg<'Msg>
     (sources: BindingResolver.BindingSources)
     (textOf: TextSource -> string)

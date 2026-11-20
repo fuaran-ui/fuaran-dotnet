@@ -29,7 +29,15 @@
     "generative tests inside one suite, which no suite-level switch can drop without also",
     "dropping the ~1,420 cheap corpus assertions beside them. Those carry `Lanes.slow` markers",
     "instead (tests/lanes/Lanes.fs), read at that suite's own Expecto entry point via",
-    "FUARAN_TEST_LANE. A test runs in lane L iff its SUITE admits L and its own MARKER admits L."
+    "FUARAN_TEST_LANE. A test runs in lane L iff its SUITE admits L and its own MARKER admits L.",
+    "",
+    "Two suites run in the gate and are deliberately NOT on this roster, because neither is a .NET",
+    "`dotnet run`: the Fable stage (`tests/fable-laws/fable-check.ps1`) runs them. The law harness",
+    "(`tests/fable-laws/FableLaws.fsproj`) runs on both pipelines and byte-compares them (Phase 1647",
+    "took it off this roster). The client render suite (`tests/fable-render/FableRender.fsproj`,",
+    "Phase 2550) is Fable-only: it is compiled by Fable and run under Node with a DOM, and its inputs",
+    "are that project, its `drive.mjs` and its `package-lock.json`. A claim about client-renderer",
+    "ELEMENTS or a mounted DOM goes there; on .NET the elements do not build."
   ],
   "suites": [
     {

@@ -178,18 +178,29 @@ let private trimPrefix (prefix: string) =
 
 // ─── The emitted fragments ────────────────────────────────────────────────
 
-/// The `<link>` for the reference stylesheet. Emit it in `<head>`.
-let styleLink (prefix: string) : string =
-    sprintf "<link rel=\"stylesheet\" href=\"%s/fuaran-reference.css\">" (htmlEscape (trimPrefix prefix))
+/// The URL a page should embed for `asset` under the mount `prefix`: its
+/// content-hashed path (`Assets.versionedPath`), so a package upgrade changes
+/// the URL and the `immutable` header it is served with can never pin a
+/// returning browser to last year's bytes (Phase 1929). Not HTML-escaped — the
+/// tag helpers below escape it where it lands. Use it for the two enhancement
+/// scripts, which no helper here emits.
+let assetUrl (prefix: string) (asset: Assets.Asset) : string =
+    trimPrefix prefix + "/" + Assets.versionedPath asset
 
-/// The `<script>` for the browser renderer. Emit it before any `mount` call.
+/// The `<link>` for the reference stylesheet, at its content-hashed URL. Emit
+/// it in `<head>`.
+let styleLink (prefix: string) : string =
+    sprintf "<link rel=\"stylesheet\" href=\"%s\">" (htmlEscape (assetUrl prefix Assets.referenceStylesheet))
+
+/// The `<script>` for the browser renderer, at its content-hashed URL. Emit it
+/// before any `mount` call.
 ///
 /// Not `async` and not `defer`: `mount` below is an inline script that calls
 /// the global this tag defines, and both attributes would let the page reach
 /// the call first. A host that wants deferred loading calls `mount` from its
 /// own `DOMContentLoaded` handler.
 let scriptTag (prefix: string) : string =
-    sprintf "<script src=\"%s/fuaran-renderer.js\"></script>" (htmlEscape (trimPrefix prefix))
+    sprintf "<script src=\"%s\"></script>" (htmlEscape (assetUrl prefix Assets.rendererScript))
 
 /// Both asset tags, in the order a document wants them.
 let assetTags (prefix: string) : string =

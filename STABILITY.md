@@ -8189,6 +8189,217 @@ sees it, because every page every host renders changes its spacing. The slot alr
 `--fuaran-space-md` (stacks, grids) or `--fuaran-space-lg` (dashboards), or declares a gap; a host stylesheet that
 zeroed node margins inside its own containers to work around the double spacing can drop that rule.
 
+### What rides this slot — Phase 2752 (scenario fragments: a parameter panel and a two-scenario comparison)
+
+**Class: additive.** Package `Fuaran.UI.Fragments`. Two certified entries join `Stdlib.all`, and both are compositions
+of shipped kinds: no kind, variant or field is added, and no wire byte of an existing fixture moves.
+
+- **`parameter-panel`** (`Stdlib.parameterPanel`, `Stdlib.ParameterPanel`; effect `WritesHost`). It yields one to four
+  controls (`count`). Parameter N has the holes `param-N-name`, `-label`, `-control` (`number` or `choice`), `-min`,
+  `-max`, `-step`, `-default` and `-options`. Each control is a `Filters` chip that writes the filter key named by its
+  parameter, so a pipeline reads it with `TransformParam { Name; From = Binding.Filter name }`. A control whose
+  parameter no pipeline reads draws FUARAN074. A pipeline reading a parameter that no control declares draws FUARAN075.
+- **`scenario-comparison`** (`Stdlib.scenarioComparison`, `Stdlib.ScenarioComparison`; effect `ReadsHost`). One model
+  is defined once in the pipeline (`Transform.Define`) and called once per scenario. The pipeline then derives
+  `difference = scenario-b - scenario-a` and projects the key and the three figures into a `DataGrid`. The grid carries
+  that pipeline expanded (`FnDef.expand`), so no `define` or `invoke` reaches the wire. The entry's
+  model is `base * (1 + growth)` over host-named rows. Its holes are `heading`, `source`, `key`, `measure`,
+  `key-label`, `a-label`, `b-label`, `difference-label`, `a-growth` and `b-growth`.
+- **New members.** The types `ScenarioModel` and `ScenarioSide`. In `Stdlib`: `scenarioComparisonOf`, which builds the
+  comparison over a caller's model and refuses a side that does not bind exactly the model's scenario parameters;
+  `scenarioPipelineDefined`, `scenarioPipeline` (the expansion, refused where the model does not expand) and
+  `scenarioParameters`; `scenarioParamName`; and the column-name literals `ScenarioAColumn`,
+  `ScenarioBColumn` and `DifferenceColumn`. `Stdlib.boundExamples` gains one reference, a panel with a number control
+  and a choice control. `StdlibFragment` is unchanged.
+- **Corpus.** Five node fixtures are new: `frag-stdlib-parameter-panel`, `frag-stdlib-parameter-panel-ref`,
+  `frag-stdlib-parameter-panel-ref-mixed`, `frag-stdlib-scenario-comparison` and
+  `frag-stdlib-scenario-comparison-ref`. They use no new wire vocabulary.
+
+- **`Fuaran.UI.Design` (behaviour).** A fragment card now runs the server preview a component card runs, so a bound
+  grid in a fragment previews as the static table of its rows. A grid whose `Transform` reads a host `Ref` source
+  previews as its columns over no rows, with a caption naming the source, where it rendered a hydration placeholder.
+
+**What a consumer does.** Nothing. A consumer that pins the library's size (the charter's six to ten entries) now
+counts ten.
+
+**Certified by** the `Phase 2752 — a parameter panel and a two-scenario comparison` list in
+`src/Fuaran.UI.Fragments.Tests/StdlibCertificationTests.fs`, and by the library's quantified certification.
+
+### What rides this slot — Phase 2813 (the program adapters adopt `Fuaran.Program` 0.16.0)
+
+**Class: breaking, by dependency** — the draft's own class, so it rides rather than advances it. Packages
+`Fuaran.UI.Program` and `Fuaran.UI.Program.Server` are built against `Fuaran.Program.*` 0.16.0 (from 0.13.0, one hop
+across 0.13.1, 0.14.1, 0.15.0 and 0.16.0), and `Fuaran.UI`, which references `Fuaran.Program.Bounded`, takes the same
+floor. No type or member these packages declare moves; what moves is the program core a consumer takes with them.
+
+**What a consumer of the adapters gains.**
+
+- **The closure share** (Program 0.16.0): `DemandedProjection.Closure` and `ServerDemand.Closure` on every demanded
+  document the adapters project, the client and the server tier counted separately over distinct demands, and carried
+  on the document so a reader takes the figure instead of recounting it. The UI tier certifies Program's
+  `demanded-closure-share` family at the UI witness: the family read through the pinned reader, and a UI program of
+  each of its readable shapes walked to the vector's shares (`ClosureShareTests`; `docs/DECISIONS.md` D36).
+- Through the durable interpreter and the server placement, everything the three releases add for a host: per-event
+  quantity pricing through the calls (0.14.1), an op stage's partial receipt and retryable and standing-condition
+  declarations on resume (0.15.0), and the file journal store's one-live-process hold on a run (0.16.0). None of it is
+  adopted by the adapters themselves; each is the host's to declare.
+
+**What a consumer of the adapters pays.**
+
+- **The demanded document is version 15.** A version-14 document is refused (`UnknownVersion`), and an envelope signed
+  over one reports drift until it is re-signed. Every document carries `closure` after `quantities`, and every server
+  tier the same member after `constraints`; a reader refuses a carried share its lists do not project. The demanded
+  corpus copy in `src/Fuaran.UI.Program.Server.Tests/conformance/` is re-emitted at version 15, byte-identical to the
+  program repository's at `v0.16.0`.
+- **The program proof leg pins `proofs-program-0.16.0.tar`.** Its sha256 is 0.14.1's: neither later release moved a
+  file the asset carries, so the committed extractions stand unchanged.
+- **Program's own breaking entries, for a host that builds on the program core directly.** `ActionWitness` gains
+  `Refusals` (0.14.1; the UI witness declares `RefusalReading.Continues`, its reading before the member existed, so no
+  UI run moves). `ServerEffectRegistry` and `PerformerFacets` gain a member each, `WriteReceipt` carries a `Kind` where
+  it carried `Digest`, and the server tier's quantities are priced per event (0.14.1). `OpPerformance.Performed` and
+  `OpContract.check` run over `OpFailure`, and `JournalPhase` / `JournaledStep` carry a partial and gain a retryable
+  case (0.15.0). A second live process resuming a run the file journal store holds is refused (0.16.0). Program's `STABILITY.md` states each.
+- **Recompile.** A binary built against 0.13.x fails to load beside 0.16.0.
+
+**What did not move.** The UI witness's readings, every UI action's lowering and every refusal token the adapters
+emit; the program wire; the UI wire. The parity, bounded, runtime and server suites run unchanged apart from the
+construction sites the hop forced and the demanded documents moved to version 15.
+
+### What rides this slot — Phase 1814 (the Adaptive Card projection)
+
+**Class: ADDITIVE** on `Fuaran.UI` and `Fuaran.UI.Renderer.Server`; ADDITIVE on the corpus artefact
+`render-fidelity.json`; no wire payload moves. Rides the open draft; it does not advance the number.
+
+| Surface | Change | Who pays |
+|---|---|---|
+| `Fuaran.UI.Renderer.Server.AdaptiveCard` (new module) | `projectWith : CardOptions -> ServerRenderContext -> Node<obj> -> Result<JsonObject * Degradation list, ProjectionRefusal>`, `project` (the default options), `projectStatic`; `CardOptions` (`LiveUrl`, `Limits: HostLimits`) and `defaults` (`HostLimits.card`); `Degradation` / `DegradationRule` / `ruleId`; `ProjectionRefusal` (`HostLimitsExceeded`, `CardPayloadExceeded`) and `describeRefusal`; `toJson`; `escapeFactText`; `SchemaVersion` (`"1.4"`) and `SchemaUrl`. | Nobody - a new module. |
+| `Fuaran.UI.RenderFidelity` | `CardRuling` (`Mapped` / `Structural` / `OpenLive` / `FlattenToText` / `Omitted`), `cardRulings` (one per canonical wire kind, Ordinal), `cardOf`, `cardClassId`, `cardNote`, `cardElements`, `cardClasses`. `FidelityRow` does not change shape: the column is a separate table, as the speech column is. | Nobody. |
+| `render-fidelity.json` | A top-level `adaptiveCardClasses` array and a per-kind `adaptiveCard` object (`class`, `elements`, `note`). Readers take named members; the bundled Python snapshot is re-synced in the same change-set. | Nobody. |
+
+**The target is Adaptive Cards 1.4, the newest version both Teams and Outlook render**, and the
+projection writes neither of the two 1.4 members Outlook does not display (`Action.Submit`,
+`Input.Time`). A tree over the declared `HostLimits` is refused through
+`PreEmitValidate.validateWithLimits` with its Phase 1817 code before any card is built, and the
+card's own bytes are held to the same `MaxSerializedBytes`. Every string reaches the card as a
+literal `TextRun` or an escaped `Fact`; every tree-authored URL passes the context's destination
+policy. `docs/ADAPTIVE-CARD-PROJECTION.md` carries the mapping table, held to `cardRulings` row for
+row by a test.
+
+**Pinned:** every card is validated against the published Adaptive Cards 1.4 JSON Schema (vendored
+with its MIT licence as a test asset of `Fuaran.UI.Renderer.Server.Tests`), every corpus node fixture
+included; `RenderFidelityTests` holds the column against the rows with a negative probe.
+`JsonSchema.Net` gains a second test-only consumer; no shipping package references it.
+
+**Vocabulary charter.** Not engaged: no kind, case or spec field is added. **Escape-hatch inventory —
+CONFIRMED no new hatch:** the projection is a new egress, but every string and URL it writes passes
+the existing `Sanitize` seams (destination policy per egress class, the `Markdown` render's own
+policy check), and the live-surface URL is the host's own declaration, as in the email projection.
+
+### What rides this slot — Phase 1871 (the C# and VB veneers ship their XML documentation file)
+
+**Class: ADDITIVE.** `Fuaran.UI.CSharp` and `Fuaran.UI.VisualBasic` now build and pack their XML documentation file (`GenerateDocumentationFile` is set in each project, because the Phase 1865 property is F#-only), so a consumer's hover shows the doc comments. No signature moves and no wire byte moves. The missing-documentation warning (CS1591) and its malformed-comment family stay errors under `TreatWarningsAsErrors`, with no `NoWarn`: the 101 undocumented public enum members and ten malformed comments the first build named in the C# veneer are fixed. The Visual Basic compiler has no missing-documentation diagnostic; its malformed-comment family (BC42305 among them) is what holds that veneer.
+
+### What rides this slot — Phase 1928 (server-driven sessions survive reconnect and concurrency)
+
+**Class: BREAKING (behaviour), additive in surface.** Packages `Fuaran.UI.ServerDriven`,
+`Fuaran.UI.ServerDriven.AspNetCore` and `Fuaran.UI.ServerDriven.WebSocket`. No signature is removed or changed,
+`ILiveConnection` and `LiveAppConfig` gain nothing, and no wire byte moves (the frame and event bodies are unchanged;
+the tab id travels on the query or a header). It is recorded as breaking because a host can observe three behaviours
+change, listed below. The slot already carries a BREAKING class (Phase 2716), so this rider does not advance the
+number again.
+
+- **Added (core).** `ResyncOutcome` (`Replayed of frames: int` | `Rebaselined`), `LiveConnection.Reattach(lastSeq,
+  attach)` and `LiveConnection.Rebaseline()`. `LiveConnection.Resync` keeps its signature and now runs under the
+  connection's gate, with `Handle`.
+- **Added (SSE backend).** `ConnectionRegistry.ReconnectGrace` (get/set) and the static
+  `ConnectionRegistry.DefaultReconnectGrace` (30 s); the literals `Endpoints.TabQueryParameter` (`tab`) and
+  `Endpoints.TabHeader` (`X-Fuaran-Tab`).
+- **Behaviour 1 — a connection outlives its stream.** A stream that ends detaches its connection, which the registry
+  keeps for `ReconnectGrace` before evicting it. `ConnectionRegistry.Count` therefore counts a dropped connection for
+  up to that long, where it used to fall at once. `Remove`, and an `Add` that replaces a connection, now also end the
+  removed connection's stream and lifetime.
+- **Behaviour 2 — a reconnect re-attaches.** A GET carrying `Last-Event-ID` whose cookie re-verifies and names a
+  registered connection re-attaches to it (replay, or one full-document re-baseline) instead of minting a fresh
+  session. A reconnect that cannot re-attach still gets a fresh session, now re-baselined. A stream naming a tab keeps
+  the id its cookie already carries instead of minting one.
+- **Behaviour 3 — the effect runner's lifetime.** On the SSE backend an awaited-effect runner (Phase 2170) is bound to
+  the connection's lifetime (ended at eviction), not to the first request's abort token. On the WebSocket backend both
+  loops now end together and are awaited.
+- **The shipped shim.** `content/fuaran-live-patch.js` sends a per-page-load tab id on the stream and on every event.
+
+**Consumer action:** none to keep working. A host that reads `ConnectionRegistry.Count` as "live streams" or relies
+on a stream's end removing its connection at once sets `registry.ReconnectGrace <- TimeSpan.Zero` on the registry
+`mapFuaranLive` returns. A host shipping its own client sends a tab id (`?tab=` on the stream, `X-Fuaran-Tab` on
+events) to give each tab its own stream; without one it keeps the pre-1928 one-stream-per-browser behaviour. See
+`docs/SERVER_DRIVEN.md`, "Reconnection + replay".
+
+---
+
+### What rides this slot — Phase 1929 (`Fuaran.UI.Renderer.Web` serves its assets at content-hashed URLs)
+
+**Class: ADDITIVE (surface), with a visible change to the snippet's emitted URLs.** Package `Fuaran.UI.Renderer.Web`.
+No signature is removed or changed and no wire byte moves. The slot already carries a BREAKING class (Phase 2716), so
+this rider does not advance the number.
+
+- **Added surface.** `Assets.contentHash` (the first eight lowercase hex digits of an asset's SHA-256, the digest its
+  ETag is already cut from), `Assets.fingerprintedPath`, `Assets.embeddedHash`, `Assets.versionedPath`, and
+  `Snippet.assetUrl`.
+- **New routes.** `MapFuaranRenderer` serves each immutable asset (the bundle, the reference stylesheet and the two
+  enhancement scripts) a second time, at `<name>.<hash8>.<ext>` (for example `fuaran-renderer.<hash8>.js`), with
+  `public, max-age=31536000, immutable`. A hashed path that carries a different build's hash gets the current bytes as
+  `no-cache`, and a name that is not a hash gets `404`. `fingerprint.json` has no hashed path.
+- **Changed behaviour.** The plain paths (`fuaran-renderer.js`, `fuaran-reference.css`, the two enhancement scripts)
+  stay served, now with `no-cache` and the strong ETag in place of `immutable`, so a browser revalidates them on each
+  load. `Snippet.styleLink`, `scriptTag` and `assetTags` keep their signatures and now emit the hashed URL, so every
+  page that uses them changes its markup. `Asset.Immutable` keeps its name; it now means "also served at a
+  content-hashed path, cached immutably there".
+
+**Consumer action:** none for pages that use the snippet helpers: they get the hashed URL. A page that wrote a plain
+path by hand keeps working and revalidates on each load. To skip that round trip, embed
+`Snippet.assetUrl prefix asset` instead. See `docs/EMBEDDED-RENDERER.md` §5.
+
+### What rides this slot — Phase 2068 (chart lowering is staged and memoised; a render declares its provenance scope)
+
+**Class: BREAKING (source), of the class the slot already carries.** Packages `Fuaran.UI.Charts`,
+`Fuaran.UI.Renderer.Core`, `Fuaran.UI.Renderer` and `Fuaran.UI.Renderer.Server`. No wire byte moves and no lowered
+drawing moves: every `chart-lowering` golden is byte-unchanged, so no other host's gate reads a difference.
+
+**What changed.**
+
+- **The lowering is staged** (`Fuaran.UI.Charts`, private members only). The one function that lowered a chart is
+  now a pipeline of private stage functions, each returning one typed record: `seriesData`, `valueAxis`,
+  `categoryAxis`, `frame`, `legendLayout`, `plotArea`, `axisChrome`, `seriesMarks`, `dataLabels`, `annotationMarks`,
+  `legendAndTitles`, `pieMarks` and `accessibleSummaryOf`. No public signature of the lowering moves
+  (`lower` / `lowerWith` / `lowerWithStyle` / `tryLower*` answer what they answered).
+- **The client renderer memoises the lowering** (`Fuaran.UI.Renderer`, additive: `Render.ChartLoweringMemo`). A
+  re-render that hands a `Chart` the same spec value, the same row source and the same installed style serves the
+  drawing it lowered last time. The memo holds one entry per spec value, weakly. A row source is held by identity
+  when it is an F# list, by its identity and each row's when it is an array or `ResizeArray`, and is never memoised
+  when it is any other sequence. Text resolution and SVG emission still run on every render, so a title bound to a
+  source that moved is re-emitted.
+- **`Charts.renderSvgVia`** (additive) is `renderSvgWith` with the lowering supplied by the caller; `renderSvgWith`
+  is now that function over `tryLowerWithStyle`. **`Charts.provenanceInForce`** (additive) resolves a render's
+  declared provenance scope against the process default.
+- **A render declares its chart-provenance scope on its context.** `RenderContext<'Msg>` (client) and
+  `ServerRenderContext` each gain `ChartProvenance: ChartProvenance option`; `None`, the default every constructor
+  sets, is the process default `installChartProvenance` installs, which is unchanged and still ships `Off`.
+  `Render.renderWithChartProvenance` (server, additive) renders under a declared scope. Both renderers' `Chart`
+  arms now call `renderSvgWith` / `renderSvgVia` with the scope in force; `Charts.renderSvg` stays, and is what
+  they call when no scope is declared.
+- **`ElementPlan.VisPlan.chart`'s `svg` callback takes the row source as `Row seq`** (was `Row list`), handed over
+  as it resolved. The client no longer lists a chart's rows before the lowering reads them, so an unbounded source
+  is read only to the point cap, on the client as on the server.
+
+**What breaks.** A full record literal of `RenderContext<'Msg>` or `ServerRenderContext` (build one with
+`RenderContext.create` / the `mkContext*` functions and adjust it with `with`). A caller of
+`ElementPlan.VisPlan.chart` that passes a function over `Row list`.
+
+**Behaviour to know.** A host that writes new cell values into a row source in place, keeping the same row values
+(for example mutating an object a cell holds), is not seen by the memo; rows are immutable maps, so replacing a row
+is seen. A host that replaces its data, or its tree, per dispatch gets exactly the lowering it got before.
+
+**Consumer action: none**, unless one of the two source breaks above applies.
+
 ## 0.104.0 (RELEASED — tagged v0.104.0 at cc477007, 2026-11-11) — the slot opened after v0.103.0 was released; advanced from 0.103.1 on 2026-11-10 by Phase 2640, whose change is breaking
 
 _`v0.103.0` is TAGGED (2026-11-09, at `1b783c61`), so nothing may ride it: Phase 2639 opened the next slot at the

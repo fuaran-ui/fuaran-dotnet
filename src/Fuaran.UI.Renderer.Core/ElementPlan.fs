@@ -2640,8 +2640,8 @@ module VisPlan =
             (Content.Children(items 1 spec.Items))
 
     /// A chart whose kind is lowered and whose rows resolved: the shared
-    /// Drawing SVG (`Charts.renderSvg` is called by the renderer, which owns
-    /// the text resolver) in a container the client delegates point clicks
+    /// Drawing SVG (the renderer calls `Charts`, since it owns the text
+    /// resolver and the provenance scope) in a container the client delegates point clicks
     /// from (`Attach.ChartPointClick`).
     let loweredChart (svg: string) : Plan<'E> =
         Plan.element "div" [ Prop.Behaviour(Attach.ChartPointClick, "") ] (Content.InnerHtml svg)
@@ -2901,14 +2901,15 @@ module VisPlan =
                       (sprintf "[Chart: %d rows — hydrates client-side]" rowCount) ])
 
     /// A `Chart`: its state slots, else — when the kind is `lowered` (`Charts.isLowered`) — the Drawing SVG
-    /// (`svg` is the renderer's `Charts.renderSvg`, the one entry point both tiers call),
+    /// (`svg` is the renderer's call into `Charts`; it is handed the row source as it resolved, unlisted, so a
+    /// renderer can key a memo on it and an unbounded source is read only as deep as the lowering reads),
     /// else the placeholder.
     let chart
         (pc: PlanContext<'Msg, 'E>)
         (state: StateBehaviour<'Msg> option)
         (spec: ChartSpec<'Msg>)
         (lowered: bool)
-        (svg: ChartSpec<'Msg> -> Row list -> string)
+        (svg: ChartSpec<'Msg> -> Row seq -> string)
         : Plan<'E> =
         // Phase 2209 — the rows and the schema they were read from come from ONE
         // evaluation; an axis title the tree leaves absent is filled from its
@@ -2921,7 +2922,7 @@ module VisPlan =
         | None ->
             match resolution with
             | BindingResolver.Resolved rows when lowered ->
-                loweredChart (svg (BindingResolver.FieldDisplay.withAxisTitles fields spec) (List.ofSeq rows))
+                loweredChart (svg (BindingResolver.FieldDisplay.withAxisTitles fields spec) rows)
             | BindingResolver.Resolved rows -> chartPlaceholder pc.Sources spec (Seq.length rows)
             | _ -> chartPlaceholder pc.Sources spec 0
 
