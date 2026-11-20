@@ -10,9 +10,10 @@ open Fuaran.UI.Types
 //  A curated set of `FragmentDecl`s for the composite shapes consumer apps
 //  keep re-deriving: a labelled metric row, a KPI strip, a filter bar, a
 //  confirm/cancel pair, an empty-state panel, a section header, a metric card,
-//  a loading placeholder. Each declares TYPED HOLES over bounded value-spaces
-//  and a two-axis EFFECT CLASS, and each is certified valid-for-all-bindings by
-//  the verification floor in `Fuaran.UI.Validator.RecipeCertification`.
+//  a loading placeholder, a parameter panel and a two-scenario comparison.
+//  Each declares TYPED HOLES over bounded value-spaces and a two-axis EFFECT
+//  CLASS, and each is certified valid-for-all-bindings by the verification
+//  floor in `Fuaran.UI.Validator.RecipeCertification`.
 //
 //  WHAT THIS LIBRARY IS NOT — read `README.md` before adding to it. Fragments
 //  are application-space vocabulary: reusable composition for consumer apps,
@@ -65,6 +66,33 @@ type StdlibFragment<'Msg> =
         /// A representative applied reference, binding every required hole.
         Example: Node<'Msg>
     }
+
+/// The model a scenario comparison runs twice (Phase 2752): ONE function the
+/// comparison's pipeline defines (`Transform.Define`), over the rows of `Source`.
+///
+/// The function's parameters split in two. Those named in `Columns` read a
+/// column of each row; every other parameter is a SCENARIO parameter, which each
+/// scenario binds to a value of its own. The comparison calls the function once
+/// per scenario, so both scenarios run the same model and differ only in their
+/// parameter values.
+type ScenarioModel =
+    {
+        /// The rows: inline (`Embedded`) or a name the host resolves (`Ref`).
+        Source: Fuaran.Core.DataSource
+        /// The column naming each row — the grid's row key and its first column.
+        Key: string
+        /// The per-row model. Its body reads its parameters through `Arg`.
+        Model: Fuaran.Compute.FnDef
+        /// `(function parameter, source column)` — the parameters a row feeds.
+        Columns: (string * string) list
+    }
+
+/// One scenario of a comparison (Phase 2752): its column heading, and where it
+/// reads each scenario parameter of the model — a literal, a hole's state slot,
+/// or a `Binding.Filter` a `parameter-panel` control writes.
+type ScenarioSide =
+    { Label: string
+      Parameters: (string * Binding<JVal>) list }
 
 module Stdlib =
 
@@ -781,6 +809,480 @@ module Stdlib =
           Example = reference LoadingPlaceholder [ "rows", FragmentArg.Int 4 ] }
 
     // ════════════════════════════════════════════════════════════════════════
+    //  9. parameter-panel — the controls that set a pipeline's parameters.
+    // ════════════════════════════════════════════════════════════════════════
+
+    [<Literal>]
+    let ParameterPanel = "parameter-panel"
+
+    /// The most parameters a panel carries — the `count` hole's upper bound.
+    [<Literal>]
+    let private PanelMaxParameters = 4
+
+    // Phase 2752. A pipeline reads named parameters, and a `TransformParam` binds
+    // each one to a source. This panel is the control side of that: parameter
+    // `<name>` is a filter chip writing host filter key `<name>`, and a pipeline
+    // reads it with `{ Name = "<name>"; From = Binding.Filter("<name>", …) }`.
+    //
+    // A FILTER key rather than a free state key, deliberately. A chip declares its
+    // name in the tree, so pre-emit validation can hold the panel and its readers
+    // to each other: a control naming a parameter no pipeline reads is FUARAN074
+    // (a decorative filter), and a pipeline reading a parameter no control
+    // declares is FUARAN075. A state key carries no declaration and no such check.
+    //
+    // A parameter is a number (a `RangedNumber` over `min`..`max` in steps of
+    // `step`, starting at `default`) or a choice (options in the filter-bar's
+    // `value=Label|…` grammar). Every binding materialises: bounds that arrive in
+    // the wrong order are swapped, a default outside them is clamped, a blank
+    // name falls back to `param-N`, and a name already taken drops the later
+    // control rather than emit two writers of one key.
+
+    let private panelControlTokens = [ "number"; "choice" ]
+
+    let private panelHoles: HoleDecl list =
+        [ HoleDecl.Value("heading", HoleValueSpace.StringLen(1, 40), Some(Scalar.Str "Parameters"))
+          HoleDecl.Repeat("count", HoleValueSpace.IntRange(1, PanelMaxParameters)) ]
+        @ [ for k in 1..PanelMaxParameters do
+                HoleDecl.Value(
+                    sprintf "param-%d-name" k,
+                    HoleValueSpace.StringLen(1, 32),
+                    Some(Scalar.Str(sprintf "param-%d" k))
+                )
+
+                HoleDecl.Value(
+                    sprintf "param-%d-label" k,
+                    HoleValueSpace.StringLen(1, 40),
+                    Some(Scalar.Str(sprintf "Parameter %d" k))
+                )
+
+                HoleDecl.Value(
+                    sprintf "param-%d-control" k,
+                    HoleValueSpace.Enum panelControlTokens,
+                    Some(Scalar.Str "number")
+                )
+
+                HoleDecl.Value(
+                    sprintf "param-%d-min" k,
+                    HoleValueSpace.FloatRange(-1_000_000.0, 1_000_000.0),
+                    Some(Scalar.Float 0.0)
+                )
+
+                HoleDecl.Value(
+                    sprintf "param-%d-max" k,
+                    HoleValueSpace.FloatRange(-1_000_000.0, 1_000_000.0),
+                    Some(Scalar.Float 100.0)
+                )
+
+                HoleDecl.Value(
+                    sprintf "param-%d-step" k,
+                    HoleValueSpace.FloatRange(0.0001, 1_000_000.0),
+                    Some(Scalar.Float 1.0)
+                )
+
+                HoleDecl.Value(
+                    sprintf "param-%d-default" k,
+                    HoleValueSpace.FloatRange(-1_000_000.0, 1_000_000.0),
+                    Some(Scalar.Float 0.0)
+                )
+
+                HoleDecl.Value(sprintf "param-%d-options" k, HoleValueSpace.StringLen(1, 240), Some(Scalar.Str "=All")) ]
+
+    /// One numeric parameter control: a `RangedNumber` chip writing filter key
+    /// `name`, its bounds put in order and its starting value clamped into them.
+    let private numberControl<'Msg>
+        (name: string)
+        (label: TextSource)
+        (lo: float)
+        (hi: float)
+        (step: float)
+        (start: float)
+        : FilterSpec<'Msg> =
+        let lo, hi = min lo hi, max lo hi
+
+        { Name = name
+          Label = label
+          Kind =
+            FormFieldKind.RangedNumber(
+                Some(Binding.Filter(name, Some(JFloat(start |> max lo |> min hi)))),
+                Option.None,
+                Some lo,
+                Some hi,
+                Some step
+            ) }
+
+    let private panelTree<'Msg> (heading: TextSource) (controls: FilterSpec<'Msg> list) : Node<'Msg> =
+        Fuaran.stack
+            "parameter-panel"
+            { Defaults.stack with
+                Children =
+                    [ Fuaran.heading
+                          "parameter-panel-heading"
+                          { Defaults.heading with
+                              Level = 3
+                              Text = heading
+                              Variant = HeadingVariant.Eyebrow }
+                      Fuaran.filters "parameter-panel-controls" controls ] }
+
+    let private panelMaterialize<'Msg> : Map<string, obj> -> Node<'Msg> =
+        fun b ->
+            let control k =
+                let hole (field: string) = sprintf "param-%d-%s" k field
+
+                let name =
+                    match readStr (sprintf "param-%d" k) (hole "name") b with
+                    | n when System.String.IsNullOrWhiteSpace n -> sprintf "param-%d" k
+                    | n -> n
+
+                let label = TextSource.Literal(readStr (sprintf "Parameter %d" k) (hole "label") b)
+
+                if readStr "number" (hole "control") b = "choice" then
+                    choiceChip name label (Binding.Static(Some(parseFilterOptions (readStr "=All" (hole "options") b))))
+                else
+                    numberControl
+                        name
+                        label
+                        (readNum 0.0 (hole "min") b)
+                        (readNum 100.0 (hole "max") b)
+                        (readNum 1.0 (hole "step") b)
+                        (readNum 0.0 (hole "default") b)
+
+            let controls =
+                [ for k in 1 .. min (readCount 1 "count" b) PanelMaxParameters -> control k ]
+                |> List.distinctBy (fun c -> c.Name)
+
+            panelTree (TextSource.Literal(readStr "Parameters" "heading" b)) controls
+
+    let parameterPanel<'Msg> : StdlibFragment<'Msg> =
+        { Name = ParameterPanel
+          Summary =
+            "One to four controls, each writing the filter key a pipeline's parameter of the same name reads: a bounded number or a choice."
+          Decl =
+            decl
+                ParameterPanel
+                (panelTree
+                    (holeText "heading" "Parameters")
+                    [ numberControl "param-1" (holeText "param-1-label" "Parameter 1") 0.0 100.0 1.0 0.0 ])
+                panelHoles
+                // The controls WRITE host filter state — structure-only
+                // certification, as for the other effecting fragments.
+                writesHost
+          Materialize = panelMaterialize
+          Example =
+            reference
+                ParameterPanel
+                [ "heading", FragmentArg.Str "Assumptions"
+                  "count", FragmentArg.Int 1
+                  "param-1-name", FragmentArg.Str "growth"
+                  "param-1-label", FragmentArg.Str "Annual growth"
+                  "param-1-min", FragmentArg.Float -0.1
+                  "param-1-max", FragmentArg.Float 0.2
+                  "param-1-step", FragmentArg.Float 0.01
+                  "param-1-default", FragmentArg.Float 0.05 ] }
+
+    // ════════════════════════════════════════════════════════════════════════
+    //  10. scenario-comparison — one model, two parameter sets, the difference.
+    // ════════════════════════════════════════════════════════════════════════
+
+    [<Literal>]
+    let ScenarioComparison = "scenario-comparison"
+
+    /// The comparison's output columns. A source column of the same name is
+    /// replaced by the derivation, so a model's rows should not carry one.
+    [<Literal>]
+    let ScenarioAColumn = "scenario-a"
+
+    [<Literal>]
+    let ScenarioBColumn = "scenario-b"
+
+    [<Literal>]
+    let DifferenceColumn = "difference"
+
+    /// The name scenario `side` (`"a"` or `"b"`) reads model parameter `p` under
+    /// in the comparison's pipeline — its `TransformParam` name.
+    let scenarioParamName (side: string) (p: string) : string = side + "." + p
+
+    /// The model's SCENARIO parameters: its function's parameters that no column
+    /// feeds, in declaration order.
+    let scenarioParameters (model: ScenarioModel) : string list =
+        model.Model.Params
+        |> List.map (fun p -> p.Name)
+        |> List.filter (fun p -> not (List.exists (fun (q, _) -> q = p) model.Columns))
+
+    /// The comparison's pipeline as DEFINED, and the whole of its arithmetic:
+    /// define the model once, call it once per scenario (a row's columns for the
+    /// column parameters, the scenario's own `Param`s for the rest), derive the
+    /// difference `scenario-b - scenario-a`, and keep the key and the three
+    /// figures. The fragment computes nothing; the pipeline does.
+    let scenarioPipelineDefined (model: ScenarioModel) : Fuaran.Compute.Transform list =
+        let call side =
+            Fuaran.Compute.Call(
+                model.Model.Name,
+                model.Model.Params
+                |> List.map (fun p ->
+                    match List.tryFind (fun (q, _) -> q = p.Name) model.Columns with
+                    | Some(_, column) -> Fuaran.Compute.Col column
+                    | Option.None -> Fuaran.Compute.ColExpr.Param(scenarioParamName side p.Name))
+            )
+
+        [ Fuaran.Compute.Define model.Model
+          Fuaran.Compute.Derive(ScenarioAColumn, call "a")
+          Fuaran.Compute.Derive(ScenarioBColumn, call "b")
+          Fuaran.Compute.Derive(
+              DifferenceColumn,
+              Fuaran.Compute.Binary(
+                  Fuaran.Compute.Sub,
+                  Fuaran.Compute.Col ScenarioBColumn,
+                  Fuaran.Compute.Col ScenarioAColumn
+              )
+          )
+          Fuaran.Compute.Project(
+              [ model.Key; ScenarioAColumn; ScenarioBColumn; DifferenceColumn ]
+              |> List.map (fun c -> c, c)
+          ) ]
+
+    /// The pipeline the comparison EMITS: `scenarioPipelineDefined` with each call
+    /// replaced by the model's body (`FnDef.expand`, the expansion every
+    /// evaluator performs first), so a host whose codec does not carry function
+    /// definitions still reads it. The two scenario derivations are the one model
+    /// over two parameter sets; the expansion only writes it out twice. Refused
+    /// where the model is (a call the expansion refuses, a body over its bound).
+    let scenarioPipeline (model: ScenarioModel) : Result<Fuaran.Compute.Transform list, string> =
+        Fuaran.Compute.FnDef.expand (scenarioPipelineDefined model)
+        |> Result.mapError (sprintf "the model '%s' does not expand: %A" model.Model.Name)
+
+    /// The labels a comparison shows: its heading, then the key, scenario A,
+    /// scenario B and difference column headings.
+    type private ComparisonLabels =
+        { Heading: TextSource
+          Key: string
+          A: string
+          B: string
+          Difference: string }
+
+    let private figureColumn<'Msg> (label: string) (field: string) : ColumnErased<'Msg> =
+        { Defaults.columnErased with
+            Label = label
+            Field = Some field
+            Kind = CellKindErased.Numeric
+            Format = CellFormat.Number(Some 2, None) }
+
+    /// The comparison tree — total: it assumes `sides` binds every scenario
+    /// parameter, which `scenarioComparisonOf` checks and the stdlib entry's
+    /// holes guarantee.
+    let private comparisonTree<'Msg>
+        (id: string)
+        (labels: ComparisonLabels)
+        (model: ScenarioModel)
+        (pipeline: Fuaran.Compute.Transform list)
+        (a: ScenarioSide)
+        (b: ScenarioSide)
+        : Node<'Msg> =
+        let parameters (side: string) (s: ScenarioSide) : TransformParam list =
+            [ for p in scenarioParameters model do
+                  match List.tryFind (fun (q, _) -> q = p) s.Parameters with
+                  | Some(_, from) ->
+                      ({ Name = scenarioParamName side p
+                         From = from }
+                      : TransformParam)
+                  | Option.None -> () ]
+
+        let ps = parameters "a" a @ parameters "b" b
+
+        let grid: DataGridSpec<'Msg> =
+            { Defaults.dataGrid with
+                Source =
+                    Binding.Transform(
+                        TransformSource.Data model.Source,
+                        pipeline,
+                        (if List.isEmpty ps then Option.None else Some ps)
+                    )
+                RowKeyField = Some model.Key
+                Columns =
+                    [ { Defaults.columnErased with
+                          Label = labels.Key
+                          Field = Some model.Key }
+                      figureColumn labels.A ScenarioAColumn
+                      figureColumn labels.B ScenarioBColumn
+                      figureColumn labels.Difference DifferenceColumn ] }
+
+        Fuaran.stack
+            id
+            { Defaults.stack with
+                Children =
+                    [ Fuaran.heading
+                          (id + "-heading")
+                          { Defaults.heading with
+                              Level = 3
+                              Text = labels.Heading }
+                      { Fuaran.stack (id + "-grid") Defaults.stack with
+                          Kind = NodeKind.DataGrid grid
+                          Accessibility = Defaults.Accessibility.grid } ] }
+
+    /// A scenario comparison over a caller's own model, as a plain subtree rooted
+    /// at `id` — the F# authoring form of the `scenario-comparison` fragment, for
+    /// a model the stdlib entry does not carry. Refused when a side leaves a
+    /// scenario parameter unbound, binds a name the model does not have, the
+    /// model names a column parameter it does not declare, or its function does
+    /// not expand.
+    let scenarioComparisonOf<'Msg>
+        (id: string)
+        (heading: string)
+        (model: ScenarioModel)
+        (a: ScenarioSide)
+        (b: ScenarioSide)
+        : Result<Node<'Msg>, string> =
+        let declared = model.Model.Params |> List.map (fun p -> p.Name)
+        let wanted = scenarioParameters model
+
+        let sideError (s: ScenarioSide) =
+            let bound = s.Parameters |> List.map fst
+
+            match
+                List.tryFind (fun p -> not (List.contains p bound)) wanted,
+                List.tryFind (fun p -> not (List.contains p wanted)) bound
+            with
+            | Some p, _ -> Some(sprintf "scenario '%s' leaves parameter '%s' unbound" s.Label p)
+            | _, Some p ->
+                Some(sprintf "scenario '%s' binds '%s', which is not a scenario parameter of the model" s.Label p)
+            | Option.None, Option.None -> Option.None
+
+        match
+            model.Columns |> List.tryFind (fun (p, _) -> not (List.contains p declared)), sideError a, sideError b
+        with
+        | Some(p, _), _, _ -> Error(sprintf "the model has no parameter '%s' for a column to feed" p)
+        | _, Some e, _
+        | _, _, Some e -> Error e
+        | Option.None, Option.None, Option.None ->
+            scenarioPipeline model
+            |> Result.map (fun pipeline ->
+                comparisonTree
+                    id
+                    { Heading = TextSource.Literal heading
+                      Key = model.Key
+                      A = a.Label
+                      B = b.Label
+                      Difference = "Difference" }
+                    model
+                    pipeline
+                    a
+                    b)
+
+    // The stdlib entry: the comparison over one general model a host can point at
+    // its own rows — a measure projected under a growth rate,
+    // `base * (1 + growth)` — with the rows named by the host (`source`), the key
+    // and measure columns as holes, and each scenario's growth a bounded hole.
+
+    let private growthModel (source: string) (key: string) (measure: string) : ScenarioModel =
+        { Source = Fuaran.Core.DataSource.Ref source
+          Key = key
+          Model =
+            { Name = "projection"
+              Params =
+                [ { Name = "base"; Default = Option.None }
+                  { Name = "growth"
+                    Default = Option.None } ]
+              Body =
+                Fuaran.Compute.Binary(
+                    Fuaran.Compute.Mul,
+                    Fuaran.Compute.Arg "base",
+                    Fuaran.Compute.Binary(
+                        Fuaran.Compute.Add,
+                        Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Float 1.0),
+                        Fuaran.Compute.Arg "growth"
+                    )
+                ) }
+          Columns = [ "base", measure ] }
+
+    /// The growth model's comparison. Its expansion cannot be refused: the body is
+    /// two arithmetic nodes and expansion does not read the column names, so the
+    /// defined form below is a total function's unreachable arm, not a fallback
+    /// any binding takes (the suite pins `scenarioPipeline` Ok for this model).
+    let private growthComparison<'Msg>
+        (labels: ComparisonLabels)
+        (model: ScenarioModel)
+        (a: ScenarioSide)
+        (b: ScenarioSide)
+        : Node<'Msg> =
+        let pipeline =
+            match scenarioPipeline model with
+            | Ok pipeline -> pipeline
+            | Error _ -> scenarioPipelineDefined model
+
+        comparisonTree "scenario-comparison" labels model pipeline a b
+
+    let private comparisonHoles: HoleDecl list =
+        [ HoleDecl.Value("heading", HoleValueSpace.StringLen(1, 60), Some(Scalar.Str "Scenarios"))
+          HoleDecl.Value("source", HoleValueSpace.StringLen(1, 64), Some(Scalar.Str "scenario-rows"))
+          HoleDecl.Value("key", HoleValueSpace.StringLen(1, 32), Some(Scalar.Str "item"))
+          HoleDecl.Value("measure", HoleValueSpace.StringLen(1, 32), Some(Scalar.Str "amount"))
+          HoleDecl.Value("key-label", HoleValueSpace.StringLen(1, 40), Some(Scalar.Str "Item"))
+          HoleDecl.Value("a-label", HoleValueSpace.StringLen(1, 40), Some(Scalar.Str "Scenario A"))
+          HoleDecl.Value("b-label", HoleValueSpace.StringLen(1, 40), Some(Scalar.Str "Scenario B"))
+          HoleDecl.Value("difference-label", HoleValueSpace.StringLen(1, 40), Some(Scalar.Str "Difference"))
+          HoleDecl.Value("a-growth", HoleValueSpace.FloatRange(-1.0, 1.0), Some(Scalar.Float 0.0))
+          HoleDecl.Value("b-growth", HoleValueSpace.FloatRange(-1.0, 1.0), Some(Scalar.Float 0.05)) ]
+
+    /// A column-name hole's value, falling back to its default when blank.
+    let private readName (fallback: string) (hole: string) (b: Map<string, obj>) : string =
+        match readStr fallback hole b with
+        | n when System.String.IsNullOrWhiteSpace n -> fallback
+        | n -> n
+
+    let private comparisonMaterialize<'Msg> : Map<string, obj> -> Node<'Msg> =
+        fun b ->
+            // The headings ride `ComparisonLabels`; a side here is its growth.
+            let side (hole: string) (fallback: float) : ScenarioSide =
+                { Label = hole
+                  Parameters = [ "growth", Binding.Static(Some(JFloat(readNum fallback hole b))) ] }
+
+            growthComparison
+                { Heading = TextSource.Literal(readStr "Scenarios" "heading" b)
+                  Key = readStr "Item" "key-label" b
+                  A = readStr "Scenario A" "a-label" b
+                  B = readStr "Scenario B" "b-label" b
+                  Difference = readStr "Difference" "difference-label" b }
+                (growthModel
+                    (readName "scenario-rows" "source" b)
+                    (readName "item" "key" b)
+                    (readName "amount" "measure" b))
+                (side "a-growth" 0.0)
+                (side "b-growth" 0.05)
+
+    let scenarioComparison<'Msg> : StdlibFragment<'Msg> =
+        { Name = ScenarioComparison
+          Summary =
+            "One model run under two parameter sets, side by side with their difference — every figure computed by the pipeline."
+          Decl =
+            decl
+                ScenarioComparison
+                (growthComparison
+                    { Heading = holeText "heading" "Scenarios"
+                      Key = "Item"
+                      A = "Scenario A"
+                      B = "Scenario B"
+                      Difference = "Difference" }
+                    (growthModel "scenario-rows" "item" "amount")
+                    { Label = "Scenario A"
+                      Parameters = [ "growth", Binding.State("a-growth", Some(JFloat 0.0)) ] }
+                    { Label = "Scenario B"
+                      Parameters = [ "growth", Binding.State("b-growth", Some(JFloat 0.05)) ] })
+                comparisonHoles
+                // The rows are the host's (`source` names them).
+                readsHost
+          Materialize = comparisonMaterialize
+          Example =
+            reference
+                ScenarioComparison
+                [ "heading", FragmentArg.Str "Next year's budget"
+                  "source", FragmentArg.Str "budget-lines"
+                  "key", FragmentArg.Str "line"
+                  "measure", FragmentArg.Str "cost"
+                  "a-label", FragmentArg.Str "Flat"
+                  "b-label", FragmentArg.Str "Inflation"
+                  "a-growth", FragmentArg.Float 0.0
+                  "b-growth", FragmentArg.Float 0.03 ] }
+
+    // ════════════════════════════════════════════════════════════════════════
     //  The library.
     // ════════════════════════════════════════════════════════════════════════
 
@@ -794,12 +1296,15 @@ module Stdlib =
           emptyStatePanel
           sectionHeader
           metricCard
-          loadingPlaceholder ]
+          loadingPlaceholder
+          parameterPanel
+          scenarioComparison ]
 
     /// Further representative applications, each binding holes a fragment's
     /// `Example` leaves at their defaults: `(fragment name, what it shows, the
     /// reference)`. Phase 2471 — the kpi-strip's per-figure format, trend and
-    /// polarity holes, and the filter-bar's choice filters. The `Example` of each
+    /// polarity holes, and the filter-bar's choice filters; Phase 2752 — the
+    /// parameter-panel's choice control. The `Example` of each
     /// stays exactly as it was, so these sit beside it rather than replacing it,
     /// and the corpus pins both.
     let boundExamples<'Msg> : (string * string * Node<'Msg>) list =
@@ -830,7 +1335,24 @@ module Stdlib =
                 "choice-1-options", FragmentArg.Str "=All regions|north=North|south=South"
                 "choice-2-label", FragmentArg.Str "Comparison"
                 "choice-2-key", FragmentArg.Str "compare"
-                "choice-2-options", FragmentArg.Str "lw=vs last week|ly=vs last year" ] ]
+                "choice-2-options", FragmentArg.Str "lw=vs last week|ly=vs last year" ]
+          // Phase 2752 — a panel mixing both control kinds.
+          ParameterPanel,
+          "a number and a choice parameter",
+          apply
+              (refIdOf ParameterPanel + "-mixed")
+              ParameterPanel
+              [ "count", FragmentArg.Int 2
+                "param-1-name", FragmentArg.Str "growth"
+                "param-1-label", FragmentArg.Str "Annual growth"
+                "param-1-min", FragmentArg.Float -0.1
+                "param-1-max", FragmentArg.Float 0.2
+                "param-1-step", FragmentArg.Float 0.01
+                "param-1-default", FragmentArg.Float 0.05
+                "param-2-name", FragmentArg.Str "region"
+                "param-2-label", FragmentArg.Str "Region"
+                "param-2-control", FragmentArg.Str "choice"
+                "param-2-options", FragmentArg.Str "=All regions|north=North|south=South" ] ]
 
     /// Look a fragment up by its stable name.
     let tryFind<'Msg> (name: string) : StdlibFragment<'Msg> option =

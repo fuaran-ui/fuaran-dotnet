@@ -31,13 +31,27 @@ uses, for the same reason.
 
 ## What is served
 
-`MapFuaranRenderer(prefix)` maps three `GET` routes under `prefix` (default `/_fuaran`):
+`MapFuaranRenderer(prefix)` serves five assets under `prefix` (default `/_fuaran`):
 
-| Route | What | Cache |
-|---|---|---|
-| `/fuaran-renderer.js` | the standalone renderer — React, the renderer and the canonical decoder in one file, exposing the `FuaranRenderer` global | `immutable`, 1 year, strong content ETag |
-| `/fuaran-reference.css` | the canonical reference stylesheet | `immutable`, 1 year, strong content ETag |
-| `/fingerprint.json` | what the embedded bundle **is** | `no-cache` |
+| Asset | What |
+|---|---|
+| `fuaran-renderer.js` | the standalone renderer — React, the renderer and the canonical decoder in one file, exposing the `FuaranRenderer` global |
+| `fuaran-reference.css` | the canonical reference stylesheet |
+| `fuaran-reference-tables.js` | the table-sort enhancement (progressive) |
+| `fuaran-image-expand.js` | the expandable-image enhancement (progressive) |
+| `fingerprint.json` | what the embedded bundle **is** |
+
+Every asset but the fingerprint answers on two paths:
+
+| Path | Cache |
+|---|---|
+| content-hashed — `/fuaran-renderer.<hash8>.js` | `immutable`, 1 year, strong content ETag |
+| plain — `/fuaran-renderer.js` | `no-cache`, strong content ETag (revalidates; `304` when unchanged) |
+
+**Embed the hashed path.** `Snippet.styleLink` / `scriptTag` / `assetTags` emit it, and
+`Snippet.assetUrl prefix asset` names it for a tag you write yourself. The hash is cut from the
+bytes' SHA-256, so a package upgrade changes the URL; the plain path stays served for pages that
+wrote it by hand. See `docs/EMBEDDED-RENDERER.md` §5 in the repository.
 
 The fingerprint is deliberately uncacheable: it is the drift oracle, and an oracle a proxy may
 answer from last year answers a question about last year. It publishes package and version
@@ -45,7 +59,7 @@ identifiers and a content digest — no host configuration, no request data, not
 trees your app renders.
 
 `MapFuaranRenderer` returns the group's convention builder, so `.RequireAuthorization()`, a CORS
-policy or an output-cache policy applies to all three at once.
+policy or an output-cache policy applies to all of them at once.
 
 ## Choosing a tier
 

@@ -4173,7 +4173,8 @@ let chartLoweringTests =
                   // Phase 790's refusal drawing says why it is empty. That text
                   // is the one thing the reader needs, so the summary must not
                   // displace it — and it cannot, because the summary is
-                  // generated inside `lowerRows`, which a refusal never reaches.
+                  // generated inside the lowering (`accessibleSummaryOf`), which a
+                  // refusal never reaches.
                   let case = cases |> List.find (fun c -> c.Name = "bar-multi")
 
                   let refusal =
@@ -5475,3 +5476,206 @@ let derivedSeriesTests =
                Expect.equal (Charts.seriesFieldsOf spec (derivedRows case)) [ "label"; "revenue" ] "authored wins"
            } ]
          @ fixtureTests)
+
+// ── Phase 2068 — the lowering memo, and the provenance scope a render declares ──
+//
+// The lowering is a pure function of its limits, style, spec and rows, so the
+// client renderer memoises it (`Render.ChartLoweringMemo`) and a re-render that
+// changed none of them lowers nothing. These tests drive the memo the way the
+// renderer's `Chart` arm does — `Charts.renderSvgVia` over `lowerVia` — with a
+// COUNTING lowering, so "lowered zero charts" is a number read off the run
+// rather than an inference from a timing.
+
+/// `Charts.tryLowerWithStyle`, counting each call that reaches it.
+let private countingLowering (count: int ref) limits style (spec: ChartSpec<obj>) (rows: Row seq) =
+    count.Value <- count.Value + 1
+    Charts.tryLowerWithStyle limits style spec rows
+
+/// One chart drawn the way the client arm draws it: the tree's spec and the
+/// resolved row source key the memo, and the same two are lowered.
+let private drawMemoised (count: int ref) (spec: ChartSpec<obj>) (rows: Row seq) : string =
+    Charts.renderSvgVia
+        (Render.ChartLoweringMemo.lowerVia (countingLowering count) spec rows)
+        Charts.ChartProvenance.Off
+        BindingResolver.empty
+        renderTextOf
+        spec
+        rows
+
+/// A lowering's result as comparable text: the drawing's canonical wire JSON, or
+/// the refusal (a `DrawingSpec` carries `TextSource`s, which have no equality).
+let private loweredText (lowered: Result<DrawingSpec, Charts.ChartRefusal>) : string =
+    match lowered with
+    | Ok drawing -> CanonicalJson.encodeNode (Fuaran.drawingSpec "c" drawing: Node<obj>)
+    | Error refusal -> sprintf "%A" refusal
+
+/// The four-chart surface the benchmark re-renders: a fresh spec per call, so
+/// each test owns its memo entries (the table is keyed on the spec value).
+let private fourCharts () : (ChartSpec<obj> * Row seq) list =
+    [ "bar-multi"; "line-multi"; "area-multi"; "bar-stacked" ]
+    |> List.map (fun name ->
+        let case = cases |> List.find (fun c -> c.Name = name)
+        specOf case, Seq.ofList (buildRows case))
+
+[<Tests>]
+let loweringMemoTests =
+    testList
+        "Chart lowering memo (Phase 2068)"
+        [ test "benchmark: a re-render of a four-chart surface with unchanged inputs lowers zero charts" {
+              let renders = 200
+              let charts = fourCharts ()
+
+              // Unmemoised — what every render did before the phase.
+              let direct = ref 0
+
+              let drawDirect (spec: ChartSpec<obj>) (rows: Row seq) =
+                  Charts.renderSvgVia
+                      (countingLowering direct)
+                      Charts.ChartProvenance.Off
+                      BindingResolver.empty
+                      renderTextOf
+                      spec
+                      rows
+
+              let expected = charts |> List.map (fun (spec, rows) -> drawDirect spec rows)
+              direct.Value <- 0
+              let directClock = Diagnostics.Stopwatch.StartNew()
+
+              for _ in 1..renders do
+                  for spec, rows in charts do
+                      drawDirect spec rows |> ignore
+
+              directClock.Stop()
+
+              // Memoised — the first render lowers each chart once.
+              let memoised = ref 0
+              let first = charts |> List.map (fun (spec, rows) -> drawMemoised memoised spec rows)
+              Expect.equal first expected "the memoised path emits the bytes the direct path emits"
+              Expect.equal memoised.Value 4 "the first render lowers each of the four charts once"
+
+              memoised.Value <- 0
+              let memoClock = Diagnostics.Stopwatch.StartNew()
+
+              for _ in 1..renders do
+                  for spec, rows in charts do
+                      drawMemoised memoised spec rows |> ignore
+
+              memoClock.Stop()
+
+              let again = charts |> List.map (fun (spec, rows) -> drawMemoised memoised spec rows)
+              Expect.equal again expected "a memo hit emits the same bytes"
+              Expect.equal direct.Value (4 * renders) "unmemoised, every re-render lowers every chart"
+              Expect.equal memoised.Value 0 "memoised, a re-render with unchanged inputs lowers zero charts"
+
+              printfn
+                  "chart-lowering-memo benchmark: %d re-renders x 4 charts; direct lowerings=%d in %.1f ms (%.3f ms/render); memoised lowerings=%d in %.1f ms (%.3f ms/render)"
+                  renders
+                  direct.Value
+                  directClock.Elapsed.TotalMilliseconds
+                  (directClock.Elapsed.TotalMilliseconds / float renders)
+                  memoised.Value
+                  memoClock.Elapsed.TotalMilliseconds
+                  (memoClock.Elapsed.TotalMilliseconds / float renders)
+          }
+
+          test "a changed row source, style or axis title is a miss, and lowers" {
+              let case = cases |> List.find (fun c -> c.Name = "bar-multi")
+              let spec = specOf case
+              let rows = Seq.ofList (buildRows case)
+              let count = ref 0
+              let limits = Charts.ChartLimits.defaults
+              let lower = Render.ChartLoweringMemo.lowerVia (countingLowering count) spec
+
+              lower rows limits Charts.ChartStyle.defaults spec rows |> ignore
+              lower rows limits Charts.ChartStyle.defaults spec rows |> ignore
+              Expect.equal count.Value 1 "the same four arguments lower once"
+
+              // An equal-content list that is a different value is a different source.
+              let rebuilt = Seq.ofList (buildRows case)
+              lower rebuilt limits Charts.ChartStyle.defaults spec rebuilt |> ignore
+              Expect.equal count.Value 2 "a different row source lowers, whatever it holds"
+
+              let restyled =
+                  { Charts.ChartStyle.defaults with
+                      TargetTickCount = Charts.ChartStyle.defaults.TargetTickCount }
+
+              lower rebuilt limits restyled spec rebuilt |> ignore
+              Expect.equal count.Value 3 "a different style value lowers"
+
+              // The renderer lowers the keyed spec with its absent axis titles filled.
+              let titled =
+                  { spec with
+                      YTitle = Some(TextSource.Literal "Filled from the field") }
+
+              let filled = lower rebuilt limits restyled titled rebuilt
+              Expect.equal count.Value 4 "a different axis title lowers"
+
+              Expect.equal
+                  (loweredText filled)
+                  (loweredText (Charts.tryLowerWithStyle limits restyled titled rebuilt))
+                  "and it is the titled drawing that is served"
+
+              lower rebuilt limits restyled titled rebuilt |> ignore
+              Expect.equal count.Value 4 "and the titled drawing is then a hit"
+          }
+
+          test "a writable row source is held by each row's identity; an unkeyable one is never memoised" {
+              let case = cases |> List.find (fun c -> c.Name = "line-multi")
+              let spec = specOf case
+              let count = ref 0
+              let limits = Charts.ChartLimits.defaults
+              let style = Charts.ChartStyle.defaults
+              let lower = Render.ChartLoweringMemo.lowerVia (countingLowering count) spec
+
+              let indexed = buildRows case |> Array.ofList
+              let source: Row seq = indexed
+              let before = lower source limits style spec source
+              lower source limits style spec source |> ignore
+              Expect.equal count.Value 1 "an array nobody wrote into is a hit"
+
+              // Written in place: the array is the same value and holds different rows.
+              indexed.[0] <- indexed.[indexed.Length - 1]
+              let after = lower source limits style spec source
+              Expect.equal count.Value 2 "an array written into in place lowers"
+
+              Expect.notEqual
+                  (loweredText after)
+                  (loweredText before)
+                  "and the drawing is the one for the rows it holds now"
+
+              // A lazy sequence says nothing about itself short of being read.
+              let lazySource = Seq.delay (fun () -> Seq.ofList (buildRows case))
+              count.Value <- 0
+              lower lazySource limits style spec lazySource |> ignore
+              lower lazySource limits style spec lazySource |> ignore
+              Expect.equal count.Value 2 "an unkeyable source lowers on every render, as before"
+          }
+
+          test "an unbounded row source is read to the cap and refused, never listed" {
+              let case = cases |> List.find (fun c -> c.Name = "bar-single")
+              let spec = specOf case
+              let row = List.head (buildRows case)
+              let unbounded = Seq.initInfinite (fun _ -> row)
+              let count = ref 0
+              let svg = drawMemoised count spec unbounded
+
+              Expect.equal count.Value 1 "the lowering ran and returned"
+              Expect.stringContains svg "<svg" "the refusal drawing is emitted"
+          }
+
+          test "a render's declared provenance scope is the one in force; undeclared, the process default is" {
+              // Read-only on the process default: this suite's other chart tests
+              // render beside it, and an install here would stamp their output.
+              for scope in [ Charts.ChartProvenance.Off; Charts.ChartProvenance.SpecAndData ] do
+                  Expect.equal (Charts.provenanceInForce (Some scope)) scope "a declaration is in force as declared"
+
+              Expect.equal
+                  (Charts.provenanceInForce None)
+                  (Charts.currentChartProvenance ())
+                  "undeclared: the process default"
+
+              let context =
+                  Render.RenderContext.create BindingResolver.empty ignore (Fuaran.divider "provenance-host": Node<obj>)
+
+              Expect.equal context.ChartProvenance None "a context declares no scope unless a host sets one"
+          } ]

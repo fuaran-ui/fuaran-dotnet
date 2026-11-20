@@ -32,6 +32,16 @@
   repository's own sources. The package cache is isolated to the scratch root and the packed ids are
   evicted from it before every restore, so a repack at the same version is never served stale.
 
+  WHAT IT TRUSTS IN THE CACHE (Phase 2789). Third-party packages persist in that cache across runs, so
+  an entry is reused only when it is whole: its `.nupkg`, its `.nuspec` and its `.nupkg.metadata`
+  marker are all present and non-empty. A version missing any of them is deleted and restored, with
+  one line naming which. Before this, a folder's existence was the whole test, and an entry emptied
+  to its `.nupkg` failed every later restore in the worktree with NU5037 until someone deleted it by
+  hand. WHAT EMPTIED THE ENTRIES remains unexplained: it happened to three of them within one second
+  during a fast-lane run, and no concurrent leg sharing the tree key or cleaner has been observed.
+  `-SelfTest` seeds an emptied entry in a throwaway cache and proves the repair (run by
+  `tests/fable-laws/fable-check.ps1`).
+
   WHAT GREEN MEANS. The Fable compile exits 0 AND the emitted `fable_modules/` holds a directory for
   every packed package — a package Fable read as an assembly rather than transpiling leaves none, so
   a compile that went green by ignoring the sources cannot pass.
@@ -42,7 +52,9 @@
 [CmdletBinding()]
 param(
     # Keep the emitted JavaScript and the packed packages in the scratch root for inspection.
-    [switch] $KeepOutput
+    [switch] $KeepOutput,
+    # Prove the cache repair against a seeded, emptied entry and exit; packs and compiles nothing.
+    [switch] $SelfTest
 )
 
 $ErrorActionPreference = 'Stop'
@@ -63,6 +75,48 @@ $producerRoots = @(
 function Fail([string] $message) {
     Write-Host "==== fable-pack-consumer: FAILED — $message" -ForegroundColor Red
     exit 1
+}
+
+# ── The cache is reused only when it is whole (Phase 2789) ──────────────────
+
+# What NuGet needs to consume an unpacked package version, as file-name patterns.
+$wholeEntryFiles = @('*.nupkg', '*.nuspec', '*.nupkg.metadata')
+
+# Delete every cached `<id>/<version>` folder that lacks a non-empty file for each pattern above,
+# saying which, so the restore fetches it afresh. Returns the number repaired.
+function Repair-PackageCache([string] $cacheRoot) {
+    $repaired = 0
+    if (-not (Test-Path -LiteralPath $cacheRoot -PathType Container)) { return 0 }
+    foreach ($versionDir in @(Get-ChildItem -LiteralPath $cacheRoot -Directory | ForEach-Object { Get-ChildItem -LiteralPath $_.FullName -Directory })) {
+        $files = @(Get-ChildItem -LiteralPath $versionDir.FullName -File | Where-Object { $_.Length -gt 0 })
+        $missing = @($wholeEntryFiles | Where-Object { $pattern = $_; -not ($files | Where-Object { $_.Name -like $pattern }) })
+        if ($missing.Count -eq 0) { continue }
+        Write-Host "  package cache: $($versionDir.Parent.Name)/$($versionDir.Name) is missing $($missing -join ', ') — deleted, to be restored" -ForegroundColor Yellow
+        Remove-Item -Recurse -Force -LiteralPath $versionDir.FullName
+        $repaired++
+    }
+    $repaired
+}
+
+if ($SelfTest) {
+    $root = Join-Path ([IO.Path]::GetTempPath()) "fuaran-pack-consumer-selftest-$([guid]::NewGuid().ToString('N'))"
+    try {
+        $whole = Join-Path $root 'whole.pkg' '1.0.0'
+        $emptied = Join-Path $root 'emptied.pkg' '1.0.0'
+        foreach ($dir in @($whole, $emptied)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+        foreach ($name in @('whole.pkg.1.0.0.nupkg', 'whole.pkg.nuspec', 'whole.pkg.1.0.0.nupkg.metadata')) { Set-Content -LiteralPath (Join-Path $whole $name) 'x' }
+        # The recorded shape: only the .nupkg survives, and the other two are gone or empty.
+        Set-Content -LiteralPath (Join-Path $emptied 'emptied.pkg.1.0.0.nupkg') 'x'
+        New-Item -ItemType File -Path (Join-Path $emptied 'emptied.pkg.nuspec') | Out-Null
+        $count = Repair-PackageCache $root
+        if ($count -ne 1) { Fail "self-test: expected 1 repaired entry, got $count" }
+        if (Test-Path -LiteralPath $emptied) { Fail 'self-test: the emptied entry was not deleted' }
+        if (-not (Test-Path -LiteralPath (Join-Path $whole 'whole.pkg.nuspec'))) { Fail 'self-test: a whole entry was deleted' }
+        if ((Repair-PackageCache $root) -ne 0) { Fail 'self-test: a second pass repaired something' }
+        Write-Host '==== fable-pack-consumer: self-test green — an emptied cache entry is repaired, a whole one kept' -ForegroundColor Green
+    }
+    finally { Remove-Item -Recurse -Force -LiteralPath $root -ErrorAction SilentlyContinue }
+    exit 0
 }
 
 # ── What to pack: the producers and their ProjectReference closure ──────────
@@ -110,6 +164,7 @@ New-Item -ItemType Directory -Force -Path $feed, $packages | Out-Null
 foreach ($id in $packedIds) {
     Remove-Item -Recurse -Force -LiteralPath (Join-Path $packages $id.ToLowerInvariant()) -ErrorAction SilentlyContinue
 }
+$null = Repair-PackageCache $packages
 
 # This repository's own sources, resolved to absolute paths (the scratch config lives elsewhere),
 # plus the scratch feed serving exactly the packed ids.

@@ -188,8 +188,85 @@ Measured on 2026-09-13, which is why this paragraph exists: the sibling's artefa
 and six renderer commits behind its own sources, and the embedded copy it called stale was
 byte-identical to a fresh build of exactly those sources.
 
+### Where a renderer move is named: beside the file that moved (Phase 2445)
+
+The gate above runs in THIS repository, so a renderer change that lands in `fuaran-ts` alone is met by
+whichever unrelated change next runs it here, which cannot tell what moved or why. Twice the embedded
+bundle fell behind that way (the sidecar recorded `0.27.1` while the sibling had reached `0.28.1`).
+The drift is now also named from the other side, by the workspace's **declared-copies sweep**: the
+`copies.json` at this repository's root, read by a check that sees every cloned sibling at once and
+needs no gate here to run.
+
+**What is declared.** `-Sync` writes a third file beside the bundle and its fingerprint:
+`content/fuaran-renderer.package.json`, a byte copy of the renderer package's own `package.json` at
+sync time. `copies.json` declares it against `fuaran-ts/packages/renderer/package.json` with a
+`bytes` check. When the sibling's manifest moves (a version bump, most often), the sweep reports the
+sibling's file as no longer matching and quotes the re-sync command, naming the file in `fuaran-ts`
+whose history holds the change that caused it. The file is **not** an embedded resource: it ships in
+no package, and the packed surface does not move.
+
+**Why the manifest, and not the bundle.** A declared copy is a comparison of two whole files. The
+bundle's real source is a gitignored build output, absent from most checkouts and stale in others
+(the third case above), and its bytes do not change when only the version does: a renderer release
+that moves no source moves no byte of the bundle. The manifest is the tracked file in `fuaran-ts`
+that does move, and any change to it (a dependency, an entry point, the build script) is one a
+re-sync should at least look at. A version-only field comparison is not expressible as a declared
+copy, so the whole manifest is recorded instead.
+
+**The gate asks the same question.** `RendererWebCheck` compares the recorded manifest with the
+sibling's byte for byte, and checks offline that the fingerprint's `rendererVersion` and the recorded
+manifest's `version` agree, so the gate and the sweep cannot disagree about one tree. A manifest
+change that is not a version move is reported as such, not as a version drift.
+
+**Rejected: a landing-order declaration between the two repositories.** Such a declaration binds a
+change only when that change already spans both repositories, which is exactly the change that
+follows the rule below. The change that breaks it, a renderer edit made in `fuaran-ts` alone, spans
+one repository and would never be bound.
+
+**Proved by making it fire** (2026-11-19): in a scratch workspace holding copies of this repository's
+`copies.json` and recorded manifest beside a copy of `fuaran-ts`'s renderer manifest, the sweep read
+`ok` at `0.29.2`; bumping the scratch sibling to `0.29.3` turned the record `STALE`, naming
+`fuaran-ts/packages/renderer/package.json`, before any gate in this repository ran; reverting the bump
+turned it back to `ok`. The same bump in a built sibling checkout made `RendererWebCheck` fail with
+"built from @fuaran-ui/renderer 0.29.2 but the sibling is now 0.29.3".
+
 The maintainers' rule: **a renderer or stylesheet change re-syncs the embedded copy in the same
 change-set.**
+
+---
+
+## 5. Which URL to embed: the hashed path and the plain path
+
+Every asset except the fingerprint answers on **two** paths under the mount prefix (Phase 1929):
+
+| Path | Example | `Cache-Control` | Embed it? |
+|---|---|---|---|
+| **content-hashed** | `/_fuaran/fuaran-renderer.<hash8>.js` | `public, max-age=31536000, immutable` | **yes** |
+| **plain** | `/_fuaran/fuaran-renderer.js` | `no-cache`, with the strong ETag | only if you must |
+
+`<hash8>` is the first eight hex digits of the SHA-256 of the embedded bytes — the same digest the
+ETag is cut from — so a package upgrade that changes the bundle changes the URL. **Embed the hashed
+path.** `Snippet.styleLink`, `Snippet.scriptTag` and `Snippet.assetTags` emit it already;
+`Snippet.assetUrl prefix asset` (or `Assets.versionedPath asset`) names it for a tag you write
+yourself, such as the two enhancement scripts.
+
+**Why `immutable` moved.** The plain paths used to be served `immutable` for a year, on the premise
+that the bytes change only when the package version does — which is exactly the case in which a
+fixed URL does not change. After an upgrade, a returning browser ran the old renderer for up to a
+year and never sent the conditional request the ETag would have answered. `immutable` is now earned
+by the URL: it is sent only where a change to the bytes is a change to the name.
+
+**The plain path stays served**, for pages that wrote it by hand, as `no-cache` with the ETag: the
+browser revalidates on every load and an unchanged asset costs a `304`. It is correct, and it is a
+round trip per page load that the hashed path does not pay.
+
+**A hashed path carrying another build's hash** — a page rendered by the previous deployment, met
+mid-rollout or from a cached document — is served the current bytes as `no-cache`, never
+`immutable` (the bytes do not match the name) and never `404` (which would leave that page with no
+renderer at all). A name that is not an eight-digit lowercase hex hash gets a `404`.
+
+The **fingerprint** (`/_fuaran/fingerprint.json`) has only the plain path and is always `no-cache`:
+it is the drift oracle, and an oracle a cache answers from last year answers about last year.
 
 ---
 

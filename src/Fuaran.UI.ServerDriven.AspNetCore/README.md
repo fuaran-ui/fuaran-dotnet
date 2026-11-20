@@ -28,7 +28,10 @@ This maps:
   correlation cookie, builds a fresh `LiveSession` + `SseChannel` +
   `LiveConnection`, registers it, and drains the channel's frame queue to the
   long-lived response (`FrameWire.encodeSse` + flush) until the client
-  disconnects. `Last-Event-ID` drives `LiveConnection.Resync` (reconnect replay).
+  disconnects. A reconnect carrying `Last-Event-ID` re-attaches to the session
+  the client had and replays what it missed (`LiveConnection.Reattach`); an
+  optional `?tab=` keeps each tab on its own stream. See `docs/SERVER_DRIVEN.md`,
+  "Reconnection + replay".
 - `POST /live/event` — verifies the signed `connId` token against the request
   principal (`ConnToken.verify`; **401** on a forged / unbound cookie),
   guard-parses the body (`Inbound.tryParseLiveEvent`; **400** on a malformed

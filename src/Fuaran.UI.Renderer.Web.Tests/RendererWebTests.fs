@@ -90,8 +90,10 @@ let tests =
                   Expect.equal fp.BundleSha256 actual "the recorded digest is of the embedded bundle"
           }
 
-          test "the fingerprint is served uncached; the assets are immutable" {
-              Expect.isTrue Assets.rendererScript.Immutable "the bundle changes only with the package version"
+          test "the fingerprint is served uncached; the assets are fingerprinted" {
+              // `Immutable` now means "also served at a content-hashed path,
+              // cached immutably there" (Phase 1929); the plain paths revalidate.
+              Expect.isTrue Assets.rendererScript.Immutable "the bundle has a content-hashed path"
               Expect.isTrue Assets.referenceStylesheet.Immutable "so does the stylesheet"
 
               Expect.isFalse
@@ -161,14 +163,19 @@ let tests =
 
           test "the asset tags point at the mounted prefix" {
               let tags = Snippet.assetTags "/assets/fuaran"
-              Expect.stringContains tags "/assets/fuaran/fuaran-reference.css" "the stylesheet"
-              Expect.stringContains tags "/assets/fuaran/fuaran-renderer.js" "the bundle"
+
+              Expect.stringContains
+                  tags
+                  ("/assets/fuaran/" + Assets.versionedPath Assets.referenceStylesheet)
+                  "the stylesheet"
+
+              Expect.stringContains tags ("/assets/fuaran/" + Assets.versionedPath Assets.rendererScript) "the bundle"
           }
 
           test "a trailing slash on the prefix does not double up" {
               Expect.stringContains
                   (Snippet.scriptTag "/_fuaran/")
-                  "\"/_fuaran/fuaran-renderer.js\""
+                  ("\"/_fuaran/" + Assets.versionedPath Assets.rendererScript + "\"")
                   "one slash, not two — a host that types the prefix the other way gets working URLs"
           }
 

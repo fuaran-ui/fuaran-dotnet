@@ -438,15 +438,32 @@ let tests =
               // the matched call — `VisPlan.chart` hands the drawing callback the
               // spec with its axis titles filled from the bound fields, so the
               // client passes that spec by name and the server partially applies.
-              for tier, textOf in
-                  [ "client", "(BindingResolver.resolveTextSource ctx.Sources)"
-                    "server", "(renderText ctx)" ] do
+              //
+              // Phase 2068: the entry point is `renderSvgWith`, under the scope
+              // the tier's own context declares (`provenanceInForce`, which is
+              // the installed default when it declares none). The client reaches
+              // it as `renderSvgVia` over its lowering memo; `renderSvgWith` IS
+              // `renderSvgVia` over the shipped lowering, so the emission path is
+              // still one function and only the lowering's cache differs.
+              let scope = "(Fuaran.UI.Charts.provenanceInForce ctx.ChartProvenance) ctx.Sources "
+
+              for tier, entry, textOf in
+                  [ "client",
+                    "Fuaran.UI.Charts.renderSvgVia (ChartLoweringMemo.lowerVia Fuaran.UI.Charts.tryLowerWithStyle spec rows) ",
+                    "(BindingResolver.resolveTextSource ctx.Sources)"
+                    "server", "Fuaran.UI.Charts.renderSvgWith ", "(renderText ctx)" ] do
                   let source = Regex.Replace(rendererSource tier, @"\s+", " ")
 
                   Expect.equal
-                      (occurrences ("Fuaran.UI.Charts.renderSvg ctx.Sources " + textOf) source)
+                      (occurrences (entry + scope + textOf) source)
                       1
-                      (tier + " renders a chart through Charts.renderSvg, exactly once")
+                      (tier
+                       + " renders a chart through the shared entry point under its context's scope, exactly once")
+
+                  Expect.equal
+                      (occurrences "Fuaran.UI.Charts.renderSvg ctx.Sources" source)
+                      0
+                      (tier + " no longer reads the process default past its own context")
 
                   Expect.equal
                       (occurrences "Fuaran.UI.Charts.lower spec" source)

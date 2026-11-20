@@ -115,6 +115,37 @@ let private writeSpeechClasses (w: Utf8JsonWriter) : unit =
 
     w.WriteEndArray()
 
+/// The Adaptive Card column (Phase 1814) — what the Adaptive Card projection
+/// does with the kind, and which card element types the node itself may emit. A
+/// kind with no ruling is a refusal, as for the speech column.
+let private writeAdaptiveCard (w: Utf8JsonWriter) (kind: string) : unit =
+    match cardOf kind with
+    | Some ruling ->
+        w.WriteStartObject("adaptiveCard")
+        w.WriteString("class", cardClassId ruling)
+        w.WriteStartArray("elements")
+
+        for e in cardElements ruling do
+            w.WriteStringValue e
+
+        w.WriteEndArray()
+        w.WriteString("note", cardNote ruling)
+        w.WriteEndObject()
+    | None -> failwithf "render-fidelity: kind '%s' has no Adaptive Card ruling in RenderFidelity.cardRulings" kind
+
+/// The closed Adaptive Card class vocabulary (Phase 1814), emitted once at the
+/// top level beside `speechClasses`.
+let private writeAdaptiveCardClasses (w: Utf8JsonWriter) : unit =
+    w.WriteStartArray("adaptiveCardClasses")
+
+    for (cls, meaning) in cardClasses do
+        w.WriteStartObject()
+        w.WriteString("class", cls)
+        w.WriteString("meaning", meaning)
+        w.WriteEndObject()
+
+    w.WriteEndArray()
+
 /// The kind-intrinsic ARIA emissions (Phase 1591) — the roles and live regions
 /// the renderer pins for a kind WHATEVER the node's `Accessibility` trait says.
 ///
@@ -267,6 +298,10 @@ let toJson () : string =
         + "Each kind also declares its SPEECH ruling: what a speech projection says for the kind when a "
         + "node carries no accessibility.speak of its own, drawn from the closed speechClasses "
         + "(spoken, derived, announced-only, omitted) with the per-kind derivation as a note. "
+        + "Each kind also declares its ADAPTIVE CARD ruling: what a projection to an Adaptive Card "
+        + "(schema 1.4) does with the kind, drawn from the closed adaptiveCardClasses (mapped, "
+        + "structural, open-live, flatten-to-text, omitted), with the card element types the node "
+        + "itself may emit and the per-kind rule as a note. "
         + "See WIRE_FORMAT.md 13."
     )
 
@@ -286,6 +321,8 @@ let toJson () : string =
     w.WriteEndArray()
 
     writeSpeechClasses w
+
+    writeAdaptiveCardClasses w
 
     writeVocabulary w
 
@@ -309,6 +346,7 @@ let toJson () : string =
         writeObligations w r.Obligations
         writeIntrinsic w r.Intrinsic
         writeSpeech w r.Kind
+        writeAdaptiveCard w r.Kind
 
         w.WriteString("contract", r.Contract)
         w.WriteEndObject()

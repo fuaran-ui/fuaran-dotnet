@@ -123,8 +123,7 @@ Friend Module VisualisationMapping
     ''' the pre-1490 wire byte for byte, which is what every existing chart must keep
     ''' doing. The XML dialect has no way to spell "an empty list of annotations" and
     ''' does not need one — a chart with no annotations is written by not writing any.
-    ''' </remarks>
-    ''' <remarks>
+    '''
     ''' Phase 1491 — &lt;EventMarker category="Q3" label="Repricing"/&gt; and
     ''' &lt;EventMarker date="2026-02-14"/&gt; join it. TWO ATTRIBUTES rather than a
     ''' nested address element, because the XML dialect has no spelling for a union
@@ -132,8 +131,7 @@ Friend Module VisualisationMapping
     ''' one address; declaring both, or neither, is refused HERE rather than reaching
     ''' the tree, since a silently-dropped marker is the failure this dialect makes
     ''' easiest to write.
-    ''' </remarks>
-    ''' <remarks>
+    '''
     ''' Phase 1492 — &lt;RangeBand fromCategory="Q2" toCategory="Q3" label="Freeze"/&gt;
     ''' joins them, in three attribute-pair spellings (see ReadBandRange). It is the
     ''' third and last arm of the union §4l opened; a fourth would be a fourth loop

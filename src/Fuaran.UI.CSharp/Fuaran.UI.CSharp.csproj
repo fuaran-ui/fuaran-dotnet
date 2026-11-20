@@ -29,6 +29,10 @@
     <Description>Fuaran.UI.CSharp — idiomatic C# authoring veneer over the Fuaran UI language. A wire-faithful authoring surface (static factory + options records) over the F# runtime; no FSharp.Core types on the public boundary. Apache-2.0 licensed.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RootNamespace>Fuaran.UI.CSharp</RootNamespace>
+    <!-- Phase 1871: the XML documentation file is built here (build/PackageDocumentation.targets is F#-only), and the
+         missing-documentation warning stays an error under TreatWarningsAsErrors, with no NoWarn: every public member
+         of this veneer is documented. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 
   <ItemGroup>

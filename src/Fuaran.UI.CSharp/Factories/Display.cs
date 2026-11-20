@@ -391,7 +391,7 @@ public sealed record ProgressOptions
     public Tone Tone { get; init; } = Tone.Default;
 }
 
-/// <summary>Options for <see cref="Fuaran.Icon"/>.</summary>
+/// <summary>Options for <see cref="Fuaran.Icon(IconOptions)"/>.</summary>
 public sealed record IconOptions
 {
     /// <summary>The node id.</summary>

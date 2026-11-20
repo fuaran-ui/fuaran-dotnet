@@ -78,6 +78,15 @@
         Fable's semantics have changed and grouping may have become sound — which is the point of
         asserting it rather than writing it down.
 
+  THE CLIENT RENDER SUITE'S LEG (Phase 2550), over the REAL tree, because its subject is the renderer:
+
+    17. Unplanted, the leg runs every case of `tests/fable-render/` green and the stage is green.
+    18. A memo whose decision never hits, 19. a `dangerouslySetInnerHTML` object built per emit, and
+    20. a markdown sink whose markup differs per render are each planted in the COMPILED renderer
+        (`FUARAN_FABLE_RENDER_PLANT`, read by the leg and passed to `drive.mjs --plant`). Each must
+        turn the stage red with the render leg as its one failure and the catching case named, and
+        none may disturb the recorded green of the unplanted tree. Each is a real Fable compile.
+
   The go-red proof for the ADDRESS FUNCTION itself — that the hash moves with the sources, the
   Fable tool version and the entry's properties — is `fable-check.ps1 -ProveAddressing`, which
   compiles nothing, costs milliseconds, and therefore runs inside the gate on every invocation
@@ -106,10 +115,6 @@ $scratch = Join-Path $PSScriptRoot '.selftest'
 # A SECOND scratch root, for the Fable-semantics assertions (Phase 1621). Separate from
 # `$scratch` because the derivation RECURSES: a probe project under `.selftest/` would join
 # the gated set and move the counts the assertions above pin.
-$semantics = Join-Path $PSScriptRoot '.selftest-semantics'
-# A SECOND scratch root, for the Fable-semantics assertions (Phase 1621). Separate from
-# `$scratch` because the derivation recurses: a probe project under `.selftest/` would join the
-# gated set and move the counts the assertions above pin.
 $semantics = Join-Path $PSScriptRoot '.selftest-semantics'
 $failures = New-Object System.Collections.Generic.List[string]
 
@@ -161,71 +166,6 @@ $referenceItems
 "@ | Set-Content -Path (Join-Path $dir "$name.fsproj") -Encoding utf8NoBOM
 
     $source | Set-Content -Path (Join-Path $dir 'Library.fs') -Encoding utf8NoBOM
-}
-
-function New-SemanticsProject {
-    <#
-      One project for the Fable-semantics assertions at the end of this script. IN-REPO on purpose:
-      these must resolve the SAME governing `Directory.Build.props` and central package versions the
-      real entries do, or the property claim they make is about a tree nothing in this repo has. In
-      their OWN directory rather than `.selftest/`, so they never join the derivation the assertions
-      above count over.
-    #>
-    param(
-        [string] $name,
-        [string] $source,
-        [string[]] $references = @(),
-        [string] $properties = ''
-    )
-
-    $dir = Join-Path $semantics $name
-    New-Item -ItemType Directory -Force -Path $dir | Out-Null
-
-    $referenceItems = ($references | ForEach-Object {
-            "    <ProjectReference Include=`"..\$_\$_.fsproj`" />"
-        }) -join "`n"
-
-    @"
-<?xml version="1.0" encoding="utf-8"?>
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <IsPackable>false</IsPackable>
-$properties
-  </PropertyGroup>
-  <ItemGroup>
-    <Compile Include="Library.fs" />
-  </ItemGroup>
-  <ItemGroup>
-$referenceItems
-    <PackageReference Include="FSharp.Core" />
-  </ItemGroup>
-</Project>
-"@ | Set-Content -Path (Join-Path $dir "$name.fsproj") -Encoding utf8NoBOM
-
-    $source | Set-Content -Path (Join-Path $dir 'Library.fs') -Encoding utf8NoBOM
-}
-
-function Invoke-FableDirect {
-    <#
-      `dotnet fable` on one project, WITHOUT the gate. The claim under test is a property of Fable
-      itself rather than of the derivation, and routing it through `fable-check.ps1` would put the
-      gate's own selection between the question and the answer. Assignment, never a pipe — the
-      standing rule, because a pipe reports the last command's status and a red compile then reads
-      as a pass, which is the one answer an assertion like this must never give.
-    #>
-    param([string] $name)
-
-    $out = Join-Path ([IO.Path]::GetTempPath()) "fable-semantics-$name"
-    Remove-Item -Recurse -Force $out -ErrorAction SilentlyContinue
-    try {
-        $text = & dotnet fable (Join-Path (Join-Path $semantics $name) "$name.fsproj") -o $out --noCache 2>&1
-        $exit = $LASTEXITCODE
-    }
-    finally {
-        Remove-Item -Recurse -Force $out -ErrorAction SilentlyContinue
-    }
-    [pscustomobject]@{ Exit = $exit; Text = (@($text | ForEach-Object { [string] $_ }) -join "`n") }
 }
 
 function New-SemanticsProject {
@@ -669,6 +609,72 @@ let describe () = "dotnet"
     # property signature may have become sound. That is the one thing this file can do for that
     # header section which the section cannot do for itself: make it falsifiable rather than let it
     # age quietly into being wrong.
+
+    # ── 17-20. The client render suite's leg goes red on each planted regression (Phase 2550) ──
+    #
+    # The suite (`tests/fable-render/`) holds three claims no .NET suite can: a kept node is the
+    # identical element under the subtree memo, one `dangerouslySetInnerHTML` object serves every emit
+    # of one markup, and a mounted markdown sink re-rendered with unchanged markup is not reparsed. A
+    # suite whose claims cannot fail is decoration, so each is broken here in the COMPILED renderer
+    # (`drive.mjs --plant`, reached through `FUARAN_FABLE_RENDER_PLANT`) and the STAGE is required to go
+    # red, with the render leg as its one failure and the case that caught it named. The unplanted
+    # control runs first and must be green, so a red below is the plant and not the harness.
+    #
+    # Over the REAL tree rather than the scratch one: the subject is the renderer. The control runs the
+    # full lane, which records the law harness and the program parity leg green; the planted runs use the
+    # fast lane, where those two are skipped by address and the render leg, which consults no record
+    # under a plant, is the only thing that runs. Each planted run is a real Fable compile (minutes).
+
+    Write-Host ''
+    Write-Host '── the client render suite: go-red proof ──────────────────' -ForegroundColor Cyan
+
+    function Invoke-RenderStage {
+        param([string] $lane, [string] $plant = '')
+        $previousLane = $env:FUARAN_TEST_LANE
+        $previousPlant = $env:FUARAN_FABLE_RENDER_PLANT
+        $env:FUARAN_TEST_LANE = $lane
+        if ($plant) { $env:FUARAN_FABLE_RENDER_PLANT = $plant } else { Remove-Item Env:FUARAN_FABLE_RENDER_PLANT -ErrorAction SilentlyContinue }
+        try {
+            # Never piped, for the reason Invoke-Gate gives.
+            $output = & pwsh -NoProfile -File $gate -SkipPortability -SkipCoreFable -SkipPackConsumer -SkipWatchConsumer 2>&1
+            $exit = $LASTEXITCODE
+        }
+        finally {
+            if ($null -eq $previousLane) { Remove-Item Env:FUARAN_TEST_LANE -ErrorAction SilentlyContinue }
+            else { $env:FUARAN_TEST_LANE = $previousLane }
+            if ($null -eq $previousPlant) { Remove-Item Env:FUARAN_FABLE_RENDER_PLANT -ErrorAction SilentlyContinue }
+            else { $env:FUARAN_FABLE_RENDER_PLANT = $previousPlant }
+        }
+        [pscustomobject]@{ Exit = $exit; Text = ($output | Out-String) }
+    }
+
+    # 17. The control: unplanted, the leg runs every case green and the stage is green.
+    $renderControl = Invoke-RenderStage -lane 'full'
+    Assert 'the client render suite runs green over the unplanted renderer' `
+    (($renderControl.Exit -eq 0) -and ($renderControl.Text -match '(?m)^\s*TOTAL tests=[1-9]\d* failed=0\s*$')) $renderControl.Text
+
+    # 18-20. One plant per claim, each with the case that must catch it.
+    $renderPlants = @(
+        @{ Plant = 'memo'; Case = 'a kept node under the same context and generation is the identical element' }
+        @{ Plant = 'prop'; Case = 'two emits of one markup share the prop object' }
+        @{ Plant = 'sink'; Case = 'a re-render with unchanged markup records no childList mutation' }
+    )
+    foreach ($p in $renderPlants) {
+        $planted = Invoke-RenderStage -lane 'fast' -plant $p.Plant
+        Assert "plant '$($p.Plant)': the edit was applied to the compiled renderer" `
+        ($planted.Text -match "PLANTED '$($p.Plant)' in ") $planted.Text
+        Assert "plant '$($p.Plant)': the stage goes red" ($planted.Exit -ne 0) $planted.Text
+        Assert "plant '$($p.Plant)': the render leg is the stage's one failure" `
+        (($planted.Text -match '==== Fable stage: FAILED \(1\)') -and ($planted.Text -match 'LEG FAILED: the client render suite run under node')) $planted.Text
+        Assert "plant '$($p.Plant)': the case that caught it is named" `
+        ($planted.Text -match ('(?m)^\s*FAIL .*' + [regex]::Escape($p.Case))) $planted.Text
+    }
+
+    # A planted red is about the plant, not the tree: it neither consults nor clears the record the
+    # control wrote, so the next unplanted narrow run still stands on it.
+    $renderAfter = Invoke-RenderStage -lane 'fast'
+    Assert 'a planted run leaves the recorded green of the unplanted tree alone' `
+    (($renderAfter.Exit -eq 0) -and ($renderAfter.Text -cmatch 'SKIPPED BY ADDRESS tests/fable-render/FableRender\.fsproj')) $renderAfter.Text
 
 }
 finally {

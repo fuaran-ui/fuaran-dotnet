@@ -26,28 +26,17 @@ open Fuaran.UI.Fragments
 open Fuaran.UI.Validator.RecipeCertification
 open Fuaran.UI.OpStream.Abstractions
 
-// ─── Local tree walk ─────────────────────────────────────────────────────────
+// ─── Tree walk ───────────────────────────────────────────────────────────────
 //
-// Deliberately local rather than borrowed from the renderer: this project
-// depends on `Fuaran.UI` and the validator only, and pulling the renderer in to
-// reuse eight lines of container arms would put a React/Feliz dependency under
-// a certification suite.
-
-let private childrenOf (node: Node<'Msg>) : Node<'Msg> list =
-    match node.Kind with
-    | NodeKind.Box s -> s.Children
-    | NodeKind.SplitPanel s -> s.Children
-    | NodeKind.Tabs s -> s.Children
-    | NodeKind.Stepper s -> s.Children
-    | NodeKind.SummaryList s -> s.Children
-    | NodeKind.Disclosure s -> s.Children
-    | NodeKind.Modal s -> s.Children
-    | NodeKind.ScrollArea s -> s.Children
-    | NodeKind.ErrorBoundary s -> [ s.Child; s.Fallback ]
-    | _ -> []
+// The tier's one child enumeration (`Fuaran.UI.NodeChildren`), which lives in
+// `Fuaran.UI` itself, so no renderer dependency comes with it. Phase 2752
+// replaced a local copy of nine container arms with it: the copy saw no `Switch`
+// arm, no state alternative and no fragment body, so a node in any of those was
+// invisible to every assertion here.
 
 let rec private descendants (node: Node<'Msg>) : Node<'Msg> list =
-    node :: (childrenOf node |> List.collect descendants)
+    node
+    :: (NodeChildren.children NodeChildren.Reach.keyed node |> List.collect descendants)
 
 /// The slot names a template body marks with an unbound `FragmentRef`.
 let private slotMarkersIn (body: Node<'Msg>) : string list =
@@ -111,6 +100,111 @@ let private chipsIn (tree: Node<'Msg>) : FilterSpec<'Msg> list =
     match tree.Kind with
     | NodeKind.Filters spec -> spec.Items
     | other -> failtestf "expected a Filters node, got %A" other
+
+// ─── Phase 2752 helpers ──────────────────────────────────────────────────────
+
+/// The filter chips a materialised panel declares.
+let private panelControls (tree: Node<'Msg>) : FilterSpec<'Msg> list =
+    descendants tree
+    |> List.collect (fun n ->
+        match n.Kind with
+        | NodeKind.Filters spec -> spec.Items
+        | _ -> [])
+
+let private gridIn (tree: Node<'Msg>) : Node<'Msg> * DataGridSpec<'Msg> =
+    descendants tree
+    |> List.pick (fun n ->
+        match n.Kind with
+        | NodeKind.DataGrid g -> Some(n, g)
+        | _ -> None)
+
+/// The pre-emit variants a tree draws, by name — `[]` on a clean tree.
+let private preEmitVariants (tree: Node<'Msg>) : string list =
+    match PreEmitValidate.validate tree with
+    | Ok() -> []
+    | Error defects -> defects |> List.map PreEmitValidate.describeVariant
+
+let private expectClean (what: string) (tree: Node<'Msg>) =
+    match PreEmitValidate.validate tree with
+    | Ok() -> ()
+    | Error defects ->
+        failtestf
+            "%s: pre-emit validation refused it: %s"
+            what
+            (defects |> List.map (fun d -> sprintf "%A" d) |> String.concat "; ")
+
+/// A small inline table: item, units, price.
+let private scenarioRows: Fuaran.Core.DataSource =
+    Fuaran.Core.Embedded
+        { Schema =
+            [ Fuaran.Core.Field.create "item" Fuaran.Core.StringType
+              Fuaran.Core.Field.create "units" Fuaran.Core.FloatType
+              Fuaran.Core.Field.create "price" Fuaran.Core.FloatType ]
+          Columns =
+            [ Fuaran.Core.Column.ofStrs "item" (Fuaran.Core.Vector.ofList [ "north"; "south" ]) Fuaran.Core.AllValid
+              Fuaran.Core.Column.ofFloats "units" (Fuaran.Core.Vector.ofList [ 100.0; 40.0 ]) Fuaran.Core.AllValid
+              Fuaran.Core.Column.ofFloats "price" (Fuaran.Core.Vector.ofList [ 2.0; 5.0 ]) Fuaran.Core.AllValid ] }
+
+/// A two-parameter revenue model: `units * (1 + growth) * (price + uplift)`.
+let private revenueModel: ScenarioModel =
+    { Source = scenarioRows
+      Key = "item"
+      Model =
+        { Name = "revenue"
+          Params =
+            [ { Name = "units"; Default = None }
+              { Name = "price"; Default = None }
+              { Name = "growth"; Default = None }
+              { Name = "uplift"; Default = None } ]
+          Body =
+            Fuaran.Compute.Binary(
+                Fuaran.Compute.Mul,
+                Fuaran.Compute.Binary(
+                    Fuaran.Compute.Mul,
+                    Fuaran.Compute.Arg "units",
+                    Fuaran.Compute.Binary(
+                        Fuaran.Compute.Add,
+                        Fuaran.Compute.ColExpr.Lit(Fuaran.Core.Float 1.0),
+                        Fuaran.Compute.Arg "growth"
+                    )
+                ),
+                Fuaran.Compute.Binary(Fuaran.Compute.Add, Fuaran.Compute.Arg "price", Fuaran.Compute.Arg "uplift")
+            ) }
+      Columns = [ "units", "units"; "price", "price" ] }
+
+let private fixedSide (label: string) (growth: float) (uplift: float) : ScenarioSide =
+    { Label = label
+      Parameters =
+        [ "growth", Binding.Static(Some(Fuaran.Core.JFloat growth))
+          "uplift", Binding.Static(Some(Fuaran.Core.JFloat uplift)) ] }
+
+/// The live side: each parameter reads the panel control of the same name.
+let private liveSide: ScenarioSide =
+    { Label = "Adjusted"
+      Parameters =
+        [ "growth", Binding.Filter("growth", None)
+          "uplift", Binding.Filter("uplift", None) ] }
+
+/// A panel over the named numeric parameters, materialised.
+let private panelOver (names: string list) : Node<unit> =
+    let args =
+        Map.ofList (
+            ("count", boxed (List.length names))
+            :: (names |> List.mapi (fun i n -> sprintf "param-%d-name" (i + 1), boxed n))
+        )
+
+    Stdlib.parameterPanel<unit>.Materialize args
+
+let private page (children: Node<unit> list) : Node<unit> =
+    Fuaran.stack
+        "page"
+        { Defaults.stack with
+            Children = children }
+
+let private comparisonOrFail (a: ScenarioSide) (b: ScenarioSide) : Node<unit> =
+    match Stdlib.scenarioComparisonOf<unit> "compare" "Revenue" revenueModel a b with
+    | Ok tree -> tree
+    | Error e -> failtestf "the comparison was refused: %s" e
 
 // The certification budget. 256 bindings is comfortably above the largest
 // finite hole-space in the set and low enough that the whole suite stays inside
@@ -612,6 +706,341 @@ let tests =
                         (Stdlib.parseFilterOptions "k=a=b" |> List.map (fun o -> o.Value, o.Label))
                         [ "k", "a=b" ]
                         "the first `=` separates value from label"
+                } ]
+
+          // ── Phase 2752 — the scenario fragments ────────────────────────────
+          testList
+              "Phase 2752 — a parameter panel and a two-scenario comparison"
+              [ test "pre-emit validation accepts every fixture of both fragments, and the trees they yield" {
+                    // A panel on its own is a set of controls nobody reads yet,
+                    // and says so: each of its controls draws FUARAN074 (a
+                    // Warning) until a pipeline reads it — the same check the
+                    // refusal below relies on, and the shape filter-bar and
+                    // confirm-action-pair already take alone. Nothing else, and
+                    // nothing at Error severity, is admitted.
+                    let expectAccepted (what: string) (allowedWarnings: string list) (tree: Node<unit>) =
+                        match PreEmitValidate.validate tree with
+                        | Ok() -> ()
+                        | Error defects ->
+                            for d in defects do
+                                let code, severity, message = PreEmitValidate.describe d
+                                let variant = PreEmitValidate.describeVariant d
+
+                                Expect.isTrue
+                                    (severity = Fuaran.Core.Severity.Warning && List.contains variant allowedWarnings)
+                                    (sprintf "%s: pre-emit validation refused it: %s (%s) %s" what code variant message)
+
+                    let panelAlone = [ "DecorativeFilter" ]
+
+                    for f, allowed in [ Stdlib.parameterPanel<unit>, panelAlone; Stdlib.scenarioComparison<unit>, [] ] do
+                        expectAccepted (sprintf "%s declaration" f.Name) allowed f.Decl
+                        expectAccepted (sprintf "%s example" f.Name) allowed f.Example
+
+                        expectAccepted
+                            (sprintf "%s example, materialised" f.Name)
+                            allowed
+                            (f.Materialize(argsOf f.Example))
+
+                    for (name, what, node) in Stdlib.boundExamples<unit> do
+                        if name = Stdlib.ParameterPanel || name = Stdlib.ScenarioComparison then
+                            expectAccepted (sprintf "%s bound example (%s)" name what) panelAlone node
+                }
+
+                test "parameter-panel: each control writes the filter key its parameter is named" {
+                    let mixed =
+                        Stdlib.boundExamples<unit>
+                        |> List.pick (fun (n, _, node) -> if n = Stdlib.ParameterPanel then Some node else None)
+
+                    match panelControls (Stdlib.parameterPanel<unit>.Materialize(argsOf mixed)) with
+                    | [ growth; region ] ->
+                        Expect.equal (growth.Name, region.Name) ("growth", "region") "control names"
+
+                        match growth.Kind with
+                        | FormFieldKind.RangedNumber(Some(Binding.Filter(key, Some start)), None, lo, hi, step) ->
+                            Expect.equal key "growth" "the number control writes its own filter key"
+                            Expect.equal start (Fuaran.Core.JFloat 0.05) "the default is the starting value"
+                            Expect.equal (lo, hi, step) (Some -0.1, Some 0.2, Some 0.01) "bounds and step"
+                        | other -> failtestf "growth is %A, not a write-back RangedNumber" other
+
+                        match region.Kind with
+                        | FormFieldKind.Choice(Binding.Static(Some options), Some(Binding.Filter(key, _)), None) ->
+                            Expect.equal key "region" "the choice control writes its own filter key"
+
+                            Expect.equal
+                                (options |> List.map (fun o -> o.Value))
+                                [ ""; "north"; "south" ]
+                                "the filter-bar options grammar"
+                        | other -> failtestf "region is %A, not a write-back Choice" other
+                    | other -> failtestf "expected two controls, got %d" (List.length other)
+                }
+
+                test
+                    "parameter-panel: every binding materialises — bounds ordered, default clamped, blank and repeated names handled" {
+                    let b =
+                        Map.ofList
+                            [ "count", boxed 3
+                              "param-1-name", boxed "rate"
+                              "param-1-min", boxed 10.0
+                              "param-1-max", boxed -10.0
+                              "param-1-default", boxed 50.0
+                              "param-2-name", boxed "   "
+                              "param-3-name", boxed "rate" ]
+
+                    match panelControls (Stdlib.parameterPanel<unit>.Materialize b) with
+                    | [ rate; second ] ->
+                        match rate.Kind with
+                        | FormFieldKind.RangedNumber(Some(Binding.Filter(_, Some start)), _, lo, hi, _) ->
+                            Expect.equal (lo, hi) (Some -10.0, Some 10.0) "bounds in order"
+                            Expect.equal start (Fuaran.Core.JFloat 10.0) "the default clamped into them"
+                        | other -> failtestf "rate is %A" other
+
+                        Expect.equal second.Name "param-2" "a blank name falls back to param-N"
+                    | other ->
+                        failtestf
+                            "a repeated name keeps its FIRST control only; got %A"
+                            (other |> List.map (fun c -> c.Name))
+                }
+
+                test
+                    "scenario-comparison: the difference is a pipeline step, and evaluating it gives both scenarios and their difference" {
+                    let defined = Stdlib.scenarioPipelineDefined revenueModel
+
+                    match List.item 3 defined with
+                    | Fuaran.Compute.Derive(name,
+                                            Fuaran.Compute.Binary(Fuaran.Compute.Sub,
+                                                                  Fuaran.Compute.Col b,
+                                                                  Fuaran.Compute.Col a)) ->
+                        Expect.equal
+                            (name, b, a)
+                            (Stdlib.DifferenceColumn, Stdlib.ScenarioBColumn, Stdlib.ScenarioAColumn)
+                            "difference = b - a"
+                    | other -> failtestf "the fourth step is %A, not the difference derivation" other
+
+                    let defines =
+                        defined
+                        |> List.filter (fun t ->
+                            match t with
+                            | Fuaran.Compute.Define _ -> true
+                            | _ -> false)
+
+                    Expect.equal (List.length defines) 1 "ONE model, defined once"
+
+                    let env =
+                        Map.ofList
+                            [ Stdlib.scenarioParamName "a" "growth", Fuaran.Core.Float 0.0
+                              Stdlib.scenarioParamName "a" "uplift", Fuaran.Core.Float 0.0
+                              Stdlib.scenarioParamName "b" "growth", Fuaran.Core.Float 0.5
+                              Stdlib.scenarioParamName "b" "uplift", Fuaran.Core.Float 1.0 ]
+
+                    // What the comparison EMITS is the expansion: no definition and
+                    // no call reach the wire, so a host whose codec carries
+                    // neither still reads it.
+                    let pipeline =
+                        match Stdlib.scenarioPipeline revenueModel with
+                        | Ok p -> p
+                        | Error e -> failtestf "the model did not expand: %s" e
+
+                    Expect.equal
+                        (sprintf "%A" pipeline)
+                        (sprintf "%A" (Fuaran.Compute.FnDef.expand defined |> Result.defaultValue []))
+                        "the emitted pipeline is the defined one, expanded"
+
+                    let text = sprintf "%A" pipeline
+                    Expect.isFalse (text.Contains "Define") "no definition is emitted"
+                    Expect.isFalse (text.Contains "Call") "no call is emitted"
+
+                    let input =
+                        match scenarioRows with
+                        | Fuaran.Core.Embedded t -> t
+                        | other -> failtestf "%A" other
+
+                    match Fuaran.Compute.DataFrame.evalPipelineInEnv env pipeline input with
+                    | Error e -> failtestf "the pipeline did not evaluate: %A" e
+                    | Ok out ->
+                        Expect.equal
+                            (Fuaran.Compute.DataFrame.evalPipelineInEnv env defined input
+                             |> Result.map (sprintf "%A"))
+                            (Ok(sprintf "%A" out))
+                            "the defined and the emitted pipeline evaluate alike"
+
+                        let cells name =
+                            match Fuaran.Core.Table.tryColumn name out with
+                            | Some c -> Fuaran.Core.Column.toCells c
+                            | None -> failtestf "no column '%s' in %A" name (Fuaran.Core.Table.columnNames out)
+
+                        Expect.equal
+                            (Fuaran.Core.Table.columnNames out)
+                            [ "item"
+                              Stdlib.ScenarioAColumn
+                              Stdlib.ScenarioBColumn
+                              Stdlib.DifferenceColumn ]
+                            "the key and the three figures"
+
+                        // north: 100 * 1 * 2 = 200 against 100 * 1.5 * 3 = 450.
+                        // south:  40 * 1 * 5 = 200 against  40 * 1.5 * 6 = 360.
+                        Expect.equal
+                            (cells Stdlib.ScenarioAColumn)
+                            [ Fuaran.Core.Float 200.0; Fuaran.Core.Float 200.0 ]
+                            "scenario A"
+
+                        Expect.equal
+                            (cells Stdlib.ScenarioBColumn)
+                            [ Fuaran.Core.Float 450.0; Fuaran.Core.Float 360.0 ]
+                            "scenario B"
+
+                        Expect.equal
+                            (cells Stdlib.DifferenceColumn)
+                            [ Fuaran.Core.Float 250.0; Fuaran.Core.Float 160.0 ]
+                            "the difference, computed by the pipeline"
+                }
+
+                test "a panel composed with a comparison reading its parameters is accepted by pre-emit validation" {
+                    expectClean
+                        "panel + comparison"
+                        (page
+                            [ panelOver [ "growth"; "uplift" ]
+                              comparisonOrFail (fixedSide "Plan" 0.0 0.0) liveSide ])
+                }
+
+                test "a panel naming a parameter the pipeline does not read is REFUSED by pre-emit validation" {
+                    let refused =
+                        page
+                            [ panelOver [ "growth"; "uplift"; "discount" ]
+                              comparisonOrFail (fixedSide "Plan" 0.0 0.0) liveSide ]
+
+                    match PreEmitValidate.validate refused with
+                    | Ok() -> failtest "a control no pipeline reads must not pass pre-emit validation"
+                    | Error defects ->
+                        let decorative =
+                            defects
+                            |> List.choose (fun d ->
+                                match d with
+                                | PreEmitValidate.PreEmitDefect.DecorativeFilter(_, name) -> Some name
+                                | _ -> None)
+
+                        Expect.equal decorative [ "discount" ] "FUARAN074 names exactly the unread parameter"
+
+                    // And the reverse: a pipeline reading a parameter no control declares.
+                    let dangling =
+                        page [ panelOver [ "growth" ]; comparisonOrFail (fixedSide "Plan" 0.0 0.0) liveSide ]
+
+                    Expect.contains (preEmitVariants dangling) "DanglingFilterReference" "FUARAN075 for 'uplift'"
+                }
+
+                test "changing one control re-evaluates only the sites that read that parameter — the binding walk" {
+                    // The comparison reads `growth` and `uplift`; a second figure
+                    // reads `uplift` alone. A change to `growth` dirties the
+                    // comparison and nothing else.
+                    let upliftFigure =
+                        Fuaran.metric
+                            "uplift-figure"
+                            { Defaults.metric with
+                                Label = TextSource.Literal "Uplift"
+                                Value = Binding.Filter("uplift", Some 0.0) }
+
+                    let comparison = comparisonOrFail (fixedSide "Plan" 0.0 0.0) liveSide
+                    let tree = page [ panelOver [ "growth"; "uplift" ]; comparison; upliftFigure ]
+
+                    expectClean "the readout page" tree
+
+                    let facts = BindingWalk.collect tree
+
+                    // The control declaring a key is its writer, not a site that
+                    // re-evaluates when it moves.
+                    let readersOf (name: string) =
+                        facts.Uses
+                        |> List.choose (fun u ->
+                            match u.Use with
+                            | BindingWalk.BindingUse.TransformParamFilter n
+                            | BindingWalk.BindingUse.Filter n when n = name -> Some u.Reader
+                            | _ -> None)
+                        |> List.distinct
+                        |> List.filter (fun r -> r <> "parameter-panel-controls")
+                        |> List.sort
+
+                    let gridId = (fst (gridIn comparison)).Id
+
+                    Expect.equal (readersOf "growth") [ gridId ] "growth: the comparison only"
+                    Expect.equal (readersOf "uplift") (List.sort [ gridId; "uplift-figure" ]) "uplift: both sites"
+                }
+
+                test "scenario-comparison: the stdlib entry reads the source, key and measure its holes name" {
+                    let tree =
+                        Stdlib.scenarioComparison<unit>.Materialize(argsOf Stdlib.scenarioComparison<unit>.Example)
+
+                    let _, grid = gridIn tree
+
+                    match grid.Source with
+                    | Binding.Transform(TransformSource.Data(Fuaran.Core.DataSource.Ref source), pipeline, Some ps) ->
+                        Expect.equal source "budget-lines" "the rows the host resolves"
+                        Expect.equal grid.RowKeyField (Some "line") "the key column"
+
+                        // The growth model expanded: no definition is left, and
+                        // each scenario's derivation reads the measure column.
+                        let scenarios =
+                            pipeline
+                            |> List.choose (fun t ->
+                                match t with
+                                | Fuaran.Compute.Derive(name, expr) when
+                                    name = Stdlib.ScenarioAColumn || name = Stdlib.ScenarioBColumn
+                                    ->
+                                    Some(sprintf "%A" expr)
+                                | Fuaran.Compute.Define _ -> failtest "the growth model's expansion was refused"
+                                | _ -> None)
+
+                        Expect.equal (List.length scenarios) 2 "one derivation per scenario"
+
+                        for expr in scenarios do
+                            Expect.stringContains expr "Col \"cost\"" "the measure feeds the model's base"
+
+                        Expect.equal
+                            (ps |> List.map (fun p -> p.Name, sprintf "%A" p.From))
+                            [ Stdlib.scenarioParamName "a" "growth",
+                              sprintf "%A" (Binding<Fuaran.Core.JVal>.Static(Some(Fuaran.Core.JFloat 0.0)))
+                              Stdlib.scenarioParamName "b" "growth",
+                              sprintf "%A" (Binding<Fuaran.Core.JVal>.Static(Some(Fuaran.Core.JFloat 0.03))) ]
+                            "each scenario's growth reaches its own parameter"
+                    | other -> failtestf "the grid source is %A" other
+
+                    Expect.equal
+                        (grid.Columns |> List.map (fun c -> c.Label))
+                        [ "Item"; "Flat"; "Inflation"; "Difference" ]
+                        "the headings"
+                }
+
+                test "scenarioComparisonOf refuses a side that does not bind exactly the model's scenario parameters" {
+                    let refusedWith (a: ScenarioSide) (b: ScenarioSide) =
+                        match Stdlib.scenarioComparisonOf<unit> "c" "h" revenueModel a b with
+                        | Ok _ -> failtest "expected a refusal"
+                        | Error e -> e
+
+                    let missing =
+                        refusedWith
+                            { Label = "Thin"
+                              Parameters = [ "growth", Binding.Static None ] }
+                            liveSide
+
+                    Expect.stringContains missing "'uplift'" "an unbound parameter is named"
+
+                    let extra =
+                        refusedWith
+                            (fixedSide "Plan" 0.0 0.0)
+                            { liveSide with
+                                Parameters = ("units", Binding.Static None) :: liveSide.Parameters }
+
+                    Expect.stringContains extra "'units'" "a column parameter is not a scenario's to bind"
+
+                    match
+                        Stdlib.scenarioComparisonOf<unit>
+                            "c"
+                            "h"
+                            { revenueModel with
+                                Columns = ("volume", "units") :: revenueModel.Columns }
+                            (fixedSide "Plan" 0.0 0.0)
+                            liveSide
+                    with
+                    | Ok _ -> failtest "a column feeding no model parameter must be refused"
+                    | Error e -> Expect.stringContains e "'volume'" "the stray column parameter is named"
                 } ]
 
           test "the certification harness can still go red — a deliberately broken materialiser is REJECTED" {
