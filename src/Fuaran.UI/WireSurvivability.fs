@@ -281,9 +281,11 @@ let byCase: Map<string, Classification> =
 
 /// The host-only + partial cases an author should be steered away from in
 /// orchestrated contexts (everything with a recoverable alternative).
+///
+/// Phase 2100 — a non-survivable case with NO alternative (a sanctioned
+/// host-only escape, e.g. `Action.ReadFileBody`) is not steerable: there is
+/// nothing to steer the author toward. It was included until this phase,
+/// against this doc.
 let steerable: Classification list =
     all
-    |> List.filter (fun c ->
-        match c.Verdict with
-        | Survivability.Survivable -> false
-        | _ -> true)
+    |> List.filter (fun c -> c.Verdict <> Survivability.Survivable && Option.isSome c.Alternative)

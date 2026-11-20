@@ -109,9 +109,11 @@ module Fragment =
     let requiredHoles (pf: ParamFragment<'Msg>) : string list =
         holesOf pf |> List.filter HoleDecl.isRequired |> List.map HoleDecl.name
 
-    /// Validate a value argument against the named hole's value-space. A slot /
-    /// repeat hole is not value-validatable here (the renderer-side apply binds
-    /// its subtree); an unknown hole is a defect.
+    /// Validate a value argument against the named hole's value-space. A `Value`
+    /// hole checks the value itself; a `Repeat` hole checks its COUNT against the
+    /// hole's count space (a repeat is bound by a value argument, its count, as
+    /// the function view binds it). A `Slot` hole is not value-validatable here
+    /// (the renderer-side apply binds its subtree); an unknown hole is a defect.
     let validateValueArg (pf: ParamFragment<'Msg>) (holeName: string) (arg: obj) : Result<obj, string> =
         match holesOf pf |> List.tryFind (fun h -> HoleDecl.name h = holeName) with
         | Some(HoleDecl.Value(_, space, _)) -> HoleValueSpace.validate space arg
@@ -125,6 +127,11 @@ module Fragment =
     /// against its hole's space; an unknown / non-value hole, or a value-space
     /// violation, fails. Unbound holes remain open (not an error — that is the
     /// whole point of currying).
+    ///
+    /// A `Repeat` hole cannot be curried, although `validateValueArg` checks its
+    /// count: a curried hole keeps its bound value as the declaration's default,
+    /// and a `Repeat` declaration has no default to hold one (it is always
+    /// required). Binding one fails with an error that says so.
     let curry (pf: ParamFragment<'Msg>) (boundValues: Map<string, obj>) : Result<ParamFragment<'Msg>, string> =
         let rec go (holes: HoleDecl list) (acc: HoleDecl list) : Result<HoleDecl list, string> =
             match holes with
@@ -149,17 +156,21 @@ module Fragment =
                     | Error e -> Error(sprintf "binding '%s': %s" n e)
                 | _ -> go rest (h :: acc)
 
-        // Reject binding a name that is not a value hole.
-        let badName =
-            boundValues
-            |> Map.toList
-            |> List.tryFind (fun (n, _) ->
-                match holesOf pf |> List.tryFind (fun h -> HoleDecl.name h = n) with
-                | Some(HoleDecl.Value _) -> false
-                | _ -> true)
+        // Reject binding a name that is not a value hole, naming why.
+        let refusal (n: string) : string option =
+            match holesOf pf |> List.tryFind (fun h -> HoleDecl.name h = n) with
+            | Some(HoleDecl.Value _) -> None
+            | Some(HoleDecl.Repeat _) ->
+                Some(
+                    sprintf
+                        "'%s' is a repeat hole: its count is validated by validateValueArg, but a repeat declaration has no default to hold a curried count"
+                        n
+                )
+            | Some(HoleDecl.Slot _) -> Some(sprintf "'%s' is not a value hole" n)
+            | None -> Some(sprintf "no hole named '%s'" n)
 
-        match badName with
-        | Some(n, _) -> Error(sprintf "'%s' is not a value hole" n)
+        match boundValues |> Map.toList |> List.tryPick (fst >> refusal) with
+        | Some e -> Error e
         | None ->
             go (holesOf pf) []
             |> Result.map (fun holes ->
