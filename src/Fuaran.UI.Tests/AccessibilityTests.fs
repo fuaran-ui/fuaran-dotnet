@@ -2,7 +2,7 @@
 
 // ============================================================================
 //  `Accessibility` trait + per-component defaults +
-//  Render.accessibilityAttributes projection.
+//  Accessibility.accessibilityAttributes projection.
 //
 //  Feliz' .NET-side ReactElement is opaque (rendering happens in the browser),
 //  so HTML-shape assertions live in the Catalog visual-inspection layer.
@@ -91,7 +91,9 @@ let tests =
           }
 
           test "accessibilityAttributes projects None to []" {
-              let attrs = Render.accessibilityAttributes BindingResolver.empty Option.None
+              let attrs =
+                  Fuaran.UI.Renderer.Accessibility.accessibilityAttributes BindingResolver.empty Option.None
+
               Expect.isEmpty attrs "No Accessibility ⇒ no aria-* attributes"
           }
 
@@ -101,7 +103,8 @@ let tests =
                       { Defaults.Accessibility.empty with
                           Role = Some AriaRole.Button }
 
-              let attrs = Render.accessibilityAttributes BindingResolver.empty a11y
+              let attrs =
+                  Fuaran.UI.Renderer.Accessibility.accessibilityAttributes BindingResolver.empty a11y
 
               Expect.contains attrs ("role", "button") "role=\"button\" attribute emitted"
           }
@@ -112,7 +115,8 @@ let tests =
                       { Defaults.Accessibility.empty with
                           LiveRegion = Some LiveRegionKind.Assertive }
 
-              let attrs = Render.accessibilityAttributes BindingResolver.empty a11y
+              let attrs =
+                  Fuaran.UI.Renderer.Accessibility.accessibilityAttributes BindingResolver.empty a11y
 
               Expect.contains attrs ("aria-live", "assertive") "aria-live=\"assertive\" emitted"
           }
@@ -123,7 +127,8 @@ let tests =
                       { Defaults.Accessibility.empty with
                           Label = Some(Binding.Static(Some "Close dialog")) }
 
-              let attrs = Render.accessibilityAttributes BindingResolver.empty a11y
+              let attrs =
+                  Fuaran.UI.Renderer.Accessibility.accessibilityAttributes BindingResolver.empty a11y
 
               Expect.contains attrs ("aria-label", "Close dialog") "Static Label resolves to aria-label"
           }
@@ -140,7 +145,7 @@ let tests =
                       { Defaults.Accessibility.empty with
                           Label = Some(Binding.I18n("close", Option.None)) }
 
-              let attrs = Render.accessibilityAttributes sources a11y
+              let attrs = Fuaran.UI.Renderer.Accessibility.accessibilityAttributes sources a11y
 
               Expect.contains attrs ("aria-label", "Close") "I18n-bound Label resolves to aria-label"
           }
@@ -151,7 +156,8 @@ let tests =
                       { Defaults.Accessibility.empty with
                           Label = Some(Binding.Static(Some "")) }
 
-              let attrs = Render.accessibilityAttributes BindingResolver.empty a11y
+              let attrs =
+                  Fuaran.UI.Renderer.Accessibility.accessibilityAttributes BindingResolver.empty a11y
 
               Expect.isFalse
                   (attrs |> List.exists (fun (k, _) -> k = "aria-label"))
@@ -165,7 +171,8 @@ let tests =
                           LabelledBy = Some "heading-1"
                           DescribedBy = Some "help-text" }
 
-              let attrs = Render.accessibilityAttributes BindingResolver.empty a11y
+              let attrs =
+                  Fuaran.UI.Renderer.Accessibility.accessibilityAttributes BindingResolver.empty a11y
 
               Expect.contains attrs ("aria-labelledby", "heading-1") "aria-labelledby = NodeId text"
               Expect.contains attrs ("aria-describedby", "help-text") "aria-describedby = NodeId text"
@@ -177,7 +184,8 @@ let tests =
                       { Defaults.Accessibility.empty with
                           Hidden = Some(Binding.Static(Some true)) }
 
-              let attrsTrue = Render.accessibilityAttributes BindingResolver.empty a11yTrue
+              let attrsTrue =
+                  Fuaran.UI.Renderer.Accessibility.accessibilityAttributes BindingResolver.empty a11yTrue
 
               Expect.contains attrsTrue ("aria-hidden", "true") "Hidden=true emits aria-hidden"
 
@@ -186,7 +194,8 @@ let tests =
                       { Defaults.Accessibility.empty with
                           Hidden = Some(Binding.Static(Some false)) }
 
-              let attrsFalse = Render.accessibilityAttributes BindingResolver.empty a11yFalse
+              let attrsFalse =
+                  Fuaran.UI.Renderer.Accessibility.accessibilityAttributes BindingResolver.empty a11yFalse
 
               Expect.isFalse
                   (attrsFalse |> List.exists (fun (k, _) -> k = "aria-hidden"))
@@ -199,7 +208,8 @@ let tests =
                       { Defaults.Accessibility.empty with
                           Role = Some(AriaRole.Custom "combobox") }
 
-              let attrs = Render.accessibilityAttributes BindingResolver.empty a11y
+              let attrs =
+                  Fuaran.UI.Renderer.Accessibility.accessibilityAttributes BindingResolver.empty a11y
 
               Expect.contains attrs ("role", "combobox") "Custom role string emitted verbatim"
           }
