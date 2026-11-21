@@ -15,7 +15,7 @@ module Fuaran.UI.Tests.ErrorBoundary
 //      fields (NodeId / NodeKindName / ErrorMessage / CaughtBy /
 //      CorrelationId / Timestamp).
 //   4. A throwing telemetry sink does not poison the emit path — the
-//      `emitRenderFailure` helper swallows sink failures per the
+//      `emitRenderFailureWithContext` helper swallows sink failures per the
 //      `IFuaranTelemetrySink` best-effort contract.
 //   5. The `Defaults.Accessibility.none` shape is preserved on the
 //      smart-ctor's output (the boundary is structural — no role
@@ -55,7 +55,7 @@ type private RecordingSink() =
         member _.RecordValidateOutcome _ = ()
 
 /// Sink whose `RecordRenderFailure` throws — pins the "best-effort"
-/// contract: `emitRenderFailure` must not propagate sink failures into
+/// contract: `emitRenderFailureWithContext` must not propagate sink failures into
 /// the render path.
 type private ThrowingRenderFailureSink() =
     interface IFuaranTelemetrySink with
@@ -157,15 +157,16 @@ let tests =
               Expect.equal (Render.nodeKindName boundaryNode.Kind) "ErrorBoundary" "ErrorBoundary discriminator"
           }
 
-          // ── emitRenderFailure → sink ─────────────────────────────────────
-          test "emitRenderFailure delivers a fully-populated RenderFailureTelemetry to the sink" {
+          // ── emitRenderFailureWithContext → sink ─────────────────────────
+          test "emitRenderFailureWithContext delivers a fully-populated RenderFailureTelemetry to the sink" {
               let sink = RecordingSink()
 
               let kindNode: Node<Msg> = Fuaran.metric "throwing-metric" Defaults.metric
 
               let corrId =
-                  Render.emitRenderFailure
+                  Render.emitRenderFailureWithContext
                       (Some(sink :> IFuaranTelemetrySink))
+                      Map.empty
                       "throwing-metric"
                       (Render.nodeKindName kindNode.Kind)
                       "boom — accessor blew up"
@@ -211,7 +212,7 @@ let tests =
               Expect.equal tel.UserId (Some "user-7") "the user id is stamped"
           }
 
-          test "an empty correlation context reproduces the pre-330 behaviour exactly" {
+          test "an empty correlation context stamps no interaction or user id" {
               let sink = RecordingSink()
 
               let withEmptyMap =
@@ -223,18 +224,10 @@ let tests =
                       "boom"
                       RenderFailureSource.PerNodeGuard
 
-              let viaOldArity =
-                  Render.emitRenderFailure
-                      (Some(sink :> IFuaranTelemetrySink))
-                      "n"
-                      "Display.Metric"
-                      "boom"
-                      RenderFailureSource.PerNodeGuard
-
-              Expect.equal viaOldArity withEmptyMap "the correlation id is unchanged"
-              Expect.equal sink.RenderFailures.Count 2 "both emitted"
+              Expect.equal sink.RenderFailures.Count 1 "emitted"
+              Expect.equal sink.RenderFailures[0].CorrelationId withEmptyMap "the returned id is the recorded one"
               Expect.isNone sink.RenderFailures[0].PromptId "empty map ⇒ None"
-              Expect.isNone sink.RenderFailures[1].PromptId "the pre-330 arity ⇒ None"
+              Expect.isNone sink.RenderFailures[0].UserId "empty map ⇒ None"
           }
 
           test "the correlation id is independent of the interaction id" {
@@ -271,11 +264,12 @@ let tests =
                   "while both carry the same interaction id"
           }
 
-          test "emitRenderFailure with CaughtBy = ErrorBoundary tags the source correctly" {
+          test "emitRenderFailureWithContext with CaughtBy = ErrorBoundary tags the source correctly" {
               let sink = RecordingSink()
 
-              Render.emitRenderFailure
+              Render.emitRenderFailureWithContext
                   (Some(sink :> IFuaranTelemetrySink))
+                  Map.empty
                   "boundary-id"
                   "ErrorBoundary"
                   "child subtree threw"
@@ -286,14 +280,20 @@ let tests =
               Expect.equal sink.RenderFailures[0].CaughtBy RenderFailureSource.ErrorBoundary "boundary source marked"
           }
 
-          test "emitRenderFailure with no sink wired is a structural no-op" {
+          test "emitRenderFailureWithContext with no sink wired is a structural no-op" {
               // The renderer's `renderWithSources` default leaves TelemetrySink
               // = None; the helper must still return a correlation id (used
               // by the fallback placeholder's data-* attribute) but emit no
               // record because there's no sink to receive it. Asserting "no
               // exception escapes" is the load-bearing pin.
               let corrId =
-                  Render.emitRenderFailure None "any-node" "Display.Metric" "boom" RenderFailureSource.PerNodeGuard
+                  Render.emitRenderFailureWithContext
+                      None
+                      Map.empty
+                      "any-node"
+                      "Display.Metric"
+                      "boom"
+                      RenderFailureSource.PerNodeGuard
 
               Expect.isFalse (System.String.IsNullOrEmpty corrId) "correlation id populated even without sink"
           }
@@ -308,8 +308,9 @@ let tests =
               // The expression below MUST NOT throw — the helper's internal
               // try/with absorbs the sink failure.
               let corrId =
-                  Render.emitRenderFailure
+                  Render.emitRenderFailureWithContext
                       (Some throwingSink)
+                      Map.empty
                       "node-id"
                       "Display.Metric"
                       "render error"

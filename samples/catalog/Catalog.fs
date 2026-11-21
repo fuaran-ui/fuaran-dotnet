@@ -334,7 +334,7 @@ let private a11yInspectorPane (sources: BindingResolver.BindingSources) (node: N
                         [ prop.className "catalog-a11y-missing-fields"
                           prop.children [ for field in fields -> Html.li [ prop.text field ] ] ] ] ]
     | Some _ ->
-        let attrs = Render.accessibilityAttributes sources node.Accessibility
+        let attrs = Accessibility.accessibilityAttributes sources node.Accessibility
 
         let body =
             if List.isEmpty attrs then
