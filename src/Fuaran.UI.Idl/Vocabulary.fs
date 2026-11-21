@@ -389,6 +389,22 @@ let private determinismSource =
 
 // ─── Value-unions ──────────────────────────────────────────────────────────
 
+// Phase 2340 — why every row below still writes `Aliases = []` and
+// `Presence = None`. The IDL contract carries a member's aliases, an enum
+// case's aliases and a presence condition (Fuaran.Core.Idl since 0.40.0), and
+// the F# backend applies all three. Measured 2026-11-21 over this vocabulary
+// with the pinned 0.42.0 assemblies: declaring ONE alias (member or enum case)
+// or ONE presence condition makes `Gen.typescriptModule` refuse the whole
+// vocabulary (`UnsupportedConstruct`) and makes the F* target refuse all 43
+// kinds, so the proof vocabulary falls from 19 kinds to 0. Both legs are
+// gates here (`IdlFullVocabularyFuzzTests` leg 3, `FStarVocabularyTests`).
+// So the absent-when-meaningless rows that need a condition (`Grid.cols`
+// under `templateColumns`, `DataGrid.columns` / `source` under `staticRows`,
+// `Binding.Local`'s closures under `codec`) and every rename with a retired
+// spelling stay hand rules in `JsonDecode` until those two backends apply
+// the declarations. An empty-map default is the exception: it is admitted by
+// all three backends (probed on `TextSource.I18n.args`).
+
 let private req (name: string) (t: IdlType) : IdlField =
     { Name = name
       Type = t
