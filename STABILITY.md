@@ -8541,12 +8541,12 @@ before it was decided.
 | `PreEmitValidate.validateWithRegistryAndPolicy` | keep and test | The one preset with no test; it now has one. |
 | `AffordanceInertness.report`, `DeadOnDecode.lint` | keep (already tested) | The decoded-tree inertness query a host runs on wire-ingested trees; both have suites. |
 | The 43 generated `mk*` constructors in `Generated.fs` | keep, as documented generator output | Emitted by the IDL code generator, where the IDL's authoring defaults are applied; whether they are emitted is the generator's decision, not this repository's. |
-| `Fuaran.UI.Bounded` (`NonEmptyString`, `BoundedString`, `BoundedInt`, `Fraction`) | **obsolete now, deleted at the cut** | An opt-in kit no spec record, wire field or renderer ever adopted; nothing in this repository or the searched consumers names it outside its own tests, and it is not part of the language an author emits. |
+| `Fuaran.UI.Bounded` (`NonEmptyString`, `BoundedString`, `BoundedInt`, `Fraction`) | **obsoleted here, deleted in this release by Phase 2836** | An opt-in kit no spec record, wire field or renderer ever adopted; nothing in this repository or the searched consumers names it outside its own tests, and it is not part of the language an author emits. |
 | `Fuaran.UI.RetrievalSource` | keep, as documented extension point | **The finding no longer holds:** a hosted retrieval source and a portal bridge in downstream consumers implement and call it. Tested. |
 | `QuerySource.resolveAndCheck`, `InMemoryQuerySource` | keep, as documented extension point | The client query-source seam's typed gate and its offline double; tested. |
 | `Fragment.curry` | keep and test (already tested) | Content-pack partial application; behaviour corrected below. |
 | `WireSurvivability.steerable` | keep, fixed, tested | Behaviour corrected below. |
-| `AiTools.Fidelity.all`, `.kinds`, `.isAnnounced` | **obsolete now, deleted at the cut** | Pure aliases of `RenderFidelity.allIntrinsics`, `.announcedKinds` and `.announcesIntrinsically`; the obsoletion message names each. |
+| `AiTools.Fidelity.all`, `.kinds`, `.isAnnounced` | **obsoleted here, deleted in this release by Phase 2836** | Pure aliases of `RenderFidelity.allIntrinsics`, `.announcedKinds` and `.announcesIntrinsically`; the obsoletion message names each. |
 | `AiTools.Fidelity.forKind`, `.ofNode`, `.rolesEmitted`, `.liveRegionsEmitted`, `.describe` | keep and test | Projections the declaration does not itself offer; `ofNode` gains its test. |
 | `ResponseRender.renderResolvedBindingResult`, `renderGeometryTree`, `renderErrorEntries` | keep and test | The JSON responses of three introspection tools, beside the two that were tested; each gains a test that reads the JSON back. |
 | `FastPath.findExact` | keep (already tested) | The exact-signature twin of `findRunnable`. |
@@ -8566,8 +8566,10 @@ to the cut's carrier to decide.
   alternative. It previously also held cases with no alternative (`Action.ReadFileBody`), which had nowhere to steer
   an author to.
 
-**Consumer action:** move off `Fuaran.UI.Bounded` before the cut (validate the scalar in your own code); replace
-`Fidelity.all` / `kinds` / `isAnnounced` with the `RenderFidelity` names their obsoletion messages give. A caller
+**Consumer action:** stop using `Fuaran.UI.Bounded` (validate the scalar in your own code); replace
+`Fidelity.all` / `kinds` / `isAnnounced` with `RenderFidelity.allIntrinsics` / `announcedKinds` /
+`announcesIntrinsically`. Phase 2836 deletes all of them in this same release, so no released version shows the
+obsolete warnings. A caller
 matching on `curry`'s old message text for a repeat or unknown hole reads the new text.
 
 ### What rides this slot — Phase 2101 (test-only renderer surface is obsolete, and two lookups stop materialising the tree)
@@ -8586,8 +8588,8 @@ matching on `curry`'s old message text for a repeat or unknown hole reads the ne
   fold over the children instead of building the list of every node first, and `findNode` stops at the first match.
 
 **Consumer action: none required.** A caller of either obsolete function moves to the function named in its
-message. Under `TreatWarningsAsErrors` the FS0044 warning is a build error, and that move clears it. Both
-functions go at the next breaking release.
+message. Both functions are deleted in this same release by Phase 2836, so no released version carries them
+obsolete; a caller meets a missing name, not an FS0044 warning.
 
 **Kept on purpose.** `Render.expandFragmentUncached` stays public because two benchmark projects measure it, so it
 is not test-only. `AgAdapter.AgAdapterOptions<'Msg>` keeps its unused type parameter. Its documentation records the
@@ -8624,6 +8626,45 @@ pin admits the no-grant zero member only as the first name, value zero, mapping 
 
 **Migration:** [`docs/migrations/2346-embed-permission-zero-grants-nothing.md`](docs/migrations/2346-embed-permission-zero-grants-nothing.md).
 **Escape-hatch inventory:** Hatch 7's "what is not claimed" entry for the C# zero value is retired with this change.
+
+### What rides this slot — Phase 2835 (`AgAdapterOptions` drops its unused type parameter)
+
+**Stability impact:** breaking — `AgAdapterOptions<'Msg>` becomes `AgAdapterOptions` and `defaultOptions<'Msg>` loses
+its type argument; every consumer annotation drops the type argument. Rides the announced cut (fuaran#2303).
+
+**Consumer-visible symbols:** `Fuaran.UI.Renderer.AgAdapter.AgAdapterOptions` (was `AgAdapterOptions<'Msg>`);
+`Fuaran.UI.Renderer.AgAdapter.defaultOptions` (was the generic value `defaultOptions<'Msg>`);
+`AgVisualisationAdapter<'Msg>` (constructor now takes `AgAdapterOptions`) and `adapterWith<'Msg>` (parameter now
+`AgAdapterOptions`). No field moves, no wire byte moves; the isolation property pinned by
+`AdapterOptionsIsolation` is unchanged.
+
+**Migration:** [`docs/migrations/2835-ag-adapter-options-non-generic.md`](docs/migrations/2835-ag-adapter-options-non-generic.md).
+
+### What rides this slot — Phase 2836 (the surface obsoleted by 2100 and 2101 is removed in the cut)
+
+**Stability impact:** breaking — removes `Fuaran.UI.Bounded`, `Fidelity.all`, `Fidelity.kinds`, `Fidelity.isAnnounced`,
+`Render.emitRenderFailure` and `Render.accessibilityAttributes`, all obsoleted earlier in the same release; each has
+a replacement except `Bounded`. Rides the announced cut (fuaran#2303).
+
+**Class: BREAKING** (removals). Rides the open 0.105.0 draft, which is already breaking-class; it does not advance the
+number. No wire byte moves. Because Phases 2100 and 2101 obsoleted these names in this same draft, no released version
+ever showed a consumer their obsolete warnings: a caller moving from 0.104.x meets a missing name.
+
+| Package | Removed | Replacement |
+|---|---|---|
+| `Fuaran.UI` | the `Fuaran.UI.Bounded` module (`NonEmptyString`, `BoundedString`, `BoundedInt`, `Fraction`) | none: nothing in the vocabulary carries these types; validate the scalar in your own code |
+| `Fuaran.UI.AiTools` | `Fidelity.all` | `Fuaran.UI.RenderFidelity.allIntrinsics` |
+| `Fuaran.UI.AiTools` | `Fidelity.kinds` | `Fuaran.UI.RenderFidelity.announcedKinds` |
+| `Fuaran.UI.AiTools` | `Fidelity.isAnnounced` | `Fuaran.UI.RenderFidelity.announcesIntrinsically` |
+| `Fuaran.UI.Renderer` | `Render.emitRenderFailure` | `Render.emitRenderFailureWithContext sink Map.empty nodeId kindName errorMessage source` |
+| `Fuaran.UI.Renderer` | `Render.accessibilityAttributes` | `Fuaran.UI.Renderer.Accessibility.accessibilityAttributes` (same signature, in `Fuaran.UI.Renderer.Core`) |
+
+The other `Fidelity` members (`forKind`, `ofNode`, `rolesEmitted`, `liveRegionsEmitted`, `describe`) stay. The
+`Bounded` module's own suite is deleted with it; the `Fidelity` suite's assertions on the three aliases now pin the
+`RenderFidelity` declarations they aliased.
+
+**Migration:** [`docs/migrations/2100-2101-obsoleted-surface-removed-at-the-cut.md`](docs/migrations/2100-2101-obsoleted-surface-removed-at-the-cut.md)
+(Phase 2303's note for the cut).
 
 ## 0.104.0 (RELEASED — tagged v0.104.0 at cc477007, 2026-11-11) — the slot opened after v0.103.0 was released; advanced from 0.103.1 on 2026-11-10 by Phase 2640, whose change is breaking
 

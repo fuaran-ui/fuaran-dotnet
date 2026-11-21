@@ -34,8 +34,9 @@ The four modules extracted from `Fuaran.UI.Renderer` (`Sanitize`, `Theme`,
 reference on this assembly, so any consumer that imported
 `Fuaran.UI.Renderer.Sanitize` / `.Theme` / `.Formatting` / `.BindingResolver`
 sees no source change — the modules simply live in a different assembly now.
-`Render.accessibilityAttributes` is re-exported from `Fuaran.UI.Renderer` for
-the same reason.
+The accessibility-attribute projection lives here as
+`Fuaran.UI.Renderer.Accessibility.accessibilityAttributes`; the old
+`Render.accessibilityAttributes` re-export was removed in Phase 2836.
 
 This is the prerequisite extraction (Phase 138) for the Wave 18 SSR + isomorphic
 hydration work: the server renderer reuses this spine without pulling Fable.

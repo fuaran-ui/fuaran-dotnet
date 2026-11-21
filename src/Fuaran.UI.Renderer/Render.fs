@@ -160,20 +160,6 @@ let emitRenderFailureWithContext
 
     corrId
 
-/// `emitRenderFailureWithContext` with no correlation context — the pre-330
-/// arity. Equivalent to passing `Map.empty`. Obsolete since Phase 2101: nothing
-/// in the renderer calls it, and its only remaining callers were tests, which now
-/// call `emitRenderFailureWithContext sink Map.empty` directly.
-[<System.Obsolete("Use emitRenderFailureWithContext sink Map.empty nodeId kindName errorMessage source (Phase 2101).")>]
-let emitRenderFailure
-    (sink: IFuaranTelemetrySink option)
-    (nodeId: string)
-    (kindName: string)
-    (errorMessage: string)
-    (source: RenderFailureSource)
-    : string =
-    emitRenderFailureWithContext sink Map.empty nodeId kindName errorMessage source
-
 // ─── Render context — bundles renderer-wide dependencies ───────────────────
 //
 // Everything a recursive renderer call needs travels in one record, so the
@@ -446,20 +432,9 @@ module ChartLoweringMemo =
 // trait moved to the emission-agnostic `Fuaran.UI.Renderer.Accessibility`
 // module in `Fuaran.UI.Renderer.Core` (Phase 138) so the server renderer can
 // emit the same pairs without Feliz/Fable. The client renderer reaches it
-// through `ElementPlan` and maps the pairs to Feliz `prop.custom` props. The
-// `Render.accessibilityAttributes` re-export below is obsolete (Phase 2101):
-// its callers were tests and the catalog sample, which now call the Core
-// projection directly.
-
-/// Re-export of [`Accessibility.accessibilityAttributes`]. Projects an
-/// `Accessibility option` (resolved against the supplied `BindingSources`)
-/// into the `(attr-name, attr-value)` DOM-attribute pairs.
-[<System.Obsolete("Use Fuaran.UI.Renderer.Accessibility.accessibilityAttributes, which this re-exports (Phase 2101).")>]
-let accessibilityAttributes
-    (sources: BindingResolver.BindingSources)
-    (a11y: Accessibility option)
-    : (string * string) list =
-    Accessibility.accessibilityAttributes sources a11y
+// through `ElementPlan` and maps the pairs to Feliz `prop.custom` props; call
+// `Fuaran.UI.Renderer.Accessibility.accessibilityAttributes` directly (the
+// `Render.accessibilityAttributes` re-export was removed in Phase 2836).
 
 // ─── The plan emitter (Phase 2108) ──────────────────────────────────────────
 

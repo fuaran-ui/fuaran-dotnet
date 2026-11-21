@@ -12,9 +12,9 @@ module Fuaran.UI.AiTools.Tests.FidelityTests
 //  distort it.
 // ============================================================================
 
-// Phase 2100: `Fidelity.all` / `kinds` / `isAnnounced` are obsolete aliases, removed in the
-// announced breaking cut; they stay pinned here until then.
-#nowarn "44"
+// Phase 2836: the `Fidelity.all` / `kinds` / `isAnnounced` aliases are gone; their assertions
+// now pin the `RenderFidelity` declarations they aliased (`allIntrinsics`, `announcedKinds`,
+// `announcesIntrinsically`), which no other suite asserts against the table.
 
 open Expecto
 
@@ -32,12 +32,12 @@ let fidelityQueries =
                       r.Intrinsic
                       (sprintf "the query disagrees with the render-fidelity table for %s" r.Kind))
 
-          testCase "isAnnounced follows the declaration" (fun () ->
+          testCase "announcesIntrinsically follows the declaration" (fun () ->
               for r in all do
                   Expect.equal
-                      (Fidelity.isAnnounced r.Kind)
+                      (announcesIntrinsically r.Kind)
                       (not (List.isEmpty r.Intrinsic))
-                      (sprintf "`isAnnounced` disagrees with the table for %s" r.Kind))
+                      (sprintf "`announcesIntrinsically` disagrees with the table for %s" r.Kind))
 
           testCase "an unknown kind is answered, not thrown at" (fun () ->
               // The honest answer for a kind the table does not carry is "nothing
@@ -45,28 +45,32 @@ let fidelityQueries =
               // §15.3-tolerated unknown kind needs, and is not the same claim as
               // "this kind is silent". `tryFind` is where that difference lives.
               Expect.isEmpty (Fidelity.forKind "NoSuchKind") "an unknown kind answers with no emissions"
-              Expect.isFalse (Fidelity.isAnnounced "NoSuchKind") "an unknown kind is not claimed to be announced"
+              Expect.isFalse (announcesIntrinsically "NoSuchKind") "an unknown kind is not claimed to be announced"
               Expect.isEmpty (Fidelity.describe "NoSuchKind") "an unknown kind has nothing to describe")
 
           testCase "the announced shortlist is the rows that declare something" (fun () ->
               Expect.equal
-                  Fidelity.kinds
+                  announcedKinds
                   (all
                    |> List.filter (fun r -> not (List.isEmpty r.Intrinsic))
                    |> List.map (fun r -> r.Kind))
                   "the shortlist must be the declaring rows, in table order"
 
               Expect.isNonEmpty
-                  Fidelity.kinds
+                  announcedKinds
                   "no kind declares an intrinsic emission at all — the query would be answering a question nobody can act on"
 
-              for kind in Fidelity.kinds do
+              for kind in announcedKinds do
                   Expect.isTrue
-                      (Fidelity.isAnnounced kind)
+                      (announcesIntrinsically kind)
                       (sprintf "%s is on the shortlist but reads as unannounced" kind))
 
           testCase "the flat enumeration is the table's, in table order" (fun () ->
-              Expect.equal Fidelity.all allIntrinsics "the enumeration must be the declaration's own")
+              Expect.equal
+                  allIntrinsics
+                  [ for r in all do
+                        for i in r.Intrinsic -> r.Kind, i ]
+                  "the enumeration must be the declaration's own, row by row in table order")
 
           testCase "rolesEmitted and liveRegionsEmitted partition the entries" (fun () ->
               // Per ELEMENT, not per kind: a kind pinning three roles answers with
@@ -91,7 +95,7 @@ let fidelityQueries =
               // kind the renderer announces of its own accord, and one whose
               // announcement is entirely the trait's.
               Expect.isTrue
-                  (Fidelity.isAnnounced "Toast")
+                  (announcesIntrinsically "Toast")
                   "Toast is emitted with role=\"status\" and aria-live=\"polite\" whatever the trait says"
 
               Expect.contains
@@ -105,11 +109,11 @@ let fidelityQueries =
                   "the Toast answer must name the politeness"
 
               Expect.isFalse
-                  (Fidelity.isAnnounced "Heading")
+                  (announcesIntrinsically "Heading")
                   "a Heading announces nothing of itself — what it announces is exactly what its trait declares")
 
           testCase "describe renders one line per entry, naming the tier" (fun () ->
-              for kind in Fidelity.kinds do
+              for kind in announcedKinds do
                   let lines = Fidelity.describe kind
 
                   Expect.equal
