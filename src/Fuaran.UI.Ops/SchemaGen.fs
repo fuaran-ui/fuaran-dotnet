@@ -230,6 +230,14 @@ let private invokeArgs: J =
 let private paramSlot (literal: J) : J =
     JObj [ "anyOf", JArr [ literal; record [ "$param" ] [ "$param", str ] ] ]
 
+/// A seed slot (Fuaran.Compute 0.45.0): the literal is an int64 written as
+/// decimal digits in a string, with no leading zero and no `-0`, so a seed
+/// survives a host whose numbers are doubles. The decoder also refuses a value
+/// outside the int64 range, which the pattern leaves unstated: the schema says
+/// less than the decoder here, never something different.
+let private seedSlot: J =
+    paramSlot (JObj [ "type", JStr "string"; "pattern", JStr "^(0|-?[1-9][0-9]{0,18})$" ])
+
 /// The members of a fit document (Fuaran.Compute 0.43.0, `DataFrameCodec`'s
 /// `fitFields`), which a `fit` step carries at its top level and a `predict`
 /// step nests under `fit` — one list, so the two positions cannot drift.
@@ -808,7 +816,42 @@ let private defs: (string * J) list =
                       [ "kind", enumDef [ "confidence"; "prediction" ]; "level", paramSlot number ]
                   "model",
                   record [ "from"; "source" ] [ "from", enumDef [ "training"; "coefficients" ]; "source", object_ ]
-                  "scale", enumDef [ "link"; "response" ] ] ]
+                  "scale", enumDef [ "link"; "response" ] ]
+            // Fuaran.Compute 0.45.0 — a seeded k-means clustering. Every member
+            // is required: the wire carries no default. A feature's `expr` stays
+            // a structural object, as `fit.predictors[].expr` does.
+            duCase
+                "kmeans"
+                [ "features"
+                  "groupBy"
+                  "k"
+                  "maxIterations"
+                  "output"
+                  "restarts"
+                  "seed"
+                  "silhouette"
+                  "standardise" ]
+                [ "features", arrayOf (record [ "expr"; "name" ] [ "expr", object_; "name", str ])
+                  "groupBy", arrayOf str
+                  "k", paramSlot integer
+                  "maxIterations", integer
+                  "output", enumDef [ "assignments"; "centres"; "summary" ]
+                  "restarts", integer
+                  "seed", seedSlot
+                  "silhouette", boolean
+                  "standardise", boolean ]
+            // Fuaran.Compute 0.45.0 — a seeded bootstrap resampling. `cluster`
+            // and `level` may be absent; `aggregates` is `groupBy`'s vocabulary.
+            duCase
+                "bootstrap"
+                [ "aggregates"; "groupBy"; "output"; "replicates"; "seed" ]
+                [ "aggregates", arrayOf (ref "TransformAgg")
+                  "cluster", str
+                  "groupBy", arrayOf str
+                  "level", number
+                  "output", enumDef [ "replicates"; "summary" ]
+                  "replicates", paramSlot integer
+                  "seed", seedSlot ] ]
 
       // The fit document a `predict` step nests under `fit` — the `fit` step's
       // own members without its `$type`.

@@ -464,7 +464,11 @@ let private unionTags (defName: string) : Set<string> =
 /// and `decodeTransform` reads back, so the mapping is derived rather than
 /// transcribed and a case added to Core arrives here on its own.
 let private wireTagOfCaseName (name: string) : string =
-    string (System.Char.ToLowerInvariant name[0]) + name.Substring 1
+    match name with
+    // Compute 0.45.0 spells `KMeans` as `kmeans` on the wire, not `kMeans`.
+    // Named here rather than derived: Compute's own tag table is private.
+    | "KMeans" -> "kmeans"
+    | _ -> string (System.Char.ToLowerInvariant name[0]) + name.Substring 1
 
 let private transformDuTags: Set<string> =
     FSharpType.GetUnionCases typeof<Fuaran.Compute.Transform>
