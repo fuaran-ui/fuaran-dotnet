@@ -7,6 +7,10 @@ module Fuaran.UI.Tests.BoundedTests
 //  exist if it passed validation, and the round-trip value/tryCreate holds.
 // ============================================================================
 
+// Phase 2100: `Fuaran.UI.Bounded` is obsolete and removed in the announced breaking cut; this
+// suite pins its behaviour until then, and goes with it.
+#nowarn "44"
+
 open Expecto
 open Fuaran.UI.Bounded
 

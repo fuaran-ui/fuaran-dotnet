@@ -1,6 +1,14 @@
+[<System.Obsolete("Fuaran.UI.Bounded is removed in the announced breaking cut (Phase 2100): no field of the UI vocabulary carries one of these types and nothing in the tier reads them. Validate the scalar where it enters your own code.",
+                  false)>]
 module Fuaran.UI.Bounded
 
 // ============================================================================
+//  Phase 2100 — OBSOLETE, removed in the announced breaking cut. The kit was
+//  added for core contracts to opt into field by field; none ever did, so no
+//  wire field, spec record or renderer carries a `BoundedInt` or a `Fraction`,
+//  and the types are not part of the language an author emits. STABILITY.md
+//  records the disposition.
+//
 //  Parse-don't-validate bounded scalars.
 //
 //  Single-case DUs with *private* constructors: the only way to obtain a value

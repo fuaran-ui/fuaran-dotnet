@@ -8427,6 +8427,52 @@ the two arms. Nothing else: no signature moved, and no document written before t
 
 **Consumer action:** add the two arms to any exhaustive action match — see
 [`docs/migrations/2107-choose-and-require.md`](docs/migrations/2107-choose-and-require.md).
+### What rides this slot — Phase 2100 (unreferenced public surface is decided: deleted in the breaking cut, or tested)
+
+**Class: ADDITIVE (four obsoletions) + two behaviour corrections.** Packages `Fuaran.UI` and `Fuaran.UI.AiTools`.
+Nothing public is removed or retyped here: every deletion below is an `[<Obsolete>]` now and a removal in the announced
+breaking cut, which carries it as a rider. Under `TreatWarningsAsErrors` a consumer that calls an obsoleted name stops
+building until it moves to the named replacement (FS0044), the same class 0.93.x's obsoletions took.
+
+The list is the public functions with no non-test caller in this repository or in the consumers searched. "No caller
+here" is not "no caller" for a published package, so the default for anything an author or host could plausibly call
+is keep-and-test, and deletion is reserved for what leaked without a use. Each item was re-read against this tree
+before it was decided.
+
+| Surface | Disposition | Evidence |
+|---|---|---|
+| `PreEmitValidate.validateWithRegistry`, `validateWithPolicy`, `validateForTransport`, `validateWithMeter`, `validateWithFacts` | keep (already tested) | Documented presets of `validateWith`; each has a test. The finding said four of seven; the tree has six presets plus `validateWith` and `validatePage`, and `validateWithLimits` / `validatePage` do have callers. |
+| `PreEmitValidate.validateWithRegistryAndPolicy` | keep and test | The one preset with no test; it now has one. |
+| `AffordanceInertness.report`, `DeadOnDecode.lint` | keep (already tested) | The decoded-tree inertness query a host runs on wire-ingested trees; both have suites. |
+| The 43 generated `mk*` constructors in `Generated.fs` | keep, as documented generator output | Emitted by the IDL code generator, where the IDL's authoring defaults are applied; whether they are emitted is the generator's decision, not this repository's. |
+| `Fuaran.UI.Bounded` (`NonEmptyString`, `BoundedString`, `BoundedInt`, `Fraction`) | **obsolete now, deleted at the cut** | An opt-in kit no spec record, wire field or renderer ever adopted; nothing in this repository or the searched consumers names it outside its own tests, and it is not part of the language an author emits. |
+| `Fuaran.UI.RetrievalSource` | keep, as documented extension point | **The finding no longer holds:** a hosted retrieval source and a portal bridge in downstream consumers implement and call it. Tested. |
+| `QuerySource.resolveAndCheck`, `InMemoryQuerySource` | keep, as documented extension point | The client query-source seam's typed gate and its offline double; tested. |
+| `Fragment.curry` | keep and test (already tested) | Content-pack partial application; behaviour corrected below. |
+| `WireSurvivability.steerable` | keep, fixed, tested | Behaviour corrected below. |
+| `AiTools.Fidelity.all`, `.kinds`, `.isAnnounced` | **obsolete now, deleted at the cut** | Pure aliases of `RenderFidelity.allIntrinsics`, `.announcedKinds` and `.announcesIntrinsically`; the obsoletion message names each. |
+| `AiTools.Fidelity.forKind`, `.ofNode`, `.rolesEmitted`, `.liveRegionsEmitted`, `.describe` | keep and test | Projections the declaration does not itself offer; `ofNode` gains its test. |
+| `ResponseRender.renderResolvedBindingResult`, `renderGeometryTree`, `renderErrorEntries` | keep and test | The JSON responses of three introspection tools, beside the two that were tested; each gains a test that reads the JSON back. |
+| `FastPath.findExact` | keep (already tested) | The exact-signature twin of `findRunnable`. |
+
+**Not merged: the 2026-09-30 analysis's count** of 42 unreferenced F# functions and five op-stream ones. That count
+was never written down as a list, so it cannot be merged with this one; re-deriving it is a whole-repository scan, left
+to the cut's carrier to decide.
+
+**Behaviour corrections.**
+
+- `Fragment.validateValueArg` checks a `Repeat` hole's COUNT against its count space, as the function view binds a
+  repeat by a value argument; its doc said a repeat hole was not value-validatable. The doc now says what the code
+  does. `Fragment.curry` still refuses a `Repeat` hole — a curried value becomes the declaration's default, and a
+  repeat has no default to hold one — and its refusal now says it is a repeat hole, and why, instead of "not a value
+  hole". An unknown name is refused as `no hole named '<name>'`.
+- `WireSurvivability.steerable` now holds exactly what its doc says: the non-survivable cases that name an
+  alternative. It previously also held cases with no alternative (`Action.ReadFileBody`), which had nowhere to steer
+  an author to.
+
+**Consumer action:** move off `Fuaran.UI.Bounded` before the cut (validate the scalar in your own code); replace
+`Fidelity.all` / `kinds` / `isAnnounced` with the `RenderFidelity` names their obsoletion messages give. A caller
+matching on `curry`'s old message text for a repeat or unknown hole reads the new text.
 
 ## 0.104.0 (RELEASED — tagged v0.104.0 at cc477007, 2026-11-11) — the slot opened after v0.103.0 was released; advanced from 0.103.1 on 2026-11-10 by Phase 2640, whose change is breaking
 
