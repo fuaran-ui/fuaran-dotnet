@@ -28,10 +28,18 @@ open Fuaran.UI.RenderFidelity
 
 /// Every kind-intrinsic emission the shipped renderers pin, paired with the
 /// kind that pins it, in table order.
+///
+/// Phase 2100 — a pure alias, removed in the announced breaking cut.
+[<System.Obsolete("Use Fuaran.UI.RenderFidelity.allIntrinsics, which this aliases; removed in the announced breaking cut.",
+                  false)>]
 let all: (string * IntrinsicAria) list = allIntrinsics
 
 /// The kinds that pin something, in table order — the shortlist an emitter
 /// checks its node against.
+///
+/// Phase 2100 — a pure alias, removed in the announced breaking cut.
+[<System.Obsolete("Use Fuaran.UI.RenderFidelity.announcedKinds, which this aliases; removed in the announced breaking cut.",
+                  false)>]
 let kinds: string list = announcedKinds
 
 /// What the renderer announces for one wire kind (`kind.$type`) of its own
@@ -55,6 +63,10 @@ let ofNode (node: Fuaran.UI.Types.Node<'Msg>) : IntrinsicAria list = forKind (wi
 /// does not need. `true` does NOT mean a trait is forbidden — a `label` on an
 /// announced node is still the emitter's to supply, and only `role` /
 /// `liveRegion` are the ones the renderer would be restating.
+///
+/// Phase 2100 — a pure alias, removed in the announced breaking cut.
+[<System.Obsolete("Use Fuaran.UI.RenderFidelity.announcesIntrinsically, which this aliases; removed in the announced breaking cut.",
+                  false)>]
 let isAnnounced (wireKind: string) : bool = announcesIntrinsically wireKind
 
 /// Would an authored `role` on this kind restate something the renderer already

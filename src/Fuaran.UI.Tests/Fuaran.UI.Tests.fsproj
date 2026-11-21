@@ -356,6 +356,7 @@
          (the erasure `embed` lowers through). Pins every remapped Action slot. -->
     <Compile Include="NodeMapTests.fs" />
     <Compile Include="WireSurvivabilityTests.fs" />
+    <Compile Include="UnreferencedSurfaceTests.fs" />
     <Compile Include="ChartLoweringTests.fs" />
     <!-- Phase 1098 — the `Sparkline → Drawing` lowering: the cross-host goldens,
          the byte-compatibility proof against the retired renderer formula, and

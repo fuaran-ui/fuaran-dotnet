@@ -196,7 +196,8 @@ let tests =
                       { Defaults.Accessibility.empty with
                           Hidden = Some(countExceedsTransform 3) }
 
-              let attrs = Render.accessibilityAttributes BindingResolver.empty a11y
+              let attrs =
+                  Fuaran.UI.Renderer.Accessibility.accessibilityAttributes BindingResolver.empty a11y
 
               Expect.equal attrs [ "aria-hidden", "true" ] "the computed predicate hides"
           }
@@ -210,7 +211,10 @@ let tests =
                       { Defaults.Accessibility.empty with
                           Hidden = Some(countExceedsTransform 10) }
 
-              Expect.equal (Render.accessibilityAttributes BindingResolver.empty a11y) [] "a false hides nothing"
+              Expect.equal
+                  (Fuaran.UI.Renderer.Accessibility.accessibilityAttributes BindingResolver.empty a11y)
+                  []
+                  "a false hides nothing"
           }
 
           test "a NON-BOOL cell in hidden is refused, not read through a truthiness rule" {
@@ -225,7 +229,7 @@ let tests =
                           Hidden = Some(labelInBoolSlot) }
 
               Expect.equal
-                  (Render.accessibilityAttributes BindingResolver.empty a11y)
+                  (Fuaran.UI.Renderer.Accessibility.accessibilityAttributes BindingResolver.empty a11y)
                   []
                   "a text cell is not a boolean; nothing is emitted"
           }

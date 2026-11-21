@@ -12,6 +12,10 @@ module Fuaran.UI.AiTools.Tests.FidelityTests
 //  distort it.
 // ============================================================================
 
+// Phase 2100: `Fidelity.all` / `kinds` / `isAnnounced` are obsolete aliases, removed in the
+// announced breaking cut; they stay pinned here until then.
+#nowarn "44"
+
 open Expecto
 
 open Fuaran.UI.RenderFidelity
