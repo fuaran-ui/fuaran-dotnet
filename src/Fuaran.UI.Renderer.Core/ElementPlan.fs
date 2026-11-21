@@ -1635,13 +1635,20 @@ module InputPlan =
               Content = Content.Text label }
 
     /// A `<datalist>` of suggestions: the user agent's own popup.
-    let private datalist (listId: string) (options: SelectOption list) : Plan<'E> =
+    let private datalist
+        (sources: BindingResolver.BindingSources)
+        (listId: string)
+        (options: SelectOption list)
+        : Plan<'E> =
         Plan.element
             "datalist"
             [ Prop.Attr("id", listId) ]
             (Content.Children
                 [ for option in options ->
-                      Plan.element "option" [ Prop.Attr("value", option.Value) ] (Content.Text option.Label) ])
+                      Plan.element
+                          "option"
+                          [ Prop.Attr("value", option.Value) ]
+                          (Content.Text(BindingResolver.resolveTextSource sources option.Label)) ])
 
     let private resolvesTrue (sources: BindingResolver.BindingSources) (binding: Binding<bool> option) : bool =
         binding
@@ -1770,7 +1777,11 @@ module InputPlan =
                     |> Option.defaultValue []
 
                 [ Prop.Flag "multiple"; Prop.Values values ],
-                groupedOptions spec.Groups options (fun o -> optionPlan o.Value o.Label (List.contains o.Value values))
+                groupedOptions spec.Groups options (fun o ->
+                    optionPlan
+                        o.Value
+                        (BindingResolver.resolveTextSource sources o.Label)
+                        (List.contains o.Value values))
             else
                 // Phase 1962 — a single-select carries one `Value`.
                 let selected = spec.Value |> Option.bind (chosen sources)
@@ -1783,7 +1794,8 @@ module InputPlan =
                            [ Prop.Attr("value", "") ]
                            (Content.Text(BindingResolver.resolveTextSource sources placeholder)) ]
                  | None -> [])
-                @ groupedOptions spec.Groups options (fun o -> optionPlan o.Value o.Label (selected = Some o.Value))
+                @ groupedOptions spec.Groups options (fun o ->
+                    optionPlan o.Value (BindingResolver.resolveTextSource sources o.Label) (selected = Some o.Value))
 
         Plan.classChildren
             "label"
@@ -1848,7 +1860,7 @@ module InputPlan =
                           | Some attr -> Prop.Attr(attr, option.Value)
                           | None -> ()
                           Prop.Behaviour(Attach.SegmentSelect, option.Value) ]
-                      Content = Content.Text option.Label }
+                      Content = Content.Text(BindingResolver.resolveTextSource sources option.Label) }
 
             Plan.element
                 "div"
@@ -1878,7 +1890,10 @@ module InputPlan =
                                     Prop.Checked((current = Some option.Value), "")
                                     Prop.Behaviour(Attach.SegmentRadio, option.Value) ]
                                   Content.Empty
-                              Plan.element "label" [ Prop.Attr("for", inputId) ] (Content.Text option.Label) ] }
+                              Plan.element
+                                  "label"
+                                  [ Prop.Attr("for", inputId) ]
+                                  (Content.Text(BindingResolver.resolveTextSource sources option.Label)) ] }
 
             Plan.element
                 "fieldset"
@@ -2065,7 +2080,10 @@ module InputPlan =
                               Prop.Selected ]
                         (Content.Text "—")
                     :: [ for o in BindingResolver.resolveOptions sources options ->
-                             optionPlan o.Value o.Label (current = Some o.Value) ]
+                             optionPlan
+                                 o.Value
+                                 (BindingResolver.resolveTextSource sources o.Label)
+                                 (current = Some o.Value) ]
                 ))
         // The dual-thumb numeric range: two number inputs over one `RangePair`;
         // the FROM end carries the field's identity.
@@ -2136,7 +2154,7 @@ module InputPlan =
                                |> Option.filter (fun s -> not (System.String.IsNullOrEmpty s))
                                |> Option.defaultValue ""
                            ) ])
-                  datalist listId (BindingResolver.resolveOptions sources options) ]
+                  datalist sources listId (BindingResolver.resolveOptions sources options) ]
         | FormFieldKind.Rating(allowHalf, max, FieldView.OnNumber onChange, FieldView.Number v) ->
             let v = v |> state (auto Fuaran.UI.Defaults.ControlValueDefaults.rating)
 
@@ -2196,7 +2214,7 @@ module InputPlan =
                                |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.tokens
                                |> TokensModel.toCommaSeparated
                            ) ])
-                  opts |> Plan.ofOption (datalist listId) ]
+                  opts |> Plan.ofOption (datalist sources listId) ]
         | FormFieldKind.SegmentedChoice(options, FieldView.Text v, _, orientation) ->
             let v =
                 v
@@ -2347,7 +2365,10 @@ module InputPlan =
                 (Content.Children(
                     Plan.element "option" [ Prop.Attr("value", "") ] (Content.Text "—")
                     :: [ for o in BindingResolver.resolveOptions sources options ->
-                             optionPlan o.Value o.Label (current = Some o.Value) ]
+                             optionPlan
+                                 o.Value
+                                 (BindingResolver.resolveTextSource sources o.Label)
+                                 (current = Some o.Value) ]
                 ))
         | FormFieldKind.Range(FieldView.Range v, _, _, _, _) ->
             let current: RangePair =
@@ -2413,7 +2434,7 @@ module InputPlan =
                         Prop.Attr("placeholder", labelText)
                         Prop.Value(BindingResolver.tryResolve sources (auto v) |> Option.defaultValue "")
                         marker ]
-                  datalist listId (BindingResolver.resolveOptions sources options) ]
+                  datalist sources listId (BindingResolver.resolveOptions sources options) ]
         | FormFieldKind.Rating(allowHalf, max, _, FieldView.Number v) ->
             let shown =
                 BindingResolver.tryResolve sources (auto v)
@@ -2453,7 +2474,7 @@ module InputPlan =
                             |> TokensModel.toCommaSeparated
                         )
                         marker ]
-                  opts |> Plan.ofOption (datalist listId) ]
+                  opts |> Plan.ofOption (datalist sources listId) ]
 
     /// One `Filters` chip: the kind-suffixed class (`Theme.filterKindClass`),
     /// the label, the control; keyed by the filter's name.
@@ -2959,7 +2980,12 @@ module VisPlan =
                                 |> List.mapi (fun i marker ->
                                     Plan.Element
                                         { Tag = "li"
-                                          Key = Some(reconciliationKey (Some marker.Label) i)
+                                          Key =
+                                            Some(
+                                                reconciliationKey
+                                                    (Some(BindingResolver.resolveTextSource pc.Sources marker.Label))
+                                                    i
+                                            )
                                           Props =
                                             [ Prop.Attr("class", "fuaran-map-marker")
                                               Prop.Behaviour(Attach.MarkerClick, string i) ]
@@ -2967,7 +2993,7 @@ module VisPlan =
                                             Content.Text(
                                                 sprintf
                                                     "%s @ (%.4f, %.4f)"
-                                                    marker.Label
+                                                    (BindingResolver.resolveTextSource pc.Sources marker.Label)
                                                     marker.Latitude
                                                     marker.Longitude
                                             ) })) ])

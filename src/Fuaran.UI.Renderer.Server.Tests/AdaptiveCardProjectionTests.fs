@@ -229,8 +229,10 @@ let private sample =
                                 (FormFieldKind.Choice(
                                     Binding.Static(
                                         Some
-                                            [ { Label = "Travel"; Value = "travel" }
-                                              { Label = "Meals"; Value = "meals" } ]
+                                            [ { Label = TextSource.Literal "Travel"
+                                                Value = "travel" }
+                                              { Label = TextSource.Literal "Meals"
+                                                Value = "meals" } ]
                                     ),
                                     None,
                                     None

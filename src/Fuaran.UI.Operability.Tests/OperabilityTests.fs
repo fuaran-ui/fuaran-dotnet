@@ -167,7 +167,12 @@ let resolving =
                       "s"
                       { Defaults.select with
                           Label = TextSource.Literal "Size"
-                          Source = Binding.Static(Some [ { Label = "Large"; Value = "l" } ])
+                          Source =
+                              Binding.Static(
+                                  Some
+                                      [ { Label = TextSource.Literal "Large"
+                                          Value = "l" } ]
+                              )
                           OnChange = Some(fun v -> Action.Notify("size", JStr(defaultArg v "none"))) }
 
               let set = Operability.derive None tree |> List.find (fun a -> a.Id = "s:set")
@@ -221,11 +226,12 @@ let optionGroups =
                       Source =
                           Binding.Static(
                               Some
-                                  [ { Label = "Revenue"
+                                  [ { Label = TextSource.Literal "Revenue"
                                       Value = "revenue-trend" }
-                                    { Label = "By region"
+                                    { Label = TextSource.Literal "By region"
                                       Value = "region-breakdown" }
-                                    { Label = "Notes"; Value = "notes" } ]
+                                    { Label = TextSource.Literal "Notes"
+                                      Value = "notes" } ]
                           )
                       Value = Some(Binding.State("chart", Some "notes"))
                       Groups =

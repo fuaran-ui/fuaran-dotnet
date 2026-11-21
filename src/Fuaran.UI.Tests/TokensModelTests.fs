@@ -31,7 +31,15 @@ open Expecto
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer.TokensModel
 
-let private opt (label: string) (value: string) : SelectOption = { Label = label; Value = value }
+let private opt (label: string) (value: string) : SelectOption =
+    { Label = TextSource.Literal label
+      Value = value }
+
+/// The test's text resolution: every label here is a literal.
+let private text (label: TextSource) : string =
+    match label with
+    | TextSource.Literal s -> s
+    | other -> failwithf "not a literal label: %A" other
 
 let private suggestions =
     [ opt "France" "fra"; opt "Germany" "deu"; opt "Spain" "esp" ]
@@ -54,12 +62,12 @@ let tests =
               // Enter on an empty box means "nothing". A control that reported a
               // refusal here would scold a reader for a keystroke that asked for
               // nothing at all.
-              Expect.equal (tryAdd true None [] "") AddOutcome.Empty "An empty entry"
-              Expect.equal (tryAdd true None [] "   ") AddOutcome.Empty "Whitespace is empty too"
+              Expect.equal (tryAdd text true None [] "") AddOutcome.Empty "An empty entry"
+              Expect.equal (tryAdd text true None [] "   ") AddOutcome.Empty "Whitespace is empty too"
           }
 
           test "an open field accepts free text, appended in reader order" {
-              match tryAdd true None [ "alpha" ] "beta" with
+              match tryAdd text true None [ "alpha" ] "beta" with
               | AddOutcome.Accepted next ->
                   // APPENDED, not sorted and not prepended: the chip order is a
                   // fact the reader can see, and the whole slot is rewritten on
@@ -73,12 +81,12 @@ let tests =
               // buttons that do different things. Refused on an OPEN field too —
               // duplication is a property of the list, not of the suggestion set.
               Expect.equal
-                  (tryAdd true None [ "alpha" ] "alpha")
+                  (tryAdd text true None [ "alpha" ] "alpha")
                   (AddOutcome.Duplicate "alpha")
                   "An open field still refuses a repeat"
 
               Expect.equal
-                  (tryAdd false (Some suggestions) [ "fra" ] "fra")
+                  (tryAdd text false (Some suggestions) [ "fra" ] "fra")
                   (AddOutcome.Duplicate "fra")
                   "And so does a closed one"
           }
@@ -87,13 +95,13 @@ let tests =
               // The refusal carries the token because the control announces it:
               // a keystroke ignored without a reason reads as a broken control.
               Expect.equal
-                  (tryAdd false (Some suggestions) [] "Portugal")
+                  (tryAdd text false (Some suggestions) [] "Portugal")
                   (AddOutcome.NotSuggested "Portugal")
                   "Not one of the suggestions"
 
               // The SAME entry on an open field is accepted — which is the whole
               // difference the flag makes, asserted rather than assumed.
-              match tryAdd true (Some suggestions) [] "Portugal" with
+              match tryAdd text true (Some suggestions) [] "Portugal" with
               | AddOutcome.Accepted next -> Expect.equal next [ "Portugal" ] "An open field takes it"
               | other -> failtestf "Expected acceptance on an open field, got %A" other
           }
@@ -102,11 +110,11 @@ let tests =
               // A reader types what they can see, and what they can see is the
               // label; what submits is the value. Both spellings are admitted
               // and only one is stored.
-              match tryAdd false (Some suggestions) [] "France" with
+              match tryAdd text false (Some suggestions) [] "France" with
               | AddOutcome.Accepted next -> Expect.equal next [ "fra" ] "The label resolves to its value"
               | other -> failtestf "Expected the label to resolve, got %A" other
 
-              match tryAdd false (Some suggestions) [] "deu" with
+              match tryAdd text false (Some suggestions) [] "deu" with
               | AddOutcome.Accepted next -> Expect.equal next [ "deu" ] "The value is admitted as itself"
               | other -> failtestf "Expected the value to be admitted, got %A" other
           }
@@ -116,7 +124,7 @@ let tests =
               // "France" when `fra` is already a chip is a repeat and not a
               // second token that happens to look the same.
               Expect.equal
-                  (tryAdd false (Some suggestions) [ "fra" ] "France")
+                  (tryAdd text false (Some suggestions) [ "fra" ] "France")
                   (AddOutcome.Duplicate "fra")
                   "Resolved first, then checked"
           }
@@ -143,32 +151,32 @@ let tests =
               // combobox may re-offer its committed value, and a multi-token
               // control offering a chip the reader already has is offering a
               // gesture that would be refused.
-              let visible = visibleSuggestions suggestions [ "fra" ] ""
+              let visible = visibleSuggestions text suggestions [ "fra" ] ""
               Expect.equal (visible |> List.map (fun o -> o.Value)) [ "deu"; "esp" ] "France is already a chip"
           }
 
           test "an empty query shows everything, and a query filters on label or value" {
-              Expect.equal (visibleSuggestions suggestions [] "" |> List.length) 3 "Browsing the whole set"
+              Expect.equal (visibleSuggestions text suggestions [] "" |> List.length) 3 "Browsing the whole set"
 
               Expect.equal
-                  (visibleSuggestions suggestions [] "ger" |> List.map (fun o -> o.Value))
+                  (visibleSuggestions text suggestions [] "ger" |> List.map (fun o -> o.Value))
                   [ "deu" ]
                   "Matched on the label, case-insensitively"
 
               Expect.equal
-                  (visibleSuggestions suggestions [] "esp" |> List.map (fun o -> o.Value))
+                  (visibleSuggestions text suggestions [] "esp" |> List.map (fun o -> o.Value))
                   [ "esp" ]
                   "Matched on the value"
           }
 
           test "a chip reads as its label where the set knows it, and as itself otherwise" {
-              Expect.equal (chipLabel (Some suggestions) "fra") "France" "The known token reads as its label"
+              Expect.equal (chipLabel text (Some suggestions) "fra") "France" "The known token reads as its label"
               // Every free-text token takes this branch, and so does every token
               // whose asynchronous suggestion source has not resolved yet. Never
               // blank — a chip with no text is a chip a reader cannot decide to
               // remove.
-              Expect.equal (chipLabel (Some suggestions) "urgent") "urgent" "An unknown token reads as itself"
-              Expect.equal (chipLabel None "urgent") "urgent" "With no source at all, likewise"
+              Expect.equal (chipLabel text (Some suggestions) "urgent") "urgent" "An unknown token reads as itself"
+              Expect.equal (chipLabel text None "urgent") "urgent" "With no source at all, likewise"
           }
 
           test "the SSR comma projection round-trips an ordinary token list" {

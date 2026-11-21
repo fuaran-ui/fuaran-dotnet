@@ -733,8 +733,10 @@ let tokensFloorTests =
           let known: Binding<SelectOption list> =
               Binding.Static(
                   Some
-                      [ { Label = "Urgent"; Value = "urgent" }
-                        { Label = "Blocked"; Value = "blocked" } ]
+                      [ { Label = TextSource.Literal "Urgent"
+                          Value = "urgent" }
+                        { Label = TextSource.Literal "Blocked"
+                          Value = "blocked" } ]
               )
 
           let submitTo (form: FormSpec<Msg>) (values: (string * LiveValue) list) =
@@ -806,7 +808,11 @@ let tokensFloorTests =
                   // floor that hard-coded a set would pass both and be right by
                   // accident once.
                   let narrower: Binding<SelectOption list> =
-                      Binding.Static(Some [ { Label = "Urgent"; Value = "urgent" } ])
+                      Binding.Static(
+                          Some
+                              [ { Label = TextSource.Literal "Urgent"
+                                  Value = "urgent" } ]
+                      )
 
                   Expect.isEmpty
                       (submitTo (tokensForm false (Some known)) [ "labels", LiveValue.Str "blocked" ])

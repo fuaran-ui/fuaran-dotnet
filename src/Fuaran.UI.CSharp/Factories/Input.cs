@@ -48,8 +48,9 @@ public static partial class Fuaran
         global::Fuaran.UI.Generated.Binding<Microsoft.FSharp.Collections.FSharpList<FsGen.SelectOption>>.NewStatic(
             Microsoft.FSharp.Core.FSharpOption<Microsoft.FSharp.Collections.FSharpList<FsGen.SelectOption>>.Some(
                 Fs.List((options ?? Enumerable.Empty<(string, string)>())
-                    // Generated SelectOption declares (Label, Value); Label is a bare string now.
-                    .Select(o => new FsGen.SelectOption(o.Label, o.Value)))));
+                    // Generated SelectOption declares (Label, Value); Label is a TextSource
+                    // (Phase 2811) and this facade writes the literal form.
+                    .Select(o => new FsGen.SelectOption(FsGen.TextSource.NewLiteral(o.Label), o.Value)))));
 
     // FormFieldKind.Choice's value slot is a wire-value binding (Phase 2177 — every
     // field kind carries `Binding<JVal> option`): no selection is an absent binding,

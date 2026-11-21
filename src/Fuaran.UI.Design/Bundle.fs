@@ -952,7 +952,10 @@ let rec private serverPreview (node: Node<unit>) : Node<unit> * string list =
                  node
                  []
                  [ "Marker"; "Latitude"; "Longitude" ]
-                 [ for m in markers -> [ m.Label; sprintf "%.4f" m.Latitude; sprintf "%.4f" m.Longitude ] ],
+                 [ for m in markers ->
+                       [ BindingResolver.resolveTextSource exampleSources m.Label
+                         sprintf "%.4f" m.Latitude
+                         sprintf "%.4f" m.Longitude ] ],
              [ "Shown as a static table of the map's markers, which is what a server can show of it. The map itself draws client-side." ]
          | None -> node, [])
     | _ ->

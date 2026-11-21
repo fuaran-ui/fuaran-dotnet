@@ -1996,9 +1996,11 @@ let private affordanceRecord =
 
 /// An option in a `Select` / `Choice` / `SegmentedChoice` payload (Fuaran-UI 0.2.x
 /// typed-Static: the choice `source` / `options` carry a real `SelectOption` list).
+/// Phase 2811 — the label is a `TextSource` (WIRE_FORMAT §5, operator ruling
+/// 2026-10-19), so it can be bound or localised; a literal label stays the bare string.
 let private selectOptionRecord =
     { Name = "SelectOption"
-      Fields = [ req "label" TStr; req "value" TStr ]
+      Fields = [ req "label" (TUnion("TextSource", [])); req "value" TStr ]
       Annotations = Annotations.Empty
       Inline = false }
 
@@ -2014,9 +2016,13 @@ let private selectOptionGroupRecord =
 
 /// A `Map.source` marker (Fuaran-UI 0.2.x typed-Static: the map source carries a real
 /// marker list instead of the opaque sentinel).
+/// Phase 2811 — the label is a `TextSource`, as `SelectOption.label` is.
 let private mapMarkerRecord =
     { Name = "MapMarker"
-      Fields = [ req "label" TStr; req "latitude" TFloat; req "longitude" TFloat ]
+      Fields =
+        [ req "label" (TUnion("TextSource", []))
+          req "latitude" TFloat
+          req "longitude" TFloat ]
       Annotations = Annotations.Empty
       Inline = false }
 

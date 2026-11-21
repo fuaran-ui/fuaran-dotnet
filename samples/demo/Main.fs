@@ -214,19 +214,19 @@ let private canonicalSection (model: Model) : Node<Msg> =
 
 let private contributorOptions: SelectOption list =
     [ { Value = "buyer-peer"
-        Label = "Buyer peer" }
+        Label = TextSource.Literal "Buyer peer" }
       { Value = "seller-peer"
-        Label = "Seller peer" }
+        Label = TextSource.Literal "Seller peer" }
       { Value = "portal-peer"
-        Label = "Portal peer" } ]
+        Label = TextSource.Literal "Portal peer" } ]
 
 let private categoryOptions: SelectOption list =
     [ { Value = "audience"
-        Label = "Audience" }
+        Label = TextSource.Literal "Audience" }
       { Value = "performance"
-        Label = "Performance" }
+        Label = TextSource.Literal "Performance" }
       { Value = "attribution"
-        Label = "Attribution" } ]
+        Label = TextSource.Literal "Attribution" } ]
 
 let private session3bShowcase (model: Model) : Node<Msg> =
     Fuaran.dashboard
@@ -446,10 +446,10 @@ let private session3bShowcase (model: Model) : Node<Msg> =
                   let mapMarkers: MapMarker list =
                       [ { Latitude = 51.5074
                           Longitude = -0.1278
-                          Label = "London" }
+                          Label = TextSource.Literal "London" }
                         { Latitude = 40.7128
                           Longitude = -74.006
-                          Label = "New York" } ]
+                          Label = TextSource.Literal "New York" } ]
 
                   Fuaran.map
                       "showcase-map"

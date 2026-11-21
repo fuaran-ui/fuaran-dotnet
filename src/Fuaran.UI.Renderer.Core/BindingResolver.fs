@@ -2052,7 +2052,10 @@ let gridWindow
 let private opaqueOptionsSentinel = "<opaque>"
 
 let private isOpaqueOptionPlaceholder (option: SelectOption) : bool =
-    option.Value = opaqueOptionsSentinel && option.Label = opaqueOptionsSentinel
+    option.Value = opaqueOptionsSentinel
+    && (match option.Label with
+        | TextSource.Literal label -> label = opaqueOptionsSentinel
+        | _ -> false)
 
 /// The concrete options an options source resolves to, the opaque placeholder
 /// removed.

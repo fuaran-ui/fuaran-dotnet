@@ -443,7 +443,8 @@ let rec private genTextSource: Gen<TextSource> =
 let private genSelectOption: Gen<SelectOption> =
     gen {
         let! v = genString
-        let! label = genString
+        // Phase 2811 — every TextSource arm rides the option label.
+        let! label = genTextSource
         return { Value = v; Label = label }
     }
 
@@ -456,7 +457,7 @@ let private genBindingSelectOptions: Gen<Binding<SelectOption list>> =
           Gen.constant (
               Binding.Computed(fun _ ->
                   [ { Value = "<opaque>"
-                      Label = "<opaque>" } ])
+                      Label = TextSource.Literal "<opaque>" } ])
           ) ]
 
 /// Select value slot (stage-4a type swap): the slot is now a REQUIRED

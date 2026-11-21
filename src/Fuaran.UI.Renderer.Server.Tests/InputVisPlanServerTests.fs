@@ -45,7 +45,13 @@ let private textField (id: string) (value: string) (required: bool) : FormField<
         Kind = FormFieldKind.Text(Some(FieldValue.ofText (Binding.Static(Some value))), None) }
 
 let private options: Binding<SelectOption list> =
-    Binding.Static(Some [ { Value = "a"; Label = "A" }; { Value = "b"; Label = "B" } ])
+    Binding.Static(
+        Some
+            [ { Value = "a"
+                Label = TextSource.Literal "A" }
+              { Value = "b"
+                Label = TextSource.Literal "B" } ]
+    )
 
 let private servedForm (fields: FormField<obj> list) : string =
     Render.renderStatic (Fuaran.form "f" { Defaults.form with Fields = fields })
@@ -185,7 +191,7 @@ let tests =
                             Source =
                                 Binding.Static(
                                     Some
-                                        [ { Label = "L"
+                                        [ { Label = TextSource.Literal "L"
                                             Latitude = 1.0
                                             Longitude = 2.0 } ]
                                 ) }
@@ -300,7 +306,7 @@ let tests =
                                 Source =
                                     Binding.Static(
                                         Some
-                                            [ { Label = "L"
+                                            [ { Label = TextSource.Literal "L"
                                                 Latitude = 1.0
                                                 Longitude = 2.0 } ]
                                     ) }
@@ -441,10 +447,14 @@ let tests =
                                     Source =
                                         Binding.Static(
                                             Some
-                                                [ { Value = "a"; Label = "A" }
-                                                  { Value = "b"; Label = "B" }
-                                                  { Value = "c"; Label = "C" }
-                                                  { Value = "d"; Label = "D" } ]
+                                                [ { Value = "a"
+                                                    Label = TextSource.Literal "A" }
+                                                  { Value = "b"
+                                                    Label = TextSource.Literal "B" }
+                                                  { Value = "c"
+                                                    Label = TextSource.Literal "C" }
+                                                  { Value = "d"
+                                                    Label = TextSource.Literal "D" } ]
                                         )
                                     Value = Some(Binding.Static(Some "b"))
                                     Groups =
@@ -550,7 +560,7 @@ let tests =
                                     Source =
                                         Binding.Static(
                                             Some
-                                                [ { Label = "London"
+                                                [ { Label = TextSource.Literal "London"
                                                     Latitude = 51.5
                                                     Longitude = -0.12 } ]
                                         ) }

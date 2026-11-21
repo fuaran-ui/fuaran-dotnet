@@ -159,7 +159,16 @@ let private usesHosted (idl: Idl) (v: IdlValue) : bool =
 /// refuses to read as "no refines". Measured over four seeds: this is the one
 /// under which the sample reaches a refine again; the others reached none, and
 /// one fell under the comparable-share floor. Sampling depth, not a vanished rule.
-let private seed = 1812
+///
+/// Re-pinned by Phase 2811 (2026-11-21, from 1812): `SelectOption.label` and
+/// `MapMarker.label` widened from a string to a `TextSource`, so the sampler draws
+/// a union where it drew a string and every later draw shifted; under 1812 the
+/// leg compared 3418 vectors (floor 3333) and reached none of the declared
+/// refines. Measured over six seeds at the 20 000 budget: 1812 none; 2811 one
+/// (autoAdvanceMs), 3445 compared; 7 one (Rating), 3378; 2026, 1668 and 20261121
+/// two (Rating and autoAdvanceMs), at 3440, 3421 and 3482. This one reaches two
+/// refines with the widest margin over the floor. Sampling depth again.
+let private seed = 20261121
 
 /// The byte the harness uses to separate a vector index from its wire string.
 /// Spelled as an escape rather than embedded literally: a raw control character

@@ -20,8 +20,12 @@ open Fuaran.UI.OpStream.Abstractions
 let private options: Binding<SelectOption list> =
     Binding.Static(
         Some
-            [ ({ Value = "red"; Label = "Red" }: SelectOption)
-              ({ Value = "green"; Label = "Green" }: SelectOption) ]
+            [ ({ Value = "red"
+                 Label = TextSource.Literal "Red" }
+              : SelectOption)
+              ({ Value = "green"
+                 Label = TextSource.Literal "Green" }
+              : SelectOption) ]
     )
 
 let private specOf (n: Node<obj>) : SelectSpec<obj> =

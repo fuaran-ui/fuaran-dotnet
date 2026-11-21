@@ -40,7 +40,9 @@ let private deny: Action<Msg> -> bool = fun _ -> false
 /// A tree: a dashboard holding a button, a static-option select, a form,
 /// a disclosure and a tabs node — one of each interactive kind, plus a
 /// non-interactive markdown leaf.
-let private opt v : SelectOption = { Value = v; Label = v }
+let private opt v : SelectOption =
+    { Value = v
+      Label = TextSource.Literal v }
 
 let private tree: Node<Msg> =
     Fuaran.dashboard

@@ -86,7 +86,13 @@ let private openTagCarrying (tag: string) (locator: string) (html: string) : str
         failwithf "%d <%s open tags carry %s; the locator does not name one element" (List.length many) tag locator
 
 let private options: Binding<SelectOption list> =
-    Binding.Static(Some [ { Label = "Daily"; Value = "daily" }; { Label = "Weekly"; Value = "weekly" } ])
+    Binding.Static(
+        Some
+            [ { Label = TextSource.Literal "Daily"
+                Value = "daily" }
+              { Label = TextSource.Literal "Weekly"
+                Value = "weekly" } ]
+    )
 
 let private field (id: string) (kind: FormFieldKind<obj>) : FormField<obj> =
     { Defaults.formField<obj> with

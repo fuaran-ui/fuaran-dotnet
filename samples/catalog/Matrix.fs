@@ -231,11 +231,11 @@ let private demoSelect (tone, weight, emphasis) : Node<unit> =
                 Binding.Static(
                     Some
                         [ { Value = "buyer-peer"
-                            Label = "Buyer peer" }
+                            Label = TextSource.Literal "Buyer peer" }
                           { Value = "seller-peer"
-                            Label = "Seller peer" }
+                            Label = TextSource.Literal "Seller peer" }
                           { Value = "portal-peer"
-                            Label = "Portal peer" } ]
+                            Label = TextSource.Literal "Portal peer" } ]
                 )
             Value = Some(Binding.Static None)
             OnChange = Some(fun _ -> Action.Chain [])
@@ -337,16 +337,19 @@ let private demoFormSegmentedChoice (tone, weight, emphasis) : Node<unit> =
     //      `--fuaran-segmented-active-*` tokens.
     let metricOpts: SelectOption list =
         [ { Value = "effective"
-            Label = "Effective rate" }
+            Label = TextSource.Literal "Effective rate" }
           { Value = "marginal"
-            Label = "Marginal rate" }
+            Label = TextSource.Literal "Marginal rate" }
           { Value = "takeHome"
-            Label = "Take-home %" } ]
+            Label = TextSource.Literal "Take-home %" } ]
 
     let tierOpts: SelectOption list =
-        [ { Value = "free"; Label = "Free" }
-          { Value = "pro"; Label = "Pro" }
-          { Value = "team"; Label = "Team" } ]
+        [ { Value = "free"
+            Label = TextSource.Literal "Free" }
+          { Value = "pro"
+            Label = TextSource.Literal "Pro" }
+          { Value = "team"
+            Label = TextSource.Literal "Team" } ]
 
     Fuaran.form
         (idFor "formSegmentedChoice" tone weight emphasis)
@@ -416,10 +419,10 @@ let private demoMap (tone, weight, emphasis) : Node<unit> =
     let markers: MapMarker list =
         [ { Latitude = 51.5074
             Longitude = -0.1278
-            Label = "London" }
+            Label = TextSource.Literal "London" }
           { Latitude = 40.7128
             Longitude = -74.006
-            Label = "New York" } ]
+            Label = TextSource.Literal "New York" } ]
 
     Fuaran.map
         (idFor "map" tone weight emphasis)

@@ -801,7 +801,7 @@ let projectWith
                 [ "regex", jstr "^([01][0-9]|2[0-3]):[0-5][0-9]$"; "placeholder", jstr "HH:MM" ]
 
             let choices (options: SelectOption list) : JsonNode =
-                jarr [ for o in options -> jobj [ "title", jstr (normalise o.Label); "value", jstr o.Value ] ]
+                jarr [ for o in options -> jobj [ "title", jstr (normalise (text o.Label)); "value", jstr o.Value ] ]
 
             let bounds (lo: float option) (hi: float option) =
                 (lo |> Option.map (fun v -> "min", jnum v) |> Option.toList)

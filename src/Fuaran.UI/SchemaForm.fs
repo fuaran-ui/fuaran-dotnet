@@ -471,7 +471,10 @@ let private readEnum (ctx: Ctx<'Msg>) (path: string) (schema: JVal) : string lis
         None
 
 let private options (values: string list) : SelectOption list =
-    values |> List.map (fun v -> { Label = v; Value = v })
+    values
+    |> List.map (fun v ->
+        { Label = TextSource.Literal v
+          Value = v })
 
 let private stateDefault (enc: 'T -> JVal) (fieldId: string) (value: 'T option) : Binding<JVal> option =
     value |> Option.map (fun v -> Binding.State(fieldId, Some(enc v)))

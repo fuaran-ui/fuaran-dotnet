@@ -994,6 +994,21 @@ let private usesOfTextOpt (referencedOnly: bool) (text: TextSource option) : Bin
     | Some t -> usesOfTextIn referencedOnly t
     | None -> []
 
+/// Phase 2811 — an option's label is a `TextSource` (WIRE_FORMAT §5), so a
+/// `Static` option list carries the reads of its labels: a `Bound` label over a
+/// `State` binding is a reader of that key and, with a default, declares it
+/// (§24.4 rule 1). The rest of the payload stays data and is not walked.
+let private optionLabelUses (referencedOnly: bool) (options: Binding<SelectOption list>) : BindingUse list =
+    match options with
+    | Binding.Static(Some opts) -> opts |> List.collect (fun o -> usesOfTextIn referencedOnly o.Label)
+    | _ -> []
+
+/// Phase 2811 — a marker's label is a `TextSource`, as an option's is.
+let private markerLabelUses (referencedOnly: bool) (markers: Binding<MapMarker list>) : BindingUse list =
+    match markers with
+    | Binding.Static(Some ms) -> ms |> List.collect (fun m -> usesOfTextIn referencedOnly m.Label)
+    | _ -> []
+
 /// Phase 1075 — binding usages of a ROW-FEED slot (a grid's / chart's
 /// `source`), which the generic walk cannot fully normalise.
 ///
@@ -1108,8 +1123,11 @@ let private usesOfFormFieldKind<'Msg>
         match kind with
         | FormFieldKind.Choice(opts, _, _)
         | FormFieldKind.Combobox(_, _, opts, _)
-        | FormFieldKind.SegmentedChoice(opts, _, _, _) -> usesOfBindingIn referencedOnly opts
-        | FormFieldKind.Tokens(_, _, Some suggestions, _) -> usesOfBindingIn referencedOnly suggestions
+        | FormFieldKind.SegmentedChoice(opts, _, _, _) ->
+            usesOfBindingIn referencedOnly opts @ optionLabelUses referencedOnly opts
+        | FormFieldKind.Tokens(_, _, Some suggestions, _) ->
+            usesOfBindingIn referencedOnly suggestions
+            @ optionLabelUses referencedOnly suggestions
         | _ -> []
 
     optionSources @ usesOfValueSlot (Generated.FormFieldKind.value kind)
@@ -2344,6 +2362,7 @@ let private walkTree<'Msg>
             noteOpaqueIf (s.OnChange.IsSome || s.OnChangeMulti.IsSome)
             recordText inUses readerId s.Label
             recordBinding inUses readerId s.Source
+            record inUses readerId (optionLabelUses referencedOnly s.Source)
             recordBindingOpt inUses readerId s.Value
             recordBindingOpt inUses readerId s.Values
             recordTextOpt inUses readerId s.Placeholder
@@ -2448,6 +2467,7 @@ let private walkTree<'Msg>
             recordTextOpt inUses readerId c.Title
         | NodeKind.Map m ->
             record inUses readerId (tagSourceSite "source" None m.Source (usesOfBindingIn referencedOnly m.Source))
+            record inUses readerId (markerLabelUses referencedOnly m.Source)
         // ── Structural ──
         | NodeKind.ErrorBoundary spec ->
             if readers then

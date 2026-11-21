@@ -89,6 +89,7 @@ type TokensProps =
        allowFreeText: bool
        placeholder: string
        suggestions: SelectOption list option
+       textOf: TextSource -> string
        tokens: string list
        commit: string list -> unit |}
 
@@ -118,7 +119,7 @@ let private renderTokens (props: TokensProps) : ReactElement =
 
     let visible =
         props.suggestions
-        |> Option.map (fun opts -> TokensModel.visibleSuggestions opts props.tokens query)
+        |> Option.map (fun opts -> TokensModel.visibleSuggestions props.textOf opts props.tokens query)
         |> Option.defaultValue []
 
     let close () =
@@ -130,7 +131,7 @@ let private renderTokens (props: TokensProps) : ReactElement =
     /// announcement and the entry-box clear cannot be got right in one place
     /// and wrong in another.
     let commitEntry (entry: string) =
-        match TokensModel.tryAdd props.allowFreeText props.suggestions props.tokens entry with
+        match TokensModel.tryAdd props.textOf props.allowFreeText props.suggestions props.tokens entry with
         | TokensModel.AddOutcome.Accepted next ->
             setQuery ""
             setRefusal ""
@@ -241,7 +242,7 @@ let private renderTokens (props: TokensProps) : ReactElement =
                               prop.children
                                   [ Html.span
                                         [ prop.className "fuaran-tokens-chip-label"
-                                          prop.text (TokensModel.chipLabel props.suggestions token) ]
+                                          prop.text (TokensModel.chipLabel props.textOf props.suggestions token) ]
                                     Html.button
                                         [ prop.id (chipId props.fieldId i)
                                           prop.className "fuaran-tokens-chip-remove"
@@ -253,7 +254,7 @@ let private renderTokens (props: TokensProps) : ReactElement =
                                           // user cannot tell apart.
                                           prop.custom (
                                               "aria-label",
-                                              "Remove " + TokensModel.chipLabel props.suggestions token
+                                              "Remove " + TokensModel.chipLabel props.textOf props.suggestions token
                                           )
                                           prop.tabIndex (if focusedChip = i then 0 else -1)
                                           prop.onKeyDown (onChipKeyDown i)
@@ -318,7 +319,7 @@ let private renderTokens (props: TokensProps) : ReactElement =
                                     prop.onMouseDown (fun e ->
                                         e.preventDefault ()
                                         commitEntry o.Value)
-                                    prop.text o.Label ] ] ] ]
+                                    prop.text (props.textOf o.Label) ] ] ] ]
         else
             []
 

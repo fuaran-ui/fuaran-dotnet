@@ -99,8 +99,9 @@ public static partial class Fuaran
                     Fs.Some(
                         Fs.List(
                             (options.Markers ?? Enumerable.Empty<(double, double, string)>())
-                                // Generated MapMarker declares (Label, Latitude, Longitude); Label is a bare string.
-                                .Select(m => new FsGen.MapMarker(m.Item3, m.Item1, m.Item2))))),
+                                // Generated MapMarker declares (Label, Latitude, Longitude); Label is a
+                                // TextSource (Phase 2811) and this facade writes the literal form.
+                                .Select(m => new FsGen.MapMarker(FsGen.TextSource.NewLiteral(m.Item3), m.Item1, m.Item2))))),
                 options.Zoom,
                 Fs.None<Microsoft.FSharp.Core.FSharpFunc<FsGen.MapMarker, FsAction>>())));
 

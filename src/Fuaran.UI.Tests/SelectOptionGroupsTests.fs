@@ -38,11 +38,17 @@ let private staticAB =
 let tests =
     testList
         "Phase 2571 — Select option groups"
-        [ testCase "an existing { Label; Value } option literal still compiles and means what it meant" (fun _ ->
+        [ testCase "a { Label; Value } option literal gains no member from the grouping" (fun _ ->
               // The member is on the Select, never on SelectOption: this literal
               // is the shape every consumer writes, and it must not gain FS0764.
-              let option: SelectOption = { Label = "UK"; Value = "uk" }
-              Expect.equal (option.Label, option.Value) ("UK", "uk") "unchanged")
+              // (Its label is a `TextSource` since Phase 2811.)
+              let option: SelectOption =
+                  { Label = TextSource.Literal "UK"
+                    Value = "uk" }
+
+              match option.Label with
+              | TextSource.Literal label -> Expect.equal (label, option.Value) ("UK", "uk") "unchanged"
+              | other -> failtestf "expected a literal label, got %A" other)
 
           testCase "Defaults.select carries no groups, and an ungrouped select's bytes do not move" (fun _ ->
               Expect.isEmpty Defaults.select<obj>.Groups "no grouping by default"
@@ -89,4 +95,26 @@ let tests =
                   match n.Kind with
                   | NodeKind.Select s -> Expect.equal s.Groups [ { Label = "One"; Values = [ "zz" ] } ] "kept"
                   | other -> failtestf "expected a Select, got %A" other
-              | Error e -> failtestf "a bound source refused: %s at %s" e.Message e.Path) ]
+              | Error e -> failtestf "a bound source refused: %s at %s" e.Message e.Path)
+
+          // Phase 2811 — an option's and a marker's label is a `TextSource`, so a
+          // `Bound` label over a `State` binding in a `Static` list declares that
+          // key's seed (WIRE_FORMAT §24.4 rule 1), as every structural host's walk
+          // already found it.
+          testCase "a Bound option label and a Bound marker label seed their State keys" (fun _ ->
+              let seedsOf (json: string) =
+                  match decodeNodeObj json with
+                  | Ok n -> BindingWalk.stateSeeds n |> Map.keys |> Set.ofSeq
+                  | Error e -> failtestf "decode refused %s: %s at %s" json e.Message e.Path
+
+              Expect.contains
+                  (seedsOf
+                      """{"id":"s","kind":{"$type":"Select","label":"Region","source":{"$type":"Static","value":[{"label":{"$type":"Bound","binding":{"$type":"State","defaultValue":"France","key":"regionLabelFr"}},"value":"fr"}]},"value":{"$type":"Static","value":"fr"}}}""")
+                  "regionLabelFr"
+                  "the option label's State key is seeded"
+
+              Expect.contains
+                  (seedsOf
+                      """{"id":"m","kind":{"$type":"Map","centreLatitude":0,"centreLongitude":0,"source":{"$type":"Static","value":[{"label":{"$type":"Bound","binding":{"$type":"State","defaultValue":"Paris","key":"markerLabelParis"}},"latitude":48.86,"longitude":2.35}]},"zoom":4}}""")
+                  "markerLabelParis"
+                  "the marker label's State key is seeded") ]
