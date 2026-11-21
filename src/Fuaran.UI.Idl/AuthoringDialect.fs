@@ -344,9 +344,28 @@ let notChildAuthorable: (string * string) list =
 /// An out-of-range value (a cast integer, a combined value) has no arm and
 /// THROWS: Phase 1930 removed the per-enum fallback case, which made
 /// `(EmbedPermission)99` author `AllowScripts`.
-type CSharpEnumMirror = { CSharp: string; Idl: string }
+///
+/// Phase 2346 — `NoGrant` names a C#-only ZERO member that grants nothing. A
+/// grant enum's zero value is what `default(T)`, an uninitialised field or array
+/// element and the cast `(T)0` all read as, so it must be the member that grants
+/// nothing (`EmbedPermission.None`). It has no IDL case, because the wire's
+/// no-grant form is ABSENCE from the list: the seam maps it to no case (`null`)
+/// and the factory drops it. Every other member keeps its IDL arm and every
+/// other value still throws.
+type CSharpEnumMirror =
+    { CSharp: string
+      Idl: string
+      NoGrant: string option }
 
-let private mirror cs idl = { CSharp = cs; Idl = idl }
+let private mirror cs idl =
+    { CSharp = cs
+      Idl = idl
+      NoGrant = None }
+
+let private grantMirror cs idl zero =
+    { CSharp = cs
+      Idl = idl
+      NoGrant = Some zero }
 
 /// The C# veneer's enum mirrors.
 let csharpEnums: CSharpEnumMirror list =
@@ -363,7 +382,7 @@ let csharpEnums: CSharpEnumMirror list =
       mirror "ImageAspect" "ImageAspect"
       mirror "ImageLoading" "ImageLoading"
       mirror "TrackKind" "TrackKind"
-      mirror "EmbedPermission" "EmbedPermission"
+      grantMirror "EmbedPermission" "EmbedPermission" "None"
       mirror "ScrollOrientation" "ScrollOrientation"
       mirror "Modality" "ModalityKind"
       mirror "CaptureSource" "CaptureSource"

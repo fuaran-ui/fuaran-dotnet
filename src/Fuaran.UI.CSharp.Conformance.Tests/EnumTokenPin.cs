@@ -92,6 +92,15 @@ internal static class EnumTokenPin
             var csharpCases = Enum.GetNames(csharpType).ToList();
             var declaredCases = declared.Select(c => c.Case).ToList();
 
+            // Phase 2346 — a grant enum's no-grant ZERO member is C#-only (the
+            // wire's no-grant form is absence), so it is admitted here and only
+            // as exactly that: the first name, value zero, mapping to no case.
+            var zero = NoGrantZero(method, csharpType);
+            if (zero is not null)
+            {
+                csharpCases.Remove(zero);
+            }
+
             h.Check(
                 $"C# {csharpType.Name} mirrors the declared cases of {fsharpName}",
                 csharpCases.SequenceEqual(declaredCases),
@@ -122,6 +131,20 @@ internal static class EnumTokenPin
     // undeclared value and expects a refusal. Neither needs the corpus.
 
     private const string CatchAllArm = "_ =>";
+
+    /// <summary>The name of <paramref name="type"/>'s no-grant zero member (Phase 2346):
+    /// the enum's first declared name, whose value is zero and which the seam maps to
+    /// no case. Null when the enum has none, so nothing else is admitted.</summary>
+    private static string? NoGrantZero(MethodInfo toFs, Type type)
+    {
+        var first = Enum.GetNames(type).FirstOrDefault();
+        if (first is null || Convert.ToInt64(Enum.Parse(type, first)) != 0)
+        {
+            return null;
+        }
+
+        return toFs.Invoke(null, new[] { Enum.Parse(type, first) }) is null ? first : null;
+    }
 
     /// <summary>The `ToFs` bodies in <paramref name="source"/> whose `_ =>` arm does
     /// not throw, each named by its signature line. Pure, so the negative control
@@ -304,6 +327,40 @@ internal static class EnumTokenPin
         h.Check(
             "fail-closed: every declared EmbedPermission name still maps",
             !Refuses(Enum.GetValues<EmbedPermission>()));
+
+        // Phase 2346 — the zero value grants nothing. `default(EmbedPermission)`, an
+        // uninitialised array element and `(EmbedPermission)0` used to be
+        // `AllowScripts`, indistinguishable on the authoring path from a written grant.
+        var granted = new[] { "AllowScripts", "AllowSameOrigin", "AllowForms", "AllowFullscreen" };
+        foreach (var (label, value) in new (string, EmbedPermission)[]
+                 {
+                     ("default(EmbedPermission)", default(EmbedPermission)),
+                     ("(EmbedPermission)0", (EmbedPermission)0),
+                     ("an uninitialised array element", (new EmbedPermission[1])[0]),
+                 })
+        {
+            var json = Embed(value).Encode();
+            h.Check(
+                $"zero grants nothing: {label} is EmbedPermission.None and authors no relaxation",
+                value == EmbedPermission.None
+                && Convert.ToInt32(value) == 0
+                && !granted.Any(g => json.Contains(g, StringComparison.Ordinal)),
+                json);
+        }
+
+        h.Check(
+            "zero grants nothing: every relaxation is a positive value",
+            Enum.GetValues<EmbedPermission>().All(p => p == EmbedPermission.None || (int)p > 0));
+        h.Check(
+            "zero grants nothing: an all-zero list encodes exactly as no list at all",
+            Embed(new EmbedPermission[3]).Encode() == Embed().Encode(),
+            Embed(new EmbedPermission[3]).Encode());
+
+        var zeroAndForms = Embed(EmbedPermission.None, EmbedPermission.AllowForms).Encode();
+        h.Check(
+            "zero grants nothing: None beside a written grant leaves only the written grant",
+            zeroAndForms == Embed(EmbedPermission.AllowForms).Encode(),
+            zeroAndForms);
 
         var forms = Embed(EmbedPermission.AllowForms).Encode();
         h.Check(

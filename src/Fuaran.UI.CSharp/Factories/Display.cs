@@ -207,7 +207,12 @@ public static partial class Fuaran
             // (AspectRatio, Permissions, Src, Title).
             new FsGen.EmbedSpec(
                 options.AspectRatio.ToFs(),
-                Fs.List((options.Permissions ?? Enumerable.Empty<EmbedPermission>()).Select(p => p.ToFs())),
+                // Phase 2346 — EmbedPermission.None (the zero value) maps to no case
+                // and is dropped: the wire's no-grant form is absence.
+                Fs.List(
+                    (options.Permissions ?? Enumerable.Empty<EmbedPermission>())
+                        .Select(p => p.ToFs())
+                        .OfType<FsGen.EmbedPermission>()),
                 options.Src.Inner,
                 options.Title.Inner)));
 
@@ -649,7 +654,8 @@ public sealed record EmbedOptions
     /// <summary>The relaxations granted to the framed document. Empty (the default) is
     /// TOTAL DENIAL — the frame is emitted with an empty sandbox declaration, which is
     /// the maximally-restrictive value. Every relaxation is something declared by name;
-    /// nothing is granted by omission.</summary>
+    /// nothing is granted by omission, and nothing by a zero value:
+    /// <see cref="EmbedPermission.None"/> contributes no relaxation.</summary>
     public IEnumerable<EmbedPermission>? Permissions { get; init; }
 }
 

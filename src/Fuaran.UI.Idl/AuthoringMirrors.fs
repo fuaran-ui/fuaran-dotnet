@@ -358,13 +358,23 @@ let csharpEnumMap (idl: Idl) : Result<string, string list> =
               | Some _ -> ()
           for (n, c) in csharpEnums |> List.countBy _.CSharp do
               if c > 1 then
-                  yield sprintf "C# enum %s is declared twice" n ]
+                  yield sprintf "C# enum %s is declared twice" n
+          // Phase 2346 — the no-grant zero member is C#-only: an IDL case of the
+          // same name would be a grant spelled as its own denial.
+          for m in csharpEnums do
+              match m.NoGrant, enums.TryFind m.Idl with
+              | Some z, Some e when List.contains z e.Cases ->
+                  yield sprintf "C# enum %s's no-grant zero member %s is also an IDL case of %s" m.CSharp z m.Idl
+              | _ -> () ]
 
     if not (List.isEmpty errors) then
         Error errors
     else
         let lines =
             [ yield! generatedBanner "The C# veneer's enum translation seam."
+              // Generated code opts out of the project's nullable context unless it
+              // says otherwise, and a no-grant seam returns `FsGen.X?` (Phase 2346).
+              yield "#nullable enable"
               yield "using System;"
               yield "using FsGen = Fuaran.UI.Generated;"
               yield ""
@@ -381,9 +391,28 @@ let csharpEnumMap (idl: Idl) : Result<string, string list> =
                   if i > 0 then
                       yield ""
 
-                  yield sprintf "    internal static FsGen.%s ToFs(this %s v) =>" m.Idl m.CSharp
+                  // Phase 2346 — a no-grant zero member maps to no case (`null`):
+                  // the wire's no-grant form is absence, so the caller drops it.
+                  match m.NoGrant with
+                  | Some z ->
+                      yield
+                          sprintf
+                              "    /// <summary><c>%s.%s</c> is the zero value and grants nothing: it maps to no"
+                              m.CSharp
+                              z
+
+                      yield
+                          "    /// case (the wire's no-grant form is absence from the list), and the caller drops it.</summary>"
+                  | None -> ()
+
+                  let nullable = if m.NoGrant.IsSome then "?" else ""
+                  yield sprintf "    internal static FsGen.%s%s ToFs(this %s v) =>" m.Idl nullable m.CSharp
                   yield "        v switch"
                   yield "        {"
+
+                  match m.NoGrant with
+                  | Some z -> yield sprintf "            %s.%s => null," m.CSharp z
+                  | None -> ()
 
                   for c in e.Cases do
                       yield sprintf "            %s.%s => FsGen.%s.%s," m.CSharp c m.Idl c

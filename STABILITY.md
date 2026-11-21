@@ -8447,6 +8447,61 @@ to the cut's carrier to decide.
 `Fidelity.all` / `kinds` / `isAnnounced` with the `RenderFidelity` names their obsoletion messages give. A caller
 matching on `curry`'s old message text for a repeat or unknown hole reads the new text.
 
+### What rides this slot — Phase 2101 (test-only renderer surface is obsolete, and two lookups stop materialising the tree)
+
+**Stability impact:** additive (obsoletions only).
+
+**Class: additive.** Package `Fuaran.UI.Renderer`. No signature is removed or changed and no wire byte moves.
+
+- **`Render.emitRenderFailure`** is `[<Obsolete>]`. It was the pre-330 arity of
+  `Render.emitRenderFailureWithContext` with `Map.empty`, and only tests called it. They now call
+  `emitRenderFailureWithContext sink Map.empty …` directly.
+- **`Render.accessibilityAttributes`** is `[<Obsolete>]`. It re-exported `Fuaran.UI.Renderer.Accessibility.accessibilityAttributes`,
+  and its callers were tests and the catalog sample. They now call the `Fuaran.UI.Renderer.Core` projection directly,
+  and the renderer itself reaches the projection through `ElementPlan`.
+- **`RenderTiming.countNodes`** and **`DebugGlobal.findNode`** answer what they answered, in the same order. They
+  fold over the children instead of building the list of every node first, and `findNode` stops at the first match.
+
+**Consumer action: none required.** A caller of either obsolete function moves to the function named in its
+message. Under `TreatWarningsAsErrors` the FS0044 warning is a build error, and that move clears it. Both
+functions go at the next breaking release.
+
+**Kept on purpose.** `Render.expandFragmentUncached` stays public because two benchmark projects measure it, so it
+is not test-only. `AgAdapter.AgAdapterOptions<'Msg>` keeps its unused type parameter. Its documentation records the
+parameter as deliberate, and F# cannot alias a type under the same name without the parameter (FS0035), so removing it
+would break every consumer annotation, which this additive phase does not do.
+
+### What rides this slot — Phase 2346 (the C# `EmbedPermission` zero value grants nothing)
+
+**Stability impact:** breaking — `EmbedPermission`'s underlying values change (a public constant); rides the announced
+cut ([Phase 2303](2303-the-announced-breaking-cut-has-a-carrier.md)) by operator ruling (2026-10-19).
+
+**Class: BREAKING** on `Fuaran.UI.CSharp` only; no wire byte moves and no F# signature moves. Rides the open 0.105.0
+draft, which is already breaking-class; it does not advance the number.
+
+| Surface | Change | Who pays |
+|---|---|---|
+| `Fuaran.UI.CSharp.EmbedPermission` | Explicit values. A new zero member `None = 0` that grants nothing; `AllowScripts` `0 → 1`, `AllowSameOrigin` `1 → 2`, `AllowForms` `2 → 3`, `AllowFullscreen` `3 → 4`. | A binary compiled against an earlier release and run against this one without a recompile (its constants are off by one, and two of the shifts GRANT a relaxation nobody wrote); anything that persisted the integer; code that relied on `default(EmbedPermission)` being `AllowScripts`; an exhaustive `switch` over the enum (one new case). Source that names the members only recompiles. |
+| `Fuaran.Embed` (C#) | `EmbedPermission.None` is dropped from `Permissions`: the wire's no-grant form is absence, so an all-`None` list encodes exactly as an empty one. | Nobody. |
+| VB XML dialect (`permissions=`) | Inherits `None` as a declared name: `permissions="None"` is accepted and grants nothing. Numbers, comma-joined lists and undeclared names still refuse (Phase 1930). | Nobody. |
+
+**Before this change** `AllowScripts` was the enum's first member, so `default(EmbedPermission)`, an uninitialised
+field or array element and `(EmbedPermission)0` were all a script grant, indistinguishable on the authoring path from
+one that was written. Phase 1930 closed every other route to the grant and recorded this one as open.
+
+**The seam.** The generated `EnumMap.ToFs` for `EmbedPermission` gains one arm, `None => null` (no case), and keeps its
+Phase 1930 throw for every undeclared value; it refuses nothing else new. The declaration of the zero member lives in
+`AuthoringDialect.csharpEnums` (`NoGrant`), and the generator refuses a no-grant member that is also an IDL case. The
+generated file now carries `#nullable enable`, which the nullable return requires.
+
+**Pinned:** the C# conformance suite's fail-closed leg pins `default(EmbedPermission)`, `(EmbedPermission)0` and an
+uninitialised array element to `None` and to no relaxation on the wire, every relaxation to a positive value, an
+all-`None` list to the empty list's bytes, and `None` beside a written grant to the written grant alone. The case-list
+pin admits the no-grant zero member only as the first name, value zero, mapping to no case.
+
+**Migration:** [`docs/migrations/2346-embed-permission-zero-grants-nothing.md`](docs/migrations/2346-embed-permission-zero-grants-nothing.md).
+**Escape-hatch inventory:** Hatch 7's "what is not claimed" entry for the C# zero value is retired with this change.
+
 ## 0.104.0 (RELEASED — tagged v0.104.0 at cc477007, 2026-11-11) — the slot opened after v0.103.0 was released; advanced from 0.103.1 on 2026-11-10 by Phase 2640, whose change is breaking
 
 _`v0.103.0` is TAGGED (2026-11-09, at `1b783c61`), so nothing may ride it: Phase 2639 opened the next slot at the
