@@ -7813,6 +7813,52 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
+## 0.106.0 — the slot opened after v0.105.0 was released, by Phase 2435 (the program adapters adopt `Fuaran.Program` 0.17.0), whose change is breaking (DRAFT — untagged)
+
+**Class: breaking, by dependency and in behaviour.** `v0.105.0` is tagged and served by nuget.org, so nothing
+rides it: this change opens the next slot. Packages `Fuaran.UI.Program` and `Fuaran.UI.Program.Server` are built
+against `Fuaran.Program.*` 0.17.0 (from 0.16.0), and `Fuaran.UI`, which references `Fuaran.Program.Bounded`, takes
+the same floor. No type or member these packages declare moves. What moves is the program core a consumer takes
+with them, and one reader the server adapter forwards.
+
+**What a consumer of the adapters gains.**
+
+- **A document names its own type at the root** (Program 0.17.0, Phase 2449). The four program document readers
+  read the root `$type` first. `ProgramWire.requireDocument` is new in `Fuaran.Program.Bounded`.
+- **A structured op refusal** (Program 0.17.0, riding its draft from Phase 2828): `OpRefusal` and
+  `OpRefusalClass` in `Fuaran.Program.Bounded`, and an op-channel branch that halts on a condition it could not
+  evaluate.
+
+**What a consumer of the adapters pays.**
+
+- **`ServerAliases.decodeReportJson` refuses an outcome under another root.** It forwards to Program's reader,
+  which accepted a `HandlerReport`'s members under any root `$type`, or none, on 0.16.0 and refuses it as
+  `missing-member` now. `ServerAliases.decodeHandlerJson` already refused another root; its class for a whole
+  document of another kind moves from `undeclared-member` to `missing-member`, and its root detail no longer echoes
+  the tag. No conformant encoder writes such a document.
+- **Program's own breaking entries, for a host that builds on the program core directly.** An unavailable read's
+  refusal text is `unavailable:read-unavailable: …` where it was `read-unavailable: …`; a branch whose condition
+  answers a `malformed` or `unavailable` refusal halts where it took the false arm; and an outcome report carries a
+  structured refusal's `<class>:<code>` discriminator only. Program's `STABILITY.md` states each.
+- **Recompile.** A binary built against 0.16.x fails to load beside 0.17.0.
+
+**What did not move, checked rather than assumed.** No adapter reads a refusal's text: the UI witness views no op
+as a branch (`OpView.edits`), its refusals are in no canonical form and so read as they did, and nothing in
+`Fuaran.UI.Program`, `Fuaran.UI.Program.Server`, `Fuaran.UI` or the four program suites matches `read-unavailable` or
+a handler root detail. The bounded, runtime, server and parity suites pass unchanged, against the program
+specification both before and after its root-type vectors. The demanded document stays at version 15. The program
+proof leg keeps pinning `proofs-program-0.16.0.tar`: the 0.17.0 release asset carries the same sha256
+(`31c4e58a…`), so the committed extractions stand.
+
+**Rides with it — the demanded corpus carries every clause kind (Phase 2435).** The `declared-argument-policy`
+vector now carries `perWindow`, `quantityPerWindow` and `dwell` (Program Phase 2260) and `atLeast` and `required`
+(Phase 2262) beside the five it had, each with the reader's recorded read. A test enumerates
+`ServerConstraintClause` from the type, so a clause the reader gains arrives red until the vector carries it. The
+corpus copy is re-emitted and byte-identical to the program repository's. No package moves for it: the corpus is a
+test artefact.
+
+---
+
 ## 0.105.0 — the announced breaking cut (Phase 2303); the slot opened after v0.104.0 was released, advanced from 0.104.1 on 2026-11-14 by Phase 2716, whose change is breaking (DRAFT — untagged)
 
 _**This is the announced breaking cut.** The pre-1.0 surface debts that could not ride an ordinary draft slot are

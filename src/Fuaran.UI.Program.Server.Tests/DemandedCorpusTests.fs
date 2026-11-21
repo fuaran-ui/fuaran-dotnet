@@ -83,6 +83,36 @@ let tests =
               Expect.isNone (DemandedCorpus.firstDifference emitted emitted) "a corpus agrees with itself"
           }
 
+          test "the argument-policy vector carries every clause kind the reader declares" {
+              // Enumerated FROM THE TYPE: a clause added to the reader arrives
+              // here red until the vector carries it, which is the drift Phases
+              // 2260 and 2262 left behind while the description said "every".
+              let declared =
+                  FSharp.Reflection.FSharpType.GetUnionCases typeof<ServerConstraintClause>
+                  |> Array.map _.Name
+                  |> Set.ofArray
+
+              let _, document, _ =
+                  DemandedCorpus.vectors
+                  |> List.find (fun (id, _, _) -> id = "declared-argument-policy")
+
+              match Demanded.decode document with
+              | Error failure -> failtestf "the argument-policy vector does not decode: %A" failure
+              | Ok projection ->
+                  let carried =
+                      projection.Server
+                      |> Option.map _.Constraints
+                      |> Option.defaultValue []
+                      |> List.collect _.Clauses
+                      |> List.map (fun clause ->
+                          (FSharp.Reflection.FSharpValue.GetUnionFields(clause, typeof<ServerConstraintClause>)
+                           |> fst)
+                              .Name)
+                      |> Set.ofList
+
+                  Expect.equal carried declared "every ServerConstraintClause case is carried"
+          }
+
           test "the richest vector is a real harvest carrying reach, replay and undo" {
               let _, harvested, _ =
                   DemandedCorpus.vectors |> List.find (fun (id, _, _) -> id = "harvest-full")

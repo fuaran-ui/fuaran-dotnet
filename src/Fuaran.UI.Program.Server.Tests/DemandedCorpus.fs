@@ -147,7 +147,12 @@ let private policy =
     + "{\"clause\":\"ceiling\",\"bytes\":65536},"
     + "{\"clause\":\"label\",\"label\":\"pii\"},"
     + "{\"clause\":\"denyList\",\"argument\":\"path\",\"refused\":[\"/etc\"]},"
-    + "{\"clause\":\"atMost\",\"argument\":\"count\",\"limit\":90}]}]"
+    + "{\"clause\":\"atMost\",\"argument\":\"count\",\"limit\":90},"
+    + "{\"clause\":\"perWindow\",\"count\":10,\"window\":60},"
+    + "{\"clause\":\"quantityPerWindow\",\"argument\":\"count\",\"quantity\":500,\"window\":3600},"
+    + "{\"clause\":\"dwell\",\"window\":5},"
+    + "{\"clause\":\"atLeast\",\"argument\":\"count\",\"limit\":1},"
+    + "{\"clause\":\"required\",\"argument\":\"url\"}]}]"
 
 /// Every vector: an id, the document, and what it is for.
 let vectors: (string * string * string) list =

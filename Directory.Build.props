@@ -834,8 +834,14 @@
          advanced by Phase 2716). The raise of Fuaran.Program to 0.16.0 is
          breaking for a consumer of the program adapters and rides it; the
          number moves here with the first change that cannot ride the tag. See
-         STABILITY.md "0.105.0". -->
-    <Version>0.105.0</Version>
+         STABILITY.md "0.105.0".
+         0.106.0 (Phase 2435, 2026-11-21) - v0.105.0 is TAGGED, so nothing
+         rides it. The raise of Fuaran.Program to 0.17.0 is breaking for a
+         consumer of the program adapters (an outcome under another root is
+         refused), so it opens the next slot at the breaking class. An UNTAGGED
+         DRAFT: changes of this class or lower ride it. See STABILITY.md
+         "0.106.0". -->
+    <Version>0.106.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org
