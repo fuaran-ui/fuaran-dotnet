@@ -13,9 +13,8 @@
 //  .NET-side ReactElement is opaque; `(string * string) list` is the pure-F#
 //  contract the tests pin) AND so the server renderer can call it from a
 //  pure-.NET context. Extracted out of the Feliz-coupled `Render.fs` into
-//  `Fuaran.UI.Renderer.Core` for exactly that reuse; `Render.fs` keeps a thin
-//  re-export (`Render.accessibilityAttributes`) so existing call sites and
-//  tests are unchanged.
+//  `Fuaran.UI.Renderer.Core` for exactly that reuse. Call it here: the
+//  `Render.accessibilityAttributes` re-export was removed in Phase 2836.
 //
 //  `aria-labelledby` / `aria-describedby` carry the referenced Node's HTML
 //  `id` — same string the `render` function emits as `prop.id` (the
