@@ -685,6 +685,10 @@ let private binding =
           // order is `Canon.typed`'s Ordinal sort and is unaffected either way, so
           // appending is the change that leaves every existing positional
           // construction and pattern in the estate arity-broken but position-stable.
+          //
+          // Phase 2110: the seven members stay positional. A record payload is an inline
+          // record, which no backend but F#'s lays out and which cannot name `'T`; the
+          // measurement is recorded above `visKinds`.
           { Tag = "Local"
             Fields =
               [ req "flushOn" (TUnion("LocalFlushTrigger", []))
@@ -3194,6 +3198,32 @@ let inputKinds: IdlKind list =
 // `Binding.Transform`'s `source` / `pipeline` are HOSTED slots rendered by Core's
 // `ColumnCodec` / `DataFrameCodec` under the same `Canon` discipline (the Phase
 // 692 gap-closure; the old grid-transform deferral is closed).
+//
+// WHY THESE SHAPES ARE STILL FLAT (Phase 2110, a finding rather than a reshape). The
+// IDL can declare an INLINE record and a presence-keyed union (`IdlRecord.Inline`,
+// `UnionDiscrimination.ByPresence`), which is what `DataGridSpec`'s sub-records, its
+// row-identity and rows unions, and record payloads for `FormFieldKind` and
+// `Binding.Local` would be declared with. They are not declared here, because only the
+// F# backend lays such a declaration out; the TypeScript backend and the F* target
+// refuse a vocabulary that reaches one, by name. Measured at the pinned
+// `Fuaran.Core.Idl.Codegen`, over the committed `idl.json`:
+//
+//   * unchanged, `Gen.typescriptModule` over every kind answers `Ok`, the F* target
+//     refuses two kinds (`Stepper`, `Tabs`) and the proof vocabulary is 19 kinds;
+//   * with ONE `FormFieldKind` case given a record payload, `Gen.typescriptModule`
+//     refuses the whole vocabulary, and `Filters` and `Form` join the F* refusals;
+//   * with `Binding.Local` given one, the F* target refuses all 43 kinds and the
+//     proof vocabulary is empty, since every kind reaches `Binding`. That payload is
+//     also not declarable: its members name the union's type parameter, and a record
+//     declaration takes none.
+//
+// So declaring any of them here fails the value-derived TypeScript leg of the
+// full-vocabulary conformance sweep (`IdlFullVocabularyFuzzTests`, which treats that
+// refusal as a failure by design), and the `Binding.Local` one withdraws the proved
+// round trip (`proofs/VocabularyProofs.fst`). Both legs go red on the declaration, which
+// is what holds this note true. The reshape waits on the generator: the TypeScript
+// backend and the F* model laying out an inline declaration, and an inline record that
+// can carry its holder's type parameters.
 let visKinds: IdlKind list =
     [ { Tag = "DataGrid"
         Category = "Visualisation"

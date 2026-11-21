@@ -48,6 +48,14 @@ let NotProvidedSentinel = "__fuaran_not_provided__"
 // short-circuit `Query` semantics return `NotResolved` for unregistered
 // names. The accessor returns `Unchecked.defaultof<'T>` but is never
 // invoked under the sentinel path.
+//
+// Phase 2110 examined retiring this for `Binding.Static None` or an optional slot, and
+// kept it. `Static None` RESOLVES, to the slot's default representation, so a Metric
+// whose source was never set would format as `0` again instead of reaching its loading
+// slot: the defect the sentinel was introduced to end, and the two are different
+// answers ("no selection" against "not provided yet"). An optional slot moves the wire,
+// since every host's decoder requires the member. The other hosts' defaults and
+// renderers mirror this name, so the meaning cannot be retired from one host.
 let private noBinding<'T> : Binding<'T> =
     Binding.Query(NotProvidedSentinel, (fun _ -> Unchecked.defaultof<'T>), None)
 
