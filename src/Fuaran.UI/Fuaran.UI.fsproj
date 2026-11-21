@@ -63,7 +63,6 @@
          Depends only on Types.fs. -->
     <Compile Include="NodeMap.fs" />
     <Compile Include="Hashing.fs" />
-    <Compile Include="Bounded.fs" />
     <Compile Include="Defaults.fs" />
     <Compile Include="Fragment.fs" />
     <Compile Include="FragmentMemo.fs" />
