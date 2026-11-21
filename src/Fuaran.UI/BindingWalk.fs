@@ -1141,6 +1141,9 @@ let private callsAt<'Msg> (readerId: string) (action: Action<'Msg>) : CallUse li
     // confirmation's continuation is a fetch this tree can reach (Phase 1537).
     | Action.Chain _
     | Action.Confirm _
+    // Phase 2107 — control arms; their nested actions are the fold's.
+    | Action.Choose _
+    | Action.Require _
     | Action.Dispatch _
     | Action.Notify _
     | Action.Navigate _
@@ -1187,7 +1190,10 @@ let private closuresAt<'Msg> (readerId: string) (action: Action<'Msg>) : Closure
     // reached by `closuresOfAction`'s fold, which is load-bearing: `Dispatch`
     // inside a continuation is the FUARAN112 case (Phase 1537).
     | Action.Chain _
-    | Action.Confirm _ -> []
+    | Action.Confirm _
+    // Phase 2107 — a condition is a binding, and the arms are values.
+    | Action.Choose _
+    | Action.Require _ -> []
     // The closure-free arms. `Invoke` reaches a host capability by ID with
     // wire-encoded args, and `AiTool` by tool name — neither holds host code.
     | Action.Notify _
@@ -1255,6 +1261,12 @@ let private usesAt<'Msg> (action: Action<'Msg>) : BindingUse list =
     // as it reaches `Chain`'s members. Both resolve at DISPATCH time, so the
     // recorded asymmetry above applies to them unchanged.
     | Action.Confirm(prompt, _, _) -> usesOfText prompt
+    // Phase 2107 — the condition (and a `Choose`'s exit assertion) resolve at
+    // DISPATCH time, exactly as `valueFrom` does; the arms are the fold's.
+    | Action.Choose(condition, _, _, exit) ->
+        usesOfBinding condition
+        @ (exit |> Option.map usesOfBinding |> Option.defaultValue [])
+    | Action.Require condition -> usesOfBinding condition
     | Action.Call _
     | Action.Dispatch _
     | Action.Notify _
@@ -1935,7 +1947,10 @@ let private walkTree<'Msg>
         // (Phase 1537), which is why the fold must reach it: FUARAN105/106/107
         // reason from the keys written.
         | Action.Chain _
-        | Action.Confirm _ -> ()
+        | Action.Confirm _
+        // Phase 2107 — the control arms write nothing; their arms are the fold's.
+        | Action.Choose _
+        | Action.Require _ -> ()
         // A declared result target names its destination; an `onResult` closure
         // does not, and may write anything at all.
         | Action.Call(_, onResult, into) ->

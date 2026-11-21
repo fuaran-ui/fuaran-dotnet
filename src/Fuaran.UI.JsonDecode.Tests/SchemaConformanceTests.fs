@@ -279,6 +279,8 @@ let private schemaInexpressibleRejects: Set<string> =
           // The MISSING_FIELD sibling `reject-confirm-missing-onconfirm` is NOT
           // here: `required` expresses it, and the ordinary path asserts it.
           "reject-confirm-nested"
+          // Phase 2107 — the same existential, reached through a selection's arm.
+          "reject-confirm-nested-in-choose"
 
           // Fuaran-UI Phase 1538 — `Binding.Local`'s two refusals. Unlike the
           // two above these ARE expressible in principle, and are filed here for

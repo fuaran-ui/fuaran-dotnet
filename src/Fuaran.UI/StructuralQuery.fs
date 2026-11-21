@@ -373,6 +373,12 @@ let private carriedAt (label: 'Msg -> string option) (action: Action<'Msg>) : Ca
               match prompt with
               | TextSource.Literal s -> Some s
               | _ -> None } ]
+    // Phase 2107 — the control arms are carried actions too, with no
+    // discriminator (a condition has no value until dispatch); their arms are
+    // reached by the fold, so "does this button navigate" answers yes for a
+    // button that navigates only when a condition holds.
+    | Action.Choose _ -> [ { Tag = "Choose"; Disc = None } ]
+    | Action.Require _ -> [ { Tag = "Require"; Disc = None } ]
     | Action.Focus nodeId -> [ { Tag = "Focus"; Disc = Some nodeId } ]
 
 #warnon "44"

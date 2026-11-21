@@ -116,7 +116,11 @@ let private allActionCases: (string * Fuaran.UI.Types.Action<Msg>) list =
       // two positions a recursive case can leak through.
       "Confirm", Action.Confirm(TextSource.Literal poison, Action.Notify("toast", Fuaran.Core.JStr poison), None)
       // Author-declared vocabulary, carried in full — the `CommitLocal` shape.
-      "Focus", Action.Focus "search-field" ]
+      "Focus", Action.Focus "search-field"
+      // Phase 2107 — the condition is keyed by the poison, so a describer that
+      // leaked a binding's spelling would be caught here.
+      "Choose", Action.Choose(Binding.State(poison, None), Action.Notify("toast", Fuaran.Core.JStr poison), None, None)
+      "Require", Action.Require(Binding.State(poison, None)) ]
 
 [<Tests>]
 let tests =

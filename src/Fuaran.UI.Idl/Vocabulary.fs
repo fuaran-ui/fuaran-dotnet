@@ -1094,6 +1094,34 @@ let private action =
           { Tag = "Focus"
             Fields = [ req "nodeId" TStr ]
             Annotations = Annotations.Empty
+            Hosted = None }
+          // Phase 2107 — control flow, spelled as the bounded core's own arms
+          // (WIRE_FORMAT §3.6.34, §30.1). `Choose` is the core's SELECTION:
+          // `condition` resolves at DISPATCH time through the store, as a
+          // `SetState.valueFrom` does; the boolean `true` runs `whenTrue`, any
+          // other value runs `whenFalse` (absent is the empty sequence), and an
+          // unresolved or errored condition halts the gesture before either arm
+          // runs. `exit` is the core's optional exit assertion, checked after
+          // the arm. The names are the core's, so the §30 row is an identity
+          // and nothing is re-spelled.
+          //
+          // Both arms add CONTROL, never an effect: every effect they reach is
+          // an existing arm meeting its own gate. Neither is gated itself.
+          { Tag = "Choose"
+            Fields =
+              [ req "condition" (TUnion("Binding", [ TJson ]))
+                req "whenTrue" (TUnion("Action", []))
+                opt "whenFalse" (TUnion("Action", []))
+                opt "exit" (TUnion("Binding", [ TJson ])) ]
+            Annotations = Annotations.Empty
+            Hosted = None }
+          // Phase 2107 — the core's halting GUARD. `condition` resolves at
+          // dispatch; the boolean `true` holds and changes nothing, anything
+          // else halts the gesture, so nothing after the guard runs. This is
+          // the arm no composition reaches: no existing case stops a `Chain`.
+          { Tag = "Require"
+            Fields = [ req "condition" (TUnion("Binding", [ TJson ])) ]
+            Annotations = Annotations.Empty
             Hosted = None } ]
       Annotations = Annotations.Empty
       TagRule = UnionTagRule.CaseName
@@ -4821,6 +4849,32 @@ let private docs: (string * string) list =
             "node the author chose; choosing the first invalid one is a"
             "renderer-owned affordance, not an argument here." ]
       "case-field:Action.Focus.nodeId", "The id of the node in this document that receives keyboard focus."
+      "case:Action.Choose",
+      lines
+          [ "Phase 2107 — run `whenTrue` when `condition` resolves to the boolean"
+            "`true` at dispatch time, otherwise `whenFalse` (absent is the empty"
+            "sequence). The bounded program core's SELECTION arm, spelled with its"
+            "own name: an unresolved or errored condition halts the gesture before"
+            "either arm runs, and `exit`, when present, must hold after the true"
+            "arm and fail after the false one."
+            ""
+            "Control only: every effect an arm reaches is an existing case meeting"
+            "its own gate. A host without the bounded loop refuses a gesture that"
+            "carries this case, whole, rather than evaluating it a second way." ]
+      "case-field:Action.Choose.condition",
+      "The binding resolved at dispatch time; the boolean `true` selects `whenTrue`."
+      "case-field:Action.Choose.whenTrue", "The action run when the condition is `true`."
+      "case-field:Action.Choose.whenFalse",
+      "The action run when the condition resolves to anything else. Omitted means nothing runs."
+      "case-field:Action.Choose.exit",
+      "An optional assertion checked after the arm: it must hold after `whenTrue` and fail after `whenFalse`."
+      "case:Action.Require",
+      lines
+          [ "Phase 2107 — the halting guard. `condition` resolves at dispatch time;"
+            "the boolean `true` holds and changes nothing, and anything else halts"
+            "the gesture, so nothing after the guard runs. The bounded program"
+            "core's `Require`, spelled with its own name." ]
+      "case-field:Action.Require.condition", "The binding that must resolve to `true` for the gesture to continue."
       "union:Binding",
       "Where a slot's value comes from: a literal, host data, a filter, a selection, state, the current instant, a computation or a formatted value, each a `$type`-tagged case."
       "case:Binding.Static", "A literal value written into the document."

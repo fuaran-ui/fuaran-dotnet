@@ -8400,6 +8400,34 @@ is seen. A host that replaces its data, or its tree, per dispatch gets exactly t
 
 **Consumer action: none**, unless one of the two source breaks above applies.
 
+### What rides this slot — Phase 2107 (`Action.Choose` and `Action.Require`, the core's selection and guard)
+
+**Stability impact:** Breaking change to `Fuaran.UI` (and every host's closed `Action` union): new cases break exhaustive matches in consumers, though every existing wire document is byte-identical. Requires the version advance the surface guard names. Satisfies and cites the [vocabulary-growth governance charter](../../fuaran-dotnet/docs/VOCABULARY.md) (demand evidence, irreducibility, cost, pre/post confusion delta).
+
+**Class: breaking (two union cases), wire additive.** Packages `Fuaran.UI` (the generated `Action<'Msg>` union),
+`Fuaran.UI.Ops` (decoder and schema), `Fuaran.UI.Program` (the UI witness), `Fuaran.UI.CSharp` (factories), and
+every package holding an exhaustive `match` over `Action` (`Fuaran.UI.Ops.Abstractions`, `Fuaran.UI.Renderer`,
+`Fuaran.UI.Renderer.Server`, `Fuaran.UI.ServerDriven`). No existing corpus byte moves; the corpus gains two node
+fixtures, three reject fixtures and three `lowers-to/` vectors (WIRE_FORMAT §3.6.34, §30.1).
+
+**Consumer-visible symbols.**
+- `Action.Choose of condition: Binding<JVal> * whenTrue: Action<'Msg> * whenFalse: Action<'Msg> option * exit: Binding<JVal> option`
+  and `Action.Require of condition: Binding<JVal>` — the bounded program core's `Choose` and `Require`, with the
+  core's names. `UiWitness.view` lowers them to those arms (identity rows of §30.1).
+- C#: `Actions.Choose(condition, whenTrue)`, `Actions.Choose(condition, whenTrue, whenFalse)`,
+  `Actions.Require(condition)`.
+- `ActionInvocation.describe` prints `Choose` / `Require` with no contents (the `Chain` rule); `payloadFor` is `None`
+  for both.
+- The client renderer (`Fuaran.UI.Renderer`) and the server-driven driver (`Fuaran.UI.ServerDriven`) do NOT evaluate
+  either case: a gesture reaching one is refused whole, warned, and recorded as `Denied` where an action sink is
+  wired. The SSR resume disposition of both is `Fallback`; an Adaptive Card projects neither.
+
+**What breaks.** An exhaustive `match` over `Action<'Msg>` in consumer code (FS0025 under warnings-as-errors): add
+the two arms. Nothing else: no signature moved, and no document written before this release decodes differently.
+
+**Consumer action:** add the two arms to any exhaustive action match — see
+[`docs/migrations/2107-choose-and-require.md`](docs/migrations/2107-choose-and-require.md).
+
 ## 0.104.0 (RELEASED — tagged v0.104.0 at cc477007, 2026-11-11) — the slot opened after v0.103.0 was released; advanced from 0.103.1 on 2026-11-10 by Phase 2640, whose change is breaking
 
 _`v0.103.0` is TAGGED (2026-11-09, at `1b783c61`), so nothing may ride it: Phase 2639 opened the next slot at the

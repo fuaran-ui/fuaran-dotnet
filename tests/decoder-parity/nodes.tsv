@@ -7,11 +7,13 @@ a11y-speak	ok 1cea2ea8a636d690 281	steps=13 units=281 nesting=3 parses=1	ok 1cea
 a11y-wrapper-all-slots	ok b3deb4e4c95519e0 540	steps=31 units=540 nesting=5 parses=1	ok b3deb4e4c95519e0 540	recovered=	refused=	ok b3deb4e4c95519e0 540
 a11y-wrapper-state-bound	ok d6efb19d0c7e6b18 422	steps=25 units=422 nesting=5 parses=1	ok d6efb19d0c7e6b18 422	recovered=	refused=	ok d6efb19d0c7e6b18 422
 a11y-wrapper-transform-label	ok 9f7d37b75b1a3566 915	steps=76 units=915 nesting=11 parses=1	ok 9f7d37b75b1a3566 915	recovered=	refused=	ok 9f7d37b75b1a3566 915
+action-choose	ok 0c62b93c57c6c450 354	steps=22 units=354 nesting=4 parses=1	ok 0c62b93c57c6c450 354	recovered=	refused=	ok 0c62b93c57c6c450 354
 action-confirm	ok 55b257407363b8c8 302	steps=19 units=302 nesting=5 parses=1	ok 55b257407363b8c8 302	recovered=	refused=	ok 55b257407363b8c8 302
 action-confirm-cancel	ok 6e8096b54de26c87 382	steps=23 units=382 nesting=6 parses=1	ok 6e8096b54de26c87 382	recovered=	refused=	ok 6e8096b54de26c87 382
 action-focus	ok 1f78d5a69c281cda 195	steps=15 units=195 nesting=5 parses=1	ok 1f78d5a69c281cda 195	recovered=	refused=	ok 1f78d5a69c281cda 195
 action-navigate-bound	ok bf64e8e4043cb52f 215	steps=13 units=215 nesting=5 parses=1	ok bf64e8e4043cb52f 215	recovered=	refused=	ok bf64e8e4043cb52f 215
 action-navigate-target	ok 46abfc8b2de87189 161	steps=9 units=161 nesting=3 parses=1	ok 46abfc8b2de87189 161	recovered=	refused=	ok 46abfc8b2de87189 161
+action-require	ok eb8419c793b2920b 428	steps=29 units=428 nesting=6 parses=1	ok eb8419c793b2920b 428	recovered=	refused=	ok eb8419c793b2920b 428
 badge-1	ok e09da1c4f85d1539 73	steps=6 units=73 nesting=2 parses=1	ok e09da1c4f85d1539 73	recovered=	refused=	ok e09da1c4f85d1539 73
 badge-transform-live	ok 26435dbc11718abb 373	steps=28 units=373 nesting=8 parses=1	ok 26435dbc11718abb 373	recovered=	refused=	ok 26435dbc11718abb 373
 binding-check-chart-not-numeric	ok 5943d50f1a3fe3f8 500	steps=48 units=500 nesting=7 parses=1	ok 5943d50f1a3fe3f8 500	recovered=	refused=	ok 5943d50f1a3fe3f8 500

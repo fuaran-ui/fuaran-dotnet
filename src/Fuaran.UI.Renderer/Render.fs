@@ -680,6 +680,11 @@ let private unwiredAt (action: Action<'Msg>) : bool =
     // a cancel branch that reaches no substrate is as inert as a confirm one.
     | Action.Confirm _ -> false
     | Action.Focus _ -> false
+    // Phase 2107 — control flow runs on the bounded loop only, and this
+    // interpreter is not it: a gesture carrying either arm is refused whole
+    // (`controlFlowRefusal` below), so the slot reaches no substrate here.
+    | Action.Choose _
+    | Action.Require _ -> true
 
 #warnon "44"
 
@@ -1190,6 +1195,12 @@ let rec private runActionCore (ctx: RenderContext<'Msg>) (denied: string list re
                 runActionCore ctx denied onConfirm
             else
                 onCancel |> Option.iter (runActionCore ctx denied))
+    // Phase 2107 — never reached through `runActionAs`, which refuses a
+    // gesture carrying a control arm before any member runs. Stated anyway,
+    // fail-closed: a guard this interpreter does not evaluate must not read as
+    // one that held.
+    | Action.Choose _
+    | Action.Require _ -> note (Error "control flow (Choose / Require) runs on the bounded loop only")
     | Action.Focus nodeId ->
         // Phase 1537 — move focus to the addressed node. Renderer-native for
         // the `Print` / `CommitLocal` reason: `.focus()` is the browser's own
@@ -1294,16 +1305,53 @@ let private runRecorded
     ActionInvocation.emit ctx.ActionSink site outcome action
     outcome
 
-let private runActionAs (provenance: AffordanceProvenance) (ctx: RenderContext<'Msg>) (action: Action<'Msg>) : unit =
-    match ctx.ActionSink with
-    | None ->
-        // Recording off — the shipped default. No ref cell, no site, no record.
-        runActionCore ctx (ref []) action
-    | Some _ ->
-        let site =
-            ActionInvocation.clientSite provenance ctx.CurrentNodeId (Map.tryFind promptIdKey ctx.SessionContext)
+/// Phase 2107 — why this interpreter refuses `action` WHOLE, if it does.
+/// `Choose` and `Require` are the bounded program core's arms, and the shard
+/// that admitted them rules that control flow comes from that one evaluator,
+/// never a second one written here. So a gesture reaching either arm anywhere
+/// (the generated fold walks `Chain` members and `Confirm` continuations) runs
+/// NOTHING: refusing only the arm would run the members after a guard, which
+/// is the guard failing open.
+let private controlFlowRefusal (action: Action<'Msg>) : string option =
+    let reaches =
+        Fuaran.UI.Generated.Action.fold
+            (fun found a ->
+                found
+                || (match a with
+                    | Action.Choose _
+                    | Action.Require _ -> true
+                    | _ -> false))
+            false
+            action
 
-        runRecorded site ctx action |> ignore
+    if reaches then
+        Some
+            "[Fuaran] this gesture carries Action.Choose / Action.Require, which run on the bounded program loop only — refused whole, nothing ran."
+    else
+        None
+
+let private runActionAs (provenance: AffordanceProvenance) (ctx: RenderContext<'Msg>) (action: Action<'Msg>) : unit =
+    match controlFlowRefusal action, ctx.ActionSink with
+    | Some reason, sink ->
+        ctx.Runtime.Warn reason
+
+        match sink with
+        | None -> ()
+        | Some _ ->
+            let site =
+                ActionInvocation.clientSite provenance ctx.CurrentNodeId (Map.tryFind promptIdKey ctx.SessionContext)
+
+            ActionInvocation.emit ctx.ActionSink site (ActionOutcome.Denied reason) action
+    | None, sink ->
+        match sink with
+        | None ->
+            // Recording off — the shipped default. No ref cell, no site, no record.
+            runActionCore ctx (ref []) action
+        | Some _ ->
+            let site =
+                ActionInvocation.clientSite provenance ctx.CurrentNodeId (Map.tryFind promptIdKey ctx.SessionContext)
+
+            runRecorded site ctx action |> ignore
 
 /// Interpret a TREE-DECLARED action — the shape every authored handler takes.
 let private runAction (ctx: RenderContext<'Msg>) (action: Action<'Msg>) : unit =

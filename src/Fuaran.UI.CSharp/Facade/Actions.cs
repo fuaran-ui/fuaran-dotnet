@@ -362,6 +362,51 @@ public sealed class FuaranAction
     /// </remarks>
     public static FuaranAction Focus(string nodeId) => new(FsAction.NewFocus(nodeId));
 
+    /// <summary>
+    /// Raise <paramref name="whenTrue"/> when <paramref name="condition"/> reads
+    /// <c>true</c> at the moment the reader raises the action, and nothing otherwise —
+    /// <c>Action.Choose</c> (Phase 2107).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The condition is read when the action is raised, not when the tree renders, so
+    /// it sees a write an earlier member of the same chain made. Anything other than
+    /// <c>true</c> takes the false arm; a condition that does not resolve stops the
+    /// whole action before either arm runs.
+    /// </para>
+    /// <para>
+    /// Control flow runs on the bounded program loop only. A host that interprets
+    /// actions without it refuses the whole action rather than evaluating the
+    /// condition a second way.
+    /// </para>
+    /// </remarks>
+    public static FuaranAction Choose(Binding<Payload> condition, FuaranAction whenTrue) =>
+        new(FsAction.NewChoose(
+            Fs.MapBinding(condition.Inner, (Payload p) => p.Inner),
+            whenTrue.Inner,
+            Fs.None<FsAction>(),
+            Fs.None<FsGen.Binding<FsJVal>>()));
+
+    /// <summary>
+    /// Raise <paramref name="whenTrue"/> when <paramref name="condition"/> reads
+    /// <c>true</c>, otherwise <paramref name="whenFalse"/> — <c>Action.Choose</c>
+    /// (Phase 2107).
+    /// </summary>
+    public static FuaranAction Choose(Binding<Payload> condition, FuaranAction whenTrue, FuaranAction whenFalse) =>
+        new(FsAction.NewChoose(
+            Fs.MapBinding(condition.Inner, (Payload p) => p.Inner),
+            whenTrue.Inner,
+            Fs.Some(whenFalse.Inner),
+            Fs.None<FsGen.Binding<FsJVal>>()));
+
+    /// <summary>
+    /// Stop the action here unless <paramref name="condition"/> reads <c>true</c> —
+    /// <c>Action.Require</c> (Phase 2107). Nothing after a guard that does not hold
+    /// runs; what ran before it stays done.
+    /// </summary>
+    public static FuaranAction Require(Binding<Payload> condition) =>
+        new(FsAction.NewRequire(Fs.MapBinding(condition.Inner, (Payload p) => p.Inner)));
+
     /// <summary>Raise several actions in order.</summary>
     public static FuaranAction Chain(params FuaranAction[] actions) =>
         new(FsAction.NewChain(Fs.List(actions.Select(a => a.Inner))));
