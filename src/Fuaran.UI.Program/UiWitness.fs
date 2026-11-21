@@ -312,6 +312,9 @@ let rec lowerCommits (tree: Node<obj>) (action: Action<obj>) : Action<obj> =
     | Action.Chain ops -> Action.Chain(List.map (lowerCommits tree) ops)
     | Action.Confirm(prompt, onConfirm, onCancel) ->
         Action.Confirm(prompt, lowerCommits tree onConfirm, Option.map (lowerCommits tree) onCancel)
+    // Phase 2107 — either arm of a selection may run, so a commit in either is lowered.
+    | Action.Choose(condition, whenTrue, whenFalse, exit) ->
+        Action.Choose(condition, lowerCommits tree whenTrue, Option.map (lowerCommits tree) whenFalse, exit)
     | other -> other
 
 /// The DISPATCH resolution: the commits this event folds, flushed from its
@@ -342,6 +345,15 @@ let flushCommits
         | Action.Chain ops ->
             let flushed = List.map go ops
             Action.Chain(List.map fst flushed), List.collect snd flushed
+        // Phase 2107 — the gesture reaches whichever arm its condition picks at
+        // dispatch, which is not known here, so the commits of BOTH arms are
+        // flushed and each write is put to the gate: a write the gate refuses in
+        // either arm refuses the event, the conservative reading of "each flushed
+        // write meets the gate on its own" (WIRE_FORMAT §30.1).
+        | Action.Choose(condition, whenTrue, whenFalse, exit) ->
+            let t, tw = go whenTrue
+            let f = whenFalse |> Option.map go
+            Action.Choose(condition, t, f |> Option.map fst, exit), tw @ (f |> Option.map snd |> Option.defaultValue [])
         | other ->
             match carried other with
             | Some c ->
@@ -361,7 +373,7 @@ let flushCommits
 
 /// `ActionWitness.View` — the total match over the closed sixteen-case union.
 /// Six cases are control structure the core owns; the other ten are leaves,
-/// each declaring what it may demand. No wildcard: a fifteenth arm fails to
+/// each declaring what it may demand. No wildcard: a seventeenth arm fails to
 /// compile here, which is the exhaustiveness check D18 moves into the adapter.
 ///
 /// The other two effect arms (`PushState` / `Download`) are absent
