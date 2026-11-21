@@ -4,6 +4,7 @@
 //     src/Fuaran.UI.Idl/AuthoringMirrors.fs. Do not edit: regenerate with
 //     FUARAN_REGEN=1 dotnet run --project src/Fuaran.UI.Idl.Tests
 // </auto-generated>
+#nullable enable
 using System;
 using FsGen = Fuaran.UI.Generated;
 
@@ -141,9 +142,12 @@ internal static class EnumMap
             _ => throw new ArgumentOutOfRangeException(nameof(v), v, "not a declared TrackKind case"),
         };
 
-    internal static FsGen.EmbedPermission ToFs(this EmbedPermission v) =>
+    /// <summary><c>EmbedPermission.None</c> is the zero value and grants nothing: it maps to no
+    /// case (the wire's no-grant form is absence from the list), and the caller drops it.</summary>
+    internal static FsGen.EmbedPermission? ToFs(this EmbedPermission v) =>
         v switch
         {
+            EmbedPermission.None => null,
             EmbedPermission.AllowScripts => FsGen.EmbedPermission.AllowScripts,
             EmbedPermission.AllowSameOrigin => FsGen.EmbedPermission.AllowSameOrigin,
             EmbedPermission.AllowForms => FsGen.EmbedPermission.AllowForms,
