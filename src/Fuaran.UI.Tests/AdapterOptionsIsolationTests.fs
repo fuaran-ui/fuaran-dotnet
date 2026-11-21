@@ -4,7 +4,7 @@ module Fuaran.UI.Tests.AdapterOptionsIsolation
 //  Phase 1594 — the `OnReady` raw-handle escape valve is AUTHORING-ONLY by
 //  construction, and this file is the proof.
 //
-//  `AgAdapterOptions<'Msg>` carries hooks that hand a host the grid / chart
+//  `AgAdapterOptions` carries hooks that hand a host the grid / chart
 //  library's own instance. The whole safety story is that no decoded tree can
 //  supply or trigger one — and the phase deliberately chose the placement that
 //  makes that STRUCTURAL rather than behavioural. `GridSpec.OnRowClick` is
@@ -32,9 +32,8 @@ open FSharp.Reflection
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
 
-/// The open generic definition, so a closed `AgAdapterOptions<Msg>` at any
-/// instantiation matches.
-let private optionsDef = typedefof<AgAdapter.AgAdapterOptions<obj>>
+/// The options record's type. It is not generic, so there is one type to match.
+let private optionsDef = typeof<AgAdapter.AgAdapterOptions>
 
 /// The assembly holding the wire types — `Fuaran.UI`.
 let private wireAssembly = typeof<Node<obj>>.Assembly
@@ -43,8 +42,8 @@ let private wireAssembly = typeof<Node<obj>>.Assembly
 let private rendererAssembly = optionsDef.Assembly
 
 /// A type and every type mentioned inside it (generic arguments, array element
-/// types), transitively. `Node list` mentions `Node`; `AgAdapterOptions<Msg>
-/// option` mentions `AgAdapterOptions<Msg>`. Terminates because a closed type's
+/// types), transitively. `Node list` mentions `Node`; `AgAdapterOptions
+/// option` mentions `AgAdapterOptions`. Terminates because a closed type's
 /// argument tree is finite.
 let rec private mentions (t: Type) : Type seq =
     seq {
@@ -91,8 +90,7 @@ let private wireClosure: Type list =
 
 /// Does this type mention the options record anywhere?
 let private mentionsOptions (t: Type) =
-    mentions t
-    |> Seq.exists (fun x -> x = optionsDef || (x.IsGenericType && x.GetGenericTypeDefinition() = optionsDef))
+    mentions t |> Seq.exists (fun x -> x = optionsDef)
 
 /// Names a wire spec must not carry — the valve lives on the adapter's
 /// constructor, never on a decoded spec.
@@ -157,7 +155,7 @@ let tests =
 
           test "the detector fires on a type that does mention the options record" {
               Expect.isTrue
-                  (mentionsOptions typeof<AgAdapter.AgAdapterOptions<obj> option>)
+                  (mentionsOptions typeof<AgAdapter.AgAdapterOptions option>)
                   "the mention detector cannot see the options record through an option — every negative result \
                    above would be vacuous"
 

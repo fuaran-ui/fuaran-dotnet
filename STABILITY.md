@@ -8529,6 +8529,19 @@ pin admits the no-grant zero member only as the first name, value zero, mapping 
 **Migration:** [`docs/migrations/2346-embed-permission-zero-grants-nothing.md`](docs/migrations/2346-embed-permission-zero-grants-nothing.md).
 **Escape-hatch inventory:** Hatch 7's "what is not claimed" entry for the C# zero value is retired with this change.
 
+### What rides this slot — Phase 2835 (`AgAdapterOptions` drops its unused type parameter)
+
+**Stability impact:** breaking — `AgAdapterOptions<'Msg>` becomes `AgAdapterOptions` and `defaultOptions<'Msg>` loses
+its type argument; every consumer annotation drops the type argument. Rides the announced cut (fuaran#2303).
+
+**Consumer-visible symbols:** `Fuaran.UI.Renderer.AgAdapter.AgAdapterOptions` (was `AgAdapterOptions<'Msg>`);
+`Fuaran.UI.Renderer.AgAdapter.defaultOptions` (was the generic value `defaultOptions<'Msg>`);
+`AgVisualisationAdapter<'Msg>` (constructor now takes `AgAdapterOptions`) and `adapterWith<'Msg>` (parameter now
+`AgAdapterOptions`). No field moves, no wire byte moves; the isolation property pinned by
+`AdapterOptionsIsolation` is unchanged.
+
+**Migration:** [`docs/migrations/2835-ag-adapter-options-non-generic.md`](docs/migrations/2835-ag-adapter-options-non-generic.md).
+
 ## 0.104.0 (RELEASED — tagged v0.104.0 at cc477007, 2026-11-11) — the slot opened after v0.103.0 was released; advanced from 0.103.1 on 2026-11-10 by Phase 2640, whose change is breaking
 
 _`v0.103.0` is TAGGED (2026-11-09, at `1b783c61`), so nothing may ride it: Phase 2639 opened the next slot at the
