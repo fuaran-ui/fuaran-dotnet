@@ -267,6 +267,10 @@ let all: Classification list =
       // and a recursive case cannot be more survivable than what it carries.
       sv "Action.Confirm"
       sv "Action.Focus"
+      // Phase 2107 — survivable as far as their members, on the `Confirm` rule:
+      // the condition is a wire `Binding`, the arms are actions with rows of their own.
+      sv "Action.Choose"
+      sv "Action.Require"
       pt "Action.ReadFileBody" None // fileRef.Id + encoding survive; the blob + onRead continuation are host-side
       sv "Action.Invoke"
 

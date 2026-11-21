@@ -3923,6 +3923,12 @@ let rec private decodeAction (path: string) (j: Json) : Result<Action<obj>, Deco
                         ops
                         |> List.mapi (fun i o -> nestedConfirmPath (sprintf "%s.ops[%d]" p i) o)
                         |> List.tryPick id
+                    // Phase 2107 — a selection's arms are reachable from the
+                    // continuation too, so a confirm inside one is as nested.
+                    | Action.Choose(_, whenTrue, whenFalse, _) ->
+                        match nestedConfirmPath (p + ".whenTrue") whenTrue with
+                        | Some found -> Some found
+                        | None -> whenFalse |> Option.bind (nestedConfirmPath (p + ".whenFalse"))
                     | _ -> None
 
                 let refuseNested (p: string) (a: Action<obj>) : Result<Action<obj>, DecodeError> =
@@ -3956,6 +3962,41 @@ let rec private decodeAction (path: string) (j: Json) : Result<Action<obj>, Deco
 
                 both promptR (both onConfirmR onCancelR)
                 |> Result.map (fun (prompt, (onConfirm, onCancel)) -> Action.Confirm(prompt, onConfirm, onCancel))
+            | Ok "Choose" ->
+                // Phase 2107 — the bounded core's SELECTION, spelled with its
+                // own name (WIRE_FORMAT §3.6.34). `condition` and `exit` are
+                // Bindings evaluated at dispatch time (the `SetState.valueFrom`
+                // decoder); `whenTrue` is required, and an absent `whenFalse`
+                // means nothing runs — the `Confirm.onCancel` shape. The four
+                // members are siblings, each decoded whatever the others hold
+                // (WIRE_FORMAT §29.1).
+                let conditionR =
+                    requireField path fields "condition" "Binding evaluated at dispatch time"
+                    |> Result.bind (decodeBindingJVal (path + ".condition"))
+
+                let whenTrueR =
+                    requireField path fields "whenTrue" "Action run when the condition is true"
+                    |> Result.bind (decodeAction (path + ".whenTrue"))
+
+                let whenFalseR =
+                    match tryField fields "whenFalse" with
+                    | None -> Ok None
+                    | Some j -> decodeAction (path + ".whenFalse") j |> Result.map Some
+
+                let exitR =
+                    match tryField fields "exit" with
+                    | None -> Ok None
+                    | Some j -> decodeBindingJVal (path + ".exit") j |> Result.map Some
+
+                both (both conditionR whenTrueR) (both whenFalseR exitR)
+                |> Result.map (fun ((condition, whenTrue), (whenFalse, exit)) ->
+                    Action.Choose(condition, whenTrue, whenFalse, exit))
+            | Ok "Require" ->
+                // Phase 2107 — the bounded core's halting GUARD: one Binding,
+                // evaluated at dispatch time.
+                requireField path fields "condition" "Binding that must resolve to true"
+                |> Result.bind (decodeBindingJVal (path + ".condition"))
+                |> Result.map Action.Require
             | Ok "Focus" ->
                 // Phase 1537 — a bare node id, the `CommitLocal` shape. It
                 // addresses a node in THIS document, so there is nothing for a
@@ -4031,7 +4072,7 @@ let rec private decodeAction (path: string) (j: Json) : Result<Action<obj>, Deco
                 unknownDuCase
                     path
                     s
-                    "Dispatch | Call | Notify | Navigate | SetState | AiTool | Chain | CommitLocal | WriteToClipboard | ReadFileBody | Invoke | Print"
+                    "Dispatch | Call | Notify | Navigate | SetState | AiTool | Chain | CommitLocal | WriteToClipboard | ReadFileBody | Invoke | Print | Confirm | Focus | Choose | Require"
 
 #warnon "44"
 

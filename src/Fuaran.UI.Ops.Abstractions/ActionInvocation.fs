@@ -243,11 +243,16 @@ module ActionInvocation =
         // `docs/ACTION-LOG-PRIVACY.md`), so it is carried in full — the
         // `CommitLocal` arm above exactly.
         | Action.Focus nodeId -> sprintf "Focus(%s)" nodeId
+        // Phase 2107 — the control arms print their constructor only, on the
+        // `Chain` rule: a condition is a binding whose arguments can carry
+        // user data, and the arms are nested actions.
+        | Action.Choose _ -> "Choose"
+        | Action.Require _ -> "Require"
         | Action.ReadFileBody(_, _, _, _) -> "ReadFileBody"
         | Action.Invoke(c, _) -> sprintf "Invoke(%s)" c
 
     /// The decoded payload for `mode`. `Redacted` yields `None` for every one
-    /// of the fourteen cases — that is the invariant the poison test pins.
+    /// of the sixteen cases — that is the invariant the poison test pins.
     ///
     /// Under `PayloadBearing`, five cases still yield `None` and each for a
     /// structural reason rather than a policy one: `Dispatch` carries a closure
@@ -304,6 +309,10 @@ module ActionInvocation =
             // The addressed node id is author-declared vocabulary, exactly as
             // `CommitLocal`'s is.
             | Action.Focus nodeId -> Some(JStr nodeId)
+            // Phase 2107 — structural `None`s on `Chain`'s reason: the arms are
+            // nested actions, and a condition alone would be a partial record.
+            | Action.Choose _
+            | Action.Require _ -> None
 
     #warnon "44"
 

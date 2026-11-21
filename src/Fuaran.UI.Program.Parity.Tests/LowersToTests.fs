@@ -138,14 +138,17 @@ let rec reading (action: Action<obj>) : JVal =
             @ opaque
             @ answer
         )
-    // Reached only through a confirm's answer (above): §30.1 targets `Choose`
-    // there and nowhere else, which the vectors pin.
+    // A confirm's answer (above) and, since Phase 2107, the `Choose` arm's own
+    // row. The entry and any exit assertion are bindings resolved at dispatch,
+    // so the reading states the two arms.
     | ActionView.Choose(_, whenTrue, whenFalse, _) ->
         JObj
             [ "arm", JStr "Choose"
               "whenFalse", reading whenFalse
               "whenTrue", reading whenTrue ]
-    | ActionView.Require _ -> failwith "the UI witness lowered an action to Require, which §30.1 never targets"
+    // Phase 2107 — the guard's row: the condition is a binding resolved at
+    // dispatch, so the reading states only the arm.
+    | ActionView.Require _ -> JObj [ "arm", JStr "Require" ]
     | ActionView.Repeat _ -> failwith "the UI witness lowered an action to Repeat, which §30.1 never targets"
     | ActionView.Each _ -> failwith "the UI witness lowered an action to Each, which §30.1 never targets"
 

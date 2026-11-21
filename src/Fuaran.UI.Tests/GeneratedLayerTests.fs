@@ -860,6 +860,8 @@ let generatedLayerTests =
                     // about the KIND of rule and not about the case that carries
                     // it. It joins `schemaInexpressibleRejects` for the same
                     // shared reason the ordered-pair class does.
+                    // Phase 2107 — the same bound, reached through a `Choose` arm.
+                    "reject-confirm-nested-in-choose.json"
                     "reject-confirm-nested.json"
                     "reject-daterange-unordered.json"
                     "reject-emptynodeid.json"

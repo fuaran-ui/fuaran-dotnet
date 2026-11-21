@@ -419,6 +419,9 @@ let rec private classifyAction (ctx: Render.ServerRenderContext) (action: Action
     | Action.Focus _ -> CardAction.NotProjectable(DegradationRule.ClientOnlyAction "Focus")
     | Action.ReadFileBody _ -> CardAction.NotProjectable(DegradationRule.ClientOnlyAction "ReadFileBody")
     | Action.Confirm _ -> CardAction.NotProjectable(DegradationRule.ClientOnlyAction "Confirm")
+    // Phase 2107 — control flow runs on the bounded loop only; a card has none.
+    | Action.Choose _ -> CardAction.NotProjectable(DegradationRule.ClientOnlyAction "Choose")
+    | Action.Require _ -> CardAction.NotProjectable(DegradationRule.ClientOnlyAction "Require")
     | Action.Dispatch _ -> CardAction.NotProjectable(DegradationRule.ClientOnlyAction "Dispatch")
 
 #warnon "44"

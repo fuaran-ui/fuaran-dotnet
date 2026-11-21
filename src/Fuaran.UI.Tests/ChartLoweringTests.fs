@@ -5166,7 +5166,13 @@ let private themedFixtureTests: Test list =
 
 [<Tests>]
 let hostInstalledPaletteTests =
-    testList
+    // Phase 2107 — sequenced with the memo benchmark below: both read the ONE
+    // process-wide installed chart style, which this list replaces mid-run, and
+    // run in parallel they race (the benchmark then compares bytes drawn under
+    // two different palettes). Found when the corpus grew and the scheduler
+    // interleaved them differently.
+    testSequencedGroup "process-wide chart style"
+    <| testList
         "Chart lowering — host-installed palette (Phase 2482)"
         ([ test "the default theme derives exactly the corpus-pinned default style" {
                Expect.equal
@@ -5519,7 +5525,9 @@ let private fourCharts () : (ChartSpec<obj> * Row seq) list =
 
 [<Tests>]
 let loweringMemoTests =
-    testList
+    // Phase 2107 — see `hostInstalledPaletteTests`: one process-wide chart style.
+    testSequencedGroup "process-wide chart style"
+    <| testList
         "Chart lowering memo (Phase 2068)"
         [ test "benchmark: a re-render of a four-chart surface with unchanged inputs lowers zero charts" {
               let renders = 200

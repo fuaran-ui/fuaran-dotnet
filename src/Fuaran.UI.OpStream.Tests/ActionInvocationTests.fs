@@ -73,7 +73,11 @@ let private allTwelveCases: (string * Action<Msg>) list =
       // A node id is author-declared vocabulary, so it is CARRIED — the fixture
       // therefore uses a real id rather than the poison, exactly as
       // `CommitLocal` above does. Present so the describer is exercised at all.
-      "Focus", Action.Focus "search-field" ]
+      "Focus", Action.Focus "search-field"
+      // Phase 2107 — the condition is keyed by the poison, so a describer that
+      // leaked a binding's spelling would be caught here.
+      "Choose", Action.Choose(Binding.State(poison, None), Action.Notify("toast", JStr poison), None, None)
+      "Require", Action.Require(Binding.State(poison, None)) ]
 
 let private site =
     ActionInvocation.clientSite AffordanceProvenance.TreeDeclared (Some "node-1") (Some "interaction-7")
@@ -98,7 +102,7 @@ let private renderedSurface (r: ActionInvocation) : string =
 let redactionTests =
     testList
         "Phase 889 — the redaction default"
-        [ test "the Action vocabulary has FOURTEEN cases and the fixture covers each exactly once" {
+        [ test "the Action vocabulary has SIXTEEN cases and the fixture covers each exactly once" {
               // Guards the poison test below against the failure mode that
               // makes it useless: a case the fixture forgot is a case whose
               // redaction nobody checked. The phase itself corrected "twelve"
@@ -108,8 +112,8 @@ let redactionTests =
               // count is reflected off the DU, so a new case cannot be shipped
               // without being covered.
               let names = allTwelveCases |> List.map fst
-              Expect.equal (List.length names) 14 "fourteen cases"
-              Expect.equal (List.length (List.distinct names)) 14 "each named once"
+              Expect.equal (List.length names) 16 "sixteen cases"
+              Expect.equal (List.length (List.distinct names)) 16 "each named once"
 
               let unionCases =
                   Reflection.FSharpType.GetUnionCases(typeof<Action<Msg>>)
@@ -119,7 +123,7 @@ let redactionTests =
               Expect.equal (List.sort names |> Array.ofList) unionCases "the fixture matches the DU exactly"
           }
 
-          test "POISON: no payload value survives the default capture mode, in any of the fourteen cases" {
+          test "POISON: no payload value survives the default capture mode, in any of the sixteen cases" {
               for name, action in allTwelveCases do
                   let record =
                       ActionInvocation.record ActionCaptureMode.Redacted site ActionOutcome.Dispatched action

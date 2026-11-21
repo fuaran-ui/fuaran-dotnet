@@ -71,7 +71,11 @@ let private allActionCases: (string * Action<Msg>) list =
       // Phase 1537 — the poison rides in the prompt AND in the continuation.
       "Confirm", Action.Confirm(TextSource.Literal poison, Action.Notify("toast", JStr poison), None)
       // Author-declared vocabulary, carried in full — the `CommitLocal` shape.
-      "Focus", Action.Focus "search-field" ]
+      "Focus", Action.Focus "search-field"
+      // Phase 2107 — the condition is keyed by the poison, so a describer that
+      // leaked a binding's spelling would be caught here.
+      "Choose", Action.Choose(Binding.State(poison, None), Action.Notify("toast", JStr poison), None, None)
+      "Require", Action.Require(Binding.State(poison, None)) ]
 
 [<Tests>]
 let tests =

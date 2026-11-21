@@ -105,6 +105,11 @@ let rec disposition (action: Action<'Msg>) : ResumeDisposition =
         |> List.tryHead
         |> Option.defaultValue ResumeDisposition.Interpret
     | Action.Confirm _ -> ResumeDisposition.Fallback
+    // Phase 2107 — a condition is a binding the zero-JS interpreter cannot
+    // resolve, and control flow is the bounded loop's alone: never interpreted
+    // here, on the bound-route reasoning below.
+    | Action.Choose _
+    | Action.Require _ -> ResumeDisposition.Fallback
     // Phase 1126 — a BOUND or i18n clipboard payload falls back, on exactly the
     // `Call` reasoning: the resume interpreter is the zero-JS path and holds no
     // binding sources and no i18n catalogue, so it cannot say what the payload
@@ -240,6 +245,10 @@ let rec encodeAction (action: Action<'Msg>) : string =
         // because a payload that is present and wrong is worse than one that is
         // present and unread.
         canonicalScript (Fuaran.UI.Generated.encodeActionJson action)
+    // Phase 2107 — written faithfully through the canonical encoder; the
+    // node's disposition is `Fallback`, so the resume interpreter never reads it.
+    | Action.Choose _
+    | Action.Require _ -> canonicalScript (Fuaran.UI.Generated.encodeActionJson action)
     | Action.Chain inner ->
         let ops = inner |> List.map encodeAction |> String.concat ","
         sprintf "{\"$type\":\"Chain\",\"ops\":[%s]}" ops
