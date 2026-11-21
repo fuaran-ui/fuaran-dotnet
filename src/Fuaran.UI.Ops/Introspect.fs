@@ -175,7 +175,7 @@ let availableFields (kind: NodeKind<'Msg>) : string list =
     | NodeKind.FileUpload _ -> [ "Label"; "Accept"; "Multiple" ]
     // Phase 1962 — a multi-select carries `Values`, not `Value`.
     | NodeKind.Select s ->
-        if s.Multiple = Some true then
+        if s.Multiple then
             [ "Label"; "Source"; "Placeholder" ]
         else
             [ "Label"; "Source"; "Value"; "Placeholder" ]
@@ -257,7 +257,7 @@ let availableBindingSlots (kind: NodeKind<'Msg>) : string list =
     // Button.Disabled / Metric.Trend).
     // Phase 1962 — a multi-select has no `Value` slot (it carries `Values`).
     | NodeKind.Select(s) ->
-        if s.Multiple = Some true then
+        if s.Multiple then
             [ "Source"; "Disabled" ]
         else
             [ "Source"; "Value"; "Disabled" ]

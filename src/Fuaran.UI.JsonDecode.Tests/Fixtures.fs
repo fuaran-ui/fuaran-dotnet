@@ -3431,25 +3431,7 @@ let select: Node<obj> =
                 Disabled = Some(Binding.State("selectBusy", Some false))
                 // Phase 291: single-select — Multiple/Values/OnChangeMulti
                 // omitted on the wire (the degenerate case stays byte-stable).
-                Multiple = None }
-        ))
-        None
-
-/// Phase 1962 — an explicitly authored `"multiple":false`. `multiple` is an
-/// ordinary optional field emitted as authored, NOT omit-at-default: `Some false`
-/// decodes as single-select (so it carries `value`, not `values`) and re-encodes
-/// with the key kept. Without this vector a host that drops the key read green.
-[<NodeFixture "Input/Select (Phase 1962 — an explicit multiple:false, emitted as authored)">]
-let selectMultipleFalse: Node<obj> =
-    node
-        "select-multiple-false"
-        (NodeKind.Select(
-            { Defaults.select with
-                Label = TextSource.Literal "Size"
-                Source = Binding.Static(Some [ { Value = "s"; Label = "Small" }; { Value = "l"; Label = "Large" } ])
-                Value = Some(Binding.Static(Some "s"))
-                OnChange = Some(fun _ -> placeholderChain)
-                Multiple = Some false }
+                Multiple = false }
         ))
         None
 
@@ -3529,7 +3511,7 @@ let multiSelect: Node<obj> =
                 Source = Binding.Static(Some [ { Value = "red"; Label = "Red" }; { Value = "green"; Label = "Green" } ])
                 OnChange = Some(fun _ -> placeholderChain)
                 Value = None
-                Multiple = Some true
+                Multiple = true
                 Values = Some(Binding.Static(Some [ "red"; "green" ])) }
         ))
         None
@@ -4076,7 +4058,7 @@ let multiSelectClosure: Node<obj> =
                     Source = Binding.Static(Some [ { Value = "red"; Label = "Red" } ])
                     OnChange = Some(fun _ -> placeholderChain)
                     Value = None
-                    Multiple = Some true
+                    Multiple = true
                     Values = Some(Binding.Static(Some [ "red" ]))
                     OnChangeMulti = Some(fun _ -> placeholderChain) }
             ))
@@ -5055,7 +5037,7 @@ let multiselectChipListParam: Node<obj> =
                                                 { Value = "ops"; Label = "Operations" } ]
                                       )
                                   Value = None
-                                  Multiple = Some true
+                                  Multiple = true
                                   Values = Some(Binding.Filter("depts", None)) }
                           ))
                           None

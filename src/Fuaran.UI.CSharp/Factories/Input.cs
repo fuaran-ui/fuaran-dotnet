@@ -97,7 +97,7 @@ public static partial class Fuaran
             options.Id,
             // Generated SelectSpec ctor is Generated.fs declaration order (Label,
             // OnChange, OnChangeMulti, Source, Value, Placeholder, Disabled, Multiple,
-            // Values); Multiple is now `bool option` (single-select = None).
+            // Values); Multiple is a plain `bool` (Phase 2413: omit-at-default, single-select = false).
             new FsGen.SelectSpec<object>(
                 options.Label.Inner,
                 Fs.Some(NoOptStrHandler()),
@@ -106,7 +106,7 @@ public static partial class Fuaran
                 OptStrValue(options.Value),
                 options.Placeholder is { } p ? Fs.Some(p.Inner) : Fs.None<FsGen.TextSource>(),
                 Fs.None<global::Fuaran.UI.Generated.Binding<bool>>(),
-                Fs.None<bool>(),
+                false,
                 Fs.None<global::Fuaran.UI.Generated.Binding<Microsoft.FSharp.Collections.FSharpList<string>>>(),
                 Fs.None<FsGen.Affordance>(),
                 // Phase 2571 — the option groups, in authored order (empty: one flat list).

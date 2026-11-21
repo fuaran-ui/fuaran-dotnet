@@ -2088,15 +2088,15 @@ module Fuaran =
 
     /// A `Select`. Phase 1962 — the constructor enforces the single/multi
     /// `value` rule the record type cannot state: a multi-select
-    /// (`Multiple = Some true`) carries `Values` and NO `Value`, so a `Value`
+    /// (`Multiple = true`) carries `Values` and NO `Value`, so a `Value`
     /// handed to it is dropped; a single-select always carries `Value`, so an
     /// absent one becomes the empty `Static` ("no selection"). Either way the
     /// node encodes to the canonical wire (WIRE_FORMAT §3.2, Phase 291).
     let select (id: string) (spec: SelectSpec<'Msg>) : Node<'Msg> =
         let spec =
             match spec.Multiple, spec.Value with
-            | Some true, Some _ -> { spec with Value = None }
-            | Some true, None -> spec
+            | true, Some _ -> { spec with Value = None }
+            | true, None -> spec
             | _, None ->
                 { spec with
                     Value = Some(Binding.Static None) }
@@ -2124,7 +2124,7 @@ module Fuaran =
                     Label = label
                     Source = source
                     Value = None
-                    Multiple = Some true
+                    Multiple = true
                     Values = Some values
                     OnChangeMulti = Some onChange }
             ))

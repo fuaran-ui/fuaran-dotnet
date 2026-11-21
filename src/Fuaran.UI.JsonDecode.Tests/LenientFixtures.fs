@@ -1044,6 +1044,24 @@ let all: LenientFixture list =
         Description =
           "§15.6 producer-support shim (Phase 2451) — the `panel@1.0` schedule form on its own, the node a frame of that revision carries when it re-inserts the form. Decodes through the §16 `Date` alias and re-encodes in the current spelling" }
 
+      // ─── Phase 2413 — `Select.multiple` joins the omit-at-default rule ────
+      //
+      // Phase 1962 made `multiple` "an ordinary optional field, emitted as
+      // authored", so an explicit `false` was a canonical node vector
+      // (`nodes/select-multiple-false.json`). Phase 2300's canonical form is ONE
+      // rule with no per-kind exception — a field with a declared default is
+      // absent when it holds it — and `FileUpload.multiple` already followed it.
+      // The same bytes move here: an explicit `false` still decodes (a
+      // single-select, carrying `value`) and re-encodes WITHOUT the member. A
+      // host that keeps the key, or refuses it, fails this vector.
+      { Id = "lenient-2413-select-multiple-false"
+        LenientJson =
+          """{"id":"select-multiple-false","kind":{"$type":"Select","label":"Size","multiple":false,"onChange":"<closure>","source":{"$type":"Static","value":[{"label":"Small","value":"s"},{"label":"Large","value":"l"}]},"value":{"$type":"Static","value":"s"}}}"""
+        VerboseJson =
+          """{"id":"select-multiple-false","kind":{"$type":"Select","label":"Size","onChange":"<closure>","source":{"$type":"Static","value":[{"label":"Small","value":"s"},{"label":"Large","value":"l"}]},"value":{"$type":"Static","value":"s"}}}"""
+        Description =
+          "§3.6 / §16 (Phase 2413) — `Select.multiple` is omit-at-default like every other defaulted boolean: an explicit `\"multiple\":false` decodes as a single-select and re-encodes without the member. It was the canonical node vector `nodes/select-multiple-false.json` (Phase 1962) until the canonical form lost its last per-kind exception" }
+
       // ─── Phase 1670 — the `FragmentRef` twin, and why it is NOT here ───────
       //
       // `FragmentRefSpec.Args = Some Map.empty` is the third member of the same

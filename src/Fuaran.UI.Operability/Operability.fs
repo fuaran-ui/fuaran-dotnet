@@ -313,7 +313,7 @@ module Operability =
 
         // A multi-select writes a LIST; a single slot value cannot say which
         // members to keep, so it is read-only here (§31.3).
-        let multiple = spec.Multiple = Some true
+        let multiple = spec.Multiple
 
         let slot =
             if multiple then

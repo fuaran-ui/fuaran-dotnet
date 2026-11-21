@@ -923,7 +923,7 @@ let private genSelectSpec: Gen<SelectSpec<obj>> =
                          Option.None)
                 Placeholder = placeholder
                 Disabled = disabled
-                Multiple = (if multiple then Some true else Option.None)
+                Multiple = multiple
                 Values =
                     (if multiple then
                          Some(Binding.Static(Some vlist))

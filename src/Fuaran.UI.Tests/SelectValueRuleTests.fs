@@ -66,7 +66,7 @@ let tests =
                       { Defaults.select with
                           Label = TextSource.Literal "Tags"
                           Source = options
-                          Multiple = Some true
+                          Multiple = true
                           Values = Some(Binding.State("tags", None)) }
 
               Expect.isNone (specOf n).Value "the Defaults placeholder is cleared on a multi-select")
@@ -125,7 +125,7 @@ let tests =
                               { Defaults.select with
                                   Label = TextSource.Literal "Tags"
                                   Source = options
-                                  Multiple = Some true
+                                  Multiple = true
                                   Values = Some(Binding.State("tags", None)) }
                           ) }
 

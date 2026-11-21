@@ -7868,8 +7868,8 @@ Each rider's `**Stability impact:**` line is quoted verbatim from its shard.
    > breaking (canonical bytes) — rides the announced cut (2303). Decoding is unchanged: an explicit
    > `false` still decodes, as a §16 lenient accept.
 
-   Symbols: no F# signature. The canonical encoding of `Select` stops writing `"multiple": false`. Migration: none
-   needed for code. A consumer that compares stored bytes re-emits them.
+   Symbols: `SelectSpec.Multiple` moves from `bool option` to `bool`, and the canonical encoding of `Select` stops
+   writing `"multiple": false`. Migration: `docs/migrations/2413-select-multiple-omit-at-default.md`.
 3. **Phase 2811** (the option and marker labels widen to `TextSource`). This is Phase 2345's label half.
    > breaking. This is 2345's label half, a rider of the announced cut (fuaran#2303). It lands on
    > the cut's claimed version.
@@ -8665,6 +8665,32 @@ The other `Fidelity` members (`forKind`, `ofNode`, `rolesEmitted`, `liveRegionsE
 
 **Migration:** [`docs/migrations/2100-2101-obsoleted-surface-removed-at-the-cut.md`](docs/migrations/2100-2101-obsoleted-surface-removed-at-the-cut.md)
 (Phase 2303's note for the cut).
+
+### What rides this slot — Phase 2413 (`Select.multiple` joins the omit-at-default rule)
+
+**Stability impact:** breaking (canonical bytes) — rides the announced cut (2303). Decoding is unchanged: an explicit
+`false` still decodes, as a §16 lenient accept.
+
+**Class: BREAKING** on `Fuaran.UI` (the canonical bytes and one generated record field); rides the open 0.105.0
+draft, which is already breaking-class, and does not advance the number. WIRE_FORMAT §15.4 classes the wire half
+"a narrowing of the canonical form: no step"; the regeneration's advisory classifier prints MAJOR for it, because it
+cannot tell a narrowed spelling from a moved byte (§15.4 says the classifier is advisory).
+
+| Surface | Change | Who pays |
+|---|---|---|
+| Canonical encoding of `Select` | `"multiple":false` is no longer written: the IDL declares the field `omitDefault false`, as `FileUpload.multiple` has since Phase 2300. An explicit `false` decodes as a single-select and re-encodes without the member. | A consumer that compares stored canonical bytes of a `Select` that carried an explicit `false` re-emits them. |
+| `Fuaran.UI.Generated.SelectSpec.Multiple` | `bool option` becomes `bool` (default `false`, set by `Defaults.select` and `mkSelect`). | Every record literal or pattern that wrote `Multiple = Some true` / `None` / `Some false`: write `true` / `false`. A read `spec.Multiple = Some true` becomes `spec.Multiple`. |
+| C# `Fuaran.UI.CSharp` | `Select` builds the record with `false`; `SelectOptions` has no `Multiple` member, so nothing moves for C# authors. | Nobody. |
+
+The phase's shard and the 0.105.0 rider list predicted "no F# signature" for this rider. Regenerating the reference
+host from the IDL row moves the record field from `bool option` to `bool`, the same shape `FileUpload.Multiple` has,
+so the F# half is a breaking record-field change and carries a migration note.
+
+**Corpus.** `nodes/select-multiple-false.json` (a canonical node vector since Phase 1962) moves to the lenient family as
+`lenient/lenient-2413-select-multiple-false.json`, with its `.expected` twin omitting the member. The decoder-parity
+baseline (`tests/decoder-parity/`) is re-recorded for the move and nothing else.
+
+**Migration:** [`docs/migrations/2413-select-multiple-omit-at-default.md`](docs/migrations/2413-select-multiple-omit-at-default.md).
 
 ## 0.104.0 (RELEASED — tagged v0.104.0 at cc477007, 2026-11-11) — the slot opened after v0.103.0 was released; advanced from 0.103.1 on 2026-11-10 by Phase 2640, whose change is breaking
 

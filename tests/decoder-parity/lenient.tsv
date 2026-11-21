@@ -20,6 +20,7 @@ lenient-2296-navigate-url-alias-target-self	ok 9c59b3604921623e 124	steps=12 uni
 lenient-2300-declared-default-bindings	ok 1c35d2b8eb6f9774 189	steps=18 units=231 nesting=5 parses=1	ok 1c35d2b8eb6f9774 189	recovered=	refused=	ok 1c35d2b8eb6f9774 189
 lenient-2300-declared-default-booleans	ok d7d21c9755cce9b8 853	steps=73 units=1008 nesting=8 parses=1	ok d7d21c9755cce9b8 853	recovered=	refused=	ok d7d21c9755cce9b8 853
 lenient-2300-declared-default-enums	ok 2a88afcf707af47f 718	steps=60 units=828 nesting=11 parses=1	ok 2a88afcf707af47f 718	recovered=	refused=	ok 2a88afcf707af47f 718
+lenient-2413-select-multiple-false	ok b85b5c00723aff7b 231	steps=19 units=248 nesting=5 parses=1	ok b85b5c00723aff7b 231	recovered=	refused=	ok b85b5c00723aff7b 231
 lenient-2451-panel-1-0	ok 36b7509df01b2492 848	steps=62 units=844 nesting=9 parses=1	ok 36b7509df01b2492 848	recovered=	refused=	ok 36b7509df01b2492 848
 lenient-2451-panel-schedule-1-0	ok c1e06277e5f736a9 352	steps=26 units=348 nesting=6 parses=1	ok c1e06277e5f736a9 352	recovered=	refused=	ok c1e06277e5f736a9 352
 lenient-460-alias-emphasis-muted	ok 9bfe4137e7a0c816 113	steps=11 units=142 nesting=3 parses=1	ok 9bfe4137e7a0c816 113	recovered=	refused=	ok 9bfe4137e7a0c816 113
