@@ -79,6 +79,12 @@
     <PackageReference Include="Fuaran.Compute.PipelineQuery" />
     <!-- First shipped at 0.43.0 (fuaran-core#590), which Fuaran.Compute.DataFrame depends on. -->
     <PackageReference Include="Fuaran.Compute.LinearAlgebra" />
+    <!-- First shipped at 0.45.0 (fuaran#2703): the pinned elementary and special functions and the generator, regression,
+         the pinned solvers and the pinned distributions, each in a package of its own. -->
+    <PackageReference Include="Fuaran.Compute.Elementary" />
+    <PackageReference Include="Fuaran.Compute.Regression" />
+    <PackageReference Include="Fuaran.Compute.Solvers" />
+    <PackageReference Include="Fuaran.Compute.Distributions" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />

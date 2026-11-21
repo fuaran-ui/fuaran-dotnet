@@ -666,13 +666,56 @@ let private columnOpsTouch =
         (ColumnOps.changeOf op)
         (ColumnOps.streamWitness.Apply op t |> Result.mapError ColumnOps.rejectionString)
 
-// LinearAlgebra (fuaran-core#590, from compute 0.43.0) — the matrix type, and the pinned elementary and
-// normal-distribution routines (#593, #600) whose Fable bytes the package promises.
+// LinearAlgebra (fuaran-core#590, from compute 0.43.0) — the matrix type. The pinned elementary functions it
+// once held left for Fuaran.Compute.Elementary at 0.45.0 (touched below).
 let private linAlgTouch =
-    let open' = Fuaran.Compute.LinearAlgebra.Matrix.identity 2
-    let e = Fuaran.Compute.LinearAlgebra.Elementary.exp 1.0
-    let p = Fuaran.Compute.LinearAlgebra.Elementary.normalCdf 0.0
-    sprintf "%A|%.17g|%.17g" open' e p
+    sprintf "%A" (Fuaran.Compute.LinearAlgebra.Matrix.identity 2)
+
+// Elementary (from compute 0.45.0, fuaran#2703) — the pinned elementary functions, one special function and the
+// pinned generator, whose Fable bytes the package promises; each float is written with `%.17g` so the node leg
+// byte-compares it.
+let private elementaryTouch =
+    let e = Fuaran.Compute.Elementary.Elementary.exp 1.0
+    let p = Fuaran.Compute.Elementary.Elementary.normalCdf 0.0
+    let g = Fuaran.Compute.Elementary.Special.gammaLn 5.5
+    let rng = Fuaran.Compute.Elementary.Rng.ofSeed 42L 0
+    let u = Fuaran.Compute.Elementary.Rng.uniform53 rng
+    sprintf "%.17g|%.17g|%.17g|%.17g" e p g u
+
+// Regression (from compute 0.45.0) — ordinary least squares over the design `[1, x]`.
+let private regressionTouch =
+    let x =
+        Fuaran.Compute.LinearAlgebra.Matrix.init 4 2 (fun i j -> if j = 0 then 1.0 else float i)
+
+    let y = Vector.adopt [| 1.0; 3.0; 5.0; 8.0 |]
+
+    match Fuaran.Compute.Regression.LeastSquares.solve x y with
+    | Ok fit ->
+        let coefficients =
+            fit.Coefficients
+            |> List.map (function
+                | Some c -> sprintf "%.17g" c
+                | None -> "-")
+            |> String.concat ","
+
+        sprintf "%s|%.17g" coefficients fit.Rss
+    | Error e -> sprintf "%A" e
+
+// Solvers (from compute 0.45.0) — a bisection under a stated stopping rule.
+let private solversTouch =
+    let rule =
+        Fuaran.Compute.Solvers.StoppingRule.create 200 (Fuaran.Compute.Solvers.StoppingTest.AbsoluteStep 1e-13)
+
+    match Fuaran.Compute.Solvers.Root.bisect rule (fun x -> x * x * x - 2.0 * x - 5.0) 2.0 3.0 with
+    | Ok s -> sprintf "%.17g|%d" s.State s.Iterations
+    | Error e -> sprintf "%A" e
+
+// Distributions (from compute 0.45.0) — the pinned Student t quantile and the normal quantile.
+let private distributionsTouch =
+    sprintf
+        "%.17g|%.17g"
+        (Fuaran.Compute.Distributions.StudentT.quantile 7.0 0.975)
+        (Fuaran.Compute.Distributions.Normal.quantile 0.975)
 
 // The compute touches, consumed by `main` below. Empty when the compute packages are not compiled
 // (a Core-only cut), so nothing outside this block names a compute type or module.
@@ -684,7 +727,11 @@ let private computeTouches =
       (sprintf "%A" incrementalTouch)
       slotAndClockTouch
       columnOpsTouch
-      linAlgTouch ]
+      linAlgTouch
+      elementaryTouch
+      regressionTouch
+      solversTouch
+      distributionsTouch ]
 #else
 let private computeTouches: string list = []
 #endif

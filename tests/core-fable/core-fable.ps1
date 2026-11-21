@@ -56,14 +56,15 @@
 
   TWO PRODUCERS, ONE GATE. From 0.33.0 the compute layer ships from its own repository, and
   from its 0.36.0 under its own ids — `Fuaran.Compute.DataFrame`, `Fuaran.Compute.ColumnOps`,
-  `Fuaran.Compute.Conformance`, `Fuaran.Compute.PipelineQuery` — while every `Fuaran.Core.*`
+  `Fuaran.Compute.Conformance`, `Fuaran.Compute.PipelineQuery`, and from 0.45.0 `.Elementary`, `.Regression`,
+  `.Solvers` and `.Distributions` — while every `Fuaran.Core.*`
   package still ships from Fuaran.Core. This
   repository pins the two on separate versions (`FuaranCoreComputeVersion` in
   `Directory.Packages.props`), and this gate takes a candidate for each independently:
 
           pwsh ./tests/core-fable/core-fable.ps1 -ComputeVersion <candidate> -ComputeFeed <folder of .nupkg>
 
-  restores the three compute packages from that folder only, at that version, with every
+  restores the compute packages from that folder only, at that version, with every
   Fuaran.Core package at this repository's pin; `-CoreVersion`/`-CoreFeed` does the same for the
   Fuaran.Core packages with the compute packages at their pin (from nuget.org — a pin is public);
   both pairs together certify two candidates against each other. Which producer owns a package is
@@ -127,7 +128,7 @@ $skipCompute = $coreOverride -and -not $computeOverride
 # gate references). From its 0.36.0 they carry their own ids and the `Fuaran.Compute` namespace; the
 # C#-only half is gone. Every Fuaran.Core.* package is Fuaran.Core's. Keep in step with the compute
 # ItemGroups in this directory's Directory.Packages.props and CoreFable.fsproj.
-$ComputeOwned = @('Fuaran.Compute.LinearAlgebra', 'Fuaran.Compute.DataFrame', 'Fuaran.Compute.ColumnOps', 'Fuaran.Compute.Conformance', 'Fuaran.Compute.PipelineQuery')
+$ComputeOwned = @('Fuaran.Compute.LinearAlgebra', 'Fuaran.Compute.DataFrame', 'Fuaran.Compute.ColumnOps', 'Fuaran.Compute.Conformance', 'Fuaran.Compute.PipelineQuery', 'Fuaran.Compute.Elementary', 'Fuaran.Compute.Regression', 'Fuaran.Compute.Solvers', 'Fuaran.Compute.Distributions')
 
 function Fail([string] $message) {
     Write-Host "==== core-fable: FAILED — $message" -ForegroundColor Red

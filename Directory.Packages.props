@@ -17,8 +17,9 @@
          Core 0.32.0). 0.37.0 is the first built on Fuaran.Core 0.34.0; 0.40.0 is the first built on
          Fuaran.Core 0.37.0's typed column; 0.41.0 is the first built on Fuaran.Core 0.40.2 (the
          0.40.0 assemblies bind Fuaran.Core.Canon, which Core 0.39 removed), which the Core pins
-         below (0.40.2) meet (fuaran#2286). -->
-    <FuaranCoreComputeVersion>0.44.0</FuaranCoreComputeVersion>
+         below (0.40.2) meet (fuaran#2286). 0.45.0 is the release that splits the elementary functions,
+         regression, solvers and distributions into packages of their own (fuaran#2703). -->
+    <FuaranCoreComputeVersion>0.45.0</FuaranCoreComputeVersion>
     <!-- The THIRD producer (fuaran#2012): the bounded program core, consumed by the two program
          adapters that moved here (src/Fuaran.UI.Program, src/Fuaran.UI.Program.Server) and their
          suites. Released packages only, never a project reference: the adapters depend on the
@@ -203,6 +204,14 @@
          elementary-function library Fuaran.Compute.DataFrame now depends on. Pinned so restore and
          tests/core-fable name it on the same compute version as its siblings. -->
     <PackageVersion Include="Fuaran.Compute.LinearAlgebra" Version="$(FuaranCoreComputeVersion)" />
+    <!-- The four packages the compute producer ships from 0.45.0, below and beside LinearAlgebra: the pinned
+         elementary and special functions and the generator (Elementary), regression (Regression), the pinned
+         solvers (Solvers) and the pinned distributions (Distributions). DataFrame depends on them; pinned so
+         restore and tests/core-fable name each on the same compute version as its siblings (fuaran#2703). -->
+    <PackageVersion Include="Fuaran.Compute.Elementary" Version="$(FuaranCoreComputeVersion)" />
+    <PackageVersion Include="Fuaran.Compute.Regression" Version="$(FuaranCoreComputeVersion)" />
+    <PackageVersion Include="Fuaran.Compute.Solvers" Version="$(FuaranCoreComputeVersion)" />
+    <PackageVersion Include="Fuaran.Compute.Distributions" Version="$(FuaranCoreComputeVersion)" />
     <!-- The bounded program core (fuaran#2012), on FuaranProgramVersion (top of file). -->
     <PackageVersion Include="Fuaran.Program.Bounded" Version="$(FuaranProgramVersion)" />
     <PackageVersion Include="Fuaran.Program.Runtime" Version="$(FuaranProgramVersion)" />

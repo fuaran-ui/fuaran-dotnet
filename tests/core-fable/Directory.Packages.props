@@ -3,7 +3,7 @@
     The Core gate's package versions: this repository's own pins, imported unchanged, plus one
     override PER PRODUCER — a cut-time run of `core-fable.ps1` sets `FuaranCoreVersion` and every
     package the Fuaran.Core repository produces then resolves at its candidate version; it sets
-    `CoreFableComputeVersion` and the three compute packages (produced by the compute repository
+    `CoreFableComputeVersion` and the compute packages (produced by the compute repository
     from 0.33.0) resolve at theirs. Each from its candidate folder alone; the script writes that
     restore's nuget.config. The two are independent: an unset one leaves its packages at the pins
     above. Unset, this file changes nothing.
@@ -36,12 +36,16 @@
     <PackageVersion Update="Fuaran.Core.Text" Version="$(FuaranCoreVersion)" />
   </ItemGroup>
   <!-- The second producer (the compute repository, from 0.33.0). The script's `$ComputeOwned` list
-       names the same five ids; keep the two in step. -->
+       names the same nine ids; keep the two in step. -->
   <ItemGroup Condition="'$(CoreFableComputeVersion)' != ''">
     <PackageVersion Update="Fuaran.Compute.DataFrame" Version="$(CoreFableComputeVersion)" />
     <PackageVersion Update="Fuaran.Compute.ColumnOps" Version="$(CoreFableComputeVersion)" />
     <PackageVersion Update="Fuaran.Compute.Conformance" Version="$(CoreFableComputeVersion)" />
     <PackageVersion Update="Fuaran.Compute.PipelineQuery" Version="$(CoreFableComputeVersion)" />
     <PackageVersion Update="Fuaran.Compute.LinearAlgebra" Version="$(CoreFableComputeVersion)" />
+    <PackageVersion Update="Fuaran.Compute.Elementary" Version="$(CoreFableComputeVersion)" />
+    <PackageVersion Update="Fuaran.Compute.Regression" Version="$(CoreFableComputeVersion)" />
+    <PackageVersion Update="Fuaran.Compute.Solvers" Version="$(CoreFableComputeVersion)" />
+    <PackageVersion Update="Fuaran.Compute.Distributions" Version="$(CoreFableComputeVersion)" />
   </ItemGroup>
 </Project>
