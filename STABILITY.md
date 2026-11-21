@@ -8400,6 +8400,30 @@ is seen. A host that replaces its data, or its tree, per dispatch gets exactly t
 
 **Consumer action: none**, unless one of the two source breaks above applies.
 
+### What rides this slot — Phase 2101 (test-only renderer surface is obsolete, and two lookups stop materialising the tree)
+
+**Stability impact:** additive (obsoletions only).
+
+**Class: additive.** Package `Fuaran.UI.Renderer`. No signature is removed or changed and no wire byte moves.
+
+- **`Render.emitRenderFailure`** is `[<Obsolete>]`. It was the pre-330 arity of
+  `Render.emitRenderFailureWithContext` with `Map.empty`, and only tests called it. They now call
+  `emitRenderFailureWithContext sink Map.empty …` directly.
+- **`Render.accessibilityAttributes`** is `[<Obsolete>]`. It re-exported `Fuaran.UI.Renderer.Accessibility.accessibilityAttributes`,
+  and its callers were tests and the catalog sample. They now call the `Fuaran.UI.Renderer.Core` projection directly,
+  and the renderer itself reaches the projection through `ElementPlan`.
+- **`RenderTiming.countNodes`** and **`DebugGlobal.findNode`** answer what they answered, in the same order. They
+  fold over the children instead of building the list of every node first, and `findNode` stops at the first match.
+
+**Consumer action: none required.** A caller of either obsolete function moves to the function named in its
+message. Under `TreatWarningsAsErrors` the FS0044 warning is a build error, and that move clears it. Both
+functions go at the next breaking release.
+
+**Kept on purpose.** `Render.expandFragmentUncached` stays public because two benchmark projects measure it, so it
+is not test-only. `AgAdapter.AgAdapterOptions<'Msg>` keeps its unused type parameter. Its documentation records the
+parameter as deliberate, and F# cannot alias a type under the same name without the parameter (FS0035), so removing it
+would break every consumer annotation, which this additive phase does not do.
+
 ## 0.104.0 (RELEASED — tagged v0.104.0 at cc477007, 2026-11-11) — the slot opened after v0.103.0 was released; advanced from 0.103.1 on 2026-11-10 by Phase 2640, whose change is breaking
 
 _`v0.103.0` is TAGGED (2026-11-09, at `1b783c61`), so nothing may ride it: Phase 2639 opened the next slot at the
