@@ -620,6 +620,8 @@ TransformStep =
 | define { body:object; name:str; params:{ name:str; default?:object }[] }
 | fit { control:{ maxIter:int | { $param:str }; tol:num | { $param:str } }; family:"gaussian"|"poisson"|"gamma"|"tweedie"|"quasiPoisson"|"binomial"|"quasiBinomial"|"inverseGaussian"|"negativeBinomial"; groupBy:str[]; intercept:bool; link:"identity"|"log"|"logit"|"probit"|"cloglog"|"inverse"|"inverseSquare"|"sqrt"; output:"coefficients"|"summary"|"fitted"|"residuals"; predictors:{ expr:object; name:str }[]; response:str; offset?:object; power?:num; ridge?:num | { $param:str }; stdErrors?:"classical"|"hc0"|"hc1"|"hc2"|"hc3"|"robust"; theta?:num; weights?:str }
 | predict { fit:TransformFitSpec; model:{ from:"training"|"coefficients"; source:object }; scale:"link"|"response"; interval?:{ kind:"confidence"|"prediction"; level:num | { $param:str } } }
+| kmeans { features:{ expr:object; name:str }[]; groupBy:str[]; k:int | { $param:str }; maxIterations:int; output:"assignments"|"centres"|"summary"; restarts:int; seed:str | { $param:str }; silhouette:bool; standardise:bool }
+| bootstrap { aggregates:TransformAgg[]; groupBy:str[]; output:"replicates"|"summary"; replicates:int | { $param:str }; seed:str | { $param:str }; cluster?:str; level?:num }
 Accessibility { describedBy?:str; hidden?:Binding_bool; label?:Binding_str; labelledBy?:str; liveRegion?:"polite"|"assertive"|"off"; role?:str; speak?:TextSource }
 Affordance { aliases?:AffordanceAlias[]; clearable?:bool; description?:str; neverControllable?:bool; patterns?:str[]; readPatterns?:str[] }
 AffordanceAlias { alias:str; value:str }
