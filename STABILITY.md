@@ -7856,45 +7856,53 @@ Each rider's `**Stability impact:**` line is quoted verbatim from its shard.
   Symbols: `Fuaran.UI.CSharp.EmbedPermission` (new `None = 0`; every other member shifts up by one).
   Migration: [`docs/migrations/2346-embed-permission-zero-grants-nothing.md`](docs/migrations/2346-embed-permission-zero-grants-nothing.md).
 
-**Still to land, in this order** (the reasons are in the migration index):
+- **Phase 2107** (conditional and guard actions lower to `Choose` and `Require`).
+  > Breaking change to `Fuaran.UI` (and every host's closed `Action` union): new cases break exhaustive matches in consumers, though every existing wire document is byte-identical. Requires the version advance the surface guard names. Satisfies and cites the [vocabulary-growth governance charter](../../fuaran-dotnet/docs/VOCABULARY.md) (demand evidence, irreducibility, cost, pre/post confusion delta).
 
-1. **Phase 2107** (conditional and guard actions lower to `Choose` and `Require`).
-   > Breaking change to `Fuaran.UI` (and every host's closed `Action` union): new cases break exhaustive matches in consumers, though every existing wire document is byte-identical. Requires the version advance the surface guard names. Satisfies and cites the [vocabulary-growth governance charter](../../fuaran-dotnet/docs/VOCABULARY.md) (demand evidence, irreducibility, cost, pre/post confusion delta).
+  Symbols: `Action.Choose`, `Action.Require` (two new cases of the generated `Action<'Msg>`), and the C#
+  factories `Actions.Choose` / `Actions.Require`.
+  Migration: [`docs/migrations/2107-choose-and-require.md`](docs/migrations/2107-choose-and-require.md).
+- **Phase 2835** (`AgAdapterOptions` drops its unused type parameter), `effb9114`.
+  > breaking — `AgAdapterOptions<'Msg>` becomes `AgAdapterOptions` and `defaultOptions<'Msg>` loses
+  > its type argument; every consumer annotation drops the type argument. Rides the announced cut (fuaran#2303).
 
-   Symbols: `Action.Choose`, `Action.Require` (two new cases of the generated `Action<'Msg>`), and the C#
-   factories `Actions.Choose` / `Actions.Require`. Migration: `docs/migrations/2107-choose-and-require.md`
-   (lands with the rider).
-2. **Phase 2413** (`Select.multiple` joins the omit-at-default rule).
-   > breaking (canonical bytes) — rides the announced cut (2303). Decoding is unchanged: an explicit
-   > `false` still decodes, as a §16 lenient accept.
+  Migration: [`docs/migrations/2835-ag-adapter-options-non-generic.md`](docs/migrations/2835-ag-adapter-options-non-generic.md).
+- **Phase 2836** (the surface obsoleted by 2100 and 2101 is removed in the cut), `effb9114`.
+  > breaking — removes `Fuaran.UI.Bounded`, `Fidelity.all`, `Fidelity.kinds`, `Fidelity.isAnnounced`,
+  > `Render.emitRenderFailure` and `Render.accessibilityAttributes`, all obsoleted earlier in the same release; each has
+  > a replacement except `Bounded`. Rides the announced cut (fuaran#2303).
 
-   Symbols: `SelectSpec.Multiple` moves from `bool option` to `bool`, and the canonical encoding of `Select` stops
-   writing `"multiple": false`. Migration: `docs/migrations/2413-select-multiple-omit-at-default.md`.
-3. **Phase 2811** (the option and marker labels widen to `TextSource`). This is Phase 2345's label half.
-   > breaking. This is 2345's label half, a rider of the announced cut (fuaran#2303). It lands on
-   > the cut's claimed version.
+  Migration: [`docs/migrations/2100-2101-obsoleted-surface-removed-at-the-cut.md`](docs/migrations/2100-2101-obsoleted-surface-removed-at-the-cut.md).
+- **Phase 2413** (`Select.multiple` joins the omit-at-default rule).
+  > breaking (canonical bytes) — rides the announced cut (2303). Decoding is unchanged: an explicit
+  > `false` still decodes, as a §16 lenient accept.
 
-   Symbols: `SelectOption.Label` and `MapMarker.Label` change from `string` to `TextSource`, and so do their
-   construction sites. Migration: a note under `docs/migrations/`, landing with the rider.
-   Phase 2345 itself shipped ahead of the cut on its own shard, and none of its change is in this repository: the
-   specification ruling (wire-format-fixtures `ea6d2bf`) and the fuaran-rs correction (`5bda320`). Its impact line,
-   verbatim, was "to be stated by the ruling: none if the IDL already says the right thing, breaking if a type
-   widens on the wire". The ruling widened the type, so the breaking half is 2811.
-4. **Phase 2110** (four record-shape debts join the breaking cut).
-   > breaking, F# API only; `STABILITY.md` and the migration document carry every change, and the version is the announced cut.
+  Symbols: `SelectSpec.Multiple` moves from `bool option` to `bool`, and the canonical encoding of `Select` stops
+  writing `"multiple": false`.
+  Migration: [`docs/migrations/2413-select-multiple-omit-at-default.md`](docs/migrations/2413-select-multiple-omit-at-default.md).
+- **Phase 2811** (the option and marker labels widen to `TextSource`). This is Phase 2345's label half.
+  > breaking. This is 2345's label half, a rider of the announced cut (fuaran#2303). It lands on
+  > the cut's claimed version.
 
-   Symbols: `DataGridSpec` (its sub-records, `RowIdentity` and the `Source | StaticRows` union), the
-   `FormFieldKind` case payloads, `Binding.Local`, and `Defaults.noBinding`, which is retired. Migration: a note
-   under `docs/migrations/`, landing with the rider.
-5. **Phase 2340** (2300's rules 2 and 3 and the renames).
-   > breaking — the renames change wire names and the presence rule removes placeholders; both ride
-   > the announced cut (fuaran#2303), with every old form still decoded.
+  Symbols: `SelectOption.Label` and `MapMarker.Label` change from `string` to `TextSource`, and so do their
+  construction sites. Phase 2345 itself shipped ahead of the cut on its own shard, and none of its change is in this
+  repository: the specification ruling (wire-format-fixtures `ea6d2bf`) and the fuaran-rs correction (`5bda320`).
+  Migration: [`docs/migrations/2811-option-and-marker-labels-are-textsource.md`](docs/migrations/2811-option-and-marker-labels-are-textsource.md).
 
-   Symbols: the renamed fields and members in 1965's naming table, listed by the rider when it lands. Migration: a
-   note under `docs/migrations/`, landing with the rider.
+**Left out of this cut (operator rulings, 2026-11-21).** Two riders announced for this number do not ship in it,
+because the code generator they depend on cannot yet emit their shapes for every target this repository's gate
+checks. Each waits for a later breaking release and names the generator work it needs.
 
-**Removal of the obsoleted surface.** 2100 and 2101 mark six names `[<Obsolete>]` and say they are removed at the
-cut. No rider shard does the removal yet. It is recorded as an open item on Phase 2303's outcome.
+- **Phase 2110** (four record-shape debts: `DataGridSpec`'s sub-records, the `FormFieldKind` payloads,
+  `Binding.Local` and `Defaults.noBinding`). The generator's TypeScript and F\* targets refuse inline records and
+  unions read from the keys present, and a record cannot take a type parameter (fuaran-core#722). These shapes are
+  unchanged in 0.105.0.
+- **Phase 2340** (rules 2 and 3 of Phase 2300's canonical form, and the renames). The generator's TypeScript and F\*
+  targets refuse member aliases, enum-case aliases and presence conditions (fuaran-core#723). No field is renamed
+  in 0.105.0, and rule 1 alone governs the canonical form.
+
+**Removal of the obsoleted surface.** The six names 2100 and 2101 marked `[<Obsolete>]` are removed in this same
+number by Phase 2836, so no released version shows a consumer the obsolete warnings.
 
 **Consumer hosts outside this repository.** These go with the cut but land in their own repositories:
 
