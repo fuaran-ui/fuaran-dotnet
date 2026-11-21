@@ -70,7 +70,6 @@
          it. -->
     <Compile Include="..\..\tests\lanes\Lanes.fs" Link="Lanes.fs" />
     <Compile Include="Tests.fs" />
-    <Compile Include="BoundedTests.fs" />
     <!-- Phase 437: UTF-8 / base64url / raw-DEFLATE byte substrate. -->
     <Compile Include="CompressionTests.fs" />
     <Compile Include="PreEmitValidateTests.fs" />

@@ -54,11 +54,10 @@ open Fuaran.UI.Types
 /// // …then: { renderContext with VisAdapter = visAdapter }
 /// ```
 ///
-/// `'Msg` carries no field today. It is declared so the record stays in
-/// lockstep with the adapter it configures — a hook that needs to speak the
-/// composition's message type can be added without renaming the type or
-/// breaking a consumer's annotation.
-type AgAdapterOptions<'Msg> =
+/// The record is not generic: no field mentions the composition's message type,
+/// so a type parameter was only an annotation burden. A hook that needs to speak
+/// `'Msg` later is a deliberate, versioned change to this type.
+type AgAdapterOptions =
     {
         /// Invoked with AG Grid's own grid API (`GridReadyEvent.api`) once the
         /// grid signals readiness.
@@ -74,7 +73,7 @@ type AgAdapterOptions<'Msg> =
 
 /// No hooks — the adapter's behaviour before Phase 1594, and the base a host
 /// copies with `{ defaultOptions with … }`.
-let defaultOptions<'Msg> : AgAdapterOptions<'Msg> =
+let defaultOptions: AgAdapterOptions =
     { OnGridReady = None
       OnChartReady = None
       OnVisReady = None }
@@ -98,9 +97,9 @@ let private combineReady
 /// Delegates `RenderGrid` to [`AgGridAdapter.renderGridWithReady`](AgGridAdapter.fs)
 /// and `RenderChart` to [`AgChartAdapter.renderChartWithReady`](AgChartAdapter.fs),
 /// threading the host's `OnReady` hooks (Phase 1594) as a parameter.
-type AgVisualisationAdapter<'Msg>(options: AgAdapterOptions<'Msg>) =
+type AgVisualisationAdapter<'Msg>(options: AgAdapterOptions) =
     /// The hook-free adapter — the constructor every caller had before Phase 1594.
-    new() = AgVisualisationAdapter<'Msg>(defaultOptions<'Msg>)
+    new() = AgVisualisationAdapter<'Msg>(defaultOptions)
 
     interface VisAdapter.IVisualisationAdapter<'Msg> with
         member _.RenderGrid(spec, context) =
@@ -116,5 +115,5 @@ let adapter<'Msg> : VisAdapter.IVisualisationAdapter<'Msg> =
 
 /// The combined AG adapter with host-supplied construction options — the
 /// Phase 1594 entry point. Allocate once per composition, not per render.
-let adapterWith<'Msg> (options: AgAdapterOptions<'Msg>) : VisAdapter.IVisualisationAdapter<'Msg> =
+let adapterWith<'Msg> (options: AgAdapterOptions) : VisAdapter.IVisualisationAdapter<'Msg> =
     AgVisualisationAdapter<'Msg>(options) :> VisAdapter.IVisualisationAdapter<'Msg>
