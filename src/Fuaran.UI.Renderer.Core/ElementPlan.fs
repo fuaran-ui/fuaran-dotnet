@@ -1763,7 +1763,7 @@ module InputPlan =
         let options = BindingResolver.resolveOptions sources spec.Source
 
         let controlProps, items =
-            if spec.Multiple = Some true then
+            if spec.Multiple then
                 let values =
                     spec.Values
                     |> Option.bind (BindingResolver.tryResolve sources)

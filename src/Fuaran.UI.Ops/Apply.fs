@@ -2022,7 +2022,7 @@ let private replaceBindingSelect
             )
         // Phase 1962 — a multi-select has no `Value` slot (it carries
         // `Values`), so binding one there is refused rather than installed.
-        | "Value" when spec.Multiple <> Some true ->
+        | "Value" when not spec.Multiple ->
             Ok(
                 NodeKind.Select(
                     { spec with

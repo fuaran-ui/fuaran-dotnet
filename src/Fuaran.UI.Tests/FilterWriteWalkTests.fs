@@ -68,7 +68,7 @@ let private selectValues () =
     Fuaran.select
         "sel"
         { Defaults.select<Msg> with
-            Multiple = Some true
+            Multiple = true
             Values = Some(Binding.Filter("depts", None)) }
 
 let private tabsActiveIndex () =

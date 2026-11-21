@@ -1663,14 +1663,14 @@ type PreEmitDefect =
     ///
     /// Carries the grid node's id, the column label and the declared field.
     | ActionColumnField of nodeId: string * columnLabel: string * field: string
-    /// **FUARAN164 (Warning)**. A multi-select `Select` (`Multiple = Some true`)
+    /// **FUARAN164 (Warning)**. A multi-select `Select` (`Multiple = true`)
     /// carries a `Value` (Phase 1962). A multi-select's selection is `Values`;
     /// it never reads `Value`, and the canonical wire carries none (WIRE_FORMAT
     /// §3.2). The encoder writes what the record holds, so this tree emits a
     /// `value` every conformant decoder accepts and then DROPS — the binding
     /// does nothing. The usual cause is a record literal built from
     /// `Defaults.select` (a single-select, whose `Value` is the empty `Static`)
-    /// with `Multiple = Some true` set; `Fuaran.multiSelect` and `Fuaran.select`
+    /// with `Multiple = true` set; `Fuaran.multiSelect` and `Fuaran.select`
     /// clear it. Fix: set `Value = None`, or build through either constructor.
     ///
     /// Carries the Select node's id.
@@ -5018,10 +5018,10 @@ module private FormRules =
 
         // FUARAN164 (Phase 1962) — a multi-select never reads `Value`; every
         // conformant decoder drops the one this record would emit.
-        if spec.Multiple = Some true && spec.Value.IsSome then
+        if spec.Multiple && spec.Value.IsSome then
             defects.Add(PreEmitDefect.MultiSelectValueIgnored nodeIdStr)
 
-        if spec.Multiple = Some true then
+        if spec.Multiple then
             let valuesLive =
                 match spec.Values with
                 | Some values -> isWriteBackTarget values

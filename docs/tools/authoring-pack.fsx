@@ -2149,7 +2149,9 @@ let private leniencyFamilies: LeniencyFamily list =
             // Phase 2328 — two more slots of the same judgement: DataGrid
             // `reorderable: false` and Modal `modality: "Modal"`.
             "lenient-2296-datagrid-reorderable-false"
-            "lenient-2296-modal-modality-explicit" ]
+            "lenient-2296-modal-modality-explicit"
+            // Phase 2413 — `Select.multiple` joins the same rule (`"multiple":false`).
+            "lenient-2413-select-multiple-false" ]
         Evidence =
           "JUDGEMENT: the §3.6 declared-default rule, applied by Phase 2300 to the fifteen fields of the "
           + "Phase 1963 list that were `required` until then. The canonical form is the ABSENT key; the "

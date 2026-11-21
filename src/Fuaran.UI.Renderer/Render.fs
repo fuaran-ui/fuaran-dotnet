@@ -3625,7 +3625,7 @@ and private renderSelect (ctx: RenderContext<'Msg>) (spec: SelectSpec<'Msg>) : R
     // Phase 2290 — the markup is `ElementPlan.InputPlan.select`, shared with
     // the server (rulings R2 / R3); this binds the change.
     let onChange: IReactProperty list =
-        if spec.Multiple = Some true then
+        if spec.Multiple then
             // Phase 291 — `onChange` reads every selected option and fires
             // `OnChangeMulti` with the value list. Phase 426: an omitted
             // handler writes the list back to a writable `Values` binding.

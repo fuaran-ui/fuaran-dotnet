@@ -6862,11 +6862,13 @@ let private decodeSelectSpec (path: string) (j: Json) : Result<SelectSpec<obj>, 
             | Some v -> decodeBindingBool (path + ".disabled") v |> Result.map Some
 
         // Phase 291 — multi-select. `multiple` absent ⇒ false (single-select);
-        // `values` absent ⇒ None.
+        // `values` absent ⇒ None. Phase 2413 — `multiple` is omit-at-default,
+        // so an explicit `false` decodes to the same `false` and re-encodes
+        // without the member (a §16 lenient accept).
         let multipleR =
             match tryField fields "multiple" with
-            | None -> Ok Option.None
-            | Some v -> requireBool (path + ".multiple") v |> Result.map Some
+            | None -> Ok false
+            | Some v -> requireBool (path + ".multiple") v
 
         // Phase 1962 — `value` is the SINGLE-select binding (WIRE_FORMAT §3.2).
         // A single-select requires it. A multi-select carries `values` and no
@@ -6883,7 +6885,7 @@ let private decodeSelectSpec (path: string) (j: Json) : Result<SelectSpec<obj>, 
                 decodeBindingChoiceValue (path + ".value") v
 
             match multipleR with
-            | Ok(Some true) ->
+            | Ok true ->
                 match tryField fields "value" with
                 | None -> Ok Option.None
                 | Some v -> decodeValue v |> Result.map (fun _ -> Option.None)

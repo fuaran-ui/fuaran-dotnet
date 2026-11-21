@@ -420,7 +420,8 @@ let select<'Msg> : SelectSpec<'Msg> =
       Disabled = Option.None
       // Phase 291: single-select by default — Multiple/Values/OnChangeMulti
       // omitted on the wire so every existing Select fixture stays byte-identical.
-      Multiple = Option.None
+      // Phase 2413: `Multiple` is omit-at-default, so `false` is the absent member.
+      Multiple = false
       Values = Option.None
       OnChangeMulti = Option.None
       // Phase 2517 — no declared affordance: the node is still operable through

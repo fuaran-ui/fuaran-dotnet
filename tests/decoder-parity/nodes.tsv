@@ -235,7 +235,6 @@ query-dependson	ok 758ccc61a723e924 247	steps=17 units=247 nesting=4 parses=1	ok
 scalar-transform-composition	ok 31d64161992e155b 2618	steps=215 units=2618 nesting=12 parses=1	ok 31d64161992e155b 2618	recovered=	refused=	ok 31d64161992e155b 2618
 scroll-1	ok bc677bdcb05d74cc 174	steps=12 units=174 nesting=5 parses=1	ok bc677bdcb05d74cc 174	recovered=	refused=	ok bc677bdcb05d74cc 174
 select-1	ok 24b1a96a79b398c7 285	steps=20 units=285 nesting=5 parses=1	ok 24b1a96a79b398c7 285	recovered=	refused=	ok 24b1a96a79b398c7 285
-select-multiple-false	ok af7e3008b4931ab7 248	steps=19 units=248 nesting=5 parses=1	ok af7e3008b4931ab7 248	recovered=	refused=	ok af7e3008b4931ab7 248
 select-option-groups	ok 17f14b6c90121d66 489	steps=34 units=489 nesting=5 parses=1	ok 17f14b6c90121d66 489	recovered=	refused=	ok 17f14b6c90121d66 489
 select-option-groups-remainder	ok d44b285dfa22d178 457	steps=33 units=457 nesting=5 parses=1	ok d44b285dfa22d178 457	recovered=	refused=	ok d44b285dfa22d178 457
 shared-source-seeded-pair	ok 5b98f51317ddc58d 603	steps=48 units=603 nesting=11 parses=1	ok 5b98f51317ddc58d 603	recovered=	refused=	ok 5b98f51317ddc58d 603

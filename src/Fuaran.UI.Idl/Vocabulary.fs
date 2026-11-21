@@ -3068,7 +3068,11 @@ let inputKinds: IdlKind list =
             opt "value" (bindingOf TStr)
             opt "placeholder" (TUnion("TextSource", []))
             opt "disabled" (bindingOf TBool)
-            opt "multiple" TBool
+            // Phase 2413 — omit-at-default like every other defaulted boolean
+            // (Phase 2300's one canonical rule; FileUpload.multiple below): an
+            // explicit `false` decodes as a §16 lenient accept and re-encodes
+            // without the member. WIRE_FORMAT §3.6.
+            omit "multiple" TBool (VBool false)
             opt "values" (bindingOf (TList TStr))
             // Phase 2517 — appended, absent-at-`None`. WIRE_FORMAT §31.
             opt "affordance" (TRecord "Affordance")
@@ -4512,7 +4516,7 @@ let private docs: (string * string) list =
       "kind-field:Select.disabled",
       "A binding that disables the control while it resolves to `true`. Omitted means always enabled."
       "kind-field:Select.multiple",
-      "Whether several options may be selected, carried in `values`. Omitted means a single-select."
+      "Whether several options may be selected, carried in `values`. Omitted means `false`, a single-select."
       "kind-field:Select.values", "The multi-select's selected values. Used when `multiple` is true."
       "kind-field:Select.affordance",
       "The operability `Affordance` declaring how an agent-initiated instruction may address this control (§31). Omitted means none beyond what the node already says."

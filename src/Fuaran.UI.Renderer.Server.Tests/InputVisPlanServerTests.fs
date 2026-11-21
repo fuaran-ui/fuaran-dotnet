@@ -383,7 +383,7 @@ let tests =
                                     Source = options
                                     Value = None
                                     Placeholder = Some(lit "pick")
-                                    Multiple = Some true
+                                    Multiple = true
                                     Values = Some(Binding.Static(Some [ "a"; "b" ])) }
                         )
 
