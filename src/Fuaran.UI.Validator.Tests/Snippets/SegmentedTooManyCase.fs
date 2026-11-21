@@ -7,14 +7,22 @@ let field: FormFieldKind<unit> =
     FormFieldKind.SegmentedChoice(
         Binding.Static(
             Some
-                [ { Value = "a"; Label = "A" }
-                  { Value = "b"; Label = "B" }
-                  { Value = "c"; Label = "C" }
-                  { Value = "d"; Label = "D" }
-                  { Value = "e"; Label = "E" }
-                  { Value = "f"; Label = "F" }
-                  { Value = "g"; Label = "G" }
-                  { Value = "h"; Label = "H" } ]
+                [ { Value = "a"
+                    Label = TextSource.Literal "A" }
+                  { Value = "b"
+                    Label = TextSource.Literal "B" }
+                  { Value = "c"
+                    Label = TextSource.Literal "C" }
+                  { Value = "d"
+                    Label = TextSource.Literal "D" }
+                  { Value = "e"
+                    Label = TextSource.Literal "E" }
+                  { Value = "f"
+                    Label = TextSource.Literal "F" }
+                  { Value = "g"
+                    Label = TextSource.Literal "G" }
+                  { Value = "h"
+                    Label = TextSource.Literal "H" } ]
         ),
         Some(FieldValue.ofText (binding.state "tier" "a")),
         None,

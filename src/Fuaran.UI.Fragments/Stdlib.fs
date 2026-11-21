@@ -488,15 +488,27 @@ module Stdlib =
                 if System.String.IsNullOrWhiteSpace label then
                     Option.None
                 else
-                    Some({ Label = label; Value = value }: SelectOption))
+                    Some(
+                        { Label = TextSource.Literal label
+                          Value = value }
+                        : SelectOption
+                    ))
 
         if List.isEmpty options then
-            [ ({ Label = "All"; Value = "" }: SelectOption) ]
+            [ ({ Label = TextSource.Literal "All"
+                 Value = "" }
+              : SelectOption) ]
         else
             options
 
     let private statusOptions: Binding<SelectOption list> =
-        Binding.Static(Some [ { Label = "Open"; Value = "open" }; { Label = "Closed"; Value = "closed" } ])
+        Binding.Static(
+            Some
+                [ { Label = TextSource.Literal "Open"
+                    Value = "open" }
+                  { Label = TextSource.Literal "Closed"
+                    Value = "closed" } ]
+        )
 
     let private searchChip<'Msg> (label: TextSource) : FilterSpec<'Msg> =
         { Name = "search"

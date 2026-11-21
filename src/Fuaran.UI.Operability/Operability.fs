@@ -210,7 +210,13 @@ module Operability =
         options
         |> List.map (fun o ->
             { Value = o.Value
-              Label = o.Label
+              // A bound or translated option label has no text without a host,
+              // so the option's value stands in (WIRE_FORMAT §31.3), as a node's
+              // name does for its own label.
+              Label =
+                match o.Label with
+                | TextSource.Literal t -> t
+                | _ -> o.Value
               Aliases =
                 aliases
                 |> List.filter (fun a -> a.Value = o.Value)

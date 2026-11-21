@@ -73,6 +73,7 @@ type ComboboxProps =
        allowFreeText: bool
        placeholder: string
        options: SelectOption list
+       textOf: TextSource -> string
        committed: string option
        commit: string option -> unit |}
 
@@ -86,7 +87,7 @@ let private renderCombobox (props: ComboboxProps) : ReactElement =
     let committedLabel =
         props.committed
         |> Option.bind (fun v -> props.options |> List.tryFind (fun o -> o.Value = v))
-        |> Option.map (fun o -> o.Label)
+        |> Option.map (fun o -> props.textOf o.Label)
         // Free text that matches no option is its own label; a constrained
         // control cannot reach this branch with a value it did not commit.
         |> Option.orElse props.committed
@@ -118,7 +119,7 @@ let private renderCombobox (props: ComboboxProps) : ReactElement =
 
             props.options
             |> List.filter (fun o ->
-                o.Label.ToLowerInvariant().Contains needle
+                (props.textOf o.Label).ToLowerInvariant().Contains needle
                 || o.Value.ToLowerInvariant().Contains needle)
 
     let listId = props.fieldId + "-listbox"
@@ -128,7 +129,7 @@ let private renderCombobox (props: ComboboxProps) : ReactElement =
         setActiveIndex -1
 
     let commitOption (o: SelectOption) =
-        setQuery o.Label
+        setQuery (props.textOf o.Label)
         close ()
         props.commit (Some o.Value)
 
@@ -143,9 +144,12 @@ let private renderCombobox (props: ComboboxProps) : ReactElement =
             setQuery ""
             props.commit None
         else
-            match props.options |> List.tryFind (fun o -> o.Label = query || o.Value = query) with
+            match
+                props.options
+                |> List.tryFind (fun o -> props.textOf o.Label = query || o.Value = query)
+            with
             | Some o ->
-                setQuery o.Label
+                setQuery (props.textOf o.Label)
                 props.commit (Some o.Value)
             | None ->
                 if props.allowFreeText then
@@ -262,7 +266,7 @@ let private renderCombobox (props: ComboboxProps) : ReactElement =
                               prop.onMouseDown (fun e ->
                                   e.preventDefault ()
                                   commitOption o)
-                              prop.text o.Label ] ] ]
+                              prop.text (props.textOf o.Label) ] ] ]
 
     Html.span
         [ prop.className "fuaran-combobox"

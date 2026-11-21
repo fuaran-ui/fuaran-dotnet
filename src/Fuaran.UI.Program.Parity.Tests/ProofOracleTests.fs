@@ -877,7 +877,7 @@ let private mapNode (id: string) (markers: int) : Node<obj> =
                     Some(
                         List.replicate
                             markers
-                            { Label = "m"
+                            { Label = TextSource.Literal "m"
                               Latitude = 0.0
                               Longitude = 0.0 }
                     )

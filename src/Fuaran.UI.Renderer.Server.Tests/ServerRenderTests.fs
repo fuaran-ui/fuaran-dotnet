@@ -681,7 +681,13 @@ let ssrCsrEmissionParityTests =
               // dropdown, and could submit a value no option offered.
               let options =
                   Binding.Static(
-                      Some([ { Value = "a"; Label = "Alpha" }; { Value = "b"; Label = "Beta" } ]: SelectOption list)
+                      Some(
+                          [ { Value = "a"
+                              Label = TextSource.Literal "Alpha" }
+                            { Value = "b"
+                              Label = TextSource.Literal "Beta" } ]
+                          : SelectOption list
+                      )
                   )
 
               let html =
@@ -700,7 +706,13 @@ let ssrCsrEmissionParityTests =
 
           test "a Choice marks the resolved option selected" {
               let options =
-                  Binding.Static(Some([ { Value = "b"; Label = "Beta" } ]: SelectOption list))
+                  Binding.Static(
+                      Some(
+                          [ { Value = "b"
+                              Label = TextSource.Literal "Beta" } ]
+                          : SelectOption list
+                      )
+                  )
 
               let html =
                   Render.renderStatic (

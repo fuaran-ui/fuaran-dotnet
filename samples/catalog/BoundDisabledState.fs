@@ -70,7 +70,13 @@ let private readerPane: Node<Msg> =
                       { Defaults.select<Msg> with
                           Label = TextSource.Literal "Region"
                           Source =
-                              Binding.Static(Some [ { Value = "uk"; Label = "UK" }; { Value = "us"; Label = "US" } ])
+                              Binding.Static(
+                                  Some
+                                      [ { Value = "uk"
+                                          Label = TextSource.Literal "UK" }
+                                        { Value = "us"
+                                          Label = TextSource.Literal "US" } ]
+                              )
                           Value = Some(Binding.Static(Some "uk"))
                           Disabled = Some busyBinding }
                   Fuaran.form

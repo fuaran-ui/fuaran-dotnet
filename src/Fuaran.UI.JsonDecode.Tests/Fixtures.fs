@@ -1890,7 +1890,13 @@ let compositeTabsPanels: Node<obj> =
             Label = TextSource.Literal "Theme"
             Kind =
                 FormFieldKind.Choice(
-                    Binding.Static(Some [ { Value = "light"; Label = "Light" }; { Value = "dark"; Label = "Dark" } ]),
+                    Binding.Static(
+                        Some
+                            [ { Value = "light"
+                                Label = TextSource.Literal "Light" }
+                              { Value = "dark"
+                                Label = TextSource.Literal "Dark" } ]
+                    ),
                     Some(FieldValue.ofText (Binding.Static(Some "dark"))),
                     Option.None
                 )
@@ -2137,7 +2143,13 @@ let formAllFields: Node<obj> =
             Label = TextSource.Literal "Tier"
             Kind =
                 FormFieldKind.Choice(
-                    Binding.Static(Some [ { Value = "basic"; Label = "Basic" }; { Value = "pro"; Label = "Pro" } ]),
+                    Binding.Static(
+                        Some
+                            [ { Value = "basic"
+                                Label = TextSource.Literal "Basic" }
+                              { Value = "pro"
+                                Label = TextSource.Literal "Pro" } ]
+                    ),
                     Some(FieldValue.ofText (Binding.Static(Some "basic"))),
                     Some(FieldChange.ofChoice (fun _ -> placeholderChain))
                 ) }
@@ -2243,7 +2255,11 @@ let filtersBoth: Node<obj> =
             Label = TextSource.Literal "Tier"
             Kind =
                 FormFieldKind.Choice(
-                    Binding.Static(Some [ { Value = "all"; Label = "All" } ]),
+                    Binding.Static(
+                        Some
+                            [ { Value = "all"
+                                Label = TextSource.Literal "All" } ]
+                    ),
                     Some(FieldValue.ofText (Binding.Static(Some "all"))),
                     Some(FieldChange.ofChoice (fun _ -> placeholderChain))
                 ) }
@@ -2267,7 +2283,11 @@ let filtersDeclarative: Node<obj> =
             Label = TextSource.Literal "Tier"
             Kind =
                 FormFieldKind.Choice(
-                    Binding.Static(Some [ { Value = "all"; Label = "All" } ]),
+                    Binding.Static(
+                        Some
+                            [ { Value = "all"
+                                Label = TextSource.Literal "All" } ]
+                    ),
                     Some(FieldValue.ofText (Binding.Filter("tier", None))),
                     None
                 ) }
@@ -2296,11 +2316,11 @@ let filtersDeclarative: Node<obj> =
 let formSegmentedChoice: Node<obj> =
     let opts: SelectOption list =
         [ { Value = "effective"
-            Label = "Effective" }
+            Label = TextSource.Literal "Effective" }
           { Value = "marginal"
-            Label = "Marginal" }
+            Label = TextSource.Literal "Marginal" }
           { Value = "takeHome"
-            Label = "Take-home" } ]
+            Label = TextSource.Literal "Take-home" } ]
 
     let horizontalField: FormField<obj> =
         { Defaults.formField with
@@ -2320,7 +2340,13 @@ let formSegmentedChoice: Node<obj> =
             Label = TextSource.Literal "Tier"
             Kind =
                 FormFieldKind.SegmentedChoice(
-                    Binding.Static(Some [ { Value = "low"; Label = "Low" }; { Value = "high"; Label = "High" } ]),
+                    Binding.Static(
+                        Some
+                            [ { Value = "low"
+                                Label = TextSource.Literal "Low" }
+                              { Value = "high"
+                                Label = TextSource.Literal "High" } ]
+                    ),
                     Some(FieldValue.ofText (Binding.Static None)),
                     Some(FieldChange.ofChoice (fun _ -> placeholderChain)),
                     Orientation.Vertical
@@ -2346,9 +2372,11 @@ let formSegmentedChoice: Node<obj> =
 let formComboboxStatic: Node<obj> =
     let opts: SelectOption list =
         [ { Value = "gbr"
-            Label = "United Kingdom" }
-          { Value = "fra"; Label = "France" }
-          { Value = "deu"; Label = "Germany" } ]
+            Label = TextSource.Literal "United Kingdom" }
+          { Value = "fra"
+            Label = TextSource.Literal "France" }
+          { Value = "deu"
+            Label = TextSource.Literal "Germany" } ]
 
     let field: FormField<obj> =
         { Defaults.formField with
@@ -2417,8 +2445,10 @@ let formComboboxFreeText: Node<obj> =
                     None,
                     Binding.Static(
                         Some
-                            [ { Value = "urgent"; Label = "Urgent" }
-                              { Value = "blocked"; Label = "Blocked" } ]
+                            [ { Value = "urgent"
+                                Label = TextSource.Literal "Urgent" }
+                              { Value = "blocked"
+                                Label = TextSource.Literal "Blocked" } ]
                     ),
                     Some(FieldValue.ofText (Binding.Static(Some "needs-a-second-look")))
                 ) }
@@ -2587,9 +2617,12 @@ let formTokensSuggested: Node<obj> =
                     Some(
                         Binding.Static(
                             Some
-                                [ { Label = "France"; Value = "fra" }
-                                  { Label = "Germany"; Value = "deu" }
-                                  { Label = "Spain"; Value = "esp" } ]
+                                [ { Label = TextSource.Literal "France"
+                                    Value = "fra" }
+                                  { Label = TextSource.Literal "Germany"
+                                    Value = "deu" }
+                                  { Label = TextSource.Literal "Spain"
+                                    Value = "esp" } ]
                         )
                     ),
                     Some(FieldValue.ofTokens (Binding.Static(Some [ "deu"; "fra" ])))
@@ -2655,8 +2688,10 @@ let filtersTokens: Node<obj> =
                               Some(
                                   Binding.Static(
                                       Some
-                                          [ { Label = "Urgent"; Value = "urgent" }
-                                            { Label = "Blocked"; Value = "blocked" } ]
+                                          [ { Label = TextSource.Literal "Urgent"
+                                              Value = "urgent" }
+                                            { Label = TextSource.Literal "Blocked"
+                                              Value = "blocked" } ]
                                   )
                               ),
                               Some(FieldValue.ofTokens (Binding.Filter("labels", None)))
@@ -2673,7 +2708,13 @@ let filtersSegmented: Node<obj> =
             Label = TextSource.Literal "View"
             Kind =
                 FormFieldKind.SegmentedChoice(
-                    Binding.Static(Some [ { Value = "table"; Label = "Table" }; { Value = "chart"; Label = "Chart" } ]),
+                    Binding.Static(
+                        Some
+                            [ { Value = "table"
+                                Label = TextSource.Literal "Table" }
+                              { Value = "chart"
+                                Label = TextSource.Literal "Chart" } ]
+                    ),
                     Some(FieldValue.ofText (Binding.Static(Some "table"))),
                     Some(FieldChange.ofChoice (fun _ -> placeholderChain)),
                     Orientation.Horizontal
@@ -3421,7 +3462,12 @@ let select: Node<obj> =
         (NodeKind.Select(
             { Defaults.select with
                 Label = TextSource.Literal "Region"
-                Source = Binding.Static(Some [ { Value = "uk"; Label = "UK" } ])
+                Source =
+                    Binding.Static(
+                        Some
+                            [ { Value = "uk"
+                                Label = TextSource.Literal "UK" } ]
+                    )
                 Value = Some(Binding.Static(Some "uk"))
                 // `Some` (Phase 426) — keeps `"onChange":"<closure>"` on the
                 // wire, byte-identical to the pre-426 corpus.
@@ -3450,13 +3496,13 @@ let selectOptionGroups: Node<obj> =
                     Binding.Static(
                         Some
                             [ { Value = "revenue-trend"
-                                Label = "Revenue" }
+                                Label = TextSource.Literal "Revenue" }
                               { Value = "orders-trend"
-                                Label = "Orders" }
+                                Label = TextSource.Literal "Orders" }
                               { Value = "region-breakdown"
-                                Label = "By region" }
+                                Label = TextSource.Literal "By region" }
                               { Value = "channel-breakdown"
-                                Label = "By channel" } ]
+                                Label = TextSource.Literal "By channel" } ]
                     )
                 Value = Some(Binding.Static(Some "revenue-trend"))
                 Groups =
@@ -3479,12 +3525,14 @@ let selectOptionGroupsRemainder: Node<obj> =
                 Source =
                     Binding.Static(
                         Some
-                            [ { Value = "summary"; Label = "Summary" }
+                            [ { Value = "summary"
+                                Label = TextSource.Literal "Summary" }
                               { Value = "revenue-trend"
-                                Label = "Revenue" }
+                                Label = TextSource.Literal "Revenue" }
                               { Value = "region-breakdown"
-                                Label = "By region" }
-                              { Value = "notes"; Label = "Notes" } ]
+                                Label = TextSource.Literal "By region" }
+                              { Value = "notes"
+                                Label = TextSource.Literal "Notes" } ]
                     )
                 Value = Some(Binding.State("chart", Some "summary"))
                 Groups =
@@ -3492,6 +3540,30 @@ let selectOptionGroupsRemainder: Node<obj> =
                         Values = [ "revenue-trend" ] }
                       { Label = "Breakdown"
                         Values = [ "region-breakdown" ] } ] }
+        ))
+        None
+
+/// Phase 2811 — an option label is a `TextSource` (WIRE_FORMAT §5): a `Bound` and an
+/// `I18n` label ride the option beside a literal one, each in its `$type` envelope,
+/// while the literal stays the bare string.
+[<NodeFixture "Input/Select (Phase 2811 — Bound and I18n option labels beside a literal)">]
+let selectTextSourceLabels: Node<obj> =
+    node
+        "select-textsource-labels"
+        (NodeKind.Select(
+            { Defaults.select with
+                Label = TextSource.Literal "Region"
+                Source =
+                    Binding.Static(
+                        Some
+                            [ { Value = "uk"
+                                Label = TextSource.Literal "UK" }
+                              { Value = "fr"
+                                Label = TextSource.Bound(Binding.State("regionLabelFr", Some "France")) }
+                              { Value = "de"
+                                Label = TextSource.I18n("region.de", Map.empty) } ]
+                    )
+                Value = Some(Binding.Static(Some "uk")) }
         ))
         None
 
@@ -3508,7 +3580,14 @@ let multiSelect: Node<obj> =
         (NodeKind.Select(
             { Defaults.select with
                 Label = TextSource.Literal "Tags"
-                Source = Binding.Static(Some [ { Value = "red"; Label = "Red" }; { Value = "green"; Label = "Green" } ])
+                Source =
+                    Binding.Static(
+                        Some
+                            [ { Value = "red"
+                                Label = TextSource.Literal "Red" }
+                              { Value = "green"
+                                Label = TextSource.Literal "Green" } ]
+                    )
                 OnChange = Some(fun _ -> placeholderChain)
                 Value = None
                 Multiple = true
@@ -3551,7 +3630,13 @@ let formDeclarative: Node<obj> =
             Label = TextSource.Literal "Tier"
             Kind =
                 FormFieldKind.Choice(
-                    Binding.Static(Some [ { Value = "basic"; Label = "Basic" }; { Value = "pro"; Label = "Pro" } ]),
+                    Binding.Static(
+                        Some
+                            [ { Value = "basic"
+                                Label = TextSource.Literal "Basic" }
+                              { Value = "pro"
+                                Label = TextSource.Literal "Pro" } ]
+                    ),
                     Some(FieldValue.ofText (Binding.State("profileTier", None))),
                     Option.None
                 ) }
@@ -3922,8 +4007,10 @@ let formDeclarativeMinimal: Node<obj> =
                 FormFieldKind.Choice(
                     Binding.Static(
                         Some
-                            [ { Value = "indoor"; Label = "Indoor" }
-                              { Value = "terrace"; Label = "Terrace" } ]
+                            [ { Value = "indoor"
+                                Label = TextSource.Literal "Indoor" }
+                              { Value = "terrace"
+                                Label = TextSource.Literal "Terrace" } ]
                     ),
                     Some(FieldValue.ofText (Binding.State("seating", Fuaran.UI.Defaults.ControlValueDefaults.choice))),
                     Option.None
@@ -3955,6 +4042,40 @@ let formDeclarativeMinimal: Node<obj> =
                 Fields = [ textField; numberField; choiceField; dateField ]
                 OnSubmit = placeholderChain
                 SubmitLabel = TextSource.Literal "Book" }
+        ))
+        None
+
+/// Phase 2811 — the three value-bearing field kinds no vector covered with an
+/// absent value: `TextArea`, `RangedNumber` and `Range`, each with its value slot
+/// and handler omitted, so the canonical bytes carry no `value` key and decode
+/// takes the field's own auto-binding (Phase 596).
+[<NodeFixture "Input/Form (Phase 2811 — TextArea, RangedNumber and Range with no value)">]
+let formUnvaluedTextAreaAndRanges: Node<obj> =
+    let textareaField: FormField<obj> =
+        { Defaults.formField with
+            Id = "remarks"
+            Label = TextSource.Literal "Remarks"
+            Kind = FormFieldKind.TextArea(Option.None, Option.None, 4) }
+
+    let rangedField: FormField<obj> =
+        { Defaults.formField with
+            Id = "guests"
+            Label = TextSource.Literal "Guests"
+            Kind = FormFieldKind.RangedNumber(Option.None, Option.None, Some 1.0, Some 12.0, Some 1.0) }
+
+    let rangeField: FormField<obj> =
+        { Defaults.formField with
+            Id = "budget"
+            Label = TextSource.Literal "Budget"
+            Kind = FormFieldKind.Range(Option.None, Option.None, Some 0.0, Some 500.0, Option.None) }
+
+    node
+        "form-unvalued-textarea-ranges"
+        (NodeKind.Form(
+            { Defaults.form with
+                Fields = [ textareaField; rangedField; rangeField ]
+                OnSubmit = placeholderChain
+                SubmitLabel = TextSource.Literal "Send" }
         ))
         None
 
@@ -4004,7 +4125,12 @@ let controlsDeclarative: Node<obj> =
             (NodeKind.Select(
                 { Defaults.select with
                     Label = TextSource.Literal "Region"
-                    Source = Binding.Static(Some [ { Value = "uk"; Label = "UK" } ])
+                    Source =
+                        Binding.Static(
+                            Some
+                                [ { Value = "uk"
+                                    Label = TextSource.Literal "UK" } ]
+                        )
                     Value = Some(Binding.State("region", None))
                     Placeholder = Some(TextSource.Literal "Choose one") }
             ))
@@ -4055,7 +4181,12 @@ let multiSelectClosure: Node<obj> =
             (NodeKind.Select(
                 { Defaults.select with
                     Label = TextSource.Literal "Tags"
-                    Source = Binding.Static(Some [ { Value = "red"; Label = "Red" } ])
+                    Source =
+                        Binding.Static(
+                            Some
+                                [ { Value = "red"
+                                    Label = TextSource.Literal "Red" } ]
+                        )
                     OnChange = Some(fun _ -> placeholderChain)
                     Value = None
                     Multiple = true
@@ -5032,9 +5163,12 @@ let multiselectChipListParam: Node<obj> =
                                   Source =
                                       Binding.Static(
                                           Some
-                                              [ { Value = "eng"; Label = "Engineering" }
-                                                { Value = "sales"; Label = "Sales" }
-                                                { Value = "ops"; Label = "Operations" } ]
+                                              [ { Value = "eng"
+                                                  Label = TextSource.Literal "Engineering" }
+                                                { Value = "sales"
+                                                  Label = TextSource.Literal "Sales" }
+                                                { Value = "ops"
+                                                  Label = TextSource.Literal "Operations" } ]
                                       )
                                   Value = None
                                   Multiple = true
@@ -6109,7 +6243,12 @@ let filterableStaticDashboard: Node<obj> =
             Label = TextSource.Literal label
             Kind =
                 FormFieldKind.Choice(
-                    Binding.Static(Some [ for value, optLabel in options -> { Value = value; Label = optLabel } ]),
+                    Binding.Static(
+                        Some
+                            [ for value, optLabel in options ->
+                                  { Value = value
+                                    Label = TextSource.Literal optLabel } ]
+                    ),
                     Some(FieldValue.ofText (Binding.Filter(name, None))),
                     None
                 ) }
@@ -6208,7 +6347,12 @@ let private filterEdgeChip (name: string) (label: string) (options: (string * st
         Label = TextSource.Literal label
         Kind =
             FormFieldKind.Choice(
-                Binding.Static(Some [ for value, optLabel in options -> { Value = value; Label = optLabel } ]),
+                Binding.Static(
+                    Some
+                        [ for value, optLabel in options ->
+                              { Value = value
+                                Label = TextSource.Literal optLabel } ]
+                ),
                 Some(FieldValue.ofText (Binding.Filter(name, None))),
                 None
             ) }
@@ -6627,13 +6771,42 @@ let mapVis: Node<obj> =
                         Some(
                             [ { Latitude = 51.5
                                 Longitude = -0.12
-                                Label = "London" } ]
+                                Label = TextSource.Literal "London" } ]
                             : MapMarker list
                         )
                     )
                 CentreLatitude = 51.5
                 CentreLongitude = -0.12
                 Zoom = 6 }
+        ))
+        None
+
+/// Phase 2811 — a marker label is a `TextSource`, as an option label is: a `Bound`
+/// and an `I18n` marker label beside a literal one.
+[<NodeFixture "Visualisation/Map (Phase 2811 — Bound and I18n marker labels beside a literal)">]
+let mapTextSourceLabels: Node<obj> =
+    node
+        "map-textsource-labels"
+        (NodeKind.Map(
+            { Defaults.map with
+                Source =
+                    Binding.Static(
+                        Some(
+                            [ { Latitude = 51.5
+                                Longitude = -0.12
+                                Label = TextSource.Literal "London" }
+                              { Latitude = 48.86
+                                Longitude = 2.35
+                                Label = TextSource.Bound(Binding.State("markerLabelParis", Some "Paris")) }
+                              { Latitude = 52.52
+                                Longitude = 13.4
+                                Label = TextSource.I18n("city.berlin", Map.empty) } ]
+                            : MapMarker list
+                        )
+                    )
+                CentreLatitude = 51.5
+                CentreLongitude = 2.35
+                Zoom = 4 }
         ))
         None
 

@@ -8692,6 +8692,34 @@ baseline (`tests/decoder-parity/`) is re-recorded for the move and nothing else.
 
 **Migration:** [`docs/migrations/2413-select-multiple-omit-at-default.md`](docs/migrations/2413-select-multiple-omit-at-default.md).
 
+### What rides this slot — Phase 2811 (the option and marker labels widen to `TextSource`)
+
+**Stability impact:** breaking. This is 2345's label half, a rider of the announced cut (fuaran#2303). It lands on
+the cut's claimed version.
+
+**Class: BREAKING** on `Fuaran.UI` (two generated record fields), `Fuaran.UI.Renderer.Core` and `Fuaran.UI.Renderer`
+(the token and combobox components take the renderer's text resolution); rides the open 0.105.0 draft, which is
+already breaking-class, and does not advance the number. WIRE_FORMAT §15.7 classes the wire half "additive: a member
+widened": every document already written reads unchanged, because a literal label is still the bare string. The
+regeneration's advisory classifier prints MAJOR, because it cannot tell a widening whose old values stay valid from one
+whose old values stop decoding (§15.4 says the classifier is advisory).
+
+| Surface | Change | Who pays |
+|---|---|---|
+| `Fuaran.UI.Generated.SelectOption.Label`, `MapMarker.Label` | `string` becomes `TextSource`; the IDL rows read `TextSource`, as WIRE_FORMAT §5's ruling (2026-10-19) already stated. Neither record supports `equality` any more. | Every record literal: wrap the label in `TextSource.Literal`. Every read of `.Label` as a string: resolve it. Every `=` over either record. |
+| `Fuaran.UI.Ops.JsonDecode` | A `Bound` or `I18n` option or marker label decodes, where it was refused with `WRONG_TYPE`. A `FormFieldKind.Range` field's optional `min` / `max` / `step` are read, where they were dropped on decode (no vector carried a bounded `Range` until this rider's). | Nobody; a refusal becomes an accept, and a dropped member is kept. |
+| `Fuaran.UI.Renderer.TokensModel` | `tryAdd`, `visibleSuggestions` and `chipLabel` take a first argument `textOf: TextSource -> string`. | A caller of the model outside the renderer: pass `BindingResolver.resolveTextSource sources`. |
+| `Fuaran.UI.Renderer` `TokensControl` / `ComboboxControl` props | Gain `textOf: TextSource -> string`. | A host building these components directly. |
+| `Fuaran.UI.BindingWalk` | A `Static` option or marker list contributes its labels' binding reads, so a `Bound` label over a `State` binding with a default seeds its key (§24.4 rule 1), as the structural walks of the other hosts already did. | Nobody: a seed nothing declared before. |
+| `Fuaran.UI.Operability` | An enumeration slot's option takes the option's `value` as its label when the label is not a `Literal` (WIRE_FORMAT §31.3). | Nobody. |
+| C# `Fuaran.UI.CSharp` | Options and markers keep their `string` labels and write the literal form. | Nobody. |
+
+**Corpus.** Three node vectors: `select-textsource-labels` and `map-textsource-labels` (a `Bound` and an `I18n` label
+beside a literal, for both rows) and `form-unvalued-textarea-ranges` (`TextArea`, `RangedNumber` and `Range` with no
+value). The decoder-parity baseline (`tests/decoder-parity/`) gains their rows and nothing else moves.
+
+**Migration:** [`docs/migrations/2811-option-and-marker-labels-are-textsource.md`](docs/migrations/2811-option-and-marker-labels-are-textsource.md).
+
 ## 0.104.0 (RELEASED — tagged v0.104.0 at cc477007, 2026-11-11) — the slot opened after v0.103.0 was released; advanced from 0.103.1 on 2026-11-10 by Phase 2640, whose change is breaking
 
 _`v0.103.0` is TAGGED (2026-11-09, at `1b783c61`), so nothing may ride it: Phase 2639 opened the next slot at the

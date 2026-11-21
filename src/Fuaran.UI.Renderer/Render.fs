@@ -3995,6 +3995,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                    allowFreeText = allowFreeText
                    placeholder = ""
                    options = BindingResolver.resolveOptions ctx.Sources options
+                   textOf = BindingResolver.resolveTextSource ctx.Sources
                    committed =
                     BindingResolver.tryResolve ctx.Sources value
                     |> Option.bind (fun s -> if isNull s || s = "" then None else Some s)
@@ -4033,6 +4034,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                    allowFreeText = allowFreeText
                    placeholder = ""
                    suggestions = suggestions |> Option.map (BindingResolver.resolveOptions ctx.Sources)
+                   textOf = BindingResolver.resolveTextSource ctx.Sources
                    tokens =
                     BindingResolver.tryResolve ctx.Sources value
                     |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.tokens
@@ -4131,6 +4133,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                    allowFreeText = allowFreeText
                    placeholder = labelText
                    options = BindingResolver.resolveOptions ctx.Sources options
+                   textOf = BindingResolver.resolveTextSource ctx.Sources
                    committed =
                     BindingResolver.tryResolve ctx.Sources (auto value)
                     |> Option.bind (fun s -> if isNull s || s = "" then None else Some s)
@@ -4157,6 +4160,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                    allowFreeText = allowFreeText
                    placeholder = ""
                    suggestions = suggestions |> Option.map (BindingResolver.resolveOptions ctx.Sources)
+                   textOf = BindingResolver.resolveTextSource ctx.Sources
                    tokens =
                     BindingResolver.tryResolve ctx.Sources (auto value)
                     |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.tokens

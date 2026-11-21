@@ -113,7 +113,11 @@ type AddOutcome =
 /// Membership is tested against both the option VALUE and its LABEL, because a
 /// reader types what they can see. The token committed is always the option's
 /// `Value` — the label is what the chip shows, the value is what submits.
+///
+/// `textOf` is the renderer's text resolution: an option label is a `TextSource`
+/// (Phase 2811), so the label a reader sees is the one the renderer resolves.
 let tryAdd
+    (textOf: TextSource -> string)
     (allowFreeText: bool)
     (suggestions: SelectOption list option)
     (current: string list)
@@ -126,7 +130,7 @@ let tryAdd
     else
         let matched =
             suggestions
-            |> Option.bind (List.tryFind (fun (o: SelectOption) -> o.Value = token || o.Label = token))
+            |> Option.bind (List.tryFind (fun (o: SelectOption) -> o.Value = token || textOf o.Label = token))
 
         let resolved =
             match matched with
@@ -167,14 +171,19 @@ let removeLast (tokens: string list) : string list =
 /// rather than inlined: a single-value combobox may legitimately re-offer the
 /// committed value, and a multi-token control offering a chip the reader
 /// already has is offering a gesture that would be refused.
-let visibleSuggestions (options: SelectOption list) (chosen: string list) (query: string) : SelectOption list =
+let visibleSuggestions
+    (textOf: TextSource -> string)
+    (options: SelectOption list)
+    (chosen: string list)
+    (query: string)
+    : SelectOption list =
     let needle = (normalise query).ToLowerInvariant()
 
     options
     |> List.filter (fun o ->
         not (chosen |> List.contains o.Value)
         && (needle = ""
-            || o.Label.ToLowerInvariant().Contains needle
+            || (textOf o.Label).ToLowerInvariant().Contains needle
             || o.Value.ToLowerInvariant().Contains needle))
 
 /// The label a chip shows for a token: the matching option's label where the
@@ -182,10 +191,10 @@ let visibleSuggestions (options: SelectOption list) (chosen: string list) (query
 /// every free-text token, and every token whose asynchronous suggestion source
 /// has not resolved yet). Never blank — a chip with no text is a chip a reader
 /// cannot identify or decide to remove.
-let chipLabel (suggestions: SelectOption list option) (token: string) : string =
+let chipLabel (textOf: TextSource -> string) (suggestions: SelectOption list option) (token: string) : string =
     suggestions
     |> Option.bind (List.tryFind (fun (o: SelectOption) -> o.Value = token))
-    |> Option.map (fun o -> o.Label)
+    |> Option.map (fun o -> textOf o.Label)
     |> Option.defaultValue token
 
 /// The SSR floor's projection of a token list: comma-and-space separated, in

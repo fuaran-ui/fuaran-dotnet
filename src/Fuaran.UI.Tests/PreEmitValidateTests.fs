@@ -4495,7 +4495,13 @@ let comboboxOptionRuleTests =
 
           test "FUARAN120 go-red check: a NON-EMPTY static list is silent" {
               let tree =
-                  comboboxForm "country" (Binding.Static(Some [ { Value = "fra"; Label = "France" } ]))
+                  comboboxForm
+                      "country"
+                      (Binding.Static(
+                          Some
+                              [ { Value = "fra"
+                                  Label = TextSource.Literal "France" } ]
+                      ))
 
               Expect.isEmpty (comboboxDefects tree) "a populated option set is the ordinary case"
           }
@@ -5159,7 +5165,9 @@ let private tokensDefects (tree: Node<Msg>) : PreEmitDefect list =
             | PreEmitDefect.TokensStaticDuplicate _ -> true
             | _ -> false)
 
-let private someOption (value: string) : SelectOption = { Label = value; Value = value }
+let private someOption (value: string) : SelectOption =
+    { Label = TextSource.Literal value
+      Value = value }
 
 [<Tests>]
 let tokensValueRuleTests =

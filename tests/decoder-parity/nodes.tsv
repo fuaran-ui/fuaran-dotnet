@@ -107,6 +107,7 @@ form-toggle	ok ef3dddcff9aaba32 284	steps=20 units=284 nesting=5 parses=1	ok ef3
 form-tokens-freetext	ok 4257c7372e93af6b 182	steps=14 units=182 nesting=5 parses=1	ok 4257c7372e93af6b 182	recovered=	refused=	ok 4257c7372e93af6b 182
 form-tokens-query	ok 511d5e25eeadda82 248	steps=19 units=248 nesting=7 parses=1	ok 511d5e25eeadda82 248	recovered=	refused=	ok 511d5e25eeadda82 248
 form-tokens-suggested	ok f0c550feca6d84cb 443	steps=34 units=443 nesting=8 parses=1	ok f0c550feca6d84cb 443	recovered=	refused=	ok f0c550feca6d84cb 443
+form-unvalued-textarea-ranges	ok 61ec424eefd3f41c 371	steps=30 units=371 nesting=5 parses=1	ok 61ec424eefd3f41c 371	recovered=	refused=	ok 61ec424eefd3f41c 371
 format-bindings	ok 30ba2d7e43b3828c 1269	steps=92 units=1269 nesting=8 parses=1	ok 30ba2d7e43b3828c 1269	recovered=	refused=	ok 30ba2d7e43b3828c 1269
 format-date-time	ok c9f60ce7e4957119 889	steps=61 units=889 nesting=8 parses=1	ok c9f60ce7e4957119 889	recovered=	refused=	ok c9f60ce7e4957119 889
 format-since	ok b514ec134974c80e 569	steps=41 units=569 nesting=8 parses=1	ok b514ec134974c80e 569	recovered=	refused=	ok b514ec134974c80e 569
@@ -189,6 +190,7 @@ link-protected-1	ok 8d0cdc6faac5b025 152	steps=9 units=152 nesting=3 parses=1	ok
 list-1	ok fafdc5bcad8eceae 81	steps=8 units=81 nesting=3 parses=1	ok fafdc5bcad8eceae 81	recovered=	refused=	ok fafdc5bcad8eceae 81
 lvr-1	ok c6b04c66b7ea0cde 180	steps=13 units=180 nesting=3 parses=1	ok c6b04c66b7ea0cde 180	recovered=	refused=	ok c6b04c66b7ea0cde 180
 map-1	ok 8b7e3c8fbcae6bde 183	steps=14 units=183 nesting=5 parses=1	ok 8b7e3c8fbcae6bde 183	recovered=	refused=	ok 8b7e3c8fbcae6bde 183
+map-textsource-labels	ok 0894c39bd3a83a80 427	steps=30 units=427 nesting=7 parses=1	ok 0894c39bd3a83a80 427	recovered=	refused=	ok 0894c39bd3a83a80 427
 markdown-1	ok a5245b04944551cd 72	steps=5 units=72 nesting=2 parses=1	ok a5245b04944551cd 72	recovered=	refused=	ok a5245b04944551cd 72
 markdown-citation-none	ok c04f562917267720 119	steps=5 units=119 nesting=2 parses=1	ok c04f562917267720 119	recovered=	refused=	ok c04f562917267720 119
 markdown-citation-one	ok 8fd6713073a03756 269	steps=10 units=269 nesting=4 parses=1	ok 8fd6713073a03756 269	recovered=	refused=	ok 8fd6713073a03756 269
@@ -237,6 +239,7 @@ scroll-1	ok bc677bdcb05d74cc 174	steps=12 units=174 nesting=5 parses=1	ok bc677b
 select-1	ok 24b1a96a79b398c7 285	steps=20 units=285 nesting=5 parses=1	ok 24b1a96a79b398c7 285	recovered=	refused=	ok 24b1a96a79b398c7 285
 select-option-groups	ok 17f14b6c90121d66 489	steps=34 units=489 nesting=5 parses=1	ok 17f14b6c90121d66 489	recovered=	refused=	ok 17f14b6c90121d66 489
 select-option-groups-remainder	ok d44b285dfa22d178 457	steps=33 units=457 nesting=5 parses=1	ok d44b285dfa22d178 457	recovered=	refused=	ok d44b285dfa22d178 457
+select-textsource-labels	ok a44305aa7671cb4a 365	steps=28 units=365 nesting=7 parses=1	ok a44305aa7671cb4a 365	recovered=	refused=	ok a44305aa7671cb4a 365
 shared-source-seeded-pair	ok 5b98f51317ddc58d 603	steps=48 units=603 nesting=11 parses=1	ok 5b98f51317ddc58d 603	recovered=	refused=	ok 5b98f51317ddc58d 603
 skel-1	ok 22eceaf38523ea38 52	steps=5 units=52 nesting=2 parses=1	ok 22eceaf38523ea38 52	recovered=	refused=	ok 22eceaf38523ea38 52
 spark-1	ok 27c7801196656a72 93	steps=12 units=93 nesting=4 parses=1	ok 27c7801196656a72 93	recovered=	refused=	ok 27c7801196656a72 93

@@ -89,6 +89,12 @@ let private argsOf (node: Node<'Msg>) : Map<string, obj> =
 /// printed case, which is what these tests are about.
 let private fmt (c: CellFormat) : string = sprintf "%A" c
 
+/// An option label's text; these fragments write literal labels only.
+let private labelText (label: TextSource) : string =
+    match label with
+    | TextSource.Literal s -> s
+    | other -> failwithf "not a literal label: %A" other
+
 let private metricsIn (tree: Node<'Msg>) : MetricSpec list =
     descendants tree
     |> List.choose (fun n ->
@@ -678,7 +684,7 @@ let tests =
                         let optionsOf (c: FilterSpec<unit>) =
                             match c.Kind with
                             | FormFieldKind.Choice(Binding.Static(Some o), _, _) ->
-                                o |> List.map (fun o -> o.Value, o.Label)
+                                o |> List.map (fun o -> o.Value, labelText o.Label)
                             | other -> failtestf "chip '%s' is %A, not a static choice" c.Name other
 
                         Expect.equal
@@ -698,12 +704,14 @@ let tests =
                         Expect.isNonEmpty (Stdlib.parseFilterOptions raw) (sprintf "'%s' produced no option" raw)
 
                     Expect.equal
-                        (Stdlib.parseFilterOptions "a=|y" |> List.map (fun o -> o.Value, o.Label))
+                        (Stdlib.parseFilterOptions "a=|y"
+                         |> List.map (fun o -> o.Value, labelText o.Label))
                         [ "y", "y" ]
                         "an entry with a blank label is dropped"
 
                     Expect.equal
-                        (Stdlib.parseFilterOptions "k=a=b" |> List.map (fun o -> o.Value, o.Label))
+                        (Stdlib.parseFilterOptions "k=a=b"
+                         |> List.map (fun o -> o.Value, labelText o.Label))
                         [ "k", "a=b" ]
                         "the first `=` separates value from label"
                 } ]

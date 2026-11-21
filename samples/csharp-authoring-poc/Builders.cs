@@ -424,8 +424,8 @@ internal sealed class FieldBuilder
 
     public static FieldBuilder Choice(string id, string label, string selected, params (string Value, string Label)[] options)
     {
-        // Generated SelectOption declares (Label, Value); Label is a bare string now.
-        var opts = Fs.List(options.Select(o => new SelectOption(o.Label, o.Value)).ToArray());
+        // Generated SelectOption declares (Label, Value); Label is a TextSource (Phase 2811).
+        var opts = Fs.List(options.Select(o => new SelectOption(FsGen.TextSource.NewLiteral(o.Label), o.Value)).ToArray());
         return new FieldBuilder(
             id,
             label,

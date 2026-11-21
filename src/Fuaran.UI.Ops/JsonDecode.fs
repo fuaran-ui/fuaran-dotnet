@@ -3398,7 +3398,10 @@ let rec private decodeSelectOption (path: string) (j: Json) : Result<SelectOptio
     // object form. The value→label map form (`{"A":"A"}`) is deliberately NOT
     // coerced — JSON object key order is not contractual, so coercing it
     // could silently reorder visible options.
-    | JString s -> Ok { Value = s; Label = s }
+    | JString s ->
+        Ok
+            { Value = s
+              Label = TextSource.Literal s }
     | _ ->
 
         match requireObject path j with
@@ -3410,21 +3413,12 @@ let rec private decodeSelectOption (path: string) (j: Json) : Result<SelectOptio
                 requireField path fields "value" "option value string"
                 |> Result.bind (requireString (path + ".value"))
 
+            // The label is a `TextSource` (WIRE_FORMAT §5, Phase 2811): all
+            // three arms ride it, the bare string is the Literal form, and the
+            // `{"$type":"Literal",…}` envelope normalises to it on re-encode.
             let labelR =
-                requireField path fields "label" "option label string"
-                |> Result.bind (fun lJ ->
-                    // The label is a bare string since the swap (the wire's
-                    // literal form). The Literal ENVELOPE (`{"$type":
-                    // "Literal","text":…}`) stays decode-accepted through
-                    // the TextSource shorthand path and projects to its
-                    // text; a Bound/I18n label has no string projection and
-                    // is refused (it was never wire-expressible here — the
-                    // encoder always emitted the literal form).
-                    decodeTextSource (path + ".label") lJ
-                    |> Result.bind (fun label ->
-                        match label with
-                        | TextSource.Literal s -> Ok s
-                        | _ -> wrongType (path + ".label") "literal option label"))
+                requireField path fields "label" "option label TextSource"
+                |> Result.bind (decodeTextSource (path + ".label"))
 
             match valueR, labelR with
             | Ok value, Ok label -> Ok { Value = value; Label = label }
@@ -3499,7 +3493,7 @@ let private decodeBindingSelectOptions (path: string) (j: Json) : Result<Binding
         | JString s when s = opaqueSentinel ->
             Ok
                 [ { Value = opaqueSentinel
-                    Label = opaqueSentinel } ]
+                    Label = (TextSource.Literal opaqueSentinel) } ]
         | _ ->
             match requireArray p v with
             | Error e -> Error e
@@ -3510,7 +3504,7 @@ let private decodeBindingSelectOptions (path: string) (j: Json) : Result<Binding
         parseStatic
         Fuaran.UI.Types.Binding.projectSelectionField<SelectOption list>
         [ { Value = opaqueSentinel
-            Label = opaqueSentinel } ]
+            Label = (TextSource.Literal opaqueSentinel) } ]
         j
 
 let private decodeBindingStringList (path: string) (j: Json) : Result<Binding<string list>, DecodeError> =
@@ -3672,17 +3666,9 @@ let private decodeMapMarker (path: string) (j: Json) : Result<MapMarker, DecodeE
     | Error e -> Error e
     | Ok fields ->
         let labelR =
-            // A bare string since the swap; the Literal envelope stays
-            // decode-accepted and projects to its text (same rule as the
-            // SelectOption label).
-            match requireField path fields "label" "marker label string" with
-            | Error e -> Error e
-            | Ok v ->
-                decodeTextSource (path + ".label") v
-                |> Result.bind (fun label ->
-                    match label with
-                    | TextSource.Literal s -> Ok s
-                    | _ -> wrongType (path + ".label") "literal marker label")
+            // A `TextSource`, as the SelectOption label is (Phase 2811).
+            requireField path fields "label" "marker label TextSource"
+            |> Result.bind (decodeTextSource (path + ".label"))
 
         let latR =
             match requireField path fields "latitude" "marker latitude float" with
@@ -6193,9 +6179,22 @@ let private decodeFormFieldKind
                     | FormFieldId _ -> Ok None
                     | NoAutoBind -> missingField path "value" "Binding<RangePair> value"
 
-            valueR
-            |> Result.map (fun value ->
-                FormFieldKind.Range((value |> Option.map FieldValue.ofRange), handlerOpt "onChange", None, None, None))
+            // Phase 2811 — the optional bounds are read exactly as `RangedNumber`'s
+            // are. They were dropped here, so a `Range` carrying `min` / `max` /
+            // `step` re-encoded without them; no vector carried a bounded `Range`
+            // until `form-unvalued-textarea-ranges`.
+            let boundR (name: string) =
+                match tryField fields name with
+                | None -> Ok None
+                | Some j -> requireFloat (path + "." + name) j |> Result.map Some
+
+            match valueR, boundR "min", boundR "max", boundR "step" with
+            | Ok value, Ok min, Ok max, Ok step ->
+                Ok(FormFieldKind.Range((value |> Option.map FieldValue.ofRange), handlerOpt "onChange", min, max, step))
+            | Error e, _, _, _
+            | _, Error e, _, _
+            | _, _, Error e, _
+            | _, _, _, Error e -> Error e
         | Ok "RangedNumber" ->
             // Parallel-additive Number case carrying optional
             // Min / Max / Step bounds at the field level. Absent keys
