@@ -327,8 +327,18 @@ let tests =
                       Fuaran.Compute.PredictSpec.ofTraining (fitTerm leaves) (Fuaran.Core.Ref "training")
                   )
 
+              // Compute 0.45.0 (fuaran#2703): a k-means feature is an expression too.
+              let kmeansFeature leaves =
+                  Fuaran.Compute.KMeans(
+                      Fuaran.Compute.KMeansSpec.create
+                          [ "p", Fuaran.Compute.Col "a"; "q", wide (Fuaran.Compute.Col "a") leaves ]
+                          2
+                          7L
+                  )
+
               let cases =
                   [ "define", define, "$.kind.source.pipeline[0].body"
+                    "kmeans feature", kmeansFeature, "$.kind.source.pipeline[0].features[1].expr"
                     "fit term", (fitTerm >> Fuaran.Compute.Fit), "$.kind.source.pipeline[0].predictors[0].expr"
                     "fit offset", (fitOffset >> Fuaran.Compute.Fit), "$.kind.source.pipeline[0].offset"
                     "predict term", predict, "$.kind.source.pipeline[0].fit.predictors[0].expr" ]

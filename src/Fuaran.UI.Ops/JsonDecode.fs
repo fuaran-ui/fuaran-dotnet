@@ -2552,6 +2552,14 @@ let private pipelineExprsAdmissible
         | Fuaran.Compute.Define fd -> breach "body" i fd.Body
         | Fuaran.Compute.Fit spec -> fitBreach "" i spec
         | Fuaran.Compute.Predict spec -> fitBreach "fit." i spec.Fit
+        // Compute 0.45.0 (fuaran#2703): each k-means feature is an expression
+        // the evaluator reads, at `features[k].expr`. A bootstrap step carries
+        // aggregates only, which the bound does not count (as for `groupBy`).
+        | Fuaran.Compute.KMeans spec ->
+            spec.Features
+            |> List.indexed
+            |> List.tryPick (fun (k, (_, expr)) -> breach (sprintf "features[%d].expr" k) i expr)
+        | Fuaran.Compute.Bootstrap _
         | Fuaran.Compute.Project _
         | Fuaran.Compute.GroupBy _
         | Fuaran.Compute.Join _
