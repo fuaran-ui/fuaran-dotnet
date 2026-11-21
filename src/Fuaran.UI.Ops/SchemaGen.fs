@@ -1007,7 +1007,19 @@ let private defs: (string * J) list =
                   "onConfirm", ref "Action"
                   "prompt", ref "TextSource" ]
             // Phase 1537 — a node id, the `CommitLocal` shape one branch up.
-            duCase "Focus" [ "nodeId" ] [ "nodeId", str ] ]
+            duCase "Focus" [ "nodeId" ] [ "nodeId", str ]
+            // Phase 2107 — the core's selection and guard. `Choose` is the third
+            // recursive branch; its conditions are Bindings exactly as
+            // `SetState.valueFrom` is. The confirm depth-one bound reaches into
+            // its arms in the decoder, which (as above) the schema cannot state.
+            duCase
+                "Choose"
+                [ "condition"; "whenTrue" ]
+                [ "condition", binding "json"
+                  "exit", binding "json"
+                  "whenFalse", ref "Action"
+                  "whenTrue", ref "Action" ]
+            duCase "Require" [ "condition" ] [ "condition", binding "json" ] ]
 
       // ── CellFormat / ColumnWidth (§3.3) ───────────────────────────────────
       //

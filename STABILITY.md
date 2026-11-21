@@ -7813,7 +7813,103 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.105.0 — the slot opened after v0.104.0 was released; advanced from 0.104.1 on 2026-11-14 by Phase 2716, whose change is breaking (DRAFT — untagged)
+## 0.105.0 — the announced breaking cut (Phase 2303); the slot opened after v0.104.0 was released, advanced from 0.104.1 on 2026-11-14 by Phase 2716, whose change is breaking (DRAFT — untagged)
+
+_**This is the announced breaking cut.** The pre-1.0 surface debts that could not ride an ordinary draft slot are
+released together, once, under this one number. The number is the standing breaking-class draft: it was claimed in
+the version ledger for the cut on 2026-11-21 (intent fuaran#2303), so no concurrent cut can take it.
+`<Version>` already reads 0.105.0 and does not move again for the cut. The slot is frozen and released once the last
+rider has shipped; that is the release act, performed against Phase 2303 and recorded separately. No rider ships outside
+this number. The per-rider blocks below this introduction keep their own text, and later riders append theirs at the
+end of the section._
+
+_Every block in this section rides the cut. The **riders** are the phases that were deferred to it because they
+break a consumer: the list below. The other blocks (2623, 2697, 2716 and the rest) are ordinary draft-slot changes
+that this number releases with the cut._
+
+**Migration index:** [`docs/migrations/0.105.0-breaking-cut.md`](docs/migrations/0.105.0-breaking-cut.md). It links
+every rider's note and gives the order of riders and the consumer raises.
+
+### The riders (as of 2026-11-21)
+
+Each rider's `**Stability impact:**` line is quoted verbatim from its shard.
+
+**Landed on `main`:**
+
+- **Phase 2100** (unreferenced public surface is decided), `1223baef`.
+  > breaking at the cut; additive (obsoletions) until then.
+
+  Symbols: `Fuaran.UI.Bounded` (`NonEmptyString`, `BoundedString`, `BoundedInt`, `Fraction`) and
+  `Fuaran.UI.AiTools.Fidelity.all` / `.kinds` / `.isAnnounced` are `[<Obsolete>]` now and are removed at the cut.
+  Two behaviour corrections: `Fragment.curry` refusal text, `WireSurvivability.steerable` membership.
+  Migration: [`docs/migrations/2100-2101-obsoleted-surface-removed-at-the-cut.md`](docs/migrations/2100-2101-obsoleted-surface-removed-at-the-cut.md).
+- **Phase 2101** (test-only code leaves production modules), `52637fe4`.
+  > additive (obsoletions only).
+
+  Symbols: `Fuaran.UI.Renderer.Render.emitRenderFailure` and `Render.accessibilityAttributes` are `[<Obsolete>]`
+  and are removed at the cut. `RenderTiming.countNodes` and `DebugGlobal.findNode` keep their answers.
+  Migration: [`docs/migrations/2100-2101-obsoleted-surface-removed-at-the-cut.md`](docs/migrations/2100-2101-obsoleted-surface-removed-at-the-cut.md).
+- **Phase 2346** (the C# `EmbedPermission` zero value grants nothing), `52637fe4`.
+  > breaking — `EmbedPermission`'s underlying values change (a public constant); rides the announced
+  > cut ([Phase 2303](2303-the-announced-breaking-cut-has-a-carrier.md)) by operator ruling (2026-10-19).
+
+  Symbols: `Fuaran.UI.CSharp.EmbedPermission` (new `None = 0`; every other member shifts up by one).
+  Migration: [`docs/migrations/2346-embed-permission-zero-grants-nothing.md`](docs/migrations/2346-embed-permission-zero-grants-nothing.md).
+
+**Still to land, in this order** (the reasons are in the migration index):
+
+1. **Phase 2107** (conditional and guard actions lower to `Choose` and `Require`).
+   > Breaking change to `Fuaran.UI` (and every host's closed `Action` union): new cases break exhaustive matches in consumers, though every existing wire document is byte-identical. Requires the version advance the surface guard names. Satisfies and cites the [vocabulary-growth governance charter](../../fuaran-dotnet/docs/VOCABULARY.md) (demand evidence, irreducibility, cost, pre/post confusion delta).
+
+   Symbols: `Action.Choose`, `Action.Require` (two new cases of the generated `Action<'Msg>`), and the C#
+   factories `Actions.Choose` / `Actions.Require`. Migration: `docs/migrations/2107-choose-and-require.md`
+   (lands with the rider).
+2. **Phase 2413** (`Select.multiple` joins the omit-at-default rule).
+   > breaking (canonical bytes) — rides the announced cut (2303). Decoding is unchanged: an explicit
+   > `false` still decodes, as a §16 lenient accept.
+
+   Symbols: no F# signature. The canonical encoding of `Select` stops writing `"multiple": false`. Migration: none
+   needed for code. A consumer that compares stored bytes re-emits them.
+3. **Phase 2811** (the option and marker labels widen to `TextSource`). This is Phase 2345's label half.
+   > breaking. This is 2345's label half, a rider of the announced cut (fuaran#2303). It lands on
+   > the cut's claimed version.
+
+   Symbols: `SelectOption.Label` and `MapMarker.Label` change from `string` to `TextSource`, and so do their
+   construction sites. Migration: a note under `docs/migrations/`, landing with the rider.
+   Phase 2345 itself shipped ahead of the cut on its own shard, and none of its change is in this repository: the
+   specification ruling (wire-format-fixtures `ea6d2bf`) and the fuaran-rs correction (`5bda320`). Its impact line,
+   verbatim, was "to be stated by the ruling: none if the IDL already says the right thing, breaking if a type
+   widens on the wire". The ruling widened the type, so the breaking half is 2811.
+4. **Phase 2110** (four record-shape debts join the breaking cut).
+   > breaking, F# API only; `STABILITY.md` and the migration document carry every change, and the version is the announced cut.
+
+   Symbols: `DataGridSpec` (its sub-records, `RowIdentity` and the `Source | StaticRows` union), the
+   `FormFieldKind` case payloads, `Binding.Local`, and `Defaults.noBinding`, which is retired. Migration: a note
+   under `docs/migrations/`, landing with the rider.
+5. **Phase 2340** (2300's rules 2 and 3 and the renames).
+   > breaking — the renames change wire names and the presence rule removes placeholders; both ride
+   > the announced cut (fuaran#2303), with every old form still decoded.
+
+   Symbols: the renamed fields and members in 1965's naming table, listed by the rider when it lands. Migration: a
+   note under `docs/migrations/`, landing with the rider.
+
+**Removal of the obsoleted surface.** 2100 and 2101 mark six names `[<Obsolete>]` and say they are removed at the
+cut. No rider shard does the removal yet. It is recorded as an open item on Phase 2303's outcome.
+
+**Consumer hosts outside this repository.** These go with the cut but land in their own repositories:
+
+- fuaran-kt's public `MountDirection.InOnly` constant (`Enums.generated.kt`). Its decoder already refuses `"InOnly"`
+  (Phase 2331).
+- fuaran-swift's five union-case closure slots that Phase 2331 left out: `Action.ReadFileBody.onRead`,
+  `CellKindErased.Editable.onEdit`, `.Checkbox.onToggle`, `.Button.onClick` and `.Progress.labelFn`
+  (`Dialect.swift`, "each waits for a breaking release").
+
+**Not in this cut.** The 2026-09-30 analysis (D6) also listed `IFuaranTelemetrySink` as one
+`Record: TelemetryEvent`, `CanonicalJson` and `Elicitation` out of `OpStream.Abstractions`, the `NodeId` swap and
+TS `State.defaultValue?: T`. None of them has a rider shard. A debt with no shard does not ride, and this entry does
+not claim it.
+
+### How the slot opened
 
 _`v0.104.0` is TAGGED (2026-11-11, at `cc477007`), so nothing may ride it. Phase 2623 opens the next slot at the
 patch number: its change moves no public surface. The `<Version>` advance and its ledger record are the release
@@ -8400,6 +8496,33 @@ is seen. A host that replaces its data, or its tree, per dispatch gets exactly t
 
 **Consumer action: none**, unless one of the two source breaks above applies.
 
+### What rides this slot — Phase 2107 (`Action.Choose` and `Action.Require`, the core's selection and guard)
+
+**Stability impact:** Breaking change to `Fuaran.UI` (and every host's closed `Action` union): new cases break exhaustive matches in consumers, though every existing wire document is byte-identical. Requires the version advance the surface guard names. Satisfies and cites the [vocabulary-growth governance charter](../../fuaran-dotnet/docs/VOCABULARY.md) (demand evidence, irreducibility, cost, pre/post confusion delta).
+
+**Class: breaking (two union cases), wire additive.** Packages `Fuaran.UI` (the generated `Action<'Msg>` union),
+`Fuaran.UI.Ops` (decoder and schema), `Fuaran.UI.Program` (the UI witness), `Fuaran.UI.CSharp` (factories), and
+every package holding an exhaustive `match` over `Action` (`Fuaran.UI.Ops.Abstractions`, `Fuaran.UI.Renderer`,
+`Fuaran.UI.Renderer.Server`, `Fuaran.UI.ServerDriven`). No existing corpus byte moves; the corpus gains two node
+fixtures, three reject fixtures and three `lowers-to/` vectors (WIRE_FORMAT §3.6.34, §30.1).
+
+**Consumer-visible symbols.**
+- `Action.Choose of condition: Binding<JVal> * whenTrue: Action<'Msg> * whenFalse: Action<'Msg> option * exit: Binding<JVal> option`
+  and `Action.Require of condition: Binding<JVal>` — the bounded program core's `Choose` and `Require`, with the
+  core's names. `UiWitness.view` lowers them to those arms (identity rows of §30.1).
+- C#: `Actions.Choose(condition, whenTrue)`, `Actions.Choose(condition, whenTrue, whenFalse)`,
+  `Actions.Require(condition)`.
+- `ActionInvocation.describe` prints `Choose` / `Require` with no contents (the `Chain` rule); `payloadFor` is `None`
+  for both.
+- The client renderer (`Fuaran.UI.Renderer`) and the server-driven driver (`Fuaran.UI.ServerDriven`) do NOT evaluate
+  either case: a gesture reaching one is refused whole, warned, and recorded as `Denied` where an action sink is
+  wired. The SSR resume disposition of both is `Fallback`; an Adaptive Card projects neither.
+
+**What breaks.** An exhaustive `match` over `Action<'Msg>` in consumer code (FS0025 under warnings-as-errors): add
+the two arms. Nothing else: no signature moved, and no document written before this release decodes differently.
+
+**Consumer action:** add the two arms to any exhaustive action match — see
+[`docs/migrations/2107-choose-and-require.md`](docs/migrations/2107-choose-and-require.md).
 ### What rides this slot — Phase 2100 (unreferenced public surface is decided: deleted in the breaking cut, or tested)
 
 **Class: ADDITIVE (four obsoletions) + two behaviour corrections.** Packages `Fuaran.UI` and `Fuaran.UI.AiTools`.

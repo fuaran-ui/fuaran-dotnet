@@ -494,8 +494,28 @@ let rec private interpret
     // Invoke (Phase 283) — a host-coupled capability dispatch; routes through the injected host
     // interpreter, like AiTool / Call.
     | Action.Invoke _ -> (services.InterpretHostEffect action |> Option.toList), []
+    // Phase 2107 — control flow is the bounded program loop's
+    // (`Fuaran.UI.Program`), never a second evaluator here. Never reached:
+    // `applyResolvedActionsWithSubmitBody` refuses a gesture carrying either
+    // arm whole, so a guard cannot fail open by its members running anyway.
+    | Action.Choose _
+    | Action.Require _ -> [], []
 
 #warnon "44"
+
+/// Phase 2107 — whether `action` reaches a control arm anywhere (the generated
+/// fold walks `Chain` members and `Confirm` continuations). Such a gesture is
+/// refused whole by this driver: it produces no message and no effect.
+let private reachesControlFlow (action: Action<'Msg>) : bool =
+    Fuaran.UI.Generated.Action.fold
+        (fun found a ->
+            found
+            || (match a with
+                | Action.Choose _
+                | Action.Require _ -> true
+                | _ -> false))
+        false
+        action
 
 /// Phase 2523 - the request parameters an action writes: a `SetState` names its
 /// key, and a `Chain` carries its members'. `Value` is the literal the action
@@ -599,7 +619,12 @@ let applyResolvedActionsWithSubmitBody
         actions
         |> List.fold
             (fun (ms, es) (a, submitBody) ->
-                let m2, e2 = interpret nodeId session.Services submitBody ConfirmPath.root a
+                let m2, e2 =
+                    if reachesControlFlow a then
+                        [], []
+                    else
+                        interpret nodeId session.Services submitBody ConfirmPath.root a
+
                 ms @ m2, es @ e2)
             ([], [])
 

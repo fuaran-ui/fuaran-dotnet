@@ -1237,6 +1237,40 @@ let all: RejectFixture list =
         Description =
           "A Confirm inside a Confirm's continuation, reached through a Chain — confirmation is bounded at one question, and the check walks the DECODED continuation so a chain cannot hide the nesting (Phase 1537)" }
 
+      // Phase 2107 — a selection with nothing to select: `whenTrue` is the one
+      // required arm (an absent `whenFalse` is "nothing happens"), so this
+      // vector keeps an emitter from generalising the optional arm to both.
+      { Id = "reject-choose-missing-whentrue"
+        Json =
+          """{"id":"b-choose","kind":{"$type":"Button","label":"Go","onClick":{"$type":"Choose","condition":{"$type":"State","key":"ready"},"whenFalse":{"$type":"Print"}}}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.onClick.whenTrue"
+        IsOp = false
+        Description =
+          "Choose with no 'whenTrue' — the true arm is required and only 'whenFalse' may be absent (Phase 2107)" }
+
+      // Phase 2107 — a guard with nothing to check. Not defaulted to `true`: a
+      // guard that holds by default is a guard that is not there.
+      { Id = "reject-require-missing-condition"
+        Json =
+          """{"id":"b-require","kind":{"$type":"Button","label":"Go","onClick":{"$type":"Chain","ops":[{"$type":"Require"},{"$type":"Print"}]}}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.onClick.ops[0].condition"
+        IsOp = false
+        Description = "Require with no 'condition' — a guard is never defaulted to holding (Phase 2107)" }
+
+      // Phase 2107 — the confirm depth-one bound reaches THROUGH a selection's
+      // arm: a continuation that chooses a second question is still a
+      // dialogue answering a dialogue.
+      { Id = "reject-confirm-nested-in-choose"
+        Json =
+          """{"id":"b-confirm","kind":{"$type":"Button","label":"Delete","onClick":{"$type":"Confirm","prompt":"Delete this order?","onConfirm":{"$type":"Choose","condition":{"$type":"State","key":"order.paid"},"whenTrue":{"$type":"Confirm","prompt":"It is paid. Really?","onConfirm":{"$type":"Print"}}}}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.onClick.onConfirm.whenTrue"
+        IsOp = false
+        Description =
+          "A Confirm inside a Choose arm inside a Confirm's continuation — the depth-one bound walks a selection's arms as it walks a Chain (Phase 2107)" }
+
       // ─── WRONG_NODE_KIND ─────────────────────────────────────────────
       { Id = "reject-wrongnodekind-widget"
         Json =

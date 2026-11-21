@@ -134,6 +134,16 @@ let rec private addressAt (path: string) (action: Action<obj>) : Action<obj> =
     match action with
     | Action.Chain ops -> Action.Chain(ops |> List.mapi (fun i op -> addressAt (ConfirmPath.child path i) op))
     | Action.Confirm _ -> carry (ConfirmCarrier.Ask(path, action))
+    // Phase 2107 — a selection's arms are reachable by the gesture (whichever
+    // the condition picks), so a confirm inside one is addressed under the
+    // arm's name, exactly as a continuation is under its own.
+    | Action.Choose(condition, whenTrue, whenFalse, exit) ->
+        Action.Choose(
+            condition,
+            addressAt (ConfirmPath.branch path "whenTrue") whenTrue,
+            whenFalse |> Option.map (addressAt (ConfirmPath.branch path "whenFalse")),
+            exit
+        )
     | other -> other
 
 /// The action a gesture folds: the node's resolved action with each confirm it
@@ -165,6 +175,8 @@ let addressedConfirm (nodeId: string) (token: string) (action: Action<obj>) : (s
                 | _ -> None
             | "onConfirm" :: rest, Action.Confirm(_, onConfirm, _) -> go rest onConfirm
             | "onCancel" :: rest, Action.Confirm(_, _, Some onCancel) -> go rest onCancel
+            | "whenTrue" :: rest, Action.Choose(_, whenTrue, _, _) -> go rest whenTrue
+            | "whenFalse" :: rest, Action.Choose(_, _, Some whenFalse, _) -> go rest whenFalse
             | _ -> None
 
         go segments action |> Option.map (fun confirm -> path, confirm)
@@ -300,6 +312,9 @@ let rec lowerCommits (tree: Node<obj>) (action: Action<obj>) : Action<obj> =
     | Action.Chain ops -> Action.Chain(List.map (lowerCommits tree) ops)
     | Action.Confirm(prompt, onConfirm, onCancel) ->
         Action.Confirm(prompt, lowerCommits tree onConfirm, Option.map (lowerCommits tree) onCancel)
+    // Phase 2107 — either arm of a selection may run, so a commit in either is lowered.
+    | Action.Choose(condition, whenTrue, whenFalse, exit) ->
+        Action.Choose(condition, lowerCommits tree whenTrue, Option.map (lowerCommits tree) whenFalse, exit)
     | other -> other
 
 /// The DISPATCH resolution: the commits this event folds, flushed from its
@@ -330,6 +345,15 @@ let flushCommits
         | Action.Chain ops ->
             let flushed = List.map go ops
             Action.Chain(List.map fst flushed), List.collect snd flushed
+        // Phase 2107 — the gesture reaches whichever arm its condition picks at
+        // dispatch, which is not known here, so the commits of BOTH arms are
+        // flushed and each write is put to the gate: a write the gate refuses in
+        // either arm refuses the event, the conservative reading of "each flushed
+        // write meets the gate on its own" (WIRE_FORMAT §30.1).
+        | Action.Choose(condition, whenTrue, whenFalse, exit) ->
+            let t, tw = go whenTrue
+            let f = whenFalse |> Option.map go
+            Action.Choose(condition, t, f |> Option.map fst, exit), tw @ (f |> Option.map snd |> Option.defaultValue [])
         | other ->
             match carried other with
             | Some c ->
@@ -347,9 +371,9 @@ let flushCommits
 
     go action
 
-/// `ActionWitness.View` — the total match over the closed fourteen-case union.
-/// Four cases are control structure the core owns; the other ten are leaves,
-/// each declaring what it may demand. No wildcard: a fifteenth arm fails to
+/// `ActionWitness.View` — the total match over the closed sixteen-case union.
+/// Six cases are control structure the core owns; the other ten are leaves,
+/// each declaring what it may demand. No wildcard: a seventeenth arm fails to
 /// compile here, which is the exhaustiveness check D18 moves into the adapter.
 ///
 /// The other two effect arms (`PushState` / `Download`) are absent
@@ -360,6 +384,12 @@ let view (action: Action<obj>) : ActionView<Action<obj>, Binding<JVal>> =
     | Action.Chain actions -> ActionView.Sequence actions
     | Action.SetState(key, value, valueFrom) -> ActionView.Assign(key, value, valueFrom)
     | Action.Call(endpoint, _, into) -> ActionView.Call(endpoint, Option.isSome into)
+    // Phase 2107 — the core's own arms, spelled with the core's own names
+    // (WIRE_FORMAT §30.1): identity rows. An absent `whenFalse` is the empty
+    // sequence, which is what "nothing happens" is (the confirm's `onCancel`).
+    | Action.Choose(condition, whenTrue, whenFalse, exit) ->
+        ActionView.Choose(condition, whenTrue, whenFalse |> Option.defaultValue (Action.Chain []), exit)
+    | Action.Require condition -> ActionView.Require condition
     | Action.Navigate _ -> ActionView.Leaf(kindOf (ClientEffect.Navigate("", NavigateTarget.Self)))
     | Action.Focus _ -> ActionView.Leaf(kindOf (ClientEffect.Focus ""))
     | Action.WriteToClipboard _ -> ActionView.Leaf(kindOf (ClientEffect.WriteToClipboard ""))
@@ -456,7 +486,7 @@ let private promptOf (s: BindingSources) (prompt: TextSource) : Result<string, s
     | Ok text when System.String.IsNullOrWhiteSpace text -> Error "the prompt resolved to no text"
     | other -> other
 
-/// `ActionWitness.Lower` — what each LEAF does at dispatch. The three control
+/// `ActionWitness.Lower` — what each LEAF does at dispatch. The five control
 /// cases never reach it through `view`; being total, it declines them.
 let lower (nodeId: string) (action: Action<obj>) (s: BindingSources) : LeafOutcome<ClientEffect> =
     match action with
@@ -601,6 +631,8 @@ let lower (nodeId: string) (action: Action<obj>) (s: BindingSources) : LeafOutco
     // answers the no-op.
     | Action.Chain _
     | Action.SetState _
+    | Action.Choose _
+    | Action.Require _
     | Action.Call _ -> LeafOutcome.Decline
 
 #warnon "44"

@@ -147,6 +147,17 @@ let rec private modelAction (a: Action<obj>) : BoundedFold.action<obj, obj, obj>
     | Action.Confirm(prompt, onConfirm, onCancel) ->
         BoundedFold.AConfirm(modelText prompt, modelAction onConfirm, modelOpt (onCancel |> Option.map modelAction))
     | Action.Focus nodeId -> BoundedFold.AFocus nodeId
+    // Phase 2107 — the program repository's pinned model carries the UI
+    // witness's FOURTEEN arms, and these two are the core's own selection and
+    // guard, which that model states over its generic action view rather than
+    // over this union. No corpus scenario carries one yet, so reaching this is a
+    // corpus that outgrew the pinned model: fail loudly, on `modelEffect`'s
+    // reasoning, rather than translating it into something the model agrees with.
+    | Action.Choose _
+    | Action.Require _ ->
+        failwithf
+            "the action %A carries a control arm the pinned proofs/BoundedFold model does not carry. Raise the model pin before adding a scenario that uses one."
+            a
 
 #warnon "44"
 

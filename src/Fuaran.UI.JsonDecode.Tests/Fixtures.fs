@@ -3023,6 +3023,55 @@ let actionFocus: Node<obj> =
         ))
         None
 
+// Phase 2107 — `Action.Require` and `Action.Choose`, the bounded core's guard and
+// selection spelled with the core's own names.
+//
+// The guard is the arm no composition reaches, so its fixture is the shape that
+// shows why: a CHAIN whose later members must not run unless the condition holds.
+// `whenFalse` is absent here (the `Confirm.onCancel` omit-when-absent rule), so a
+// host that always emits it fails this fixture.
+[<NodeFixture "Phase 2107 — Input/Button whose Chain is guarded by Action.Require on a state flag, then an Action.Choose with no whenFalse and no exit">]
+let actionRequire: Node<obj> =
+    node
+        "action-require"
+        (NodeKind.Button(
+            { Defaults.button with
+                Label = TextSource.Literal "Submit order"
+                OnClick =
+                    Action.Chain
+                        [ Action.Require(Binding.State("form.valid", None))
+                          Action.Choose(
+                              Binding.State("order.express", Some(JBool false)),
+                              Action.SetState("shipping", Some(JStr "express"), None),
+                              None,
+                              None
+                          )
+                          Action.Call("/orders/submit", None, Some(CallResultTarget.State "submit-result")) ] }
+        ))
+        None
+
+// Phase 2107 — every member of `Choose`: both arms and the exit assertion. Kept
+// apart from the fixture above on the Phase 1536 rule, so a host that encodes
+// `whenFalse` and drops `exit` (or the reverse) fails one fixture by name. The
+// arms are whole actions, so the encoder recurses into a named member here as it
+// does for `Confirm`.
+[<NodeFixture "Phase 2107 — Input/Button whose Action.Choose carries both arms and the optional exit assertion">]
+let actionChoose: Node<obj> =
+    node
+        "action-choose"
+        (NodeKind.Button(
+            { Defaults.button with
+                Label = TextSource.Literal "Toggle details"
+                OnClick =
+                    Action.Choose(
+                        Binding.State("details.open", Some(JBool false)),
+                        Action.SetState("details.open", Some(JBool false), None),
+                        Some(Action.SetState("details.open", Some(JBool true), None)),
+                        Some(Binding.State("details.open", None))
+                    ) }
+        ))
+        None
+
 // Phase 676 — the JSON-payload actions, with payloads worth testing.
 //
 // `Notify` / `SetState` / `AiTool` each carry a `JVal` of arbitrary JSON, and

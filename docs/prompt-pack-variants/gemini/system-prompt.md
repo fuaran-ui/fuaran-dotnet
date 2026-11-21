@@ -324,6 +324,8 @@ Action =
 | Print
 | Confirm { onConfirm:Action; prompt:TextSource; onCancel?:Action }
 | Focus { nodeId:str }
+| Choose { condition:Binding_json; whenTrue:Action; exit?:Binding_json; whenFalse?:Action }
+| Require { condition:Binding_json }
 Binding_bool =
 | Static { value:bool }
 | Query { name:str; dependsOn?:str[] }
