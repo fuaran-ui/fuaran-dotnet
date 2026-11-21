@@ -349,9 +349,13 @@ let childNodes (node: Node<'Msg>) : Node<'Msg> list =
 let rec walkNodes (tree: Node<'Msg>) : Node<'Msg> list =
     tree :: (childNodes tree |> List.collect walkNodes)
 
-/// The first node with `id` (depth-first), or `None`.
-let findNode (id: string) (tree: Node<'Msg>) : Node<'Msg> option =
-    walkNodes tree |> List.tryFind (fun n -> n.Id = id)
+/// The first node with `id` (depth-first, root first — `walkNodes` order), or
+/// `None`. Stops at the first match and builds no list of the tree (Phase 2101).
+let rec findNode (id: string) (tree: Node<'Msg>) : Node<'Msg> option =
+    if tree.Id = id then
+        Some tree
+    else
+        childNodes tree |> List.tryPick (findNode id)
 
 /// Ids of every node whose wire kind discriminator equals `kind`.
 let findNodesByKind (kind: string) (tree: Node<'Msg>) : string list =

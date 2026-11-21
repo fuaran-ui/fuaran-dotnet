@@ -82,11 +82,13 @@ type Probe(label: string, nodeCount: int) =
           FullRenderMs = fullRenderMs }
 
 /// The node count of a tree — the size axis the Phase 104 decision is a function
-/// of. Reuses the `DebugGlobal` structural walk (Layout children + ErrorBoundary
-/// arms + FragmentDecl body), so it counts exactly the addressable nodes the
-/// renderer commits.
-let countNodes (tree: Node<'Msg>) : int =
-    DebugGlobal.walkNodes tree |> List.length
+/// of. Reads the same children `DebugGlobal.walkNodes` does (Layout children +
+/// ErrorBoundary arms + FragmentDecl body), so it counts exactly the addressable
+/// nodes the renderer commits — but folds the count, never building the list of
+/// every node only to take its length (Phase 2101).
+let rec countNodes (tree: Node<'Msg>) : int =
+    DebugGlobal.childNodes tree
+    |> List.fold (fun count child -> count + countNodes child) 1
 
 /// A summary over many samples of one metric — the shape a baseline row carries.
 type RenderStat =

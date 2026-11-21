@@ -161,8 +161,10 @@ let emitRenderFailureWithContext
     corrId
 
 /// `emitRenderFailureWithContext` with no correlation context — the pre-330
-/// arity, kept so existing callers compile unchanged. Equivalent to passing
-/// `Map.empty`.
+/// arity. Equivalent to passing `Map.empty`. Obsolete since Phase 2101: nothing
+/// in the renderer calls it, and its only remaining callers were tests, which now
+/// call `emitRenderFailureWithContext sink Map.empty` directly.
+[<System.Obsolete("Use emitRenderFailureWithContext sink Map.empty nodeId kindName errorMessage source (Phase 2101).")>]
 let emitRenderFailure
     (sink: IFuaranTelemetrySink option)
     (nodeId: string)
@@ -443,14 +445,16 @@ module ChartLoweringMemo =
 // The `(key, value)` HTML-attribute projection of a `Node`'s `Accessibility`
 // trait moved to the emission-agnostic `Fuaran.UI.Renderer.Accessibility`
 // module in `Fuaran.UI.Renderer.Core` (Phase 138) so the server renderer can
-// emit the same pairs without Feliz/Fable. Re-exported here as
-// `Render.accessibilityAttributes` so existing call sites + `AccessibilityTests`
-// are unchanged; the client renderer maps the pairs to Feliz `prop.custom`
-// props at the `render` call site below.
+// emit the same pairs without Feliz/Fable. The client renderer reaches it
+// through `ElementPlan` and maps the pairs to Feliz `prop.custom` props. The
+// `Render.accessibilityAttributes` re-export below is obsolete (Phase 2101):
+// its callers were tests and the catalog sample, which now call the Core
+// projection directly.
 
 /// Re-export of [`Accessibility.accessibilityAttributes`]. Projects an
 /// `Accessibility option` (resolved against the supplied `BindingSources`)
 /// into the `(attr-name, attr-value)` DOM-attribute pairs.
+[<System.Obsolete("Use Fuaran.UI.Renderer.Accessibility.accessibilityAttributes, which this re-exports (Phase 2101).")>]
 let accessibilityAttributes
     (sources: BindingResolver.BindingSources)
     (a11y: Accessibility option)
