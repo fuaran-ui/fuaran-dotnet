@@ -17,8 +17,9 @@ namespace Fuaran.UI.FastPath.Tests
 //  public codecs — the declaration through `CapabilityCodec.decode`, the args as
 //  plain `{name, value}` pairs, keyed by qualified hole name since Core 0.45.0 —
 //  and its recorded answer is recomputed by calling the pinned kit, never
-//  trusted. The draw is still reproduced here (`draws`), because `capturedValue` is the sample's own draw rather than
-//  something the kit computes from the inputs, and because the file declares
+//  trusted. The draw is still reproduced here (`draws`), because
+//  `capturedValue` is the sample's own draw rather than something the kit
+//  computes from the inputs, and because the file declares
 //  the seed a host must be able to reproduce the sample from.
 //
 //  `laws/manifest.json` beside it is CURATED BY HAND: it indexes every family
