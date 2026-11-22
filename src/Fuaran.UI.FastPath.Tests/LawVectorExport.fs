@@ -102,13 +102,21 @@ module LawVectorExport =
                       { Host = ReadsHost
                         Determinism = List.item (i % 7) nonEmptySets } }
 
+              // Core 0.43.0 (Phase 642): the declared result alternates as Core's sample does — the
+              // captured value's space on an even iteration, nothing on an odd one.
+              let result =
+                  if i % 2 = 0 then
+                      Returns.Value(IntRange(0, 999))
+                  else
+                      Returns.Nothing
+
               yield
                   { Iteration = i
                     Lo = lo
                     Hi = hi
                     Realized = realized
-                    Cap = Capability.create ("cap-" + string i) sg (ClientIsland Pyodide)
-                    CapB = Capability.create ("cap-a" + string i) sg BuildTime } ]
+                    Cap = Capability.create ("cap-" + string i) sg (ClientIsland Pyodide) result
+                    CapB = Capability.create ("cap-a" + string i) sg BuildTime result } ]
 
     /// The pinned kit's version, read from the assembly: the version decides
     /// what the laws do, so it is what a copy's `kitVersion` is compared with.

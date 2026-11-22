@@ -95,7 +95,8 @@ module CoreLawSupport =
     let private slotHole (addr: string) (name: string) (kindConstraint: string option) : HoleDecl =
         { Addr = addr
           Name = name
-          Kind = SlotHole kindConstraint }
+          Kind = SlotHole kindConstraint
+          Slots = [] }
 
     /// Correct by construction: every value in the declared space `[1, 5]`
     /// lowers to a non-empty node id, so the tier's own egress gate
@@ -384,6 +385,8 @@ module CoreLawSupport =
         | AnyString -> "any"
         | SlotTree(Some k) -> "tree[" + k + "]"
         | SlotTree None -> "tree"
+        | Document(Some t) -> "doc[" + t + "]"
+        | Document None -> "doc"
 
     let renderEffect (e: EffectClass) : string =
         let host =
@@ -484,6 +487,8 @@ module CoreLawSupport =
             Some("s" + string k), r
         // A tree space (Fuaran.Core 0.31.0): a wire document of the constrained kind, or of any.
         | SlotTree c -> Some("{\"kind\":\"" + defaultArg c "Text" + "\"}"), rng
+        // A document space (Fuaran.Core 0.43.0): any well-formed JSON document; no fixture declares one.
+        | Document _ -> Some "{}", rng
         | FloatRange(lo, hi) ->
             let k, r = CoreRng.intBelow 1001 rng
             Some(sprintf "%f" (lo + (hi - lo) * (float k / 1000.0))), r

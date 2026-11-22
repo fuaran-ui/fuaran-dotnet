@@ -198,7 +198,8 @@ module Elicitation =
     /// not an elicitation space: §18.2 answers are scalars, and §18.1 closes the `$type` set.
     let private isElicitationSpace (s: ValueSpace) : bool =
         match s with
-        | SlotTree _ -> false
+        | SlotTree _
+        | Document _ -> false
         | IntRange _
         | FloatRange _
         | StringLen _
@@ -220,6 +221,12 @@ module Elicitation =
                 "slotTree"
                 (match c with
                  | Some k -> [ "slotKind", JStr k ]
+                 | None -> [])
+        | Document c ->
+            Canonical.typed
+                "document"
+                (match c with
+                 | Some t -> [ "documentType", JStr t ]
                  | None -> [])
 
     let private decodeSpace (path: string) (jv: JVal) : Result<ValueSpace, JsonDecode.DecodeError> =
@@ -450,6 +457,7 @@ module Elicitation =
                     | (StringLen _ | Enum _ | AnyString), _ -> mismatch "a string"
                     // A tree space is no elicitation space, so no answer value conforms to it.
                     | SlotTree _, _ -> mismatch "a value of an elicitation space (a tree space is not one)"
+                    | Document _, _ -> mismatch "a value of an elicitation space (a document space is not one)"
 
             contract.Fields
             |> List.fold (fun acc f -> acc |> Result.bind (fun () -> checkField f)) (Ok())

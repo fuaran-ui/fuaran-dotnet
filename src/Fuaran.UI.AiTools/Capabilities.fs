@@ -25,7 +25,7 @@ type private CoreDeferred = Fuaran.Core.Deferred<obj>
 /// projection of its `Signature` (the typed args an agent may pass), in the registry's stable id
 /// order. This is the compute analogue of node-introspection — an agent reads it to learn the
 /// invokable surface, just as it reads the node schema to learn the emittable surface.
-let discover (registry: Fuaran.Core.CapabilityRegistry) : (string * Fuaran.Core.JVal) list =
+let discover (registry: Fuaran.Core.CapabilityRegistry<unit>) : (string * Fuaran.Core.JVal) list =
     Fuaran.Core.CapabilityRegistry.enumerate registry
     |> List.map (fun cap -> cap.Id, Fuaran.Core.Function.toJsonSchema cap.Signature)
 
@@ -36,13 +36,16 @@ let discover (registry: Fuaran.Core.CapabilityRegistry) : (string * Fuaran.Core.
 /// host `body` runs only past all of that, and its `Deferred` is settled by the registry (a body
 /// failure is the typed `BodyFailed`). This is the path the `capabilityLawsAt` family certifies
 /// (`CapabilitySeamWitness.Dispatch`), kept as the one function `makeInvoker` and the witness share.
+/// The registry is the context-free one (Core 0.43.0's `CapabilityRegistry<'Ctx>`, Phase 638): a host
+/// whose gates decide under a context closes it with `CapabilityRegistry.under ctx` first, and the
+/// dispatch presents no grant, so a `NeedsApproval` gate answers `ApprovalRequired` as before.
 let invoke
-    (registry: Fuaran.Core.CapabilityRegistry)
+    (registry: Fuaran.Core.CapabilityRegistry<unit>)
     (capabilityId: string)
     (args: (string * string) list)
     (body: Fuaran.Core.Capability -> (string * string) list -> Deferred<obj>)
     : Result<Fuaran.Core.Deferred<obj>, Fuaran.Core.InvokeError> =
-    Fuaran.Core.CapabilityRegistry.dispatch registry capabilityId args (fun cap () ->
+    Fuaran.Core.CapabilityRegistry.dispatch registry () None capabilityId args (fun cap () ->
         match body cap args with
         | Deferred.Pending -> CoreDeferred.Pending
         | Deferred.Ready v -> CoreDeferred.Ready v
@@ -59,7 +62,7 @@ let invoke
 /// certifies this); a genuinely-async host returns `Deferred.Pending` from its own body resolver
 /// until the realized value arrives, surfacing the node's `onLoading` subtree meanwhile.
 let makeInvoker
-    (registry: Fuaran.Core.CapabilityRegistry)
+    (registry: Fuaran.Core.CapabilityRegistry<unit>)
     (body: Fuaran.Core.Capability -> (string * string) list -> Deferred<obj>)
     : string -> (string * string) list -> Deferred<obj> =
     fun capabilityId args ->

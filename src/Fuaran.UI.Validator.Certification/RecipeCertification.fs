@@ -371,16 +371,16 @@ let certifyFragment<'Msg>
         let inner = uiValidityRegistry<'Msg>
 
         let wrap (fam: Fuaran.Core.RuleFamily<Node<'Msg>, NodeId>) : Fuaran.Core.RuleFamily<Node<'Msg>, NodeId> =
-            { fam with
-                Run =
-                    fun w node ->
-                        // `node` is the bound decl (post-fold); materialise it.
-                        let emitted =
-                            match node.Kind with
-                            | NodeKind.FragmentDecl _ -> materialize (boundValues node)
-                            | _ -> node
+            // A family is opaque since Core 0.45.0 (Phase 709): the wrapper is a whole-tree family
+            // under the same id that runs the inner family alone (`asCheck`) over the emitted tree.
+            Fuaran.Core.Validator.wholeTree fam.Id (fun w node ->
+                // `node` is the bound decl (post-fold); materialise it.
+                let emitted =
+                    match node.Kind with
+                    | NodeKind.FragmentDecl _ -> materialize (boundValues node)
+                    | _ -> node
 
-                        fam.Run w emitted }
+                (Fuaran.Core.Validator.asCheck w fam).Run emitted)
 
         { Families = inner.Families |> List.map wrap }
 

@@ -330,7 +330,8 @@ module CoreFunctionLawTests =
                           [ FastPath.textHole "body" "body"
                             { Addr = "inner"
                               Name = "inner"
-                              Kind = SlotHole(Some "Markdown") } ]
+                              Kind = SlotHole(Some "Markdown")
+                              Slots = [] } ]
                         Build = fun _ -> Fuaran.markdown "md" "hello" }
 
                   let b = FastPath.bank [ slotBearing ]

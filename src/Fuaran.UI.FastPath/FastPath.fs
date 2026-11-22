@@ -34,7 +34,7 @@ module FastPath =
     /// A bank = the Core signature registry (for search) + the id→pattern map (for
     /// retrieval + instantiation). Built once from a pattern list.
     type Bank =
-        { Registry: FunctionRegistry
+        { Registry: FunctionRegistry<unit>
           Patterns: Map<string, Pattern> }
 
     /// A UI-ergonomic query: the holes the caller can fill (the available context),
@@ -49,7 +49,8 @@ module FastPath =
     let valueHole (addr: string) (name: string) (space: ValueSpace) : HoleDecl =
         { Addr = addr
           Name = name
-          Kind = ValueHole space }
+          Kind = ValueHole space
+          Slots = [] }
 
     /// A free-text value hole (any string).
     let textHole (addr: string) (name: string) : HoleDecl = valueHole addr name AnyString
@@ -153,9 +154,13 @@ module FastPath =
                 (FunctionRegistry.empty, patterns)
                 ||> List.fold (fun r p ->
                     let cap =
-                        Capability.create p.Id (signatureOf p.Title p.Holes) Placement.ClientDeclarative
+                        Capability.create
+                            p.Id
+                            (signatureOf p.Title p.Holes)
+                            Placement.ClientDeclarative
+                            (Returns.Value(SlotTree(Some p.ResultType)))
 
-                    match FunctionRegistry.register (FunctionRegistry.entry p.ResultType cap) r with
+                    match FunctionRegistry.register (FunctionRegistry.entry cap) r with
                     | Ok next -> next
                     // Unreachable for a duplicate id, which is refused above.
                     // A registration the Core registry declines for its OWN

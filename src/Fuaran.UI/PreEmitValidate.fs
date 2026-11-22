@@ -6981,12 +6981,10 @@ let toDefect (locate: string option -> 'Id option) (d: PreEmitDefect) : Defect<'
 /// witness is unused: the walk reaches every node the language holds, keyed
 /// positions included, which a structural witness does not report.
 let ruleFamily<'Msg, 'Id> (locate: string option -> 'Id option) : RuleFamily<Node<'Msg>, 'Id> =
-    { Id = "Fuaran.UI.PreEmitValidate"
-      Run =
-        fun _ root ->
-            match validate root with
-            | Ok() -> []
-            | Error defects -> defects |> List.map (toDefect locate) }
+    Validator.wholeTree "Fuaran.UI.PreEmitValidate" (fun _ root ->
+        match validate root with
+        | Ok() -> []
+        | Error defects -> defects |> List.map (toDefect locate))
 
 // ── Phase 1889 — the binding-check report: every chart and grid, graded ──
 //
