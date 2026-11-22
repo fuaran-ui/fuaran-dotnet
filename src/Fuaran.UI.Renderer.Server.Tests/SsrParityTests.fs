@@ -274,18 +274,21 @@ let private fixtures: Fixture list =
                   YFields = [ "y" ] }
         Expected = [ "fuaran-drawing"; "fuaran-drawing-rect"; "role=\"img\""; "<svg" ] }
 
-      // The one not-yet-lowered kind (Heatmap — Scatter/Area/Pie gained arms in
-      // Phases 636/637/638) keeps the deterministic client-hydration placeholder.
-      { Name = "Visualisation/Chart (Heatmap — SSR placeholder)"
+      // Phase 2655 — Heatmap, the last kind to gain a lowering rule, draws its
+      // cell grid as a first-party Drawing like every other kind.
+      { Name = "Visualisation/Chart (Heatmap — lowered cell grid)"
         Node =
           Fuaran.chart
               "cht2"
               { Defaults.chart<obj> with
                   Kind = ChartKind.Heatmap
-                  Source = Binding.Static(Some(Seq.ofList [ (Map.ofList [ "x", box 1 ]: Row) ]))
+                  Source =
+                      Binding.Static(
+                          Some(Seq.ofList [ (Map.ofList [ "x", box "a"; "row", box "r1"; "v", box 1.0 ]: Row) ])
+                      )
                   XField = "x"
-                  YFields = [ "y" ] }
-        Expected = [ "fuaran-chart-ssr-placeholder"; "data-fuaran-ssr-placeholder=\"Chart\"" ] }
+                  YFields = [ "row"; "v" ] }
+        Expected = [ "fuaran-drawing"; "fuaran-drawing-rect"; "role=\"img\""; "<svg" ] }
 
       { Name = "Custom (unregistered placeholder)"
         Node = Fuaran.custom "cu" "m" "c" Map.empty Option.None []

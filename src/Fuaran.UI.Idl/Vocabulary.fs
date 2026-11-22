@@ -3399,6 +3399,12 @@ let visKinds: IdlKind list =
             // the same closed union. Absent OMITS on the wire, so every
             // pre-1490 fixture is byte-unchanged.
             opt "annotations" (TList(TUnion("ChartAnnotation", [])))
+            // Phase 2655 — the DECLARED colour scale of a value field (Gap 6
+            // closed as a scale, never a per-cell colour). Meaningful on
+            // `Heatmap` only; any other kind carrying it is refused before
+            // emission (FUARAN169). Absent OMITS on the wire, so every pre-2655
+            // fixture is byte-unchanged.
+            opt "scale" (TUnion("ChartScale", []))
             opt "onPointClick" (handlerOf "Map<string, obj>" "unknown") ] }
       { Tag = "Map"
         Category = "Visualisation"
@@ -3691,6 +3697,34 @@ let private chartAnnotation =
       TagRule = UnionTagRule.CaseName
       Discrimination = UnionDiscrimination.Tagged }
 
+/// Phase 2655 — a chart's DECLARED colour scale (closing the 2026-05-28 "Gap 6"
+/// deferral as a scale rather than a per-cell colour). The author states what the
+/// value MEANS — sequential from a floor, or diverging about a midpoint — and the
+/// lowering, under the installed `ChartStyle`, picks the ramp and proves it
+/// (contrast and colour-vision gates at style install). No hex crosses the wire:
+/// that is the meaning-not-treatment rule a `Style.InlineBackground` would have
+/// inverted.
+///
+/// Every bound is optional and absence is the data's own extent: `Sequential`
+/// runs from the data minimum to the data maximum, and `Diverging` is centred on
+/// `midpoint` (absent means zero) with the wider of the two data excursions on
+/// both sides.
+let private chartScale =
+    { Name = "ChartScale"
+      Params = []
+      Cases =
+        [ { Tag = "Sequential"
+            Fields = [ opt "min" TFloat; opt "max" TFloat ]
+            Annotations = Annotations.Empty
+            Hosted = None }
+          { Tag = "Diverging"
+            Fields = [ opt "midpoint" TFloat; opt "min" TFloat; opt "max" TFloat ]
+            Annotations = Annotations.Empty
+            Hosted = None } ]
+      Annotations = Annotations.Empty
+      TagRule = UnionTagRule.CaseName
+      Discrimination = UnionDiscrimination.Tagged }
+
 /// Phase 679 — a `Switch` case: the match string plus the node it selects. The
 /// tier holds this as a `(string * Node) tuple list`, which the IDL has no type
 /// for; on the wire it is a two-field record, so that is what is modelled.
@@ -3954,7 +3988,8 @@ let private declared: Idl =
           shape
           chartAnnotationX
           chartAnnotationRange
-          chartAnnotation ]
+          chartAnnotation
+          chartScale ]
       Enums =
         [ headingVariant
           linkProtection
@@ -4236,6 +4271,8 @@ let private docs: (string * string) list =
       "What the x column means: discrete categories, or dates on a continuous temporal scale. Absent means `Category`; `Temporal` over a non-date column is refused before emission (FUARAN097)."
       "kind-field:Chart.annotations",
       "Data-addressed annotations drawn over the chart, such as reference lines. Omitted means none."
+      "kind-field:Chart.scale",
+      "The declared colour scale of a `Heatmap`'s value field: sequential or diverging. Absent means sequential over the data's extent; any other kind carrying it is refused before emission (FUARAN169)."
       "kind-field:Chart.onPointClick",
       "An in-process handler called with the clicked point's row; it travels on the wire only as a `\"<closure>\"` sentinel."
       "kind:CodeBlock",
@@ -5101,6 +5138,18 @@ let private docs: (string * string) list =
       "case:ChartAnnotationX.Date", "Addresses an instant on a temporal x axis (`XScale = Temporal`)."
       "case-field:ChartAnnotationX.Date.iso",
       "The instant as an ISO-8601 date string. An unparseable date is refused by the decoder."
+      "union:ChartScale",
+      "The declared colour scale of a chart's value field: the author states what the value means, and the lowering picks and validates the colours. No colour crosses the wire."
+      "case:ChartScale.Sequential", "Light to dark from a floor to a ceiling, for a quantity with a natural low end."
+      "case-field:ChartScale.Sequential.min", "The value drawn as the lightest stop. Absent means the data minimum."
+      "case-field:ChartScale.Sequential.max", "The value drawn as the darkest stop. Absent means the data maximum."
+      "case:ChartScale.Diverging",
+      "Two hues meeting at a light neutral midpoint, for a quantity whose sign or side of a reference value is the reading."
+      "case-field:ChartScale.Diverging.midpoint", "The value drawn as the neutral centre stop. Absent means zero."
+      "case-field:ChartScale.Diverging.min",
+      "The low end of the extent. Absent means the data minimum; the scale is symmetric about the midpoint, using the wider excursion."
+      "case-field:ChartScale.Diverging.max",
+      "The high end of the extent. Absent means the data maximum; the scale is symmetric about the midpoint, using the wider excursion."
       "union:ColumnWidth", "How a `DataGrid` column is sized."
       "case:ColumnWidth.Auto", "The renderer sizes the column to its content."
       "case:ColumnWidth.Fixed", "A fixed width in pixels."

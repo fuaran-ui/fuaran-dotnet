@@ -34,6 +34,26 @@ module Fuaran.UI.ChartPalette
 //  The thresholds are calibrated to the Machado simulation: swapping the
 //  simulation model would move borderline pairs and require recalibrating them.
 //
+//  Phase 2655 — the heatmap RAMPS ride the same gate, measured the way a ramp is
+//  read rather than the way a palette is. A ramp's stops are ORDERED steps of
+//  one quantity, so the categorical lightness band and chroma floor do not apply
+//  (a sequential ramp is light-to-dark by design, and its light end reads as
+//  near-grey on purpose). What a reader needs from a ramp is:
+//
+//    * step separation — OKLab ΔE ×100 between ADJACENT stops >= 6.0 under full
+//      colour vision (`RampStepFloor`) AND under each simulated deficiency
+//      (`CvdFloor`, the categorical calibration reused unchanged), so two
+//      neighbouring bins never merge for any reader;
+//    * label contrast — the WCAG 2.x contrast ratio of each stop against the
+//      ramp's LABEL TONE (the literal ink a cell's value label is drawn in) is
+//      >= 4.5, the small-text AA floor, so every cell's value is legible
+//      whichever bin it fell in;
+//    * shape — at least two stops, at most `MaxRampStops`, and a DIVERGING ramp
+//      has an odd count, so its centre stop is the midpoint's own colour.
+//
+//  A ramp that fails is refused by name — the ramp, the stop pair or the stop —
+//  never degraded: the install path keeps the shipped default instead.
+//
 //  `FSharp.Core`-only and Fable-portable: the colour maths is written out rather
 //  than taken from a platform API, so a browser host and a server host measure
 //  the same palette to the same bits.
@@ -84,6 +104,21 @@ let NormalVisionFloor = 15.0
 [<Literal>]
 let MaxSlots = 8
 
+/// Adjacent-stop OKLab ΔE ×100 under full colour vision below which a ramp step
+/// is refused (Phase 2655). The simulated floor is `CvdFloor`.
+[<Literal>]
+let RampStepFloor = 6.0
+
+/// WCAG 2.x contrast ratio of a ramp stop against the ramp's label tone below
+/// which the stop is refused (Phase 2655) — the small-text AA floor.
+[<Literal>]
+let RampLabelContrastFloor = 4.5
+
+/// The most stops a ramp may carry (Phase 2655). A bin is a stop, so this bounds
+/// the classes a reader is asked to tell apart.
+[<Literal>]
+let MaxRampStops = 9
+
 /// The colour-vision deficiency a pair was simulated under.
 [<RequireQualifiedAccess>]
 type CvdKind =
@@ -110,6 +145,22 @@ type PaletteFinding =
     | CvdTooClose of slotA: int * hexA: string * slotB: int * hexB: string * kind: CvdKind * deltaE: float
     /// Two adjacent series slots are too close under unsimulated vision.
     | NormalVisionTooClose of slotA: int * hexA: string * slotB: int * hexB: string * deltaE: float
+    /// Phase 2655 — a ramp has the wrong number of stops: fewer than two, more
+    /// than `MaxRampStops`, or an even count on a diverging ramp (no centre stop).
+    | RampShape of ramp: string * stops: int * requirement: string
+    /// Phase 2655 — two adjacent ramp stops (1-based) are too close, under full
+    /// colour vision (`kind = None`) or a simulated deficiency.
+    | RampStepTooClose of
+        ramp: string *
+        stopA: int *
+        hexA: string *
+        stopB: int *
+        hexB: string *
+        kind: CvdKind option *
+        deltaE: float
+    /// Phase 2655 — a ramp stop (1-based) does not clear the contrast floor
+    /// against the ramp's label tone.
+    | RampLabelContrast of ramp: string * stop: int * hex: string * label: string * ratio: float
 
 // ─── Colour maths ──────────────────────────────────────────────────────────
 
@@ -193,6 +244,17 @@ let deltaE (kind: CvdKind option) (x: float * float * float) (y: float * float *
     100.0 * sqrt ((l1 - l2) ** 2.0 + (a1 - a2) ** 2.0 + (b1 - b2) ** 2.0)
 
 // ─── The gate ──────────────────────────────────────────────────────────────
+
+/// The WCAG 2.x relative luminance of an sRGB triple.
+let relativeLuminance (rgb: float * float * float) : float =
+    let r, g, b = linearOf rgb
+    0.2126 * r + 0.7152 * g + 0.0722 * b
+
+/// The WCAG 2.x contrast ratio between two sRGB triples, >= 1.
+let contrastRatio (x: float * float * float) (y: float * float * float) : float =
+    let lx = relativeLuminance x
+    let ly = relativeLuminance y
+    (max lx ly + 0.05) / (min lx ly + 0.05)
 
 /// The literal a `ColorVar` carries when it is a `#rrggbb` hex, else `None`.
 let hexOf (color: ColorVar) : string option =
@@ -297,6 +359,64 @@ let validate (tokens: ChartTokens) : PaletteFinding list =
 
     validateSeries tokens.Series @ status
 
+/// Phase 2655 — measure one heatmap ramp: its shape, every adjacent stop pair
+/// under full and simulated colour vision, and every stop against the label tone
+/// its cells' value labels are drawn in. `ramp` names it in the findings
+/// (`"sequential"` / `"diverging"`); `diverging` demands an odd stop count. `[]`
+/// is a pass. A non-literal stop (or label tone) is refused by name and the
+/// measured gates are skipped, as `validateSeries` does.
+let validateRamp (ramp: string) (diverging: bool) (stops: string list) (labelTone: string) : PaletteFinding list =
+    let count = List.length stops
+
+    if count < 2 then
+        [ PaletteFinding.RampShape(ramp, count, "at least 2 stops") ]
+    elif count > MaxRampStops then
+        [ PaletteFinding.RampShape(ramp, count, $"at most {MaxRampStops} stops") ]
+    elif diverging && count % 2 = 0 then
+        [ PaletteFinding.RampShape(ramp, count, "an odd number of stops, so the midpoint has a centre stop") ]
+    else
+        let indexed = stops |> List.mapi (fun i hex -> i + 1, hex)
+
+        let notLiteral =
+            [ for stop, hex in indexed do
+                  if (tryParseHex hex).IsNone then
+                      PaletteFinding.NotLiteral($"{ramp}-ramp-{stop}", hex)
+              if (tryParseHex labelTone).IsNone then
+                  PaletteFinding.NotLiteral($"{ramp}-ramp-label", labelTone) ]
+
+        if not notLiteral.IsEmpty then
+            notLiteral
+        else
+            let measured =
+                indexed |> List.map (fun (stop, hex) -> stop, hex, (tryParseHex hex).Value)
+
+            let label = (tryParseHex labelTone).Value
+
+            let steps =
+                [ for (sa, ha, ra), (sb, hb, rb) in List.pairwise measured do
+                      let normal = deltaE None ra rb
+
+                      if normal < RampStepFloor then
+                          PaletteFinding.RampStepTooClose(ramp, sa, ha, sb, hb, None, normal)
+
+                      // The worse of the two simulations is the one a reader meets.
+                      let kind, worst =
+                          [ CvdKind.Protan; CvdKind.Deutan ]
+                          |> List.map (fun k -> k, deltaE (Some k) ra rb)
+                          |> List.minBy snd
+
+                      if worst < CvdFloor then
+                          PaletteFinding.RampStepTooClose(ramp, sa, ha, sb, hb, Some kind, worst) ]
+
+            let contrast =
+                [ for stop, hex, rgb in measured do
+                      let ratio = contrastRatio rgb label
+
+                      if ratio < RampLabelContrastFloor then
+                          PaletteFinding.RampLabelContrast(ramp, stop, hex, labelTone, ratio) ]
+
+            steps @ contrast
+
 let private cvdName (kind: CvdKind) : string =
     match kind with
     | CvdKind.Protan -> "protanopia"
@@ -340,3 +460,30 @@ let describe (finding: PaletteFinding) : string =
             hb
             d
             NormalVisionFloor
+    | PaletteFinding.RampShape(ramp, stops, requirement) ->
+        $"the {ramp} chart ramp has {stops} stops; a ramp needs {requirement}"
+    | PaletteFinding.RampStepTooClose(ramp, sa, ha, sb, hb, kind, d) ->
+        let vision, floor =
+            match kind with
+            | Some k -> "under " + cvdName k, CvdFloor
+            | None -> "under full colour vision", RampStepFloor
+
+        sprintf
+            "adjacent %s ramp stops %d %s and %d %s are too close %s: OKLab dE %.1f, floor %.0f"
+            ramp
+            sa
+            ha
+            sb
+            hb
+            vision
+            d
+            floor
+    | PaletteFinding.RampLabelContrast(ramp, stop, hex, label, ratio) ->
+        sprintf
+            "%s ramp stop %d %s does not carry a %s value label: contrast %.2f:1, floor %.1f:1"
+            ramp
+            stop
+            hex
+            label
+            ratio
+            RampLabelContrastFloor

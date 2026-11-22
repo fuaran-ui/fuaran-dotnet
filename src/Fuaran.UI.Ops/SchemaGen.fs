@@ -1929,6 +1929,10 @@ let private defs: (string * J) list =
             // fourth widening of this record. Optional: absent omits, and an
             // absent slot draws exactly the pre-1490 picture.
             "annotations", arrayOf (ref "ChartAnnotation")
+            // `scale` (Phase 2655) — a heatmap's declared colour scale. Optional:
+            // absent means sequential over the data's extent. Whether the kind
+            // admits it is the validator's (FUARAN169), not the schema's.
+            "scale", ref "ChartScale"
             "onPointClick", closure ]
 
       // Phase 1490 (§4l) — the closed annotation union. `value` takes
@@ -1979,6 +1983,14 @@ let private defs: (string * J) list =
       union
           [ duCase "Category" [ "key" ] [ "key", str ]
             duCase "Date" [ "iso" ] [ "iso", str ] ]
+
+      // Phase 2655 — the declared colour scale. Every bound is optional and takes
+      // the sentinel-widened `number` the decoder reads: a non-finite bound is
+      // read as absent by the lowering, so it names nothing wrong to refuse.
+      "ChartScale",
+      union
+          [ duCase "Sequential" [] [ "min", number; "max", number ]
+            duCase "Diverging" [] [ "midpoint", number; "min", number; "max", number ] ]
 
       "MapMarker",
       record [ "label"; "latitude"; "longitude" ] [ "label", ref "TextSource"; "latitude", number; "longitude", number ]

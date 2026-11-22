@@ -1080,6 +1080,23 @@ let private genChartAnnotation: Gen<ChartAnnotation> =
               return ChartAnnotation.RangeBand(ordered, label)
           } ]
 
+/// Phase 2655 — a declared colour scale, every bound optional. `genFiniteFloat`
+/// for the bounds: a NaN bound would make the round-trip property compare a value
+/// unequal to itself, which says nothing about the codec.
+let private genChartScale: Gen<ChartScale> =
+    Gen.oneof
+        [ gen {
+              let! min = genOption genFiniteFloat
+              let! max = genOption genFiniteFloat
+              return ChartScale.Sequential(min, max)
+          }
+          gen {
+              let! midpoint = genOption genFiniteFloat
+              let! min = genOption genFiniteFloat
+              let! max = genOption genFiniteFloat
+              return ChartScale.Diverging(midpoint, min, max)
+          } ]
+
 let private genChartSpec: Gen<ChartSpec<obj>> =
     gen {
         let! kind = genChartKind
@@ -1107,6 +1124,9 @@ let private genChartSpec: Gen<ChartSpec<obj>> =
         // annotation value, so a generated NaN would make the round-trip
         // property fail on a document the codec is correct to reject.
         let! annotations = genOption (genSmallList genChartAnnotation)
+        // Phase 2655 — the declared colour scale (absent = sequential over the
+        // data, so the option arm matters here).
+        let! scale = genOption genChartScale
         let! stacked = genBool
         // Phase 2568 — a query-bound source beside the inline one. `genSmallList`
         // already draws the empty `yFields` a quarter of the time; over a `Query`
@@ -1132,6 +1152,7 @@ let private genChartSpec: Gen<ChartSpec<obj>> =
                 DataLabels = dataLabels
                 XScale = xScale
                 Annotations = annotations
+                Scale = scale
                 Stacked = stacked }
     }
 

@@ -31,7 +31,7 @@ public static partial class Fuaran
             // Generated ChartSpec ctor is Generated.fs declaration order (Kind,
             // Source, Stacked, XField, YFields, Title, ValueFormat, XTitle,
             // YTitle, Subtitle, LegendPosition, DataLabels, XScale,
-            // Annotations, OnPointClick), not the old Source-first hand order.
+            // Annotations, Scale, OnPointClick), not the old Source-first hand order.
             new FsGen.ChartSpec<object>(
                 options.Kind.ToFs(),
                 (options.Source ?? Binding.Static(Enumerable.Empty<FsRow>())).Inner,
@@ -60,6 +60,10 @@ public static partial class Fuaran
                 options.Annotations is { } anns
                     ? Fs.Some(Fs.List(anns.Select(a => a.Inner)))
                     : Fs.None<Microsoft.FSharp.Collections.FSharpList<FsGen.ChartAnnotation>>(),
+                // Phase 2655 — a heatmap's declared colour scale passes the F# default
+                // (absent: sequential over the data's extent); the veneer does not
+                // expose it yet.
+                Fs.None<FsGen.ChartScale>(),
                 Fs.None<Microsoft.FSharp.Core.FSharpFunc<FsRow, FsAction>>())));
 
     /// <summary>A static (non-data-bound) HTML table.</summary>

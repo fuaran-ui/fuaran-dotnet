@@ -134,11 +134,26 @@ let private buildSeries<'Msg> (runAction: Action<'Msg> -> unit) (nodeId: string)
             | y :: _ -> y, ""
             | [] -> "", ""
 
+        // Phase 2655 — the declared scale reaches AG as its colour RANGE: the
+        // installed style's sequential or diverging ramp, so an adapter-rendered
+        // heatmap draws the same validated stops as the first-party lowering. The
+        // stops only: AG interpolates across its own data-derived domain, so the
+        // declared bounds and midpoint are the first-party lowering's alone (the
+        // adapter is the escape, not the reference).
+        let colorRange =
+            let style = Fuaran.UI.Charts.currentChartStyle ()
+
+            match spec.Scale with
+            | Some(ChartScale.Diverging _) -> style.DivergingRamp
+            | Some(ChartScale.Sequential _)
+            | None -> style.SequentialRamp
+
         [| createObj
                [ "type" ==> "heatmap"
                  "xKey" ==> spec.XField
                  "yKey" ==> yKey
                  "colorKey" ==> colorKey
+                 "colorRange" ==> colorRange
                  "listeners" ==> listeners ] |]
     | _ ->
         let seriesType = chartKindString spec.Kind

@@ -333,7 +333,10 @@ let notChildAuthorable: (string * string) list =
       "Select.affordance", "GAP — no VB spelling"
       // Phase 2571 — option groups are authored in F# / C# / on the wire; the VB
       // <Select> spells its options as literal children and has no group element.
-      "Select.groups", "GAP — no VB spelling" ]
+      "Select.groups", "GAP — no VB spelling"
+      // Phase 2655 — a Heatmap's declared colour scale. A union-valued member
+      // with no element spelling yet; authored from F# or the wire.
+      "Chart.scale", "GAP — no VB spelling" ]
 
 /// One C# veneer enum and the IDL enum it mirrors. The C# DECLARATION stays
 /// hand-authored, because it carries per-member public documentation the IDL

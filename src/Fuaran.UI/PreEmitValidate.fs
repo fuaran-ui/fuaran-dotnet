@@ -310,6 +310,18 @@ type PreEmitDefect =
     /// own and are named by writing them: an empty list there is a chart whose
     /// series nobody stated. Carries the node id and the source's binding case.
     | ChartSeriesUnnamed of nodeId: string * found: string
+    /// **FUARAN169 (Error)**. A `Chart` of a kind other than `Heatmap` declares
+    /// a `Scale` (Phase 2655). The declared colour scale is meaningful on a
+    /// heatmap's value field only until a later phase admits it on a sized or
+    /// coloured mark; on any other kind no lowering reads it, so the emission
+    /// carries a promise nothing keeps. Carries the node id and the kind name.
+    | ChartScaleMeaningless of nodeId: string * kind: string
+    /// **FUARAN170 (Error)**. A `Heatmap` chart carries other than exactly TWO
+    /// `YFields` (Phase 2655): the first is the ROW field (the grid's rows), the
+    /// second the VALUE field (the cell colour). Any other count names no grid —
+    /// one field has no value, three leave the extra unread. Carries the node id
+    /// and the field count.
+    | ChartHeatmapFieldShape of nodeId: string * fieldCount: int
     /// **FUARAN089 (Warning)**. `Stacked = true` on a `ChartKind` where
     /// stacking is meaningless (`Line` / `Scatter` / `Pie`) — the lowering
     /// ignores the flag (Phase 637), so the emission carries dead intent;
@@ -2379,6 +2391,20 @@ module DefectCodes =
               "Phase 2568"
           )
           row (
+              "ChartScaleMeaningless",
+              "FUARAN169",
+              Severity.Error,
+              "chart '{nodeId}' declares a colour scale on kind {kind} — a scale is read only by a Heatmap's value field (Phase 2655); drop the scale, or switch the kind to Heatmap",
+              "Phase 2655"
+          )
+          row (
+              "ChartHeatmapFieldShape",
+              "FUARAN170",
+              Severity.Error,
+              "heatmap chart '{nodeId}' declares {fieldCount} yFields — a heatmap takes exactly two: the row field, then the value field (Phase 2655)",
+              "Phase 2655"
+          )
+          row (
               "ChartStackedMeaningless",
               "FUARAN089",
               Severity.Warning,
@@ -3362,6 +3388,9 @@ let private describeArgs (d: PreEmitDefect) : string * (string * string) list =
     | PreEmitDefect.ChartPieSeriesShape(nodeId, seriesCount) ->
         "ChartPieSeriesShape", [ "nodeId", nodeId; "seriesCount", string seriesCount ]
     | PreEmitDefect.ChartSeriesUnnamed(nodeId, found) -> "ChartSeriesUnnamed", [ "nodeId", nodeId; "found", found ]
+    | PreEmitDefect.ChartScaleMeaningless(nodeId, kind) -> "ChartScaleMeaningless", [ "nodeId", nodeId; "kind", kind ]
+    | PreEmitDefect.ChartHeatmapFieldShape(nodeId, fieldCount) ->
+        "ChartHeatmapFieldShape", [ "nodeId", nodeId; "fieldCount", string fieldCount ]
     | PreEmitDefect.ChartStackedMeaningless(nodeId, kind) ->
         "ChartStackedMeaningless", [ "nodeId", nodeId; "kind", kind ]
     | PreEmitDefect.InertEditableGrid nodeId -> "InertEditableGrid", [ "nodeId", nodeId ]
@@ -5123,6 +5152,20 @@ module private ChartRules =
         (match spec.Kind with
          | ChartKind.Pie when spec.YFields.Length > 1 ->
              defects.Add(PreEmitDefect.ChartPieSeriesShape(nodeIdStr, spec.YFields.Length))
+         | _ -> ())
+
+        // FUARAN169 — a declared scale is read by a Heatmap alone (Phase 2655).
+        (match spec.Kind, spec.Scale with
+         | ChartKind.Heatmap, _
+         | _, None -> ()
+         | _, Some _ -> defects.Add(PreEmitDefect.ChartScaleMeaningless(nodeIdStr, kindName)))
+
+        // FUARAN170 — a heatmap names its row field and its value field, in that
+        // order (Phase 2655). An EMPTY list is FUARAN168's or a Query's, judged
+        // above, never a heatmap grid.
+        (match spec.Kind with
+         | ChartKind.Heatmap when spec.YFields.Length <> 2 ->
+             defects.Add(PreEmitDefect.ChartHeatmapFieldShape(nodeIdStr, spec.YFields.Length))
          | _ -> ())
 
         // FUARAN089 — Stacked is dead intent outside Bar/Area.

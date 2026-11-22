@@ -7857,6 +7857,49 @@ vector now carries `perWindow`, `quantityPerWindow` and `dwell` (Program Phase 2
 corpus copy is re-emitted and byte-identical to the program repository's. No package moves for it: the corpus is a
 test artefact.
 
+
+### What rides this slot — Phase 2655 (`Heatmap` is lowered first-party under a declared scale)
+
+**Class: breaking.** The shard filed this phase as additive, and on the wire it is: `ChartSpec.scale` is an
+optional member that absence omits, so every pre-2655 document decodes, encodes and lowers byte-for-byte as it
+did, and no pre-existing `chart-lowering` golden moved. On the .NET surface it is breaking by the estate rule:
+three public records gain a field and two closed unions gain cases. It rides this draft slot, which is
+breaking-class already; `<Version>` does not move.
+
+**What a consumer gains.**
+
+- **`ChartScale`** (`Fuaran.UI.Types`, re-exported as `Charts.ChartScale`): `Sequential of min * max` and
+  `Diverging of midpoint * min * max`, every bound a `float option` (absent: the data's extent; an absent
+  midpoint is zero). `ChartSpec.Scale: ChartScale option` carries it. The wire member is `scale`
+  (WIRE_FORMAT §3.6.35).
+- **`Heatmap` lowers first-party.** `Charts.isLowered ChartKind.Heatmap` is `true`, so both renderers draw a
+  heatmap's cell grid as inline SVG where they drew the client-hydration placeholder. `YFields` is `[row; value]`.
+  An absent pair draws the surface, never a zero. The cell grid is held to `ChartLimits.MaxPointsPerSeries` and a
+  grid over it is `TooManyPoints(cells, limit)`. `markCategoryKeys` / `rowOfMarkId` resolve a heatmap cell's mark
+  (`value|x|row`).
+- **The ramps and their gate.** `ChartStyle` gains `SequentialRamp`, `DivergingRamp`, `RampLabelInk` and
+  `HeatmapCellGap`. `ChartStyle.rampFindings` and `ChartPalette.validateRamp` measure a ramp. The floors are an
+  adjacent-stop OKLab step of at least 6 under full vision and under each simulated deficiency, and a 4.5:1
+  contrast of every stop against the label tone. `ChartPalette.relativeLuminance` and `ChartPalette.contrastRatio`
+  are new. `Charts.tryInstallChartStyle` installs a hand-built style through the palette and ramp gates and
+  refuses a failing one by name, keeping the default installed. `chartStyleOfTheme` also runs the ramp gate.
+- **Two pre-emit rules.** `FUARAN169` (`ChartScaleMeaningless`, Error) refuses a scale on any kind but `Heatmap`.
+  `FUARAN170` (`ChartHeatmapFieldShape`, Error) refuses a heatmap whose `YFields` is not exactly two.
+- **The AG adapter** maps the scale onto the series' `colorRange` (the installed style's ramp).
+
+**What a consumer pays.**
+
+- **Record construction.** A `ChartSpec<'Msg>` built as a full record literal needs `Scale = None` (FS0764);
+  `{ Defaults.chart with … }` and `Fuaran.chart` are unaffected. A `ChartStyle` built as a full literal needs the
+  four new fields; `{ ChartStyle.defaults with … }` is unaffected.
+- **Exhaustive matches.** A match over `ChartPalette.PaletteFinding` gains `RampShape`, `RampStepTooClose` and
+  `RampLabelContrast`. A match over `PreEmitDefect` gains `ChartScaleMeaningless` and `ChartHeatmapFieldShape`.
+  Both are FS0025 until the arms are added.
+- **A heatmap's rendering changes.** A tree whose `Heatmap` rendered as the placeholder now renders its grid. A
+  host that relied on the placeholder's `data-fuaran-ssr-placeholder="Chart"` marker for a heatmap no longer
+  finds it.
+- **Recompile.**
+
 ---
 
 ## 0.105.0 — the announced breaking cut (Phase 2303); the slot opened after v0.104.0 was released, advanced from 0.104.1 on 2026-11-14 by Phase 2716, whose change is breaking (DRAFT — untagged)

@@ -5687,3 +5687,369 @@ let loweringMemoTests =
 
               Expect.equal context.ChartProvenance None "a context declares no scope unless a host sets one"
           } ]
+
+// ── Phase 2655 — the Heatmap arm (`chart-lowering/heatmap/`) ──────────────────
+//
+// A heatmap is a cell grid over two categorical axes with a DECLARED scale, so a
+// case is a list of (column, row, value) triples rather than a `Case`: a value of
+// `None` is a row whose value cell is EMPTY, which draws the surface exactly as a
+// pair no row carries does. The vectors live in a SUBFAMILY for `derived-series/`'s
+// reason — the hosts that lower the top-level family enumerate it
+// non-recursively — and because fuaran-rs lowers and fuaran-go round-trips every
+// top-level vector, so a top-level heatmap vector would redden both before their
+// own phase adopts the arm.
+
+type private HeatmapCase =
+    { Name: string
+      Title: string
+      Subtitle: string option
+      XField: string
+      RowField: string
+      ValueField: string
+      Scale: ChartScale option
+      DataLabels: bool
+      Cells: (string * string * float option) list }
+
+let private heatmapCases: HeatmapCase list =
+    let grid (xs: string list) (ys: string list) (value: int -> int -> float) =
+        [ for j, y in List.indexed ys do
+              for i, x in List.indexed xs do
+                  yield x, y, Some(value i j) ]
+
+    [ // Sequential over the data's own extent, every cell labelled.
+      { Name = "heatmap-sequential"
+        Title = "Response rate by wave"
+        Subtitle = None
+        XField = "wave"
+        RowField = "item"
+        ValueField = "rate"
+        Scale = None
+        DataLabels = true
+        Cells =
+          grid [ "W1"; "W2"; "W3"; "W4" ] [ "Trust"; "Reach"; "Recall" ] (fun i j ->
+              float (12 + 9 * i + 17 * j + (i * j * 5) % 11)) }
+      // Sequential with DECLARED bounds: 0 to 100, so the lightest and darkest
+      // stops are fixed by the author rather than by the data.
+      { Name = "heatmap-sequential-bounds"
+        Title = "Coverage, percent asked"
+        Subtitle = Some "Declared 0 to 100"
+        XField = "entity"
+        RowField = "question"
+        ValueField = "asked"
+        Scale = Some(ChartScale.Sequential(Some 0.0, Some 100.0))
+        DataLabels = false
+        Cells =
+          grid [ "North"; "South"; "East"; "West"; "Central" ] [ "Q1"; "Q2"; "Q3"; "Q4" ] (fun i j ->
+              float ((23 * i + 31 * j + 7) % 101)) }
+      // Diverging about zero (the default midpoint) over a correlation matrix.
+      { Name = "heatmap-diverging"
+        Title = "Item correlation"
+        Subtitle = None
+        XField = "a"
+        RowField = "b"
+        ValueField = "r"
+        Scale = Some(ChartScale.Diverging(None, Some -1.0, Some 1.0))
+        DataLabels = true
+        Cells =
+          let items = [ "Price"; "Quality"; "Service"; "Speed" ]
+
+          let r =
+              array2D
+                  [ [ 1.0; 0.42; -0.18; -0.65 ]
+                    [ 0.42; 1.0; 0.27; -0.31 ]
+                    [ -0.18; 0.27; 1.0; 0.08 ]
+                    [ -0.65; -0.31; 0.08; 1.0 ] ]
+
+          grid items items (fun i j -> r.[j, i]) }
+      // Diverging about a DECLARED midpoint, bounds from the data.
+      { Name = "heatmap-diverging-midpoint"
+        Title = "Score against target"
+        Subtitle = None
+        XField = "month"
+        RowField = "team"
+        ValueField = "score"
+        Scale = Some(ChartScale.Diverging(Some 50.0, None, None))
+        DataLabels = false
+        Cells = grid [ "Jan"; "Feb"; "Mar" ] [ "Alpha"; "Beta" ] (fun i j -> float (38 + 7 * i + 13 * j)) }
+      // Missing cells: pairs no row carries, and a row whose value is empty.
+      // Both draw the surface, never a zero.
+      { Name = "heatmap-missing-cells"
+        Title = "Asked, not asked, not shown"
+        Subtitle = None
+        XField = "entity"
+        RowField = "question"
+        ValueField = "n"
+        Scale = None
+        DataLabels = true
+        Cells =
+          [ "A", "Q1", Some 4.0
+            "B", "Q1", Some 9.0
+            "C", "Q1", None
+            "A", "Q2", Some 0.0
+            "C", "Q2", Some 6.0
+            "B", "Q3", Some 2.0 ] }
+      // The Phase 790 bound on the CELL GRID: 101 distinct columns by 101
+      // distinct rows from 101 rows is 10,201 cells, over the 10,000 budget.
+      { Name = "heatmap-refusal-cell-cap"
+        Title = "Too many cells"
+        Subtitle = None
+        XField = "x"
+        RowField = "y"
+        ValueField = "v"
+        Scale = None
+        DataLabels = false
+        Cells = [ for k in 0..100 -> sprintf "x%03d" k, sprintf "y%03d" k, Some(float k) ] } ]
+
+let private heatmapRows (case: HeatmapCase) : Row list =
+    case.Cells
+    |> List.map (fun (x, y, v) ->
+        Map.ofList
+            [ yield case.XField, box x
+              yield case.RowField, box y
+              match v with
+              | Some f -> yield case.ValueField, box f
+              | None -> () ])
+
+let private heatmapSpec (case: HeatmapCase) : ChartSpec<obj> =
+    { Defaults.chart with
+        Source = Binding.Static(Some(Seq.ofList (heatmapRows case)))
+        Kind = ChartKind.Heatmap
+        XField = case.XField
+        YFields = [ case.RowField; case.ValueField ]
+        Title = Some(TextSource.Literal case.Title)
+        Subtitle = case.Subtitle |> Option.map TextSource.Literal
+        DataLabels = (if case.DataLabels then Some ChartDataLabels.Ends else None)
+        Scale = case.Scale }
+
+let private heatmapLowered (case: HeatmapCase) : DrawingSpec =
+    Charts.lower (heatmapSpec case) (Seq.ofList (heatmapRows case))
+
+let private heatmapJson (case: HeatmapCase) : string =
+    let node: Node<obj> =
+        Fuaran.drawingSpec (sprintf "chart-%s" case.Name) (heatmapLowered case)
+
+    CanonicalJson.encodeNode node
+
+/// The neutral input: the top-level family's shape, `yFields` naming the row
+/// field then the value field, `scale` in canonical wire JSON, and the value
+/// cell OMITTED where a row carries none.
+let private heatmapInputJson (case: HeatmapCase) : string =
+    let esc (s: string) =
+        s.Replace("\\", "\\\\").Replace("\"", "\\\"")
+
+    let num = DrawingSvg.formatNum
+
+    let scale =
+        match case.Scale with
+        | None -> ""
+        | Some(ChartScale.Sequential(min, max)) ->
+            let parts =
+                [ min |> Option.map (fun v -> "\"min\":" + num v)
+                  max |> Option.map (fun v -> "\"max\":" + num v) ]
+                |> List.choose id
+
+            sprintf ",\"scale\":{\"$type\":\"Sequential\"%s}" (parts |> List.map ((+) ",") |> String.concat "")
+        | Some(ChartScale.Diverging(midpoint, min, max)) ->
+            let parts =
+                [ midpoint |> Option.map (fun v -> "\"midpoint\":" + num v)
+                  min |> Option.map (fun v -> "\"min\":" + num v)
+                  max |> Option.map (fun v -> "\"max\":" + num v) ]
+                |> List.choose id
+
+            sprintf ",\"scale\":{\"$type\":\"Diverging\"%s}" (parts |> List.map ((+) ",") |> String.concat "")
+
+    let rows =
+        case.Cells
+        |> List.map (fun (x, y, v) ->
+            let value =
+                match v with
+                | Some f -> sprintf ",\"%s\":%s" (esc case.ValueField) (num f)
+                | None -> ""
+
+            sprintf "{\"%s\":\"%s\",\"%s\":\"%s\"%s}" (esc case.XField) (esc x) (esc case.RowField) (esc y) value)
+        |> String.concat ","
+
+    sprintf
+        "{\"kind\":\"Heatmap\",\"xField\":\"%s\",\"yFields\":[\"%s\",\"%s\"],\"title\":\"%s\",\"stacked\":false%s%s%s,\"data\":[%s]}"
+        (esc case.XField)
+        (esc case.RowField)
+        (esc case.ValueField)
+        (esc case.Title)
+        (match case.Subtitle with
+         | Some s -> sprintf ",\"subtitle\":\"%s\"" (esc s)
+         | None -> "")
+        (if case.DataLabels then ",\"dataLabels\":\"Ends\"" else "")
+        scale
+        rows
+
+let private rectFills (ds: DrawingSpec) : (string option * string option) list =
+    ds.Shapes
+    |> List.choose (fun sh ->
+        match sh with
+        | Shape.Rectangle(_, _, _, _, _, s) ->
+            let fill =
+                match s.Fill with
+                | Some(Binding.Static f) -> f
+                | _ -> None
+
+            Some(fill, s.MarkId)
+        | _ -> None)
+
+[<Tests>]
+let heatmapTests =
+    let find name =
+        heatmapCases |> List.find (fun c -> c.Name = name)
+
+    let fixtureTests =
+        match tryFindFixtures () with
+        | None ->
+            [ test "heatmap fixtures absent — skipped (standalone checkout)" {
+                  Expect.isTrue true "wire-format-fixtures/ not found"
+              } ]
+        | Some fixturesRoot ->
+            let dir = Path.Combine(fixturesRoot, "chart-lowering", "heatmap")
+
+            if Environment.GetEnvironmentVariable "FUARAN_EMIT_CHART_LOWERING" = "1" then
+                Directory.CreateDirectory dir |> ignore
+
+                for case in heatmapCases do
+                    File.WriteAllText(Path.Combine(dir, case.Name + ".input.json"), heatmapInputJson case)
+                    File.WriteAllText(Path.Combine(dir, case.Name + ".expected.json"), heatmapJson case)
+
+            [ test "every heatmap case lowers byte-identically to its committed golden" {
+                  for case in heatmapCases do
+                      let expectedFile = Path.Combine(dir, case.Name + ".expected.json")
+
+                      Expect.isTrue
+                          (File.Exists expectedFile)
+                          (sprintf "%s: golden missing (regenerate with FUARAN_EMIT_CHART_LOWERING=1)" case.Name)
+
+                      Expect.equal
+                          (File.ReadAllText(Path.Combine(dir, case.Name + ".input.json")))
+                          (heatmapInputJson case)
+                          (sprintf "%s: heatmap input drifted" case.Name)
+
+                      Expect.equal
+                          (heatmapJson case)
+                          (File.ReadAllText expectedFile)
+                          (sprintf "%s: heatmap lowering drifted from golden" case.Name)
+              } ]
+
+    testList
+        "Chart lowering — Heatmap (Phase 2655)"
+        (fixtureTests
+         @ [ test "Heatmap is a lowered kind" { Expect.isTrue (Charts.isLowered ChartKind.Heatmap) "isLowered" }
+
+             test "an absent pair and an empty value cell draw the surface, never a zero" {
+                 let ds = heatmapLowered (find "heatmap-missing-cells")
+                 // 3 columns x 3 rows = 9 cells first, then the legend's swatches.
+                 let grid = rectFills ds |> List.take 9
+                 let absent = grid |> List.filter (fun (fill, _) -> fill = Some "none")
+                 Expect.equal absent.Length 4 "C/Q1 (empty value), B/Q2, A/Q3, C/Q3 draw the surface"
+                 Expect.isTrue (absent |> List.forall (fun (_, mark) -> mark.IsNone)) "an absent cell carries no mark"
+
+                 let zero = grid |> List.find (fun (_, mark) -> mark = Some "n|A|Q2")
+
+                 Expect.equal
+                     (fst zero)
+                     (Some Charts.ChartStyle.defaults.SequentialRamp.[0])
+                     "a ZERO is a value: the lowest stop"
+             }
+
+             test "binning: the extremes take the end stops; a diverging midpoint takes the centre" {
+                 let seq = heatmapLowered (find "heatmap-sequential-bounds")
+                 let ramp = Charts.ChartStyle.defaults.SequentialRamp
+
+                 let fills =
+                     rectFills seq |> List.choose (fun (f, m) -> m |> Option.map (fun _ -> f.Value))
+
+                 Expect.isTrue (fills |> List.forall (fun f -> Array.contains f ramp)) "every cell inks a ramp stop"
+
+                 let div = heatmapLowered (find "heatmap-diverging")
+                 let dramp = Charts.ChartStyle.defaults.DivergingRamp
+
+                 let fillOf mark =
+                     rectFills div |> List.pick (fun (f, m) -> if m = Some mark then f else None)
+
+                 Expect.equal (fillOf "r|Price|Price") dramp.[dramp.Length - 1] "r = 1 is the top stop"
+                 Expect.equal (fillOf "r|Speed|Price") dramp.[1] "r = -0.65 of [-1, 1] is the second stop"
+                 Expect.equal (fillOf "r|Speed|Service") dramp.[3] "r = 0.08 is the centre stop"
+             }
+
+             test "a grid over the cell budget is the typed refusal, never a truncation" {
+                 let case = find "heatmap-refusal-cell-cap"
+
+                 match Charts.tryLower (heatmapSpec case) (Seq.ofList (heatmapRows case)) with
+                 | Error(Charts.TooManyPoints(cells, limit)) ->
+                     Expect.equal cells (101 * 101) "the grid is counted, not the rows"
+                     Expect.equal limit 10_000 "the Phase 790 budget"
+                 | other -> failtestf "expected the cell-budget refusal, got %A" other
+             }
+
+             test "every heatmap mark id resolves back to its row" {
+                 let case = find "heatmap-missing-cells"
+                 let rows = heatmapRows case
+                 let ds = heatmapLowered case
+
+                 for _, mark in rectFills ds do
+                     match mark with
+                     | Some id ->
+                         match Charts.rowOfMarkId (heatmapSpec case) rows id with
+                         | Some row ->
+                             let x = string row.[case.XField]
+                             let y = string row.[case.RowField]
+                             Expect.equal id (sprintf "%s|%s|%s" case.ValueField x y) "the mark names its own pair"
+                         | None -> failtestf "mark %s resolved to no row" id
+                     | None -> ()
+             }
+
+             test "the shipped ramps clear the ramp gate" {
+                 Expect.isEmpty (Charts.ChartStyle.rampFindings Charts.ChartStyle.defaults) "default ramps pass"
+             }
+
+             test "a hand-set ramp that fails is refused at install, naming the stop pair" {
+                 let failing =
+                     { Charts.ChartStyle.defaults with
+                         SequentialRamp = [| "#e8f2f7"; "#e4eef3"; "#8ec2da"; "#5caacb"; "#1a86ac" |] }
+
+                 try
+                     let findings = Charts.tryInstallChartStyle failing
+
+                     let steps =
+                         findings
+                         |> List.choose (fun f ->
+                             match f with
+                             | ChartPalette.PaletteFinding.RampStepTooClose(ramp, a, _, b, _, _, _) -> Some(ramp, a, b)
+                             | _ -> None)
+
+                     Expect.contains steps ("sequential", 1, 2) "stops 1 and 2 merge"
+
+                     let contrast =
+                         findings
+                         |> List.choose (fun f ->
+                             match f with
+                             | ChartPalette.PaletteFinding.RampLabelContrast(ramp, stop, hex, _, _) ->
+                                 Some(ramp, stop, hex)
+                             | _ -> None)
+
+                     Expect.equal
+                         contrast
+                         [ "sequential", 5, "#1a86ac" ]
+                         "the primary itself cannot carry the dark label"
+
+                     let text = findings |> List.map ChartPalette.describe |> String.concat "\n"
+                     Expect.stringContains text "stops 1 #e8f2f7 and 2 #e4eef3" "the refusal names the pair"
+                     Expect.equal (Charts.currentChartStyle ()) Charts.ChartStyle.defaults "the default stays installed"
+                 finally
+                     Charts.clearChartStyle ()
+             }
+
+             test "a diverging ramp needs an odd stop count" {
+                 let even =
+                     { Charts.ChartStyle.defaults with
+                         DivergingRamp = Charts.ChartStyle.defaults.DivergingRamp.[0..5] }
+
+                 match Charts.ChartStyle.rampFindings even with
+                 | [ ChartPalette.PaletteFinding.RampShape("diverging", 6, _) ] -> ()
+                 | other -> failtestf "expected the odd-count refusal, got %A" other
+             } ])

@@ -1093,6 +1093,22 @@ multi-select '{nodeId}' carries a `value` — a multi-select's selection is `val
 chart '{nodeId}' leaves yFields empty over {found} — an empty yFields reads its series off a Query's rows (every numeric column but xField, named by column), so it is admitted only over a Binding.Query; name the series this source carries in yFields (Phase 2568)
 ```
 
+#### `FUARAN169` — Error
+
+`ChartScaleMeaningless` (Phase 2655)
+
+```text
+chart '{nodeId}' declares a colour scale on kind {kind} — a scale is read only by a Heatmap's value field (Phase 2655); drop the scale, or switch the kind to Heatmap
+```
+
+#### `FUARAN170` — Error
+
+`ChartHeatmapFieldShape` (Phase 2655)
+
+```text
+heatmap chart '{nodeId}' declares {fieldCount} yFields — a heatmap takes exactly two: the row field, then the value field (Phase 2655)
+```
+
 <!-- END GENERATED: PreEmitValidate.DefectCodes.toMarkdown -->
 
 ---

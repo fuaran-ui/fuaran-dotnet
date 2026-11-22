@@ -197,6 +197,11 @@ type ChartAnnotationX = Fuaran.UI.Types.ChartAnnotationX
 /// on cannot disagree.
 type ChartAnnotationRange = Fuaran.UI.Types.ChartAnnotationRange
 
+/// A heatmap's declared colour scale (Phase 2655). A WIRE vocabulary
+/// (`ChartSpec.Scale`), re-exported here on the same terms as the annotations:
+/// this module draws it and owns neither the type nor the ramp it is drawn in.
+type ChartScale = Fuaran.UI.Types.ChartScale
+
 /// How a value axis states its DISPLAY UNIT once a large magnitude has been
 /// scaled by a power of ten (Phase 876).
 ///
@@ -589,6 +594,33 @@ type ChartStyle =
         NegativeColour: string
         /// Reserved — no-change / baseline.
         NeutralColour: string
+
+        // ── Heatmap ramps (Phase 2655) ──
+        //
+        // A `Heatmap` cell's colour is its value BINNED onto a ramp: one bin per
+        // stop, so the stop count IS the declared bin count and the bytes are
+        // stable across hosts (no interpolated colour, no float-to-hex rounding
+        // a second host could do differently). The author declares the SCALE
+        // (`ChartSpec.Scale`: sequential or diverging) and never a colour — the
+        // "Gap 6" ruling. Both ramps are literal hex for D8's reason (one hex set
+        // serves both surfaces) and both are GATED at install
+        // (`ChartPalette.validateRamp`): adjacent stops clear the step floors
+        // under full and simulated colour vision, and every stop clears the
+        // small-text contrast floor against `RampLabelInk`.
+        /// The sequential ramp, light to dark, from a near-surface tint toward
+        /// the categorical primary. Index 0 is the lowest bin.
+        SequentialRamp: string[]
+        /// The diverging ramp, low hue through a light neutral centre to the
+        /// high hue. An ODD count: the centre stop is the midpoint's bin.
+        DivergingRamp: string[]
+        /// The literal ink a cell's value label is drawn in. Literal rather than
+        /// `currentColor` because the label sits on the CELL's fill, not on the
+        /// surface — the gate proves every stop carries it.
+        RampLabelInk: string
+        /// GEOMETRIC gap between neighbouring heatmap cells — absence of ink,
+        /// for `StackSegmentGap`'s reason (a separating stroke would have to know
+        /// the surface colour).
+        HeatmapCellGap: float
     }
 
 module ChartStyle =
@@ -743,7 +775,33 @@ module ChartStyle =
           // (Phase 2482), for the same reason as the palette.
           PositiveColour = colourOf Defaults.charts.Positive
           NegativeColour = colourOf Defaults.charts.Negative
-          NeutralColour = colourOf Defaults.charts.Neutral }
+          NeutralColour = colourOf Defaults.charts.Neutral
+          // Phase 2655 — the heatmap ramps, generated in OKLab along the hue of
+          // the categorical primary (`#1a86ac`) and, for the diverging high
+          // side, its validated neighbour (`#bf831c`): lightness falls in equal
+          // steps from a near-surface tint (L 0.955) to L 0.62 — the darkest a
+          // stop may go and still carry the dark label tone at 4.5:1. Worst
+          // adjacent step: sequential 8.3 normal / 7.7 simulated, diverging
+          // 11.3 / 10.3; worst label contrast 4.67:1 (`ChartPalette.validateRamp`
+          // floors 6 / 6 / 4.5). Five sequential bins, seven diverging.
+          SequentialRamp = [| "#e8f2f7"; "#bcdae8"; "#8ec2da"; "#5caacb"; "#2c92b9" |]
+          DivergingRamp =
+            [| "#2c92b9"
+               "#7ab2cc"
+               "#b9d2df"
+               "#f2f2f0"
+               "#ddcbb2"
+               "#c9a26c"
+               "#b47803" |]
+          RampLabelInk = "#1a1a19"
+          HeatmapCellGap = 2.0 }
+
+    /// Phase 2655 — measure a style's heatmap ramps against the ramp gate
+    /// (`ChartPalette.validateRamp`). `[]` is a pass; each finding names the
+    /// ramp and the stop or stop pair.
+    let rampFindings (style: ChartStyle) : ChartPalette.PaletteFinding list =
+        ChartPalette.validateRamp "sequential" false (List.ofArray style.SequentialRamp) style.RampLabelInk
+        @ ChartPalette.validateRamp "diverging" true (List.ofArray style.DivergingRamp) style.RampLabelInk
 
 /// Series index (or, on the Pie arm, category index) → colour. An empty palette
 /// inks series from the surface colour rather than failing — a style is host
@@ -1687,6 +1745,36 @@ let private textStyle
         Emphasis = Some emphasis
         FontFamily = Some style.FontFamily }
 
+// ─── Axis-title text (shared by the series arms and the Heatmap arm) ─────────
+
+let private capitalise (s: string) =
+    if s.Length = 0 then
+        s
+    else
+        string (System.Char.ToUpper s.[0]) + s.Substring 1
+
+/// An axis title: the author's own `TextSource` when declared, else the
+/// capitalised field name — which is exactly what the x axis has always
+/// drawn, now stated once and applied to both axes. `None` only where there
+/// is no honest fallback: an empty field name, or a y axis carrying no
+/// series at all.
+let private axisTitleOf (declared: TextSource option) (fallbackField: string) : TextSource option =
+    match declared with
+    | Some t -> Some t
+    | None when fallbackField = "" -> None
+    | None -> Some(TextSource.Literal(capitalise fallbackField))
+
+/// Bound a title to the extent it runs along. Only a `Literal` can be
+/// truncated — the text behind a `Bound` or `I18n` arm is not known here —
+/// and that is the honest boundary: those pass through and may overrun,
+/// which is a visible fact rather than a silently wrong measurement.
+/// Clause 4 of `docs/CHART-LOWERING-TEXT-CONTRACT.md`, which every host
+/// implements identically.
+let private boundText (fontSize: float) (extent: float) (t: TextSource) : TextSource =
+    match t with
+    | TextSource.Literal s -> TextSource.Literal(TextMetrics.truncateToWidth fontSize extent s)
+    | other -> other
+
 // ─── Data extraction (over the resolved rows) ────────────────────────────────
 
 /// The `ChartKind`s this module lowers to a real `Drawing`. The render
@@ -1699,8 +1787,8 @@ let isLowered (kind: ChartKind) : bool =
     | ChartKind.Line
     | ChartKind.Area
     | ChartKind.Scatter
-    | ChartKind.Pie -> true
-    | ChartKind.Heatmap -> false
+    | ChartKind.Pie
+    | ChartKind.Heatmap -> true
 
 // ─── Cost bounds (Phase 790) ─────────────────────────────────────────────────
 //
@@ -1937,6 +2025,11 @@ let seriesFieldsOf<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) : string list =
     | authored -> authored
 
 
+/// Phase 2655 — a heatmap cell's category key: the x key and the row key, joined
+/// by `|`. The mark id is `valueField|x|row`; `rowOfMarkId` splits at the FIRST
+/// `|`, so the remainder compared is this whole string.
+let private heatmapCellKey (xKey: string) (rowKey: string) : string = xKey + "|" + rowKey
+
 // ─── Phase 933 — mark identity, read backwards ────────────────────────────────
 //
 // The renderer's first-party chart path emits the lowered `DrawingSpec` as a
@@ -1996,6 +2089,20 @@ let markCategoryKeys<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) : string[] =
                 rowList |> List.map (fun r -> numericOf r spec.XField) |> List.toArray
 
         xValues |> Array.map DrawingSvg.formatNum
+    // Phase 2655 — a heatmap cell is addressed by its PAIR: many rows share an x,
+    // so the key is `x|row`, exactly as `lowerHeatmap` stamps it.
+    | ChartKind.Heatmap ->
+        let rowField =
+            match spec.YFields with
+            | f :: _ -> f
+            | [] -> ""
+
+        rowList
+        |> List.map (fun r ->
+            heatmapCellKey
+                (BindingResolver.projectRowFieldString r spec.XField)
+                (BindingResolver.projectRowFieldString r rowField))
+        |> List.toArray
     | _ -> categories
 
 /// Phase 933 — the INVERSE of `withMark`: given the `data-fuaran-mark` id read
@@ -2650,23 +2757,6 @@ let private frame<'Msg>
     // margin for the rotated y-axis title, the top margin for the subtitle. The
     // same dependency Phase 879 established when the bottom margin started
     // reserving the x-axis title's line.
-    let capitalise (s: string) =
-        if s.Length = 0 then
-            s
-        else
-            string (System.Char.ToUpper s.[0]) + s.Substring 1
-
-    /// An axis title: the author's own `TextSource` when declared, else the
-    /// capitalised field name — which is exactly what the x axis has always
-    /// drawn, now stated once and applied to both axes. `None` only where there
-    /// is no honest fallback: an empty field name, or a y axis carrying no
-    /// series at all.
-    let axisTitleOf (declared: TextSource option) (fallbackField: string) : TextSource option =
-        match declared with
-        | Some t -> Some t
-        | None when fallbackField = "" -> None
-        | None -> Some(TextSource.Literal(capitalise fallbackField))
-
     /// Phase 882 wires §4e's date-axis rule: a SELF-EVIDENT DATE AXIS SUPPRESSES
     /// ITS DEFAULT TITLE — an axis reading "Jan Feb Mar" does not need the word
     /// "Date" beneath it. Two boundaries, both stated when the rule was written
@@ -3212,7 +3302,6 @@ type private AxisChrome =
       TickMarks: Shape list
       YTickLabels: Shape list
       XLabels: Shape list
-      BoundText: float -> float -> TextSource -> TextSource
       AxisTitles: Shape list }
 
 /// Computes `AxisChrome`.
@@ -3442,17 +3531,6 @@ let private axisChrome<'Msg>
     // FALLBACK only — an explicit `XTitle` is the author overriding the
     // default, and always draws.
 
-    /// Bound a title to the extent it runs along. Only a `Literal` can be
-    /// truncated — the text behind a `Bound` or `I18n` arm is not known here —
-    /// and that is the honest boundary: those pass through and may overrun,
-    /// which is a visible fact rather than a silently wrong measurement.
-    /// Clause 4 of `docs/CHART-LOWERING-TEXT-CONTRACT.md`, which every host
-    /// implements identically.
-    let boundText (fontSize: float) (extent: float) (t: TextSource) : TextSource =
-        match t with
-        | TextSource.Literal s -> TextSource.Literal(TextMetrics.truncateToWidth fontSize extent s)
-        | other -> other
-
     let axisTitleStyle (anchor: TextAnchor) : DrawStyle =
         textStyle style None anchor tickSize Emphasis.Normal
 
@@ -3506,7 +3584,6 @@ let private axisChrome<'Msg>
       TickMarks = tickMarks
       YTickLabels = yTickLabels
       XLabels = xLabels
-      BoundText = boundText
       AxisTitles = axisTitles }
 
 /// The data marks of the cartesian kinds (`Bar`, `Line`, `Area`, `Scatter`), with the slot geometry
@@ -4319,7 +4396,6 @@ let private legendAndTitles<'Msg>
     let plotX1 = plot.PlotX1
     let plotW = plot.PlotW
     let plotY0 = plot.PlotY0
-    let boundText = axisChrome.BoundText
 
     // ── Legend (Phase 880) — one entry list, four placements ──
     //
@@ -4844,6 +4920,521 @@ let private accessibleSummaryOf<'Msg>
 
     accessibleSummary
 
+// ─── The Heatmap arm (Phase 2655) ────────────────────────────────────────────
+//
+// NORMATIVE CROSS-HOST SPEC (WIRE_FORMAT §3.6.35): every host that lowers the
+// `chart-lowering/heatmap/` subfamily reproduces this arm byte-for-byte.
+//
+// A heatmap is not a series chart. It is a CELL GRID: the columns are the
+// distinct `XField` keys and the rows the distinct keys of the ROW FIELD
+// (`YFields[0]`), both in first-appearance order; a cell's value is the VALUE
+// FIELD (`YFields[1]`) of the first row carrying that pair. The validator fixes
+// which entry is which (FUARAN170: exactly two). A pair no row carries — or a
+// row whose value cell is empty, text or non-finite — is an ABSENT cell: it
+// draws the SURFACE (`fill="none"` under a gridline-weight outline), never a
+// zero, because a zero is a value and an absence is not.
+//
+// THE COLOUR IS A BIN, NOT AN INTERPOLATION. The declared scale
+// (`ChartSpec.Scale`, default `Sequential` over the data's extent) maps a value
+// to a fraction, and the fraction to one stop of the installed ramp by
+// `floor(t · n)`, clamped to the last stop: plain IEEE arithmetic in a fixed
+// order, so every host picks the same stop and the same literal hex. The ramp's
+// stop count IS the declared bin count. A non-finite declared bound is read as
+// absent.
+//
+//   Sequential  lo = min ?? data min, hi = max ?? data max;
+//               t = (v − lo) / (hi − lo) clamped to [0, 1] (0 when hi <= lo).
+//   Diverging   m = midpoint ?? 0; lo, hi as above;
+//               e = max(m − lo, hi − m); t = (v − m) / e clamped to [−1, 1]
+//               (0 when e <= 0); bin = floor((t + 1) / 2 · n).
+//
+// The chrome: row labels right-aligned in a Phase-879 autosized left margin;
+// column labels centred under each column, truncated to the column; the axis
+// titles with the shared fallbacks (x the capitalised x field, y the capitalised
+// row field); a legend RAMP in a right-hand column (one swatch per stop, the
+// highest bin on top) labelled with the scale's ends and, when diverging, its
+// midpoint; the title and subtitle as every arm draws them. `LegendPosition =
+// None` drops the ramp; any other position is the column (a ramp is a column).
+// `DataLabels = Ends` writes each present cell's value at its centre in
+// `RampLabelInk` where it fits, and nothing where it does not.
+
+/// The heatmap's grid, read once from the capped rows.
+type private HeatmapGrid =
+    {
+        RowField: string
+        ValueField: string
+        XKeys: string array
+        RowKeys: string array
+        /// (column, row) → the first row's value, for the PRESENT cells only.
+        Cells: Map<int * int, float>
+    }
+
+/// A heatmap value cell, or `None` when it is absent: empty, text, or
+/// non-finite. Numbers, exact decimals and booleans read as `numericOf` reads
+/// them.
+let private heatmapValueOf (row: Row) (field: string) : float option =
+    match BindingResolver.projectRowFieldValue row field with
+    | CellValue.Numeric n when System.Double.IsNaN n || System.Double.IsInfinity n -> None
+    | CellValue.Numeric n -> Some n
+    | CellValue.Decimal s -> Fuaran.Core.DecimalText.tryToFloat s
+    | CellValue.Bool b -> Some(if b then 1.0 else 0.0)
+    | _ -> None
+
+/// Read the grid: keys in first-appearance order, the first row of a pair wins.
+let private heatmapGrid<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : HeatmapGrid =
+    let rowField =
+        match spec.YFields with
+        | f :: _ -> f
+        | [] -> ""
+
+    let valueField =
+        match spec.YFields with
+        | _ :: v :: _ -> v
+        | _ -> ""
+
+    let keyed =
+        rows
+        |> List.map (fun r ->
+            BindingResolver.projectRowFieldString r spec.XField, BindingResolver.projectRowFieldString r rowField, r)
+
+    let xKeys = keyed |> List.map (fun (x, _, _) -> x) |> List.distinct |> List.toArray
+
+    let rowKeys =
+        keyed |> List.map (fun (_, y, _) -> y) |> List.distinct |> List.toArray
+
+    let xIndex = xKeys |> Array.mapi (fun i k -> k, i) |> Map.ofArray
+    let rowIndex = rowKeys |> Array.mapi (fun j k -> k, j) |> Map.ofArray
+
+    let cells =
+        keyed
+        |> List.fold
+            (fun (acc: Map<int * int, float>, seen: Set<int * int>) (x, y, r) ->
+                let at = xIndex.[x], rowIndex.[y]
+
+                if seen.Contains at then
+                    acc, seen
+                else
+                    match heatmapValueOf r valueField with
+                    | Some v -> Map.add at v acc, Set.add at seen
+                    | None -> acc, Set.add at seen)
+            (Map.empty, Set.empty)
+        |> fst
+
+    { RowField = rowField
+      ValueField = valueField
+      XKeys = xKeys
+      RowKeys = rowKeys
+      Cells = cells }
+
+/// A declared bound, or the data's own when it is absent or non-finite.
+let private boundOr (declared: float option) (fallback: float) : float =
+    match declared with
+    | Some v when not (System.Double.IsNaN v || System.Double.IsInfinity v) -> v
+    | _ -> fallback
+
+/// The heatmap's resolved scale: the ramp, the bin of a value, and the ends +
+/// midpoint the legend states.
+type private HeatmapScale =
+    { Ramp: string array
+      BinOf: float -> int
+      Low: float
+      High: float
+      Midpoint: float option }
+
+let private heatmapScale (style: ChartStyle) (scale: ChartScale option) (values: float list) : HeatmapScale =
+    let dataMin = if values.IsEmpty then 0.0 else List.min values
+    let dataMax = if values.IsEmpty then 0.0 else List.max values
+
+    let clampBin (n: int) (x: float) : int =
+        if n = 0 then 0 else max 0 (min (n - 1) (int (floor x)))
+
+    match scale with
+    | Some(ChartScale.Diverging(midpoint, min, max)) ->
+        let ramp = style.DivergingRamp
+        let n = ramp.Length
+        let m = boundOr midpoint 0.0
+        let lo = boundOr min dataMin
+        let hi = boundOr max dataMax
+        let e = System.Math.Max(m - lo, hi - m)
+
+        let binOf (v: float) =
+            let t =
+                if e > 0.0 then
+                    System.Math.Max(-1.0, System.Math.Min(1.0, (v - m) / e))
+                else
+                    0.0
+
+            clampBin n ((t + 1.0) / 2.0 * float n)
+
+        { Ramp = ramp
+          BinOf = binOf
+          Low = (if e > 0.0 then m - e else m)
+          High = (if e > 0.0 then m + e else m)
+          Midpoint = Some m }
+    | Some(ChartScale.Sequential(min, max)) ->
+        let ramp = style.SequentialRamp
+        let n = ramp.Length
+        let lo = boundOr min dataMin
+        let hi = boundOr max dataMax
+
+        let binOf (v: float) =
+            let t =
+                if hi > lo then
+                    System.Math.Max(0.0, System.Math.Min(1.0, (v - lo) / (hi - lo)))
+                else
+                    0.0
+
+            clampBin n (t * float n)
+
+        { Ramp = ramp
+          BinOf = binOf
+          Low = lo
+          High = hi
+          Midpoint = None }
+    | None ->
+        let ramp = style.SequentialRamp
+        let n = ramp.Length
+
+        let binOf (v: float) =
+            let t =
+                if dataMax > dataMin then
+                    System.Math.Max(0.0, System.Math.Min(1.0, (v - dataMin) / (dataMax - dataMin)))
+                else
+                    0.0
+
+            clampBin n (t * float n)
+
+        { Ramp = ramp
+          BinOf = binOf
+          Low = dataMin
+          High = dataMax
+          Midpoint = None }
+
+/// The heatmap arm: a validated, capped grid to a canonical `DrawingSpec`.
+let private lowerHeatmap<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (grid: HeatmapGrid) : DrawingSpec =
+    let tickSize = style.TickFontSize
+    let lineHeight = TextMetrics.lineHeight tickSize style.TextLineHeightFactor
+
+    let widestOf (fontSize: float) (texts: string seq) : float =
+        texts |> Seq.fold (fun acc t -> max acc (TextMetrics.width fontSize t)) 0.0
+
+    let xTitle = axisTitleOf spec.XTitle spec.XField
+    let yTitle = axisTitleOf spec.YTitle grid.RowField
+    let n = grid.XKeys.Length
+    let m = grid.RowKeys.Length
+
+    // Present values in grid order (column-major), for the scale's data extent.
+    let values =
+        [ for i in 0 .. n - 1 do
+              for j in 0 .. m - 1 do
+                  match Map.tryFind (i, j) grid.Cells with
+                  | Some v -> v
+                  | None -> () ]
+
+    let scale = heatmapScale style spec.Scale values
+    let _, _, step, _ = niceDomain style.TargetTickCount scale.Low scale.High
+
+    let valueText (v: float) =
+        formatValue spec.ValueFormat 1.0 false step v
+
+    // ── Top margin (the subtitle's line, as every arm reserves it) ──
+    let subtitleBand =
+        match spec.Subtitle with
+        | Some _ -> TextMetrics.lineHeight style.SubtitleFontSize style.TextLineHeightFactor
+        | None -> 0.0
+
+    let plotY0 = r2 (style.MarginTop + subtitleBand)
+    let plotY1 = r2 (style.Height - style.MarginBottom)
+
+    // ── Left margin: the row labels (Phase 879's derivation) ──
+    let leftCeiling = style.MarginLeftMaxShare * style.Width
+
+    let yTitleBand =
+        match yTitle with
+        | Some _ -> lineHeight + style.AxisLabelPadding
+        | None -> 0.0
+
+    let rowTextBudget =
+        max 0.0 (leftCeiling - style.TickLabelGap - style.AxisLabelPadding - yTitleBand)
+
+    let rowLabels =
+        grid.RowKeys |> Array.map (TextMetrics.truncateToWidth tickSize rowTextBudget)
+
+    let requiredLeft =
+        style.TickLabelGap
+        + widestOf tickSize rowLabels
+        + style.AxisLabelPadding
+        + yTitleBand
+
+    let plotX0 = r2 (max style.MarginLeft (min leftCeiling requiredLeft))
+
+    // ── Right: the legend ramp's column ──
+    let showLegend =
+        match spec.LegendPosition with
+        | Some ChartLegendPosition.None -> false
+        | _ -> true
+
+    let legendLabels =
+        [ yield scale.High, valueText scale.High
+          match scale.Midpoint with
+          | Some mid -> yield mid, valueText mid
+          | None -> ()
+          yield scale.Low, valueText scale.Low ]
+
+    let legendReserve =
+        if showLegend then
+            style.LegendColumnGap
+            + style.LegendLabelOffsetX
+            + widestOf tickSize (legendLabels |> List.map snd)
+        else
+            0.0
+
+    let plotX1 = r2 (style.Width - style.MarginRight - legendReserve)
+    let plotW = plotX1 - plotX0
+    let plotH = plotY1 - plotY0
+    let cellW = if n > 0 then plotW / float n else 0.0
+    let cellH = if m > 0 then plotH / float m else 0.0
+    let gap = style.HeatmapCellGap
+    let half = gap / 2.0
+    let centreX (i: int) = plotX0 + cellW * float i + cellW / 2.0
+    let centreY (j: int) = plotY0 + cellH * float j + cellH / 2.0
+
+    let fillOf (v: float) : string =
+        if scale.Ramp.Length = 0 then
+            style.Ink
+        else
+            scale.Ramp.[scale.BinOf v]
+
+    // ── Cells, in column-major order ──
+    let absentStyle =
+        { styleStrokeInk style style.GridOpacity style.GridStrokeWidth with
+            Fill = Some(Binding.Static(Some "none")) }
+
+    let cells =
+        [ for i in 0 .. n - 1 do
+              for j in 0 .. m - 1 do
+                  let x = r2 (plotX0 + cellW * float i + half)
+                  let y = r2 (plotY0 + cellH * float j + half)
+                  let w = r2 (max 0.0 (cellW - gap))
+                  let h = r2 (max 0.0 (cellH - gap))
+
+                  match Map.tryFind (i, j) grid.Cells with
+                  | Some v ->
+                      let xKey = grid.XKeys.[i]
+                      let rowKey = grid.RowKeys.[j]
+
+                      Shape.Rectangle(
+                          x,
+                          y,
+                          w,
+                          h,
+                          None,
+                          styleFill (fillOf v)
+                          |> withMark grid.ValueField (heatmapCellKey xKey rowKey)
+                          |> withTip (
+                              rowKey
+                              + tipSeparator
+                              + xKey
+                              + tipSeparator
+                              + formatValue spec.ValueFormat 1.0 false v v
+                          )
+                      )
+                  | None -> Shape.Rectangle(x, y, w, h, None, absentStyle) ]
+
+    // ── The value written on each present cell (`DataLabels = Ends`) ──
+    let cellLabels =
+        match spec.DataLabels with
+        | Some ChartDataLabels.Ends ->
+            let labelStyle =
+                { baseStyle with
+                    Fill = Some(Binding.Static(Some style.RampLabelInk))
+                    TextAnchor = Some TextAnchor.Middle
+                    FontSize = Some style.DataLabelFontSize
+                    Emphasis = Some Emphasis.Normal
+                    FontFamily = Some style.FontFamily }
+
+            let room = 2.0 * style.DataLabelPadding
+
+            [ for i in 0 .. n - 1 do
+                  for j in 0 .. m - 1 do
+                      match Map.tryFind (i, j) grid.Cells with
+                      | Some v ->
+                          let text = valueText v
+
+                          if
+                              TextMetrics.fitsBox
+                                  style.DataLabelFontSize
+                                  style.TextLineHeightFactor
+                                  (cellW - gap - room)
+                                  (cellH - gap - room)
+                                  text
+                          then
+                              Shape.Label(
+                                  r2 (centreX i),
+                                  r2 (centreY j + style.TickLabelBaselineDy),
+                                  TextSource.Literal text,
+                                  labelStyle
+                              )
+                      | None -> () ]
+        | _ -> []
+
+    // ── Row + column labels ──
+    let chromeLabel (anchor: TextAnchor) =
+        textStyle style (Some style.LabelOpacity) anchor tickSize Emphasis.Normal
+
+    let rowLabelShapes =
+        rowLabels
+        |> Array.mapi (fun j text ->
+            Shape.Label(
+                r2 (plotX0 - style.TickLabelGap),
+                r2 (centreY j + style.TickLabelBaselineDy),
+                TextSource.Literal text,
+                chromeLabel TextAnchor.End
+            ))
+        |> Array.toList
+
+    let columnLabelShapes =
+        grid.XKeys
+        |> Array.mapi (fun i key ->
+            Shape.Label(
+                r2 (centreX i),
+                r2 (plotY1 + style.CategoryLabelOffsetY),
+                TextSource.Literal(TextMetrics.truncateToWidth tickSize cellW key),
+                chromeLabel TextAnchor.Middle
+            ))
+        |> Array.toList
+
+    // ── Axis titles (the shared rules: x centred below, y rotated left) ──
+    let axisTitleStyle (anchor: TextAnchor) =
+        textStyle style None anchor tickSize Emphasis.Normal
+
+    let axisTitles =
+        (match xTitle with
+         | Some t ->
+             [ Shape.Label(
+                   r2 ((plotX0 + plotX1) / 2.0),
+                   r2 (style.Height - style.AxisTitleBottomOffset),
+                   boundText tickSize plotW t,
+                   axisTitleStyle TextAnchor.Middle
+               ) ]
+         | None -> [])
+        @ (match yTitle with
+           | Some t ->
+               [ Shape.Label(
+                     r2 style.YAxisTitleOffsetX,
+                     r2 ((plotY0 + plotY1) / 2.0),
+                     boundText tickSize plotH t,
+                     { axisTitleStyle TextAnchor.Middle with
+                         Rotation = Some(r2 -style.YAxisTitleDegrees) }
+                 ) ]
+           | None -> [])
+
+    // ── The legend ramp: one swatch per stop, the highest bin on top ──
+    let legend =
+        if not showLegend || scale.Ramp.Length = 0 then
+            []
+        else
+            let stops = scale.Ramp.Length
+            let stopH = plotH / float stops
+            let swatchX = r2 (plotX1 + style.LegendColumnGap)
+            let labelX = r2 (plotX1 + style.LegendColumnGap + style.LegendLabelOffsetX)
+
+            let swatches =
+                [ for k in 0 .. stops - 1 do
+                      Shape.Rectangle(
+                          swatchX,
+                          r2 (plotY0 + stopH * float (stops - 1 - k)),
+                          style.LegendSwatchSize,
+                          r2 stopH,
+                          None,
+                          styleFill scale.Ramp.[k]
+                      ) ]
+
+            let labelAt (y: float) (text: string) =
+                Shape.Label(
+                    labelX,
+                    r2 (y + style.TickLabelBaselineDy),
+                    TextSource.Literal text,
+                    chromeLabel TextAnchor.Start
+                )
+
+            let labels =
+                [ yield labelAt plotY0 (valueText scale.High)
+                  match scale.Midpoint with
+                  | Some mid -> yield labelAt ((plotY0 + plotY1) / 2.0) (valueText mid)
+                  | None -> ()
+                  yield labelAt plotY1 (valueText scale.Low) ]
+
+            swatches @ labels
+
+    // ── Title + subtitle (as `legendAndTitles` draws them) ──
+    let titleX, titleAnchor =
+        match style.TitleAlignment with
+        | ChartTitleAlignment.Left -> r2 plotX0, TextAnchor.Start
+        | ChartTitleAlignment.Centre -> r2 ((plotX0 + plotX1) / 2.0), TextAnchor.Middle
+        | ChartTitleAlignment.Right -> r2 plotX1, TextAnchor.End
+
+    let titleShapes =
+        match spec.Title with
+        | Some t ->
+            [ Shape.Label(
+                  titleX,
+                  style.TitleBaselineY,
+                  t,
+                  textStyle style None titleAnchor style.TitleFontSize Emphasis.Loud
+              ) ]
+        | None -> []
+
+    let subtitleShapes =
+        match spec.Subtitle with
+        | Some s ->
+            [ Shape.Label(
+                  titleX,
+                  style.SubtitleBaselineY,
+                  boundText style.SubtitleFontSize plotW s,
+                  textStyle style (Some style.LabelOpacity) titleAnchor style.SubtitleFontSize Emphasis.Normal
+              ) ]
+        | None -> []
+
+    // ── The accessible summary (Phase 921's posture, the heatmap's clauses) ──
+    let name (s: string) = clampText summaryMaxNameChars s
+    let absent = n * m - grid.Cells.Count
+
+    let clauses =
+        [ yield
+              sprintf
+                  "%s of %s by %s and %s"
+                  (summaryKindWords ChartKind.Heatmap false)
+                  (name grid.ValueField)
+                  (name spec.XField)
+                  (name grid.RowField)
+          yield sprintf "%d columns by %d rows" n m
+          if values.IsEmpty then
+              yield "no values"
+          else
+              yield sprintf "values from %s to %s" (valueText (List.min values)) (valueText (List.max values))
+          if absent > 0 then
+              yield sprintf "%d cells empty" absent ]
+
+    { ViewBox =
+        { MinX = 0.0
+          MinY = 0.0
+          Width = style.Width
+          Height = style.Height }
+      Shapes =
+        cells
+        @ cellLabels
+        @ rowLabelShapes
+        @ columnLabelShapes
+        @ axisTitles
+        @ legend
+        @ titleShapes
+        @ subtitleShapes
+      Style = emptyStyle
+      Title = spec.Title
+      Description =
+        Some(TextSource.Literal(clampText summaryMaxChars (String.concat summaryClauseSeparator clauses + "."))) }
+
 /// The core lowering: an ALREADY-CAPPED row list to a canonical `DrawingSpec`,
 /// under an explicit `ChartStyle` (Phase 885 — every colour, size, weight and
 /// offset below reads from it). The public entry points (`lower` / `lowerWith` /
@@ -4851,8 +5442,8 @@ let private accessibleSummaryOf<'Msg>
 /// runs, so it never sees an over-budget input.
 /// Lowered arms: `Bar` (grouped + stacked), `Line`, `Area` (overlaid +
 /// stacked), `Scatter` (linear numeric x), `Pie` (polar, single-series) —
-/// Phases 533 + 637 + 636 + 638. `Heatmap` produces an empty drawing (its
-/// lowering rule lands with its own phase). `Stacked = true` on a kind where
+/// Phases 533 + 637 + 636 + 638, and `Heatmap` (Phase 2655, `lowerHeatmap`
+/// above — a cell grid, not a series). `Stacked = true` on a kind where
 /// stacking is meaningless (`Line`, `Scatter`, `Pie`) is ignored — the flag
 /// only changes `Bar` / `Area` geometry.
 let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: Row list) : DrawingSpec =
@@ -4989,17 +5580,32 @@ let tryLowerWithStyle<'Msg>
         else
             Ok fields
 
-    match spec.YFields with
+    match spec.Kind, spec.YFields with
+    // Phase 2655 — a heatmap's work is its CELL GRID (every column × every row,
+    // present or not), which the row cap alone does not bound: n distinct x keys
+    // and n distinct row keys from n rows draw n² cells. The grid is held to the
+    // same Phase-790 `MaxPointsPerSeries` budget — a heatmap is one value series
+    // whose points are its cells — and refused with the same typed case.
+    | ChartKind.Heatmap, _ ->
+        capRows ()
+        |> Result.bind (fun capped ->
+            let grid = heatmapGrid spec capped
+            let cells = grid.XKeys.Length * grid.RowKeys.Length
+
+            if cells > limits.MaxPointsPerSeries then
+                Error(TooManyPoints(cells, limits.MaxPointsPerSeries))
+            else
+                Ok(lowerHeatmap style spec grid))
     // Phase 2568 — derived series are counted only once the rows are read, so the
     // point cap is applied first; a table with more numeric columns than
     // `MaxSeries` is the same typed refusal an authored list that long is, never a
     // truncation to the first `MaxSeries` columns.
-    | [] ->
+    | _, [] ->
         capRows ()
         |> Result.bind (fun capped ->
             capSeries (derivedSeriesFields spec.XField capped)
             |> Result.map (fun fields -> lowerRows style { spec with YFields = fields } capped))
-    | authored ->
+    | _, authored ->
         capSeries authored
         |> Result.bind (fun _ -> capRows ())
         |> Result.map (lowerRows style spec)
@@ -5525,7 +6131,10 @@ let mutable private installedStyle: ChartStyle = ChartStyle.defaults
 /// (canvas, ink and geometry stay the corpus-pinned defaults, and the chrome
 /// already inks from the surface).
 let chartStyleOfTheme (theme: Theme) : Result<ChartStyle, ChartPalette.PaletteFinding list> =
-    match ChartPalette.validate theme.Charts with
+    // Phase 2655 — the ramps are the shipped default's here (a theme carries no
+    // ramp tokens), so they pass; they are measured anyway, so the derived style
+    // is one that `tryInstallChartStyle` would admit.
+    match ChartPalette.validate theme.Charts @ ChartStyle.rampFindings ChartStyle.defaults with
     | [] ->
         // `validate` passing means every slot below is a `#rrggbb` literal.
         let hex (c: ColorVar) = (ChartPalette.hexOf c).Value
@@ -5539,8 +6148,30 @@ let chartStyleOfTheme (theme: Theme) : Result<ChartStyle, ChartPalette.PaletteFi
     | findings -> Error findings
 
 /// Install the style every renderer-driven chart lowers under. Prefer
-/// `installChartStyleFromTheme`, which validates; this entry installs as given.
+/// `installChartStyleFromTheme` or `tryInstallChartStyle`, which validate; this
+/// entry installs as given.
 let installChartStyle (style: ChartStyle) : unit = installedStyle <- style
+
+/// Phase 2655 — install a hand-built style through the gates: its palette
+/// (`ChartPalette.validateSeries`) and its heatmap ramps
+/// (`ChartStyle.rampFindings`). A style that clears every gate is installed and
+/// `[]` returned; one that fails is REFUSED — the shipped default installed in
+/// its place, never a degraded copy — and the findings returned, each naming the
+/// slot, the ramp stop or the stop pair (`ChartPalette.describe`).
+let tryInstallChartStyle (style: ChartStyle) : ChartPalette.PaletteFinding list =
+    let palette =
+        style.Palette
+        |> Array.toList
+        |> List.map ColorVar.Hex
+        |> ChartPalette.validateSeries
+
+    match palette @ ChartStyle.rampFindings style with
+    | [] ->
+        installedStyle <- style
+        []
+    | findings ->
+        installedStyle <- ChartStyle.defaults
+        findings
 
 /// Install the chart style a host's theme asks for — the boot-time step. A
 /// palette that clears every gate is installed and `[]` returned; one that

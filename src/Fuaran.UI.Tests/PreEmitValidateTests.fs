@@ -1981,6 +1981,55 @@ let tests =
               | Ok() -> failtest "Expected ChartStackedMeaningless"
           }
 
+          // ── Phase 2655 — the declared colour scale (FUARAN169 / FUARAN170) ──
+
+          test "FUARAN169: a scale on a kind other than Heatmap is refused; on a Heatmap it is admitted" {
+              let scaled (kind: ChartKind) (yFields: string list) : Node<Msg> =
+                  Fuaran.chart
+                      "c"
+                      { Defaults.chart<Msg> with
+                          Kind = kind
+                          YFields = yFields
+                          Scale = Some(ChartScale.Sequential(None, None)) }
+
+              match PreEmitValidate.validate (scaled ChartKind.Bar [ "a" ]) with
+              | Error defects ->
+                  Expect.contains defects (PreEmitDefect.ChartScaleMeaningless("c", "Bar")) "a Bar's scale is refused"
+              | Ok() -> failtest "Expected ChartScaleMeaningless"
+
+              let heatmapDefects =
+                  match PreEmitValidate.validate (scaled ChartKind.Heatmap [ "row"; "value" ]) with
+                  | Error defects -> defects
+                  | Ok() -> []
+
+              Expect.isFalse
+                  (heatmapDefects
+                   |> List.exists (fun d ->
+                       match d with
+                       | PreEmitDefect.ChartScaleMeaningless _
+                       | PreEmitDefect.ChartHeatmapFieldShape _ -> true
+                       | _ -> false))
+                  "a two-field Heatmap with a scale is admitted"
+          }
+
+          test "FUARAN170: a Heatmap names exactly its row field and its value field" {
+              for fields in [ [ "row" ]; [ "row"; "value"; "extra" ] ] do
+                  let heatmap: Node<Msg> =
+                      Fuaran.chart
+                          "hm"
+                          { Defaults.chart<Msg> with
+                              Kind = ChartKind.Heatmap
+                              YFields = fields }
+
+                  match PreEmitValidate.validate heatmap with
+                  | Error defects ->
+                      Expect.contains
+                          defects
+                          (PreEmitDefect.ChartHeatmapFieldShape("hm", fields.Length))
+                          (sprintf "%d fields refused" fields.Length)
+                  | Ok() -> failtest "Expected ChartHeatmapFieldShape"
+          }
+
           // ── Phase 882 — the temporal axis's grounding rule (FUARAN097) ──
           //
           // The temporal axis is DECLARED, so the declaration is groundable —

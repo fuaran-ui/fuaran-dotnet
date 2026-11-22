@@ -10,6 +10,59 @@ consequence.
 
 ---
 
+## 2026-11-22 — D37: a heatmap's colour is a declared scale binned onto a gated ramp; "Gap 6" closes without a per-cell colour
+
+**Decided (Phase 2655).** The 2026-05-28 deferral called "Gap 6" left `Heatmap` in the `Custom` escape. A per-cell
+colour would have needed a `Style.InlineBackground`, which lets an author emit raw RGB, and that inverts the
+vocabulary's rule that a tree states meaning and the host chooses treatment. Gap 6 closes at the level that rule
+allows: a **declared scale**. Five rulings follow from it.
+
+1. **The author declares a scale and never a colour.** `ChartSpec.scale` is `Sequential { min?, max? }` or
+   `Diverging { midpoint?, min?, max? }`. An absent bound is the data's own extent, and an absent midpoint is zero.
+   No hex crosses the wire. The scale is meaningful on `Heatmap` alone until a later phase admits it on a sized or
+   coloured mark, so any other kind carrying it is refused pre-emit (`FUARAN169`). `midpoint` is OPTIONAL rather
+   than an omit-at-default `0`: no IDL float slot carries a declared default yet, and minting the first one would
+   have moved every host's generator for one member. So `midpoint: 0` and an absent midpoint are two spellings of
+   one picture. The lowering treats them alike, and the corpus pins the absent form.
+2. **The colour is a bin, never an interpolation.** A value maps to a fraction under the scale, and the fraction
+   maps to one ramp stop by `floor(t · n)`, clamped to the last stop. The stop count is the declared bin count.
+   That is IEEE `+ − × ÷` and `floor` in a fixed order, so every host picks the same stop and writes the same
+   literal hex. An interpolated colour would need a float-to-hex rounding rule that each host would have to agree
+   on to the bit. A non-finite declared bound reads as absent.
+3. **The ramps belong to `ChartStyle` and are gated at install, on the palette gate's calibration.** The palette
+   gate measures the categorical palette (`Fuaran.UI.ChartPalette`, Phase 2482), and the ramp gate extends it there.
+   Adjacent stops must differ by an OKLab ΔE ×100 of at least 6 under full colour vision, and by at least 6 under
+   simulated protanopia and deuteranopia (the palette's own `CvdFloor`). Every stop must clear the 4.5:1
+   small-text contrast floor against the ramp's LABEL TONE: the literal ink of a cell's value label, which sits
+   on the cell, not on the surface. A diverging ramp has an odd count, so its midpoint has a centre stop. The
+   categorical lightness band and chroma floor do not apply: a ramp is light to dark by design. A failing ramp is
+   refused by name, and the install path keeps the default; a failing ramp is never degraded. The shipped ramps are
+   generated in OKLab. The sequential one runs along the primary's hue from a near-surface tint (L 0.955) to L 0.62,
+   the darkest a stop may go and still carry the dark label at 4.5:1. The diverging one adds the palette's validated
+   neighbour, ochre, as its high side. Worst steps are 8.3 / 7.7 (sequential) and 11.3 / 10.3 (diverging), and the
+   worst contrast is 4.67:1. So "from the surface tone to the categorical primary" holds as a direction, not an
+   endpoint: the primary itself (`#1a86ac`, 4.18:1 against the label tone) fails the contrast floor, and the
+   go-red test uses exactly that stop.
+4. **An absence is the surface, never a zero.** A pair no row carries, and a row whose value cell is empty, text or
+   non-finite, draws `fill="none"` under a gridline-weight outline. The surface shows through on either theme, and
+   the outline still marks a cell. A zero is a value and takes the lowest stop.
+5. **The cell grid is the cost, and it is held to the Phase-790 budget.** n distinct columns by n distinct rows from
+   n rows draw n² cells, so the row cap alone does not bound the work. The grid is held to `MaxPointsPerSeries`,
+   since a heatmap is one value series whose points are its cells. A grid over the budget is `TooManyPoints(cells,
+   limit)`, the existing typed case, so `ChartRefusal` and `ChartLimits` did not widen.
+
+**Rejected.** A per-cell `Style.InlineBackground` (Gap 6's original shape): it puts treatment in the tree. A
+continuous gradient: the bytes would depend on each host's colour rounding. A gradient the ramps cannot express
+stays in the `Custom` escape. A third `ChartRefusal` case for cells: the existing case says the same thing.
+Theme-supplied ramps: the theme token group carries no ramp yet, and a hand-built style reaches the gate through
+`tryInstallChartStyle`.
+
+**Consequence.** `isLowered` is true for every `ChartKind`. Three hosts reproduce the arm byte for byte on the
+`chart-lowering/heatmap/` subfamily: this one, which generates the goldens, the TypeScript host and the Python
+host. The Rust and Go hosts are pending: the vectors sit in a subfamily so their top-level enumeration does not
+reach them (WIRE_FORMAT §11.0). The AG adapter takes the ramp as its colour range and nothing else, because AG
+interpolates over its own data-derived domain.
+
 ## 2026-11-19 — D36: the closure share is certified at the UI witness by its family read here and by its shapes walked here
 
 **Decided (Phase 2813).** `Fuaran.Program` 0.16.0 carries a closure share on every tier of the demanded document
