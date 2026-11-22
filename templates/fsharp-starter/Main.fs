@@ -60,12 +60,12 @@ let private tree (_model: Model) : Node<Msg> =
                       "counter-kpi"
                       { Defaults.metric with
                           Label = TextSource.Literal "Counter"
-                          Source = binding.state "counter" 0.0 }
+                          Value = binding.state "counter" 0.0 }
 
                   Fuaran.stack
                       "counter-buttons"
                       { Defaults.stack with
-                          Orientation = Horizontal
+                          Orientation = Orientation.Horizontal
                           Children =
                               [ Fuaran.button
                                     "btn-decrement"

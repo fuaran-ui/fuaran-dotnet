@@ -10,6 +10,9 @@
     <!-- Fable.Elmish + Feliz pre-date F# 10 nullness; disable the checker here
          (the Fuaran.UI typed-tree library keeps nullness on separately). -->
     <Nullable>disable</Nullable>
+    <!-- One property pins every Fuaran.UI.* package; raise it to move the
+         starter onto a newer nuget.org release. -->
+    <FuaranUIVersion>0.105.0</FuaranUIVersion>
   </PropertyGroup>
   <ItemGroup>
     <None Include="index.html" />
@@ -21,8 +24,8 @@
     <Compile Include="Main.fs" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Fuaran.UI" Version="0.1.0" />
-    <PackageReference Include="Fuaran.UI.Renderer" Version="0.1.0" />
+    <PackageReference Include="Fuaran.UI" Version="$(FuaranUIVersion)" />
+    <PackageReference Include="Fuaran.UI.Renderer" Version="$(FuaranUIVersion)" />
     <PackageReference Include="Fable.Core" Version="5.0" />
     <PackageReference Include="Fable.Elmish" Version="5.0.2" />
     <PackageReference Include="Fable.Elmish.React" Version="5.6" />
