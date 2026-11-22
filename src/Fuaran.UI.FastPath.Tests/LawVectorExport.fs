@@ -15,9 +15,9 @@ namespace Fuaran.UI.FastPath.Tests
 //  What remains here is what every host does with that file: read it, and
 //  certify the PINNED kit against it. Each vector is read back through the
 //  public codecs — the declaration through `CapabilityCodec.decode`, the args as
-//  plain `{addr, value}` pairs — and its recorded answer is recomputed by
-//  calling the pinned kit, never trusted. The draw is still reproduced here
-//  (`draws`), because `capturedValue` is the sample's own draw rather than
+//  plain `{name, value}` pairs, keyed by qualified hole name since Core 0.45.0 —
+//  and its recorded answer is recomputed by calling the pinned kit, never
+//  trusted. The draw is still reproduced here (`draws`), because `capturedValue` is the sample's own draw rather than
 //  something the kit computes from the inputs, and because the file declares
 //  the seed a host must be able to reproduce the sample from.
 //

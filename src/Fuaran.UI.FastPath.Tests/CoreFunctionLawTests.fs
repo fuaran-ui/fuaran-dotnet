@@ -239,8 +239,8 @@ module CoreFunctionLawTests =
                           cap.Signature.Holes
                           |> List.choose (fun h ->
                               match h.Space with
-                              | Some(IntRange(lo, _)) -> Some(h.Addr, string lo)
-                              | Some AnyString -> Some(h.Addr, "x")
+                              | Some(IntRange(lo, _)) -> Some(h.Name, string lo)
+                              | Some AnyString -> Some(h.Name, "x")
                               | _ -> None)
 
                       Expect.equal
@@ -254,10 +254,10 @@ module CoreFunctionLawTests =
 
                       match
                           cap.Signature.Holes
-                          |> List.tryPick (fun h -> h.Space |> Option.map (fun s -> h.Addr, s))
+                          |> List.tryPick (fun h -> h.Space |> Option.map (fun s -> h.Name, s))
                       with
-                      | Some(addr, IntRange(_, hi)) ->
-                          match Capability.validateArgs cap [ addr, string (hi + 1) ] with
+                      | Some(name, IntRange(_, hi)) ->
+                          match Capability.validateArgs cap [ name, string (hi + 1) ] with
                           | Error(ArgOutOfSpace _) -> ()
                           | other -> failtestf "%s: an out-of-space arg was not refused (%A)" cap.Id other
                       | _ ->
