@@ -262,6 +262,15 @@ function page(shimSource, family) {
 </body></html>`;
 }
 
+/**
+ * The browser's environment: ours without `__COMPAT_LAYER`. Under a Windows
+ * compatibility layer (some parent processes set one) Edge relaunches itself
+ * and the process we spawned exits 0 at once with an empty stdout.
+ */
+function browserEnv() {
+    return Object.fromEntries(Object.entries(process.env).filter(([k]) => k.toUpperCase() !== "__COMPAT_LAYER"));
+}
+
 /** Run one shim source in the browser; the per-case verdicts. */
 function runInBrowser(browser, shimSource, family) {
     const dir = mkdtempSync(join(tmpdir(), "fuaran-browser-leg-"));
@@ -277,11 +286,17 @@ function runInBrowser(browser, shimSource, family) {
                 "--no-first-run",
                 "--no-default-browser-check",
                 "--disable-extensions",
+                // Without these three, Edge's background services (sign-in, sync,
+                // component update) start in the fresh profile and intermittently
+                // keep the browser alive after the DOM is dumped, until the timeout.
+                "--disable-background-networking",
+                "--disable-sync",
+                "--disable-component-update",
                 `--user-data-dir=${join(dir, "profile")}`,
                 "--dump-dom",
                 pathToFileURL(file).href
             ],
-            { encoding: "utf8", timeout: 120000, maxBuffer: 256 * 1024 * 1024, windowsHide: true }
+            { encoding: "utf8", timeout: 120000, maxBuffer: 256 * 1024 * 1024, windowsHide: true, env: browserEnv() }
         );
         if (r.error) throw new Error(`the browser did not run: ${r.error.message}`);
         const m = /data-fuaran-results="([A-Za-z0-9+/=]*)"/.exec(r.stdout || "");
