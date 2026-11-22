@@ -1564,7 +1564,9 @@ let policyPositionTests =
               let metric = collecting.Substring(at, collecting.IndexOf("\n\n", at) - at)
 
               for read in
-                  [ "cReqAt __ov __holder j \"value\" __fs (fun __j -> __ov.Binding.Decode(__ov, (__ov.Float __ov), __j))"
+                  // Since Core 0.43.0 (Phase 635) a generic seam's Decode takes each argument's
+                  // instantiation witness after its decoder.
+                  [ "cReqAt __ov __holder j \"value\" __fs (fun __j -> __ov.Binding.Decode(__ov, (__ov.Float __ov), Instantiation.Float(id, id), __j))"
                     "cDefAt __ov __holder j \"tone\" __fs (__ov.ToneVariant __ov) (ToneVariant.Default)"
                     "cOptAt __ov __holder j \"icon\" __fs (__ov.String __ov)" ] do
                   Expect.stringContains

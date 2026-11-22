@@ -711,6 +711,12 @@ let census: (string * Adoption) list =
       "Conformance.aiSurfaceKitPolicyLawsAt",
       NotUsed
           "Fuaran.Core.AiSurface's proposal plumbing — no project in this tier references Fuaran.Core.AiSurface or submits an op through its Decide (see aiSurfaceLawsAt)"
+      // Arrived with the 0.45.0 pin raise (Phase 2849; Core Phase 714): the catalogue a model is shown
+      // and the emission codec it is read through, at an `EmissionSurfaceWitness`. No subject here, for
+      // the reason the aiSurfaceLawsAt row gives.
+      "Conformance.emissionLawsAt",
+      NotUsed
+          "Fuaran.Core.AiSurface's emission surface (decodeEmission, kindSchemas) — no project in this tier references Fuaran.Core.AiSurface or reads an emitted op through its codec (see aiSurfaceLawsAt)"
       "Conformance.projectionLawsAt",
       NotUsed "Fuaran.Core.Projection — the tier renders a tree; it maintains no Core projection over an op stream"
       "Conformance.queryLaws",

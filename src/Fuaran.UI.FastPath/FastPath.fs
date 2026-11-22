@@ -68,6 +68,15 @@ module FastPath =
     /// kind. This is the QUERY side's projection — what a caller declares they
     /// can provide — and it is the shape the shared cross-host
     /// `function-registry` goldens certify, so it stays total.
+    ///
+    /// The entry's `Name` is the hole's ADDRESS. Since Fuaran.Core 0.45.0 the
+    /// capability seam binds an argument by the entry's qualified name and holds
+    /// it to the dotted segment grammar, unique per signature (Core Phase 712).
+    /// A pattern's hole is bound by its address everywhere in this tier — `Build`,
+    /// `valueViolations`, `instantiate` — so the registered signature names it by
+    /// that address, and an argument keyed by address validates exactly as it did
+    /// before. `HoleDecl.Name` stays the caller-facing label, which the grammar
+    /// would refuse ("first label").
     let private sigEntryOf (h: HoleDecl) : SigEntry =
         let required =
             match h.Kind with
@@ -77,7 +86,7 @@ module FastPath =
             | ActionHole _ -> false
 
         { Addr = h.Addr
-          Name = h.Name
+          Name = h.Addr
           Kind = h.Kind
           Required = required }
 

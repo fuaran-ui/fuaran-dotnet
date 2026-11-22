@@ -150,14 +150,16 @@ module LawVectorExport =
         | Some(JStr s) -> Some s
         | _ -> None
 
+    /// Each argument is `{name, value}` since Fuaran.Core 0.45.0: keyed by the qualified name of
+    /// the hole it binds (Core Phase 712), never by the hole's address.
     let private argsOf (v: JVal option) : (string * string) list option =
         match v with
         | Some(JArr items) ->
             let pairs =
                 items
                 |> List.map (fun a ->
-                    match str "addr" a, str "value" a with
-                    | Some addr, Some value -> Some(addr, value)
+                    match str "name" a, str "value" a with
+                    | Some name, Some value -> Some(name, value)
                     | _ -> None)
 
             if List.forall Option.isSome pairs then
@@ -170,9 +172,9 @@ module LawVectorExport =
     let private verdictOf (r: Result<unit, InvokeError>) : (string * JVal) list =
         match r with
         | Ok() -> [ "verdict", JStr "accept" ]
-        | Error(ArgOutOfSpace(addr, _, _)) ->
-            [ "verdict", JStr "reject"; "error", JStr "argOutOfSpace"; "addr", JStr addr ]
-        | Error(UnknownArg(addr, _)) -> [ "verdict", JStr "reject"; "error", JStr "unknownArg"; "addr", JStr addr ]
+        | Error(ArgOutOfSpace(name, _, _)) ->
+            [ "verdict", JStr "reject"; "error", JStr "argOutOfSpace"; "name", JStr name ]
+        | Error(UnknownArg(name, _)) -> [ "verdict", JStr "reject"; "error", JStr "unknownArg"; "name", JStr name ]
         | Error _ -> [ "verdict", JStr "reject"; "error", JStr "unexpected" ]
 
     /// Run one vector the way a host does, against the pinned kit, and say what
@@ -240,11 +242,47 @@ module LawVectorExport =
                                 | Ok c -> CapabilityRegistry.register c r |> Result.mapError (sprintf "%A")
                                 | Error m -> Error m
                             | Ok _, _ -> Error "a declaration is not a string")
-                        (Ok CapabilityRegistry.empty)
+                        (Ok(CapabilityRegistry.empty: CapabilityRegistry<unit>))
 
                 match registered with
                 | Error m -> Some(sprintf "%s: the declarations did not register (%s)" id m)
                 | Ok r -> differs [ "ids", JArr(CapabilityRegistry.enumerate r |> List.map (fun c -> JStr c.Id)) ]
             | _ -> Some(sprintf "%s: input.declarations missing" id)
+        // Core 0.43.0 (Phase 642): the declaration reader's refusal, its code and path.
+        | Some "declarationRefused", _ ->
+            match str "declaration" input with
+            | None -> Some(sprintf "%s: input.declaration missing" id)
+            | Some d ->
+                match CapabilityCodec.decodeDetailedWith ReadPolicy.Lenient d with
+                | Ok _ -> differs [ "verdict", JStr "accept" ]
+                | Error e ->
+                    let segment =
+                        function
+                        | PathSegment.Key k -> JStr k
+                        | PathSegment.Index i -> JStr(string i)
+
+                    differs
+                        [ "verdict", JStr "reject"
+                          "code", JStr(string e.Code)
+                          "path", JArr(e.Path |> List.map segment) ]
+        // Core 0.43.0 (Phase 642): a one-node pipeline type-checked against the capability alone.
+        | Some "pipelineTypeCheck", _ ->
+            match decl "capability", str "pipeline" input with
+            | Error m, _ -> Some m
+            | _, None -> Some(sprintf "%s: input.pipeline missing" id)
+            | Ok(_, c), Some p ->
+                match CapabilityRegistry.register c CapabilityRegistry.empty, CapabilityPipeline.decode p with
+                | Error e, _ -> Some(sprintf "%s: the capability did not register (%A)" id e)
+                | _, Error m -> Some(sprintf "%s: input.pipeline did not decode (%s)" id m)
+                | Ok(r: CapabilityRegistry<unit>), Ok pipeline ->
+                    match CapabilityPipeline.typeCheck (CapabilityLookup.ofRegistry r) pipeline with
+                    | Ok() -> differs [ "verdict", JStr "accept" ]
+                    | Error(PipelineError.PipelineOutputContradicts(node, capability, _, _)) ->
+                        differs
+                            [ "verdict", JStr "reject"
+                              "error", JStr "pipelineOutputContradicts"
+                              "node", JStr node
+                              "capability", JStr capability ]
+                    | Error _ -> differs [ "verdict", JStr "reject"; "error", JStr "unexpected" ]
         | Some other, _ -> Some(sprintf "%s: unknown case `%s`" id other)
         | None, _ -> Some(sprintf "%s: no case" id)

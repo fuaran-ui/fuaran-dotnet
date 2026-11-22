@@ -74,6 +74,10 @@ module CoreLawSupport =
     /// two disjoint slots commutes — the associativity law compares the two
     /// composed artifacts with `=`, and a fill-ordered list would fail it for
     /// a reason that is about this encoding rather than about the tier.
+    /// `SlotNames` records, per filled slot address, the NAME of the slot hole it
+    /// filled: since Fuaran.Core 0.45.0 a hole composed through slots reports their
+    /// names (`HoleDecl.Slots`, Core Phase 712), so two inners' same-named holes
+    /// bind under distinct qualified names.
     type PatternFn =
         { Tag: string
           PatternId: string
@@ -81,6 +85,7 @@ module CoreLawSupport =
           Open: HoleDecl list
           Bound: Map<string, string>
           Slots: (string * PatternFn) list
+          SlotNames: Map<string, string>
           Declared: EffectClass }
 
     // -----------------------------------------------------------------------
@@ -230,7 +235,14 @@ module CoreLawSupport =
           Open = p.Holes
           Bound = Map.empty
           Slots = []
+          SlotNames = Map.empty
           Declared = declared }
+
+    /// `f.SlotNames` with the slot hole at `addr` recorded under its declared name.
+    let private slotNamed (addr: string) (f: PatternFn) : Map<string, string> =
+        match f.Open |> List.tryFind (fun h -> h.Addr = addr) with
+        | Some h -> Map.add addr h.Name f.SlotNames
+        | None -> f.SlotNames
 
     /// Bind a value hole directly — fixture construction, not the law path.
     let withValue (addr: string) (v: string) (f: PatternFn) : PatternFn =
@@ -243,7 +255,8 @@ module CoreLawSupport =
     let withSlot (addr: string) (inner: PatternFn) (f: PatternFn) : PatternFn =
         { f with
             Open = f.Open |> List.filter (fun h -> h.Addr <> addr)
-            Slots = ((addr, inner) :: f.Slots) |> List.sortBy fst }
+            Slots = ((addr, inner) :: f.Slots) |> List.sortBy fst
+            SlotNames = slotNamed addr f }
 
     // -----------------------------------------------------------------------
     //  the Core witnesses over the FastPath artifact-function
@@ -277,6 +290,7 @@ module CoreLawSupport =
           Open = [ h ]
           Bound = Map.empty
           Slots = []
+          SlotNames = Map.empty
           Declared = Effect.pureDeterministic }
 
     /// A node's children in address order: each filled slot's function (`true`), and each open
@@ -315,10 +329,16 @@ module CoreLawSupport =
     /// Hygiene: an inner function's holes re-root UNDER the absolute address of
     /// the slot it was composed into, so two compositions into distinct slots
     /// can never capture one another even when the inner holes share a name.
-    let rec private holesUnder (prefix: string) (f: PatternFn) : HoleDecl list =
-        [ for h in f.Open -> { h with Addr = prefix + h.Addr }
+    /// Each also records the names of the slots it was composed through, outermost
+    /// first (Core Phase 712), so its qualified name is distinct as its address is.
+    let rec private holesUnder (prefix: string) (names: string list) (f: PatternFn) : HoleDecl list =
+        [ for h in f.Open ->
+              { h with
+                  Addr = prefix + h.Addr
+                  Slots = names @ h.Slots }
           for slot, inner in f.Slots do
-              yield! holesUnder (prefix + slot + "/") inner ]
+              let name = f.SlotNames |> Map.tryFind slot |> Option.defaultValue slot
+              yield! holesUnder (prefix + slot + "/") (names @ [ name ]) inner ]
 
     let rec private bindAt (rel: string) (arg: Arg<PatternFn>) (f: PatternFn) : Result<PatternFn, string> =
         match
@@ -341,7 +361,8 @@ module CoreLawSupport =
                     Ok
                         { f with
                             Open = remaining
-                            Slots = ((rel, inner) :: f.Slots) |> List.sortBy fst }
+                            Slots = ((rel, inner) :: f.Slots) |> List.sortBy fst
+                            SlotNames = Map.add rel h.Name f.SlotNames }
                 | (ValueHole _ | RepeatHole _), ValueArg v ->
                     Ok
                         { f with
@@ -356,7 +377,7 @@ module CoreLawSupport =
     let witness: ArtifactWitness<PatternFn, string> =
         { Tree = nodew
           IdW = idw
-          Holes = holesUnder ""
+          Holes = holesUnder "" []
           Effect = fun f -> f.Declared
           Bind = bindAt }
 
