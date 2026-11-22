@@ -7936,6 +7936,35 @@ The decision is D38 (`docs/DECISIONS.md`); the normative rules are WIRE_FORMAT �
   is added).
 - **Recompile.**
 
+### What rides this slot — Phase 2810 (a heatmap draws a withheld cell apart from an absent one)
+
+**Class: additive.** No wire member, no type, no case and no record field moves; the one new public symbol is a
+function. On the wire it is a lowering rule over 2809's `withheldField` (WIRE_FORMAT §3.6.36 rule 8): a heatmap
+with no withheld cell lowers byte-for-byte as it did, and no pre-existing `chart-lowering` golden moved. It rides
+this draft slot, which is breaking-class already; `<Version>` does not move.
+
+**What a consumer gains.**
+
+- **A withheld heatmap cell.** A cell whose pair's FIRST row is withheld is drawn in the withheld placeholder's
+  paint over the whole cell (no fill, the axis ink at the axis opacity), carrying the cell's own mark
+  (`value|x|row`, so `rowOfMarkId` resolves it) and the readout `row · x · withheld`. Its value is never read: no
+  scale extent, no data label. An absent pair keeps 2655's surface tone and no mark, so the two empties read
+  apart.
+- **The withheld key.** A heatmap with any withheld cell gains a `withheld` entry under its legend ramp, in the
+  placeholder's paint; the legend column is measured to fit the word. The accessible summary counts the empty
+  cells apart from the withheld ones and gains `1 value withheld` / `<k> values withheld`.
+- **`Charts.withheldValuesRemoved spec rows`** — the rows with every withheld row's value cells removed (the
+  series fields; on a `Heatmap` the value field only, keeping the row key). The AG adapter now hands AG these
+  rows, so AG draws a gap where the first-party lowering draws the placeholder, and no withheld number reaches
+  any .NET render path.
+
+**What a consumer pays.**
+
+- **An AG-rendered chart with a `WithheldField` changes picture.** A withheld row's values used to reach AG and be
+  drawn as released numbers; they are now absent, which AG draws as a gap. A chart with no `WithheldField`, or none
+  withheld, is unchanged.
+- **Recompile.**
+
 ---
 
 ## 0.105.0 — the announced breaking cut (Phase 2303); the slot opened after v0.104.0 was released, advanced from 0.104.1 on 2026-11-14 by Phase 2716, whose change is breaking (DRAFT — untagged)

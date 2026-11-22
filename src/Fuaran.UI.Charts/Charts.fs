@@ -1715,6 +1715,14 @@ let private withheldWord = "withheld"
 let private withheldTip (seriesField: string) (categoryKey: string) (style: DrawStyle) : DrawStyle =
     withTip (seriesField + tipSeparator + categoryKey + tipSeparator + withheldWord) style
 
+/// Phase 2809 (D38) — the summary clause that counts `k` withheld values: none
+/// when nothing is withheld, so a chart with no withheld value gains no clause.
+/// Phase 2810 — shared by the series arms and the Heatmap arm (one value a cell).
+let private withheldClause (k: int) : string list =
+    if k = 0 then []
+    elif k = 1 then [ "1 value " + withheldWord ]
+    else [ string k + " values " + withheldWord ]
+
 let private styleFill (fill: string) : DrawStyle =
     { baseStyle with
         Fill = Some(Binding.Static(Some fill)) }
@@ -2010,6 +2018,31 @@ let private isWithheldRow (withheldField: string option) (row: Row) : bool =
         | CellValue.Bool true -> true
         | _ -> false
     | None -> false
+
+/// Phase 2810 (D38) — the rows a host-side chart library is handed, with every
+/// WITHHELD row's value cells removed, so a withheld number reaches no render
+/// path: the first-party lowering never reads one, and an adapter that draws
+/// from the rows themselves is never given one. The value cells are the series
+/// fields (`YFields`), except on a `Heatmap`, whose `YFields[0]` is the row key a
+/// cell is placed by: there only the value field goes. The row's own keys (the x
+/// field, the row key, the withheld flag) stay, so the datum keeps its identity.
+/// A chart that declares no `WithheldField` gets its rows back unchanged.
+let withheldValuesRemoved<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : Row list =
+    match spec.WithheldField with
+    | None -> rows
+    | Some _ ->
+        let valueFields =
+            match spec.Kind, spec.YFields with
+            | ChartKind.Heatmap, _ :: values -> values
+            | ChartKind.Heatmap, [] -> []
+            | _, fields -> fields
+
+        rows
+        |> List.map (fun row ->
+            if isWithheldRow spec.WithheldField row then
+                valueFields |> List.fold (fun acc field -> Map.remove field acc) row
+            else
+                row)
 
 /// Phase 2809 — the maximal runs of consecutive indices `0 .. n-1` for which
 /// `present` holds, as `(first, last)` pairs in order. A Line or an Area draws
@@ -5009,11 +5042,7 @@ let private accessibleSummaryOf<'Msg>
             // withheld row, counted. A chart with nothing withheld gains no
             // clause, so every pre-2809 summary is byte-unchanged.
             let withheldClause =
-                let k = (data.Withheld |> Array.filter id |> Array.length) * m
-
-                if k = 0 then []
-                elif k = 1 then [ "1 value " + withheldWord ]
-                else [ string k + " values " + withheldWord ]
+                withheldClause ((data.Withheld |> Array.filter id |> Array.length) * m)
 
             // ── The annotation clauses (Phase 1494 — §4i, extended) ───────
             //
@@ -5157,6 +5186,14 @@ let private accessibleSummaryOf<'Msg>
 // draws the SURFACE (`fill="none"` under a gridline-weight outline), never a
 // zero, because a zero is a value and an absence is not.
 //
+// A WITHHELD cell (Phase 2810, WIRE_FORMAT §3.6.36 rule 8) is a pair whose first
+// row is withheld (`isWithheldRow`): some records exist and a gate suppressed the
+// value. It is drawn apart from an absent one: the withheld placeholder's paint
+// (`withheldStyle`) over the whole cell, carrying the cell's mark and the readout
+// `row · x · withheld`; its value is never read (no scale extent, no label). Any
+// withheld cell adds the KEY under the ramp and the summary's withheld clause; a
+// chart with none draws exactly 2655's picture.
+//
 // THE COLOUR IS A BIN, NOT AN INTERPOLATION. The declared scale
 // (`ChartSpec.Scale`, default `Sequential` over the data's extent) maps a value
 // to a fraction, and the fraction to one stop of the installed ramp by
@@ -5190,6 +5227,9 @@ type private HeatmapGrid =
         RowKeys: string array
         /// (column, row) → the first row's value, for the PRESENT cells only.
         Cells: Map<int * int, float>
+        /// Phase 2810 — the (column, row) pairs whose first row is WITHHELD
+        /// (`isWithheldRow`); their values are never read.
+        Withheld: Set<int * int>
     }
 
 /// Read the grid: keys in first-appearance order, the first row of a pair wins.
@@ -5217,26 +5257,28 @@ let private heatmapGrid<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : Heatmap
     let xIndex = xKeys |> Array.mapi (fun i k -> k, i) |> Map.ofArray
     let rowIndex = rowKeys |> Array.mapi (fun j k -> k, j) |> Map.ofArray
 
-    let cells =
+    let cells, withheld, _ =
         keyed
         |> List.fold
-            (fun (acc: Map<int * int, float>, seen: Set<int * int>) (x, y, r) ->
+            (fun (acc: Map<int * int, float>, withheld: Set<int * int>, seen: Set<int * int>) (x, y, r) ->
                 let at = xIndex.[x], rowIndex.[y]
 
                 if seen.Contains at then
-                    acc, seen
+                    acc, withheld, seen
+                elif isWithheldRow spec.WithheldField r then
+                    acc, Set.add at withheld, Set.add at seen
                 else
                     match presentValueOf r valueField with
-                    | Some v -> Map.add at v acc, Set.add at seen
-                    | None -> acc, Set.add at seen)
-            (Map.empty, Set.empty)
-        |> fst
+                    | Some v -> Map.add at v acc, withheld, Set.add at seen
+                    | None -> acc, withheld, Set.add at seen)
+            (Map.empty, Set.empty, Set.empty)
 
     { RowField = rowField
       ValueField = valueField
       XKeys = xKeys
       RowKeys = rowKeys
-      Cells = cells }
+      Cells = cells
+      Withheld = withheld }
 
 /// A declared bound, or the data's own when it is absent or non-finite.
 let private boundOr (declared: float option) (fallback: float) : float =
@@ -5393,11 +5435,20 @@ let private lowerHeatmap<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (grid
           | None -> ()
           yield scale.Low, valueText scale.Low ]
 
+    // Phase 2810 — a chart with any withheld cell keys it under the ramp, so the
+    // column is wide enough for that entry's word too. None withheld: no key, and
+    // the column is exactly 2655's.
+    let anyWithheld = not grid.Withheld.IsEmpty
+
     let legendReserve =
         if showLegend then
             style.LegendColumnGap
             + style.LegendLabelOffsetX
-            + widestOf tickSize (legendLabels |> List.map snd)
+            + widestOf
+                tickSize
+                [ yield! legendLabels |> List.map snd
+                  if anyWithheld then
+                      yield withheldWord ]
         else
             0.0
 
@@ -5430,11 +5481,25 @@ let private lowerHeatmap<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (grid
                   let w = r2 (max 0.0 (cellW - gap))
                   let h = r2 (max 0.0 (cellH - gap))
 
-                  match Map.tryFind (i, j) grid.Cells with
-                  | Some v ->
-                      let xKey = grid.XKeys.[i]
-                      let rowKey = grid.RowKeys.[j]
+                  let xKey = grid.XKeys.[i]
+                  let rowKey = grid.RowKeys.[j]
 
+                  match Map.tryFind (i, j) grid.Cells with
+                  | _ when grid.Withheld.Contains(i, j) ->
+                      // Phase 2810 (D38) — a WITHHELD cell: the withheld
+                      // placeholder fitted to the cell, with the cell's own mark
+                      // and a readout that carries no number.
+                      Shape.Rectangle(
+                          x,
+                          y,
+                          w,
+                          h,
+                          None,
+                          withheldStyle style
+                          |> withMark grid.ValueField (heatmapCellKey xKey rowKey)
+                          |> withheldTip rowKey xKey
+                      )
+                  | Some v ->
                       Shape.Rectangle(
                           x,
                           y,
@@ -5577,7 +5642,26 @@ let private lowerHeatmap<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (grid
                   | None -> ()
                   yield labelAt plotY1 (valueText scale.Low) ]
 
-            swatches @ labels
+            // Phase 2810 — the withheld KEY, when any cell is withheld: the
+            // placeholder's paint as a swatch, worded `withheld`, on the column
+            // labels' line below the ramp. Chrome, so it carries no mark.
+            let withheldKey =
+                if anyWithheld then
+                    let keyY = plotY1 + style.CategoryLabelOffsetY - style.TickLabelBaselineDy
+
+                    [ Shape.Rectangle(
+                          swatchX,
+                          r2 (keyY - style.LegendSwatchSize / 2.0),
+                          style.LegendSwatchSize,
+                          style.LegendSwatchSize,
+                          None,
+                          withheldStyle style
+                      )
+                      labelAt keyY withheldWord ]
+                else
+                    []
+
+            swatches @ labels @ withheldKey
 
     // ── Title + subtitle (as `legendAndTitles` draws them) ──
     let titleX, titleAnchor =
@@ -5610,7 +5694,7 @@ let private lowerHeatmap<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (grid
 
     // ── The accessible summary (Phase 921's posture, the heatmap's clauses) ──
     let name (s: string) = clampText summaryMaxNameChars s
-    let absent = n * m - grid.Cells.Count
+    let absent = n * m - grid.Cells.Count - grid.Withheld.Count
 
     let clauses =
         [ yield
@@ -5626,7 +5710,8 @@ let private lowerHeatmap<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (grid
           else
               yield sprintf "values from %s to %s" (valueText (List.min values)) (valueText (List.max values))
           if absent > 0 then
-              yield sprintf "%d cells empty" absent ]
+              yield sprintf "%d cells empty" absent
+          yield! withheldClause grid.Withheld.Count ]
 
     { ViewBox =
         { MinX = 0.0

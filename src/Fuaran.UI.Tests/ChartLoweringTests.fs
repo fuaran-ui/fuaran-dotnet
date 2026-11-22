@@ -5700,15 +5700,23 @@ let loweringMemoTests =
 // own phase adopts the arm.
 
 type private HeatmapCase =
-    { Name: string
-      Title: string
-      Subtitle: string option
-      XField: string
-      RowField: string
-      ValueField: string
-      Scale: ChartScale option
-      DataLabels: bool
-      Cells: (string * string * float option) list }
+    {
+        Name: string
+        Title: string
+        Subtitle: string option
+        XField: string
+        RowField: string
+        ValueField: string
+        Scale: ChartScale option
+        DataLabels: bool
+        /// Phase 2810 — the declared withheld column. When declared, EVERY row of
+        /// the case writes it: `true` for a row whose index is in `Withheld`, else `false`.
+        WithheldField: string option
+        /// Phase 2810 — the rows that are withheld, by their position in `Cells`
+        /// (a pair may have several rows, and the first row of a pair wins).
+        Withheld: int list
+        Cells: (string * string * float option) list
+    }
 
 let private heatmapCases: HeatmapCase list =
     let grid (xs: string list) (ys: string list) (value: int -> int -> float) =
@@ -5725,6 +5733,8 @@ let private heatmapCases: HeatmapCase list =
         ValueField = "rate"
         Scale = None
         DataLabels = true
+        WithheldField = None
+        Withheld = []
         Cells =
           grid [ "W1"; "W2"; "W3"; "W4" ] [ "Trust"; "Reach"; "Recall" ] (fun i j ->
               float (12 + 9 * i + 17 * j + (i * j * 5) % 11)) }
@@ -5738,6 +5748,8 @@ let private heatmapCases: HeatmapCase list =
         ValueField = "asked"
         Scale = Some(ChartScale.Sequential(Some 0.0, Some 100.0))
         DataLabels = false
+        WithheldField = None
+        Withheld = []
         Cells =
           grid [ "North"; "South"; "East"; "West"; "Central" ] [ "Q1"; "Q2"; "Q3"; "Q4" ] (fun i j ->
               float ((23 * i + 31 * j + 7) % 101)) }
@@ -5750,6 +5762,8 @@ let private heatmapCases: HeatmapCase list =
         ValueField = "r"
         Scale = Some(ChartScale.Diverging(None, Some -1.0, Some 1.0))
         DataLabels = true
+        WithheldField = None
+        Withheld = []
         Cells =
           let items = [ "Price"; "Quality"; "Service"; "Speed" ]
 
@@ -5770,6 +5784,8 @@ let private heatmapCases: HeatmapCase list =
         ValueField = "score"
         Scale = Some(ChartScale.Diverging(Some 50.0, None, None))
         DataLabels = false
+        WithheldField = None
+        Withheld = []
         Cells = grid [ "Jan"; "Feb"; "Mar" ] [ "Alpha"; "Beta" ] (fun i j -> float (38 + 7 * i + 13 * j)) }
       // Missing cells: pairs no row carries, and a row whose value is empty.
       // Both draw the surface, never a zero.
@@ -5781,6 +5797,8 @@ let private heatmapCases: HeatmapCase list =
         ValueField = "n"
         Scale = None
         DataLabels = true
+        WithheldField = None
+        Withheld = []
         Cells =
           [ "A", "Q1", Some 4.0
             "B", "Q1", Some 9.0
@@ -5798,16 +5816,85 @@ let private heatmapCases: HeatmapCase list =
         ValueField = "v"
         Scale = None
         DataLabels = false
-        Cells = [ for k in 0..100 -> sprintf "x%03d" k, sprintf "y%03d" k, Some(float k) ] } ]
+        WithheldField = None
+        Withheld = []
+        Cells = [ for k in 0..100 -> sprintf "x%03d" k, sprintf "y%03d" k, Some(float k) ] }
+      // Phase 2810 — absent pairs, an empty value cell and WITHHELD cells in one
+      // grid. A withheld row carries a value (500) far outside the released ones,
+      // so a reader that read it would move the scale, a label and the summary.
+      // B/Q1's first row is released and its second withheld (released); C/Q3's
+      // first row is withheld and its second released (withheld). The key shows.
+      { Name = "heatmap-withheld-cells"
+        Title = "Responses, small counts suppressed"
+        Subtitle = None
+        XField = "entity"
+        RowField = "question"
+        ValueField = "n"
+        Scale = None
+        DataLabels = true
+        WithheldField = Some "suppressed"
+        Withheld = [ 2; 4; 5; 8 ]
+        Cells =
+          [ "A", "Q1", Some 14.0 // 0
+            "B", "Q1", Some 9.0 // 1
+            "B", "Q1", Some 500.0 // 2 — withheld, but B/Q1's first row is released
+            "C", "Q1", None // 3 — an empty value: absent
+            "A", "Q2", Some 500.0 // 4 — withheld
+            "D", "Q2", None // 5 — withheld with no value cell: still withheld
+            "C", "Q2", Some 6.0 // 6
+            "B", "Q3", Some 2.0 // 7
+            "C", "Q3", Some 500.0 // 8 — withheld, and C/Q3's first row
+            "C", "Q3", Some 11.0 ] } // 9 — released, but the pair is withheld
+      // Phase 2810 — every cell withheld: no released value at all, so the scale
+      // is the empty extent's, no cell is labelled, and the summary says so.
+      { Name = "heatmap-withheld-only"
+        Title = "All suppressed"
+        Subtitle = None
+        XField = "site"
+        RowField = "band"
+        ValueField = "count"
+        Scale = None
+        DataLabels = true
+        WithheldField = Some "suppressed"
+        Withheld = [ 0; 1; 2; 3 ]
+        Cells =
+          [ "North", "Low", Some 3.0
+            "South", "Low", Some 4.0
+            "North", "High", Some 2.0
+            "South", "High", None ] }
+      // Phase 2810 — the key beside a DIVERGING ramp with a declared midpoint
+      // label, under a subtitle, with an absent pair beside the withheld cell.
+      { Name = "heatmap-withheld-diverging"
+        Title = "Residual against fitted"
+        Subtitle = Some "Cells under five suppressed"
+        XField = "fitted"
+        RowField = "group"
+        ValueField = "residual"
+        Scale = Some(ChartScale.Diverging(Some 0.0, None, None))
+        DataLabels = false
+        WithheldField = Some "suppressed"
+        Withheld = [ 4 ]
+        Cells =
+          [ "Low", "Under 30", Some -1.5
+            "Mid", "Under 30", Some 0.25
+            "High", "Under 30", Some 2.0
+            "Low", "30 to 60", Some 0.75
+            "Mid", "30 to 60", Some 40.0
+            "High", "30 to 60", Some -0.5
+            "Low", "Over 60", Some 1.25
+            "Mid", "Over 60", Some -2.25 ] } ]
 
 let private heatmapRows (case: HeatmapCase) : Row list =
     case.Cells
-    |> List.map (fun (x, y, v) ->
+    |> List.mapi (fun k (x, y, v) ->
         Map.ofList
             [ yield case.XField, box x
               yield case.RowField, box y
               match v with
               | Some f -> yield case.ValueField, box f
+              | None -> ()
+              match case.WithheldField with
+              | Some f -> yield f, box (List.contains k case.Withheld)
               | None -> () ])
 
 let private heatmapSpec (case: HeatmapCase) : ChartSpec<obj> =
@@ -5819,7 +5906,8 @@ let private heatmapSpec (case: HeatmapCase) : ChartSpec<obj> =
         Title = Some(TextSource.Literal case.Title)
         Subtitle = case.Subtitle |> Option.map TextSource.Literal
         DataLabels = (if case.DataLabels then Some ChartDataLabels.Ends else None)
-        Scale = case.Scale }
+        Scale = case.Scale
+        WithheldField = case.WithheldField }
 
 let private heatmapLowered (case: HeatmapCase) : DrawingSpec =
     Charts.lower (heatmapSpec case) (Seq.ofList (heatmapRows case))
@@ -5860,17 +5948,34 @@ let private heatmapInputJson (case: HeatmapCase) : string =
 
     let rows =
         case.Cells
-        |> List.map (fun (x, y, v) ->
+        |> List.mapi (fun k (x, y, v) ->
             let value =
                 match v with
                 | Some f -> sprintf ",\"%s\":%s" (esc case.ValueField) (num f)
                 | None -> ""
 
-            sprintf "{\"%s\":\"%s\",\"%s\":\"%s\"%s}" (esc case.XField) (esc x) (esc case.RowField) (esc y) value)
+            let flag =
+                match case.WithheldField with
+                | Some f -> sprintf ",\"%s\":%b" (esc f) (List.contains k case.Withheld)
+                | None -> ""
+
+            sprintf
+                "{\"%s\":\"%s\",\"%s\":\"%s\"%s%s}"
+                (esc case.XField)
+                (esc x)
+                (esc case.RowField)
+                (esc y)
+                value
+                flag)
         |> String.concat ","
 
+    let withheldField =
+        match case.WithheldField with
+        | Some f -> sprintf ",\"withheldField\":\"%s\"" (esc f)
+        | None -> ""
+
     sprintf
-        "{\"kind\":\"Heatmap\",\"xField\":\"%s\",\"yFields\":[\"%s\",\"%s\"],\"title\":\"%s\",\"stacked\":false%s%s%s,\"data\":[%s]}"
+        "{\"kind\":\"Heatmap\",\"xField\":\"%s\",\"yFields\":[\"%s\",\"%s\"],\"title\":\"%s\",\"stacked\":false%s%s%s%s,\"data\":[%s]}"
         (esc case.XField)
         (esc case.RowField)
         (esc case.ValueField)
@@ -5880,6 +5985,7 @@ let private heatmapInputJson (case: HeatmapCase) : string =
          | None -> "")
         (if case.DataLabels then ",\"dataLabels\":\"Ends\"" else "")
         scale
+        withheldField
         rows
 
 let private rectFills (ds: DrawingSpec) : (string option * string option) list =
@@ -6603,3 +6709,201 @@ let withheldTests =
 
                  Expect.containsAll labels [ "18-34 (40%)"; "35-54 (60%)"; "55+ (withheld)" ] "released shares"
              } ])
+
+// ── Phase 2810 — a heatmap draws a withheld cell apart from an absent one ──────
+//
+// The vectors are the `heatmap-withheld-*` cases of `heatmapCases`, emitted into
+// `chart-lowering/heatmap/` by `heatmapTests` like every other heatmap golden. An
+// absent pair keeps 2655's surface tone; a withheld cell draws 2809's placeholder
+// paint over the cell, with its own mark and a readout carrying no number; the
+// ramp gains a `withheld` key only when some cell is withheld.
+
+/// A shape's paint, read as the tests compare it: fill, opacity, mark, tip.
+let private paintOf (s: DrawStyle) : string option * float option * string option * string option =
+    let fill =
+        match s.Fill with
+        | Some(Binding.Static f) -> f
+        | _ -> None
+
+    let opacity =
+        match s.Opacity with
+        | Some(Binding.Static o) -> o
+        | _ -> None
+
+    let tip =
+        match s.Tip with
+        | Some(TextSource.Literal t) -> Some t
+        | _ -> None
+
+    fill, opacity, s.MarkId, tip
+
+let private heatmapCase (name: string) : HeatmapCase =
+    heatmapCases |> List.find (fun c -> c.Name = name)
+
+[<Tests>]
+let heatmapWithheldTests =
+    let style = Charts.ChartStyle.defaults
+
+    let rects (ds: DrawingSpec) =
+        ds.Shapes
+        |> List.choose (fun sh ->
+            match sh with
+            | Shape.Rectangle(x, y, w, h, _, s) -> Some((x, y, w, h), paintOf s)
+            | _ -> None)
+
+    let labelTexts (ds: DrawingSpec) =
+        ds.Shapes
+        |> List.choose (fun sh ->
+            match sh with
+            | Shape.Label(_, _, TextSource.Literal t, _) -> Some t
+            | _ -> None)
+
+    testList
+        "Chart lowering — Heatmap withheld cells (Phase 2810)"
+        [ test "an absent pair and a withheld cell are drawn, tipped and identified differently" {
+              let ds = heatmapLowered (heatmapCase "heatmap-withheld-cells")
+              // 4 columns (A B C D) x 3 rows (Q1 Q2 Q3) = 12 cells first.
+              let grid = rects ds |> List.take 12 |> List.map snd
+
+              let withheld =
+                  grid
+                  |> List.filter (fun (fill, opacity, _, _) -> fill = Some "none" && opacity = Some style.AxisOpacity)
+
+              let absent =
+                  grid
+                  |> List.filter (fun (fill, opacity, _, _) -> fill = Some "none" && opacity = Some style.GridOpacity)
+
+              Expect.equal
+                  (withheld |> List.map (fun (_, _, mark, tip) -> mark, tip))
+                  [ Some "n|A|Q2", Some "Q2 · A · withheld"
+                    Some "n|C|Q3", Some "Q3 · C · withheld"
+                    Some "n|D|Q2", Some "Q2 · D · withheld" ]
+                  "each withheld cell carries its own mark and a readout with no number"
+
+              Expect.equal absent.Length 5 "C/Q1 (empty value), D/Q1, B/Q2, A/Q3 and D/Q3 draw the surface"
+
+              Expect.isTrue
+                  (absent |> List.forall (fun (_, _, mark, tip) -> mark.IsNone && tip.IsNone))
+                  "an absent cell carries neither mark nor readout"
+
+              Expect.isTrue
+                  (grid
+                   |> List.exists (fun (fill, _, mark, _) -> mark = Some "n|B|Q1" && fill <> Some "none"))
+                  "B/Q1's FIRST row is released, so the pair is a value"
+          }
+
+          test "a withheld value is never read: no scale end, no label, no tip and no summary carries it" {
+              let ds = heatmapLowered (heatmapCase "heatmap-withheld-cells")
+              let tips = marksAndTips ds |> List.choose snd
+              let words = String.concat " " (labelTexts ds @ tips) + " " + descriptionOf ds
+              Expect.isFalse (words.Contains "500") "the withheld number reaches nothing"
+              Expect.isFalse (words.Contains "11") "C/Q3's second row is never read: the pair is withheld"
+          }
+
+          test "the ramp gains a withheld key only when a cell is withheld" {
+              let keyOf (ds: DrawingSpec) =
+                  rects ds
+                  |> List.filter (fun ((_, _, w, h), (fill, opacity, mark, _)) ->
+                      fill = Some "none"
+                      && opacity = Some style.AxisOpacity
+                      && mark.IsNone
+                      && w = style.LegendSwatchSize
+                      && h = style.LegendSwatchSize)
+
+              let withKey = heatmapLowered (heatmapCase "heatmap-withheld-cells")
+              Expect.equal (keyOf withKey).Length 1 "one outlined key swatch, chrome (no mark)"
+              Expect.contains (labelTexts withKey) "withheld" "the key is worded"
+              Expect.stringContains (descriptionOf withKey) "3 values withheld" "the summary counts the cells"
+              Expect.stringContains (descriptionOf withKey) "5 cells empty" "absent and withheld counted apart"
+
+              for name in [ "heatmap-missing-cells"; "heatmap-diverging-midpoint" ] do
+                  let ds = heatmapLowered (heatmapCase name)
+                  Expect.isEmpty (keyOf ds) (sprintf "%s: no withheld cell, no key" name)
+                  Expect.isFalse ((descriptionOf ds).Contains "withheld") (sprintf "%s: no clause" name)
+          }
+
+          test "a declared withheld field no row sets lowers byte-identically to no declaration" {
+              for case in heatmapCases |> List.filter (fun c -> c.WithheldField.IsNone) do
+                  let declared =
+                      { case with
+                          WithheldField = Some "suppressed"
+                          Withheld = [] }
+
+                  Expect.equal (heatmapJson declared) (heatmapJson case) (sprintf "%s: nothing moves" case.Name)
+          }
+
+          test "a grid with only withheld cells has no values and labels none" {
+              let ds = heatmapLowered (heatmapCase "heatmap-withheld-only")
+              let cells = rects ds |> List.take 4 |> List.map snd
+
+              Expect.isTrue
+                  (cells
+                   |> List.forall (fun (_, opacity, mark, _) -> opacity = Some style.AxisOpacity && mark.IsSome))
+                  "every cell is a withheld placeholder"
+
+              Expect.stringContains (descriptionOf ds) "no values" "nothing released"
+              Expect.stringContains (descriptionOf ds) "4 values withheld" "every cell counted"
+              Expect.isFalse ((descriptionOf ds).Contains "cells empty") "no cell is absent"
+          }
+
+          test "a withheld cell's mark resolves back to the pair's first row" {
+              let case = heatmapCase "heatmap-withheld-cells"
+              let rows = heatmapRows case
+
+              Expect.equal
+                  (Charts.rowOfMarkId (heatmapSpec case) rows "n|C|Q3")
+                  (Some rows.[8])
+                  "C/Q3 resolves to its first, withheld, row"
+          }
+
+          test "an adapter's rows lose a withheld row's values and keep its identity" {
+              let case = heatmapCase "heatmap-withheld-cells"
+              let rows = heatmapRows case
+              let redacted = Charts.withheldValuesRemoved (heatmapSpec case) rows
+
+              for k, (before, after) in List.indexed (List.zip rows redacted) do
+                  if List.contains k case.Withheld then
+                      Expect.isFalse (after.ContainsKey "n") (sprintf "row %d: the value is gone" k)
+
+                      Expect.equal after (before |> Map.remove "n") (sprintf "row %d: x, row key and flag stay" k)
+                  else
+                      Expect.equal after before (sprintf "row %d: a released row is untouched" k)
+
+              let bar: ChartSpec<obj> =
+                  { Defaults.chart with
+                      Kind = ChartKind.Bar
+                      XField = "x"
+                      YFields = [ "a"; "b" ]
+                      WithheldField = Some "w" }
+
+              let barRows: Row list =
+                  [ Map.ofList [ "x", box "p"; "a", box 1.0; "b", box 2.0; "w", box true ]
+                    Map.ofList [ "x", box "q"; "a", box 3.0; "b", box 4.0; "w", box false ] ]
+
+              Expect.equal
+                  (Charts.withheldValuesRemoved bar barRows)
+                  [ Map.ofList [ "x", box "p"; "w", box true ]; barRows.[1] ]
+                  "a series chart loses every series value of a withheld row"
+
+              Expect.equal
+                  (Charts.withheldValuesRemoved { bar with WithheldField = None } barRows)
+                  barRows
+                  "no declaration, no change"
+          }
+
+          test "the AG adapter hands AG the redacted rows" {
+              let path =
+                  Path.Combine(AppContext.BaseDirectory, "renderer-sources", "client", "AgChartAdapter.fs")
+
+              Expect.isTrue (File.Exists path) (sprintf "renderer source not found at %s" path)
+              let source = File.ReadAllText path
+
+              Expect.stringContains
+                  source
+                  "Fuaran.UI.Charts.withheldValuesRemoved spec rows"
+                  "the adapter redacts withheld rows before AG reads them"
+
+              Expect.isFalse
+                  (source.Contains "\"data\" ==> List.toArray rows")
+                  "the raw rows never reach AG's data option"
+          } ]

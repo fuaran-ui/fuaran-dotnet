@@ -299,9 +299,14 @@ let renderChartWithReady<'Msg>
                 | Some t -> createObj [ "text" ==> textOf t; "enabled" ==> true ]
                 | None -> createObj [ "enabled" ==> false ]
 
+            // Phase 2810 (D38) — a withheld row reaches AG without its values, so
+            // AG draws a gap where the first-party lowering draws the withheld
+            // placeholder, and no withheld number is shown on either path.
+            let data = Fuaran.UI.Charts.withheldValuesRemoved spec rows
+
             let options =
                 createObj
-                    [ "data" ==> List.toArray rows
+                    [ "data" ==> List.toArray data
                       "series" ==> series
                       "title" ==> titleObj
                       "legend" ==> createObj [ "enabled" ==> true; "position" ==> "bottom" ] ]
