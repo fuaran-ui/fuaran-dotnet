@@ -64,6 +64,9 @@ public static partial class Fuaran
                 // (absent: sequential over the data's extent); the veneer does not
                 // expose it yet.
                 Fs.None<FsGen.ChartScale>(),
+                // Phase 2809 — the withheld flag column passes the F# default
+                // (absent: nothing withheld); the veneer does not expose it yet.
+                Fs.None<string>(),
                 Fs.None<Microsoft.FSharp.Core.FSharpFunc<FsRow, FsAction>>())));
 
     /// <summary>A static (non-data-bound) HTML table.</summary>

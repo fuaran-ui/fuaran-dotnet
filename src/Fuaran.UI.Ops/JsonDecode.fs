@@ -8233,6 +8233,14 @@ let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, De
             | None -> Ok None
             | Some v -> decodeChartScale (path + ".scale") v |> Result.map Some
 
+        // `withheldField` (Phase 2809, D38): the column whose boolean `true`
+        // marks a row's values as withheld by a disclosure gate. Absent OMITS on
+        // the wire, so every pre-2809 document decodes byte-for-byte as it did.
+        let withheldFieldR: Result<string option, DecodeError> =
+            match tryField fields "withheldField" with
+            | None -> Ok None
+            | Some v -> requireString (path + ".withheldField") v |> Result.map Some
+
         // `stacked` (Phase 126, restated Phase 1585): OMIT-AT-DEFAULT. The IDL
         // declares it `omitDefault false`, so the encoder emits it only when it
         // is `true` and absence means `false` BY CONTRACT — not, as this note
@@ -8256,7 +8264,8 @@ let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, De
             dataLabelsR,
             xScaleR,
             annotationsR,
-            scaleR
+            scaleR,
+            withheldFieldR
         with
         | Ok kind,
           Ok source,
@@ -8271,7 +8280,8 @@ let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, De
           Ok dataLabels,
           Ok xScale,
           Ok annotations,
-          Ok scale ->
+          Ok scale,
+          Ok withheldField ->
             Ok
                 { Source = source
                   Kind = kind
@@ -8287,22 +8297,24 @@ let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, De
                   XScale = xScale
                   Annotations = annotations
                   Scale = scale
+                  WithheldField = withheldField
                   OnPointClick = onPointClick
                   Stacked = stacked }
-        | Error e, _, _, _, _, _, _, _, _, _, _, _, _, _
-        | _, Error e, _, _, _, _, _, _, _, _, _, _, _, _
-        | _, _, Error e, _, _, _, _, _, _, _, _, _, _, _
-        | _, _, _, Error e, _, _, _, _, _, _, _, _, _, _
-        | _, _, _, _, Error e, _, _, _, _, _, _, _, _, _
-        | _, _, _, _, _, Error e, _, _, _, _, _, _, _, _
-        | _, _, _, _, _, _, Error e, _, _, _, _, _, _, _
-        | _, _, _, _, _, _, _, Error e, _, _, _, _, _, _
-        | _, _, _, _, _, _, _, _, Error e, _, _, _, _, _
-        | _, _, _, _, _, _, _, _, _, Error e, _, _, _, _
-        | _, _, _, _, _, _, _, _, _, _, Error e, _, _, _
-        | _, _, _, _, _, _, _, _, _, _, _, Error e, _, _
-        | _, _, _, _, _, _, _, _, _, _, _, _, Error e, _
-        | _, _, _, _, _, _, _, _, _, _, _, _, _, Error e -> Error e
+        | Error e, _, _, _, _, _, _, _, _, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _, _, _, _, _, _, _, _, _
+        | _, _, Error e, _, _, _, _, _, _, _, _, _, _, _, _
+        | _, _, _, Error e, _, _, _, _, _, _, _, _, _, _, _
+        | _, _, _, _, Error e, _, _, _, _, _, _, _, _, _, _
+        | _, _, _, _, _, Error e, _, _, _, _, _, _, _, _, _
+        | _, _, _, _, _, _, Error e, _, _, _, _, _, _, _, _
+        | _, _, _, _, _, _, _, Error e, _, _, _, _, _, _, _
+        | _, _, _, _, _, _, _, _, Error e, _, _, _, _, _, _
+        | _, _, _, _, _, _, _, _, _, Error e, _, _, _, _, _
+        | _, _, _, _, _, _, _, _, _, _, Error e, _, _, _, _
+        | _, _, _, _, _, _, _, _, _, _, _, Error e, _, _, _
+        | _, _, _, _, _, _, _, _, _, _, _, _, Error e, _, _
+        | _, _, _, _, _, _, _, _, _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, _, _, _, _, _, _, _, _, Error e -> Error e
 
 let private decodeMapSpec (path: string) (j: Json) : Result<MapSpec<obj>, DecodeError> =
     match requireObject path j with

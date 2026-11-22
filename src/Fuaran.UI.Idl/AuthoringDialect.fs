@@ -240,7 +240,8 @@ let unspelledFields: (string * string) list =
       "Metric.subtext", "GAP — no VB spelling"
       "Metric.emphasis", "GAP — no VB spelling"
       "Metric.weight", "GAP — no VB spelling"
-      "Tabs.active-tag", "GAP — no VB spelling" ]
+      "Tabs.active-tag", "GAP — no VB spelling"
+      "Chart.withheld-field", "GAP — no VB spelling; the C# veneer passes the F# default (Phase 2809)" ]
 
 /// Attributes a wire kind's row carries that are not attribute-eligible fields
 /// of it, as `Kind.attribute`: a record flattened into its parts, a sugar

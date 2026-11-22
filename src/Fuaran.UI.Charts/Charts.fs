@@ -621,6 +621,11 @@ type ChartStyle =
         /// for `StackSegmentGap`'s reason (a separating stroke would have to know
         /// the surface colour).
         HeatmapCellGap: float
+        /// Phase 2809 (D38) — the side of a WITHHELD value's placeholder: an
+        /// outlined, unfilled square centred on the value axis's zero line. A
+        /// fixed size on purpose: a height that followed anything would read as
+        /// a value the data did not state.
+        WithheldMarkSize: float
     }
 
 module ChartStyle =
@@ -794,7 +799,8 @@ module ChartStyle =
                "#c9a26c"
                "#b47803" |]
           RampLabelInk = "#1a1a19"
-          HeatmapCellGap = 2.0 }
+          HeatmapCellGap = 2.0
+          WithheldMarkSize = 8.0 }
 
     /// Phase 2655 — measure a style's heatmap ramps against the ramp gate
     /// (`ChartPalette.validateRamp`). `[]` is a pass; each finding names the
@@ -1499,8 +1505,7 @@ module Temporal =
         |> Option.map (fun (y, m, d) -> daysFromCivil y m d)
 
     /// The day number a row's x cell carries, with an UNPARSEABLE cell reading
-    /// as the epoch. That mirrors `numericOf`'s posture for a non-numeric value
-    /// axis cell — the lowering stays total and the grounding rule (FUARAN097)
+    /// as the epoch. The lowering stays total here and the grounding rule (FUARAN097)
     /// is what makes a non-date column loud, upstream, before any picture is
     /// drawn. Silence here is not the design; refusing here would be.
     let dayOf (text: string) : int =
@@ -1700,6 +1705,16 @@ let private withMark (seriesField: string) (categoryKey: string) (style: DrawSty
 let private withSeriesMark (seriesField: string) (style: DrawStyle) : DrawStyle =
     { style with MarkId = Some seriesField }
 
+/// Phase 2809 (D38) — the word a WITHHELD datum's readout ends in, where a
+/// released datum's ends in its number.
+[<Literal>]
+let private withheldWord = "withheld"
+
+/// Phase 2809 — the readout of a WITHHELD datum: "Series · Category · withheld",
+/// with no number, because the number is exactly what the gate suppressed.
+let private withheldTip (seriesField: string) (categoryKey: string) (style: DrawStyle) : DrawStyle =
+    withTip (seriesField + tipSeparator + categoryKey + tipSeparator + withheldWord) style
+
 let private styleFill (fill: string) : DrawStyle =
     { baseStyle with
         Fill = Some(Binding.Static(Some fill)) }
@@ -1726,6 +1741,16 @@ let private styleStrokeInk (style: ChartStyle) (opacity: float) (width: float) :
         Opacity = Some(Binding.Static(Some opacity)) }
 
 let private emptyStyle: DrawStyle = baseStyle
+
+/// Phase 2809 (D38) — the WITHHELD placeholder's paint: no fill, outlined in the
+/// axis's own ink at the axis's opacity. Surface-relative (`currentColor`), so
+/// it reads on every theme, and never a series colour, so it never reads as data.
+let private withheldStyle (style: ChartStyle) : DrawStyle =
+    { baseStyle with
+        Fill = Some(Binding.Static(Some "none"))
+        Stroke = Some(Binding.Static(Some style.Ink))
+        StrokeWidth = Some(Binding.Static(Some style.AxisStrokeWidth))
+        Opacity = Some(Binding.Static(Some style.AxisOpacity)) }
 
 /// A text-label style (Phase 536): surface-relative ink (`ChartStyle.Ink`) + an
 /// optional per-role opacity (`None` = full-strength, e.g. titles) + alignment +
@@ -1954,23 +1979,55 @@ let private summaryKindWords (kind: ChartKind) (stacked: bool) : string =
     | ChartKind.Pie -> "Pie chart"
     | ChartKind.Heatmap -> "Heatmap chart"
 
-let private numericOf (row: Row) (field: string) : float =
+/// Phase 2809 (D38) — a value cell, or `None` when it is MISSING. Present is a
+/// finite number, an exact decimal the float range holds, or a boolean (1/0, as
+/// FUARAN087 and the Heatmap arm read it); everything else — an empty cell, a
+/// text, a date, a non-finite number — is missing, and a missing value is drawn
+/// as a GAP on every arm, never as a zero. Until this phase the series arms read
+/// it as `0.0`, so a bar whose value was missing was drawn at height zero.
+///
+/// Non-finite (Phase 640): NaN/Infinity would poison every domain computation.
+/// Wire-carried data can never be non-finite (the canonical-float codec rejects
+/// it), so that arm covers only host-side rows. Phase 2006 — THE one place an
+/// exact decimal becomes a float: a chart maps a value to a screen coordinate,
+/// which is a display projection of the number, not the number, and the row it
+/// came from is untouched.
+let private presentValueOf (row: Row) (field: string) : float option =
     match BindingResolver.projectRowFieldValue row field with
-    // Non-finite guard (Phase 640): NaN/Infinity would poison every domain
-    // computation and emit NaN geometry into the SVG. Wire-carried data can
-    // never be non-finite (the canonical-float codec rejects it), so this
-    // covers only host-side obj-seq rows — coerced to the same 0.0 the
-    // non-numeric posture uses, deterministically.
-    | CellValue.Numeric n when System.Double.IsNaN n || System.Double.IsInfinity n -> 0.0
-    | CellValue.Numeric n -> n
-    // Phase 2006 — THE one place an exact decimal becomes a float. A chart maps a value to a
-    // screen coordinate, which is a display projection of the number, not the number: the
-    // nearest double is exact to far below a pixel. Nothing else in the lowering reads a
-    // decimal numerically, and the row it came from is untouched. A text past the float range
-    // (`tryToFloat`'s `None`) takes the same 0.0 the non-finite guard above gives.
-    | CellValue.Decimal s -> Fuaran.Core.DecimalText.tryToFloat s |> Option.defaultValue 0.0
-    | CellValue.Bool b -> if b then 1.0 else 0.0
-    | _ -> 0.0
+    | CellValue.Numeric n when System.Double.IsNaN n || System.Double.IsInfinity n -> None
+    | CellValue.Numeric n -> Some n
+    | CellValue.Decimal s -> Fuaran.Core.DecimalText.tryToFloat s
+    | CellValue.Bool b -> Some(if b then 1.0 else 0.0)
+    | _ -> None
+
+/// Phase 2809 (D38) — whether a row is WITHHELD: its cell in the declared
+/// `WithheldField` is the boolean `true`. Any other cell, or no declaration,
+/// leaves the row to its values. A withheld row's values are never read.
+let private isWithheldRow (withheldField: string option) (row: Row) : bool =
+    match withheldField with
+    | Some field ->
+        match BindingResolver.projectRowFieldValue row field with
+        | CellValue.Bool true -> true
+        | _ -> false
+    | None -> false
+
+/// Phase 2809 — the maximal runs of consecutive indices `0 .. n-1` for which
+/// `present` holds, as `(first, last)` pairs in order. A Line or an Area draws
+/// each run exactly as it drew a whole series before, so a series with no gap is
+/// one run and lowers to the bytes it always did.
+let private presentRuns (n: int) (present: int -> bool) : (int * int) list =
+    let mutable runs = []
+    let mutable start = -1
+
+    for i in 0..n do
+        if i < n && present i then
+            (if start < 0 then
+                 start <- i)
+        elif start >= 0 then
+            runs <- (start, i - 1) :: runs
+            start <- -1
+
+    List.rev runs
 
 // ─── Series read from the rows (Phase 2568, WIRE_FORMAT §3.6.29) ──────────────
 //
@@ -2086,9 +2143,13 @@ let markCategoryKeys<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) : string[] =
             if isTemporal then
                 categories |> Array.map (fun c -> float (Temporal.dayOf c))
             else
-                rowList |> List.map (fun r -> numericOf r spec.XField) |> List.toArray
+                rowList
+                |> List.map (fun r -> presentValueOf r spec.XField |> Option.defaultValue nan)
+                |> List.toArray
 
-        xValues |> Array.map DrawingSvg.formatNum
+        // A missing x (Phase 2809) has no position and draws no mark, so it keys nothing.
+        xValues
+        |> Array.map (fun x -> if System.Double.IsNaN x then "" else DrawingSvg.formatNum x)
     // Phase 2655 — a heatmap cell is addressed by its PAIR: many rows share an x,
     // so the key is `x|row`, exactly as `lowerHeatmap` stamps it.
     | ChartKind.Heatmap ->
@@ -2157,19 +2218,25 @@ let rowOfMarkId<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) (markId: string) :
 /// declared annotations that widen the value domain, and the extent of everything the y axis must span.
 [<RequireQualifiedAccess>]
 type private SeriesData =
-    { Categories: string array
-      N: int
-      YFields: string array
-      Series: float array array
-      M: int
-      Stacked: bool
-      CumsFor: int -> float array
-      IsPie: bool
-      ReferenceLines: (float * TextSource option) array
-      RangeBandsDeclared: (int * ChartAnnotationRange * TextSource option) array
-      ValueBands: (int * float * float * TextSource option) array
-      DataMin: float
-      DataMax: float }
+    {
+        Categories: string array
+        N: int
+        YFields: string array
+        /// One value per series per row; `None` is a MISSING or a WITHHELD value
+        /// (Phase 2809), which no domain, sum, share, peak or label reads.
+        Series: float option array array
+        /// Phase 2809 — whether each row is withheld (`isWithheldRow`).
+        Withheld: bool array
+        M: int
+        Stacked: bool
+        CumsFor: int -> float array
+        IsPie: bool
+        ReferenceLines: (float * TextSource option) array
+        RangeBandsDeclared: (int * ChartAnnotationRange * TextSource option) array
+        ValueBands: (int * float * float * TextSource option) array
+        DataMin: float
+        DataMax: float
+    }
 
 /// Computes `SeriesData`.
 let private seriesData<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : SeriesData =
@@ -2195,9 +2262,17 @@ let private seriesData<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : SeriesDa
 
     let yFields = List.toArray spec.YFields
 
+    // Phase 2809 (D38) — a withheld row's values are never read, so they join
+    // the missing ones as `None` here and every reader below treats them alike;
+    // only the placeholder marks and the summary ask which of the two it was.
+    let withheld = rows |> List.map (isWithheldRow spec.WithheldField) |> List.toArray
+
     let series =
         yFields
-        |> Array.map (fun yf -> rows |> List.map (fun r -> numericOf r yf) |> List.toArray)
+        |> Array.map (fun yf ->
+            rows
+            |> List.mapi (fun i r -> if withheld.[i] then None else presentValueOf r yf)
+            |> List.toArray)
 
     let m = Array.length series
 
@@ -2213,9 +2288,11 @@ let private seriesData<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : SeriesDa
             | _ -> false)
 
     /// Per-category running sums across the series, INCLUDING the leading 0
-    /// baseline: `cumsFor i` has length m+1.
+    /// baseline: `cumsFor i` has length m+1. A missing or withheld value adds
+    /// nothing (Phase 2809): the stack is a sum of what is drawn.
     let cumsFor (i: int) : float[] =
-        Array.init m (fun j -> series.[j].[i]) |> Array.scan (+) 0.0
+        Array.init m (fun j -> series.[j].[i] |> Option.defaultValue 0.0)
+        |> Array.scan (+) 0.0
 
     // Hoisted here from the legend section (Phase 1490): the annotation slot
     // below is neutralised on the polar arm, so the answer is needed before the
@@ -2314,7 +2391,7 @@ let private seriesData<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : SeriesDa
                       yield! cumsFor i ]
             else
                 [ for s in series do
-                      yield! s ]
+                      yield! Array.choose id s ]
 
         // §4l rule 3 — AN ADDRESS PARTICIPATES IN THE DOMAIN IT ADDRESSES, on
         // the same terms the series data does, and BEFORE `niceDomain` runs. A
@@ -2346,6 +2423,7 @@ let private seriesData<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : SeriesDa
       N = n
       YFields = yFields
       Series = series
+      Withheld = withheld
       M = m
       Stacked = stacked
       CumsFor = cumsFor
@@ -2638,7 +2716,11 @@ let private categoryAxis<'Msg>
         if isTemporal then
             dayValues |> Array.map float
         elif isScatter then
-            rows |> List.map (fun r -> numericOf r spec.XField) |> List.toArray
+            // A MISSING x (Phase 2809) has no position: it is NaN here, read by
+            // nothing but the domain's filter below and the marks' skip.
+            rows
+            |> List.map (fun r -> presentValueOf r spec.XField |> Option.defaultValue nan)
+            |> List.toArray
         else
             [||]
 
@@ -2667,10 +2749,12 @@ let private categoryAxis<'Msg>
             float lo, float hi, Temporal.nominalDays step, (Temporal.ticks step lo hi |> List.map float)
         | None ->
             if isScatter then
-                if Array.isEmpty xValues then
+                let presentXs = xValues |> Array.filter (fun x -> not (System.Double.IsNaN x))
+
+                if Array.isEmpty presentXs then
                     niceDomain style.TargetTickCount 0.0 1.0
                 else
-                    niceDomain style.TargetTickCount (Array.min xValues) (Array.max xValues)
+                    niceDomain style.TargetTickCount (Array.min presentXs) (Array.max presentXs)
             else
                 0.0, 1.0, 1.0, []
 
@@ -2704,20 +2788,24 @@ let private categoryAxis<'Msg>
 /// titles and subtitle band, the top and left margins, and the pie arm's values and refusal.
 [<RequireQualifiedAccess>]
 type private Frame =
-    { TickSize: float
-      TitleSize: float
-      SubtitleSize: float
-      LineHeight: float
-      WidestOf: string seq -> float
-      XTitle: TextSource option
-      YTitle: TextSource option
-      SubtitleBand: float
-      MarginTop: float
-      YTickLabelText: float -> string
-      PlotX0: float
-      PieValues: float array
-      PieRefused: bool
-      PieFractions: float array }
+    {
+        TickSize: float
+        TitleSize: float
+        SubtitleSize: float
+        LineHeight: float
+        WidestOf: string seq -> float
+        XTitle: TextSource option
+        YTitle: TextSource option
+        SubtitleBand: float
+        MarginTop: float
+        YTickLabelText: float -> string
+        PlotX0: float
+        /// The pie's values, one per category; `None` is missing or withheld
+        /// (Phase 2809) and takes no share of the total.
+        PieValues: float option array
+        PieRefused: bool
+        PieFractions: float array
+    }
 
 /// Computes `Frame`.
 let private frame<'Msg>
@@ -2852,7 +2940,7 @@ let private frame<'Msg>
     // needs the same answer earlier; nothing else about this block changed.)
     let pieValues = if isPie && m = 1 then series.[0] else [||]
 
-    let pieTotal = Array.sum pieValues
+    let pieTotal = pieValues |> Array.choose id |> Array.sum
 
     // The Phase-638 bounded-v1 guard, unchanged and merely lifted: exactly one
     // series, no negative value, a positive total. A refused pie draws no
@@ -2860,11 +2948,15 @@ let private frame<'Msg>
     // a claim about data the drawing declined to show.
     let pieRefused =
         isPie
-        && (m <> 1 || pieValues |> Array.exists (fun v -> v < 0.0) || pieTotal <= 0.0)
+        && (m <> 1
+            || pieValues |> Array.exists (fun v -> v |> Option.exists (fun v -> v < 0.0))
+            || pieTotal <= 0.0)
 
     let pieFractions =
         if isPie && not pieRefused then
-            pieValues |> Array.map (fun v -> v / pieTotal)
+            // A missing or withheld category's share is NOTHING, so its wedge
+            // is not drawn and the released shares are of the released total.
+            pieValues |> Array.map (fun v -> (v |> Option.defaultValue 0.0) / pieTotal)
         else
             [||]
 
@@ -2887,12 +2979,18 @@ let private frame<'Msg>
 /// column width or band height the plot gives up to it.
 [<RequireQualifiedAccess>]
 type private LegendLayout =
-    { LegendEntries: (string * string) array
-      BandEntryWidth: string -> float
-      LegendPos: ChartLegendPosition
-      LegendTexts: string array
-      LegendColumnW: float
-      LegendBandH: float }
+    {
+        LegendEntries: (string * string) array
+        /// Phase 2809 — each entry's swatch paint, index-aligned with
+        /// `LegendEntries`: the entry's colour, or, for a WITHHELD pie category,
+        /// the outlined placeholder carrying that datum's mark and readout.
+        SwatchStyles: DrawStyle array
+        BandEntryWidth: string -> float
+        LegendPos: ChartLegendPosition
+        LegendTexts: string array
+        LegendColumnW: float
+        LegendBandH: float
+    }
 
 /// Computes `LegendLayout`.
 let private legendLayout<'Msg>
@@ -2920,23 +3018,44 @@ let private legendLayout<'Msg>
     /// and a single-series bar does not. Before this phase these were two
     /// separate emitters with two separate constant sets, and only one of them
     /// could honour a position.
-    let legendEntries: (string * string)[] =
+    // Phase 2809 (D38) — on the pie a MISSING category has no entry at all (a
+    // `0%` entry would be the zero the gap rule removes), and a WITHHELD one has
+    // the entry `name (withheld)`, whose outlined swatch IS the datum's
+    // placeholder: the polar arm has no zero line to centre one on.
+    let entriesWithSwatches: ((string * string) * DrawStyle)[] =
         if isPie then
             if pieRefused then
                 [||]
             else
                 pieFractions
                 |> Array.mapi (fun i f ->
-                    // Routed through the canonical formatter (Phase 876) — one
-                    // rounding + rendering rule for every number this module
-                    // prints. A share is a whole percent, so the shipped `NN%`
-                    // shape is unchanged.
-                    let pct = formatValue None 1.0 false 1.0 (f * 100.0)
-                    colourFor style i, sprintf "%s (%s%%)" categories.[i] pct)
+                    if data.Withheld.[i] then
+                        Some(
+                            (colourFor style i, sprintf "%s (%s)" categories.[i] withheldWord),
+                            withheldStyle style
+                            |> withMark yFields.[0] categories.[i]
+                            |> withheldTip yFields.[0] categories.[i]
+                        )
+                    elif Option.isNone frame.PieValues.[i] then
+                        None
+                    else
+                        // Routed through the canonical formatter (Phase 876) — one
+                        // rounding + rendering rule for every number this module
+                        // prints. A share is a whole percent, so the shipped `NN%`
+                        // shape is unchanged.
+                        let pct = formatValue None 1.0 false 1.0 (f * 100.0)
+
+                        Some(
+                            (colourFor style i, sprintf "%s (%s%%)" categories.[i] pct),
+                            styleFill (colourFor style i)
+                        ))
+                |> Array.choose id
         elif m > 1 then
-            Array.init m (fun j -> colourFor style j, yFields.[j])
+            Array.init m (fun j -> (colourFor style j, yFields.[j]), styleFill (colourFor style j))
         else
             [||]
+
+    let legendEntries: (string * string)[] = entriesWithSwatches |> Array.map fst
 
     /// The placement the author ASKED FOR: their explicit `ChartSpec` value
     /// where there is one, else the host style's default. With no entries at
@@ -3042,6 +3161,7 @@ let private legendLayout<'Msg>
         | _ -> 0.0
 
     { LegendEntries = legendEntries
+      SwatchStyles = entriesWithSwatches |> Array.map snd
       BandEntryWidth = bandEntryWidth
       LegendPos = legendPos
       LegendTexts = legendTexts
@@ -3625,6 +3745,7 @@ let private seriesMarks<'Msg>
     let yScale = plot.YScale
     let xScaleRaw = plot.XScaleRaw
     let xScale = plot.XScale
+    let withheld = data.Withheld
 
     // ── Where a datum sits along x (Phase 882) ───────────────────────────────
     //
@@ -3695,6 +3816,48 @@ let private seriesMarks<'Msg>
 
         r2 (slotX + (groupedSubW - groupedBarW) / 2.0)
 
+    // ── The WITHHELD placeholder (Phase 2809, D38) ──
+    //
+    // An outlined square of `WithheldMarkSize`, centred on the zero line: a fixed
+    // size, so no height implies a value. `x` and `w` are the slot it spans — a
+    // grouped bar's own slot, a stacked bar's slot split between its series, or
+    // one square per series side by side on the point arms. It carries the
+    // datum's OWN mark identity, so a click on it resolves the withheld row.
+    let withheldSide = style.WithheldMarkSize
+    let zeroY = yScale 0.0
+
+    let withheldMark (x: float) (w: float) (seriesField: string) (categoryKey: string) : Shape =
+        Shape.Rectangle(
+            r2 x,
+            r2 (zeroY - withheldSide / 2.0),
+            r2 w,
+            withheldSide,
+            None,
+            withheldStyle style
+            |> withMark seriesField categoryKey
+            |> withheldTip seriesField categoryKey
+        )
+
+    /// One square per series, side by side and centred on `cx` (the point arms).
+    let withheldStrip (cx: float) (categoryKey: string) : Shape list =
+        [ for j in 0 .. m - 1 ->
+              withheldMark
+                  (cx - float m * withheldSide / 2.0 + float j * withheldSide)
+                  withheldSide
+                  yFields.[j]
+                  categoryKey ]
+
+    /// The point arms' placeholders, after their series (painter's order).
+    let withheldStrips (centreOf: int -> float option) (keyOf: int -> string) : Shape list =
+        [ for i in 0 .. n - 1 do
+              if withheld.[i] then
+                  match centreOf i with
+                  | Some cx -> yield! withheldStrip cx (keyOf i)
+                  | None -> () ]
+
+    let present (values: float option array) (i: int) = Option.isSome values.[i]
+    let valueAt (values: float option array) (i: int) = values.[i] |> Option.defaultValue 0.0
+
     // ── Series geometry ──
     let seriesShapes =
         match spec.Kind with
@@ -3710,34 +3873,46 @@ let private seriesMarks<'Msg>
                   let bx = stackedBarX i
                   let cums = cumsFor i
 
-                  for j in 0 .. m - 1 do
-                      let y0 = yScale cums.[j]
-                      let y1 = yScale cums.[j + 1]
-                      // The gap comes off the far side from the baseline, and
-                      // only where another segment follows — so the stack's
-                      // outer tip keeps its full height and the total stays
-                      // honest. `max 0.0` covers a segment thinner than the gap.
-                      let gap = if j < m - 1 then style.StackSegmentGap else 0.0
-                      let top = r2 (min y0 y1 + (if y1 < y0 then gap else 0.0))
-                      let hgt = r2 (max 0.0 (abs (y1 - y0) - gap))
+                  if withheld.[i] then
+                      // Phase 2809 — the stack's slot split evenly between its series.
+                      for j in 0 .. m - 1 do
+                          yield withheldMark (bx + float j * bw / float m) (bw / float m) yFields.[j] categories.[i]
+                  else
+                      for j in 0 .. m - 1 do
+                          match series.[j].[i] with
+                          | None -> ()
+                          | Some v ->
+                              let y0 = yScale cums.[j]
+                              let y1 = yScale cums.[j + 1]
+                              // The gap comes off the far side from the baseline, and
+                              // only where another DRAWN segment follows (Phase 2809:
+                              // a missing one draws nothing) — so the stack's outer
+                              // tip keeps its full height and the total stays honest.
+                              // `max 0.0` covers a segment thinner than the gap.
+                              let followed = seq { j + 1 .. m - 1 } |> Seq.exists (fun k -> present series.[k] i)
 
-                      Shape.Rectangle(
-                          bx,
-                          top,
-                          bw,
-                          hgt,
-                          None,
-                          // Phase 883 — a stack SEGMENT's tip carries its OWN
-                          // series value, never the running total. This is
-                          // where an interior segment finally gets a readout:
-                          // Phase 881 prints the stack TOTAL at the cap and
-                          // nothing else (an interior number is unreadable
-                          // against the segment above it) and pointed here for
-                          // the rest.
-                          styleFill (colourFor style j)
-                          |> withMark yFields.[j] categories.[i]
-                          |> datumTip yFields.[j] categories.[i] series.[j].[i]
-                      ) ]
+                              let gap = if followed then style.StackSegmentGap else 0.0
+                              let top = r2 (min y0 y1 + (if y1 < y0 then gap else 0.0))
+                              let hgt = r2 (max 0.0 (abs (y1 - y0) - gap))
+
+                              yield
+                                  Shape.Rectangle(
+                                      bx,
+                                      top,
+                                      bw,
+                                      hgt,
+                                      None,
+                                      // Phase 883 — a stack SEGMENT's tip carries its OWN
+                                      // series value, never the running total. This is
+                                      // where an interior segment finally gets a readout:
+                                      // Phase 881 prints the stack TOTAL at the cap and
+                                      // nothing else (an interior number is unreadable
+                                      // against the segment above it) and pointed here for
+                                      // the rest.
+                                      styleFill (colourFor style j)
+                                      |> withMark yFields.[j] categories.[i]
+                                      |> datumTip yFields.[j] categories.[i] v
+                                  ) ]
         | ChartKind.Bar ->
             let bw = groupedBarW
             let baseY = yScale 0.0
@@ -3747,22 +3922,28 @@ let private seriesMarks<'Msg>
                   let values = series.[j]
 
                   for i in 0 .. n - 1 do
-                      let v = values.[i]
-                      let bx = groupedBarX i j
-                      let vy = yScale v
-                      let top = min vy baseY
-                      let hgt = r2 (abs (vy - baseY))
+                      if withheld.[i] then
+                          yield withheldMark (groupedBarX i j) bw yFields.[j] categories.[i]
+                      else
+                          match values.[i] with
+                          | None -> ()
+                          | Some v ->
+                              let bx = groupedBarX i j
+                              let vy = yScale v
+                              let top = min vy baseY
+                              let hgt = r2 (abs (vy - baseY))
 
-                      Shape.Rectangle(
-                          bx,
-                          top,
-                          bw,
-                          hgt,
-                          None,
-                          styleFill colour
-                          |> withMark yFields.[j] categories.[i]
-                          |> datumTip yFields.[j] categories.[i] v
-                      ) ]
+                              yield
+                                  Shape.Rectangle(
+                                      bx,
+                                      top,
+                                      bw,
+                                      hgt,
+                                      None,
+                                      styleFill colour
+                                      |> withMark yFields.[j] categories.[i]
+                                      |> datumTip yFields.[j] categories.[i] v
+                                  ) ]
         | ChartKind.Area when stacked ->
             // Cumulative bands, bottom band first (painter's order): band j fills
             // between boundary j (below) and boundary j+1 (above); its upper
@@ -3776,23 +3957,27 @@ let private seriesMarks<'Msg>
                       let colour = colourFor style j
                       let yf = yFields.[j]
 
-                      let upper = [ for i in 0 .. n - 1 -> dp (xCentre i) (yScale cums.[i].[j + 1]) ]
+                      // Phase 2809 — one band per run of present values.
+                      for first, last in presentRuns n (present series.[j]) do
+                          let upper = [ for i in first..last -> dp (xCentre i) (yScale cums.[i].[j + 1]) ]
 
-                      let lower = [ for i in n - 1 .. -1 .. 0 -> dp (xCentre i) (yScale cums.[i].[j]) ]
+                          let lower = [ for i in last .. -1 .. first -> dp (xCentre i) (yScale cums.[i].[j]) ]
 
-                      yield
-                          Shape.Polygon(
-                              upper @ lower,
-                              styleFillOpacity colour style.AreaFillOpacity
-                              |> withSeriesMark yf
-                              |> seriesTip yf
-                          )
+                          yield
+                              Shape.Polygon(
+                                  upper @ lower,
+                                  styleFillOpacity colour style.AreaFillOpacity
+                                  |> withSeriesMark yf
+                                  |> seriesTip yf
+                              )
 
-                      yield
-                          Shape.Polyline(
-                              upper,
-                              styleStroke colour style.SeriesStrokeWidth |> withSeriesMark yf |> seriesTip yf
-                          ) ]
+                          yield
+                              Shape.Polyline(
+                                  upper,
+                                  styleStroke colour style.SeriesStrokeWidth |> withSeriesMark yf |> seriesTip yf
+                              )
+
+                  yield! withheldStrips (xCentre >> Some) (fun i -> categories.[i]) ]
         | ChartKind.Area ->
             // Overlaid baseline-closed bands in palette order (painter's order:
             // later series draw over earlier); the translucent fill keeps the
@@ -3807,59 +3992,80 @@ let private seriesMarks<'Msg>
                       let values = series.[j]
                       let yf = yFields.[j]
 
-                      let points = [ for i in 0 .. n - 1 -> dp (xCentre i) (yScale values.[i]) ]
+                      // Phase 2809 — one baseline-closed band per run of present values.
+                      for first, last in presentRuns n (present values) do
+                          let points = [ for i in first..last -> dp (xCentre i) (yScale (valueAt values i)) ]
 
-                      let band = (dp (xCentre 0) baseY :: points) @ [ dp (xCentre (n - 1)) baseY ]
+                          let band = (dp (xCentre first) baseY :: points) @ [ dp (xCentre last) baseY ]
 
-                      yield
-                          Shape.Polygon(
-                              band,
-                              styleFillOpacity colour style.AreaFillOpacity
-                              |> withSeriesMark yf
-                              |> seriesTip yf
-                          )
+                          yield
+                              Shape.Polygon(
+                                  band,
+                                  styleFillOpacity colour style.AreaFillOpacity
+                                  |> withSeriesMark yf
+                                  |> seriesTip yf
+                              )
 
-                      yield
-                          Shape.Polyline(
-                              points,
-                              styleStroke colour style.SeriesStrokeWidth |> withSeriesMark yf |> seriesTip yf
-                          ) ]
+                          yield
+                              Shape.Polyline(
+                                  points,
+                                  styleStroke colour style.SeriesStrokeWidth |> withSeriesMark yf |> seriesTip yf
+                              )
+
+                  yield! withheldStrips (xCentre >> Some) (fun i -> categories.[i]) ]
         | ChartKind.Line ->
             [ for j in 0 .. m - 1 do
                   let colour = colourFor style j
                   let values = series.[j]
 
-                  let points = [ for i in 0 .. n - 1 -> dp (xCentre i) (yScale values.[i]) ]
+                  // Phase 2809 — one polyline per run of present values: a gap
+                  // BREAKS the line rather than dropping it to zero.
+                  for first, last in presentRuns n (present values) do
+                      let points = [ for i in first..last -> dp (xCentre i) (yScale (valueAt values i)) ]
 
-                  Shape.Polyline(
-                      points,
-                      styleStroke colour style.SeriesStrokeWidth
-                      |> withSeriesMark yFields.[j]
-                      |> seriesTip yFields.[j]
-                  ) ]
+                      yield
+                          Shape.Polyline(
+                              points,
+                              styleStroke colour style.SeriesStrokeWidth
+                              |> withSeriesMark yFields.[j]
+                              |> seriesTip yFields.[j]
+                          )
+
+              yield! withheldStrips (xCentre >> Some) (fun i -> categories.[i]) ]
         | ChartKind.Scatter ->
-            // Fixed-radius point marks per datum (Phase 636). A non-numeric
-            // x/y cell reads 0.0 (`numericOf`'s posture, shared with the other
-            // arms) — grounded validation makes that loud upstream, not here.
+            // Fixed-radius point marks per datum (Phase 636). A missing x or
+            // y cell draws NO point (Phase 2809, D38) — a point at 0.0 would be
+            // a datum the table never stated; grounded validation makes a
+            // non-numeric column loud upstream.
+            let xPresent (i: int) = not (System.Double.IsNaN xValues.[i])
+
             [ for j in 0 .. m - 1 do
                   let colour = colourFor style j
                   let values = series.[j]
                   let yf = yFields.[j]
 
                   for i in 0 .. n - 1 do
-                      Shape.Circle(
-                          xScale xValues.[i],
-                          yScale values.[i],
-                          style.ScatterPointRadius,
-                          styleFill colour
-                          |> withMark yf (DrawingSvg.formatNum xValues.[i])
-                          // The tip's middle part is the x cell as PROJECTED
-                          // (`categories.[i]`), not the mark id's canonical
-                          // numeric form: the id is for object constancy, the
-                          // tip is for a human, and on a temporal axis the
-                          // projection is the ISO date rather than a day count.
-                          |> datumTip yf categories.[i] values.[i]
-                      ) ]
+                      if xPresent i && present values i then
+                          yield
+                              Shape.Circle(
+                                  xScale xValues.[i],
+                                  yScale (valueAt values i),
+                                  style.ScatterPointRadius,
+                                  styleFill colour
+                                  |> withMark yf (DrawingSvg.formatNum xValues.[i])
+                                  // The tip's middle part is the x cell as PROJECTED
+                                  // (`categories.[i]`), not the mark id's canonical
+                                  // numeric form: the id is for object constancy, the
+                                  // tip is for a human, and on a temporal axis the
+                                  // projection is the ISO date rather than a day count.
+                                  |> datumTip yf categories.[i] (valueAt values i)
+                              )
+
+              // A withheld row keys its placeholder as its point would have been
+              // keyed, and a row with no x has no position to draw one at.
+              yield!
+                  withheldStrips (fun i -> if xPresent i then Some(xScale xValues.[i]) else None) (fun i ->
+                      DrawingSvg.formatNum xValues.[i]) ]
         | _ -> []
 
     { XCentre = xCentre
@@ -4007,7 +4213,7 @@ let private dataLabels<'Msg>
     /// is admitted only when its line clears every ALREADY-ADMITTED label's by
     /// the padding — series order decides who yields, which makes the outcome
     /// deterministic and the earlier series the one that keeps its number.
-    let endpointLabels (valueAt: int -> float) : Shape list =
+    let endpointLabels (valueAt: int -> float option) : Shape list =
         if n = 0 then
             []
         else
@@ -4022,8 +4228,10 @@ let private dataLabels<'Msg>
             let mutable admitted: float list = []
             let mutable shapes: Shape list = []
 
-            for j in 0 .. m - 1 do
-                let v = valueAt j
+            // Phase 2809 — a series whose LAST value is missing or withheld has
+            // no endpoint to label: the label sits at the last row's x, and a
+            // number there would belong to no mark.
+            for v in List.init m valueAt |> List.choose id do
                 let baseline = yScale v - style.DataLabelEndNudgeY
 
                 let separated =
@@ -4055,18 +4263,22 @@ let private dataLabels<'Msg>
                 // The TOTAL at the stack cap, once per category — `cumsFor i`'s
                 // last entry is the stack's own top, which is the value the
                 // whole bar's height means.
+                // A category with no drawn segment (Phase 2809) has no cap.
                 [ for i in 0 .. n - 1 do
-                      let cums = cumsFor i
-                      yield! capLabel (stackedBarX i + stackedBarW / 2.0) bandW cums.[m] ]
+                      if series |> Array.exists (fun s -> Option.isSome s.[i]) then
+                          let cums = cumsFor i
+                          yield! capLabel (stackedBarX i + stackedBarW / 2.0) bandW cums.[m] ]
             | ChartKind.Bar ->
                 [ for j in 0 .. m - 1 do
                       for i in 0 .. n - 1 do
-                          yield! capLabel (groupedBarX i j + groupedBarW / 2.0) groupedSubW series.[j].[i] ]
+                          match series.[j].[i] with
+                          | Some v -> yield! capLabel (groupedBarX i j + groupedBarW / 2.0) groupedSubW v
+                          | None -> () ]
             | ChartKind.Area when stacked ->
                 // The band's own UPPER boundary is the edge that was drawn, so
                 // it is the cumulative value there — not the series' own datum,
                 // which is nowhere on the picture.
-                endpointLabels (fun j -> (cumsFor (n - 1)).[j + 1])
+                endpointLabels (fun j -> series.[j].[n - 1] |> Option.map (fun _ -> (cumsFor (n - 1)).[j + 1]))
             | ChartKind.Line
             | ChartKind.Area -> endpointLabels (fun j -> series.[j].[n - 1])
             | _ -> []
@@ -4436,7 +4648,7 @@ let private legendAndTitles<'Msg>
               style.LegendSwatchSize,
               style.LegendSwatchSize,
               Some style.LegendSwatchCornerRadius,
-              styleFill (fst legendEntries.[j])
+              legendLayout.SwatchStyles.[j]
           )
           Shape.Label(
               r2 (swatchX + style.LegendLabelOffsetX),
@@ -4483,7 +4695,7 @@ let private legendAndTitles<'Msg>
                           style.LegendSwatchSize,
                           style.LegendSwatchSize,
                           Some style.LegendSwatchCornerRadius,
-                          styleFill (fst legendEntries.[j])
+                          legendLayout.SwatchStyles.[j]
                       )
 
                   yield
@@ -4625,7 +4837,7 @@ let private pieMarks
                               // one number the pie does not otherwise print —
                               // the magnitude behind the slice — the one number
                               // still unreachable.
-                              |> datumTip yf categories.[i] pieValues.[i]
+                              |> datumTip yf categories.[i] (pieValues.[i] |> Option.defaultValue 0.0)
 
                           if f >= 1.0 - 1e-9 then
                               // A lone 100% category is a circle — there is no
@@ -4770,21 +4982,21 @@ let private accessibleSummaryOf<'Msg>
                 else
                     " " + yDisplayUnit.Label
 
+            // Phase 2809 — over PRESENT values only: a missing or withheld
+            // value is no datum, and a chart with none has no peak clause.
             let peakClause =
-                if n = 0 || m = 0 then
-                    []
-                else
-                    let mutable bi = 0
-                    let mutable bj = 0
-                    let mutable bv = series.[0].[0]
+                let mutable best: (int * int * float) option = None
 
-                    for i in 0 .. n - 1 do
-                        for j in 0 .. m - 1 do
-                            if series.[j].[i] > bv then
-                                bv <- series.[j].[i]
-                                bi <- i
-                                bj <- j
+                for i in 0 .. n - 1 do
+                    for j in 0 .. m - 1 do
+                        match series.[j].[i], best with
+                        | Some v, None -> best <- Some(i, j, v)
+                        | Some v, Some(_, _, bv) when v > bv -> best <- Some(i, j, v)
+                        | _ -> ()
 
+                match best with
+                | None -> []
+                | Some(bi, bj, bv) ->
                     [ "Peak "
                       + clampText summaryMaxNameChars yFields.[bj]
                       + " at "
@@ -4792,6 +5004,16 @@ let private accessibleSummaryOf<'Msg>
                       + ", "
                       + yTickText bv
                       + unitSuffix ]
+
+            // Phase 2809 (D38) — the withheld clause: every series value of a
+            // withheld row, counted. A chart with nothing withheld gains no
+            // clause, so every pre-2809 summary is byte-unchanged.
+            let withheldClause =
+                let k = (data.Withheld |> Array.filter id |> Array.length) * m
+
+                if k = 0 then []
+                elif k = 1 then [ "1 value " + withheldWord ]
+                else [ string k + " values " + withheldWord ]
 
             // ── The annotation clauses (Phase 1494 — §4i, extended) ───────
             //
@@ -4912,6 +5134,7 @@ let private accessibleSummaryOf<'Msg>
             let clauses =
                 [ summaryKindWords spec.Kind stacked; seriesClause; extentClause ]
                 @ peakClause
+                @ withheldClause
                 @ referenceClause
                 @ eventClause
                 @ bandClause
@@ -4969,17 +5192,6 @@ type private HeatmapGrid =
         Cells: Map<int * int, float>
     }
 
-/// A heatmap value cell, or `None` when it is absent: empty, text, or
-/// non-finite. Numbers, exact decimals and booleans read as `numericOf` reads
-/// them.
-let private heatmapValueOf (row: Row) (field: string) : float option =
-    match BindingResolver.projectRowFieldValue row field with
-    | CellValue.Numeric n when System.Double.IsNaN n || System.Double.IsInfinity n -> None
-    | CellValue.Numeric n -> Some n
-    | CellValue.Decimal s -> Fuaran.Core.DecimalText.tryToFloat s
-    | CellValue.Bool b -> Some(if b then 1.0 else 0.0)
-    | _ -> None
-
 /// Read the grid: keys in first-appearance order, the first row of a pair wins.
 let private heatmapGrid<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : HeatmapGrid =
     let rowField =
@@ -5014,7 +5226,7 @@ let private heatmapGrid<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : Heatmap
                 if seen.Contains at then
                     acc, seen
                 else
-                    match heatmapValueOf r valueField with
+                    match presentValueOf r valueField with
                     | Some v -> Map.add at v acc, Set.add at seen
                     | None -> acc, Set.add at seen)
             (Map.empty, Set.empty)

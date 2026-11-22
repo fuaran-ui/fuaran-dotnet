@@ -1127,6 +1127,8 @@ let private genChartSpec: Gen<ChartSpec<obj>> =
         // Phase 2655 — the declared colour scale (absent = sequential over the
         // data, so the option arm matters here).
         let! scale = genOption genChartScale
+        // Phase 2809 — the withheld flag column (absent = nothing withheld).
+        let! withheldField = genOption genNonEmptyString
         let! stacked = genBool
         // Phase 2568 — a query-bound source beside the inline one. `genSmallList`
         // already draws the empty `yFields` a quarter of the time; over a `Query`
@@ -1153,6 +1155,7 @@ let private genChartSpec: Gen<ChartSpec<obj>> =
                 XScale = xScale
                 Annotations = annotations
                 Scale = scale
+                WithheldField = withheldField
                 Stacked = stacked }
     }
 

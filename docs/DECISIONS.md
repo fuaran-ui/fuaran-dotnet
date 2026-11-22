@@ -10,6 +10,66 @@ consequence.
 
 ---
 
+## 2026-11-22 — D38: a withheld value is declared by a flag column the chart names; a missing value is a gap, never a zero
+
+**Decided (Phase 2809).** A chart fed from governed data meets three kinds of value: a **released** one; an **absent**
+one (no records, or a pair that does not occur); and a **withheld** one, where a disclosure gate suppressed a value
+that does exist. Until this phase the language could not say the third, and the shipped arms said the first instead:
+the lowering read a missing or non-numeric cell as `0.0`, so a missing bar was drawn at height zero, its tip read a
+zero and the summary counted it as data. For a withheld value that is the one reading that is certainly false. Six
+rulings follow.
+
+1. **The charter walk: a declared field, not a cell marker.** `ChartSpec.withheldField` (optional) names a column of
+   the chart's rows. A row whose cell in that column is the boolean `true` is WITHHELD: every series value of that row
+   is withheld, whatever its own value cells hold. Any other cell (`false`, empty, absent) leaves the row to its
+   values. The rejected alternative was a cell-level marker: a sentinel in a value column (a reserved string, a
+   tagged object). A sentinel in a value column is a value. It needs a reserved spelling every host decodes alike,
+   it collides with real data that happens to spell it, and it turns every value reader into a three-way reader. A
+   flag column is ordinary data a gate already produces beside its value, and the chart only has to be told which
+   column it is. The withholding is per ROW because the consumer's unit of suppression is the row (a bin, a
+   category, a cell of a heatmap, which is one row per cell): a row's series withheld one by one would need a flag
+   per series, and nothing asks for it yet.
+2. **A value is PRESENT or it is MISSING, on every arm.** Present is a finite number, an exact decimal the float
+   range holds, or a boolean (read 1/0, as the heatmap arm and FUARAN087 already read it). Everything else is
+   missing: an absent key, a null, a text, a date, a non-finite number. One reader decides it for every arm
+   (`presentValueOf`, which the Heatmap arm's own reader of the same rule folded into).
+3. **A missing value is a gap.** No bar, no point, no wedge; a Line or an Area breaks into the maximal runs of
+   consecutive present points, and each run draws exactly as a whole series drew before. A missing or withheld
+   value adds nothing to a stack's running sum, to the value domain, to a pie's total, to the peak or to a data
+   label, so every domain is computed from present values only. On a Pie a missing category draws no wedge and no
+   legend entry: a `0%` entry would be the zero this ruling removes. This changes the geometry of an input the
+   shipped arms drew wrongly, so it is recorded as a **correction**, not a redesign; the one golden that exercised
+   it (`derived-series/derived-mixed-columns`, an empty `orders` cell) is re-cut.
+4. **A withheld value draws a placeholder that implies no value.** An outlined, unfilled square of
+   `ChartStyle.WithheldMarkSize`, centred on the value axis's zero line, inked like the axis (`currentColor` at the
+   axis opacity, so it is theme-invariant and never reads as a series colour). A grouped bar's placeholder spans
+   its own bar slot; a stacked bar's slot is split evenly between its series; on a Line, an Area or a Scatter the
+   series' placeholders sit side by side, centred on the datum's x. Each carries the datum's own mark identity
+   (`series|category`, so a click resolves the row) and the tip `series · category · withheld`, with no number. On
+   a Pie the placeholder is the category's legend swatch, outlined, and its entry reads `name (withheld)`; the
+   shares are of the released total. A Scatter row whose x is missing has no position and draws nothing.
+5. **The summary says so.** After the peak clause, `1 value withheld` or `<k> values withheld`, where `k` is the
+   withheld rows times the series count, under the summary's existing caps. A chart with nothing withheld gains no
+   clause, so every pre-2809 summary is byte-unchanged.
+6. **The validator grounds the declaration.** A `withheldField` naming a column the chart's source does not produce
+   is FUARAN086 (`ChartFieldUngrounded`), the rule every other chart field already answers to. One naming a
+   decidable column that is not boolean is FUARAN171 (`ChartWithheldFieldNotBoolean`): a text column spelling
+   "yes" would never withhold anything, silently. FUARAN087's message no longer says the lowering reads a
+   non-numeric cell as `0.0`; it draws a gap, so such a series draws nothing.
+
+**Rejected.** Drawing a withheld value at a fixed height, or at the category's mean, or at the axis floor: each is a
+number the data did not state. Counting a withheld value in a stack at zero while drawing a placeholder: a stack is a
+sum of what is shown. A per-point marker on a Line run of one point: a run draws as a whole series drew, so an
+isolated present point is a one-point polyline exactly as a one-row Line chart is today. Point markers on a line are
+their own question, and making them is not this phase's.
+
+**Consequence.** A chart over gated data can no longer misstate a suppressed value as zero, and a chart with neither
+a missing nor a withheld value lowers to the bytes it did. The data-table alternative (Phase 2776) lands second and
+shows a withheld cell as "withheld". The Heatmap arm draws its withheld cell in Phase 2810, on the same flag and the
+same placeholder rule. Vectors: `chart-lowering/withheld/` (WIRE_FORMAT §3.6.36).
+
+---
+
 ## 2026-11-22 — D37: a heatmap's colour is a declared scale binned onto a gated ramp; "Gap 6" closes without a per-cell colour
 
 **Decided (Phase 2655).** The 2026-05-28 deferral called "Gap 6" left `Heatmap` in the `Custom` escape. A per-cell

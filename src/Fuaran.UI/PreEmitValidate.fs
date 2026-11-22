@@ -285,8 +285,9 @@ type PreEmitDefect =
     | ChartFieldUngrounded of nodeId: string * field: string * schemaColumns: string list
     /// **FUARAN087 (Error)**. A grounded chart value field (a `YFields` entry,
     /// or `XField` on a `Scatter`) carries a column type the lowering cannot
-    /// plot numerically — anything outside int/float/bool (bool coerces 1/0)
-    /// reads 0.0 at lowering time, a silently-flat series (Phase 640). Fires
+    /// plot numerically — anything outside int/float/bool (bool reads 1/0) is
+    /// a MISSING value at lowering time, drawn as a gap (Phase 2809), so the
+    /// series silently draws nothing (Phase 640). Fires
     /// only when the schema is statically known (see FUARAN086) AND the column's
     /// type is decidable there — a `derive` the typer cannot decide (one reading a
     /// param, `now`, or an undeclared column) exists with a data-dependent type, so
@@ -322,6 +323,13 @@ type PreEmitDefect =
     /// one field has no value, three leave the extra unread. Carries the node id
     /// and the field count.
     | ChartHeatmapFieldShape of nodeId: string * fieldCount: int
+    /// **FUARAN171 (Error)**. A `Chart`'s `WithheldField` names a grounded
+    /// column whose type is decidable and is not boolean (Phase 2809, D38). A
+    /// row is withheld only where that column holds the boolean `true`, so a
+    /// text or numeric flag column would never withhold anything — silently, at
+    /// exactly the rows a disclosure gate suppressed. Carries the node id, the
+    /// field, and the offending column-type tag.
+    | ChartWithheldFieldNotBoolean of nodeId: string * field: string * columnType: string
     /// **FUARAN089 (Warning)**. `Stacked = true` on a `ChartKind` where
     /// stacking is meaningless (`Line` / `Scatter` / `Pie`) — the lowering
     /// ignores the flag (Phase 637), so the emission carries dead intent;
@@ -2331,8 +2339,8 @@ module DefectCodes =
               "ChartFieldTypeMismatch",
               "FUARAN087",
               Severity.Error,
-              "chart '{nodeId}' plots field '{field}' of type '{columnType}' — the lowering reads non-numeric cells as 0.0, a silently flat series (Phase 640)",
-              "Phase 640"
+              "chart '{nodeId}' plots field '{field}' of type '{columnType}' — the lowering draws a non-numeric cell as a gap, so the series silently draws nothing (Phases 640, 2809)",
+              "Phases 640, 2809"
           )
           row (
               "ChartAnnotationNonFinite",
@@ -2403,6 +2411,13 @@ module DefectCodes =
               Severity.Error,
               "heatmap chart '{nodeId}' declares {fieldCount} yFields — a heatmap takes exactly two: the row field, then the value field (Phase 2655)",
               "Phase 2655"
+          )
+          row (
+              "ChartWithheldFieldNotBoolean",
+              "FUARAN171",
+              Severity.Error,
+              "chart '{nodeId}' declares withheld field '{field}' of type '{columnType}' — a row is withheld only where that column holds the boolean true, so this column would never withhold a value (Phase 2809)",
+              "Phase 2809"
           )
           row (
               "ChartStackedMeaningless",
@@ -3391,6 +3406,8 @@ let private describeArgs (d: PreEmitDefect) : string * (string * string) list =
     | PreEmitDefect.ChartScaleMeaningless(nodeId, kind) -> "ChartScaleMeaningless", [ "nodeId", nodeId; "kind", kind ]
     | PreEmitDefect.ChartHeatmapFieldShape(nodeId, fieldCount) ->
         "ChartHeatmapFieldShape", [ "nodeId", nodeId; "fieldCount", string fieldCount ]
+    | PreEmitDefect.ChartWithheldFieldNotBoolean(nodeId, field, columnType) ->
+        "ChartWithheldFieldNotBoolean", [ "nodeId", nodeId; "field", field; "columnType", columnType ]
     | PreEmitDefect.ChartStackedMeaningless(nodeId, kind) ->
         "ChartStackedMeaningless", [ "nodeId", nodeId; "kind", kind ]
     | PreEmitDefect.InertEditableGrid nodeId -> "InertEditableGrid", [ "nodeId", nodeId ]
@@ -5484,6 +5501,22 @@ module private ChartRules =
                              defects.Add(PreEmitDefect.ChartFieldTypeMismatch(nodeIdStr, yf, ColumnType.tag t))
                              locateLast ctx n (sprintf "yFields[%d]" i)
                          | _ -> ())
+
+                 // Phase 2809 (D38) — the withheld flag column is grounded like
+                 // every other chart field (FUARAN086), and a decidable type that
+                 // is not boolean can never withhold anything (FUARAN171).
+                 match spec.WithheldField with
+                 | None -> ()
+                 | Some wf when not (SchemaWalk.has wf produced) ->
+                     defects.Add(PreEmitDefect.ChartFieldUngrounded(nodeIdStr, wf, schemaColumns))
+                     locateLast ctx n "withheldField"
+                 | Some wf ->
+                     match colType wf with
+                     | Some ColumnType.BoolType
+                     | None -> ()
+                     | Some t ->
+                         defects.Add(PreEmitDefect.ChartWithheldFieldNotBoolean(nodeIdStr, wf, ColumnType.tag t))
+                         locateLast ctx n "withheldField"
          | _ -> ())
 
 /// Media, embeds, trees and links: the content kinds that carry their own rules.
@@ -6985,7 +7018,8 @@ let private groundingReader (d: PreEmitDefect) : (string * string) option =
     match d with
     | PreEmitDefect.ChartFieldUngrounded(n, _, _)
     | PreEmitDefect.ChartFieldTypeMismatch(n, _, _)
-    | PreEmitDefect.ChartTemporalXNotDate(n, _, _) -> Some(n, "Chart")
+    | PreEmitDefect.ChartTemporalXNotDate(n, _, _)
+    | PreEmitDefect.ChartWithheldFieldNotBoolean(n, _, _) -> Some(n, "Chart")
     | PreEmitDefect.GridFieldUngrounded(n, _, _)
     | PreEmitDefect.PillFieldUngrounded(n, _, _, _) -> Some(n, "DataGrid")
     | _ -> None

@@ -3405,6 +3405,11 @@ let visKinds: IdlKind list =
             // emission (FUARAN169). Absent OMITS on the wire, so every pre-2655
             // fixture is byte-unchanged.
             opt "scale" (TUnion("ChartScale", []))
+            // Phase 2809 (D38) — the column that says a row's values are WITHHELD
+            // by a disclosure gate: a row whose cell there is the boolean `true`
+            // draws a placeholder, never its value and never a zero. Absent OMITS
+            // on the wire, so every pre-2809 fixture is byte-unchanged.
+            opt "withheldField" TStr
             opt "onPointClick" (handlerOf "Map<string, obj>" "unknown") ] }
       { Tag = "Map"
         Category = "Visualisation"
@@ -4273,6 +4278,8 @@ let private docs: (string * string) list =
       "Data-addressed annotations drawn over the chart, such as reference lines. Omitted means none."
       "kind-field:Chart.scale",
       "The declared colour scale of a `Heatmap`'s value field: sequential or diverging. Absent means sequential over the data's extent; any other kind carrying it is refused before emission (FUARAN169)."
+      "kind-field:Chart.withheldField",
+      "The column that marks a row as withheld by a disclosure gate: a row whose cell there is `true` draws a placeholder and the tip 'withheld', never its value and never a zero. Absent means nothing is withheld."
       "kind-field:Chart.onPointClick",
       "An in-process handler called with the clicked point's row; it travels on the wire only as a `\"<closure>\"` sentinel."
       "kind:CodeBlock",

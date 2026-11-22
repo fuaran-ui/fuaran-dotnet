@@ -7900,6 +7900,42 @@ breaking-class already; `<Version>` does not move.
   finds it.
 - **Recompile.**
 
+### What rides this slot — Phase 2809 (a chart value can be withheld, and a missing value is never drawn as zero)
+
+**Class: breaking.** On the wire it is additive: `ChartSpec.withheldField` is an optional member that absence
+omits, so every pre-2809 document decodes and encodes byte-for-byte as it did. The lowering half is a
+**correction of drawn geometry**, not a redesign: a missing or non-numeric value cell used to be drawn as `0.0`, and
+it is now a gap. On the .NET surface it is breaking by the estate rule: two public records gain a field and a
+closed union gains a case. It rides this draft slot, which is breaking-class already; `<Version>` does not move.
+The decision is D38 (`docs/DECISIONS.md`); the normative rules are WIRE_FORMAT §3.6.36.
+
+**What a consumer gains.**
+
+- **`ChartSpec.WithheldField: string option`** (wire `withheldField`) names a column; a row whose cell there is
+  the boolean `true` is withheld. Its values are never read: each series draws an outlined placeholder of
+  `ChartStyle.WithheldMarkSize` on the zero line, carrying the datum's own mark (`series|category`, so
+  `rowOfMarkId` resolves it) and the readout `series · category · withheld`. On a Pie the placeholder is the
+  category's outlined legend swatch, reading `name (withheld)`. The accessible summary gains `<k> values withheld`.
+- **A missing value is a gap on every lowered arm.** No bar, segment, point or wedge; a Line or an Area breaks into
+  runs; no domain, stack sum, pie total, peak or data label reads it; a Pie's missing category has no legend entry.
+- **`FUARAN171`** (`ChartWithheldFieldNotBoolean`, Error) refuses a withheld column of a decidable non-boolean
+  type; a withheld column the source does not produce is `FUARAN086`, as every chart field is. `FUARAN087`'s
+  message now says the lowering draws a non-numeric cell as a gap, which is what it does.
+
+**What a consumer pays.**
+
+- **The correction moves pictures.** A chart whose rows carry an empty, `null`, text or date value cell, or a
+  non-finite number, now draws a gap where it drew a zero: no zero-height bar, no point on the axis, no wedge, and
+  no `· 0` readout. A Line through such a cell breaks rather than dropping to the axis. A Pie entry that read `0%`
+  for a missing value is gone. One corpus golden exercised it and was re-cut
+  (`chart-lowering/derived-series/derived-mixed-columns`); no top-level or `heatmap/` golden moved.
+- **Record construction.** A `ChartSpec<'Msg>` built as a full record literal needs `WithheldField = None`
+  (FS0764), and a `ChartStyle` built as a full literal needs `WithheldMarkSize`; `{ Defaults.chart with … }`,
+  `{ ChartStyle.defaults with … }` and `Fuaran.chart` are unaffected. The C# veneer passes the F# default.
+- **Exhaustive matches.** A match over `PreEmitDefect` gains `ChartWithheldFieldNotBoolean` (FS0025 until the arm
+  is added).
+- **Recompile.**
+
 ---
 
 ## 0.105.0 — the announced breaking cut (Phase 2303); the slot opened after v0.104.0 was released, advanced from 0.104.1 on 2026-11-14 by Phase 2716, whose change is breaking (DRAFT — untagged)

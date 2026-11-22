@@ -1886,6 +1886,53 @@ let tests =
               | Ok() -> failtest "Expected ChartFieldTypeMismatch for the scatter x"
           }
 
+          test "a withheld field is grounded (FUARAN086) and must be boolean (FUARAN171)" {
+              // Phase 2809 (D38) — a row is withheld where the declared column holds
+              // the boolean true, so the column must exist and, where its type is
+              // decidable, be boolean: a text flag would never withhold anything.
+              let table: Fuaran.Core.Table =
+                  { Schema =
+                      [ Fuaran.Core.Field.create "bin" Fuaran.Core.ColumnType.StringType
+                        Fuaran.Core.Field.create "residual" Fuaran.Core.ColumnType.FloatType
+                        Fuaran.Core.Field.create "suppressed" Fuaran.Core.ColumnType.BoolType
+                        Fuaran.Core.Field.create "note" Fuaran.Core.ColumnType.StringType ]
+                    Columns = [] }
+
+              let chartWith (withheld: string) : Node<Msg> =
+                  Fuaran.chart
+                      "cht"
+                      { Defaults.chart<Msg> with
+                          Kind = ChartKind.Bar
+                          Source =
+                              Binding.Transform(TransformSource.Data(Fuaran.Core.DataSource.Embedded table), [], None)
+                          XField = "bin"
+                          YFields = [ "residual" ]
+                          WithheldField = Some withheld }
+
+              match PreEmitValidate.validate (chartWith "suppressed") with
+              | Ok() -> ()
+              | Error defects -> failtestf "Expected Ok for a boolean withheld column, got: %A" defects
+
+              match PreEmitValidate.validate (chartWith "absent") with
+              | Error defects ->
+                  Expect.isTrue
+                      (defects
+                       |> List.exists (fun d ->
+                           match d with
+                           | PreEmitDefect.ChartFieldUngrounded("cht", "absent", _) -> true
+                           | _ -> false))
+                      "a withheld field the rows lack is ungrounded"
+              | Ok() -> failtest "Expected ChartFieldUngrounded for the withheld field"
+
+              match PreEmitValidate.validate (chartWith "note") with
+              | Error defects ->
+                  Expect.contains
+                      defects
+                      (PreEmitDefect.ChartWithheldFieldNotBoolean("cht", "note", "string"))
+                      "a text flag column is refused"
+              | Ok() -> failtest "Expected ChartWithheldFieldNotBoolean for a text column"
+          }
+
           test "an empty yFields is admitted over a Query and refused over anything else, by name (FUARAN168)" {
               let rows: Map<string, obj> seq =
                   Seq.ofList [ Map.ofList [ "day", ("Mon" :> obj); "a", (1.0 :> obj) ] ]

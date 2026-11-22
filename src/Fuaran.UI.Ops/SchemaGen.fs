@@ -1933,6 +1933,11 @@ let private defs: (string * J) list =
             // absent means sequential over the data's extent. Whether the kind
             // admits it is the validator's (FUARAN169), not the schema's.
             "scale", ref "ChartScale"
+            // `withheldField` (Phase 2809, D38) — the column whose boolean `true`
+            // marks a row withheld. Optional: absent means nothing is withheld.
+            // Whether the column exists and is boolean is the validator's
+            // (FUARAN086 / FUARAN171), not the schema's.
+            "withheldField", str
             "onPointClick", closure ]
 
       // Phase 1490 (§4l) — the closed annotation union. `value` takes

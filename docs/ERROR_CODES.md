@@ -391,10 +391,10 @@ chart '{nodeId}' references field '{field}' absent from the schema its own sourc
 
 #### `FUARAN087` — Error
 
-`ChartFieldTypeMismatch` (Phase 640)
+`ChartFieldTypeMismatch` (Phases 640, 2809)
 
 ```text
-chart '{nodeId}' plots field '{field}' of type '{columnType}' — the lowering reads non-numeric cells as 0.0, a silently flat series (Phase 640)
+chart '{nodeId}' plots field '{field}' of type '{columnType}' — the lowering draws a non-numeric cell as a gap, so the series silently draws nothing (Phases 640, 2809)
 ```
 
 #### `FUARAN088` — Error
@@ -1107,6 +1107,14 @@ chart '{nodeId}' declares a colour scale on kind {kind} — a scale is read only
 
 ```text
 heatmap chart '{nodeId}' declares {fieldCount} yFields — a heatmap takes exactly two: the row field, then the value field (Phase 2655)
+```
+
+#### `FUARAN171` — Error
+
+`ChartWithheldFieldNotBoolean` (Phase 2809)
+
+```text
+chart '{nodeId}' declares withheld field '{field}' of type '{columnType}' — a row is withheld only where that column holds the boolean true, so this column would never withhold a value (Phase 2809)
 ```
 
 <!-- END GENERATED: PreEmitValidate.DefectCodes.toMarkdown -->

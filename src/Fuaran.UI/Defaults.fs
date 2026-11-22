@@ -553,6 +553,7 @@ let chart<'Msg> : ChartSpec<'Msg> =
       XScale = Option.None
       Annotations = Option.None
       Scale = Option.None
+      WithheldField = Option.None
       OnPointClick = Option.None
       Stacked = false }
 

@@ -6053,3 +6053,553 @@ let heatmapTests =
                  | [ ChartPalette.PaletteFinding.RampShape("diverging", 6, _) ] -> ()
                  | other -> failtestf "expected the odd-count refusal, got %A" other
              } ])
+
+// ── Phase 2809 — missing values and withheld values (`chart-lowering/withheld/`) ─
+//
+// A case is a table of cells rather than a `Case`, because the top-level family's
+// rows are `float list`s and cannot spell a cell that is ABSENT, `null`, a text,
+// or a withheld flag. The vectors live in a SUBFAMILY for the heatmap's reason:
+// the hosts that lower the top-level family enumerate it non-recursively, and
+// fuaran-rs and fuaran-go lower every top-level vector, so a top-level vector
+// would redden both before they adopt the gap and withheld rules (D38).
+
+/// One cell of a withheld-family row. `Absent` OMITS the key, which is a
+/// different document from `Null` on every host and draws the same gap.
+type private WCell =
+    | WNum of float
+    | WText of string
+    | WBool of bool
+    | WNull
+    | WAbsent
+
+type private WithheldCase =
+    {
+        Name: string
+        Kind: ChartKind
+        Title: string
+        XField: string
+        YFields: string list
+        Stacked: bool
+        DataLabels: bool
+        WithheldField: string option
+        /// The columns in the order the input writes them: `XField`, the
+        /// `YFields`, then the withheld flag column when the case has one.
+        Columns: string list
+        Rows: WCell list list
+    }
+
+let private withheldCases: WithheldCase list =
+    let n (v: float) = WNum v
+
+    [ // Grouped bars: an absent cell, a null and a text are all gaps, never zeros.
+      { Name = "bar-missing"
+        Kind = ChartKind.Bar
+        Title = "Responses by region"
+        XField = "region"
+        YFields = [ "wave1"; "wave2" ]
+        Stacked = false
+        DataLabels = true
+        WithheldField = None
+        Columns = [ "region"; "wave1"; "wave2" ]
+        Rows =
+          [ [ WText "North"; n 42.0; n 38.0 ]
+            [ WText "South"; WAbsent; n 51.0 ]
+            [ WText "East"; n 27.0; WNull ]
+            [ WText "West"; WText "n/a"; n 33.0 ] ] }
+      // Stacked bars: a missing middle segment draws nothing and adds nothing,
+      // and a category with no value at all has no bar and no cap label.
+      { Name = "bar-stacked-missing"
+        Kind = ChartKind.Bar
+        Title = "Orders by channel"
+        XField = "month"
+        YFields = [ "web"; "store"; "phone" ]
+        Stacked = true
+        DataLabels = true
+        WithheldField = None
+        Columns = [ "month"; "web"; "store"; "phone" ]
+        Rows =
+          [ [ WText "Jan"; n 30.0; n 20.0; n 10.0 ]
+            [ WText "Feb"; n 34.0; WAbsent; n 12.0 ]
+            [ WText "Mar"; WAbsent; WNull; WAbsent ]
+            [ WText "Apr"; n 41.0; n 22.0; WNull ] ] }
+      // A line breaks at a gap; a series whose last value is missing has no
+      // endpoint label.
+      { Name = "line-missing"
+        Kind = ChartKind.Line
+        Title = "Weekly signups"
+        XField = "week"
+        YFields = [ "trial"; "paid" ]
+        Stacked = false
+        DataLabels = true
+        WithheldField = None
+        Columns = [ "week"; "trial"; "paid" ]
+        Rows =
+          [ [ WText "W1"; n 120.0; n 40.0 ]
+            [ WText "W2"; n 135.0; n 44.0 ]
+            [ WText "W3"; WAbsent; n 47.0 ]
+            [ WText "W4"; n 150.0; n 52.0 ]
+            [ WText "W5"; n 162.0; WNull ] ] }
+      // An area closes each run on the baseline separately.
+      { Name = "area-missing"
+        Kind = ChartKind.Area
+        Title = "Daily active users"
+        XField = "day"
+        YFields = [ "users" ]
+        Stacked = false
+        DataLabels = false
+        WithheldField = None
+        Columns = [ "day"; "users" ]
+        Rows =
+          [ [ WText "Mon"; n 310.0 ]
+            [ WText "Tue"; n 342.0 ]
+            [ WText "Wed"; WNull ]
+            [ WText "Thu"; n 365.0 ]
+            [ WText "Fri"; n 390.0 ] ] }
+      // A stacked area band breaks where its own series is missing, and the bands
+      // above it sit on what is drawn.
+      { Name = "area-stacked-missing"
+        Kind = ChartKind.Area
+        Title = "Traffic by source"
+        XField = "hour"
+        YFields = [ "search"; "social" ]
+        Stacked = true
+        DataLabels = true
+        WithheldField = None
+        Columns = [ "hour"; "search"; "social" ]
+        Rows =
+          [ [ WText "09"; n 50.0; n 20.0 ]
+            [ WText "10"; WAbsent; n 25.0 ]
+            [ WText "11"; n 64.0; n 28.0 ]
+            [ WText "12"; n 70.0; n 31.0 ] ] }
+      // A scatter point with a missing y, and one with a missing x, draw nothing;
+      // the x domain is of the present xs.
+      { Name = "scatter-missing"
+        Kind = ChartKind.Scatter
+        Title = "Height against weight"
+        XField = "height"
+        YFields = [ "weight" ]
+        Stacked = false
+        DataLabels = false
+        WithheldField = None
+        Columns = [ "height"; "weight" ]
+        Rows =
+          [ [ n 150.0; n 52.0 ]
+            [ n 162.0; WAbsent ]
+            [ WNull; n 70.0 ]
+            [ n 175.0; n 74.0 ]
+            [ n 181.0; n 80.0 ] ] }
+      // A pie's missing category has no wedge and no legend entry: `0%` would be
+      // the zero the gap rule removes.
+      { Name = "pie-missing"
+        Kind = ChartKind.Pie
+        Title = "Share of spend"
+        XField = "category"
+        YFields = [ "spend" ]
+        Stacked = false
+        DataLabels = false
+        WithheldField = None
+        Columns = [ "category"; "spend" ]
+        Rows =
+          [ [ WText "Rent"; n 1200.0 ]
+            [ WText "Food"; n 450.0 ]
+            [ WText "Travel"; WAbsent ]
+            [ WText "Other"; n 150.0 ] ] }
+      // Grouped bars with a WITHHELD row: its value cells hold numbers that must
+      // never reach the picture, the tip or the domain (the 900 would move it).
+      { Name = "bar-withheld"
+        Kind = ChartKind.Bar
+        Title = "Mean residual by bin"
+        XField = "bin"
+        YFields = [ "train"; "test" ]
+        Stacked = false
+        DataLabels = true
+        WithheldField = Some "suppressed"
+        Columns = [ "bin"; "train"; "test"; "suppressed" ]
+        Rows =
+          [ [ WText "0-10"; n 12.0; n 14.0; WBool false ]
+            [ WText "10-20"; n 900.0; n 900.0; WBool true ]
+            [ WText "20-30"; n 18.0; n 21.0; WBool false ]
+            [ WText "30-40"; n 9.0; n 11.0; WAbsent ] ] }
+      // Stacked bars with a withheld category: one slot split between its series.
+      { Name = "bar-stacked-withheld"
+        Kind = ChartKind.Bar
+        Title = "Cases by cohort"
+        XField = "site"
+        YFields = [ "early"; "late" ]
+        Stacked = true
+        DataLabels = true
+        WithheldField = Some "withheld"
+        Columns = [ "site"; "early"; "late"; "withheld" ]
+        Rows =
+          [ [ WText "A"; n 40.0; n 25.0; WBool false ]
+            [ WText "B"; WAbsent; WAbsent; WBool true ]
+            [ WText "C"; n 33.0; n 29.0; WBool false ] ] }
+      // A line with a withheld row breaks there and draws one placeholder per
+      // series, side by side on the zero line.
+      { Name = "line-withheld"
+        Kind = ChartKind.Line
+        Title = "Fitted against observed"
+        XField = "decile"
+        YFields = [ "fitted"; "observed" ]
+        Stacked = false
+        DataLabels = false
+        WithheldField = Some "withheld"
+        Columns = [ "decile"; "fitted"; "observed"; "withheld" ]
+        Rows =
+          [ [ WText "D1"; n 0.12; n 0.1; WBool false ]
+            [ WText "D2"; n 0.2; n 0.23; WBool false ]
+            [ WText "D3"; WNull; WNull; WBool true ]
+            [ WText "D4"; n 0.41; n 0.38; WBool false ]
+            [ WText "D5"; n 0.55; n 0.6; WBool false ] ] }
+      // An area with a withheld row; a flag that is not the boolean `true` (a
+      // text "true", a `false`) withholds nothing.
+      { Name = "area-withheld"
+        Kind = ChartKind.Area
+        Title = "Enrolment by month"
+        XField = "month"
+        YFields = [ "enrolled" ]
+        Stacked = false
+        DataLabels = true
+        WithheldField = Some "withheld"
+        Columns = [ "month"; "enrolled"; "withheld" ]
+        Rows =
+          [ [ WText "Jan"; n 80.0; WText "true" ]
+            [ WText "Feb"; n 95.0; WBool false ]
+            [ WText "Mar"; n 3.0; WBool true ]
+            [ WText "Apr"; n 110.0; WNull ] ] }
+      // A scatter's withheld point: the placeholder at its x on the zero line.
+      { Name = "scatter-withheld"
+        Kind = ChartKind.Scatter
+        Title = "Residual against fitted"
+        XField = "fitted"
+        YFields = [ "residual" ]
+        Stacked = false
+        DataLabels = false
+        WithheldField = Some "withheld"
+        Columns = [ "fitted"; "residual"; "withheld" ]
+        Rows =
+          [ [ n 10.0; n -1.5; WBool false ]
+            [ n 20.0; n 0.75; WBool false ]
+            [ n 30.0; n 2.0; WBool true ]
+            [ n 40.0; n -0.5; WBool false ] ] }
+      // A pie's withheld category: no wedge, the shares of the released total,
+      // and an outlined legend swatch reading `name (withheld)`.
+      { Name = "pie-withheld"
+        Kind = ChartKind.Pie
+        Title = "Respondents by age"
+        XField = "band"
+        YFields = [ "count" ]
+        Stacked = false
+        DataLabels = false
+        WithheldField = Some "withheld"
+        Columns = [ "band"; "count"; "withheld" ]
+        Rows =
+          [ [ WText "18-34"; n 140.0; WBool false ]
+            [ WText "35-54"; n 210.0; WBool false ]
+            [ WText "55+"; n 4.0; WBool true ] ] } ]
+
+let private withheldCellValue (c: WCell) : obj option =
+    match c with
+    | WNum v -> Some(box v)
+    | WText s -> Some(box s)
+    | WBool b -> Some(box b)
+    | WNull -> Some(Unchecked.defaultof<obj>)
+    | WAbsent -> None
+
+let private withheldRows (case: WithheldCase) : Row list =
+    case.Rows
+    |> List.map (fun cells ->
+        List.zip case.Columns cells
+        |> List.choose (fun (c, v) -> withheldCellValue v |> Option.map (fun o -> c, o))
+        |> Map.ofList)
+
+let private withheldSpecOf (case: WithheldCase) (rows: Row list) : ChartSpec<obj> =
+    { Defaults.chart with
+        Source = Binding.Static(Some(Seq.ofList rows))
+        Kind = case.Kind
+        XField = case.XField
+        YFields = case.YFields
+        Stacked = case.Stacked
+        Title = Some(TextSource.Literal case.Title)
+        DataLabels = (if case.DataLabels then Some ChartDataLabels.Ends else None)
+        WithheldField = case.WithheldField }
+
+let private withheldLowered (case: WithheldCase) : DrawingSpec =
+    let rows = withheldRows case
+    Charts.lower (withheldSpecOf case rows) (Seq.ofList rows)
+
+let private withheldJson (case: WithheldCase) : string =
+    let node: Node<obj> =
+        Fuaran.drawingSpec (sprintf "chart-%s" case.Name) (withheldLowered case)
+
+    CanonicalJson.encodeNode node
+
+/// The neutral input: the top-level family's shape plus `withheldField`, each
+/// row's cells in the case's column order, an `WAbsent` cell OMITTED.
+let private withheldInputJson (case: WithheldCase) : string =
+    let esc (s: string) =
+        s.Replace("\\", "\\\\").Replace("\"", "\\\"")
+
+    let cell (c: WCell) : string option =
+        match c with
+        | WNum v -> Some(DrawingSvg.formatNum v)
+        | WText s -> Some("\"" + esc s + "\"")
+        | WBool b -> Some(if b then "true" else "false")
+        | WNull -> Some "null"
+        | WAbsent -> None
+
+    let kind =
+        match case.Kind with
+        | ChartKind.Bar -> "Bar"
+        | ChartKind.Line -> "Line"
+        | ChartKind.Area -> "Area"
+        | ChartKind.Pie -> "Pie"
+        | ChartKind.Scatter -> "Scatter"
+        | ChartKind.Heatmap -> "Heatmap"
+
+    let rows =
+        case.Rows
+        |> List.map (fun cells ->
+            List.zip case.Columns cells
+            |> List.choose (fun (c, v) -> cell v |> Option.map (fun t -> "\"" + esc c + "\":" + t))
+            |> String.concat ","
+            |> sprintf "{%s}")
+        |> String.concat ","
+
+    let yFields =
+        case.YFields |> List.map (fun f -> "\"" + esc f + "\"") |> String.concat ","
+
+    sprintf
+        "{\"kind\":\"%s\",\"xField\":\"%s\",\"yFields\":[%s],\"title\":\"%s\",\"stacked\":%s%s%s,\"data\":[%s]}"
+        kind
+        (esc case.XField)
+        yFields
+        (esc case.Title)
+        (if case.Stacked then "true" else "false")
+        (if case.DataLabels then ",\"dataLabels\":\"Ends\"" else "")
+        (match case.WithheldField with
+         | Some f -> sprintf ",\"withheldField\":\"%s\"" (esc f)
+         | None -> "")
+        rows
+
+/// Every shape's `(mark id, tip)` in emission order, groups walked.
+let private marksAndTips (ds: DrawingSpec) : (string option * string option) list =
+    let rec walk (sh: Shape) =
+        let s =
+            match sh with
+            | Shape.Group(_, s)
+            | Shape.Rectangle(_, _, _, _, _, s)
+            | Shape.Line(_, _, _, _, s)
+            | Shape.Polyline(_, s)
+            | Shape.Polygon(_, s)
+            | Shape.Curve(_, s)
+            | Shape.Circle(_, _, _, s)
+            | Shape.Ellipse(_, _, _, _, s)
+            | Shape.Label(_, _, _, s) -> s
+
+        let tip =
+            match s.Tip with
+            | Some(TextSource.Literal t) -> Some t
+            | _ -> None
+
+        let here =
+            if s.MarkId.IsSome || tip.IsSome then
+                [ s.MarkId, tip ]
+            else
+                []
+
+        match sh with
+        | Shape.Group(children, _) -> here @ (children |> List.collect walk)
+        | _ -> here
+
+    ds.Shapes |> List.collect walk
+
+let private descriptionOf (ds: DrawingSpec) : string =
+    match ds.Description with
+    | Some(TextSource.Literal t) -> t
+    | _ -> ""
+
+[<Tests>]
+let withheldTests =
+    let find name =
+        withheldCases |> List.find (fun c -> c.Name = name)
+
+    let fixtureTests =
+        match tryFindFixtures () with
+        | None ->
+            [ test "withheld fixtures absent — skipped (standalone checkout)" {
+                  Expect.isTrue true "wire-format-fixtures/ not found"
+              } ]
+        | Some fixturesRoot ->
+            let dir = Path.Combine(fixturesRoot, "chart-lowering", "withheld")
+
+            if Environment.GetEnvironmentVariable "FUARAN_EMIT_CHART_LOWERING" = "1" then
+                Directory.CreateDirectory dir |> ignore
+
+                for case in withheldCases do
+                    File.WriteAllText(Path.Combine(dir, case.Name + ".input.json"), withheldInputJson case)
+                    File.WriteAllText(Path.Combine(dir, case.Name + ".expected.json"), withheldJson case)
+
+            [ test "every withheld-family case lowers byte-identically to its committed golden" {
+                  for case in withheldCases do
+                      let expectedFile = Path.Combine(dir, case.Name + ".expected.json")
+
+                      Expect.isTrue
+                          (File.Exists expectedFile)
+                          (sprintf "%s: golden missing (regenerate with FUARAN_EMIT_CHART_LOWERING=1)" case.Name)
+
+                      Expect.equal
+                          (File.ReadAllText(Path.Combine(dir, case.Name + ".input.json")))
+                          (withheldInputJson case)
+                          (sprintf "%s: withheld input drifted" case.Name)
+
+                      Expect.equal
+                          (withheldJson case)
+                          (File.ReadAllText expectedFile)
+                          (sprintf "%s: withheld lowering drifted from golden" case.Name)
+              } ]
+
+    testList
+        "Chart lowering — missing and withheld values (Phase 2809)"
+        (fixtureTests
+         @ [ test "a missing value draws no mark and no readout on every lowered arm" {
+                 for name, missing in
+                     [ "bar-missing", [ "wave1|South"; "wave2|East"; "wave1|West" ]
+                       "bar-stacked-missing", [ "store|Feb"; "web|Mar"; "store|Mar"; "phone|Mar"; "phone|Apr" ]
+                       "scatter-missing", [ "weight|162"; "weight|0" ]
+                       "pie-missing", [ "spend|Travel" ] ] do
+                     let marks = marksAndTips (withheldLowered (find name)) |> List.choose fst
+
+                     for id in missing do
+                         Expect.isFalse (List.contains id marks) (sprintf "%s: %s must draw nothing" name id)
+
+                 let tips = marksAndTips (withheldLowered (find "bar-missing")) |> List.choose snd
+                 Expect.isFalse (tips |> List.exists (fun t -> t.EndsWith " · 0")) "no tip reads a zero"
+             }
+
+             test "a Line and an Area break at a gap: one series mark per run" {
+                 let runs name series =
+                     withheldLowered (find name)
+                     |> fun ds -> ds.Shapes
+                     |> List.filter (fun sh ->
+                         match sh with
+                         | Shape.Polyline(_, s) -> s.MarkId = Some series
+                         | _ -> false)
+                     |> List.length
+
+                 Expect.equal (runs "line-missing" "trial") 2 "W1-W2, then W4-W5"
+                 Expect.equal (runs "line-missing" "paid") 1 "W1-W4, the missing W5 shortens it"
+                 Expect.equal (runs "area-missing" "users") 2 "Mon-Tue, then Thu-Fri"
+                 Expect.equal (runs "area-stacked-missing" "search") 2 "09, then 11-12"
+             }
+
+             test "a withheld datum draws an outlined placeholder with its own mark and a 'withheld' readout" {
+                 let ds = withheldLowered (find "bar-withheld")
+
+                 let placeholders =
+                     ds.Shapes
+                     |> List.choose (fun sh ->
+                         match sh with
+                         | Shape.Rectangle(_, _, _, h, _, s) ->
+                             match s.Fill, s.Tip with
+                             | Some(Binding.Static(Some "none")), Some(TextSource.Literal tip) ->
+                                 Some(s.MarkId, tip, h)
+                             | _ -> None
+                         | _ -> None)
+
+                 Expect.equal
+                     (placeholders |> List.map (fun (m, _, _) -> m))
+                     [ Some "train|10-20"; Some "test|10-20" ]
+                     "one placeholder per series at the withheld bin"
+
+                 Expect.equal
+                     (placeholders |> List.map (fun (_, t, _) -> t))
+                     [ "train · 10-20 · withheld"; "test · 10-20 · withheld" ]
+                     "the readout says withheld and carries no number"
+
+                 Expect.isTrue
+                     (placeholders
+                      |> List.forall (fun (_, _, h) -> h = Charts.ChartStyle.defaults.WithheldMarkSize))
+                     "a fixed size: no height implies a value"
+
+                 let words =
+                     marksAndTips ds
+                     |> List.choose snd
+                     |> String.concat " "
+                     |> fun t -> t + " " + descriptionOf ds
+
+                 Expect.isFalse (words.Contains "900") "the withheld number reaches no tip and no summary"
+             }
+
+             test "a withheld value moves no domain: the axis is the released values' axis" {
+                 let case = find "bar-withheld"
+
+                 let released =
+                     { case with
+                         WithheldField = None
+                         Rows = case.Rows |> List.filter (fun r -> r.[3] <> WBool true) }
+
+                 Expect.equal
+                     (yTickTexts (withheldLowered case))
+                     (yTickTexts (withheldLowered released))
+                     "the 900s behind the gate do not widen the axis"
+             }
+
+             test "the summary counts withheld values, and only a chart with one gains the clause" {
+                 Expect.stringContains
+                     (descriptionOf (withheldLowered (find "bar-withheld")))
+                     "2 values withheld"
+                     "one bin of two series"
+
+                 Expect.stringContains
+                     (descriptionOf (withheldLowered (find "pie-withheld")))
+                     "1 value withheld"
+                     "the singular"
+
+                 Expect.isFalse
+                     ((descriptionOf (withheldLowered (find "bar-missing"))).Contains "withheld")
+                     "a missing value is not a withheld one"
+             }
+
+             test "a flag that is not the boolean true withholds nothing" {
+                 let case = find "area-withheld"
+                 let ds = withheldLowered case
+                 let marks = marksAndTips ds |> List.choose fst
+                 Expect.isTrue (List.contains "enrolled|Mar" marks) "Mar (true) is withheld"
+                 Expect.isFalse (List.contains "enrolled|Jan" marks) "Jan's text \"true\" is not a flag"
+             }
+
+             test "a declared withheld field no row sets lowers byte-identically to no declaration" {
+                 let case = find "bar-missing"
+
+                 let declared =
+                     { case with
+                         WithheldField = Some "suppressed"
+                         Columns = case.Columns @ [ "suppressed" ]
+                         Rows = case.Rows |> List.map (fun r -> r @ [ WBool false ]) }
+
+                 Expect.equal (withheldJson declared) (withheldJson case) "nothing withheld, nothing moves"
+             }
+
+             test "a withheld placeholder resolves back to its row" {
+                 let case = find "bar-stacked-withheld"
+                 let rows = withheldRows case
+
+                 Expect.equal
+                     (Charts.rowOfMarkId (withheldSpecOf case rows) rows "late|B")
+                     (Some rows.[1])
+                     "the placeholder carries the datum's identity"
+             }
+
+             test "the pie's shares are of the released total, and the withheld entry says so" {
+                 let ds = withheldLowered (find "pie-withheld")
+
+                 let labels =
+                     ds.Shapes
+                     |> List.choose (fun sh ->
+                         match sh with
+                         | Shape.Label(_, _, TextSource.Literal t, _) -> Some t
+                         | _ -> None)
+
+                 Expect.containsAll labels [ "18-34 (40%)"; "35-54 (60%)"; "55+ (withheld)" ] "released shares"
+             } ])
