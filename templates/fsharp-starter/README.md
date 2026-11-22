@@ -32,6 +32,17 @@ diagnostic runtime + the no-op visualisation adapter, so a starter needs no
 host-runtime wiring — reach for the full `Render.render ctx tree` once you wire a
 real `IFuaranRuntime`, a visualisation adapter (Grid/Chart), or a telemetry sink.
 
+## The runtime: still Elmish, and why
+
+This template is meant to be the first public application on `Fuaran.MVU`, and
+it is not yet. `Fuaran.MVU` 0.1.0 (with `.React` and `.Browser`) requires the
+`Fuaran.Core.*` packages at 0.44.1 or later, and the published
+`Fuaran.UI.Renderer` (0.105.0) is written against `Fuaran.Core` 0.42.0, whose
+capability registry changed shape in 0.44: a project that references both
+restores, then fails to compile under Fable in the renderer's `RenderExport.fs`
+(Phase 721). The move waits on a `Fuaran.UI.*` release built on `Fuaran.Core`
+0.44.1 or later.
+
 ## Project facts (Fable)
 
 - **`<Nullable>disable</Nullable>`** — Fable.Elmish + Feliz pre-date F# 10
