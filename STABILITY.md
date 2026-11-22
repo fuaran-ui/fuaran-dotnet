@@ -8009,6 +8009,60 @@ normative rules are WIRE_FORMAT §3.6.37.
   axis", since an x reference line addresses the x axis.
 - **Recompile.**
 
+### What rides this slot — Phase 2849 (the Fuaran.Core 0.45.0 pin: the reshaped capability registry, so the UI tier and `Fuaran.MVU` install together)
+
+**Class: breaking, by dependency and on the .NET surface.** Every `Fuaran.Core.*` pin moves 0.42.0 → 0.45.0
+together (0.43.x and 0.44.x were skipped here), now through one `FuaranCorePackagesVersion` property (not `FuaranCoreVersion`, which is the Core Fable gate's candidate override) in
+`Directory.Packages.props`, as the compute and program producers already were. Core reshaped the capability
+registry across those releases, and three public members here carry its types, so the change is breaking; it
+rides this draft slot, which is breaking-class already, and `<Version>` does not move. `FuaranCoreComputeVersion`
+(0.45.0) and `FuaranProgramVersion` (0.17.0) stay: both producers' current releases floor Core below 0.45.0, which
+this pin lifts. The reason it lands now: `Fuaran.MVU` 0.1.0 requires `Fuaran.Core.Function` and
+`Fuaran.Core.AiSurface` at 0.44.1 or later, and a project referencing it beside `Fuaran.UI.Renderer` 0.105.0
+restored and then failed its Fable compile in `RenderExport.fs`. On this slot the two restore and compile together.
+
+**What a consumer pays.**
+
+- **`Fuaran.UI.AiTools.Capabilities.discover`, `invoke` and `makeInvoker` take a `CapabilityRegistry<unit>`.**
+  Core's registry carries its gate context as a type argument (Core Phase 638). The dispatch here presents the
+  unit context and no grant, so a `NeedsApproval` gate answers `ApprovalRequired` exactly as before; a host whose
+  gates decide under a context of its own closes it with `CapabilityRegistry.under ctx` first.
+- **`Fuaran.UI.Renderer.RenderExport.registry` is a `CapabilityRegistry<unit>`**, and `render.copy-image` /
+  `render.save-image` declare their result, `Returns.Value(Enum ["started"])`, the constant the effect settles to
+  (Core Phase 642: every capability declares one).
+- **`Fuaran.UI.FastPath.Bank.Registry` is a `FunctionRegistry<unit>`.** Each pattern's capability declares its
+  result, a tree of the pattern's `ResultType` (`Returns.Value(SlotTree(Some kind))`), which is where Core's
+  function registry now reads the result kind from.
+- **A pattern's registered signature names each hole by its ADDRESS.** Since Core 0.45.0 (Phase 712) the
+  capability seam binds an argument by the hole's qualified name and holds that name to a dotted segment grammar,
+  unique per signature. A `FastPath` hole is bound by its address everywhere (`Build`, `valueViolations`,
+  `instantiate`), so the registered entry's `Name` is the address: an argument keyed by address validates exactly as
+  it did, and `HoleDecl.Name` stays the caller-facing label (which the grammar would refuse, "first label").
+  Without this five of the fourteen seed patterns were refused at registration.
+- **`Fuaran.UI.Generated` regenerates from Core 0.45.0's emitter.** `CollectingBinding.Decode` takes an
+  `Instantiation<'T>` witness after its decoder (Core Phase 635), and the new `Instantiation<'T>` union is emitted
+  beside it; every `NodeKind` case gains its doc comment. A host implementing the collecting seam adds the witness
+  argument; no project here implements it. The vocabulary's hash, and so `idl.json`, did not move.
+- **A capability declaration on the wire carries `result`** (Core Phase 642), and one without it is refused
+  `MissingField` at `result`. The capability wire still carries `placement` at Core 0.45.0.
+- **`Function.toJsonSchema` states `"additionalProperties": false`** (Core Phase 714), so the discovery schemas
+  `discover` answers refuse an argument object with an undeclared member, as the seam already did.
+- **Recompile.** A binary built against Core 0.42.x fails to load beside 0.45.0.
+
+**Ported in place, no behaviour moved.** `PreEmitValidate.ruleFamily` and the recipe certifier's materialising
+family are built through `Validator.wholeTree` (a rule family is opaque since Core Phase 709; the certifier's
+wrapper runs the inner family alone, `Validator.asCheck`, over the emitted tree, as its record update did); the
+vocabulary declares `Contracts = []`, which writes the bytes written before (Core Phase 644); a hole declares no
+composed `Slots`; and the elicitation space codec writes Core's new `Document` space in its shared form and refuses
+it as no elicitation space, as it does `SlotTree`.
+
+**What this repository certifies at 0.45.0.** The census enrols `Conformance.emissionLawsAt` (`NotUsed`: no project
+here references `Fuaran.Core.AiSurface`). The capability vector reader takes Core's twelve vectors per iteration:
+name-keyed arguments, and beside the eight before them the two declaration refusals and the two one-node pipeline
+type checks (Core Phase 642). The wire-profile pin for a decided wire break beside an undecided row is MAJOR, Core's
+answer since its Phase 710. The Core-produced corpus families were already at kitVersion 0.45.0, and a re-emit at
+`v0.45.0` is byte-identical.
+
 ---
 
 ## 0.105.0 — the announced breaking cut (Phase 2303); the slot opened after v0.104.0 was released, advanced from 0.104.1 on 2026-11-14 by Phase 2716, whose change is breaking (DRAFT — untagged)
