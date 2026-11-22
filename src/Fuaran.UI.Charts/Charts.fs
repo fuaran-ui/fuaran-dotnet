@@ -626,6 +626,21 @@ type ChartStyle =
         /// fixed size on purpose: a height that followed anything would read as
         /// a value the data did not state.
         WithheldMarkSize: float
+        /// Phase 2654 (D39) — the smallest radius a SIZED Scatter point takes
+        /// (`ChartSpec.SizeField`): a floor, so a small value still draws a
+        /// visible point.
+        ScatterMinRadius: float
+        /// Phase 2654 (D39) — the radius of the largest size drawn. Above the
+        /// floor a point's AREA is proportional to its size value, which is
+        /// what a reader compares when they compare bubbles.
+        ScatterMaxRadius: float
+        /// Phase 2654 (D39) — the width of an interval's end caps, on the error
+        /// bar a `Bar` or a `Scatter` point carries.
+        IntervalCapWidth: float
+        /// Phase 2654 (D39) — the fill opacity of an interval BAND on a `Line`
+        /// or an `Area`: a wash under the series, below `AreaFillOpacity`'s
+        /// own role as the series fill.
+        IntervalBandOpacity: float
     }
 
 module ChartStyle =
@@ -800,7 +815,11 @@ module ChartStyle =
                "#b47803" |]
           RampLabelInk = "#1a1a19"
           HeatmapCellGap = 2.0
-          WithheldMarkSize = 8.0 }
+          WithheldMarkSize = 8.0
+          ScatterMinRadius = 2.0
+          ScatterMaxRadius = 16.0
+          IntervalCapWidth = 8.0
+          IntervalBandOpacity = 0.2 }
 
     /// Phase 2655 — measure a style's heatmap ramps against the ramp gate
     /// (`ChartPalette.validateRamp`). `[]` is a pass; each finding names the
@@ -1710,6 +1729,12 @@ let private withSeriesMark (seriesField: string) (style: DrawStyle) : DrawStyle 
 [<Literal>]
 let private withheldWord = "withheld"
 
+/// Phase 2654 — the readout of an interval band (a series-level mark).
+let private intervalWord = "interval"
+
+/// Phase 2654 — the dash between an interval's two ends in a readout.
+let private intervalDash = " – "
+
 /// Phase 2809 — the readout of a WITHHELD datum: "Series · Category · withheld",
 /// with no number, because the number is exactly what the gate suppressed.
 let private withheldTip (seriesField: string) (categoryKey: string) (style: DrawStyle) : DrawStyle =
@@ -2031,11 +2056,21 @@ let withheldValuesRemoved<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : Row l
     match spec.WithheldField with
     | None -> rows
     | Some _ ->
-        let valueFields =
+        let seriesFields =
             match spec.Kind, spec.YFields with
             | ChartKind.Heatmap, _ :: values -> values
             | ChartKind.Heatmap, [] -> []
             | _, fields -> fields
+
+        // Phase 2654 (D39) — a withheld row's interval ends and its size are
+        // values of the datum too, so they go with it. Its sort key and path
+        // order are positions, not readouts, and stay.
+        let valueFields =
+            seriesFields
+            @ (match spec.Interval with
+               | Some iv -> [ iv.Low; iv.High ]
+               | None -> [])
+            @ Option.toList spec.SizeField
 
         rows
         |> List.map (fun row ->
@@ -2061,6 +2096,69 @@ let private presentRuns (n: int) (present: int -> bool) : (int * int) list =
             start <- -1
 
     List.rev runs
+
+// ─── The mark channels (Phase 2654, D39, WIRE_FORMAT §3.6.37) ─────────────────
+//
+// Each channel names a column a mark reads besides its x and its value. Each is
+// read only by the kinds the validator admits it on (FUARAN172-FUARAN174), and a
+// lowering handed one elsewhere NEUTRALISES it — draws the chart as if it were
+// absent — the Phase 882 treatment of `xScale` on a Pie. Every channel obeys the
+// 2809 gap rule: a value that is not present draws nothing, never a zero.
+
+/// Whether the chart's `Interval` is read: one series on a Bar, Line, Area or
+/// Scatter.
+let private intervalApplies<'Msg> (spec: ChartSpec<'Msg>) : bool =
+    spec.Interval.IsSome
+    && List.length spec.YFields = 1
+    && (match spec.Kind with
+        | ChartKind.Bar
+        | ChartKind.Line
+        | ChartKind.Area
+        | ChartKind.Scatter -> true
+        | _ -> false)
+
+/// Whether a Scatter-only channel is read.
+let private scatterChannel<'Msg> (spec: ChartSpec<'Msg>) (field: string option) : string option =
+    match spec.Kind, field with
+    | ChartKind.Scatter, Some f -> Some f
+    | _ -> None
+
+/// Whether the chart's `SortBy` is read: a Bar, Line, Area or Pie whose x is not
+/// temporal (a temporal axis places each row at its date).
+let private sortApplies<'Msg> (spec: ChartSpec<'Msg>) : ChartSort option =
+    match spec.SortBy, spec.Kind, spec.XScale with
+    | _, _, Some ChartXScale.Temporal -> None
+    | Some sort, (ChartKind.Bar | ChartKind.Line | ChartKind.Area | ChartKind.Pie), _ -> Some sort
+    | _ -> None
+
+/// Phase 2654 (D39) — the rows in the declared `SortBy` order. The key is the
+/// row's PRESENT numeric value in the sort column (the 2809 reader); rows whose
+/// key is missing, and every WITHHELD row (whose position must not say what its
+/// value is), follow the ordered rows in source order. The sort is STABLE, so
+/// equal keys keep their source order and every host orders alike. A chart that
+/// declares no order, or whose kind does not read one, keeps its source order.
+let sortedRows<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : Row list =
+    match sortApplies spec with
+    | None -> rows
+    | Some sort ->
+        let keyed =
+            rows
+            |> List.map (fun r ->
+                (if isWithheldRow spec.WithheldField r then
+                     None
+                 else
+                     presentValueOf r sort.Field),
+                r)
+
+        let present = keyed |> List.choose (fun (k, r) -> k |> Option.map (fun k -> k, r))
+        let missing = keyed |> List.filter (fst >> Option.isNone) |> List.map snd
+
+        let ordered =
+            match sort.Direction with
+            | SortDirection.Asc -> present |> List.sortWith (fun (a, _) (b, _) -> compare a b)
+            | SortDirection.Desc -> present |> List.sortWith (fun (a, _) (b, _) -> compare b a)
+
+        (ordered |> List.map snd) @ missing
 
 // ─── Series read from the rows (Phase 2568, WIRE_FORMAT §3.6.29) ──────────────
 //
@@ -2265,6 +2363,18 @@ type private SeriesData =
         CumsFor: int -> float array
         IsPie: bool
         ReferenceLines: (float * TextSource option) array
+        /// Phase 2654 — each row's interval as `(low, high)`, normalised; `None`
+        /// where either end is missing, the row is withheld, or no interval is
+        /// read. Length `N`.
+        Intervals: (float * float) option array
+        /// Phase 2654 — each row's present, non-negative size (`SizeField`), or
+        /// `[||]` when no size is read.
+        Sizes: float option array
+        /// Phase 2654 — each row's present path order (`PathField`), or `[||]`
+        /// when no path is read.
+        PathKeys: float option array
+        /// Phase 2654 — the x reference lines, in document order (Scatter only).
+        ReferenceLinesX: (float * TextSource option) array
         RangeBandsDeclared: (int * ChartAnnotationRange * TextSource option) array
         ValueBands: (int * float * float * TextSource option) array
         DataMin: float
@@ -2417,6 +2527,59 @@ let private seriesData<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : SeriesDa
                 Some(i, min a b, max a b, label)
             | _ -> None)
 
+    // ── The mark channels (Phase 2654, D39) ──────────────────────────────────
+    //
+    // A withheld row reads NO channel value: its interval and its size are
+    // values of the datum, so they are withheld with it (the path order is a
+    // position, read below on its own terms).
+    let readChannel (field: string) : float option array =
+        rows
+        |> List.mapi (fun i r -> if withheld.[i] then None else presentValueOf r field)
+        |> List.toArray
+
+    let intervals: (float * float) option array =
+        match spec.Interval with
+        | Some iv when intervalApplies spec ->
+            Array.map2
+                (fun lo hi ->
+                    match lo, hi with
+                    | Some a, Some b -> Some(min a b, max a b)
+                    | _ -> None)
+                (readChannel iv.Low)
+                (readChannel iv.High)
+        | _ -> Array.create n None
+
+    let sizes: float option array =
+        match scatterChannel spec spec.SizeField with
+        | Some f -> readChannel f |> Array.map (Option.filter (fun v -> v >= 0.0))
+        | None -> [||]
+
+    // The path order is read off every row, withheld or not: it is WHERE the row
+    // sits on the path, and a withheld row's missing point then BREAKS the path
+    // there rather than letting it join across the row as if it were absent.
+    let pathKeys: float option array =
+        match scatterChannel spec spec.PathField with
+        | Some f -> rows |> List.map (fun r -> presentValueOf r f) |> List.toArray
+        | None -> [||]
+
+    // A vertical line at a NUMERIC x: read on a Scatter whose x is numeric. A
+    // temporal Scatter's x is a date, which `EventMarker` addresses.
+    let referenceLinesX: (float * TextSource option)[] =
+        match spec.Kind, spec.XScale with
+        | ChartKind.Scatter, Some ChartXScale.Temporal -> [||]
+        | ChartKind.Scatter, _ ->
+            spec.Annotations
+            |> Option.defaultValue []
+            |> List.choose (fun a ->
+                match a with
+                | ChartAnnotation.ReferenceLineX(v, label) when
+                    not (System.Double.IsNaN v || System.Double.IsInfinity v)
+                    ->
+                    Some(v, label)
+                | _ -> None)
+            |> List.toArray
+        | _ -> [||]
+
     let allValues =
         let vs =
             if stacked then
@@ -2445,6 +2608,15 @@ let private seriesData<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : SeriesDa
             @ [ for _, lo, hi, _ in valueBands do
                     yield! [ lo; hi ] ]
 
+        // Phase 2654 — an interval's ends join the domain on the same rule: an
+        // error bar that ran off the axis would end where the data did not.
+        let vs =
+            vs
+            @ [ for iv in intervals do
+                    match iv with
+                    | Some(lo, hi) -> yield! [ lo; hi ]
+                    | None -> () ]
+
         match vs with
         | [] -> [ 0.0 ]
         | vs -> vs
@@ -2462,6 +2634,10 @@ let private seriesData<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : SeriesDa
       CumsFor = cumsFor
       IsPie = isPie
       ReferenceLines = referenceLines
+      Intervals = intervals
+      Sizes = sizes
+      PathKeys = pathKeys
+      ReferenceLinesX = referenceLinesX
       RangeBandsDeclared = rangeBandsDeclared
       ValueBands = valueBands
       DataMin = dataMin
@@ -2471,13 +2647,20 @@ let private seriesData<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : SeriesDa
 /// formatter every tick, data label and tooltip writes a value through.
 [<RequireQualifiedAccess>]
 type private ValueAxis =
-    { NiceLo: float
-      NiceHi: float
-      Ticks: float list
-      YDisplayUnit: DisplayUnit
-      YTickText: float -> string
-      DatumTip: string -> string -> float -> DrawStyle -> DrawStyle
-      SeriesTip: string -> DrawStyle -> DrawStyle }
+    {
+        NiceLo: float
+        NiceHi: float
+        Ticks: float list
+        YDisplayUnit: DisplayUnit
+        YTickText: float -> string
+        DatumTip: string -> string -> float -> DrawStyle -> DrawStyle
+        /// Phase 2654 — a datum's readout with a trailing part (a sized point's
+        /// size), in the same separator.
+        DatumTipWith: string -> string -> float -> string -> DrawStyle -> DrawStyle
+        /// Phase 2654 — an interval's readout: "Series · Category · low – high".
+        IntervalTip: string -> string -> float -> float -> DrawStyle -> DrawStyle
+        SeriesTip: string -> DrawStyle -> DrawStyle
+    }
 
 /// Computes `ValueAxis`.
 let private valueAxis<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (data: SeriesData) : ValueAxis =
@@ -2554,12 +2737,36 @@ let private valueAxis<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (data: S
     /// this phase does not add.
     let seriesTip (seriesField: string) (style: DrawStyle) : DrawStyle = withTip seriesField style
 
+    let datumTipWith (seriesField: string) (categoryKey: string) (v: float) (suffix: string) (style: DrawStyle) =
+        withTip
+            (seriesField
+             + tipSeparator
+             + categoryKey
+             + tipSeparator
+             + tipValueText v
+             + tipSeparator
+             + suffix)
+            style
+
+    let intervalTip (seriesField: string) (categoryKey: string) (lo: float) (hi: float) (style: DrawStyle) =
+        withTip
+            (seriesField
+             + tipSeparator
+             + categoryKey
+             + tipSeparator
+             + tipValueText lo
+             + intervalDash
+             + tipValueText hi)
+            style
+
     { NiceLo = niceLo
       NiceHi = niceHi
       Ticks = ticks
       YDisplayUnit = yDisplayUnit
       YTickText = yTickText
       DatumTip = datumTip
+      DatumTipWith = datumTipWith
+      IntervalTip = intervalTip
       SeriesTip = seriesTip }
 
 /// The x axis in data space: which of the three x readings applies (band, linear numeric, temporal),
@@ -2782,7 +2989,13 @@ let private categoryAxis<'Msg>
             float lo, float hi, Temporal.nominalDays step, (Temporal.ticks step lo hi |> List.map float)
         | None ->
             if isScatter then
-                let presentXs = xValues |> Array.filter (fun x -> not (System.Double.IsNaN x))
+                // Phase 2654 — an x reference line's value joins the x domain,
+                // §4l rule 3 on the x axis: a quadrant line beyond every point is
+                // still drawn, and the axis says so.
+                let presentXs =
+                    Array.append
+                        (xValues |> Array.filter (fun x -> not (System.Double.IsNaN x)))
+                        (data.ReferenceLinesX |> Array.map fst)
 
                 if Array.isEmpty presentXs then
                     niceDomain style.TargetTickCount 0.0 1.0
@@ -3891,6 +4104,53 @@ let private seriesMarks<'Msg>
     let present (values: float option array) (i: int) = Option.isSome values.[i]
     let valueAt (values: float option array) (i: int) = values.[i] |> Option.defaultValue 0.0
 
+    // ── The interval (Phase 2654, D39) ──
+    //
+    // An ERROR BAR on the per-datum arms (Bar, Scatter): a stem from the low end
+    // to the high end and a cap of `IntervalCapWidth` at each, in the axis ink,
+    // after the mark it qualifies. A BAND on the series arms (Line, Area): one
+    // translucent polygon per run of present intervals, in the series colour,
+    // BEHIND the series. A row with no interval draws neither.
+    let intervals = data.Intervals
+
+    let intervalInk = styleStrokeInk style style.AxisOpacity style.ReferenceStrokeWidth
+
+    let errorBar (cx: float) (i: int) : Shape list =
+        match intervals.[i] with
+        | None -> []
+        | Some(lo, hi) ->
+            let x = r2 cx
+            let yLo = yScale lo
+            let yHi = yScale hi
+            let half = style.IntervalCapWidth / 2.0
+            let ink = intervalInk |> valueAxis.IntervalTip yFields.[0] categories.[i] lo hi
+
+            [ Shape.Line(x, yHi, x, yLo, ink)
+              Shape.Line(r2 (cx - half), yLo, r2 (cx + half), yLo, ink)
+              Shape.Line(r2 (cx - half), yHi, r2 (cx + half), yHi, ink) ]
+
+    let intervalBands: Shape list =
+        if m <> 1 || n = 0 then
+            []
+        else
+            let yf = yFields.[0]
+
+            [ for first, last in presentRuns n (fun i -> Option.isSome intervals.[i]) do
+                  let upper =
+                      [ for i in first..last ->
+                            dp (xCentre i) (yScale (intervals.[i] |> Option.map snd |> Option.defaultValue 0.0)) ]
+
+                  let lower =
+                      [ for i in last .. -1 .. first ->
+                            dp (xCentre i) (yScale (intervals.[i] |> Option.map fst |> Option.defaultValue 0.0)) ]
+
+                  yield
+                      Shape.Polygon(
+                          upper @ lower,
+                          styleFillOpacity (colourFor style 0) style.IntervalBandOpacity
+                          |> withTip (yf + tipSeparator + intervalWord)
+                      ) ]
+
     // ── Series geometry ──
     let seriesShapes =
         match spec.Kind with
@@ -3945,7 +4205,11 @@ let private seriesMarks<'Msg>
                                       styleFill (colourFor style j)
                                       |> withMark yFields.[j] categories.[i]
                                       |> datumTip yFields.[j] categories.[i] v
-                                  ) ]
+                                  )
+
+              // Phase 2654 — the error bars, after every bar (one series).
+              for i in 0 .. n - 1 do
+                  yield! errorBar (stackedBarX i + bw / 2.0) i ]
         | ChartKind.Bar ->
             let bw = groupedBarW
             let baseY = yScale 0.0
@@ -3976,7 +4240,11 @@ let private seriesMarks<'Msg>
                                       styleFill colour
                                       |> withMark yFields.[j] categories.[i]
                                       |> datumTip yFields.[j] categories.[i] v
-                                  ) ]
+                                  )
+
+              // Phase 2654 — the error bars, after every bar (one series).
+              for i in 0 .. n - 1 do
+                  yield! errorBar (groupedBarX i 0 + bw / 2.0) i ]
         | ChartKind.Area when stacked ->
             // Cumulative bands, bottom band first (painter's order): band j fills
             // between boundary j (below) and boundary j+1 (above); its upper
@@ -3986,7 +4254,9 @@ let private seriesMarks<'Msg>
             else
                 let cums = Array.init n cumsFor
 
-                [ for j in 0 .. m - 1 do
+                [ yield! intervalBands
+
+                  for j in 0 .. m - 1 do
                       let colour = colourFor style j
                       let yf = yFields.[j]
 
@@ -4020,7 +4290,9 @@ let private seriesMarks<'Msg>
             else
                 let baseY = yScale 0.0
 
-                [ for j in 0 .. m - 1 do
+                [ yield! intervalBands
+
+                  for j in 0 .. m - 1 do
                       let colour = colourFor style j
                       let values = series.[j]
                       let yf = yFields.[j]
@@ -4047,7 +4319,9 @@ let private seriesMarks<'Msg>
 
                   yield! withheldStrips (xCentre >> Some) (fun i -> categories.[i]) ]
         | ChartKind.Line ->
-            [ for j in 0 .. m - 1 do
+            [ yield! intervalBands
+
+              for j in 0 .. m - 1 do
                   let colour = colourFor style j
                   let values = series.[j]
 
@@ -4072,27 +4346,97 @@ let private seriesMarks<'Msg>
             // non-numeric column loud upstream.
             let xPresent (i: int) = not (System.Double.IsNaN xValues.[i])
 
+            // Phase 2654 (D39) — the SIZE channel. Above `ScatterMinRadius` a
+            // point's area is proportional to its size, the largest size drawn
+            // taking `ScatterMaxRadius`; a row whose size is missing or negative
+            // draws no point (the gap rule). No size channel: one fixed radius.
+            let sizes = data.Sizes
+            let sizeField = scatterChannel spec spec.SizeField |> Option.defaultValue ""
+
+            let maxSize = sizes |> Array.choose id |> Array.fold max 0.0
+
+            let radiusOf (i: int) : float option =
+                if Array.isEmpty sizes then
+                    Some style.ScatterPointRadius
+                else
+                    sizes.[i]
+                    |> Option.map (fun v ->
+                        if maxSize > 0.0 then
+                            r2 (max style.ScatterMinRadius (style.ScatterMaxRadius * sqrt (v / maxSize)))
+                        else
+                            style.ScatterMinRadius)
+
+            // Phase 2654 (D39) — the PATH channel: each series' points joined in
+            // ascending `PathField` order (stable, so equal orders keep source
+            // order). Rows with no path order are not on the path; a row on it
+            // whose point is missing or withheld BREAKS it. A run of one point
+            // has no segment and draws nothing. Painted under the points.
+            let pathKeys = data.PathKeys
+
+            let pathOrder: int array =
+                if Array.isEmpty pathKeys then
+                    [||]
+                else
+                    [| 0 .. n - 1 |]
+                    |> Array.filter (fun i -> Option.isSome pathKeys.[i])
+                    |> Array.toList
+                    |> List.sortWith (fun a b -> compare pathKeys.[a].Value pathKeys.[b].Value)
+                    |> List.toArray
+
             [ for j in 0 .. m - 1 do
                   let colour = colourFor style j
                   let values = series.[j]
                   let yf = yFields.[j]
 
+                  let vertex (k: int) =
+                      xPresent pathOrder.[k] && present values pathOrder.[k]
+
+                  for first, last in presentRuns pathOrder.Length vertex do
+                      if last > first then
+                          yield
+                              Shape.Polyline(
+                                  [ for k in first..last ->
+                                        let i = pathOrder.[k]
+                                        dp (xScale xValues.[i]) (yScale (valueAt values i)) ],
+                                  styleStroke colour style.SeriesStrokeWidth |> withSeriesMark yf |> seriesTip yf
+                              )
+
+              for j in 0 .. m - 1 do
+                  let colour = colourFor style j
+                  let values = series.[j]
+                  let yf = yFields.[j]
+
                   for i in 0 .. n - 1 do
-                      if xPresent i && present values i then
+                      match radiusOf i with
+                      | Some radius when xPresent i && present values i ->
+                          let markStyle = styleFill colour |> withMark yf (DrawingSvg.formatNum xValues.[i])
+
                           yield
                               Shape.Circle(
                                   xScale xValues.[i],
                                   yScale (valueAt values i),
-                                  style.ScatterPointRadius,
-                                  styleFill colour
-                                  |> withMark yf (DrawingSvg.formatNum xValues.[i])
+                                  radius,
                                   // The tip's middle part is the x cell as PROJECTED
                                   // (`categories.[i]`), not the mark id's canonical
                                   // numeric form: the id is for object constancy, the
                                   // tip is for a human, and on a temporal axis the
                                   // projection is the ISO date rather than a day count.
-                                  |> datumTip yf categories.[i] (valueAt values i)
+                                  if Array.isEmpty sizes then
+                                      markStyle |> datumTip yf categories.[i] (valueAt values i)
+                                  else
+                                      markStyle
+                                      |> valueAxis.DatumTipWith
+                                          yf
+                                          categories.[i]
+                                          (valueAt values i)
+                                          (sizeField + " " + formatValue None 1.0 false sizes.[i].Value sizes.[i].Value)
                               )
+                      | _ -> ()
+
+              // Phase 2654 — the error bars, after the points (one series).
+              for i in 0 .. n - 1 do
+                  if xPresent i then
+                      yield! errorBar (xScale xValues.[i]) i
 
               // A withheld row keys its placeholder as its point would have been
               // keyed, and a row with no x has no position to draw one at.
@@ -4335,6 +4679,7 @@ let private annotationMarks
     (plot: PlotArea)
     : AnnotationMarks =
     let referenceLines = data.ReferenceLines
+    let referenceLinesX = data.ReferenceLinesX
     let valueBands = data.ValueBands
     let isTemporal = categoryAxis.IsTemporal
     let eventMarkers = categoryAxis.EventMarkers
@@ -4399,6 +4744,18 @@ let private annotationMarks
         else
             []
 
+    /// For vertical lines at `xs`, the x each one's label must not reach: its
+    /// successor in `(x, index)` order, or the plot's right edge for the last.
+    /// One rule for the event markers and the x reference lines (Phase 2654).
+    let labelRightOf (xs: float[]) : float[] =
+        let order = Array.init xs.Length id |> Array.sortBy (fun i -> xs[i], i)
+        let right = Array.create xs.Length plotX1
+
+        for r in 0 .. order.Length - 2 do
+            right[order[r]] <- xs[order[r + 1]]
+
+        right
+
     let referenceLineShapes: Shape list =
         [ for i in 0 .. referenceLines.Length - 1 do
               let v, _ = referenceLines.[i]
@@ -4416,7 +4773,27 @@ let private annotationMarks
                       y,
                       { referenceStyle with
                           MarkId = Some("annotation|reference|" + string i) }
+                  )
+
+          // Phase 2654 — the x reference lines: the same line, standing across
+          // the plot's height at a numeric x, numbered in their own case.
+          for i in 0 .. referenceLinesX.Length - 1 do
+              let x = xScale (fst referenceLinesX.[i])
+
+              yield
+                  Shape.Line(
+                      x,
+                      r2 plotY0,
+                      x,
+                      r2 plotY1,
+                      { referenceStyle with
+                          MarkId = Some("annotation|referencex|" + string i) }
                   ) ]
+
+    /// Phase 2654 — the x each x reference line's label must not reach: the
+    /// next line to its right, the event markers' rule exactly (`labelRightOf`).
+    let referenceXLabelRight: float[] =
+        labelRightOf (referenceLinesX |> Array.map (fst >> xScale))
 
     /// The range bands as PLOT RECTANGLES — `(index, x0, y0, x1, y1, label)`,
     /// ordered by the per-case index that both arms were numbered with, so the
@@ -4515,14 +4892,7 @@ let private annotationMarks
     /// position — one label at that x, never two overlaid, and the picture still
     /// shows both lines.
     let eventLabelRight: float[] =
-        let xs = Array.init eventMarkers.Length eventMarkerX
-        let order = Array.init xs.Length id |> Array.sortBy (fun i -> xs[i], i)
-        let right = Array.create xs.Length plotX1
-
-        for r in 0 .. order.Length - 2 do
-            right[order[r]] <- xs[order[r + 1]]
-
-        right
+        labelRightOf (Array.init eventMarkers.Length eventMarkerX)
 
     let annotationLabelShapes: Shape list =
         [ for v, label in referenceLines do
@@ -4605,6 +4975,24 @@ let private annotationMarks
                           // the region it names, and the band still draws.
                           (max 0.0 (x1 - x - style.AnnotationLabelPadding))
                           (max 0.0 (y1 - y0 - style.AnnotationLabelPadding))
+                          t
+
+          // Phase 2654 — the x reference lines' labels, last of the rung and in
+          // document order: at the top of the plot beside the line, as an event
+          // marker's, with the width budget running to the next line.
+          for i in 0 .. referenceLinesX.Length - 1 do
+              match snd referenceLinesX.[i] with
+              | None -> ()
+              | Some t ->
+                  let x = xScale (fst referenceLinesX.[i]) + style.AnnotationLabelOffsetX
+                  let baseline = plotY0 + style.AnnotationLabelFontSize + style.AnnotationLabelNudgeY
+
+                  yield!
+                      annotationLabel
+                          x
+                          baseline
+                          (max 0.0 (referenceXLabelRight[i] - x - style.AnnotationLabelPadding))
+                          (max 0.0 (plotY1 - plotY0 - style.AnnotationLabelPadding))
                           t ]
 
     { ReferenceLineShapes = referenceLineShapes
@@ -5160,6 +5548,37 @@ let private accessibleSummaryOf<'Msg>
                 |> List.ofArray
                 |> annotationClause "band" "bands"
 
+            // Phase 2654 — the x reference lines, in the x axis's own words.
+            let referenceXClause =
+                data.ReferenceLinesX
+                |> Array.map (fun (v, label) -> xTickText v + annotationLabelWords label)
+                |> List.ofArray
+                |> annotationClause "x reference line" "x reference lines"
+
+            // Phase 2654 (D39) — each channel read names its column, so a reader
+            // of the summary knows what the marks' extra dimension says.
+            let named (f: string) = clampText summaryMaxNameChars f
+
+            let channelClauses =
+                [ match spec.Interval with
+                  | Some iv when intervalApplies spec -> yield "Interval " + named iv.Low + " to " + named iv.High
+                  | _ -> ()
+                  match scatterChannel spec spec.SizeField with
+                  | Some f -> yield "Sized by " + named f
+                  | None -> ()
+                  match scatterChannel spec spec.PathField with
+                  | Some f -> yield "Path in " + named f + " order"
+                  | None -> ()
+                  match sortApplies spec with
+                  | Some sort ->
+                      yield
+                          "Sorted by "
+                          + named sort.Field
+                          + (match sort.Direction with
+                             | SortDirection.Asc -> ", ascending"
+                             | SortDirection.Desc -> ", descending")
+                  | None -> () ]
+
             let clauses =
                 [ summaryKindWords spec.Kind stacked; seriesClause; extentClause ]
                 @ peakClause
@@ -5167,6 +5586,8 @@ let private accessibleSummaryOf<'Msg>
                 @ referenceClause
                 @ eventClause
                 @ bandClause
+                @ referenceXClause
+                @ channelClauses
 
             Some(clampText summaryMaxChars (String.concat summaryClauseSeparator clauses + "."))
 
@@ -5744,6 +6165,9 @@ let private lowerHeatmap<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (grid
 /// stacking is meaningless (`Line`, `Scatter`, `Pie`) is ignored — the flag
 /// only changes `Bar` / `Area` geometry.
 let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: Row list) : DrawingSpec =
+    // Phase 2654 (D39) — a declared order is applied BEFORE layout, so every
+    // stage below reads the rows in it and nothing else needs to know.
+    let rows = sortedRows spec rows
     let data = seriesData spec rows
     let valueAxis = valueAxis style spec data
     let categoryAxis = categoryAxis style spec rows data

@@ -1938,6 +1938,13 @@ let private defs: (string * J) list =
             // Whether the column exists and is boolean is the validator's
             // (FUARAN086 / FUARAN171), not the schema's.
             "withheldField", str
+            // The mark channels (Phase 2654, D39). Each is optional; which kinds
+            // admit each, and whether the named columns exist, is the
+            // validator's (FUARAN172-FUARAN174, FUARAN086), not the schema's.
+            "interval", record [ "low"; "high" ] [ "low", str; "high", str ]
+            "sizeField", str
+            "sortBy", record [ "field"; "direction" ] [ "field", str; "direction", enumDef [ "asc"; "desc" ] ]
+            "pathField", str
             "onPointClick", closure ]
 
       // Phase 1490 (§4l) — the closed annotation union. `value` takes
@@ -1960,7 +1967,10 @@ let private defs: (string * J) list =
             // "these two members are typed by the value of that third one" —
             // a dependency Draft 2020-12 can only state as an `if`/`then`
             // ladder, and which this shape removes rather than encodes.
-            duCase "RangeBand" [ "range" ] [ "range", ref "ChartAnnotationRange"; "label", ref "TextSource" ] ]
+            duCase "RangeBand" [ "range" ] [ "range", ref "ChartAnnotationRange"; "label", ref "TextSource" ]
+            // Phase 2654 — the reference line on a continuous x axis; finite on
+            // the same rule as `ReferenceLine`'s value.
+            duCase "ReferenceLineX" [ "value" ] [ "value", finiteNumber; "label", ref "TextSource" ] ]
 
       // Phase 1492 (§4l) — the range band's pair. Both `ValueRange` ends take
       // `finiteNumber` on `ReferenceLine`'s argument: §4l rule 3 has both enter

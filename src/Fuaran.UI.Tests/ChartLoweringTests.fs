@@ -1833,6 +1833,14 @@ let private inputJson (case: Case) : string =
                            | Some t -> "\"label\":" + textSourceJson t + ","
 
                        "{\"$type\":\"RangeBand\"," + l + "\"range\":" + rangeJson + "}"
+                   | ChartAnnotation.ReferenceLineX(v, label) ->
+                       // Phase 2654 — the reference line's spelling, on its own tag.
+                       let l =
+                           match label with
+                           | None -> ""
+                           | Some t -> "\"label\":" + textSourceJson t + ","
+
+                       "{\"$type\":\"ReferenceLineX\"," + l + "\"value\":" + num v + "}"
 
                ",\"annotations\":[" + (anns |> List.map one |> String.concat ",") + "]")
 
@@ -6907,3 +6915,568 @@ let heatmapWithheldTests =
                   (source.Contains "\"data\" ==> List.toArray rows")
                   "the raw rows never reach AG's data option"
           } ]
+
+// ── Phase 2654 — the mark channels (`chart-lowering/channels/`, D39) ──────────
+//
+// The interval, the size, the declared order, the path and the x reference line.
+// A subfamily for the heatmap's reason: fuaran-rs and fuaran-go lower every
+// top-level vector, so a top-level vector would redden both before they adopt the
+// channels. A case is a table of `WCell`s, so a channel's missing, null and
+// withheld cells are spelled exactly as the 2809 family spells them.
+
+type private ChannelCase =
+    {
+        Name: string
+        Kind: ChartKind
+        Title: string
+        XField: string
+        YFields: string list
+        DataLabels: bool
+        Temporal: bool
+        WithheldField: string option
+        Interval: (string * string) option
+        SizeField: string option
+        SortBy: (string * SortDirection) option
+        PathField: string option
+        /// `(value, label)` x reference lines, then `(value, label)` value-axis
+        /// reference lines — the two cases a quadrant is drawn with.
+        ReferenceX: (float * string option) list
+        ReferenceY: (float * string option) list
+        Columns: string list
+        Rows: WCell list list
+    }
+
+let private channelCase name kind xField yFields columns rows : ChannelCase =
+    { Name = name
+      Kind = kind
+      Title = name
+      XField = xField
+      YFields = yFields
+      DataLabels = false
+      Temporal = false
+      WithheldField = None
+      Interval = None
+      SizeField = None
+      SortBy = None
+      PathField = None
+      ReferenceX = []
+      ReferenceY = []
+      Columns = columns
+      Rows = rows }
+
+let private channelCases: ChannelCase list =
+    let n (v: float) = WNum v
+    let t (s: string) = WText s
+    let w (b: bool) = WBool b
+
+    [ // An error bar per bar: a missing end draws none, a withheld row draws its
+      // placeholder and no interval, a backwards pair draws between its values.
+      { channelCase
+            "bar-interval"
+            ChartKind.Bar
+            "arm"
+            [ "effect" ]
+            [ "arm"; "effect"; "lo"; "hi"; "withheld" ]
+            [ [ t "A"; n 12.0; n 9.0; n 15.0; w false ]
+              [ t "B"; n 18.0; n 14.0; n 22.0; w false ]
+              [ t "C"; n 7.0; WAbsent; n 10.0; w false ]
+              [ t "D"; n 15.0; n 11.0; n 19.0; w true ]
+              [ t "E"; n 10.0; n 13.0; n 6.0; w false ] ] with
+          Interval = Some("lo", "hi")
+          WithheldField = Some "withheld" }
+      // A band under the line, broken where an end is missing.
+      { channelCase
+            "line-interval"
+            ChartKind.Line
+            "month"
+            [ "forecast" ]
+            [ "month"; "forecast"; "lo"; "hi" ]
+            [ [ t "Jan"; n 20.0; n 18.0; n 22.0 ]
+              [ t "Feb"; n 24.0; n 21.0; n 27.0 ]
+              [ t "Mar"; n 23.0; n 19.0; n 28.0 ]
+              [ t "Apr"; n 27.0; WNull; n 33.0 ]
+              [ t "May"; n 30.0; n 24.0; n 37.0 ]
+              [ t "Jun"; n 34.0; n 26.0; n 43.0 ] ] with
+          Interval = Some("lo", "hi") }
+      { channelCase
+            "area-interval"
+            ChartKind.Area
+            "quarter"
+            [ "demand" ]
+            [ "quarter"; "demand"; "lo"; "hi" ]
+            [ [ t "Q1"; n 40.0; n 35.0; n 46.0 ]
+              [ t "Q2"; n 44.0; n 38.0; n 51.0 ]
+              [ t "Q3"; n 41.0; n 33.0; n 50.0 ]
+              [ t "Q4"; n 47.0; n 37.0; n 58.0 ] ] with
+          Interval = Some("lo", "hi") }
+      // An error bar per point; a row with no x draws neither.
+      { channelCase
+            "scatter-interval"
+            ChartKind.Scatter
+            "dose"
+            [ "response" ]
+            [ "dose"; "response"; "lo"; "hi" ]
+            [ [ n 1.0; n 2.5; n 1.8; n 3.1 ]
+              [ n 2.0; n 4.0; n 3.2; n 4.9 ]
+              [ n 4.0; n 5.5; n 4.1; n 6.6 ]
+              [ WAbsent; n 3.0; n 2.0; n 4.0 ]
+              [ n 8.0; n 6.2; n 5.0; n 7.5 ] ] with
+          Interval = Some("lo", "hi") }
+      // Bubbles: area proportional to size; a missing or negative size, or a
+      // withheld row, draws no point; a zero draws at the floor.
+      { channelCase
+            "scatter-size"
+            ChartKind.Scatter
+            "breadth"
+            [ "depth" ]
+            [ "breadth"; "depth"; "fans"; "withheld" ]
+            [ [ n 10.0; n 3.0; n 400.0; w false ]
+              [ n 25.0; n 4.5; n 100.0; w false ]
+              [ n 40.0; n 2.0; n 0.0; w false ]
+              [ n 55.0; n 5.0; WAbsent; w false ]
+              [ n 70.0; n 3.5; n -5.0; w false ]
+              [ n 85.0; n 4.0; n 900.0; w true ]
+              [ n 95.0; n 1.5; n 25.0; w false ] ] with
+          SizeField = Some "fans"
+          WithheldField = Some "withheld" }
+      // A path in season order: rows out of order, a tie kept in source order, a
+      // row with no season off the path, and a withheld row breaking it.
+      { channelCase
+            "scatter-path"
+            ChartKind.Scatter
+            "awareness"
+            [ "liking" ]
+            [ "awareness"; "liking"; "season"; "withheld" ]
+            [ [ n 30.0; n 40.0; n 3.0; w false ]
+              [ n 10.0; n 20.0; n 1.0; w false ]
+              [ n 20.0; n 35.0; n 2.0; w false ]
+              [ n 45.0; n 50.0; n 4.0; w true ]
+              [ n 50.0; n 60.0; n 5.0; w false ]
+              [ n 60.0; n 62.0; n 6.0; w false ]
+              [ n 65.0; n 58.0; n 6.0; w false ]
+              [ n 15.0; n 70.0; WAbsent; w false ] ] with
+          PathField = Some "season"
+          WithheldField = Some "withheld" }
+      // A ranked bar: descending, a missing key and a withheld row last, in
+      // source order; the cap labels follow the bars.
+      { channelCase
+            "bar-sort-desc"
+            ChartKind.Bar
+            "brand"
+            [ "share" ]
+            [ "brand"; "share"; "withheld" ]
+            [ [ t "Ash"; n 12.0; w false ]
+              [ t "Birch"; n 31.0; w false ]
+              [ t "Cedar"; WText "n/a"; w false ]
+              [ t "Douglas"; n 24.0; w true ]
+              [ t "Elm"; n 31.0; w false ]
+              [ t "Fir"; n 8.0; w false ] ] with
+          SortBy = Some("share", SortDirection.Desc)
+          DataLabels = true
+          WithheldField = Some "withheld" }
+      // A sort by another column than the series.
+      { channelCase
+            "pie-sort-asc"
+            ChartKind.Pie
+            "segment"
+            [ "buyers" ]
+            [ "segment"; "buyers"; "rank" ]
+            [ [ t "Loyal"; n 42.0; n 3.0 ]
+              [ t "Lapsed"; n 18.0; n 1.0 ]
+              [ t "New"; n 25.0; n 2.0 ]
+              [ t "Occasional"; n 15.0; n 4.0 ] ] with
+          SortBy = Some("rank", SortDirection.Asc) }
+      // Quadrant lines: an x line inside the data, one beyond it (the x domain
+      // widens), and a value-axis line; labels at the top beside each x line.
+      { channelCase
+            "scatter-reference-x"
+            ChartKind.Scatter
+            "breadth"
+            [ "depth" ]
+            [ "breadth"; "depth" ]
+            [ [ n 12.0; n 2.0 ]
+              [ n 35.0; n 4.0 ]
+              [ n 48.0; n 3.0 ]
+              [ n 71.0; n 5.0 ]
+              [ n 90.0; n 1.0 ] ] with
+          ReferenceX = [ 50.0, Some "Median"; 120.0, Some "Target" ]
+          ReferenceY = [ 3.0, Some "Norm" ] }
+      // Every Scatter channel at once: sized bubbles with intervals on a path,
+      // split into quadrants.
+      { channelCase
+            "scatter-all-channels"
+            ChartKind.Scatter
+            "breadth"
+            [ "depth" ]
+            [ "breadth"; "depth"; "lo"; "hi"; "fans"; "season" ]
+            [ [ n 20.0; n 2.0; n 1.5; n 2.6; n 50.0; n 1.0 ]
+              [ n 35.0; n 3.0; n 2.4; n 3.7; n 120.0; n 2.0 ]
+              [ n 55.0; n 3.5; n 2.8; n 4.1; n 200.0; n 3.0 ]
+              [ n 70.0; n 4.5; n 3.9; n 5.2; n 320.0; n 4.0 ] ] with
+          Interval = Some("lo", "hi")
+          SizeField = Some "fans"
+          PathField = Some "season"
+          ReferenceX = [ 50.0, None ]
+          ReferenceY = [ 3.0, None ] }
+      // NEUTRALISED (the validator refuses each, FUARAN172): a size, a path and
+      // an x reference line on a Bar draw nothing, so the vector is a plain bar.
+      { channelCase
+            "bar-channels-neutralised"
+            ChartKind.Bar
+            "arm"
+            [ "effect" ]
+            [ "arm"; "effect"; "fans"; "season" ]
+            [ [ t "A"; n 12.0; n 4.0; n 2.0 ]; [ t "B"; n 18.0; n 9.0; n 1.0 ] ] with
+          SizeField = Some "fans"
+          PathField = Some "season"
+          ReferenceX = [ 1.0, Some "Ignored" ] }
+      // NEUTRALISED (FUARAN173): an interval over two series names neither.
+      { channelCase
+            "line-interval-two-series-neutralised"
+            ChartKind.Line
+            "month"
+            [ "plan"; "actual" ]
+            [ "month"; "plan"; "actual"; "lo"; "hi" ]
+            [ [ t "Jan"; n 10.0; n 11.0; n 8.0; n 12.0 ]
+              [ t "Feb"; n 12.0; n 14.0; n 9.0; n 15.0 ] ] with
+          Interval = Some("lo", "hi") }
+      // NEUTRALISED (FUARAN174): a temporal axis keeps its dates' order.
+      { channelCase
+            "line-sort-temporal-neutralised"
+            ChartKind.Line
+            "day"
+            [ "visits" ]
+            [ "day"; "visits" ]
+            [ [ t "2026-01-01"; n 30.0 ]
+              [ t "2026-01-08"; n 10.0 ]
+              [ t "2026-01-15"; n 20.0 ] ] with
+          Temporal = true
+          SortBy = Some("visits", SortDirection.Desc) } ]
+
+let private channelRows (case: ChannelCase) : Row list =
+    case.Rows
+    |> List.map (fun cells ->
+        List.zip case.Columns cells
+        |> List.choose (fun (c, v) -> withheldCellValue v |> Option.map (fun o -> c, o))
+        |> Map.ofList)
+
+let private channelSpecOf (case: ChannelCase) (rows: Row list) : ChartSpec<obj> =
+    let annotations =
+        (case.ReferenceY
+         |> List.map (fun (v, l) -> ChartAnnotation.ReferenceLine(v, l |> Option.map TextSource.Literal)))
+        @ (case.ReferenceX
+           |> List.map (fun (v, l) -> ChartAnnotation.ReferenceLineX(v, l |> Option.map TextSource.Literal)))
+
+    { Defaults.chart with
+        Source = Binding.Static(Some(Seq.ofList rows))
+        Kind = case.Kind
+        XField = case.XField
+        YFields = case.YFields
+        Title = Some(TextSource.Literal case.Title)
+        DataLabels = (if case.DataLabels then Some ChartDataLabels.Ends else None)
+        XScale = (if case.Temporal then Some ChartXScale.Temporal else None)
+        WithheldField = case.WithheldField
+        Interval = case.Interval |> Option.map (fun (lo, hi) -> { Low = lo; High = hi })
+        SizeField = case.SizeField
+        SortBy = case.SortBy |> Option.map (fun (f, d) -> { Field = f; Direction = d })
+        PathField = case.PathField
+        Annotations = (if List.isEmpty annotations then None else Some annotations) }
+
+let private channelLowered (case: ChannelCase) : DrawingSpec =
+    let rows = channelRows case
+    Charts.lower (channelSpecOf case rows) (Seq.ofList rows)
+
+let private channelJson (case: ChannelCase) : string =
+    CanonicalJson.encodeNode (Fuaran.drawingSpec (sprintf "chart-%s" case.Name) (channelLowered case))
+
+/// The neutral input: the withheld family's contract plus the channel members,
+/// each record's members and each annotation's members in canonical (Ordinal)
+/// order, every member omitted when absent.
+let private channelInputJson (case: ChannelCase) : string =
+    let esc (s: string) =
+        s.Replace("\\", "\\\\").Replace("\"", "\\\"")
+
+    let str (s: string) = "\"" + esc s + "\""
+
+    let cell (c: WCell) : string option =
+        match c with
+        | WNum v -> Some(DrawingSvg.formatNum v)
+        | WText s -> Some(str s)
+        | WBool b -> Some(if b then "true" else "false")
+        | WNull -> Some "null"
+        | WAbsent -> None
+
+    let kind =
+        match case.Kind with
+        | ChartKind.Bar -> "Bar"
+        | ChartKind.Line -> "Line"
+        | ChartKind.Area -> "Area"
+        | ChartKind.Pie -> "Pie"
+        | ChartKind.Scatter -> "Scatter"
+        | ChartKind.Heatmap -> "Heatmap"
+
+    let rows =
+        case.Rows
+        |> List.map (fun cells ->
+            List.zip case.Columns cells
+            |> List.choose (fun (c, v) -> cell v |> Option.map (fun t -> str c + ":" + t))
+            |> String.concat ","
+            |> sprintf "{%s}")
+        |> String.concat ","
+
+    let opt (key: string) (value: string option) =
+        value |> Option.map (fun v -> "," + str key + ":" + v) |> Option.defaultValue ""
+
+    let line (tag: string) (v: float, label: string option) =
+        "{\"$type\":"
+        + str tag
+        + (label |> Option.map (fun l -> ",\"label\":" + str l) |> Option.defaultValue "")
+        + ",\"value\":"
+        + DrawingSvg.formatNum v
+        + "}"
+
+    let annotations =
+        (case.ReferenceY |> List.map (line "ReferenceLine"))
+        @ (case.ReferenceX |> List.map (line "ReferenceLineX"))
+
+    "{\"kind\":"
+    + str kind
+    + ",\"xField\":"
+    + str case.XField
+    + ",\"yFields\":["
+    + (case.YFields |> List.map str |> String.concat ",")
+    + "],\"title\":"
+    + str case.Title
+    + ",\"stacked\":false"
+    + (if case.DataLabels then ",\"dataLabels\":\"Ends\"" else "")
+    + (if case.Temporal then ",\"xScale\":\"Temporal\"" else "")
+    + opt "withheldField" (case.WithheldField |> Option.map str)
+    + opt
+        "interval"
+        (case.Interval
+         |> Option.map (fun (lo, hi) -> "{\"high\":" + str hi + ",\"low\":" + str lo + "}"))
+    + opt "sizeField" (case.SizeField |> Option.map str)
+    + opt
+        "sortBy"
+        (case.SortBy
+         |> Option.map (fun (f, d) ->
+             "{\"direction\":"
+             + (match d with
+                | SortDirection.Asc -> "\"asc\""
+                | SortDirection.Desc -> "\"desc\"")
+             + ",\"field\":"
+             + str f
+             + "}"))
+    + opt "pathField" (case.PathField |> Option.map str)
+    + (if List.isEmpty annotations then
+           ""
+       else
+           ",\"annotations\":[" + String.concat "," annotations + "]")
+    + ",\"data\":["
+    + rows
+    + "]}"
+
+/// The lowering of `case` with every channel removed.
+let private channelFree (case: ChannelCase) : ChannelCase =
+    { case with
+        Interval = None
+        SizeField = None
+        SortBy = None
+        PathField = None
+        ReferenceX = [] }
+
+[<Tests>]
+let channelTests =
+    let find name =
+        channelCases |> List.find (fun c -> c.Name = name)
+
+    let fixtureTests =
+        match tryFindFixtures () with
+        | None ->
+            [ test "channel fixtures absent — skipped (standalone checkout)" {
+                  Expect.isTrue true "wire-format-fixtures/ not found"
+              } ]
+        | Some fixturesRoot ->
+            let dir = Path.Combine(fixturesRoot, "chart-lowering", "channels")
+
+            if Environment.GetEnvironmentVariable "FUARAN_EMIT_CHART_LOWERING" = "1" then
+                Directory.CreateDirectory dir |> ignore
+
+                for case in channelCases do
+                    File.WriteAllText(Path.Combine(dir, case.Name + ".input.json"), channelInputJson case)
+                    File.WriteAllText(Path.Combine(dir, case.Name + ".expected.json"), channelJson case)
+
+            [ test "every channel-family case lowers byte-identically to its committed golden" {
+                  for case in channelCases do
+                      let expectedFile = Path.Combine(dir, case.Name + ".expected.json")
+
+                      Expect.isTrue
+                          (File.Exists expectedFile)
+                          (sprintf "%s: golden missing (regenerate with FUARAN_EMIT_CHART_LOWERING=1)" case.Name)
+
+                      Expect.equal
+                          (File.ReadAllText(Path.Combine(dir, case.Name + ".input.json")))
+                          (channelInputJson case)
+                          (sprintf "%s: channel input drifted" case.Name)
+
+                      Expect.equal
+                          (channelJson case)
+                          (File.ReadAllText expectedFile)
+                          (sprintf "%s: channel lowering drifted from golden" case.Name)
+              } ]
+
+    testList
+        "Chart lowering — mark channels (Phase 2654)"
+        (fixtureTests
+         @ [ test "a neutralised channel lowers byte-identically to its absence" {
+                 for name in
+                     [ "bar-channels-neutralised"
+                       "line-interval-two-series-neutralised"
+                       "line-sort-temporal-neutralised" ] do
+                     let case = find name
+
+                     Expect.equal
+                         (channelJson case)
+                         (channelJson (channelFree case))
+                         (sprintf "%s: the kind does not read the channel" name)
+             }
+
+             test "an error bar is a stem and two caps with a numbered readout; no interval at a gap or a withheld row" {
+                 let tips =
+                     marksAndTips (channelLowered (find "bar-interval"))
+                     |> List.choose snd
+                     |> List.filter (fun t -> t.Contains " – ")
+
+                 Expect.equal
+                     tips
+                     [ for t in [ "effect · A · 9 – 15"; "effect · B · 14 – 22"; "effect · E · 6 – 13" ] do
+                           yield! [ t; t; t ] ]
+                     "three lines per interval, the backwards pair normalised; C (missing end) and D (withheld) draw none"
+             }
+
+             test "a line's interval band breaks where an end is missing" {
+                 let bands =
+                     (channelLowered (find "line-interval")).Shapes
+                     |> List.filter (fun sh ->
+                         match sh with
+                         | Shape.Polygon(_, s) ->
+                             match s.Tip with
+                             | Some(TextSource.Literal "forecast · interval") -> true
+                             | _ -> false
+                         | _ -> false)
+
+                 Expect.equal bands.Length 2 "Jan-Mar and May-Jun"
+             }
+
+             test "a sized point's area follows its size; a missing, negative or withheld size draws no point" {
+                 let radii =
+                     (channelLowered (find "scatter-size")).Shapes
+                     |> List.choose (fun sh ->
+                         match sh with
+                         | Shape.Circle(_, _, r, _) -> Some r
+                         | _ -> None)
+
+                 let style = Charts.ChartStyle.defaults
+                 // 400 is the largest drawn (900 is withheld): it takes the maximum.
+                 Expect.equal
+                     radii
+                     [ style.ScatterMaxRadius; 8.0; style.ScatterMinRadius; 4.0 ]
+                     "400, 100 (half the radius: a quarter of the area), 0 (the floor), 25"
+             }
+
+             test "a path joins in path order and breaks at a withheld point" {
+                 let paths =
+                     (channelLowered (find "scatter-path")).Shapes
+                     |> List.choose (fun sh ->
+                         match sh with
+                         | Shape.Polyline(points, _) -> Some(List.length points)
+                         | _ -> None)
+
+                 Expect.equal paths [ 3; 3 ] "seasons 1-3, then 5, 6, 6 (the tie in source order)"
+             }
+
+             test "a declared order sorts the bars and puts missing and withheld keys last" {
+                 let marks =
+                     marksAndTips (channelLowered (find "bar-sort-desc"))
+                     |> List.choose fst
+                     |> List.filter (fun m -> m.StartsWith "share|")
+
+                 Expect.equal
+                     marks
+                     [ "share|Birch"; "share|Elm"; "share|Ash"; "share|Fir"; "share|Douglas" ]
+                     "31 and 31 in source order, then 12, 8; Cedar draws no bar and the withheld Douglas its placeholder, last"
+
+                 Expect.stringContains
+                     (descriptionOf (channelLowered (find "bar-sort-desc")))
+                     "Sorted by share, descending"
+                     "the summary states the order"
+             }
+
+             test "the x reference lines stand across the plot and widen the x domain" {
+                 let ds = channelLowered (find "scatter-reference-x")
+                 let marks = marksAndTips ds |> List.choose fst
+
+                 Expect.containsAll
+                     marks
+                     [ "annotation|reference|0"
+                       "annotation|referencex|0"
+                       "annotation|referencex|1" ]
+                     "one value-axis line and two x lines"
+
+                 Expect.stringContains (descriptionOf ds) "2 x reference lines" "the summary names them"
+
+                 Expect.stringContains
+                     (descriptionOf ds)
+                     "5 points: 0 to 150"
+                     "the x extent reaches past the line beyond the data (120)"
+             }
+
+             test "a withheld row's channel values reach no readout" {
+                 for name, secret in [ "bar-interval", "11 – 19"; "scatter-size", "900"; "bar-sort-desc", "24" ] do
+                     let ds = channelLowered (find name)
+
+                     let words =
+                         marksAndTips ds
+                         |> List.choose snd
+                         |> String.concat " "
+                         |> fun t -> t + " " + descriptionOf ds
+
+                     Expect.isFalse (words.Contains secret) (sprintf "%s: '%s' is withheld" name secret)
+             }
+
+             test "an adapter's rows lose a withheld row's interval ends and size, and arrive in the declared order" {
+                 let spec: ChartSpec<obj> =
+                     { Defaults.chart with
+                         Kind = ChartKind.Bar
+                         XField = "x"
+                         YFields = [ "a" ]
+                         WithheldField = Some "w"
+                         Interval = Some { Low = "lo"; High = "hi" }
+                         SortBy =
+                             Some
+                                 { Field = "a"
+                                   Direction = SortDirection.Desc } }
+
+                 let rows: Row list =
+                     [ Map.ofList [ "x", box "p"; "a", box 5.0; "lo", box 4.0; "hi", box 6.0; "w", box true ]
+                       Map.ofList [ "x", box "q"; "a", box 1.0; "lo", box 0.0; "hi", box 2.0; "w", box false ]
+                       Map.ofList [ "x", box "r"; "a", box 3.0; "lo", box 2.0; "hi", box 4.0; "w", box false ] ]
+
+                 Expect.equal
+                     (Charts.withheldValuesRemoved spec rows |> List.head)
+                     (Map.ofList [ "x", box "p"; "w", box true ])
+                     "the withheld row keeps only its identity"
+
+                 Expect.equal
+                     (Charts.sortedRows spec rows |> List.map (fun r -> r.["x"]))
+                     [ box "r"; box "q"; box "p" ]
+                     "descending by a, the withheld row last"
+
+                 let path =
+                     Path.Combine(AppContext.BaseDirectory, "renderer-sources", "client", "AgChartAdapter.fs")
+
+                 Expect.stringContains
+                     (File.ReadAllText path)
+                     "|> Fuaran.UI.Charts.sortedRows spec"
+                     "the AG adapter hands AG the rows in the declared order"
+             } ])

@@ -176,6 +176,12 @@ let structuralChildren: DialectElement list =
             "fromDate"
             "toDate"
             "label" ]
+      // Phase 2654 — the ReferenceLineX arm: a vertical line at a numeric x.
+      child
+          "ReferenceLineX"
+          "Chart.annotations"
+          "the ReferenceLineX arm; `value` is in the continuous x axis's own units"
+          [ "value"; "label" ]
       child "Prop" "Custom.props" "rename — one entry of the props map, authored as name/value" [ "name"; "value" ]
 
       // Node-valued slots — the child element names the slot.
@@ -253,6 +259,10 @@ let attributeOnly: (string * string) list =
       "Mount.message-shape", "flattening — with `two-way`, authors the GuestChannel record"
       "DataGrid.default-sort-column", "flattening — with `default-sort-direction`, authors the DefaultSort record"
       "DataGrid.default-sort-direction", "flattening — with `default-sort-column`, authors the DefaultSort record"
+      "Chart.interval-low", "flattening — with `interval-high`, authors the ChartInterval record (Phase 2654)"
+      "Chart.interval-high", "flattening — with `interval-low`, authors the ChartInterval record (Phase 2654)"
+      "Chart.sort-by", "flattening — with `sort-direction`, authors the ChartSort record (Phase 2654)"
+      "Chart.sort-direction", "flattening — with `sort-by`, authors the ChartSort record (Phase 2654)"
       "Drawing.min-x", "flattening — one part of the ViewBox record"
       "Drawing.min-y", "flattening — one part of the ViewBox record"
       "Drawing.width", "flattening — one part of the ViewBox record"
@@ -290,6 +300,8 @@ let notChildAuthorable: (string * string) list =
       "Chart.valueFormat", "sugar — the `value-format-*` attribute family"
       "Custom.exposedNodeIds", "narrowed — `exposed-node-ids`, a comma-separated string"
       "DataGrid.defaultSort", "flattening — `default-sort-column` + `default-sort-direction`"
+      "Chart.interval", "flattening — `interval-low` + `interval-high` (Phase 2654)"
+      "Chart.sortBy", "flattening — `sort-by` + `sort-direction` (Phase 2654)"
       "DataGrid.source", "narrowed — the `source` attribute carries a query name"
       "DataGrid.staticRows",
       "spelled INDIRECTLY — the <Table> convenience builds this record from <Header> / <Row> / <Cell>"

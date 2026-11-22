@@ -7965,6 +7965,50 @@ this draft slot, which is breaking-class already; `<Version>` does not move.
   withheld, is unchanged.
 - **Recompile.**
 
+### What rides this slot — Phase 2654 (the mark channels: interval, size, declared order, path and x reference line)
+
+**Class: breaking.** On the wire it is additive: four optional `ChartSpec` members and one `ChartAnnotation` case,
+each omitted when absent, so every pre-2654 document decodes and encodes byte-for-byte as it did and no pre-existing
+`chart-lowering` golden moved. On the .NET surface it is breaking by the estate rule: `ChartSpec` gains four fields,
+`ChartStyle` four, `PreEmitDefect` three cases, and the closed `ChartAnnotation` union a case. It rides this draft
+slot, which is breaking-class already; `<Version>` does not move. The decision is D39 (`docs/DECISIONS.md`); the
+normative rules are WIRE_FORMAT §3.6.37.
+
+**What a consumer gains.**
+
+- **`ChartSpec.Interval: ChartInterval option`** (`{ Low; High }`, wire `interval`) — an error bar on a Bar or a
+  Scatter point, a band under a Line or an Area, on the single series. Both ends join the value domain.
+- **`ChartSpec.SizeField: string option`** (wire `sizeField`) — a Scatter point sized by area between
+  `ChartStyle.ScatterMinRadius` and `ScatterMaxRadius`.
+- **`ChartSpec.SortBy: ChartSort option`** (`{ Field; Direction }`, reusing `SortDirection`) — the rows ordered
+  before layout on a Bar, Line, Area or Pie; missing keys and withheld rows last. `Charts.sortedRows spec rows` is
+  the step, public, and the AG adapter hands AG its rows through it.
+- **`ChartSpec.PathField: string option`** (wire `pathField`) — a Scatter series' points joined in that column's
+  order; a missing or withheld point breaks the path.
+- **`ChartAnnotation.ReferenceLineX of value * label`** — a vertical line at a numeric x on a Scatter, joining the
+  x domain, mark `annotation|referencex|<n>`.
+- **Validator.** `FUARAN172` (`ChartChannelKindUnsupported`), `FUARAN173` (`ChartIntervalSeriesShape`) and
+  `FUARAN174` (`ChartSortByTemporal`); every channel column is grounded (`FUARAN086`) and numeric (`FUARAN087`);
+  a non-finite x line is `FUARAN137` and one on a temporal Scatter `FUARAN139`.
+- **Authoring.** The C# `ChartOptions` gains `Interval`, `SizeField`, `SortBy` and `PathField` (with
+  `ChartInterval` and `ChartSort` records) and `ChartAnnotation.ReferenceLineX`; the VB dialect spells
+  `interval-low` / `interval-high`, `size-field`, `sort-by` / `sort-direction`, `path-field` and
+  `<ReferenceLineX value label>`.
+
+**What a consumer pays.**
+
+- **Record construction.** A `ChartSpec<'Msg>` built as a full record literal needs `Interval`, `SizeField`,
+  `SortBy` and `PathField` (FS0764), and a `ChartStyle` built as a full literal needs the four new fields;
+  `{ Defaults.chart with … }`, `{ ChartStyle.defaults with … }` and `Fuaran.chart` are unaffected. The positional
+  `Generated.ChartSpec` constructor gains four arguments (CS7036 at a C# call site).
+- **Exhaustive matches.** A match over `ChartAnnotation` gains `ReferenceLineX`, and one over `PreEmitDefect` the
+  three new cases (FS0025 until the arms are added).
+- **An AG-rendered chart with a `SortBy` changes order**, to the declared one. Its interval, size, path and x line
+  are not drawn on the AG path (declared gaps).
+- **A message moved.** `FUARAN137` now says an annotation addresses "a place on its axis" rather than "on the value
+  axis", since an x reference line addresses the x axis.
+- **Recompile.**
+
 ---
 
 ## 0.105.0 — the announced breaking cut (Phase 2303); the slot opened after v0.104.0 was released, advanced from 0.104.1 on 2026-11-14 by Phase 2716, whose change is breaking (DRAFT — untagged)

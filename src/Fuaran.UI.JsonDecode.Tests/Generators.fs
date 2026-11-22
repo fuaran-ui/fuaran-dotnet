@@ -1044,6 +1044,13 @@ let private genChartAnnotation: Gen<ChartAnnotation> =
               let! label = genOption genTextSource
               return ChartAnnotation.ReferenceLine(value, label)
           }
+          // Phase 2654 — the reference line on a continuous x axis; finite on
+          // the decoder's rule, like the value-axis line's.
+          gen {
+              let! value = genFiniteFloat
+              let! label = genOption genTextSource
+              return ChartAnnotation.ReferenceLineX(value, label)
+          }
           gen {
               let! at = genChartAnnotationX
               let! label = genOption genTextSource
@@ -1129,6 +1136,26 @@ let private genChartSpec: Gen<ChartSpec<obj>> =
         let! scale = genOption genChartScale
         // Phase 2809 — the withheld flag column (absent = nothing withheld).
         let! withheldField = genOption genNonEmptyString
+        // Phase 2654 — the mark channels, each absent by default.
+        let! interval =
+            genOption (
+                Gen.map2
+                    (fun low high -> ({ Low = low; High = high }: ChartInterval))
+                    genNonEmptyString
+                    genNonEmptyString
+            )
+
+        let! sizeField = genOption genNonEmptyString
+
+        let! sortBy =
+            genOption (
+                Gen.map2
+                    (fun field direction -> ({ Field = field; Direction = direction }: ChartSort))
+                    genNonEmptyString
+                    (Gen.elements [ SortDirection.Asc; SortDirection.Desc ])
+            )
+
+        let! pathField = genOption genNonEmptyString
         let! stacked = genBool
         // Phase 2568 — a query-bound source beside the inline one. `genSmallList`
         // already draws the empty `yFields` a quarter of the time; over a `Query`
@@ -1156,6 +1183,10 @@ let private genChartSpec: Gen<ChartSpec<obj>> =
                 Annotations = annotations
                 Scale = scale
                 WithheldField = withheldField
+                Interval = interval
+                SizeField = sizeField
+                SortBy = sortBy
+                PathField = pathField
                 Stacked = stacked }
     }
 

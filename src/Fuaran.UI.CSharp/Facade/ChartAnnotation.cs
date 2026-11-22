@@ -51,6 +51,20 @@ public readonly struct ChartAnnotation
             label is { } l ? Fs.Some(l.Inner) : Fs.None<FsGen.TextSource>()));
 
     /// <summary>
+    /// A vertical line at a numeric x value (Phase 2654) — the
+    /// <see cref="ReferenceLine"/> mirrored onto a scatter chart's continuous x
+    /// axis, such as a quadrant divider. A category or a date on x is
+    /// <see cref="EventMarker"/>'s address; this one is a number.
+    /// </summary>
+    /// <param name="value">The line's position in the x axis's own units; must
+    /// be finite.</param>
+    /// <param name="label">An optional label, fit-gated like a reference line's.</param>
+    public static ChartAnnotation ReferenceLineX(double value, Text? label = null) =>
+        new(FsGen.ChartAnnotation.NewReferenceLineX(
+            value,
+            label is { } l ? Fs.Some(l.Inner) : Fs.None<FsGen.TextSource>()));
+
+    /// <summary>
     /// A vertical line at an x address (Phase 1491) — a policy change, a launch,
     /// a shock. The mirror of <see cref="ReferenceLine"/> across the axes.
     /// </summary>

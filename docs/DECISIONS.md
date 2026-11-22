@@ -10,6 +10,57 @@ consequence.
 
 ---
 
+## 2026-11-22 — D39: a mark channel is an optional field of the one `Chart` kind; orientation and facets are layout, not channels
+
+**Decided (Phase 2654).** A CHANNEL names a column of the chart's rows that a mark reads besides its x and its value:
+an `interval` (`ChartInterval`: `low`, `high`), a `sizeField`, a `sortBy` (`ChartSort`: `field`, `direction`), a
+`pathField`, and the `ChartAnnotation.ReferenceLineX` address. Each is an optional member of `ChartSpec`, omitted
+when absent, so every pre-2654 document and golden is byte-unchanged. The normative rules are WIRE_FORMAT §3.6.37.
+Seven rulings follow; 2656's charter walk argues against the first.
+
+1. **What is a channel and what would be a kind.** A channel adds a dimension to a mark the kind already draws,
+   and leaves the kind's geometry otherwise alone: an error bar qualifies a bar or a point, a size scales a point,
+   a path joins points that are already drawn, an order permutes rows the arm already lays out, a vertical line is
+   an annotation at an address the axis already has. A KIND is the line a channel cannot cross: a new mark (a
+   funnel's trapezoid, a waterfall's floating step, a dumbbell's paired dot), a new axis arrangement, or a new
+   reading of the rows (a slope's two columns as two times). The test is whether the arm's own geometry is still
+   the picture with the field removed; when it is not, the field is a kind in disguise and belongs in 2656.
+2. **Orientation and facets are not channels of this phase.** Both are LAYOUT: a horizontal bar transposes the
+   frame (the category axis, its label fitting and tilt, the value ticks, the data labels and every annotation move
+   axis), and a facet grid replicates the frame per facet under shared scales. Neither adds a dimension to a mark.
+   They are left to a successor phase that owns the frame (the existing `Orientation` enum is the vocabulary
+   `orientation` will reuse); nothing of them is on the wire, so no member is admitted ahead of a lowering.
+3. **Combination rules are named refusals, and a lowering handed one anyway NEUTRALISES it.** A channel on a kind
+   that does not read it is `FUARAN172` (`ChartChannelKindUnsupported`, naming the channel and the kinds that read
+   it); an interval over other than one series is `FUARAN173`; an order on a temporal axis is `FUARAN174`; an
+   x reference line on a temporal Scatter is `FUARAN139`'s axis mismatch (`EventMarker` is the date address). The
+   lowering of such a chart is byte-identical to the chart without the channel: Phase 882's treatment of `xScale`
+   on a Pie, and three corpus vectors pin it. Every column a channel names is grounded like a series (`FUARAN086`)
+   and read as a number (`FUARAN087`), the 2568 grounding path, not a second one.
+4. **The interval belongs to one series.** It names one low and one high column, so it is read only where
+   `yFields` names exactly one series. On the per-datum arms (Bar, Scatter) it is an error bar in the axis ink
+   after the mark; on the series arms (Line, Area) it is a translucent band in the series colour behind the series.
+   A backwards pair is drawn between its two values (an interval is unordered data, unlike an authored range band,
+   whose backwards pair is an authoring mistake that FUARAN141 refuses).
+5. **The size is area, with a floor.** Above `ScatterMinRadius` a point's area is proportional to its size value,
+   the largest drawn taking `ScatterMaxRadius`; radius proportional to value overstates large values
+   quadratically. A size key (a legend of bubble sizes) is not drawn; the summary names the size column.
+6. **The gap and withheld rules hold on every channel (D38).** A missing low or high end draws no interval; a
+   missing or negative size draws no point; a missing sort key sorts last in source order; a missing path order
+   takes the row off the path. A WITHHELD row reads no interval and no size, its sort key is treated as missing
+   (its position must not say what its value is), and its point, absent, BREAKS a path rather than being joined
+   across: the path order is a position and is still read, so a withheld season is a visible break. The AG adapter
+   strips a withheld row's interval ends and size with its series values (`Charts.withheldValuesRemoved`).
+7. **The heatmap reads no channel.** Its row and value fields are the grid; an interval, a size, a path and an x
+   reference line have no mark there to qualify, and a declared order would fight the grid's own row and column
+   order. Each is refused there by FUARAN172.
+
+**Rejected.** Per-series intervals (a list of `{ series; low; high }`): no consumer asked for it, and one interval
+per chart is the smallest correct change. A text sort (ordering categories alphabetically): the source already
+supplies an order, and a numeric key keeps every host's comparison identical. Mapping the channels onto AG Charts:
+the community package has no error bar, and its bubble and cross-line series are a mapping of their own; the AG
+path draws the declared order and declares the rest as gaps.
+
 ## 2026-11-22 — D38: a withheld value is declared by a flag column the chart names; a missing value is a gap, never a zero
 
 **Decided (Phase 2809).** A chart fed from governed data meets three kinds of value: a **released** one; an **absent**

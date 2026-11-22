@@ -19,7 +19,7 @@ internal static partial class Vocabulary
     /// <summary>Structural child elements — children of a kind, not kinds themselves.</summary>
     public static readonly ImmutableHashSet<string> Structural = ImmutableHashSet.Create(
         StringComparer.Ordinal,
-        "Body", "Case", "Cell", "Child", "Column", "Default", "EventMarker", "Fallback", "Field", "Filter", "Header", "Item", "Marker", "Option", "Prop", "RangeBand", "ReferenceLine", "Row", "Source", "Tone", "Track", "TreeItem");
+        "Body", "Case", "Cell", "Child", "Column", "Default", "EventMarker", "Fallback", "Field", "Filter", "Header", "Item", "Marker", "Option", "Prop", "RangeBand", "ReferenceLine", "ReferenceLineX", "Row", "Source", "Tone", "Track", "TreeItem");
 
     /// <summary>Attributes every element admits: node-envelope traits rather than fields of any one kind.</summary>
     private static readonly ImmutableHashSet<string> Universal =
@@ -39,7 +39,7 @@ internal static partial class Vocabulary
         Add("Callout", "body", "dismissable", "heading", "icon", "id", "tone");
         Add("Card", "heading", "id");
         Add("Case", "match");
-        Add("Chart", "data-labels", "id", "kind", "legend-position", "source", "stacked", "subtitle", "title", "value-format-currency", "value-format-number", "value-format-percent", "x-field", "x-scale", "x-title", "y-fields", "y-title");
+        Add("Chart", "data-labels", "id", "interval-high", "interval-low", "kind", "legend-position", "path-field", "size-field", "sort-by", "sort-direction", "source", "stacked", "subtitle", "title", "value-format-currency", "value-format-number", "value-format-percent", "x-field", "x-scale", "x-title", "y-fields", "y-title");
         Add("CodeBlock", "code", "copyable", "id", "language", "line-numbers");
         Add("Column", "default-tone", "editable", "field", "label", "sortable", "tone-field", "type");
         Add("Custom", "component-id", "exposed-node-ids", "id", "module-id");
@@ -80,6 +80,7 @@ internal static partial class Vocabulary
         Add("Prop", "name", "value");
         Add("RangeBand", "fromCategory", "fromDate", "fromValue", "label", "toCategory", "toDate", "toValue");
         Add("ReferenceLine", "label", "value");
+        Add("ReferenceLineX", "label", "value");
         Add("ScrollArea", "id", "max-height", "max-width", "orientation");
         Add("Select", "id", "label", "placeholder", "value");
         Add("Skeleton", "id", "rows");

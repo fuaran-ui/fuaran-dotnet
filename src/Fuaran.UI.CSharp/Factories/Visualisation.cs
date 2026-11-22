@@ -67,6 +67,11 @@ public static partial class Fuaran
                 // Phase 2809 — the withheld flag column passes the F# default
                 // (absent: nothing withheld); the veneer does not expose it yet.
                 Fs.None<string>(),
+                // Phase 2654 — the mark channels: interval, size, sort, path.
+                options.Interval is { } iv ? Fs.Some(iv.Inner) : Fs.None<FsGen.ChartInterval>(),
+                options.SizeField is { } sz ? Fs.Some(sz) : Fs.None<string>(),
+                options.SortBy is { } sb ? Fs.Some(sb.Inner) : Fs.None<FsGen.ChartSort>(),
+                options.PathField is { } pf ? Fs.Some(pf) : Fs.None<string>(),
                 Fs.None<Microsoft.FSharp.Core.FSharpFunc<FsRow, FsAction>>())));
 
     /// <summary>A static (non-data-bound) HTML table.</summary>
@@ -264,6 +269,21 @@ public sealed record ChartOptions
 
     /// <summary>The y-axis field keys.</summary>
     public IEnumerable<string>? YFields { get; init; }
+
+    /// <summary>
+    /// An interval on the single series (Phase 2654): the columns holding each
+    /// datum's low and high ends. Read by bar, line, area and scatter charts.
+    /// </summary>
+    public ChartInterval? Interval { get; init; }
+
+    /// <summary>The column that sizes each scatter point by area (Phase 2654).</summary>
+    public string? SizeField { get; init; }
+
+    /// <summary>The declared row order before layout (Phase 2654).</summary>
+    public ChartSort? SortBy { get; init; }
+
+    /// <summary>The column ordering a scatter series' points along a path (Phase 2654).</summary>
+    public string? PathField { get; init; }
 
     /// <summary>An optional chart title.</summary>
     public Text? Title { get; init; }

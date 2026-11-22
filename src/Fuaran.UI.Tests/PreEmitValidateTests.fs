@@ -2059,6 +2059,193 @@ let tests =
                   "a two-field Heatmap with a scale is admitted"
           }
 
+          // ── Phase 2654 (D39) — the mark channels' combination rules ──
+
+          test "FUARAN172: a mark channel on a kind that does not read it is refused by name" {
+              let chartOf (kind: ChartKind) (f: ChartSpec<Msg> -> ChartSpec<Msg>) : Node<Msg> =
+                  Fuaran.chart
+                      "ch"
+                      (f
+                          { Defaults.chart<Msg> with
+                              Kind = kind
+                              XField = "x"
+                              YFields = [ "y" ] })
+
+              let refusedOn (kind: ChartKind) f (channel: string) =
+                  match PreEmitValidate.validate (chartOf kind f) with
+                  | Error defects ->
+                      Expect.isTrue
+                          (defects
+                           |> List.exists (fun d ->
+                               match d with
+                               | PreEmitDefect.ChartChannelKindUnsupported("ch", c, _, _) -> c = channel
+                               | _ -> false))
+                          (sprintf "%s refused on %A" channel kind)
+                  | Ok() -> failtestf "Expected ChartChannelKindUnsupported for %s on %A" channel kind
+
+              let admittedOn (kind: ChartKind) f (what: string) =
+                  match PreEmitValidate.validate (chartOf kind f) with
+                  | Error defects ->
+                      Expect.isFalse
+                          (defects
+                           |> List.exists (fun d ->
+                               match d with
+                               | PreEmitDefect.ChartChannelKindUnsupported _ -> true
+                               | _ -> false))
+                          (sprintf "%s admitted on %A" what kind)
+                  | Ok() -> ()
+
+              let interval (s: ChartSpec<Msg>) =
+                  { s with
+                      Interval = Some { Low = "lo"; High = "hi" } }
+
+              let size (s: ChartSpec<Msg>) = { s with SizeField = Some "n" }
+              let path (s: ChartSpec<Msg>) = { s with PathField = Some "t" }
+
+              let sortBy (s: ChartSpec<Msg>) =
+                  { s with
+                      SortBy =
+                          Some
+                              { Field = "y"
+                                Direction = SortDirection.Desc } }
+
+              let referenceX (s: ChartSpec<Msg>) =
+                  { s with
+                      Annotations = Some [ ChartAnnotation.ReferenceLineX(1.0, None) ] }
+
+              refusedOn ChartKind.Pie interval "interval"
+              refusedOn ChartKind.Bar size "sizeField"
+              refusedOn ChartKind.Line path "pathField"
+              refusedOn ChartKind.Area referenceX "a ReferenceLineX annotation"
+              refusedOn ChartKind.Scatter sortBy "sortBy"
+
+              for kind in [ ChartKind.Bar; ChartKind.Line; ChartKind.Area; ChartKind.Scatter ] do
+                  admittedOn kind interval "interval"
+
+              for f in [ size; path; referenceX ] do
+                  admittedOn ChartKind.Scatter f "a Scatter channel"
+
+              for kind in [ ChartKind.Bar; ChartKind.Line; ChartKind.Area; ChartKind.Pie ] do
+                  admittedOn kind sortBy "sortBy"
+          }
+
+          test "FUARAN173: an interval belongs to exactly one series; FUARAN174: no sortBy on a temporal axis" {
+              let chart (spec: ChartSpec<Msg>) : Node<Msg> = Fuaran.chart "ch" spec
+
+              let twoSeries =
+                  { Defaults.chart<Msg> with
+                      Kind = ChartKind.Line
+                      XField = "x"
+                      YFields = [ "a"; "b" ]
+                      Interval = Some { Low = "lo"; High = "hi" } }
+
+              match PreEmitValidate.validate (chart twoSeries) with
+              | Error defects ->
+                  Expect.contains defects (PreEmitDefect.ChartIntervalSeriesShape("ch", 2)) "two series refused"
+              | Ok() -> failtest "Expected ChartIntervalSeriesShape"
+
+              let temporalSort =
+                  { Defaults.chart<Msg> with
+                      Kind = ChartKind.Line
+                      XField = "day"
+                      YFields = [ "v" ]
+                      XScale = Some ChartXScale.Temporal
+                      SortBy =
+                          Some
+                              { Field = "v"
+                                Direction = SortDirection.Asc } }
+
+              match PreEmitValidate.validate (chart temporalSort) with
+              | Error defects ->
+                  Expect.contains defects (PreEmitDefect.ChartSortByTemporal "ch") "temporal sort refused"
+              | Ok() -> failtest "Expected ChartSortByTemporal"
+          }
+
+          test "a channel's columns are grounded (FUARAN086) and numeric (FUARAN087)" {
+              let table: Fuaran.Core.Table =
+                  { Schema =
+                      [ Fuaran.Core.Field.create "x" Fuaran.Core.ColumnType.FloatType
+                        Fuaran.Core.Field.create "y" Fuaran.Core.ColumnType.FloatType
+                        Fuaran.Core.Field.create "lo" Fuaran.Core.ColumnType.FloatType
+                        Fuaran.Core.Field.create "hi" Fuaran.Core.ColumnType.FloatType
+                        Fuaran.Core.Field.create "fans" Fuaran.Core.ColumnType.IntType
+                        Fuaran.Core.Field.create "note" Fuaran.Core.ColumnType.StringType ]
+                    Columns = [] }
+
+              let scatter (f: ChartSpec<Msg> -> ChartSpec<Msg>) : Node<Msg> =
+                  Fuaran.chart
+                      "sc"
+                      (f
+                          { Defaults.chart<Msg> with
+                              Kind = ChartKind.Scatter
+                              Source =
+                                  Binding.Transform(
+                                      TransformSource.Data(Fuaran.Core.DataSource.Embedded table),
+                                      [],
+                                      None
+                                  )
+                              XField = "x"
+                              YFields = [ "y" ] })
+
+              let grounded =
+                  scatter (fun s ->
+                      { s with
+                          Interval = Some { Low = "lo"; High = "hi" }
+                          SizeField = Some "fans"
+                          PathField = Some "fans" })
+
+              match PreEmitValidate.validate grounded with
+              | Ok() -> ()
+              | Error defects -> failtestf "Expected Ok for grounded numeric channels, got: %A" defects
+
+              match PreEmitValidate.validate (scatter (fun s -> { s with SizeField = Some "absent" })) with
+              | Error defects ->
+                  Expect.isTrue
+                      (defects
+                       |> List.exists (fun d ->
+                           match d with
+                           | PreEmitDefect.ChartFieldUngrounded("sc", "absent", _) -> true
+                           | _ -> false))
+                      "an absent size column is ungrounded"
+              | Ok() -> failtest "Expected ChartFieldUngrounded for the size column"
+
+              match PreEmitValidate.validate (scatter (fun s -> { s with PathField = Some "note" })) with
+              | Error defects ->
+                  Expect.contains
+                      defects
+                      (PreEmitDefect.ChartFieldTypeMismatch("sc", "note", "string"))
+                      "a text path order is refused"
+              | Ok() -> failtest "Expected ChartFieldTypeMismatch for the path column"
+          }
+
+          test "an x reference line is finite (FUARAN137) and numeric on its axis (FUARAN139)" {
+              let scatter (temporal: bool) (v: float) : Node<Msg> =
+                  Fuaran.chart
+                      "sc"
+                      { Defaults.chart<Msg> with
+                          Kind = ChartKind.Scatter
+                          XField = "x"
+                          YFields = [ "y" ]
+                          XScale = (if temporal then Some ChartXScale.Temporal else None)
+                          Annotations = Some [ ChartAnnotation.ReferenceLineX(v, None) ] }
+
+              match PreEmitValidate.validate (scatter false nan) with
+              | Error defects ->
+                  Expect.contains
+                      defects
+                      (PreEmitDefect.ChartAnnotationNonFinite("sc", "x reference line 0", "NaN"))
+                      "a NaN x line refused"
+              | Ok() -> failtest "Expected ChartAnnotationNonFinite"
+
+              match PreEmitValidate.validate (scatter true 3.0) with
+              | Error defects ->
+                  Expect.contains
+                      defects
+                      (PreEmitDefect.ChartAnnotationAxisMismatch("sc", "x reference line 0", "numeric", "temporal"))
+                      "a numeric x line on a temporal axis refused"
+              | Ok() -> failtest "Expected ChartAnnotationAxisMismatch"
+          }
+
           test "FUARAN170: a Heatmap names exactly its row field and its value field" {
               for fields in [ [ "row" ]; [ "row"; "value"; "extra" ] ] do
                   let heatmap: Node<Msg> =
