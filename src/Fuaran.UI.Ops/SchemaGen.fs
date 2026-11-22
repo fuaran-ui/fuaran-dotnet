@@ -1929,6 +1929,22 @@ let private defs: (string * J) list =
             // fourth widening of this record. Optional: absent omits, and an
             // absent slot draws exactly the pre-1490 picture.
             "annotations", arrayOf (ref "ChartAnnotation")
+            // `scale` (Phase 2655) — a heatmap's declared colour scale. Optional:
+            // absent means sequential over the data's extent. Whether the kind
+            // admits it is the validator's (FUARAN169), not the schema's.
+            "scale", ref "ChartScale"
+            // `withheldField` (Phase 2809, D38) — the column whose boolean `true`
+            // marks a row withheld. Optional: absent means nothing is withheld.
+            // Whether the column exists and is boolean is the validator's
+            // (FUARAN086 / FUARAN171), not the schema's.
+            "withheldField", str
+            // The mark channels (Phase 2654, D39). Each is optional; which kinds
+            // admit each, and whether the named columns exist, is the
+            // validator's (FUARAN172-FUARAN174, FUARAN086), not the schema's.
+            "interval", record [ "low"; "high" ] [ "low", str; "high", str ]
+            "sizeField", str
+            "sortBy", record [ "field"; "direction" ] [ "field", str; "direction", enumDef [ "asc"; "desc" ] ]
+            "pathField", str
             "onPointClick", closure ]
 
       // Phase 1490 (§4l) — the closed annotation union. `value` takes
@@ -1951,7 +1967,10 @@ let private defs: (string * J) list =
             // "these two members are typed by the value of that third one" —
             // a dependency Draft 2020-12 can only state as an `if`/`then`
             // ladder, and which this shape removes rather than encodes.
-            duCase "RangeBand" [ "range" ] [ "range", ref "ChartAnnotationRange"; "label", ref "TextSource" ] ]
+            duCase "RangeBand" [ "range" ] [ "range", ref "ChartAnnotationRange"; "label", ref "TextSource" ]
+            // Phase 2654 — the reference line on a continuous x axis; finite on
+            // the same rule as `ReferenceLine`'s value.
+            duCase "ReferenceLineX" [ "value" ] [ "value", finiteNumber; "label", ref "TextSource" ] ]
 
       // Phase 1492 (§4l) — the range band's pair. Both `ValueRange` ends take
       // `finiteNumber` on `ReferenceLine`'s argument: §4l rule 3 has both enter
@@ -1979,6 +1998,14 @@ let private defs: (string * J) list =
       union
           [ duCase "Category" [ "key" ] [ "key", str ]
             duCase "Date" [ "iso" ] [ "iso", str ] ]
+
+      // Phase 2655 — the declared colour scale. Every bound is optional and takes
+      // the sentinel-widened `number` the decoder reads: a non-finite bound is
+      // read as absent by the lowering, so it names nothing wrong to refuse.
+      "ChartScale",
+      union
+          [ duCase "Sequential" [] [ "min", number; "max", number ]
+            duCase "Diverging" [] [ "midpoint", number; "min", number; "max", number ] ]
 
       "MapMarker",
       record [ "label"; "latitude"; "longitude" ] [ "label", ref "TextSource"; "latitude", number; "longitude", number ]

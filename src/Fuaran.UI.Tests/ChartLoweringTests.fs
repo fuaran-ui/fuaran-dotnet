@@ -1833,6 +1833,14 @@ let private inputJson (case: Case) : string =
                            | Some t -> "\"label\":" + textSourceJson t + ","
 
                        "{\"$type\":\"RangeBand\"," + l + "\"range\":" + rangeJson + "}"
+                   | ChartAnnotation.ReferenceLineX(v, label) ->
+                       // Phase 2654 — the reference line's spelling, on its own tag.
+                       let l =
+                           match label with
+                           | None -> ""
+                           | Some t -> "\"label\":" + textSourceJson t + ","
+
+                       "{\"$type\":\"ReferenceLineX\"," + l + "\"value\":" + num v + "}"
 
                ",\"annotations\":[" + (anns |> List.map one |> String.concat ",") + "]")
 
@@ -5687,3 +5695,1788 @@ let loweringMemoTests =
 
               Expect.equal context.ChartProvenance None "a context declares no scope unless a host sets one"
           } ]
+
+// ── Phase 2655 — the Heatmap arm (`chart-lowering/heatmap/`) ──────────────────
+//
+// A heatmap is a cell grid over two categorical axes with a DECLARED scale, so a
+// case is a list of (column, row, value) triples rather than a `Case`: a value of
+// `None` is a row whose value cell is EMPTY, which draws the surface exactly as a
+// pair no row carries does. The vectors live in a SUBFAMILY for `derived-series/`'s
+// reason — the hosts that lower the top-level family enumerate it
+// non-recursively — and because fuaran-rs lowers and fuaran-go round-trips every
+// top-level vector, so a top-level heatmap vector would redden both before their
+// own phase adopts the arm.
+
+type private HeatmapCase =
+    {
+        Name: string
+        Title: string
+        Subtitle: string option
+        XField: string
+        RowField: string
+        ValueField: string
+        Scale: ChartScale option
+        DataLabels: bool
+        /// Phase 2810 — the declared withheld column. When declared, EVERY row of
+        /// the case writes it: `true` for a row whose index is in `Withheld`, else `false`.
+        WithheldField: string option
+        /// Phase 2810 — the rows that are withheld, by their position in `Cells`
+        /// (a pair may have several rows, and the first row of a pair wins).
+        Withheld: int list
+        Cells: (string * string * float option) list
+    }
+
+let private heatmapCases: HeatmapCase list =
+    let grid (xs: string list) (ys: string list) (value: int -> int -> float) =
+        [ for j, y in List.indexed ys do
+              for i, x in List.indexed xs do
+                  yield x, y, Some(value i j) ]
+
+    [ // Sequential over the data's own extent, every cell labelled.
+      { Name = "heatmap-sequential"
+        Title = "Response rate by wave"
+        Subtitle = None
+        XField = "wave"
+        RowField = "item"
+        ValueField = "rate"
+        Scale = None
+        DataLabels = true
+        WithheldField = None
+        Withheld = []
+        Cells =
+          grid [ "W1"; "W2"; "W3"; "W4" ] [ "Trust"; "Reach"; "Recall" ] (fun i j ->
+              float (12 + 9 * i + 17 * j + (i * j * 5) % 11)) }
+      // Sequential with DECLARED bounds: 0 to 100, so the lightest and darkest
+      // stops are fixed by the author rather than by the data.
+      { Name = "heatmap-sequential-bounds"
+        Title = "Coverage, percent asked"
+        Subtitle = Some "Declared 0 to 100"
+        XField = "entity"
+        RowField = "question"
+        ValueField = "asked"
+        Scale = Some(ChartScale.Sequential(Some 0.0, Some 100.0))
+        DataLabels = false
+        WithheldField = None
+        Withheld = []
+        Cells =
+          grid [ "North"; "South"; "East"; "West"; "Central" ] [ "Q1"; "Q2"; "Q3"; "Q4" ] (fun i j ->
+              float ((23 * i + 31 * j + 7) % 101)) }
+      // Diverging about zero (the default midpoint) over a correlation matrix.
+      { Name = "heatmap-diverging"
+        Title = "Item correlation"
+        Subtitle = None
+        XField = "a"
+        RowField = "b"
+        ValueField = "r"
+        Scale = Some(ChartScale.Diverging(None, Some -1.0, Some 1.0))
+        DataLabels = true
+        WithheldField = None
+        Withheld = []
+        Cells =
+          let items = [ "Price"; "Quality"; "Service"; "Speed" ]
+
+          let r =
+              array2D
+                  [ [ 1.0; 0.42; -0.18; -0.65 ]
+                    [ 0.42; 1.0; 0.27; -0.31 ]
+                    [ -0.18; 0.27; 1.0; 0.08 ]
+                    [ -0.65; -0.31; 0.08; 1.0 ] ]
+
+          grid items items (fun i j -> r.[j, i]) }
+      // Diverging about a DECLARED midpoint, bounds from the data.
+      { Name = "heatmap-diverging-midpoint"
+        Title = "Score against target"
+        Subtitle = None
+        XField = "month"
+        RowField = "team"
+        ValueField = "score"
+        Scale = Some(ChartScale.Diverging(Some 50.0, None, None))
+        DataLabels = false
+        WithheldField = None
+        Withheld = []
+        Cells = grid [ "Jan"; "Feb"; "Mar" ] [ "Alpha"; "Beta" ] (fun i j -> float (38 + 7 * i + 13 * j)) }
+      // Missing cells: pairs no row carries, and a row whose value is empty.
+      // Both draw the surface, never a zero.
+      { Name = "heatmap-missing-cells"
+        Title = "Asked, not asked, not shown"
+        Subtitle = None
+        XField = "entity"
+        RowField = "question"
+        ValueField = "n"
+        Scale = None
+        DataLabels = true
+        WithheldField = None
+        Withheld = []
+        Cells =
+          [ "A", "Q1", Some 4.0
+            "B", "Q1", Some 9.0
+            "C", "Q1", None
+            "A", "Q2", Some 0.0
+            "C", "Q2", Some 6.0
+            "B", "Q3", Some 2.0 ] }
+      // The Phase 790 bound on the CELL GRID: 101 distinct columns by 101
+      // distinct rows from 101 rows is 10,201 cells, over the 10,000 budget.
+      { Name = "heatmap-refusal-cell-cap"
+        Title = "Too many cells"
+        Subtitle = None
+        XField = "x"
+        RowField = "y"
+        ValueField = "v"
+        Scale = None
+        DataLabels = false
+        WithheldField = None
+        Withheld = []
+        Cells = [ for k in 0..100 -> sprintf "x%03d" k, sprintf "y%03d" k, Some(float k) ] }
+      // Phase 2810 — absent pairs, an empty value cell and WITHHELD cells in one
+      // grid. A withheld row carries a value (500) far outside the released ones,
+      // so a reader that read it would move the scale, a label and the summary.
+      // B/Q1's first row is released and its second withheld (released); C/Q3's
+      // first row is withheld and its second released (withheld). The key shows.
+      { Name = "heatmap-withheld-cells"
+        Title = "Responses, small counts suppressed"
+        Subtitle = None
+        XField = "entity"
+        RowField = "question"
+        ValueField = "n"
+        Scale = None
+        DataLabels = true
+        WithheldField = Some "suppressed"
+        Withheld = [ 2; 4; 5; 8 ]
+        Cells =
+          [ "A", "Q1", Some 14.0 // 0
+            "B", "Q1", Some 9.0 // 1
+            "B", "Q1", Some 500.0 // 2 — withheld, but B/Q1's first row is released
+            "C", "Q1", None // 3 — an empty value: absent
+            "A", "Q2", Some 500.0 // 4 — withheld
+            "D", "Q2", None // 5 — withheld with no value cell: still withheld
+            "C", "Q2", Some 6.0 // 6
+            "B", "Q3", Some 2.0 // 7
+            "C", "Q3", Some 500.0 // 8 — withheld, and C/Q3's first row
+            "C", "Q3", Some 11.0 ] } // 9 — released, but the pair is withheld
+      // Phase 2810 — every cell withheld: no released value at all, so the scale
+      // is the empty extent's, no cell is labelled, and the summary says so.
+      { Name = "heatmap-withheld-only"
+        Title = "All suppressed"
+        Subtitle = None
+        XField = "site"
+        RowField = "band"
+        ValueField = "count"
+        Scale = None
+        DataLabels = true
+        WithheldField = Some "suppressed"
+        Withheld = [ 0; 1; 2; 3 ]
+        Cells =
+          [ "North", "Low", Some 3.0
+            "South", "Low", Some 4.0
+            "North", "High", Some 2.0
+            "South", "High", None ] }
+      // Phase 2810 — the key beside a DIVERGING ramp with a declared midpoint
+      // label, under a subtitle, with an absent pair beside the withheld cell.
+      { Name = "heatmap-withheld-diverging"
+        Title = "Residual against fitted"
+        Subtitle = Some "Cells under five suppressed"
+        XField = "fitted"
+        RowField = "group"
+        ValueField = "residual"
+        Scale = Some(ChartScale.Diverging(Some 0.0, None, None))
+        DataLabels = false
+        WithheldField = Some "suppressed"
+        Withheld = [ 4 ]
+        Cells =
+          [ "Low", "Under 30", Some -1.5
+            "Mid", "Under 30", Some 0.25
+            "High", "Under 30", Some 2.0
+            "Low", "30 to 60", Some 0.75
+            "Mid", "30 to 60", Some 40.0
+            "High", "30 to 60", Some -0.5
+            "Low", "Over 60", Some 1.25
+            "Mid", "Over 60", Some -2.25 ] } ]
+
+let private heatmapRows (case: HeatmapCase) : Row list =
+    case.Cells
+    |> List.mapi (fun k (x, y, v) ->
+        Map.ofList
+            [ yield case.XField, box x
+              yield case.RowField, box y
+              match v with
+              | Some f -> yield case.ValueField, box f
+              | None -> ()
+              match case.WithheldField with
+              | Some f -> yield f, box (List.contains k case.Withheld)
+              | None -> () ])
+
+let private heatmapSpec (case: HeatmapCase) : ChartSpec<obj> =
+    { Defaults.chart with
+        Source = Binding.Static(Some(Seq.ofList (heatmapRows case)))
+        Kind = ChartKind.Heatmap
+        XField = case.XField
+        YFields = [ case.RowField; case.ValueField ]
+        Title = Some(TextSource.Literal case.Title)
+        Subtitle = case.Subtitle |> Option.map TextSource.Literal
+        DataLabels = (if case.DataLabels then Some ChartDataLabels.Ends else None)
+        Scale = case.Scale
+        WithheldField = case.WithheldField }
+
+let private heatmapLowered (case: HeatmapCase) : DrawingSpec =
+    Charts.lower (heatmapSpec case) (Seq.ofList (heatmapRows case))
+
+let private heatmapJson (case: HeatmapCase) : string =
+    let node: Node<obj> =
+        Fuaran.drawingSpec (sprintf "chart-%s" case.Name) (heatmapLowered case)
+
+    CanonicalJson.encodeNode node
+
+/// The neutral input: the top-level family's shape, `yFields` naming the row
+/// field then the value field, `scale` in canonical wire JSON, and the value
+/// cell OMITTED where a row carries none.
+let private heatmapInputJson (case: HeatmapCase) : string =
+    let esc (s: string) =
+        s.Replace("\\", "\\\\").Replace("\"", "\\\"")
+
+    let num = DrawingSvg.formatNum
+
+    let scale =
+        match case.Scale with
+        | None -> ""
+        | Some(ChartScale.Sequential(min, max)) ->
+            let parts =
+                [ min |> Option.map (fun v -> "\"min\":" + num v)
+                  max |> Option.map (fun v -> "\"max\":" + num v) ]
+                |> List.choose id
+
+            sprintf ",\"scale\":{\"$type\":\"Sequential\"%s}" (parts |> List.map ((+) ",") |> String.concat "")
+        | Some(ChartScale.Diverging(midpoint, min, max)) ->
+            let parts =
+                [ midpoint |> Option.map (fun v -> "\"midpoint\":" + num v)
+                  min |> Option.map (fun v -> "\"min\":" + num v)
+                  max |> Option.map (fun v -> "\"max\":" + num v) ]
+                |> List.choose id
+
+            sprintf ",\"scale\":{\"$type\":\"Diverging\"%s}" (parts |> List.map ((+) ",") |> String.concat "")
+
+    let rows =
+        case.Cells
+        |> List.mapi (fun k (x, y, v) ->
+            let value =
+                match v with
+                | Some f -> sprintf ",\"%s\":%s" (esc case.ValueField) (num f)
+                | None -> ""
+
+            let flag =
+                match case.WithheldField with
+                | Some f -> sprintf ",\"%s\":%b" (esc f) (List.contains k case.Withheld)
+                | None -> ""
+
+            sprintf
+                "{\"%s\":\"%s\",\"%s\":\"%s\"%s%s}"
+                (esc case.XField)
+                (esc x)
+                (esc case.RowField)
+                (esc y)
+                value
+                flag)
+        |> String.concat ","
+
+    let withheldField =
+        match case.WithheldField with
+        | Some f -> sprintf ",\"withheldField\":\"%s\"" (esc f)
+        | None -> ""
+
+    sprintf
+        "{\"kind\":\"Heatmap\",\"xField\":\"%s\",\"yFields\":[\"%s\",\"%s\"],\"title\":\"%s\",\"stacked\":false%s%s%s%s,\"data\":[%s]}"
+        (esc case.XField)
+        (esc case.RowField)
+        (esc case.ValueField)
+        (esc case.Title)
+        (match case.Subtitle with
+         | Some s -> sprintf ",\"subtitle\":\"%s\"" (esc s)
+         | None -> "")
+        (if case.DataLabels then ",\"dataLabels\":\"Ends\"" else "")
+        scale
+        withheldField
+        rows
+
+let private rectFills (ds: DrawingSpec) : (string option * string option) list =
+    ds.Shapes
+    |> List.choose (fun sh ->
+        match sh with
+        | Shape.Rectangle(_, _, _, _, _, s) ->
+            let fill =
+                match s.Fill with
+                | Some(Binding.Static f) -> f
+                | _ -> None
+
+            Some(fill, s.MarkId)
+        | _ -> None)
+
+[<Tests>]
+let heatmapTests =
+    let find name =
+        heatmapCases |> List.find (fun c -> c.Name = name)
+
+    let fixtureTests =
+        match tryFindFixtures () with
+        | None ->
+            [ test "heatmap fixtures absent — skipped (standalone checkout)" {
+                  Expect.isTrue true "wire-format-fixtures/ not found"
+              } ]
+        | Some fixturesRoot ->
+            let dir = Path.Combine(fixturesRoot, "chart-lowering", "heatmap")
+
+            if Environment.GetEnvironmentVariable "FUARAN_EMIT_CHART_LOWERING" = "1" then
+                Directory.CreateDirectory dir |> ignore
+
+                for case in heatmapCases do
+                    File.WriteAllText(Path.Combine(dir, case.Name + ".input.json"), heatmapInputJson case)
+                    File.WriteAllText(Path.Combine(dir, case.Name + ".expected.json"), heatmapJson case)
+
+            [ test "every heatmap case lowers byte-identically to its committed golden" {
+                  for case in heatmapCases do
+                      let expectedFile = Path.Combine(dir, case.Name + ".expected.json")
+
+                      Expect.isTrue
+                          (File.Exists expectedFile)
+                          (sprintf "%s: golden missing (regenerate with FUARAN_EMIT_CHART_LOWERING=1)" case.Name)
+
+                      Expect.equal
+                          (File.ReadAllText(Path.Combine(dir, case.Name + ".input.json")))
+                          (heatmapInputJson case)
+                          (sprintf "%s: heatmap input drifted" case.Name)
+
+                      Expect.equal
+                          (heatmapJson case)
+                          (File.ReadAllText expectedFile)
+                          (sprintf "%s: heatmap lowering drifted from golden" case.Name)
+              } ]
+
+    testList
+        "Chart lowering — Heatmap (Phase 2655)"
+        (fixtureTests
+         @ [ test "Heatmap is a lowered kind" { Expect.isTrue (Charts.isLowered ChartKind.Heatmap) "isLowered" }
+
+             test "an absent pair and an empty value cell draw the surface, never a zero" {
+                 let ds = heatmapLowered (find "heatmap-missing-cells")
+                 // 3 columns x 3 rows = 9 cells first, then the legend's swatches.
+                 let grid = rectFills ds |> List.take 9
+                 let absent = grid |> List.filter (fun (fill, _) -> fill = Some "none")
+                 Expect.equal absent.Length 4 "C/Q1 (empty value), B/Q2, A/Q3, C/Q3 draw the surface"
+                 Expect.isTrue (absent |> List.forall (fun (_, mark) -> mark.IsNone)) "an absent cell carries no mark"
+
+                 let zero = grid |> List.find (fun (_, mark) -> mark = Some "n|A|Q2")
+
+                 Expect.equal
+                     (fst zero)
+                     (Some Charts.ChartStyle.defaults.SequentialRamp.[0])
+                     "a ZERO is a value: the lowest stop"
+             }
+
+             test "binning: the extremes take the end stops; a diverging midpoint takes the centre" {
+                 let seq = heatmapLowered (find "heatmap-sequential-bounds")
+                 let ramp = Charts.ChartStyle.defaults.SequentialRamp
+
+                 let fills =
+                     rectFills seq |> List.choose (fun (f, m) -> m |> Option.map (fun _ -> f.Value))
+
+                 Expect.isTrue (fills |> List.forall (fun f -> Array.contains f ramp)) "every cell inks a ramp stop"
+
+                 let div = heatmapLowered (find "heatmap-diverging")
+                 let dramp = Charts.ChartStyle.defaults.DivergingRamp
+
+                 let fillOf mark =
+                     rectFills div |> List.pick (fun (f, m) -> if m = Some mark then f else None)
+
+                 Expect.equal (fillOf "r|Price|Price") dramp.[dramp.Length - 1] "r = 1 is the top stop"
+                 Expect.equal (fillOf "r|Speed|Price") dramp.[1] "r = -0.65 of [-1, 1] is the second stop"
+                 Expect.equal (fillOf "r|Speed|Service") dramp.[3] "r = 0.08 is the centre stop"
+             }
+
+             test "a grid over the cell budget is the typed refusal, never a truncation" {
+                 let case = find "heatmap-refusal-cell-cap"
+
+                 match Charts.tryLower (heatmapSpec case) (Seq.ofList (heatmapRows case)) with
+                 | Error(Charts.TooManyPoints(cells, limit)) ->
+                     Expect.equal cells (101 * 101) "the grid is counted, not the rows"
+                     Expect.equal limit 10_000 "the Phase 790 budget"
+                 | other -> failtestf "expected the cell-budget refusal, got %A" other
+             }
+
+             test "every heatmap mark id resolves back to its row" {
+                 let case = find "heatmap-missing-cells"
+                 let rows = heatmapRows case
+                 let ds = heatmapLowered case
+
+                 for _, mark in rectFills ds do
+                     match mark with
+                     | Some id ->
+                         match Charts.rowOfMarkId (heatmapSpec case) rows id with
+                         | Some row ->
+                             let x = string row.[case.XField]
+                             let y = string row.[case.RowField]
+                             Expect.equal id (sprintf "%s|%s|%s" case.ValueField x y) "the mark names its own pair"
+                         | None -> failtestf "mark %s resolved to no row" id
+                     | None -> ()
+             }
+
+             test "the shipped ramps clear the ramp gate" {
+                 Expect.isEmpty (Charts.ChartStyle.rampFindings Charts.ChartStyle.defaults) "default ramps pass"
+             }
+
+             test "a hand-set ramp that fails is refused at install, naming the stop pair" {
+                 let failing =
+                     { Charts.ChartStyle.defaults with
+                         SequentialRamp = [| "#e8f2f7"; "#e4eef3"; "#8ec2da"; "#5caacb"; "#1a86ac" |] }
+
+                 try
+                     let findings = Charts.tryInstallChartStyle failing
+
+                     let steps =
+                         findings
+                         |> List.choose (fun f ->
+                             match f with
+                             | ChartPalette.PaletteFinding.RampStepTooClose(ramp, a, _, b, _, _, _) -> Some(ramp, a, b)
+                             | _ -> None)
+
+                     Expect.contains steps ("sequential", 1, 2) "stops 1 and 2 merge"
+
+                     let contrast =
+                         findings
+                         |> List.choose (fun f ->
+                             match f with
+                             | ChartPalette.PaletteFinding.RampLabelContrast(ramp, stop, hex, _, _) ->
+                                 Some(ramp, stop, hex)
+                             | _ -> None)
+
+                     Expect.equal
+                         contrast
+                         [ "sequential", 5, "#1a86ac" ]
+                         "the primary itself cannot carry the dark label"
+
+                     let text = findings |> List.map ChartPalette.describe |> String.concat "\n"
+                     Expect.stringContains text "stops 1 #e8f2f7 and 2 #e4eef3" "the refusal names the pair"
+                     Expect.equal (Charts.currentChartStyle ()) Charts.ChartStyle.defaults "the default stays installed"
+                 finally
+                     Charts.clearChartStyle ()
+             }
+
+             test "a diverging ramp needs an odd stop count" {
+                 let even =
+                     { Charts.ChartStyle.defaults with
+                         DivergingRamp = Charts.ChartStyle.defaults.DivergingRamp.[0..5] }
+
+                 match Charts.ChartStyle.rampFindings even with
+                 | [ ChartPalette.PaletteFinding.RampShape("diverging", 6, _) ] -> ()
+                 | other -> failtestf "expected the odd-count refusal, got %A" other
+             } ])
+
+// ── Phase 2809 — missing values and withheld values (`chart-lowering/withheld/`) ─
+//
+// A case is a table of cells rather than a `Case`, because the top-level family's
+// rows are `float list`s and cannot spell a cell that is ABSENT, `null`, a text,
+// or a withheld flag. The vectors live in a SUBFAMILY for the heatmap's reason:
+// the hosts that lower the top-level family enumerate it non-recursively, and
+// fuaran-rs and fuaran-go lower every top-level vector, so a top-level vector
+// would redden both before they adopt the gap and withheld rules (D38).
+
+/// One cell of a withheld-family row. `Absent` OMITS the key, which is a
+/// different document from `Null` on every host and draws the same gap.
+type private WCell =
+    | WNum of float
+    | WText of string
+    | WBool of bool
+    | WNull
+    | WAbsent
+
+type private WithheldCase =
+    {
+        Name: string
+        Kind: ChartKind
+        Title: string
+        XField: string
+        YFields: string list
+        Stacked: bool
+        DataLabels: bool
+        WithheldField: string option
+        /// The columns in the order the input writes them: `XField`, the
+        /// `YFields`, then the withheld flag column when the case has one.
+        Columns: string list
+        Rows: WCell list list
+    }
+
+let private withheldCases: WithheldCase list =
+    let n (v: float) = WNum v
+
+    [ // Grouped bars: an absent cell, a null and a text are all gaps, never zeros.
+      { Name = "bar-missing"
+        Kind = ChartKind.Bar
+        Title = "Responses by region"
+        XField = "region"
+        YFields = [ "wave1"; "wave2" ]
+        Stacked = false
+        DataLabels = true
+        WithheldField = None
+        Columns = [ "region"; "wave1"; "wave2" ]
+        Rows =
+          [ [ WText "North"; n 42.0; n 38.0 ]
+            [ WText "South"; WAbsent; n 51.0 ]
+            [ WText "East"; n 27.0; WNull ]
+            [ WText "West"; WText "n/a"; n 33.0 ] ] }
+      // Stacked bars: a missing middle segment draws nothing and adds nothing,
+      // and a category with no value at all has no bar and no cap label.
+      { Name = "bar-stacked-missing"
+        Kind = ChartKind.Bar
+        Title = "Orders by channel"
+        XField = "month"
+        YFields = [ "web"; "store"; "phone" ]
+        Stacked = true
+        DataLabels = true
+        WithheldField = None
+        Columns = [ "month"; "web"; "store"; "phone" ]
+        Rows =
+          [ [ WText "Jan"; n 30.0; n 20.0; n 10.0 ]
+            [ WText "Feb"; n 34.0; WAbsent; n 12.0 ]
+            [ WText "Mar"; WAbsent; WNull; WAbsent ]
+            [ WText "Apr"; n 41.0; n 22.0; WNull ] ] }
+      // A line breaks at a gap; a series whose last value is missing has no
+      // endpoint label.
+      { Name = "line-missing"
+        Kind = ChartKind.Line
+        Title = "Weekly signups"
+        XField = "week"
+        YFields = [ "trial"; "paid" ]
+        Stacked = false
+        DataLabels = true
+        WithheldField = None
+        Columns = [ "week"; "trial"; "paid" ]
+        Rows =
+          [ [ WText "W1"; n 120.0; n 40.0 ]
+            [ WText "W2"; n 135.0; n 44.0 ]
+            [ WText "W3"; WAbsent; n 47.0 ]
+            [ WText "W4"; n 150.0; n 52.0 ]
+            [ WText "W5"; n 162.0; WNull ] ] }
+      // An area closes each run on the baseline separately.
+      { Name = "area-missing"
+        Kind = ChartKind.Area
+        Title = "Daily active users"
+        XField = "day"
+        YFields = [ "users" ]
+        Stacked = false
+        DataLabels = false
+        WithheldField = None
+        Columns = [ "day"; "users" ]
+        Rows =
+          [ [ WText "Mon"; n 310.0 ]
+            [ WText "Tue"; n 342.0 ]
+            [ WText "Wed"; WNull ]
+            [ WText "Thu"; n 365.0 ]
+            [ WText "Fri"; n 390.0 ] ] }
+      // A stacked area band breaks where its own series is missing, and the bands
+      // above it sit on what is drawn.
+      { Name = "area-stacked-missing"
+        Kind = ChartKind.Area
+        Title = "Traffic by source"
+        XField = "hour"
+        YFields = [ "search"; "social" ]
+        Stacked = true
+        DataLabels = true
+        WithheldField = None
+        Columns = [ "hour"; "search"; "social" ]
+        Rows =
+          [ [ WText "09"; n 50.0; n 20.0 ]
+            [ WText "10"; WAbsent; n 25.0 ]
+            [ WText "11"; n 64.0; n 28.0 ]
+            [ WText "12"; n 70.0; n 31.0 ] ] }
+      // A scatter point with a missing y, and one with a missing x, draw nothing;
+      // the x domain is of the present xs.
+      { Name = "scatter-missing"
+        Kind = ChartKind.Scatter
+        Title = "Height against weight"
+        XField = "height"
+        YFields = [ "weight" ]
+        Stacked = false
+        DataLabels = false
+        WithheldField = None
+        Columns = [ "height"; "weight" ]
+        Rows =
+          [ [ n 150.0; n 52.0 ]
+            [ n 162.0; WAbsent ]
+            [ WNull; n 70.0 ]
+            [ n 175.0; n 74.0 ]
+            [ n 181.0; n 80.0 ] ] }
+      // A pie's missing category has no wedge and no legend entry: `0%` would be
+      // the zero the gap rule removes.
+      { Name = "pie-missing"
+        Kind = ChartKind.Pie
+        Title = "Share of spend"
+        XField = "category"
+        YFields = [ "spend" ]
+        Stacked = false
+        DataLabels = false
+        WithheldField = None
+        Columns = [ "category"; "spend" ]
+        Rows =
+          [ [ WText "Rent"; n 1200.0 ]
+            [ WText "Food"; n 450.0 ]
+            [ WText "Travel"; WAbsent ]
+            [ WText "Other"; n 150.0 ] ] }
+      // Grouped bars with a WITHHELD row: its value cells hold numbers that must
+      // never reach the picture, the tip or the domain (the 900 would move it).
+      { Name = "bar-withheld"
+        Kind = ChartKind.Bar
+        Title = "Mean residual by bin"
+        XField = "bin"
+        YFields = [ "train"; "test" ]
+        Stacked = false
+        DataLabels = true
+        WithheldField = Some "suppressed"
+        Columns = [ "bin"; "train"; "test"; "suppressed" ]
+        Rows =
+          [ [ WText "0-10"; n 12.0; n 14.0; WBool false ]
+            [ WText "10-20"; n 900.0; n 900.0; WBool true ]
+            [ WText "20-30"; n 18.0; n 21.0; WBool false ]
+            [ WText "30-40"; n 9.0; n 11.0; WAbsent ] ] }
+      // Stacked bars with a withheld category: one slot split between its series.
+      { Name = "bar-stacked-withheld"
+        Kind = ChartKind.Bar
+        Title = "Cases by cohort"
+        XField = "site"
+        YFields = [ "early"; "late" ]
+        Stacked = true
+        DataLabels = true
+        WithheldField = Some "withheld"
+        Columns = [ "site"; "early"; "late"; "withheld" ]
+        Rows =
+          [ [ WText "A"; n 40.0; n 25.0; WBool false ]
+            [ WText "B"; WAbsent; WAbsent; WBool true ]
+            [ WText "C"; n 33.0; n 29.0; WBool false ] ] }
+      // A line with a withheld row breaks there and draws one placeholder per
+      // series, side by side on the zero line.
+      { Name = "line-withheld"
+        Kind = ChartKind.Line
+        Title = "Fitted against observed"
+        XField = "decile"
+        YFields = [ "fitted"; "observed" ]
+        Stacked = false
+        DataLabels = false
+        WithheldField = Some "withheld"
+        Columns = [ "decile"; "fitted"; "observed"; "withheld" ]
+        Rows =
+          [ [ WText "D1"; n 0.12; n 0.1; WBool false ]
+            [ WText "D2"; n 0.2; n 0.23; WBool false ]
+            [ WText "D3"; WNull; WNull; WBool true ]
+            [ WText "D4"; n 0.41; n 0.38; WBool false ]
+            [ WText "D5"; n 0.55; n 0.6; WBool false ] ] }
+      // An area with a withheld row; a flag that is not the boolean `true` (a
+      // text "true", a `false`) withholds nothing.
+      { Name = "area-withheld"
+        Kind = ChartKind.Area
+        Title = "Enrolment by month"
+        XField = "month"
+        YFields = [ "enrolled" ]
+        Stacked = false
+        DataLabels = true
+        WithheldField = Some "withheld"
+        Columns = [ "month"; "enrolled"; "withheld" ]
+        Rows =
+          [ [ WText "Jan"; n 80.0; WText "true" ]
+            [ WText "Feb"; n 95.0; WBool false ]
+            [ WText "Mar"; n 3.0; WBool true ]
+            [ WText "Apr"; n 110.0; WNull ] ] }
+      // A scatter's withheld point: the placeholder at its x on the zero line.
+      { Name = "scatter-withheld"
+        Kind = ChartKind.Scatter
+        Title = "Residual against fitted"
+        XField = "fitted"
+        YFields = [ "residual" ]
+        Stacked = false
+        DataLabels = false
+        WithheldField = Some "withheld"
+        Columns = [ "fitted"; "residual"; "withheld" ]
+        Rows =
+          [ [ n 10.0; n -1.5; WBool false ]
+            [ n 20.0; n 0.75; WBool false ]
+            [ n 30.0; n 2.0; WBool true ]
+            [ n 40.0; n -0.5; WBool false ] ] }
+      // A pie's withheld category: no wedge, the shares of the released total,
+      // and an outlined legend swatch reading `name (withheld)`.
+      { Name = "pie-withheld"
+        Kind = ChartKind.Pie
+        Title = "Respondents by age"
+        XField = "band"
+        YFields = [ "count" ]
+        Stacked = false
+        DataLabels = false
+        WithheldField = Some "withheld"
+        Columns = [ "band"; "count"; "withheld" ]
+        Rows =
+          [ [ WText "18-34"; n 140.0; WBool false ]
+            [ WText "35-54"; n 210.0; WBool false ]
+            [ WText "55+"; n 4.0; WBool true ] ] } ]
+
+let private withheldCellValue (c: WCell) : obj option =
+    match c with
+    | WNum v -> Some(box v)
+    | WText s -> Some(box s)
+    | WBool b -> Some(box b)
+    | WNull -> Some(Unchecked.defaultof<obj>)
+    | WAbsent -> None
+
+let private withheldRows (case: WithheldCase) : Row list =
+    case.Rows
+    |> List.map (fun cells ->
+        List.zip case.Columns cells
+        |> List.choose (fun (c, v) -> withheldCellValue v |> Option.map (fun o -> c, o))
+        |> Map.ofList)
+
+let private withheldSpecOf (case: WithheldCase) (rows: Row list) : ChartSpec<obj> =
+    { Defaults.chart with
+        Source = Binding.Static(Some(Seq.ofList rows))
+        Kind = case.Kind
+        XField = case.XField
+        YFields = case.YFields
+        Stacked = case.Stacked
+        Title = Some(TextSource.Literal case.Title)
+        DataLabels = (if case.DataLabels then Some ChartDataLabels.Ends else None)
+        WithheldField = case.WithheldField }
+
+let private withheldLowered (case: WithheldCase) : DrawingSpec =
+    let rows = withheldRows case
+    Charts.lower (withheldSpecOf case rows) (Seq.ofList rows)
+
+let private withheldJson (case: WithheldCase) : string =
+    let node: Node<obj> =
+        Fuaran.drawingSpec (sprintf "chart-%s" case.Name) (withheldLowered case)
+
+    CanonicalJson.encodeNode node
+
+/// The neutral input: the top-level family's shape plus `withheldField`, each
+/// row's cells in the case's column order, an `WAbsent` cell OMITTED.
+let private withheldInputJson (case: WithheldCase) : string =
+    let esc (s: string) =
+        s.Replace("\\", "\\\\").Replace("\"", "\\\"")
+
+    let cell (c: WCell) : string option =
+        match c with
+        | WNum v -> Some(DrawingSvg.formatNum v)
+        | WText s -> Some("\"" + esc s + "\"")
+        | WBool b -> Some(if b then "true" else "false")
+        | WNull -> Some "null"
+        | WAbsent -> None
+
+    let kind =
+        match case.Kind with
+        | ChartKind.Bar -> "Bar"
+        | ChartKind.Line -> "Line"
+        | ChartKind.Area -> "Area"
+        | ChartKind.Pie -> "Pie"
+        | ChartKind.Scatter -> "Scatter"
+        | ChartKind.Heatmap -> "Heatmap"
+
+    let rows =
+        case.Rows
+        |> List.map (fun cells ->
+            List.zip case.Columns cells
+            |> List.choose (fun (c, v) -> cell v |> Option.map (fun t -> "\"" + esc c + "\":" + t))
+            |> String.concat ","
+            |> sprintf "{%s}")
+        |> String.concat ","
+
+    let yFields =
+        case.YFields |> List.map (fun f -> "\"" + esc f + "\"") |> String.concat ","
+
+    sprintf
+        "{\"kind\":\"%s\",\"xField\":\"%s\",\"yFields\":[%s],\"title\":\"%s\",\"stacked\":%s%s%s,\"data\":[%s]}"
+        kind
+        (esc case.XField)
+        yFields
+        (esc case.Title)
+        (if case.Stacked then "true" else "false")
+        (if case.DataLabels then ",\"dataLabels\":\"Ends\"" else "")
+        (match case.WithheldField with
+         | Some f -> sprintf ",\"withheldField\":\"%s\"" (esc f)
+         | None -> "")
+        rows
+
+/// Every shape's `(mark id, tip)` in emission order, groups walked.
+let private marksAndTips (ds: DrawingSpec) : (string option * string option) list =
+    let rec walk (sh: Shape) =
+        let s =
+            match sh with
+            | Shape.Group(_, s)
+            | Shape.Rectangle(_, _, _, _, _, s)
+            | Shape.Line(_, _, _, _, s)
+            | Shape.Polyline(_, s)
+            | Shape.Polygon(_, s)
+            | Shape.Curve(_, s)
+            | Shape.Circle(_, _, _, s)
+            | Shape.Ellipse(_, _, _, _, s)
+            | Shape.Label(_, _, _, s) -> s
+
+        let tip =
+            match s.Tip with
+            | Some(TextSource.Literal t) -> Some t
+            | _ -> None
+
+        let here =
+            if s.MarkId.IsSome || tip.IsSome then
+                [ s.MarkId, tip ]
+            else
+                []
+
+        match sh with
+        | Shape.Group(children, _) -> here @ (children |> List.collect walk)
+        | _ -> here
+
+    ds.Shapes |> List.collect walk
+
+let private descriptionOf (ds: DrawingSpec) : string =
+    match ds.Description with
+    | Some(TextSource.Literal t) -> t
+    | _ -> ""
+
+[<Tests>]
+let withheldTests =
+    let find name =
+        withheldCases |> List.find (fun c -> c.Name = name)
+
+    let fixtureTests =
+        match tryFindFixtures () with
+        | None ->
+            [ test "withheld fixtures absent — skipped (standalone checkout)" {
+                  Expect.isTrue true "wire-format-fixtures/ not found"
+              } ]
+        | Some fixturesRoot ->
+            let dir = Path.Combine(fixturesRoot, "chart-lowering", "withheld")
+
+            if Environment.GetEnvironmentVariable "FUARAN_EMIT_CHART_LOWERING" = "1" then
+                Directory.CreateDirectory dir |> ignore
+
+                for case in withheldCases do
+                    File.WriteAllText(Path.Combine(dir, case.Name + ".input.json"), withheldInputJson case)
+                    File.WriteAllText(Path.Combine(dir, case.Name + ".expected.json"), withheldJson case)
+
+            [ test "every withheld-family case lowers byte-identically to its committed golden" {
+                  for case in withheldCases do
+                      let expectedFile = Path.Combine(dir, case.Name + ".expected.json")
+
+                      Expect.isTrue
+                          (File.Exists expectedFile)
+                          (sprintf "%s: golden missing (regenerate with FUARAN_EMIT_CHART_LOWERING=1)" case.Name)
+
+                      Expect.equal
+                          (File.ReadAllText(Path.Combine(dir, case.Name + ".input.json")))
+                          (withheldInputJson case)
+                          (sprintf "%s: withheld input drifted" case.Name)
+
+                      Expect.equal
+                          (withheldJson case)
+                          (File.ReadAllText expectedFile)
+                          (sprintf "%s: withheld lowering drifted from golden" case.Name)
+              } ]
+
+    testList
+        "Chart lowering — missing and withheld values (Phase 2809)"
+        (fixtureTests
+         @ [ test "a missing value draws no mark and no readout on every lowered arm" {
+                 for name, missing in
+                     [ "bar-missing", [ "wave1|South"; "wave2|East"; "wave1|West" ]
+                       "bar-stacked-missing", [ "store|Feb"; "web|Mar"; "store|Mar"; "phone|Mar"; "phone|Apr" ]
+                       "scatter-missing", [ "weight|162"; "weight|0" ]
+                       "pie-missing", [ "spend|Travel" ] ] do
+                     let marks = marksAndTips (withheldLowered (find name)) |> List.choose fst
+
+                     for id in missing do
+                         Expect.isFalse (List.contains id marks) (sprintf "%s: %s must draw nothing" name id)
+
+                 let tips = marksAndTips (withheldLowered (find "bar-missing")) |> List.choose snd
+                 Expect.isFalse (tips |> List.exists (fun t -> t.EndsWith " · 0")) "no tip reads a zero"
+             }
+
+             test "a Line and an Area break at a gap: one series mark per run" {
+                 let runs name series =
+                     withheldLowered (find name)
+                     |> fun ds -> ds.Shapes
+                     |> List.filter (fun sh ->
+                         match sh with
+                         | Shape.Polyline(_, s) -> s.MarkId = Some series
+                         | _ -> false)
+                     |> List.length
+
+                 Expect.equal (runs "line-missing" "trial") 2 "W1-W2, then W4-W5"
+                 Expect.equal (runs "line-missing" "paid") 1 "W1-W4, the missing W5 shortens it"
+                 Expect.equal (runs "area-missing" "users") 2 "Mon-Tue, then Thu-Fri"
+                 Expect.equal (runs "area-stacked-missing" "search") 2 "09, then 11-12"
+             }
+
+             test "a withheld datum draws an outlined placeholder with its own mark and a 'withheld' readout" {
+                 let ds = withheldLowered (find "bar-withheld")
+
+                 let placeholders =
+                     ds.Shapes
+                     |> List.choose (fun sh ->
+                         match sh with
+                         | Shape.Rectangle(_, _, _, h, _, s) ->
+                             match s.Fill, s.Tip with
+                             | Some(Binding.Static(Some "none")), Some(TextSource.Literal tip) ->
+                                 Some(s.MarkId, tip, h)
+                             | _ -> None
+                         | _ -> None)
+
+                 Expect.equal
+                     (placeholders |> List.map (fun (m, _, _) -> m))
+                     [ Some "train|10-20"; Some "test|10-20" ]
+                     "one placeholder per series at the withheld bin"
+
+                 Expect.equal
+                     (placeholders |> List.map (fun (_, t, _) -> t))
+                     [ "train · 10-20 · withheld"; "test · 10-20 · withheld" ]
+                     "the readout says withheld and carries no number"
+
+                 Expect.isTrue
+                     (placeholders
+                      |> List.forall (fun (_, _, h) -> h = Charts.ChartStyle.defaults.WithheldMarkSize))
+                     "a fixed size: no height implies a value"
+
+                 let words =
+                     marksAndTips ds
+                     |> List.choose snd
+                     |> String.concat " "
+                     |> fun t -> t + " " + descriptionOf ds
+
+                 Expect.isFalse (words.Contains "900") "the withheld number reaches no tip and no summary"
+             }
+
+             test "a withheld value moves no domain: the axis is the released values' axis" {
+                 let case = find "bar-withheld"
+
+                 let released =
+                     { case with
+                         WithheldField = None
+                         Rows = case.Rows |> List.filter (fun r -> r.[3] <> WBool true) }
+
+                 Expect.equal
+                     (yTickTexts (withheldLowered case))
+                     (yTickTexts (withheldLowered released))
+                     "the 900s behind the gate do not widen the axis"
+             }
+
+             test "the summary counts withheld values, and only a chart with one gains the clause" {
+                 Expect.stringContains
+                     (descriptionOf (withheldLowered (find "bar-withheld")))
+                     "2 values withheld"
+                     "one bin of two series"
+
+                 Expect.stringContains
+                     (descriptionOf (withheldLowered (find "pie-withheld")))
+                     "1 value withheld"
+                     "the singular"
+
+                 Expect.isFalse
+                     ((descriptionOf (withheldLowered (find "bar-missing"))).Contains "withheld")
+                     "a missing value is not a withheld one"
+             }
+
+             test "a flag that is not the boolean true withholds nothing" {
+                 let case = find "area-withheld"
+                 let ds = withheldLowered case
+                 let marks = marksAndTips ds |> List.choose fst
+                 Expect.isTrue (List.contains "enrolled|Mar" marks) "Mar (true) is withheld"
+                 Expect.isFalse (List.contains "enrolled|Jan" marks) "Jan's text \"true\" is not a flag"
+             }
+
+             test "a declared withheld field no row sets lowers byte-identically to no declaration" {
+                 let case = find "bar-missing"
+
+                 let declared =
+                     { case with
+                         WithheldField = Some "suppressed"
+                         Columns = case.Columns @ [ "suppressed" ]
+                         Rows = case.Rows |> List.map (fun r -> r @ [ WBool false ]) }
+
+                 Expect.equal (withheldJson declared) (withheldJson case) "nothing withheld, nothing moves"
+             }
+
+             test "a withheld placeholder resolves back to its row" {
+                 let case = find "bar-stacked-withheld"
+                 let rows = withheldRows case
+
+                 Expect.equal
+                     (Charts.rowOfMarkId (withheldSpecOf case rows) rows "late|B")
+                     (Some rows.[1])
+                     "the placeholder carries the datum's identity"
+             }
+
+             test "the pie's shares are of the released total, and the withheld entry says so" {
+                 let ds = withheldLowered (find "pie-withheld")
+
+                 let labels =
+                     ds.Shapes
+                     |> List.choose (fun sh ->
+                         match sh with
+                         | Shape.Label(_, _, TextSource.Literal t, _) -> Some t
+                         | _ -> None)
+
+                 Expect.containsAll labels [ "18-34 (40%)"; "35-54 (60%)"; "55+ (withheld)" ] "released shares"
+             } ])
+
+// ── Phase 2810 — a heatmap draws a withheld cell apart from an absent one ──────
+//
+// The vectors are the `heatmap-withheld-*` cases of `heatmapCases`, emitted into
+// `chart-lowering/heatmap/` by `heatmapTests` like every other heatmap golden. An
+// absent pair keeps 2655's surface tone; a withheld cell draws 2809's placeholder
+// paint over the cell, with its own mark and a readout carrying no number; the
+// ramp gains a `withheld` key only when some cell is withheld.
+
+/// A shape's paint, read as the tests compare it: fill, opacity, mark, tip.
+let private paintOf (s: DrawStyle) : string option * float option * string option * string option =
+    let fill =
+        match s.Fill with
+        | Some(Binding.Static f) -> f
+        | _ -> None
+
+    let opacity =
+        match s.Opacity with
+        | Some(Binding.Static o) -> o
+        | _ -> None
+
+    let tip =
+        match s.Tip with
+        | Some(TextSource.Literal t) -> Some t
+        | _ -> None
+
+    fill, opacity, s.MarkId, tip
+
+let private heatmapCase (name: string) : HeatmapCase =
+    heatmapCases |> List.find (fun c -> c.Name = name)
+
+[<Tests>]
+let heatmapWithheldTests =
+    let style = Charts.ChartStyle.defaults
+
+    let rects (ds: DrawingSpec) =
+        ds.Shapes
+        |> List.choose (fun sh ->
+            match sh with
+            | Shape.Rectangle(x, y, w, h, _, s) -> Some((x, y, w, h), paintOf s)
+            | _ -> None)
+
+    let labelTexts (ds: DrawingSpec) =
+        ds.Shapes
+        |> List.choose (fun sh ->
+            match sh with
+            | Shape.Label(_, _, TextSource.Literal t, _) -> Some t
+            | _ -> None)
+
+    testList
+        "Chart lowering — Heatmap withheld cells (Phase 2810)"
+        [ test "an absent pair and a withheld cell are drawn, tipped and identified differently" {
+              let ds = heatmapLowered (heatmapCase "heatmap-withheld-cells")
+              // 4 columns (A B C D) x 3 rows (Q1 Q2 Q3) = 12 cells first.
+              let grid = rects ds |> List.take 12 |> List.map snd
+
+              let withheld =
+                  grid
+                  |> List.filter (fun (fill, opacity, _, _) -> fill = Some "none" && opacity = Some style.AxisOpacity)
+
+              let absent =
+                  grid
+                  |> List.filter (fun (fill, opacity, _, _) -> fill = Some "none" && opacity = Some style.GridOpacity)
+
+              Expect.equal
+                  (withheld |> List.map (fun (_, _, mark, tip) -> mark, tip))
+                  [ Some "n|A|Q2", Some "Q2 · A · withheld"
+                    Some "n|C|Q3", Some "Q3 · C · withheld"
+                    Some "n|D|Q2", Some "Q2 · D · withheld" ]
+                  "each withheld cell carries its own mark and a readout with no number"
+
+              Expect.equal absent.Length 5 "C/Q1 (empty value), D/Q1, B/Q2, A/Q3 and D/Q3 draw the surface"
+
+              Expect.isTrue
+                  (absent |> List.forall (fun (_, _, mark, tip) -> mark.IsNone && tip.IsNone))
+                  "an absent cell carries neither mark nor readout"
+
+              Expect.isTrue
+                  (grid
+                   |> List.exists (fun (fill, _, mark, _) -> mark = Some "n|B|Q1" && fill <> Some "none"))
+                  "B/Q1's FIRST row is released, so the pair is a value"
+          }
+
+          test "a withheld value is never read: no scale end, no label, no tip and no summary carries it" {
+              let ds = heatmapLowered (heatmapCase "heatmap-withheld-cells")
+              let tips = marksAndTips ds |> List.choose snd
+              let words = String.concat " " (labelTexts ds @ tips) + " " + descriptionOf ds
+              Expect.isFalse (words.Contains "500") "the withheld number reaches nothing"
+              Expect.isFalse (words.Contains "11") "C/Q3's second row is never read: the pair is withheld"
+          }
+
+          test "the ramp gains a withheld key only when a cell is withheld" {
+              let keyOf (ds: DrawingSpec) =
+                  rects ds
+                  |> List.filter (fun ((_, _, w, h), (fill, opacity, mark, _)) ->
+                      fill = Some "none"
+                      && opacity = Some style.AxisOpacity
+                      && mark.IsNone
+                      && w = style.LegendSwatchSize
+                      && h = style.LegendSwatchSize)
+
+              let withKey = heatmapLowered (heatmapCase "heatmap-withheld-cells")
+              Expect.equal (keyOf withKey).Length 1 "one outlined key swatch, chrome (no mark)"
+              Expect.contains (labelTexts withKey) "withheld" "the key is worded"
+              Expect.stringContains (descriptionOf withKey) "3 values withheld" "the summary counts the cells"
+              Expect.stringContains (descriptionOf withKey) "5 cells empty" "absent and withheld counted apart"
+
+              for name in [ "heatmap-missing-cells"; "heatmap-diverging-midpoint" ] do
+                  let ds = heatmapLowered (heatmapCase name)
+                  Expect.isEmpty (keyOf ds) (sprintf "%s: no withheld cell, no key" name)
+                  Expect.isFalse ((descriptionOf ds).Contains "withheld") (sprintf "%s: no clause" name)
+          }
+
+          test "a declared withheld field no row sets lowers byte-identically to no declaration" {
+              for case in heatmapCases |> List.filter (fun c -> c.WithheldField.IsNone) do
+                  let declared =
+                      { case with
+                          WithheldField = Some "suppressed"
+                          Withheld = [] }
+
+                  Expect.equal (heatmapJson declared) (heatmapJson case) (sprintf "%s: nothing moves" case.Name)
+          }
+
+          test "a grid with only withheld cells has no values and labels none" {
+              let ds = heatmapLowered (heatmapCase "heatmap-withheld-only")
+              let cells = rects ds |> List.take 4 |> List.map snd
+
+              Expect.isTrue
+                  (cells
+                   |> List.forall (fun (_, opacity, mark, _) -> opacity = Some style.AxisOpacity && mark.IsSome))
+                  "every cell is a withheld placeholder"
+
+              Expect.stringContains (descriptionOf ds) "no values" "nothing released"
+              Expect.stringContains (descriptionOf ds) "4 values withheld" "every cell counted"
+              Expect.isFalse ((descriptionOf ds).Contains "cells empty") "no cell is absent"
+          }
+
+          test "a withheld cell's mark resolves back to the pair's first row" {
+              let case = heatmapCase "heatmap-withheld-cells"
+              let rows = heatmapRows case
+
+              Expect.equal
+                  (Charts.rowOfMarkId (heatmapSpec case) rows "n|C|Q3")
+                  (Some rows.[8])
+                  "C/Q3 resolves to its first, withheld, row"
+          }
+
+          test "an adapter's rows lose a withheld row's values and keep its identity" {
+              let case = heatmapCase "heatmap-withheld-cells"
+              let rows = heatmapRows case
+              let redacted = Charts.withheldValuesRemoved (heatmapSpec case) rows
+
+              for k, (before, after) in List.indexed (List.zip rows redacted) do
+                  if List.contains k case.Withheld then
+                      Expect.isFalse (after.ContainsKey "n") (sprintf "row %d: the value is gone" k)
+
+                      Expect.equal after (before |> Map.remove "n") (sprintf "row %d: x, row key and flag stay" k)
+                  else
+                      Expect.equal after before (sprintf "row %d: a released row is untouched" k)
+
+              let bar: ChartSpec<obj> =
+                  { Defaults.chart with
+                      Kind = ChartKind.Bar
+                      XField = "x"
+                      YFields = [ "a"; "b" ]
+                      WithheldField = Some "w" }
+
+              let barRows: Row list =
+                  [ Map.ofList [ "x", box "p"; "a", box 1.0; "b", box 2.0; "w", box true ]
+                    Map.ofList [ "x", box "q"; "a", box 3.0; "b", box 4.0; "w", box false ] ]
+
+              Expect.equal
+                  (Charts.withheldValuesRemoved bar barRows)
+                  [ Map.ofList [ "x", box "p"; "w", box true ]; barRows.[1] ]
+                  "a series chart loses every series value of a withheld row"
+
+              Expect.equal
+                  (Charts.withheldValuesRemoved { bar with WithheldField = None } barRows)
+                  barRows
+                  "no declaration, no change"
+          }
+
+          test "the AG adapter hands AG the redacted rows" {
+              let path =
+                  Path.Combine(AppContext.BaseDirectory, "renderer-sources", "client", "AgChartAdapter.fs")
+
+              Expect.isTrue (File.Exists path) (sprintf "renderer source not found at %s" path)
+              let source = File.ReadAllText path
+
+              Expect.stringContains
+                  source
+                  "Fuaran.UI.Charts.withheldValuesRemoved spec rows"
+                  "the adapter redacts withheld rows before AG reads them"
+
+              Expect.isFalse
+                  (source.Contains "\"data\" ==> List.toArray rows")
+                  "the raw rows never reach AG's data option"
+          } ]
+
+// ── Phase 2654 — the mark channels (`chart-lowering/channels/`, D39) ──────────
+//
+// The interval, the size, the declared order, the path and the x reference line.
+// A subfamily for the heatmap's reason: fuaran-rs and fuaran-go lower every
+// top-level vector, so a top-level vector would redden both before they adopt the
+// channels. A case is a table of `WCell`s, so a channel's missing, null and
+// withheld cells are spelled exactly as the 2809 family spells them.
+
+type private ChannelCase =
+    {
+        Name: string
+        Kind: ChartKind
+        Title: string
+        XField: string
+        YFields: string list
+        DataLabels: bool
+        Temporal: bool
+        WithheldField: string option
+        Interval: (string * string) option
+        SizeField: string option
+        SortBy: (string * SortDirection) option
+        PathField: string option
+        /// `(value, label)` x reference lines, then `(value, label)` value-axis
+        /// reference lines — the two cases a quadrant is drawn with.
+        ReferenceX: (float * string option) list
+        ReferenceY: (float * string option) list
+        Columns: string list
+        Rows: WCell list list
+    }
+
+let private channelCase name kind xField yFields columns rows : ChannelCase =
+    { Name = name
+      Kind = kind
+      Title = name
+      XField = xField
+      YFields = yFields
+      DataLabels = false
+      Temporal = false
+      WithheldField = None
+      Interval = None
+      SizeField = None
+      SortBy = None
+      PathField = None
+      ReferenceX = []
+      ReferenceY = []
+      Columns = columns
+      Rows = rows }
+
+let private channelCases: ChannelCase list =
+    let n (v: float) = WNum v
+    let t (s: string) = WText s
+    let w (b: bool) = WBool b
+
+    [ // An error bar per bar: a missing end draws none, a withheld row draws its
+      // placeholder and no interval, a backwards pair draws between its values.
+      { channelCase
+            "bar-interval"
+            ChartKind.Bar
+            "arm"
+            [ "effect" ]
+            [ "arm"; "effect"; "lo"; "hi"; "withheld" ]
+            [ [ t "A"; n 12.0; n 9.0; n 15.0; w false ]
+              [ t "B"; n 18.0; n 14.0; n 22.0; w false ]
+              [ t "C"; n 7.0; WAbsent; n 10.0; w false ]
+              [ t "D"; n 15.0; n 11.0; n 19.0; w true ]
+              [ t "E"; n 10.0; n 13.0; n 6.0; w false ] ] with
+          Interval = Some("lo", "hi")
+          WithheldField = Some "withheld" }
+      // A band under the line, broken where an end is missing.
+      { channelCase
+            "line-interval"
+            ChartKind.Line
+            "month"
+            [ "forecast" ]
+            [ "month"; "forecast"; "lo"; "hi" ]
+            [ [ t "Jan"; n 20.0; n 18.0; n 22.0 ]
+              [ t "Feb"; n 24.0; n 21.0; n 27.0 ]
+              [ t "Mar"; n 23.0; n 19.0; n 28.0 ]
+              [ t "Apr"; n 27.0; WNull; n 33.0 ]
+              [ t "May"; n 30.0; n 24.0; n 37.0 ]
+              [ t "Jun"; n 34.0; n 26.0; n 43.0 ] ] with
+          Interval = Some("lo", "hi") }
+      { channelCase
+            "area-interval"
+            ChartKind.Area
+            "quarter"
+            [ "demand" ]
+            [ "quarter"; "demand"; "lo"; "hi" ]
+            [ [ t "Q1"; n 40.0; n 35.0; n 46.0 ]
+              [ t "Q2"; n 44.0; n 38.0; n 51.0 ]
+              [ t "Q3"; n 41.0; n 33.0; n 50.0 ]
+              [ t "Q4"; n 47.0; n 37.0; n 58.0 ] ] with
+          Interval = Some("lo", "hi") }
+      // An error bar per point; a row with no x draws neither.
+      { channelCase
+            "scatter-interval"
+            ChartKind.Scatter
+            "dose"
+            [ "response" ]
+            [ "dose"; "response"; "lo"; "hi" ]
+            [ [ n 1.0; n 2.5; n 1.8; n 3.1 ]
+              [ n 2.0; n 4.0; n 3.2; n 4.9 ]
+              [ n 4.0; n 5.5; n 4.1; n 6.6 ]
+              [ WAbsent; n 3.0; n 2.0; n 4.0 ]
+              [ n 8.0; n 6.2; n 5.0; n 7.5 ] ] with
+          Interval = Some("lo", "hi") }
+      // Bubbles: area proportional to size; a missing or negative size, or a
+      // withheld row, draws no point; a zero draws at the floor.
+      { channelCase
+            "scatter-size"
+            ChartKind.Scatter
+            "breadth"
+            [ "depth" ]
+            [ "breadth"; "depth"; "fans"; "withheld" ]
+            [ [ n 10.0; n 3.0; n 400.0; w false ]
+              [ n 25.0; n 4.5; n 100.0; w false ]
+              [ n 40.0; n 2.0; n 0.0; w false ]
+              [ n 55.0; n 5.0; WAbsent; w false ]
+              [ n 70.0; n 3.5; n -5.0; w false ]
+              [ n 85.0; n 4.0; n 900.0; w true ]
+              [ n 95.0; n 1.5; n 25.0; w false ] ] with
+          SizeField = Some "fans"
+          WithheldField = Some "withheld" }
+      // A path in season order: rows out of order, a tie kept in source order, a
+      // row with no season off the path, and a withheld row breaking it.
+      { channelCase
+            "scatter-path"
+            ChartKind.Scatter
+            "awareness"
+            [ "liking" ]
+            [ "awareness"; "liking"; "season"; "withheld" ]
+            [ [ n 30.0; n 40.0; n 3.0; w false ]
+              [ n 10.0; n 20.0; n 1.0; w false ]
+              [ n 20.0; n 35.0; n 2.0; w false ]
+              [ n 45.0; n 50.0; n 4.0; w true ]
+              [ n 50.0; n 60.0; n 5.0; w false ]
+              [ n 60.0; n 62.0; n 6.0; w false ]
+              [ n 65.0; n 58.0; n 6.0; w false ]
+              [ n 15.0; n 70.0; WAbsent; w false ] ] with
+          PathField = Some "season"
+          WithheldField = Some "withheld" }
+      // A ranked bar: descending, a missing key and a withheld row last, in
+      // source order; the cap labels follow the bars.
+      { channelCase
+            "bar-sort-desc"
+            ChartKind.Bar
+            "brand"
+            [ "share" ]
+            [ "brand"; "share"; "withheld" ]
+            [ [ t "Ash"; n 12.0; w false ]
+              [ t "Birch"; n 31.0; w false ]
+              [ t "Cedar"; WText "n/a"; w false ]
+              [ t "Douglas"; n 24.0; w true ]
+              [ t "Elm"; n 31.0; w false ]
+              [ t "Fir"; n 8.0; w false ] ] with
+          SortBy = Some("share", SortDirection.Desc)
+          DataLabels = true
+          WithheldField = Some "withheld" }
+      // A sort by another column than the series.
+      { channelCase
+            "pie-sort-asc"
+            ChartKind.Pie
+            "segment"
+            [ "buyers" ]
+            [ "segment"; "buyers"; "rank" ]
+            [ [ t "Loyal"; n 42.0; n 3.0 ]
+              [ t "Lapsed"; n 18.0; n 1.0 ]
+              [ t "New"; n 25.0; n 2.0 ]
+              [ t "Occasional"; n 15.0; n 4.0 ] ] with
+          SortBy = Some("rank", SortDirection.Asc) }
+      // Quadrant lines: an x line inside the data, one beyond it (the x domain
+      // widens), and a value-axis line; labels at the top beside each x line.
+      { channelCase
+            "scatter-reference-x"
+            ChartKind.Scatter
+            "breadth"
+            [ "depth" ]
+            [ "breadth"; "depth" ]
+            [ [ n 12.0; n 2.0 ]
+              [ n 35.0; n 4.0 ]
+              [ n 48.0; n 3.0 ]
+              [ n 71.0; n 5.0 ]
+              [ n 90.0; n 1.0 ] ] with
+          ReferenceX = [ 50.0, Some "Median"; 120.0, Some "Target" ]
+          ReferenceY = [ 3.0, Some "Norm" ] }
+      // Every Scatter channel at once: sized bubbles with intervals on a path,
+      // split into quadrants.
+      { channelCase
+            "scatter-all-channels"
+            ChartKind.Scatter
+            "breadth"
+            [ "depth" ]
+            [ "breadth"; "depth"; "lo"; "hi"; "fans"; "season" ]
+            [ [ n 20.0; n 2.0; n 1.5; n 2.6; n 50.0; n 1.0 ]
+              [ n 35.0; n 3.0; n 2.4; n 3.7; n 120.0; n 2.0 ]
+              [ n 55.0; n 3.5; n 2.8; n 4.1; n 200.0; n 3.0 ]
+              [ n 70.0; n 4.5; n 3.9; n 5.2; n 320.0; n 4.0 ] ] with
+          Interval = Some("lo", "hi")
+          SizeField = Some "fans"
+          PathField = Some "season"
+          ReferenceX = [ 50.0, None ]
+          ReferenceY = [ 3.0, None ] }
+      // NEUTRALISED (the validator refuses each, FUARAN172): a size, a path and
+      // an x reference line on a Bar draw nothing, so the vector is a plain bar.
+      { channelCase
+            "bar-channels-neutralised"
+            ChartKind.Bar
+            "arm"
+            [ "effect" ]
+            [ "arm"; "effect"; "fans"; "season" ]
+            [ [ t "A"; n 12.0; n 4.0; n 2.0 ]; [ t "B"; n 18.0; n 9.0; n 1.0 ] ] with
+          SizeField = Some "fans"
+          PathField = Some "season"
+          ReferenceX = [ 1.0, Some "Ignored" ] }
+      // NEUTRALISED (FUARAN173): an interval over two series names neither.
+      { channelCase
+            "line-interval-two-series-neutralised"
+            ChartKind.Line
+            "month"
+            [ "plan"; "actual" ]
+            [ "month"; "plan"; "actual"; "lo"; "hi" ]
+            [ [ t "Jan"; n 10.0; n 11.0; n 8.0; n 12.0 ]
+              [ t "Feb"; n 12.0; n 14.0; n 9.0; n 15.0 ] ] with
+          Interval = Some("lo", "hi") }
+      // NEUTRALISED (FUARAN174): a temporal axis keeps its dates' order.
+      { channelCase
+            "line-sort-temporal-neutralised"
+            ChartKind.Line
+            "day"
+            [ "visits" ]
+            [ "day"; "visits" ]
+            [ [ t "2026-01-01"; n 30.0 ]
+              [ t "2026-01-08"; n 10.0 ]
+              [ t "2026-01-15"; n 20.0 ] ] with
+          Temporal = true
+          SortBy = Some("visits", SortDirection.Desc) } ]
+
+let private channelRows (case: ChannelCase) : Row list =
+    case.Rows
+    |> List.map (fun cells ->
+        List.zip case.Columns cells
+        |> List.choose (fun (c, v) -> withheldCellValue v |> Option.map (fun o -> c, o))
+        |> Map.ofList)
+
+let private channelSpecOf (case: ChannelCase) (rows: Row list) : ChartSpec<obj> =
+    let annotations =
+        (case.ReferenceY
+         |> List.map (fun (v, l) -> ChartAnnotation.ReferenceLine(v, l |> Option.map TextSource.Literal)))
+        @ (case.ReferenceX
+           |> List.map (fun (v, l) -> ChartAnnotation.ReferenceLineX(v, l |> Option.map TextSource.Literal)))
+
+    { Defaults.chart with
+        Source = Binding.Static(Some(Seq.ofList rows))
+        Kind = case.Kind
+        XField = case.XField
+        YFields = case.YFields
+        Title = Some(TextSource.Literal case.Title)
+        DataLabels = (if case.DataLabels then Some ChartDataLabels.Ends else None)
+        XScale = (if case.Temporal then Some ChartXScale.Temporal else None)
+        WithheldField = case.WithheldField
+        Interval = case.Interval |> Option.map (fun (lo, hi) -> { Low = lo; High = hi })
+        SizeField = case.SizeField
+        SortBy = case.SortBy |> Option.map (fun (f, d) -> { Field = f; Direction = d })
+        PathField = case.PathField
+        Annotations = (if List.isEmpty annotations then None else Some annotations) }
+
+let private channelLowered (case: ChannelCase) : DrawingSpec =
+    let rows = channelRows case
+    Charts.lower (channelSpecOf case rows) (Seq.ofList rows)
+
+let private channelJson (case: ChannelCase) : string =
+    CanonicalJson.encodeNode (Fuaran.drawingSpec (sprintf "chart-%s" case.Name) (channelLowered case))
+
+/// The neutral input: the withheld family's contract plus the channel members,
+/// each record's members and each annotation's members in canonical (Ordinal)
+/// order, every member omitted when absent.
+let private channelInputJson (case: ChannelCase) : string =
+    let esc (s: string) =
+        s.Replace("\\", "\\\\").Replace("\"", "\\\"")
+
+    let str (s: string) = "\"" + esc s + "\""
+
+    let cell (c: WCell) : string option =
+        match c with
+        | WNum v -> Some(DrawingSvg.formatNum v)
+        | WText s -> Some(str s)
+        | WBool b -> Some(if b then "true" else "false")
+        | WNull -> Some "null"
+        | WAbsent -> None
+
+    let kind =
+        match case.Kind with
+        | ChartKind.Bar -> "Bar"
+        | ChartKind.Line -> "Line"
+        | ChartKind.Area -> "Area"
+        | ChartKind.Pie -> "Pie"
+        | ChartKind.Scatter -> "Scatter"
+        | ChartKind.Heatmap -> "Heatmap"
+
+    let rows =
+        case.Rows
+        |> List.map (fun cells ->
+            List.zip case.Columns cells
+            |> List.choose (fun (c, v) -> cell v |> Option.map (fun t -> str c + ":" + t))
+            |> String.concat ","
+            |> sprintf "{%s}")
+        |> String.concat ","
+
+    let opt (key: string) (value: string option) =
+        value |> Option.map (fun v -> "," + str key + ":" + v) |> Option.defaultValue ""
+
+    let line (tag: string) (v: float, label: string option) =
+        "{\"$type\":"
+        + str tag
+        + (label |> Option.map (fun l -> ",\"label\":" + str l) |> Option.defaultValue "")
+        + ",\"value\":"
+        + DrawingSvg.formatNum v
+        + "}"
+
+    let annotations =
+        (case.ReferenceY |> List.map (line "ReferenceLine"))
+        @ (case.ReferenceX |> List.map (line "ReferenceLineX"))
+
+    "{\"kind\":"
+    + str kind
+    + ",\"xField\":"
+    + str case.XField
+    + ",\"yFields\":["
+    + (case.YFields |> List.map str |> String.concat ",")
+    + "],\"title\":"
+    + str case.Title
+    + ",\"stacked\":false"
+    + (if case.DataLabels then ",\"dataLabels\":\"Ends\"" else "")
+    + (if case.Temporal then ",\"xScale\":\"Temporal\"" else "")
+    + opt "withheldField" (case.WithheldField |> Option.map str)
+    + opt
+        "interval"
+        (case.Interval
+         |> Option.map (fun (lo, hi) -> "{\"high\":" + str hi + ",\"low\":" + str lo + "}"))
+    + opt "sizeField" (case.SizeField |> Option.map str)
+    + opt
+        "sortBy"
+        (case.SortBy
+         |> Option.map (fun (f, d) ->
+             "{\"direction\":"
+             + (match d with
+                | SortDirection.Asc -> "\"asc\""
+                | SortDirection.Desc -> "\"desc\"")
+             + ",\"field\":"
+             + str f
+             + "}"))
+    + opt "pathField" (case.PathField |> Option.map str)
+    + (if List.isEmpty annotations then
+           ""
+       else
+           ",\"annotations\":[" + String.concat "," annotations + "]")
+    + ",\"data\":["
+    + rows
+    + "]}"
+
+/// The lowering of `case` with every channel removed.
+let private channelFree (case: ChannelCase) : ChannelCase =
+    { case with
+        Interval = None
+        SizeField = None
+        SortBy = None
+        PathField = None
+        ReferenceX = [] }
+
+[<Tests>]
+let channelTests =
+    let find name =
+        channelCases |> List.find (fun c -> c.Name = name)
+
+    let fixtureTests =
+        match tryFindFixtures () with
+        | None ->
+            [ test "channel fixtures absent — skipped (standalone checkout)" {
+                  Expect.isTrue true "wire-format-fixtures/ not found"
+              } ]
+        | Some fixturesRoot ->
+            let dir = Path.Combine(fixturesRoot, "chart-lowering", "channels")
+
+            if Environment.GetEnvironmentVariable "FUARAN_EMIT_CHART_LOWERING" = "1" then
+                Directory.CreateDirectory dir |> ignore
+
+                for case in channelCases do
+                    File.WriteAllText(Path.Combine(dir, case.Name + ".input.json"), channelInputJson case)
+                    File.WriteAllText(Path.Combine(dir, case.Name + ".expected.json"), channelJson case)
+
+            [ test "every channel-family case lowers byte-identically to its committed golden" {
+                  for case in channelCases do
+                      let expectedFile = Path.Combine(dir, case.Name + ".expected.json")
+
+                      Expect.isTrue
+                          (File.Exists expectedFile)
+                          (sprintf "%s: golden missing (regenerate with FUARAN_EMIT_CHART_LOWERING=1)" case.Name)
+
+                      Expect.equal
+                          (File.ReadAllText(Path.Combine(dir, case.Name + ".input.json")))
+                          (channelInputJson case)
+                          (sprintf "%s: channel input drifted" case.Name)
+
+                      Expect.equal
+                          (channelJson case)
+                          (File.ReadAllText expectedFile)
+                          (sprintf "%s: channel lowering drifted from golden" case.Name)
+              } ]
+
+    testList
+        "Chart lowering — mark channels (Phase 2654)"
+        (fixtureTests
+         @ [ test "a neutralised channel lowers byte-identically to its absence" {
+                 for name in
+                     [ "bar-channels-neutralised"
+                       "line-interval-two-series-neutralised"
+                       "line-sort-temporal-neutralised" ] do
+                     let case = find name
+
+                     Expect.equal
+                         (channelJson case)
+                         (channelJson (channelFree case))
+                         (sprintf "%s: the kind does not read the channel" name)
+             }
+
+             test "an error bar is a stem and two caps with a numbered readout; no interval at a gap or a withheld row" {
+                 let tips =
+                     marksAndTips (channelLowered (find "bar-interval"))
+                     |> List.choose snd
+                     |> List.filter (fun t -> t.Contains " – ")
+
+                 Expect.equal
+                     tips
+                     [ for t in [ "effect · A · 9 – 15"; "effect · B · 14 – 22"; "effect · E · 6 – 13" ] do
+                           yield! [ t; t; t ] ]
+                     "three lines per interval, the backwards pair normalised; C (missing end) and D (withheld) draw none"
+             }
+
+             test "a line's interval band breaks where an end is missing" {
+                 let bands =
+                     (channelLowered (find "line-interval")).Shapes
+                     |> List.filter (fun sh ->
+                         match sh with
+                         | Shape.Polygon(_, s) ->
+                             match s.Tip with
+                             | Some(TextSource.Literal "forecast · interval") -> true
+                             | _ -> false
+                         | _ -> false)
+
+                 Expect.equal bands.Length 2 "Jan-Mar and May-Jun"
+             }
+
+             test "a sized point's area follows its size; a missing, negative or withheld size draws no point" {
+                 let radii =
+                     (channelLowered (find "scatter-size")).Shapes
+                     |> List.choose (fun sh ->
+                         match sh with
+                         | Shape.Circle(_, _, r, _) -> Some r
+                         | _ -> None)
+
+                 let style = Charts.ChartStyle.defaults
+                 // 400 is the largest drawn (900 is withheld): it takes the maximum.
+                 Expect.equal
+                     radii
+                     [ style.ScatterMaxRadius; 8.0; style.ScatterMinRadius; 4.0 ]
+                     "400, 100 (half the radius: a quarter of the area), 0 (the floor), 25"
+             }
+
+             test "a path joins in path order and breaks at a withheld point" {
+                 let paths =
+                     (channelLowered (find "scatter-path")).Shapes
+                     |> List.choose (fun sh ->
+                         match sh with
+                         | Shape.Polyline(points, _) -> Some(List.length points)
+                         | _ -> None)
+
+                 Expect.equal paths [ 3; 3 ] "seasons 1-3, then 5, 6, 6 (the tie in source order)"
+             }
+
+             test "a declared order sorts the bars and puts missing and withheld keys last" {
+                 let marks =
+                     marksAndTips (channelLowered (find "bar-sort-desc"))
+                     |> List.choose fst
+                     |> List.filter (fun m -> m.StartsWith "share|")
+
+                 Expect.equal
+                     marks
+                     [ "share|Birch"; "share|Elm"; "share|Ash"; "share|Fir"; "share|Douglas" ]
+                     "31 and 31 in source order, then 12, 8; Cedar draws no bar and the withheld Douglas its placeholder, last"
+
+                 Expect.stringContains
+                     (descriptionOf (channelLowered (find "bar-sort-desc")))
+                     "Sorted by share, descending"
+                     "the summary states the order"
+             }
+
+             test "the x reference lines stand across the plot and widen the x domain" {
+                 let ds = channelLowered (find "scatter-reference-x")
+                 let marks = marksAndTips ds |> List.choose fst
+
+                 Expect.containsAll
+                     marks
+                     [ "annotation|reference|0"
+                       "annotation|referencex|0"
+                       "annotation|referencex|1" ]
+                     "one value-axis line and two x lines"
+
+                 Expect.stringContains (descriptionOf ds) "2 x reference lines" "the summary names them"
+
+                 Expect.stringContains
+                     (descriptionOf ds)
+                     "5 points: 0 to 150"
+                     "the x extent reaches past the line beyond the data (120)"
+             }
+
+             test "a withheld row's channel values reach no readout" {
+                 for name, secret in [ "bar-interval", "11 – 19"; "scatter-size", "900"; "bar-sort-desc", "24" ] do
+                     let ds = channelLowered (find name)
+
+                     let words =
+                         marksAndTips ds
+                         |> List.choose snd
+                         |> String.concat " "
+                         |> fun t -> t + " " + descriptionOf ds
+
+                     Expect.isFalse (words.Contains secret) (sprintf "%s: '%s' is withheld" name secret)
+             }
+
+             test "an adapter's rows lose a withheld row's interval ends and size, and arrive in the declared order" {
+                 let spec: ChartSpec<obj> =
+                     { Defaults.chart with
+                         Kind = ChartKind.Bar
+                         XField = "x"
+                         YFields = [ "a" ]
+                         WithheldField = Some "w"
+                         Interval = Some { Low = "lo"; High = "hi" }
+                         SortBy =
+                             Some
+                                 { Field = "a"
+                                   Direction = SortDirection.Desc } }
+
+                 let rows: Row list =
+                     [ Map.ofList [ "x", box "p"; "a", box 5.0; "lo", box 4.0; "hi", box 6.0; "w", box true ]
+                       Map.ofList [ "x", box "q"; "a", box 1.0; "lo", box 0.0; "hi", box 2.0; "w", box false ]
+                       Map.ofList [ "x", box "r"; "a", box 3.0; "lo", box 2.0; "hi", box 4.0; "w", box false ] ]
+
+                 Expect.equal
+                     (Charts.withheldValuesRemoved spec rows |> List.head)
+                     (Map.ofList [ "x", box "p"; "w", box true ])
+                     "the withheld row keeps only its identity"
+
+                 Expect.equal
+                     (Charts.sortedRows spec rows |> List.map (fun r -> r.["x"]))
+                     [ box "r"; box "q"; box "p" ]
+                     "descending by a, the withheld row last"
+
+                 let path =
+                     Path.Combine(AppContext.BaseDirectory, "renderer-sources", "client", "AgChartAdapter.fs")
+
+                 Expect.stringContains
+                     (File.ReadAllText path)
+                     "|> Fuaran.UI.Charts.sortedRows spec"
+                     "the AG adapter hands AG the rows in the declared order"
+             } ])

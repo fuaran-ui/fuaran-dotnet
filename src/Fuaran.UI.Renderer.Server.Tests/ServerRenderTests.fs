@@ -156,10 +156,10 @@ let serverRenderTests =
               Expect.isFalse (contains "fuaran-chart-ssr-placeholder" chartHtml) "no placeholder for a lowered chart"
           }
 
-          test "Chart (not-yet-lowered kind) renders a deterministic placeholder, not a blank" {
-              // Heatmap is the one remaining kind with no lowering rule (the
-              // 636/637/638 arms lowered Scatter/Area/Pie), so it keeps the
-              // client-hydration placeholder — deterministic, never blank.
+          test "Chart (Heatmap) lowers to a first-party Drawing, not a placeholder" {
+              // Phase 2655 — Heatmap was the last kind without a lowering rule
+              // and kept the client-hydration placeholder; it now draws its cell
+              // grid server-side like every other kind.
               let chart: Node<obj> =
                   Fuaran.chart
                       "chart"
@@ -169,18 +169,18 @@ let serverRenderTests =
                               Binding.Static(
                                   Some(
                                       Seq.ofList
-                                          [ (Map.ofList [ "x", box 1 ]: Row)
-                                            Map.ofList [ "x", box 2 ]
-                                            Map.ofList [ "x", box 3 ] ]
+                                          [ (Map.ofList [ "x", box "a"; "row", box "r1"; "v", box 1.0 ]: Row)
+                                            Map.ofList [ "x", box "b"; "row", box "r1"; "v", box 2.0 ]
+                                            Map.ofList [ "x", box "a"; "row", box "r2"; "v", box 3.0 ] ]
                                   )
                               )
                           XField = "x"
-                          YFields = [ "y" ] }
+                          YFields = [ "row"; "v" ] }
 
               let chartHtml = Render.render BindingResolver.empty chart
-              Expect.isTrue (contains "fuaran-chart-ssr-placeholder" chartHtml) "placeholder class"
-              Expect.isTrue (contains "data-fuaran-ssr-placeholder=\"Chart\"" chartHtml) "placeholder marker"
-              Expect.isTrue (contains "data-fuaran-row-count=\"3\"" chartHtml) "deterministic row count"
+              Expect.isTrue (contains "class=\"fuaran-drawing\"" chartHtml) "lowered Drawing svg"
+              Expect.isTrue (contains "fuaran-drawing-rect" chartHtml) "cell rectangles"
+              Expect.isFalse (contains "fuaran-chart-ssr-placeholder" chartHtml) "no placeholder for a lowered chart"
           }
 
           test "Link href is sanitised — javascript: collapses to about:blank" {

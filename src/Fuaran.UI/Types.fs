@@ -1799,6 +1799,23 @@ and ChartAnnotationX = Generated.ChartAnnotationX
 /// would draw a picture they did not describe.
 and ChartAnnotationRange = Generated.ChartAnnotationRange
 
+/// Phase 2655 — a chart's DECLARED colour scale (`ChartSpec.Scale`), closing the
+/// 2026-05-28 "Gap 6" deferral as a scale rather than a per-cell colour.
+/// `Sequential` runs light to dark from `min` to `max`; `Diverging` meets at a
+/// light neutral `midpoint` (absent: zero). Every absent bound is the data's own
+/// extent. No colour crosses the wire: the lowering picks the ramp from the
+/// installed `ChartStyle`, whose ramps are gated at install. Meaningful on
+/// `Heatmap` only; any other kind carrying it is refused pre-emit (FUARAN169).
+and ChartScale = Generated.ChartScale
+
+/// Phase 2654 (D39) — a chart's INTERVAL channel (`ChartSpec.Interval`): the
+/// columns holding each datum's low and high ends, on the single series.
+and ChartInterval = Generated.ChartInterval
+
+/// Phase 2654 (D39) — a chart's declared row ORDER (`ChartSpec.SortBy`): the
+/// column whose numeric value orders the rows before layout, and the direction.
+and ChartSort = Generated.ChartSort
+
 /// Author-facing carrier for a **static read-only table** (Phase 393). No longer a
 /// `VisKind` case of its own — `Fuaran.table` lowers it into the read-only mode of
 /// `NodeKind.DataGrid` (`GridSpec.StaticRows`), so one tabular kind owns both the

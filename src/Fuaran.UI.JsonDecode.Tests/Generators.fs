@@ -1044,6 +1044,13 @@ let private genChartAnnotation: Gen<ChartAnnotation> =
               let! label = genOption genTextSource
               return ChartAnnotation.ReferenceLine(value, label)
           }
+          // Phase 2654 — the reference line on a continuous x axis; finite on
+          // the decoder's rule, like the value-axis line's.
+          gen {
+              let! value = genFiniteFloat
+              let! label = genOption genTextSource
+              return ChartAnnotation.ReferenceLineX(value, label)
+          }
           gen {
               let! at = genChartAnnotationX
               let! label = genOption genTextSource
@@ -1080,6 +1087,23 @@ let private genChartAnnotation: Gen<ChartAnnotation> =
               return ChartAnnotation.RangeBand(ordered, label)
           } ]
 
+/// Phase 2655 — a declared colour scale, every bound optional. `genFiniteFloat`
+/// for the bounds: a NaN bound would make the round-trip property compare a value
+/// unequal to itself, which says nothing about the codec.
+let private genChartScale: Gen<ChartScale> =
+    Gen.oneof
+        [ gen {
+              let! min = genOption genFiniteFloat
+              let! max = genOption genFiniteFloat
+              return ChartScale.Sequential(min, max)
+          }
+          gen {
+              let! midpoint = genOption genFiniteFloat
+              let! min = genOption genFiniteFloat
+              let! max = genOption genFiniteFloat
+              return ChartScale.Diverging(midpoint, min, max)
+          } ]
+
 let private genChartSpec: Gen<ChartSpec<obj>> =
     gen {
         let! kind = genChartKind
@@ -1107,6 +1131,31 @@ let private genChartSpec: Gen<ChartSpec<obj>> =
         // annotation value, so a generated NaN would make the round-trip
         // property fail on a document the codec is correct to reject.
         let! annotations = genOption (genSmallList genChartAnnotation)
+        // Phase 2655 — the declared colour scale (absent = sequential over the
+        // data, so the option arm matters here).
+        let! scale = genOption genChartScale
+        // Phase 2809 — the withheld flag column (absent = nothing withheld).
+        let! withheldField = genOption genNonEmptyString
+        // Phase 2654 — the mark channels, each absent by default.
+        let! interval =
+            genOption (
+                Gen.map2
+                    (fun low high -> ({ Low = low; High = high }: ChartInterval))
+                    genNonEmptyString
+                    genNonEmptyString
+            )
+
+        let! sizeField = genOption genNonEmptyString
+
+        let! sortBy =
+            genOption (
+                Gen.map2
+                    (fun field direction -> ({ Field = field; Direction = direction }: ChartSort))
+                    genNonEmptyString
+                    (Gen.elements [ SortDirection.Asc; SortDirection.Desc ])
+            )
+
+        let! pathField = genOption genNonEmptyString
         let! stacked = genBool
         // Phase 2568 — a query-bound source beside the inline one. `genSmallList`
         // already draws the empty `yFields` a quarter of the time; over a `Query`
@@ -1132,6 +1181,12 @@ let private genChartSpec: Gen<ChartSpec<obj>> =
                 DataLabels = dataLabels
                 XScale = xScale
                 Annotations = annotations
+                Scale = scale
+                WithheldField = withheldField
+                Interval = interval
+                SizeField = sizeField
+                SortBy = sortBy
+                PathField = pathField
                 Stacked = stacked }
     }
 

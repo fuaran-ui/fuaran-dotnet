@@ -552,6 +552,12 @@ let chart<'Msg> : ChartSpec<'Msg> =
       DataLabels = Option.None
       XScale = Option.None
       Annotations = Option.None
+      Scale = Option.None
+      WithheldField = Option.None
+      Interval = Option.None
+      SizeField = Option.None
+      SortBy = Option.None
+      PathField = Option.None
       OnPointClick = Option.None
       Stacked = false }
 

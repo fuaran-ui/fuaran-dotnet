@@ -10,6 +10,170 @@ consequence.
 
 ---
 
+## 2026-11-22 — D39: a mark channel is an optional field of the one `Chart` kind; orientation and facets are layout, not channels
+
+**Decided (Phase 2654).** A CHANNEL names a column of the chart's rows that a mark reads besides its x and its value:
+an `interval` (`ChartInterval`: `low`, `high`), a `sizeField`, a `sortBy` (`ChartSort`: `field`, `direction`), a
+`pathField`, and the `ChartAnnotation.ReferenceLineX` address. Each is an optional member of `ChartSpec`, omitted
+when absent, so every pre-2654 document and golden is byte-unchanged. The normative rules are WIRE_FORMAT §3.6.37.
+Seven rulings follow; 2656's charter walk argues against the first.
+
+1. **What is a channel and what would be a kind.** A channel adds a dimension to a mark the kind already draws,
+   and leaves the kind's geometry otherwise alone: an error bar qualifies a bar or a point, a size scales a point,
+   a path joins points that are already drawn, an order permutes rows the arm already lays out, a vertical line is
+   an annotation at an address the axis already has. A KIND is the line a channel cannot cross: a new mark (a
+   funnel's trapezoid, a waterfall's floating step, a dumbbell's paired dot), a new axis arrangement, or a new
+   reading of the rows (a slope's two columns as two times). The test is whether the arm's own geometry is still
+   the picture with the field removed; when it is not, the field is a kind in disguise and belongs in 2656.
+2. **Orientation and facets are not channels of this phase.** Both are LAYOUT: a horizontal bar transposes the
+   frame (the category axis, its label fitting and tilt, the value ticks, the data labels and every annotation move
+   axis), and a facet grid replicates the frame per facet under shared scales. Neither adds a dimension to a mark.
+   They are left to a successor phase that owns the frame (the existing `Orientation` enum is the vocabulary
+   `orientation` will reuse); nothing of them is on the wire, so no member is admitted ahead of a lowering.
+3. **Combination rules are named refusals, and a lowering handed one anyway NEUTRALISES it.** A channel on a kind
+   that does not read it is `FUARAN172` (`ChartChannelKindUnsupported`, naming the channel and the kinds that read
+   it); an interval over other than one series is `FUARAN173`; an order on a temporal axis is `FUARAN174`; an
+   x reference line on a temporal Scatter is `FUARAN139`'s axis mismatch (`EventMarker` is the date address). The
+   lowering of such a chart is byte-identical to the chart without the channel: Phase 882's treatment of `xScale`
+   on a Pie, and three corpus vectors pin it. Every column a channel names is grounded like a series (`FUARAN086`)
+   and read as a number (`FUARAN087`), the 2568 grounding path, not a second one.
+4. **The interval belongs to one series.** It names one low and one high column, so it is read only where
+   `yFields` names exactly one series. On the per-datum arms (Bar, Scatter) it is an error bar in the axis ink
+   after the mark; on the series arms (Line, Area) it is a translucent band in the series colour behind the series.
+   A backwards pair is drawn between its two values (an interval is unordered data, unlike an authored range band,
+   whose backwards pair is an authoring mistake that FUARAN141 refuses).
+5. **The size is area, with a floor.** Above `ScatterMinRadius` a point's area is proportional to its size value,
+   the largest drawn taking `ScatterMaxRadius`; radius proportional to value overstates large values
+   quadratically. A size key (a legend of bubble sizes) is not drawn; the summary names the size column.
+6. **The gap and withheld rules hold on every channel (D38).** A missing low or high end draws no interval; a
+   missing or negative size draws no point; a missing sort key sorts last in source order; a missing path order
+   takes the row off the path. A WITHHELD row reads no interval and no size, its sort key is treated as missing
+   (its position must not say what its value is), and its point, absent, BREAKS a path rather than being joined
+   across: the path order is a position and is still read, so a withheld season is a visible break. The AG adapter
+   strips a withheld row's interval ends and size with its series values (`Charts.withheldValuesRemoved`).
+7. **The heatmap reads no channel.** Its row and value fields are the grid; an interval, a size, a path and an x
+   reference line have no mark there to qualify, and a declared order would fight the grid's own row and column
+   order. Each is refused there by FUARAN172.
+
+**Rejected.** Per-series intervals (a list of `{ series; low; high }`): no consumer asked for it, and one interval
+per chart is the smallest correct change. A text sort (ordering categories alphabetically): the source already
+supplies an order, and a numeric key keeps every host's comparison identical. Mapping the channels onto AG Charts:
+the community package has no error bar, and its bubble and cross-line series are a mapping of their own; the AG
+path draws the declared order and declares the rest as gaps.
+
+## 2026-11-22 — D38: a withheld value is declared by a flag column the chart names; a missing value is a gap, never a zero
+
+**Decided (Phase 2809).** A chart fed from governed data meets three kinds of value: a **released** one; an **absent**
+one (no records, or a pair that does not occur); and a **withheld** one, where a disclosure gate suppressed a value
+that does exist. Until this phase the language could not say the third, and the shipped arms said the first instead:
+the lowering read a missing or non-numeric cell as `0.0`, so a missing bar was drawn at height zero, its tip read a
+zero and the summary counted it as data. For a withheld value that is the one reading that is certainly false. Six
+rulings follow.
+
+1. **The charter walk: a declared field, not a cell marker.** `ChartSpec.withheldField` (optional) names a column of
+   the chart's rows. A row whose cell in that column is the boolean `true` is WITHHELD: every series value of that row
+   is withheld, whatever its own value cells hold. Any other cell (`false`, empty, absent) leaves the row to its
+   values. The rejected alternative was a cell-level marker: a sentinel in a value column (a reserved string, a
+   tagged object). A sentinel in a value column is a value. It needs a reserved spelling every host decodes alike,
+   it collides with real data that happens to spell it, and it turns every value reader into a three-way reader. A
+   flag column is ordinary data a gate already produces beside its value, and the chart only has to be told which
+   column it is. The withholding is per ROW because the consumer's unit of suppression is the row (a bin, a
+   category, a cell of a heatmap, which is one row per cell): a row's series withheld one by one would need a flag
+   per series, and nothing asks for it yet.
+2. **A value is PRESENT or it is MISSING, on every arm.** Present is a finite number, an exact decimal the float
+   range holds, or a boolean (read 1/0, as the heatmap arm and FUARAN087 already read it). Everything else is
+   missing: an absent key, a null, a text, a date, a non-finite number. One reader decides it for every arm
+   (`presentValueOf`, which the Heatmap arm's own reader of the same rule folded into).
+3. **A missing value is a gap.** No bar, no point, no wedge; a Line or an Area breaks into the maximal runs of
+   consecutive present points, and each run draws exactly as a whole series drew before. A missing or withheld
+   value adds nothing to a stack's running sum, to the value domain, to a pie's total, to the peak or to a data
+   label, so every domain is computed from present values only. On a Pie a missing category draws no wedge and no
+   legend entry: a `0%` entry would be the zero this ruling removes. This changes the geometry of an input the
+   shipped arms drew wrongly, so it is recorded as a **correction**, not a redesign; the one golden that exercised
+   it (`derived-series/derived-mixed-columns`, an empty `orders` cell) is re-cut.
+4. **A withheld value draws a placeholder that implies no value.** An outlined, unfilled square of
+   `ChartStyle.WithheldMarkSize`, centred on the value axis's zero line, inked like the axis (`currentColor` at the
+   axis opacity, so it is theme-invariant and never reads as a series colour). A grouped bar's placeholder spans
+   its own bar slot; a stacked bar's slot is split evenly between its series; on a Line, an Area or a Scatter the
+   series' placeholders sit side by side, centred on the datum's x. Each carries the datum's own mark identity
+   (`series|category`, so a click resolves the row) and the tip `series · category · withheld`, with no number. On
+   a Pie the placeholder is the category's legend swatch, outlined, and its entry reads `name (withheld)`; the
+   shares are of the released total. A Scatter row whose x is missing has no position and draws nothing.
+5. **The summary says so.** After the peak clause, `1 value withheld` or `<k> values withheld`, where `k` is the
+   withheld rows times the series count, under the summary's existing caps. A chart with nothing withheld gains no
+   clause, so every pre-2809 summary is byte-unchanged.
+6. **The validator grounds the declaration.** A `withheldField` naming a column the chart's source does not produce
+   is FUARAN086 (`ChartFieldUngrounded`), the rule every other chart field already answers to. One naming a
+   decidable column that is not boolean is FUARAN171 (`ChartWithheldFieldNotBoolean`): a text column spelling
+   "yes" would never withhold anything, silently. FUARAN087's message no longer says the lowering reads a
+   non-numeric cell as `0.0`; it draws a gap, so such a series draws nothing.
+
+**Rejected.** Drawing a withheld value at a fixed height, or at the category's mean, or at the axis floor: each is a
+number the data did not state. Counting a withheld value in a stack at zero while drawing a placeholder: a stack is a
+sum of what is shown. A per-point marker on a Line run of one point: a run draws as a whole series drew, so an
+isolated present point is a one-point polyline exactly as a one-row Line chart is today. Point markers on a line are
+their own question, and making them is not this phase's.
+
+**Consequence.** A chart over gated data can no longer misstate a suppressed value as zero, and a chart with neither
+a missing nor a withheld value lowers to the bytes it did. The data-table alternative (Phase 2776) lands second and
+shows a withheld cell as "withheld". The Heatmap arm draws its withheld cell in Phase 2810, on the same flag and the
+same placeholder rule. Vectors: `chart-lowering/withheld/` (WIRE_FORMAT §3.6.36).
+
+---
+
+## 2026-11-22 — D37: a heatmap's colour is a declared scale binned onto a gated ramp; "Gap 6" closes without a per-cell colour
+
+**Decided (Phase 2655).** The 2026-05-28 deferral called "Gap 6" left `Heatmap` in the `Custom` escape. A per-cell
+colour would have needed a `Style.InlineBackground`, which lets an author emit raw RGB, and that inverts the
+vocabulary's rule that a tree states meaning and the host chooses treatment. Gap 6 closes at the level that rule
+allows: a **declared scale**. Five rulings follow from it.
+
+1. **The author declares a scale and never a colour.** `ChartSpec.scale` is `Sequential { min?, max? }` or
+   `Diverging { midpoint?, min?, max? }`. An absent bound is the data's own extent, and an absent midpoint is zero.
+   No hex crosses the wire. The scale is meaningful on `Heatmap` alone until a later phase admits it on a sized or
+   coloured mark, so any other kind carrying it is refused pre-emit (`FUARAN169`). `midpoint` is OPTIONAL rather
+   than an omit-at-default `0`: no IDL float slot carries a declared default yet, and minting the first one would
+   have moved every host's generator for one member. So `midpoint: 0` and an absent midpoint are two spellings of
+   one picture. The lowering treats them alike, and the corpus pins the absent form.
+2. **The colour is a bin, never an interpolation.** A value maps to a fraction under the scale, and the fraction
+   maps to one ramp stop by `floor(t · n)`, clamped to the last stop. The stop count is the declared bin count.
+   That is IEEE `+ − × ÷` and `floor` in a fixed order, so every host picks the same stop and writes the same
+   literal hex. An interpolated colour would need a float-to-hex rounding rule that each host would have to agree
+   on to the bit. A non-finite declared bound reads as absent.
+3. **The ramps belong to `ChartStyle` and are gated at install, on the palette gate's calibration.** The palette
+   gate measures the categorical palette (`Fuaran.UI.ChartPalette`, Phase 2482), and the ramp gate extends it there.
+   Adjacent stops must differ by an OKLab ΔE ×100 of at least 6 under full colour vision, and by at least 6 under
+   simulated protanopia and deuteranopia (the palette's own `CvdFloor`). Every stop must clear the 4.5:1
+   small-text contrast floor against the ramp's LABEL TONE: the literal ink of a cell's value label, which sits
+   on the cell, not on the surface. A diverging ramp has an odd count, so its midpoint has a centre stop. The
+   categorical lightness band and chroma floor do not apply: a ramp is light to dark by design. A failing ramp is
+   refused by name, and the install path keeps the default; a failing ramp is never degraded. The shipped ramps are
+   generated in OKLab. The sequential one runs along the primary's hue from a near-surface tint (L 0.955) to L 0.62,
+   the darkest a stop may go and still carry the dark label at 4.5:1. The diverging one adds the palette's validated
+   neighbour, ochre, as its high side. Worst steps are 8.3 / 7.7 (sequential) and 11.3 / 10.3 (diverging), and the
+   worst contrast is 4.67:1. So "from the surface tone to the categorical primary" holds as a direction, not an
+   endpoint: the primary itself (`#1a86ac`, 4.18:1 against the label tone) fails the contrast floor, and the
+   go-red test uses exactly that stop.
+4. **An absence is the surface, never a zero.** A pair no row carries, and a row whose value cell is empty, text or
+   non-finite, draws `fill="none"` under a gridline-weight outline. The surface shows through on either theme, and
+   the outline still marks a cell. A zero is a value and takes the lowest stop.
+5. **The cell grid is the cost, and it is held to the Phase-790 budget.** n distinct columns by n distinct rows from
+   n rows draw n² cells, so the row cap alone does not bound the work. The grid is held to `MaxPointsPerSeries`,
+   since a heatmap is one value series whose points are its cells. A grid over the budget is `TooManyPoints(cells,
+   limit)`, the existing typed case, so `ChartRefusal` and `ChartLimits` did not widen.
+
+**Rejected.** A per-cell `Style.InlineBackground` (Gap 6's original shape): it puts treatment in the tree. A
+continuous gradient: the bytes would depend on each host's colour rounding. A gradient the ramps cannot express
+stays in the `Custom` escape. A third `ChartRefusal` case for cells: the existing case says the same thing.
+Theme-supplied ramps: the theme token group carries no ramp yet, and a hand-built style reaches the gate through
+`tryInstallChartStyle`.
+
+**Consequence.** `isLowered` is true for every `ChartKind`. Three hosts reproduce the arm byte for byte on the
+`chart-lowering/heatmap/` subfamily: this one, which generates the goldens, the TypeScript host and the Python
+host. The Rust and Go hosts are pending: the vectors sit in a subfamily so their top-level enumeration does not
+reach them (WIRE_FORMAT §11.0). The AG adapter takes the ramp as its colour range and nothing else, because AG
+interpolates over its own data-derived domain.
+
 ## 2026-11-19 — D36: the closure share is certified at the UI witness by its family read here and by its shapes walked here
 
 **Decided (Phase 2813).** `Fuaran.Program` 0.16.0 carries a closure share on every tier of the demanded document

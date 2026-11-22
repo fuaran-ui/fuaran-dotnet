@@ -28,6 +28,10 @@ Friend Module VisualisationMapping
                 .DataLabels = OptEnum(Of Csharp.ChartDataLabels)(el, "data-labels"),
                 .XScale = OptEnum(Of Csharp.ChartXScale)(el, "x-scale"),
                 .Annotations = ReadAnnotations(el),
+                .Interval = ReadInterval(el),
+                .SizeField = If(HasAttr(el, "size-field"), Attr(el, "size-field"), Nothing),
+                .SortBy = ReadSortBy(el),
+                .PathField = If(HasAttr(el, "path-field"), Attr(el, "path-field"), Nothing),
                 .Stacked = AttrBool(el, "stacked")})
 
         d("Table") = Function(el) Csharp.Fuaran.Table(
@@ -114,6 +118,36 @@ Friend Module VisualisationMapping
     End Function
 
     ''' <summary>
+    ''' Phase 2654 — the chart's interval, flattened as the `interval-low` +
+    ''' `interval-high` attribute pair. Nothing when neither is given; one without
+    ''' the other is refused here, since an interval has two ends.
+    ''' </summary>
+    Private Function ReadInterval(el As XElement) As Csharp.ChartInterval
+        Dim hasLow = HasAttr(el, "interval-low")
+        Dim hasHigh = HasAttr(el, "interval-high")
+        If Not hasLow AndAlso Not hasHigh Then Return Nothing
+        If hasLow <> hasHigh Then
+            Throw New ArgumentException(
+                "<Chart> carries one of 'interval-low' and 'interval-high' — an interval has two ends, so give both or neither.")
+        End If
+        Return New Csharp.ChartInterval With {
+            .Low = Attr(el, "interval-low"),
+            .High = Attr(el, "interval-high")}
+    End Function
+
+    ''' <summary>
+    ''' Phase 2654 — the chart's declared row order, flattened as the `sort-by` +
+    ''' `sort-direction` pair (the `default-sort-*` shape). Nothing when `sort-by` is
+    ''' absent: a direction with no column names no order at all.
+    ''' </summary>
+    Private Function ReadSortBy(el As XElement) As Csharp.ChartSort
+        If Not HasAttr(el, "sort-by") Then Return Nothing
+        Return New Csharp.ChartSort With {
+            .Field = Attr(el, "sort-by"),
+            .Direction = AsEnum(Of Csharp.SortDirection)(el, "sort-direction", Csharp.SortDirection.Asc)}
+    End Function
+
+    ''' <summary>
     ''' Phase 1490 — the chart's data-addressed annotations, authored as
     ''' &lt;ReferenceLine value="0" label="Break-even"/&gt; children.
     ''' </summary>
@@ -166,6 +200,13 @@ Friend Module VisualisationMapping
 
         For Each b In ChildElements(el, "RangeBand")
             annotations.Add(Csharp.ChartAnnotation.RangeBand(ReadBandRange(b), OptText(b, "label")))
+        Next
+
+        ' Phase 2654 — <ReferenceLineX value="50" label="Median"/>, a vertical line at
+        ' a numeric x on a scatter chart's continuous axis.
+        For Each r In ChildElements(el, "ReferenceLineX")
+            annotations.Add(Csharp.ChartAnnotation.ReferenceLineX(
+                AttrDouble(r, "value", 0.0), OptText(r, "label")))
         Next
 
         If annotations.Count = 0 Then Return Nothing

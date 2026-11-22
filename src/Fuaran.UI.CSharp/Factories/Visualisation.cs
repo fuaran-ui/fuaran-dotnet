@@ -31,7 +31,7 @@ public static partial class Fuaran
             // Generated ChartSpec ctor is Generated.fs declaration order (Kind,
             // Source, Stacked, XField, YFields, Title, ValueFormat, XTitle,
             // YTitle, Subtitle, LegendPosition, DataLabels, XScale,
-            // Annotations, OnPointClick), not the old Source-first hand order.
+            // Annotations, Scale, OnPointClick), not the old Source-first hand order.
             new FsGen.ChartSpec<object>(
                 options.Kind.ToFs(),
                 (options.Source ?? Binding.Static(Enumerable.Empty<FsRow>())).Inner,
@@ -60,6 +60,18 @@ public static partial class Fuaran
                 options.Annotations is { } anns
                     ? Fs.Some(Fs.List(anns.Select(a => a.Inner)))
                     : Fs.None<Microsoft.FSharp.Collections.FSharpList<FsGen.ChartAnnotation>>(),
+                // Phase 2655 — a heatmap's declared colour scale passes the F# default
+                // (absent: sequential over the data's extent); the veneer does not
+                // expose it yet.
+                Fs.None<FsGen.ChartScale>(),
+                // Phase 2809 — the withheld flag column passes the F# default
+                // (absent: nothing withheld); the veneer does not expose it yet.
+                Fs.None<string>(),
+                // Phase 2654 — the mark channels: interval, size, sort, path.
+                options.Interval is { } iv ? Fs.Some(iv.Inner) : Fs.None<FsGen.ChartInterval>(),
+                options.SizeField is { } sz ? Fs.Some(sz) : Fs.None<string>(),
+                options.SortBy is { } sb ? Fs.Some(sb.Inner) : Fs.None<FsGen.ChartSort>(),
+                options.PathField is { } pf ? Fs.Some(pf) : Fs.None<string>(),
                 Fs.None<Microsoft.FSharp.Core.FSharpFunc<FsRow, FsAction>>())));
 
     /// <summary>A static (non-data-bound) HTML table.</summary>
@@ -257,6 +269,21 @@ public sealed record ChartOptions
 
     /// <summary>The y-axis field keys.</summary>
     public IEnumerable<string>? YFields { get; init; }
+
+    /// <summary>
+    /// An interval on the single series (Phase 2654): the columns holding each
+    /// datum's low and high ends. Read by bar, line, area and scatter charts.
+    /// </summary>
+    public ChartInterval? Interval { get; init; }
+
+    /// <summary>The column that sizes each scatter point by area (Phase 2654).</summary>
+    public string? SizeField { get; init; }
+
+    /// <summary>The declared row order before layout (Phase 2654).</summary>
+    public ChartSort? SortBy { get; init; }
+
+    /// <summary>The column ordering a scatter series' points along a path (Phase 2654).</summary>
+    public string? PathField { get; init; }
 
     /// <summary>An optional chart title.</summary>
     public Text? Title { get; init; }

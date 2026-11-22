@@ -24,6 +24,8 @@ module Fuaran.UI.Renderer.AgChartAdapter
 //      legendItemKey = XField).
 //  YFields → one series per field with xKey = XField, yKey = field; an empty
 //    YFields → one series per numeric column but XField (Phase 2568).
+//  SortBy → the rows in the declared order (Phase 2654); Interval, SizeField,
+//    PathField and ReferenceLineX are declared gaps on this path (Phase 2654).
 // ============================================================================
 
 #nowarn "1182"
@@ -134,11 +136,26 @@ let private buildSeries<'Msg> (runAction: Action<'Msg> -> unit) (nodeId: string)
             | y :: _ -> y, ""
             | [] -> "", ""
 
+        // Phase 2655 — the declared scale reaches AG as its colour RANGE: the
+        // installed style's sequential or diverging ramp, so an adapter-rendered
+        // heatmap draws the same validated stops as the first-party lowering. The
+        // stops only: AG interpolates across its own data-derived domain, so the
+        // declared bounds and midpoint are the first-party lowering's alone (the
+        // adapter is the escape, not the reference).
+        let colorRange =
+            let style = Fuaran.UI.Charts.currentChartStyle ()
+
+            match spec.Scale with
+            | Some(ChartScale.Diverging _) -> style.DivergingRamp
+            | Some(ChartScale.Sequential _)
+            | None -> style.SequentialRamp
+
         [| createObj
                [ "type" ==> "heatmap"
                  "xKey" ==> spec.XField
                  "yKey" ==> yKey
                  "colorKey" ==> colorKey
+                 "colorRange" ==> colorRange
                  "listeners" ==> listeners ] |]
     | _ ->
         let seriesType = chartKindString spec.Kind
@@ -284,9 +301,25 @@ let renderChartWithReady<'Msg>
                 | Some t -> createObj [ "text" ==> textOf t; "enabled" ==> true ]
                 | None -> createObj [ "enabled" ==> false ]
 
+            // Phase 2810 (D38) — a withheld row reaches AG without its values, so
+            // AG draws a gap where the first-party lowering draws the withheld
+            // placeholder, and no withheld number is shown on either path.
+            //
+            // Phase 2654 (D39) — the mark channels. `sortBy` is MAPPED: AG draws
+            // its categories in data order, so the rows are handed over in the
+            // declared order (`Charts.sortedRows`, the first-party lowering's own
+            // step). `interval`, `sizeField`, `pathField` and `ReferenceLineX` are
+            // declared GAPS on this path: AG's community package has no error
+            // bar, and its bubble series and cross-lines are not mapped here, so
+            // a chart that needs them draws them on the first-party path. The
+            // withheld strip removes a withheld row's interval ends and size too.
+            let data =
+                Fuaran.UI.Charts.withheldValuesRemoved spec rows
+                |> Fuaran.UI.Charts.sortedRows spec
+
             let options =
                 createObj
-                    [ "data" ==> List.toArray rows
+                    [ "data" ==> List.toArray data
                       "series" ==> series
                       "title" ==> titleObj
                       "legend" ==> createObj [ "enabled" ==> true; "position" ==> "bottom" ] ]

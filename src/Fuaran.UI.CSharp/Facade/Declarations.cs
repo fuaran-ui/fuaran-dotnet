@@ -48,6 +48,41 @@ public sealed record DefaultSort
 }
 
 /// <summary>
+/// A chart interval (Phase 2654): the columns holding each datum's low and high
+/// ends, in the value axis's units. A row missing either end draws no interval.
+/// </summary>
+public sealed record ChartInterval
+{
+    /// <summary>The column holding each datum's low end.</summary>
+    public required string Low { get; init; }
+
+    /// <summary>The column holding each datum's high end.</summary>
+    public required string High { get; init; }
+
+    internal FsGen.ChartInterval Inner =>
+        // Generated ChartInterval ctor is declaration order (Low, High).
+        new(Low, High);
+}
+
+/// <summary>
+/// A chart's declared row order (Phase 2654): the column whose numeric value
+/// orders the rows before layout, and the direction. Rows whose value is
+/// missing, and withheld rows, follow in source order.
+/// </summary>
+public sealed record ChartSort
+{
+    /// <summary>The column to order by.</summary>
+    public required string Field { get; init; }
+
+    /// <summary>The direction. Lower-case on the wire: <c>"asc"</c> / <c>"desc"</c>.</summary>
+    public SortDirection Direction { get; init; } = SortDirection.Asc;
+
+    internal FsGen.ChartSort Inner =>
+        // Generated ChartSort ctor is declaration order (Field, Direction).
+        new(Field, Direction.ToFs());
+}
+
+/// <summary>
 /// The cross-field half of a <see cref="FieldRule"/> (Phase 864): compare this
 /// field's value against another declared value.
 /// </summary>

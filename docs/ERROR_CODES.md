@@ -391,10 +391,10 @@ chart '{nodeId}' references field '{field}' absent from the schema its own sourc
 
 #### `FUARAN087` — Error
 
-`ChartFieldTypeMismatch` (Phase 640)
+`ChartFieldTypeMismatch` (Phases 640, 2809)
 
 ```text
-chart '{nodeId}' plots field '{field}' of type '{columnType}' — the lowering reads non-numeric cells as 0.0, a silently flat series (Phase 640)
+chart '{nodeId}' plots field '{field}' of type '{columnType}' — the lowering draws a non-numeric cell as a gap, so the series silently draws nothing (Phases 640, 2809)
 ```
 
 #### `FUARAN088` — Error
@@ -840,7 +840,7 @@ token field '{fieldId}' on node '{nodeId}' declares the static token '{token}' m
 `ChartAnnotationNonFinite` (Phases 1490, 1492)
 
 ```text
-chart '{nodeId}' {subject} carries the value {value} — an annotation addresses a place on the value axis, and NaN / Infinity names none; it would also enter the axis domain and take every gridline, tick and mark to NaN with it. Give a finite value in the axis's own units, or drop the annotation (Phase 1490)
+chart '{nodeId}' {subject} carries the value {value} — an annotation addresses a place on its axis, and NaN / Infinity names none; it would also enter the axis domain and take every gridline, tick and mark to NaN with it. Give a finite value in the axis's own units, or drop the annotation (Phase 1490)
 ```
 
 #### `FUARAN138` — Error
@@ -1091,6 +1091,54 @@ multi-select '{nodeId}' carries a `value` — a multi-select's selection is `val
 
 ```text
 chart '{nodeId}' leaves yFields empty over {found} — an empty yFields reads its series off a Query's rows (every numeric column but xField, named by column), so it is admitted only over a Binding.Query; name the series this source carries in yFields (Phase 2568)
+```
+
+#### `FUARAN169` — Error
+
+`ChartScaleMeaningless` (Phase 2655)
+
+```text
+chart '{nodeId}' declares a colour scale on kind {kind} — a scale is read only by a Heatmap's value field (Phase 2655); drop the scale, or switch the kind to Heatmap
+```
+
+#### `FUARAN170` — Error
+
+`ChartHeatmapFieldShape` (Phase 2655)
+
+```text
+heatmap chart '{nodeId}' declares {fieldCount} yFields — a heatmap takes exactly two: the row field, then the value field (Phase 2655)
+```
+
+#### `FUARAN171` — Error
+
+`ChartWithheldFieldNotBoolean` (Phase 2809)
+
+```text
+chart '{nodeId}' declares withheld field '{field}' of type '{columnType}' — a row is withheld only where that column holds the boolean true, so this column would never withhold a value (Phase 2809)
+```
+
+#### `FUARAN172` — Error
+
+`ChartChannelKindUnsupported` (Phase 2654)
+
+```text
+chart '{nodeId}' declares {channel} on kind {kind} — {channel} is read only by {accepts}, so this chart would draw without it; drop {channel}, or switch the kind (Phase 2654)
+```
+
+#### `FUARAN173` — Error
+
+`ChartIntervalSeriesShape` (Phase 2654)
+
+```text
+chart '{nodeId}' declares an interval over {seriesCount} series — an interval names one low and one high column, so it belongs to exactly one series; name that one series in yFields, or drop the interval (Phase 2654)
+```
+
+#### `FUARAN174` — Error
+
+`ChartSortByTemporal` (Phase 2654)
+
+```text
+chart '{nodeId}' declares sortBy on a temporal x axis — a temporal axis places each row at its date, so a declared order moves nothing; drop sortBy, or declare xScale 'Category' (Phase 2654)
 ```
 
 <!-- END GENERATED: PreEmitValidate.DefectCodes.toMarkdown -->

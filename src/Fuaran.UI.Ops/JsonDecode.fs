@@ -8024,6 +8024,35 @@ let private decodeChartAnnotationRange (path: string) (j: Json) : Result<ChartAn
             | _, Error e -> Error e
         | Ok s -> unknownDuCase path s "ValueRange, XRange"
 
+/// Phase 2655 — a chart's declared colour scale (`ChartSpec.scale`). Every bound
+/// is an optional JSON number; absence means the data's own extent (and, for
+/// `Diverging`'s `midpoint`, zero). The decoder carries the declaration as
+/// written: what the bounds MEAN against the rows is the lowering's, and whether
+/// the kind admits a scale at all is the validator's (FUARAN169).
+let private decodeChartScale (path: string) (j: Json) : Result<ChartScale, DecodeError> =
+    match requireObject path j with
+    | Error e -> Error e
+    | Ok fields ->
+        let optFloat (name: string) : Result<float option, DecodeError> =
+            match tryField fields name with
+            | None -> Ok None
+            | Some v -> requireFloat (path + "." + name) v |> Result.map Some
+
+        match requireDiscriminator path fields with
+        | Error e -> Error e
+        | Ok "Sequential" ->
+            match optFloat "min", optFloat "max" with
+            | Ok min, Ok max -> Ok(ChartScale.Sequential(min, max))
+            | Error e, _
+            | _, Error e -> Error e
+        | Ok "Diverging" ->
+            match optFloat "midpoint", optFloat "min", optFloat "max" with
+            | Ok midpoint, Ok min, Ok max -> Ok(ChartScale.Diverging(midpoint, min, max))
+            | Error e, _, _
+            | _, Error e, _
+            | _, _, Error e -> Error e
+        | Ok other -> unknownDuCase path other "Sequential | Diverging"
+
 let private decodeChartAnnotation (path: string) (j: Json) : Result<ChartAnnotation, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
@@ -8045,7 +8074,11 @@ let private decodeChartAnnotation (path: string) (j: Json) : Result<ChartAnnotat
             | Ok at, Ok label -> Ok(ChartAnnotation.EventMarker(at, label))
             | Error e, _
             | _, Error e -> Error e
-        | Ok "ReferenceLine" ->
+        | Ok("ReferenceLine" | "ReferenceLineX" as case) ->
+            // Phase 2654 — `ReferenceLineX` is the same line on the continuous x
+            // axis, so the two cases share one finite-value rule.
+            let axis = if case = "ReferenceLine" then "value" else "x"
+
             let valueR =
                 match requireField path fields "value" "reference-line value (a finite JSON number)" with
                 | Error e -> Error e
@@ -8055,7 +8088,9 @@ let private decodeChartAnnotation (path: string) (j: Json) : Result<ChartAnnotat
                     | Ok f when Double.IsNaN f || Double.IsInfinity f ->
                         wrongType
                             (path + ".value")
-                            "a FINITE JSON number — a reference line names a place on the value axis, and NaN / Infinity names none; give the value in the axis's own units, or drop the annotation"
+                            (sprintf
+                                "a FINITE JSON number — a reference line names a place on the %s axis, and NaN / Infinity names none; give the value in the axis's own units, or drop the annotation"
+                                axis)
                     | Ok f -> Ok f
 
             let labelR =
@@ -8064,7 +8099,8 @@ let private decodeChartAnnotation (path: string) (j: Json) : Result<ChartAnnotat
                 | Some v -> decodeTextSource (path + ".label") v |> Result.map Some
 
             match valueR, labelR with
-            | Ok value, Ok label -> Ok(ChartAnnotation.ReferenceLine(value, label))
+            | Ok value, Ok label when case = "ReferenceLine" -> Ok(ChartAnnotation.ReferenceLine(value, label))
+            | Ok value, Ok label -> Ok(ChartAnnotation.ReferenceLineX(value, label))
             | Error e, _
             | _, Error e -> Error e
         | Ok "RangeBand" ->
@@ -8082,7 +8118,7 @@ let private decodeChartAnnotation (path: string) (j: Json) : Result<ChartAnnotat
             | Ok range, Ok label -> Ok(ChartAnnotation.RangeBand(range, label))
             | Error e, _
             | _, Error e -> Error e
-        | Ok s -> unknownDuCase path s "ReferenceLine, EventMarker, RangeBand"
+        | Ok s -> unknownDuCase path s "ReferenceLine, EventMarker, RangeBand, ReferenceLineX"
 
 let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, DecodeError> =
     match requireObject path j with
@@ -8197,6 +8233,76 @@ let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, De
                     traverseIndexed (fun i item -> decodeChartAnnotation (sprintf "%s.annotations[%d]" path i) item) xs
                     |> Result.map Some
 
+        // `scale` (Phase 2655): a heatmap's declared colour scale. Absent OMITS
+        // on the wire, so every pre-2655 document decodes byte-for-byte as it did.
+        let scaleR: Result<ChartScale option, DecodeError> =
+            match tryField fields "scale" with
+            | None -> Ok None
+            | Some v -> decodeChartScale (path + ".scale") v |> Result.map Some
+
+        // `withheldField` (Phase 2809, D38): the column whose boolean `true`
+        // marks a row's values as withheld by a disclosure gate. Absent OMITS on
+        // the wire, so every pre-2809 document decodes byte-for-byte as it did.
+        let withheldFieldR: Result<string option, DecodeError> =
+            match tryField fields "withheldField" with
+            | None -> Ok None
+            | Some v -> requireString (path + ".withheldField") v |> Result.map Some
+
+        // The mark channels (Phase 2654, D39): `interval`, `sizeField`,
+        // `sortBy` and `pathField`, each naming columns of the bound rows. All
+        // four are absent by default and OMIT on the wire, so every pre-2654
+        // document decodes byte-for-byte as it did. Which kinds admit each is
+        // the validator's (FUARAN172-FUARAN174), not the decoder's.
+        let optString (name: string) : Result<string option, DecodeError> =
+            match tryField fields name with
+            | None -> Ok None
+            | Some v -> requireString (path + "." + name) v |> Result.map Some
+
+        let requiredString (at: string) (recordFields: Map<string, Json>) (name: string) (what: string) =
+            requireField at recordFields name what
+            |> Result.bind (requireString (at + "." + name))
+
+        let intervalR: Result<ChartInterval option, DecodeError> =
+            match tryField fields "interval" with
+            | None -> Ok None
+            | Some v ->
+                let at = path + ".interval"
+
+                requireObject at v
+                |> Result.bind (fun rf ->
+                    match
+                        requiredString at rf "low" "the low-end column name",
+                        requiredString at rf "high" "the high-end column name"
+                    with
+                    | Ok low, Ok high -> Ok(Some { Low = low; High = high })
+                    | Error e, _
+                    | _, Error e -> Error e)
+
+        let sortByR: Result<ChartSort option, DecodeError> =
+            match tryField fields "sortBy" with
+            | None -> Ok None
+            | Some v ->
+                let at = path + ".sortBy"
+
+                requireObject at v
+                |> Result.bind (fun rf ->
+                    let directionR =
+                        requireField at rf "direction" "asc | desc"
+                        |> Result.bind (decodeSortDirection (at + ".direction"))
+
+                    match requiredString at rf "field" "the column to order by", directionR with
+                    | Ok field, Ok direction -> Ok(Some { Field = field; Direction = direction })
+                    | Error e, _
+                    | _, Error e -> Error e)
+
+        let channelsR =
+            match intervalR, optString "sizeField", sortByR, optString "pathField" with
+            | Ok interval, Ok size, Ok sortBy, Ok pathField -> Ok(interval, size, sortBy, pathField)
+            | Error e, _, _, _
+            | _, Error e, _, _
+            | _, _, Error e, _
+            | _, _, _, Error e -> Error e
+
         // `stacked` (Phase 126, restated Phase 1585): OMIT-AT-DEFAULT. The IDL
         // declares it `omitDefault false`, so the encoder emits it only when it
         // is `true` and absence means `false` BY CONTRACT — not, as this note
@@ -8219,7 +8325,10 @@ let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, De
             legendPositionR,
             dataLabelsR,
             xScaleR,
-            annotationsR
+            annotationsR,
+            scaleR,
+            withheldFieldR,
+            channelsR
         with
         | Ok kind,
           Ok source,
@@ -8233,7 +8342,10 @@ let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, De
           Ok legendPosition,
           Ok dataLabels,
           Ok xScale,
-          Ok annotations ->
+          Ok annotations,
+          Ok scale,
+          Ok withheldField,
+          Ok(interval, sizeField, sortBy, pathField) ->
             Ok
                 { Source = source
                   Kind = kind
@@ -8248,21 +8360,30 @@ let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, De
                   DataLabels = dataLabels
                   XScale = xScale
                   Annotations = annotations
+                  Scale = scale
+                  WithheldField = withheldField
+                  Interval = interval
+                  SizeField = sizeField
+                  SortBy = sortBy
+                  PathField = pathField
                   OnPointClick = onPointClick
                   Stacked = stacked }
-        | Error e, _, _, _, _, _, _, _, _, _, _, _, _
-        | _, Error e, _, _, _, _, _, _, _, _, _, _, _
-        | _, _, Error e, _, _, _, _, _, _, _, _, _, _
-        | _, _, _, Error e, _, _, _, _, _, _, _, _, _
-        | _, _, _, _, Error e, _, _, _, _, _, _, _, _
-        | _, _, _, _, _, Error e, _, _, _, _, _, _, _
-        | _, _, _, _, _, _, Error e, _, _, _, _, _, _
-        | _, _, _, _, _, _, _, Error e, _, _, _, _, _
-        | _, _, _, _, _, _, _, _, Error e, _, _, _, _
-        | _, _, _, _, _, _, _, _, _, Error e, _, _, _
-        | _, _, _, _, _, _, _, _, _, _, Error e, _, _
-        | _, _, _, _, _, _, _, _, _, _, _, Error e, _
-        | _, _, _, _, _, _, _, _, _, _, _, _, Error e -> Error e
+        | Error e, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _, _, _, _, _, _, _, _, _, _
+        | _, _, Error e, _, _, _, _, _, _, _, _, _, _, _, _, _
+        | _, _, _, Error e, _, _, _, _, _, _, _, _, _, _, _, _
+        | _, _, _, _, Error e, _, _, _, _, _, _, _, _, _, _, _
+        | _, _, _, _, _, Error e, _, _, _, _, _, _, _, _, _, _
+        | _, _, _, _, _, _, Error e, _, _, _, _, _, _, _, _, _
+        | _, _, _, _, _, _, _, Error e, _, _, _, _, _, _, _, _
+        | _, _, _, _, _, _, _, _, Error e, _, _, _, _, _, _, _
+        | _, _, _, _, _, _, _, _, _, Error e, _, _, _, _, _, _
+        | _, _, _, _, _, _, _, _, _, _, Error e, _, _, _, _, _
+        | _, _, _, _, _, _, _, _, _, _, _, Error e, _, _, _, _
+        | _, _, _, _, _, _, _, _, _, _, _, _, Error e, _, _, _
+        | _, _, _, _, _, _, _, _, _, _, _, _, _, Error e, _, _
+        | _, _, _, _, _, _, _, _, _, _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, Error e -> Error e
 
 let private decodeMapSpec (path: string) (j: Json) : Result<MapSpec<obj>, DecodeError> =
     match requireObject path j with

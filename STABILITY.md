@@ -7857,6 +7857,158 @@ vector now carries `perWindow`, `quantityPerWindow` and `dwell` (Program Phase 2
 corpus copy is re-emitted and byte-identical to the program repository's. No package moves for it: the corpus is a
 test artefact.
 
+
+### What rides this slot — Phase 2655 (`Heatmap` is lowered first-party under a declared scale)
+
+**Class: breaking.** The shard filed this phase as additive, and on the wire it is: `ChartSpec.scale` is an
+optional member that absence omits, so every pre-2655 document decodes, encodes and lowers byte-for-byte as it
+did, and no pre-existing `chart-lowering` golden moved. On the .NET surface it is breaking by the estate rule:
+three public records gain a field and two closed unions gain cases. It rides this draft slot, which is
+breaking-class already; `<Version>` does not move.
+
+**What a consumer gains.**
+
+- **`ChartScale`** (`Fuaran.UI.Types`, re-exported as `Charts.ChartScale`): `Sequential of min * max` and
+  `Diverging of midpoint * min * max`, every bound a `float option` (absent: the data's extent; an absent
+  midpoint is zero). `ChartSpec.Scale: ChartScale option` carries it. The wire member is `scale`
+  (WIRE_FORMAT §3.6.35).
+- **`Heatmap` lowers first-party.** `Charts.isLowered ChartKind.Heatmap` is `true`, so both renderers draw a
+  heatmap's cell grid as inline SVG where they drew the client-hydration placeholder. `YFields` is `[row; value]`.
+  An absent pair draws the surface, never a zero. The cell grid is held to `ChartLimits.MaxPointsPerSeries` and a
+  grid over it is `TooManyPoints(cells, limit)`. `markCategoryKeys` / `rowOfMarkId` resolve a heatmap cell's mark
+  (`value|x|row`).
+- **The ramps and their gate.** `ChartStyle` gains `SequentialRamp`, `DivergingRamp`, `RampLabelInk` and
+  `HeatmapCellGap`. `ChartStyle.rampFindings` and `ChartPalette.validateRamp` measure a ramp. The floors are an
+  adjacent-stop OKLab step of at least 6 under full vision and under each simulated deficiency, and a 4.5:1
+  contrast of every stop against the label tone. `ChartPalette.relativeLuminance` and `ChartPalette.contrastRatio`
+  are new. `Charts.tryInstallChartStyle` installs a hand-built style through the palette and ramp gates and
+  refuses a failing one by name, keeping the default installed. `chartStyleOfTheme` also runs the ramp gate.
+- **Two pre-emit rules.** `FUARAN169` (`ChartScaleMeaningless`, Error) refuses a scale on any kind but `Heatmap`.
+  `FUARAN170` (`ChartHeatmapFieldShape`, Error) refuses a heatmap whose `YFields` is not exactly two.
+- **The AG adapter** maps the scale onto the series' `colorRange` (the installed style's ramp).
+
+**What a consumer pays.**
+
+- **Record construction.** A `ChartSpec<'Msg>` built as a full record literal needs `Scale = None` (FS0764);
+  `{ Defaults.chart with … }` and `Fuaran.chart` are unaffected. A `ChartStyle` built as a full literal needs the
+  four new fields; `{ ChartStyle.defaults with … }` is unaffected.
+- **Exhaustive matches.** A match over `ChartPalette.PaletteFinding` gains `RampShape`, `RampStepTooClose` and
+  `RampLabelContrast`. A match over `PreEmitDefect` gains `ChartScaleMeaningless` and `ChartHeatmapFieldShape`.
+  Both are FS0025 until the arms are added.
+- **A heatmap's rendering changes.** A tree whose `Heatmap` rendered as the placeholder now renders its grid. A
+  host that relied on the placeholder's `data-fuaran-ssr-placeholder="Chart"` marker for a heatmap no longer
+  finds it.
+- **Recompile.**
+
+### What rides this slot — Phase 2809 (a chart value can be withheld, and a missing value is never drawn as zero)
+
+**Class: breaking.** On the wire it is additive: `ChartSpec.withheldField` is an optional member that absence
+omits, so every pre-2809 document decodes and encodes byte-for-byte as it did. The lowering half is a
+**correction of drawn geometry**, not a redesign: a missing or non-numeric value cell used to be drawn as `0.0`, and
+it is now a gap. On the .NET surface it is breaking by the estate rule: two public records gain a field and a
+closed union gains a case. It rides this draft slot, which is breaking-class already; `<Version>` does not move.
+The decision is D38 (`docs/DECISIONS.md`); the normative rules are WIRE_FORMAT §3.6.36.
+
+**What a consumer gains.**
+
+- **`ChartSpec.WithheldField: string option`** (wire `withheldField`) names a column; a row whose cell there is
+  the boolean `true` is withheld. Its values are never read: each series draws an outlined placeholder of
+  `ChartStyle.WithheldMarkSize` on the zero line, carrying the datum's own mark (`series|category`, so
+  `rowOfMarkId` resolves it) and the readout `series · category · withheld`. On a Pie the placeholder is the
+  category's outlined legend swatch, reading `name (withheld)`. The accessible summary gains `<k> values withheld`.
+- **A missing value is a gap on every lowered arm.** No bar, segment, point or wedge; a Line or an Area breaks into
+  runs; no domain, stack sum, pie total, peak or data label reads it; a Pie's missing category has no legend entry.
+- **`FUARAN171`** (`ChartWithheldFieldNotBoolean`, Error) refuses a withheld column of a decidable non-boolean
+  type; a withheld column the source does not produce is `FUARAN086`, as every chart field is. `FUARAN087`'s
+  message now says the lowering draws a non-numeric cell as a gap, which is what it does.
+
+**What a consumer pays.**
+
+- **The correction moves pictures.** A chart whose rows carry an empty, `null`, text or date value cell, or a
+  non-finite number, now draws a gap where it drew a zero: no zero-height bar, no point on the axis, no wedge, and
+  no `· 0` readout. A Line through such a cell breaks rather than dropping to the axis. A Pie entry that read `0%`
+  for a missing value is gone. One corpus golden exercised it and was re-cut
+  (`chart-lowering/derived-series/derived-mixed-columns`); no top-level or `heatmap/` golden moved.
+- **Record construction.** A `ChartSpec<'Msg>` built as a full record literal needs `WithheldField = None`
+  (FS0764), and a `ChartStyle` built as a full literal needs `WithheldMarkSize`; `{ Defaults.chart with … }`,
+  `{ ChartStyle.defaults with … }` and `Fuaran.chart` are unaffected. The C# veneer passes the F# default.
+- **Exhaustive matches.** A match over `PreEmitDefect` gains `ChartWithheldFieldNotBoolean` (FS0025 until the arm
+  is added).
+- **Recompile.**
+
+### What rides this slot — Phase 2810 (a heatmap draws a withheld cell apart from an absent one)
+
+**Class: additive.** No wire member, no type, no case and no record field moves; the one new public symbol is a
+function. On the wire it is a lowering rule over 2809's `withheldField` (WIRE_FORMAT §3.6.36 rule 8): a heatmap
+with no withheld cell lowers byte-for-byte as it did, and no pre-existing `chart-lowering` golden moved. It rides
+this draft slot, which is breaking-class already; `<Version>` does not move.
+
+**What a consumer gains.**
+
+- **A withheld heatmap cell.** A cell whose pair's FIRST row is withheld is drawn in the withheld placeholder's
+  paint over the whole cell (no fill, the axis ink at the axis opacity), carrying the cell's own mark
+  (`value|x|row`, so `rowOfMarkId` resolves it) and the readout `row · x · withheld`. Its value is never read: no
+  scale extent, no data label. An absent pair keeps 2655's surface tone and no mark, so the two empties read
+  apart.
+- **The withheld key.** A heatmap with any withheld cell gains a `withheld` entry under its legend ramp, in the
+  placeholder's paint; the legend column is measured to fit the word. The accessible summary counts the empty
+  cells apart from the withheld ones and gains `1 value withheld` / `<k> values withheld`.
+- **`Charts.withheldValuesRemoved spec rows`** — the rows with every withheld row's value cells removed (the
+  series fields; on a `Heatmap` the value field only, keeping the row key). The AG adapter now hands AG these
+  rows, so AG draws a gap where the first-party lowering draws the placeholder, and no withheld number reaches
+  any .NET render path.
+
+**What a consumer pays.**
+
+- **An AG-rendered chart with a `WithheldField` changes picture.** A withheld row's values used to reach AG and be
+  drawn as released numbers; they are now absent, which AG draws as a gap. A chart with no `WithheldField`, or none
+  withheld, is unchanged.
+- **Recompile.**
+
+### What rides this slot — Phase 2654 (the mark channels: interval, size, declared order, path and x reference line)
+
+**Class: breaking.** On the wire it is additive: four optional `ChartSpec` members and one `ChartAnnotation` case,
+each omitted when absent, so every pre-2654 document decodes and encodes byte-for-byte as it did and no pre-existing
+`chart-lowering` golden moved. On the .NET surface it is breaking by the estate rule: `ChartSpec` gains four fields,
+`ChartStyle` four, `PreEmitDefect` three cases, and the closed `ChartAnnotation` union a case. It rides this draft
+slot, which is breaking-class already; `<Version>` does not move. The decision is D39 (`docs/DECISIONS.md`); the
+normative rules are WIRE_FORMAT §3.6.37.
+
+**What a consumer gains.**
+
+- **`ChartSpec.Interval: ChartInterval option`** (`{ Low; High }`, wire `interval`) — an error bar on a Bar or a
+  Scatter point, a band under a Line or an Area, on the single series. Both ends join the value domain.
+- **`ChartSpec.SizeField: string option`** (wire `sizeField`) — a Scatter point sized by area between
+  `ChartStyle.ScatterMinRadius` and `ScatterMaxRadius`.
+- **`ChartSpec.SortBy: ChartSort option`** (`{ Field; Direction }`, reusing `SortDirection`) — the rows ordered
+  before layout on a Bar, Line, Area or Pie; missing keys and withheld rows last. `Charts.sortedRows spec rows` is
+  the step, public, and the AG adapter hands AG its rows through it.
+- **`ChartSpec.PathField: string option`** (wire `pathField`) — a Scatter series' points joined in that column's
+  order; a missing or withheld point breaks the path.
+- **`ChartAnnotation.ReferenceLineX of value * label`** — a vertical line at a numeric x on a Scatter, joining the
+  x domain, mark `annotation|referencex|<n>`.
+- **Validator.** `FUARAN172` (`ChartChannelKindUnsupported`), `FUARAN173` (`ChartIntervalSeriesShape`) and
+  `FUARAN174` (`ChartSortByTemporal`); every channel column is grounded (`FUARAN086`) and numeric (`FUARAN087`);
+  a non-finite x line is `FUARAN137` and one on a temporal Scatter `FUARAN139`.
+- **Authoring.** The C# `ChartOptions` gains `Interval`, `SizeField`, `SortBy` and `PathField` (with
+  `ChartInterval` and `ChartSort` records) and `ChartAnnotation.ReferenceLineX`; the VB dialect spells
+  `interval-low` / `interval-high`, `size-field`, `sort-by` / `sort-direction`, `path-field` and
+  `<ReferenceLineX value label>`.
+
+**What a consumer pays.**
+
+- **Record construction.** A `ChartSpec<'Msg>` built as a full record literal needs `Interval`, `SizeField`,
+  `SortBy` and `PathField` (FS0764), and a `ChartStyle` built as a full literal needs the four new fields;
+  `{ Defaults.chart with … }`, `{ ChartStyle.defaults with … }` and `Fuaran.chart` are unaffected. The positional
+  `Generated.ChartSpec` constructor gains four arguments (CS7036 at a C# call site).
+- **Exhaustive matches.** A match over `ChartAnnotation` gains `ReferenceLineX`, and one over `PreEmitDefect` the
+  three new cases (FS0025 until the arms are added).
+- **An AG-rendered chart with a `SortBy` changes order**, to the declared one. Its interval, size, path and x line
+  are not drawn on the AG path (declared gaps).
+- **A message moved.** `FUARAN137` now says an annotation addresses "a place on its axis" rather than "on the value
+  axis", since an x reference line addresses the x axis.
+- **Recompile.**
+
 ---
 
 ## 0.105.0 — the announced breaking cut (Phase 2303); the slot opened after v0.104.0 was released, advanced from 0.104.1 on 2026-11-14 by Phase 2716, whose change is breaking (DRAFT — untagged)

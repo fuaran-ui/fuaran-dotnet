@@ -3399,6 +3399,31 @@ let visKinds: IdlKind list =
             // the same closed union. Absent OMITS on the wire, so every
             // pre-1490 fixture is byte-unchanged.
             opt "annotations" (TList(TUnion("ChartAnnotation", [])))
+            // Phase 2655 — the DECLARED colour scale of a value field (Gap 6
+            // closed as a scale, never a per-cell colour). Meaningful on
+            // `Heatmap` only; any other kind carrying it is refused before
+            // emission (FUARAN169). Absent OMITS on the wire, so every pre-2655
+            // fixture is byte-unchanged.
+            opt "scale" (TUnion("ChartScale", []))
+            // Phase 2809 (D38) — the column that says a row's values are WITHHELD
+            // by a disclosure gate: a row whose cell there is the boolean `true`
+            // draws a placeholder, never its value and never a zero. Absent OMITS
+            // on the wire, so every pre-2809 fixture is byte-unchanged.
+            opt "withheldField" TStr
+            // Phase 2654 (D39) — the mark CHANNELS: each names a column of the
+            // bound rows that a mark reads besides its x and its value, so each
+            // is a field on the one `Chart` kind rather than a kind of its own.
+            // `interval` draws a low/high extent on the single series (Bar,
+            // Line, Area, Scatter); `sizeField` sizes a Scatter point by area;
+            // `sortBy` orders the rows before layout; `pathField` joins a
+            // Scatter series' points in that column's order. Each is absent by
+            // default and OMITS on the wire, so every pre-2654 fixture is
+            // byte-unchanged; which kinds admit each is the validator's
+            // (FUARAN172-FUARAN174).
+            opt "interval" (TRecord "ChartInterval")
+            opt "sizeField" TStr
+            opt "sortBy" (TRecord "ChartSort")
+            opt "pathField" TStr
             opt "onPointClick" (handlerOf "Map<string, obj>" "unknown") ] }
       { Tag = "Map"
         Category = "Visualisation"
@@ -3686,10 +3711,66 @@ let private chartAnnotation =
           { Tag = "RangeBand"
             Fields = [ req "range" (TUnion("ChartAnnotationRange", [])); opt "label" TS ]
             Annotations = Annotations.Empty
+            Hosted = None }
+          // Phase 2654 (D39) — a vertical line at a NUMERIC x value: the
+          // `ReferenceLine` mirrored onto a continuous x axis (a Scatter's).
+          // `EventMarker` already stands at a category or a date; what no case
+          // could address was a number on x, which a quadrant line needs.
+          { Tag = "ReferenceLineX"
+            Fields = [ req "value" TFloat; opt "label" TS ]
+            Annotations = Annotations.Empty
             Hosted = None } ]
       Annotations = Annotations.Empty
       TagRule = UnionTagRule.CaseName
       Discrimination = UnionDiscrimination.Tagged }
+
+/// Phase 2655 — a chart's DECLARED colour scale (closing the 2026-05-28 "Gap 6"
+/// deferral as a scale rather than a per-cell colour). The author states what the
+/// value MEANS — sequential from a floor, or diverging about a midpoint — and the
+/// lowering, under the installed `ChartStyle`, picks the ramp and proves it
+/// (contrast and colour-vision gates at style install). No hex crosses the wire:
+/// that is the meaning-not-treatment rule a `Style.InlineBackground` would have
+/// inverted.
+///
+/// Every bound is optional and absence is the data's own extent: `Sequential`
+/// runs from the data minimum to the data maximum, and `Diverging` is centred on
+/// `midpoint` (absent means zero) with the wider of the two data excursions on
+/// both sides.
+let private chartScale =
+    { Name = "ChartScale"
+      Params = []
+      Cases =
+        [ { Tag = "Sequential"
+            Fields = [ opt "min" TFloat; opt "max" TFloat ]
+            Annotations = Annotations.Empty
+            Hosted = None }
+          { Tag = "Diverging"
+            Fields = [ opt "midpoint" TFloat; opt "min" TFloat; opt "max" TFloat ]
+            Annotations = Annotations.Empty
+            Hosted = None } ]
+      Annotations = Annotations.Empty
+      TagRule = UnionTagRule.CaseName
+      Discrimination = UnionDiscrimination.Tagged }
+
+/// Phase 2654 (D39) — a mark's INTERVAL: the two columns holding each datum's
+/// low and high ends, in the value axis's own units. A row whose either end is
+/// missing draws no interval (the 2809 gap rule); an end pair written backwards
+/// is drawn between the two values it names.
+let private chartIntervalRecord =
+    { Name = "ChartInterval"
+      Fields = [ req "low" TStr; req "high" TStr ]
+      Annotations = Annotations.Empty
+      Inline = false }
+
+/// Phase 2654 (D39) — a chart's declared row ORDER: the column whose numeric
+/// value orders the rows before layout, and the direction. The direction reuses
+/// `SortDirection` (lower-case on the wire), the token a table's initial sort
+/// already spells.
+let private chartSortRecord =
+    { Name = "ChartSort"
+      Fields = [ req "field" TStr; req "direction" (TEnum "SortDirection") ]
+      Annotations = Annotations.Empty
+      Inline = false }
 
 /// Phase 679 — a `Switch` case: the match string plus the node it selects. The
 /// tier holds this as a `(string * Node) tuple list`, which the IDL has no type
@@ -3954,7 +4035,8 @@ let private declared: Idl =
           shape
           chartAnnotationX
           chartAnnotationRange
-          chartAnnotation ]
+          chartAnnotation
+          chartScale ]
       Enums =
         [ headingVariant
           linkProtection
@@ -4020,6 +4102,8 @@ let private declared: Idl =
           selectOptionGroupRecord
           mapMarkerRecord
           defaultSortRecord
+          chartIntervalRecord
+          chartSortRecord
           staticRowsRecord
           compareRuleRecord
           fieldRuleRecord
@@ -4236,6 +4320,18 @@ let private docs: (string * string) list =
       "What the x column means: discrete categories, or dates on a continuous temporal scale. Absent means `Category`; `Temporal` over a non-date column is refused before emission (FUARAN097)."
       "kind-field:Chart.annotations",
       "Data-addressed annotations drawn over the chart, such as reference lines. Omitted means none."
+      "kind-field:Chart.scale",
+      "The declared colour scale of a `Heatmap`'s value field: sequential or diverging. Absent means sequential over the data's extent; any other kind carrying it is refused before emission (FUARAN169)."
+      "kind-field:Chart.withheldField",
+      "The column that marks a row as withheld by a disclosure gate: a row whose cell there is `true` draws a placeholder and the tip 'withheld', never its value and never a zero. Absent means nothing is withheld."
+      "kind-field:Chart.interval",
+      "An interval drawn on the single series: the columns holding each datum's low and high ends. Read by `Bar`, `Line`, `Area` and `Scatter`; a row missing either end draws no interval. Absent means none."
+      "kind-field:Chart.sizeField",
+      "The column that sizes each `Scatter` point by area, between the style's minimum and maximum radius. A row whose size is missing or negative draws no point. Absent means one fixed radius."
+      "kind-field:Chart.sortBy",
+      "The column whose numeric value orders the rows before layout, and the direction; rows whose value is missing, and withheld rows, follow in source order. Absent means source order."
+      "kind-field:Chart.pathField",
+      "The column whose numeric value orders a `Scatter` series' points along a connecting path; a row missing its x, y or path value breaks the path. Absent means no path."
       "kind-field:Chart.onPointClick",
       "An in-process handler called with the clicked point's row; it travels on the wire only as a `\"<closure>\"` sentinel."
       "kind:CodeBlock",
@@ -5083,6 +5179,11 @@ let private docs: (string * string) list =
       "case-field:ChartAnnotation.RangeBand.range",
       "The band's extent; the `ChartAnnotationRange` case chooses the axis and types the pair of ends."
       "case-field:ChartAnnotation.RangeBand.label", "The band's label text. Omitted means an unlabelled band."
+      "case:ChartAnnotation.ReferenceLineX",
+      "A vertical line across the plot at a numeric value on a continuous x axis."
+      "case-field:ChartAnnotation.ReferenceLineX.value",
+      "The line's position in the x axis's own units. Must be finite; a non-finite value is refused by the decoder."
+      "case-field:ChartAnnotation.ReferenceLineX.label", "The line's label text. Omitted means an unlabelled line."
       "union:ChartAnnotationRange",
       "The pair of ends of a `RangeBand`; the case names the axis the band lies on, so both ends share that axis's address form."
       "case:ChartAnnotationRange.ValueRange", "A band between two values on the value axis."
@@ -5101,6 +5202,18 @@ let private docs: (string * string) list =
       "case:ChartAnnotationX.Date", "Addresses an instant on a temporal x axis (`XScale = Temporal`)."
       "case-field:ChartAnnotationX.Date.iso",
       "The instant as an ISO-8601 date string. An unparseable date is refused by the decoder."
+      "union:ChartScale",
+      "The declared colour scale of a chart's value field: the author states what the value means, and the lowering picks and validates the colours. No colour crosses the wire."
+      "case:ChartScale.Sequential", "Light to dark from a floor to a ceiling, for a quantity with a natural low end."
+      "case-field:ChartScale.Sequential.min", "The value drawn as the lightest stop. Absent means the data minimum."
+      "case-field:ChartScale.Sequential.max", "The value drawn as the darkest stop. Absent means the data maximum."
+      "case:ChartScale.Diverging",
+      "Two hues meeting at a light neutral midpoint, for a quantity whose sign or side of a reference value is the reading."
+      "case-field:ChartScale.Diverging.midpoint", "The value drawn as the neutral centre stop. Absent means zero."
+      "case-field:ChartScale.Diverging.min",
+      "The low end of the extent. Absent means the data minimum; the scale is symmetric about the midpoint, using the wider excursion."
+      "case-field:ChartScale.Diverging.max",
+      "The high end of the extent. Absent means the data maximum; the scale is symmetric about the midpoint, using the wider excursion."
       "union:ColumnWidth", "How a `DataGrid` column is sized."
       "case:ColumnWidth.Auto", "The renderer sizes the column to its content."
       "case:ColumnWidth.Fixed", "A fixed width in pixels."
@@ -5747,6 +5860,12 @@ let private docs: (string * string) list =
       "record-field:ButtonGroupItem.label", "The button's text."
       "record-field:ButtonGroupItem.onClick",
       "The handler called with the cell's row when the button is clicked; in-process only, it crosses the wire as the closure sentinel."
+      "record:ChartInterval", "A chart interval: the columns holding each datum's low and high ends."
+      "record-field:ChartInterval.low", "The column holding each datum's low end, in the value axis's units."
+      "record-field:ChartInterval.high", "The column holding each datum's high end, in the value axis's units."
+      "record:ChartSort", "A chart's declared row order: the column to order by and the direction."
+      "record-field:ChartSort.field", "The column whose numeric value orders the rows."
+      "record-field:ChartSort.direction", "Ascending or descending."
       "record:ColumnErased",
       "A `DataGrid` column: its header, cell kind, format, width, and where each row's cell value comes from (a row field name or a projection closure)."
       "record-field:ColumnErased.field",

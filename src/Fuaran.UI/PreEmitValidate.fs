@@ -285,8 +285,9 @@ type PreEmitDefect =
     | ChartFieldUngrounded of nodeId: string * field: string * schemaColumns: string list
     /// **FUARAN087 (Error)**. A grounded chart value field (a `YFields` entry,
     /// or `XField` on a `Scatter`) carries a column type the lowering cannot
-    /// plot numerically — anything outside int/float/bool (bool coerces 1/0)
-    /// reads 0.0 at lowering time, a silently-flat series (Phase 640). Fires
+    /// plot numerically — anything outside int/float/bool (bool reads 1/0) is
+    /// a MISSING value at lowering time, drawn as a gap (Phase 2809), so the
+    /// series silently draws nothing (Phase 640). Fires
     /// only when the schema is statically known (see FUARAN086) AND the column's
     /// type is decidable there — a `derive` the typer cannot decide (one reading a
     /// param, `now`, or an undeclared column) exists with a data-dependent type, so
@@ -310,6 +311,44 @@ type PreEmitDefect =
     /// own and are named by writing them: an empty list there is a chart whose
     /// series nobody stated. Carries the node id and the source's binding case.
     | ChartSeriesUnnamed of nodeId: string * found: string
+    /// **FUARAN169 (Error)**. A `Chart` of a kind other than `Heatmap` declares
+    /// a `Scale` (Phase 2655). The declared colour scale is meaningful on a
+    /// heatmap's value field only until a later phase admits it on a sized or
+    /// coloured mark; on any other kind no lowering reads it, so the emission
+    /// carries a promise nothing keeps. Carries the node id and the kind name.
+    | ChartScaleMeaningless of nodeId: string * kind: string
+    /// **FUARAN170 (Error)**. A `Heatmap` chart carries other than exactly TWO
+    /// `YFields` (Phase 2655): the first is the ROW field (the grid's rows), the
+    /// second the VALUE field (the cell colour). Any other count names no grid —
+    /// one field has no value, three leave the extra unread. Carries the node id
+    /// and the field count.
+    | ChartHeatmapFieldShape of nodeId: string * fieldCount: int
+    /// **FUARAN171 (Error)**. A `Chart`'s `WithheldField` names a grounded
+    /// column whose type is decidable and is not boolean (Phase 2809, D38). A
+    /// row is withheld only where that column holds the boolean `true`, so a
+    /// text or numeric flag column would never withhold anything — silently, at
+    /// exactly the rows a disclosure gate suppressed. Carries the node id, the
+    /// field, and the offending column-type tag.
+    | ChartWithheldFieldNotBoolean of nodeId: string * field: string * columnType: string
+    /// **FUARAN172 (Error)**. A `Chart` declares a mark channel its kind does
+    /// not read (Phase 2654, D39): `interval` outside `Bar`/`Line`/`Area`/
+    /// `Scatter`, `sizeField`, `pathField` or a `ReferenceLineX` annotation
+    /// outside `Scatter`, or `sortBy` on a `Scatter` or a `Heatmap`. No lowering
+    /// reads the channel there, so the emission carries a promise nothing keeps.
+    /// Carries the node id, the channel, the kind and the kinds that read it.
+    | ChartChannelKindUnsupported of nodeId: string * channel: string * kind: string * accepts: string
+    /// **FUARAN173 (Error)**. A `Chart` declares an `interval` over other than
+    /// exactly ONE `YFields` series (Phase 2654, D39): an interval names one low
+    /// and one high column, so it belongs to one series; over several it would
+    /// be drawn against a series it never named. A derived list (an empty
+    /// `YFields`) is refused too, since its series are not known until the rows
+    /// arrive. Carries the node id and the series count.
+    | ChartIntervalSeriesShape of nodeId: string * seriesCount: int
+    /// **FUARAN174 (Error)**. A `Chart` declares `sortBy` on a temporal x axis
+    /// (Phase 2654, D39): a temporal axis places each row at its date, so a
+    /// declared order would move nothing and say something false. Carries the
+    /// node id.
+    | ChartSortByTemporal of nodeId: string
     /// **FUARAN089 (Warning)**. `Stacked = true` on a `ChartKind` where
     /// stacking is meaningless (`Line` / `Scatter` / `Pie`) — the lowering
     /// ignores the flag (Phase 637), so the emission carries dead intent;
@@ -2319,14 +2358,14 @@ module DefectCodes =
               "ChartFieldTypeMismatch",
               "FUARAN087",
               Severity.Error,
-              "chart '{nodeId}' plots field '{field}' of type '{columnType}' — the lowering reads non-numeric cells as 0.0, a silently flat series (Phase 640)",
-              "Phase 640"
+              "chart '{nodeId}' plots field '{field}' of type '{columnType}' — the lowering draws a non-numeric cell as a gap, so the series silently draws nothing (Phases 640, 2809)",
+              "Phases 640, 2809"
           )
           row (
               "ChartAnnotationNonFinite",
               "FUARAN137",
               Severity.Error,
-              "chart '{nodeId}' {subject} carries the value {value} — an annotation addresses a place on the value axis, and NaN / Infinity names none; it would also enter the axis domain and take every gridline, tick and mark to NaN with it. Give a finite value in the axis's own units, or drop the annotation (Phase 1490)",
+              "chart '{nodeId}' {subject} carries the value {value} — an annotation addresses a place on its axis, and NaN / Infinity names none; it would also enter the axis domain and take every gridline, tick and mark to NaN with it. Give a finite value in the axis's own units, or drop the annotation (Phase 1490)",
               "Phases 1490, 1492"
           )
           row (
@@ -2377,6 +2416,48 @@ module DefectCodes =
               Severity.Error,
               "chart '{nodeId}' leaves yFields empty over {found} — an empty yFields reads its series off a Query's rows (every numeric column but xField, named by column), so it is admitted only over a Binding.Query; name the series this source carries in yFields (Phase 2568)",
               "Phase 2568"
+          )
+          row (
+              "ChartScaleMeaningless",
+              "FUARAN169",
+              Severity.Error,
+              "chart '{nodeId}' declares a colour scale on kind {kind} — a scale is read only by a Heatmap's value field (Phase 2655); drop the scale, or switch the kind to Heatmap",
+              "Phase 2655"
+          )
+          row (
+              "ChartHeatmapFieldShape",
+              "FUARAN170",
+              Severity.Error,
+              "heatmap chart '{nodeId}' declares {fieldCount} yFields — a heatmap takes exactly two: the row field, then the value field (Phase 2655)",
+              "Phase 2655"
+          )
+          row (
+              "ChartWithheldFieldNotBoolean",
+              "FUARAN171",
+              Severity.Error,
+              "chart '{nodeId}' declares withheld field '{field}' of type '{columnType}' — a row is withheld only where that column holds the boolean true, so this column would never withhold a value (Phase 2809)",
+              "Phase 2809"
+          )
+          row (
+              "ChartChannelKindUnsupported",
+              "FUARAN172",
+              Severity.Error,
+              "chart '{nodeId}' declares {channel} on kind {kind} — {channel} is read only by {accepts}, so this chart would draw without it; drop {channel}, or switch the kind (Phase 2654)",
+              "Phase 2654"
+          )
+          row (
+              "ChartIntervalSeriesShape",
+              "FUARAN173",
+              Severity.Error,
+              "chart '{nodeId}' declares an interval over {seriesCount} series — an interval names one low and one high column, so it belongs to exactly one series; name that one series in yFields, or drop the interval (Phase 2654)",
+              "Phase 2654"
+          )
+          row (
+              "ChartSortByTemporal",
+              "FUARAN174",
+              Severity.Error,
+              "chart '{nodeId}' declares sortBy on a temporal x axis — a temporal axis places each row at its date, so a declared order moves nothing; drop sortBy, or declare xScale 'Category' (Phase 2654)",
+              "Phase 2654"
           )
           row (
               "ChartStackedMeaningless",
@@ -3362,6 +3443,16 @@ let private describeArgs (d: PreEmitDefect) : string * (string * string) list =
     | PreEmitDefect.ChartPieSeriesShape(nodeId, seriesCount) ->
         "ChartPieSeriesShape", [ "nodeId", nodeId; "seriesCount", string seriesCount ]
     | PreEmitDefect.ChartSeriesUnnamed(nodeId, found) -> "ChartSeriesUnnamed", [ "nodeId", nodeId; "found", found ]
+    | PreEmitDefect.ChartScaleMeaningless(nodeId, kind) -> "ChartScaleMeaningless", [ "nodeId", nodeId; "kind", kind ]
+    | PreEmitDefect.ChartHeatmapFieldShape(nodeId, fieldCount) ->
+        "ChartHeatmapFieldShape", [ "nodeId", nodeId; "fieldCount", string fieldCount ]
+    | PreEmitDefect.ChartWithheldFieldNotBoolean(nodeId, field, columnType) ->
+        "ChartWithheldFieldNotBoolean", [ "nodeId", nodeId; "field", field; "columnType", columnType ]
+    | PreEmitDefect.ChartChannelKindUnsupported(nodeId, channel, kind, accepts) ->
+        "ChartChannelKindUnsupported", [ "nodeId", nodeId; "channel", channel; "kind", kind; "accepts", accepts ]
+    | PreEmitDefect.ChartIntervalSeriesShape(nodeId, seriesCount) ->
+        "ChartIntervalSeriesShape", [ "nodeId", nodeId; "seriesCount", string seriesCount ]
+    | PreEmitDefect.ChartSortByTemporal nodeId -> "ChartSortByTemporal", [ "nodeId", nodeId ]
     | PreEmitDefect.ChartStackedMeaningless(nodeId, kind) ->
         "ChartStackedMeaningless", [ "nodeId", nodeId; "kind", kind ]
     | PreEmitDefect.InertEditableGrid nodeId -> "InertEditableGrid", [ "nodeId", nodeId ]
@@ -5125,6 +5216,62 @@ module private ChartRules =
              defects.Add(PreEmitDefect.ChartPieSeriesShape(nodeIdStr, spec.YFields.Length))
          | _ -> ())
 
+        // FUARAN169 — a declared scale is read by a Heatmap alone (Phase 2655).
+        (match spec.Kind, spec.Scale with
+         | ChartKind.Heatmap, _
+         | _, None -> ()
+         | _, Some _ -> defects.Add(PreEmitDefect.ChartScaleMeaningless(nodeIdStr, kindName)))
+
+        // FUARAN170 — a heatmap names its row field and its value field, in that
+        // order (Phase 2655). An EMPTY list is FUARAN168's or a Query's, judged
+        // above, never a heatmap grid.
+        (match spec.Kind with
+         | ChartKind.Heatmap when spec.YFields.Length <> 2 ->
+             defects.Add(PreEmitDefect.ChartHeatmapFieldShape(nodeIdStr, spec.YFields.Length))
+         | _ -> ())
+
+        // FUARAN172 — a mark channel on a kind that does not read it (Phase
+        // 2654, D39). Each channel names the kinds that read it, so the
+        // repair hint can say where it belongs.
+        let channelOn (channel: string) (declared: bool) (accepts: ChartKind list) (acceptsText: string) =
+            if declared && not (List.contains spec.Kind accepts) then
+                defects.Add(PreEmitDefect.ChartChannelKindUnsupported(nodeIdStr, channel, kindName, acceptsText))
+
+        let referenceXDeclared =
+            spec.Annotations
+            |> Option.defaultValue []
+            |> List.exists (fun a ->
+                match a with
+                | ChartAnnotation.ReferenceLineX _ -> true
+                | _ -> false)
+
+        channelOn
+            "interval"
+            spec.Interval.IsSome
+            [ ChartKind.Bar; ChartKind.Line; ChartKind.Area; ChartKind.Scatter ]
+            "Bar, Line, Area and Scatter"
+
+        channelOn "sizeField" spec.SizeField.IsSome [ ChartKind.Scatter ] "Scatter"
+        channelOn "pathField" spec.PathField.IsSome [ ChartKind.Scatter ] "Scatter"
+        channelOn "a ReferenceLineX annotation" referenceXDeclared [ ChartKind.Scatter ] "Scatter"
+
+        channelOn
+            "sortBy"
+            spec.SortBy.IsSome
+            [ ChartKind.Bar; ChartKind.Line; ChartKind.Area; ChartKind.Pie ]
+            "Bar, Line, Area and Pie"
+
+        // FUARAN173 — an interval belongs to exactly one series.
+        (match spec.Interval with
+         | Some _ when spec.YFields.Length <> 1 ->
+             defects.Add(PreEmitDefect.ChartIntervalSeriesShape(nodeIdStr, spec.YFields.Length))
+         | _ -> ())
+
+        // FUARAN174 — a temporal axis orders its rows by date already.
+        (match spec.SortBy, spec.XScale with
+         | Some _, Some ChartXScale.Temporal -> defects.Add(PreEmitDefect.ChartSortByTemporal nodeIdStr)
+         | _ -> ())
+
         // FUARAN089 — Stacked is dead intent outside Bar/Area.
         (match spec.Kind with
          | ChartKind.Line
@@ -5179,8 +5326,19 @@ module private ChartRules =
             else
                 Option.None
 
+        // Phase 2654 — the x reference lines, numbered per case like the
+        // value-axis lines, on the same finite rule.
+        let referenceXValues =
+            spec.Annotations
+            |> Option.defaultValue []
+            |> List.choose (fun a ->
+                match a with
+                | ChartAnnotation.ReferenceLineX(v, _) -> Some v
+                | _ -> None)
+
         (referenceValues |> List.mapi (fun i v -> sprintf "reference line %d" i, v))
         @ bandValues
+        @ (referenceXValues |> List.mapi (fun i v -> sprintf "x reference line %d" i, v))
         |> List.iter (fun (subject, v) ->
             match nonFiniteSpelling v with
             | Some spelling -> defects.Add(PreEmitDefect.ChartAnnotationNonFinite(nodeIdStr, subject, spelling))
@@ -5272,6 +5430,29 @@ module private ChartRules =
 
                      if not temporalX then
                          defects.Add(PreEmitDefect.ChartAnnotationAxisMismatch(nodeIdStr, subject, "date", axisForm))
+
+             // Phase 2654 — an x reference line is a NUMERIC x address, so on a
+             // Scatter whose x is temporal it is the same mismatch (FUARAN139):
+             // a date there is `EventMarker`'s address. Off Scatter it is
+             // FUARAN172's, judged above.
+             (match spec.Kind with
+              | ChartKind.Scatter when temporalX ->
+                  spec.Annotations
+                  |> Option.defaultValue []
+                  |> List.choose (fun a ->
+                      match a with
+                      | ChartAnnotation.ReferenceLineX _ -> Some()
+                      | _ -> Option.None)
+                  |> List.iteri (fun i () ->
+                      defects.Add(
+                          PreEmitDefect.ChartAnnotationAxisMismatch(
+                              nodeIdStr,
+                              sprintf "x reference line %d" i,
+                              "numeric",
+                              axisForm
+                          )
+                      ))
+              | _ -> ())
 
              // FUARAN141 — the band pair's ORDER, decided on the
              // axis each pair addresses.
@@ -5441,6 +5622,53 @@ module private ChartRules =
                              defects.Add(PreEmitDefect.ChartFieldTypeMismatch(nodeIdStr, yf, ColumnType.tag t))
                              locateLast ctx n (sprintf "yFields[%d]" i)
                          | _ -> ())
+
+                 // Phase 2809 (D38) — the withheld flag column is grounded like
+                 // every other chart field (FUARAN086), and a decidable type that
+                 // is not boolean can never withhold anything (FUARAN171).
+                 (match spec.WithheldField with
+                  | None -> ()
+                  | Some wf when not (SchemaWalk.has wf produced) ->
+                      defects.Add(PreEmitDefect.ChartFieldUngrounded(nodeIdStr, wf, schemaColumns))
+                      locateLast ctx n "withheldField"
+                  | Some wf ->
+                      match colType wf with
+                      | Some ColumnType.BoolType
+                      | None -> ()
+                      | Some t ->
+                          defects.Add(PreEmitDefect.ChartWithheldFieldNotBoolean(nodeIdStr, wf, ColumnType.tag t))
+                          locateLast ctx n "withheldField")
+
+                 // Phase 2654 (D39) — every column a mark channel names is
+                 // grounded like the series (FUARAN086), and each is read as a
+                 // NUMBER (the interval ends, the size, the sort key, the path
+                 // order), so a decidable non-numeric type is FUARAN087.
+                 let channelFields =
+                     [ match spec.Interval with
+                       | Some iv ->
+                           yield iv.Low, "interval.low"
+                           yield iv.High, "interval.high"
+                       | None -> ()
+                       match spec.SizeField with
+                       | Some f -> yield f, "sizeField"
+                       | None -> ()
+                       match spec.SortBy with
+                       | Some sb -> yield sb.Field, "sortBy.field"
+                       | None -> ()
+                       match spec.PathField with
+                       | Some f -> yield f, "pathField"
+                       | None -> () ]
+
+                 for field, at in channelFields do
+                     if not (SchemaWalk.has field produced) then
+                         defects.Add(PreEmitDefect.ChartFieldUngrounded(nodeIdStr, field, schemaColumns))
+                         locateLast ctx n at
+                     else
+                         match colType field with
+                         | Some t when not (numeric t) ->
+                             defects.Add(PreEmitDefect.ChartFieldTypeMismatch(nodeIdStr, field, ColumnType.tag t))
+                             locateLast ctx n at
+                         | _ -> ()
          | _ -> ())
 
 /// Media, embeds, trees and links: the content kinds that carry their own rules.
@@ -6942,7 +7170,8 @@ let private groundingReader (d: PreEmitDefect) : (string * string) option =
     match d with
     | PreEmitDefect.ChartFieldUngrounded(n, _, _)
     | PreEmitDefect.ChartFieldTypeMismatch(n, _, _)
-    | PreEmitDefect.ChartTemporalXNotDate(n, _, _) -> Some(n, "Chart")
+    | PreEmitDefect.ChartTemporalXNotDate(n, _, _)
+    | PreEmitDefect.ChartWithheldFieldNotBoolean(n, _, _) -> Some(n, "Chart")
     | PreEmitDefect.GridFieldUngrounded(n, _, _)
     | PreEmitDefect.PillFieldUngrounded(n, _, _, _) -> Some(n, "DataGrid")
     | _ -> None
