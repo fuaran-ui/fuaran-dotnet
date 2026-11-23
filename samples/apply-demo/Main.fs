@@ -82,12 +82,47 @@ let update (msg: Msg) (model: Model) : Model * Step<Msg, NoEffect> list =
 // ─── Binding sources + runtime ───────────────────────────────────────────────
 //
 // The Static-bound metric source needs no live query/state sources; an empty
-// `BindingSources` suffices. The browser runtime's `CanDispatch` is
-// allow-by-default (Phase 119), so the apply gate permits the in-page mutation.
+// `BindingSources` suffices.
 
 let private sources: BindingResolver.BindingSources = BindingResolver.empty
 
-let private runtime: Runtime.IFuaranRuntime = BrowserRuntime.create ()
+/// This sample's dispatch policy. The browser runtime is DENY-by-default
+/// (Phase 782) and stays so; this permits exactly `ApplyTreeOp`, so the in-page
+/// `__fuaran.apply` loop this sample exists to show passes the gate and nothing
+/// else gains a permit. A host applying ops from an untrusted source writes its
+/// own, narrower allow-list the same way.
+type private ApplyPermittingRuntime(inner: Runtime.IFuaranRuntime) =
+    interface Runtime.IFuaranRuntime with
+        member _.Call(endpoint, onResult) = inner.Call(endpoint, onResult)
+        member _.Notify(channel, payload) = inner.Notify(channel, payload)
+        member _.Navigate(route) = inner.Navigate(route)
+        member _.SetState(key, value) = inner.SetState(key, value)
+        member _.InvokeAiTool(toolName, args) = inner.InvokeAiTool(toolName, args)
+        member _.WriteToClipboard(text) = inner.WriteToClipboard(text)
+
+        member _.ReadFileBody(file, encoding, onRead) =
+            inner.ReadFileBody(file, encoding, onRead)
+
+        member _.Warn(message) = inner.Warn(message)
+        member _.LayoutObserver = inner.LayoutObserver
+        member _.TryRenderCustom(m, c, p) = inner.TryRenderCustom(m, c, p)
+        member _.TryGetCustomRenderer(m, c) = inner.TryGetCustomRenderer(m, c)
+
+        member _.TryRenderCustomInScope(s, m, c, p) =
+            inner.TryRenderCustomInScope(s, m, c, p)
+
+        member _.TryGetCustomRendererInScope(s, m, c) =
+            inner.TryGetCustomRendererInScope(s, m, c)
+
+        member _.TryLoadGuest(guest) = inner.TryLoadGuest(guest)
+
+        member _.CanDispatch(descriptor) =
+            match descriptor with
+            | Runtime.ActionDescriptor.ApplyTreeOp _ -> true
+            | other -> inner.CanDispatch(other)
+
+let private runtime: Runtime.IFuaranRuntime =
+    ApplyPermittingRuntime(BrowserRuntime.create ()) :> Runtime.IFuaranRuntime
 
 // ─── View ─────────────────────────────────────────────────────────────────────
 
@@ -107,7 +142,8 @@ let view (model: Model) (dispatch: Msg -> unit) =
     // The host-supplied apply handler: decode the wire TreeOp, apply it to the
     // live Node<obj> tree, and dispatch ReplaceTree to re-render. Phase 90's
     // `applyEnvelope` consults `runtime.CanDispatch(ApplyTreeOp …)` BEFORE this
-    // handler ever runs (default-deny by shape, FGP 3). Built per-render so it
+    // handler ever runs (default-deny by shape, FGP 3; this sample's runtime
+    // admits `ApplyTreeOp` by name, above). Built per-render so it
     // closes over the current tree (mirrors the TS demo's `onApply`).
     let applyHandler (opJson: string) : DebugGlobal.ApplyOutcome =
         match JsonDecode.decodeOp opJson with
