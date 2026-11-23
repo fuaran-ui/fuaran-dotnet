@@ -4013,6 +4013,7 @@ let private treeOps: IdlKind list =
 /// The vocabulary as DECLARED, before its documentation is laid over it (Phase 1869) — see [[uiIdl]].
 let private declared: Idl =
     { Kinds = displayKinds @ layoutKinds @ inputKinds @ visKinds @ metaKinds
+      Contracts = []
       Unions =
         [ textSource
           binding

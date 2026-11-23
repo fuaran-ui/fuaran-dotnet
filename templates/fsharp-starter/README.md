@@ -68,10 +68,9 @@ restores, then fails to compile under Fable in the renderer's `RenderExport.fs`
    `Render.render ctx tree` path and `RegisterCustomRenderer` for the bounded
    `NodeKind.Custom` escape hatch.
 
-## Using this outside the Fuaran workspace
+## Packages
 
-The template restores the `Fuaran.UI.*` packs from the workspace-local feed
-(`../../../local-nuget-feed` in [`nuget.config`](nuget.config)). When you copy it
-out (degit / `create-fuaran-app`), replace that `local` source with the published
-GitHub Packages feed, `https://nuget.pkg.github.com/fuaran-ui/index.json` (a PAT
-with `read:packages` is required), once the packages are published.
+The template restores from nuget.org only ([`nuget.config`](nuget.config) clears
+every other source), so a copy anywhere builds with no extra feed. One property,
+`FuaranUIVersion` in [`Starter.fsproj`](Starter.fsproj), pins every `Fuaran.UI.*`
+package; raise it to move onto a newer release.

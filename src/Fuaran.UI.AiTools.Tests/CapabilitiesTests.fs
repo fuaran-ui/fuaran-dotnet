@@ -28,9 +28,9 @@ let private mkCap (id: string) (det: Fuaran.Core.DeterminismSource) : Fuaran.Cor
             { Host = Fuaran.Core.ReadsHost
               Determinism = det } }
 
-    Fuaran.Core.Capability.create id sg Fuaran.Core.Server
+    Fuaran.Core.Capability.create id sg Fuaran.Core.Server Fuaran.Core.Returns.Nothing
 
-let private registry =
+let private registry: Fuaran.Core.CapabilityRegistry<unit> =
     Fuaran.Core.CapabilityRegistry.empty
     |> Fuaran.Core.CapabilityRegistry.register (mkCap "forecast" Fuaran.Core.Effect.deterministic)
     |> Result.bind (Fuaran.Core.CapabilityRegistry.register (mkCap "score" Fuaran.Core.Effect.random))
@@ -44,7 +44,7 @@ let private gated (decision: Fuaran.Core.PolicyDecision) (told: ResizeArray<stri
     registry
     |> Fuaran.Core.CapabilityRegistry.withGate
         { Policy = "kiosk-policy"
-          Decide = fun _ _ -> decision }
+          Decide = fun () _ _ -> decision }
     |> Fuaran.Core.CapabilityRegistry.onDenied (fun denial -> told.Add denial.Id)
 
 let private assertAllPassed (context: string) (results: Fuaran.Core.LawResult list) =

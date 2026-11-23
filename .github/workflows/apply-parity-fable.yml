@@ -206,9 +206,9 @@ jobs:
   # tests/core-fable is deliberately absent — the Fable stage the
   # `fable-portability` job runs compiles it (and builds it for .NET whenever
   # its value leg runs).
-  # templates/fsharp-starter is deliberately absent — it is an unrooted template
-  # whose nuget.config resolves the local feed relative to the instantiated app,
-  # so it cannot restore in place.
+  # templates/fsharp-starter is built here as a stranger would: copied out of the
+  # checkout, restored from nuget.org alone into an empty package folder, built,
+  # and Fable-compiled (see the last step).
   out-of-solution-projects:
     runs-on: ubuntu-latest
     steps:
@@ -242,3 +242,18 @@ jobs:
         run: |
           dotnet fable samples/hydration/client/Client.fsproj -o "$RUNNER_TEMP/fable-samples/hydration" --noCache
           dotnet fable samples/resume/client/Client.fsproj -o "$RUNNER_TEMP/fable-samples/resume" --noCache
+
+      # The starter template pins published Fuaran.UI.* packages and restores
+      # from nuget.org only, so it builds with nothing from this checkout. Copy it
+      # out so no parent nuget.config or Directory.*.props leaks in, and use an
+      # empty package folder so a cached package cannot stand in for nuget.org.
+      - name: Build the starter template from nuget.org alone
+        env:
+          NUGET_PACKAGES: ${{ runner.temp }}/starter-packages
+        run: |
+          cp -r templates/fsharp-starter "$RUNNER_TEMP/starter"
+          cd "$RUNNER_TEMP/starter"
+          dotnet restore --nologo
+          dotnet build --no-restore --nologo
+          dotnet tool restore
+          dotnet fable -o output --noCache

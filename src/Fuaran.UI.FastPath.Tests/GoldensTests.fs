@@ -127,7 +127,8 @@ module GoldensTests =
 
         { Addr = reqStr h "addr"
           Name = reqStr h "name"
-          Kind = hk }
+          Kind = hk
+          Slots = [] }
 
     let private modeOf (s: string) : MatchMode =
         match s with
@@ -184,9 +185,14 @@ module GoldensTests =
                                     Holes = holes
                                     Effect = Effect.pureDeterministic }
 
-                              let cap = Capability.create id sg Placement.ClientDeclarative
+                              let cap =
+                                  Capability.create
+                                      id
+                                      sg
+                                      Placement.ClientDeclarative
+                                      (Returns.Value(SlotTree(Some resultType)))
 
-                              match FunctionRegistry.register (FunctionRegistry.entry resultType cap) r with
+                              match FunctionRegistry.register (FunctionRegistry.entry cap) r with
                               | Ok next -> next
                               | Error e -> failwithf "goldens registry: registration error for '%s': %A" id e)
 

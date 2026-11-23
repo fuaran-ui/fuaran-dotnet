@@ -130,6 +130,7 @@ let copyImage: Fuaran.Core.Capability =
         CopyImageId
         (signature CopyImageId)
         (Fuaran.Core.ClientIsland Fuaran.Core.IslandKind.Js)
+        (Fuaran.Core.Returns.Value(Fuaran.Core.Enum [ "started" ]))
 
 /// `render.save-image`, declared.
 let saveImage: Fuaran.Core.Capability =
@@ -137,10 +138,11 @@ let saveImage: Fuaran.Core.Capability =
         SaveImageId
         (signature SaveImageId)
         (Fuaran.Core.ClientIsland Fuaran.Core.IslandKind.Js)
+        (Fuaran.Core.Returns.Value(Fuaran.Core.Enum [ "started" ]))
 
 /// The registry holding exactly the two. A host composing a wider registry
 /// registers `copyImage` and `saveImage` into its own; this one backs `invoker`.
-let registry: Fuaran.Core.CapabilityRegistry =
+let registry: Fuaran.Core.CapabilityRegistry<unit> =
     Fuaran.Core.CapabilityRegistry.empty
     |> Fuaran.Core.CapabilityRegistry.register copyImage
     |> Result.bind (Fuaran.Core.CapabilityRegistry.register saveImage)
@@ -400,7 +402,7 @@ let invoker: string -> (string * string) list -> Deferred<obj> =
             else
                 toCore (perform Mode.Save args)
 
-        match Fuaran.Core.CapabilityRegistry.dispatch registry capabilityId args body with
+        match Fuaran.Core.CapabilityRegistry.dispatch registry () None capabilityId args body with
         | Ok(CoreDeferred.Ready v) -> Deferred.Ready v
         | Ok CoreDeferred.Pending -> Deferred.Pending
         | Ok(CoreDeferred.Failed m)

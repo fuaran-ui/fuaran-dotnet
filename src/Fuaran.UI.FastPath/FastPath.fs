@@ -34,7 +34,7 @@ module FastPath =
     /// A bank = the Core signature registry (for search) + the id→pattern map (for
     /// retrieval + instantiation). Built once from a pattern list.
     type Bank =
-        { Registry: FunctionRegistry
+        { Registry: FunctionRegistry<unit>
           Patterns: Map<string, Pattern> }
 
     /// A UI-ergonomic query: the holes the caller can fill (the available context),
@@ -49,7 +49,8 @@ module FastPath =
     let valueHole (addr: string) (name: string) (space: ValueSpace) : HoleDecl =
         { Addr = addr
           Name = name
-          Kind = ValueHole space }
+          Kind = ValueHole space
+          Slots = [] }
 
     /// A free-text value hole (any string).
     let textHole (addr: string) (name: string) : HoleDecl = valueHole addr name AnyString
@@ -67,6 +68,15 @@ module FastPath =
     /// kind. This is the QUERY side's projection — what a caller declares they
     /// can provide — and it is the shape the shared cross-host
     /// `function-registry` goldens certify, so it stays total.
+    ///
+    /// The entry's `Name` is the hole's ADDRESS. Since Fuaran.Core 0.45.0 the
+    /// capability seam binds an argument by the entry's qualified name and holds
+    /// it to the dotted segment grammar, unique per signature (Core Phase 712).
+    /// A pattern's hole is bound by its address everywhere in this tier — `Build`,
+    /// `valueViolations`, `instantiate` — so the registered signature names it by
+    /// that address, and an argument keyed by address validates exactly as it did
+    /// before. `HoleDecl.Name` stays the caller-facing label, which the grammar
+    /// would refuse ("first label").
     let private sigEntryOf (h: HoleDecl) : SigEntry =
         let required =
             match h.Kind with
@@ -76,7 +86,7 @@ module FastPath =
             | ActionHole _ -> false
 
         { Addr = h.Addr
-          Name = h.Name
+          Name = h.Addr
           Kind = h.Kind
           Required = required }
 
@@ -153,9 +163,13 @@ module FastPath =
                 (FunctionRegistry.empty, patterns)
                 ||> List.fold (fun r p ->
                     let cap =
-                        Capability.create p.Id (signatureOf p.Title p.Holes) Placement.ClientDeclarative
+                        Capability.create
+                            p.Id
+                            (signatureOf p.Title p.Holes)
+                            Placement.ClientDeclarative
+                            (Returns.Value(SlotTree(Some p.ResultType)))
 
-                    match FunctionRegistry.register (FunctionRegistry.entry p.ResultType cap) r with
+                    match FunctionRegistry.register (FunctionRegistry.entry cap) r with
                     | Ok next -> next
                     // Unreachable for a duplicate id, which is refused above.
                     // A registration the Core registry declines for its OWN

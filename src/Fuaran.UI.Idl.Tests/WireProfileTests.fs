@@ -223,33 +223,36 @@ let tests =
 
           // Phase 2509, case 2 (`docs/DECISIONS.md` D28), as it stands after the Phase 2626
           // re-point. The host kept MAJOR here while it computed its own step; the step is now
-          // Core's, and Core names no profile while a row is undecided (fuaran-core D242's open
-          // question). Pinned so that a ruling there is a deliberate edit here, and so that the
-          // break is still visible: the report carries the substrate's advice, which says major.
-          testCase "a wire break beside an undecided row is undecided, and the report says major (D28 case 2)" (fun _ ->
-              let erased, _ =
-                  withFirstField (fun f -> f.Type = TStr && f.Presence.IsNone) (fun f -> { f with Type = TJson })
+          // Core's. Core named no profile while a row was undecided until its 0.45.0 (fuaran-core
+          // Phase 710 ruled D242's open question): a decided wire break steps the major whatever
+          // else is undecided, so the step and the report's advice agree again. Pinned so that a
+          // further ruling there is a deliberate edit here.
+          testCase
+              "a wire break beside an undecided row steps the major, and the report says major (D28 case 2)"
+              (fun _ ->
+                  let erased, _ =
+                      withFirstField (fun f -> f.Type = TStr && f.Presence.IsNone) (fun f -> { f with Type = TJson })
 
-              let before, after = Artifact.render withExtraKind, Artifact.render erased
-              let severities = (verdictOf before after).Changes |> List.map _.Severity
+                  let before, after = Artifact.render withExtraKind, Artifact.render erased
+                  let severities = (verdictOf before after).Changes |> List.map _.Severity
 
-              Expect.contains severities BreakingWire "the probe carries no wire break"
-              Expect.contains severities Unclassifiable "the probe carries no undecided row"
+                  Expect.contains severities BreakingWire "the probe carries no wire break"
+                  Expect.contains severities Unclassifiable "the probe carries no undecided row"
 
-              Expect.equal
-                  (stepOf before after)
-                  Undecided
-                  "a removed kind beside an erased-slot change did not read as undecided, which is Core's answer"
+                  Expect.equal
+                      (stepOf before after)
+                      Major
+                      "a removed kind beside an erased-slot change did not step the major, which is Core's answer since its 0.45.0"
 
-              match reportBetween before after with
-              | Error e -> failtestf "the report refused a well-formed pair: %s" e
-              | Ok r ->
-                  Expect.stringContains
-                      r
-                      "A decided row already breaks the wire"
-                      "the undecided report hides the wire break beside it"
+                  match reportBetween before after with
+                  | Error e -> failtestf "the report refused a well-formed pair: %s" e
+                  | Ok r ->
+                      Expect.stringContains
+                          r
+                          "[Unclassifiable]"
+                          "the major report hides the undecided row beside the wire break"
 
-                  Expect.stringContains r "MAJOR" "the undecided report does not carry the substrate's major advice")
+                      Expect.stringContains r "MAJOR" "the report does not name the major step")
 
           // Phase 2626, the go-red for the decode rule (fuaran-core#127's adoption task): the step
           // the host reads is Core's under THIS format's rule, and the rule is what absorbs an added

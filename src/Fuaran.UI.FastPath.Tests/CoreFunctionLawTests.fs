@@ -77,7 +77,7 @@ module CoreFunctionLawTests =
         let declaration =
             "{\"$type\":\"capability\",\"determinism\":\"random\",\"id\":\""
             + id
-            + "\",\"placement\":{\"$type\":\"server\"},\"signature\":{\"effect\":{\"determinism\":\"random\",\"host\":\"readsHost\"},\"holes\":[],\"name\":\"cap\"}}"
+            + "\",\"placement\":{\"$type\":\"server\"},\"result\":{\"$type\":\"nothing\"},\"signature\":{\"effect\":{\"determinism\":\"random\",\"host\":\"readsHost\"},\"holes\":[],\"name\":\"cap\"}}"
 
         match CapabilityCodec.decode declaration with
         | Ok c -> c
@@ -88,7 +88,7 @@ module CoreFunctionLawTests =
     /// entry carries its constraint and NO space, so this is the kit's canonical form; the TS and Go
     /// ports pinned the pre-0.37.0 form below, which still reads, to this.
     let private slotTreeDecl =
-        "{\"$type\":\"capability\",\"determinism\":\"random\",\"id\":\"cap-tree\",\"placement\":{\"$type\":\"server\"},"
+        "{\"$type\":\"capability\",\"determinism\":\"random\",\"id\":\"cap-tree\",\"placement\":{\"$type\":\"server\"},\"result\":{\"$type\":\"nothing\"},"
         + "\"signature\":{\"effect\":{\"determinism\":\"random\",\"host\":\"readsHost\"},\"holes\":["
         + "{\"addr\":\"body\",\"kind\":\"slot\",\"name\":\"body\",\"required\":true,\"slotKind\":\"Layout\"},"
         + "{\"addr\":\"chart\",\"kind\":\"value\",\"name\":\"chart\",\"required\":false,\"space\":{\"$type\":\"slotTree\",\"slotKind\":\"Chart\"}}"
@@ -97,7 +97,7 @@ module CoreFunctionLawTests =
     /// The same declaration as it was pinned before Core 0.37.0: the slot entry also wrote a
     /// `slotTree` space, which a slot hole no longer holds. It reads, and re-encodes to `slotTreeDecl`.
     let private slotTreeDeclBefore037 =
-        "{\"$type\":\"capability\",\"determinism\":\"random\",\"id\":\"cap-tree\",\"placement\":{\"$type\":\"server\"},"
+        "{\"$type\":\"capability\",\"determinism\":\"random\",\"id\":\"cap-tree\",\"placement\":{\"$type\":\"server\"},\"result\":{\"$type\":\"nothing\"},"
         + "\"signature\":{\"effect\":{\"determinism\":\"random\",\"host\":\"readsHost\"},\"holes\":["
         + "{\"addr\":\"body\",\"kind\":\"slot\",\"name\":\"body\",\"required\":true,\"slotKind\":\"Layout\",\"space\":{\"$type\":\"slotTree\"}},"
         + "{\"addr\":\"chart\",\"kind\":\"value\",\"name\":\"chart\",\"required\":false,\"space\":{\"$type\":\"slotTree\",\"slotKind\":\"Chart\"}}"
@@ -239,8 +239,8 @@ module CoreFunctionLawTests =
                           cap.Signature.Holes
                           |> List.choose (fun h ->
                               match h.Space with
-                              | Some(IntRange(lo, _)) -> Some(h.Addr, string lo)
-                              | Some AnyString -> Some(h.Addr, "x")
+                              | Some(IntRange(lo, _)) -> Some(h.Name, string lo)
+                              | Some AnyString -> Some(h.Name, "x")
                               | _ -> None)
 
                       Expect.equal
@@ -254,10 +254,10 @@ module CoreFunctionLawTests =
 
                       match
                           cap.Signature.Holes
-                          |> List.tryPick (fun h -> h.Space |> Option.map (fun s -> h.Addr, s))
+                          |> List.tryPick (fun h -> h.Space |> Option.map (fun s -> h.Name, s))
                       with
-                      | Some(addr, IntRange(_, hi)) ->
-                          match Capability.validateArgs cap [ addr, string (hi + 1) ] with
+                      | Some(name, IntRange(_, hi)) ->
+                          match Capability.validateArgs cap [ name, string (hi + 1) ] with
                           | Error(ArgOutOfSpace _) -> ()
                           | other -> failtestf "%s: an out-of-space arg was not refused (%A)" cap.Id other
                       | _ ->
@@ -330,7 +330,8 @@ module CoreFunctionLawTests =
                           [ FastPath.textHole "body" "body"
                             { Addr = "inner"
                               Name = "inner"
-                              Kind = SlotHole(Some "Markdown") } ]
+                              Kind = SlotHole(Some "Markdown")
+                              Slots = [] } ]
                         Build = fun _ -> Fuaran.markdown "md" "hello" }
 
                   let b = FastPath.bank [ slotBearing ]
@@ -375,11 +376,11 @@ module CoreFunctionLawTests =
 
                   for d in LawVectorExport.draws () do
                       Expect.equal
-                          (Capability.validateArgs d.Cap [ "h0", string d.Lo ])
+                          (Capability.validateArgs d.Cap [ "x", string d.Lo ])
                           (Ok())
                           (sprintf "iteration %d: the in-space arg is accepted" d.Iteration)
 
-                      match Capability.validateArgs d.Cap [ "h0", string (d.Hi + 1) ] with
+                      match Capability.validateArgs d.Cap [ "x", string (d.Hi + 1) ] with
                       | Error(ArgOutOfSpace _) -> ()
                       | other -> failtestf "iteration %d: out-of-space was not ArgOutOfSpace (%A)" d.Iteration other
 
@@ -455,15 +456,15 @@ module CoreFunctionLawTests =
                               | Some(JArr items) -> items
                               | _ -> failtest "laws/capability-laws.json carries no `vectors` array"
 
-                          // Eight per iteration since fuaran-core Phase 568: validateArgs pins
-                          // the accept, both bounds at and past each (five), beside the
-                          // invocation key, the declaration round-trip and the registry
-                          // enumeration. The literal was six, and the stamp mismatch above
-                          // skipped this assertion until the Core pin reached 0.41.0.
+                          // Twelve per iteration since fuaran-core Phase 642 (Core 0.43.0): the
+                          // eight of Phase 568 (validateArgs' accept and both bounds at and past
+                          // each, the invocation key, the declaration round-trip and the registry
+                          // enumeration) beside two declaration refusals (no result, an empty
+                          // result) and two one-node pipeline type checks.
                           Expect.equal
                               (List.length vectors)
-                              (8 * LawVectorExport.iterations)
-                              "eight vectors per declared iteration"
+                              (12 * LawVectorExport.iterations)
+                              "twelve vectors per declared iteration"
 
                           let failures = vectors |> List.choose LawVectorExport.checkVector
 
@@ -498,7 +499,7 @@ module CoreFunctionLawTests =
                             "input",
                             JObj
                                 [ "capability", JStr declaration
-                                  "args", JArr [ JObj [ "addr", JStr "h0"; "value", JStr(string d.Lo) ] ] ]
+                                  "args", JArr [ JObj [ "name", JStr "x"; "value", JStr(string d.Lo) ] ] ]
                             "expected", JObj [ "verdict", JStr verdict ] ]
 
                   Expect.isNone (LawVectorExport.checkVector (vector "accept")) "the true vector passes"
@@ -539,7 +540,7 @@ module CoreFunctionLawTests =
 
               testCase "the capability invocation key matches the literals every host pins"
               <| fun _ ->
-                  [ "cap-0", [ "h0", "13" ], "cap-0#70fcefc7" // the published vector capability-0
+                  [ "cap-0", [ "x", "13" ], "cap-0#06daf06d" // the published vector capability-0 (bound by name since Core 0.45.0)
                     "cap", [], "cap#811c9dc5" // the empty pre-image: the FNV-1a offset basis
                     "cap", [ "a", "x\u0001y"; "b", "\u0010" ], "cap#3d801624" // escaped value fields
                     "cap", [ "a", "x"; "\u0001y", "\u0010" ], "cap#46a6fdda" // escaped address field

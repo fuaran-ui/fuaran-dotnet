@@ -53,7 +53,8 @@ let holesOf (node: Node<'Msg>) : Fuaran.Core.HoleDecl list =
 
             ({ Addr = holeAddr node.Id name
                Name = name
-               Kind = kind }
+               Kind = kind
+               Slots = [] }
             : Fuaran.Core.HoleDecl))
     | _ -> []
 
