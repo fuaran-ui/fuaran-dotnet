@@ -28,12 +28,12 @@ decoder yields `TreeOp<obj>`, so a `Node<'Msg>` model would type-clash), and the
 #    `-c Release` as well, which also drops the Fable-only development arms.
 dotnet fable ApplyDemo.fsproj -o output --define DEBUG --define FUARAN_DEBUG_GLOBAL
 
-# 2. Serve (port 24020 per the workspace port-allocation table).
+# 2. Serve (port 24090, the slot declared in ports.json).
 npm install
 npm run dev
 ```
 
-Then open <http://localhost:24020/> and, in DevTools:
+Then open <http://localhost:24090/> and, in DevTools:
 
 ```js
 __fuaran.getNodeState("headline-metric")

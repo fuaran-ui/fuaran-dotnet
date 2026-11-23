@@ -5,9 +5,8 @@ import { fileURLToPath } from "url";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
-// Port allocation: the Fuaran workspace CLAUDE.md "Port allocation" table's
-// "next new sample" band — Vite dev 24020–24029 (server 14020–14029 unused;
-// this is a client-only Fable app, no SSR backend).
+// Port allocation: this sample's slot is declared in ./ports.json — Vite dev
+// 24090–24099, preview 14090–14099 (a client-only Fable app, no SSR backend).
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -21,7 +20,7 @@ export default defineConfig({
     dedupe: ["react", "react-dom"],
   },
   server: {
-    port: 24020,
+    port: 24090,
     strictPort: true,
     watch: {
       // Fable (run in a sibling terminal) emits the .fs.js Vite watches;
@@ -30,7 +29,7 @@ export default defineConfig({
     },
   },
   preview: {
-    port: 14020,
+    port: 14090,
     strictPort: true,
   },
 });
