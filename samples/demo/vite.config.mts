@@ -15,7 +15,8 @@ export default defineConfig({
     // Same trick the sibling samples use — pin react / react-dom paths
     // through this project's node_modules so Rollup resolves them
     // consistently across the workspace and dedupes the React instance
-    // so hooks behave (Fable.Elmish.React breaks on React duplicates).
+    // so hooks behave (the Feliz renderer and Fuaran.MVU.React break on React
+    // duplicates).
     alias: {
       react: resolve(__dirname, "node_modules/react"),
       "react-dom": resolve(__dirname, "node_modules/react-dom"),

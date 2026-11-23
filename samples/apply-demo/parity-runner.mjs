@@ -24,7 +24,7 @@
 //  not inert pending a secret.
 //
 //  Pure Node ESM — `ApplyParity.js` imports only the Ops engine + canonical
-//  encoder + types (no React / DOM / Elmish), so no JSDOM or browser is needed.
+//  encoder + types (no React / DOM / Fuaran.MVU), so no JSDOM or browser is needed.
 //  Run after `dotnet fable ApplyDemo.fsproj -o output` has produced the output:
 //      node parity-runner.mjs
 //  Exits non-zero on any divergence or an empty golden.

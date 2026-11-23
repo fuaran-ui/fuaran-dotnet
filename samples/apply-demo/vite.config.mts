@@ -12,7 +12,8 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     // Pin react / react-dom through this project's node_modules and dedupe so
-    // Fable.Elmish.React sees a single React instance (hooks break on dupes).
+    // the Feliz renderer and Fuaran.MVU.React see a single React instance (hooks
+    // break on dupes).
     alias: {
       react: resolve(__dirname, "node_modules/react"),
       "react-dom": resolve(__dirname, "node_modules/react-dom"),

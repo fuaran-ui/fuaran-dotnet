@@ -73,6 +73,6 @@ node parity-runner.mjs                               # exits non-zero on any div
 
 It runs on every push/PR via [`.github/workflows/apply-parity-fable.yml`](../../.github/workflows/apply-parity-fable.yml).
 Pure Node — `ApplyParity.js` pulls in only the Ops engine + canonical encoder
-(no React / DOM / Elmish), so no JSDOM or `npm install` is needed. The runner
+(no React / DOM / Fuaran.MVU), so no JSDOM or `npm install` is needed. The runner
 reads ops from the golden (whose bytes the .NET drift guard pins to the
 workspace corpus), so the lane is self-contained in this repo.
