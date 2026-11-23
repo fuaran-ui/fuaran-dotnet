@@ -12,7 +12,7 @@ module Fuaran.ApplyDemo.Main
 //  Why `Node<obj>` (not the domain-shaped `Node<'Msg>` of samples/demo): the
 //  wire decoder yields `TreeOp<obj>` and `Apply.apply : TreeOp<'Msg> ->
 //  Node<'Msg> -> …`, so the host model must hold a `Node<obj>` for the op to
-//  apply without a type clash. (The samples/demo Elmish model is domain-shaped,
+//  apply without a type clash. (The samples/demo model is domain-shaped,
 //  so it wires `apply = None` — the `unwired` envelope.) Mirrors the TS demo's
 //  `applied`-state + `onApply` pattern.
 //
@@ -23,8 +23,8 @@ module Fuaran.ApplyDemo.Main
 // ============================================================================
 
 open Fable.Core.JsInterop
-open Elmish
-open Elmish.React
+open Fuaran.MVU
+open Fuaran.MVU.React
 open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
@@ -73,11 +73,11 @@ type Model = { Tree: Node<obj> }
 
 type Msg = ReplaceTree of Node<obj>
 
-let init () : Model * Cmd<Msg> = { Tree = baseTree }, Cmd.none
+let init () : Model * Step<Msg, NoEffect> list = { Tree = baseTree }, []
 
-let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
+let update (msg: Msg) (model: Model) : Model * Step<Msg, NoEffect> list =
     match msg with
-    | ReplaceTree tree -> { Tree = tree }, Cmd.none
+    | ReplaceTree tree -> { Tree = tree }, []
 
 // ─── Binding sources + runtime ───────────────────────────────────────────────
 //
@@ -177,6 +177,13 @@ exposeParityProbe ()
 // build, so a release Fable build installs no listener at all.
 Relay.install true "0.6.0" |> ignore
 
-Program.mkProgram init update view
-|> Program.withReactSynchronous "fuaran-apply-root"
-|> Program.run
+// The component performs nothing and holds nothing, so its interpreter has no
+// kinds and neither of its functions is ever called.
+let private app: Component<unit, Model, Msg, NoEffect, NoResource, ElementView<Msg>> =
+    Component.plain init update (fun _ -> Map.empty) (ElementView.ofView view)
+
+let private interpreter: Interpreter<Msg, NoEffect, NoResource> =
+    Interpreter.create [] (fun NoEffect -> failwith "no effects") (fun _ NoResource -> failwith "no resources")
+
+Live.elements "fuaran-apply-root" Attach.Fresh (Fuaran.MVU.Browser.Live.host ignore) app interpreter ()
+|> ignore

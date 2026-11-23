@@ -37,9 +37,9 @@
     <ProjectReference Include="..\..\src\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Fuaran.MVU" />
+    <PackageReference Include="Fuaran.MVU.React" />
+    <PackageReference Include="Fuaran.MVU.Browser" />
     <PackageReference Include="Fable.Core" />
-    <PackageReference Include="Fable.Elmish" />
-    <PackageReference Include="Fable.Elmish.React" />
-    <PackageReference Include="Feliz" />
   </ItemGroup>
 </Project>
