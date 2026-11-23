@@ -8016,7 +8016,9 @@ together (0.43.x and 0.44.x were skipped here), now through one `FuaranCorePacka
 `Directory.Packages.props`, as the compute and program producers already were. Core reshaped the capability
 registry across those releases, and three public members here carry its types, so the change is breaking; it
 rides this draft slot, which is breaking-class already, and `<Version>` does not move. `FuaranCoreComputeVersion`
-(0.45.0) and `FuaranProgramVersion` (0.17.0) stay: both producers' current releases floor Core below 0.45.0, which
+moves 0.45.0 → 0.46.0, the first compute release built on Core 0.45.0 (fuaran-core#724): the earlier compute
+releases build `Fuaran.Compute.PipelineQuery` and `.Conformance` on Core 0.41.0, which does not Fable-compile
+against this Core. `FuaranProgramVersion` (0.17.0) stays: its current release floors Core below 0.45.0, which
 this pin lifts. The reason it lands now: `Fuaran.MVU` 0.1.0 requires `Fuaran.Core.Function` and
 `Fuaran.Core.AiSurface` at 0.44.1 or later, and a project referencing it beside `Fuaran.UI.Renderer` 0.105.0
 restored and then failed its Fable compile in `RenderExport.fs`. On this slot the two restore and compile together.
