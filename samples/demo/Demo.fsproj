@@ -14,10 +14,10 @@
          undefined. -->
     <DefineConstants Condition="'$(Configuration)' != 'Release'">FABLE_COMPILER;DEBUG;FUARAN_DEBUG_GLOBAL</DefineConstants>
     <DefineConstants Condition="'$(Configuration)' == 'Release'">FABLE_COMPILER</DefineConstants>
-    <!-- Same pre-F#-10-nullness escape the renderer uses: Feliz / Fable.Elmish
-         pre-date the F# 10 nullness checker; this project consumes them, so
-         the nullness check trips on their source. The typed-tree library
-         Fuaran.UI keeps nullness on. -->
+    <!-- Same pre-F#-10-nullness escape the renderer uses: Feliz pre-dates the
+         F# 10 nullness checker; this project compiles it (through the
+         renderer), so the nullness check trips on its source. The typed-tree
+         library Fuaran.UI keeps nullness on. -->
     <Nullable>disable</Nullable>
   </PropertyGroup>
   <ItemGroup>
@@ -36,9 +36,9 @@
     <ProjectReference Include="..\..\src\Fuaran.UI.LayoutObserver\Fuaran.UI.LayoutObserver.fsproj" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Fuaran.MVU" />
+    <PackageReference Include="Fuaran.MVU.React" />
+    <PackageReference Include="Fuaran.MVU.Browser" />
     <PackageReference Include="Fable.Core" />
-    <PackageReference Include="Fable.Elmish" />
-    <PackageReference Include="Fable.Elmish.React" />
-    <PackageReference Include="Feliz" />
   </ItemGroup>
 </Project>

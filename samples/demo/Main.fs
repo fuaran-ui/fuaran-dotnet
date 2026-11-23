@@ -4,20 +4,20 @@ module Fuaran.Demo.Main
 //  Fuaran demo — browser entry point
 //
 //  Constructs the §4c canonical authoring example (revenue Metric + editable
-//  grid) via Fuaran's smart constructors, mounts it via Fable.Elmish.React
-//  through the session-3a/3b renderer. Adds a second pass exercising every
+//  grid) via Fuaran's smart constructors, mounts it on the Fuaran.MVU runtime
+//  (Fuaran.MVU.React) through the session-3a/3b renderer. Adds a second pass exercising every
 //  new session-3b component (Select / Form / Filters / FileUpload / Chart /
 //  Table / Map / GridLayout / SplitPanel / Tabs / Stepper / Sparkline /
 //  Markdown) so the visible page covers the full kind dispatch.
 //
-//  Mount target is `#fuaran-demo-root` per index.html.  Elmish + Fable.Elmish.React
-//  drive the loop; the renderer's `Render.render` projects each `Node<'Msg>`
-//  to a React element each update.
+//  Mount target is `#fuaran-demo-root` per index.html.  Fuaran.MVU drives the
+//  loop; the renderer's `Render.render` projects each `Node<'Msg>` to a React
+//  element each render.
 // ============================================================================
 
 open Fable.Core.JsInterop
-open Elmish
-open Elmish.React
+open Fuaran.MVU
+open Fuaran.MVU.React
 open Fuaran.UI
 open Fuaran.UI.LayoutObserver
 open Fuaran.UI.Types
@@ -110,7 +110,15 @@ let private initialChannels =
         RefGrp = 7.8
         AudienceShare = 0.04 } ]
 
-let init () : Model * Cmd<Msg> =
+// ─── Effects ────────────────────────────────────────────────────────────────
+//
+// `update` is pure, so the one thing the demo does outside its model, logging a
+// file selection to the console, is an effect of its own, performed by the
+// interpreter at the boot below.
+
+type Effect = LogFilesSelected of FileSelection list
+
+let init () : Model * Step<Msg, Effect> list =
     { Channels = initialChannels
       SelectedRow = None
       ContributorPick = None
@@ -120,34 +128,32 @@ let init () : Model * Cmd<Msg> =
       FormSubmitted = false
       ActiveTab = 0
       Step = 0 },
-    Cmd.none
+    []
 
-let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
+let update (msg: Msg) (model: Model) : Model * Step<Msg, Effect> list =
     match msg with
     | UpdateRefGrp(rowId, v) ->
         let channels =
             model.Channels
             |> List.map (fun c -> if c.RowId = rowId then { c with RefGrp = v } else c)
 
-        { model with Channels = channels }, Cmd.none
-    | SelectRow rowId -> { model with SelectedRow = Some rowId }, Cmd.none
-    | PickContributor v -> { model with ContributorPick = v }, Cmd.none
-    | SetTextFilter v -> { model with TextFilter = v }, Cmd.none
-    | SetFormText v -> { model with FormText = v }, Cmd.none
-    | SetFormChoice v -> { model with FormChoice = v }, Cmd.none
-    | SubmitForm -> { model with FormSubmitted = true }, Cmd.none
-    | FilesSelected files ->
-        Browser.Dom.console.info ("[demo] files selected:", box files)
-        model, Cmd.none
-    | SetTab i -> { model with ActiveTab = i }, Cmd.none
+        { model with Channels = channels }, []
+    | SelectRow rowId -> { model with SelectedRow = Some rowId }, []
+    | PickContributor v -> { model with ContributorPick = v }, []
+    | SetTextFilter v -> { model with TextFilter = v }, []
+    | SetFormText v -> { model with FormText = v }, []
+    | SetFormChoice v -> { model with FormChoice = v }, []
+    | SubmitForm -> { model with FormSubmitted = true }, []
+    | FilesSelected files -> model, [ Do(LogFilesSelected files) ]
+    | SetTab i -> { model with ActiveTab = i }, []
     | NextStep ->
         { model with
             Step = min 3 (model.Step + 1) },
-        Cmd.none
+        []
     | PrevStep ->
         { model with
             Step = max 0 (model.Step - 1) },
-        Cmd.none
+        []
 
 // ─── §4c canonical example (revenue Metric + editable grid) ───────────────────
 
@@ -468,7 +474,7 @@ let private root (model: Model) : Node<Msg> =
 // ─── BindingSources construction ──────────────────────────────────────────
 //
 // The renderer consults `BindingSources` for `binding.query` / `binding.state`
-// / `binding.filter`. We update it from the Elmish model each render so the
+// / `binding.filter`. We update it from the model each render so the
 // queries see the live data.
 
 let private buildSources (model: Model) : BindingResolver.BindingSources =
@@ -589,7 +595,7 @@ let view (model: Model) (dispatch: Msg -> unit) =
     //   > __fuaran.getNodeState("revenue-metric")
     //   > __fuaran.getBindingValue("revenue-metric", "Source")
     //   > console.log(__fuaran.help())
-    // No apply handler is wired (this demo's Elmish model is domain-shaped, not
+    // No apply handler is wired (this demo's model is domain-shaped, not
     // a raw Node tree), so `__fuaran.apply(...)` returns the `unwired` envelope.
     DebugGlobal.register debugOptIn tree sources fuaranRuntime None
 
@@ -599,6 +605,29 @@ let view (model: Model) (dispatch: Msg -> unit) =
 
 exposeForDevtools ()
 
-Program.mkProgram init update view
-|> Program.withReactSynchronous "fuaran-demo-root"
-|> Program.run
+// The demo's one effect kind: a console line, which answers nothing.
+let private logKind: EffectKind =
+    { Id = "demo.log"
+      Shape = Fuaran.MVU.Shape.Signal
+      Classes = Set.empty
+      Determinism = Set.empty
+      Answers = FirstParty
+      Replies = [] }
+
+let private interpreter: Interpreter<Msg, Effect, NoResource> =
+    Interpreter.create
+        [ logKind ]
+        (fun (LogFilesSelected files) ->
+            { Invocation =
+                { Kind = logKind.Id
+                  Args = None
+                  Destination = Destination.Local }
+              Perform =
+                fun () -> Performance.Signal(fun () -> Browser.Dom.console.info ("[demo] files selected:", box files)) })
+        (fun _ NoResource -> failwith "the demo holds no resources")
+
+let private app: Component<unit, Model, Msg, Effect, NoResource, ElementView<Msg>> =
+    Component.plain init update (fun _ -> Map.empty) (ElementView.ofView view)
+
+Live.elements "fuaran-demo-root" Attach.Fresh (Fuaran.MVU.Browser.Live.host ignore) app interpreter ()
+|> ignore

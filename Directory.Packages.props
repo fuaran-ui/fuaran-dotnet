@@ -54,6 +54,12 @@
          root-type rule (a document whose root names another type is refused), on the same substrate.
          One property per producing repository, as above. -->
     <FuaranProgramVersion>0.17.0</FuaranProgramVersion>
+    <!-- The FOURTH producer: the model-update-view runtime (Fuaran.MVU, its React mount
+         Fuaran.MVU.React and the browser host Fuaran.MVU.Browser), released packages only. Consumed
+         by the browser samples samples/demo and samples/apply-demo, which run on it (Phase 721);
+         no shipping Fuaran.UI.* package takes this dependency. 0.1.0 floors Fuaran.Core at 0.44.1,
+         which the Core pins here lift. -->
+    <FuaranMVUVersion>0.1.0</FuaranMVUVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="FSharp.Core" Version="10.1.300" />
@@ -88,6 +94,9 @@
     <PackageVersion Include="Fake.IO.FileSystem" Version="6.1.4" />
     <!-- Renderer stack. -->
     <PackageVersion Include="Fable.Core" Version="5.0" />
+    <PackageVersion Include="Fuaran.MVU" Version="$(FuaranMVUVersion)" />
+    <PackageVersion Include="Fuaran.MVU.React" Version="$(FuaranMVUVersion)" />
+    <PackageVersion Include="Fuaran.MVU.Browser" Version="$(FuaranMVUVersion)" />
     <PackageVersion Include="Fable.Elmish" Version="5.0.2" />
     <PackageVersion Include="Fable.Elmish.React" Version="5.6" />
     <PackageVersion Include="Fable.SimpleJson" Version="3.24" />
