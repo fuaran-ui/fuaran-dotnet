@@ -825,83 +825,75 @@ module private ModalBrowser =
     let run () =
         let browser = browserPath ()
 
-        let dir =
-            Path.Combine(Path.GetTempPath(), "fuaran-modal-" + Guid.NewGuid().ToString("N"))
+        use tmp = Fuaran.UI.Testing.TempDir.create "modal-browser"
+        let dir = tmp.Path
 
-        Directory.CreateDirectory dir |> ignore
+        File.WriteAllBytes(Path.Combine(dir, "fuaran-renderer.js"), Assets.read Assets.rendererScript)
+        File.WriteAllBytes(Path.Combine(dir, "fuaran-reference.css"), Assets.read Assets.referenceStylesheet)
 
-        try
-            File.WriteAllBytes(Path.Combine(dir, "fuaran-renderer.js"), Assets.read Assets.rendererScript)
-            File.WriteAllBytes(Path.Combine(dir, "fuaran-reference.css"), Assets.read Assets.referenceStylesheet)
+        let data = "{\"dismissable\":" + tree true + ",\"fixed\":" + tree false + "}"
 
-            let data = "{\"dismissable\":" + tree true + ",\"fixed\":" + tree false + "}"
+        let page =
+            "<!doctype html><html><head><meta charset=\"utf-8\">"
+            + "<link rel=\"stylesheet\" href=\"fuaran-reference.css\">"
+            + "<script src=\"fuaran-renderer.js\"></script></head><body>"
+            + "<script type=\"application/json\" id=\"fuaran-data\">"
+            + data.Replace("</", "<\\/")
+            + "</script><script>"
+            + harness
+            + "</script></body></html>"
 
-            let page =
-                "<!doctype html><html><head><meta charset=\"utf-8\">"
-                + "<link rel=\"stylesheet\" href=\"fuaran-reference.css\">"
-                + "<script src=\"fuaran-renderer.js\"></script></head><body>"
-                + "<script type=\"application/json\" id=\"fuaran-data\">"
-                + data.Replace("</", "<\\/")
-                + "</script><script>"
-                + harness
-                + "</script></body></html>"
+        let file = Path.Combine(dir, "page.html")
+        File.WriteAllText(file, page, UTF8Encoding(false))
 
-            let file = Path.Combine(dir, "page.html")
-            File.WriteAllText(file, page, UTF8Encoding(false))
+        let psi = ProcessStartInfo(browser)
 
-            let psi = ProcessStartInfo(browser)
+        for a in
+            [ "--headless=new"
+              "--disable-gpu"
+              "--no-sandbox"
+              "--no-first-run"
+              "--no-default-browser-check"
+              "--disable-extensions"
+              "--disable-background-networking"
+              "--disable-sync"
+              "--disable-component-update"
+              "--virtual-time-budget=10000"
+              "--user-data-dir=" + Path.Combine(dir, "profile")
+              "--dump-dom"
+              Uri(file).AbsoluteUri ] do
+            psi.ArgumentList.Add a
 
-            for a in
-                [ "--headless=new"
-                  "--disable-gpu"
-                  "--no-sandbox"
-                  "--no-first-run"
-                  "--no-default-browser-check"
-                  "--disable-extensions"
-                  "--disable-background-networking"
-                  "--disable-sync"
-                  "--disable-component-update"
-                  "--virtual-time-budget=10000"
-                  "--user-data-dir=" + Path.Combine(dir, "profile")
-                  "--dump-dom"
-                  Uri(file).AbsoluteUri ] do
-                psi.ArgumentList.Add a
+        psi.RedirectStandardOutput <- true
+        psi.RedirectStandardError <- true
+        psi.UseShellExecute <- false
+        psi.CreateNoWindow <- true
+        psi.Environment.Remove "__COMPAT_LAYER" |> ignore
 
-            psi.RedirectStandardOutput <- true
-            psi.RedirectStandardError <- true
-            psi.UseShellExecute <- false
-            psi.CreateNoWindow <- true
-            psi.Environment.Remove "__COMPAT_LAYER" |> ignore
+        use p =
+            match Process.Start psi with
+            | null -> failwithf "the browser at '%s' did not start" browser
+            | started -> started
 
-            use p =
-                match Process.Start psi with
-                | null -> failwithf "the browser at '%s' did not start" browser
-                | started -> started
+        let stderr = p.StandardError.ReadToEndAsync()
+        let stdout = p.StandardOutput.ReadToEnd()
 
-            let stderr = p.StandardError.ReadToEndAsync()
-            let stdout = p.StandardOutput.ReadToEnd()
+        if not (p.WaitForExit 120000) then
+            p.Kill true
+            failwith "the browser did not exit within 120s"
 
-            if not (p.WaitForExit 120000) then
-                p.Kill true
-                failwith "the browser did not exit within 120s"
+        let m =
+            RegularExpressions.Regex.Match(stdout, "data-fuaran-results=\"([A-Za-z0-9+/=]*)\"")
 
-            let m =
-                RegularExpressions.Regex.Match(stdout, "data-fuaran-results=\"([A-Za-z0-9+/=]*)\"")
+        if not m.Success then
+            let e = stderr.Result
 
-            if not m.Success then
-                let e = stderr.Result
+            failwithf
+                "the page reported no verdict (exit %d); the browser said:\n%s"
+                p.ExitCode
+                (e.Substring(max 0 (e.Length - 2000)))
 
-                failwithf
-                    "the page reported no verdict (exit %d); the browser said:\n%s"
-                    p.ExitCode
-                    (e.Substring(max 0 (e.Length - 2000)))
-
-            Convert.FromBase64String m.Groups[1].Value |> Encoding.UTF8.GetString
-        finally
-            try
-                Directory.Delete(dir, true)
-            with _ ->
-                ()
+        Convert.FromBase64String m.Groups[1].Value |> Encoding.UTF8.GetString
 
 [<Tests>]
 let modalDismissBrowserTests =

@@ -6,6 +6,8 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Phase 2393 - the ONE temp-directory helper, DECLARED ONCE at tests/temp-dir/TempDir.fs. -->
+    <Compile Include="..\..\tests\temp-dir\TempDir.fs" Link="TempDir.fs" />
     <Compile Include="RendererWebTests.fs" />
     <Compile Include="SnippetHygieneTests.fs" />
     <Compile Include="ServingAndFingerprintTests.fs" />
