@@ -134,6 +134,8 @@ frag-stdlib-metric-card-ref	ok fcebbbfd54c95b67 254	steps=15 units=254 nesting=4
 frag-stdlib-parameter-panel	ok 042e9e2191f3f45b 5467	steps=393 units=5467 nesting=11 parses=1	ok 042e9e2191f3f45b 5467	recovered=	refused=	ok 042e9e2191f3f45b 5467
 frag-stdlib-parameter-panel-ref	ok fcb5f33e10252152 475	steps=30 units=475 nesting=4 parses=1	ok fcb5f33e10252152 475	recovered=	refused=	ok fcb5f33e10252152 475
 frag-stdlib-parameter-panel-ref-mixed	ok 71ec3943e374378f 662	steps=39 units=662 nesting=4 parses=1	ok 71ec3943e374378f 662	recovered=	refused=	ok 71ec3943e374378f 662
+frag-stdlib-refinable-table	ok 1da59123ff660c89 6446	steps=476 units=6446 nesting=10 parses=1	ok 1da59123ff660c89 6446	recovered=	refused=	ok 1da59123ff660c89 6446
+frag-stdlib-refinable-table-ref	ok 34ff9c31abcaecfc 781	steps=48 units=781 nesting=4 parses=1	ok 34ff9c31abcaecfc 781	recovered=	refused=	ok 34ff9c31abcaecfc 781
 frag-stdlib-scenario-comparison	ok 42fc5d00d96a1d9e 3421	steps=252 units=3421 nesting=14 parses=1	ok 42fc5d00d96a1d9e 3421	recovered=	refused=	ok 42fc5d00d96a1d9e 3421
 frag-stdlib-scenario-comparison-ref	ok 7ce588dd77ac13b2 462	steps=30 units=462 nesting=4 parses=1	ok 7ce588dd77ac13b2 462	recovered=	refused=	ok 7ce588dd77ac13b2 462
 frag-stdlib-section-header	ok dd9457599078a800 899	steps=65 units=899 nesting=9 parses=1	ok dd9457599078a800 899	recovered=	refused=	ok dd9457599078a800 899
