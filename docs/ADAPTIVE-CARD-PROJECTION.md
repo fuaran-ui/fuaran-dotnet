@@ -132,6 +132,7 @@ ruling.
 | `SummaryList` | `structural` | Container | the heading, then the children, whose adjacent fact rows share one FactSet |
 | `Switch` | `structural` | (its case's) | the selected case; the others are reported as not taken |
 | `Tabs` | `open-live` | ActionSet, RichTextBlock | projecting only the active panel would misstate how much the section holds |
+| `Text` | `mapped` | RichTextBlock | one literal TextRun; a TextRun is never parsed, so the words need no escape |
 | `Toast` | `flatten-to-text` | Container | an open toast is a toned Container holding the message; a closed one is omitted and reported |
 | `Tree` | `open-live` | ActionSet, RichTextBlock | a card can toggle nothing |
 

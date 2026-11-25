@@ -198,6 +198,8 @@ let scope: (string * Disposition) list =
       Disposition.OpenLive
           "interactive (fidelity manifest: Behavioural). Deliberately NOT 'render the active panel': a digest that silently drops the other panels is a lie about how much it contains"
 
+      "Text", Disposition.Rendered "the words escaped, never parsed, in the Markdown cell's typography"
+
       "Toast",
       Disposition.Rendered
           "an OPEN toast renders as a static notice; a CLOSED one is OMITTED rather than `[hidden]`, because `[hidden]` is not honoured everywhere and a leaked notification is a disclosure bug"
