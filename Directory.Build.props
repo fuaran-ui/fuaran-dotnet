@@ -840,8 +840,13 @@
          consumer of the program adapters (an outcome under another root is
          refused), so it opens the next slot at the breaking class. An UNTAGGED
          DRAFT: changes of this class or lower ride it. See STABILITY.md
-         "0.106.0". -->
-    <Version>0.106.0</Version>
+         "0.106.0".
+         0.107.0 (2026-11-25) - v0.106.0 is TAGGED, so nothing rides it. The
+         raise of Fuaran.Compute.* to 0.47.0 moves the published packages'
+         dependency floor; it is additive, and it opens the next slot at the
+         additive class. An UNTAGGED DRAFT: changes of this class or lower
+         ride it. See STABILITY.md "0.107.0". -->
+    <Version>0.107.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

@@ -7813,6 +7813,25 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
+## 0.107.0 — the slot opened after v0.106.0 was released, by the raise of `Fuaran.Compute.*` to 0.47.0, whose change is additive (DRAFT — untagged)
+
+**Class: additive, by dependency.** `v0.106.0` is tagged, so nothing rides it: this change opens the next slot.
+`FuaranCoreComputeVersion` moves 0.46.0 → 0.47.0, so every package here that references a `Fuaran.Compute.*`
+package (`Fuaran.UI`, `Fuaran.UI.FastPath`, `Fuaran.UI.ServerDriven`) takes the new floor. Compute 0.47.0 is
+additive over 0.46.0 for every package pinned here: `Fuaran.Compute.Elementary` gains sine, cosine and the two arc
+tangents, and the release cuts two new packages, `Fuaran.Compute.GeometricAlgebra` and
+`Fuaran.Compute.GeometricAlgebraOps`, which nothing here references. Both releases are built on `Fuaran.Core`
+0.45.0, the Core this repository already pins, so the restore graph keeps one Core. No type or member these
+packages declare moves, and no wire document moves.
+
+**What a consumer must do.** Nothing. A consumer that pins `Fuaran.Compute.*` beside these packages restores
+0.47.0 or later.
+
+**No kind is added, merged or retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s admission gates
+are not engaged. **No escape hatch is created or widened.**
+
+---
+
 ## 0.106.0 — the slot opened after v0.105.0 was released, by Phase 2435 (the program adapters adopt `Fuaran.Program` 0.17.0), whose change is breaking (DRAFT — untagged)
 
 **Class: breaking, by dependency and in behaviour.** `v0.105.0` is tagged and served by nuget.org, so nothing

@@ -32,8 +32,10 @@
          below (0.40.2) meet (fuaran#2286). 0.45.0 is the release that splits the elementary functions,
          regression, solvers and distributions into packages of their own (fuaran#2703). 0.46.0 is the
          first built on Fuaran.Core 0.45.0 (fuaran-core#724): earlier releases build PipelineQuery and
-         Conformance on Core 0.41.0, which tests/core-fable cannot compile against the Core pin above. -->
-    <FuaranCoreComputeVersion>0.46.0</FuaranCoreComputeVersion>
+         Conformance on Core 0.41.0, which tests/core-fable cannot compile against the Core pin above.
+         0.47.0 is additive over 0.46.0 for every package pinned here (the trigonometric functions in
+         Elementary; the two new geometric-algebra packages are not consumed here). -->
+    <FuaranCoreComputeVersion>0.47.0</FuaranCoreComputeVersion>
     <!-- The THIRD producer (fuaran#2012): the bounded program core, consumed by the two program
          adapters that moved here (src/Fuaran.UI.Program, src/Fuaran.UI.Program.Server) and their
          suites. Released packages only, never a project reference: the adapters depend on the
