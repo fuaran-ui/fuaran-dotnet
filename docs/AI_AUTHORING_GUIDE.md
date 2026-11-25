@@ -249,6 +249,7 @@ Childless leaves.
 |---|---|---|
 | `Fuaran.metric` | `Metric` | Headline metric with optional goal/tone/format. |
 | `Fuaran.markdown` | `Markdown` | Rendered markdown text. |
+| `Fuaran.text` | `Text` | Plain running text, shown exactly as written (Phase 2536). |
 | `Fuaran.callout` | `Callout` | Tier/mode/status banner. |
 | `Fuaran.progress` | `Progress` | Determinate or indeterminate progress bar. |
 | `Fuaran.badge` | `Badge` | Inline status pill. |
@@ -282,6 +283,14 @@ The rule is **sentiment = sign(trend) × polarity**, and it applies to the trend
 **Do not reach for `tone` instead.** They are different statements about different subjects: `tone` says how the reading STANDS right now (this wait time is still bad), polarity says which way the quantity IMPROVES (down). The tile above is both at once — `"tone": "Warning"` because 80 minutes is still above target, `LowerIsBetter` because it is falling — and one slot could never have carried both. A host derives neither from the other, and nothing writes back to `tone`.
 
 There is no `"Neutral"`: the spelling is reserved and no conformant host accepts it. A quantity with no better direction simply omits `trend`.
+
+#### `Text`, the `Text` form field, or `Markdown` (Phase 2536)
+
+Three things share two names; pick by what the words are and where they go.
+
+- **`Text` (a node)** — words with no formatting: a hint, a caption, a sentence beside a control, a cell of running prose. `{"id":"hint","kind":{"$type":"Text","text":"Search by name or ID."}}`. Every character is shown as written: `*4%*` is five characters.
+- **`Markdown`** — words that carry formatting: emphasis, a link, a list, a heading inside the text, a cited figure.
+- **`Text` (a form field)** — a box the reader TYPES into. It is never a node: it goes inside a `Form`'s `fields[]` (or a `Filters`' `items[]`), as `{"id":"q","kind":{"$type":"Text"},"label":"Search"}`. A `Text` at a node position is the running-text node, and it needs `text`.
 
 #### A figure cited in a sentence — `citations` on `Markdown` (Phase 2591)
 

@@ -907,6 +907,45 @@ path only — no host interprets it a second way.*
 | `Require` / "only if" (a halting guard inside a gesture) | **Admitted 2026-11-21 (Phase 2107) — an `Action` CASE, one binding** | Admitted with `Choose`, on the same §1.1 mandate and the same zero-sighting sweep. §1.2 is the guard half of the row above, and is the stronger of the two: nothing in the language stops a gesture part-way. **What it does not claim:** a guard is not an authorisation. It reads the client's store, and a hostile client holds whatever store it likes; anything that must not happen without permission is refused by the dispatch gate, as the `Confirm` row says of its answer. A host without the bounded path refuses a gesture carrying one WHOLE — running the members after an unevaluated guard would be the guard failing open. |
 | `Repeat` / `Each` (bounded iteration inside a gesture) | **Not admitted 2026-11-21 (Phase 2107) — reserved; no demand** | The core has both. The same sweep found no emission reaching for a loop inside a gesture, and no mandate covers one: S4 named selection and the guard, and left repetition to evidence. A list-shaped act is already a `Chain` the emitter writes out, or a binding over rows. **Reopen** on a recorded emission (shadow leg or scored) of a gesture that repeats an act over a collection the tree holds. |
 
+### Running-text cluster (added 2026-11-25 — a plain text node, Phase 2536)
+
+`Markdown` was the only node that shows a sentence, so every hint, caption and cell of running prose paid a Markdown
+parse whether or not it carried formatting. **The governing sentence:** *words with no formatting are a `Text` node,
+shown exactly as written; words with formatting are `Markdown`; a text INPUT is the `Text` form field inside a
+`Form`.*
+
+| Reserved name | Disposition | Ruling |
+|---|---|---|
+| `Text` (running text, no parse) | **Kind (admitted 2026-11-25, Phase 2536)** | `{"$type":"Text","text":<TextSource>}`, WIRE_FORMAT.md §3.6.38. The resolved words, escaped, in one inline `<span>` on every host; no parse and no enhancement tier. The tag is shared with the `Text` form field and the `Text` cell kind, read by position (WIRE_FORMAT.md §11.4, `DECISIONS.md` D40). Gates below. |
+| `plain` / `parse:false` on `Markdown` | **Rejected (Phase 2536)** | A field on `Markdown` would give one kind two render contracts (a block `div.fuaran-markdown` of parsed HTML, and an escaped inline span) and two cost profiles, and every reader of `Markdown` would branch on it. It also teaches nothing: the model that wants plain text reaches for the name `Text`, not for a flag. |
+| `Paragraph` / `PlainText` / `Prose` (the same kind under another name) | **Rejected (D40)** | `Paragraph` names a block `<p>`, where the kind is an inline container; each rename leaves the recorded emission of `Text` at a node position a miss. |
+| `Label` / `Caption` (a styled short text) | **Covered** | `Heading`'s `Eyebrow` and `Caption` variants, and a `Text` node with a `style`. Not separate kinds. |
+
+**§1.1 Demand.** Two signals, both recorded. A consumer's table surface measured the Markdown parse at 3.3 ms of
+8.5 ms for 200 rows of running text that carried no formatting, and a measured lower bound for a plain-text
+path put dispatch at 16.8 to 12.0 ms on a desktop and 355 to 219 ms on a low-end phone profile, with half of
+Markdown's in-browser cost in 400 `innerHTML` reparses that a no-parse span does not make. And an emission-eval
+signal: the stored-emission sample holds a model emission that wrote `{"$type":"Text"}` at a node position
+(`stored-reject-wrong-node-kind-8dbdae822e31aede`), refused `WRONG_NODE_KIND` while no node kind had the name.
+
+**§1.2 Irreducibility.** Not a composition: no existing kind shows a sentence without a parse (`Heading` is a
+heading, `Badge` a pill, `Callout` chrome, `LabelValueRow` a pair). Not a variant or a field of `Markdown` (the row
+above). Not a role: a `Box` has no text of its own.
+
+**§1.3 Cost.** Every centre of the table, paid in this phase: the five codec hosts (F#, TypeScript, Python, Go, Rust)
+decode, encode and render it, each through its generated kind layer; the class `fuaran-kind-text` joins the
+parity-locked vocabulary and needs no CSS (the span is unstyled; the wrapper is bare by contract); the accessibility
+projection is the wrapper's, as on `Markdown`; the corpus carries `nodes/text-1`, `nodes/text-beside-text-field` and
+two reject vectors; the authoring pack, the C# factory and the VB element teach it. The native surfaces over the
+Rust core owe a render arm each (§11.0 records them pending). The working-memory tax is real and is the reason for
+§3.2 below.
+
+**§3.2 Confusion deltas — named here, measured on the next evaluation run.** Two pairs, both new with this kind:
+`Text` against `Markdown` (the expected shift: plain sentences move from `Markdown` to `Text`, formatted ones stay),
+and the `Text` NODE against the `Text` FIELD (a node-position `Text` written in the field's shape, or a field
+written in the node's shape). Neither is measured in this phase; the next evaluation run records both pair counts
+as this admission's baseline, and a sustained rise in the second is the §3.3 trigger.
+
 ## Appendix B – Demand-evidence sweep (recorded 2026-07-07)
 
 This is the recorded output of the demand-evidence sweep the charter mandates before publication: a mine
