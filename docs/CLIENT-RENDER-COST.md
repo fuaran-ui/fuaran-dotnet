@@ -153,3 +153,29 @@ Two candidates, neither fixed here:
    sequential render of 40 refs evicts each entry before its next use: 1.6 ms to 1.9 ms memoised against
    2.0 ms to 2.4 ms uncached on the shell, and 0.07 ms against 1.6 ms on `sites-24`. Small today, and it grows
    with the ref count.
+
+## Plain text against Markdown on the 200-row table (Phase 2536)
+
+`table-200` is 200 rows, each a card holding two short running texts and a button, with the texts as `Markdown`;
+`table-200-text` is the same surface with the texts as the `Text` node. Both ran in one session, on one machine
+(Intel Core Ultra 9 386H, 16 logical cores, Edge 158, headless), 30 samples each; medians in milliseconds. The
+reading is `benchmarks/Fuaran.UI.Renderer.Benchmarks/reading-2536.json`.
+
+| Operation, stage | `table-200` (`Markdown`) | `table-200-text` (`Text`) |
+|---|---|---|
+| Full render, total | 28.6 | 23.3 |
+| Full render, construction | 10.3 | 6.7 |
+| Full render, React render | 14.0 | 13.4 |
+| Full render, commit | 0.51 | 0.59 |
+| Full render, layout | 3.10 | 2.63 |
+| Full render, DOM elements | 2,206 | 1,806 |
+| Structural change, total | 11.0 | 6.8 |
+| One reactive write, total | 0.53 | 0.54 |
+| `RenderContext.create` (isolated) | 0.255 | 0.245 |
+| Whole-tree construction (isolated) | 8.5 | 5.0 |
+
+The parse is the difference: construction falls by 3.6 ms on a full render and 3.6 ms on a structural change, and
+400 fewer elements reach the DOM (a `Markdown` text is a `div` holding a parsed `p`; a `Text` is one `span`). A
+reactive write that touches neither text costs the same on both. `RenderContext.create` is a quarter of a
+millisecond on both surfaces, against the 1,809 µs Phase 2069 measured before its change, so on this surface the
+context is no longer the cost; the Markdown parse was. A consumer's own surface is measured by that consumer.
