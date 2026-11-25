@@ -2800,8 +2800,15 @@ let rec private renderKind
 
         let attach (point: string) (_: string) : IReactProperty list =
             match point with
-            | ElementPlan.Attach.ModalDismiss
-            | ElementPlan.Attach.ModalOverlay -> [ prop.onClick (fun _ -> dismiss ()) ]
+            | ElementPlan.Attach.ModalDismiss -> [ prop.onClick (fun _ -> dismiss ()) ]
+            // Phase 2572 — the backdrop dismisses only on a click whose target IS
+            // the overlay: a click inside the dialog bubbles here too, and must not
+            // close it. The plan attaches this point only when the modal is
+            // `Dismissable`.
+            | ElementPlan.Attach.ModalOverlay ->
+                [ prop.onClick (fun (e: Browser.Types.MouseEvent) ->
+                      if obj.ReferenceEquals(e.target, e.currentTarget) then
+                          dismiss ()) ]
             | _ -> []
 
         if spec.Modality = ModalityKind.Popover then
