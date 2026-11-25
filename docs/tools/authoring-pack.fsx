@@ -2140,16 +2140,6 @@ let private leniencyFamilies: LeniencyFamily list =
           + "read `value`: no renderer, write-back or derivation consulted it once `multiple` was true, "
           + "so dropping it changes nothing a reader can observe. A MALFORMED value is outside the "
           + "domain and still refuses as a malformed binding." }
-      { Name = "A Text form field written in the Text node's shape (Phase 2536)"
-        Class = NeverTaught
-        FixtureIds = [ "lenient-2536-text-field-shaped-as-node" ]
-        Evidence =
-          "JUDGEMENT: not a shorthand. The tag `Text` names a node kind and a form-field kind, and the "
-          + "position decides which (WIRE_FORMAT 11.4): inside a Form's `fields[]` it is the text input, "
-          + "so a `text` member there is one the input does not declare and 2 rule 2 drops it. NOT "
-          + "loss-free: the words the model wrote are discarded, which is why it is never taught. The "
-          + "pack teaches the two `Text`s apart instead: running text is a `Text` NODE beside the Form, "
-          + "and a text input is a `Text` FIELD inside it." }
       { Name = "Declared defaults written explicitly (the omitted form IS canonical) — Phase 2300"
         Class = AlreadyCanonical
         FixtureIds =

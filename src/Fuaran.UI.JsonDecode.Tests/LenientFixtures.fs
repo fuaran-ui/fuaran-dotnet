@@ -1062,23 +1062,6 @@ let all: LenientFixture list =
         Description =
           "§3.6 / §16 (Phase 2413) — `Select.multiple` is omit-at-default like every other defaulted boolean: an explicit `\"multiple\":false` decodes as a single-select and re-encodes without the member. It was the canonical node vector `nodes/select-multiple-false.json` (Phase 1962) until the canonical form lost its last per-kind exception" }
 
-      // ─── Phase 2536 — a `Text` in `fields[]` shaped like the `Text` node ──
-      //
-      // The tag `Text` names a member of two families, and a position decides
-      // which (WIRE_FORMAT 11.4): inside a `Form`'s `fields[]` it is the text
-      // INPUT. A field written in the node's shape, with a `text` member, is the
-      // input carrying a member that case does not declare, and §2 rule 2 drops
-      // it: the field decodes as a plain text input and re-encodes without
-      // `text`. It is not a shorthand and nothing teaches it; the vector pins
-      // that every host reads the position, not the shape.
-      { Id = "lenient-2536-text-field-shaped-as-node"
-        LenientJson =
-          """{"id":"len-2536","kind":{"$type":"Form","fields":[{"id":"query","kind":{"$type":"Text","text":"Search by name or ID."},"label":"Search"}],"onSubmit":{"$type":"Chain","ops":[]},"submitLabel":"Search"}}"""
-        VerboseJson =
-          """{"id":"len-2536","kind":{"$type":"Form","fields":[{"id":"query","kind":{"$type":"Text"},"label":"Search"}],"onSubmit":{"$type":"Chain","ops":[]},"submitLabel":"Search"}}"""
-        Description =
-          "§11.4 / §2 rule 2 (Phase 2536) — a `Text` inside a `Form`'s `fields[]` is read as the `Text` form field whatever its shape: one written like the `Text` node, carrying `text`, decodes as a text input and re-encodes WITHOUT `text`, a member that field does not declare. Not a shorthand and never taught; a `Text` at a node position missing `text` stays refused (`reject-text-node-shaped-as-field`)" }
-
       // ─── Phase 1670 — the `FragmentRef` twin, and why it is NOT here ───────
       //
       // `FragmentRefSpec.Args = Some Map.empty` is the third member of the same

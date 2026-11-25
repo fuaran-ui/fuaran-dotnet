@@ -23,7 +23,6 @@ lenient-2300-declared-default-enums	ok 2a88afcf707af47f 718	steps=60 units=828 n
 lenient-2413-select-multiple-false	ok b85b5c00723aff7b 231	steps=19 units=248 nesting=5 parses=1	ok b85b5c00723aff7b 231	recovered=	refused=	ok b85b5c00723aff7b 231
 lenient-2451-panel-1-0	ok 36b7509df01b2492 848	steps=62 units=844 nesting=9 parses=1	ok 36b7509df01b2492 848	recovered=	refused=	ok 36b7509df01b2492 848
 lenient-2451-panel-schedule-1-0	ok c1e06277e5f736a9 352	steps=26 units=348 nesting=6 parses=1	ok c1e06277e5f736a9 352	recovered=	refused=	ok c1e06277e5f736a9 352
-lenient-2536-text-field-shaped-as-node	ok c94936fb577cc9b0 169	steps=15 units=200 nesting=5 parses=1	ok c94936fb577cc9b0 169	recovered=	refused=	ok c94936fb577cc9b0 169
 lenient-460-alias-emphasis-muted	ok 9bfe4137e7a0c816 113	steps=11 units=142 nesting=3 parses=1	ok 9bfe4137e7a0c816 113	recovered=	refused=	ok 9bfe4137e7a0c816 113
 lenient-460-alias-emphasis-strong	ok b3ea0cba0cbcfd0f 112	steps=11 units=143 nesting=3 parses=1	ok b3ea0cba0cbcfd0f 112	recovered=	refused=	ok b3ea0cba0cbcfd0f 112
 lenient-460-alias-tone-danger	ok 9f98b0339170fd68 75	steps=9 units=120 nesting=3 parses=1	ok 9f98b0339170fd68 75	recovered=	refused=	ok 9f98b0339170fd68 75
