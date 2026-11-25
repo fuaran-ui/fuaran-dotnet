@@ -177,5 +177,5 @@ reading is `benchmarks/Fuaran.UI.Renderer.Benchmarks/reading-2536.json`.
 The parse is the difference: construction falls by 3.6 ms on a full render and 3.6 ms on a structural change, and
 400 fewer elements reach the DOM (a `Markdown` text is a `div` holding a parsed `p`; a `Text` is one `span`). A
 reactive write that touches neither text costs the same on both. `RenderContext.create` is a quarter of a
-millisecond on both surfaces, against the 1,809 µs Phase 2069 measured before its change, so on this surface the
-context is no longer the cost; the Markdown parse was. A consumer's own surface is measured by that consumer.
+millisecond on both surfaces, beside the 1,809 µs Phase 2069 recorded for the stage on a consumer's table surface;
+on this surface the context is not the cost, and the Markdown parse was. A consumer's own surface is measured by that consumer.
