@@ -249,6 +249,16 @@ public sealed record MarkdownOptions
     public IEnumerable<MarkdownCitation>? Citations { get; init; }
 }
 
+/// <summary>Options for <see cref="Fuaran.Text"/>.</summary>
+public sealed record TextOptions
+{
+    /// <summary>The node id.</summary>
+    public required string Id { get; init; }
+
+    /// <summary>The text, rendered literally (never parsed as markdown).</summary>
+    public required Text Text { get; init; }
+}
+
 // ─── Input ──────────────────────────────────────────────────────────────────
 
 /// <summary>Options for <see cref="Fuaran.Button"/>.</summary>

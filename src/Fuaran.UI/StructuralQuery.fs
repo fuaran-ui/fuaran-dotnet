@@ -275,6 +275,7 @@ let private tonesOf (node: Node<'Msg>) : ToneVariant list =
         | NodeKind.ScrollArea _
         | NodeKind.Heading _
         | NodeKind.Markdown _
+        | NodeKind.Text _
         | NodeKind.Badge _
         | NodeKind.Sparkline _
         | NodeKind.Skeleton _

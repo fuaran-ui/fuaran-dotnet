@@ -1173,6 +1173,16 @@ let all: FidelityRow list =
             pinsRole "each tab header button" "tab"
             pinsRole "the active panel" "tabpanel" ]
 
+      // Phase 2536 — plain running text: no parse, no enhancement tier.
+      row
+          "Text"
+          false
+          "the text as a `TextSource`, never parsed"
+          "the resolved words, HTML-escaped into one `<span>` inside the node wrapper, byte-identical on both sides and on every host"
+          RichTier.None
+          [ "text-1" ]
+          "Phase 2536; WIRE_FORMAT.md 3.2"
+
       row
           "Toast"
           true
@@ -1577,6 +1587,7 @@ let speechRulings: (string * SpeechRuling) list =
       "Tabs",
       SpeechRuling.AnnouncedOnly
           "'Tabbed section[: <name>], <n> tabs' - reading only the active panel would be a lie about how much the section contains"
+      "Text", SpeechRuling.Spoken "the text as written, one utterance"
       "Toast", SpeechRuling.Spoken "an OPEN toast reads its message; a closed one is reported as omitted, never read"
       "Tree", SpeechRuling.AnnouncedOnly "'Hierarchy[: <name>]' - a listener can expand nothing" ]
 
@@ -1803,6 +1814,11 @@ let cardRulings: (string * CardRuling) list =
       "Tabs",
       CardRuling.OpenLive
           "projecting only the active panel would be a lie about how much the section holds, so the card links to it"
+      "Text",
+      CardRuling.Mapped(
+          [ "RichTextBlock" ],
+          "one literal TextRun; a TextRun is never parsed, so the words need no escape"
+      )
       "Toast",
       CardRuling.FlattenToText(
           [ "Container" ],

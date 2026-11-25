@@ -988,6 +988,7 @@ and HeadingSpec = Generated.HeadingSpec
 
 and MarkdownSpec = Generated.MarkdownSpec
 and MarkdownCitation = Generated.MarkdownCitation
+and TextSpec = Generated.TextSpec
 
 and BadgeSpec = Generated.BadgeSpec
 

@@ -377,6 +377,20 @@ let markdown: Node<obj> =
         ))
         None
 
+/// Phase 2536 — plain running text. The words carry every character Markdown or
+/// HTML would read as syntax (`*`, `_`, `[`, `]`, `(`, `)`, `<`, `>`, `&`, a
+/// backtick, a quote), so a host that parses or fails to escape them is caught by
+/// the render byte-diff rather than passing on prose that happens to be inert.
+[<NodeFixture "Display/Text">]
+let plainText: Node<obj> =
+    node
+        "text-1"
+        (NodeKind.Text(
+            { Defaults.text with
+                Text = TextSource.Literal "Revenue rose *4%* to [£412k](cite:rev) & <b>held</b> - `q3`, \"_net_\"." }
+        ))
+        None
+
 /// Phase 1472 — a `SemanticStyle` carrying `Direction` and NOTHING ELSE, so the
 /// emitted `style` object is exactly `{"direction":"ltr"}`. One member is the
 /// point: a fixture whose style also set a tone or a weight could decode with

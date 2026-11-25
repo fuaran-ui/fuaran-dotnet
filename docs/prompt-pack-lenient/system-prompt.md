@@ -293,6 +293,7 @@ LayoutKind =
 DisplayKind =
 | Heading { level:int; text:TextSource; variant?:"Standard"|"Eyebrow"|"Caption"|"Lead" }
 | Markdown { text:TextSource; citations?:MarkdownCitation[] }
+| Text { text:TextSource }
 | Metric { label:TextSource; value:Binding_float; comparisons?:MetricComparison[]; emphasis?:Emphasis; format?:CellFormat; icon?:str; subtext?:TextSource; tone?:ToneVariant; trend?:Binding_float; trendFormat?:CellFormat; trendPolarity?:TrendPolarity; weight?:StyleWeight }
 | Badge { label:TextSource; variant?:"Neutral"|"Brand"|"Success"|"Warning"|"Critical"|"Info" }
 | Sparkline { source:Binding_list_float }

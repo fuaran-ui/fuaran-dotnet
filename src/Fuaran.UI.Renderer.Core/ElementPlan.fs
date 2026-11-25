@@ -460,6 +460,12 @@ module DisplayPlan =
                     (BindingResolver.resolveTextSource sources spec.Text)
             ))
 
+    /// Phase 2536 — running text with no parse: the resolved words, escaped into one
+    /// inline `<span>` (the `CodeBlock` precedent). The node wrapper carries the kind
+    /// class, so the span needs none.
+    let text (sources: BindingResolver.BindingSources) (spec: TextSpec) : Plan<'E> =
+        Plan.element "span" [] (Content.Text(BindingResolver.resolveTextSource sources spec.Text))
+
     let badge (sources: BindingResolver.BindingSources) (spec: BadgeSpec) : Plan<'E> =
         Plan.classText
             "span"

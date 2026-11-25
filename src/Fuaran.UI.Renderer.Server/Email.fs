@@ -711,6 +711,14 @@ and private renderKind
                           prop.dangerouslySetInnerHTML (
                               emailSafeMarkdown ctx.Policy.Egress spec.Citations (text spec.Text)
                           ) ] ] ]
+    // Phase 2536 — the Markdown cell's typography, with the words escaped rather than parsed.
+    | NodeKind.Text spec ->
+        layoutTable
+            ""
+            [ Html.tr
+                  [ Html.td
+                        [ prop.custom ("style", textStyle opts "font-size:15px;line-height:22px;")
+                          prop.text (text spec.Text) ] ] ]
 
     | NodeKind.Metric spec ->
         let resolution = BindingResolver.resolveScalarFloat ctx.Sources spec.Value

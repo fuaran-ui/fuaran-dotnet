@@ -342,6 +342,7 @@ and private renderKind
     | NodeKind.ScrollArea spec -> Emit.plan (ElementPlan.LayoutPlan.scrollArea (planContext walk ctx parentNodeId) spec)
     | NodeKind.Heading spec -> Emit.plan (ElementPlan.DisplayPlan.heading ctx.Sources spec)
     | NodeKind.Markdown spec -> Emit.plan (ElementPlan.DisplayPlan.markdown ctx.Policy.Egress ctx.Sources spec)
+    | NodeKind.Text spec -> Emit.plan (ElementPlan.DisplayPlan.text ctx.Sources spec)
     | NodeKind.Metric spec ->
         // Phase 632 — a scalar slot: a `Binding.Transform` resolves to its 1×1
         // result cell. Phase 2209 — its bound field rides the same evaluation

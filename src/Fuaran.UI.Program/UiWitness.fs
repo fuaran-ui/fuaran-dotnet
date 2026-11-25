@@ -715,6 +715,10 @@ let resolveOwnFields (sources: BindingSources) (node: Node<obj>) : Node<obj> =
                         |> List.map (fun c ->
                             { c with
                                 Label = resolveTextOpt sources c.Label }) }
+        | NodeKind.Text s ->
+            NodeKind.Text
+                { s with
+                    Text = resolveText sources s.Text }
         | NodeKind.Badge s ->
             NodeKind.Badge
                 { s with

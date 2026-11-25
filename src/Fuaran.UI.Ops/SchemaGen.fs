@@ -1260,6 +1260,7 @@ let private defs: (string * J) list =
           [ "text", ref "TextSource"
             // Phase 2591 - absent is the one spelling of none.
             "citations", JObj [ "type", JStr "array"; "minItems", JInt 1; "items", ref "MarkdownCitation" ] ]
+      "TextSpec", record [ "text" ] [ "text", ref "TextSource" ]
       "TableCitation",
       record
           [ "column"; "reference"; "row" ]
@@ -1599,6 +1600,7 @@ let private defs: (string * J) list =
       union
           [ duCaseHoisted "Heading" "HeadingSpec"
             duCaseHoisted "Markdown" "MarkdownSpec"
+            duCaseHoisted "Text" "TextSpec"
             duCaseHoisted "Metric" "MetricSpec"
             duCaseHoisted "Badge" "BadgeSpec"
             duCaseHoisted "Sparkline" "SparklineSpec"

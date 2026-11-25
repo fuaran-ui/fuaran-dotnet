@@ -472,6 +472,7 @@ let kindClass (kind: NodeKind<'Msg>) : string =
     | NodeKind.Fact(_) -> "fuaran-kind-fact"
     | NodeKind.Link(_) -> "fuaran-kind-link"
     | NodeKind.Markdown(_) -> "fuaran-kind-markdown"
+    | NodeKind.Text(_) -> "fuaran-kind-text"
     | NodeKind.Metric(_) -> "fuaran-kind-metric"
     | NodeKind.Badge(_) -> "fuaran-kind-badge"
     | NodeKind.Sparkline(_) -> "fuaran-kind-sparkline"

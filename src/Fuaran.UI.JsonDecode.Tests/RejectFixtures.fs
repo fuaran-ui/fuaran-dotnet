@@ -80,6 +80,14 @@ let all: RejectFixture list =
         ExpectedPath = "$.kind.text"
         IsOp = false
         Description = "Markdown spec missing text" }
+      // Phase 2536 — `Text.text` is required, as `Markdown.text` is.
+      { Id = "reject-missing-text-text"
+        Json =
+          """{"id":"x","kind":{"$type":"Text"},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.text"
+        IsOp = false
+        Description = "Text spec missing text" }
       { Id = "reject-missing-metric-value"
         Json =
           """{"id":"x","kind":{"$type":"Metric","label":{"$type":"Literal","text":"L"},"format":{"$type":"None"},"tone":"Default","weight":"Standard","emphasis":"Normal"},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""

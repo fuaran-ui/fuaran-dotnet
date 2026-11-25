@@ -190,6 +190,11 @@ public static partial class Fuaran
                     c.Reference))),
             options.Text.Inner)));
 
+    /// <summary>Running text exactly as written (Phase 2536): escaped into one inline
+    /// container and never parsed. Use <see cref="Markdown"/> when the text carries formatting.</summary>
+    public static FuaranNode Text(TextOptions options) =>
+        new(FsFactory.textSpec<object>(options.Id, new FsGen.TextSpec(options.Text.Inner)));
+
     // ─── Input ────────────────────────────────────────────────────────────────
 
     /// <summary>A button. <c>OnClick</c> takes a wire-representable

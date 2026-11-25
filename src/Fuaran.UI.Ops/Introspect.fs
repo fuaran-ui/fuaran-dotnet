@@ -116,6 +116,7 @@ let availableFields (kind: NodeKind<'Msg>) : string list =
     // -- Display --
     | NodeKind.Heading _ -> [ "Level"; "Text"; "Variant" ]
     | NodeKind.Markdown _ -> [ "Text" ]
+    | NodeKind.Text _ -> [ "Text" ]
     | NodeKind.Metric _ ->
         [ "Label"
           "Value"

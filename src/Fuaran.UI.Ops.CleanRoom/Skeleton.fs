@@ -172,6 +172,7 @@ let private ownContentLength (kind: NodeKind<'Msg>) : int =
     match kind with
     | NodeKind.Heading s -> textSourceLength s.Text
     | NodeKind.Markdown s -> textSourceLength s.Text
+    | NodeKind.Text s -> textSourceLength s.Text
     | NodeKind.Badge s -> textSourceLength s.Label
     | NodeKind.Metric s -> textSourceLength s.Label + textSourceOptLength s.Subtext
     | NodeKind.Callout s -> textSourceLength s.Body + textSourceOptLength s.Heading

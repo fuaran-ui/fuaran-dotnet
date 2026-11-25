@@ -263,6 +263,7 @@ module HostLimits =
         | NodeKind.Mount _
         | NodeKind.Heading _
         | NodeKind.Markdown _
+        | NodeKind.Text _
         | NodeKind.Metric _
         | NodeKind.Badge _
         | NodeKind.Sparkline _
