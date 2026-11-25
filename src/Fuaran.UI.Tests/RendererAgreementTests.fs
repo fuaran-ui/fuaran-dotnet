@@ -593,3 +593,51 @@ let fragmentScope =
                   (reached FragmentRegistryFixture.tree |> List.map (fun id -> "p." + id))
                   "every position the registry enters is namespaced"
           } ]
+
+// ─── Phase 2572 — the backdrop fix moves no byte of an open modal's DOM ─────
+//
+// The overlay's light dismiss is now a target check inside the CLIENT's attach
+// function for the `modal-overlay` point. Both renderers emit an open modal from
+// one plan (`ElementPlan.LayoutPlan.modal`); the server writes nothing for a
+// behaviour point. So the document both tiers serve is the plan's attributes,
+// and this pins them: the corpus's render-fidelity rows for a modal need no
+// re-stamp.
+
+[<Tests>]
+let modalMarkupTests =
+    test "Phase 2572 — an open modal's planned markup is unchanged; the dismiss is client behaviour only" {
+        let pc: ElementPlan.PlanContext<obj, string> =
+            { Sources = BindingResolver.empty
+              Csp = Csp.CspMode.Permissive
+              Collector = None
+              Egress = Sanitize.permissiveEgress
+              NodeId = "m"
+              Child = fun child -> ElementPlan.Plan.TextNode child.Id }
+
+        let spec: ModalSpec<obj> =
+            { Defaults.modal with
+                Open = Binding.Static(Some true)
+                Dismissable = true
+                Children = [ Fuaran.markdown "m0" "body" ] }
+
+        match ElementPlan.LayoutPlan.modal pc spec with
+        | ElementPlan.Plan.Element overlay ->
+            Expect.equal overlay.Tag "div" "the overlay element"
+
+            Expect.equal
+                overlay.Props
+                [ ElementPlan.Prop.Attr("class", "fuaran-modal-overlay")
+                  ElementPlan.Prop.Behaviour(ElementPlan.Attach.ModalOverlay, "") ]
+                "open: no hidden flag; the backdrop's dismiss is a client attach point, not an attribute"
+
+            match overlay.Content with
+            | ElementPlan.Content.Children [ ElementPlan.Plan.Element dialog ] ->
+                Expect.equal
+                    dialog.Props
+                    [ ElementPlan.Prop.Attr("class", "fuaran-modal-dialog")
+                      ElementPlan.Prop.Attr("role", "dialog")
+                      ElementPlan.Prop.Attr("aria-modal", "true") ]
+                    "the dialog carries no handler and no new attribute"
+            | other -> failtestf "expected one dialog element under the overlay, got %A" other
+        | other -> failtestf "expected the overlay element, got %A" other
+    }

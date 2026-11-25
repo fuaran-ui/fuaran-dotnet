@@ -102,7 +102,7 @@
     },
     {
       "project": "src/Fuaran.UI.Renderer.Web.Tests/Fuaran.UI.Renderer.Web.Tests.fsproj",
-      "lane": "pure"
+      "note": "Phase 2572 — no longer pure: a browser-driven test mounts the embedded bundle in a real headless Chromium (FUARAN_BROWSER, else the usual install paths; none found fails)."
     },
     {
       "project": "src/Fuaran.UI.ServerDriven.Tests/Fuaran.UI.ServerDriven.Tests.fsproj",

@@ -684,3 +684,259 @@ let renderExportCanvasTests =
               Expect.isError (Fuaran.UI.Renderer.RenderExport.planCanvas "n" 0.0 10.0 1.0) "degenerate"
               Expect.isError (Fuaran.UI.Renderer.RenderExport.planCanvas "n" 10.0 10.0 9.0) "scale"
           } ]
+
+// ─── Phase 2572 — a modal dismisses on its backdrop, not on a click inside it ─
+//
+// Browser-driven: the embedded bundle (the renderer a .NET host serves) mounts
+// an open modal holding a form in a REAL headless Chromium, and a harness in the
+// page clicks into the field, types, clicks the dialog, then the backdrop, with
+// every event bubbling as a pointer click's do. The defect was propagation: a
+// click inside the dialog reached the overlay's handler and dismissed. A DOM stub
+// that calls handlers directly cannot see that, which is why the earlier suites
+// passed.
+//
+// The browser is FUARAN_BROWSER, else the usual Chrome / Edge / Chromium paths —
+// the content-js browser leg's lookup. None found is a FAILURE naming the
+// variable, never a skip: a browser test that skips reads green and proves nothing.
+
+module private ModalBrowser =
+    open System.Diagnostics
+    open System.IO
+
+    let private envVar (name: string) : string =
+        match Environment.GetEnvironmentVariable name with
+        | null -> ""
+        | s -> s.Trim()
+
+    let browserPath () =
+        let env = envVar "FUARAN_BROWSER"
+
+        if env <> "" then
+            if File.Exists env then
+                env
+            else
+                failwithf "FUARAN_BROWSER is set to '%s', which does not exist" env
+        else
+            let at (var: string) (parts: string list) =
+                match envVar var with
+                | "" -> None
+                | root -> Some(Path.Combine(root :: parts |> Array.ofList))
+
+            let fixedPaths =
+                [ at "PROGRAMFILES" [ "Google"; "Chrome"; "Application"; "chrome.exe" ]
+                  at "PROGRAMFILES(X86)" [ "Google"; "Chrome"; "Application"; "chrome.exe" ]
+                  at "LOCALAPPDATA" [ "Google"; "Chrome"; "Application"; "chrome.exe" ]
+                  at "PROGRAMFILES(X86)" [ "Microsoft"; "Edge"; "Application"; "msedge.exe" ]
+                  at "PROGRAMFILES" [ "Microsoft"; "Edge"; "Application"; "msedge.exe" ]
+                  Some "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+                  Some "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" ]
+                |> List.choose id
+
+            let pathDirs = (envVar "PATH").Split(Path.PathSeparator)
+
+            let onPath =
+                [ for dir in pathDirs do
+                      for name in
+                          [ "google-chrome"
+                            "google-chrome-stable"
+                            "chromium"
+                            "chromium-browser"
+                            "microsoft-edge" ] do
+                          if dir <> "" then
+                              Path.Combine(dir, name) ]
+
+            match fixedPaths @ onPath |> List.tryFind File.Exists with
+            | Some p -> p
+            | None ->
+                failwith "no Chrome, Edge or Chromium found; set FUARAN_BROWSER to a Chromium-family browser executable"
+
+    /// An open modal holding a one-field form; dismiss raises a `Notify`.
+    let tree (dismissable: bool) =
+        """{"id":"invite","kind":{"$type":"Modal","children":[{"id":"invite-form","kind":{"$type":"Form","fields":[{"id":"invite-email","kind":{"$type":"Text","onChange":"<closure>","value":{"$type":"Local","flushOn":{"$type":"OnBlur"},"format":"<closure>","initialFrom":{"$type":"State","defaultValue":"","key":"email"},"onCommit":"<closure>","parse":"<closure>"}},"label":"Email"}],"onSubmit":{"$type":"Chain","ops":[]},"submitLabel":"Invite"}}],"dismissable":DISMISSABLE,"heading":"Invite a member","onDismiss":{"$type":"Notify","channel":"dismissed","payload":"invite"},"open":{"$type":"Static","value":true}}}"""
+            .Replace("DISMISSABLE", (if dismissable then "true" else "false"))
+
+    /// The page harness. Each step waits a timer turn so React's root has
+    /// committed; the verdict goes to `<body data-fuaran-results>` as base64
+    /// JSON, the one thing `--dump-dom` returns.
+    let harness =
+        """
+(function () {
+  var results = {};
+  var done = function (r) { document.body.setAttribute('data-fuaran-results', btoa(JSON.stringify(r))); };
+  var click = function (el) {
+    ['pointerdown', 'mousedown', 'pointerup', 'mouseup'].forEach(function (t) {
+      el.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window }));
+    });
+    el.click();
+  };
+  var type = function (input, text) {
+    input.focus();
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, text);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  var later = function (fn) { setTimeout(fn, 20); };
+  var waitFor = function (pred, fn, n) { n = n || 0; if (pred() || n > 200) fn(); else setTimeout(function () { waitFor(pred, fn, n + 1); }, 25); };
+  var run = function (name, json, next) {
+    var el = document.createElement('div');
+    document.body.appendChild(el);
+    var notes = [];
+    var handle = FuaranRenderer.mount(el, JSON.stringify(json), {
+      onNotify: function (channel) { notes.push(channel); },
+      onError: function (m) { results[name] = { error: m }; }
+    });
+    waitFor(function () { return !!el.querySelector('input.fuaran-form-input'); }, function () {
+      var overlay = el.querySelector('.fuaran-modal-overlay');
+      var dialog = el.querySelector('.fuaran-modal-dialog');
+      var input = el.querySelector('input.fuaran-form-input');
+      if (!overlay || !dialog || !input) {
+        results[name] = { error: 'the modal did not render: ' + el.innerHTML.slice(0, 300) };
+        handle.unmount();
+        next();
+        return;
+      }
+      click(input);
+      type(input, 'ada@example.org');
+      later(function () {
+        click(dialog);
+        later(function () {
+          var r = { afterInside: notes.length, hiddenAfterInside: overlay.hasAttribute('hidden'), value: input.value };
+          click(overlay);
+          later(function () {
+            r.afterBackdrop = notes.length;
+            r.channels = notes.slice();
+            results[name] = r;
+            handle.unmount();
+            next();
+          });
+        });
+      });
+    });
+  };
+  try {
+    var data = JSON.parse(document.getElementById('fuaran-data').textContent);
+    run('dismissable', data.dismissable, function () {
+      run('fixed', data.fixed, function () { done(results); });
+    });
+  } catch (e) { done({ error: String(e && e.stack || e) }); }
+})();
+"""
+
+    /// Run the harness in the browser over the embedded bundle; the raw verdict JSON.
+    let run () =
+        let browser = browserPath ()
+
+        use tmp = Fuaran.UI.Testing.TempDir.create "modal-browser"
+        let dir = tmp.Path
+
+        File.WriteAllBytes(Path.Combine(dir, "fuaran-renderer.js"), Assets.read Assets.rendererScript)
+        File.WriteAllBytes(Path.Combine(dir, "fuaran-reference.css"), Assets.read Assets.referenceStylesheet)
+
+        let data = "{\"dismissable\":" + tree true + ",\"fixed\":" + tree false + "}"
+
+        let page =
+            "<!doctype html><html><head><meta charset=\"utf-8\">"
+            + "<link rel=\"stylesheet\" href=\"fuaran-reference.css\">"
+            + "<script src=\"fuaran-renderer.js\"></script></head><body>"
+            + "<script type=\"application/json\" id=\"fuaran-data\">"
+            + data.Replace("</", "<\\/")
+            + "</script><script>"
+            + harness
+            + "</script></body></html>"
+
+        let file = Path.Combine(dir, "page.html")
+        File.WriteAllText(file, page, UTF8Encoding(false))
+
+        let psi = ProcessStartInfo(browser)
+
+        for a in
+            [ "--headless=new"
+              "--disable-gpu"
+              "--no-sandbox"
+              "--no-first-run"
+              "--no-default-browser-check"
+              "--disable-extensions"
+              "--disable-background-networking"
+              "--disable-sync"
+              "--disable-component-update"
+              "--virtual-time-budget=10000"
+              "--user-data-dir=" + Path.Combine(dir, "profile")
+              "--dump-dom"
+              Uri(file).AbsoluteUri ] do
+            psi.ArgumentList.Add a
+
+        psi.RedirectStandardOutput <- true
+        psi.RedirectStandardError <- true
+        psi.UseShellExecute <- false
+        psi.CreateNoWindow <- true
+        psi.Environment.Remove "__COMPAT_LAYER" |> ignore
+
+        use p =
+            match Process.Start psi with
+            | null -> failwithf "the browser at '%s' did not start" browser
+            | started -> started
+
+        let stderr = p.StandardError.ReadToEndAsync()
+        let stdout = p.StandardOutput.ReadToEnd()
+
+        if not (p.WaitForExit 120000) then
+            p.Kill true
+            failwith "the browser did not exit within 120s"
+
+        let m =
+            RegularExpressions.Regex.Match(stdout, "data-fuaran-results=\"([A-Za-z0-9+/=]*)\"")
+
+        if not m.Success then
+            let e = stderr.Result
+
+            failwithf
+                "the page reported no verdict (exit %d); the browser said:\n%s"
+                p.ExitCode
+                (e.Substring(max 0 (e.Length - 2000)))
+
+        Convert.FromBase64String m.Groups[1].Value |> Encoding.UTF8.GetString
+
+[<Tests>]
+let modalDismissBrowserTests =
+    testList
+        "Fuaran.UI.Renderer.Web — a modal dismisses on its backdrop, not on a click inside it (Phase 2572)"
+        [ test
+              "in a real browser: a field click keeps the modal open, the backdrop dismisses, a fixed modal ignores both" {
+              let verdict = Json.JsonDocument.Parse(ModalBrowser.run ()).RootElement
+              let mutable error = Unchecked.defaultof<Json.JsonElement>
+
+              if verdict.TryGetProperty("error", &error) then
+                  failtestf "the page harness failed: %s" (error.GetString())
+
+              let case (name: string) =
+                  let c = verdict.GetProperty name
+
+                  if c.TryGetProperty("error", &error) then
+                      failtestf "%s: %s" name (error.GetString())
+
+                  c
+
+              let d = case "dismissable"
+
+              Expect.equal
+                  (d.GetProperty("afterInside").GetInt32())
+                  0
+                  "a click into the field, typing, and a click on the dialog dismiss nothing"
+
+              Expect.isFalse (d.GetProperty("hiddenAfterInside").GetBoolean()) "the modal is still open"
+              Expect.equal (d.GetProperty("value").GetString()) "ada@example.org" "the field holds what was typed"
+
+              Expect.equal
+                  (d.GetProperty("afterBackdrop").GetInt32())
+                  1
+                  "a click on the backdrop of a dismissable modal dismisses it once"
+
+              Expect.equal
+                  (d.GetProperty("channels").[0].GetString())
+                  "dismissed"
+                  "the dismissal is the modal's own onDismiss"
+
+              let f = case "fixed"
+              Expect.equal (f.GetProperty("afterInside").GetInt32()) 0 "a non-dismissable modal: the field click"
+              Expect.equal (f.GetProperty("value").GetString()) "ada@example.org" "the field holds what was typed"
+              Expect.equal (f.GetProperty("afterBackdrop").GetInt32()) 0 "a non-dismissable modal ignores its backdrop"
+          } ]

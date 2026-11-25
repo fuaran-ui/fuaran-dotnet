@@ -7830,6 +7830,17 @@ packages declare moves, and no wire document moves.
 **No kind is added, merged or retired**, so the [vocabulary-growth charter](docs/VOCABULARY.md)'s admission gates
 are not engaged. **No escape hatch is created or widened.**
 
+### Phase 2572 — a modal dismisses on its backdrop, not on a click inside it (behaviour fix, additive)
+
+`Fuaran.UI.Renderer`'s client attach for the `modal-overlay` point dismissed on every click that reached the
+overlay, and every click inside the dialog bubbles there, so the first click into a modal form's field closed the
+modal. The overlay now dismisses only when the click's target is the overlay element itself. The `×` button and
+`Escape` are unchanged, and a non-dismissable modal still attaches no backdrop handler (the plan has gated that
+point on `Dismissable` since Phase 2278). The embedded browser bundle in `Fuaran.UI.Renderer.Web` is re-synced
+from `@fuaran-ui/renderer` with the same fix. No type, member, prop or wire byte moves, and the served markup of an
+open modal is unchanged, so the render-fidelity rows need no re-stamp. **What a consumer must do.** Nothing; a
+host that worked around the defect by stopping propagation inside its dialog may drop the workaround.
+
 ---
 
 ## 0.106.0 — the slot opened after v0.105.0 was released, by Phase 2435 (the program adapters adopt `Fuaran.Program` 0.17.0), whose change is breaking (DRAFT — untagged)
