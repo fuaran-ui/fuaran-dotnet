@@ -874,14 +874,44 @@ let emitterAcceptance =
                       (sprintf "lineage %s: %s declares tags outside the attested vocabularies" name newest.Revision)
           }
 
-          // A `kind.$type` names one family only while the two vocabularies stay
-          // disjoint; the form-field check reads control positions, the node-kind
-          // check reads node positions, and this pins that no tag could be both.
-          test "the NodeKind and FormFieldKind vocabularies share no tag" {
-              let shared =
-                  Set.intersect (Corpus.loadKinds () |> Set.ofList) (Corpus.loadFormFieldKinds () |> Set.ofList)
+          // Phase 2536 — the families are separate namespaces (WIRE_FORMAT 11.4): a
+          // `$type` is read in the family its POSITION names, so `Text` may name a
+          // node kind and a form-field kind at once. What must hold is that the
+          // subset check classifies by position: a tag declared in one family
+          // grants nothing in the other. Two SYNTHETIC revisions, declared here and
+          // nowhere in the manifest (a declared lineage carries the 15.6
+          // commitment), each go red on the document holding the other family's
+          // `Text`, and green once both families declare it.
+          test "the subset check classifies a shared tag by position: one family's Text grants nothing in the other" {
+              let textNode =
+                  """{"id":"hint","kind":{"$type":"Text","text":"Search by name or ID."}}"""
 
-              Expect.isEmpty shared "a tag names both a node kind and a control kind"
+              let textField =
+                  """{"id":"f","kind":{"$type":"Form","fields":[{"id":"q","kind":{"$type":"Text"},"label":"Search"}],"onSubmit":{"$type":"Chain","ops":[]},"submitLabel":"Search"}}"""
+
+              let synthetic kinds controls =
+                  { Revision = "synthetic@1.0"
+                    Axes = [ "canonical-bytes" ]
+                    Kinds = kinds
+                    ControlKinds = controls
+                    OpKinds = []
+                    Vectors = [] }
+
+              let fieldOnly = synthetic [ "Form" ] [ "Text" ]
+              let nodeOnly = synthetic [ "Form"; "Text" ] []
+              let both = synthetic [ "Form"; "Text" ] [ "Text" ]
+
+              Expect.isNonEmpty
+                  (subsetDefects fieldOnly "node" textNode)
+                  "formFieldKinds [Text] without kinds [Text] must not admit a Text NODE"
+
+              Expect.isNonEmpty
+                  (subsetDefects nodeOnly "node" textField)
+                  "kinds [Text] without formFieldKinds [Text] must not admit a Text FIELD"
+
+              Expect.isEmpty (subsetDefects both "node" textNode) "both families declare Text: the node is inside"
+              Expect.isEmpty (subsetDefects both "node" textField) "both families declare Text: the field is inside"
+              Expect.isEmpty (subsetDefects fieldOnly "node" textField) "the field family alone admits the field"
           }
 
           for (name, oldest, revisions) in emitterLineages do

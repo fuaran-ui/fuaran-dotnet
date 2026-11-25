@@ -391,6 +391,47 @@ let plainText: Node<obj> =
         ))
         None
 
+/// Phase 2536 — one tag, two families, read by position (WIRE_FORMAT 11.4). A
+/// `Form` whose field is the `Text` INPUT sits beside a `Text` NODE in one tree:
+/// the field's `kind.$type` is read in `fields[]` as a `FormFieldKind`, the node's
+/// at a node position as a `NodeKind`, so a host that resolves the tag by lookup
+/// rather than by position cannot reproduce these bytes.
+[<NodeFixture "Display/Text beside the Text form field">]
+let textNodeBesideTextField: Node<obj> =
+    let queryField: FormField<obj> =
+        { Defaults.formField with
+            Id = "query"
+            Label = TextSource.Literal "Search"
+            Kind = FormFieldKind.Text(Some(FieldValue.ofText (Binding.State("query", Some ""))), Option.None) }
+
+    let searchForm: Node<obj> =
+        node
+            "search-form"
+            (NodeKind.Form(
+                { Defaults.form with
+                    Fields = [ queryField ]
+                    OnSubmit = Action.Chain []
+                    SubmitLabel = TextSource.Literal "Search" }
+            ))
+            None
+
+    let hint: Node<obj> =
+        node
+            "search-hint"
+            (NodeKind.Text(
+                { Defaults.text with
+                    Text = TextSource.Literal "Search by name or ID." }
+            ))
+            None
+
+    node
+        "text-beside-text-field"
+        (NodeKind.Box(
+            { Defaults.box with
+                Children = [ searchForm; hint ] }
+        ))
+        None
+
 /// Phase 1472 — a `SemanticStyle` carrying `Direction` and NOTHING ELSE, so the
 /// emitted `style` object is exactly `{"direction":"ltr"}`. One member is the
 /// point: a fixture whose style also set a tone or a weight could decode with
