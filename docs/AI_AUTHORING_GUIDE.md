@@ -1226,6 +1226,47 @@ reads.** A control that nothing reads is `FUARAN074`. A `params` entry reading a
 control declares is `FUARAN075`, and that one is an error. Moving one control re-evaluates only the
 sites that read its parameter.
 
+### Refinement as parameters — the refinable table (Phase 2753)
+
+A reader who filters, sorts and pages a table has not changed the table. They have chosen values over a
+fixed pipeline, and those values are state the tree already names: each membership filter is a token
+chip's filter key, which the grid's pipeline reads as a list parameter, and the sort and the page are
+the grid's own `sortStateKey` and `pageStateKey` (next section). The **`refinable-table`** fragment
+(`Fuaran.UI.Fragments`) is that join, built from shipped kinds only:
+
+- **Holes.** `source` names the host's rows, `key` the row key, `page-size` the rows per page, and
+  `count` (1 to 6) the columns. Column *N* has `column-N-field`, `column-N-label`, `column-N-kind`
+  (`text` or `number`), `column-N-sort` (`sortable` or `fixed`) and `column-N-filter` (`none` or
+  `membership`). A membership filter suggests the values in `column-N-options`, in the filter bar's
+  `value=Label|…` grammar.
+- **Do not add a pipeline `sort` or `limit` step for the reader's sort or page.** The grid applies
+  both to the rows the pipeline yields; a step would fix one order or one page into the data.
+- **Do not build a second filter bar for the same columns.** Each membership chip writes the key
+  its column's filter reads, so another control on that key is a second writer.
+
+The reader's view is data. A host that wants to store, share or re-apply it reads the three values
+(the grid's effective sort, the page it shows, each chip's selection) and calls
+`Stdlib.refinedPipeline`. That returns the fixed pipeline with every parameter substituted, plus the
+sort and the page as literal steps and a projection to the displayed columns. Evaluated over the same
+rows, it gives exactly the rows the grid shows: a text column sorts by its lower-cased value, which is
+the grid's text order. An F# author builds the table over rows of their own with
+`Stdlib.refinableTableOf`, which refuses a sortable or filterable column the pipeline's static schema
+does not produce, a row key it does not produce, and a membership filter over a column that is not
+text.
+
+```json
+{ "$type": "FragmentRef", "name": "refinable-table",
+  "args": { "source": { "$type": "Str", "value": "orders" },
+            "key": { "$type": "Str", "value": "order" },
+            "page-size": { "$type": "Int", "value": 25 },
+            "count": { "$type": "Int", "value": 2 },
+            "column-1-field": { "$type": "Str", "value": "region" },
+            "column-1-filter": { "$type": "Str", "value": "membership" },
+            "column-1-options": { "$type": "Str", "value": "north=North|south=South" },
+            "column-2-field": { "$type": "Str", "value": "total" },
+            "column-2-kind": { "$type": "Str", "value": "number" } } }
+```
+
 ### A bound grid's declared behaviours — sort, page, edit (Phases 861 / 862 / 863)
 
 One rule decides all three, and it is the thing to learn once: **a grid behaviour the user drives is declared as a named `$state` key the grid both writes and reads, and the renderer draws the control.** There is deliberately no grid-level `sortable` or `pageable` boolean — the KEY is the affordance, so a flag with no key behind it would be a control that writes state nothing reads.

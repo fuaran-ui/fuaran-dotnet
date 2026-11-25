@@ -25,6 +25,10 @@
          Not the renderer: this is the FSharp.Core-level codec, so no React /
          Feliz dependency lands under a certification suite. -->
     <ProjectReference Include="..\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+    <!-- Phase 2753 — the grid model the renderers share (FSharp.Core-level, no
+         React / Feliz), so the refinable table's substituted pipeline is checked
+         against the rows the grid itself shows rather than a restatement of them. -->
+    <ProjectReference Include="..\Fuaran.UI.Renderer.Core\Fuaran.UI.Renderer.Core.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Expecto" />
