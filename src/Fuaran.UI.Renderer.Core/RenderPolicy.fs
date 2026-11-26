@@ -19,6 +19,18 @@ open Fuaran.UI.Types
 //  is what it is) is recorded in `STABILITY.md` under 0.94.0, Phase 2067.
 // ============================================================================
 
+/// Whether a pipeline-bound value offers its derivation trace (Phase 2749).
+/// The affordance is host chrome, never wire: a document says nothing about it,
+/// and with it `Off` every render is byte-identical to one without the setting.
+[<RequireQualifiedAccess>]
+type DerivationTracePolicy =
+    /// No affordance. The default.
+    | Off
+    /// A `Metric` and a data-bound `DataGrid` whose binding carries a pipeline
+    /// offer a disclosure that lists each step, its schema, and the table after
+    /// it, at most `rowLimit` rows of each.
+    | Show of rowLimit: int
+
 /// What a render may do, as opposed to what it shows. Held by both renderers'
 /// contexts as `Policy`; `RenderPolicy.defaults` is the posture every builder
 /// starts from.
@@ -38,6 +50,9 @@ type RenderPolicy =
         /// scope: on the client it isolates `Binding.State` and
         /// `Action.SetState`, on the server it constrains `Custom` lookup.
         Scope: string option
+        /// Whether a pipeline-bound `Metric` or grid offers its derivation
+        /// trace (Phase 2749); `Off` emits nothing.
+        DerivationTrace: DerivationTracePolicy
     }
 
 /// Builders over `RenderPolicy`.
@@ -46,10 +61,11 @@ module RenderPolicy =
 
     /// The posture every builder starts from: default-deny egress
     /// (`Sanitize.denyNonLocalEgress`), the process hash floor, `Permissive`
-    /// CSP and the root scope. Every wider or stricter posture is reached by
+    /// CSP, the root scope and no derivation affordance. Every wider or stricter posture is reached by
     /// name with `with`, so a grep finds each host that chose one.
     let defaults: RenderPolicy =
         { Egress = Sanitize.denyNonLocalEgress
           CustomHashFloor = None
           Csp = Csp.Permissive
-          Scope = None }
+          Scope = None
+          DerivationTrace = DerivationTracePolicy.Off }

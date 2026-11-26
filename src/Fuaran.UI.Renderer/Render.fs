@@ -2837,7 +2837,14 @@ let rec private renderKind
 
         match ElementPlan.DisplayPlan.stateSlot parentNodeId state resolution with
         | Some slot -> render ctx slot
-        | None -> Emit.plan (ElementPlan.DisplayPlan.metric ctx.Sources resolution field spec)
+        | None ->
+            // Phase 2749 — the derivation affordance, under the policy alone
+            // (`Off`: the plan is the metric's, untouched).
+            Emit.plan (
+                ElementPlan.DerivationPlan.around
+                    (ElementPlan.DerivationPlan.forBinding ctx.Policy ctx.Sources spec.Value)
+                    (ElementPlan.DisplayPlan.metric ctx.Sources resolution field spec)
+            )
     | NodeKind.Badge spec -> Emit.plan (ElementPlan.DisplayPlan.badge ctx.Sources spec)
     | NodeKind.Skeleton spec -> Emit.plan (ElementPlan.DisplayPlan.skeleton spec)
     | NodeKind.Icon spec -> Emit.plan (ElementPlan.DisplayPlan.icon spec)
@@ -3084,7 +3091,15 @@ let rec private renderKind
                     | _ -> gridExportAttach ctx parentNodeId project point key
 
             Emit.planWith attach (ElementPlan.VisPlan.staticGrid ctx.Sources parentNodeId spec sr)
-        | None -> renderGrid ctx parentNodeId state spec
+        | None ->
+            let grid = renderGrid ctx parentNodeId state spec
+
+            // Phase 2749 — a grid bound through a pipeline offers its derivation
+            // once, beside the table: every cell of it shares the one pipeline.
+            // `Off`, or a source with no pipeline, returns the grid element itself.
+            match ElementPlan.DerivationPlan.forBinding ctx.Policy ctx.Sources spec.Source with
+            | None -> grid
+            | affordance -> Emit.plan (ElementPlan.DerivationPlan.around affordance (ElementPlan.Plan.Host grid))
     | NodeKind.Chart spec -> renderChart ctx parentNodeId state spec
     | NodeKind.Map spec -> renderMap ctx parentNodeId state spec
     | NodeKind.ErrorBoundary spec ->

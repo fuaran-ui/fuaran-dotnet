@@ -7848,6 +7848,50 @@ moves from ten to twelve (`docs/DECISIONS.md` D41).
 **Certified by** the `Phase 2753 — a refinable table whose view state is a pipeline` list in
 `src/Fuaran.UI.Fragments.Tests/StdlibCertificationTests.fs`, and by the library's quantified certification.
 
+### Phase 2749 — a derivation trace shows how a bound number was computed (additive, with one record field)
+
+**Class: additive in every package but one field.** Packages `Fuaran.UI`, `Fuaran.UI.Renderer.Core`, `Fuaran.UI.Renderer`,
+`Fuaran.UI.Renderer.Server` and `Fuaran.UI.AiTools`. No kind, variant or wire member is added, and no byte of an
+existing fixture moves: the affordance is host chrome under a render policy that is off by default.
+
+- **`Fuaran.UI.Derivation`** (new module). `trace rows sources binding` returns one record per pipeline step of a
+  `Binding.Transform` or a `Binding.Expr`: the step's verb, its canonical wire form, whether it runs, the output
+  schema `SchemaWalk` derives for it (an open one carries the walk's reason), and with `rows` the table after it,
+  bounded. Tables come from the reference evaluator over each step's prefix, so the last one is the binding's
+  value. A binding with no pipeline is refused (`DerivationRefusal.NoPipeline`, with where its value comes from).
+  New types: `DerivationSources`, `StepStatus`, `StageTable`, `DerivationStage`, `DerivationStep`,
+  `DerivationSubject`, `DerivationTrace`, `DerivationRefusal`. New members: `effective`, `effectivePipeline`,
+  `pipelineOf`, `verb`, `exprFrame`, `exprPipeline`, `result`, `toJson`, `DerivationSources.ofTable` and
+  `DerivationRefusal.describe`. The effective-pipeline rule (list params substituted, then every filter reading an
+  unbound param pruned) and the `Expr` frame and pipeline were the resolver's private copies. They now live here
+  once, and the resolver calls them, so it evaluates exactly as before.
+- **`BindingResolver.derivationSources`** and **`BindingResolver.derivationTrace`** (`Fuaran.UI.Renderer.Core`).
+  These trace a binding as the slot resolves it, through the slot's own parameter and source resolution and under
+  `TransformBudget.defaults`.
+- **`RenderPolicy.DerivationTrace`** (`Fuaran.UI.Renderer.Core`), a field of the new `DerivationTracePolicy`
+  (`Off` | `Show of rowLimit`). `RenderPolicy.defaults` is `Off`. With it on, both renderers wrap a `Metric` bound
+  through a pipeline in a `fuaran-derivation-host` element with a native `<details>` disclosure after it. The
+  client does the same for a data-bound `DataGrid`, whose server render stays its hydration placeholder. The plan
+  is `ElementPlan.DerivationPlan`, so the client and the server emit the same markup. The reference stylesheet
+  gains the `fuaran-derivation-*` rules, and the four tier copies are regenerated.
+- **`Render.renderWithPolicy`** (`Fuaran.UI.Renderer.Server`) renders the server tier under a whole `RenderPolicy`.
+- **`Tools.getDerivationTrace`** and the tool-call entry **`Tools.derivationTrace`** (`fuaran.getDerivationTrace`,
+  with `DerivationTraceToolName`, `derivationTraceDescription` and `derivationTraceInputSchema`), in
+  `Fuaran.UI.AiTools`. They read the same slot table as `getBindingValue`. A refusal carries one of the codes
+  `no-pipeline`, `absent`, `unresolved`, `node-not-found`, `slot-not-found` or `invalid-arguments`.
+
+**What a consumer must do.** Nothing, unless it builds a `RenderPolicy` as a full record literal. That is
+`FS0764`, because the record gains a field. Build it from `RenderPolicy.defaults` with `with`, as the record's own
+documentation asks. A host that wants the affordance sets `DerivationTrace = DerivationTracePolicy.Show n`: on the
+client in its context's `Policy`, and on the server through `renderWithPolicy`, so both tiers render under one
+posture.
+
+**Certified by** `src/Fuaran.UI.Tests/DerivationTests.fs`. It shows that over every `evalPipeline` vector of
+`laws/transform-laws.json` and `laws/dataframe-parity.json` the trace's final table, and each step's, is the
+reference evaluation byte for byte. It shows that through the resolver the last table is the slot's resolved rows
+or cell, that an open schema carries the walk's reason, that the tool's answers and refusals are correct, and that
+with the policy off a tree renders byte-identically.
+
 ---
 
 ## 0.107.0 — the slot opened after v0.106.0 was released, by the raise of `Fuaran.Compute.*` to 0.47.0, whose change is additive (DRAFT — untagged)

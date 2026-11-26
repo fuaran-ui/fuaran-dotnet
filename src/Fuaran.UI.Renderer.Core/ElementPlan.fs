@@ -804,6 +804,175 @@ type PlanContext<'Msg, 'E> =
         Child: Node<'Msg> -> Plan<'E>
     }
 
+/// Phase 2749 — the derivation affordance: a disclosure beside a pipeline-bound
+/// value that lists how it was computed (`Derivation.trace`, through the
+/// resolver's own sources). Host chrome under `RenderPolicy.DerivationTrace`,
+/// planned once so both renderers emit the same markup and a policy-on
+/// document hydrates without a mismatch.
+///
+/// A native `<details>` / `<summary>` disclosure: the summary is in the tab
+/// order, opens with Enter or Space, and is labelled by its own text, with no
+/// script and no state key. `PopoverSurface` was considered and not used: it is
+/// the surface of a `Modal` whose open state is a wire state key, and this
+/// affordance has no wire presence at all.
+[<RequireQualifiedAccess>]
+module DerivationPlan =
+
+    /// A cell as the table shows it; a null cell is blank.
+    let private cellText (cell: Fuaran.Core.Cell) : string =
+        match BindingResolver.cellToText cell with
+        | Ok text -> text
+        | Error _ -> ""
+
+    /// The columns a stage names, with their types, and the walk's reason when
+    /// its column set is open.
+    let private schemaText (schema: Fuaran.Compute.SchemaKnowledge) : string =
+        let columns =
+            match Fuaran.Compute.SchemaWalk.columns schema with
+            | [] -> "no columns"
+            | cols ->
+                cols
+                |> List.map (fun c ->
+                    match c.Type with
+                    | Some t -> c.Name + ": " + Fuaran.Core.ColumnType.tag t
+                    | None -> c.Name)
+                |> String.concat ", "
+
+        match Fuaran.Compute.SchemaWalk.reason schema with
+        | None -> "Columns: " + columns
+        | Some reason -> "Columns: at least " + columns + " (open: " + reason + ")"
+
+    let private tablePlans (table: Fuaran.UI.Derivation.StageTable) : Plan<'E> list =
+        let names = Fuaran.Core.Table.columnNames table.Rows
+
+        let columns =
+            names |> List.choose (fun n -> Fuaran.Core.Table.tryColumn n table.Rows)
+
+        let shown = Fuaran.Core.Table.rowCount table.Rows
+
+        let count =
+            if shown < table.RowCount then
+                sprintf "%d rows; the first %d shown" table.RowCount shown
+            elif table.RowCount = 1 then
+                "1 row"
+            else
+                sprintf "%d rows" table.RowCount
+
+        let header =
+            Plan.element
+                "tr"
+                []
+                (Content.Children(
+                    names
+                    |> List.map (fun n -> Plan.element "th" [ Prop.Attr("scope", "col") ] (Content.Text n))
+                ))
+
+        let body =
+            [ for i in 0 .. shown - 1 ->
+                  Plan.element
+                      "tr"
+                      []
+                      (Content.Children(
+                          columns
+                          |> List.map (fun col ->
+                              Plan.element "td" [] (Content.Text(cellText (Fuaran.Core.Column.cell i col))))
+                      )) ]
+
+        [ Plan.classText "div" "fuaran-derivation-rows" count
+          Plan.classChildren
+              "table"
+              "fuaran-derivation-table"
+              [ Plan.element "thead" [] (Content.Children [ header ])
+                Plan.element "tbody" [] (Content.Children body) ] ]
+
+    let private stagePlans (stage: Fuaran.UI.Derivation.DerivationStage) : Plan<'E> list =
+        Plan.classText "div" "fuaran-derivation-schema" (schemaText stage.Schema)
+        :: (match stage.Table with
+            | None -> []
+            | Some(Ok table) -> tablePlans table
+            | Some(Error refusal) -> [ Plan.classText "div" "fuaran-derivation-refusal" refusal ])
+
+    let private stepPlan (step: Fuaran.UI.Derivation.DerivationStep) : Plan<'E> =
+        let wire =
+            Plan.classText
+                "code"
+                "fuaran-derivation-wire"
+                (Fuaran.Core.Canonical.write Fuaran.Core.Rendering.CrossHost step.Wire)
+
+        match step.Status with
+        | Fuaran.UI.Derivation.StepStatus.Applied ->
+            Plan.classChildren
+                "li"
+                "fuaran-derivation-step"
+                (Plan.classText "span" "fuaran-derivation-verb" step.Verb
+                 :: wire
+                 :: stagePlans step.Output)
+        | Fuaran.UI.Derivation.StepStatus.Pruned unbound ->
+            Plan.classChildren
+                "li"
+                "fuaran-derivation-step fuaran-derivation-step-pruned"
+                [ Plan.classText "span" "fuaran-derivation-verb" step.Verb
+                  wire
+                  Plan.classText
+                      "div"
+                      "fuaran-derivation-pruned"
+                      ("Not run: no value is bound for "
+                       + String.concat ", " unbound
+                       + ", so this filter is no constraint") ]
+
+    /// The disclosure for a trace, or for the reason it could not be taken.
+    let affordance
+        (traced: Result<Fuaran.UI.Derivation.DerivationTrace, Fuaran.UI.Derivation.DerivationRefusal>)
+        : Plan<'E> =
+        let panel =
+            match traced with
+            | Ok trace ->
+                [ Plan.classChildren
+                      "div"
+                      "fuaran-derivation-input"
+                      (Plan.classText "span" "fuaran-derivation-verb" "input" :: stagePlans trace.Input)
+                  Plan.classChildren "ol" "fuaran-derivation-steps" (trace.Steps |> List.map stepPlan) ]
+            | Error refusal ->
+                [ Plan.classText
+                      "div"
+                      "fuaran-derivation-refusal"
+                      (Fuaran.UI.Derivation.DerivationRefusal.describe refusal) ]
+
+        Plan.classChildren
+            "details"
+            "fuaran-derivation"
+            [ Plan.classText "summary" "fuaran-derivation-toggle" "How this was computed"
+              Plan.element
+                  "div"
+                  (Plan.attrs
+                      [ "class", "fuaran-derivation-panel"
+                        "role", "group"
+                        "aria-label", "Derivation" ])
+                  (Content.Children panel) ]
+
+    /// The affordance `binding` offers under `policy`: `None` when the policy is
+    /// `Off` or the binding carries no pipeline. A pipeline whose sources did
+    /// not resolve offers the disclosure with the reason, which is the question
+    /// a reader of an empty or errored value is asking.
+    let forBinding
+        (policy: RenderPolicy)
+        (sources: BindingResolver.BindingSources)
+        (binding: Binding<'T>)
+        : Plan<'E> option =
+        match policy.DerivationTrace with
+        | DerivationTracePolicy.Off -> None
+        | DerivationTracePolicy.Show rowLimit ->
+            match BindingResolver.derivationTrace (Some rowLimit) sources binding with
+            | Error(Fuaran.UI.Derivation.DerivationRefusal.NoPipeline _) -> None
+            | traced -> Some(affordance traced)
+
+    /// `inner` with the affordance after it in one host element, or `inner`
+    /// itself, untouched, when there is none.
+    let around (affordance: Plan<'E> option) (inner: Plan<'E>) : Plan<'E> =
+        match affordance with
+        | None -> inner
+        | Some disclosure -> Plan.classChildren "div" "fuaran-derivation-host" [ inner; disclosure ]
+
 /// The behaviour attachment points the planned kinds declare. The client's
 /// resolver closures match on these names; a test pins which kind declares
 /// which, so a handler cannot be dropped silently.

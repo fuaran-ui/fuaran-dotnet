@@ -67,25 +67,15 @@ let private resolveSlot<'T> (ctx: IntrospectionContext) (binding: Binding<'T>) :
 let private resolveScalarSlot (ctx: IntrospectionContext) (binding: Binding<float>) : ResolvedBindingResult =
     tryResolveScalarBindingWith Fuaran.UI.Renderer.BindingResolver.cellToFloat ctx binding
 
-/// Resolve an optional `Binding<'T> option` slot (Phase 130 interactive
-/// disabled-state shape). `Some` resolves the binding; `None` surfaces the
-/// synthetic-None Resolved result (Expression `"$none"`) so callers can tell
-/// "slot exists, no override" from "slot missing" — same posture as
-/// Button.Disabled / Tabs.ActiveTag / Metric.Trend.
-let private resolveOptionalSlot<'T>
-    (ctx: IntrospectionContext)
-    (binding: Binding<'T> option)
-    : ResolvedBindingResult option =
-    match binding with
-    | Some b -> Some(resolveSlot ctx b)
-    | None ->
-        Some(
-            ResolvedBindingResult.Resolved
-                { Expression = "$none"
-                  ResolvedValue = None
-                  TypeHint = None
-                  Source = BindingSource.Static }
-        )
+/// The answer an optional slot gives when it holds no binding: `Resolved` with
+/// no value (Expression `"$none"`), so callers tell "slot exists, no override"
+/// from "slot missing" (the Phase 130 interactive disabled-state shape).
+let private noOverride: ResolvedBindingResult =
+    ResolvedBindingResult.Resolved
+        { Expression = "$none"
+          ResolvedValue = None
+          TypeHint = None
+          Source = BindingSource.Static }
 
 let private extractBindings (ctx: IntrospectionContext) (kind: NodeKind<'Msg>) : Map<string, ResolvedBindingResult> =
     match kind with
@@ -146,84 +136,70 @@ let private extractBindings (ctx: IntrospectionContext) (kind: NodeKind<'Msg>) :
     | NodeKind.Map(spec) -> Map.ofList [ "Source", resolveSlot ctx spec.Source ]
     | _ -> Map.empty
 
-// ─── Per-NodeKind binding-slot lookup (for getBindingValue) ─────────────────
+// ─── Per-NodeKind binding-slot lookup (getBindingValue, getDerivationTrace) ─
 //
-// Returns the resolved value for a single slot or `None` if the slot isn't
-// declared on the node's kind. Caller maps `None` to a `SlotNotFound` error.
+// ONE table of the Binding-typed slots a single-slot tool can address, read by
+// whichever reader the tool needs: `getBindingValue` resolves the slot,
+// `getDerivationTrace` (Phase 2749) traces it. The reader is told how the
+// renderer resolves the slot (generally, or as a numeric scalar) and when an
+// optional slot holds no binding, so a slot added here reaches both tools.
+// `None` means the slot is not declared on the node's kind; callers map it to a
+// `SlotNotFound` error.
 
-let private extractSlot<'Msg>
-    (ctx: IntrospectionContext)
-    (kind: NodeKind<'Msg>)
-    (slot: string)
-    : ResolvedBindingResult option =
+/// What a single-slot tool does with the slot it addresses.
+type private SlotReader<'R> =
+    /// A slot the renderer resolves through the general entry point.
+    abstract General<'T> : Binding<'T> -> 'R
+    /// A numeric slot the renderer resolves as a scalar (`Metric.Value`,
+    /// `Metric.Trend`, `LabelValueRow.Value`).
+    abstract Scalar: Binding<float> -> 'R
+    /// An optional slot that holds no binding.
+    abstract Absent: unit -> 'R
+
+let private readSlot<'Msg, 'R> (reader: SlotReader<'R>) (kind: NodeKind<'Msg>) (slot: string) : 'R option =
+    // An optional slot exists whether or not it holds a binding: an absent one
+    // is the reader's `Absent`, never `SlotNotFound`, so a caller tells "slot
+    // exists, no override" from "slot missing".
+    let optional (binding: Binding<'T> option) : 'R =
+        match binding with
+        | Some b -> reader.General b
+        | None -> reader.Absent()
+
     match kind, slot with
-    | NodeKind.Metric(spec), "Value" -> Some(resolveScalarSlot ctx spec.Value)
+    | NodeKind.Metric(spec), "Value" -> Some(reader.Scalar spec.Value)
     | NodeKind.Metric(spec), "Trend" ->
-        match spec.Trend with
-        | Some trend -> Some(resolveScalarSlot ctx trend)
-        | None ->
-            // Trend is an optional slot — when absent, surface as Resolved
-            // with no value rather than NotFound; the orchestrator
-            // pattern-matches on `ResolvedBinding.ResolvedValue = None` to
-            // distinguish "slot exists but no override" from "slot missing".
-            Some(
-                ResolvedBindingResult.Resolved
-                    { Expression = "$none"
-                      ResolvedValue = None
-                      TypeHint = None
-                      Source = BindingSource.Static }
-            )
-    | NodeKind.Sparkline(spec), "Source" -> Some(resolveSlot ctx spec.Source)
-    | NodeKind.Progress(spec), "Fraction" -> Some(resolveSlot ctx spec.Fraction)
-    // LabelValueRow's Source slot.
-    | NodeKind.LabelValueRow(spec), "Value" -> Some(resolveScalarSlot ctx spec.Value)
-    | NodeKind.Link(spec), "Href" -> Some(resolveSlot ctx spec.Href)
-    | NodeKind.Stepper(spec), "ActiveStep" -> Some(resolveSlot ctx spec.ActiveStep)
-    | NodeKind.Tabs(spec), "ActiveIndex" -> Some(resolveSlot ctx spec.ActiveIndex)
-    | NodeKind.Tabs(spec), "ActiveTag" ->
-        match spec.ActiveTag with
-        | Some tag -> Some(resolveSlot ctx tag)
-        | None ->
-            // ActiveTag is an optional slot — when absent, surface as Resolved
-            // with no value (same posture as Metric.Trend) so the orchestrator
-            // distinguishes "slot exists but no override" from "slot missing".
-            Some(
-                ResolvedBindingResult.Resolved
-                    { Expression = "$none"
-                      ResolvedValue = None
-                      TypeHint = None
-                      Source = BindingSource.Static }
-            )
-    | NodeKind.Disclosure(spec), "Open" -> Some(resolveSlot ctx spec.Open)
-    | NodeKind.Button(spec), "Disabled" ->
-        match spec.Disabled with
-        | Some disabled -> Some(resolveSlot ctx disabled)
-        | None ->
-            // Disabled is an optional slot — when absent, surface as Resolved
-            // with no value (same posture as Tabs.ActiveTag / Metric.Trend) so
-            // the orchestrator distinguishes "slot exists but no override" from
-            // "slot missing".
-            Some(
-                ResolvedBindingResult.Resolved
-                    { Expression = "$none"
-                      ResolvedValue = None
-                      TypeHint = None
-                      Source = BindingSource.Static }
-            )
-    | NodeKind.Select(spec), "Source" -> Some(resolveSlot ctx spec.Source)
-    | NodeKind.Select(spec), "Value" -> spec.Value |> Option.map (resolveSlot ctx)
-    // Phase 130: Select / Form / FileUpload optional bound disabled-state.
-    // When absent, surface as Resolved with no value (synthetic-None posture,
-    // mirroring Button.Disabled / Tabs.ActiveTag / Metric.Trend) so the
-    // orchestrator distinguishes "slot exists but no override" from "slot
-    // missing".
-    | NodeKind.Select(spec), "Disabled" -> resolveOptionalSlot ctx spec.Disabled
-    | NodeKind.Form(spec), "Disabled" -> resolveOptionalSlot ctx spec.Disabled
-    | NodeKind.FileUpload(spec), "Disabled" -> resolveOptionalSlot ctx spec.Disabled
-    | NodeKind.DataGrid(spec), "Source" -> Some(resolveSlot ctx spec.Source)
-    | NodeKind.Chart(spec), "Source" -> Some(resolveSlot ctx spec.Source)
-    | NodeKind.Map(spec), "Source" -> Some(resolveSlot ctx spec.Source)
+        Some(
+            match spec.Trend with
+            | Some trend -> reader.Scalar trend
+            | None -> reader.Absent()
+        )
+    | NodeKind.Sparkline(spec), "Source" -> Some(reader.General spec.Source)
+    | NodeKind.Progress(spec), "Fraction" -> Some(reader.General spec.Fraction)
+    | NodeKind.LabelValueRow(spec), "Value" -> Some(reader.Scalar spec.Value)
+    | NodeKind.Link(spec), "Href" -> Some(reader.General spec.Href)
+    | NodeKind.Stepper(spec), "ActiveStep" -> Some(reader.General spec.ActiveStep)
+    | NodeKind.Tabs(spec), "ActiveIndex" -> Some(reader.General spec.ActiveIndex)
+    | NodeKind.Tabs(spec), "ActiveTag" -> Some(optional spec.ActiveTag)
+    | NodeKind.Disclosure(spec), "Open" -> Some(reader.General spec.Open)
+    | NodeKind.Button(spec), "Disabled" -> Some(optional spec.Disabled)
+    | NodeKind.Select(spec), "Source" -> Some(reader.General spec.Source)
+    // A multi-select has no `Value` slot at all (Phase 1962).
+    | NodeKind.Select(spec), "Value" -> spec.Value |> Option.map reader.General
+    // Phase 130: the optional bound disabled-state of Select / Form / FileUpload.
+    | NodeKind.Select(spec), "Disabled" -> Some(optional spec.Disabled)
+    | NodeKind.Form(spec), "Disabled" -> Some(optional spec.Disabled)
+    | NodeKind.FileUpload(spec), "Disabled" -> Some(optional spec.Disabled)
+    | NodeKind.DataGrid(spec), "Source" -> Some(reader.General spec.Source)
+    | NodeKind.Chart(spec), "Source" -> Some(reader.General spec.Source)
+    | NodeKind.Map(spec), "Source" -> Some(reader.General spec.Source)
     | _ -> None
+
+/// The probe's reader: each slot resolved exactly as the renderer resolves it.
+let private probeReader (ctx: IntrospectionContext) : SlotReader<ResolvedBindingResult> =
+    { new SlotReader<ResolvedBindingResult> with
+        member _.General<'T>(binding: Binding<'T>) = resolveSlot ctx binding
+        member _.Scalar binding = resolveScalarSlot ctx binding
+        member _.Absent() = noOverride }
 
 // ─── Per-NodeKind props extraction ─────────────────────────────────────────
 //
@@ -664,26 +640,6 @@ let private hasInclude (keys: IncludeKey list) (key: IncludeKey) : bool =
 
 // ─── getNodeState ──────────────────────────────────────────────────────────
 
-/// Phase 1615 — the canonical wire spelling of one pipeline step, read off the
-/// step's own encoder rather than transcribed. `DataFrameCodec.encodeTransform`
-/// writes each case as a `$type`-discriminated object whose tag IS the wire
-/// spelling (`Filter` → `filter`, `GroupBy` → `groupBy`), so a case added to
-/// `Fuaran.Compute.Transform` arrives here without an edit.
-///
-/// The fallback is empty rather than invented: a step that did not encode with
-/// a string `$type` is a codec defect to report where codecs are certified,
-/// and naming it something plausible here would hide it.
-let private transformVerb (step: Fuaran.Compute.Transform) : string =
-    match Fuaran.Compute.DataFrameCodec.encodeTransform step with
-    | Fuaran.Core.JObj fields ->
-        fields
-        |> List.tryPick (fun (k, v) ->
-            match k, v with
-            | "$type", Fuaran.Core.JStr tag -> Some tag
-            | _ -> None)
-        |> Option.defaultValue ""
-    | _ -> ""
-
 /// Phase 1615 — the live-`Transform` sites the ADDRESSED node's own spec
 /// holds, projected from the one shared analysis walk.
 ///
@@ -698,7 +654,7 @@ let private liveTransformsOf (node: Node<'Msg>) : LiveTransformSite list =
           SiteKey = d.Site.SiteKey
           Slot = d.Site.Slot
           IdentityColumn = d.Site.IdentityColumn
-          Pipeline = d.Site.Pipeline |> List.map transformVerb })
+          Pipeline = d.Site.Pipeline |> List.map Fuaran.UI.Derivation.verb })
 
 /// `fuaran.getNodeState(nodeId, options?)` — returns the full per-node
 /// observable state envelope. `includeKeys = []` returns every block
@@ -795,7 +751,7 @@ let getBindingValue
     match findNode nodeId root with
     | None -> Error(nodeNotFound nodeId)
     | Some node ->
-        match extractSlot ctx node.Kind slot with
+        match readSlot (probeReader ctx) node.Kind slot with
         | Some result -> Ok result
         | None -> Error(slotNotFound node.Kind nodeId slot)
 
@@ -946,14 +902,16 @@ let formFromSchemaInputSchema: Fuaran.Core.JVal =
                       "description", Fuaran.Core.JStr "The submit button's label (default \"Submit\")." ] ]
           "additionalProperties", Fuaran.Core.JBool false ]
 
-let private argumentsRefusal (path: string) (message: string) : string =
+/// The refusal envelope a JSON-argument tool answers with:
+/// `{"refusals":[{"code","message","path"}]}`.
+let private refusalEnvelope (code: string) (path: string) (message: string) : string =
     Fuaran.Core.Canonical.write
         Fuaran.Core.Rendering.CrossHost
         (Fuaran.Core.JObj
             [ "refusals",
               Fuaran.Core.JArr
                   [ Fuaran.Core.JObj
-                        [ "code", Fuaran.Core.JStr "invalid-arguments"
+                        [ "code", Fuaran.Core.JStr code
                           "message", Fuaran.Core.JStr message
                           "path", Fuaran.Core.JStr path ] ] ])
 
@@ -978,21 +936,21 @@ let formFromSchema (args: Fuaran.Core.JVal) : Result<string, string> =
         |> List.filter (fun k -> k <> "schema" && k <> "formId" && k <> "submitLabel")
 
     match members, find "schema", find "formId", find "submitLabel" with
-    | None, _, _, _ -> Error(argumentsRefusal "" "the arguments are not an object")
-    | _ when not unknown.IsEmpty -> Error(argumentsRefusal ("/" + unknown.Head) "unknown argument")
-    | _, None, _, _ -> Error(argumentsRefusal "/schema" "the schema argument is required")
+    | None, _, _, _ -> Error(refusalEnvelope "invalid-arguments" "" "the arguments are not an object")
+    | _ when not unknown.IsEmpty -> Error(refusalEnvelope "invalid-arguments" ("/" + unknown.Head) "unknown argument")
+    | _, None, _, _ -> Error(refusalEnvelope "invalid-arguments" "/schema" "the schema argument is required")
     | _, _, Some formId, _ when
         (match formId with
          | Fuaran.Core.JStr s -> s = ""
          | _ -> true)
         ->
-        Error(argumentsRefusal "/formId" "formId must be a non-empty string")
+        Error(refusalEnvelope "invalid-arguments" "/formId" "formId must be a non-empty string")
     | _, _, _, Some label when
         (match label with
          | Fuaran.Core.JStr s -> s = ""
          | _ -> true)
         ->
-        Error(argumentsRefusal "/submitLabel" "submitLabel must be a non-empty string")
+        Error(refusalEnvelope "invalid-arguments" "/submitLabel" "submitLabel must be a non-empty string")
     | _, Some schema, formId, label ->
         let defaults = Fuaran.UI.SchemaForm.SchemaFormOptions.defaults<obj>
 
@@ -1008,3 +966,140 @@ let formFromSchema (args: Fuaran.Core.JVal) : Result<string, string> =
                     | _ -> defaults.SubmitLabel }
 
         Fuaran.UI.SchemaForm.deriveWire options schema
+
+// ─── getDerivationTrace (Phase 2749) ──────────────────────────────────────
+//
+// Beside `getBindingValue`, and over the same slot table: where that tool says
+// WHAT a slot resolved to, this one says HOW, for a slot bound through a
+// pipeline. It is `BindingResolver.derivationTrace` over the context's sources,
+// so the trace's last table is the value the slot shows, and a binding with no
+// pipeline is refused with where its value comes from instead.
+
+/// The tool's name, as a model calls it.
+[<Literal>]
+let DerivationTraceToolName = "fuaran.getDerivationTrace"
+
+/// The tool's description, for a tool listing.
+let derivationTraceDescription =
+    "Explain how a bound value was computed. For a slot bound through a pipeline (a Binding.Transform "
+    + "or a Binding.Expr), returns each step's verb, its canonical wire form, whether it ran (a filter "
+    + "reading an unbound param is pruned), the output schema the static walk derives for it (an open "
+    + "schema carries the walk's reason), and, when `rows` is given, the table after each step, at most "
+    + "that many rows. A slot whose binding carries no pipeline is refused with where its value comes from."
+
+/// The tool's input schema: the node `id` and binding `slot` (both required, as
+/// for `getBindingValue`), and the optional `rows` bound on each step's table.
+let derivationTraceInputSchema: Fuaran.Core.JVal =
+    Fuaran.Core.JObj
+        [ "type", Fuaran.Core.JStr "object"
+          "required", Fuaran.Core.JArr [ Fuaran.Core.JStr "id"; Fuaran.Core.JStr "slot" ]
+          "properties",
+          Fuaran.Core.JObj
+              [ "id",
+                Fuaran.Core.JObj
+                    [ "type", Fuaran.Core.JStr "string"
+                      "description", Fuaran.Core.JStr "The NodeId owning the binding." ]
+                "slot",
+                Fuaran.Core.JObj
+                    [ "type", Fuaran.Core.JStr "string"
+                      "description",
+                      Fuaran.Core.JStr
+                          "The binding slot on that node's kind, e.g. \"Value\" on a Metric or \"Source\" on a DataGrid." ]
+                "rows",
+                Fuaran.Core.JObj
+                    [ "type", Fuaran.Core.JStr "integer"
+                      "minimum", Fuaran.Core.JInt 0
+                      "description",
+                      Fuaran.Core.JStr
+                          "Return the table after each step, at most this many rows of it. Omit for the schema alone, which evaluates nothing." ] ]
+          "additionalProperties", Fuaran.Core.JBool false ]
+
+/// `fuaran.getDerivationTrace(nodeId, slot, rows?)`, typed. The outer `Error`
+/// is the addressing (`NodeNotFound`, `SlotNotFound`), exactly as for
+/// `getBindingValue`; the inner `Result` is the trace or the reason there is
+/// none.
+let getDerivationTrace
+    (ctx: IntrospectionContext)
+    (root: Node<'Msg>)
+    (nodeId: NodeId)
+    (slot: string)
+    (rows: int option)
+    : Result<Result<Fuaran.UI.Derivation.DerivationTrace, Fuaran.UI.Derivation.DerivationRefusal>, IntrospectError> =
+    match findNode nodeId root with
+    | None -> Error(nodeNotFound nodeId)
+    | Some node ->
+        let reader =
+            { new SlotReader<Result<Fuaran.UI.Derivation.DerivationTrace, Fuaran.UI.Derivation.DerivationRefusal>> with
+                member _.General<'T>(binding: Binding<'T>) =
+                    Fuaran.UI.Renderer.BindingResolver.derivationTrace rows ctx.Sources binding
+
+                member _.Scalar binding =
+                    Fuaran.UI.Renderer.BindingResolver.derivationTrace rows ctx.Sources binding
+
+                member _.Absent() =
+                    Error Fuaran.UI.Derivation.DerivationRefusal.Absent }
+
+        match readSlot reader node.Kind slot with
+        | Some traced -> Ok traced
+        | None -> Error(slotNotFound node.Kind nodeId slot)
+
+/// `fuaran.getDerivationTrace` as a tool call: `args` per
+/// `derivationTraceInputSchema`. `Ok` is the trace's canonical JSON
+/// (`Derivation.toJson`); `Error` is the refusal envelope, one entry coded
+/// `invalid-arguments`, `node-not-found`, `slot-not-found`, `no-pipeline`,
+/// `absent` or `unresolved`, whose message is the didactic sentence.
+let derivationTrace (ctx: IntrospectionContext) (root: Node<'Msg>) (args: Fuaran.Core.JVal) : Result<string, string> =
+    let members =
+        match args with
+        | Fuaran.Core.JObj ms -> Some ms
+        | _ -> None
+
+    let find name =
+        members |> Option.bind (List.tryFind (fun (k, _) -> k = name)) |> Option.map snd
+
+    let unknown =
+        members
+        |> Option.defaultValue []
+        |> List.map fst
+        |> List.filter (fun k -> k <> "id" && k <> "slot" && k <> "rows")
+
+    let text name =
+        match find name with
+        | Some(Fuaran.Core.JStr s) when s <> "" -> Some s
+        | _ -> None
+
+    match members, text "id", text "slot", find "rows" with
+    | None, _, _, _ -> Error(refusalEnvelope "invalid-arguments" "" "the arguments are not an object")
+    | _ when not unknown.IsEmpty -> Error(refusalEnvelope "invalid-arguments" ("/" + unknown.Head) "unknown argument")
+    | _, None, _, _ -> Error(refusalEnvelope "invalid-arguments" "/id" "id must be a non-empty string")
+    | _, _, None, _ -> Error(refusalEnvelope "invalid-arguments" "/slot" "slot must be a non-empty string")
+    | _, _, _, Some rows when
+        (match rows with
+         | Fuaran.Core.JInt n -> n < 0
+         | _ -> true)
+        ->
+        Error(refusalEnvelope "invalid-arguments" "/rows" "rows must be a non-negative integer")
+    | _, Some id, Some slot, rows ->
+        let rows =
+            match rows with
+            | Some(Fuaran.Core.JInt n) -> Some n
+            | _ -> None
+
+        match getDerivationTrace ctx root (NodeId id) slot rows with
+        | Error e ->
+            let code =
+                match e.Code with
+                | IntrospectErrorCode.NodeNotFound -> "node-not-found"
+                | _ -> "slot-not-found"
+
+            Error(refusalEnvelope code "/id" e.Message)
+        | Ok(Error refusal) ->
+            let code =
+                match refusal with
+                | Fuaran.UI.Derivation.DerivationRefusal.NoPipeline _ -> "no-pipeline"
+                | Fuaran.UI.Derivation.DerivationRefusal.Absent -> "absent"
+                | Fuaran.UI.Derivation.DerivationRefusal.Unresolved _ -> "unresolved"
+
+            Error(refusalEnvelope code "/slot" (Fuaran.UI.Derivation.DerivationRefusal.describe refusal))
+        | Ok(Ok trace) ->
+            Ok(Fuaran.Core.Canonical.write Fuaran.Core.Rendering.CrossHost (Fuaran.UI.Derivation.toJson trace))
