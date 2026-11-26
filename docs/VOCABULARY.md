@@ -544,6 +544,169 @@ affordance and a flag with no key behind it is a decorative control writing stat
 | `exportable` (Phase 1125) | **Field** (shipped 2026-09-03, 0.65.0) — **ADMITTED** | Not a kind, not a variant, and not a second export vocabulary. One `bool` on `DataGridSpec`, omitted at `false`: *this grid's rows are the reader's to take*. The renderer draws the control and performs the act — the rows the client holds, serialised to RFC 4180 CSV and handed over as a file. **It must be read beside the Interaction cluster's `Export` / `DownloadAs` and `ExportRendered` rows, ratified the same day, and it does not contradict either.** Those rule the EFFECT axis: a document asking a HOST to produce a file, which is Covered by `Action.Invoke` and needs no vocabulary because the host owns the capability, the format and the permission. This is the GRID-BEHAVIOUR axis, and the fact it carries is a different one — not *make me a file* but *these rows may be taken*, which is a statement about this document's own data that no host capability can be told from outside. **§1.2 irreducibility — and the composition it has to refute is `Button` + `Action.Invoke`, which is precisely the composition those two rows endorse.** It fails here for the reason the `Pagination` row's decorative-pager argument fails: an invoked host capability receives what the TREE can name, and what an export needs is what the RENDERER resolved — the rows after the reader's sort, the columns in the order they are on screen, the declared `CellFormat` each was rendered through, and which page of a host-paged source the client actually holds. None of that is nameable on the wire; a binding resolves in the renderer. A free-standing export button beside the grid would therefore export something else: the source re-fetched, unsorted, unformatted, and identified only by whatever grid id the author remembered to pass. That is the affordance→op charter's governing sentence deciding the case **UNAMENDED** — the grid both hosts the gesture and consumes its effect, and it is the same node at both ends. **Why a BOOLEAN is admissible here when a grid-level `sortable` / `pageable` is refused by name.** That refusal is not a rule against flags; it is a rule against a flag with no key behind it. Sorting and paging write STATE the grid reads back, so the key IS the affordance and a boolean beside it would be a second, weaker spelling of the same thing. An export writes no state at all — it produces a file and returns nothing to the tree, the `Action.Print` shape of an effect that reports nothing — so there is no key it could name, no descriptor whose shape a specification would have to fix, and no reader of that key to disappoint. The boolean is the whole declaration, which is exactly why `reorderable` is one too. **§1.1 demand evidence — the platform-baseline operator mandate (2026-08-28), on the `Media` row's reasoning; this phase adds no new override.** The gap is invisible to both reactive channels in the way that mandate exists for: constrained decoding suppresses the invented-member sighting class, and "emitted a grid the user cannot get data out of" is not an error a census can score, because a grid with no export is a perfectly valid tree. **§1.3 cost — a field's bill, paid in full.** The IDL and the generated layer, the policy decoder with its three near misses (`export` / `exportable_csv` / `downloadable`), the JSON Schema, the corpus, `UpdateProp` and `availableFields`, the client renderer on BOTH grid legs, one validator code with go-red twins, the reference stylesheet and its fingerprint, one authoring-surface decision per veneer, and every host in the §11.0 roster. It does NOT take §11.2 vocabulary attestation — `manifest.kinds` enumerates cases, and this is a member. **§3.2 confusion delta — ONE new pair, and it is the pair to watch.** `exportable` ↔ `Action.Invoke`-behind-a-`Button`, recorded here so a rubric can measure it and the pack teaching has one sentence: *taking away the rows THIS GRID is showing is `exportable`; asking the host to produce anything else — a rendering, a report, a file the tree does not hold — is an `Invoke`.* The discriminator is whose data it is, never who wrote the button. **The Phase 900 hatch assessment: it IS a hatch, narrowly, and it is disclosed rather than waived.** It puts a FILE on the reader's disk, which is the only effect in the gated set that outlives the page, and the file is NAMED by the tree, so a decoded tree from an untrusted emitter chooses what appears in a download list. What crosses: the grid's own already-rendered rows, and nothing else — no source, no unrendered column, no state. What mediates: `ActionDescriptor.Export nodeId`, default-deny and per-grid, so permitting one grid permits nothing else; and the reader's own activation, since the renderer never exports unbidden. What is **not** claimed: nothing prevents an emitter putting misleading content in a grid and inviting the reader to save it — that is the same trust a rendering already carries, and the export adds no channel a screenshot does not. It discloses nothing back: the call returns unit, so the tree cannot learn whether the reader kept the file. **Reopen conditions — two, and both are about a fact the renderer does not hold.** First, a recorded need for a full-dataset export over a HOST-PAGED source, which this ruling puts firmly in host chrome because the client does not hold the data and the tree cannot substantiate it. Second, recurrence-grade cross-family sightings of a DECLARED export PROJECTION — a raw-versus-formatted choice, a column excluded from the file, a delimiter — stated on the node rather than settled by the renderer; the formatted-not-raw decision this phase records is the whole of what those would reopen. Neither an inconvenience in wiring a host capability, nor a preference for a different file format, reopens it. |
 | a grid-level `sortable` / `pageable` boolean | **Refused by name** | Not reserved, not deferred — refused, and refused at DECODE by the near-miss table rather than ignored, so an emission reaching for it is told what to write. The `staticRows` path keeps its own `sortable`, which is not an exception: a static table holds its rows in the tree, so there is no state key for a reader to name. |
 
+#### PROPOSED, ruling pending: a declared grid edit committed as its op (Phase 2750 charter walk, 2026-11-26)
+
+> **Status: PROPOSED.** No ruling has been made. Nothing below is admitted, and no host implements it. The walk
+> is filed in the cluster it would extend, so that the ruling lands beside the rows it must agree with. Once the
+> ruling is made, a table row in the shape above replaces this block.
+
+**The question.** Phase 1891 made a grid edit a columnar op, `GridEdit` (WIRE_FORMAT, *Edits as column ops*), and
+Phase 2500 certified that payload on every codec host. Neither renderer emits it. A grid that commits through
+`editStateKey`, or through the Phase 663 floor, writes the whole updated rows value and nothing else: `editCommit` in
+`Fuaran.UI.Renderer/Render.fs` (destination from `GridModel.editDestination`), and its parity twin `editCommit` in the
+TypeScript renderer's `render/Visualisation.tsx`. A receiver that keeps an edit history must therefore recover each
+edit by comparing tables, which is the cost 1891 removed. Today the only route to the op is a closure cell. The public
+showcase's undo-grid page (Phase 2395) takes the typed `Column.editable` handler's row and value and builds one
+`SetCell` in its own code (`opOf`), and a closure does not survive decode. The renderer knows the row, the field and
+the value at commit. The question is how a grid declares that it wants them written as the op.
+
+**What any spelling must hold.** The walk found four constraints, and every candidate below has to meet them. None
+was stated by the proposal.
+
+1. *A grid that does not ask is byte-for-byte unchanged*, both on the wire and in the writes its renderer makes.
+2. *The op addresses the table the destination holds.* `setCell`'s `row` is an index into the value at `key`. Both
+   renderers edit the sorted, paged and windowed rows (`rowOffset` lifts the page-relative index into the sorted set).
+   So the display index is not that index. The closure path resolves the row by `rowKeyField` against the live table,
+   and a declared path must reproduce that rule: the op names the index of the edited row in the pre-edit value at the
+   destination, whatever the sort, the page or the window. A renderer holds that value only where the destination IS
+   the grid's own source. That means a direct `State` source with no `editStateKey`, or an `editStateKey` naming that
+   same key. Where `editStateKey` names a different key (the `nodes/grid-declared-edit.json` corner, over a `Query`
+   source), the key holds the last whole-rows write rather than the table the op would address. No record written
+   there would be truthful.
+3. *One gesture gets one verdict.* The op's cell is typed in the column codec's terms (`{"$type":"Int","v":21}`).
+   The substrate refuses an entry that is mistyped or non-finite (`cellTypeMismatch`). If the whole-rows write went
+   ahead after the op was refused, the key and the history would disagree from that write on. So under a declaration,
+   the renderer applies the op to its own resolved rows with the substrate's apply. It then makes both writes or
+   neither. That is what makes a refusal "in the substrate's terms" literally true.
+4. *A State key holds a value, not a stream.* One gesture writes at most one record, and a reader sees the latest.
+
+**Candidate A: a second shape under `editStateKey`.** The member widens from a string to
+`string | {"key": K, "commit": "op"}`.
+
+- *§1.2 and §2.1.* This is the widening spelling, and §2.1's discriminator (Phase 1126) refuses it. Widening is right
+  when the intent stays the same over a wider input. Here the member says WHERE an edit lands, and the addition says
+  WHAT the edit was, which is a different fact. It also reaches too far. `editStateKey` is the destination of four
+  writers: the cell edit, the block paste (Phase 1126), the reorder (Phase 934) and the transfer ends (Phase 1123).
+  The codec has no op for moving or removing a row, so a commit mode on the shared member would be undefined for
+  three of the four. The other way to read the candidate, writing the op AT `editStateKey` in place of the rows, is
+  worse. Every other reader of the key would then read an op where it expects rows: a chart on the same entry (the
+  whole point of Phase 663), and the grid's own source.
+- *Wire bytes.* The string form adds none. The object form is a new shape for an existing member.
+- *A host that does not know it.* A known member carrying the wrong JSON type is a decode error (`WRONG_TYPE`), so
+  that host refuses the whole document. This is the forward-incompatibility of a new kind, without the warning that
+  §11.2's attestation gives a kind.
+- *A grid that does not ask.* The string form's bytes do not change. But the F# model of the member changes from
+  `string option` to a union. That is a source-breaking change to `DataGridSpec` and to every caller of
+  `GridModel.gridWriteDestination`.
+- *Verdict:* refused.
+
+**Candidate B: a sibling key, `editOpKey`.** An optional string on `DataGridSpec` names a State key. The renderer
+writes the `GridEdit` payload of each committed cell edit to that key, beside the whole-rows write, which does not
+change.
+
+- *§1.2.* This is not a kind and not a variant. It is a §2.1 field. It takes the Interaction cluster's two-node
+  record (`transferOutKey` / `transferInKey`) and reduces it to one node. The fact it carries is a *domain event*:
+  a rewritten rows value does not carry it, and a reader would otherwise recover it by diffing. That is the transfer
+  row's own argument for keeping its record rather than replacing it with the rows writes.
+- *Why it needs the wire* (the part §5 says a field most often leaves unwritten). The server-driven tier receives a
+  tree-originated state write the way the writing control reports it (the Phase 1122 and 1123 notes in
+  `Fuaran.UI.ServerDriven/Validation.fs`). So a record written to a key the tree names reaches a session's edit log by
+  the route every state write already takes. It needs no new inbound event and no boundary row. The tree is also where
+  the grid's identity, its destination and the record key all live, so a receiver reads all three from one
+  declaration.
+- *No new payload vocabulary.* The payload is the certified `GridEdit`. Its `key` names the destination and its
+  `rowKeyField` is the grid's own.
+- *Naming.* It carries no `-StateKey` suffix, following the transfer row's ruling: the grid writes this key and never
+  reads it for its own presentation.
+- *§1.3 cost.* This is a field's full bill:
+  - the IDL and the generated layer;
+  - the policy decoder and its near-miss entries (`editOpsKey`, `editLogKey`, `editOpStateKey`);
+  - the schema and a node fixture;
+  - `UpdateProp` and `availableFields`;
+  - both renderers, each of which must now reach the op codec and the substrate's apply (`Fuaran.Compute.ColumnOps`
+    from the F# renderer, which today pins only `Fuaran.Compute.DataFrame` through `Fuaran.UI`; `@fuaran-ui/ops` from
+    the TypeScript renderer, which already depends on it);
+  - the `GridEdit` codec, which moves out of the server-driven tier to a place both renderers can reach. That is a
+    move, never a copy;
+  - one Error and one Warning, with codes from `fuaran-codes.ps1 -Next`;
+  - §11 step 6 on the authoring veneers;
+  - every host in the §11.0 roster.
+
+  A field skips §11.2 attestation, so no manifest names a host that has never met the member, and only the fixtures
+  catch it.
+- *Wire bytes.* The grid gains `"editOpKey":"<key>"`, omitted when absent. The record is the payload exactly as
+  specified, so both renderers write the same canonical bytes for one gesture.
+- *A host that does not know it.* §2 rule 2 ignores the member on decode, and the optional-field row of the profile
+  table means no profile step is owed. The grid edits exactly as it does today and writes no record. A receiver
+  therefore sees only whole-rows writes and diffs them: the answer is correct, at the old price. A static host (the
+  SSR floor) draws no editable input, so it writes nothing whether the member is present or not.
+- *A grid that does not ask.* With no member, nothing writes a record. The commit path stays the same code, and the
+  record write is gated on the declaration. A test pins that the writes of a grid without the member are identical.
+- *Rules it would carry.*
+  - `editOpKey` equal to the edit destination is an Error, because the record would replace the rows.
+  - `editOpKey` on a grid with no destination, or on one whose destination is not its own `State` source
+    (constraint 2), is a Warning, and the renderer writes no record.
+  - A write that has no op writes no record: the block paste, a reorder, a transfer end. A receiver treats each one as
+    a write that no record describes. That ends its undo history at that write, just as a non-invertible op already
+    does (WIRE_FORMAT, *Undo is not a second payload*).
+- *§3.2.* It adds one pair, `editOpKey` ↔ `editStateKey`, and this is the sentence to teach: *where an edit lands is
+  `editStateKey`; what the edit was is `editOpKey`.*
+- *Hatch (Phase 900).* It is not a new hatch. The record is a tree-named state write through the same gate every
+  write-back crosses (scope routing, and the refusal of host-reserved keys), as the transfer record is.
+- *Verdict:* **recommended.**
+
+**Candidate C: no wire member, but a renderer default reported through a host seam.** On every declarative commit, the
+renderer builds the `GridEdit` and hands it to a host-registered sink, if there is one. No grid declares anything.
+The charter's precedents for this tier are the renderer-owned rows of the Data-display cluster and the out-of-band
+route named in the slot-hint decline.
+
+- *§1.2.* It costs nothing on the wire, and it is a real contender, because by the `Undo` row a history is host chrome.
+- *It fails on three counts.*
+  - It is a new host-registered seam. That is a hatch-shaped addition that owes an `ESCAPE-HATCHES.md` entry and a new
+    portability interface, where an existing route would serve.
+  - It has only two routes into a server-driven session. One is a new inbound event, which needs a default-deny row
+    this tier has deliberately not opened for any grid gesture. The other is a state write to a key the host invents,
+    which is candidate B with the address hidden.
+  - A grid cannot ask for it individually, so a tree-side reader of the edits (an activity line, a "last change" text)
+    has nothing to bind.
+- *A host that does not know it.* Nothing changes. *A grid that does not ask:* every grid is unchanged on the wire,
+  and the writes are unchanged when no sink is registered.
+- *Verdict:* refused. It would reopen for a host that wants the ops of every editable grid it renders, without the
+  tree naming any.
+
+**Considered and refused by the cluster's own rulings.** These are recorded so they are not proposed again.
+
+- *A boolean* (`editAsOp: true`). The `exportable` row admits a boolean only for a behaviour that writes no state.
+  This behaviour writes a record, so it needs a key. A key derived from another key's name (`<editStateKey>.ops`) is
+  an address convention that nobody declared.
+- *An `Action` on edit* (`onCellEdit`). It names the gesture on the wire, which the Interaction cluster's governing
+  sentence refuses. It is also a second write path beside the declared destination.
+
+**Demand evidence (§1.1), the same for every candidate.** There are two grounds. The first is the approved requirement
+behind Phase 2750 (2026-11-16). The second is the gap Phase 2395 recorded in a real page: a public page that wanted
+edit, undo and replay over a grid could not express it on a decoded tree, and fell back to closure cells. That is the
+class in §1.1's first bullet, a pattern expressed only through an escape hatch. No shadow-leg sighting is claimed.
+
+**What this does not reopen.** The `Undo` / `Redo` row stands, and the control stays the host's. What would change is
+the premise of that row's reopen condition: a grid that asks would now leave a durable record of a user's cell edits.
+The walk proposes no `Action.Undo`.
+
+**Findings the walk made outside the question.**
+
+- Both renderers write an edit made under an active sort back in *display* order: `rows` is sorted before `editCommit`
+  maps over it. So editing one cell of a sorted grid also reorders the stored value. The reorder path is already
+  suppressed under a sort, for a related reason. Whether the stored order should move is a separate ruling, and the op
+  rule in constraint 2 does not depend on it.
+- On an empty `Numeric` cell, the text-entry path commits whatever `Double.TryParse` accepts. Measured on .NET 10,
+  that includes `"NaN"` and `"1e400"`, which parses to positive infinity. The number-input path guards against NaN
+  only. Under candidate B's constraint 3, the substrate's refusal covers the declared path. This walk does not change
+  the undeclared path.
+
+**The ruling proposed.** *Admit `editOpKey` on `DataGrid` as a §2.1 field. It names a State key to which the renderer
+writes each committed cell edit as the certified `GridEdit` payload, beside the whole-rows write, which does not
+change. The record is written only where the grid's edit destination is its own `State` source. When the member is
+absent, nothing changes.*
+
 ### Interaction / affordance cluster (added 2026-08-18 — the affordance→op charter, Phase 866)
 
 The cluster the taxonomy lacked: how a **user gesture** reaches an effect. Its governing ruling is one
