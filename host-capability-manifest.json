@@ -59,6 +59,9 @@
     "formatting": "covered",
     "grid-edit": "covered",
     "grid-window-writer": "covered",
+    "laws/canonicalFormLaws": {
+      "pending": "the reference codec is generated for the UI vocabulary alone and reads no other, so its suite does not run these vectors over the fixture vocabulary they carry; the UI vocabulary declares no presence condition or alias list until Phase 2340 (WIRE_FORMAT 3.6)"
+    },
     "laws/capabilityLaws": "covered",
     "laws/dataframeParity": {
       "pending": "the reference host consumes Fuaran.Core and Fuaran.Compute as packages and certifies only the capabilityLaws vectors against its pin; this family's vectors are produced and certified in their producing repository, not by this suite yet"
