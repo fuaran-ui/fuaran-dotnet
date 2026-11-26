@@ -4556,7 +4556,7 @@ let tests =
               Expect.equal (treeCodes tree) [ "FUARAN126" ] "depth does not disambiguate a flat key"
           }
 
-          test "FUARAN126: a row id repeated four times is ONE finding" {
+          test "FUARAN126: a row id repeated four times is THREE findings, one per later row" {
               let tree =
                   dashboard
                       "root"
@@ -4567,7 +4567,12 @@ let tests =
                               row "a" (TextSource.Literal "Three") []
                               row "a" (TextSource.Literal "Four") [] ] ]
 
-              Expect.equal (treeCodes tree) [ "FUARAN126" ] "one defect with one fix — four findings would bury it"
+              // WIRE_FORMAT §27.8.2: a finding whose subject is a repetition is one
+              // at each occurrence after the first — the count of rows to change.
+              Expect.equal
+                  (treeCodes tree)
+                  [ "FUARAN126"; "FUARAN126"; "FUARAN126" ]
+                  "one finding at each row after the first"
           }
 
           test "FUARAN126 go-red check: distinct ids at every level are silent" {
@@ -5519,13 +5524,13 @@ let tokensValueRuleTests =
               | other -> failtestf "Expected exactly one duplicate defect, got %A" other
           }
 
-          test "FUARAN136 reports the FIRST repeat only" {
-              // A second finding on the same field would say the same thing
-              // about the same slot, and the remedy is one edit.
+          test "FUARAN136 reports each repeat after the first" {
+              // WIRE_FORMAT §27.8.2: a finding whose subject is a repetition is one
+              // at each occurrence after the first, so a, a, b, b is two findings.
               let tree =
                   tokensForm "labels" true None (Some(Binding.Static(Some [ "a"; "a"; "b"; "b" ])))
 
-              Expect.equal (List.length (tokensDefects tree)) 1 "one finding per field"
+              Expect.equal (List.length (tokensDefects tree)) 2 "one finding per repeated token"
           }
 
           test "FUARAN136 go-red check: a list with no repeat, and a bound one, are silent" {

@@ -7860,9 +7860,10 @@ moves from ten to twelve (`docs/DECISIONS.md` D41).
 
 ### What rides this slot — Phase 2381 (where a refusal and a finding are located)
 
-**Class: BEHAVIOUR change, no API change.** Packages `Fuaran.UI.Ops` and `Fuaran.UI`. No type, member, defect code,
-sentence or wire byte moves, and no document that decoded before is refused now, or the reverse. By the [Semver](#semver) table it is a
-bug fix with no surface change, which is no higher class than the draft it rides, so the number does not move.
+**Class: ADDITIVE, with behaviour changes.** Packages `Fuaran.UI.Ops` and `Fuaran.UI`. One function is added
+(`PreEmitValidate.validateWithPaths`); no type, existing member, defect code or wire byte moves, and no document that
+decoded before is refused now, or the reverse. By the [Semver](#semver) table an addition is minor and a behaviour fix
+is a patch; both are below the breaking class of the draft they ride, so the number does not move.
 
 - **A defect inside a `params` entry's `from` binding is located by the entry's index.** On a `Transform` or `Expr`
   binding, `JsonDecode` reported it under the entry's `name`: a `Filter` with no `name` in the second entry was
@@ -7877,6 +7878,22 @@ bug fix with no surface change, which is no higher class than the draft it rides
   held three times is two findings where it was one. No other rule's verdict moves, and a tree with no repeated id is
   byte-identical in every report.
 
+- **The pre-emit walk reaches a node's state alternatives.** `state.onEmpty` and `state.onLoading` are members of the
+  node object, so they are part of the document (`WIRE_FORMAT.md` §8.1, §27.8.2): every rule now judges a node held
+  there, the id count included, so an id shared between a state alternative and the tree is a `DuplicateNodeId`, and
+  the host emission budget counts those nodes. A tree whose state alternatives are clean reports exactly as before.
+  Slot-argument trees (`FragmentRef.args`, `Mount.inputs`) are still not walked.
+- **A finding whose subject is a repetition is one finding at each occurrence after the first.** `DuplicateSwitchMatch`
+  (FUARAN082) was one per repeated value, `TreeItemIdDuplicated` (FUARAN126) one per repeated row id and
+  `TokensStaticDuplicate` (FUARAN136) one per field; each is now one per later occurrence, so `x, x, x` is two and
+  `x, x, y, y` is two (§27.8.2). A tree with no repeat is unchanged.
+- **`PreEmitValidate.validateWithPaths node`** (new) returns `validate`'s defects, in its order, each beside the
+  JSONPath of the node occurrence that raised it, taken from the walk itself: two nodes sharing an id are two
+  occurrences, and a defect on the second is located at the second. A defect judged across the whole tree that names
+  an id several nodes hold carries `None`, as does one that names no node.
+- **The binding-check report locates by the same walk.** `bindingChecks` spells a slot-argument member as `.name`
+  however the key is spelled (`args.my-slot`, where it wrote `args['my-slot']`, §29.3), and orders a node's envelope
+  `fallback` before its kind (document order), so a reader held by a fallback and by a child is listed at the fallback.
 - **`Fuaran.UI.Renderer.Web`'s embedded browser bundle is re-synced** (`content/fuaran-renderer.js` and its
   fingerprint). It is the TypeScript host's standalone renderer, which carries that host's moves in the same
   phase: the `params[i].from` location, one duplicate-id finding per later occurrence, and a pre-emit walk that
@@ -7891,7 +7908,10 @@ presence (`List.exists`) needs nothing.
 **Certified by** the reject vector `reject-transform-param-from-missing-name` (a full expected path, because a prefix
 that stops at `params` cannot see the spelling below it) and its row in `tests/decoder-parity/reject.tsv`; and by the
 `validate` family's `validate-duplicate-id-across-default-and-child` (two occurrences: one finding, at the second) and
-`validate-duplicate-id-three-times` (two findings, at the second and the third), read back by
+`validate-duplicate-id-three-times` (two findings, at the second and the third), by the state-alternative, located-
+occurrence and repetition vectors of the same family (`validate-duplicate-id-in-the-state-alternatives`,
+`validate-defect-on-the-second-of-two-nodes-sharing-an-id`, `validate-switch-two-matches-each-repeated` and the
+rest), read back by
 `src/Fuaran.UI.JsonDecode.Tests/EmittedFamilyTests.fs`.
 
 ### Phase 2749 — a derivation trace shows how a bound number was computed (breaking, for `RenderPolicy`)

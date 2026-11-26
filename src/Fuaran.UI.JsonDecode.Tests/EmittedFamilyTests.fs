@@ -65,10 +65,12 @@ let private committedValidate () : (ValidateArtifact.Vector * ValidateArtifact.D
 
           vector, expected ]
 
-/// A path in the 29.3 grammar: `$`, then `.name`, `['quoted']` or `[digits]`
-/// segments, and no all-digit dotted segment (the `.0` misspelling).
+/// A path in the 29.3 grammar: `$`, then `.name` segments (a member however
+/// its key is spelled, running to the next `.` or `[`) and `[digits]` indices.
+/// There is no quoted form, and an array element is always bracketed, so a
+/// dotted all-digit segment is a member (a map key `404`), never an index.
 let private wellFormedPath (path: string) : bool =
-    Regex.IsMatch(path, @"^\$(\.[A-Za-z_$][A-Za-z0-9_$]*|\[\d+\]|\['(?:[^'\\]|\\.)*'\])*$")
+    Regex.IsMatch(path, @"^\$(\.[^.\[\]]+|\[\d+\])*$")
 
 // ── apply/ ──────────────────────────────────────────────────────────────────
 
@@ -121,13 +123,12 @@ let tests =
                               (wellFormedPath path)
                               (sprintf "%s: '%s' is in the 29.3 grammar" vector.Id path)
 
-                          // 27.8.2: FUARAN-DUP-ID is at an occurrence AFTER the first,
-                          // every other finding at the first.
+                          // 27.8.2: a finding is at the occurrence that raised it, and
+                          // FUARAN-DUP-ID at an occurrence AFTER the first.
                           let admitted =
                               match occurrences node with
                               | _ :: later when d.Code = ValidateArtifact.duplicateIdCode -> later
-                              | first :: _ -> [ first ]
-                              | [] -> []
+                              | all -> all
 
                           Expect.contains
                               admitted
@@ -138,6 +139,12 @@ let tests =
                                   path
                                   node)
                       | None, None -> ()
+                      // A finding judged across the whole tree names an id; where several
+                      // nodes hold it, no occurrence raised it, and it carries no path.
+                      | Some node, None when
+                          d.Code <> ValidateArtifact.duplicateIdCode && List.length (occurrences node) > 1
+                          ->
+                          ()
                       | _ -> failtestf "%s: a defect has a node without a path, or a path without a node" vector.Id
 
                   // One FUARAN-DUP-ID finding per occurrence after the first.
@@ -171,10 +178,46 @@ let tests =
                     Some "thrice", Some "$.kind.children[2].kind.children[0]" ]
                   "three occurrences: two findings, at the second and the third")
 
-          testCase "the path grammar refuses the dotted-index spelling and admits the indexed one" (fun () ->
-              // The go-red half of the check above: the misspelling two hosts write.
-              Expect.isFalse (wellFormedPath "$.kind.children.0") "an all-digit dotted segment is malformed"
+          testCase "a finding is located at the occurrence that raised it" (fun () ->
+              // Two Switches share an id and only the second is defective: the
+              // finding is at the second, never looked up by its id (27.8.2).
+              let located =
+                  ValidateArtifact.all
+                  |> List.find (fun v -> v.Id = "validate-defect-on-the-second-of-two-nodes-sharing-an-id")
+                  |> ValidateArtifact.defects
+                  |> List.filter (fun d -> d.Code = "FUARAN083")
+                  |> List.map (fun d -> d.Node, d.Path)
+
+              Expect.equal located [ Some "sw", Some "$.kind.children[1]" ] "the defective occurrence")
+
+          testCase "a finding whose subject is a repetition is one at each occurrence after the first" (fun () ->
+              // x,x,x is two findings and x,x,y,y is two (27.8.2), for every code
+              // whose subject is a repeated thing.
+              let count id code =
+                  ValidateArtifact.all
+                  |> List.find (fun v -> v.Id = id)
+                  |> ValidateArtifact.defects
+                  |> List.filter (fun d -> d.Code = code)
+                  |> List.length
+
+              for id, code in
+                  [ "validate-duplicate-id-three-times", ValidateArtifact.duplicateIdCode
+                    "validate-duplicate-id-two-ids-each-twice", ValidateArtifact.duplicateIdCode
+                    "validate-switch-match-repeated-three-times", "FUARAN082"
+                    "validate-switch-two-matches-each-repeated", "FUARAN082"
+                    "validate-tree-row-id-repeated-three-times", "FUARAN126"
+                    "validate-tree-row-ids-each-repeated", "FUARAN126"
+                    "validate-static-token-repeated-three-times", "FUARAN136"
+                    "validate-static-tokens-each-repeated", "FUARAN136" ] do
+                  Expect.equal (count id code) 2 (sprintf "%s: %s is two findings" id code))
+
+          testCase "the path grammar refuses the quoted form and admits every member spelling" (fun () ->
+              // The go-red half of the check above.
+              Expect.isFalse (wellFormedPath "$.kind.args['my-slot'].tree") "there is no quoted form"
               Expect.isFalse (wellFormedPath "$.kind.source.params[]") "an empty index is malformed"
+              Expect.isTrue (wellFormedPath "$.accessibility.aria-hidden") "a member that is not an identifier"
+              Expect.isTrue (wellFormedPath "$.kind.columns[2].kind.map.On time") "a map key with a space"
+              Expect.isTrue (wellFormedPath "$.kind.columns[2].kind.map.404") "an all-digit map key is a member"
               Expect.isTrue (wellFormedPath "$.kind.children[10]") "an index is [digits]"
               Expect.isTrue (wellFormedPath "$.kind.cases[0].child") "a member after an index"
 

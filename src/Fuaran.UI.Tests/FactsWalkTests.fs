@@ -44,7 +44,9 @@ let private withCorpus (f: (string * Node<obj>) list -> unit) =
         f trees
 
 /// The old route to a reader's path: encode the tree and walk the document for
-/// node objects whose kind is a Chart or a DataGrid, in document order.
+/// node objects whose kind is a Chart or a DataGrid, in document order: the
+/// canonical member order (Ordinal), each member `.name` however its key is
+/// spelled (WIRE_FORMAT §29.3).
 let private encodedReaderPaths (tree: Node<obj>) : (string * string * string) list =
     let found = ResizeArray<string * string * string>()
 
@@ -52,17 +54,6 @@ let private encodedReaderPaths (tree: Node<obj>) : (string * string * string) li
         match v with
         | JObj members -> members |> List.tryFind (fun (k, _) -> k = key) |> Option.map snd
         | _ -> None
-
-    let isIdent (s: string) =
-        s.Length > 0
-        && (System.Char.IsAsciiLetter s.[0] || s.[0] = '_')
-        && Seq.forall (fun c -> System.Char.IsAsciiLetterOrDigit c || c = '_') s
-
-    let memberPath (k: string) =
-        if isIdent k then
-            "." + k
-        else
-            "['" + k.Replace("\\", "\\\\").Replace("'", "\\'") + "']"
 
     let rec go (path: string) (v: JVal) =
         match v with
@@ -72,8 +63,10 @@ let private encodedReaderPaths (tree: Node<obj>) : (string * string * string) li
             | Some(JStr id), Some(JStr "DataGrid") -> found.Add(id, "DataGrid", path)
             | _ -> ()
 
-            for (k, child) in members do
-                go (path + memberPath k) child
+            for (k, child) in
+                members
+                |> List.sortWith (fun (a, _) (b, _) -> System.String.CompareOrdinal(a, b)) do
+                go (path + "." + k) child
         | JArr items -> items |> List.iteri (fun i child -> go (path + "[" + string i + "]") child)
         | _ -> ()
 
@@ -274,9 +267,9 @@ let tests =
 
                   Expect.equal
                       (report |> List.map (fun (id, _, p) -> id, p))
-                      [ "g-case", "$.kind.cases[0].child"
-                        "g-arg", "$.kind.default.kind.args['a b'].tree"
-                        "g-fallback", "$.fallback"
+                      [ "g-fallback", "$.fallback"
+                        "g-case", "$.kind.cases[0].child"
+                        "g-arg", "$.kind.default.kind.args.a b.tree"
                         "g-empty", "$.state.onEmpty"
                         "g-loading", "$.state.onLoading" ]
                       "each held position, spelled as the wire spells it, in document order"

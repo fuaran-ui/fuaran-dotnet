@@ -4284,8 +4284,6 @@ type private WalkAccumulators =
         CompareStateReads: ResizeArray<string * string * string>
         /// FUARAN099's other half — every state key a form field owns, tree-wide.
         FormOwnedStateKeys: System.Collections.Generic.HashSet<string>
-        /// FUARAN-DUP-ID — how often each node id was seen, in first-seen order.
-        NodeIdCounts: System.Collections.Generic.Dictionary<string, int>
         /// FUARAN110 — (readerNodeId, slot, target) per declared
         /// accessibility reference. Collected here and judged post-walk for the same
         /// reason FUARAN070's dangling `Selection` is: "names a node in this tree"
@@ -4329,18 +4327,15 @@ type private WalkContext =
         /// object (`yFields[1]`, `columns[0].field`), written by the rule at the
         /// moment it raises the finding, where the slot is known. The
         /// binding-check report reads it instead of re-deriving the slot from
-        /// the encoded tree.
-        ///
-        /// Phase 2252 — beside the slot, the reader NODE the rule judged, so
-        /// the report locates the finding under that occurrence's own path
-        /// when a reader id is repeated (every occurrence is judged).
-        GroundingSlots: System.Collections.Generic.Dictionary<int, obj * string>
+        /// the encoded tree. The occurrence it is under is the walk's own
+        /// (`Walked.RaisedBy`), so a repeated reader id is located per visit.
+        GroundingSlots: System.Collections.Generic.Dictionary<int, string>
     }
 
 /// Record that the finding just added to `ctx.Defects` is about `slot` of the
-/// reader `n`.
-let private locateLast (ctx: WalkContext) (n: Node<'Msg>) (slot: string) : unit =
-    ctx.GroundingSlots[ctx.Defects.Count - 1] <- ((n :> obj), slot)
+/// reader being visited.
+let private locateLast (ctx: WalkContext) (slot: string) : unit =
+    ctx.GroundingSlots[ctx.Defects.Count - 1] <- slot
 
 
 /// Rules that read the node itself, whatever its kind.
@@ -4708,7 +4703,7 @@ module private GridRules =
                  let ground (slot: string) (field: string) =
                      if not (SchemaWalk.has field produced) then
                          defects.Add(PreEmitDefect.GridFieldUngrounded(nodeIdStr, field, schemaColumns))
-                         locateLast ctx n slot
+                         locateLast ctx slot
 
                  // Reported per offending name rather than once per grid: a grid
                  // pointed at the wrong source names several missing columns, and
@@ -4728,7 +4723,7 @@ module private GridRules =
                      match col.Kind with
                      | CellKindErased.TonedPill(pillField, _, _) when not (SchemaWalk.has pillField produced) ->
                          defects.Add(PreEmitDefect.PillFieldUngrounded(nodeIdStr, col.Label, pillField, schemaColumns))
-                         locateLast ctx n (sprintf "columns[%d].kind.field" i)
+                         locateLast ctx (sprintf "columns[%d].kind.field" i)
                      | _ -> ())
 
                  spec.RowKeyField |> Option.iter (ground "rowKeyField")
@@ -4891,9 +4886,11 @@ module private FormRules =
             | Some(Binding.Static(Some tokens)) ->
                 let seen = System.Collections.Generic.HashSet<string>()
 
-                match tokens |> List.tryFind (fun t -> not (seen.Add t)) with
-                | Some repeated -> defects.Add(PreEmitDefect.TokensStaticDuplicate(nodeId, fieldId, repeated))
-                | None -> ()
+                // One finding at each token after the first that repeats one
+                // (WIRE_FORMAT §27.8.2's rule for every repetition).
+                for t in tokens do
+                    if not (seen.Add t) then
+                        defects.Add(PreEmitDefect.TokensStaticDuplicate(nodeId, fieldId, t))
             | _ -> ()
         | _ -> ()
 
@@ -5589,7 +5586,7 @@ module private ChartRules =
 
                  if not (SchemaWalk.has spec.XField produced) then
                      defects.Add(PreEmitDefect.ChartFieldUngrounded(nodeIdStr, spec.XField, schemaColumns))
-                     locateLast ctx n "xField"
+                     locateLast ctx "xField"
                  else
                      match colType spec.XField with
                      // Present, type data-dependent (an undecided `Derive`): the
@@ -5598,7 +5595,7 @@ module private ChartRules =
                      | Some t ->
                          if temporalX && not (dated t) then
                              defects.Add(PreEmitDefect.ChartTemporalXNotDate(nodeIdStr, spec.XField, ColumnType.tag t))
-                             locateLast ctx n "xField"
+                             locateLast ctx "xField"
 
                          // FUARAN087's x arm is NARROWED by a temporal declaration:
                          // a temporal Scatter reads its x as dates, so a date
@@ -5609,19 +5606,19 @@ module private ChartRules =
                          match spec.Kind with
                          | ChartKind.Scatter when not (numeric t) && not temporalX ->
                              defects.Add(PreEmitDefect.ChartFieldTypeMismatch(nodeIdStr, spec.XField, ColumnType.tag t))
-                             locateLast ctx n "xField"
+                             locateLast ctx "xField"
                          | _ -> ()
 
                  spec.YFields
                  |> List.iteri (fun i yf ->
                      if not (SchemaWalk.has yf produced) then
                          defects.Add(PreEmitDefect.ChartFieldUngrounded(nodeIdStr, yf, schemaColumns))
-                         locateLast ctx n (sprintf "yFields[%d]" i)
+                         locateLast ctx (sprintf "yFields[%d]" i)
                      else
                          match colType yf with
                          | Some t when not (numeric t) ->
                              defects.Add(PreEmitDefect.ChartFieldTypeMismatch(nodeIdStr, yf, ColumnType.tag t))
-                             locateLast ctx n (sprintf "yFields[%d]" i)
+                             locateLast ctx (sprintf "yFields[%d]" i)
                          | _ -> ())
 
                  // Phase 2809 (D38) — the withheld flag column is grounded like
@@ -5631,14 +5628,14 @@ module private ChartRules =
                   | None -> ()
                   | Some wf when not (SchemaWalk.has wf produced) ->
                       defects.Add(PreEmitDefect.ChartFieldUngrounded(nodeIdStr, wf, schemaColumns))
-                      locateLast ctx n "withheldField"
+                      locateLast ctx "withheldField"
                   | Some wf ->
                       match colType wf with
                       | Some ColumnType.BoolType
                       | None -> ()
                       | Some t ->
                           defects.Add(PreEmitDefect.ChartWithheldFieldNotBoolean(nodeIdStr, wf, ColumnType.tag t))
-                          locateLast ctx n "withheldField")
+                          locateLast ctx "withheldField")
 
                  // Phase 2654 (D39) — every column a mark channel names is
                  // grounded like the series (FUARAN086), and each is read as a
@@ -5663,12 +5660,12 @@ module private ChartRules =
                  for field, at in channelFields do
                      if not (SchemaWalk.has field produced) then
                          defects.Add(PreEmitDefect.ChartFieldUngrounded(nodeIdStr, field, schemaColumns))
-                         locateLast ctx n at
+                         locateLast ctx at
                      else
                          match colType field with
                          | Some t when not (numeric t) ->
                              defects.Add(PreEmitDefect.ChartFieldTypeMismatch(nodeIdStr, field, ColumnType.tag t))
-                             locateLast ctx n at
+                             locateLast ctx at
                          | _ -> ()
          | _ -> ())
 
@@ -5748,14 +5745,12 @@ module private ContentRules =
         let defects = ctx.Defects
         let seen = System.Collections.Generic.HashSet<string>()
 
-        let reported = System.Collections.Generic.HashSet<string>()
-
         let rec walkItems (items: TreeItem list) =
             for item in items do
-                // The first repeat is reported and later ones are not: a row
-                // id repeated four times is ONE defect with one fix, and
-                // four findings would bury it.
-                if not (seen.Add item.Id) && reported.Add item.Id then
+                // One finding at each row after the first that repeats an id
+                // (WIRE_FORMAT §27.8.2's rule for every repetition): the count
+                // of findings is the count of rows to change.
+                if not (seen.Add item.Id) then
                     defects.Add(PreEmitDefect.TreeItemIdDuplicated(n.Id, item.Id))
 
                 match item.Label with
@@ -5817,7 +5812,9 @@ module private CompositionRules =
             | _ -> ())
 
         // FUARAN082: duplicate `match` values make the later
-        // case dead (first-match-wins). Report each duplicated value once.
+        // case dead (first-match-wins). One finding at each case after the
+        // first that repeats a value (WIRE_FORMAT §27.8.2's rule for every
+        // repetition): the count of findings is the count of dead cases.
         //
         // Over the MATCH cases only. Two predicate cases are
         // not duplicates of each other: `when` carries a binding, two
@@ -5826,12 +5823,10 @@ module private CompositionRules =
         // question this rule asks. A predicate case is skipped rather than
         // folded in under a synthetic key.
         let seen = System.Collections.Generic.HashSet<string>()
-        let reported = System.Collections.Generic.HashSet<string>()
 
         for c in spec.Cases do
             match c.Match with
-            | Some m when not (seen.Add m) && reported.Add m ->
-                defects.Add(PreEmitDefect.DuplicateSwitchMatch(nodeIdStr, m))
+            | Some m when not (seen.Add m) -> defects.Add(PreEmitDefect.DuplicateSwitchMatch(nodeIdStr, m))
             | _ -> ()
 
         // FUARAN128: a declared interval with nothing for a
@@ -5862,24 +5857,6 @@ module private CompositionRules =
 /// walk's accumulators, run after the walk in a fixed order (the report order is
 /// part of the contract).
 module private CrossTreeRules =
-
-    // Every id observed ≥ 2 times, ONE finding per occurrence after the first
-    // (WIRE_FORMAT §27.8.2, Phase 2381): the count of findings is the count of
-    // nodes to change, and the node to change is a later one, so three
-    // occurrences are two findings. Each carries the id and its total count.
-    let duplicateNodeIds
-        (facts: BindingWalk.TreeBindingFacts)
-        (acc: WalkAccumulators)
-        (options: ValidateOptions)
-        : PreEmitDefect list =
-        let defects = ResizeArray<PreEmitDefect>()
-        let nodeIdCounts = acc.NodeIdCounts
-
-        for KeyValue(id, count) in nodeIdCounts do
-            for _ in 2..count do
-                defects.Add(PreEmitDefect.DuplicateNodeId(id, count))
-
-        List.ofSeq defects
 
     // ── Cross-tree binding checks ──
     // FUARAN070 / FUARAN071: every `Binding.Selection` read must target an
@@ -6484,8 +6461,7 @@ module private CrossTreeRules =
 
     /// Every cross-tree rule, in report order.
     let all: (BindingWalk.TreeBindingFacts -> WalkAccumulators -> ValidateOptions -> PreEmitDefect list) list =
-        [ duplicateNodeIds
-          selectionReads
+        [ selectionReads
           danglingAccessibilityReferences
           danglingPopoverAnchors
           deadTransferPairings
@@ -6501,6 +6477,46 @@ module private CrossTreeRules =
           duplicateInlineTables
           unreachableCompareKeys
           wireLossyClosures ]
+
+/// The nodes `n` holds, each with the JSONPath step from `n`'s object to the
+/// held node's object in the canonical wire document, in the order that
+/// document lists them (WIRE_FORMAT §27.8.2, document order): the envelope
+/// `fallback`, then the kind's own positions (`kind.children[i]`, `kind.child`,
+/// `kind.cases[i].child`, `kind.args.<name>.tree`, …), then `state.onEmpty` and
+/// `state.onLoading` — the member order of the canonical node object and of
+/// `StateBehaviour`.
+///
+/// The positions come from `NodeChildren.slots`, the tier's one enumeration of
+/// where a node holds another, so a new held position reaches this report with
+/// no edit here; only the label-to-member spelling below is this function's,
+/// and the corpus test that compares these paths with the encoded document's
+/// is what pins it. A member is `.name` however its key is spelled (§29.3).
+let private wirePositions (n: Node<'Msg>) : (string * Node<'Msg>) list =
+    let step (slot: NodeChildren.Slot<'Msg>) : int * string =
+        let label = slot.Label
+        let rest = label.Substring(label.IndexOf '.' + 1)
+
+        match slot.Position with
+        | NodeChildren.Position.Fallback -> 0, ".fallback"
+        | NodeChildren.Position.StateArm -> (if label = "state.onEmpty" then 2 else 3), "." + label
+        | NodeChildren.Position.Argument ->
+            // `FragmentRef.args[name]` / `Mount.inputs[name]` — a `SlotArg`
+            // value, whose tree rides its `tree` member.
+            let bracket = rest.IndexOf '['
+            let name = rest.Substring(bracket + 1, rest.Length - bracket - 2)
+            1, ".kind." + rest.Substring(0, bracket) + "." + name + ".tree"
+        // A `FragmentDecl` body is enumerated as a one-element ordered list
+        // (`FragmentDecl.body[0]`) but encoded as the single member `body`.
+        | NodeChildren.Position.Ordered when rest = "body[0]" -> 1, ".kind.body"
+        | NodeChildren.Position.Ordered
+        | NodeChildren.Position.Arm -> 1, ".kind." + rest
+
+    NodeChildren.slots n
+    |> List.map (fun slot ->
+        let rank, path = step slot
+        rank, path, slot.Node)
+    |> List.sortBy (fun (rank, _, _) -> rank)
+    |> List.map (fun (_, path, held) -> path, held)
 
 /// The `source`-slot Transform sites of a tree, indexed by READER — the window
 /// the schema-grounding rules and the binding-check report both judge through,
@@ -6518,6 +6534,19 @@ let private sourceSitesOf (facts: BindingWalk.TreeBindingFacts) : Map<string, Bi
                 Map.add d.Reader d.Site acc)
         Map.empty
 
+/// What one walk of `validateLocated` found, and where.
+type private Walked =
+    {
+        /// Every defect, in report order.
+        Defects: PreEmitDefect list
+        /// Defect index -> the node a grounding rule judged and the slot it named.
+        GroundingSlots: System.Collections.Generic.Dictionary<int, string>
+        /// Defect index -> the id and JSONPath of the visit that raised it.
+        RaisedBy: System.Collections.Generic.Dictionary<int, string * string option>
+        /// Every node id -> the JSONPath of each of its occurrences, in document order.
+        Occurrences: System.Collections.Generic.Dictionary<string, ResizeArray<string option>>
+    }
+
 /// The ONE walk behind every `validate*` entry point: per node, the shared node
 /// rules then the kind's rule family; after the walk, the cross-tree rules; last,
 /// the emission-budget breaches. Every entry point is an options preset, so no two
@@ -6526,7 +6555,7 @@ let private validateLocated
     (options: ValidateOptions)
     (treeFacts: BindingWalk.TreeBindingFacts)
     (node: Node<'Msg>)
-    : PreEmitDefect list * System.Collections.Generic.Dictionary<int, obj * string> =
+    : Walked =
     let meter = options.Meter
 
     let customCheck: string -> string -> string -> Map<string, JVal> -> PreEmitDefect option =
@@ -6545,22 +6574,14 @@ let private validateLocated
         { WriteBackKeys = ResizeArray()
           CompareStateReads = ResizeArray()
           FormOwnedStateKeys = System.Collections.Generic.HashSet<string>()
-          NodeIdCounts = System.Collections.Generic.Dictionary<string, int>()
           AccessibilityRefUses = ResizeArray()
           PopoverAnchorUses = ResizeArray()
           TransferDeclarations = ResizeArray()
           GridOwnStateKeys = System.Collections.Generic.HashSet<string * string>() }
 
-    let nodeIdCounts = acc.NodeIdCounts
-
-
     let recordNodeId (raw: string) =
         if raw = "" then
             defects.Add PreEmitDefect.EmptyNodeId
-        else
-            match nodeIdCounts.TryGetValue raw with
-            | true, n -> nodeIdCounts[raw] <- n + 1
-            | false, _ -> nodeIdCounts[raw] <- 1
 
     // The depth bound on this walk. `walkBody` below is the
     // recursion; `walk` is the counter around it, so the guard sits
@@ -6622,18 +6643,62 @@ let private validateLocated
           ProducedSchemaOf = producedSchemaOf
           IsSelectionTarget = fun id -> Set.contains id selectionTargets
           Acc = acc
-          GroundingSlots = System.Collections.Generic.Dictionary<int, obj * string>() }
+          GroundingSlots = System.Collections.Generic.Dictionary<int, string>() }
 
+
+    // ── Where the walk is (WIRE_FORMAT §27.8.2) ──
+    //
+    // A finding is located at the occurrence that RAISED it, so the walk keeps
+    // its own position: the JSONPath of the node it is visiting and the held
+    // positions of that node not yet walked. A node is matched to its position
+    // by identity, so two equal subtrees are two occurrences; `None` is a node
+    // walked from no held position of the node being visited.
+    let mutable here: (string option * ResizeArray<string * Node<'Msg>>) list = []
+
+    // Defect index -> the id and path of the visit that raised it. The
+    // innermost visit claims a defect first, so a defect raised while a held
+    // node is visited is that node's, never its parent's.
+    let raisedBy = System.Collections.Generic.Dictionary<int, string * string option>()
+
+    // Every id's occurrences, in visit order, which is document order: the
+    // envelope `fallback` (walked by the node rules, before the kind), the
+    // kind's positions in member and index order, then the state alternatives.
+    let occurrences =
+        System.Collections.Generic.Dictionary<string, ResizeArray<string option>>()
 
     let rec walk (n: Node<'Msg>) =
         depth <- depth + 1
+
+        let path =
+            match here with
+            | [] -> Some "$"
+            | (parentPath, pending) :: _ ->
+                match pending.FindIndex(fun (_, held) -> obj.ReferenceEquals(held, n)) with
+                | -1 -> None
+                | i ->
+                    let step, _ = pending[i]
+                    pending.RemoveAt i
+                    parentPath |> Option.map (fun p -> p + step)
+
+        let first = defects.Count
 
         if depth > WireLimits.MaxDepth then
             if not depthReported then
                 depthReported <- true
                 defects.Add(PreEmitDefect.MaxDepthExceeded(n.Id, WireLimits.MaxDepth))
         else
+            if n.Id <> "" then
+                match occurrences.TryGetValue n.Id with
+                | true, paths -> paths.Add path
+                | false, _ -> occurrences[n.Id] <- ResizeArray [ path ]
+
+            here <- (path, ResizeArray(wirePositions n)) :: here
             walkBody n
+            here <- List.tail here
+
+        for i in first .. defects.Count - 1 do
+            if not (raisedBy.ContainsKey i) then
+                raisedBy[i] <- (n.Id, path)
 
         depth <- depth - 1
 
@@ -6721,7 +6786,28 @@ let private validateLocated
         // id was already recorded via `recordNodeId n.Id`.
         | NodeKind.Mount _ -> ()
 
+        // The state alternatives (`state.onEmpty`, `state.onLoading`) are
+        // members of the node object, so they are part of the document
+        // (§8.1, §27.8.2): walked like any subtree, for every rule, after the
+        // kind, in member order.
+        match n.State with
+        | Some sb ->
+            sb.OnEmpty |> Option.iter walk
+            sb.OnLoading |> Option.iter walk
+        | None -> ()
+
     walk node
+
+    // FUARAN-DUP-ID — every id held more than once, ONE finding at each
+    // occurrence after the first, in document order, located at that
+    // occurrence (§27.8.2): the count of findings is the count of nodes to
+    // change. Each carries the id and its total count. Raised here rather
+    // than among the cross-tree rules because only the walk knows where each
+    // occurrence is; it is the first of them in report order, as it was.
+    for KeyValue(id, paths) in occurrences do
+        for k in 1 .. paths.Count - 1 do
+            raisedBy[defects.Count] <- (id, paths[k])
+            defects.Add(PreEmitDefect.DuplicateNodeId(id, paths.Count))
     // FUARAN162 — the serialized size, measured once, after the
     // walk, and only over a tree the walk completed (see `HostLimitMeter.Finish`).
     match meter with
@@ -6740,7 +6826,10 @@ let private validateLocated
             defects.Add(hostLimitDefect m.Limits.Identity breach)
     | None -> ()
 
-    List.ofSeq defects, ctx.GroundingSlots
+    { Defects = List.ofSeq defects
+      GroundingSlots = ctx.GroundingSlots
+      RaisedBy = raisedBy
+      Occurrences = occurrences }
 
 let private asResult (defects: PreEmitDefect list) : Result<unit, PreEmitDefect list> =
     if List.isEmpty defects then Ok() else Error defects
@@ -6759,14 +6848,14 @@ let validateWithFacts
     (facts: BindingWalk.TreeFacts)
     (node: Node<'Msg>)
     : Result<unit, PreEmitDefect list> =
-    validateLocated options facts.Bindings node |> fst |> asResult
+    (validateLocated options facts.Bindings node).Defects |> asResult
 
 /// Walk `node` under `options` and surface every pre-emit defect — the one entry
 /// point every other `validate*` name is a preset of. Combine freely: a transport
 /// walk under a narrowed policy with a registry is one record, not a missing
 /// overload.
 let validateWith (options: ValidateOptions) (node: Node<'Msg>) : Result<unit, PreEmitDefect list> =
-    validateLocated options (BindingWalk.collect node) node |> fst |> asResult
+    (validateLocated options (BindingWalk.collect node) node).Defects |> asResult
 
 // ─── The page-document mode (Phase 2522, WIRE_FORMAT §32) ────────────────────
 //
@@ -6841,7 +6930,7 @@ let validatePage
     (requestKeys: Set<string>)
     (node: Node<'Msg>)
     : Result<unit, PreEmitDefect list> =
-    let ordinary = validateLocated options (BindingWalk.collect node) node |> fst
+    let ordinary = (validateLocated options (BindingWalk.collect node) node).Defects
     asResult (ordinary @ pageRuleDefects requestKeys node)
 
 
@@ -6975,6 +7064,36 @@ let findingOf (d: PreEmitDefect) : Finding<string option> =
       Remedy = None
       AvailableFields = None }
 
+/// The JSONPath of the node occurrence that raised defect `i` of a walk, in the
+/// canonical wire document (WIRE_FORMAT §27.8.2, §29.3). A finding raised while
+/// the walk visited the node it names is at that visit's path: two nodes sharing
+/// an id are two occurrences, and the one with the defect is the one named. A
+/// finding judged after the walk (a cross-tree rule) names an id, not a visit;
+/// it is located only where one node holds that id, since then that node is the
+/// occurrence that raised it. `None` where the finding names no node, or names
+/// an id several nodes hold and no visit raised it.
+let private occurrenceOf (walked: Walked) (i: int) (d: PreEmitDefect) : string option =
+    match (findingOf d).Location with
+    | None -> None
+    | Some id ->
+        match walked.RaisedBy.TryGetValue i with
+        | true, (visited, path) when visited = id -> path
+        | _ ->
+            match walked.Occurrences.TryGetValue id with
+            | true, paths when paths.Count = 1 -> paths[0]
+            | _ -> None
+
+/// `validate`, with each defect located: every pre-emit defect of `node` under
+/// the default options, in report order, beside the JSONPath of the node
+/// occurrence that raised it (see WIRE_FORMAT §27.8.2). `None` where the defect
+/// names no node, or names an id several nodes hold and was judged across the
+/// tree rather than at one of them. The defects are exactly `validate`'s.
+let validateWithPaths (node: Node<'Msg>) : (PreEmitDefect * string option) list =
+    let walked =
+        validateLocated ValidateOptions.defaults (BindingWalk.collect node) node
+
+    walked.Defects |> List.mapi (fun i d -> d, occurrenceOf walked i d)
+
 /// A pre-emit defect as Core's `Defect`, its node read through `locate` — the
 /// one lowering (`Finding.toCore` over `findingOf`), for a caller that keys
 /// nodes other than by the raw id string.
@@ -7078,63 +7197,10 @@ type BindingCheck =
         Diagnostics: BindingDiagnostic list
     }
 
-let private isIdentStart (c: char) =
-    (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_'
-
-let private isIdentChar (c: char) =
-    isIdentStart c || (c >= '0' && c <= '9')
-
-/// The JSONPath member segment for a wire key: dotted where the key is a plain
-/// ASCII identifier (every node-spec key is), bracket-quoted otherwise.
-let private jsonPathMember (key: string) : string =
-    if key.Length > 0 && isIdentStart key.[0] && Seq.forall isIdentChar key then
-        "." + key
-    else
-        "['" + key.Replace("\\", "\\\\").Replace("'", "\\'") + "']"
-
 let private jField (key: string) (v: JVal) : JVal option =
     match v with
     | JObj members -> members |> List.tryFind (fun (k, _) -> k = key) |> Option.map snd
     | _ -> None
-
-/// The nodes `n` holds, each with the JSONPath step from `n`'s object to the
-/// held node's object in the canonical wire document, in the order that
-/// document lists them: the kind's own positions (`kind.children[i]`,
-/// `kind.child`, `kind.cases[i].child`, `kind.args.<name>.tree`, …), then the
-/// envelope `fallback`, then `state.onEmpty` and `state.onLoading` — the member
-/// order of the node object and of `StateBehaviour`.
-///
-/// The positions come from `NodeChildren.slots`, the tier's one enumeration of
-/// where a node holds another, so a new held position reaches this report with
-/// no edit here; only the label-to-member spelling below is this function's,
-/// and the corpus test that compares these paths with the encoded document's
-/// is what pins it.
-let private wirePositions (n: Node<'Msg>) : (string * Node<'Msg>) list =
-    let step (slot: NodeChildren.Slot<'Msg>) : int * string =
-        let label = slot.Label
-        let rest = label.Substring(label.IndexOf '.' + 1)
-
-        match slot.Position with
-        | NodeChildren.Position.Fallback -> 1, ".fallback"
-        | NodeChildren.Position.StateArm -> (if label = "state.onEmpty" then 2 else 3), "." + label
-        | NodeChildren.Position.Argument ->
-            // `FragmentRef.args[name]` / `Mount.inputs[name]` — a `SlotArg`
-            // value, whose tree rides its `tree` member.
-            let bracket = rest.IndexOf '['
-            let name = rest.Substring(bracket + 1, rest.Length - bracket - 2)
-            0, ".kind." + rest.Substring(0, bracket) + jsonPathMember name + ".tree"
-        // A `FragmentDecl` body is enumerated as a one-element ordered list
-        // (`FragmentDecl.body[0]`) but encoded as the single member `body`.
-        | NodeChildren.Position.Ordered when rest = "body[0]" -> 0, ".kind.body"
-        | NodeChildren.Position.Ordered
-        | NodeChildren.Position.Arm -> 0, ".kind." + rest
-
-    NodeChildren.slots n
-    |> List.map (fun slot ->
-        let rank, path = step slot
-        rank, path, slot.Node)
-    |> List.sortBy (fun (rank, _, _) -> rank)
-    |> List.map (fun (_, path, held) -> path, held)
 
 /// Every Chart / DataGrid node in `node`, in canonical-document order, with the
 /// JSONPath of its node object. Read off the typed tree rather than off an
@@ -7185,22 +7251,26 @@ let private groundingReader (d: PreEmitDefect) : (string * string) option =
 /// `node`; under that precondition the result is exactly `bindingChecks node`'s.
 let bindingChecksWithFacts (facts: BindingWalk.TreeFacts) (node: Node<'Msg>) : BindingCheck list =
     let sites = sourceSitesOf facts.Bindings
-    let findings, slots = validateLocated ValidateOptions.defaults facts.Bindings node
+    let walked = validateLocated ValidateOptions.defaults facts.Bindings node
 
     // Each grounding finding, located at the slot its rule named when it raised
-    // it, grouped by the reader it names — in report order within a reader.
+    // it, under the occurrence whose visit raised it (Phase 2252: the rules judge
+    // every occurrence of a repeated reader id) — grouped by the reader it
+    // names, in report order within a reader.
     let byReader =
-        System.Collections.Generic.Dictionary<string * string, ResizeArray<PreEmitDefect * obj * string>>()
+        System.Collections.Generic.Dictionary<string * string, ResizeArray<PreEmitDefect * string option * string>>()
 
-    findings
+    walked.Defects
     |> List.iteri (fun i d ->
-        match groundingReader d, slots.TryGetValue i with
-        | Some key, (true, (judged, slot)) ->
+        match groundingReader d, walked.GroundingSlots.TryGetValue i with
+        | Some key, (true, slot) ->
+            let occurrence = occurrenceOf walked i d
+
             match byReader.TryGetValue key with
-            | true, found -> found.Add(d, judged, slot)
+            | true, found -> found.Add(d, occurrence, slot)
             | false, _ ->
                 let found = ResizeArray()
-                found.Add(d, judged, slot)
+                found.Add(d, occurrence, slot)
                 byReader[key] <- found
         | _ -> ())
 
@@ -7211,18 +7281,6 @@ let bindingChecksWithFacts (facts: BindingWalk.TreeFacts) (node: Node<'Msg>) : B
               Type = c.Type |> Option.map ColumnType.tag })
 
     let readers = readerNodes node
-
-    // Phase 2252 — every occurrence's node path, by node identity. The rules
-    // judge every occurrence of a repeated reader id, so a finding is located
-    // under the occurrence that raised it, not under the first one the report
-    // lists. (An instance held twice is located at its first position.)
-    let occurrencePaths =
-        System.Collections.Generic.Dictionary<obj, string>(HashIdentity.Reference)
-
-    for _, _, path, n in readers do
-        // `ContainsKey` + `Add` rather than `TryAdd`, which Fable does not lower.
-        if not (occurrencePaths.ContainsKey(n :> obj)) then
-            occurrencePaths.Add((n :> obj), path)
 
     let seen = System.Collections.Generic.HashSet<string>()
 
@@ -7254,18 +7312,13 @@ let bindingChecksWithFacts (facts: BindingWalk.TreeFacts) (node: Node<'Msg>) : B
             match byReader.TryGetValue((id, reader)) with
             | true, found ->
                 found
-                |> Seq.map (fun (d, judged, slot) ->
+                |> Seq.map (fun (d, occurrence, slot) ->
                     let code, severity, message = describe d
-
-                    let occurrence =
-                        match occurrencePaths.TryGetValue judged with
-                        | true, p -> p
-                        | false, _ -> path
 
                     { Code = code
                       Severity = severity
                       Message = message
-                      Path = occurrence + ".kind." + slot
+                      Path = defaultArg occurrence path + ".kind." + slot
                       Defect = d })
                 |> List.ofSeq
             | false, _ -> []
