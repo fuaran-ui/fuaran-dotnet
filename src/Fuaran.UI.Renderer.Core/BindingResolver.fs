@@ -90,6 +90,143 @@ type BindingSources = Fuaran.UI.BindingSources
 /// `BindingResolver.empty` call site is untouched.
 let empty: BindingSources = Fuaran.UI.BindingSources.empty
 
+// ─── Phase 2751 — the row delta of a live refresh, as a render hint ──────────
+//
+//  A session store's refresh of a live site is computed AGAINST a typed row
+//  delta (`Fuaran.Compute.TableDelta`): the edits' own deltas composed, or the
+//  store's diff of the held table against the new one. The store used it to
+//  advance the primed state and handed the renderer the table alone, through
+//  `ILiveTransformStore`, whose contract is the table and nothing else.
+//
+//  These marks are that delta read against the table the refresh PRODUCED, so
+//  a renderer can mark what changed for one refresh. They are renderer-owned
+//  semantics: no kind, field or wire byte, read only under
+//  `RenderPolicy.RefreshMarking`.
+//
+//  Only a refresh the incremental seam RESTRICTED (`RowsRecomputed`,
+//  `GroupsRecomputed`) carries marks. A refresh it declined (`FullRecompute`),
+//  a reference-path one (no row identity, an unkeyable source), a first prime
+//  and a reuse carry none: the delta did not decide what was recomputed, so it
+//  is not evidence of what changed, and nothing here diffs to make up for it.
+
+/// What one restricted live refresh changed, read against the table it produced.
+type RefreshMarks =
+    {
+        /// The result rows, by POSITION in the produced table, the delta names as
+        /// added or changed: a row is located by its identity column's key, so a
+        /// result that does not carry that column locates none. A one-row result
+        /// whose single group the refresh recomputed (`GroupsRecomputed`) is row 0.
+        Rows: Set<int>
+        /// The result columns the delta invalidates without naming rows.
+        Columns: Set<string>
+        /// How many source rows the delta names added, changed and removed — the
+        /// counts the live region says.
+        Added: int
+        Changed: int
+        Removed: int
+    }
+
+/// Builders over [[RefreshMarks]].
+[<RequireQualifiedAccess>]
+module RefreshMarks =
+
+    /// The marks of one refresh: `None` unless the seam restricted it
+    /// (`recompute`) against a row-set delta that names something.
+    /// `identityColumn` is the column the delta's keys were minted over (the
+    /// store's declaration); `result` is the table the refresh produced.
+    let ofRefresh
+        (identityColumn: string)
+        (delta: Fuaran.Compute.TableDelta)
+        (recompute: Fuaran.Compute.Recompute)
+        (result: Fuaran.Core.Table)
+        : RefreshMarks option =
+        let restricted =
+            match recompute with
+            | Fuaran.Compute.RowsRecomputed _
+            | Fuaran.Compute.GroupsRecomputed _ -> true
+            | _ -> false
+
+        match delta with
+        | Fuaran.Compute.RowSet rs when restricted && identityColumn <> "" ->
+            let count change =
+                rs.Rows |> List.filter (fun (_, c) -> c = change) |> List.length
+
+            let named =
+                rs.Rows
+                |> List.choose (fun (r, c) ->
+                    match r, c with
+                    | Fuaran.Compute.ByKey k, (Fuaran.Compute.RowAdded | Fuaran.Compute.RowChanged) -> Some k
+                    | _ -> None)
+                |> Set.ofList
+
+            let resultRows = Fuaran.Core.Table.rowCount result
+            let names = Fuaran.Core.Table.columnNames result
+
+            let rows =
+                if Set.isEmpty named then
+                    Set.empty
+                elif List.contains identityColumn names then
+                    let idw = Fuaran.Compute.RowIdentity.byColumn identityColumn
+
+                    [ 0 .. resultRows - 1 ]
+                    |> List.filter (fun i ->
+                        match idw.KeyOf result i with
+                        | Some id -> Set.contains (idw.KeyString id) named
+                        | None -> false)
+                    |> Set.ofList
+                else
+                    match recompute with
+                    | Fuaran.Compute.GroupsRecomputed(_, groups) when groups > 0 && resultRows = 1 -> Set.singleton 0
+                    | _ -> Set.empty
+
+            let marks =
+                { Rows = rows
+                  Columns =
+                    rs.InvalidatedColumns
+                    |> List.filter (fun c -> List.contains c names)
+                    |> Set.ofList
+                  Added = count Fuaran.Compute.RowAdded
+                  Changed = count Fuaran.Compute.RowChanged
+                  Removed = count Fuaran.Compute.RowRemoved }
+
+            if marks.Added + marks.Changed + marks.Removed = 0 && Set.isEmpty marks.Columns then
+                None
+            else
+                Some marks
+        | _ -> None
+
+    /// The sentence the live region says for a grid's refresh: the counts the
+    /// delta names, or the invalidated columns when it names no rows.
+    let describe (marks: RefreshMarks) : string =
+        let part (n: int) (verb: string) =
+            if n = 0 then None
+            elif n = 1 then Some("1 row " + verb)
+            else Some(string n + " rows " + verb)
+
+        match
+            [ part marks.Changed "changed"
+              part marks.Added "added"
+              part marks.Removed "removed" ]
+            |> List.choose id
+        with
+        | [] -> "Updated: " + String.concat ", " (Set.toList marks.Columns)
+        | parts -> "Updated: " + String.concat ", " parts
+
+/// The optional half of a session-held live-Transform store that reports what
+/// its last refresh of a site changed (Phase 2751). Declared here rather than on
+/// `Fuaran.UI.ILiveTransformStore`, whose contract is the table alone and whose
+/// every implementation would otherwise have to mint an account of work it may
+/// not have done: a store that does not derive from this marks nothing.
+///
+/// An abstract CLASS rather than a second interface on purpose: the resolver
+/// finds it by a type test on the store it was handed, and a type test against
+/// an interface does not survive Fable, where it is a class test or nothing.
+[<AbstractClass>]
+type RefreshMarksStore() =
+    /// The marks of the most recent evaluation of `site`: `None` when it primed,
+    /// reused, declined, or ran through the reference path.
+    abstract LastRefresh: site: string -> RefreshMarks option
+
 /// The evaluation budget one `Binding.Transform` / `Binding.Expr` may spend
 /// (Phase 1532).
 ///
@@ -567,6 +704,22 @@ let private liveValueToTable (v: obj) : Result<Fuaran.Core.Table, string> =
 let private exprMessage (m: string) : string =
     m.Replace("Transform ", "Expr ").Replace("Transform evaluation", "Expr evaluation")
 
+/// The effective pipeline CLOSED over its environment (Phase 1761): every bound
+/// scalar param substituted as a literal, and whether any param still stands
+/// after it. Shared by the slot's evaluation and the refresh-marks lookup
+/// (Phase 2751), so the site the store is asked about is the site it evaluated.
+let private closeOver
+    (env: Map<string, Fuaran.Core.Cell>)
+    (pipeline: Fuaran.Compute.Transform list)
+    : Fuaran.Compute.Transform list * bool =
+    let closedPipeline =
+        if Map.isEmpty env then
+            pipeline
+        else
+            Fuaran.Compute.Transform.substitute env pipeline
+
+    closedPipeline, List.isEmpty (Fuaran.Compute.Transform.paramsOf closedPipeline)
+
 /// Resolve a typed `Binding<'T>` against the supplied sources.
 ///
 /// Per-Defect (2) note: `Query` / `Selection` accessors are obj-typed at the
@@ -994,13 +1147,7 @@ and private evalTransformFrameWithin
         // param bound to a cell of the wrong shape, which `substitute` leaves
         // for the evaluator to refuse by name) takes `evalTable`, so its error
         // is the one it always was.
-        let closedPipeline =
-            if Map.isEmpty env then
-                pipeline
-            else
-                Fuaran.Compute.Transform.substitute env pipeline
-
-        let closed = List.isEmpty (Fuaran.Compute.Transform.paramsOf closedPipeline)
+        let closedPipeline, closed = closeOver env pipeline
 
         // The store path, shared by both source arms (Phase 1586 for `Live`,
         // Phase 1761 for `Data`). The budget is checked BEFORE the store for
@@ -1321,6 +1468,35 @@ let derivationTrace
             match budget with
             | Error refusal -> Error(Fuaran.UI.Derivation.DerivationRefusal.Unresolved refusal)
             | Ok() -> Fuaran.UI.Derivation.trace rows resolved binding
+
+/// Phase 2751 — the marks of the live refresh that produced `binding`'s value:
+/// the site the slot's own evaluation asked the store about (the same param
+/// resolution, the same closed pipeline, the same site key), looked up on a
+/// store that reports them ([[RefreshMarksStore]]). The outer `None` says the
+/// binding reads no reporting site — no pipeline, a pipeline that does not
+/// close, or a store that does not report; `Some None` is a reporting site
+/// whose last refresh marked nothing. Reads the store's record of its last
+/// evaluation and evaluates nothing, so call it after the slot has resolved in
+/// the same render.
+let refreshMarks (sources: BindingSources) (binding: Binding<'T>) : RefreshMarks option option =
+    match sources.LiveTransforms, binding with
+    | Some store, Binding.Transform(source, pipeline, parameters) ->
+        match box store with
+        | :? RefreshMarksStore as reporting ->
+            match transformParams sources (defaultArg parameters []) with
+            | Error _ -> None
+            | Ok(env, listEnv, unbound) ->
+                let closedPipeline, closed =
+                    closeOver env (Fuaran.UI.Derivation.effectivePipeline listEnv unbound pipeline)
+
+                if not closed then
+                    None
+                else
+                    match transformInput sources sources source with
+                    | Ok(_, siteKeyOf) -> Some(reporting.LastRefresh(siteKeyOf closedPipeline))
+                    | Error _ -> None
+        | _ -> None
+    | _ -> None
 
 /// Phase 818 — resolve a `Binding<JVal>` (a `SetState.valueFrom` source) against
 /// the stores at `obj` through the store-reading erasure, lifting the resolved

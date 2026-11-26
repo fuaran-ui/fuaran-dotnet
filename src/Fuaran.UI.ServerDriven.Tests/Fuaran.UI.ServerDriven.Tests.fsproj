@@ -53,6 +53,9 @@
     <!-- Phase 1762: where a server-driven state write spends its time, and the binding cone the
          step decision stands on. FUARAN_STEP_COST=1 prints the docs/SERVER-DRIVEN-STEP-COST.md table. -->
     <Compile Include="RestrictedStepTests.fs" />
+    <!-- Phase 2751: the row delta of a live refresh reaches the renderer - the marked cells against
+         the corpus edit streams, the declined refresh, the policy off, the live region and reduced motion. -->
+    <Compile Include="RefreshMarksTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

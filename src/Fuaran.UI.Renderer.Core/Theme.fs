@@ -170,7 +170,12 @@ let vocabularyFingerprintMarker = "fuaran-vocabulary-fingerprint:"
 // `fuaran-form-field-label` (the server's field-label span) left with the
 // served field wrapper the driver ruled away; a field's label is
 // `fuaran-form-label` on both tiers. The sheet still styles the old name.
-let vocabularyFingerprint = "fv1:437e9eb14e029a60"
+// Phase 2749 moved it: the `fuaran-derivation-*` affordance entered.
+// Phase 2751 moved it: the refresh marks entered — the host `fuaran-refresh-host`,
+// its live region `fuaran-refresh-status`, the moved value `fuaran-refresh-moved`
+// and the marked cell `fuaran-refresh-changed` — with the reference rules that
+// outline them, fade them once and stop the fade under reduced motion.
+let vocabularyFingerprint = "fv1:1dadf78ecced9225"
 
 /// parity: format a float invariantly across both pipelines. The .NET branch
 /// pins InvariantCulture so a comma-decimal locale can't corrupt the CSS/JSON;
