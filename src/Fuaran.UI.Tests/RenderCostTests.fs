@@ -291,6 +291,31 @@ let tests =
                     Expect.equal facts.StateSeeds.Count 3 "the fixture seeds three keys"
                 }
 
+                test "the document's first declaration of a key is the seed that takes effect" {
+                    // Phase 2381 — a node's own state alternative comes after its kind
+                    // in the document (WIRE_FORMAT §27.8.2), so the child's declaration
+                    // seeds the key and the alternative's is the FUARAN106 finding.
+                    let metricOf (id: string) (value: float) =
+                        Fuaran.metric
+                            id
+                            { Defaults.metric with
+                                Label = TextSource.Literal "M"
+                                Value = Binding.State("k", Some value) }
+
+                    let tree =
+                        { page "root" [ metricOf "a1" 1.0 ] with
+                            Fallback = None
+                            State =
+                                Some
+                                    { OnEmpty = Some(metricOf "a2" 2.0)
+                                      OnLoading = None
+                                      OnError = None } }
+
+                    let facts = BindingWalk.renderFacts tree
+                    Expect.equal (facts.StateSeeds |> Map.find "k") (box 1.0) "the child's declaration seeds k"
+                    Expect.equal facts.StateSeeds (BindingWalk.stateSeeds tree) "one seed map, two passes"
+                }
+
                 test "the registry agrees with the canonical walk" {
                     let tree =
                         page
