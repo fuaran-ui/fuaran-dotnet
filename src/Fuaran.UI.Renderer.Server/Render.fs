@@ -357,7 +357,14 @@ and private renderKind
                 resolution
         with
         | Some slot -> renderNode (Walk.deeper walk) ctx slot
-        | None -> Emit.plan (ElementPlan.DisplayPlan.metric ctx.Sources resolution field spec)
+        | None ->
+            // Phase 2749 — the derivation affordance, planned as the client's
+            // is, so a policy-on document hydrates (`Off`: the metric's plan).
+            Emit.plan (
+                ElementPlan.DerivationPlan.around
+                    (ElementPlan.DerivationPlan.forBinding ctx.Policy ctx.Sources spec.Value)
+                    (ElementPlan.DisplayPlan.metric ctx.Sources resolution field spec)
+            )
     | NodeKind.Badge spec -> Emit.plan (ElementPlan.DisplayPlan.badge ctx.Sources spec)
     | NodeKind.Skeleton spec -> Emit.plan (ElementPlan.DisplayPlan.skeleton spec)
     | NodeKind.Icon spec -> Emit.plan (ElementPlan.DisplayPlan.icon spec)
@@ -967,6 +974,20 @@ let renderWithCards
     (node: Node<obj>)
     : string =
     Render.htmlView (renderNode Walk.root (mkContextWithCards cards customs sources node) node)
+
+/// `renderWith` under an explicit render POLICY (Phase 2749): the whole
+/// `RenderPolicy` record, for a posture that has no named entry of its own —
+/// the derivation affordance (`DerivationTrace`) first. The client takes the
+/// same record as its context's `Policy`, so a host renders both tiers under
+/// one posture and a policy-on document hydrates without a mismatch.
+let renderWithPolicy
+    (policy: RenderPolicy)
+    (customs: Registry.ServerCustomRendererRegistry)
+    (sources: BindingResolver.BindingSources)
+    (node: Node<obj>)
+    : string =
+    let ctx = mkContextWith customs sources node
+    Render.htmlView (renderNode Walk.root { ctx with Policy = policy } node)
 
 /// A `<style>` element carrying the Phase 12.K `Theme` → CSS-variable `:root`
 /// projection — parity with the client `themeStyleElement`. The host mounts

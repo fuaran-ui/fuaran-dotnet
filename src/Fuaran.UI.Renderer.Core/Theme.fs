@@ -170,7 +170,7 @@ let vocabularyFingerprintMarker = "fuaran-vocabulary-fingerprint:"
 // `fuaran-form-field-label` (the server's field-label span) left with the
 // served field wrapper the driver ruled away; a field's label is
 // `fuaran-form-label` on both tiers. The sheet still styles the old name.
-let vocabularyFingerprint = "fv1:7fac522a220713bf"
+let vocabularyFingerprint = "fv1:437e9eb14e029a60"
 
 /// parity: format a float invariantly across both pipelines. The .NET branch
 /// pins InvariantCulture so a comma-decimal locale can't corrupt the CSS/JSON;

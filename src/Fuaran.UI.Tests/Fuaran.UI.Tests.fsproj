@@ -517,12 +517,19 @@
     <Compile Include="..\..\build\ChangeSet.fs" Link="ChangeSet.fs" />
     <Compile Include="..\..\tests\temp-dir\TempDir.fs" Link="TempDir.fs" />
     <Compile Include="ChangeSetHandEditTests.fs" />
+    <!-- Phase 2749 - the derivation trace over the law corpus and the resolver, the
+         fuaran.getDerivationTrace tool, and the renderer affordance under its policy. -->
+    <Compile Include="DerivationTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
     <ProjectReference Include="..\Fuaran.UI.Charts\Fuaran.UI.Charts.fsproj" />
     <ProjectReference Include="..\Fuaran.UI.Renderer\Fuaran.UI.Renderer.fsproj" />
+    <!-- Phase 2749 - DerivationTests calls the derivation-trace tool and renders the
+         affordance through the server renderer's policy entry. -->
+    <ProjectReference Include="..\Fuaran.UI.AiTools\Fuaran.UI.AiTools.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Renderer.Server\Fuaran.UI.Renderer.Server.fsproj" />
     <!-- FragmentTests exercises Ops.Apply +
          Ops.Introspect for FragmentDecl / FragmentRef UpdateProp paths. -->
     <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />

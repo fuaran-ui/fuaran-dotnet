@@ -3,12 +3,15 @@
 Runtime-introspection AI tools for Fuaran trees — the §4i tool surface a downstream
 AI consumer calls to observe what the renderer did with its emitted tree.
 
-Four read-only tools, deterministic contract (same inputs → same observable state):
+Five read-only tools, deterministic contract (same inputs → same observable state):
 
 - `Tools.getNodeState` — id, kind, resolved props, resolved binding values,
   current state, geometry. Filterable via `IncludeKey`. Every text-valued prop
   also carries a `TextProvenance` (see below).
 - `Tools.getBindingValue` — a single Binding-typed slot's resolved value.
+- `Tools.getDerivationTrace` (`fuaran.getDerivationTrace`) — how a slot bound
+  through a pipeline was computed: each step's verb, wire form, status and
+  schema, and optionally the bounded table after it.
 - `Tools.getRenderedDom` — geometry tree (x, y, width, height, overflowing) rooted
   at a node; child geometry follows the typed-tree children.
 - `Tools.getRuntimeErrors` — FIFO drain of `ErrorEntry` records since an optional

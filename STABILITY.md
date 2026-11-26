@@ -7813,10 +7813,20 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.108.0 — the slot opened after v0.107.0 was released, by Phase 2753 (a refinable table fragment), whose change is additive (DRAFT — untagged)
+## 0.108.0 — the slot opened after v0.107.0 was released, by Phase 2753 (a refinable table fragment, additive), and advanced to the breaking class by Phase 2749 (`RenderPolicy` gains a field) (DRAFT — untagged)
 
-**Class: additive.** `v0.107.0` is tagged, so nothing rides it: this change opens the next slot. Phase 2753 adds one
-certified fragment and its types to `Fuaran.UI.Fragments`, and no existing member moves. Its entry follows.
+**Class: breaking, for one record.** `v0.107.0` is tagged, so nothing rides it: Phase 2753 opened this slot at the
+additive class, and Phase 2749 advanced it. In this repository's 0.x line a breaking change takes a minor, and
+0.108.0 is already one minor ahead of the last tag, so the number does not move.
+
+- **What breaks.** `RenderPolicy` gains the field `DerivationTrace`, so code that builds a `RenderPolicy` as a full
+  record literal stops compiling (`FS0764`).
+- **What does not.** Anything that starts from `RenderPolicy.defaults` and changes fields with `with` compiles and
+  behaves as before. The new field is `Off` by default, and with it off every render is byte-identical.
+- **Phase 2753's own change is additive.** It adds one certified fragment and its types to `Fuaran.UI.Fragments`,
+  and no existing member moves.
+
+The two entries follow.
 
 ### Phase 2753 — a refinable table fragment whose view state is a pipeline (additive)
 
@@ -7852,7 +7862,7 @@ moves from ten to twelve (`docs/DECISIONS.md` D41).
 
 **Class: BEHAVIOUR change, no API change.** Packages `Fuaran.UI.Ops` and `Fuaran.UI`. No type, member, defect code,
 sentence or wire byte moves, and no document that decoded before is refused now, or the reverse. By the [Semver](#semver) table it is a
-bug fix with no surface change, which is no higher class than the additive draft it rides, so the number does not move.
+bug fix with no surface change, which is no higher class than the draft it rides, so the number does not move.
 
 - **A defect inside a `params` entry's `from` binding is located by the entry's index.** On a `Transform` or `Expr`
   binding, `JsonDecode` reported it under the entry's `name`: a `Filter` with no `name` in the second entry was
@@ -7878,6 +7888,52 @@ that stops at `params` cannot see the spelling below it) and its row in `tests/d
 `validate` family's `validate-duplicate-id-across-default-and-child` (two occurrences: one finding, at the second) and
 `validate-duplicate-id-three-times` (two findings, at the second and the third), read back by
 `src/Fuaran.UI.JsonDecode.Tests/EmittedFamilyTests.fs`.
+
+### Phase 2749 — a derivation trace shows how a bound number was computed (breaking, for `RenderPolicy`)
+
+**Class: breaking, for one record.** `RenderPolicy` gains the field `DerivationTrace`, so code that builds a
+`RenderPolicy` as a full record literal stops compiling (`FS0764`). Anything that starts from
+`RenderPolicy.defaults` and changes fields with `with` is unaffected. Every other change below is additive. Packages `Fuaran.UI`, `Fuaran.UI.Renderer.Core`, `Fuaran.UI.Renderer`,
+`Fuaran.UI.Renderer.Server` and `Fuaran.UI.AiTools`. No kind, variant or wire member is added, and no byte of an
+existing fixture moves: the affordance is host chrome under a render policy that is off by default.
+
+- **`Fuaran.UI.Derivation`** (new module). `trace rows sources binding` returns one record per pipeline step of a
+  `Binding.Transform` or a `Binding.Expr`: the step's verb, its canonical wire form, whether it runs, the output
+  schema `SchemaWalk` derives for it (an open one carries the walk's reason), and with `rows` the table after it,
+  bounded. Tables come from the reference evaluator over each step's prefix, so the last one is the binding's
+  value. A binding with no pipeline is refused (`DerivationRefusal.NoPipeline`, with where its value comes from).
+  New types: `DerivationSources`, `StepStatus`, `StageTable`, `DerivationStage`, `DerivationStep`,
+  `DerivationSubject`, `DerivationTrace`, `DerivationRefusal`. New members: `effective`, `effectivePipeline`,
+  `pipelineOf`, `verb`, `exprFrame`, `exprPipeline`, `result`, `toJson`, `DerivationSources.ofTable` and
+  `DerivationRefusal.describe`. The effective-pipeline rule (list params substituted, then every filter reading an
+  unbound param pruned) and the `Expr` frame and pipeline were the resolver's private copies. They now live here
+  once, and the resolver calls them, so it evaluates exactly as before.
+- **`BindingResolver.derivationSources`** and **`BindingResolver.derivationTrace`** (`Fuaran.UI.Renderer.Core`).
+  These trace a binding as the slot resolves it, through the slot's own parameter and source resolution and under
+  `TransformBudget.defaults`.
+- **`RenderPolicy.DerivationTrace`** (`Fuaran.UI.Renderer.Core`), a field of the new `DerivationTracePolicy`
+  (`Off` | `Show of rowLimit`). `RenderPolicy.defaults` is `Off`. With it on, both renderers wrap a `Metric` bound
+  through a pipeline in a `fuaran-derivation-host` element with a native `<details>` disclosure after it. The
+  client does the same for a data-bound `DataGrid`, whose server render stays its hydration placeholder. The plan
+  is `ElementPlan.DerivationPlan`, so the client and the server emit the same markup. The reference stylesheet
+  gains the `fuaran-derivation-*` rules, and the four tier copies are regenerated.
+- **`Render.renderWithPolicy`** (`Fuaran.UI.Renderer.Server`) renders the server tier under a whole `RenderPolicy`.
+- **`Tools.getDerivationTrace`** and the tool-call entry **`Tools.derivationTrace`** (`fuaran.getDerivationTrace`,
+  with `DerivationTraceToolName`, `derivationTraceDescription` and `derivationTraceInputSchema`), in
+  `Fuaran.UI.AiTools`. They read the same slot table as `getBindingValue`. A refusal carries one of the codes
+  `no-pipeline`, `absent`, `unresolved`, `node-not-found`, `slot-not-found` or `invalid-arguments`.
+
+**What a consumer must do.** Nothing, unless it builds a `RenderPolicy` as a full record literal. **Migration:**
+start from `RenderPolicy.defaults` and set the fields you need with `with`, as the record's own documentation asks.
+A host that wants the affordance sets `DerivationTrace = DerivationTracePolicy.Show n`: on the
+client in its context's `Policy`, and on the server through `renderWithPolicy`, so both tiers render under one
+posture.
+
+**Certified by** `src/Fuaran.UI.Tests/DerivationTests.fs`. It shows that over every `evalPipeline` vector of
+`laws/transform-laws.json` and `laws/dataframe-parity.json` the trace's final table, and each step's, is the
+reference evaluation byte for byte. It shows that through the resolver the last table is the slot's resolved rows
+or cell, that an open schema carries the walk's reason, that the tool's answers and refusals are correct, and that
+with the policy off a tree renders byte-identically.
 
 ---
 

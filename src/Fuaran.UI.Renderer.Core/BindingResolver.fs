@@ -561,12 +561,11 @@ let private liveValueToTable (v: obj) : Result<Fuaran.Core.Table, string> =
             Error(sprintf "Transform live source resolved to a 'ref' source ('%s'), which is not host-resolved" name)
         | Error e -> Error("Transform live source: " + Fuaran.Core.ColumnCodec.errorString e)
 
-/// The one-row frame a `Binding.Expr` evaluates over (Phase 1534; see
-/// `evalExprCell`). One immutable value for the process, so it is prepared once
-/// per render however many `Expr` slots the render holds (Phase 1890).
-let private exprUnitFrame: Fuaran.Core.Table =
-    { Schema = [ Fuaran.Core.Field.create "__unit" Fuaran.Core.BoolType ]
-      Columns = [ Fuaran.Core.Column.ofBools "__unit" (Fuaran.Core.Vector.ofList [ true ]) Fuaran.Core.AllValid ] }
+/// A Transform-path message reworded for an `Expr` binding: the shared
+/// evaluation's messages say "Transform", and an author looking at an `Expr`
+/// binding has no Transform to look for.
+let private exprMessage (m: string) : string =
+    m.Replace("Transform ", "Expr ").Replace("Transform evaluation", "Expr evaluation")
 
 /// Resolve a typed `Binding<'T>` against the supplied sources.
 ///
@@ -934,71 +933,18 @@ and private evalTransformFrameWithin
     (pipeline: Fuaran.Compute.Transform list)
     (parameters: TransformParam list)
     : Result<Fuaran.Core.Table, string> =
-    // Phase 610 — coerce a resolved LIST source to `Cell list`. Routed through
-    // [[jvalOfResolved]], the total store-value lift both pipelines already share (Phase
-    // 818/1085), so a browser array, an F# list under Fable, the server store's `obj list`
-    // lowering and a genuine `JArr` all land on one shape rather than on four type tests that
-    // would drift apart per host. A non-array, or an array holding a non-scalar item, is `None`
-    // and keeps the pre-existing loud "non-scalar value" error.
-    let resolvedToCells (v: obj) : Fuaran.Core.Cell list option =
-        match jvalOfResolved v with
-        | Some(JArr items) ->
-            let cells = items |> List.map jvalToCell
-
-            if cells |> List.forall Option.isSome then
-                Some(cells |> List.map Option.get)
-            else
-                None
-        | _ -> None
-
-    let rec resolveParams
-        (env: Map<string, Fuaran.Core.Cell>)
-        (listEnv: Map<string, Fuaran.Core.Cell list>)
-        (unbound: Set<string>)
-        remaining
-        =
-        match remaining with
-        | [] -> Ok(env, listEnv, unbound)
-        | (p: TransformParam) :: rest ->
-            let name = p.Name
-
-            match resolve<obj> sources (objOfJValBinding p.From) with
-            | Resolved v ->
-                match resolvedToCell v with
-                | Some cell -> resolveParams (Map.add name cell env) listEnv unbound rest
-                | None ->
-                    match resolvedToCells v with
-                    // The empty selection is UNBOUND, not an empty membership set (see above).
-                    | Some [] -> resolveParams env listEnv (Set.add name unbound) rest
-                    | Some cells -> resolveParams env (Map.add name cells listEnv) unbound rest
-                    | None -> Error(sprintf "Transform param '%s' resolved to a non-scalar value" name)
-            | NotResolved -> resolveParams env listEnv (Set.add name unbound) rest
-            | Errored m -> Error(sprintf "Transform param '%s' source errored: %s" name m)
-            | I18nUnresolved k -> Error(sprintf "Transform param '%s' source is an unresolved i18n key '%s'" name k)
-
-    match resolveParams Map.empty Map.empty Set.empty parameters with
+    match transformParams sources parameters with
     | Error m -> Error m
     | Ok(env, listEnv, unbound) ->
 
         // Phase 610 — bound LIST params resolve by substitution BEFORE the prune. A substituted
         // `InParam` becomes an `InList` and so names no param at all, while an unbound one
-        // survives as `InParam` and is caught by the prune below under its own name — which is
-        // why one `paramsOf`-driven prune covers both param kinds with no second rule.
-        let pipeline =
-            if Map.isEmpty listEnv then
-                pipeline
-            else
-                Fuaran.Compute.Transform.substituteListParams listEnv pipeline
-
-        // Prune every `filter` step whose params include an unbound name (unset filter ⇒ no constraint).
-        let pipeline =
-            pipeline
-            |> List.filter (fun step ->
-                match step with
-                | Fuaran.Compute.Filter pred ->
-                    Fuaran.Compute.ColExpr.paramsOf pred
-                    |> List.forall (fun p -> not (Set.contains p unbound))
-                | _ -> true)
+        // survives as `InParam` and is caught by the prune under its own name — which is
+        // why one `paramsOf`-driven prune covers both param kinds with no second rule. Then
+        // every `filter` step whose params include an unbound name is pruned (unset filter ⇒ no
+        // constraint). Phase 2749 — the rule is `Derivation.effectivePipeline`, the one the
+        // derivation trace reports step by step, so the two cannot disagree about what ran.
+        let pipeline = Fuaran.UI.Derivation.effectivePipeline listEnv unbound pipeline
 
         // Phase 1532 — the budget is checked HERE, between the resolved input and
         // the evaluator, because that is the only place both quantities are
@@ -1061,6 +1007,13 @@ and private evalTransformFrameWithin
         // the Phase-1532 reason: this is the only point where the pruned
         // pipeline and the resolved input are both known, and the store path
         // must not be a way to spend past a refusal.
+        //
+        // The site key is the renderer's ONE rule (Phase 1586) over the closed
+        // pipeline (`transformInput` names it per source arm); the store's own
+        // key rule is the `site` string it is handed, exactly as the
+        // server-driven tier hands it. With no params bound the closed pipeline
+        // IS the effective one, so every unparameterised site keeps the key it
+        // had.
         let evalSite (siteKey: string) (input: Fuaran.Compute.Prepared) : Result<Fuaran.Core.Table, string> =
             match sources.LiveTransforms with
             | Some store when closed ->
@@ -1073,120 +1026,180 @@ and private evalTransformFrameWithin
                     |> Result.mapError (fun e -> "Transform evaluation failed: " + e)
             | _ -> evalTable input
 
-        // Phase 1890 — every site over one source object shares one prepared
-        // input for the render `sources` stands for. The key is the object the
-        // table is read FROM (the embedded table, the resolved store value),
-        // by reference, so a scoped rebinding prepares its own.
-        let prepared (from: obj) (toTable: unit -> Result<Fuaran.Core.Table, string>) =
-            PreparedSources.prepare render from toTable
+        transformInput render sources source
+        |> Result.bind (fun (input, siteKeyOf) -> evalSite (siteKeyOf closedPipeline) input)
 
-        match source with
-        | TransformSource.Data(Fuaran.Core.Ref name) ->
-            Error(
-                sprintf
-                    "Transform 'Ref' source '%s' is not host-resolved yet (Phase 282 evaluates Embedded sources)"
-                    name
-            )
-        // Phase 1761 — a STATIC source consults the store too. Its rows never
-        // change, so what moves between renders is the environment, and the
-        // closed pipeline above is what carries it: an unchanged key over an
-        // unchanged table is the store's `ReusedPrior`, evaluating nothing.
-        | TransformSource.Data(Fuaran.Core.Embedded inputTable) ->
-            prepared (box inputTable) (fun () -> Ok inputTable)
-            |> Result.bind (evalSite (Fuaran.UI.BindingWalk.dataSiteKey inputTable closedPipeline))
-        // Phase 818 — the LIVE source: resolve the preserved binding against
-        // the reactive stores (through the store-reading erasure, so raw store
-        // values stay raw) and evaluate over the CURRENT data; an unwritten
-        // store falls back to the decode-time initial snapshot, which is what
-        // makes SSR byte-identical to the Phase-815 snapshot semantics. The
-        // renderer's reactive key walk subscribes the source binding's channel
-        // keys, so a store write re-evaluates every reader.
-        | TransformSource.Live(binding, initial) ->
-            let fromInitial () =
-                match initial with
-                | Fuaran.Core.Embedded t -> prepared (box t) (fun () -> Ok t)
-                | Fuaran.Core.Ref name ->
-                    Error(sprintf "Transform live source initial snapshot is a non-host-resolved 'ref' ('%s')" name)
+/// A Transform's `parameters` resolved to the evaluation environment (Phase 282/424/610, extracted
+/// in Phase 2749 so the derivation trace reads exactly the environment the slot evaluates under):
+/// the bound scalar params, the bound LIST params, and the names left unbound.
+and private transformParams
+    (sources: BindingSources)
+    (parameters: TransformParam list)
+    : Result<Map<string, Fuaran.Core.Cell> * Map<string, Fuaran.Core.Cell list> * Set<string>, string> =
+    // Phase 610 — coerce a resolved LIST source to `Cell list`. Routed through
+    // [[jvalOfResolved]], the total store-value lift both pipelines already share (Phase
+    // 818/1085), so a browser array, an F# list under Fable, the server store's `obj list`
+    // lowering and a genuine `JArr` all land on one shape rather than on four type tests that
+    // would drift apart per host. A non-array, or an array holding a non-scalar item, is `None`
+    // and keeps the pre-existing loud "non-scalar value" error.
+    let resolvedToCells (v: obj) : Fuaran.Core.Cell list option =
+        match jvalOfResolved v with
+        | Some(JArr items) ->
+            let cells = items |> List.map jvalToCell
 
-            // Phase 1891 — a State slot holding a prepared VERSION (an edited
-            // grid's live table, written whole by a host's edit log) is the input
-            // itself, read before the resolver lifts it to rows for every other
-            // reader of the key: nothing to lift, and no second preparation that
-            // would lose the chunks the version shares with the one before it,
-            // which is what lets a session store refresh the site from the edit
-            // rather than by diffing.
-            let heldVersion =
-                match binding with
-                | Binding.State(key, _) ->
-                    match Map.tryFind key sources.State with
-                    | Some(:? Fuaran.Compute.Prepared as version) -> Some version
-                    | _ -> None
-                | _ -> None
+            if cells |> List.forall Option.isSome then
+                Some(cells |> List.map Option.get)
+            else
+                None
+        | _ -> None
 
-            let inputR =
-                match heldVersion with
-                | Some version -> Ok version
+    let rec resolveParams
+        (env: Map<string, Fuaran.Core.Cell>)
+        (listEnv: Map<string, Fuaran.Core.Cell list>)
+        (unbound: Set<string>)
+        remaining
+        =
+        match remaining with
+        | [] -> Ok(env, listEnv, unbound)
+        | (p: TransformParam) :: rest ->
+            let name = p.Name
+
+            match resolve<obj> sources (objOfJValBinding p.From) with
+            | Resolved v ->
+                match resolvedToCell v with
+                | Some cell -> resolveParams (Map.add name cell env) listEnv unbound rest
                 | None ->
-                    match resolve<obj> sources (objOfJValBinding binding) with
-                    // Phase 1085 — an ABSENT resolved value is the initial snapshot,
-                    // not an error. `Binding.State(key, None)` on a slot nothing has
-                    // seeded or written resolves to the slot's default
-                    // representation (`null`) rather than to `NotResolved`, so
-                    // without this arm the bare wire spelling
-                    // `{"$type":"State","key":k}` — the one this phase makes
-                    // decodable, and the one FUARAN106's own remedy tells an author
-                    // to write — would refuse where `"defaultValue": []` renders the
-                    // empty table. Two spellings of "I read this key and carry no
-                    // data of my own" must resolve alike.
-                    //
-                    // DELIBERATELY the quiet arm, and the choice is FUARAN105's:
-                    // that rule's own contract already says a default-less source
-                    // "decodes to `TransformLive.emptySource`" and names the
-                    // resulting zero as a pre-emit WARNING. Making the resolver loud
-                    // instead would put the resolver and the shipped validator in
-                    // flat contradiction inside one binary — the exact defect class
-                    // 1075 closed when it widened FUARAN105 rather than leaving it.
-                    // The loudness lives at authoring time, where it can name the
-                    // key and the remedy; a raw `null` at render time can name
-                    // neither.
-                    | Resolved v when isNull v -> fromInitial ()
-                    | Resolved v -> prepared v (fun () -> liveValueToTable v)
-                    | NotResolved -> fromInitial ()
-                    | Errored m -> Error(sprintf "Transform live source errored: %s" m)
-                    | I18nUnresolved k -> Error(sprintf "Transform live source is an unresolved i18n key '%s'" k)
+                    match resolvedToCells v with
+                    // The empty selection is UNBOUND, not an empty membership set (see above).
+                    | Some [] -> resolveParams env listEnv (Set.add name unbound) rest
+                    | Some cells -> resolveParams env (Map.add name cells listEnv) unbound rest
+                    | None -> Error(sprintf "Transform param '%s' resolved to a non-scalar value" name)
+            | NotResolved -> resolveParams env listEnv (Set.add name unbound) rest
+            | Errored m -> Error(sprintf "Transform param '%s' source errored: %s" name m)
+            | I18nUnresolved k -> Error(sprintf "Transform param '%s' source is an unresolved i18n key '%s'" name k)
 
-            // Phase 1586 — the live path consults the session-held store before
-            // it evaluates. Phase 1179 shipped the incremental seam behind a
-            // store but wired it only in the server-driven tier, so a
-            // client-rendered tree with a live source still paid the whole
-            // pipeline on every render — the cost 1179 was built to remove.
-            //
-            // TWO CONDITIONS, and the second is the load-bearing one.
-            //
-            // A store must be furnished: absence is not a degraded mode, it is
-            // today's path unchanged, which is what makes the slot additive in
-            // behaviour and not only in shape.
-            //
-            // And the pipeline must be CLOSED. The seam evaluates in the empty
-            // environment (`Incremental.primeOn` / `refreshOn` are `prime` /
-            // `refresh` at `Map.empty`), so handed the pipeline with its scalar
-            // params still standing it would answer a different question from
-            // the one `evalTable` asks. Until Phase 1761 a live source under a
-            // bound param therefore evaluated in full whether a store was
-            // furnished or not; since 1761 the store is handed the CLOSED
-            // pipeline (`closedPipeline` above — every bound scalar substituted
-            // under Core's certified substitution law), which is the same
-            // question asked in the seam's own environment. LIST params resolve
-            // by substitution INTO the pipeline before either, as they always
-            // did.
-            //
-            // The site key is the renderer's ONE rule (Phase 1586) over that
-            // closed pipeline; the store's own key rule is the `site` string it
-            // is handed, exactly as the server-driven tier hands it. With no
-            // params bound the closed pipeline IS the effective one, so every
-            // unparameterised site keeps the key it had.
-            inputR
-            |> Result.bind (evalSite (Fuaran.UI.BindingWalk.liveSiteKey binding closedPipeline))
+    resolveParams Map.empty Map.empty Set.empty parameters
+
+/// A Transform's source resolved to the PREPARED table its pipeline reads, with the rule that
+/// names its store site over a pipeline (Phase 1586 / 1761). Extracted in Phase 2749 so the
+/// derivation trace reads exactly the input the slot evaluates over.
+and private transformInput
+    (render: BindingSources)
+    (sources: BindingSources)
+    (source: TransformSource)
+    : Result<Fuaran.Compute.Prepared * (Fuaran.Compute.Transform list -> string), string> =
+    // Phase 1890 — every site over one source object shares one prepared
+    // input for the render `sources` stands for. The key is the object the
+    // table is read FROM (the embedded table, the resolved store value),
+    // by reference, so a scoped rebinding prepares its own.
+    let prepared (from: obj) (toTable: unit -> Result<Fuaran.Core.Table, string>) =
+        PreparedSources.prepare render from toTable
+
+    match source with
+    | TransformSource.Data(Fuaran.Core.Ref name) ->
+        Error(
+            sprintf "Transform 'Ref' source '%s' is not host-resolved yet (Phase 282 evaluates Embedded sources)" name
+        )
+    // Phase 1761 — a STATIC source consults the store too. Its rows never
+    // change, so what moves between renders is the environment, and the
+    // closed pipeline above is what carries it: an unchanged key over an
+    // unchanged table is the store's `ReusedPrior`, evaluating nothing.
+    | TransformSource.Data(Fuaran.Core.Embedded inputTable) ->
+        prepared (box inputTable) (fun () -> Ok inputTable)
+        |> Result.map (fun input -> input, Fuaran.UI.BindingWalk.dataSiteKey inputTable)
+    // Phase 818 — the LIVE source: resolve the preserved binding against
+    // the reactive stores (through the store-reading erasure, so raw store
+    // values stay raw) and evaluate over the CURRENT data; an unwritten
+    // store falls back to the decode-time initial snapshot, which is what
+    // makes SSR byte-identical to the Phase-815 snapshot semantics. The
+    // renderer's reactive key walk subscribes the source binding's channel
+    // keys, so a store write re-evaluates every reader.
+    | TransformSource.Live(binding, initial) ->
+        let fromInitial () =
+            match initial with
+            | Fuaran.Core.Embedded t -> prepared (box t) (fun () -> Ok t)
+            | Fuaran.Core.Ref name ->
+                Error(sprintf "Transform live source initial snapshot is a non-host-resolved 'ref' ('%s')" name)
+
+        // Phase 1891 — a State slot holding a prepared VERSION (an edited
+        // grid's live table, written whole by a host's edit log) is the input
+        // itself, read before the resolver lifts it to rows for every other
+        // reader of the key: nothing to lift, and no second preparation that
+        // would lose the chunks the version shares with the one before it,
+        // which is what lets a session store refresh the site from the edit
+        // rather than by diffing.
+        let heldVersion =
+            match binding with
+            | Binding.State(key, _) ->
+                match Map.tryFind key sources.State with
+                | Some(:? Fuaran.Compute.Prepared as version) -> Some version
+                | _ -> None
+            | _ -> None
+
+        let inputR =
+            match heldVersion with
+            | Some version -> Ok version
+            | None ->
+                match resolve<obj> sources (objOfJValBinding binding) with
+                // Phase 1085 — an ABSENT resolved value is the initial snapshot,
+                // not an error. `Binding.State(key, None)` on a slot nothing has
+                // seeded or written resolves to the slot's default
+                // representation (`null`) rather than to `NotResolved`, so
+                // without this arm the bare wire spelling
+                // `{"$type":"State","key":k}` — the one this phase makes
+                // decodable, and the one FUARAN106's own remedy tells an author
+                // to write — would refuse where `"defaultValue": []` renders the
+                // empty table. Two spellings of "I read this key and carry no
+                // data of my own" must resolve alike.
+                //
+                // DELIBERATELY the quiet arm, and the choice is FUARAN105's:
+                // that rule's own contract already says a default-less source
+                // "decodes to `TransformLive.emptySource`" and names the
+                // resulting zero as a pre-emit WARNING. Making the resolver loud
+                // instead would put the resolver and the shipped validator in
+                // flat contradiction inside one binary — the exact defect class
+                // 1075 closed when it widened FUARAN105 rather than leaving it.
+                // The loudness lives at authoring time, where it can name the
+                // key and the remedy; a raw `null` at render time can name
+                // neither.
+                | Resolved v when isNull v -> fromInitial ()
+                | Resolved v -> prepared v (fun () -> liveValueToTable v)
+                | NotResolved -> fromInitial ()
+                | Errored m -> Error(sprintf "Transform live source errored: %s" m)
+                | I18nUnresolved k -> Error(sprintf "Transform live source is an unresolved i18n key '%s'" k)
+
+        // Phase 1586 — the live path consults the session-held store before
+        // it evaluates. Phase 1179 shipped the incremental seam behind a
+        // store but wired it only in the server-driven tier, so a
+        // client-rendered tree with a live source still paid the whole
+        // pipeline on every render — the cost 1179 was built to remove.
+        //
+        // TWO CONDITIONS, and the second is the load-bearing one.
+        //
+        // A store must be furnished: absence is not a degraded mode, it is
+        // today's path unchanged, which is what makes the slot additive in
+        // behaviour and not only in shape.
+        //
+        // And the pipeline must be CLOSED. The seam evaluates in the empty
+        // environment (`Incremental.primeOn` / `refreshOn` are `prime` /
+        // `refresh` at `Map.empty`), so handed the pipeline with its scalar
+        // params still standing it would answer a different question from
+        // the one `evalTable` asks. Until Phase 1761 a live source under a
+        // bound param therefore evaluated in full whether a store was
+        // furnished or not; since 1761 the store is handed the CLOSED
+        // pipeline (`closedPipeline` above — every bound scalar substituted
+        // under Core's certified substitution law), which is the same
+        // question asked in the seam's own environment. LIST params resolve
+        // by substitution INTO the pipeline before either, as they always
+        // did.
+        //
+        // The site key is the renderer's ONE rule (Phase 1586) over that
+        // closed pipeline; the store's own key rule is the `site` string it
+        // is handed, exactly as the server-driven tier hands it. With no
+        // params bound the closed pipeline IS the effective one, so every
+        // unparameterised site keeps the key it had.
+        inputR
+        |> Result.map (fun input -> input, Fuaran.UI.BindingWalk.liveSiteKey binding)
 
 /// Fuaran-UI Phase 1534 — evaluate a `Binding.Expr` to ONE cell.
 ///
@@ -1206,16 +1219,16 @@ and private evalExprCell
     (expr: Fuaran.Compute.ColExpr)
     (parameters: TransformParam list)
     : Result<Fuaran.Core.Cell, string> =
-    let pipeline =
-        [ Fuaran.Compute.Derive("__value", expr)
-          Fuaran.Compute.Project [ "__value", "__value" ] ]
+    // Phase 2749 — the pipeline and the frame are `Derivation`'s, the ones the
+    // derivation trace reports for an `Expr`.
+    let pipeline = Fuaran.UI.Derivation.exprPipeline expr
 
     // Phase 1761 — the one-row frame is not a SITE, and is kept out of the
     // store the `Data` arm now consults: a 1x1 evaluation costs less than the
     // key that would name it, and a session's bounded store is for the tables
     // that are worth keeping.
     //
-    // Phase 1890 — the frame is ONE value for the process (`exprUnitFrame`), so
+    // Phase 1890 — the frame is ONE value for the process (`Derivation.exprFrame`), so
     // every `Expr` of a render shares one prepared input, scoped by the
     // render's own sources rather than by this narrowed copy of them.
     let narrowed = { sources with LiveTransforms = None }
@@ -1225,14 +1238,11 @@ and private evalExprCell
             TransformBudget.defaults
             sources
             narrowed
-            (TransformSource.Data(Fuaran.Core.Embedded exprUnitFrame))
+            (TransformSource.Data(Fuaran.Core.Embedded Fuaran.UI.Derivation.exprFrame))
             pipeline
             parameters
     with
-    | Error m ->
-        // `evalTransformFrame`'s messages say "Transform"; an author looking at
-        // an `Expr` binding has no Transform to look for.
-        Error(m.Replace("Transform ", "Expr ").Replace("Transform evaluation", "Expr evaluation"))
+    | Error m -> Error(exprMessage m)
     | Ok result ->
         // The column is there by construction — `derive` writes it and `project`
         // keeps only it — so its ABSENCE is a broken invariant in this function,
@@ -1248,6 +1258,69 @@ and private evalExprCell
                     "Expr evaluation produced no result column (columns present: %s) — a host defect, not a document one"
                     (Fuaran.Core.Table.columnNames result |> String.concat ", ")
             )
+
+/// Phase 2749 — the RESOLVED sources a pipeline binding's derivation trace
+/// reads: the input table and the parameter environment, through the same
+/// parameter resolution and the same source resolution (prepared once per
+/// render) the slot's own evaluation uses, so the trace's last step is the
+/// value the slot shows. An `Expr` reads `Derivation.exprFrame`. A binding
+/// with no pipeline, a param whose source errored and a `Ref` source are
+/// `Error`, worded as the slot's own resolution words them.
+let derivationSources
+    (sources: BindingSources)
+    (binding: Binding<'T>)
+    : Result<Fuaran.UI.Derivation.DerivationSources, string> =
+    let over (source: TransformSource) (parameters: TransformParam list option) =
+        transformParams sources (defaultArg parameters [])
+        |> Result.bind (fun (env, lists, unbound) ->
+            transformInput sources sources source
+            |> Result.map (fun (input, _) ->
+                ({ Input = Fuaran.Compute.DataFrame.toTable input
+                   Env = env
+                   Lists = lists
+                   Unbound = unbound
+                   Resolve = Fuaran.Compute.DataFrame.noResolve }
+                : Fuaran.UI.Derivation.DerivationSources)))
+
+    match binding with
+    | Binding.Transform(source, _, parameters) -> over source parameters
+    | Binding.Expr(_, parameters) ->
+        over (TransformSource.Data(Fuaran.Core.Embedded Fuaran.UI.Derivation.exprFrame)) parameters
+        |> Result.mapError exprMessage
+    | other ->
+        match Fuaran.UI.Derivation.pipelineOf other with
+        | Error refusal -> Error(Fuaran.UI.Derivation.DerivationRefusal.describe refusal)
+        | Ok _ -> Error "a pipeline binding reached the non-pipeline arm"
+
+/// Phase 2749 — how a binding's value was computed, as this resolver resolves
+/// it: `Derivation.trace` over `derivationSources`. `rows` asks for the table
+/// after each step, at most that many rows of it (`None`: the schema half alone,
+/// evaluating nothing). The evaluation is held to `TransformBudget.defaults`,
+/// exactly as the slot's own is; a trace over the budget is `Unresolved` with
+/// the budget's refusal.
+let derivationTrace
+    (rows: int option)
+    (sources: BindingSources)
+    (binding: Binding<'T>)
+    : Result<Fuaran.UI.Derivation.DerivationTrace, Fuaran.UI.Derivation.DerivationRefusal> =
+    match Fuaran.UI.Derivation.pipelineOf binding with
+    | Error refusal -> Error refusal
+    | Ok(_, pipeline) ->
+        match derivationSources sources binding with
+        | Error m -> Error(Fuaran.UI.Derivation.DerivationRefusal.Unresolved m)
+        | Ok resolved ->
+            let budget =
+                match rows with
+                | None -> Ok()
+                | Some _ ->
+                    TransformBudget.check
+                        TransformBudget.defaults
+                        (Fuaran.Core.Table.rowCount resolved.Input)
+                        (List.length (Fuaran.UI.Derivation.effectivePipeline resolved.Lists resolved.Unbound pipeline))
+
+            match budget with
+            | Error refusal -> Error(Fuaran.UI.Derivation.DerivationRefusal.Unresolved refusal)
+            | Ok() -> Fuaran.UI.Derivation.trace rows resolved binding
 
 /// Phase 818 — resolve a `Binding<JVal>` (a `SetState.valueFrom` source) against
 /// the stores at `obj` through the store-reading erasure, lifting the resolved

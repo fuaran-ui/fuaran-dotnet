@@ -1429,7 +1429,7 @@ Only `Ref.Id` + `encoding` cross the wire – the blob and the `onRead` continua
 
 ## The runtime-introspection AI tools (§4i)
 
-You can call these four tools to inspect what the renderer did with your tree. Source: [`src/Fuaran.UI.AiTools/Tools.fs:265-381`](../src/Fuaran.UI.AiTools/Tools.fs).
+You can call these five tools to inspect what the renderer did with your tree. Source: [`src/Fuaran.UI.AiTools/Tools.fs:265-381`](../src/Fuaran.UI.AiTools/Tools.fs).
 
 ### `fuaran.getNodeState`
 
@@ -1479,6 +1479,42 @@ Returns a recursive `GeometryTree` rooted at the addressed node – `(X, Y, Widt
 ```
 
 Returns the runtime-error stream filtered to entries recorded after turn 3. Use this to diagnose "I emitted a tree but nothing rendered" failures – the error sink captures decoder failures, unwired actions, binding resolution exceptions, etc.
+
+### `fuaran.getDerivationTrace`
+
+A fifth tool, beside `getBindingValue` and over the same slots. Where `getBindingValue` says what a slot resolved
+to, this says how, for a slot bound through a pipeline: a `Transform` or an `Expr`.
+
+```json
+{
+  "tool": "fuaran.getDerivationTrace",
+  "arguments": { "id": "metric-revenue", "slot": "Value", "rows": 5 }
+}
+```
+
+The answer has one entry per step of the pipeline as you wrote it. Each entry gives the step's `verb`, its canonical
+wire form (`step`), its `status`, and its `schema`. With `rows`, it also gives the `table` after that step: its
+`rowCount` and at most `rows` of its rows. Omit `rows` to get the schema alone, which evaluates nothing. The
+`input` entry describes the table the first step reads. The last step's table is the value the slot shows. Read it
+like this:
+
+- **`status: "pruned"`** marks a `filter` that reads a param no source has bound, such as an unset filter chip.
+  It does not run, so it constrains nothing, and `unbound` names the param. This is the usual reason a figure is
+  the whole total.
+- **`schema.closed: false`** means the static walk cannot name every column after this step. `reason` gives the
+  walk's own explanation, for example a `Ref` source with no declared schema. A column absent from an open schema
+  may still exist.
+- **`refusal`** in place of `table` is the evaluator's refusal at that step. Every later step says it was not
+  evaluated.
+
+A slot whose binding carries no pipeline is refused with the code `no-pipeline`. The message says where its value
+comes from instead, such as a state key or a host query; read that value with `getBindingValue`. An optional slot
+that holds no binding is refused with `absent`, and a pipeline whose sources did not resolve with `unresolved`.
+
+A host can show the same trace to the people reading the interface. Under its render policy (`DerivationTrace`,
+off by default), a `Metric` or a data-bound `DataGrid` bound through a pipeline gets a "How this was computed"
+disclosure. It is host chrome, so you neither emit it nor depend on it, and with the policy off the tree renders
+exactly as it does without it.
 
 ### Text provenance, and what `untrusted` obliges you to do
 
