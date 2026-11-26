@@ -185,6 +185,14 @@ let all: Vector list =
           "The key k is declared 1 by the root's envelope fallback and 2 by its own state.onEmpty alternative (FUARAN106). The fallback comes first in document order, so the finding is at the alternative, $.state.onEmpty."
           """{"fallback":{"id":"a1","kind":{"$type":"Metric","label":"a1","value":{"$type":"State","defaultValue":1,"key":"k"}}},"id":"root","kind":{"$type":"Box","children":[{"id":"c","kind":{"$type":"Markdown","text":"t"}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"},"state":{"onEmpty":{"id":"a2","kind":{"$type":"Metric","label":"a2","value":{"$type":"State","defaultValue":2,"key":"k"}}}}}"""
       v
+          "validate-state-seed-in-a-child-then-in-the-own-visible"
+          "The key k is declared true by the visible predicate of the root's child and false by the root's own visible (FUARAN106). Document order puts a node's kind before its visible, so the child's declaration is the first and the finding is at the root, $."
+          """{"id":"root","kind":{"$type":"Box","children":[{"id":"c","kind":{"$type":"Markdown","text":"t"},"visible":{"$type":"State","defaultValue":true,"key":"k"}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"},"visible":{"$type":"State","defaultValue":false,"key":"k"}}"""
+      v
+          "validate-state-seed-in-a-child-then-in-the-own-tooltip"
+          "The key k is declared \"a\" by the tooltip of the root's child and \"b\" by the root's own tooltip (FUARAN106). Document order puts a node's kind before its tooltip, so the child's declaration is the first and the finding is at the root, $."
+          """{"id":"root","kind":{"$type":"Box","children":[{"id":"c","kind":{"$type":"Markdown","text":"t"},"tooltip":{"$type":"Bound","binding":{"$type":"State","defaultValue":"a","key":"k"}}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"},"tooltip":{"$type":"Bound","binding":{"$type":"State","defaultValue":"b","key":"k"}}}"""
+      v
           "validate-inline-table-in-a-child-then-in-the-own-state-alternative"
           "The root's child and the root's own state.onEmpty alternative carry the same inline table (FUARAN107). Document order puts a node's kind before its state, so the copy is the alternative, $.state.onEmpty."
           """{"id":"root","kind":{"$type":"Box","children":[{"id":"g1","kind":{"$type":"DataGrid","columns":[{"field":"a","kind":{"$type":"Text"},"label":"a"}],"rowKeyField":"a","source":{"$type":"Static","value":[{"a":1},{"a":2}]}}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"},"state":{"onEmpty":{"id":"g2","kind":{"$type":"DataGrid","columns":[{"field":"a","kind":{"$type":"Text"},"label":"a"}],"rowKeyField":"a","source":{"$type":"Static","value":[{"a":1},{"a":2}]}}}}}"""
