@@ -902,7 +902,9 @@ let rec private usesOfBindingIn<'T> (referencedOnly: bool) (binding: Binding<'T>
                   SourceUses = sourceUses
                   SourceReads = sourceReads }
 
-        (site :: sourceUse) @ paramUses referencedOnly referenced parameters
+        // The site heads the list (above); after it the uses follow document
+        // order, `params` before `source` (Phase 2381).
+        site :: (paramUses referencedOnly referenced parameters @ sourceUse)
     // Fuaran-UI Phase 1534 — the scalar expression. It has no source slot at
     // all, so its whole reactive edge IS its params: the same
     // `TransformParam` / `TransformParamFilter` uses `Transform` emits, over
@@ -2081,8 +2083,8 @@ let private walkTree<'Msg>
         | _ -> rowFeedUses referencedOnly binding
 
     // Phase 2054 — the slot readers below fold each slot's usages straight into
-    // the accumulators, one `record` per slot, in the order the slots were
-    // always read. Recording `a` then `b` leaves every accumulator exactly as
+    // the accumulators, one `record` per slot, in document order (Phase 2381,
+    // see `walkNode`). Recording `a` then `b` leaves every accumulator exactly as
     // recording `a @ b` did — `record` appends per accumulator, in order, and no
     // two slots of one node interleave within one accumulator — so the walk
     // builds no per-node list of usages to concatenate and then fold.
@@ -2134,33 +2136,20 @@ let private walkTree<'Msg>
             | NodeKind.FragmentDecl spec -> fragments.Add(spec.Name, spec.Body)
             | _ -> ()
 
+        // Phase 2381 — EVERY member is recorded in the canonical document's
+        // member order (WIRE_FORMAT §27.8.2: members sorted by name), here and in
+        // each kind arm below: on the node `accessibility`, `fallback`, `kind`,
+        // `state`, `tooltip`, `visible`; inside a kind or a record, its members
+        // by name, a list's items in index order. So every list this walk returns
+        // is in document order, and "the first declaration" of a repetition (the
+        // seed that takes effect, the copy a later one repeats) is the
+        // document's first. `WalkConformanceTests` pins it against the canonical
+        // bytes.
         match n.Accessibility with
         | Some a ->
-            recordBindingOpt inUses readerId a.Label
             recordBindingOpt inUses readerId a.Hidden
+            recordBindingOpt inUses readerId a.Label
         | None -> ()
-
-        // Phase 1112 — the node-level tooltip trait. A `TextSource.Bound` hint
-        // is a real binding read: the renderer resolves it against the same
-        // sources every other bound text is resolved against, so leaving it out
-        // of the walk would make a state key that ONLY a tooltip reads look
-        // unread — and the unwired-producer diagnostics quantify over exactly
-        // that.
-        record inUses readerId (usesOfTextOpt referencedOnly n.Tooltip)
-
-        // Fuaran-UI Phase 1535 — the node-level `visible` predicate, for the same
-        // reason the tooltip is walked: the renderer resolves it against the same
-        // sources, so a state key that ONLY a visibility predicate reads would
-        // otherwise look unread. It is recorded as a READ and never as a write —
-        // deciding whether a node appears writes nothing.
-        record inUses readerId (usesOfBindingOpt referencedOnly n.Visible)
-
-        match n.Visible with
-        | Some(Binding.State(key, None)) ->
-            let fact = readerId, key
-            visibleStateSources.Add fact
-            hold fact
-        | _ -> ()
 
         // Phase 1812 — the author-declared `fallback` is a wire-encoded node a
         // BEHIND reader renders in place of this one (WIRE_FORMAT §3.1). Its
@@ -2180,14 +2169,12 @@ let private walkTree<'Msg>
         match n.Kind with
         // ── Layout ──
         | NodeKind.Box s ->
-            recordTextOpt inUses readerId s.Heading
-
             walkAll inUses s.Children
+            recordTextOpt inUses readerId s.Heading
         | NodeKind.SplitPanel s -> walkAll inUses s.Children
         | NodeKind.SummaryList s ->
-            recordTextOpt inUses readerId s.Heading
-
             walkAll inUses s.Children
+            recordTextOpt inUses readerId s.Heading
         | NodeKind.Stepper s ->
             // Phase 1801 — NOT a write-back position, on EITHER channel.
             // The reference renderer resolves `ActiveStep` to mark the
@@ -2203,74 +2190,71 @@ let private walkTree<'Msg>
 
             walkAll inUses s.Children
         | NodeKind.Disclosure s ->
-            noteWriteBackOf readerId s.Open
-            noteOpaqueIf s.OnToggle.IsSome
-            recordText inUses readerId s.Heading
-            recordBinding inUses readerId s.Open
-
             walkAll inUses s.Children
+            recordText inUses readerId s.Heading
+            noteOpaqueIf s.OnToggle.IsSome
+            noteWriteBackOf readerId s.Open
+            recordBinding inUses readerId s.Open
         | NodeKind.Tabs s ->
             noteWriteBackOf readerId s.ActiveIndex
-            s.ActiveTag |> Option.iter (noteWriteBackOf readerId)
-            noteOpaqueIf (s.OnSelect.IsSome || s.OnSelectTag.IsSome)
             recordBinding inUses readerId s.ActiveIndex
+            s.ActiveTag |> Option.iter (noteWriteBackOf readerId)
             recordBindingOpt inUses readerId s.ActiveTag
+            walkAll inUses s.Children
+            noteOpaqueIf (s.OnSelect.IsSome || s.OnSelectTag.IsSome)
 
             match s.TabHeaders with
             | Some headers ->
                 for h in headers do
-                    recordText inUses readerId h.Label
                     recordBindingOpt inUses readerId h.Disabled
+                    recordText inUses readerId h.Label
             | None -> ()
-
-            walkAll inUses s.Children
         | NodeKind.Modal s ->
+            walkAll inUses s.Children
+            recordTextOpt inUses readerId s.Heading
             // Modal's OnDismiss is the wire-survivable Action slot (Phase 428).
             s.OnDismiss |> Option.iter (recordCalls inUses readerId)
             // A dismissable modal's close gesture writes its own `open` slot.
             noteWriteBackOf readerId s.Open
-            recordTextOpt inUses readerId s.Heading
             recordBinding inUses readerId s.Open
-
-            walkAll inUses s.Children
         | NodeKind.ScrollArea s -> walkAll inUses s.Children
         // ── Display ──
         | NodeKind.Heading h -> recordText inUses readerId h.Text
         | NodeKind.Text t -> recordText inUses readerId t.Text
         | NodeKind.Markdown m ->
-            recordText inUses readerId m.Text
-
             for c in m.Citations do
                 c.Label |> Option.iter (recordText inUses readerId)
+
+            recordText inUses readerId m.Text
         | NodeKind.Metric k ->
-            recordText inUses readerId k.Label
-            recordBinding inUses readerId k.Value
-            recordBindingOpt inUses readerId k.Trend
             // Phase 2472 - each further comparison reads a label and a value.
             for c in k.Comparisons do
                 recordText inUses readerId c.Label
                 recordBinding inUses readerId c.Value
 
+            recordText inUses readerId k.Label
             recordTextOpt inUses readerId k.Subtext
+            recordBindingOpt inUses readerId k.Trend
+            recordBinding inUses readerId k.Value
         | NodeKind.Badge b -> recordText inUses readerId b.Label
         | NodeKind.Sparkline s -> recordBinding inUses readerId s.Source
         | NodeKind.Callout c ->
-            recordTextOpt inUses readerId c.Heading
             recordText inUses readerId c.Body
+            recordTextOpt inUses readerId c.Heading
         | NodeKind.Progress p ->
+            recordTextOpt inUses readerId p.Caveat
             recordBinding inUses readerId p.Fraction
             recordTextOpt inUses readerId p.Label
-            recordTextOpt inUses readerId p.Caveat
         | NodeKind.Skeleton _ -> ()
         | NodeKind.Icon _ -> ()
         | NodeKind.LabelValueRow r ->
+            recordTextOpt inUses readerId r.Help
             recordText inUses readerId r.Label
             recordBinding inUses readerId r.Value
-            recordTextOpt inUses readerId r.Help
         | NodeKind.Fact fa ->
+            recordTextOpt inUses readerId fa.Help
             recordText inUses readerId fa.Label
             recordText inUses readerId fa.Value
-            recordTextOpt inUses readerId fa.Help
         | NodeKind.Link l ->
             recordBinding inUses readerId l.Href
             recordText inUses readerId l.Label
@@ -2286,9 +2270,9 @@ let private walkTree<'Msg>
         // header predicted for a new FIELD on an existing spec. The census
         // rows added with this fix are what make reverting either line red.
         | NodeKind.Image i ->
-            recordBinding inUses readerId i.Src
             recordText inUses readerId i.Alt
             recordTextOpt inUses readerId i.Caption
+            recordBinding inUses readerId i.Src
 
             for e in i.SrcSet do
                 recordBinding inUses readerId e.Src
@@ -2300,18 +2284,18 @@ let private walkTree<'Msg>
         // ignored; `Audio` genuinely contributes nothing beyond the shared
         // pair.
         | NodeKind.Media m ->
-            recordBinding inUses readerId m.Src
-            recordText inUses readerId m.Label
-
             match m.Kind with
             | MediaKind.Video(_, poster) -> recordBindingOpt inUses readerId poster
             | MediaKind.Audio -> ()
 
+            recordText inUses readerId m.Label
+            recordBinding inUses readerId m.Src
+
             // Phase 2069 — the slots the deleted reactive walk alone collected
             // (Phase 1110): a track's `Src` and `Label`, and the transcript.
             for t in m.Tracks do
-                recordBinding inUses readerId t.Src
                 recordText inUses readerId t.Label
+                recordBinding inUses readerId t.Src
 
             recordTextOpt inUses readerId m.Transcript
         // Phase 1111 — two reactive slots, both on the spec: the document
@@ -2332,14 +2316,15 @@ let private walkTree<'Msg>
             // `sortStateKey` shape: a row toggle writes one and a selection the
             // other, and the tree re-reads both (Phase 1120).
             t.ExpandedStateKey |> Option.iter (noteStateRead inUses)
-            t.SelectionStateKey |> Option.iter (noteStateRead inUses)
 
+            // An item's `children` precede its `label` in the document.
             let rec labels (items: TreeItem list) =
                 for i in items do
-                    recordText inUses readerId i.Label
                     labels i.Children
+                    recordText inUses readerId i.Label
 
             labels t.Items
+            t.SelectionStateKey |> Option.iter (noteStateRead inUses)
         | NodeKind.Toast t ->
             // Phase 1801 — NOT a write-back position, on EITHER channel; see
             // the `Stepper` arm above for the shape of the argument. A
@@ -2356,9 +2341,9 @@ let private walkTree<'Msg>
             // through Group nesting.
             let style (st: DrawStyle) =
                 recordBindingOpt inUses readerId st.Fill
+                recordBindingOpt inUses readerId st.Opacity
                 recordBindingOpt inUses readerId st.Stroke
                 recordBindingOpt inUses readerId st.StrokeWidth
-                recordBindingOpt inUses readerId st.Opacity
 
             let rec shape (sh: Shape) =
                 match sh with
@@ -2373,46 +2358,47 @@ let private walkTree<'Msg>
                 | Shape.Circle(_, _, _, st) -> style st
                 | Shape.Ellipse(_, _, _, _, st) -> style st
                 | Shape.Label(_, _, label, st) ->
-                    recordText inUses readerId label
                     style st
+                    recordText inUses readerId label
 
-            style d.Style
-            d.Shapes |> List.iter shape
-            recordTextOpt inUses readerId d.Title
             recordTextOpt inUses readerId d.Description
+            d.Shapes |> List.iter shape
+            style d.Style
+            recordTextOpt inUses readerId d.Title
         // ── Input ──
         | NodeKind.Button b ->
+            recordBindingOpt inUses readerId b.Disabled
+            recordText inUses readerId b.Label
             // OnClick is a wire-survivable Action slot (Phase 428).
             recordCalls inUses readerId b.OnClick
-            recordText inUses readerId b.Label
             recordTextOpt inUses readerId b.Tooltip
-            recordBindingOpt inUses readerId b.Disabled
         | NodeKind.FileUpload fu ->
-            noteOpaqueIf fu.OnSelect.IsSome
-            recordText inUses readerId fu.Label
             recordBindingOpt inUses readerId fu.Disabled
+            recordText inUses readerId fu.Label
+            noteOpaqueIf fu.OnSelect.IsSome
         | NodeKind.Select s ->
-            s.Value |> Option.iter (noteWriteBackOf readerId)
-            s.Values |> Option.iter (noteWriteBackOf readerId)
-            noteOpaqueIf (s.OnChange.IsSome || s.OnChangeMulti.IsSome)
+            recordBindingOpt inUses readerId s.Disabled
             recordText inUses readerId s.Label
+            noteOpaqueIf (s.OnChange.IsSome || s.OnChangeMulti.IsSome)
+            recordTextOpt inUses readerId s.Placeholder
             recordBinding inUses readerId s.Source
             record inUses readerId (optionLabelUses referencedOnly s.Source)
+            s.Value |> Option.iter (noteWriteBackOf readerId)
             recordBindingOpt inUses readerId s.Value
+            s.Values |> Option.iter (noteWriteBackOf readerId)
             recordBindingOpt inUses readerId s.Values
-            recordTextOpt inUses readerId s.Placeholder
-            recordBindingOpt inUses readerId s.Disabled
         | NodeKind.Form f ->
-            // OnSubmit is a wire-survivable Action slot (Phase 428).
-            recordCalls inUses readerId f.OnSubmit
-            recordText inUses readerId f.SubmitLabel
             recordBindingOpt inUses readerId f.Disabled
 
             for field in f.Fields do
-                recordFormFieldWrites readerId false (Some field.Id) field.Kind
-                recordText inUses readerId field.Label
                 recordTextOpt inUses readerId field.Help
+                recordFormFieldWrites readerId false (Some field.Id) field.Kind
                 record inUses readerId (usesOfFormFieldKind referencedOnly (Some(BindingUse.State field.Id)) field.Kind)
+                recordText inUses readerId field.Label
+
+            // OnSubmit is a wire-survivable Action slot (Phase 428).
+            recordCalls inUses readerId f.OnSubmit
+            recordText inUses readerId f.SubmitLabel
         | NodeKind.Filters spec ->
             if analysis && inUses then
                 for fs in spec.Items do
@@ -2424,8 +2410,8 @@ let private walkTree<'Msg>
                 // No implicit key: an absent value slot on a chip
                 // auto-binds to the FILTER store, not the State store.
                 recordFormFieldWrites readerId true None fs.Kind
-                recordText inUses readerId fs.Label
                 record inUses readerId (usesOfFormFieldKind referencedOnly (Some(BindingUse.Filter fs.Name)) fs.Kind)
+                recordText inUses readerId fs.Label
         // ── Visualisation ──
         | NodeKind.DataGrid g ->
             // Phase 932 — `sortStateKey` / `pageStateKey` are plain STRINGS the
@@ -2480,22 +2466,22 @@ let private walkTree<'Msg>
             // column: the column whose value identifies a row, which is
             // exactly what a live-Transform store's `identityColumn`
             // wants and what nothing in a rendered tree previously said.
-            record inUses readerId (tagSourceSite "source" g.RowKeyField g.Source (rowFeed g.Source))
             // Phase 1892 — the declared total is a scalar binding the
             // renderer resolves, so it is a read like any other.
             recordBindingOpt inUses readerId g.RowTotal
+            record inUses readerId (tagSourceSite "source" g.RowKeyField g.Source (rowFeed g.Source))
 
             match g.StaticRows with
             | Some sr ->
+                for c in sr.Citations do
+                    c.Label |> Option.iter (recordText inUses readerId)
+
                 for header in sr.Headers do
                     recordText inUses readerId header
 
                 for row in sr.Rows do
                     for cell in row do
                         recordText inUses readerId cell
-
-                for c in sr.Citations do
-                    c.Label |> Option.iter (recordText inUses readerId)
             | None -> ()
         // Phase 1615 — a chart and a map declare no row identity, so the
         // slot is named and the identity column is honestly absent.
@@ -2532,14 +2518,19 @@ let private walkTree<'Msg>
         // in `PreEmitValidateTests`. The case children + default are walked so
         // their own bindings are captured.
         | NodeKind.Switch spec ->
-            recordBinding inUses readerId spec.On
-
+            // Document order: each case's `child`, then its `when`; the
+            // `default`; the selector `on`.
+            //
             // Fuaran-UI Phase 1535 — a PREDICATE case's `when` binding is a
             // read on exactly the same footing as the selector: it decides
             // which branch renders, so a state key only a `when` reads is
             // read.
             for c in spec.Cases do
+                walk inUses c.Child
                 recordBindingOpt inUses readerId c.When
+
+            walk inUses spec.Default
+            recordBinding inUses readerId spec.On
 
             // The selector, recorded EXPLICITLY for FUARAN103: a Switch's
             // accessibility slots are State-bindable too, so a reader-tagged
@@ -2584,11 +2575,6 @@ let private walkTree<'Msg>
             match spec.AutoAdvanceMs, spec.On with
             | Some _, Binding.State(key, _) when List.length spec.Cases >= 2 -> stateWriteKeys.Add key |> ignore
             | _ -> ()
-
-            for c in spec.Cases do
-                walk inUses c.Child
-
-            walk inUses spec.Default
         | NodeKind.FragmentDecl spec ->
             if outsideFragmentScope = 0 then
                 fragmentDecls.Add(spec.Name, spec.Body)
@@ -2634,12 +2620,8 @@ let private walkTree<'Msg>
 
         // A `StateBehaviour` branch is a wire-encoded child node rendered in
         // place of the body — a real reader the walk never descended into.
-        // Walked AFTER the kind (Phase 2381): the walk visits a node's envelope
-        // `fallback`, then its kind, then its state alternatives, which is the
-        // canonical document's member order (WIRE_FORMAT §27.8.2), so every
-        // collection here is in document order and "the first declaration" —
-        // the seed that takes effect, the table a later copy repeats — is the
-        // document's first.
+        // Walked after the kind and before the tooltip (Phase 2381, document
+        // order).
         match n.State with
         | Some sb ->
             match sb.OnEmpty with
@@ -2650,6 +2632,28 @@ let private walkTree<'Msg>
             | Some branch -> walk inUses branch
             | None -> ()
         | None -> ()
+
+        // Phase 1112 — the node-level tooltip trait. A `TextSource.Bound` hint
+        // is a real binding read: the renderer resolves it against the same
+        // sources every other bound text is resolved against, so leaving it out
+        // of the walk would make a state key that ONLY a tooltip reads look
+        // unread — and the unwired-producer diagnostics quantify over exactly
+        // that.
+        record inUses readerId (usesOfTextOpt referencedOnly n.Tooltip)
+
+        // Fuaran-UI Phase 1535 — the node-level `visible` predicate, for the same
+        // reason the tooltip is walked: the renderer resolves it against the same
+        // sources, so a state key that ONLY a visibility predicate reads would
+        // otherwise look unread. It is recorded as a READ and never as a write —
+        // deciding whether a node appears writes nothing.
+        record inUses readerId (usesOfBindingOpt referencedOnly n.Visible)
+
+        match n.Visible with
+        | Some(Binding.State(key, None)) ->
+            let fact = readerId, key
+            visibleStateSources.Add fact
+            hold fact
+        | _ -> ()
 
     and walkAll (inUses: bool) (children: Node<'Msg> list) =
         for child in children do
