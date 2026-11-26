@@ -7897,14 +7897,29 @@ rides is already of the breaking class (Phase 2749), so the number does not move
   (FUARAN107) was one per pair of equal tables, so three copies were three findings; it is now one at each later
   copy, naming the first copy of it, so three copies are two. Both are now located at the LATER node
   (`secondNodeId`) where they were at the first. The fields of 106 and 107 keep their meaning.
-- **The binding walk visits a node's state alternatives after its kind.** `BindingWalk` visited `state.onEmpty` and
-  `state.onLoading` before the node's envelope `fallback` and its kind; it now visits the fallback, then the kind, then
-  the state alternatives, the canonical document's member order (§27.8.2). So every list `BindingWalk.collect` and
-  `collectFacts` return is in document order, and "the first" of a repetition is the document's first: FUARAN106 and
-  FUARAN107 judge a node's child or fallback before its own state alternative, where they took the alternative first.
-  The renderers' seeding pass reads the same walk, so where a node's child or fallback and its own state alternative
-  declare different seeds for one key (a FUARAN106 tree), the child's or the fallback's now seeds it, where the
-  alternative's did. A tree with no state alternative is unchanged.
+- **The binding walk records every member in document order.** `BindingWalk` recorded a node's `accessibility`
+  (its `label` before its `hidden`), its `tooltip` and its `visible`, then its `state` alternatives, then its
+  envelope `fallback`, then its kind, and recorded most kinds' members in an order of its own (a `Box`'s `heading`
+  before its `children`, a `Metric`'s `value` before its `comparisons`, a `Switch`'s `on` before its cases). It now
+  records each member where the canonical document holds it (§27.8.2, members by name): on the node `accessibility`,
+  `fallback`, `kind`, `state`, `tooltip`, `visible`; inside a kind or a record its members by name, a list in index
+  order; inside a `Transform` binding its `params` before its `source`. So every list `BindingWalk.collect` and
+  `collectFacts` return is in document order, and "the first" of a repetition is the document's first, with one
+  exception: inside ONE action value the nested actions follow the generated action fold, so a `Confirm`'s `prompt`
+  is recorded before its continuations and a `Choose`'s `whenTrue` before its `whenFalse`. FUARAN106 and FUARAN107
+  judge the document's first declaration as the one that takes effect, and sit on the later one.
+  The renderers' seeding pass reads the same walk, so on a FUARAN106 tree the document's first declaration now seeds
+  the key, for state seeds and for `Selection` defaults alike. Measured with `BindingWalk.stateSeeds`,
+  `selectionSeeds` and `renderFacts`, the old walk (this phase's commit before the change, whose order is 0.107.0's)
+  against the new: a child declaring 1 and the node's own `state.onEmpty` declaring 2 seeds 1, where it seeded 2,
+  and so does a `Selection` default declared the same way; a fallback declaring 1 against the node's own
+  `state.onEmpty` declaring 2 seeds 1, where it seeded 2; a node's own `visible` declaring true (or its `tooltip`
+  declaring "x") against its child declaring 2 seeds 2, where it seeded true ("x"), and so for a fallback's own
+  `visible` against the fallback's child; a node's own `state.onEmpty` declaring 1 against its own `visible`
+  declaring false seeds 1, where it seeded false; a `Box`
+  `heading` declaring "h" against its child declaring 1 seeds 1, where it seeded "h"; a `Metric` `value` declaring
+  2 against its `comparisons` entry declaring 1 seeds 1, where it seeded 2, for a state seed and for a `Selection`
+  default. A tree that declares each key once is unchanged.
 - **`PreEmitValidate.validateWithPaths node`** (new) returns `validate`'s defects, in its order, each beside the
   JSONPath of the node occurrence that raised it, taken from the walks themselves: two nodes sharing an id are two
   occurrences, and a defect raised by the second is located at the second. A finding judged across the whole tree is
@@ -7925,8 +7940,7 @@ or compares only the code needs nothing. A consumer that COUNTS defects, or asse
 with one `DuplicateNodeId` for an id held three or more times, sees `count − 1` entries; one that tests for the case's
 presence (`List.exists`) needs nothing. A consumer that matches `DuplicateWriteBackKey(key, writers)` matches
 `DuplicateWriteBackKey(key, _, _, writers)`, and one that reads a FUARAN106 or FUARAN107 finding's node reads the
-later declaration or copy. A consumer that reads `BindingWalk.collect`'s lists in order sees a node's state
-alternatives' facts after its kind's.
+later declaration or copy. A consumer that reads `BindingWalk.collect`'s lists in order sees them in document order.
 
 **Certified by** the reject vector `reject-transform-param-from-missing-name` (a full expected path, because a prefix
 that stops at `params` cannot see the spelling below it) and its row in `tests/decoder-parity/reject.tsv`; and by the
@@ -7938,9 +7952,13 @@ rest), by its cross-tree repetition and location vectors (`validate-write-back-k
 `validate-state-seed-declared-three-times`, `validate-inline-table-repeated-three-times`, each `x, y` and repeated-id
 variant, `validate-cross-tree-finding-on-the-second-of-two-nodes-sharing-an-id`, and the four document-order vectors
 `validate-state-seed-in-a-child-then-in-the-own-state-alternative`,
-`validate-state-seed-in-the-fallback-then-in-the-own-state-alternative` and their two `validate-inline-table-` twins),
-read back by `src/Fuaran.UI.JsonDecode.Tests/EmittedFamilyTests.fs`; and the seeding order by "the document's first
-declaration of a key is the seed that takes effect" in `src/Fuaran.UI.Tests/RenderCostTests.fs`.
+`validate-state-seed-in-the-fallback-then-in-the-own-state-alternative`, their two `validate-inline-table-` twins,
+`validate-state-seed-in-a-child-then-in-the-own-visible` and `validate-state-seed-in-a-child-then-in-the-own-tooltip`),
+read back by `src/Fuaran.UI.JsonDecode.Tests/EmittedFamilyTests.fs`; the seeding order by "the document's first
+declaration of a key is the seed that takes effect" in `src/Fuaran.UI.Tests/RenderCostTests.fs` and by the four
+shapes of "a node's tooltip and visible come after its kind and state" in `src/Fuaran.UI.Tests/WalkConformanceTests.fs`;
+and the walk's member order by "the walk records every member in document order" in the same file, which gives every
+member the walk records its own key and compares the walk's lists with the canonical bytes.
 
 ### Phase 2749 — a derivation trace shows how a bound number was computed (breaking, for `RenderPolicy`)
 
