@@ -7877,6 +7877,11 @@ bug fix with no surface change, which is no higher class than the draft it rides
   held three times is two findings where it was one. No other rule's verdict moves, and a tree with no repeated id is
   byte-identical in every report.
 
+- **`Fuaran.UI.Renderer.Web`'s embedded browser bundle is re-synced** (`content/fuaran-renderer.js` and its
+  fingerprint). It is the TypeScript host's standalone renderer, which carries that host's moves in the same
+  phase: the `params[i].from` location, one duplicate-id finding per later occurrence, and a pre-emit walk that
+  now reaches the node envelope. No vocabulary or renderer version moves (`fv1:437e9eb14e029a60`, 0.29.2).
+
 **What a consumer must do.** A consumer that branches on `DecodeError.Path` and matched the `params.<name>.from` form
 matches `params[<i>].from` instead, where `<i>` is the entry's position in the array. A consumer that shows the path
 or compares only the code needs nothing. A consumer that COUNTS defects, or asserts a validate result equal to a list
