@@ -190,8 +190,11 @@ type PreEmitDefect =
     /// or an explicit `State` key reusing another field's id, silently alias:
     /// typing in one field overwrites the other's captured value). READERS of
     /// the key are the feature and are not flagged — only two WRITERS collide.
-    /// Carries the state key and the colliding (nodeId, fieldId) pairs.
-    | DuplicateWriteBackKey of stateKey: string * writers: (string * string) list
+    /// One finding at EACH writer after the first (WIRE_FORMAT §27.8.2): the
+    /// count is the count of fields to re-key. Carries the state key, the
+    /// (nodeId, fieldId) of the writer it is raised at, and every colliding
+    /// (nodeId, fieldId) pair in walk order.
+    | DuplicateWriteBackKey of stateKey: string * nodeId: string * fieldId: string * writers: (string * string) list
     /// **FUARAN068 (Error)**. A REGISTERED custom component's prop bag
     /// violates its declared `PropSchema` — a required prop is missing, or a
     /// present prop's shape doesn't match its declared `PropType`. Carries
@@ -798,7 +801,10 @@ type PreEmitDefect =
     /// builds one default twice, where the report is at worst premature
     /// rather than wrong.
     ///
-    /// Carries the key and the two declaring node ids, in walk order.
+    /// One finding at EACH later declaration that disagrees with the first
+    /// (WIRE_FORMAT §27.8.2): each is a declaration the renderer discards, and
+    /// one that agrees with the first changes nothing. Carries the key, the
+    /// first declaring node id and the id of the later one it is raised at.
     | ConflictingStateSeeds of key: string * firstNodeId: string * secondNodeId: string
     /// **FUARAN107 (Warning)**. Two nodes carry STRUCTURALLY IDENTICAL inline
     /// tables (Phase 1075) — the two-inline-copies lint the shared-data-source
@@ -834,8 +840,10 @@ type PreEmitDefect =
     /// unpopulated Transform decodes to, and pairing them would fire on trees
     /// carrying no inline data at all.
     ///
-    /// Carries the two node ids in walk order, and the state key of the
-    /// seedable copy when one of them has one.
+    /// One finding at EACH later copy (WIRE_FORMAT §27.8.2), naming the first
+    /// earlier copy of the same table: never one per pair. Carries the earlier
+    /// node id, the id of the later copy it is raised at, and the state key of
+    /// the seedable copy when one of them has one.
     | DuplicateInlineTable of firstNodeId: string * secondNodeId: string * seedKey: string option
     /// **FUARAN099 (Error)**. A `FieldRule.compare` reads a `State` key that no
     /// field in the enclosing form owns and nothing in the tree writes (Phase
@@ -3396,9 +3404,11 @@ let private describeArgs (d: PreEmitDefect) : string * (string * string) list =
         "DanglingSelection", [ "readerNodeId", readerNodeId; "target", target ]
     | PreEmitDefect.SelectionOverNonProducer(readerNodeId, target) ->
         "SelectionOverNonProducer", [ "readerNodeId", readerNodeId; "target", target ]
-    | PreEmitDefect.DuplicateWriteBackKey(stateKey, writers) ->
+    | PreEmitDefect.DuplicateWriteBackKey(stateKey, nodeId, fieldId, writers) ->
         "DuplicateWriteBackKey",
         [ "stateKey", stateKey
+          "nodeId", nodeId
+          "fieldId", fieldId
           "writerCount", string (List.length writers)
           "writers",
           (writers
@@ -4306,7 +4316,18 @@ type private WalkAccumulators =
         /// entry naming the reading grid's own key is that re-run edge and not a
         /// filter reference; judged post-walk beside the filter declarations.
         GridOwnStateKeys: System.Collections.Generic.HashSet<string * string>
+        /// Each collected fact -> the node object visited when it was collected,
+        /// so a cross-tree finding is located at the occurrence that raised it.
+        Holders: BindingWalk.FactHolders
     }
+
+/// Collect `fact` into `facts`, held by the node `n` being visited.
+let private holdIn (acc: WalkAccumulators) (facts: ResizeArray<'Fact>) (n: Node<'Msg>) (fact: 'Fact) : unit =
+    facts.Add fact
+
+    match box fact with
+    | null -> ()
+    | key -> acc.Holders[key] <- n :> obj
 
 /// Everything a rule family's per-node check reads or writes: the options, the
 /// shared defect list (appended in walk order — the order is part of the
@@ -4437,7 +4458,7 @@ module private NodeRules =
 
         // FUARAN110's evidence — judged after the walk, see the declaration.
         for (slot, target) in accessibilityRefs n do
-            accessibilityRefUses.Add(n.Id, slot, target)
+            holdIn ctx.Acc accessibilityRefUses n (n.Id, slot, target)
 
         // FUARAN142-146 — the emission grammar for string-typed
         // slots, judged ONCE per node here rather than in the per-kind arms
@@ -4554,7 +4575,7 @@ module private LayoutRules =
         // where the tree's whole id universe is known.
         (match spec.Modality, spec.Anchor with
          | ModalityKind.Popover, None -> defects.Add(PreEmitDefect.PopoverWithoutAnchor(nodeIdStr, None))
-         | ModalityKind.Popover, Some target -> popoverAnchorUses.Add(nodeIdStr, target)
+         | ModalityKind.Popover, Some target -> holdIn ctx.Acc popoverAnchorUses n (nodeIdStr, target)
          | ModalityKind.Modal, Some target -> defects.Add(PreEmitDefect.AnchorOnBlockingModal(nodeIdStr, target))
          | ModalityKind.Modal, None -> ())
 
@@ -4627,7 +4648,7 @@ module private GridRules =
         // is recorded here for the post-walk pass (FUARAN129); the IDENTITY
         // half is a per-node fact and is decided now (FUARAN130).
         if spec.TransferInKey.IsSome || spec.TransferOutKey.IsSome then
-            transferDeclarations.Add(nodeIdStr, spec.TransferOutKey, spec.TransferInKey)
+            holdIn ctx.Acc transferDeclarations n (nodeIdStr, spec.TransferOutKey, spec.TransferInKey)
 
             // Narrower than FUARAN078 above, which fires when a grid has
             // NEITHER spelling: this one fires on a grid that HAS the closure
@@ -4916,8 +4937,8 @@ module private FormRules =
             let recordWriteBack (value: Binding<JVal> option) (handlerAbsent: bool) =
                 if handlerAbsent then
                     match value with
-                    | Some(Binding.State(key, _)) -> writeBackKeys.Add(key, nodeIdStr, field.Id)
-                    | None -> writeBackKeys.Add(field.Id, nodeIdStr, field.Id)
+                    | Some(Binding.State(key, _)) -> holdIn ctx.Acc writeBackKeys n (key, nodeIdStr, field.Id)
+                    | None -> holdIn ctx.Acc writeBackKeys n (field.Id, nodeIdStr, field.Id)
                     | Some _ -> ()
 
             // Phase 2177 — the generated projections reach every field kind.
@@ -5009,7 +5030,8 @@ module private FormRules =
                 | None -> ()
                 | Some cmp ->
                     match cmp.Against with
-                    | Binding.State(key, _) when key <> "" -> compareStateReads.Add(nodeIdStr, field.Id, key)
+                    | Binding.State(key, _) when key <> "" ->
+                        holdIn ctx.Acc compareStateReads n (nodeIdStr, field.Id, key)
                     | Binding.Static _ ->
                         // FUARAN101 — the operand is a literal, so the only
                         // question is whether the control already declares
@@ -5858,6 +5880,15 @@ module private CompositionRules =
 /// part of the contract).
 module private CrossTreeRules =
 
+    /// A rule's findings, each beside the fact that raised it (`Fact`, set by
+    /// the rule before it adds a finding), which the walk resolves to the node
+    /// occurrence that held the fact.
+    type Raised() =
+        let items = ResizeArray<PreEmitDefect * objnull>()
+        member val Fact: objnull = null with get, set
+        member this.Add(d: PreEmitDefect) = items.Add((d, this.Fact))
+        member _.Items: (PreEmitDefect * objnull) list = List.ofSeq items
+
     // ── Cross-tree binding checks ──
     // FUARAN070 / FUARAN071: every `Binding.Selection` read must target an
     // existing node (error), and that node should be a selection-producing
@@ -5867,10 +5898,12 @@ module private CrossTreeRules =
         (facts: BindingWalk.TreeBindingFacts)
         (acc: WalkAccumulators)
         (options: ValidateOptions)
-        : PreEmitDefect list =
-        let defects = ResizeArray<PreEmitDefect>()
+        : (PreEmitDefect * objnull) list =
+        let defects = Raised()
 
         for u in facts.Uses do
+            defects.Fact <- box u
+
             match u.Use with
             | BindingWalk.BindingUse.Selection target ->
                 match Map.tryFind target facts.Nodes with
@@ -5884,7 +5917,7 @@ module private CrossTreeRules =
             | BindingWalk.BindingUse.UnstyledDateFormat -> defects.Add(PreEmitDefect.UnstyledDateFormat u.Reader)
             | _ -> ()
 
-        List.ofSeq defects
+        defects.Items
 
     // FUARAN110 — an accessibility reference naming a node the tree
     // does not carry. Judged against `facts.Nodes`, the SAME node universe the
@@ -5897,15 +5930,18 @@ module private CrossTreeRules =
         (facts: BindingWalk.TreeBindingFacts)
         (acc: WalkAccumulators)
         (options: ValidateOptions)
-        : PreEmitDefect list =
-        let defects = ResizeArray<PreEmitDefect>()
+        : (PreEmitDefect * objnull) list =
+        let defects = Raised()
         let accessibilityRefUses = acc.AccessibilityRefUses
 
-        for (readerId, slot, target) in accessibilityRefUses do
+        for fact in accessibilityRefUses do
+            let readerId, slot, target = fact
+            defects.Fact <- box fact
+
             if not (Map.containsKey target facts.Nodes) then
                 defects.Add(PreEmitDefect.DanglingAccessibilityReference(readerId, slot, target))
 
-        List.ofSeq defects
+        defects.Items
 
     // FUARAN122 — a popover anchored at an id the tree does not
     // carry. Judged against `facts.Nodes`, the same node universe the two checks
@@ -5918,15 +5954,18 @@ module private CrossTreeRules =
         (facts: BindingWalk.TreeBindingFacts)
         (acc: WalkAccumulators)
         (options: ValidateOptions)
-        : PreEmitDefect list =
-        let defects = ResizeArray<PreEmitDefect>()
+        : (PreEmitDefect * objnull) list =
+        let defects = Raised()
         let popoverAnchorUses = acc.PopoverAnchorUses
 
-        for (popoverId, target) in popoverAnchorUses do
+        for fact in popoverAnchorUses do
+            let popoverId, target = fact
+            defects.Fact <- box fact
+
             if not (Map.containsKey target facts.Nodes) then
                 defects.Add(PreEmitDefect.PopoverWithoutAnchor(popoverId, Some target))
 
-        List.ofSeq defects
+        defects.Items
 
     // FUARAN129 — a transfer end with no counterpart. Judged over
     // the whole tree, because that is the only place the question has an answer:
@@ -5947,8 +5986,8 @@ module private CrossTreeRules =
         (facts: BindingWalk.TreeBindingFacts)
         (acc: WalkAccumulators)
         (options: ValidateOptions)
-        : PreEmitDefect list =
-        let defects = ResizeArray<PreEmitDefect>()
+        : (PreEmitDefect * objnull) list =
+        let defects = Raised()
         let transferDeclarations = acc.TransferDeclarations
 
         let releasesTo (key: string) (exceptGrid: string) =
@@ -5959,7 +5998,10 @@ module private CrossTreeRules =
             transferDeclarations
             |> Seq.exists (fun (gridId, _, inKey) -> gridId <> exceptGrid && inKey = Some key)
 
-        for (gridId, outKey, inKey) in transferDeclarations do
+        for fact in transferDeclarations do
+            let gridId, outKey, inKey = fact
+            defects.Fact <- box fact
+
             match inKey, outKey with
             | Some k, _ when not (releasesTo k gridId) ->
                 defects.Add(PreEmitDefect.DeadTransferPairing(gridId, k, TransferDefect.NoSource))
@@ -5967,7 +6009,7 @@ module private CrossTreeRules =
                 defects.Add(PreEmitDefect.DeadTransferPairing(gridId, k, TransferDefect.NoTarget))
             | _ -> ()
 
-        List.ofSeq defects
+        defects.Items
 
     // FUARAN072 / FUARAN073: every wire-survivable `Action.Call` either
     // dispatches through a closure, or lands its response where a reader
@@ -5976,8 +6018,8 @@ module private CrossTreeRules =
         (facts: BindingWalk.TreeBindingFacts)
         (acc: WalkAccumulators)
         (options: ValidateOptions)
-        : PreEmitDefect list =
-        let defects = ResizeArray<PreEmitDefect>()
+        : (PreEmitDefect * objnull) list =
+        let defects = Raised()
 
         let readQueryNames =
             facts.Uses
@@ -5988,13 +6030,15 @@ module private CrossTreeRules =
             |> Set.ofList
 
         for c in facts.Calls do
+            defects.Fact <- box c
+
             match c.HasOnResult, c.Into with
             | false, None -> defects.Add(PreEmitDefect.CallResultDropped(c.Reader, c.Endpoint))
             | _, Some(CallResultTarget.Query name) when not (Set.contains name readQueryNames) ->
                 defects.Add(PreEmitDefect.OrphanQueryFetch(c.Reader, name))
             | _ -> ()
 
-        List.ofSeq defects
+        defects.Items
 
     // ── The 421/424 filter consumption union (the consolidated deferral) ──
     // FUARAN074: a declared chip nothing consumes (a `Binding.Filter` read
@@ -6006,13 +6050,16 @@ module private CrossTreeRules =
         (facts: BindingWalk.TreeBindingFacts)
         (acc: WalkAccumulators)
         (options: ValidateOptions)
-        : PreEmitDefect list =
-        let defects = ResizeArray<PreEmitDefect>()
+        : (PreEmitDefect * objnull) list =
+        let defects = Raised()
         let gridOwnStateKeys = acc.GridOwnStateKeys
 
         let declaredFilterNames = facts.DeclaredFilters |> List.map snd |> Set.ofList
 
-        for (ownerNodeId, name) in facts.DeclaredFilters do
+        for fact in facts.DeclaredFilters do
+            let ownerNodeId, name = fact
+            defects.Fact <- box fact
+
             let consumed =
                 facts.Uses
                 |> List.exists (fun u ->
@@ -6026,6 +6073,8 @@ module private CrossTreeRules =
                 defects.Add(PreEmitDefect.DecorativeFilter(ownerNodeId, name))
 
         for u in facts.Uses do
+            defects.Fact <- box u
+
             match u.Use with
             | BindingWalk.BindingUse.TransformParamFilter n when not (Set.contains n declaredFilterNames) ->
                 defects.Add(PreEmitDefect.DanglingFilterReference(u.Reader, n))
@@ -6040,26 +6089,28 @@ module private CrossTreeRules =
                 defects.Add(PreEmitDefect.UnreferencedTransformParam(u.Reader, n))
             | _ -> ()
 
-        List.ofSeq defects
+        defects.Items
 
     // FUARAN085 — two handler-free write-back writers on one state key.
     let duplicateWriteBackKeys
         (facts: BindingWalk.TreeBindingFacts)
         (acc: WalkAccumulators)
         (options: ValidateOptions)
-        : PreEmitDefect list =
-        let defects = ResizeArray<PreEmitDefect>()
+        : (PreEmitDefect * objnull) list =
+        let defects = Raised()
         let writeBackKeys = acc.WriteBackKeys
 
-        writeBackKeys
-        |> Seq.groupBy (fun (key, _, _) -> key)
-        |> Seq.iter (fun (key, writers) ->
-            let ws = writers |> Seq.map (fun (_, nid, fid) -> nid, fid) |> List.ofSeq
+        // One finding at each writer after the first, at that writer (§27.8.2).
+        for key, writers in writeBackKeys |> Seq.groupBy (fun (key, _, _) -> key) do
+            let writers = List.ofSeq writers
+            let ws = writers |> List.map (fun (_, nid, fid) -> nid, fid)
 
-            if ws.Length > 1 then
-                defects.Add(PreEmitDefect.DuplicateWriteBackKey(key, ws)))
+            for writer in List.tail writers do
+                let _, nid, fid = writer
+                defects.Fact <- box writer
+                defects.Add(PreEmitDefect.DuplicateWriteBackKey(key, nid, fid, ws))
 
-        List.ofSeq defects
+        defects.Items
 
     // ── FUARAN098 — a `SetState` writing a key nothing reads ──
     // 866's fake-affordance property, middle enforcement tier. The top tier is
@@ -6078,13 +6129,15 @@ module private CrossTreeRules =
         (facts: BindingWalk.TreeBindingFacts)
         (acc: WalkAccumulators)
         (options: ValidateOptions)
-        : PreEmitDefect list =
-        let defects = ResizeArray<PreEmitDefect>()
+        : (PreEmitDefect * objnull) list =
+        let defects = Raised()
 
         if not facts.StateKeys.OpaqueReader then
             let reported = System.Collections.Generic.HashSet<string>()
 
-            for (writerNodeId, key) in facts.StateKeys.Writes do
+            for fact in facts.StateKeys.Writes do
+                let writerNodeId, key = fact
+                defects.Fact <- box fact
                 // Host-reserved keys are exempt through the Phase 782/1550 guard's
                 // own rule rather than a second list beside it: a write there is
                 // REFUSED at dispatch on every path, so its defect is that it is
@@ -6102,7 +6155,7 @@ module private CrossTreeRules =
                 then
                     defects.Add(PreEmitDefect.SetStateNoReader(writerNodeId, key))
 
-        List.ofSeq defects
+        defects.Items
 
     // ── FUARAN149 — the host-reserved namespace from the authoring side ──
     //. Two shapes, one code; `PreEmitDefect.ReservedStateKeyWrite`
@@ -6124,12 +6177,15 @@ module private CrossTreeRules =
         (facts: BindingWalk.TreeBindingFacts)
         (acc: WalkAccumulators)
         (options: ValidateOptions)
-        : PreEmitDefect list =
-        let defects = ResizeArray<PreEmitDefect>()
+        : (PreEmitDefect * objnull) list =
+        let defects = Raised()
 
         let reportedReserved = System.Collections.Generic.HashSet<string>()
 
-        for (writerNodeId, key) in facts.StateKeys.Writes do
+        for fact in facts.StateKeys.Writes do
+            let writerNodeId, key = fact
+            defects.Fact <- box fact
+
             if
                 StateKeyPolicy.isReserved key
                 && reportedReserved.Add(writerNodeId + dedupKeySep + key)
@@ -6140,7 +6196,10 @@ module private CrossTreeRules =
             not facts.StateKeys.OpaqueReader
             && not (Set.isEmpty (StateKeyPolicy.preConventionReservedKeys ()))
         then
-            for (writerNodeId, key) in facts.StateKeys.Writes do
+            for fact in facts.StateKeys.Writes do
+                let writerNodeId, key = fact
+                defects.Fact <- box fact
+
                 if
                     not (StateKeyPolicy.isReserved key)
                     && not (Set.contains key facts.StateKeys.Reads)
@@ -6148,7 +6207,7 @@ module private CrossTreeRules =
                 then
                     defects.Add(PreEmitDefect.ReservedStateKeyWrite(writerNodeId, key, false))
 
-        List.ofSeq defects
+        defects.Items
 
     // ── FUARAN103 — a `Switch` selecting on a key nothing can write ──
     // The read-side twin of the rule above, and the shape every emission in its
@@ -6161,13 +6220,15 @@ module private CrossTreeRules =
         (facts: BindingWalk.TreeBindingFacts)
         (acc: WalkAccumulators)
         (options: ValidateOptions)
-        : PreEmitDefect list =
-        let defects = ResizeArray<PreEmitDefect>()
+        : (PreEmitDefect * objnull) list =
+        let defects = Raised()
 
         if not facts.StateKeys.OpaqueWriter then
             let reportedSwitch = System.Collections.Generic.HashSet<string>()
 
-            for (switchNodeId, key) in facts.StateKeys.SwitchSelectors do
+            for fact in facts.StateKeys.SwitchSelectors do
+                let switchNodeId, key = fact
+                defects.Fact <- box fact
                 // A host-reserved key (Phase 782, widened to the declared list by
                 // The whole `isReserved` family below reads the same
                 // widening) is the host's to write by definition, so its absence
@@ -6183,7 +6244,7 @@ module private CrossTreeRules =
                 then
                     defects.Add(PreEmitDefect.SwitchKeyNoWriter(switchNodeId, key))
 
-        List.ofSeq defects
+        defects.Items
 
     // ── FUARAN148 — a visibility predicate nothing can make true ──
     //
@@ -6211,13 +6272,16 @@ module private CrossTreeRules =
         (facts: BindingWalk.TreeBindingFacts)
         (acc: WalkAccumulators)
         (options: ValidateOptions)
-        : PreEmitDefect list =
-        let defects = ResizeArray<PreEmitDefect>()
+        : (PreEmitDefect * objnull) list =
+        let defects = Raised()
 
         if not facts.StateKeys.OpaqueWriter then
             let reportedVisible = System.Collections.Generic.HashSet<string>()
 
-            for (nodeId, key) in facts.StateKeys.VisibleStateSources do
+            for fact in facts.StateKeys.VisibleStateSources do
+                let nodeId, key = fact
+                defects.Fact <- box fact
+
                 if
                     key <> ""
                     && not (Set.contains key facts.StateKeys.WriteKeys)
@@ -6226,7 +6290,7 @@ module private CrossTreeRules =
                 then
                     defects.Add(PreEmitDefect.VisibleStateNoWriter(nodeId, key))
 
-        List.ofSeq defects
+        defects.Items
 
     // ── FUARAN105 — a Transform over an unfillable State source ──
     //
@@ -6254,8 +6318,8 @@ module private CrossTreeRules =
         (facts: BindingWalk.TreeBindingFacts)
         (acc: WalkAccumulators)
         (options: ValidateOptions)
-        : PreEmitDefect list =
-        let defects = ResizeArray<PreEmitDefect>()
+        : (PreEmitDefect * objnull) list =
+        let defects = Raised()
 
         if not facts.StateKeys.OpaqueWriter then
             let reportedTransform = System.Collections.Generic.HashSet<string>()
@@ -6268,7 +6332,9 @@ module private CrossTreeRules =
                 |> List.map (fun d -> d.Key)
                 |> Set.ofList
 
-            for (readerNodeId, key) in facts.StateKeys.TransformInertSources do
+            for fact in facts.StateKeys.TransformInertSources do
+                let readerNodeId, key = fact
+                defects.Fact <- box fact
                 // An EMPTY key names no slot at all; it is a malformed source rather
                 // than an unfillable one, and reporting it here would say nothing
                 // the author can act on.
@@ -6281,7 +6347,7 @@ module private CrossTreeRules =
                 then
                     defects.Add(PreEmitDefect.TransformSourceInert(readerNodeId, key))
 
-        List.ofSeq defects
+        defects.Items
 
     // ── FUARAN106 — two declarations of one seeded slot ──
     //
@@ -6299,8 +6365,8 @@ module private CrossTreeRules =
         (facts: BindingWalk.TreeBindingFacts)
         (acc: WalkAccumulators)
         (options: ValidateOptions)
-        : PreEmitDefect list =
-        let defects = ResizeArray<PreEmitDefect>()
+        : (PreEmitDefect * objnull) list =
+        let defects = Raised()
 
         let seedsByKey =
             facts.StateKeys.Seeds
@@ -6318,42 +6384,38 @@ module private CrossTreeRules =
         for (key, decls) in seedsByKey do
             match decls with
             | first :: rest ->
-                // Only the FIRST disagreement is reported per key: the remedy is to
-                // declare the value once, so listing every later reader would repeat
-                // one instruction n times.
-                match rest |> List.tryFind (fun d -> d.Fingerprint <> first.Fingerprint) with
-                | Some conflicting ->
-                    defects.Add(PreEmitDefect.ConflictingStateSeeds(key, first.Reader, conflicting.Reader))
-                | None -> ()
+                // The first declaration is the one that takes effect, so each later
+                // one that disagrees with it is discarded: one finding at EACH, at
+                // that declaration (§27.8.2). One that agrees changes nothing.
+                for later in rest do
+                    if later.Fingerprint <> first.Fingerprint then
+                        defects.Fact <- box later
+                        defects.Add(PreEmitDefect.ConflictingStateSeeds(key, first.Reader, later.Reader))
             | [] -> ()
 
-        List.ofSeq defects
+        defects.Items
 
     // ── FUARAN107 — two inline copies of one table ──
     //
-    // The charter's two-copies lint. Pairs are reported once per (earlier,
-    // later) node pair, and two entries that share a state key are the SHARING
-    // this phase exists to make possible rather than a duplication.
+    // The charter's two-copies lint. Two entries that share a state key are
+    // the SHARING this phase exists to make possible rather than a duplication.
     let duplicateInlineTables
         (facts: BindingWalk.TreeBindingFacts)
         (acc: WalkAccumulators)
         (options: ValidateOptions)
-        : PreEmitDefect list =
-        let defects = ResizeArray<PreEmitDefect>()
+        : (PreEmitDefect * objnull) list =
+        let defects = Raised()
 
         let inlineTables = facts.StateKeys.InlineTables
 
         if not (List.isEmpty inlineTables) then
-            let reportedPair = System.Collections.Generic.HashSet<string>()
             let tables = Array.ofList inlineTables
 
-            // Phase 2054 — a pair can only be reported when its two tables are
-            // EQUAL, so each table is compared against the later tables in its
-            // own equality class rather than against every later table. The
-            // classes keep walk order, so the pairs come out in exactly the
-            // (i, j) order the all-pairs scan produced; that scan compared every
-            // table with every other one structurally, which made this rule
-            // quadratic in table size times table count on every tree.
+            // Phase 2054 — a copy can only be one of an EQUAL table, so each table is
+            // compared against the tables in its own equality class rather than
+            // against every other one structurally, which made this rule quadratic
+            // in table size times table count on every tree. A class keeps walk
+            // order.
             let equalClass =
                 let classes =
                     System.Collections.Generic.Dictionary<Fuaran.Core.Table, ResizeArray<int>>(HashIdentity.Structural)
@@ -6371,29 +6433,32 @@ module private CrossTreeRules =
                     members.Add i
                     members)
 
-            for i in 0 .. tables.Length - 1 do
-                let a = tables[i]
+            // One finding at EACH later copy, at that copy, naming the first
+            // earlier copy of it (§27.8.2): x, x, x is two findings, never one per
+            // pair. A copy on the same reader, and two readers of one shared key
+            // (the shape the seeding rule creates), are not copies of each other.
+            for j in 0 .. tables.Length - 1 do
+                let b = tables[j]
 
-                for j in equalClass[i] do
-                    let b = tables[j]
+                let isCopyOf (i: int) =
+                    let a = tables[i]
+                    i < j && a.Reader <> b.Reader && not (a.SeedKey.IsSome && a.SeedKey = b.SeedKey)
 
-                    if
-                        j > i
-                        && a.Reader <> b.Reader
-                        // One shared key is one source, however many readers point
-                        // at it — the shape the seeding rule creates.
-                        && not (a.SeedKey.IsSome && a.SeedKey = b.SeedKey)
-                        && reportedPair.Add(a.Reader + dedupKeySep + b.Reader)
-                    then
-                        let seedKey =
-                            match a.SeedKey, b.SeedKey with
-                            | Some k, _ -> Some k
-                            | _, Some k -> Some k
-                            | None, None -> None
+                match Seq.tryFind isCopyOf equalClass[j] with
+                | Some i ->
+                    let a = tables[i]
 
-                        defects.Add(PreEmitDefect.DuplicateInlineTable(a.Reader, b.Reader, seedKey))
+                    let seedKey =
+                        match a.SeedKey, b.SeedKey with
+                        | Some k, _ -> Some k
+                        | _, Some k -> Some k
+                        | None, None -> None
 
-        List.ofSeq defects
+                    defects.Fact <- box b
+                    defects.Add(PreEmitDefect.DuplicateInlineTable(a.Reader, b.Reader, seedKey))
+                | None -> ()
+
+        defects.Items
 
     // ── FUARAN099 — a cross-field compare naming a key nothing can reach ──
     //
@@ -6413,15 +6478,18 @@ module private CrossTreeRules =
         (facts: BindingWalk.TreeBindingFacts)
         (acc: WalkAccumulators)
         (options: ValidateOptions)
-        : PreEmitDefect list =
-        let defects = ResizeArray<PreEmitDefect>()
+        : (PreEmitDefect * objnull) list =
+        let defects = Raised()
         let compareStateReads = acc.CompareStateReads
         let formOwnedStateKeys = acc.FormOwnedStateKeys
 
         if not facts.StateKeys.OpaqueWriter then
             let reportedCompare = System.Collections.Generic.HashSet<string>()
 
-            for (formNodeId, fieldId, key) in compareStateReads do
+            for fact in compareStateReads do
+                let formNodeId, fieldId, key = fact
+                defects.Fact <- box fact
+
                 if
                     not (formOwnedStateKeys.Contains key)
                     && not (Set.contains key facts.StateKeys.WriteKeys)
@@ -6430,7 +6498,7 @@ module private CrossTreeRules =
                 then
                     defects.Add(PreEmitDefect.CompareKeyUnreachable(formNodeId, fieldId, key))
 
-        List.ofSeq defects
+        defects.Items
 
     // ── FUARAN112 — a closure-carrying action on a tree bound for the wire ──
     //
@@ -6446,21 +6514,24 @@ module private CrossTreeRules =
         (facts: BindingWalk.TreeBindingFacts)
         (acc: WalkAccumulators)
         (options: ValidateOptions)
-        : PreEmitDefect list =
-        let defects = ResizeArray<PreEmitDefect>()
+        : (PreEmitDefect * objnull) list =
+        let defects = Raised()
         let forTransport = options.ForTransport
 
         if forTransport then
             let reportedClosure = System.Collections.Generic.HashSet<string>()
 
             for (c: BindingWalk.ClosureUse) in facts.Closures do
+                defects.Fact <- box c
+
                 if reportedClosure.Add(c.Reader + " " + c.Slot) then
                     defects.Add(PreEmitDefect.WireLossyActionClosure(c.Reader, c.Slot))
 
-        List.ofSeq defects
+        defects.Items
 
     /// Every cross-tree rule, in report order.
-    let all: (BindingWalk.TreeBindingFacts -> WalkAccumulators -> ValidateOptions -> PreEmitDefect list) list =
+    let all
+        : (BindingWalk.TreeBindingFacts -> WalkAccumulators -> ValidateOptions -> (PreEmitDefect * objnull) list) list =
         [ selectionReads
           danglingAccessibilityReferences
           danglingPopoverAnchors
@@ -6541,19 +6612,20 @@ type private Walked =
         Defects: PreEmitDefect list
         /// Defect index -> the node a grounding rule judged and the slot it named.
         GroundingSlots: System.Collections.Generic.Dictionary<int, string>
-        /// Defect index -> the id and JSONPath of the visit that raised it.
+        /// Defect index -> the id and JSONPath of the occurrence that raised it.
         RaisedBy: System.Collections.Generic.Dictionary<int, string * string option>
-        /// Every node id -> the JSONPath of each of its occurrences, in document order.
-        Occurrences: System.Collections.Generic.Dictionary<string, ResizeArray<string option>>
     }
 
 /// The ONE walk behind every `validate*` entry point: per node, the shared node
 /// rules then the kind's rule family; after the walk, the cross-tree rules; last,
 /// the emission-budget breaches. Every entry point is an options preset, so no two
-/// can drift.
+/// can drift. `holders` (from `BindingWalk.collectHeld`, for these `treeFacts`)
+/// lets a cross-tree finding judged from a binding fact be located at the
+/// occurrence holding that fact; without it only the walk's own facts are.
 let private validateLocated
     (options: ValidateOptions)
     (treeFacts: BindingWalk.TreeBindingFacts)
+    (holders: BindingWalk.FactHolders option)
     (node: Node<'Msg>)
     : Walked =
     let meter = options.Meter
@@ -6577,7 +6649,8 @@ let private validateLocated
           AccessibilityRefUses = ResizeArray()
           PopoverAnchorUses = ResizeArray()
           TransferDeclarations = ResizeArray()
-          GridOwnStateKeys = System.Collections.Generic.HashSet<string * string>() }
+          GridOwnStateKeys = System.Collections.Generic.HashSet<string * string>()
+          Holders = BindingWalk.FactHolders(HashIdentity.Reference) }
 
     let recordNodeId (raw: string) =
         if raw = "" then
@@ -6666,6 +6739,12 @@ let private validateLocated
     let occurrences =
         System.Collections.Generic.Dictionary<string, ResizeArray<string option>>()
 
+    // Each visited node object -> its id and path, by reference: what a fact's
+    // holder resolves to, so a cross-tree finding is at the occurrence holding
+    // the fact that raised it.
+    let visits =
+        System.Collections.Generic.Dictionary<obj, string * string option>(HashIdentity.Reference)
+
     let rec walk (n: Node<'Msg>) =
         depth <- depth + 1
 
@@ -6687,6 +6766,9 @@ let private validateLocated
                 depthReported <- true
                 defects.Add(PreEmitDefect.MaxDepthExceeded(n.Id, WireLimits.MaxDepth))
         else
+            if not (visits.ContainsKey(n :> obj)) then
+                visits[n :> obj] <- (n.Id, path)
+
             if n.Id <> "" then
                 match occurrences.TryGetValue n.Id with
                 | true, paths -> paths.Add path
@@ -6814,9 +6896,33 @@ let private validateLocated
     | Some m -> m.Finish(node, not depthReported)
     | None -> ()
 
-    // The cross-tree rules, in report order.
+    // The cross-tree rules, in report order. Each finding is raised by a fact,
+    // and the fact's holder is the occurrence that raised it (§27.8.2): a node
+    // the walk visited, so the finding is located there. A fact held where the
+    // walk does not go (a slot argument's tree) locates nothing.
+    let holderOf (fact: objnull) : obj option =
+        match fact with
+        | null -> None
+        | fact ->
+            match acc.Holders.TryGetValue fact with
+            | true, holder -> Some holder
+            | false, _ ->
+                holders
+                |> Option.bind (fun hs ->
+                    match hs.TryGetValue fact with
+                    | true, holder -> Some holder
+                    | false, _ -> None)
+
     for rule in CrossTreeRules.all do
-        defects.AddRange(rule treeFacts acc options)
+        for d, fact in rule treeFacts acc options do
+            match holderOf fact with
+            | Some holder ->
+                match visits.TryGetValue holder with
+                | true, visit -> raisedBy[defects.Count] <- visit
+                | false, _ -> ()
+            | None -> ()
+
+            defects.Add d
 
     // FUARAN158-162 — appended last, so every finding a tree
     // produced before the host declared a budget keeps its position.
@@ -6828,8 +6934,7 @@ let private validateLocated
 
     { Defects = List.ofSeq defects
       GroundingSlots = ctx.GroundingSlots
-      RaisedBy = raisedBy
-      Occurrences = occurrences }
+      RaisedBy = raisedBy }
 
 let private asResult (defects: PreEmitDefect list) : Result<unit, PreEmitDefect list> =
     if List.isEmpty defects then Ok() else Error defects
@@ -6848,14 +6953,15 @@ let validateWithFacts
     (facts: BindingWalk.TreeFacts)
     (node: Node<'Msg>)
     : Result<unit, PreEmitDefect list> =
-    (validateLocated options facts.Bindings node).Defects |> asResult
+    (validateLocated options facts.Bindings None node).Defects |> asResult
 
 /// Walk `node` under `options` and surface every pre-emit defect — the one entry
 /// point every other `validate*` name is a preset of. Combine freely: a transport
 /// walk under a narrowed policy with a registry is one record, not a missing
 /// overload.
 let validateWith (options: ValidateOptions) (node: Node<'Msg>) : Result<unit, PreEmitDefect list> =
-    (validateLocated options (BindingWalk.collect node) node).Defects |> asResult
+    (validateLocated options (BindingWalk.collect node) None node).Defects
+    |> asResult
 
 // ─── The page-document mode (Phase 2522, WIRE_FORMAT §32) ────────────────────
 //
@@ -6930,7 +7036,9 @@ let validatePage
     (requestKeys: Set<string>)
     (node: Node<'Msg>)
     : Result<unit, PreEmitDefect list> =
-    let ordinary = (validateLocated options (BindingWalk.collect node) node).Defects
+    let ordinary =
+        (validateLocated options (BindingWalk.collect node) None node).Defects
+
     asResult (ordinary @ pageRuleDefects requestKeys node)
 
 
@@ -7043,10 +7151,11 @@ let validateWithLimits (limits: HostLimits) (node: Node<'Msg>) : Result<unit, Pr
 // through a lowering of their own.
 
 /// The code-table arguments that name the node a defect is about, most specific
-/// first. A defect naming none (an empty id, a duplicate write-back key judged
-/// across writers) is about the whole tree.
+/// first. A finding about a repetition names the later occurrence it is raised
+/// at (`secondNodeId`), never the first. A defect naming none (an empty id) names
+/// no node.
 let private nodeArguments =
-    [ "nodeId"; "readerNodeId"; "declaringNodeId"; "firstNodeId" ]
+    [ "nodeId"; "readerNodeId"; "declaringNodeId"; "secondNodeId" ]
 
 /// A pre-emit defect in the tier's one finding shape, located at the node its
 /// code-table arguments name (`None` when it names none). The code, severity and
@@ -7066,31 +7175,28 @@ let findingOf (d: PreEmitDefect) : Finding<string option> =
 
 /// The JSONPath of the node occurrence that raised defect `i` of a walk, in the
 /// canonical wire document (WIRE_FORMAT §27.8.2, §29.3). A finding raised while
-/// the walk visited the node it names is at that visit's path: two nodes sharing
-/// an id are two occurrences, and the one with the defect is the one named. A
-/// finding judged after the walk (a cross-tree rule) names an id, not a visit;
-/// it is located only where one node holds that id, since then that node is the
-/// occurrence that raised it. `None` where the finding names no node, or names
-/// an id several nodes hold and no visit raised it.
+/// the walk visited a node is at that visit's path, and a finding a cross-tree
+/// rule judged from a fact is at the occurrence holding the fact: two nodes
+/// sharing an id are two occurrences, and the one that raised it is the one
+/// named. Nothing is looked up by id. `None` where no visited occurrence raised
+/// it (a fact held inside a slot argument's tree), or where the occurrence that
+/// raised it is not the node the finding names.
 let private occurrenceOf (walked: Walked) (i: int) (d: PreEmitDefect) : string option =
-    match (findingOf d).Location with
-    | None -> None
-    | Some id ->
-        match walked.RaisedBy.TryGetValue i with
-        | true, (visited, path) when visited = id -> path
-        | _ ->
-            match walked.Occurrences.TryGetValue id with
-            | true, paths when paths.Count = 1 -> paths[0]
-            | _ -> None
+    match walked.RaisedBy.TryGetValue i with
+    | true, (visited, path) ->
+        match (findingOf d).Location with
+        | Some id when id <> visited -> None
+        | _ -> path
+    | false, _ -> None
 
 /// `validate`, with each defect located: every pre-emit defect of `node` under
 /// the default options, in report order, beside the JSONPath of the node
-/// occurrence that raised it (see WIRE_FORMAT §27.8.2). `None` where the defect
-/// names no node, or names an id several nodes hold and was judged across the
-/// tree rather than at one of them. The defects are exactly `validate`'s.
+/// occurrence that raised it (see WIRE_FORMAT §27.8.2), a finding judged across
+/// the tree included. `None` only where no occurrence of the document raised it
+/// (see `occurrenceOf`). The defects are exactly `validate`'s.
 let validateWithPaths (node: Node<'Msg>) : (PreEmitDefect * string option) list =
-    let walked =
-        validateLocated ValidateOptions.defaults (BindingWalk.collect node) node
+    let facts, holders = BindingWalk.collectHeld node
+    let walked = validateLocated ValidateOptions.defaults facts (Some holders) node
 
     walked.Defects |> List.mapi (fun i d -> d, occurrenceOf walked i d)
 
@@ -7251,7 +7357,7 @@ let private groundingReader (d: PreEmitDefect) : (string * string) option =
 /// `node`; under that precondition the result is exactly `bindingChecks node`'s.
 let bindingChecksWithFacts (facts: BindingWalk.TreeFacts) (node: Node<'Msg>) : BindingCheck list =
     let sites = sourceSitesOf facts.Bindings
-    let walked = validateLocated ValidateOptions.defaults facts.Bindings node
+    let walked = validateLocated ValidateOptions.defaults facts.Bindings None node
 
     // Each grounding finding, located at the slot its rule named when it raised
     // it, under the occurrence whose visit raised it (Phase 2252: the rules judge

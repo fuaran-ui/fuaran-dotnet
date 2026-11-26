@@ -1613,6 +1613,15 @@ let unionKeys (a: ReactiveKeys) (b: ReactiveKeys) : ReactiveKeys =
       Selection = Set.union a.Selection b.Selection
       Query = Set.union a.Query b.Query }
 
+/// Fact object -> the node object that held it when the walk recorded it, by
+/// reference: a fact names its node by id, and two nodes sharing an id are two
+/// occurrences, so only the holder says which of them the fact is about. Kept
+/// only by `collectHeld`, for each fact a cross-tree rule of the pre-emit
+/// validator judges (every element of `Uses`, `DeclaredFilters`, `Calls`,
+/// `Closures`, `StateKeys.Writes`, `SwitchSelectors`, `TransformInertSources`,
+/// `VisibleStateSources`, `Seeds` and `InlineTables`).
+type internal FactHolders = System.Collections.Generic.Dictionary<obj, obj>
+
 /// Collect the tree-wide binding facts for `node` (see `TreeBindingFacts`) AND
 /// the filter-channel write direction beside them (see `TreeFacts`), in ONE
 /// walk, descending through layout children, error-boundary subtrees, and
@@ -1639,9 +1648,21 @@ let unionKeys (a: ReactiveKeys) (b: ReactiveKeys) : ReactiveKeys =
 let private walkTree<'Msg>
     (analysis: bool)
     (readers: bool)
+    (holders: FactHolders option)
     (root: Node<'Msg>)
     : TreeFacts * RenderFacts<'Msg> * ReaderEntry<'Msg> list =
     let referencedOnly = readers
+
+    // The node being walked, and `hold`, which records it as the holder of a
+    // fact the walk has just recorded (see `FactHolders`).
+    let holding: obj ref = ref (root :> obj)
+
+    let hold (fact: 'Fact) =
+        match holders, box fact with
+        | None, _
+        | _, null -> ()
+        | Some h, key -> h[key] <- holding.Value
+
     let uses = ResizeArray<NodeBindingUse>()
     let declaredFilters = ResizeArray<string * string>()
     let calls = ResizeArray<CallUse>()
@@ -1866,16 +1887,21 @@ let private walkTree<'Msg>
                 stateReads.Add key |> ignore
 
                 if not hasDefault then
-                    transformInertSources.Add(readerId, key)
+                    let fact = readerId, key
+                    transformInertSources.Add fact
+                    hold fact
             // Phase 1075 — the seeding projection. Every read surface reaches
             // this fold, which is what makes the seed map slot-complete rather
             // than complete only where `Uses` happens to be.
             | BindingUse.StateSeed(key, value, fingerprint) ->
-                seeds.Add
+                let fact =
                     { Reader = readerId
                       Key = key
                       Value = value
                       Fingerprint = fingerprint }
+
+                seeds.Add fact
+                hold fact
             | BindingUse.SelectionSeed(target, field, value) ->
                 selectionSeeds.Add
                     { Reader = readerId
@@ -1884,10 +1910,13 @@ let private walkTree<'Msg>
                       Value = value }
             | BindingUse.InlineTable(table, seedKey) ->
                 if isNonEmptyTable table then
-                    inlineTables.Add
+                    let fact =
                         { Reader = readerId
                           SeedKey = seedKey
                           Table = table }
+
+                    inlineTables.Add fact
+                    hold fact
             // Phase 1615 — the site projection. It folds HERE, beside the
             // seeding one and for the same reason: every read surface reaches
             // `recordStateOf`, including the ones deliberately kept out of
@@ -1905,11 +1934,14 @@ let private walkTree<'Msg>
         for u in found do
             match u with
             | BindingUse.StateSeed(key, value, fingerprint) ->
-                seeds.Add
+                let fact =
                     { Reader = readerId
                       Key = key
                       Value = value
                       Fingerprint = fingerprint }
+
+                seeds.Add fact
+                hold fact
             | BindingUse.SelectionSeed(target, field, value) ->
                 selectionSeeds.Add
                     { Reader = readerId
@@ -1945,7 +1977,10 @@ let private walkTree<'Msg>
                 // not a second consumption edge beside the read that slot
                 // already contributes.
                 | BindingUse.TransformSite _ -> ()
-                | _ -> uses.Add { Reader = readerId; Use = u }
+                | _ ->
+                    let fact = { Reader = readerId; Use = u }
+                    uses.Add fact
+                    hold fact
 
     /// Every `SetState` reachable from a wire-survivable action slot: the WRITE
     /// side. The `valueFrom` READ is collected by `usesOfAction` in
@@ -1958,7 +1993,9 @@ let private walkTree<'Msg>
     let recordStateAt (readerId: string) (action: Action<'Msg>) =
         match action with
         | Action.SetState(key, _, _) ->
-            stateWrites.Add(readerId, key)
+            let fact = readerId, key
+            stateWrites.Add fact
+            hold fact
             stateWriteKeys.Add key |> ignore
         // The two recursive arms write nothing themselves. A `SetState` inside
         // a continuation is a write this slot performs on the reader's yes
@@ -2010,9 +2047,11 @@ let private walkTree<'Msg>
             if inUses then
                 for c in callsOfAction readerId action do
                     calls.Add c
+                    hold c
 
                 for c in closuresOfAction readerId action do
                     closures.Add c
+                    hold c
         // Phase 2530 — a dispatch-time read still makes its node a READER: the
         // handler resolves against the context its node was last rendered under,
         // so a reactive render re-renders the node when a key its action reads
@@ -2067,6 +2106,9 @@ let private walkTree<'Msg>
     // a frame its reads (and those of every subtree it holds that the render
     // does not reach on its own) are attributed to.
     let rec walk (inUses: bool) (n: Node<'Msg>) =
+        let held = holding.Value
+        holding.Value <- n :> obj
+
         if readers && inUses then
             let sink = newReaderSink ()
             readerFrames.Add(n, sink)
@@ -2075,6 +2117,8 @@ let private walkTree<'Msg>
             readerStack.RemoveAt(readerStack.Count - 1)
         else
             walkNode inUses n
+
+        holding.Value <- held
 
     and walkNode (inUses: bool) (n: Node<'Msg>) =
         let readerId = n.Id
@@ -2112,7 +2156,10 @@ let private walkTree<'Msg>
         record inUses readerId (usesOfBindingOpt referencedOnly n.Visible)
 
         match n.Visible with
-        | Some(Binding.State(key, None)) -> visibleStateSources.Add(readerId, key)
+        | Some(Binding.State(key, None)) ->
+            let fact = readerId, key
+            visibleStateSources.Add fact
+            hold fact
         | _ -> ()
 
         // A `StateBehaviour` branch is a wire-encoded child node rendered in
@@ -2382,7 +2429,9 @@ let private walkTree<'Msg>
         | NodeKind.Filters spec ->
             if analysis && inUses then
                 for fs in spec.Items do
-                    declaredFilters.Add(readerId, fs.Name)
+                    let fact = readerId, fs.Name
+                    declaredFilters.Add fact
+                    hold fact
 
             for fs in spec.Items do
                 // No implicit key: an absent value slot on a chip
@@ -2521,7 +2570,10 @@ let private walkTree<'Msg>
             let consultsSelector = spec.Cases |> List.exists (fun c -> c.Match.IsSome)
 
             match spec.On with
-            | Binding.State(key, _) when consultsSelector -> switchSelectors.Add(readerId, key)
+            | Binding.State(key, _) when consultsSelector ->
+                let fact = readerId, key
+                switchSelectors.Add fact
+                hold fact
             | _ -> ()
 
             // Phase 1122's `autoAdvanceMs` IS a writer of the switch's own
@@ -2711,14 +2763,22 @@ let private walkTree<'Msg>
 
 /// The whole walk (see `walkTree`).
 let collectFacts<'Msg> (root: Node<'Msg>) : TreeFacts =
-    let facts, _, _ = walkTree true false root
+    let facts, _, _ = walkTree true false None root
     facts
+
+/// `collect`, and beside it the node object that holds each fact the cross-tree
+/// rules judge (see `FactHolders`), for a caller that must say WHICH occurrence
+/// of a repeated id raised a finding.
+let internal collectHeld<'Msg> (root: Node<'Msg>) : TreeBindingFacts * FactHolders =
+    let holders = FactHolders(HashIdentity.Reference)
+    let facts, _, _ = walkTree true false (Some holders) root
+    facts.Bindings, holders
 
 /// Fuaran-UI Phase 2069 — the render pass: one walk for a tree's seeds, fragments
 /// and reactive keys, cheap enough to run per render of a tree rebuilt per
 /// dispatch.
 let renderFacts<'Msg> (root: Node<'Msg>) : RenderFacts<'Msg> =
-    let _, facts, _ = walkTree false false root
+    let _, facts, _ = walkTree false false None root
     facts
 
 /// Fuaran-UI Phase 2530 — the render pass with the reader projection beside it,
@@ -2726,7 +2786,7 @@ let renderFacts<'Msg> (root: Node<'Msg>) : RenderFacts<'Msg> =
 /// (so `Keys` drops a key only an unreferenced Transform param names), and the
 /// nodes a reactive render puts behind their own boundaries (see `ReaderEntry`).
 let reactiveRenderFacts<'Msg> (root: Node<'Msg>) : RenderFacts<'Msg> * ReaderEntry<'Msg> list =
-    let _, facts, readers = walkTree false true root
+    let _, facts, readers = walkTree false true None root
     facts, readers
 
 /// Fuaran-UI Phase 2530 — the key-to-reader map on one channel, by node id: for

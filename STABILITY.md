@@ -7860,10 +7860,11 @@ moves from ten to twelve (`docs/DECISIONS.md` D41).
 
 ### What rides this slot — Phase 2381 (where a refusal and a finding are located)
 
-**Class: ADDITIVE, with behaviour changes.** Packages `Fuaran.UI.Ops` and `Fuaran.UI`. One function is added
-(`PreEmitValidate.validateWithPaths`); no type, existing member, defect code or wire byte moves, and no document that
-decoded before is refused now, or the reverse. By the [Semver](#semver) table an addition is minor and a behaviour fix
-is a patch; both are below the breaking class of the draft they ride, so the number does not move.
+**Class: breaking, for one union case, with an addition and behaviour changes.** Packages `Fuaran.UI.Ops` and
+`Fuaran.UI`. The `PreEmitDefect.DuplicateWriteBackKey` case gains two fields (below), so a pattern or construction of
+it stops compiling. One function is added (`PreEmitValidate.validateWithPaths`). No other type, existing member,
+defect code or wire byte moves, and no document that decoded before is refused now, or the reverse. The draft this
+rides is already of the breaking class (Phase 2749), so the number does not move.
 
 - **A defect inside a `params` entry's `from` binding is located by the entry's index.** On a `Transform` or `Expr`
   binding, `JsonDecode` reported it under the entry's `name`: a `Filter` with no `name` in the second entry was
@@ -7887,10 +7888,19 @@ is a patch; both are below the breaking class of the draft they ride, so the num
   (FUARAN082) was one per repeated value, `TreeItemIdDuplicated` (FUARAN126) one per repeated row id and
   `TokensStaticDuplicate` (FUARAN136) one per field; each is now one per later occurrence, so `x, x, x` is two and
   `x, x, y, y` is two (§27.8.2). A tree with no repeat is unchanged.
+- **The same holds for the three repetition rules judged across the tree.** `DuplicateWriteBackKey` (FUARAN085) was
+  one per state key, naming no node; it is now one at each handler-free writer after the first, and the case is
+  `DuplicateWriteBackKey of stateKey * nodeId * fieldId * writers`, `nodeId` and `fieldId` naming the writer it is
+  raised at (`writers` still lists every writer). `ConflictingStateSeeds` (FUARAN106) was one per key, for the first
+  disagreement; it is now one at each later declaration that disagrees with the first. `DuplicateInlineTable`
+  (FUARAN107) was one per pair of equal tables, so three copies were three findings; it is now one at each later
+  copy, naming the first copy of it, so three copies are two. Both are now located at the LATER node
+  (`secondNodeId`) where they were at the first. The fields of 106 and 107 keep their meaning.
 - **`PreEmitValidate.validateWithPaths node`** (new) returns `validate`'s defects, in its order, each beside the
-  JSONPath of the node occurrence that raised it, taken from the walk itself: two nodes sharing an id are two
-  occurrences, and a defect on the second is located at the second. A defect judged across the whole tree that names
-  an id several nodes hold carries `None`, as does one that names no node.
+  JSONPath of the node occurrence that raised it, taken from the walks themselves: two nodes sharing an id are two
+  occurrences, and a defect raised by the second is located at the second. A finding judged across the whole tree is
+  located at the occurrence holding the binding, writer or field it was judged from; nothing is looked up by id.
+  `None` only where no occurrence the walk visits raised it (a fact inside a slot argument's tree).
 - **The binding-check report locates by the same walk.** `bindingChecks` spells a slot-argument member as `.name`
   however the key is spelled (`args.my-slot`, where it wrote `args['my-slot']`, §29.3), and orders a node's envelope
   `fallback` before its kind (document order), so a reader held by a fallback and by a child is listed at the fallback.
@@ -7903,7 +7913,9 @@ is a patch; both are below the breaking class of the draft they ride, so the num
 matches `params[<i>].from` instead, where `<i>` is the entry's position in the array. A consumer that shows the path
 or compares only the code needs nothing. A consumer that COUNTS defects, or asserts a validate result equal to a list
 with one `DuplicateNodeId` for an id held three or more times, sees `count − 1` entries; one that tests for the case's
-presence (`List.exists`) needs nothing.
+presence (`List.exists`) needs nothing. A consumer that matches `DuplicateWriteBackKey(key, writers)` matches
+`DuplicateWriteBackKey(key, _, _, writers)`, and one that reads a FUARAN106 or FUARAN107 finding's node reads the
+later declaration or copy.
 
 **Certified by** the reject vector `reject-transform-param-from-missing-name` (a full expected path, because a prefix
 that stops at `params` cannot see the spelling below it) and its row in `tests/decoder-parity/reject.tsv`; and by the
@@ -7911,7 +7923,9 @@ that stops at `params` cannot see the spelling below it) and its row in `tests/d
 `validate-duplicate-id-three-times` (two findings, at the second and the third), by the state-alternative, located-
 occurrence and repetition vectors of the same family (`validate-duplicate-id-in-the-state-alternatives`,
 `validate-defect-on-the-second-of-two-nodes-sharing-an-id`, `validate-switch-two-matches-each-repeated` and the
-rest), read back by
+rest), by its cross-tree repetition and location vectors (`validate-write-back-key-repeated-three-times`,
+`validate-state-seed-declared-three-times`, `validate-inline-table-repeated-three-times`, each `x, y` and repeated-id
+variant, and `validate-cross-tree-finding-on-the-second-of-two-nodes-sharing-an-id`), read back by
 `src/Fuaran.UI.JsonDecode.Tests/EmittedFamilyTests.fs`.
 
 ### Phase 2749 — a derivation trace shows how a bound number was computed (breaking, for `RenderPolicy`)

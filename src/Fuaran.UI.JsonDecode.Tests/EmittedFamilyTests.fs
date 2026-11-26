@@ -72,6 +72,39 @@ let private committedValidate () : (ValidateArtifact.Vector * ValidateArtifact.D
 let private wellFormedPath (path: string) : bool =
     Regex.IsMatch(path, @"^\$(\.[^.\[\]]+|\[\d+\])*$")
 
+/// A path's position in document order (27.8.2): its segments, a member by
+/// its name (compared Ordinally, the canonical member order) and an index by
+/// its number, so `children[2]` precedes `children[10]` and a prefix precedes
+/// what extends it. An absent path sorts first.
+let private documentPosition (path: string option) : (int * string * int) list option =
+    path
+    |> Option.map (fun p ->
+        [ for m in Regex.Matches(p, @"\.([^.\[\]]+)|\[(\d+)\]") ->
+              if m.Groups[2].Success then
+                  (1, "", int m.Groups[2].Value)
+              else
+                  (0, m.Groups[1].Value, 0) ])
+
+let private inDocumentOrder (a: string option) (b: string option) : bool =
+    let rec le (x: (int * string * int) list) (y: (int * string * int) list) =
+        match x, y with
+        | [], _ -> true
+        | _, [] -> false
+        | (kx, nx, ix) :: xs, (ky, ny, iy) :: ys ->
+            if kx <> ky then
+                kx < ky
+            elif kx = 0 && nx <> ny then
+                System.String.CompareOrdinal(nx, ny) < 0
+            elif kx = 1 && ix <> iy then
+                ix < iy
+            else
+                le xs ys
+
+    match documentPosition a, documentPosition b with
+    | None, _ -> true
+    | Some _, None -> false
+    | Some x, Some y -> le x y
+
 // ── apply/ ──────────────────────────────────────────────────────────────────
 
 let private regenerateApply =
@@ -139,13 +172,14 @@ let tests =
                                   path
                                   node)
                       | None, None -> ()
-                      // A finding judged across the whole tree names an id; where several
-                      // nodes hold it, no occurrence raised it, and it carries no path.
-                      | Some node, None when
-                          d.Code <> ValidateArtifact.duplicateIdCode && List.length (occurrences node) > 1
-                          ->
-                          ()
-                      | _ -> failtestf "%s: a defect has a node without a path, or a path without a node" vector.Id
+                      // A finding that names no node is still located where it was
+                      // raised; one that names a node is never without a path.
+                      | None, Some path ->
+                          Expect.isTrue
+                              (wellFormedPath path)
+                              (sprintf "%s: '%s' is in the 29.3 grammar" vector.Id path)
+                      | Some node, None ->
+                          failtestf "%s: %s on '%s' carries no path, though a node raised it" vector.Id d.Code node
 
                   // One FUARAN-DUP-ID finding per occurrence after the first.
                   for node, held in paths |> List.countBy fst do
@@ -208,8 +242,68 @@ let tests =
                     "validate-tree-row-id-repeated-three-times", "FUARAN126"
                     "validate-tree-row-ids-each-repeated", "FUARAN126"
                     "validate-static-token-repeated-three-times", "FUARAN136"
-                    "validate-static-tokens-each-repeated", "FUARAN136" ] do
+                    "validate-static-tokens-each-repeated", "FUARAN136"
+                    "validate-write-back-key-repeated-three-times", "FUARAN085"
+                    "validate-write-back-keys-each-repeated", "FUARAN085"
+                    "validate-state-seed-declared-three-times", "FUARAN106"
+                    "validate-state-seeds-each-declared-twice", "FUARAN106"
+                    "validate-inline-table-repeated-three-times", "FUARAN107"
+                    "validate-inline-tables-each-repeated", "FUARAN107" ] do
                   Expect.equal (count id code) 2 (sprintf "%s: %s is two findings" id code))
+
+          testCase "a cross-tree finding is located at the occurrence that raised it" (fun () ->
+              // FUARAN085, FUARAN106 and FUARAN107 are judged across the tree and are
+              // still one finding at each later writer, declaration or copy, at the
+              // node holding it; FUARAN103 is at the Switch whose key nothing
+              // writes. On a repeated id too: never looked up by the id (27.8.2).
+              let located id code =
+                  ValidateArtifact.all
+                  |> List.find (fun v -> v.Id = id)
+                  |> ValidateArtifact.defects
+                  |> List.filter (fun d -> d.Code = code)
+                  |> List.map (fun d -> d.Node, d.Path)
+
+              let at node path = Some node, Some path
+
+              for id, code, expected in
+                  [ "validate-write-back-key-repeated-three-times",
+                    "FUARAN085",
+                    [ at "f2" "$.kind.children[1]"; at "f3" "$.kind.children[2]" ]
+                    "validate-write-back-keys-each-repeated",
+                    "FUARAN085",
+                    [ at "f2" "$.kind.children[1]"; at "f2" "$.kind.children[1]" ]
+                    "validate-write-back-key-repeated-on-a-repeated-id", "FUARAN085", [ at "f2" "$.kind.children[2]" ]
+                    "validate-state-seed-declared-three-times",
+                    "FUARAN106",
+                    [ at "m2" "$.kind.children[1]"; at "m3" "$.kind.children[2]" ]
+                    "validate-state-seeds-each-declared-twice",
+                    "FUARAN106",
+                    [ at "m2" "$.kind.children[1]"; at "m4" "$.kind.children[3]" ]
+                    "validate-state-seed-agreeing-then-disagreeing", "FUARAN106", [ at "m3" "$.kind.children[2]" ]
+                    "validate-state-seed-disagreeing-on-a-repeated-id", "FUARAN106", [ at "m2" "$.kind.children[2]" ]
+                    "validate-inline-table-repeated-three-times",
+                    "FUARAN107",
+                    [ at "g2" "$.kind.children[1]"; at "g3" "$.kind.children[2]" ]
+                    "validate-inline-tables-each-repeated",
+                    "FUARAN107",
+                    [ at "g2" "$.kind.children[1]"; at "g4" "$.kind.children[3]" ]
+                    "validate-inline-table-repeated-on-a-repeated-id", "FUARAN107", [ at "g2" "$.kind.children[2]" ]
+                    "validate-defect-on-the-second-of-two-nodes-sharing-an-id",
+                    "FUARAN103",
+                    [ at "sw" "$.kind.children[0]" ]
+                    "validate-cross-tree-finding-on-the-second-of-two-nodes-sharing-an-id",
+                    "FUARAN103",
+                    [ at "sw" "$.kind.children[2]" ] ] do
+                  Expect.equal (located id code) expected (sprintf "%s: %s where it was raised" id code))
+
+          testCase "every vector's expected defects are listed in document order" (fun () ->
+              // 27.8.2 defines document order and the file lists findings in it, so
+              // children[2] precedes children[10]: never a string order.
+              for vector in ValidateArtifact.all do
+                  let paths = ValidateArtifact.defects vector |> List.map (fun d -> d.Path)
+
+                  for a, b in List.pairwise paths do
+                      Expect.isTrue (inDocumentOrder a b) (sprintf "%s: %A is listed before %A" vector.Id a b))
 
           testCase "the path grammar refuses the quoted form and admits every member spelling" (fun () ->
               // The go-red half of the check above.

@@ -275,7 +275,7 @@ let tests =
                       "each held position, spelled as the wire spells it, in document order"
           }
 
-          test "FUARAN107 pairs equal tables only, in first-then-second order" {
+          test "FUARAN107 is one finding at each later copy of an equal table, in walk order" {
               let pairs =
                   match validate (repeatedTables ()) with
                   | Ok() -> []
@@ -285,10 +285,12 @@ let tests =
                           | PreEmitDefect.DuplicateInlineTable(a, b, _) -> Some(a, b)
                           | _ -> None)
 
+              // c0 = c2 = c5 and c1 = c4: each later copy names the first copy of
+              // its table, once, never one finding per pair (WIRE_FORMAT 27.8.2).
               Expect.equal
                   pairs
-                  [ "c0", "c2"; "c0", "c5"; "c1", "c4"; "c2", "c5" ]
-                  "every pair of equal tables, none of unequal ones, ordered by first then second copy"
+                  [ "c0", "c2"; "c1", "c4"; "c0", "c5" ]
+                  "one finding per later copy of an equal table, none of unequal ones, in walk order"
           }
 
           // Phase 2252 — a duplicated reader id. The rules judge every occurrence,
