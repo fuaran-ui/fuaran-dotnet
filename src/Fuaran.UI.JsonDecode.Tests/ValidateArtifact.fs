@@ -15,7 +15,8 @@ module Fuaran.UI.JsonDecode.Tests.ValidateArtifact
 //  the reference validator (`PreEmitValidate.validate`) reports on the tree the
 //  reference decoder reads, each located at the node `findingOf` names. The
 //  node's location is the JSONPath of its object in the vector's canonical
-//  bytes, in the 29.3 grammar (`.name` members, `[i]` indices); where several
+//  bytes, in the 29.3 grammar (`.name` members, whatever the key, and `[i]`
+//  indices); where several
 //  nodes hold the id it is the first, except that the k-th FUARAN-DUP-ID
 //  finding on an id is at the id's (k+1)-th node (27.8.2). So a host that
 //  reports a path for a finding can be held to the spelling: its path extends
@@ -87,20 +88,15 @@ let all: Vector list =
       v
           "validate-duplicate-id-three-times"
           "One id held by three nodes, the third one level down (FUARAN-DUP-ID). Three occurrences are TWO findings, one at each occurrence after the first, in document order: $.kind.children[1] and $.kind.children[2].kind.children[0]. The count of findings is the count of nodes to change."
-          """{"id":"root","kind":{"$type":"Box","children":[{"id":"thrice","kind":{"$type":"Markdown","text":"One"}},{"id":"thrice","kind":{"$type":"Markdown","text":"Two"}},{"id":"inner","kind":{"$type":"Box","children":[{"id":"thrice","kind":{"$type":"Markdown","text":"Three"}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}""" ]
-
-/// The JSONPath member segment for a key: dotted where the key is a plain
-/// ASCII identifier, bracket-quoted otherwise (the 29.3 segmentation).
-let private memberSegment (key: string) : string =
-    let identStart (c: char) =
-        (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_' || c = '$'
-
-    let identChar (c: char) = identStart c || (c >= '0' && c <= '9')
-
-    if key.Length > 0 && identStart key.[0] && Seq.forall identChar key then
-        "." + key
-    else
-        "['" + key.Replace("\\", "\\\\").Replace("'", "\\'") + "']"
+          """{"id":"root","kind":{"$type":"Box","children":[{"id":"thrice","kind":{"$type":"Markdown","text":"One"}},{"id":"thrice","kind":{"$type":"Markdown","text":"Two"}},{"id":"inner","kind":{"$type":"Box","children":[{"id":"thrice","kind":{"$type":"Markdown","text":"Three"}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}"""
+      v
+          "validate-duplicate-id-in-a-list-of-twelve"
+          "One id held by the third and the eleventh of twelve children (FUARAN-DUP-ID). Document order puts children[2] before children[10], so the one finding is at $.kind.children[10]. A host that walks or orders positions as strings meets children[10] first and reports children[2]."
+          """{"id":"root","kind":{"$type":"Box","children":[{"id":"m0","kind":{"$type":"Markdown","text":"0"}},{"id":"m1","kind":{"$type":"Markdown","text":"1"}},{"id":"twice","kind":{"$type":"Markdown","text":"2"}},{"id":"m3","kind":{"$type":"Markdown","text":"3"}},{"id":"m4","kind":{"$type":"Markdown","text":"4"}},{"id":"m5","kind":{"$type":"Markdown","text":"5"}},{"id":"m6","kind":{"$type":"Markdown","text":"6"}},{"id":"m7","kind":{"$type":"Markdown","text":"7"}},{"id":"m8","kind":{"$type":"Markdown","text":"8"}},{"id":"m9","kind":{"$type":"Markdown","text":"9"}},{"id":"twice","kind":{"$type":"Markdown","text":"10"}},{"id":"m11","kind":{"$type":"Markdown","text":"11"}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}"""
+      v
+          "validate-duplicate-id-in-the-node-envelope"
+          "One id held by the root's envelope fallback and by its child (FUARAN-DUP-ID). The fallback is walked (section 8.1), and the canonical document lists it before the kind (member order), so the fallback is the first occurrence and the finding is at $.kind.children[0]. A host that walks the kind before the envelope reports $.fallback."
+          """{"fallback":{"id":"twice","kind":{"$type":"Markdown","text":"Fallback"}},"id":"root","kind":{"$type":"Box","children":[{"id":"twice","kind":{"$type":"Markdown","text":"Child"}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}""" ]
 
 /// Every node object in a canonical document, in document order, with its
 /// JSONPath: an object carrying a string `id` and an object `kind`.
@@ -117,7 +113,7 @@ let nodePaths (canonical: string) : (string * string) list =
             | _ -> ()
 
             for p in e.EnumerateObject() do
-                walk (path + memberSegment p.Name) p.Value
+                walk (path + "." + p.Name) p.Value
         | JsonValueKind.Array -> e.EnumerateArray() |> Seq.iteri (fun i x -> walk (sprintf "%s[%d]" path i) x)
         | _ -> ()
 

@@ -64,17 +64,17 @@
     },
     "laws/capabilityLaws": "covered",
     "laws/dataframeParity": {
-      "pending": "the reference host consumes Fuaran.Core and Fuaran.Compute as packages and certifies only the capabilityLaws vectors against its pin; this family's vectors are produced and certified in their producing repository, not by this suite yet"
+      "pending": "the reference host consumes Fuaran.Core and Fuaran.Compute as packages and certifies only the capabilityLaws and propagationLaws vectors against its pin; this family's vectors are produced and certified in their producing repository, not by this suite yet"
     },
     "laws/decimal": {
-      "pending": "the reference host consumes Fuaran.Core and Fuaran.Compute as packages and certifies only the capabilityLaws vectors against its pin; this family's vectors are produced and certified in their producing repository, not by this suite yet"
+      "pending": "the reference host consumes Fuaran.Core and Fuaran.Compute as packages and certifies only the capabilityLaws and propagationLaws vectors against its pin; this family's vectors are produced and certified in their producing repository, not by this suite yet"
     },
     "laws/fieldLaws": {
-      "pending": "the reference host consumes Fuaran.Core and Fuaran.Compute as packages and certifies only the capabilityLaws vectors against its pin; this family's vectors are produced and certified in their producing repository, not by this suite yet"
+      "pending": "the reference host consumes Fuaran.Core and Fuaran.Compute as packages and certifies only the capabilityLaws and propagationLaws vectors against its pin; this family's vectors are produced and certified in their producing repository, not by this suite yet"
     },
     "laws/propagationLaws": "covered",
     "laws/transformLaws": {
-      "pending": "the reference host consumes Fuaran.Core and Fuaran.Compute as packages and certifies only the capabilityLaws vectors against its pin; this family's vectors are produced and certified in their producing repository, not by this suite yet"
+      "pending": "the reference host consumes Fuaran.Core and Fuaran.Compute as packages and certifies only the capabilityLaws and propagationLaws vectors against its pin; this family's vectors are produced and certified in their producing repository, not by this suite yet"
     },
     "lenient-accept": "covered",
     "lowers-to": "covered",
