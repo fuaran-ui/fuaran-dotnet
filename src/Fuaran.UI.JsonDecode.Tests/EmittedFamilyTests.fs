@@ -288,6 +288,20 @@ let tests =
                     "FUARAN107",
                     [ at "g2" "$.kind.children[1]"; at "g4" "$.kind.children[3]" ]
                     "validate-inline-table-repeated-on-a-repeated-id", "FUARAN107", [ at "g2" "$.kind.children[2]" ]
+                    // "First" is the document's first (27.8.2): a node's fallback, then
+                    // its kind, then its state, whatever order a walk visits them in.
+                    "validate-state-seed-in-a-child-then-in-the-own-state-alternative",
+                    "FUARAN106",
+                    [ at "a2" "$.state.onEmpty" ]
+                    "validate-state-seed-in-the-fallback-then-in-the-own-state-alternative",
+                    "FUARAN106",
+                    [ at "a2" "$.state.onEmpty" ]
+                    "validate-inline-table-in-a-child-then-in-the-own-state-alternative",
+                    "FUARAN107",
+                    [ at "g2" "$.state.onEmpty" ]
+                    "validate-inline-table-in-the-fallback-then-in-the-own-state-alternative",
+                    "FUARAN107",
+                    [ at "g2" "$.state.onEmpty" ]
                     "validate-defect-on-the-second-of-two-nodes-sharing-an-id",
                     "FUARAN103",
                     [ at "sw" "$.kind.children[0]" ]

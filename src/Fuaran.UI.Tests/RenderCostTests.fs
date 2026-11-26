@@ -308,8 +308,9 @@ let tests =
                 }
 
                 test "a repeated name keeps the canonical winner" {
-                    // The walk reaches a state arm before the kind's children;
-                    // the canonical order is the other way round.
+                    // A repeated name (FUARAN056) takes the canonical registry
+                    // walk's winner, whatever order the render pass visited the
+                    // two declarations in.
                     let tree =
                         { page "root" [ decl "dup" (md "from-child") ] with
                             State =

@@ -2162,19 +2162,6 @@ let private walkTree<'Msg>
             hold fact
         | _ -> ()
 
-        // A `StateBehaviour` branch is a wire-encoded child node rendered in
-        // place of the body — a real reader the walk never descended into.
-        match n.State with
-        | Some sb ->
-            match sb.OnEmpty with
-            | Some branch -> walk inUses branch
-            | None -> ()
-
-            match sb.OnLoading with
-            | Some branch -> walk inUses branch
-            | None -> ()
-        | None -> ()
-
         // Phase 1812 — the author-declared `fallback` is a wire-encoded node a
         // BEHIND reader renders in place of this one (WIRE_FORMAT §3.1). Its
         // readers are real to analysis — a dangling reference inside it is a
@@ -2644,6 +2631,25 @@ let private walkTree<'Msg>
             // is another tree entirely, and this walk never sees its body.
             opaqueWriter <- true
             spec.Inputs |> Option.iter walkSlotArgs
+
+        // A `StateBehaviour` branch is a wire-encoded child node rendered in
+        // place of the body — a real reader the walk never descended into.
+        // Walked AFTER the kind (Phase 2381): the walk visits a node's envelope
+        // `fallback`, then its kind, then its state alternatives, which is the
+        // canonical document's member order (WIRE_FORMAT §27.8.2), so every
+        // collection here is in document order and "the first declaration" —
+        // the seed that takes effect, the table a later copy repeats — is the
+        // document's first.
+        match n.State with
+        | Some sb ->
+            match sb.OnEmpty with
+            | Some branch -> walk inUses branch
+            | None -> ()
+
+            match sb.OnLoading with
+            | Some branch -> walk inUses branch
+            | None -> ()
+        | None -> ()
 
     and walkAll (inUses: bool) (children: Node<'Msg> list) =
         for child in children do
