@@ -17,6 +17,9 @@ open System.Text.Json
 open System.Text.RegularExpressions
 open Expecto
 
+open Fuaran.UI.Ops
+open Fuaran.UI.OpStream.Abstractions
+
 let private corpusRoot = Corpus.findRoot ()
 
 let private str (e: JsonElement) : string =
@@ -187,6 +190,34 @@ let tests =
                       (readCommitted (applyPath family) regenerateApply)
                       (ApplyArtifact.toJson family)
                       (sprintf "apply/%s is stale - %s" family.File regenerateApply))
+
+          testCase "an apply input tree is decoded, never byte-compared, so an explicit identity default is admitted"
+          <| fun () ->
+              // WIRE_FORMAT 3.6's scope note: an input carrying an explicit identity
+              // default still decodes (read-compat) and re-encodes to the omitted form.
+              // An apply vector's verdict is a function of the DECODED tree, and only a
+              // pinned RESULT is canonical bytes, so an input need not be canonical. The
+              // authored inputs spell a Flex layout's default `"wrap":false`; that member,
+              // and nothing else, is what their canonical form drops.
+              let explicitDefault = ",\"wrap\":false"
+              let mutable nonCanonical = 0
+
+              for family in ApplyArtifact.all do
+                  for v in family.Vectors do
+                      match JsonDecode.decodeNodeObj v.Tree with
+                      | Error e -> failtestf "%s: the input tree does not decode (%s at %s)" v.Id e.Code e.Path
+                      | Ok tree ->
+                          let canonical = CanonicalJson.encodeNode tree
+
+                          if canonical <> v.Tree then
+                              nonCanonical <- nonCanonical + 1
+
+                              Expect.equal
+                                  canonical
+                                  (v.Tree.Replace(explicitDefault, ""))
+                                  (sprintf "%s: the input differs from its canonical form only by `wrap:false`" v.Id)
+
+              Expect.isGreaterThan nonCanonical 0 "the families hold inputs that are not canonical bytes, by design"
 
           testCase "the apply manifest's counts are the emitted files' counts" (fun () ->
               for family in ApplyArtifact.all do
