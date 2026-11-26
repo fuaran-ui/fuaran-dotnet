@@ -7848,6 +7848,26 @@ moves from ten to twelve (`docs/DECISIONS.md` D41).
 **Certified by** the `Phase 2753 — a refinable table whose view state is a pipeline` list in
 `src/Fuaran.UI.Fragments.Tests/StdlibCertificationTests.fs`, and by the library's quantified certification.
 
+### What rides this slot — Phase 2381 (where a refusal and a finding are located)
+
+**Class: BEHAVIOUR change, no API change.** Package `Fuaran.UI.Ops`. No type, member, defect code, sentence or wire
+byte moves, and no document that decoded before is refused now, or the reverse. By the [Semver](#semver) table it is a
+bug fix with no surface change, which is no higher class than the additive draft it rides, so the number does not move.
+
+- **A defect inside a `params` entry's `from` binding is located by the entry's index.** On a `Transform` or `Expr`
+  binding, `JsonDecode` reported it under the entry's `name`: a `Filter` with no `name` in the second entry was
+  `MISSING_FIELD` at `$.kind.source.params.region.from.name`. It is now at `$.kind.source.params[1].from.name`, as
+  `WIRE_FORMAT.md` §29.3 states: the index is the element's only name in a path, below it as at it. A defect on the
+  entry itself (`params[1].name`) was already at its index. The name→binding MAP shorthand (§3.6) is unchanged: it has
+  no index to give.
+
+**What a consumer must do.** A consumer that branches on `DecodeError.Path` and matched the `params.<name>.from` form
+matches `params[<i>].from` instead, where `<i>` is the entry's position in the array. A consumer that shows the path
+or compares only the code needs nothing.
+
+**Certified by** the reject vector `reject-transform-param-from-missing-name` (a full expected path, because a prefix
+that stops at `params` cannot see the spelling below it) and its row in `tests/decoder-parity/reject.tsv`.
+
 ---
 
 ## 0.107.0 — the slot opened after v0.106.0 was released, by the raise of `Fuaran.Compute.*` to 0.47.0, whose change is additive (DRAFT — untagged)

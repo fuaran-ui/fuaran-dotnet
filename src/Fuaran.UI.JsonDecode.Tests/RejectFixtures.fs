@@ -2762,7 +2762,20 @@ let all: RejectFixture list =
         ExpectedPath = "$.kind.children"
         IsOp = false
         Description =
-          "WIRE_FORMAT §29.1 stop rule — a §21 breach ends the walk: the depth breach in `children[0]` is the one defect reported, and the ill-typed node in `children[1]` is not" } ]
+          "WIRE_FORMAT §29.1 stop rule — a §21 breach ends the walk: the depth breach in `children[0]` is the one defect reported, and the ill-typed node in `children[1]` is not" }
+      // Phase 2381 — a defect INSIDE a `params` entry is located by the entry's
+      // index, below it as at it (WIRE_FORMAT §29.3): `params[1].from.name`,
+      // never `params.region.from.name`. The defect is in the SECOND entry, so
+      // the index is not a constant, and the expected path is the whole path,
+      // because a prefix that stops at `params` cannot see the spelling below it.
+      { Id = "reject-transform-param-from-missing-name"
+        Json =
+          """{"id":"x","kind":{"$type":"DataGrid","columns":[],"rowKey":"<closure>","source":{"$type":"Transform","params":[{"from":{"$type":"Filter","name":"dept"},"name":"dept"},{"from":{"$type":"Filter"},"name":"region"}],"pipeline":[],"source":{"columns":{"dept":{"validity":[true],"values":["eng"]}},"schema":[{"name":"dept","type":"string"}]}}}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.source.params[1].from.name"
+        IsOp = false
+        Description =
+          "WIRE_FORMAT §29.3 — a Transform's second param binds a Filter with no `name`. The defect is located by its entry's INDEX, below the entry as at it: `params[1].from.name`, never the entry's own `name` standing in for its index (`params.region.from.name`) or an empty index (`params[].from.name`)" } ]
 
 /// The FULL defect list of each multi-defect reject fixture (WIRE_FORMAT §29;
 /// Phase 1935), emitted as the manifest's `expectedDefects`. An entry absent here

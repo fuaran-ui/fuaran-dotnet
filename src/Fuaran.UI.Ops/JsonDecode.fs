@@ -2605,15 +2605,15 @@ and private decodeExprParams (path: string) (fields: Map<string, Json>) : Result
             // Field alias: value — the observed repair-attempt shape
             // ({name, value}); only two fields exist, so the concept is
             // unambiguous. Its PRESENCE is checked whatever `name` holds (a
-            // missing member is independent of its siblings, WIRE_FORMAT §29.1);
-            // its VALUE is decoded only under a good name, because the name is
-            // what locates it (`params.<name>.from`).
+            // missing member is independent of its siblings, WIRE_FORMAT §29.1
+            // rule 3); its VALUE is decoded only under a good name (rule 6: a
+            // param's binding is read in the context of its `name`). It is
+            // located by the entry's index, below the entry as at it
+            // (`params[i].from`, §29.3), never by the name.
             let fromJR = requireFieldAliased ep pf "from" [ "value" ] "param source Binding"
 
             match nameR, fromJR with
-            | Ok name, Ok fromJ ->
-                decodeBindingJVal (path + ".params." + name + ".from") fromJ
-                |> Result.map (fun fromB -> name, fromB)
+            | Ok name, Ok fromJ -> decodeBindingJVal (ep + ".from") fromJ |> Result.map (fun fromB -> name, fromB)
             | Error e, _
             | _, Error e -> Error e
 
