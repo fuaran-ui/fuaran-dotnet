@@ -845,8 +845,13 @@
          raise of Fuaran.Compute.* to 0.47.0 moves the published packages'
          dependency floor; it is additive, and it opens the next slot at the
          additive class. An UNTAGGED DRAFT: changes of this class or lower
-         ride it. See STABILITY.md "0.107.0". -->
-    <Version>0.107.0</Version>
+         ride it. See STABILITY.md "0.107.0".
+         0.108.0 (Phase 2753, 2026-11-26) - v0.107.0 is TAGGED, so nothing
+         rides it. A certified fragment and its types join
+         Fuaran.UI.Fragments; the change is additive, and it opens the next
+         slot at the additive class. An UNTAGGED DRAFT: changes of this class
+         or lower ride it. See STABILITY.md "0.108.0". -->
+    <Version>0.108.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org
