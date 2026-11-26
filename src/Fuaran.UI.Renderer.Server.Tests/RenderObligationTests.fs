@@ -1099,6 +1099,30 @@ let private boundGrid (nodeId: string) (rowAction: bool) : Node<obj> =
                  else
                      Option.None) }
 
+/// The bound grid over two rows the host supplied for its query (Phase 2775):
+/// the server draws its rows, so the positive half of rule 1 is answerable here.
+let private suppliedSources: BindingSources =
+    { BindingResolver.empty with
+        QueryResults =
+            Map.ofList
+                [ "settlements",
+                  box (
+                      seq {
+                          Map.ofList [ "reference", box "S-1" ]
+                          Map.ofList [ "reference", box "S-2" ]
+                      }
+                  ) ] }
+
+let private boundGridOverRows (nodeId: string) (rowAction: bool) : Node<obj> =
+    match (boundGrid nodeId rowAction).Kind with
+    | NodeKind.DataGrid spec ->
+        { boundGrid nodeId rowAction with
+            Kind =
+                NodeKind.DataGrid
+                    { spec with
+                        Source = Binding.Query("settlements", unbox<Row seq>, Option.None) } }
+    | _ -> failwith "boundGrid must build a DataGrid"
+
 /// The same grid in `staticRows` mode. The mode honours no row action in any
 /// tier - a static row is a `TextSource` list, not the row value a declared
 /// action is applied to - so the declaration is readable at the point the rows
@@ -1124,24 +1148,40 @@ let private staticGrid (nodeId: string) (rowAction: bool) : Node<obj> =
     | _ -> failwith "boundGrid must build a DataGrid"
 
 let private checkInteractiveRowOnlyWithAction () =
-    // What this host can and cannot answer for, stated here because the
-    // asymmetry is the claim's own (§3.6.24 rules 2 and 3) rather than a gap in
-    // this suite. The reference SERVER renderer draws a bound grid as a
-    // hydration placeholder, so it emits no bound row at all and the POSITIVE
-    // half of rule 1 — "a marked row appears where the action is declared" — is
-    // answered by the hosts that render bound rows, not here. What is answered
-    // here, and is not vacuous, is every NEGATIVE half: no leg of this renderer
-    // may emit the marker, and the static leg may not emit it even though the
-    // declaration is in scope at exactly the point the rows are built.
+    // Every half of §3.6.24 is answered here. Since Phase 2775 the reference
+    // SERVER renderer draws a bound grid whose source resolves, so rule 1's
+    // POSITIVE half — a marked row appears where the action is declared — is
+    // asserted over supplied rows; an unresolved source is still the hydration
+    // placeholder (rule 3); and the static leg may not emit the marker even
+    // though the declaration is in scope where its rows are built (rule 2).
     let marker = "fuaran-grid-row-interactive"
 
-    // Rule 3 — the placeholder leg emits no row, so no marker, either way.
+    // Rule 1 — over supplied rows, every row is marked where the grid declares
+    // a row action, and none where it declares none.
+    let declaredBound = Render.render suppliedSources (boundGridOverRows "g" true)
+
+    Expect.equal
+        (declaredBound.Split("<tr class=\"fuaran-grid-row " + marker + "\">").Length - 1)
+        2
+        "each bound row the server draws carries the marker where the grid declares a row action"
+
+    let undeclaredBound = Render.render suppliedSources (boundGridOverRows "g" false)
+
+    Expect.equal
+        (undeclaredBound.Split("<tr class=\"fuaran-grid-row\">").Length - 1)
+        2
+        "the undeclared grid draws the same two rows - the assertion below is about the declaration"
+
+    Expect.isFalse (undeclaredBound |> contains marker) "and marks none of them"
+
+    // Rule 3 — the placeholder leg (no rows supplied) emits no row, so no
+    // marker, either way.
     for rowAction in [ true; false ] do
         let html = render (boundGrid "g" rowAction)
 
         Expect.isTrue
             (html |> contains "fuaran-grid-ssr-placeholder")
-            "the bound leg is expected to render as a hydration placeholder here - the assertion below means nothing if it started rendering rows"
+            "an unsupplied query is expected to render as a hydration placeholder - the assertion below means nothing if it started rendering rows"
 
         Expect.isFalse
             (html |> contains marker)

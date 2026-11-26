@@ -166,7 +166,7 @@ let scalarSsrParityTests =
               // filter params PRUNE their dependent pipeline stages (Phase 424)
               // — both hosts show the unfiltered frame — so the Line chart
               // lowers to the inline Drawing SVG over all rows and the grid
-              // placeholder reports the full row count.
+              // draws them all (Phase 2775: a resolved grid is a table here).
               let tree = decodeFixture "filterable-static-dashboard"
               let html = Render.render BindingResolver.empty tree
 
@@ -179,10 +179,14 @@ let scalarSsrParityTests =
                   (contains "fuaran-drawing" html && contains "<svg" html)
                   "the Line chart lowers to the inline Drawing SVG over the prune-unfiltered rows"
 
-              Expect.isTrue
-                  (contains "data-fuaran-ssr-placeholder=\"DataGrid\"" html
-                   && contains "data-fuaran-row-count=\"2\"" html)
-                  "the grid keeps its hydration placeholder over the prune-unfiltered row count"
+              Expect.isFalse
+                  (contains "data-fuaran-ssr-placeholder=\"DataGrid\"" html)
+                  "the grid is no longer a hydration placeholder"
+
+              Expect.equal
+                  (html.Split("<tr class=\"fuaran-grid-row\">").Length - 1)
+                  2
+                  "the grid draws the prune-unfiltered rows"
           }
 
           test "Phase 818 — a LIVE State-sourced Transform SSRs byte-identically to its snapshot equivalent" {

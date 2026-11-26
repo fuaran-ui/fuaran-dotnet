@@ -3125,26 +3125,6 @@ module VisPlan =
         else
             table
 
-    /// The bound grid's no-script floor: a deterministic hydration placeholder
-    /// with the row count (never a blank). The client renders its grid in its
-    /// place, by nature.
-    let gridPlaceholder (sources: BindingResolver.BindingSources) (spec: DataGridSpec<'Msg>) : Plan<'E> =
-        let rowCount =
-            BindingResolver.tryResolve sources spec.Source
-            |> Option.map Seq.length
-            |> Option.defaultValue 0
-
-        Plan.element
-            "div"
-            [ Prop.Attr(
-                  "class",
-                  "fuaran-grid fuaran-grid-ssr-placeholder"
-                  + Theme.gridPrintBreakClasses spec.KeepRowsTogether spec.RepeatHeader
-              )
-              Prop.Attr("data-fuaran-ssr-placeholder", "DataGrid")
-              Prop.Attr("data-fuaran-row-count", string rowCount) ]
-            (Content.Text(sprintf "[Grid: %d rows — hydrates client-side]" rowCount))
-
     /// Phase 2041 — a visualisation's state slots: an unresolved source with
     /// `OnLoading` renders the loading node; an errored one with `OnError` the
     /// node it builds, whose correlation id hashes the node id. `None` — render
@@ -3166,6 +3146,359 @@ module VisPlan =
                 )
             )
         | _ -> None
+
+    /// Phase 2775 — the most rows a server-rendered bound grid draws. A grid
+    /// whose presented rows (after its sort, its declared page and its window)
+    /// number more draws the first `BoundGridRowLimit` of them and states the
+    /// total, never the whole table. Beside the chart lowering's cost caps
+    /// (`Charts.ChartLimits.defaults`): a page of a thousand rows is already
+    /// past what a reader scans, and the markup beyond it is cost, not
+    /// information. A grid that declares a page size at or under the limit is
+    /// never cut.
+    [<Literal>]
+    let BoundGridRowLimit = 1000
+
+    /// Why a bound grid's source did not resolve on the server, in words: the
+    /// placeholder names it, so a page published as static HTML says what is
+    /// missing rather than only that something is.
+    let private unresolvedReason (source: Binding<Row seq>) (resolution: BindingResolver.Resolution<'T>) : string =
+        match resolution, source with
+        | BindingResolver.Errored _, _ -> "the source failed to resolve"
+        | _, Binding.Query(name, _, _) -> sprintf "the host supplied no rows for query \"%s\"" name
+        | _, Binding.State(key, None) -> sprintf "state \"%s\" has no value" key
+        | _ -> "the source does not resolve on the server"
+
+    /// The bound grid's no-script floor when its source does not resolve: a
+    /// deterministic hydration placeholder naming the reason (never a blank).
+    /// The client renders its grid in its place, by nature.
+    let private gridPlaceholder (spec: DataGridSpec<'Msg>) (reason: string) : Plan<'E> =
+        Plan.element
+            "div"
+            [ Prop.Attr(
+                  "class",
+                  "fuaran-grid fuaran-grid-ssr-placeholder"
+                  + Theme.gridPrintBreakClasses spec.KeepRowsTogether spec.RepeatHeader
+              )
+              Prop.Attr("data-fuaran-ssr-placeholder", "DataGrid")
+              Prop.Attr("data-fuaran-row-count", "0") ]
+            (Content.Text(sprintf "[Grid: %s — hydrates client-side]" reason))
+
+    /// One bound-grid cell's content as the first-party client grid draws it
+    /// before any interaction (`renderGridCell` with no edit commit): the
+    /// column's value projection through its declared format, a pill, a link
+    /// through the egress policy, a progress fill, a nested node. A cell that
+    /// becomes an input once the grid is editable is its display text here:
+    /// editing switches on when the page hydrates.
+    let private boundCell (pc: PlanContext<'Msg, 'E>) (cellId: string) (col: ColumnErased<'Msg>) (row: Row) =
+        let text = BindingResolver.resolveTextSource pc.Sources
+
+        let value =
+            match col.Value with
+            | Some accessor -> accessor row
+            | None ->
+                match col.Field with
+                | Some field -> BindingResolver.projectRowFieldValue row field
+                | None -> CellValue.Empty
+
+        let formatted () =
+            Plan.element "span" [] (Content.Text(Formatting.formatCellValueIn pc.Sources.Locale col.Format value))
+
+        let cellButton (key: string option) (label: TextSource) =
+            Plan.Element
+                { Tag = "button"
+                  Key = key
+                  Props = [ Prop.Attr("class", "fuaran-grid-cell-button") ]
+                  Content = Content.Text(text label) }
+
+        match col.Kind with
+        | CellKindErased.Text
+        | CellKindErased.Numeric
+        | CellKindErased.Date
+        | CellKindErased.Editable _ -> formatted ()
+        | CellKindErased.Checkbox(getValue, _) ->
+            Plan.element "input" [ Prop.Attr("type", "checkbox"); Prop.Checked(getValue row, "checked") ] Content.Empty
+        | CellKindErased.Button(label, _) -> cellButton None label
+        | CellKindErased.ButtonGroup buttons ->
+            Plan.classChildren
+                "span"
+                "fuaran-grid-cell-button-group"
+                [ for buttonIndex, item in List.indexed buttons ->
+                      cellButton (Some(reconciliationKey None buttonIndex)) item.Label ]
+        | CellKindErased.Link(href, label) ->
+            let safeHref, egressAttrs =
+                Sanitize.sanitizeUrlForEgress pc.Egress Sanitize.EgressClass.Hyperlink (href row)
+
+            Plan.element
+                "a"
+                ([ Prop.Attr("class", "fuaran-grid-cell-link"); Prop.Attr("href", safeHref) ]
+                 @ Plan.attrs egressAttrs)
+                (Content.Text(text (label row)))
+        | CellKindErased.Pill(label, tone) ->
+            Plan.classText "span" (Css.gridCellPill (Theme.toneVar (tone row))) (text (label row))
+        | CellKindErased.TonedPill(field, toneMap, defaultTone) ->
+            let label, tone = GridModel.tonedPillOf row field toneMap defaultTone
+            Plan.classText "span" (Css.gridCellPill (Theme.toneVar tone)) label
+        | CellKindErased.Progress(fraction, label) ->
+            let fillClass, fillProps =
+                styleSite pc.Csp pc.Collector cellId "progress-fill" (Csp.Declarations.progressFill (fraction row))
+
+            Plan.classChildren
+                "div"
+                "fuaran-grid-cell-progress"
+                [ Plan.element
+                      "div"
+                      (Prop.Attr("class", "fuaran-grid-cell-progress-fill" + fillClass) :: fillProps)
+                      Content.Empty
+                  label
+                  |> Plan.ofOption (fun l -> Plan.element "span" [] (Content.Text(text (l row)))) ]
+        | CellKindErased.Custom render ->
+            pc.Child(
+                render (fun r ->
+                    BindingResolver.jvalOfResolved (r :> obj)
+                    |> Option.defaultValue (Fuaran.Core.JStr ""))
+            )
+
+    /// Phase 2775 — a `DataGrid` whose rows come from a binding, as the
+    /// first-party client grid draws it before any interaction: its state
+    /// slots, else — when the source resolves — the table, else the placeholder
+    /// naming why (a host query with no rows supplied, a state source with no
+    /// default, a failed evaluation).
+    ///
+    /// The table is the client's first render, element for element and
+    /// attribute for attribute, because the client hydrates it in place and an
+    /// attribute it disagrees with would survive hydration: the declared
+    /// columns in order (an empty header filled from its bound field), each cell
+    /// through its declared format, the effective sort (`sortStateKey` over
+    /// `defaultSort`), the requested page with the renderer-owned pager, the
+    /// window a `windowStateKey` presents, the selected row, the row-action
+    /// marker, and the cells a reported refresh marked. What needs script to
+    /// mean anything is left to hydration, where it switches on: the edit
+    /// inputs, the reorder handles, the transfer chrome and the export control.
+    /// Past `BoundGridRowLimit` presented rows the first that many are drawn,
+    /// with `aria-rowcount` and the pager's status stating the total.
+    let boundGrid
+        (pc: PlanContext<'Msg, 'E>)
+        (policy: RenderPolicy)
+        (state: StateBehaviour<'Msg> option)
+        (spec: DataGridSpec<'Msg>)
+        : Plan<'E> =
+        // Phase 2209 — the rows and the schema they were read from come from ONE
+        // evaluation; an empty header takes its bound field's column title.
+        let resolution, fields =
+            BindingResolver.resolveRowsWithFields pc.Sources spec.Source
+
+        let spec = BindingResolver.FieldDisplay.withColumnHeaders fields spec
+
+        match stateSlot pc state resolution with
+        | Some slot -> slot
+        | None ->
+            match resolution with
+            | BindingResolver.NotResolved
+            | BindingResolver.Errored _
+            | BindingResolver.I18nUnresolved _ -> gridPlaceholder spec (unresolvedReason spec.Source resolution)
+            | BindingResolver.Resolved resolved ->
+                let resolvedRows = Seq.toList resolved
+
+                let sortDescriptor =
+                    BindingResolver.effectiveSortDescriptor spec.SortStateKey spec.DefaultSort pc.Sources
+
+                let rows =
+                    resolvedRows |> GridModel.sortRowsByDescriptor spec.Columns sortDescriptor
+
+                let refreshMarked =
+                    RefreshPlan.cellMarker
+                        (RefreshPlan.forBinding policy pc.Sources spec.Source |> Option.flatten)
+                        resolvedRows
+
+                let pageInfo = BindingResolver.gridPage pc.Sources spec (List.length rows)
+                let hostWindows = GridModel.gridHostWindows spec
+
+                let pageRows =
+                    match pageInfo with
+                    | Some(_, size, page, false, _) when not hostWindows -> GridModel.sliceRowsToPage size page rows
+                    | _ -> rows
+
+                let window = BindingResolver.gridWindow pc.Sources spec pageRows
+
+                let presented =
+                    match window with
+                    | Some w -> w.Rows
+                    | None -> pageRows
+
+                // The limit: the first rows, and — where no window already
+                // states the range — a window over them that states the total.
+                let shownCount = List.length presented
+                let overLimit = shownCount > BoundGridRowLimit
+
+                let presented, window =
+                    if not overLimit then
+                        presented, window
+                    else
+                        let cut = List.truncate BoundGridRowLimit presented
+
+                        match window with
+                        | Some w -> cut, Some { w with Rows = cut }
+                        | None ->
+                            cut,
+                            Some(
+                                { Rows = cut
+                                  Offset = 0
+                                  Total = Some shownCount
+                                  Windowed = true }
+                                : GridModel.PresentedWindow<Row>
+                            )
+
+                match presented, state |> Option.bind _.OnEmpty with
+                | [], Some emptyNode -> pc.Child emptyNode
+                | _ ->
+                    let rowKeyOf: (Row -> string) option =
+                        match spec.RowKey, spec.RowKeyField with
+                        | Some key, _ -> Some key
+                        | None, Some field -> Some(fun row -> BindingResolver.projectRowFieldString row field)
+                        | None, None -> None
+
+                    let usableKey (k: string) = k <> "" && k <> "<closure>"
+
+                    let selectedKey: string option =
+                        match rowKeyOf with
+                        | Some keyOf ->
+                            Map.tryFind (NodeId pc.NodeId) pc.Sources.Selections
+                            |> Option.map (fun sel -> keyOf (unbox<Row> sel))
+                            |> Option.filter usableKey
+                        | None -> None
+
+                    let columnKey (colIndex: int) (col: ColumnErased<'Msg>) : string =
+                        reconciliationKey (Some(defaultArg col.Field col.Label)) colIndex
+
+                    let header (colIndex: int) (col: ColumnErased<'Msg>) : Plan<'E> =
+                        let props =
+                            match spec.SortStateKey, GridColumn.dataField col, col.Sortable with
+                            | Some _, Some _, (None | Some true) ->
+                                [ Prop.Attr("class", "fuaran-grid-header")
+                                  Prop.Attr("data-sortable", "")
+                                  Prop.Attr("tabindex", "0")
+                                  match sortDescriptor with
+                                  | Some(c, SortDirection.Asc) when c = colIndex -> Prop.Attr("aria-sort", "ascending")
+                                  | Some(c, SortDirection.Desc) when c = colIndex ->
+                                      Prop.Attr("aria-sort", "descending")
+                                  | _ -> () ]
+                            | _ -> [ Prop.Attr("class", "fuaran-grid-header") ]
+
+                        Plan.Element
+                            { Tag = "th"
+                              Key = Some(columnKey colIndex col)
+                              Props = props
+                              Content = Content.Text col.Label }
+
+                    let bodyRow (rowIndex: int) (row: Row) : Plan<'E> =
+                        let selected =
+                            match selectedKey, rowKeyOf with
+                            | Some sel, Some keyOf -> keyOf row = sel
+                            | _ -> false
+
+                        let cells =
+                            [ for columnIndex, col in List.indexed spec.Columns ->
+                                  Plan.Element
+                                      { Tag = "td"
+                                        Key = Some(columnKey columnIndex col)
+                                        Props =
+                                          [ Prop.Attr(
+                                                "class",
+                                                if refreshMarked row col.Field then
+                                                    "fuaran-grid-cell " + RefreshPlan.ChangedCellClass
+                                                else
+                                                    "fuaran-grid-cell"
+                                            ) ]
+                                        Content =
+                                          Content.Children
+                                              [ boundCell
+                                                    pc
+                                                    (sprintf "%s-r%d-c%d" pc.NodeId rowIndex columnIndex)
+                                                    col
+                                                    row ] } ]
+
+                        Plan.Element
+                            { Tag = "tr"
+                              Key = Some(reconciliationKey (rowKeyOf |> Option.map (fun keyOf -> keyOf row)) rowIndex)
+                              Props =
+                                [ Prop.Attr(
+                                      "class",
+                                      (if selected then
+                                           "fuaran-grid-row fuaran-grid-row-selected"
+                                       else
+                                           "fuaran-grid-row")
+                                      + Theme.gridRowInteractiveClass spec.OnRowClick.IsSome
+                                  )
+                                  match GridModel.windowRowIndex window rowIndex with
+                                  | Some index -> Prop.Attr("aria-rowindex", string index)
+                                  | None -> () ]
+                              Content = Content.Children cells }
+
+                    let table =
+                        Plan.element
+                            "table"
+                            [ Prop.Attr(
+                                  "class",
+                                  "fuaran-grid"
+                                  + Theme.gridPrintBreakClasses spec.KeepRowsTogether spec.RepeatHeader
+                              )
+                              match GridModel.windowRowCount window with
+                              | Some count -> Prop.Attr("aria-rowcount", string count)
+                              | None -> () ]
+                            (Content.Children
+                                [ Plan.element
+                                      "thead"
+                                      []
+                                      (Content.Children
+                                          [ Plan.element "tr" [] (Content.Children(spec.Columns |> List.mapi header)) ])
+                                  Plan.element "tbody" [] (Content.Children(presented |> List.mapi bodyRow)) ])
+
+                    // The pager, as the client draws it: inert until the page
+                    // hydrates, each step disabled exactly where the client's is.
+                    let pager (status: string) (steps: (bool * bool) option) =
+                        let step (label: string) (disabled: bool) =
+                            Plan.element
+                                "button"
+                                [ Prop.Attr("class", "fuaran-grid-pager-step")
+                                  Prop.Attr("type", "button")
+                                  if disabled then
+                                      Prop.Flag "disabled" ]
+                                (Content.Text label)
+
+                        let statusSpan =
+                            Plan.element
+                                "span"
+                                (Plan.attrs [ "class", "fuaran-grid-pager-status"; "aria-live", "polite" ])
+                                (Content.Text status)
+
+                        Plan.element
+                            "nav"
+                            [ Prop.Attr("class", "fuaran-grid-pager")
+                              Prop.Attr("aria-label", "Pagination") ]
+                            (Content.Children(
+                                match steps with
+                                | Some(atStart, atEnd) -> [ step "Previous" atStart; statusSpan; step "Next" atEnd ]
+                                | None -> [ statusSpan ]
+                            ))
+
+                    let paged (chrome: Plan<'E>) =
+                        Plan.classChildren "div" "fuaran-grid-paged" [ table; chrome ]
+
+                    match pageInfo with
+                    | Some(_, _, page, _, lastPage) ->
+                        let atEnd =
+                            match lastPage with
+                            | Some last -> page >= last
+                            | None -> false
+
+                        let status =
+                            match lastPage with
+                            | Some last -> sprintf "Page %d of %d" page last
+                            | None -> sprintf "Page %d" page
+
+                        paged (pager status (Some(page <= 1, atEnd)))
+                    | None when overLimit -> paged (pager (sprintf "Rows 1–%d of %d" BoundGridRowLimit shownCount) None)
+                    | None -> table
 
     /// A chart that cannot draw yet — unresolved data, or a kind whose
     /// lowering has not shipped: the labelled placeholder with the row count

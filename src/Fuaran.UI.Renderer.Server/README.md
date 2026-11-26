@@ -33,6 +33,12 @@ let element = Render.renderToElement BindingResolver.empty tree
 See [`fuaran-dotnet/docs/SSR.md`](../../docs/SSR.md) for the full per-kind behaviour
 table. In brief: no runtime / no dispatch (Action-bearing nodes render inert; a
 `Link` is the crawlable no-JS path); the resolved/loaded `StateBehaviour` branch
-renders by default; client-library visualisations (`Chart` / `Map` / `DataGrid`)
-render deterministic placeholders for later hydration; `Markdown` renders real
-HTML via Markdig. The host owns the document shell + serving the reference CSS.
+renders by default. A `Chart` of a lowered kind over rows that resolve draws the
+real chart, the shared `Drawing` SVG the client draws, under the lowering's cost
+caps; a bound `DataGrid` whose source resolves draws the real table, the client
+grid's own first render, up to 1000 presented rows with the total stated beyond
+them (Phase 2775). A chart or grid whose data does not resolve on the server, a
+chart kind not yet lowered, and a `Map` render deterministic placeholders for
+later hydration, and a grid's placeholder names why. `Markdown` renders real HTML
+through the shared deterministic GFM renderer the client runs. The host owns the
+document shell + serving the reference CSS.

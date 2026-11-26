@@ -7813,7 +7813,7 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.108.0 — the slot opened after v0.107.0 was released, by Phase 2753 (a refinable table fragment, additive), and advanced to the breaking class by Phase 2749 (`RenderPolicy` gains a field); Phase 2751 adds a second field of the same class (DRAFT — untagged)
+## 0.108.0 — the slot opened after v0.107.0 was released, by Phase 2753 (a refinable table fragment, additive), and advanced to the breaking class by Phase 2749 (`RenderPolicy` gains a field); Phase 2751 adds a second field of the same class, and Phase 2775 retires one public function (DRAFT — untagged)
 
 **Class: breaking, for one record.** `v0.107.0` is tagged, so nothing rides it: Phase 2753 opened this slot at the
 additive class, and Phase 2749 advanced it. In this repository's 0.x line a breaking change takes a minor, and
@@ -7821,12 +7821,14 @@ additive class, and Phase 2749 advanced it. In this repository's 0.x line a brea
 
 - **What breaks.** `RenderPolicy` gains the fields `DerivationTrace` (Phase 2749) and `RefreshMarking`
   (Phase 2751), so code that builds a `RenderPolicy` as a full record literal stops compiling (`FS0764`).
+  `ElementPlan.VisPlan.gridPlaceholder` leaves the public surface (Phase 2775), so code that called it stops
+  compiling.
 - **What does not.** Anything that starts from `RenderPolicy.defaults` and changes fields with `with` compiles and
   behaves as before. Both new fields are `Off` by default, and with them off every render is byte-identical.
 - **Phase 2753's own change is additive.** It adds one certified fragment and its types to `Fuaran.UI.Fragments`,
   and no existing member moves.
 
-The three entries follow.
+The entries follow.
 
 ### Phase 2753 — a refinable table fragment whose view state is a pipeline (additive)
 
@@ -8051,6 +8053,48 @@ incremental-recompute corpus, the cells marked are exactly the cells the refresh
 a reference-path one mark nothing, and an edit recorded as a column op marks the row it edited. With the policy off
 the server render is byte-identical to the ordinary one. The live region says what changed, and the reduced-motion
 rule stops the animation.
+
+
+### Phase 2775 — a pipeline-bound grid is a real table on the server (breaking, for one function)
+
+**Class: breaking, for one function; the rest is additive.** Packages `Fuaran.UI.Renderer.Core` and
+`Fuaran.UI.Renderer.Server`. No kind, variant, field or wire member is added, and no fixture byte moves. No public
+type gains a field or a case.
+
+- **`ElementPlan.VisPlan.boundGrid`** (`Fuaran.UI.Renderer.Core`), new: a `DataGrid` whose rows come from a binding,
+  planned as the first-party client grid draws it before any interaction. When the source resolves it is the
+  client's `<table class="fuaran-grid">` element for element: the declared columns in order, each cell through its
+  declared format, the effective sort with the active header's `aria-sort`, the requested page inside
+  `fuaran-grid-paged` with the renderer-owned pager, the presented window, the selected row, the row-action marker
+  and the cells a reported refresh marked. The client hydrates this markup in place, so an attribute the two
+  disagreed about would survive hydration; the plan reads the same shared rules the client's arm reads
+  (`GridModel.sortRowsByDescriptor`, `BindingResolver.gridPage`, `BindingResolver.gridWindow`,
+  `Formatting.formatCellValueIn`). Edit inputs, reorder handles, transfer chrome and the export control need script
+  and are left to hydration. When the source does not resolve it renders the state slot the client would, else the
+  placeholder, which now names why (a query with no rows supplied, a state key with no value, a failed evaluation).
+- **`ElementPlan.VisPlan.BoundGridRowLimit`**, a new literal, `1000`: past that many presented rows the plan draws
+  the first 1000, the table carries `aria-rowcount` and each row its `aria-rowindex`, and the pager's status states
+  the total. A grid at or under the limit is not cut.
+- **`ElementPlan.VisPlan.gridPlaceholder` is retired from the public surface.** The placeholder is the private
+  unresolved leg of `boundGrid`, and its row count is always `0` there, because it is only drawn when no rows
+  resolved. **Migration:** call `boundGrid`.
+- **The server renderer's behaviour moves.** `Render.render` draws a bound grid whose source resolves as the table
+  above, inside the refresh host (Phase 2751) and the derivation host (Phase 2749) exactly as the client's arm wraps
+  it. With both render policies off, the defaults, no host element is drawn. Phase 2751's statement that "the grid's
+  server render stays its hydration placeholder" no longer holds: under `RefreshMarking = Mark` the server marks the
+  cells the delta names, as the client does.
+
+**What a consumer must do.** Nothing, unless it called `VisPlan.gridPlaceholder`, or it read a bound grid's
+server-rendered placeholder (its `data-fuaran-row-count`, or its text) as the row count: the rows are now drawn, and
+the count is the number of `fuaran-grid-row` rows, or `aria-rowcount` past the limit.
+
+**Certified by** `src/Fuaran.UI.Renderer.Server.Tests/BoundGridSsrTests.fs`. A pipeline over an embedded table draws
+exactly the rows the evaluator produces, through each column's declared format. The declared sort orders them and
+the active header says so. A declared page is the first page with the client's pager. Past the limit the first 1000
+rows are drawn with the total stated, and a grid at the limit is not cut. An unsupplied query and a state key with no
+default keep the placeholder and name the reason, and the loading and empty slots render as the client's. The
+server's table equals a transcription of the client's first render. `RenderObligationTests` now answers the
+interactive-row obligation's positive half on the server's bound leg.
 
 ---
 

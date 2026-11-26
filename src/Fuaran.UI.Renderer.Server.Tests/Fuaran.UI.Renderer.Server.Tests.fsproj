@@ -102,6 +102,7 @@
     <Compile Include="StaticTableSelectionTests.fs" />
     <Compile Include="FigureLocaleTests.fs" />
     <Compile Include="FieldMetadataRenderTests.fs" />
+    <Compile Include="BoundGridSsrTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

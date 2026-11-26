@@ -229,11 +229,14 @@ let sharedSourceSeedingTests =
                   (contains "fuaran-badge-info\">2<" html)
                   "the badge carries the count derived from the seeded slot"
 
-              // The grid reads the SAME slot and reports the same two rows. The
-              // server tier emits a hydration placeholder for a grid rather than
-              // its cells, so the row COUNT is what it publishes — which is
-              // exactly the number under test.
-              Expect.isTrue (contains "data-fuaran-row-count=\"2\"" html) "the grid resolves the same two rows"
+              // The grid reads the SAME slot and draws the same two rows (Phase
+              // 2775: the server tier draws a resolved grid's cells).
+              Expect.equal
+                  (html.Split("<tr class=\"fuaran-grid-row\">").Length - 1)
+                  2
+                  "the grid resolves the same two rows"
+
+              Expect.isTrue (contains "<span>Ops</span>" html && contains "<span>Research</span>" html) "and draws them"
 
               // The before-state, for contrast: the badge alone, with nothing to
               // seed the slot, renders an empty span.

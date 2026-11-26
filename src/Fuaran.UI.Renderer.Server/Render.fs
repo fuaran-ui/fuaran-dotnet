@@ -31,9 +31,11 @@
 //     scalar path (Phase 632); `Computed` → best-effort. The resolved/loaded
 //     `StateBehaviour` branch renders by default (`OnLoading` only when a
 //     binding genuinely doesn't resolve server-side).
-//   - Client-library visualisations (`Chart` / `Map` / `DataGrid`) render a
-//     deterministic placeholder + data attributes for later hydration, never a
-//     blank.
+//   - A lowered `Chart` over resolved rows draws the shared `Drawing` SVG, and a
+//     bound `DataGrid` over resolved rows draws the client grid's first render
+//     (Phase 2775). Data that does not resolve here, an unlowered chart kind
+//     and a `Map` render a deterministic placeholder + data attributes for
+//     later hydration, never a blank.
 //   - Markdown renders real HTML via the shared deterministic GFM renderer
 //     (`.Core` `Markdown.toHtml`, Phase 292 — which retired the server-side
 //     Markdig), not the degraded `<pre>`.
@@ -451,11 +453,21 @@ and private renderKind
     | NodeKind.FileUpload spec -> Emit.plan (ElementPlan.InputPlan.fileUpload ctx.Sources spec)
     // -- Vis --
     | NodeKind.DataGrid spec ->
-        // Phase 393 — a static grid is the semantic table; a bound grid is the
-        // client's, and this tier serves its hydration placeholder (by nature).
+        // Phase 393 — a static grid is the semantic table. Phase 2775 — a bound
+        // grid whose source resolves is the table the client's first render
+        // draws (`VisPlan.boundGrid`), inside the refresh host (Phase 2751) and
+        // the derivation host (Phase 2749) exactly as the client's arm wraps it;
+        // an unresolved source keeps the placeholder, which names why.
         match spec.StaticRows with
         | Some sr -> Emit.plan (ElementPlan.VisPlan.staticGrid ctx.Sources parentNodeId spec sr)
-        | None -> Emit.plan (ElementPlan.VisPlan.gridPlaceholder ctx.Sources spec)
+        | None ->
+            Emit.plan (
+                ElementPlan.DerivationPlan.around
+                    (ElementPlan.DerivationPlan.forBinding ctx.Policy ctx.Sources spec.Source)
+                    (ElementPlan.RefreshPlan.aroundGrid
+                        (ElementPlan.RefreshPlan.forBinding ctx.Policy ctx.Sources spec.Source)
+                        (ElementPlan.VisPlan.boundGrid (planContext walk ctx parentNodeId) ctx.Policy state spec))
+            )
     | NodeKind.Chart spec ->
         // Phase 526 / 643 — the lowered kinds draw the shared Drawing SVG through
         // `Charts`, under the provenance scope this context declares (Phase 2068);
