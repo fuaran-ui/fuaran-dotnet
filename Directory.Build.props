@@ -849,8 +849,13 @@
          0.108.0 (Phase 2753, 2026-11-26) - v0.107.0 is TAGGED, so nothing
          rides it. A certified fragment and its types join
          Fuaran.UI.Fragments; the change is additive, and it opens the next
-         slot at the additive class. An UNTAGGED DRAFT: changes of this class
-         or lower ride it. See STABILITY.md "0.108.0". -->
+         slot at the additive class. Phase 2749 advanced the slot to the
+         breaking class: RenderPolicy gains the field DerivationTrace, so a
+         full record literal of RenderPolicy stops compiling (one that starts
+         from RenderPolicy.defaults does not). The number stays, because in
+         this 0.x line a breaking change takes a minor and 0.108.0 is already
+         one minor ahead of the last tag. An UNTAGGED DRAFT: changes of this
+         class or lower ride it. See STABILITY.md "0.108.0". -->
     <Version>0.108.0</Version>
   </PropertyGroup>
 

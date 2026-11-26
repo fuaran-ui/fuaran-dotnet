@@ -1429,7 +1429,7 @@ Only `Ref.Id` + `encoding` cross the wire – the blob and the `onRead` continua
 
 ## The runtime-introspection AI tools (§4i)
 
-You can call these four tools to inspect what the renderer did with your tree. Source: [`src/Fuaran.UI.AiTools/Tools.fs:265-381`](../src/Fuaran.UI.AiTools/Tools.fs).
+You can call these five tools to inspect what the renderer did with your tree. Source: [`src/Fuaran.UI.AiTools/Tools.fs:265-381`](../src/Fuaran.UI.AiTools/Tools.fs).
 
 ### `fuaran.getNodeState`
 

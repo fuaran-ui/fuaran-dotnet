@@ -7813,10 +7813,20 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.108.0 — the slot opened after v0.107.0 was released, by Phase 2753 (a refinable table fragment), whose change is additive (DRAFT — untagged)
+## 0.108.0 — the slot opened after v0.107.0 was released, by Phase 2753 (a refinable table fragment, additive), and advanced to the breaking class by Phase 2749 (`RenderPolicy` gains a field) (DRAFT — untagged)
 
-**Class: additive.** `v0.107.0` is tagged, so nothing rides it: this change opens the next slot. Phase 2753 adds one
-certified fragment and its types to `Fuaran.UI.Fragments`, and no existing member moves. Its entry follows.
+**Class: breaking, for one record.** `v0.107.0` is tagged, so nothing rides it: Phase 2753 opened this slot at the
+additive class, and Phase 2749 advanced it. In this repository's 0.x line a breaking change takes a minor, and
+0.108.0 is already one minor ahead of the last tag, so the number does not move.
+
+- **What breaks.** `RenderPolicy` gains the field `DerivationTrace`, so code that builds a `RenderPolicy` as a full
+  record literal stops compiling (`FS0764`).
+- **What does not.** Anything that starts from `RenderPolicy.defaults` and changes fields with `with` compiles and
+  behaves as before. The new field is `Off` by default, and with it off every render is byte-identical.
+- **Phase 2753's own change is additive.** It adds one certified fragment and its types to `Fuaran.UI.Fragments`,
+  and no existing member moves.
+
+The two entries follow.
 
 ### Phase 2753 — a refinable table fragment whose view state is a pipeline (additive)
 
@@ -7848,9 +7858,11 @@ moves from ten to twelve (`docs/DECISIONS.md` D41).
 **Certified by** the `Phase 2753 — a refinable table whose view state is a pipeline` list in
 `src/Fuaran.UI.Fragments.Tests/StdlibCertificationTests.fs`, and by the library's quantified certification.
 
-### Phase 2749 — a derivation trace shows how a bound number was computed (additive, with one record field)
+### Phase 2749 — a derivation trace shows how a bound number was computed (breaking, for `RenderPolicy`)
 
-**Class: additive in every package but one field.** Packages `Fuaran.UI`, `Fuaran.UI.Renderer.Core`, `Fuaran.UI.Renderer`,
+**Class: breaking, for one record.** `RenderPolicy` gains the field `DerivationTrace`, so code that builds a
+`RenderPolicy` as a full record literal stops compiling (`FS0764`). Anything that starts from
+`RenderPolicy.defaults` and changes fields with `with` is unaffected. Every other change below is additive. Packages `Fuaran.UI`, `Fuaran.UI.Renderer.Core`, `Fuaran.UI.Renderer`,
 `Fuaran.UI.Renderer.Server` and `Fuaran.UI.AiTools`. No kind, variant or wire member is added, and no byte of an
 existing fixture moves: the affordance is host chrome under a render policy that is off by default.
 
@@ -7880,9 +7892,9 @@ existing fixture moves: the affordance is host chrome under a render policy that
   `Fuaran.UI.AiTools`. They read the same slot table as `getBindingValue`. A refusal carries one of the codes
   `no-pipeline`, `absent`, `unresolved`, `node-not-found`, `slot-not-found` or `invalid-arguments`.
 
-**What a consumer must do.** Nothing, unless it builds a `RenderPolicy` as a full record literal. That is
-`FS0764`, because the record gains a field. Build it from `RenderPolicy.defaults` with `with`, as the record's own
-documentation asks. A host that wants the affordance sets `DerivationTrace = DerivationTracePolicy.Show n`: on the
+**What a consumer must do.** Nothing, unless it builds a `RenderPolicy` as a full record literal. **Migration:**
+start from `RenderPolicy.defaults` and set the fields you need with `with`, as the record's own documentation asks.
+A host that wants the affordance sets `DerivationTrace = DerivationTracePolicy.Show n`: on the
 client in its context's `Policy`, and on the server through `renderWithPolicy`, so both tiers render under one
 posture.
 
