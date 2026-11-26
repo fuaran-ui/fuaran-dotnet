@@ -2775,7 +2775,17 @@ let all: RejectFixture list =
         ExpectedPath = "$.kind.source.params[1].from.name"
         IsOp = false
         Description =
-          "WIRE_FORMAT §29.3 — a Transform's second param binds a Filter with no `name`. The defect is located by its entry's INDEX, below the entry as at it: `params[1].from.name`, never the entry's own `name` standing in for its index (`params.region.from.name`) or an empty index (`params[].from.name`)" } ]
+          "WIRE_FORMAT §29.3 — a Transform's second param binds a Filter with no `name`. The defect is located by its entry's INDEX, below the entry as at it: `params[1].from.name`, never the entry's own `name` standing in for its index (`params.region.from.name`) or an empty index (`params[].from.name`)" }
+      // Phase 2381 — an all-digit map key is a member as written (§6, §29.3):
+      // an array index is always bracketed, so `.404` can only be the key.
+      { Id = "reject-map-key-all-digits"
+        Json =
+          """{"id":"root","kind":{"$type":"DataGrid","columns":[{"field":"id","kind":{"$type":"Text"},"label":"Shipment"},{"field":"carrier","kind":{"$type":"TonedPill","field":"carrier","map":{"Meridian":"Info"}},"label":"Carrier"},{"field":"status","kind":{"$type":"TonedPill","default":"Subdued","field":"status","map":{"404":"Gone","200":"Success"}},"label":"Status"}],"rowKeyField":"id","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"carrier":{"validity":[true,true,true],"values":["Northwind","Meridian","Northwind"]},"id":{"validity":[true,true,true],"values":["SHP-1001","SHP-1002","SHP-1003"]},"status":{"validity":[true,true,true],"values":["On time","Delayed","Cancelled"]}},"schema":[{"name":"id","type":"string"},{"name":"carrier","type":"string"},{"name":"status","type":"string"}]}}}}"""
+        ExpectedCode = DecodeErrorCode.UNKNOWN_DU_CASE
+        ExpectedPath = "$.kind.columns[2].kind.map.404"
+        IsOp = false
+        Description =
+          "WIRE_FORMAT §6, §29.3 — a TonedPill map keyed by the status code `404` carries a tone that is not a ToneVariant. An array index is always bracketed, so a dotted segment is a member name or a map key as written, digits included: the defect is at `$.kind.columns[2].kind.map.404`, the key's own spelling" } ]
 
 /// The FULL defect list of each multi-defect reject fixture (WIRE_FORMAT §29;
 /// Phase 1935), emitted as the manifest's `expectedDefects`. An entry absent here
