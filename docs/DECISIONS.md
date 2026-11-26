@@ -10,6 +10,41 @@ consequence.
 
 ---
 
+## 2026-11-26 — D41: the certified fragment library holds at most twelve entries, and each of the eleven earns its place
+
+**Decided (Phase 2753; bound ruled 2026-11-26).** The library suite's size check is a tripwire: past its bound it asks
+for a second look at whether every entry earns its place. Phase 2753 adds an eleventh entry and the bound was ten.
+This is the second look. The bound moves from ten to twelve, and the size check now reads 6 to 12.
+
+Each entry composes shipped kinds and names a shape that consumer screens otherwise re-derive by hand:
+
+1. **`labelled-metric-row`**: the smallest read-only composite, a label beside its figure, which every summary uses.
+2. **`kpi-strip`**: a dashboard's top band. Its per-figure format, trend and polarity holes replace one hand-built row
+   per screen.
+3. **`filter-bar`**: chips bound to their own filter keys, the control side of every filtered view.
+4. **`confirm-action-pair`**: a confirm and a cancel that write one declared key; the smallest state-writing composite.
+5. **`empty-state-panel`**: the nothing-to-show card whose call to action is a slot, so the action stays the caller's.
+6. **`section-header`**: an eyebrow over a title at a chosen level, the most repeated heading shape.
+7. **`metric-card`**: one headline figure with its qualifying caption.
+8. **`loading-placeholder`**: skeleton rows of a bounded count, the shape a list takes while its query is in flight.
+9. **`parameter-panel`**: controls that write the filter keys a pipeline's parameters read, the input side of a what-if.
+10. **`scenario-comparison`**: one model under two parameter sets with the difference computed by the pipeline. Models
+    get this wrong by computing figures themselves.
+11. **`refinable-table`**: a grid whose sort, page and membership filters are its view, restated as one substituted
+    pipeline that a host can store and re-apply.
+
+**Why twelve.** The fragments that present data and computation were accepted as three, a pair (Phase 2752), this table, and a
+model summary (Phase 2754). Twelve holds that set with no slack. A thirteenth trips the check again, and that is
+where the next second look belongs.
+
+**Rejected.** Removing the bound: a curated set with no ceiling stops being curated. Folding an entry into another to
+stay at ten: `parameter-panel` and `scenario-comparison` compose but each is used alone, and the table shares no
+holes with either.
+
+**Consequence.** A consumer that pinned the library's size sees eleven entries now, and twelve after Phase 2754.
+
+---
+
 ## 2026-11-25 — D40: a `$type` is read in the family its position names; one tag may name a node kind and a form field
 
 **Decided (Phase 2536; ruled 2026-11-25).** WIRE_FORMAT.md §11.4 required the `NodeKind` and `FormFieldKind` tag

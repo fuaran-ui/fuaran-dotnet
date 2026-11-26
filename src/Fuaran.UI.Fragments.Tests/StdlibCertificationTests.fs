@@ -389,9 +389,9 @@ let tests =
                   6
                   "the charter promises a curated set of 6-12 fragments; fewer is not a library"
 
-              // Phase 2753 raised the ceiling from ten: the data-in-the-interface
+              // Phase 2753 raised the ceiling from ten: the data-presenting
               // fragments (Phases 2752-2754) were each accepted as an entry of
-              // their own, and twelve holds that set.
+              // their own, and twelve holds that set (docs/DECISIONS.md D41).
               Expect.isLessThanOrEqual
                   (List.length library)
                   12
