@@ -72,6 +72,25 @@ let private coreWrappedHintlessRejects: Set<string> =
           "reject-transform-int-below-int32"
           "reject-transform-int-fractional" ]
 
+/// WIRE_FORMAT §6: an `expectedPath` is a prefix of the reported path at a SEGMENT boundary, so it
+/// matches the whole path or the path followed by `.` or `[` — `$.kind.map.40` never accepts
+/// `$.kind.map.404`, and `$.kind.items` never accepts `$.kind.itemsX`.
+let internal pathExtends (path: string) (expected: string) : bool =
+    path = expected
+    || (path.StartsWith(expected, System.StringComparison.Ordinal)
+        && (path.[expected.Length] = '.' || path.[expected.Length] = '['))
+
+[<Tests>]
+let pathExtendsTests =
+    testCase "an expectedPath matches only whole segments" (fun () ->
+        Expect.isTrue (pathExtends "$.kind.map.404" "$.kind.map.404") "the whole path"
+        Expect.isTrue (pathExtends "$.kind.map.404.tone" "$.kind.map.404") "then a member"
+        Expect.isTrue (pathExtends "$.kind.items[0]" "$.kind.items") "then an index"
+        Expect.isTrue (pathExtends "$.kind" "$") "the root"
+        Expect.isFalse (pathExtends "$.kind.map.404" "$.kind.map.40") "inside a map key"
+        Expect.isFalse (pathExtends "$.kind.itemsX" "$.kind.items") "inside a member name"
+        Expect.isFalse (pathExtends "$.kind" "$.kind.map") "a longer expectation")
+
 let private checkError
     (e: Corpus.FixtureEntry)
     (expectedCode: string)
@@ -80,7 +99,9 @@ let private checkError
     : unit =
     Expect.equal err.Code expectedCode (sprintf "Code matches (path was '%s')" err.Path)
 
-    Expect.isTrue (err.Path.StartsWith expectedPath) (sprintf "Path '%s' starts with '%s'" err.Path expectedPath)
+    Expect.isTrue
+        (pathExtends err.Path expectedPath)
+        (sprintf "Path '%s' extends '%s' at a segment boundary" err.Path expectedPath)
 
     // Phase 1073 — the ruled bare-enum reject-path spelling, pinned.
     //
