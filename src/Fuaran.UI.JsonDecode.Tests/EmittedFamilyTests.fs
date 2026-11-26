@@ -108,6 +108,9 @@ let tests =
               for vector, expected in committedValidate () do
                   let paths = ValidateArtifact.nodePaths vector.Tree
 
+                  let occurrences node =
+                      paths |> List.filter (fst >> (=) node) |> List.map snd
+
                   for d in expected do
                       match d.Node, d.Path with
                       | Some node, Some path ->
@@ -115,12 +118,55 @@ let tests =
                               (wellFormedPath path)
                               (sprintf "%s: '%s' is in the 29.3 grammar" vector.Id path)
 
-                          Expect.equal
-                              (paths |> List.tryFind (fst >> (=) node) |> Option.map snd)
-                              (Some path)
-                              (sprintf "%s: '%s' is the first node object carrying id '%s'" vector.Id path node)
+                          // 27.8.2: FUARAN-DUP-ID is at an occurrence AFTER the first,
+                          // every other finding at the first.
+                          let admitted =
+                              match occurrences node with
+                              | _ :: later when d.Code = ValidateArtifact.duplicateIdCode -> later
+                              | first :: _ -> [ first ]
+                              | [] -> []
+
+                          Expect.contains
+                              admitted
+                              path
+                              (sprintf
+                                  "%s: '%s' is a node object carrying id '%s' that 27.8.2 admits"
+                                  vector.Id
+                                  path
+                                  node)
                       | None, None -> ()
-                      | _ -> failtestf "%s: a defect has a node without a path, or a path without a node" vector.Id)
+                      | _ -> failtestf "%s: a defect has a node without a path, or a path without a node" vector.Id
+
+                  // One FUARAN-DUP-ID finding per occurrence after the first.
+                  for node, held in paths |> List.countBy fst do
+                      Expect.equal
+                          (expected
+                           |> List.filter (fun d -> d.Code = ValidateArtifact.duplicateIdCode && d.Node = Some node)
+                           |> List.length)
+                          (held - 1)
+                          (sprintf "%s: id '%s' is held %d times" vector.Id node held))
+
+          testCase "FUARAN-DUP-ID is one finding at each occurrence after the first, in document order" (fun () ->
+              // Two occurrences are one finding at the second; three are two, at the
+              // second and the third. The count of findings is the count of nodes to
+              // change, and the node to change is the later one (27.8.2).
+              let duplicates id =
+                  ValidateArtifact.all
+                  |> List.find (fun v -> v.Id = id)
+                  |> ValidateArtifact.defects
+                  |> List.filter (fun d -> d.Code = ValidateArtifact.duplicateIdCode)
+                  |> List.map (fun d -> d.Node, d.Path)
+
+              Expect.equal
+                  (duplicates "validate-duplicate-id-across-default-and-child")
+                  [ Some "twice", Some "$.kind.children[1].kind.default" ]
+                  "two occurrences: one finding, at the second"
+
+              Expect.equal
+                  (duplicates "validate-duplicate-id-three-times")
+                  [ Some "thrice", Some "$.kind.children[1]"
+                    Some "thrice", Some "$.kind.children[2].kind.children[0]" ]
+                  "three occurrences: two findings, at the second and the third")
 
           testCase "the path grammar refuses the dotted-index spelling and admits the indexed one" (fun () ->
               // The go-red half of the check above: the misspelling two hosts write.

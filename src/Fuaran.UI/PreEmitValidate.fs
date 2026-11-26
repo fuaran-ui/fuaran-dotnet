@@ -61,7 +61,8 @@ let private dedupKeySep = "\u001F"
 [<RequireQualifiedAccess>]
 type PreEmitDefect =
     /// `id` appears as the `NodeId` of multiple nodes in the tree. Carries
-    /// the offending id string and the observed count (≥ 2). The §4g op
+    /// the offending id string and the observed count (≥ 2), and is reported
+    /// once per occurrence after the first (count − 1 times). The §4g op
     /// vocabulary depends on `NodeId` uniqueness — duplicate ids make
     /// `EditNode`, `RemoveNode`, `UpdateProp` ambiguous.
     | DuplicateNodeId of id: string * count: int
@@ -5862,7 +5863,10 @@ module private CompositionRules =
 /// part of the contract).
 module private CrossTreeRules =
 
-    // Collect every id observed ≥ 2 times.
+    // Every id observed ≥ 2 times, ONE finding per occurrence after the first
+    // (WIRE_FORMAT §27.8.2, Phase 2381): the count of findings is the count of
+    // nodes to change, and the node to change is a later one, so three
+    // occurrences are two findings. Each carries the id and its total count.
     let duplicateNodeIds
         (facts: BindingWalk.TreeBindingFacts)
         (acc: WalkAccumulators)
@@ -5872,7 +5876,7 @@ module private CrossTreeRules =
         let nodeIdCounts = acc.NodeIdCounts
 
         for KeyValue(id, count) in nodeIdCounts do
-            if count >= 2 then
+            for _ in 2..count do
                 defects.Add(PreEmitDefect.DuplicateNodeId(id, count))
 
         List.ofSeq defects

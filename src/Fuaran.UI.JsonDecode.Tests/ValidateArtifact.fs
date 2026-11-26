@@ -15,7 +15,9 @@ module Fuaran.UI.JsonDecode.Tests.ValidateArtifact
 //  the reference validator (`PreEmitValidate.validate`) reports on the tree the
 //  reference decoder reads, each located at the node `findingOf` names. The
 //  node's location is the JSONPath of its object in the vector's canonical
-//  bytes, in the 29.3 grammar (`.name` members, `[i]` indices), so a host that
+//  bytes, in the 29.3 grammar (`.name` members, `[i]` indices); where several
+//  nodes hold the id it is the first, except that the k-th FUARAN-DUP-ID
+//  finding on an id is at the id's (k+1)-th node (27.8.2). So a host that
 //  reports a path for a finding can be held to the spelling: its path extends
 //  the vector's at a segment boundary, and `$.kind.children.0` extends nothing.
 //
@@ -80,8 +82,12 @@ let all: Vector list =
           """{"id":"outer","kind":{"$type":"Switch","cases":[{"child":{"id":"inner","kind":{"$type":"Switch","cases":[{"child":{"id":"inner-a","kind":{"$type":"Markdown","text":"A"}},"match":"x"},{"child":{"id":"inner-b","kind":{"$type":"Markdown","text":"B"}},"match":"x"}],"default":{"id":"inner-d","kind":{"$type":"Markdown","text":"D"}},"stateKey":"inner"}},"match":"one"}],"default":{"id":"outer-d","kind":{"$type":"Markdown","text":"D"}},"stateKey":"outer"}}"""
       v
           "validate-duplicate-id-across-default-and-child"
-          "One id held by a Box's child and by a Switch's default arm (FUARAN-DUP-ID). The defect is located at the id's FIRST node in document order, $.kind.children[0]. The Switch's state key has no writer, so the reference also warns FUARAN103 on it."
-          """{"id":"root","kind":{"$type":"Box","children":[{"id":"twice","kind":{"$type":"Markdown","text":"First"}},{"id":"sw","kind":{"$type":"Switch","cases":[{"child":{"id":"sw-a","kind":{"$type":"Markdown","text":"A"}},"match":"a"}],"default":{"id":"twice","kind":{"$type":"Markdown","text":"Second"}},"stateKey":"view"}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}""" ]
+          "One id held by a Box's child and by a Switch's default arm (FUARAN-DUP-ID). The defect is located at the id's SECOND node in document order, $.kind.children[1].kind.default: the node to change is the later one. The Switch's state key has no writer, so the reference also warns FUARAN103 on it."
+          """{"id":"root","kind":{"$type":"Box","children":[{"id":"twice","kind":{"$type":"Markdown","text":"First"}},{"id":"sw","kind":{"$type":"Switch","cases":[{"child":{"id":"sw-a","kind":{"$type":"Markdown","text":"A"}},"match":"a"}],"default":{"id":"twice","kind":{"$type":"Markdown","text":"Second"}},"stateKey":"view"}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}"""
+      v
+          "validate-duplicate-id-three-times"
+          "One id held by three nodes, the third one level down (FUARAN-DUP-ID). Three occurrences are TWO findings, one at each occurrence after the first, in document order: $.kind.children[1] and $.kind.children[2].kind.children[0]. The count of findings is the count of nodes to change."
+          """{"id":"root","kind":{"$type":"Box","children":[{"id":"thrice","kind":{"$type":"Markdown","text":"One"}},{"id":"thrice","kind":{"$type":"Markdown","text":"Two"}},{"id":"inner","kind":{"$type":"Box","children":[{"id":"thrice","kind":{"$type":"Markdown","text":"Three"}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}""" ]
 
 /// The JSONPath member segment for a key: dotted where the key is a plain
 /// ASCII identifier, bracket-quoted otherwise (the 29.3 segmentation).
@@ -136,27 +142,46 @@ let private decoded (vector: Vector) =
 
         tree
 
+/// The code of the finding that is about a repeated id itself.
+[<Literal>]
+let duplicateIdCode = "FUARAN-DUP-ID"
+
 /// The defects the reference validator reports on the vector, ordered by path
 /// (an absent path first), then code, then node, so the file is deterministic.
+///
+/// A finding names its node by id, so an id several nodes hold needs a rule.
+/// The reference reports one FUARAN-DUP-ID finding per occurrence after the
+/// first, and those are about the LATER nodes (the ones to change), so the k-th
+/// such finding on an id is located at the id's (k+1)-th node in document
+/// order. Any other finding is located at the id's first node.
 let defects (vector: Vector) : Defect list =
     let tree = decoded vector
     let paths = nodePaths vector.Tree
 
-    let located (node: string option) =
-        node
-        |> Option.bind (fun id -> paths |> List.tryFind (fst >> (=) id) |> Option.map snd)
+    let occurrences (id: string) =
+        paths |> List.filter (fst >> (=) id) |> List.map snd
 
     match PreEmitValidate.validate tree with
     | Ok() -> []
     | Error found ->
         found
-        |> List.map (fun d ->
-            let finding = PreEmitValidate.findingOf d
+        |> List.map PreEmitValidate.findingOf
+        |> List.mapFold
+            (fun (repeats: Map<string, int>) finding ->
+                let ordinal, repeats =
+                    match finding.Location with
+                    | Some id when finding.Code = duplicateIdCode ->
+                        let k = Map.tryFind id repeats |> Option.defaultValue 0
+                        k + 1, Map.add id (k + 1) repeats
+                    | _ -> 0, repeats
 
-            { Code = finding.Code
-              Severity = sprintf "%A" finding.Severity
-              Node = finding.Location
-              Path = located finding.Location })
+                { Code = finding.Code
+                  Severity = sprintf "%A" finding.Severity
+                  Node = finding.Location
+                  Path = finding.Location |> Option.bind (occurrences >> List.tryItem ordinal) },
+                repeats)
+            Map.empty
+        |> fst
         |> List.distinct
         |> List.sortBy (fun d -> d.Path, d.Code, d.Node)
 
@@ -165,7 +190,9 @@ let private description =
     + "document (`tree`, canonical wire bytes) and the pre-emit defects it carries (`expected`): each "
     + "defect's `code` and `severity` from validator/defect-vocabulary.json, the `node` id it is "
     + "raised on (null where the defect names none), and `path`, the JSONPath of that node's object "
-    + "in the tree (its first occurrence) in the section 29.3 grammar. A host that implements the "
+    + "in the tree in the section 29.3 grammar: where several nodes hold the id, its first "
+    + "occurrence, except that FUARAN-DUP-ID is reported once at each occurrence after the first, in "
+    + "document order. A host that implements the "
     + "pre-emit tier validates each tree and asserts that its findings, restricted to the codes its "
     + "validator-coverage.json declares implemented, are exactly the expected defects restricted to "
     + "the same codes, each on the stated node; a host whose finding carries a path asserts that "

@@ -7850,8 +7850,8 @@ moves from ten to twelve (`docs/DECISIONS.md` D41).
 
 ### What rides this slot — Phase 2381 (where a refusal and a finding are located)
 
-**Class: BEHAVIOUR change, no API change.** Package `Fuaran.UI.Ops`. No type, member, defect code, sentence or wire
-byte moves, and no document that decoded before is refused now, or the reverse. By the [Semver](#semver) table it is a
+**Class: BEHAVIOUR change, no API change.** Packages `Fuaran.UI.Ops` and `Fuaran.UI`. No type, member, defect code,
+sentence or wire byte moves, and no document that decoded before is refused now, or the reverse. By the [Semver](#semver) table it is a
 bug fix with no surface change, which is no higher class than the additive draft it rides, so the number does not move.
 
 - **A defect inside a `params` entry's `from` binding is located by the entry's index.** On a `Transform` or `Expr`
@@ -7860,13 +7860,24 @@ bug fix with no surface change, which is no higher class than the additive draft
   `WIRE_FORMAT.md` §29.3 states: the index is the element's only name in a path, below it as at it. A defect on the
   entry itself (`params[1].name`) was already at its index. The name→binding MAP shorthand (§3.6) is unchanged: it has
   no index to give.
+- **A repeated node id is one `DuplicateNodeId` per occurrence after the first.** `PreEmitValidate.validate` reported
+  ONE `DuplicateNodeId(id, count)` per repeated id. It now reports `count − 1` of them, each the same value, because
+  `WIRE_FORMAT.md` §27.8.2 states that a repeated id is one `FUARAN-DUP-ID` finding at each occurrence after the
+  first: the count of findings is the count of nodes to change. An id held twice is reported exactly as before; an id
+  held three times is two findings where it was one. No other rule's verdict moves, and a tree with no repeated id is
+  byte-identical in every report.
 
 **What a consumer must do.** A consumer that branches on `DecodeError.Path` and matched the `params.<name>.from` form
 matches `params[<i>].from` instead, where `<i>` is the entry's position in the array. A consumer that shows the path
-or compares only the code needs nothing.
+or compares only the code needs nothing. A consumer that COUNTS defects, or asserts a validate result equal to a list
+with one `DuplicateNodeId` for an id held three or more times, sees `count − 1` entries; one that tests for the case's
+presence (`List.exists`) needs nothing.
 
 **Certified by** the reject vector `reject-transform-param-from-missing-name` (a full expected path, because a prefix
-that stops at `params` cannot see the spelling below it) and its row in `tests/decoder-parity/reject.tsv`.
+that stops at `params` cannot see the spelling below it) and its row in `tests/decoder-parity/reject.tsv`; and by the
+`validate` family's `validate-duplicate-id-across-default-and-child` (two occurrences: one finding, at the second) and
+`validate-duplicate-id-three-times` (two findings, at the second and the third), read back by
+`src/Fuaran.UI.JsonDecode.Tests/EmittedFamilyTests.fs`.
 
 ---
 
