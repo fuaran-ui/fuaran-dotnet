@@ -591,3 +591,455 @@ let affordanceTests =
               Expect.stringContains on "fuaran-derivation-refusal" "the refusal is shown"
               Expect.stringContains on "The derivation could not be traced" "in a sentence"
           } ]
+
+// ─── Phase 2767 — the derivation trace as a law family ─────────────────────
+//
+// `laws/derivation-trace-laws.json` (WIRE_FORMAT §35): one vector per
+// `evalPipeline` vector of the transform law corpus (`transform-laws.json` and
+// `dataframe-parity.json`), traced over its own source with the tables bounded
+// at `drawnRows`, then the authored cases a drawn pipeline cannot reach: bound
+// scalar and list params beside a pruned filter, an `Expr`, an open schema
+// whose evaluation is refused, and a schema-only trace. Each vector's
+// `expected.trace` is `Derivation.encode` of the reference trace.
+//
+// Three claims below. The COMMITTED file is byte-identical to a fresh emission.
+// Every committed vector, read back from the FILE, traces to its expected text
+// (the file, never the in-memory list, because the file is what another host
+// reads). And the codec round-trips every expected text byte for byte, and
+// refuses what is not a trace.
+
+/// Where the family lives in the corpus, and the command that writes it.
+module DerivationLaws =
+
+    let directory = "laws"
+    let fileName = "derivation-trace-laws.json"
+    let familyId = "derivationTraceLaws"
+
+    let emitCommand =
+        "dotnet run --project src/Fuaran.UI.Tests -- --emit-derivation-trace <corpus dir>"
+
+    /// The row limit every drawn vector traces at: small enough that most
+    /// tables are bounded, so the bound is certified, not only the evaluation.
+    let drawnRows = 3
+
+    type Input =
+        {
+            Subject: DerivationSubject
+            /// The pipeline's canonical wire text, for a `transform` subject.
+            Pipeline: string option
+            /// The expression's canonical wire text, for an `expr` subject.
+            Expr: string option
+            /// The input table's canonical wire text, for a `transform` subject.
+            Source: string option
+            Env: Map<string, Cell>
+            Lists: Map<string, Cell list>
+            Unbound: string list
+            Rows: int option
+        }
+
+    type Case = { Id: string; Input: Input }
+
+    let private canonical (v: JVal) : string = Canonical.write Rendering.CrossHost v
+
+    /// A cell as the dataframe codec writes a literal: a `lit` expression.
+    let private cellJson (c: Cell) : JVal = DataFrameCodec.encodeExpr (Lit c)
+
+    let private cellOf (path: string) (v: JVal) : Cell =
+        match DataFrameCodec.decodeExpr v with
+        | Ok(Lit c) -> c
+        | other -> failwithf "%s: expected a lit expression, got %A" path other
+
+    let private transformInput (pipeline: Fuaran.Compute.Transform list) (source: Table) rows env lists unbound =
+        { Subject = DerivationSubject.Transform
+          Pipeline = Some(DataFrameCodec.encodePipeline pipeline)
+          Expr = None
+          Source = Some(ColumnCodec.encode (Embedded source))
+          Env = env
+          Lists = lists
+          Unbound = unbound
+          Rows = rows }
+
+    /// The authored cases: what no drawn pipeline exercises.
+    let private authored: Case list =
+        let paramsCase rows =
+            transformInput
+                [ Filter(Binary(Gt, Col "v", Param "min"))
+                  Filter(InParam(Col "g", "groups"))
+                  Filter(Binary(Gt, Col "w", Param "unset"))
+                  GroupBy([ "g" ], [ { Name = "total"; Fn = Sum; Of = "v" } ])
+                  Sort [ Slot.Lit "g", Asc ] ]
+                sales
+                rows
+                (Map.ofList [ "min", Int 1 ])
+                (Map.ofList [ "groups", [ Str "a"; Str "b" ] ])
+                [ "unset" ]
+
+        [ { Id = "authored-params-bound-and-pruned"
+            Input = paramsCase (Some 5) }
+          { Id = "authored-schema-only"
+            Input = paramsCase None }
+          { Id = "authored-expr"
+            Input =
+              { Subject = DerivationSubject.Expr
+                Pipeline = None
+                Expr = Some(canonical (DataFrameCodec.encodeExpr (Binary(Mul, Param "rate", Lit(Float 2.0)))))
+                Source = None
+                Env = Map.ofList [ "rate", Float 1.25 ]
+                Lists = Map.empty
+                Unbound = []
+                Rows = Some 1 } }
+          { Id = "authored-open-schema-refused"
+            Input =
+              transformInput
+                  [ Join(Ref "targets", [ "g", "g" ], Inner); Project [ "g", "g" ] ]
+                  sales
+                  (Some 5)
+                  Map.empty
+                  Map.empty
+                  [] } ]
+
+    /// The drawn cases: every `evalPipeline` vector of the transform law corpus
+    /// at `root`, its source and pipeline texts carried verbatim.
+    let private drawn (root: string) : Case list =
+        [ for family, file in
+              [ "transformLaws", "transform-laws.json"
+                "dataframeParity", "dataframe-parity.json" ] do
+              use doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, directory, file)))
+
+              for v in doc.RootElement.GetProperty("vectors").EnumerateArray() do
+                  if text v "case" = "evalPipeline" then
+                      let input = v.GetProperty "input"
+
+                      yield
+                          { Id = family + "/" + text v "id"
+                            Input =
+                              { Subject = DerivationSubject.Transform
+                                Pipeline = Some(text input "pipeline")
+                                Expr = None
+                                Source = Some(text input "source")
+                                Env = Map.empty
+                                Lists = Map.empty
+                                Unbound = []
+                                Rows = Some drawnRows } } ]
+
+    let cases (root: string) : Case list = drawn root @ authored
+
+    let private inputJson (i: Input) : JVal =
+        let opt name (v: string option) =
+            v |> Option.map (fun s -> name, JStr s) |> Option.toList
+
+        JObj(
+            [ "subject",
+              JStr(
+                  match i.Subject with
+                  | DerivationSubject.Transform -> "transform"
+                  | DerivationSubject.Expr -> "expr"
+              ) ]
+            @ opt "pipeline" i.Pipeline
+            @ opt "expr" i.Expr
+            @ opt "source" i.Source
+            @ (if Map.isEmpty i.Env then
+                   []
+               else
+                   [ "env", JObj [ for KeyValue(k, c) in i.Env -> k, cellJson c ] ])
+            @ (if Map.isEmpty i.Lists then
+                   []
+               else
+                   [ "lists", JObj [ for KeyValue(k, cs) in i.Lists -> k, JArr(List.map cellJson cs) ] ])
+            @ (if List.isEmpty i.Unbound then
+                   []
+               else
+                   [ "unbound", JArr(List.map JStr i.Unbound) ])
+            @ (i.Rows |> Option.map (fun r -> "rows", JInt r) |> Option.toList)
+        )
+
+    /// An input read back from the file's JSON.
+    let inputOf (id: string) (e: JsonElement) : Input =
+        let tryText (name: string) =
+            match e.TryGetProperty name with
+            | true, v -> Some(string (v.GetString()))
+            | _ -> None
+
+        let jval (el: JsonElement) : JVal =
+            match Json.parse (el.GetRawText()) with
+            | Ok v -> v
+            | Error m -> failwithf "%s: %s" id m
+
+        let tryObj (name: string) =
+            match e.TryGetProperty name with
+            | true, v -> [ for p in v.EnumerateObject() -> p.Name, p.Value ]
+            | _ -> []
+
+        { Subject =
+            match text e "subject" with
+            | "transform" -> DerivationSubject.Transform
+            | "expr" -> DerivationSubject.Expr
+            | other -> failwithf "%s: unknown subject '%s'" id other
+          Pipeline = tryText "pipeline"
+          Expr = tryText "expr"
+          Source = tryText "source"
+          Env =
+            tryObj "env"
+            |> List.map (fun (k, v) -> k, cellOf (id + ".env." + k) (jval v))
+            |> Map.ofList
+          Lists =
+            tryObj "lists"
+            |> List.map (fun (k, v) -> k, [ for c in v.EnumerateArray() -> cellOf (id + ".lists." + k) (jval c) ])
+            |> Map.ofList
+          Unbound =
+            match e.TryGetProperty "unbound" with
+            | true, v -> [ for n in v.EnumerateArray() -> string (n.GetString()) ]
+            | _ -> []
+          Rows =
+            match e.TryGetProperty "rows" with
+            | true, v -> Some(v.GetInt32())
+            | _ -> None }
+
+    /// The reference trace's canonical text for an input.
+    let traceText (id: string) (i: Input) : string =
+        let sources (input: Table) : DerivationSources =
+            { DerivationSources.ofTable input with
+                Env = i.Env
+                Lists = i.Lists
+                Unbound = Set.ofList i.Unbound }
+
+        let traced =
+            match i.Subject, i.Pipeline, i.Expr, i.Source with
+            | DerivationSubject.Transform, Some pipeline, None, Some source ->
+                let input =
+                    match ColumnCodec.decode source with
+                    | Ok(Embedded t) -> t
+                    | other -> failwithf "%s: the source is not an embedded table: %A" id other
+
+                match DataFrameCodec.decodePipeline pipeline with
+                | Ok p ->
+                    Derivation.trace i.Rows (sources input) (rowsBinding (TransformSource.Data(Embedded input)) p None)
+                | Error e -> failwithf "%s: the pipeline did not decode: %A" id e
+            | DerivationSubject.Expr, None, Some expr, None ->
+                match
+                    Json.parse expr
+                    |> Result.mapError string
+                    |> Result.bind (DataFrameCodec.decodeExpr >> Result.mapError string)
+                with
+                | Ok e -> Derivation.trace i.Rows (sources exprFrame) (Binding.Expr(e, None): Binding<JVal>)
+                | Error e -> failwithf "%s: the expression did not decode: %s" id e
+            | _ -> failwithf "%s: an input carries the members its subject names and no other" id
+
+        match traced with
+        | Ok t -> Derivation.encode t
+        | Error refusal -> failwithf "%s: the reference refused to trace: %A" id refusal
+
+    let private description =
+        "The derivation trace (WIRE_FORMAT 35): for a pipeline binding and its RESOLVED sources, one entry per written step with its verb, its canonical wire form, whether it ran (a filter reading an unbound param is pruned), the output schema the static walk derives, and, where `rows` is given, the table after it bounded to that many rows, or the evaluator's refusal. `input.subject` is `transform` (the pipeline `input.pipeline` over the embedded table `input.source`) or `expr` (the expression `input.expr` over the one-row frame of 35.2); `input.env` binds scalar params and `input.lists` list params, each value a `lit` expression in the dataframe codec's ColExpr form; `input.unbound` names the params no source bound; a `ref` source resolves to nothing. `expected.trace` is the reference trace's canonical text (35.1), which a host compares byte for byte. The drawn vectors are every `evalPipeline` vector of transformLaws and dataframeParity, their `source` and `pipeline` texts carried verbatim and traced at `rows` 3, so each one's last table is that vector's expected table bounded to three rows; the authored vectors (ids `authored-*`) cover bound and pruned params, an `expr`, an open schema whose evaluation is refused, and a trace taken without tables."
+
+    /// The family file's text for the corpus at `root`, LF endings.
+    let render (root: string) : string =
+        let lines =
+            cases root
+            |> List.map (fun c ->
+                "    "
+                + canonical (
+                    JObj
+                        [ "id", JStr c.Id
+                          "case", JStr "trace"
+                          "input", inputJson c.Input
+                          "expected", JObj [ "trace", JStr(traceText c.Id c.Input) ] ]
+                ))
+
+        "{\n"
+        + "  \"family\": \""
+        + familyId
+        + "\",\n"
+        + "  \"description\": "
+        + canonical (JStr description)
+        + ",\n"
+        + "  \"vectors\": [\n"
+        + String.Join(",\n", lines)
+        + "\n  ]\n}\n"
+
+    /// Write the family into the corpus at `root`; the path written.
+    let write (root: string) : string =
+        let path = Path.Combine(root, directory, fileName)
+        File.WriteAllText(path, render root)
+        path
+
+type private Committed =
+    { Id: string
+      Input: DerivationLaws.Input
+      Expected: string }
+
+let private committed (root: string) : Committed list =
+    let path = Path.Combine(root, DerivationLaws.directory, DerivationLaws.fileName)
+
+    if not (File.Exists path) then
+        failtestf "%s is missing from the corpus — regenerate with `%s`" path DerivationLaws.emitCommand
+
+    use doc = JsonDocument.Parse(File.ReadAllText path)
+
+    [ for v in doc.RootElement.GetProperty("vectors").EnumerateArray() ->
+          let id = text v "id"
+
+          { Id = id
+            Input = DerivationLaws.inputOf id (v.GetProperty "input")
+            Expected = text (v.GetProperty "expected") "trace" } ]
+
+let private withCorpus (f: string -> unit) () =
+    match Fuaran.Tests.CorpusRoot.tryFind () with
+    | None -> skiptest Fuaran.Tests.CorpusRoot.AbsentSkipReason
+    | Some root -> f root
+
+let private decoded (id: string) (wire: string) : DerivationTrace =
+    match Derivation.decode wire with
+    | Ok t -> t
+    | Error e -> failtestf "%s: the trace did not decode: %s" id e
+
+let private refusedAs (fragment: string) (wire: string) =
+    match Derivation.decode wire with
+    | Ok t -> failtestf "decoded what is not a trace: %A" t
+    | Error e -> Expect.stringContains e fragment (sprintf "the refusal names the defect: %s" e)
+
+[<Tests>]
+let lawFamilyTests =
+    testList
+        "Phase 2767 — the derivation trace law family"
+        [ testCase "the committed family is byte-identical to a fresh emission"
+          <| withCorpus (fun root ->
+              let path = Path.Combine(root, DerivationLaws.directory, DerivationLaws.fileName)
+
+              if not (File.Exists path) then
+                  failtestf "%s is missing — regenerate with `%s`" path DerivationLaws.emitCommand
+
+              Expect.isTrue
+                  (File.ReadAllText path = DerivationLaws.render root)
+                  (sprintf "%s is stale — regenerate with `%s`" path DerivationLaws.emitCommand))
+
+          testCase "laws/manifest.json indexes the family with its vector count and producer"
+          <| withCorpus (fun root ->
+              use doc =
+                  JsonDocument.Parse(File.ReadAllText(Path.Combine(root, DerivationLaws.directory, "manifest.json")))
+
+              let row =
+                  doc.RootElement.GetProperty("families").EnumerateArray()
+                  |> Seq.tryFind (fun r -> text r "id" = DerivationLaws.familyId)
+                  |> Option.defaultWith (fun () -> failtest "laws/manifest.json has no derivationTraceLaws row")
+
+              Expect.equal (text row "file") DerivationLaws.fileName "the row names the file"
+              Expect.equal (row.GetProperty("vectors").GetInt32()) (List.length (committed root)) "the vector count"
+
+              Expect.equal
+                  (text (row.GetProperty "producer") "emit")
+                  DerivationLaws.emitCommand
+                  "the row names this emitter")
+
+          testCase "every committed vector traces to its expected text"
+          <| withCorpus (fun root ->
+              let vectors = committed root
+              Expect.isNonEmpty vectors "the family certifies something"
+
+              for c in vectors do
+                  Expect.equal (DerivationLaws.traceText c.Id c.Input) c.Expected (c.Id + ": the trace"))
+
+          testCase "every expected text decodes and re-encodes byte for byte"
+          <| withCorpus (fun root ->
+              for c in committed root do
+                  Expect.equal (Derivation.encode (decoded c.Id c.Expected)) c.Expected (c.Id + ": the round trip"))
+
+          testCase "the family reaches what it says it does"
+          <| withCorpus (fun root ->
+              let traces = committed root |> List.map (fun c -> c.Id, decoded c.Id c.Expected)
+
+              let steps =
+                  traces |> List.collect (fun (_, t) -> t.Input :: (t.Steps |> List.map _.Output))
+
+              let reached what (p: bool) =
+                  Expect.isTrue p ("a vector reaches " + what)
+
+              reached "an open schema" (steps |> List.exists (fun s -> not (SchemaWalk.isClosed s.Schema)))
+              reached "a refused evaluation" (steps |> List.exists (fun s -> s.Table |> Option.exists Result.isError))
+
+              reached
+                  "a bounded table"
+                  (steps
+                   |> List.exists (fun s ->
+                       match s.Table with
+                       | Some(Ok t) -> Table.rowCount t.Rows < t.RowCount
+                       | _ -> false))
+
+              reached "a trace without tables" (steps |> List.exists (fun s -> Option.isNone s.Table))
+              reached "an expr" (traces |> List.exists (fun (_, t) -> t.Subject = DerivationSubject.Expr))
+
+              reached
+                  "a pruned step"
+                  (traces
+                   |> List.exists (fun (_, t) ->
+                       t.Steps
+                       |> List.exists (fun s ->
+                           match s.Status with
+                           | StepStatus.Pruned _ -> true
+                           | StepStatus.Applied -> false))))
+
+          test "a trace round-trips through its canonical text" {
+              let binding =
+                  rowsBinding
+                      (TransformSource.Data(Embedded sales))
+                      parameterised
+                      (Some [ stateParam "min"; stateParam "groups"; stateParam "unset" ])
+
+              let trace =
+                  traceOk (BindingResolver.derivationTrace (Some 2) parameterisedSources binding)
+
+              let wire = Derivation.encode trace
+              Expect.equal (Derivation.encode (decoded "fixture" wire)) wire "byte-stable"
+
+              Expect.equal
+                  (Derivation.encode (decoded "fixture" wire))
+                  (Fuaran.Core.Canonical.write Fuaran.Core.Rendering.CrossHost (Derivation.toJson trace))
+                  "the canonical text is toJson under the cross-host rendering"
+
+              let back = decoded "fixture" wire
+              Expect.equal (back.Steps |> List.map _.Status) (trace.Steps |> List.map _.Status) "the statuses"
+
+              let wires (t: DerivationTrace) =
+                  t.Steps
+                  |> List.map (fun s -> Fuaran.Core.Canonical.write Fuaran.Core.Rendering.CrossHost s.Wire)
+
+              Expect.equal (wires back) (wires trace) "the steps' wire forms, canonically"
+
+              Expect.equal
+                  (back.Steps
+                   |> List.map (fun s ->
+                       s.Output.Table |> Option.map (Result.map (fun t -> t.RowCount, encoded t.Rows))))
+                  (trace.Steps
+                   |> List.map (fun s ->
+                       s.Output.Table |> Option.map (Result.map (fun t -> t.RowCount, encoded t.Rows))))
+                  "the tables"
+          }
+
+          test "the decoder refuses what is not a trace, naming the member" {
+              let wire =
+                  Derivation.encode (traceOk (Derivation.trace (Some 2) (DerivationSources.ofTable sales) totalBinding))
+
+              let edited (f: string -> string) = f wire
+
+              refusedAs
+                  "'extra' is not a member"
+                  (edited (fun w -> w.Replace("{\"input\":", "{\"extra\":1,\"input\":")))
+
+              refusedAs "$.subject" (edited (fun w -> w.Replace("\"subject\":\"transform\"", "\"subject\":\"table\"")))
+              refusedAs ".verb" (edited (fun w -> w.Replace("\"verb\":\"groupBy\"", "\"verb\":\"filter\"")))
+              refusedAs ".index" (edited (fun w -> w.Replace("\"index\":0", "\"index\":1")))
+
+              refusedAs
+                  "an applied step names no unbound param"
+                  (edited (fun w -> w.Replace("\"status\":\"applied\"", "\"status\":\"applied\",\"unbound\":[\"x\"]")))
+
+              refusedAs
+                  "a closed schema states no reason"
+                  (edited (fun w -> w.Replace("\"closed\":true,", "\"closed\":true,\"reason\":\"r\",")))
+
+              refusedAs
+                  "never both"
+                  (edited (fun w -> w.Replace("\"schema\":{\"closed\"", "\"refusal\":\"r\",\"schema\":{\"closed\"")))
+
+              refusedAs "is not a column type" (edited (fun w -> w.Replace("\"type\":\"int\"", "\"type\":\"integer\"")))
+          } ]

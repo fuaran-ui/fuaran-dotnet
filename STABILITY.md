@@ -8127,6 +8127,35 @@ table, the statistics row and the chart's rows equal the `Fit` and `Predict` ste
 compared by its bits. The robust standard errors are the robust fit's own and the column says so. A fit the step
 refuses shows the step's words in every view, and the builder's refusals hold.
 
+### Phase 2767 — the derivation trace is a law family (additive)
+
+**Class: additive.** Package `Fuaran.UI`. Three members are new in `Fuaran.UI.Derivation`, and no existing member
+moves. No kind, variant or node wire member is added and no existing fixture byte moves: the corpus gains one law
+family beside the others.
+
+- **`Derivation.encode`**, new: a trace's canonical text, `toJson` under the cross-host rendering (WIRE_FORMAT
+  §35.1). `Tools.derivationTrace` now answers through it, with the same bytes as before.
+- **`Derivation.decode`** and **`Derivation.ofJson`**, new: a trace read back from its text or its JSON value. A
+  refusal names the member's path: an unknown member, a verb that is not the step's own `$type`, an index that is
+  not the step's position, a status and `unbound` that disagree, a schema whose `closed` and `reason` disagree, a
+  stage that carries both a table and a refusal, or an unknown column type. The wire form carries a column's name
+  and type only, so a decoded trace re-encodes to the same text without restoring a column's unit, label or
+  exactness.
+- **The `laws/derivationTraceLaws` family** (`laws/derivation-trace-laws.json`): every `evalPipeline` vector of
+  `transformLaws` and `dataframeParity`, traced over its own source with tables bounded at three rows, and four
+  authored vectors (bound and pruned params, an `Expr`, an open schema whose evaluation is refused, a trace taken
+  without tables). Each expectation is the reference trace's canonical text. The emitter is
+  `dotnet run --project src/Fuaran.UI.Tests -- --emit-derivation-trace [<corpus dir>]`.
+
+**What a consumer must do.** Nothing.
+
+**Certified by** the `Phase 2767 — the derivation trace law family` list in
+`src/Fuaran.UI.Tests/DerivationTests.fs`. The committed family is byte-identical to a fresh emission, and its
+`laws/manifest.json` row names its count and its emitter. Every committed vector, read back from the file, traces to
+its expected text, and every expected text decodes and re-encodes byte for byte. The family reaches an open schema,
+a refused evaluation, a bounded table, a trace without tables, an `Expr` and a pruned step, and the decoder's
+refusals each name their member.
+
 ---
 
 ## 0.107.0 — the slot opened after v0.106.0 was released, by the raise of `Fuaran.Compute.*` to 0.47.0, whose change is additive (DRAFT — untagged)

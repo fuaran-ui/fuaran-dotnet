@@ -69,6 +69,7 @@
     "laws/decimal": {
       "pending": "the reference host consumes Fuaran.Core and Fuaran.Compute as packages and certifies only the capabilityLaws and propagationLaws vectors against its pin; this family's vectors are produced and certified in their producing repository, not by this suite yet"
     },
+    "laws/derivationTraceLaws": "covered",
     "laws/fieldLaws": {
       "pending": "the reference host consumes Fuaran.Core and Fuaran.Compute as packages and certifies only the capabilityLaws and propagationLaws vectors against its pin; this family's vectors are produced and certified in their producing repository, not by this suite yet"
     },

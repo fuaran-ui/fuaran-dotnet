@@ -1101,5 +1101,4 @@ let derivationTrace (ctx: IntrospectionContext) (root: Node<'Msg>) (args: Fuaran
                 | Fuaran.UI.Derivation.DerivationRefusal.Unresolved _ -> "unresolved"
 
             Error(refusalEnvelope code "/slot" (Fuaran.UI.Derivation.DerivationRefusal.describe refusal))
-        | Ok(Ok trace) ->
-            Ok(Fuaran.Core.Canonical.write Fuaran.Core.Rendering.CrossHost (Fuaran.UI.Derivation.toJson trace))
+        | Ok(Ok trace) -> Ok(Fuaran.UI.Derivation.encode trace)

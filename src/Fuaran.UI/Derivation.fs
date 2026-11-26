@@ -424,3 +424,197 @@ let toJson (trace: DerivationTrace) : JVal =
                       @ stageJson s.Output
                   ))
           ) ]
+
+// ─── The canonical wire form and its decoder (Phase 2767, WIRE_FORMAT §35) ─
+//
+// The trace's canonical text is `toJson` under the cross-host rendering (§2:
+// members sorted Ordinal, no null, an absent member is structural). It is what
+// the `derivationTraceLaws` vectors carry as `expected.trace`, so a host that
+// implements the trace compares its own text with them byte for byte.
+//
+// A column of a trace's schema states its name and, where the walk decides it,
+// its type: the wire form carries no unit, label or exactness, so a decoded
+// trace re-encodes to the same text (the round trip is byte-stable) without
+// being the value it was encoded from in those members.
+
+/// The trace's canonical text (WIRE_FORMAT §35).
+let encode (trace: DerivationTrace) : string =
+    Canonical.write Rendering.CrossHost (toJson trace)
+
+/// Readers for `ofJson`: each refusal names the member's path.
+module private Read =
+
+    /// The members of an object, refused when it holds one the form does not.
+    let fields (path: string) (allowed: string list) (v: JVal) : Result<(string * JVal) list, string> =
+        match v with
+        | JObj fs ->
+            match fs |> List.tryFind (fun (k, _) -> not (List.contains k allowed)) with
+            | Some(k, _) -> Error(sprintf "%s: '%s' is not a member of this form" path k)
+            | None -> Ok fs
+        | _ -> Error(path + ": expected an object")
+
+    let tryMember (name: string) (fs: (string * JVal) list) : JVal option =
+        fs |> List.tryPick (fun (k, v) -> if k = name then Some v else None)
+
+    let required (path: string) (name: string) (fs: (string * JVal) list) : Result<JVal, string> =
+        match tryMember name fs with
+        | Some v -> Ok v
+        | None -> Error(sprintf "%s: the member '%s' is required" path name)
+
+    let str (path: string) (v: JVal) : Result<string, string> =
+        match v with
+        | JStr s -> Ok s
+        | _ -> Error(path + ": expected a string")
+
+    let int (path: string) (v: JVal) : Result<int, string> =
+        match v with
+        | JInt i -> Ok i
+        | _ -> Error(path + ": expected an integer")
+
+    /// Every item of an array read, or the first refusal.
+    let items (path: string) (read: int -> string -> JVal -> Result<'a, string>) (v: JVal) : Result<'a list, string> =
+        match v with
+        | JArr items ->
+            let rec go i acc rest =
+                match rest with
+                | [] -> Ok(List.rev acc)
+                | item :: rest ->
+                    match read i (sprintf "%s[%d]" path i) item with
+                    | Ok x -> go (i + 1) (x :: acc) rest
+                    | Error e -> Error e
+
+            go 0 [] items
+        | _ -> Error(path + ": expected an array")
+
+let private columnOfJson (path: string) (v: JVal) : Result<ColumnKnowledge, string> =
+    Read.fields path [ "name"; "type" ] v
+    |> Result.bind (fun fs ->
+        Read.required path "name" fs
+        |> Result.bind (Read.str (path + ".name"))
+        |> Result.bind (fun name ->
+            match Read.tryMember "type" fs with
+            | None -> Ok(ColumnKnowledge.named name None)
+            | Some t ->
+                Read.str (path + ".type") t
+                |> Result.bind (fun tag ->
+                    match ColumnType.ofTag tag with
+                    | Some ty -> Ok(ColumnKnowledge.named name (Some ty))
+                    | None -> Error(sprintf "%s.type: '%s' is not a column type" path tag))))
+
+let private schemaOfJson (path: string) (v: JVal) : Result<SchemaKnowledge, string> =
+    Read.fields path [ "closed"; "columns"; "reason" ] v
+    |> Result.bind (fun fs ->
+        Read.required path "closed" fs
+        |> Result.bind (fun closed ->
+            Read.required path "columns" fs
+            |> Result.bind (Read.items (path + ".columns") (fun _ -> columnOfJson))
+            |> Result.bind (fun columns ->
+                match closed, Read.tryMember "reason" fs with
+                | JBool true, None -> Ok(SchemaKnowledge.Closed columns)
+                | JBool false, Some r ->
+                    Read.str (path + ".reason") r
+                    |> Result.map (fun reason -> SchemaKnowledge.AtLeast(columns, reason))
+                | JBool true, Some _ -> Error(path + ": a closed schema states no reason")
+                | JBool false, None -> Error(path + ": an open schema states the reason it is open")
+                | _ -> Error(path + ".closed: expected a boolean"))))
+
+let private tableOfJson (path: string) (v: JVal) : Result<StageTable, string> =
+    Read.fields path [ "rowCount"; "rows" ] v
+    |> Result.bind (fun fs ->
+        Read.required path "rowCount" fs
+        |> Result.bind (Read.int (path + ".rowCount"))
+        |> Result.bind (fun count ->
+            Read.required path "rows" fs
+            |> Result.bind (fun rows ->
+                match ColumnCodec.decodeJson rows with
+                | Ok(Embedded t) -> Ok { RowCount = count; Rows = t }
+                | Ok _ -> Error(path + ".rows: expected an embedded table")
+                | Error e -> Error(sprintf "%s.rows: %A" path e))))
+
+/// The members a stage carries: the input's, and every step's beside its own.
+let private stageMembers = [ "schema"; "table"; "refusal" ]
+
+let private stageOfJson (path: string) (fs: (string * JVal) list) : Result<DerivationStage, string> =
+    let table =
+        match Read.tryMember "table" fs, Read.tryMember "refusal" fs with
+        | None, None -> Ok None
+        | Some _, Some _ -> Error(path + ": a stage carries a table or a refusal, never both")
+        | None, Some r -> Read.str (path + ".refusal") r |> Result.map (Error >> Some)
+        | Some t, None -> tableOfJson (path + ".table") t |> Result.map (Ok >> Some)
+
+    Read.required path "schema" fs
+    |> Result.bind (schemaOfJson (path + ".schema"))
+    |> Result.bind (fun schema -> table |> Result.map (fun t -> { Schema = schema; Table = t }))
+
+let private statusOfJson (path: string) (fs: (string * JVal) list) : Result<StepStatus, string> =
+    match Read.tryMember "status" fs, Read.tryMember "unbound" fs with
+    | Some(JStr "applied"), None -> Ok StepStatus.Applied
+    | Some(JStr "pruned"), Some names ->
+        Read.items (path + ".unbound") (fun _ -> Read.str) names
+        |> Result.map StepStatus.Pruned
+    | Some(JStr "applied"), Some _ -> Error(path + ": an applied step names no unbound param")
+    | Some(JStr "pruned"), None -> Error(path + ": a pruned step names its unbound params")
+    | Some _, _ -> Error(path + ".status: expected \"applied\" or \"pruned\"")
+    | None, _ -> Error(path + ": the member 'status' is required")
+
+let private stepOfJson (position: int) (path: string) (v: JVal) : Result<DerivationStep, string> =
+    Read.fields path ([ "index"; "verb"; "step"; "status"; "unbound" ] @ stageMembers) v
+    |> Result.bind (fun fs ->
+        Read.required path "index" fs
+        |> Result.bind (Read.int (path + ".index"))
+        |> Result.bind (fun index ->
+            if index <> position then
+                Error(sprintf "%s.index: %d is not the step's position %d" path index position)
+            else
+                Ok index)
+        |> Result.bind (fun index ->
+            Read.required path "step" fs
+            |> Result.bind (fun wire ->
+                match DataFrameCodec.decodeTransform wire with
+                | Error e -> Error(sprintf "%s.step: %A" path e)
+                | Ok written -> Ok(wire, verb written))
+            |> Result.bind (fun (wire, own) ->
+                Read.required path "verb" fs
+                |> Result.bind (Read.str (path + ".verb"))
+                |> Result.bind (fun stated ->
+                    if stated <> own then
+                        Error(sprintf "%s.verb: '%s' is not the step's own $type '%s'" path stated own)
+                    else
+                        statusOfJson path fs
+                        |> Result.bind (fun status ->
+                            stageOfJson path fs
+                            |> Result.map (fun output ->
+                                { Index = index
+                                  Verb = stated
+                                  Wire = wire
+                                  Status = status
+                                  Output = output }))))))
+
+/// A trace read from its JSON value: the inverse of `toJson` up to the members
+/// the wire form does not carry. A refusal names the member's path.
+let ofJson (v: JVal) : Result<DerivationTrace, string> =
+    Read.fields "$" [ "subject"; "input"; "steps" ] v
+    |> Result.bind (fun fs ->
+        let subject =
+            match Read.required "$" "subject" fs with
+            | Ok(JStr "transform") -> Ok DerivationSubject.Transform
+            | Ok(JStr "expr") -> Ok DerivationSubject.Expr
+            | Ok _ -> Error "$.subject: expected \"transform\" or \"expr\""
+            | Error e -> Error e
+
+        subject
+        |> Result.bind (fun subject ->
+            Read.required "$" "input" fs
+            |> Result.bind (Read.fields "$.input" stageMembers)
+            |> Result.bind (stageOfJson "$.input")
+            |> Result.bind (fun input ->
+                Read.required "$" "steps" fs
+                |> Result.bind (Read.items "$.steps" stepOfJson)
+                |> Result.map (fun steps ->
+                    { Subject = subject
+                      Input = input
+                      Steps = steps }))))
+
+/// A trace read from its text (WIRE_FORMAT §35). Any member order is read; the
+/// canonical text is what `encode` writes.
+let decode (text: string) : Result<DerivationTrace, string> = Json.parse text |> Result.bind ofJson
