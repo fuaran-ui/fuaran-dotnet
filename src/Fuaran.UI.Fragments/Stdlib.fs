@@ -10,7 +10,8 @@ open Fuaran.UI.Types
 //  A curated set of `FragmentDecl`s for the composite shapes consumer apps
 //  keep re-deriving: a labelled metric row, a KPI strip, a filter bar, a
 //  confirm/cancel pair, an empty-state panel, a section header, a metric card,
-//  a loading placeholder, a parameter panel and a two-scenario comparison.
+//  a loading placeholder, a parameter panel, a two-scenario comparison and a
+//  refinable table.
 //  Each declares TYPED HOLES over bounded value-spaces and a two-axis EFFECT
 //  CLASS, and each is certified valid-for-all-bindings by the verification
 //  floor in `Fuaran.UI.Validator.RecipeCertification`.
@@ -93,6 +94,49 @@ type ScenarioModel =
 type ScenarioSide =
     { Label: string
       Parameters: (string * Binding<JVal>) list }
+
+/// How a refinable table's column compares when the reader sorts it (Phase
+/// 2753): the order the grid applies to the column's cells, which the
+/// substituted pipeline must reproduce. `Text` folds case, as the grid does.
+[<RequireQualifiedAccess>]
+type RefinableKind =
+    | Text
+    | Number
+
+/// One column of a refinable table (Phase 2753).
+type RefinableColumn =
+    {
+        /// The row column the grid column displays.
+        Field: string
+        /// The column heading.
+        Label: string
+        Kind: RefinableKind
+        /// Whether the column's header sorts the rows.
+        Sortable: bool
+        /// The membership filter over the column: `Some options` puts a token
+        /// chip in the table's filter bar, suggesting `options`; `None` leaves
+        /// the column unfiltered.
+        Filter: SelectOption list option
+    }
+
+/// A table whose view a reader refines (Phase 2753): rows, the column naming
+/// each row, the columns in display order, and the page size.
+type RefinableTable =
+    { Source: Fuaran.Core.DataSource
+      Key: string
+      Columns: RefinableColumn list
+      PageSize: int }
+
+/// A refinable table's current view (Phase 2753), as the host reads it from
+/// the table's own state keys: the grid's effective sort descriptor (a column
+/// index into `Columns` and a direction — `effectiveSortDescriptor`'s reading),
+/// the page the grid shows (1-based and already clamped, as the grid's page
+/// rule clamps it), and each membership filter's selection by column field. An
+/// empty selection is no constraint.
+type RefinableView =
+    { Sort: (int * Fuaran.UI.Types.SortDirection) option
+      Page: int
+      Filters: (string * string list) list }
 
 module Stdlib =
 
@@ -1295,6 +1339,369 @@ module Stdlib =
                   "b-growth", FragmentArg.Float 0.03 ] }
 
     // ════════════════════════════════════════════════════════════════════════
+    //  11. refinable-table — a grid whose view is a pipeline's parameters.
+    // ════════════════════════════════════════════════════════════════════════
+
+    [<Literal>]
+    let RefinableTableName = "refinable-table"
+
+    // Phase 2753. A reader refines a table three ways: a membership filter, a
+    // header sort and a page. All three are already state the tree names. A
+    // filter is a chip's filter key, which the grid's pipeline reads as a list
+    // parameter (`InParam`); the sort and the page are the grid's own
+    // `sortStateKey` and `pageStateKey`, which the grid applies to the rows the
+    // pipeline yields. The grid-behaviour rule (the state key is the affordance)
+    // is followed as it stands: the sort and the page stay the grid's, and no
+    // pipeline step reads them. A pipeline could not read the sort as it is
+    // written anyway: the descriptor is an object naming a column INDEX, and a
+    // `Sort` key's direction is a literal, never a slot.
+    //
+    // So the view is data: the three values the host holds, read as a
+    // `RefinableView`. `refinedPipeline` writes that view as one pipeline, the
+    // fixed pipeline with its parameters substituted and the sort and page as
+    // literal `Sort` and `Limit` steps, which evaluates to the rows the grid
+    // shows. That is the form a host stores, shares or re-applies.
+
+    /// The State key a refinable table's grid writes its sort descriptor to.
+    let refinableSortKey (id: string) : string = id + "-sort"
+
+    /// The State key a refinable table's grid writes its page descriptor to.
+    let refinablePageKey (id: string) : string = id + "-page"
+
+    /// The filter key a refinable table's membership chip over `field` writes,
+    /// and the name of the list parameter its pipeline reads it under.
+    let refinableFilterKey (id: string) (field: string) : string = id + "-filter-" + field
+
+    /// The column a text sort orders by in the substituted pipeline: the sorted
+    /// column folded to lower case, which is the order the grid's header sort
+    /// applies to text. The final projection drops it.
+    let private sortKeyColumn (field: string) : string = "sort-key:" + field
+
+    /// The table's FIXED pipeline: one membership `Filter` per filterable
+    /// column, each reading the list parameter its chip writes. An unset or
+    /// empty selection leaves its filter unbound, and the evaluator prunes it.
+    let refinablePipeline (id: string) (table: RefinableTable) : Fuaran.Compute.Transform list =
+        [ for c in table.Columns do
+              if Option.isSome c.Filter then
+                  Fuaran.Compute.Filter(
+                      Fuaran.Compute.InParam(Fuaran.Compute.Col c.Field, refinableFilterKey id c.Field)
+                  ) ]
+
+    /// The current view as its canonical pipeline: `refinablePipeline` with each
+    /// selected filter substituted as literals (`Transform.substituteListParams`,
+    /// the substitution every evaluator performs) and each unselected filter
+    /// pruned, then the sort as a literal `Sort`, the page as a literal `Limit`
+    /// and a projection to the row key and the displayed columns.
+    ///
+    /// Pure, and it evaluates to the rows the grid shows for the same view. A
+    /// sort descriptor naming no column of the table orders nothing, as the
+    /// grid ignores it. A text column sorts by its lower-cased value, which is
+    /// the grid's text order; ties keep their order on both sides, since both
+    /// sorts are stable and put empty cells last in either direction.
+    let refinedPipeline (id: string) (table: RefinableTable) (view: RefinableView) : Fuaran.Compute.Transform list =
+        let selections =
+            view.Filters
+            |> List.filter (fun (_, values) -> not (List.isEmpty values))
+            |> List.map (fun (field, values) -> refinableFilterKey id field, values |> List.map Fuaran.Core.Str)
+            |> Map.ofList
+
+        let filters =
+            Fuaran.Compute.Transform.substituteListParams selections (refinablePipeline id table)
+            |> List.filter (fun step ->
+                match step with
+                | Fuaran.Compute.Filter predicate -> List.isEmpty (Fuaran.Compute.ColExpr.paramsOf predicate)
+                | _ -> true)
+
+        let sort =
+            match
+                view.Sort
+                |> Option.bind (fun (i, d) -> List.tryItem i table.Columns |> Option.map (fun c -> c, d))
+            with
+            | Option.None -> []
+            | Some(c, direction) ->
+                let dir =
+                    match direction with
+                    | Fuaran.UI.Types.SortDirection.Asc -> Fuaran.Compute.Asc
+                    | Fuaran.UI.Types.SortDirection.Desc -> Fuaran.Compute.Desc
+
+                match c.Kind with
+                | RefinableKind.Number -> [ Fuaran.Compute.Sort [ Fuaran.Compute.Slot.Lit c.Field, dir ] ]
+                | RefinableKind.Text ->
+                    [ Fuaran.Compute.Derive(
+                          sortKeyColumn c.Field,
+                          Fuaran.Compute.ApplyFn(Fuaran.Compute.Lower, [ Fuaran.Compute.Col c.Field ])
+                      )
+                      Fuaran.Compute.Sort [ Fuaran.Compute.Slot.Lit(sortKeyColumn c.Field), dir ] ]
+
+        let size = max 1 table.PageSize
+
+        filters
+        @ sort
+        @ [ Fuaran.Compute.Limit(Fuaran.Compute.Slot.Lit size, Fuaran.Compute.Slot.Lit((max 1 view.Page - 1) * size))
+            Fuaran.Compute.Project(
+                table.Key :: (table.Columns |> List.map _.Field)
+                |> List.distinct
+                |> List.map (fun f -> f, f)
+            ) ]
+
+    let private refinableColumn<'Msg> (c: RefinableColumn) : ColumnErased<'Msg> =
+        { Defaults.columnErased with
+            Label = c.Label
+            Field = Some c.Field
+            Kind =
+                (match c.Kind with
+                 | RefinableKind.Number -> CellKindErased.Numeric
+                 | RefinableKind.Text -> CellKindErased.Text)
+            Sortable = (if c.Sortable then Option.None else Some false) }
+
+    /// The table tree — total over any table: a heading, a filter bar holding
+    /// one token chip per filterable column (omitted when none is), and the
+    /// grid over the fixed pipeline. A filter with no suggestions takes free
+    /// text.
+    let private refinableTree<'Msg> (id: string) (heading: TextSource) (table: RefinableTable) : Node<'Msg> =
+        let filterable =
+            table.Columns
+            |> List.choose (fun c -> c.Filter |> Option.map (fun options -> c, options))
+
+        let chips: FilterSpec<'Msg> list =
+            [ for c, options in filterable ->
+                  { Name = refinableFilterKey id c.Field
+                    Label = TextSource.Literal c.Label
+                    Kind =
+                      FilterField.tokens
+                          (refinableFilterKey id c.Field)
+                          (if List.isEmpty options then
+                               Option.None
+                           else
+                               Some(Binding.Static(Some options)))
+                          (List.isEmpty options) } ]
+
+        let parameters: TransformParam list =
+            [ for c, _ in filterable ->
+                  { Name = refinableFilterKey id c.Field
+                    From = Binding.Filter(refinableFilterKey id c.Field, Option.None) } ]
+
+        let grid: DataGridSpec<'Msg> =
+            { Defaults.dataGrid with
+                Source =
+                    Binding.Transform(
+                        TransformSource.Data table.Source,
+                        refinablePipeline id table,
+                        (if List.isEmpty parameters then
+                             Option.None
+                         else
+                             Some parameters)
+                    )
+                RowKeyField = Some table.Key
+                SortStateKey = Some(refinableSortKey id)
+                PageStateKey = Some(refinablePageKey id)
+                PageSize = Some(max 1 table.PageSize)
+                Columns = table.Columns |> List.map refinableColumn }
+
+        Fuaran.stack
+            id
+            { Defaults.stack with
+                Children =
+                    [ Fuaran.heading
+                          (id + "-heading")
+                          { Defaults.heading with
+                              Level = 3
+                              Text = heading } ]
+                    @ (if List.isEmpty chips then
+                           []
+                       else
+                           [ Fuaran.filters (id + "-filters") chips ])
+                    @ [ { Fuaran.stack (id + "-grid") Defaults.stack with
+                            Kind = NodeKind.DataGrid grid
+                            Accessibility = Defaults.Accessibility.grid } ] }
+
+    /// A refinable table over a caller's own rows, as a plain subtree rooted at
+    /// `id` — the F# authoring form of the `refinable-table` fragment. `sources`
+    /// declares the schema of a `Ref` source (`SchemaWalk.noSources` declares
+    /// none).
+    ///
+    /// Refused when the table has no columns, a page size below one, or two
+    /// columns over one field; and, wherever the fixed pipeline's static schema
+    /// is known, when it does not produce the row key or a sortable or
+    /// filterable column, or produces a filterable column that is not text. A
+    /// schema the walk cannot close (a `Ref` it was given no schema for) refutes
+    /// nothing, and the grid's own grounding check takes over at pre-emit.
+    let refinableTableOf<'Msg>
+        (id: string)
+        (heading: string)
+        (sources: string -> Fuaran.Core.Schema option)
+        (table: RefinableTable)
+        : Result<Node<'Msg>, string> =
+        let produced =
+            Fuaran.Compute.SchemaWalk.ofPipelineFrom
+                sources
+                (Fuaran.Compute.SchemaWalk.ofSource sources table.Source)
+                (refinablePipeline id table)
+
+        let closed = Fuaran.Compute.SchemaWalk.isClosed produced
+
+        let missing (field: string) =
+            closed && not (Fuaran.Compute.SchemaWalk.has field produced)
+
+        let fields = table.Columns |> List.map _.Field
+
+        let firstColumn (p: RefinableColumn -> bool) = table.Columns |> List.tryFind p
+
+        if List.isEmpty table.Columns then
+            Error "a refinable table needs at least one column"
+        elif table.PageSize < 1 then
+            Error(sprintf "the page size is %d; a page holds at least one row" table.PageSize)
+        elif List.length (List.distinct fields) <> List.length fields then
+            Error "two columns display one field; each field is one column"
+        elif missing table.Key then
+            Error(sprintf "the pipeline's static schema does not produce the row key '%s'" table.Key)
+        else
+            match
+                firstColumn (fun c -> c.Sortable && missing c.Field),
+                firstColumn (fun c -> Option.isSome c.Filter && missing c.Field),
+                firstColumn (fun c ->
+                    Option.isSome c.Filter
+                    && (match Fuaran.Compute.SchemaWalk.typeOf c.Field produced with
+                        | Some t -> t <> Fuaran.Core.StringType
+                        | Option.None -> false))
+            with
+            | Some c, _, _ ->
+                Error(sprintf "the sortable column '%s' is not a column the pipeline's static schema produces" c.Field)
+            | _, Some c, _ ->
+                Error(
+                    sprintf "the filterable column '%s' is not a column the pipeline's static schema produces" c.Field
+                )
+            | _, _, Some c ->
+                Error(
+                    sprintf "the filterable column '%s' is not text; a membership filter compares text values" c.Field
+                )
+            | Option.None, Option.None, Option.None -> Ok(refinableTree id (TextSource.Literal heading) table)
+
+    // The stdlib entry: a table over host-named rows (`source`, a `Ref`), with
+    // one to six columns, each a bounded set of holes, and the page size a hole.
+
+    [<Literal>]
+    let private RefinableMaxColumns = 6
+
+    let private refinableHoles: HoleDecl list =
+        [ HoleDecl.Value("heading", HoleValueSpace.StringLen(1, 60), Some(Scalar.Str "Records"))
+          HoleDecl.Value("source", HoleValueSpace.StringLen(1, 64), Some(Scalar.Str "table-rows"))
+          HoleDecl.Value("key", HoleValueSpace.StringLen(1, 32), Some(Scalar.Str "id"))
+          HoleDecl.Value("page-size", HoleValueSpace.IntRange(1, 100), Some(Scalar.Int 10))
+          HoleDecl.Repeat("count", HoleValueSpace.IntRange(1, RefinableMaxColumns)) ]
+        @ [ for k in 1..RefinableMaxColumns do
+                HoleDecl.Value(
+                    sprintf "column-%d-field" k,
+                    HoleValueSpace.StringLen(1, 32),
+                    Some(Scalar.Str(sprintf "column-%d" k))
+                )
+
+                HoleDecl.Value(
+                    sprintf "column-%d-label" k,
+                    HoleValueSpace.StringLen(1, 40),
+                    Some(Scalar.Str(sprintf "Column %d" k))
+                )
+
+                HoleDecl.Value(
+                    sprintf "column-%d-kind" k,
+                    HoleValueSpace.Enum [ "text"; "number" ],
+                    Some(Scalar.Str "text")
+                )
+
+                HoleDecl.Value(
+                    sprintf "column-%d-sort" k,
+                    HoleValueSpace.Enum [ "sortable"; "fixed" ],
+                    Some(Scalar.Str "sortable")
+                )
+
+                HoleDecl.Value(
+                    sprintf "column-%d-filter" k,
+                    HoleValueSpace.Enum [ "none"; "membership" ],
+                    Some(Scalar.Str "none")
+                )
+
+                HoleDecl.Value(sprintf "column-%d-options" k, HoleValueSpace.StringLen(1, 240), Some(Scalar.Str "=All")) ]
+
+    /// A filter's suggestions from the filter-bar's options grammar. A
+    /// membership selection is a set of values, so an option with the empty
+    /// value (the grammar's "All") is no suggestion and is dropped.
+    let private membershipOptions (raw: string) : SelectOption list =
+        parseFilterOptions raw |> List.filter (fun o -> o.Value <> "")
+
+    let private refinableMaterialize<'Msg> : Map<string, obj> -> Node<'Msg> =
+        fun b ->
+            let column k : RefinableColumn =
+                let hole (part: string) = sprintf "column-%d-%s" k part
+
+                { Field = readName (sprintf "column-%d" k) (hole "field") b
+                  Label = readStr (sprintf "Column %d" k) (hole "label") b
+                  Kind =
+                    (if readStr "text" (hole "kind") b = "number" then
+                         RefinableKind.Number
+                     else
+                         RefinableKind.Text)
+                  Sortable = readStr "sortable" (hole "sort") b <> "fixed"
+                  Filter =
+                    (if readStr "none" (hole "filter") b = "membership" then
+                         Some(membershipOptions (readStr "=All" (hole "options") b))
+                     else
+                         Option.None) }
+
+            refinableTree
+                RefinableTableName
+                (TextSource.Literal(readStr "Records" "heading" b))
+                { Source = Fuaran.Core.DataSource.Ref(readName "table-rows" "source" b)
+                  Key = readName "id" "key" b
+                  // A field bound twice keeps its first column, so no filter key
+                  // has two writers and no field two columns.
+                  Columns =
+                    [ for k in 1 .. min (readCount 1 "count" b) RefinableMaxColumns -> column k ]
+                    |> List.distinctBy _.Field
+                  PageSize = readCount 10 "page-size" b }
+
+    let refinableTable<'Msg> : StdlibFragment<'Msg> =
+        { Name = RefinableTableName
+          Summary =
+            "A grid whose sort, page and membership filters are its view: state the grid and its chips write, which the substituted pipeline restates."
+          Decl =
+            decl
+                RefinableTableName
+                (refinableTree
+                    RefinableTableName
+                    (holeText "heading" "Records")
+                    { Source = Fuaran.Core.DataSource.Ref "table-rows"
+                      Key = "id"
+                      Columns =
+                        [ { Field = "column-1"
+                            Label = "Column 1"
+                            Kind = RefinableKind.Text
+                            Sortable = true
+                            Filter = Option.None } ]
+                      PageSize = 10 })
+                refinableHoles
+                // The grid writes its sort and page state and the chips write
+                // filter state, over rows the host resolves.
+                writesHost
+          Materialize = refinableMaterialize
+          Example =
+            reference
+                RefinableTableName
+                [ "heading", FragmentArg.Str "Open orders"
+                  "source", FragmentArg.Str "orders"
+                  "key", FragmentArg.Str "order"
+                  "page-size", FragmentArg.Int 25
+                  "count", FragmentArg.Int 3
+                  "column-1-field", FragmentArg.Str "customer"
+                  "column-1-label", FragmentArg.Str "Customer"
+                  "column-2-field", FragmentArg.Str "region"
+                  "column-2-label", FragmentArg.Str "Region"
+                  "column-2-filter", FragmentArg.Str "membership"
+                  "column-2-options", FragmentArg.Str "north=North|south=South"
+                  "column-3-field", FragmentArg.Str "total"
+                  "column-3-label", FragmentArg.Str "Total"
+                  "column-3-kind", FragmentArg.Str "number" ] }
+
+    // ════════════════════════════════════════════════════════════════════════
     //  The library.
     // ════════════════════════════════════════════════════════════════════════
 
@@ -1310,7 +1717,8 @@ module Stdlib =
           metricCard
           loadingPlaceholder
           parameterPanel
-          scenarioComparison ]
+          scenarioComparison
+          refinableTable ]
 
     /// Further representative applications, each binding holes a fragment's
     /// `Example` leaves at their defaults: `(fragment name, what it shows, the

@@ -212,6 +212,160 @@ let private comparisonOrFail (a: ScenarioSide) (b: ScenarioSide) : Node<unit> =
     | Ok tree -> tree
     | Error e -> failtestf "the comparison was refused: %s" e
 
+// ─── Phase 2753 helpers ──────────────────────────────────────────────────────
+
+/// A nullable column of one type.
+let private nullableColumn (name: string) (ty: Fuaran.Core.ColumnType) (cells: Fuaran.Core.Cell list) =
+    Fuaran.Core.Column.ofCells name ty cells
+    |> Result.defaultWith (fun e -> failwithf "the fixture column must build: %A" e)
+
+let private strCell (v: string option) : Fuaran.Core.Cell =
+    match v with
+    | Some s -> Fuaran.Core.Str s
+    | None -> Fuaran.Core.Cell.Null
+
+let private floatCell (v: float option) : Fuaran.Core.Cell =
+    match v with
+    | Some f -> Fuaran.Core.Float f
+    | None -> Fuaran.Core.Cell.Null
+
+/// Seven orders. The customer names differ in case and one is missing, and the
+/// totals tie and one is missing, so a sort that folded case differently, put
+/// an empty cell elsewhere or broke a tie another way would show.
+let private orderRows: Fuaran.Core.DataSource =
+    Fuaran.Core.Embedded
+        { Schema =
+            [ Fuaran.Core.Field.create "order" Fuaran.Core.StringType
+              Fuaran.Core.Field.create "customer" Fuaran.Core.StringType
+              Fuaran.Core.Field.create "region" Fuaran.Core.StringType
+              Fuaran.Core.Field.create "total" Fuaran.Core.FloatType ]
+          Columns =
+            [ nullableColumn
+                  "order"
+                  Fuaran.Core.StringType
+                  ([ "o1"; "o2"; "o3"; "o4"; "o5"; "o6"; "o7" ] |> List.map (Some >> strCell))
+              nullableColumn
+                  "customer"
+                  Fuaran.Core.StringType
+                  ([ Some "beta"
+                     Some "Acme"
+                     None
+                     Some "acme"
+                     Some "Zed"
+                     Some "alpha"
+                     Some "Beta" ]
+                   |> List.map strCell)
+              nullableColumn
+                  "region"
+                  Fuaran.Core.StringType
+                  ([ "north"; "south"; "north"; "east"; "south"; "north"; "east" ]
+                   |> List.map (Some >> strCell))
+              nullableColumn
+                  "total"
+                  Fuaran.Core.FloatType
+                  ([ Some 30.0; Some 10.0; Some 30.0; None; Some 5.5; Some 120.0; Some 10.0 ]
+                   |> List.map floatCell) ] }
+
+let private regions: SelectOption list =
+    [ "north"; "south"; "east" ]
+    |> List.map (fun r ->
+        ({ Label = TextSource.Literal r
+           Value = r }
+        : SelectOption))
+
+let private ordersTable: RefinableTable =
+    { Source = orderRows
+      Key = "order"
+      Columns =
+        [ { Field = "customer"
+            Label = "Customer"
+            Kind = RefinableKind.Text
+            Sortable = true
+            Filter = None }
+          { Field = "region"
+            Label = "Region"
+            Kind = RefinableKind.Text
+            Sortable = true
+            Filter = Some regions }
+          { Field = "total"
+            Label = "Total"
+            Kind = RefinableKind.Number
+            Sortable = true
+            Filter = None } ]
+      PageSize = 3 }
+
+let private ordersOf (sources: string -> Fuaran.Core.Schema option) (table: RefinableTable) =
+    Stdlib.refinableTableOf<unit> "orders" "Orders" sources table
+
+let private tableOrFail (table: RefinableTable) : Node<unit> =
+    match ordersOf Fuaran.Compute.SchemaWalk.noSources table with
+    | Ok tree -> tree
+    | Error e -> failtestf "the table was refused: %s" e
+
+/// The host's state for one view: the sort and page descriptors the grid
+/// writes, and the region chip's selection.
+let private sourcesFor (sort: (int * string) option) (page: int option) (selected: string list option) =
+    let state: (string * obj) list =
+        [ match sort with
+          | Some(column, direction) ->
+              Stdlib.refinableSortKey "orders",
+              boxed (Fuaran.Core.JObj [ "column", Fuaran.Core.JInt column; "direction", Fuaran.Core.JStr direction ])
+          | None -> ()
+          match page with
+          | Some p -> Stdlib.refinablePageKey "orders", boxed (Fuaran.Core.JObj [ "page", Fuaran.Core.JInt p ])
+          | None -> () ]
+
+    let filters: (string * obj) list =
+        [ match selected with
+          | Some values ->
+              Stdlib.refinableFilterKey "orders" "region", boxed (Fuaran.Core.JArr(values |> List.map Fuaran.Core.JStr))
+          | None -> () ]
+
+    { Fuaran.UI.Renderer.BindingResolver.empty with
+        State = Map.ofList state
+        Filters = Map.ofList filters }
+
+/// The rows a grid source resolves to under `sources`.
+let private resolvedRows (sources: BindingSources) (source: Binding<Row seq>) : Row list =
+    match Fuaran.UI.Renderer.BindingResolver.resolveRowsWithFields sources source with
+    | Fuaran.UI.Renderer.BindingResolver.Resolved rows, _ -> Seq.toList rows
+    | other, _ -> failtestf "the grid source did not resolve: %A" other
+
+/// What the grid shows under `sources`, read through the renderer's own grid
+/// model (the resolved rows, sorted by the effective descriptor, sliced to the
+/// clamped page), and the view the host reads off the same state.
+let private shownAndView (tree: Node<unit>) (sources: BindingSources) (selected: string list) =
+    let _, spec = gridIn tree
+
+    let descriptor =
+        Fuaran.UI.Renderer.BindingResolver.effectiveSortDescriptor spec.SortStateKey spec.DefaultSort sources
+
+    let sorted =
+        resolvedRows sources spec.Source
+        |> Fuaran.UI.Renderer.GridModel.sortRowsByDescriptor spec.Columns descriptor
+
+    let page =
+        match Fuaran.UI.Renderer.BindingResolver.gridPage sources spec (List.length sorted) with
+        | Some(_, _, page, _, _) -> page
+        | None -> failtest "the grid is not paged"
+
+    Fuaran.UI.Renderer.GridModel.sliceRowsToPage (defaultArg spec.PageSize 0) page sorted,
+    ({ Sort = descriptor
+       Page = page
+       Filters = [ "region", selected ] }
+    : RefinableView)
+
+/// Evaluate a pipeline over the order rows with nothing bound.
+let private evaluated (pipeline: Fuaran.Compute.Transform list) : Row list =
+    resolvedRows
+        Fuaran.UI.Renderer.BindingResolver.empty
+        (Binding.Transform(TransformSource.Data orderRows, pipeline, None))
+
+/// A row as the cells a reader sees: the key and each displayed field.
+let private visible (row: Row) : Fuaran.UI.HostPrelude.CellValue list =
+    [ "order"; "customer"; "region"; "total" ]
+    |> List.map (Fuaran.UI.HostPrelude.RowProjection.value row)
+
 // The certification budget. 256 bindings is comfortably above the largest
 // finite hole-space in the set and low enough that the whole suite stays inside
 // a normal test run; the seed is fixed so a counterexample reproduces.
@@ -233,12 +387,15 @@ let tests =
               Expect.isGreaterThanOrEqual
                   (List.length library)
                   6
-                  "the charter promises a curated set of 6-10 fragments; fewer is not a library"
+                  "the charter promises a curated set of 6-12 fragments; fewer is not a library"
 
+              // Phase 2753 raised the ceiling from ten: the data-presenting
+              // fragments (Phases 2752-2754) were each accepted as an entry of
+              // their own, and twelve holds that set (docs/DECISIONS.md D41).
               Expect.isLessThanOrEqual
                   (List.length library)
-                  10
-                  "the charter promises a curated set of 6-10 fragments; more wants a second look at whether every entry earns its place"
+                  12
+                  "the charter promises a curated set of 6-12 fragments; more wants a second look at whether every entry earns its place"
           }
 
           test "fragment names and declaration ids are unique" {
@@ -1049,6 +1206,231 @@ let tests =
                     with
                     | Ok _ -> failtest "a column feeding no model parameter must be refused"
                     | Error e -> Expect.stringContains e "'volume'" "the stray column parameter is named"
+                } ]
+
+          testList
+              "Phase 2753 — a refinable table whose view state is a pipeline"
+              [ test "pre-emit validation accepts the declaration, the example and the trees the table yields" {
+                    let f = Stdlib.refinableTable<unit>
+                    expectClean "refinable-table declaration" f.Decl
+                    expectClean "refinable-table example" f.Example
+                    expectClean "refinable-table example, materialised" (f.Materialize(argsOf f.Example))
+                    expectClean "a refinable table over inline rows" (tableOrFail ordersTable)
+                }
+
+                test "the stdlib entry reads the source, key, columns and page size its holes name" {
+                    let f = Stdlib.refinableTable<unit>
+                    let tree = f.Materialize(argsOf f.Example)
+                    let _, grid = gridIn tree
+                    let id = Stdlib.RefinableTableName
+                    let regionKey = Stdlib.refinableFilterKey id "region"
+
+                    Expect.equal grid.RowKeyField (Some "order") "the key column"
+                    Expect.equal grid.PageSize (Some 25) "the page size"
+                    Expect.equal grid.SortStateKey (Some(Stdlib.refinableSortKey id)) "the grid's own sort key"
+                    Expect.equal grid.PageStateKey (Some(Stdlib.refinablePageKey id)) "the grid's own page key"
+
+                    Expect.equal
+                        (grid.Columns |> List.map (fun c -> c.Field, c.Label))
+                        [ Some "customer", "Customer"; Some "region", "Region"; Some "total", "Total" ]
+                        "the columns, in order"
+
+                    Expect.equal
+                        (grid.Columns |> List.map (fun c -> sprintf "%A" c.Kind))
+                        ([ CellKindErased.Text; CellKindErased.Text; CellKindErased.Numeric ]
+                         |> List.map (sprintf "%A"))
+                        "a number column is numeric"
+
+                    match grid.Source with
+                    | Binding.Transform(TransformSource.Data(Fuaran.Core.DataSource.Ref source), pipeline, Some ps) ->
+                        Expect.equal source "orders" "the rows the host resolves"
+
+                        Expect.equal
+                            (sprintf "%A" pipeline)
+                            (sprintf
+                                "%A"
+                                [ Fuaran.Compute.Filter(Fuaran.Compute.InParam(Fuaran.Compute.Col "region", regionKey)) ])
+                            "one membership filter, over the one filterable column"
+
+                        Expect.equal (ps |> List.map _.Name) [ regionKey ] "the filter's list parameter"
+                        Expect.equal (panelControls tree |> List.map _.Name) [ regionKey ] "its chip writes that key"
+                    | other -> failtestf "the grid reads %A" other
+                }
+
+                test "every binding keeps one column per field, so no filter key has two writers" {
+                    let tree =
+                        Stdlib.refinableTable<unit>
+                            .Materialize(
+                                Map.ofList
+                                    [ "count", boxed 3
+                                      "column-1-field", boxed "region"
+                                      "column-1-filter", boxed "membership"
+                                      "column-2-field", boxed "region"
+                                      "column-2-filter", boxed "membership"
+                                      "column-3-field", boxed " " ]
+                            )
+
+                    let _, grid = gridIn tree
+
+                    Expect.equal
+                        (grid.Columns |> List.map _.Field)
+                        [ Some "region"; Some "column-3" ]
+                        "a repeated field keeps its first column; a blank one falls back"
+
+                    Expect.equal (panelControls tree |> List.length) 1 "one chip"
+                }
+
+                test "a fixed column opts out of the header sort" {
+                    let tree =
+                        tableOrFail
+                            { ordersTable with
+                                Columns =
+                                    ordersTable.Columns
+                                    |> List.map (fun c -> if c.Field = "total" then { c with Sortable = false } else c) }
+
+                    let _, grid = gridIn tree
+
+                    Expect.equal
+                        (grid.Columns |> List.map _.Sortable)
+                        [ None; None; Some false ]
+                        "only the fixed column"
+                }
+
+                test "the substituted pipeline evaluates to exactly the rows the grid shows, for every view" {
+                    let tree = tableOrFail ordersTable
+                    expectClean "the table" tree
+
+                    let sorts =
+                        None
+                        :: [ for column in 0..2 do
+                                 for direction in [ "asc"; "desc" ] -> Some(column, direction) ]
+
+                    let selections = [ None; Some []; Some [ "north" ]; Some [ "south"; "east" ] ]
+                    let pages = [ None; Some 1; Some 2; Some 3; Some 9 ]
+                    let mutable compared = 0
+
+                    for sort in sorts do
+                        for selected in selections do
+                            for page in pages do
+                                let shown, view =
+                                    shownAndView tree (sourcesFor sort page selected) (defaultArg selected [])
+
+                                let pipeline = Stdlib.refinedPipeline "orders" ordersTable view
+
+                                // The canonical form reads no parameter: every value
+                                // the view holds is written into it, and it is
+                                // evaluated below with nothing bound.
+                                Expect.isEmpty
+                                    (Fuaran.Compute.Transform.paramsOf pipeline)
+                                    (sprintf "the substituted pipeline still reads a parameter: %A" pipeline)
+
+                                Expect.equal
+                                    (evaluated pipeline |> List.map visible)
+                                    (shown |> List.map visible)
+                                    (sprintf "sort %A, page %A, selection %A: %A" sort page selected pipeline)
+
+                                compared <- compared + 1
+
+                    Expect.equal compared (7 * 4 * 5) "every view was compared"
+                }
+
+                test "the comparison measures the sort and the case folding — go-red" {
+                    // Dropping the sort from the projection, or sorting text
+                    // ordinally (the evaluator's own text order), disagrees with
+                    // the grid: the equality above is not vacuous, and the
+                    // lower-cased sort key is load-bearing.
+                    let tree = tableOrFail ordersTable
+                    let shown, view = shownAndView tree (sourcesFor (Some(0, "desc")) (Some 1) None) []
+                    let shownCells = shown |> List.map visible
+
+                    Expect.equal
+                        (evaluated (Stdlib.refinedPipeline "orders" ordersTable view) |> List.map visible)
+                        shownCells
+                        "the projection agrees"
+
+                    Expect.notEqual
+                        (evaluated (Stdlib.refinedPipeline "orders" ordersTable { view with Sort = None })
+                         |> List.map visible)
+                        shownCells
+                        "without the sort it disagrees"
+
+                    let ordinal =
+                        [ Fuaran.Compute.Sort [ Fuaran.Compute.Slot.Lit "customer", Fuaran.Compute.Desc ]
+                          Fuaran.Compute.Limit(Fuaran.Compute.Slot.Lit 3, Fuaran.Compute.Slot.Lit 0) ]
+
+                    Expect.notEqual (evaluated ordinal |> List.map visible) shownCells "an ordinal sort disagrees"
+                }
+
+                test "refused: a sortable column the pipeline's static schema does not produce" {
+                    let margin =
+                        { Field = "margin"
+                          Label = "Margin"
+                          Kind = RefinableKind.Number
+                          Sortable = true
+                          Filter = None }
+
+                    let plus (c: RefinableColumn) (table: RefinableTable) =
+                        { table with
+                            Columns = table.Columns @ [ c ] }
+
+                    let refused (what: string) (expected: string) (result: Result<Node<unit>, string>) =
+                        match result with
+                        | Ok _ -> failtestf "%s must be refused" what
+                        | Error e -> Expect.stringContains e expected (sprintf "%s: the refusal names it" what)
+
+                    ordersOf Fuaran.Compute.SchemaWalk.noSources (plus margin ordersTable)
+                    |> refused "a sortable column the schema does not produce" "sortable column 'margin'"
+
+                    ordersOf
+                        Fuaran.Compute.SchemaWalk.noSources
+                        (plus
+                            { margin with
+                                Sortable = false
+                                Filter = Some [] }
+                            ordersTable)
+                    |> refused "a filterable column the schema does not produce" "filterable column 'margin'"
+
+                    match
+                        ordersOf Fuaran.Compute.SchemaWalk.noSources (plus { margin with Sortable = false } ordersTable)
+                    with
+                    | Ok _ -> ()
+                    | Error e ->
+                        failtestf "a fixed, unfiltered column is the grid's grounding check, not this one: %s" e
+
+                    ordersOf Fuaran.Compute.SchemaWalk.noSources (plus { margin with Field = "total" } ordersTable)
+                    |> refused "two columns over one field" "one field"
+
+                    ordersOf
+                        Fuaran.Compute.SchemaWalk.noSources
+                        { ordersTable with
+                            Columns =
+                                ordersTable.Columns
+                                |> List.map (fun c -> if c.Field = "total" then { c with Filter = Some [] } else c) }
+                    |> refused "a membership filter over a number column" "'total' is not text"
+
+                    ordersOf Fuaran.Compute.SchemaWalk.noSources { ordersTable with Key = "id" }
+                    |> refused "a row key the schema does not produce" "row key 'id'"
+
+                    ordersOf Fuaran.Compute.SchemaWalk.noSources { ordersTable with PageSize = 0 }
+                    |> refused "a page size of zero" "page size"
+
+                    // A Ref with no declared schema refutes nothing; given its
+                    // schema, it refutes exactly as the inline rows do.
+                    let overRef =
+                        { plus margin ordersTable with
+                            Source = Fuaran.Core.DataSource.Ref "orders" }
+
+                    match ordersOf Fuaran.Compute.SchemaWalk.noSources overRef with
+                    | Ok _ -> ()
+                    | Error e -> failtestf "an undeclared Ref refutes nothing: %s" e
+
+                    let declared =
+                        match orderRows with
+                        | Fuaran.Core.Embedded t -> Fuaran.Compute.SchemaWalk.ofMap (Map.ofList [ "orders", t.Schema ])
+                        | other -> failtestf "%A" other
+
+                    ordersOf declared overRef
+                    |> refused "a column a declared Ref schema does not produce" "sortable column 'margin'"
                 } ]
 
           test "the certification harness can still go red — a deliberately broken materialiser is REJECTED" {

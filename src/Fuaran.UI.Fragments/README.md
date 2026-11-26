@@ -53,6 +53,7 @@ Two consequences follow, and both are enforced rather than hoped for:
 | `loading-placeholder` | `rows` (repeat, 1–8) | pure | Skeleton rows — the shape a list takes while its query is in flight. |
 | `parameter-panel` | `heading`, `count` (repeat, 1–4), per parameter `param-N-name`, `param-N-label`, `param-N-control`, `param-N-min`, `param-N-max`, `param-N-step`, `param-N-default`, `param-N-options` | writes host | The controls that set a pipeline's parameters: each writes the filter key a parameter of the same name reads. |
 | `scenario-comparison` | `heading`, `source`, `key`, `measure`, `key-label`, `a-label`, `b-label`, `difference-label`, `a-growth`, `b-growth` | reads host | One model run under two parameter sets, side by side with their difference, every figure computed by the pipeline. |
+| `refinable-table` | `heading`, `source`, `key`, `page-size`, `count` (repeat, 1–6), per column `column-N-field`, `column-N-label`, `column-N-kind`, `column-N-sort`, `column-N-filter`, `column-N-options` | writes host | A grid whose sort, page and membership filters are its view: state the grid and its chips write, which `Stdlib.refinedPipeline` restates as one pipeline. |
 
 ### The kpi-strip and filter-bar holes (Phase 2471)
 
@@ -124,6 +125,40 @@ Changing one panel control re-evaluates only the sites that read that parameter.
 (`BindingWalk.collect`) records each reader against the filter it reads, so a change to `growth`
 reaches the comparison and no site that reads only `uplift`. The suite pins this.
 
+### The refinable table (Phase 2753)
+
+A reader refines a table three ways: a membership filter, a header sort and a page. Each is already
+state that the tree names, and `refinable-table` joins them over one fixed pipeline.
+
+- **Filters are parameters.** Column *N* with `column-N-filter` = `membership` gets a token chip in
+  the table's filter bar. The chip suggests the values in `column-N-options` (the filter bar's
+  `value=Label|…` grammar, with the empty-valued "All" entry dropped) and writes filter key
+  `Stdlib.refinableFilterKey id field`. The grid's pipeline (`Stdlib.refinablePipeline`) holds one
+  `Filter` per such column, reading that key as a list parameter (`InParam`). An empty selection
+  leaves the parameter unbound, and the evaluator prunes the filter.
+- **Sort and page stay the grid's.** The grid declares `sortStateKey` (`Stdlib.refinableSortKey id`),
+  `pageStateKey` (`Stdlib.refinablePageKey id`) and `pageSize` (`page-size`), and applies both to the
+  rows the pipeline yields. That is the grid-behaviour rule as it stands: the state key is the
+  affordance. No pipeline step reads the sort. The descriptor names a column by index, and a `Sort`
+  key's direction is a literal, so a pipeline could not read it as a parameter anyway. A column whose
+  `column-N-sort` is `fixed` opts out of the header sort.
+- **The view is data.** A `RefinableView` is what the host reads off those keys: the grid's
+  effective sort descriptor, the page it shows (clamped as the grid clamps it), and each filter's
+  selection. `Stdlib.refinedPipeline id table view` returns the fixed pipeline with each selection
+  substituted (`Transform.substituteListParams`) and each empty one pruned, then the sort as a
+  literal `Sort`, the page as a literal `Limit`, and a projection to the row key and the displayed
+  columns. It reads no parameter, and it evaluates to exactly the rows the grid shows. A text column
+  sorts by its lower-cased value, which is the grid's text order (the evaluator's own text order is
+  ordinal). That pipeline is the form to store, share or re-apply.
+
+The stdlib entry reads rows the host names (`source`, a `Ref`). For rows of your own,
+`Stdlib.refinableTableOf id heading sources table` builds the same subtree from a `RefinableTable`.
+`sources` declares a `Ref`'s schema. It refuses a table with no columns, a page size below one, or two
+columns over one field. Wherever the pipeline's static schema is known, it also refuses a row key, or a
+sortable or filterable column, that the schema does not produce, and a membership filter over a column
+that is not text. Every binding of the entry materialises: a blank field falls back to `column-N`, and
+a field bound twice keeps its first column, so no filter key has two writers.
+
 Fragment names are **permanent**. Renaming one breaks every consumer's refs and every stored tree
 that carries them, so a rename is a new fragment plus a deprecation, never an edit.
 
@@ -174,8 +209,8 @@ Three invariants are stamped into the type surface rather than checked by conven
 
 And one honesty boundary, which is the reason the effect axis is declared at all: **a fragment whose
 declared effect is not pure-deterministic is certified for STRUCTURE only.** `filter-bar` reads host
-filter state, `confirm-action-pair` and `parameter-panel` write host state, and `scenario-comparison`
-reads rows the host resolves; their verdicts carry `StructureOnly = true`
+filter state, `confirm-action-pair`, `parameter-panel` and `refinable-table` write host state, and
+`scenario-comparison` reads rows the host resolves; their verdicts carry `StructureOnly = true`
 and assert that the emitted tree is valid for every binding — never that the emission is a pure
 function of its holes, and never anything about output quality. A consumer that reads a
 structure-only verdict as a determinism guarantee has been told otherwise here.
