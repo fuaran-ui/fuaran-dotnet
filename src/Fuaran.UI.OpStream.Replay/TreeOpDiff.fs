@@ -416,6 +416,12 @@ module TreeOpDiff =
                 (pvText sb.Text)
                 { a with
                     Kind = NodeKind.Markdown { sa with Text = sb.Text } }
+        | NodeKind.Text(sa), NodeKind.Text(sb) ->
+            prop
+                "Text"
+                (pvText sb.Text)
+                { a with
+                    Kind = NodeKind.Text { sa with Text = sb.Text } }
         | NodeKind.Badge(sa), NodeKind.Badge(sb) ->
             prop
                 "Label"

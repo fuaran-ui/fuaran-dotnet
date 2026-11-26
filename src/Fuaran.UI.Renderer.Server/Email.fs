@@ -198,6 +198,8 @@ let scope: (string * Disposition) list =
       Disposition.OpenLive
           "interactive (fidelity manifest: Behavioural). Deliberately NOT 'render the active panel': a digest that silently drops the other panels is a lie about how much it contains"
 
+      "Text", Disposition.Rendered "the words escaped, never parsed, in the Markdown cell's typography"
+
       "Toast",
       Disposition.Rendered
           "an OPEN toast renders as a static notice; a CLOSED one is OMITTED rather than `[hidden]`, because `[hidden]` is not honoured everywhere and a leaked notification is a disclosure bug"
@@ -711,6 +713,14 @@ and private renderKind
                           prop.dangerouslySetInnerHTML (
                               emailSafeMarkdown ctx.Policy.Egress spec.Citations (text spec.Text)
                           ) ] ] ]
+    // Phase 2536 — the Markdown cell's typography, with the words escaped rather than parsed.
+    | NodeKind.Text spec ->
+        layoutTable
+            ""
+            [ Html.tr
+                  [ Html.td
+                        [ prop.custom ("style", textStyle opts "font-size:15px;line-height:22px;")
+                          prop.text (text spec.Text) ] ] ]
 
     | NodeKind.Metric spec ->
         let resolution = BindingResolver.resolveScalarFloat ctx.Sources spec.Value

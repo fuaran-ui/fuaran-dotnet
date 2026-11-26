@@ -222,6 +222,9 @@ let fact: FactSpec =
 
 let markdown: MarkdownSpec = { Citations = []; Text = emptyLiteral }
 
+/// Phase 2536 — plain running text: the words as written, never parsed.
+let text: TextSpec = { Text = emptyLiteral }
+
 let metric: MetricSpec =
     { Label = emptyLiteral
       Value = noBinding<float>

@@ -6660,6 +6660,7 @@ let private validateLocated
         // HeadingLevel ∈ [1..6]) land here.
         | NodeKind.Heading _
         | NodeKind.Markdown _
+        | NodeKind.Text _
         | NodeKind.Metric _
         | NodeKind.Badge _
         | NodeKind.Sparkline _

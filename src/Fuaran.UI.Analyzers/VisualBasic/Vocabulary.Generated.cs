@@ -14,7 +14,7 @@ internal static partial class Vocabulary
     /// <summary>The node-kind element names: every wire kind, plus the element conveniences that lower onto one.</summary>
     public static readonly ImmutableHashSet<string> Kinds = ImmutableHashSet.Create(
         StringComparer.Ordinal,
-        "Badge", "Box", "Button", "Callout", "Card", "Chart", "CodeBlock", "Custom", "Dashboard", "DataGrid", "Disclosure", "Divider", "Drawing", "Embed", "ErrorBoundary", "Fact", "FileUpload", "Filters", "Form", "FragmentDecl", "FragmentRef", "Grid", "Heading", "Icon", "Image", "LabelValueRow", "Link", "List", "Map", "Markdown", "Math", "Media", "Metric", "Modal", "Mount", "MultiSelect", "Progress", "ScrollArea", "Select", "Skeleton", "Sparkline", "SplitPanel", "Stack", "Stepper", "SummaryList", "Switch", "Table", "Tabs", "Toast", "Tree");
+        "Badge", "Box", "Button", "Callout", "Card", "Chart", "CodeBlock", "Custom", "Dashboard", "DataGrid", "Disclosure", "Divider", "Drawing", "Embed", "ErrorBoundary", "Fact", "FileUpload", "Filters", "Form", "FragmentDecl", "FragmentRef", "Grid", "Heading", "Icon", "Image", "LabelValueRow", "Link", "List", "Map", "Markdown", "Math", "Media", "Metric", "Modal", "Mount", "MultiSelect", "Progress", "ScrollArea", "Select", "Skeleton", "Sparkline", "SplitPanel", "Stack", "Stepper", "SummaryList", "Switch", "Table", "Tabs", "Text", "Toast", "Tree");
 
     /// <summary>Structural child elements — children of a kind, not kinds themselves.</summary>
     public static readonly ImmutableHashSet<string> Structural = ImmutableHashSet.Create(
@@ -92,6 +92,7 @@ internal static partial class Vocabulary
         Add("Switch", "auto-advance-ms", "id", "state-key");
         Add("Table", "default-sort-column", "default-sort-direction", "id", "sortable");
         Add("Tabs", "active-index", "id", "orientation");
+        Add("Text", "id", "text");
         Add("Toast", "dismissable", "id", "message", "open", "tone");
         Add("Tone", "tone", "value");
         Add("Track", "default", "kind", "label", "src", "srclang");

@@ -2050,6 +2050,22 @@ module Fuaran =
     let markdownSpec (id: string) (spec: MarkdownSpec) : Node<'Msg> =
         buildNode id (NodeKind.Markdown(spec)) Defaults.Accessibility.none
 
+    /// Phase 2536 — running text exactly as written: escaped into one inline container,
+    /// never parsed, so `*`, `_`, `<` and `[` read literally and no escape helper is
+    /// needed (`Fuaran.text "id" "Revenue rose 4%"`). Reach for `markdown` only when the
+    /// text carries formatting; `textSpec` is the record-form twin.
+    let text (id: string) (body: string) : Node<'Msg> =
+        buildNode
+            id
+            (NodeKind.Text(
+                { Defaults.text with
+                    Text = TextSource.Literal body }
+            ))
+            Defaults.Accessibility.none
+
+    let textSpec (id: string) (spec: TextSpec) : Node<'Msg> =
+        buildNode id (NodeKind.Text(spec)) Defaults.Accessibility.none
+
     let callout (id: string) (spec: CalloutSpec) : Node<'Msg> =
         buildNode id (NodeKind.Callout(spec)) Defaults.Accessibility.callout
 

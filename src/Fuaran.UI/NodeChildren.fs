@@ -227,6 +227,7 @@ let private held (kind: NodeKind<'Msg>) : Held<'Msg> =
         )
     | NodeKind.Heading _
     | NodeKind.Markdown _
+    | NodeKind.Text _
     | NodeKind.Metric _
     | NodeKind.Badge _
     | NodeKind.Sparkline _
@@ -297,6 +298,7 @@ let private reads (kind: NodeKind<'Msg>) : struct (Node<'Msg> list voption * Pos
     | NodeKind.Mount s -> struct (ValueNone, Position.Argument, slotArgNodes s.Inputs)
     | NodeKind.Heading _
     | NodeKind.Markdown _
+    | NodeKind.Text _
     | NodeKind.Metric _
     | NodeKind.Badge _
     | NodeKind.Sparkline _

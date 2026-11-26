@@ -77,6 +77,11 @@ Friend Module CoreMapping
         d("Markdown") = Function(el) Csharp.Fuaran.Markdown(
             New Csharp.MarkdownOptions With {.Id = Attr(el, "id"), .Text = AsText(MarkdownText(el))})
 
+        ' Phase 2536 — plain text reads its words the way Markdown does: a `text`
+        ' attribute or the element's inner text.
+        d("Text") = Function(el) Csharp.Fuaran.Text(
+            New Csharp.TextOptions With {.Id = Attr(el, "id"), .Text = AsText(MarkdownText(el))})
+
         ' ── Input ─────────────────────────────────────────────────────────────
         d("Button") = Function(el) Csharp.Fuaran.Button(
             New Csharp.ButtonOptions With {

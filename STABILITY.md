@@ -7841,6 +7841,30 @@ from `@fuaran-ui/renderer` with the same fix. No type, member, prop or wire byte
 open modal is unchanged, so the render-fidelity rows need no re-stamp. **What a consumer must do.** Nothing; a
 host that worked around the defect by stopping propagation inside its dialog may drop the workaround.
 
+### Phase 2536 — a plain `Text` node, running text with no parse (additive)
+
+`NodeKind` gains `Text` (`TextSpec`: one required `text`, a `TextSource`), on the wire as
+`{"$type":"Text","text":<TextSource>}` (WIRE_FORMAT.md §3.6.38). Both renderers draw it through one shared plan,
+`ElementPlan.DisplayPlan.text`: the resolved words, HTML-escaped, in one `<span>` inside the node wrapper, which
+carries `fuaran-kind-text`. No character is read as markup, there is no Markdown parse, and there is no enhancement
+tier. The email projection draws it in the `Markdown` cell's typography, speech says it as one utterance and an
+Adaptive Card carries it as one literal text run. New public surface: `Fuaran.text` and `Fuaran.textSpec`,
+`Defaults.text`, the C# `Fuaran.Text(TextOptions)` factory and `TextOptions`, and the VB `<Text>` element. A
+`Text` node with no `text` is `MISSING_FIELD` at `…kind.text`, and its message says a text input belongs in a
+`Form`'s `fields[]`; every `WRONG_NODE_KIND` hint lists `Text` after `Markdown`.
+
+**The tag is shared, and positions decide (WIRE_FORMAT.md §11.4, ruled 2026-11-25, `docs/DECISIONS.md` D40).**
+`Text` is already a `FormFieldKind` case and a `CellKindErased` case. Each family is read at its own positions, so
+nothing that decodes today decodes differently: a `Form`'s `fields[]` still reads the text input. The emitter
+profiles' subset check classifies by position, and a test declaring `Text` in one family only pins that the other
+family's `Text` stays outside it.
+
+**What a consumer must do.** A consumer with an exhaustive match over `NodeKind` adds the `Text` case (warnings as
+errors make the omission a build error). A consumer that stored a `WRONG_NODE_KIND` verdict for a node-position
+`Text` now meets `MISSING_FIELD` at `…kind.text`, or a decoded node when the emission carried `text`. Nothing else
+moves. Admitted under the [vocabulary-growth charter](docs/VOCABULARY.md) (the running-text cluster records the
+gates). **No escape hatch is created or widened.**
+
 ---
 
 ## 0.106.0 — the slot opened after v0.105.0 was released, by Phase 2435 (the program adapters adopt `Fuaran.Program` 0.17.0), whose change is breaking (DRAFT — untagged)

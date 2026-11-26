@@ -454,6 +454,7 @@ let project (ctx: Render.ServerRenderContext) (root: Node<obj>) : SpeechScript *
         | NodeKind.Heading spec -> leaf (derived [ heading (text spec.Text) ])
         | NodeKind.Markdown spec ->
             leaf (derived (markdownBlocks ctx.Policy.Egress (text spec.Text) |> List.map sentence))
+        | NodeKind.Text spec -> leaf (derived [ sentence (text spec.Text) ])
         | NodeKind.Callout spec ->
             leaf (
                 derived (

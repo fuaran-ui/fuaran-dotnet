@@ -299,30 +299,32 @@ let private shell: Surface =
 
 // ─── The 200-row table ─────────────────────────────────────────────────────
 
-let private tableRow (i: int) : Node<unit> =
+/// Phase 2536 — the row's running text through `words`: `Fuaran.markdown` on `table-200`, and
+/// `Fuaran.text` on `table-200-text`, the same surface with no Markdown parse.
+let private tableRow (words: string -> string -> Node<unit>) (i: int) : Node<unit> =
     let id = "r" + string i
 
     Fuaran.card
         id
         { Defaults.card<unit> with
             Children =
-                [ Fuaran.markdown (id + "-label") ("Row " + string i)
-                  Fuaran.markdown (id + "-value") (string (i * 7))
+                [ words (id + "-label") ("Row " + string i)
+                  words (id + "-value") (string (i * 7))
                   Fuaran.button
                       (id + "-bump")
                       { Defaults.button with
                           Label = TextSource.Literal "+"
                           OnClick = Action.Print } ] }
 
-let private table200: Surface =
+let private table200Of (name: string) (words: string -> string -> Node<unit>) : Surface =
     let key = "table-tick"
     let tick = metric "tick" "Tick" (Binding.State(key, Some 0.0))
-    let rows = [ for i in 0..199 -> tableRow i ]
+    let rows = [ for i in 0..199 -> tableRow words i ]
 
     let root (extra: Node<unit> list) =
         dashboard "table" ([ tick ] @ rows @ extra)
 
-    { Name = "table-200"
+    { Name = name
       Tree = root []
       Grown = root [ grownChild ]
       Channel = StateWrite
@@ -331,4 +333,7 @@ let private table200: Surface =
       Readers = [ tick ]
       WithoutCharts = None }
 
-let all: Surface list = [ sites24; catalog; shell; table200 ]
+let private table200 = table200Of "table-200" Fuaran.markdown
+let private table200Text = table200Of "table-200-text" Fuaran.text
+
+let all: Surface list = [ sites24; catalog; shell; table200; table200Text ]

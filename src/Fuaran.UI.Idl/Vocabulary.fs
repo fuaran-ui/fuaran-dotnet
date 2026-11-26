@@ -2575,6 +2575,13 @@ let displayKinds: IdlKind list =
         Fields =
           [ omit "citations" (TList(TRecord "MarkdownCitation")) (VList [])
             req "text" TS ] }
+      // Phase 2536 — running text with no parse: the words exactly as written,
+      // escaped into one inline container (the `CodeBlock` precedent), so it is
+      // byte-identical on every host and costs no Markdown parse.
+      { Tag = "Text"
+        Category = "Display"
+        Annotations = Annotations.Empty
+        Fields = [ req "text" TS ] }
       { Tag = "Math"
         Category = "Display"
         Annotations = Annotations.Empty
@@ -4668,6 +4675,9 @@ let private docs: (string * string) list =
       "A stable string tag for each tab, one per child. Omitted means tabs are addressed by index only."
       "kind-field:Tabs.activeTag",
       "The tag of the active tab, an alternative to `activeIndex` when `tabTags` are declared. Omitted means selection follows `activeIndex`."
+      "kind:Text",
+      "Display kind (§4b): running text shown exactly as written, escaped and never parsed, in an inline container; use `Markdown` when the text carries formatting."
+      "kind-field:Text.text", "The text, rendered literally."
       "kind:Toast",
       "Display kind (§4b): an in-tree notification announced through a live region and shown while its `open` binding is true."
       "kind-field:Toast.dismissable",

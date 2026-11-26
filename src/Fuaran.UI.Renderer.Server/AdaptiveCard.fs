@@ -1074,6 +1074,9 @@ let projectWith
                     degrade rule n.Id n
 
                 blocks |> List.map Piece.Element
+            // Phase 2536 — a TextRun carries its text literally, so plain text
+            // needs no escape and no Markdown block split.
+            | NodeKind.Text spec -> [ Piece.Element(line (text spec.Text) []) ]
             | NodeKind.Fact spec ->
                 [ Piece.FactRow(escapeFactText (text spec.Label), escapeFactText (text spec.Value)) ]
                 @ (spec.Help

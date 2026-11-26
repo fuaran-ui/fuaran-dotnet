@@ -10,6 +10,44 @@ consequence.
 
 ---
 
+## 2026-11-25 — D40: a `$type` is read in the family its position names; one tag may name a node kind and a form field
+
+**Decided (Phase 2536; ruled 2026-11-25).** WIRE_FORMAT.md §11.4 required the `NodeKind` and `FormFieldKind` tag
+sets to stay disjoint, and this host's emitter-acceptance leg asserted that no tag was in both. Phase 2536 adds a
+running-text node named `Text`, and `Text` is already the text-input form field (and the plain cell kind of a
+`DataGrid` column). The ruling: the node kind keeps the name `Text`, and §11.4 is positional.
+
+1. **A `$type` is read in the family its position names.** A node position reads the node kinds; a `Form`'s
+   `fields[]` and a `Filters`' `items[]` read the form-field kinds; a column's `kind` reads the cell kinds. The
+   families are separate namespaces, so one tag may name a member of each.
+2. **A profile declares each family apart, and one family grants nothing in the other.** A revision whose
+   `formFieldKinds` holds `Text` and whose `kinds` does not refuses a document carrying a `Text` node, and the
+   reverse. The disjointness assertion is replaced by that test, over two revisions declared inside the test,
+   never in the manifest: a declared lineage carries the §15.6 commitment, and a test fixture must not.
+3. **The corpus pins the reading on every codec host.** `nodes/text-beside-text-field` holds a `Text` field
+   beside a `Text` node in one tree; `reject/reject-text-node-shaped-as-field` is a node-position `Text` written in
+   the field's shape, refused `MISSING_FIELD` at `$.kind.text`. All five codec hosts agree on both.
+
+**Why.** Positions already decided every reading: no decoder on any host resolves a `kind.$type` without knowing
+which family its position reads, and the subset check already classified controls by position (§11.4's leg
+reads a control's tag only inside `fields[]` and `items[]`). Disjointness protected only the self-identification
+of a bare `{"$type":…}` fragment read with no position, which no consumer does. The name is the one models reach
+for: a sampled stored emission wrote `{"$type":"Text"}` at a node position, refused `WRONG_NODE_KIND` while no node
+kind had the name; it now reads as the node kind missing its words.
+
+**Rejected.** Renaming the node kind (`Paragraph`, `PlainText`, `Prose`): `Paragraph` implies a block `<p>` where
+the kind is an inline container, and every rename leaves the emission above a miss. Renaming
+`FormFieldKind.Text`: a breaking wire change to a field every stored form carries.
+
+**Consequence.** One tag, three families, and a near-synonym pair on the confusion axis: the `Text` node against
+the `Text` field, beside the `Text` node against `Markdown`. Both deltas are named in the charter record
+(`VOCABULARY.md`, the running-text cluster) and measured on the next evaluation run. **Recorded open:** a `Text`
+field written in the node's shape (carrying `text`) is read as the field on every host, but what its re-encode does
+with the member it does not declare is answered two ways across the hosts (dropped on four, kept on one), on every
+kind and not only this one; that vector is withheld until §2 rule 2's re-encode is ruled on.
+
+---
+
 ## 2026-11-22 — D39: a mark channel is an optional field of the one `Chart` kind; orientation and facets are layout, not channels
 
 **Decided (Phase 2654).** A CHANNEL names a column of the chart's rows that a mark reads besides its x and its value:

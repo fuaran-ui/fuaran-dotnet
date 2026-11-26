@@ -329,6 +329,7 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
           textEntry "Text" spec.Text
           valueEntry "Variant" spec.Variant ]
     | NodeKind.Markdown(spec) -> [ textEntry "Text" spec.Text ]
+    | NodeKind.Text(spec) -> [ textEntry "Text" spec.Text ]
     | NodeKind.Metric(spec) ->
         [ textEntry "Label" spec.Label
           valueEntry "Format" spec.Format

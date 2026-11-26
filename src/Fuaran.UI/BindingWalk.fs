@@ -2202,6 +2202,7 @@ let private walkTree<'Msg>
         | NodeKind.ScrollArea s -> walkAll inUses s.Children
         // ── Display ──
         | NodeKind.Heading h -> recordText inUses readerId h.Text
+        | NodeKind.Text t -> recordText inUses readerId t.Text
         | NodeKind.Markdown m ->
             recordText inUses readerId m.Text
 

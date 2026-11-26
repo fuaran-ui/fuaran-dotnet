@@ -404,6 +404,8 @@ let supplementSpecimens: Specimen list =
                               When = None
                               Child = styled axes (Fuaran.markdown "switch-summary" "Summary view (the selected case).") } ]
                       Default = Fuaran.markdown "switch-default" "Default view." } }
+      sample "Text" "Running text shown exactly as written, never parsed." (fun () ->
+          Fuaran.text "text" "Search by name or ID.")
       sample "Toast" "A transient status message; open state is a binding." (fun () ->
           Fuaran.toast
               "toast"

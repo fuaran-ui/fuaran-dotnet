@@ -96,6 +96,7 @@ let all: Classification list =
       // ── Display kinds (pure presentation — all survivable) ───────────────
       sv "NodeKind.Heading"
       sv "NodeKind.Markdown"
+      sv "NodeKind.Text"
       sv "NodeKind.Metric"
       sv "NodeKind.Badge"
       sv "NodeKind.Sparkline"

@@ -464,6 +464,14 @@ let private updateMarkdown (field: string) (v: obj) (spec: MarkdownSpec) : Updat
         | Error msg -> TypeMismatch msg
     | _ -> UnknownField
 
+let private updateText (field: string) (v: obj) (spec: TextSpec) : UpdateResult<'Msg> =
+    match field with
+    | "Text" ->
+        match coerceField JsonDecode.Coerce.tryTextSource v with
+        | Ok x -> Updated(NodeKind.Text({ spec with Text = x }))
+        | Error msg -> TypeMismatch msg
+    | _ -> UnknownField
+
 let private updateBadge (field: string) (v: obj) (spec: BadgeSpec) : UpdateResult<'Msg> =
     let wrap f =
         match f v with
@@ -1435,6 +1443,7 @@ let private dispatchUpdateField (field: string) (v: obj) (kind: NodeKind<'Msg>) 
     // -- Display --
     | NodeKind.Heading spec -> updateHeading field v spec
     | NodeKind.Markdown spec -> updateMarkdown field v spec
+    | NodeKind.Text spec -> updateText field v spec
     | NodeKind.Metric spec -> updateMetric field v spec
     | NodeKind.Badge spec -> updateBadge field v spec
     // Sparkline's omission is PRINCIPLED, not a to-do, and this comment is

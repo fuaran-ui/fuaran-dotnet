@@ -263,6 +263,7 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
         // Leaves, with no closure-bearing slot this check can call dead.
         | NodeKind.Heading _
         | NodeKind.Markdown _
+        | NodeKind.Text _
         | NodeKind.Metric _
         | NodeKind.Badge _
         | NodeKind.Sparkline _

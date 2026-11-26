@@ -170,7 +170,7 @@ let vocabularyFingerprintMarker = "fuaran-vocabulary-fingerprint:"
 // `fuaran-form-field-label` (the server's field-label span) left with the
 // served field wrapper the driver ruled away; a field's label is
 // `fuaran-form-label` on both tiers. The sheet still styles the old name.
-let vocabularyFingerprint = "fv1:984e63f4c4bdfab0"
+let vocabularyFingerprint = "fv1:7fac522a220713bf"
 
 /// parity: format a float invariantly across both pipelines. The .NET branch
 /// pins InvariantCulture so a comma-decimal locale can't corrupt the CSS/JSON;
@@ -472,6 +472,7 @@ let kindClass (kind: NodeKind<'Msg>) : string =
     | NodeKind.Fact(_) -> "fuaran-kind-fact"
     | NodeKind.Link(_) -> "fuaran-kind-link"
     | NodeKind.Markdown(_) -> "fuaran-kind-markdown"
+    | NodeKind.Text(_) -> "fuaran-kind-text"
     | NodeKind.Metric(_) -> "fuaran-kind-metric"
     | NodeKind.Badge(_) -> "fuaran-kind-badge"
     | NodeKind.Sparkline(_) -> "fuaran-kind-sparkline"

@@ -223,6 +223,7 @@ let isBidiIsolated (kind: NodeKind<'Msg>) : bool =
     | NodeKind.Heading s -> isBoundText s.Text
     | NodeKind.Badge s -> isBoundText s.Label
     | NodeKind.Markdown s -> isBoundText s.Text
+    | NodeKind.Text s -> isBoundText s.Text
     | NodeKind.List s -> s.Items |> List.exists isBoundText
     // Phase 1120 — a row label is laid-out content on the same terms a list
     // item's is, so the same reading applies at every depth of the hierarchy.

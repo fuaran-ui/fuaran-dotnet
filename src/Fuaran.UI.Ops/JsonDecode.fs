@@ -888,6 +888,7 @@ let layoutNodeKinds =
 let displayNodeKinds =
     [ "Heading"
       "Markdown"
+      "Text"
       "Metric"
       "Badge"
       "Sparkline"
@@ -5565,6 +5566,11 @@ let private requiredMembers: Map<string * string, string> =
           ("FactSpec", "label"), "fact TextSource label"
           ("FactSpec", "value"), "fact TextSource value"
           ("MarkdownSpec", "text"), "markdown TextSource"
+          // Phase 2536 — the tag `Text` also names the text-input form field, read
+          // in a Form's `fields[]` (WIRE_FORMAT 11.4); a node-position `Text` with no
+          // `text` is most often that input written outside its Form.
+          ("TextSpec", "text"),
+          "text TextSource (a Text node is running text; a text input is the Text form field, which belongs in a Form's fields[])"
           ("MarkdownCitation", "name"), "citation name"
           ("MarkdownCitation", "reference"), "citation reference"
           ("TreeSpec", "items"), "tree items array"
@@ -5822,6 +5828,9 @@ let private decodeDisplayKind (path: string) (j: Json) : Result<NodeKind<obj>, D
             | "Markdown" ->
                 Bridge.decodeAt specPath (Fuaran.UI.Generated.decodeMarkdownSpecAllWith policy) j
                 |> Result.map NodeKind.Markdown
+            | "Text" ->
+                Bridge.decodeAt specPath (Fuaran.UI.Generated.decodeTextSpecAllWith policy) j
+                |> Result.map NodeKind.Text
             | "Metric" ->
                 getSpec ()
                 |> Result.bind (decodeMetricSpec specPath)

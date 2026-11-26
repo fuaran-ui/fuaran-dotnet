@@ -1,0 +1,1316 @@
+{
+  "machine": {
+    "cpu": "Intel(R) Core(TM) Ultra 9 386H",
+    "logicalCores": 16,
+    "memoryGiB": 32,
+    "os": "win32 10.0.26300",
+    "node": "v25.9.0",
+    "browser": "158.0.4370.33"
+  },
+  "samples": 30,
+  "trustedTypes": true,
+  "consoleErrors": {
+    "count": 0,
+    "first": []
+  },
+  "surfaces": [
+    {
+      "surface": "sites-24",
+      "shape": {
+        "nodes": 77,
+        "fragmentRefs": 24,
+        "charts": 24,
+        "topLevelSubtrees": 25,
+        "subscribedSubtrees": 24,
+        "dependentSubtrees": 6,
+        "stateKeys": 0,
+        "filterKeys": 4
+      },
+      "isolated": {
+        "keyWalks": {
+          "median": 0.475,
+          "p95": 0.78,
+          "min": 0.28
+        },
+        "contextCreate": {
+          "median": 0.33,
+          "p95": 0.58,
+          "min": 0.18
+        },
+        "fragmentExpansionCold": {
+          "median": 0.585,
+          "p95": 0.79,
+          "min": 0.235
+        },
+        "fragmentExpansionMemo": {
+          "median": 0.025,
+          "p95": 0.035,
+          "min": 0.01
+        },
+        "transformEvaluation": {
+          "median": 8.575,
+          "p95": 11.135,
+          "min": 5.71
+        },
+        "chartLowering": {
+          "median": 16.11,
+          "p95": 21.835,
+          "min": 11.965
+        },
+        "chartSinkSanitise": {
+          "median": 8.1,
+          "p95": 10.74,
+          "min": 7.055
+        },
+        "constructWhole": {
+          "median": 20.85,
+          "p95": 28.415,
+          "min": 16.31
+        },
+        "constructReaders": {
+          "median": 3.37,
+          "p95": 5.88,
+          "min": 2.755
+        },
+        "constructWithoutCharts": {
+          "median": 0.925,
+          "p95": 1.265,
+          "min": 0.645
+        }
+      },
+      "fullRender": {
+        "total": {
+          "median": 33.685,
+          "p95": 37.005,
+          "min": 28.6
+        },
+        "construct": {
+          "median": 28.305,
+          "p95": 30.505,
+          "min": 22.01
+        },
+        "reactRender": {
+          "median": 2.295,
+          "p95": 3.675,
+          "min": 1.87
+        },
+        "commit": {
+          "median": 0.265,
+          "p95": 0.45,
+          "min": 0.195
+        },
+        "layout": {
+          "median": 2.91,
+          "p95": 6.885,
+          "min": 2.475
+        },
+        "commits": {
+          "median": 1,
+          "p95": 1,
+          "min": 1
+        },
+        "elements": {
+          "median": 1383,
+          "p95": 1383,
+          "min": 1383
+        }
+      },
+      "writeReactive": {
+        "total": {
+          "median": 9.06,
+          "p95": 10.88,
+          "min": 6.005
+        },
+        "fanOut": {
+          "median": 0.04,
+          "p95": 0.065,
+          "min": 0.03
+        },
+        "reactRender": {
+          "median": 7.265,
+          "p95": 9.11,
+          "min": 4.705
+        },
+        "commit": {
+          "median": 0.72,
+          "p95": 1.215,
+          "min": 0.475
+        },
+        "layout": {
+          "median": 0.89,
+          "p95": 2.08,
+          "min": 0.515
+        },
+        "constructOffPath": {
+          "median": 25.365,
+          "p95": 31.355,
+          "min": 17.665
+        },
+        "commits": {
+          "median": 1,
+          "p95": 1,
+          "min": 1
+        },
+        "boundaryRenders": {
+          "median": 6,
+          "p95": 6,
+          "min": 6
+        },
+        "domChanged": {
+          "median": 1,
+          "p95": 1,
+          "min": 1
+        }
+      },
+      "writePlain": {
+        "total": {
+          "median": 0.025,
+          "p95": 0.095,
+          "min": 0.02
+        },
+        "fanOut": {
+          "median": 0.015,
+          "p95": 0.025,
+          "min": 0.01
+        },
+        "reactRender": {
+          "median": 0,
+          "p95": 0,
+          "min": 0
+        },
+        "commit": {
+          "median": 0.005,
+          "p95": 0.03,
+          "min": 0
+        },
+        "layout": {
+          "median": 0.005,
+          "p95": 0.01,
+          "min": 0
+        },
+        "constructOffPath": {
+          "median": 24.87,
+          "p95": 29.3,
+          "min": 16.795
+        },
+        "commits": {
+          "median": 0,
+          "p95": 0,
+          "min": 0
+        },
+        "boundaryRenders": {
+          "median": 0,
+          "p95": 0,
+          "min": 0
+        },
+        "domChanged": {
+          "median": 0,
+          "p95": 0,
+          "min": 0
+        }
+      },
+      "structural": {
+        "total": {
+          "median": 24.495,
+          "p95": 28.925,
+          "min": 17.685
+        },
+        "construct": {
+          "median": 23.735,
+          "p95": 28.395,
+          "min": 17.215
+        },
+        "reactRender": {
+          "median": 0.17,
+          "p95": 0.285,
+          "min": 0.105
+        },
+        "commit": {
+          "median": 0.265,
+          "p95": 0.475,
+          "min": 0.225
+        },
+        "layout": {
+          "median": 0.125,
+          "p95": 0.2,
+          "min": 0.07
+        },
+        "commits": {
+          "median": 1,
+          "p95": 1,
+          "min": 1
+        },
+        "elementsMoved": {
+          "median": 4,
+          "p95": 4,
+          "min": 4
+        }
+      },
+      "mutationsPerUpdate": {
+        "writeReactive": {
+          "total": 6,
+          "childList:DIV": 6
+        },
+        "writePlain": {
+          "total": 0
+        },
+        "structural": {
+          "total": 1,
+          "childList:DIV": 1
+        }
+      },
+      "checks": {
+        "writeReactive": {
+          "plannedBoundaries": 6,
+          "fewestBoundaries": 6,
+          "mostBoundaries": 6,
+          "matchesFresh": true,
+          "focusKept": null
+        },
+        "writePlain": {
+          "plannedBoundaries": 6,
+          "fewestBoundaries": 0,
+          "mostBoundaries": 0,
+          "matchesFresh": false,
+          "focusKept": null
+        }
+      }
+    },
+    {
+      "surface": "catalog",
+      "shape": {
+        "nodes": 604,
+        "fragmentRefs": 0,
+        "charts": 7,
+        "topLevelSubtrees": 218,
+        "subscribedSubtrees": 1,
+        "dependentSubtrees": 1,
+        "stateKeys": 1,
+        "filterKeys": 0
+      },
+      "isolated": {
+        "keyWalks": {
+          "median": 0.54,
+          "p95": 0.96,
+          "min": 0.255
+        },
+        "contextCreate": {
+          "median": 0.33,
+          "p95": 0.48,
+          "min": 0.16
+        },
+        "fragmentExpansionCold": {
+          "median": 0,
+          "p95": 0.005,
+          "min": 0
+        },
+        "fragmentExpansionMemo": {
+          "median": 0,
+          "p95": 0.005,
+          "min": 0
+        },
+        "transformEvaluation": {
+          "median": 0.01,
+          "p95": 0.015,
+          "min": 0
+        },
+        "chartLowering": {
+          "median": 3.745,
+          "p95": 4.215,
+          "min": 2.54
+        },
+        "chartSinkSanitise": {
+          "median": 3.65,
+          "p95": 3.98,
+          "min": 2.495
+        },
+        "constructWhole": {
+          "median": 13.695,
+          "p95": 16.805,
+          "min": 8.055
+        },
+        "constructReaders": {
+          "median": 0.02,
+          "p95": 0.035,
+          "min": 0.01
+        },
+        "constructWithoutCharts": null
+      },
+      "fullRender": {
+        "total": {
+          "median": 44.17,
+          "p95": 50.94,
+          "min": 33.13
+        },
+        "construct": {
+          "median": 17.15,
+          "p95": 20.64,
+          "min": 12.525
+        },
+        "reactRender": {
+          "median": 18.69,
+          "p95": 22.815,
+          "min": 10.815
+        },
+        "commit": {
+          "median": 0.81,
+          "p95": 0.905,
+          "min": 0.69
+        },
+        "layout": {
+          "median": 8.275,
+          "p95": 8.54,
+          "min": 7.125
+        },
+        "commits": {
+          "median": 1,
+          "p95": 1,
+          "min": 1
+        },
+        "elements": {
+          "median": 3142,
+          "p95": 3142,
+          "min": 3142
+        }
+      },
+      "writeReactive": {
+        "total": {
+          "median": 0.815,
+          "p95": 1.31,
+          "min": 0.675
+        },
+        "fanOut": {
+          "median": 0.045,
+          "p95": 0.06,
+          "min": 0.035
+        },
+        "reactRender": {
+          "median": 0.375,
+          "p95": 0.765,
+          "min": 0.275
+        },
+        "commit": {
+          "median": 0.195,
+          "p95": 0.29,
+          "min": 0.15
+        },
+        "layout": {
+          "median": 0.205,
+          "p95": 0.29,
+          "min": 0.19
+        },
+        "constructOffPath": {
+          "median": 12.99,
+          "p95": 17.875,
+          "min": 8.085
+        },
+        "commits": {
+          "median": 1,
+          "p95": 1,
+          "min": 1
+        },
+        "boundaryRenders": {
+          "median": 8,
+          "p95": 8,
+          "min": 8
+        },
+        "domChanged": {
+          "median": 1,
+          "p95": 1,
+          "min": 1
+        }
+      },
+      "writePlain": {
+        "total": {
+          "median": 0.055,
+          "p95": 0.065,
+          "min": 0.04
+        },
+        "fanOut": {
+          "median": 0.02,
+          "p95": 0.03,
+          "min": 0.015
+        },
+        "reactRender": {
+          "median": 0,
+          "p95": 0,
+          "min": 0
+        },
+        "commit": {
+          "median": 0.02,
+          "p95": 0.03,
+          "min": 0.015
+        },
+        "layout": {
+          "median": 0.01,
+          "p95": 0.02,
+          "min": 0.005
+        },
+        "constructOffPath": {
+          "median": 13.33,
+          "p95": 16.195,
+          "min": 8.4
+        },
+        "commits": {
+          "median": 0,
+          "p95": 0,
+          "min": 0
+        },
+        "boundaryRenders": {
+          "median": 0,
+          "p95": 0,
+          "min": 0
+        },
+        "domChanged": {
+          "median": 0,
+          "p95": 0,
+          "min": 0
+        }
+      },
+      "structural": {
+        "total": {
+          "median": 20.045,
+          "p95": 24.545,
+          "min": 12.35
+        },
+        "construct": {
+          "median": 14.645,
+          "p95": 18.91,
+          "min": 8.19
+        },
+        "reactRender": {
+          "median": 1.045,
+          "p95": 1.44,
+          "min": 0.73
+        },
+        "commit": {
+          "median": 3.21,
+          "p95": 4.595,
+          "min": 2.45
+        },
+        "layout": {
+          "median": 0.245,
+          "p95": 0.475,
+          "min": 0.185
+        },
+        "commits": {
+          "median": 1,
+          "p95": 1,
+          "min": 1
+        },
+        "elementsMoved": {
+          "median": 4,
+          "p95": 4,
+          "min": 4
+        }
+      },
+      "mutationsPerUpdate": {
+        "writeReactive": {
+          "total": 1,
+          "characterData:#text": 1
+        },
+        "writePlain": {
+          "total": 0
+        },
+        "structural": {
+          "total": 316,
+          "childList:DIV": 1,
+          "attributes:name": 210,
+          "attributes:type": 105
+        }
+      },
+      "checks": {
+        "writeReactive": {
+          "plannedBoundaries": 8,
+          "fewestBoundaries": 8,
+          "mostBoundaries": 8,
+          "matchesFresh": true,
+          "focusKept": true
+        },
+        "writePlain": {
+          "plannedBoundaries": 8,
+          "fewestBoundaries": 0,
+          "mostBoundaries": 0,
+          "matchesFresh": false,
+          "focusKept": true
+        }
+      }
+    },
+    {
+      "surface": "shell-40",
+      "shape": {
+        "nodes": 447,
+        "fragmentRefs": 40,
+        "charts": 40,
+        "topLevelSubtrees": 41,
+        "subscribedSubtrees": 1,
+        "dependentSubtrees": 1,
+        "stateKeys": 240,
+        "filterKeys": 0
+      },
+      "isolated": {
+        "keyWalks": {
+          "median": 0.79,
+          "p95": 1.005,
+          "min": 0.715
+        },
+        "contextCreate": {
+          "median": 0.47,
+          "p95": 0.72,
+          "min": 0.375
+        },
+        "fragmentExpansionCold": {
+          "median": 0.59,
+          "p95": 0.85,
+          "min": 0.515
+        },
+        "fragmentExpansionMemo": {
+          "median": 0.395,
+          "p95": 0.65,
+          "min": 0.365
+        },
+        "transformEvaluation": {
+          "median": 0.245,
+          "p95": 0.43,
+          "min": 0.225
+        },
+        "chartLowering": {
+          "median": 26.265,
+          "p95": 32.395,
+          "min": 24.645
+        },
+        "chartSinkSanitise": {
+          "median": 26.13,
+          "p95": 26.91,
+          "min": 25.69
+        },
+        "constructWhole": {
+          "median": 35.185,
+          "p95": 45.32,
+          "min": 33.405
+        },
+        "constructReaders": {
+          "median": 0.765,
+          "p95": 0.805,
+          "min": 0.735
+        },
+        "constructWithoutCharts": null
+      },
+      "fullRender": {
+        "total": {
+          "median": 92.275,
+          "p95": 112.315,
+          "min": 85.205
+        },
+        "construct": {
+          "median": 40.68,
+          "p95": 51.59,
+          "min": 34.925
+        },
+        "reactRender": {
+          "median": 36.515,
+          "p95": 45.7,
+          "min": 35.5
+        },
+        "commit": {
+          "median": 1.04,
+          "p95": 1.475,
+          "min": 0.865
+        },
+        "layout": {
+          "median": 13.84,
+          "p95": 14.985,
+          "min": 13.42
+        },
+        "commits": {
+          "median": 1,
+          "p95": 1,
+          "min": 1
+        },
+        "elements": {
+          "median": 6683,
+          "p95": 6683,
+          "min": 6683
+        }
+      },
+      "writeReactive": {
+        "total": {
+          "median": 0.5,
+          "p95": 0.59,
+          "min": 0.425
+        },
+        "fanOut": {
+          "median": 0.035,
+          "p95": 0.05,
+          "min": 0.03
+        },
+        "reactRender": {
+          "median": 0.195,
+          "p95": 0.26,
+          "min": 0.145
+        },
+        "commit": {
+          "median": 0.135,
+          "p95": 0.17,
+          "min": 0.11
+        },
+        "layout": {
+          "median": 0.125,
+          "p95": 0.215,
+          "min": 0.11
+        },
+        "constructOffPath": {
+          "median": 38.08,
+          "p95": 45.41,
+          "min": 35.04
+        },
+        "commits": {
+          "median": 1,
+          "p95": 1,
+          "min": 1
+        },
+        "boundaryRenders": {
+          "median": 1,
+          "p95": 1,
+          "min": 1
+        },
+        "domChanged": {
+          "median": 1,
+          "p95": 1,
+          "min": 1
+        }
+      },
+      "writePlain": {
+        "total": {
+          "median": 0.055,
+          "p95": 0.075,
+          "min": 0.045
+        },
+        "fanOut": {
+          "median": 0.02,
+          "p95": 0.03,
+          "min": 0.01
+        },
+        "reactRender": {
+          "median": 0,
+          "p95": 0,
+          "min": 0
+        },
+        "commit": {
+          "median": 0.03,
+          "p95": 0.04,
+          "min": 0.02
+        },
+        "layout": {
+          "median": 0.01,
+          "p95": 0.015,
+          "min": 0
+        },
+        "constructOffPath": {
+          "median": 37.875,
+          "p95": 51.705,
+          "min": 34.455
+        },
+        "commits": {
+          "median": 0,
+          "p95": 0,
+          "min": 0
+        },
+        "boundaryRenders": {
+          "median": 0,
+          "p95": 0,
+          "min": 0
+        },
+        "domChanged": {
+          "median": 0,
+          "p95": 0,
+          "min": 0
+        }
+      },
+      "structural": {
+        "total": {
+          "median": 44.62,
+          "p95": 54.465,
+          "min": 40.58
+        },
+        "construct": {
+          "median": 39.605,
+          "p95": 49.465,
+          "min": 35.68
+        },
+        "reactRender": {
+          "median": 1.365,
+          "p95": 1.99,
+          "min": 1.22
+        },
+        "commit": {
+          "median": 3.52,
+          "p95": 4.885,
+          "min": 3.31
+        },
+        "layout": {
+          "median": 0.135,
+          "p95": 0.17,
+          "min": 0.085
+        },
+        "commits": {
+          "median": 1,
+          "p95": 1,
+          "min": 1
+        },
+        "elementsMoved": {
+          "median": 4,
+          "p95": 4,
+          "min": 4
+        }
+      },
+      "mutationsPerUpdate": {
+        "writeReactive": {
+          "total": 1,
+          "characterData:#text": 1
+        },
+        "writePlain": {
+          "total": 0
+        },
+        "structural": {
+          "total": 361,
+          "childList:DIV": 1,
+          "attributes:name": 240,
+          "attributes:type": 120
+        }
+      },
+      "checks": {
+        "writeReactive": {
+          "plannedBoundaries": 1,
+          "fewestBoundaries": 1,
+          "mostBoundaries": 1,
+          "matchesFresh": true,
+          "focusKept": true
+        },
+        "writePlain": {
+          "plannedBoundaries": 1,
+          "fewestBoundaries": 0,
+          "mostBoundaries": 0,
+          "matchesFresh": false,
+          "focusKept": true
+        }
+      }
+    },
+    {
+      "surface": "table-200",
+      "shape": {
+        "nodes": 802,
+        "fragmentRefs": 0,
+        "charts": 0,
+        "topLevelSubtrees": 201,
+        "subscribedSubtrees": 1,
+        "dependentSubtrees": 1,
+        "stateKeys": 1,
+        "filterKeys": 0
+      },
+      "isolated": {
+        "keyWalks": {
+          "median": 0.475,
+          "p95": 0.765,
+          "min": 0.195
+        },
+        "contextCreate": {
+          "median": 0.255,
+          "p95": 0.46,
+          "min": 0.075
+        },
+        "fragmentExpansionCold": {
+          "median": 0,
+          "p95": 0.005,
+          "min": 0
+        },
+        "fragmentExpansionMemo": {
+          "median": 0,
+          "p95": 0.005,
+          "min": 0
+        },
+        "transformEvaluation": {
+          "median": 0,
+          "p95": 0.005,
+          "min": 0
+        },
+        "chartLowering": {
+          "median": 0,
+          "p95": 0,
+          "min": 0
+        },
+        "chartSinkSanitise": {
+          "median": 0,
+          "p95": 0.005,
+          "min": 0
+        },
+        "constructWhole": {
+          "median": 8.52,
+          "p95": 12.1,
+          "min": 5.06
+        },
+        "constructReaders": {
+          "median": 0.02,
+          "p95": 0.045,
+          "min": 0.015
+        },
+        "constructWithoutCharts": null
+      },
+      "fullRender": {
+        "total": {
+          "median": 28.595,
+          "p95": 31.135,
+          "min": 25.655
+        },
+        "construct": {
+          "median": 10.265,
+          "p95": 12.675,
+          "min": 8.45
+        },
+        "reactRender": {
+          "median": 14.04,
+          "p95": 16.02,
+          "min": 13.205
+        },
+        "commit": {
+          "median": 0.51,
+          "p95": 0.78,
+          "min": 0.435
+        },
+        "layout": {
+          "median": 3.1,
+          "p95": 4.085,
+          "min": 2.96
+        },
+        "commits": {
+          "median": 1,
+          "p95": 1,
+          "min": 1
+        },
+        "elements": {
+          "median": 2206,
+          "p95": 2206,
+          "min": 2206
+        }
+      },
+      "writeReactive": {
+        "total": {
+          "median": 0.525,
+          "p95": 0.865,
+          "min": 0.455
+        },
+        "fanOut": {
+          "median": 0.035,
+          "p95": 0.045,
+          "min": 0.025
+        },
+        "reactRender": {
+          "median": 0.19,
+          "p95": 0.325,
+          "min": 0.125
+        },
+        "commit": {
+          "median": 0.15,
+          "p95": 0.245,
+          "min": 0.135
+        },
+        "layout": {
+          "median": 0.155,
+          "p95": 0.255,
+          "min": 0.145
+        },
+        "constructOffPath": {
+          "median": 8.635,
+          "p95": 12.53,
+          "min": 4.94
+        },
+        "commits": {
+          "median": 1,
+          "p95": 1,
+          "min": 1
+        },
+        "boundaryRenders": {
+          "median": 1,
+          "p95": 1,
+          "min": 1
+        },
+        "domChanged": {
+          "median": 1,
+          "p95": 1,
+          "min": 1
+        }
+      },
+      "writePlain": {
+        "total": {
+          "median": 0.06,
+          "p95": 0.08,
+          "min": 0.05
+        },
+        "fanOut": {
+          "median": 0.02,
+          "p95": 0.03,
+          "min": 0.01
+        },
+        "reactRender": {
+          "median": 0,
+          "p95": 0,
+          "min": 0
+        },
+        "commit": {
+          "median": 0.035,
+          "p95": 0.05,
+          "min": 0.03
+        },
+        "layout": {
+          "median": 0.005,
+          "p95": 0.015,
+          "min": 0.005
+        },
+        "constructOffPath": {
+          "median": 9.53,
+          "p95": 14.345,
+          "min": 6.215
+        },
+        "commits": {
+          "median": 0,
+          "p95": 0,
+          "min": 0
+        },
+        "boundaryRenders": {
+          "median": 0,
+          "p95": 0,
+          "min": 0
+        },
+        "domChanged": {
+          "median": 0,
+          "p95": 0,
+          "min": 0
+        }
+      },
+      "structural": {
+        "total": {
+          "median": 11.025,
+          "p95": 15.04,
+          "min": 6.26
+        },
+        "construct": {
+          "median": 8.705,
+          "p95": 12.64,
+          "min": 5.03
+        },
+        "reactRender": {
+          "median": 0.515,
+          "p95": 0.79,
+          "min": 0.38
+        },
+        "commit": {
+          "median": 0.87,
+          "p95": 1.5,
+          "min": 0.65
+        },
+        "layout": {
+          "median": 0.195,
+          "p95": 0.315,
+          "min": 0.13
+        },
+        "commits": {
+          "median": 1,
+          "p95": 1,
+          "min": 1
+        },
+        "elementsMoved": {
+          "median": 4,
+          "p95": 4,
+          "min": 4
+        }
+      },
+      "mutationsPerUpdate": {
+        "writeReactive": {
+          "total": 1,
+          "characterData:#text": 1
+        },
+        "writePlain": {
+          "total": 0
+        },
+        "structural": {
+          "total": 1,
+          "childList:DIV": 1
+        }
+      },
+      "checks": {
+        "writeReactive": {
+          "plannedBoundaries": 1,
+          "fewestBoundaries": 1,
+          "mostBoundaries": 1,
+          "matchesFresh": true,
+          "focusKept": null
+        },
+        "writePlain": {
+          "plannedBoundaries": 1,
+          "fewestBoundaries": 0,
+          "mostBoundaries": 0,
+          "matchesFresh": false,
+          "focusKept": null
+        }
+      }
+    },
+    {
+      "surface": "table-200-text",
+      "shape": {
+        "nodes": 802,
+        "fragmentRefs": 0,
+        "charts": 0,
+        "topLevelSubtrees": 201,
+        "subscribedSubtrees": 1,
+        "dependentSubtrees": 1,
+        "stateKeys": 1,
+        "filterKeys": 0
+      },
+      "isolated": {
+        "keyWalks": {
+          "median": 0.42,
+          "p95": 0.685,
+          "min": 0.155
+        },
+        "contextCreate": {
+          "median": 0.245,
+          "p95": 0.4,
+          "min": 0.075
+        },
+        "fragmentExpansionCold": {
+          "median": 0,
+          "p95": 0.005,
+          "min": 0
+        },
+        "fragmentExpansionMemo": {
+          "median": 0,
+          "p95": 0.005,
+          "min": 0
+        },
+        "transformEvaluation": {
+          "median": 0,
+          "p95": 0,
+          "min": 0
+        },
+        "chartLowering": {
+          "median": 0,
+          "p95": 0,
+          "min": 0
+        },
+        "chartSinkSanitise": {
+          "median": 0,
+          "p95": 0.005,
+          "min": 0
+        },
+        "constructWhole": {
+          "median": 4.96,
+          "p95": 6.83,
+          "min": 2.88
+        },
+        "constructReaders": {
+          "median": 0.025,
+          "p95": 0.05,
+          "min": 0.01
+        },
+        "constructWithoutCharts": null
+      },
+      "fullRender": {
+        "total": {
+          "median": 23.305,
+          "p95": 28.875,
+          "min": 19.975
+        },
+        "construct": {
+          "median": 6.685,
+          "p95": 8.475,
+          "min": 4.575
+        },
+        "reactRender": {
+          "median": 13.385,
+          "p95": 15.7,
+          "min": 11.97
+        },
+        "commit": {
+          "median": 0.59,
+          "p95": 0.79,
+          "min": 0.455
+        },
+        "layout": {
+          "median": 2.63,
+          "p95": 4.22,
+          "min": 2.49
+        },
+        "commits": {
+          "median": 1,
+          "p95": 1,
+          "min": 1
+        },
+        "elements": {
+          "median": 1806,
+          "p95": 1806,
+          "min": 1806
+        }
+      },
+      "writeReactive": {
+        "total": {
+          "median": 0.535,
+          "p95": 0.79,
+          "min": 0.465
+        },
+        "fanOut": {
+          "median": 0.035,
+          "p95": 0.05,
+          "min": 0.03
+        },
+        "reactRender": {
+          "median": 0.185,
+          "p95": 0.28,
+          "min": 0.125
+        },
+        "commit": {
+          "median": 0.165,
+          "p95": 0.225,
+          "min": 0.145
+        },
+        "layout": {
+          "median": 0.15,
+          "p95": 0.24,
+          "min": 0.14
+        },
+        "constructOffPath": {
+          "median": 4.87,
+          "p95": 6.515,
+          "min": 2.86
+        },
+        "commits": {
+          "median": 1,
+          "p95": 1,
+          "min": 1
+        },
+        "boundaryRenders": {
+          "median": 1,
+          "p95": 1,
+          "min": 1
+        },
+        "domChanged": {
+          "median": 1,
+          "p95": 1,
+          "min": 1
+        }
+      },
+      "writePlain": {
+        "total": {
+          "median": 0.065,
+          "p95": 0.085,
+          "min": 0.055
+        },
+        "fanOut": {
+          "median": 0.015,
+          "p95": 0.025,
+          "min": 0.005
+        },
+        "reactRender": {
+          "median": 0,
+          "p95": 0,
+          "min": 0
+        },
+        "commit": {
+          "median": 0.045,
+          "p95": 0.055,
+          "min": 0.04
+        },
+        "layout": {
+          "median": 0.005,
+          "p95": 0.01,
+          "min": 0
+        },
+        "constructOffPath": {
+          "median": 4.99,
+          "p95": 6.42,
+          "min": 3.125
+        },
+        "commits": {
+          "median": 0,
+          "p95": 0,
+          "min": 0
+        },
+        "boundaryRenders": {
+          "median": 0,
+          "p95": 0,
+          "min": 0
+        },
+        "domChanged": {
+          "median": 0,
+          "p95": 0,
+          "min": 0
+        }
+      },
+      "structural": {
+        "total": {
+          "median": 6.805,
+          "p95": 8.07,
+          "min": 5.115
+        },
+        "construct": {
+          "median": 5.06,
+          "p95": 6.21,
+          "min": 3.595
+        },
+        "reactRender": {
+          "median": 0.52,
+          "p95": 0.785,
+          "min": 0.325
+        },
+        "commit": {
+          "median": 0.865,
+          "p95": 1.18,
+          "min": 0.635
+        },
+        "layout": {
+          "median": 0.18,
+          "p95": 0.205,
+          "min": 0.125
+        },
+        "commits": {
+          "median": 1,
+          "p95": 1,
+          "min": 1
+        },
+        "elementsMoved": {
+          "median": 4,
+          "p95": 4,
+          "min": 4
+        }
+      },
+      "mutationsPerUpdate": {
+        "writeReactive": {
+          "total": 1,
+          "characterData:#text": 1
+        },
+        "writePlain": {
+          "total": 0
+        },
+        "structural": {
+          "total": 1,
+          "childList:DIV": 1
+        }
+      },
+      "checks": {
+        "writeReactive": {
+          "plannedBoundaries": 1,
+          "fewestBoundaries": 1,
+          "mostBoundaries": 1,
+          "matchesFresh": true,
+          "focusKept": null
+        },
+        "writePlain": {
+          "plannedBoundaries": 1,
+          "fewestBoundaries": 0,
+          "mostBoundaries": 0,
+          "matchesFresh": false,
+          "focusKept": null
+        }
+      }
+    }
+  ]
+}
