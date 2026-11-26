@@ -8096,6 +8096,37 @@ default keep the placeholder and name the reason, and the loading and empty slot
 server's table equals a transcription of the client's first render. `RenderObligationTests` now answers the
 interactive-row obligation's positive half on the server's bound leg.
 
+### Phase 2754 — a model summary presents a fit (additive)
+
+**Class: additive.** Package `Fuaran.UI.Fragments`. One builder and one type are new, and no existing member moves.
+`Stdlib.all` is unchanged at eleven entries: the model summary is not a library entry yet (`docs/DECISIONS.md` D42),
+so no fixture is added and no wire byte moves.
+
+- **`ModelSummary`**, new: the rows (`Source`), the fit as a `Fit` step carries it (`Fit`, a `Fuaran.Compute.FitSpec`),
+  the source column the chart plots over (`Predictor`) and the interval's level (`Level`).
+- **`Stdlib.modelSummaryOf id heading sources summary`**, new. It returns a subtree that holds:
+  - the family, the link and the kind of standard error, as `Fact` nodes;
+  - a coefficient grid over the fit's `Coefficients` table, whose standard-error column names its kind;
+  - a statistics grid over the fit's `Summary` row;
+  - a `Scatter` of the `Predict` step's `predicted` over the predictor, joined by `pathField`, with the step's
+    `lower` and `upper` on the interval channel.
+
+  Each of the three data views carries an `onError` state that shows the step's refusal as a `Critical` callout.
+  The builder refuses a grouped fit, and, where the source's schema is known, a missing response or plotted column
+  and a plotted column that is not numeric.
+- **`Stdlib.modelCoefficientsPipeline`, `modelStatisticsPipeline` and `modelBandPipeline`**, new: the three views'
+  pipelines. **`Stdlib.modelIntervalKind`**, new: a prediction interval under the gaussian family and identity link,
+  a confidence interval otherwise, as the `Predict` step admits. **`Stdlib.ModelPredictedColumn`,
+  `ModelLowerColumn` and `ModelUpperColumn`**, new literals: the step's column names the chart reads.
+
+**What a consumer must do.** Nothing.
+
+**Certified by** the `Phase 2754 — a model summary presents a fit` list in
+`src/Fuaran.UI.Fragments.Tests/StdlibCertificationTests.fs`. Over a gaussian and a Poisson fit, the coefficient
+table, the statistics row and the chart's rows equal the `Fit` and `Predict` steps' own tables, cell for cell, a float
+compared by its bits. The robust standard errors are the robust fit's own and the column says so. A fit the step
+refuses shows the step's words in every view, and the builder's refusals hold.
+
 ---
 
 ## 0.107.0 — the slot opened after v0.106.0 was released, by the raise of `Fuaran.Compute.*` to 0.47.0, whose change is additive (DRAFT — untagged)

@@ -366,6 +366,146 @@ let private visible (row: Row) : Fuaran.UI.HostPrelude.CellValue list =
     [ "order"; "customer"; "region"; "total" ]
     |> List.map (Fuaran.UI.HostPrelude.RowProjection.value row)
 
+// ─── Phase 2754 helpers ──────────────────────────────────────────────────────
+
+/// Eight observations of a response over one predictor `x`: `y` is roughly
+/// `2 + 0.5 x` with noise, for the gaussian fit, and `count` a small count
+/// growing with `x`, for the Poisson fit. `x` is out of order, so a chart that
+/// joined its points in row order rather than predictor order would show.
+let private observations: Fuaran.Core.DataSource =
+    let x = [ 3.0; 1.0; 4.0; 2.0; 6.0; 5.0; 8.0; 7.0 ]
+
+    Fuaran.Core.Embedded
+        { Schema =
+            [ Fuaran.Core.Field.create "x" Fuaran.Core.FloatType
+              Fuaran.Core.Field.create "y" Fuaran.Core.FloatType
+              Fuaran.Core.Field.create "count" Fuaran.Core.IntType
+              Fuaran.Core.Field.create "label" Fuaran.Core.StringType ]
+          Columns =
+            [ Fuaran.Core.Column.ofFloats "x" (Fuaran.Core.Vector.ofList x) Fuaran.Core.AllValid
+              Fuaran.Core.Column.ofFloats
+                  "y"
+                  (Fuaran.Core.Vector.ofList [ 3.6; 2.4; 3.9; 3.1; 5.2; 4.4; 6.1; 5.4 ])
+                  Fuaran.Core.AllValid
+              Fuaran.Core.Column.ofInts
+                  "count"
+                  (Fuaran.Core.Vector.ofList [ 2; 1; 4; 1; 6; 5; 11; 8 ])
+                  Fuaran.Core.AllValid
+              Fuaran.Core.Column.ofStrs
+                  "label"
+                  (Fuaran.Core.Vector.ofList [ "c"; "a"; "d"; "b"; "f"; "e"; "h"; "g" ])
+                  Fuaran.Core.AllValid ] }
+
+let private observationTable: Fuaran.Core.Table =
+    match observations with
+    | Fuaran.Core.Embedded t -> t
+    | other -> failwithf "the fixture is embedded: %A" other
+
+let private gaussianFit: ModelSummary =
+    { Source = observations
+      Fit = Fuaran.Compute.FitSpec.ols "y" [ "x", Fuaran.Compute.Col "x" ]
+      Predictor = "x"
+      Level = 0.95 }
+
+let private poissonFit: ModelSummary =
+    { gaussianFit with
+        Fit =
+            { Fuaran.Compute.FitSpec.ols "count" [ "x", Fuaran.Compute.Col "x" ] with
+                Family = Fuaran.Compute.FitFamily.Poisson
+                Link = Fuaran.Compute.FitLink.Log }
+        Level = 0.9 }
+
+let private summaryOrFail (summary: ModelSummary) : Node<unit> =
+    match Stdlib.modelSummaryOf<unit> "model" "Model" Fuaran.Compute.SchemaWalk.noSources summary with
+    | Ok tree -> tree
+    | Error e -> failtestf "the summary was refused: %s" e
+
+let private nodeById (id: string) (tree: Node<'Msg>) : Node<'Msg> =
+    match descendants tree |> List.tryFind (fun n -> n.Id = id) with
+    | Some n -> n
+    | None -> failtestf "no node '%s' in the tree" id
+
+let private gridSourceOf (id: string) (tree: Node<unit>) : Binding<Row seq> =
+    match (nodeById id tree).Kind with
+    | NodeKind.DataGrid g -> g.Source
+    | other -> failtestf "'%s' is a %A, not a grid" id other
+
+let private chartOf (tree: Node<unit>) : ChartSpec<unit> =
+    match (nodeById "model-fit" tree).Kind with
+    | NodeKind.Chart c -> c
+    | other -> failtestf "the chart node is a %A" other
+
+/// A cell as exact text: a float by its bits, so two figures that print alike
+/// but differ in the last place are told apart.
+let private exactCell (c: Fuaran.Core.Cell) : string =
+    match c with
+    | Fuaran.Core.Float f -> sprintf "float:%016x" (System.BitConverter.DoubleToInt64Bits f)
+    | Fuaran.Core.Int i -> sprintf "int:%d" i
+    | Fuaran.Core.Str s -> "str:" + s
+    | Fuaran.Core.Cell.Bool b -> sprintf "bool:%b" b
+    | Fuaran.Core.Cell.Null -> "null"
+    | other -> sprintf "%A" other
+
+/// A row's value as the same exact text.
+let private exactValue (v: obj) : string =
+    match v with
+    | v when obj.ReferenceEquals(v, null) -> "null"
+    | :? float as f -> sprintf "float:%016x" (System.BitConverter.DoubleToInt64Bits f)
+    | :? int as i -> sprintf "int:%d" i
+    | :? string as s -> "str:" + s
+    | :? bool as b -> sprintf "bool:%b" b
+    | :? Fuaran.UI.HostPrelude.DecimalCell as d -> "decimal:" + d.Text
+    | other -> sprintf "%A" other
+
+/// What the step itself answers for `pipeline` over the observations, as
+/// exact cells per row, over `fields`.
+let private stepOwn (pipeline: Fuaran.Compute.Transform list) (fields: string list) : string list list =
+    match Fuaran.Compute.DataFrame.evalPipeline pipeline observationTable with
+    | Ok table ->
+        [ for i in 0 .. Fuaran.Core.Table.rowCount table - 1 ->
+              fields
+              |> List.map (fun f ->
+                  match Fuaran.Core.Table.tryColumn f table with
+                  | Some c -> exactCell (Fuaran.Core.Column.cell i c)
+                  | None -> failtestf "the step's table has no column '%s'" f) ]
+    | Error e -> failtestf "the step refused the fixture: %s" (Fuaran.Compute.DataFrame.errorString e)
+
+/// What a view of the tree shows for the same fields, through the renderer's
+/// own resolution.
+let private shown (source: Binding<Row seq>) (fields: string list) : string list list =
+    resolvedRows Fuaran.UI.Renderer.BindingResolver.empty source
+    |> List.map (fun row ->
+        fields
+        |> List.map (fun f ->
+            match Map.tryFind f row with
+            | Some v -> exactValue v
+            | None -> "null"))
+
+let private coefficientFields = [ "term"; "estimate"; "std_error"; "t" ]
+
+// The pipelines the expectations evaluate, written here from the step's own
+// vocabulary rather than read from the library, so a view that read anything
+// but the fit itself would disagree with them.
+
+let private fitAnswering (output: Fuaran.Compute.FitOutput) (s: ModelSummary) =
+    [ Fuaran.Compute.Fit { s.Fit with Output = output } ]
+
+let private scored (kind: Fuaran.Compute.IntervalKind) (s: ModelSummary) =
+    [ Fuaran.Compute.Predict
+          { Fit = s.Fit
+            Model = Fuaran.Compute.PredictModel.Training s.Source
+            Scale = Fuaran.Compute.PredictScale.Response
+            Interval =
+              Some
+                  { Kind = kind
+                    Level = Fuaran.Compute.Slot.Lit s.Level } } ]
+
+let private bandFields =
+    [ "x"
+      Stdlib.ModelPredictedColumn
+      Stdlib.ModelLowerColumn
+      Stdlib.ModelUpperColumn ]
+
 // The certification budget. 256 bindings is comfortably above the largest
 // finite hole-space in the set and low enough that the whole suite stays inside
 // a normal test run; the seed is fixed so a counterexample reproduces.
@@ -391,7 +531,8 @@ let tests =
 
               // Phase 2753 raised the ceiling from ten: the data-presenting
               // fragments (Phases 2752-2754) were each accepted as an entry of
-              // their own, and twelve holds that set (docs/DECISIONS.md D41).
+              // their own, and twelve holds that set (docs/DECISIONS.md D41;
+              // D42 holds the model summary out of the set for now).
               Expect.isLessThanOrEqual
                   (List.length library)
                   12
@@ -1431,6 +1572,227 @@ let tests =
 
                     ordersOf declared overRef
                     |> refused "a column a declared Ref schema does not produce" "sortable column 'margin'"
+                } ]
+
+          testList
+              "Phase 2754 — a model summary presents a fit"
+              [ test "pre-emit validation accepts the summary over a gaussian and a non-gaussian fit" {
+                    // Over a named source, as a host presents its own rows, the
+                    // tree is clean; over inline rows each view carries a copy,
+                    // and FUARAN107 names that, at Warning, and nothing else.
+                    let schema = observationTable.Schema
+
+                    let overRef (s: ModelSummary) =
+                        match
+                            Stdlib.modelSummaryOf<unit>
+                                "model"
+                                "Model"
+                                (fun name -> if name = "observations" then Some schema else None)
+                                { s with
+                                    Source = Fuaran.Core.DataSource.Ref "observations" }
+                        with
+                        | Ok tree -> tree
+                        | Error e -> failtestf "refused over a declared source: %s" e
+
+                    for name, s in [ "gaussian", gaussianFit; "poisson", poissonFit ] do
+                        expectClean (sprintf "a %s model summary over a named source" name) (overRef s)
+
+                        Expect.equal
+                            (preEmitVariants (summaryOrFail s) |> List.distinct)
+                            [ "DuplicateInlineTable" ]
+                            (sprintf "a %s model summary over inline rows" name)
+                }
+
+                test "the displayed coefficients are the fit step's own, to the byte, for both families" {
+                    for summary in [ gaussianFit; poissonFit ] do
+                        let tree = summaryOrFail summary
+
+                        let expected =
+                            stepOwn (fitAnswering Fuaran.Compute.FitOutput.Coefficients summary) coefficientFields
+
+                        let actual = shown (gridSourceOf "model-coefficients" tree) coefficientFields
+
+                        Expect.hasLength expected 2 "an intercept and one slope"
+                        Expect.equal actual expected "the coefficient table is the step's table"
+                }
+
+                test "the summary statistics are the fit step's own" {
+                    let fields =
+                        [ "n"
+                          "df"
+                          "sigma"
+                          "r2"
+                          "deviance"
+                          "dispersion"
+                          "iterations"
+                          "converged" ]
+
+                    for summary in [ gaussianFit; poissonFit ] do
+                        let tree = summaryOrFail summary
+
+                        Expect.equal
+                            (shown (gridSourceOf "model-statistics" tree) fields)
+                            (stepOwn (fitAnswering Fuaran.Compute.FitOutput.Summary summary) fields)
+                            "the statistics are the step's summary row"
+                }
+
+                test "the interval band is the predict step's own, and the kind follows the family" {
+                    for summary, kind in
+                        [ gaussianFit, Fuaran.Compute.IntervalKind.Prediction
+                          poissonFit, Fuaran.Compute.IntervalKind.Confidence ] do
+                        Expect.equal (Stdlib.modelIntervalKind summary.Fit) kind "the interval the step states"
+                        let tree = summaryOrFail summary
+                        let chart = chartOf tree
+                        let expected = stepOwn (scored kind summary) bandFields
+
+                        Expect.equal (shown chart.Source bandFields) expected "the chart reads the step's rows"
+                        Expect.hasLength expected 8 "one fitted value per observation"
+
+                        Expect.isTrue
+                            (expected
+                             |> List.forall (fun row -> row |> List.forall (fun c -> c.StartsWith "float:")))
+                            "every observation has a fitted value and both ends of its interval"
+
+                        Expect.equal
+                            (chart.Kind, chart.XField, chart.YFields, chart.PathField)
+                            (ChartKind.Scatter, "x", [ Stdlib.ModelPredictedColumn ], Some "x")
+                            "the fitted values over the predictor, joined in its order"
+
+                        Expect.equal
+                            chart.Interval
+                            (Some
+                                { Low = Stdlib.ModelLowerColumn
+                                  High = Stdlib.ModelUpperColumn })
+                            "the interval channel reads the step's interval"
+
+                    let subtitle (s: ModelSummary) =
+                        match (chartOf (summaryOrFail s)).Subtitle with
+                        | Some(TextSource.Literal t) -> t
+                        | other -> failtestf "%A" other
+
+                    Expect.stringContains (subtitle gaussianFit) "95% prediction interval" "gaussian"
+                    Expect.stringContains (subtitle poissonFit) "90% confidence interval" "poisson"
+                }
+
+                test "the standard error shown is the step's own kind, and is named" {
+                    let robust =
+                        { gaussianFit with
+                            Fit =
+                                { gaussianFit.Fit with
+                                    StdErrors = Fuaran.Compute.FitStdErrors.HC3 } }
+
+                    let label (s: ModelSummary) =
+                        match (nodeById "model-coefficients" (summaryOrFail s)).Kind with
+                        | NodeKind.DataGrid g -> g.Columns |> List.map _.Label |> List.item 2
+                        | other -> failtestf "%A" other
+
+                    Expect.equal (label gaussianFit) "Std. error (classical)" "the classical kind is named"
+                    Expect.equal (label robust) "Std. error (robust, HC3)" "the robust kind is named"
+
+                    let errors (s: ModelSummary) =
+                        shown (gridSourceOf "model-coefficients" (summaryOrFail s)) [ "std_error" ]
+
+                    Expect.equal
+                        (errors robust)
+                        (stepOwn (fitAnswering Fuaran.Compute.FitOutput.Coefficients robust) [ "std_error" ])
+                        "the robust errors are the robust fit's own"
+
+                    Expect.notEqual (errors robust) (errors gaussianFit) "the two kinds differ on these rows"
+
+                    let facts =
+                        descendants (summaryOrFail robust)
+                        |> List.choose (fun n ->
+                            match n.Kind with
+                            | NodeKind.Fact f -> Some(labelText f.Label, labelText f.Value)
+                            | _ -> None)
+
+                    Expect.equal
+                        facts
+                        [ "Family", "Gaussian"; "Link", "identity"; "Standard errors", "robust, HC3" ]
+                        "the family, the link and the kind of standard error are facts of the spec"
+                }
+
+                test "a fit the step refuses is shown as the step's refusal, in every view, never as an empty chart" {
+                    // A Poisson response cannot be negative: the step refuses the
+                    // row, so the fit, the statistics and the scores all refuse.
+                    let negative =
+                        Fuaran.Core.Embedded
+                            { observationTable with
+                                Columns =
+                                    observationTable.Columns
+                                    |> List.map (fun c ->
+                                        if c.Name = "count" then
+                                            Fuaran.Core.Column.ofInts
+                                                "count"
+                                                (Fuaran.Core.Vector.ofList [ 2; 1; -4; 1; 6; 5; 11; 8 ])
+                                                Fuaran.Core.AllValid
+                                        else
+                                            c) }
+
+                    let summary = { poissonFit with Source = negative }
+                    let tree = summaryOrFail summary
+
+                    let stepWords =
+                        match
+                            Fuaran.Compute.DataFrame.evalPipeline
+                                (fitAnswering Fuaran.Compute.FitOutput.Coefficients summary)
+                                (match negative with
+                                 | Fuaran.Core.Embedded t -> t
+                                 | _ -> failtest "embedded")
+                        with
+                        | Error(Fuaran.Compute.FitError detail) -> detail
+                        | other -> failtestf "the step should refuse the fit with a FitError: %A" other
+
+                    for id, source in
+                        [ "model-coefficients", gridSourceOf "model-coefficients" tree
+                          "model-statistics", gridSourceOf "model-statistics" tree
+                          "model-fit", (chartOf tree).Source ] do
+                        let node = nodeById id tree
+
+                        let resolution, _ =
+                            Fuaran.UI.Renderer.BindingResolver.resolveRowsWithFields
+                                Fuaran.UI.Renderer.BindingResolver.empty
+                                source
+
+                        match
+                            node.State
+                            |> Option.bind (fun state ->
+                                Fuaran.UI.Renderer.ElementPlan.DisplayPlan.stateSlot node.Id state resolution)
+                        with
+                        | Some shownInstead ->
+                            match shownInstead.Kind with
+                            | NodeKind.Callout c ->
+                                Expect.equal c.Tone ToneVariant.Critical (sprintf "%s: a refusal reads as one" id)
+                                Expect.stringContains (labelText c.Body) stepWords (sprintf "%s: the step's words" id)
+                            | other -> failtestf "%s shows %A instead of the refusal" id other
+                        | None -> failtestf "%s renders its body over a refused fit (%A)" id resolution
+                }
+
+                test "the summary is refused for a grouped fit, a missing column and a non-numeric predictor" {
+                    let refusedWith (what: string) (fragment: string) (summary: ModelSummary) =
+                        match
+                            Stdlib.modelSummaryOf<unit> "model" "Model" Fuaran.Compute.SchemaWalk.noSources summary
+                        with
+                        | Ok _ -> failtestf "%s was accepted" what
+                        | Error e -> Expect.stringContains e fragment what
+
+                    { gaussianFit with
+                        Fit =
+                            { gaussianFit.Fit with
+                                GroupBy = [ "label" ] } }
+                    |> refusedWith "a grouped fit" "grouped"
+
+                    { gaussianFit with
+                        Fit =
+                            { gaussianFit.Fit with
+                                Response = "weight" } }
+                    |> refusedWith "a missing response" "no response column 'weight'"
+
+                    { gaussianFit with Predictor = "z" }
+                    |> refusedWith "a missing predictor" "no column 'z'"
+
+                    { gaussianFit with Predictor = "label" }
+                    |> refusedWith "a text predictor" "'label' is not numeric"
                 } ]
 
           test "the certification harness can still go red — a deliberately broken materialiser is REJECTED" {

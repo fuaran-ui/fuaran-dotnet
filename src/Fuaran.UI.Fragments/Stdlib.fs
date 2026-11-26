@@ -138,6 +138,15 @@ type RefinableView =
       Page: int
       Filters: (string * string list) list }
 
+/// A fit a model summary presents (Phase 2754): the rows, the fit
+/// specification as a `Fit` step carries it, the source column the chart plots
+/// the fitted values over, and the interval's two-sided level.
+type ModelSummary =
+    { Source: Fuaran.Core.DataSource
+      Fit: Fuaran.Compute.FitSpec
+      Predictor: string
+      Level: float }
+
 module Stdlib =
 
     // ── Naming ──────────────────────────────────────────────────────────────
@@ -1115,12 +1124,13 @@ module Stdlib =
           B: string
           Difference: string }
 
-    let private figureColumn<'Msg> (label: string) (field: string) : ColumnErased<'Msg> =
+    /// A numeric grid column over `field`, shown to `decimals` places.
+    let private numberColumn<'Msg> (label: string) (field: string) (decimals: int) : ColumnErased<'Msg> =
         { Defaults.columnErased with
             Label = label
             Field = Some field
             Kind = CellKindErased.Numeric
-            Format = CellFormat.Number(Some 2, None) }
+            Format = CellFormat.Number(Some decimals, None) }
 
     /// The comparison tree — total: it assumes `sides` binds every scenario
     /// parameter, which `scenarioComparisonOf` checks and the stdlib entry's
@@ -1157,9 +1167,9 @@ module Stdlib =
                     [ { Defaults.columnErased with
                           Label = labels.Key
                           Field = Some model.Key }
-                      figureColumn labels.A ScenarioAColumn
-                      figureColumn labels.B ScenarioBColumn
-                      figureColumn labels.Difference DifferenceColumn ] }
+                      numberColumn labels.A ScenarioAColumn 2
+                      numberColumn labels.B ScenarioBColumn 2
+                      numberColumn labels.Difference DifferenceColumn 2 ] }
 
         Fuaran.stack
             id
@@ -1700,6 +1710,271 @@ module Stdlib =
                   "column-3-field", FragmentArg.Str "total"
                   "column-3-label", FragmentArg.Str "Total"
                   "column-3-kind", FragmentArg.Str "number" ] }
+
+    // ════════════════════════════════════════════════════════════════════════
+    //  The model summary — a fit, presented (Phase 2754). An F# authoring form,
+    //  NOT a library entry: see `docs/DECISIONS.md` D42.
+    // ════════════════════════════════════════════════════════════════════════
+
+    // Every figure the summary shows is a pipeline step's own output: the
+    // coefficient table and the summary statistics are a `Fit` step's
+    // `Coefficients` and `Summary` tables, and the chart's line and interval are
+    // a `Predict` step's `predicted`, `lower` and `upper` over the same rows.
+    // The family, the link and the kind of standard error are facts of the fit
+    // specification, written as the specification states them. A step that
+    // refuses the fit refuses each view that reads it, and each view renders
+    // the refusal in the step's own words rather than an empty table or chart.
+    //
+    // It is not in `all`: an entry there is emitted as a corpus fixture every
+    // host decodes, and the `fit` and `predict` verbs are not in the TypeScript
+    // or the Python host's pipeline codec yet.
+
+    /// The fitted-value column a `Predict` step appends, which the chart plots.
+    [<Literal>]
+    let ModelPredictedColumn = "predicted"
+
+    /// The interval columns a `Predict` step appends, which the chart's interval
+    /// channel reads.
+    [<Literal>]
+    let ModelLowerColumn = "lower"
+
+    [<Literal>]
+    let ModelUpperColumn = "upper"
+
+    /// The interval the chart draws: a prediction interval for one new
+    /// observation where the step states one (the gaussian family under the
+    /// identity link), and otherwise a confidence interval for the mean, which
+    /// the step states for every family.
+    let modelIntervalKind (fit: Fuaran.Compute.FitSpec) : Fuaran.Compute.IntervalKind =
+        match fit.Family, fit.Link with
+        | Fuaran.Compute.FitFamily.Gaussian, Fuaran.Compute.FitLink.Identity -> Fuaran.Compute.IntervalKind.Prediction
+        | _ -> Fuaran.Compute.IntervalKind.Confidence
+
+    /// The coefficient table's pipeline: the fit, answering its coefficients.
+    let modelCoefficientsPipeline (summary: ModelSummary) : Fuaran.Compute.Transform list =
+        [ Fuaran.Compute.Fit
+              { summary.Fit with
+                  Output = Fuaran.Compute.FitOutput.Coefficients } ]
+
+    /// The summary statistics' pipeline: the fit, answering its summary.
+    let modelStatisticsPipeline (summary: ModelSummary) : Fuaran.Compute.Transform list =
+        [ Fuaran.Compute.Fit
+              { summary.Fit with
+                  Output = Fuaran.Compute.FitOutput.Summary } ]
+
+    /// The chart's pipeline: each source row scored against the fit over the
+    /// same rows, on the response scale with `modelIntervalKind`'s interval at
+    /// the summary's level, kept to the plotted predictor and the three columns
+    /// the chart reads.
+    let modelBandPipeline (summary: ModelSummary) : Fuaran.Compute.Transform list =
+        [ Fuaran.Compute.Predict
+              { Fit = summary.Fit
+                Model = Fuaran.Compute.PredictModel.Training summary.Source
+                Scale = Fuaran.Compute.PredictScale.Response
+                Interval =
+                  Some
+                      { Kind = modelIntervalKind summary.Fit
+                        Level = Fuaran.Compute.Slot.Lit summary.Level } }
+          Fuaran.Compute.Project(
+              [ summary.Predictor; ModelPredictedColumn; ModelLowerColumn; ModelUpperColumn ]
+              |> List.map (fun c -> c, c)
+          ) ]
+
+    let private familyLabel (family: Fuaran.Compute.FitFamily) : string =
+        match family with
+        | Fuaran.Compute.FitFamily.Gaussian -> "Gaussian"
+        | Fuaran.Compute.FitFamily.Poisson -> "Poisson"
+        | Fuaran.Compute.FitFamily.Gamma -> "Gamma"
+        | Fuaran.Compute.FitFamily.Tweedie power -> sprintf "Tweedie (power %g)" power
+        | Fuaran.Compute.FitFamily.QuasiPoisson -> "Quasi-Poisson"
+        | Fuaran.Compute.FitFamily.Binomial -> "Binomial"
+        | Fuaran.Compute.FitFamily.QuasiBinomial -> "Quasi-binomial"
+        | Fuaran.Compute.FitFamily.InverseGaussian -> "Inverse Gaussian"
+        | Fuaran.Compute.FitFamily.NegativeBinomial(Some theta) -> sprintf "Negative binomial (theta %g)" theta
+        | Fuaran.Compute.FitFamily.NegativeBinomial Option.None -> "Negative binomial (theta estimated)"
+
+    let private linkLabel (link: Fuaran.Compute.FitLink) : string =
+        match link with
+        | Fuaran.Compute.FitLink.Identity -> "identity"
+        | Fuaran.Compute.FitLink.Log -> "log"
+        | Fuaran.Compute.FitLink.Logit -> "logit"
+        | Fuaran.Compute.FitLink.Probit -> "probit"
+        | Fuaran.Compute.FitLink.Cloglog -> "complementary log-log"
+        | Fuaran.Compute.FitLink.Inverse -> "inverse"
+        | Fuaran.Compute.FitLink.InverseSquare -> "inverse square"
+        | Fuaran.Compute.FitLink.Sqrt -> "square root"
+
+    /// The standard error the coefficient table states, as its column names it.
+    let private stdErrorsLabel (kind: Fuaran.Compute.FitStdErrors) : string =
+        match kind with
+        | Fuaran.Compute.FitStdErrors.Classical -> "classical"
+        | Fuaran.Compute.FitStdErrors.HC0 -> "robust, HC0"
+        | Fuaran.Compute.FitStdErrors.HC1 -> "robust, HC1"
+        | Fuaran.Compute.FitStdErrors.HC2 -> "robust, HC2"
+        | Fuaran.Compute.FitStdErrors.HC3 -> "robust, HC3"
+
+    /// What a view shows when the step refuses the fit: the refusal, in the
+    /// words the step gave it (the payload carries the step's `EvalError` as the
+    /// evaluator prints it), never an empty table or chart.
+    let private modelRefusal<'Msg> (id: string) (payload: Fuaran.UI.HostPrelude.ErrorPayload) : Node<'Msg> =
+        Fuaran.callout
+            (id + "-refused")
+            { Defaults.callout with
+                Heading = Some(TextSource.Literal "The model was not fitted")
+                Body = TextSource.Literal payload.Message
+                Tone = ToneVariant.Critical }
+
+    /// A data view of the summary: the node, refusing in place.
+    let private refusing<'Msg> (node: Node<'Msg>) : Node<'Msg> =
+        { node with
+            State =
+                Some
+                    { Defaults.stateBehaviour with
+                        OnError = Some(modelRefusal node.Id) } }
+
+
+    /// The summary tree — total over any summary; `modelSummaryOf` checks what
+    /// can be checked before a row is read.
+    let private modelSummaryTree<'Msg> (id: string) (heading: string) (summary: ModelSummary) : Node<'Msg> =
+        let data (pipeline: Fuaran.Compute.Transform list) =
+            Binding.Transform(TransformSource.Data summary.Source, pipeline, Option.None)
+
+        let grid (suffix: string) (spec: DataGridSpec<'Msg>) : Node<'Msg> =
+            refusing
+                { Fuaran.stack (id + suffix) Defaults.stack with
+                    Kind = NodeKind.DataGrid spec
+                    Accessibility = Defaults.Accessibility.grid }
+
+        let coefficients: DataGridSpec<'Msg> =
+            { Defaults.dataGrid with
+                Source = data (modelCoefficientsPipeline summary)
+                RowKeyField = Some "term"
+                Columns =
+                    [ { Defaults.columnErased with
+                          Label = "Term"
+                          Field = Some "term" }
+                      numberColumn "Estimate" "estimate" 4
+                      numberColumn (sprintf "Std. error (%s)" (stdErrorsLabel summary.Fit.StdErrors)) "std_error" 4
+                      numberColumn "t" "t" 2 ] }
+
+        let statistics: DataGridSpec<'Msg> =
+            { Defaults.dataGrid with
+                Source = data (modelStatisticsPipeline summary)
+                // An ungrouped fit's summary is one row, so the count of
+                // observations it states keys it.
+                RowKeyField = Some "n"
+                Columns =
+                    [ numberColumn "Observations" "n" 0
+                      numberColumn "Residual df" "df" 0
+                      numberColumn "Sigma" "sigma" 4
+                      numberColumn "R squared" "r2" 4
+                      numberColumn "Deviance" "deviance" 4
+                      numberColumn "Null deviance" "null_deviance" 4
+                      numberColumn "Dispersion" "dispersion" 4
+                      numberColumn "Iterations" "iterations" 0
+                      { Defaults.columnErased with
+                          Label = "Converged"
+                          Field = Some "converged" } ] }
+
+        let interval =
+            match modelIntervalKind summary.Fit with
+            | Fuaran.Compute.IntervalKind.Prediction -> "prediction interval"
+            | Fuaran.Compute.IntervalKind.Confidence -> "confidence interval for the mean"
+
+        // A scatter of the fitted values joined in predictor order: the scatter
+        // arm's x axis is linear, so the line keeps the predictor's spacing, and
+        // its interval channel draws each observation's interval.
+        let chart =
+            refusing (
+                Fuaran.chart
+                    (id + "-fit")
+                    { Defaults.chart with
+                        Kind = ChartKind.Scatter
+                        Source = data (modelBandPipeline summary)
+                        XField = summary.Predictor
+                        YFields = [ ModelPredictedColumn ]
+                        Interval =
+                            Some
+                                { Low = ModelLowerColumn
+                                  High = ModelUpperColumn }
+                        PathField = Some summary.Predictor
+                        XTitle = Some(TextSource.Literal summary.Predictor)
+                        YTitle = Some(TextSource.Literal summary.Fit.Response)
+                        Subtitle =
+                            Some(
+                                TextSource.Literal(
+                                    sprintf
+                                        "Fitted values at each observation, with the %g%% %s"
+                                        (summary.Level * 100.0)
+                                        interval
+                                )
+                            ) }
+            )
+
+        Fuaran.stack
+            id
+            { Defaults.stack with
+                Children =
+                    [ Fuaran.heading
+                          (id + "-heading")
+                          { Defaults.heading with
+                              Level = 3
+                              Text = TextSource.Literal heading }
+                      Fuaran.stack
+                          (id + "-model")
+                          { Defaults.stack with
+                              Children =
+                                  [ Fuaran.fact (id + "-family") "Family" (familyLabel summary.Fit.Family)
+                                    Fuaran.fact (id + "-link") "Link" (linkLabel summary.Fit.Link)
+                                    Fuaran.fact
+                                        (id + "-std-errors")
+                                        "Standard errors"
+                                        (stdErrorsLabel summary.Fit.StdErrors) ] }
+                      grid "-coefficients" coefficients
+                      grid "-statistics" statistics
+                      chart ] }
+
+    /// A model summary over a caller's own rows and fit, as a plain subtree
+    /// rooted at `id`: the family, the link and the standard errors as facts,
+    /// the coefficient table, the summary statistics, and the fitted values
+    /// over `Predictor` with their interval. `sources` declares the schema of a
+    /// `Ref` source (`SchemaWalk.noSources` declares none). Over inline rows
+    /// (`Embedded`) each view carries its own copy of them, which pre-emit
+    /// validation names (FUARAN107); a `Ref` source names the rows once.
+    ///
+    /// Refused when the fit is grouped (a summary presents one fit), and,
+    /// wherever the source's static schema is known, when it has no response
+    /// column or the plotted predictor is not a numeric column. Every other
+    /// refusal is the fit step's, at evaluation, and the tree shows it.
+    let modelSummaryOf<'Msg>
+        (id: string)
+        (heading: string)
+        (sources: string -> Fuaran.Core.Schema option)
+        (summary: ModelSummary)
+        : Result<Node<'Msg>, string> =
+        let schema = Fuaran.Compute.SchemaWalk.ofSource sources summary.Source
+        let closed = Fuaran.Compute.SchemaWalk.isClosed schema
+
+        let numeric (t: Fuaran.Core.ColumnType) =
+            match t with
+            | Fuaran.Core.IntType
+            | Fuaran.Core.FloatType
+            | Fuaran.Core.DecimalType -> true
+            | _ -> false
+
+        if not (List.isEmpty summary.Fit.GroupBy) then
+            Error "a model summary presents one fit; the fit is grouped"
+        elif closed && not (Fuaran.Compute.SchemaWalk.has summary.Fit.Response schema) then
+            Error(sprintf "the source has no response column '%s'" summary.Fit.Response)
+        elif closed && not (Fuaran.Compute.SchemaWalk.has summary.Predictor schema) then
+            Error(sprintf "the source has no column '%s' to plot the fit over" summary.Predictor)
+        else
+            match Fuaran.Compute.SchemaWalk.typeOf summary.Predictor schema with
+            | Some t when not (numeric t) ->
+                Error(
+                    sprintf "the plotted predictor '%s' is not numeric; the chart's x axis is linear" summary.Predictor
+                )
+            | _ -> Ok(modelSummaryTree id heading summary)
 
     // ════════════════════════════════════════════════════════════════════════
     //  The library.

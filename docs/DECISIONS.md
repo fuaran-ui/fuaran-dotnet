@@ -10,6 +10,45 @@ consequence.
 
 ---
 
+## 2026-11-26 — D42: the model summary is an F# authoring form until every corpus host decodes `fit` and `predict`
+
+**Decided (Phase 2754).** The model summary ships as `Stdlib.modelSummaryOf` in `Fuaran.UI.Fragments`, a builder
+beside `scenarioComparisonOf` and `refinableTableOf`, and NOT as an entry of `Stdlib.all`. Its views read a `Fit`
+step's `Coefficients` and `Summary` tables and a `Predict` step's scores, and it computes no figure of its own.
+
+**Why not an entry.** An entry of `Stdlib.all` is emitted as two `node-round-trip` fixtures in the shared corpus.
+Every host decodes those fixtures, the pipeline inside them included. The `fit` and `predict` verbs are in the
+.NET reference's codec (Fuaran.Compute). They are not in the TypeScript host's (`decodeTransformCore` refuses any
+verb past `except`) or the Python host's (`unknown Transform`), and WIRE_FORMAT names neither verb. A
+`model-summary` entry would therefore put a fixture in the corpus that two of the three corpus hosts refuse. The
+phase was accepted on the premise that the two steps were usable on the wire. On .NET they are; across the corpus
+hosts they are not.
+
+**Rulings.**
+
+1. **The interval follows the step's own rule.** The `Predict` step states a prediction interval for the gaussian
+   family under the identity link only. The summary asks for one there, asks for a confidence interval for the
+   mean everywhere else, and names which it drew (`Stdlib.modelIntervalKind`).
+2. **The fit chart is a `Scatter` joined by `pathField`.** It is not a `Line`. The scatter arm's x axis is linear,
+   so the fitted line keeps the predictor's spacing. The interval channel (D39) reads one series, so the observed
+   response is not drawn beside the fitted values.
+3. **A refusal is shown in place, in the step's words.** Each view's `onError` state renders the payload the
+   resolver hands it, which is the step's `EvalError` as the evaluator prints it. The payload is a string, so the
+   error's case does not cross the renderer seam, and `onError` is an in-process closure. A wire tree therefore gets
+   the renderer's generic placeholder for a refused source, not the refusal.
+
+**Rejected.** Shipping the entry with fixtures that only the .NET host round-trips. The corpus is the contract every
+host certifies against, so a fixture one host emits and two refuse is a red gate moved onto the other hosts.
+Expanding the fit into pipeline steps the hosts do carry, as Phase 2752 expands a defined function, is also
+rejected: no composition of those verbs is a least-squares or IRLS fit.
+
+**Consequence.** The library stays at eleven entries, under D41's bound of twelve. The twelfth, `model-summary`,
+waits for a phase that gives the TypeScript and Python pipeline codecs `fit` and `predict`. That phase then adds the
+entry, its typed holes (the source, the fit specification and the plotted predictor) and its fixtures over a
+gaussian and a non-gaussian fit, and it reads this entry first.
+
+---
+
 ## 2026-11-26 — D41: the certified fragment library holds at most twelve entries, and each of the eleven earns its place
 
 **Decided (Phase 2753; bound ruled 2026-11-26).** The library suite's size check is a tripwire: past its bound it asks

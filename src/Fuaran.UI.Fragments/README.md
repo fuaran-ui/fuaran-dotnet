@@ -162,6 +162,47 @@ a field bound twice keeps its first column, so no filter key has two writers.
 Fragment names are **permanent**. Renaming one breaks every consumer's refs and every stored tree
 that carries them, so a rename is a new fragment plus a deprecation, never an edit.
 
+## Beside the set: the model summary (Phase 2754)
+
+`Fit` and `Predict` are pipeline steps, so a tree can carry a regression and its scoring as data.
+`Stdlib.modelSummaryOf id heading sources summary` presents one fit as a plain subtree. A
+`ModelSummary` names the rows (`Source`), the fit as a `Fit` step carries it (`Fit`, a `FitSpec`),
+the source column the chart plots over (`Predictor`) and the interval's level (`Level`). The subtree
+holds four parts, and the builder computes none of their figures:
+
+- **Facts.** The family, the link and the kind of standard error, as the specification states them.
+- **The coefficient table.** A grid over `Stdlib.modelCoefficientsPipeline`, the fit answering its
+  `Coefficients` table: term, estimate, standard error and t. The standard-error column names its
+  kind, `classical` or `robust, HC0` to `robust, HC3`, read from the spec's `StdErrors`, because the
+  two forms differ.
+- **The summary statistics.** A grid over `Stdlib.modelStatisticsPipeline`, the fit answering its
+  `Summary` row.
+- **The fit chart.** A `Scatter` over `Stdlib.modelBandPipeline`: a `Predict` step scores each source
+  row against the fit over the same rows. The chart plots `predicted` over the predictor and joins
+  the points in predictor order (`pathField`), so the line keeps the predictor's spacing on the linear
+  axis. The interval channel (`interval`, low `lower`, high `upper`) draws each observation's
+  interval. `Stdlib.modelIntervalKind` decides the interval. The gaussian family under the identity
+  link gets a prediction interval for a new observation. Every other family gets a confidence interval
+  for the mean, because the step states a prediction interval for the gaussian family only. The
+  subtitle names the interval and its level.
+
+A fit the step refuses (a response outside its family's range, a fit that does not converge, a term
+named twice) refuses every view that reads it. Each view then shows a `Critical` callout carrying the
+step's own refusal, as the evaluator prints its `EvalError`, never an empty table or chart. The
+callout is each view's `onError` state. That is an in-process closure, so it travels on the wire only
+as its sentinel.
+
+The builder refuses a grouped fit, because a summary presents one fit. Wherever the source's static
+schema is known, it also refuses a missing response or plotted column and a plotted column that is not
+numeric. Over inline rows each view carries its own copy of them, which pre-emit validation names
+(FUARAN107, a Warning). A `Ref` source names the rows once.
+
+**Why it is not an entry of the set.** An entry is emitted as conformance fixtures that every host
+decodes. The TypeScript and Python hosts' pipeline codecs do not yet carry the `fit` and `predict`
+verbs, so a `model-summary` entry would put a fixture in the corpus that two hosts refuse.
+`docs/DECISIONS.md` D42 records this. The entry, its typed holes and its fixtures follow once both
+codecs carry the verbs.
+
 ## The three parts of an entry
 
 ```fsharp

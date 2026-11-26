@@ -1276,6 +1276,29 @@ text.
             "column-2-kind": { "$type": "Str", "value": "number" } } }
 ```
 
+### Presenting a fit — the model summary (Phase 2754)
+
+A regression is a `fit` step, and its scoring is a `predict` step. A summary of one fit is four views
+over the same rows, and every figure in them is one of those steps' outputs:
+
+- **Facts** for the family, the link and the kind of standard error, written as the fit states them.
+- **A coefficient grid** over `[fit … "output":"coefficients"]`, showing `term`, `estimate`,
+  `std_error` and `t`. Name the standard error's kind in its column label (`classical`, or the
+  robust `hc0` to `hc3` the fit's `stdErrors` names). The two forms give different numbers.
+- **A statistics grid** over `[fit … "output":"summary"]`, one row keyed by `n`.
+- **A `Scatter`** over `[predict …, project]`, with `xField` the predictor, `yFields: ["predicted"]`,
+  `pathField` the predictor, so the points join in predictor order on the linear axis, and
+  `interval: {"low":"lower","high":"upper"}`. Ask the `predict` step for a `prediction` interval
+  under the gaussian family and identity link only. The step refuses one anywhere else, so ask for a
+  `confidence` interval there, and say which interval it is in the subtitle.
+
+**Do not compute a figure in the tree**, such as a `derive` that rebuilds a fitted value from the
+coefficients. The `predict` step is the one evaluation of it. In F#, `Stdlib.modelSummaryOf`
+(`Fuaran.UI.Fragments`) builds exactly this subtree, and each view shows the step's refusal in place of
+an empty table or chart when the fit is refused. It is not a stdlib fragment: the TypeScript and
+Python hosts do not decode `fit` or `predict` yet, so emit this shape only for a host that evaluates
+those steps (`docs/DECISIONS.md` D42).
+
 ### A bound grid's declared behaviours — sort, page, edit (Phases 861 / 862 / 863)
 
 One rule decides all three, and it is the thing to learn once: **a grid behaviour the user drives is declared as a named `$state` key the grid both writes and reads, and the renderer draws the control.** There is deliberately no grid-level `sortable` or `pageable` boolean — the KEY is the affordance, so a flag with no key behind it would be a control that writes state nothing reads.
